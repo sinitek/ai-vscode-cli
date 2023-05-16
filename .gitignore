@@ -30,8 +30,9 @@
 ### mac ###
 .DS_Store
 
-### npm ###
+### npm & lock ###
 package-lock.json
+yarn.lock
 
 ### book ###
 **/_book/
