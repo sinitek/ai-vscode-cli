@@ -648,8 +648,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-shrink: 0;
       }
       .tasklist-checkbox:checked {
-        background: var(--vscode-testing-iconPassed);
-        border-color: var(--vscode-testing-iconPassed);
+        background: var(--vscode-gitDecoration-addedResourceForeground);
+        border-color: var(--vscode-gitDecoration-addedResourceForeground);
       }
       .tasklist-checkbox:checked::after {
         content: "";
