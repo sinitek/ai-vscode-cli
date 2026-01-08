@@ -141,7 +141,6 @@ export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
   });
-  terminal.show(true);
 
   const fullArgs = [...baseArgs, ...thinkingArgs];
   const joinedArgs = fullArgs.map((arg) => escapeShellArg(arg)).join(" ");
@@ -274,7 +273,9 @@ export function runCliStream(
   const child = spawn(resolved.command, fullArgs, {
     cwd: options.cwd,
     env: process.env,
-    detached: true,
+    detached: process.platform !== "win32",
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
   });
   if (cli === "codex") {
     try {
@@ -286,12 +287,14 @@ export function runCliStream(
     child.stdin?.end();
   }
 
+  child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (data) => {
-    handlers.onStdout(data.toString());
+    handlers.onStdout(data);
   });
 
+  child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (data) => {
-    handlers.onStderr(data.toString());
+    handlers.onStderr(data);
   });
 
   child.on("error", (error) => {
@@ -317,7 +320,10 @@ function killProcessTree(
     return false;
   }
   if (process.platform === "win32") {
-    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
+    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
     return true;
   }
   const pid = child.pid;

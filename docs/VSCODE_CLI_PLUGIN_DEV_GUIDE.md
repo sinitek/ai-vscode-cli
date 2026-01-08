@@ -122,9 +122,10 @@ export function getCliArgs(cli: CliName): string[] {
 ### CLI 调用（src/cli/commandRunner.ts）
 
 ```ts
-import { spawn } from "child_process";
 import * as vscode from "vscode";
-import { CliName, getCliArgs, getCliCommand } from "./config";
+import { spawn } from "cross-spawn";
+import { CliName } from "./types";
+import { getCliArgs, getCliCommand } from "./config";
 
 export async function runCli(cli: CliName): Promise<void> {
   const command = getCliCommand(cli);
@@ -133,7 +134,6 @@ export async function runCli(cli: CliName): Promise<void> {
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
   });
-  terminal.show(true);
 
   const joinedArgs = args.map((arg) => escapeShellArg(arg)).join(" ");
   terminal.sendText(`${command} ${joinedArgs}`.trim());
@@ -146,6 +146,10 @@ function escapeShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 ```
+
+说明：
+- `runCli` 仅把命令发送到 VS Code 集成终端（不自动弹出终端窗口）。
+- Webview 面板内的对话执行使用 `spawn` + stdio 流式读取（见 `runCliStream`），不会打开额外窗口。
 
 ### 命令注册（src/extension.ts）
 
