@@ -122,9 +122,10 @@ export function getCliArgs(cli: CliName): string[] {
 ### CLI 调用（src/cli/commandRunner.ts）
 
 ```ts
-import { spawn } from "child_process";
 import * as vscode from "vscode";
-import { CliName, getCliArgs, getCliCommand } from "./config";
+import { spawn } from "cross-spawn";
+import { CliName } from "./types";
+import { getCliArgs, getCliCommand } from "./config";
 
 export async function runCli(cli: CliName): Promise<void> {
   const command = getCliCommand(cli);
@@ -133,7 +134,6 @@ export async function runCli(cli: CliName): Promise<void> {
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
   });
-  terminal.show(true);
 
   const joinedArgs = args.map((arg) => escapeShellArg(arg)).join(" ");
   terminal.sendText(`${command} ${joinedArgs}`.trim());
@@ -146,6 +146,10 @@ function escapeShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 ```
+
+说明：
+- `runCli` 仅把命令发送到 VS Code 集成终端（不自动弹出终端窗口）。
+- Webview 面板内的对话执行使用 `spawn` + stdio 流式读取（见 `runCliStream`），不会打开额外窗口。
 
 ### 命令注册（src/extension.ts）
 
@@ -224,6 +228,12 @@ F5
 - `CLI Bridge: Select CLI`
 - `CLI Bridge: Run Current CLI`
 
+Windows 下也可使用 Python 脚本一键启动（会 `npm install` + `npm run build`，然后以扩展开发模式打开 VS Code）：
+
+```
+py -3.12 vscode_extension_win.py dev
+```
+
 ## 打包发布（可选）
 
 ```
@@ -233,8 +243,22 @@ vsce package
 
 已封装快捷脚本：`./export_vscode_extension.sh`，会自动输出到 `dist/<name>-<version>.vsix`。
 
+Windows 下可使用：
+
+```
+py -3.12 vscode_extension_win.py package
+```
+
 ## 常见问题
 
-1) CLI 找不到：确认 PATH，或在配置中写绝对路径。
+1) CLI 找不到（常见报错：`spawn <cli> ENOENT`）：
+   - 先在系统终端确认 CLI 是否可用：
+     - Windows（PowerShell）：`where codex` / `where claude` / `where gemini`
+     - macOS/Linux：`which codex` / `which claude` / `which gemini`
+   - 如果系统终端能找到，但 VS Code 里找不到：安装/修改 PATH 后重启 VS Code（Extension Host 不会自动刷新 PATH）。
+   - Windows 下若使用 npm 全局安装，常见可执行文件在 `%APPDATA%\\npm\\`（例如 `%APPDATA%\\npm\\codex.cmd` / `claude.cmd` / `gemini.cmd`），可直接将其配置为绝对路径：
+     - `sinitek-cli-tools.commands.codex`
+     - `sinitek-cli-tools.commands.claude`
+     - `sinitek-cli-tools.commands.gemini`
 2) 参数包含空格：使用数组配置，插件会自动处理转义。
 3) 想用别名：建议配置为完整命令，避免依赖 shell alias。

@@ -1328,7 +1328,25 @@ async function runPrompt(prompt: string): Promise<void> {
         if (activeRunId !== runId) {
           return;
         }
-        void logError("runPrompt-error", { cli: currentCli, error: error.message });
+        const errnoError = error as NodeJS.ErrnoException;
+        const isNotFound = errnoError?.code === "ENOENT";
+        const userMessage = isNotFound
+          ? buildCliCommandNotFoundMessage(currentCli, command)
+          : error.message;
+        if (isNotFound) {
+          void vscode.window.showErrorMessage(userMessage, "打开设置").then((selection) => {
+            if (selection === "打开设置") {
+              void vscode.commands.executeCommand(
+                "workbench.action.openSettings",
+                `sinitek-cli-tools.commands.${currentCli}`
+              );
+            }
+          });
+        }
+        void logError("runPrompt-error", {
+          cli: currentCli,
+          error: isNotFound ? `${error.message} (ENOENT)` : error.message,
+        });
         void logCliRaw(currentCli, activeSessionId, {
           command,
           args,
@@ -1337,7 +1355,7 @@ async function runPrompt(prompt: string): Promise<void> {
           raw: rawStdout,
           stderr: rawStderr,
         });
-        sendRunStatus("error", error.message);
+        sendRunStatus("error", userMessage);
         if (currentCli === "codex" || currentCli === "gemini") {
           flushTraceBuffer();
         }
@@ -1352,6 +1370,23 @@ async function runPrompt(prompt: string): Promise<void> {
     cli: currentCli,
     pid: activeProcess?.pid ?? null,
   });
+}
+
+function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
+  const configKey = `sinitek-cli-tools.commands.${cli}`;
+  if (process.platform === "win32") {
+    return [
+      `找不到 CLI 可执行文件：${command}`,
+      `请确认已安装且 VS Code 可访问 PATH；或在设置中把 ${configKey} 配置为绝对路径（常见为 %APPDATA%\\\\npm\\\\${command}.cmd）。`,
+      `在 PowerShell 运行：where ${command}`,
+      "提示：安装/修改 PATH 后需重启 VS Code。",
+    ].join("\n");
+  }
+  return [
+    `找不到 CLI 可执行文件：${command}`,
+    `请确认已安装且 PATH 可见；或在设置中把 ${configKey} 配置为绝对路径。`,
+    `在终端运行：which ${command}`,
+  ].join("\n");
 }
 
 function stopActiveRun(): void {

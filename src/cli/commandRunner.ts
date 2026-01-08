@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import { spawn } from "cross-spawn";
 import { CliName, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getThinkingArgs } from "./config";
 
@@ -18,6 +21,116 @@ function escapeShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 
+type ResolvedCliCommand = {
+  command: string;
+  resolvedFrom: "config" | "path" | "windows-npm-bin";
+};
+
+function fileExists(targetPath: string): boolean {
+  try {
+    fs.accessSync(targetPath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveExistingCommandPath(command: string): string | null {
+  if (fileExists(command)) {
+    return command;
+  }
+  if (process.platform !== "win32") {
+    return null;
+  }
+  if (path.extname(command)) {
+    return null;
+  }
+  const exts = getWindowsPathExts();
+  for (const ext of exts) {
+    const candidate = `${command}${ext}`;
+    if (fileExists(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getWindowsPathExts(): string[] {
+  const pathext = process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
+  return pathext
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
+}
+
+function resolveCommandOnPath(command: string, extraDirs: string[] = []): string | null {
+  const envPath = process.env.PATH ?? process.env.Path ?? "";
+  const pathDirs = envPath
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const dirs = [...extraDirs, ...pathDirs];
+
+  if (process.platform === "win32") {
+    const hasExt = Boolean(path.extname(command));
+    const exts = hasExt ? [""] : getWindowsPathExts();
+    for (const dir of dirs) {
+      for (const ext of exts) {
+        const candidate = path.join(dir, hasExt ? command : `${command}${ext}`);
+        if (fileExists(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
+  for (const dir of dirs) {
+    const candidate = path.join(dir, command);
+    if (fileExists(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getWindowsNpmBinDirs(): string[] {
+  const dirs = new Set<string>();
+  if (process.env.APPDATA) {
+    dirs.add(path.join(process.env.APPDATA, "npm"));
+  }
+  if (process.env.USERPROFILE) {
+    dirs.add(path.join(process.env.USERPROFILE, "AppData", "Roaming", "npm"));
+  }
+  if (process.env.PNPM_HOME) {
+    dirs.add(process.env.PNPM_HOME);
+  }
+  return Array.from(dirs);
+}
+
+function resolveCliCommand(command: string): ResolvedCliCommand | null {
+  const looksLikePath = command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
+  if (path.isAbsolute(command) || looksLikePath) {
+    const resolved = resolveExistingCommandPath(command);
+    return resolved ? { command: resolved, resolvedFrom: "config" } : null;
+  }
+
+  if (process.platform === "win32") {
+    const resolvedFromNpmBin = resolveCommandOnPath(command, getWindowsNpmBinDirs());
+    if (resolvedFromNpmBin) {
+      return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
+    }
+  }
+
+  const resolvedFromPath = resolveCommandOnPath(command);
+  if (resolvedFromPath) {
+    return { command: resolvedFromPath, resolvedFrom: "path" };
+  }
+
+  return null;
+}
+
 export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise<void> {
   const command = getCliCommand(cli);
   const baseArgs = getCliArgs(cli);
@@ -28,7 +141,6 @@ export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
   });
-  terminal.show(true);
 
   const fullArgs = [...baseArgs, ...thinkingArgs];
   const joinedArgs = fullArgs.map((arg) => escapeShellArg(arg)).join(" ");
@@ -51,6 +163,7 @@ type RunStreamOptions = RunCliOptions & {
 
 export type RunProcess = {
   pid?: number;
+  resolvedCommand?: string;
   kill: (signal?: NodeJS.Signals | number) => boolean | void;
 };
 
@@ -143,12 +256,26 @@ export function runCliStream(
   handlers: StreamHandlers,
   options: RunStreamOptions = {}
 ): RunProcess {
-  const command = getCliCommand(cli);
+  const configuredCommand = getCliCommand(cli);
+  const resolved = resolveCliCommand(configuredCommand);
+  if (!resolved) {
+    const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    handlers.onError(error);
+    handlers.onExit(127);
+    return {
+      pid: undefined,
+      resolvedCommand: undefined,
+      kill: () => false,
+    };
+  }
   const fullArgs = buildCliArgs(cli, options, prompt);
-  const child = spawn(command, fullArgs, {
+  const child = spawn(resolved.command, fullArgs, {
     cwd: options.cwd,
     env: process.env,
-    detached: true,
+    detached: process.platform !== "win32",
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
   });
   if (cli === "codex") {
     try {
@@ -160,12 +287,14 @@ export function runCliStream(
     child.stdin?.end();
   }
 
+  child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (data) => {
-    handlers.onStdout(data.toString());
+    handlers.onStdout(data);
   });
 
+  child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (data) => {
-    handlers.onStderr(data.toString());
+    handlers.onStderr(data);
   });
 
   child.on("error", (error) => {
@@ -178,6 +307,7 @@ export function runCliStream(
 
   return {
     pid: child.pid,
+    resolvedCommand: resolved.command,
     kill: (signal) => killProcessTree(child, signal),
   };
 }
@@ -190,7 +320,10 @@ function killProcessTree(
     return false;
   }
   if (process.platform === "win32") {
-    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
+    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
     return true;
   }
   const pid = child.pid;
