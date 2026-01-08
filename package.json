@@ -112,7 +112,7 @@
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Open the CLI Bridge panel automatically on activation."
         },
         "sinitek-cli-tools.rememberSelectedCli": {
@@ -810,7 +810,7 @@
       }
     },
     "viewsContainers": {
-      "panel": [
+      "activitybar": [
         {
           "id": "sinitekCliBridgePanel",
           "title": "携宁 CLI 助手",
