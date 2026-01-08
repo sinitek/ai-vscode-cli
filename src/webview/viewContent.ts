@@ -1,0 +1,2191 @@
+import { CLI_LIST } from "../cli/types";
+import { readFileSync } from "fs";
+import * as path from "path";
+
+let cachedMarkedScript: string | undefined;
+
+export function getWebviewHtml(webview: { cspSource: string }): string {
+  const nonce = getNonce();
+  const cliOptions = CLI_LIST.map((cli) => `<option value="${cli}">${cli}</option>`).join("");
+  const markedScript = getMarkedScript();
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>携宁 CLI 配置</title>
+    <style>
+      :root {
+        --radius-sm: 4px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+        --gap-sm: 8px;
+        --gap-md: 16px;
+      }
+      body {
+        font-family: var(--vscode-font-family);
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--vscode-editor-foreground);
+        background-color: var(--vscode-editor-background);
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: calc(var(--app-height, 100vh));
+        box-sizing: border-box;
+      }
+      
+      /* Header - Minimalist */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 16px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-editor-background);
+        min-height: 36px;
+      }
+      .title {
+        font-weight: 600;
+        font-size: 13px;
+        opacity: 0.9;
+      }
+      .header-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .icon-button {
+        background: transparent;
+        border: none;
+        color: var(--vscode-icon-foreground);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+        transition: all 0.2s;
+      }
+      .icon-button:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+        opacity: 1;
+      }
+      .icon {
+        width: 16px;
+        height: 16px;
+      }
+      #pathPickerButton span {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 16px;
+      }
+      
+      /* Chat Area */
+      .chat-area {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px 16px;
+        background: var(--vscode-editor-background);
+        min-height: 0;
+        box-sizing: border-box;
+      }
+      .messages {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        max-width: 100%;
+        padding-bottom: 10px;
+      }
+      
+      /* Message Blocks */
+      .message {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 100%;
+      }
+      /* User Message - Distinct Bubble */
+      .message.user {
+        align-items: flex-end;
+      }
+      .message.user .message-time {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.7;
+        margin-bottom: 4px;
+      }
+      .message.user .bubble {
+        background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground);
+        padding: 10px 14px;
+        border-radius: 16px 16px 4px 16px;
+        max-width: 85%;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      }
+
+      /* Assistant Message - Clean, width-filling */
+      .message.assistant {
+        align-items: flex-start;
+      }
+      .message.assistant .bubble {
+        background: transparent;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--radius-md);
+        padding: 12px;
+        max-width: 100%;
+        width: 100%;
+      }
+      
+      /* Markdown Styles */
+      .message.assistant .bubble p {
+        margin: 0 0 8px 0;
+        line-height: 1.6;
+      }
+      .message.assistant .bubble p:last-child {
+        margin-bottom: 0;
+      }
+      .message.assistant .bubble pre {
+        background: var(--vscode-textCodeBlock-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--radius-md);
+        padding: 12px;
+        overflow-x: auto;
+        margin: 12px 0;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 12px;
+      }
+      .message.assistant .bubble code {
+        font-family: var(--vscode-editor-font-family);
+        font-size: 12px;
+        background: var(--vscode-textCodeBlock-background);
+        padding: 2px 5px;
+        border-radius: 4px;
+        color: var(--vscode-textPreformat-foreground);
+      }
+      .message.assistant .bubble pre code {
+        background: transparent;
+        padding: 0;
+        color: inherit;
+      }
+      .message.assistant .bubble ul, .message.assistant .bubble ol {
+        margin: 8px 0;
+        padding-left: 24px;
+      }
+      .message.assistant .bubble li {
+        margin-bottom: 4px;
+      }
+      .message.assistant .bubble blockquote {
+        border-left: 3px solid var(--vscode-textBlockQuote-border);
+        background: var(--vscode-textBlockQuote-background);
+        margin: 8px 0;
+        padding: 8px 12px;
+      }
+
+      /* System & Trace Messages */
+      .message.system {
+        align-self: center;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        margin: 8px 0;
+        width: 100%;
+      }
+      .message.system .bubble {
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        padding: 4px 0;
+        border-radius: 0;
+        font-size: 12px;
+        width: 100%;
+      }
+      .message.system .system-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .message.system .system-time {
+        font-size: 11px;
+        opacity: 0.6;
+        white-space: nowrap;
+      }
+      
+      .message.trace {
+        font-size: 12px;
+      }
+      .message.trace .bubble {
+        font-family: var(--vscode-editor-font-family);
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        color: var(--vscode-editor-foreground);
+        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        white-space: pre-wrap;
+        border-left: 3px solid var(--vscode-minimap-findMatchHighlight);
+      }
+      .message.trace.trace-nonthinking .bubble {
+        opacity: 1;
+      }
+      .trace-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .trace-line {
+        white-space: pre-wrap;
+      }
+      .trace-line.line-numbered {
+        background: var(--vscode-textCodeBlock-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 4px;
+        color: var(--vscode-textPreformat-foreground);
+        padding: 2px 6px;
+        font-family: var(--vscode-editor-font-family);
+      }
+      .trace-line.diff-added {
+        color: var(
+          --vscode-diffEditor-insertedTextForeground,
+          var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)))
+        );
+      }
+      .trace-line.diff-removed {
+        color: var(
+          --vscode-diffEditor-removedTextForeground,
+          var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-terminal-ansiRed, var(--vscode-charts-red)))
+        );
+      }
+
+      /* Typing Indicator */
+      .run-wait {
+        padding-left: 4px;
+      }
+      .typing {
+        display: inline-flex;
+        gap: 4px;
+        padding: 8px 12px;
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border-radius: 12px;
+        align-items: center;
+      }
+      .typing-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--vscode-descriptionForeground);
+        animation: typingPulse 1.4s infinite ease-in-out both;
+      }
+      .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+      .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+      @keyframes typingPulse {
+        0%, 80%, 100% { transform: scale(0); }
+        40% { transform: scale(1); }
+      }
+
+      /* Empty State */
+      .empty-state {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--vscode-descriptionForeground);
+        font-size: 13px;
+        opacity: 0.7;
+        padding-bottom: 40px;
+      }
+
+      /* Input Area */
+      .input-area {
+        padding: 16px;
+        background: var(--vscode-editor-background);
+      }
+      
+      /* Controls Row (CLI, Config) */
+      .config-select-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+        align-items: center;
+      }
+      
+      select {
+        background: var(--vscode-dropdown-background);
+        color: var(--vscode-dropdown-foreground);
+        border: 1px solid var(--vscode-dropdown-border);
+        border-radius: 4px;
+        padding: 4px 8px;
+        height: 28px;
+        outline: none;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      select:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      
+      .cli-select { min-width: 100px; }
+      .config-select { flex: 1; }
+
+      /* Input Box Container */
+      .input-box {
+        border: 1px solid var(--vscode-input-border);
+        background: var(--vscode-input-background);
+        border-radius: 10px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        position: relative;
+      }
+      .input-box:focus-within {
+        border-color: var(--vscode-focusBorder);
+        box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+      }
+      
+      .input-box textarea {
+        background: transparent;
+        border: none;
+        color: var(--vscode-input-foreground);
+        font-family: inherit;
+        font-size: 13px;
+        line-height: 1.5;
+        resize: none;
+        outline: none;
+        width: 100%;
+        height: calc(1.5em * 3);
+        max-height: calc(1.5em * 3);
+        overflow-y: auto;
+        padding: 0;
+      }
+      
+      .input-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+      }
+      
+      .input-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      /* Buttons */
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+        height: 26px;
+      }
+      
+      .action-button {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        padding: 0 12px;
+        font-weight: 500;
+      }
+      .action-button:hover {
+        background: var(--vscode-button-hoverBackground);
+      }
+      
+      .secondary {
+        background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground);
+        border-color: transparent;
+        padding: 0 10px;
+      }
+      .secondary:hover {
+        background: var(--vscode-button-secondaryHoverBackground);
+      }
+      
+      .stop-button {
+        background: var(--vscode-errorForeground);
+        color: var(--vscode-button-foreground);
+        padding: 0 12px;
+      }
+      
+      .ghost {
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+      }
+      .ghost:hover {
+        color: var(--vscode-foreground);
+        background: var(--vscode-toolbar-hoverBackground);
+      }
+
+      /* Helper Classes */
+      .hidden-input { display: none; }
+      
+      /* Overlays / Modals */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .overlay.visible { display: flex; animation: fadeIn 0.2s; }
+      
+      .modal {
+        background: var(--vscode-editorWidget-background);
+        border: 1px solid var(--vscode-widget-border);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        border-radius: 12px;
+        width: 500px;
+        max-width: 90vw;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      
+      .modal-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .rules-modal .modal-header {
+        padding: 10px 16px;
+      }
+
+      .help-modal {
+        height: 600px;
+      }
+      
+      .session-list, .help-panel, .rules-modal {
+        padding: 16px;
+        overflow-y: auto;
+      }
+
+      .rules-modal {
+        padding: 0 0 16px;
+        gap: 12px;
+      }
+      .rules-modal > :not(.modal-header) {
+        margin: 0 16px;
+      }
+      .rules-scope {
+        display: flex;
+        gap: 12px;
+      }
+      .rules-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .rules-row .cli-select {
+        flex: 1;
+      }
+      .rules-path {
+        font-size: 12px;
+        opacity: 0.7;
+      }
+
+      .help-panel {
+        display: none;
+        flex: 1;
+        min-height: 0;
+      }
+      .help-panel.active {
+        display: block;
+      }
+      
+      .session-item {
+        padding: 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--vscode-editor-background);
+      }
+      .session-item:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: var(--vscode-notifications-background);
+        color: var(--vscode-notifications-foreground);
+        padding: 10px 16px;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 200;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all 0.3s;
+        pointer-events: none;
+      }
+      .toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      
+      /* Misc for Rules/Help */
+      .rules-textarea {
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border: 1px solid var(--vscode-input-border);
+        padding: 10px;
+        border-radius: 6px;
+        box-sizing: border-box;
+        line-height: 1.5;
+        height: calc(1.5em * 10);
+        max-height: calc(1.5em * 10);
+        overflow-y: auto;
+        resize: none;
+      }
+      .rules-save-row {
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .rules-checkboxes {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .rules-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .help-tab {
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--vscode-foreground);
+      }
+      .help-tab.active {
+        border-bottom: 2px solid var(--vscode-focusBorder);
+        border-radius: 0;
+        background: transparent;
+        color: var(--vscode-foreground);
+      }
+      .help-tabs {
+        padding: 0 16px;
+      }
+
+      /* Tasklist Panel */
+      .tasklist-panel {
+        padding: 8px 16px 12px;
+        border-top: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-editor-background);
+      }
+      .tasklist-panel details {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--radius-md);
+        padding: 8px 12px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .tasklist-panel summary {
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        list-style: none;
+      }
+      .tasklist-panel summary::-webkit-details-marker {
+        display: none;
+      }
+      .tasklist-count {
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      .tasklist-items {
+        list-style: none;
+        padding: 8px 0 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tasklist-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .tasklist-checkbox {
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="header">
+        <div class="title">AI 对话</div>
+        <div class="header-actions">
+          <button id="helpButton" class="secondary icon-button" title="使用说明" aria-label="使用说明">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.8" />
+              <path d="M12 16.5h.01" />
+            </svg>
+          </button>
+          <button id="rulesButton" class="secondary icon-button" title="规则配置" aria-label="规则配置">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+              <path d="M14 3v4h4" />
+              <path d="M8 11h8" />
+              <path d="M8 15h8" />
+            </svg>
+          </button>
+          <button id="newSession" class="secondary icon-button" title="新建会话" aria-label="新建会话">＋</button>
+        </div>
+      </div>
+
+      <div id="chatArea" class="chat-area">
+        <div id="emptyState" class="empty-state">输入需求，开始对话。</div>
+        <div id="messages" class="messages"></div>
+        <div id="runWait" class="run-wait" style="display: none;">
+          <span class="typing">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </span>
+        </div>
+      </div>
+
+      <div id="taskListPanel" class="tasklist-panel" style="display: none;">
+        <details id="taskListDetails">
+          <summary>
+            <span>任务列表</span>
+            <span id="taskListCount" class="tasklist-count"></span>
+          </summary>
+          <div id="taskListBody"></div>
+        </details>
+      </div>
+
+      <div class="input-area">
+        <div class="config-select-row">
+          <select id="currentCli" class="cli-select" aria-label="CLI 选择">${cliOptions}</select>
+          <select id="configSelect" class="config-select" aria-label="配置选择"></select>
+          <button id="openConfig" class="secondary action-button" title="配置">配置</button>
+        </div>
+        <div class="input-box">
+          <textarea id="promptInput" rows="3" placeholder="Shift + Enter 换行，输入 @ 选择文件/目录，支持附件黏贴..."></textarea>
+        </div>
+        <input id="attachmentInput" class="hidden-input" type="file" multiple />
+        <div class="input-footer">
+          <div class="input-actions">
+            <button id="pathPickerButton" class="secondary icon-button" title="插入路径" aria-label="插入路径">
+              <span>@</span>
+            </button>
+            <button id="attachmentButton" class="secondary icon-button" title="上传附件" aria-label="上传附件">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
+              </svg>
+            </button>
+            <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
+              <option value="off">思考：关闭</option>
+              <option value="low">思考：低</option>
+              <option value="medium">思考：中</option>
+              <option value="high">思考：高</option>
+            </select>
+            <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
+            <button id="sendPrompt" class="action-button">发送</button>
+            <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="historyOverlay" class="overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <div class="title">历史会话</div>
+            <div class="session-actions">
+              <button id="clearAllHistory" class="ghost">清空全部</button>
+              <button id="closeHistory" class="secondary">关闭</button>
+            </div>
+          </div>
+          <div id="sessionList" class="session-list"></div>
+        </div>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <div id="rulesOverlay" class="overlay">
+        <div class="modal rules-modal">
+          <div class="modal-header">
+            <div class="title">规则</div>
+            <div class="session-actions">
+              <button id="closeRules" class="secondary">关闭</button>
+            </div>
+          </div>
+          <div class="rules-scope help-tabs" role="tablist" aria-label="规则范围">
+            <button id="scopeGlobal" class="help-tab active" role="tab" aria-selected="true">全局规则</button>
+            <button id="scopeProject" class="help-tab" role="tab" aria-selected="false">项目规则</button>
+          </div>
+          <div class="rules-row">
+            <select id="rulesLoadCli" class="cli-select" aria-label="加载 CLI">
+              <option value="codex">codex</option>
+              <option value="claude">claude</option>
+              <option value="gemini">gemini</option>
+            </select>
+            <button id="loadRules" class="secondary action-button">加载</button>
+          </div>
+          <div id="rulesPath" class="rules-path"></div>
+          <textarea id="rulesInput" class="rules-textarea" rows="10" placeholder="输入规则内容..."></textarea>
+          <div class="rules-row rules-save-row">
+            <span>保存覆盖到：</span>
+            <div class="rules-checkboxes" role="group" aria-label="保存覆盖到">
+              <label><input type="checkbox" id="rulesSaveCodex" /> codex</label>
+              <label><input type="checkbox" id="rulesSaveClaude" /> claude</label>
+              <label><input type="checkbox" id="rulesSaveGemini" /> gemini</label>
+            </div>
+          </div>
+          <div class="rules-hint" id="rulesHint"></div>
+          <div class="rules-actions">
+            <button id="saveRules" class="action-button">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="helpOverlay" class="overlay">
+        <div class="modal help-modal">
+          <div class="modal-header">
+            <div class="title">使用说明</div>
+            <div class="session-actions">
+              <button id="closeHelp" class="secondary">关闭</button>
+            </div>
+          </div>
+          <div class="help-tabs" role="tablist" aria-label="使用说明">
+            <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">安装</button>
+            <button id="helpTabThinking" class="help-tab" role="tab" aria-selected="false">思考模式</button>
+          </div>
+          <div id="helpPanelInstall" class="help-panel active" role="tabpanel">
+            <div class="help-section">
+              <h4>Windows 安装</h4>
+              <ul>
+                <li>Codex：<code>npm i -g @openai/codex</code></li>
+                <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
+                <li>Gemini：<code>npm -i -g @google/gemini-cli</code></li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>macOS 安装</h4>
+              <ul>
+                <li>Codex：<code>npm i -g @openai/codex</code></li>
+                <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
+                <li>Gemini：<code>npm -i -g @google/gemini-cli</code></li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>中国境内加速</h4>
+              <ul>
+                <li>一次性加速：<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
+                <li>设置全局镜像：<code>npm config set registry https://registry.npmmirror.com</code></li>
+                <li>恢复官方源：<code>npm config set registry https://registry.npmjs.org</code></li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>移除系统环境变量配置</h4>
+              <ul>
+                <li>使用该工具前需清理对 CLI 的系统级环境变量修改，避免与配置文件冲突。</li>
+                <li>macOS：检查并移除 <code>~/.zprofile</code>、<code>~/.zshrc</code> 或 <code>~/.bash_profile</code> 中相关设置。</li>
+                <li>Windows：通过“系统属性 &gt; 高级 &gt; 环境变量”删除为 CLI 手动添加的相关设置。</li>
+              </ul>
+            </div>
+          </div>
+          <div id="helpPanelThinking" class="help-panel" role="tabpanel">
+            <div class="help-section">
+              <h4>通用说明</h4>
+              <ul>
+                <li>思考模式用于调节推理强度，越高通常更稳但更慢、成本更高。</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>Codex</h4>
+              <ul>
+                <li>通过配置 <code>model_reasoning_effort</code> 控制强度。</li>
+                <li>可选值：<code>low</code> / <code>medium</code> / <code>high</code>（无显式关闭，<code>low</code> 近似最低）。</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>Gemini</h4>
+              <ul>
+                <li>通过配置文件的 <code>thinkingConfig</code> 控制。</li>
+                <li>Gemini 2.5：暂不支持；Gemini 3：<code>thinkingLevel</code>。</li>
+                <li>常见值：<code>minimal</code> / <code>low</code> / <code>medium</code> / <code>high</code>（随模型而异）。</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>Claude</h4>
+              <ul>
+                <li>使用 <code>--max-thinking-tokens</code> 控制思考 token 数。</li>
+                <li><code>0</code> 视为关闭，数值越高推理越深入。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <script nonce="${nonce}">
+      ${markedScript}
+    </script>
+    <script nonce="${nonce}">
+      const vscode = acquireVsCodeApi();
+
+      const state = {
+        currentCli: "codex",
+        messages: [],
+        isRunning: false,
+        configState: {
+          configs: [],
+          activeConfigId: null,
+        },
+        selectedConfigId: "",
+        autoAppliedConfig: false,
+        sessionState: {
+          currentSessionId: null,
+          sessions: [],
+        },
+        thinkingMode: "medium",
+        rulePaths: { global: {}, project: {} },
+        ruleScope: "global",
+        taskList: {
+          items: [],
+          open: false,
+          source: "auto",
+        },
+      };
+
+      const elements = {
+        currentCli: document.getElementById("currentCli"),
+        openConfig: document.getElementById("openConfig"),
+        newSession: document.getElementById("newSession"),
+        stopRun: document.getElementById("stopRun"),
+        chatArea: document.getElementById("chatArea"),
+        messages: document.getElementById("messages"),
+        emptyState: document.getElementById("emptyState"),
+        runWait: document.getElementById("runWait"),
+        configSelect: document.getElementById("configSelect"),
+        promptInput: document.getElementById("promptInput"),
+        thinkingMode: document.getElementById("thinkingMode"),
+        pathPickerButton: document.getElementById("pathPickerButton"),
+        attachmentButton: document.getElementById("attachmentButton"),
+        attachmentInput: document.getElementById("attachmentInput"),
+        sendPrompt: document.getElementById("sendPrompt"),
+        historyButton: document.getElementById("historyButton"),
+        historyOverlay: document.getElementById("historyOverlay"),
+        closeHistory: document.getElementById("closeHistory"),
+        clearAllHistory: document.getElementById("clearAllHistory"),
+        sessionList: document.getElementById("sessionList"),
+        rulesButton: document.getElementById("rulesButton"),
+        rulesOverlay: document.getElementById("rulesOverlay"),
+        closeRules: document.getElementById("closeRules"),
+        rulesLoadCli: document.getElementById("rulesLoadCli"),
+        loadRules: document.getElementById("loadRules"),
+        rulesInput: document.getElementById("rulesInput"),
+        rulesSaveCodex: document.getElementById("rulesSaveCodex"),
+        rulesSaveClaude: document.getElementById("rulesSaveClaude"),
+        rulesSaveGemini: document.getElementById("rulesSaveGemini"),
+        saveRules: document.getElementById("saveRules"),
+        rulesHint: document.getElementById("rulesHint"),
+        rulesPath: document.getElementById("rulesPath"),
+        scopeGlobal: document.getElementById("scopeGlobal"),
+        scopeProject: document.getElementById("scopeProject"),
+        helpButton: document.getElementById("helpButton"),
+        helpOverlay: document.getElementById("helpOverlay"),
+        closeHelp: document.getElementById("closeHelp"),
+        helpTabInstall: document.getElementById("helpTabInstall"),
+        helpTabThinking: document.getElementById("helpTabThinking"),
+        helpPanelInstall: document.getElementById("helpPanelInstall"),
+        helpPanelThinking: document.getElementById("helpPanelThinking"),
+        toast: document.getElementById("toast"),
+        taskListPanel: document.getElementById("taskListPanel"),
+        taskListDetails: document.getElementById("taskListDetails"),
+        taskListCount: document.getElementById("taskListCount"),
+        taskListBody: document.getElementById("taskListBody"),
+      };
+      let isComposing = false;
+      const assistantRedirects = {};
+      let toastTimer = null;
+      let resizeFrame = 0;
+
+      function updateAppHeight() {
+        document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
+      }
+
+      function scheduleAppHeightUpdate() {
+        if (resizeFrame) {
+          cancelAnimationFrame(resizeFrame);
+        }
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = 0;
+          updateAppHeight();
+        });
+      }
+
+      function applyState(panelState) {
+        const previousCli = state.currentCli;
+        state.currentCli = panelState.currentCli;
+        if (previousCli !== state.currentCli) {
+          state.autoAppliedConfig = false;
+        }
+        state.sessionState = panelState.sessionState;
+        state.configState = panelState.configState || { configs: [], activeConfigId: null };
+        const configs = Array.isArray(state.configState.configs)
+          ? state.configState.configs
+          : [];
+        let nextSelected = state.configState.activeConfigId || "";
+        if (!nextSelected && configs.length > 0) {
+          nextSelected = configs[0].id;
+          if (!state.autoAppliedConfig) {
+            state.autoAppliedConfig = true;
+            vscode.postMessage({
+              type: "applyConfig",
+              cli: state.currentCli,
+              configId: nextSelected,
+            });
+          }
+        }
+        state.selectedConfigId = nextSelected;
+        state.thinkingMode = panelState.thinkingMode || "medium";
+        state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
+        elements.currentCli.value = panelState.currentCli;
+        if (elements.rulesLoadCli) {
+          elements.rulesLoadCli.value = panelState.currentCli;
+        }
+        updateRulesScope(state.ruleScope);
+        syncThinkingOptions();
+        elements.thinkingMode.value = state.thinkingMode;
+        renderConfigOptions();
+        renderSessionList();
+      }
+
+      function renderConfigOptions() {
+        elements.configSelect.innerHTML = "";
+        const configs = Array.isArray(state.configState.configs)
+          ? state.configState.configs
+          : [];
+        if (configs.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "暂无配置";
+          elements.configSelect.appendChild(option);
+          elements.configSelect.value = "";
+          return;
+        }
+        configs.forEach((config) => {
+          const option = document.createElement("option");
+          option.value = config.id;
+          option.textContent = config.name || config.id;
+          elements.configSelect.appendChild(option);
+        });
+        elements.configSelect.value = state.selectedConfigId || "";
+      }
+
+      function syncThinkingOptions() {
+        const isGemini = state.currentCli === "gemini";
+        const isCodex = state.currentCli === "codex";
+        const mediumOption = elements.thinkingMode.querySelector('option[value="medium"]');
+        const xhighOption = elements.thinkingMode.querySelector('option[value="xhigh"]');
+        if (isGemini && mediumOption) {
+          mediumOption.remove();
+        }
+        if (!isGemini && !mediumOption) {
+          const option = document.createElement("option");
+          option.value = "medium";
+          option.textContent = "思考：中";
+          const highOption = elements.thinkingMode.querySelector('option[value="high"]');
+          if (highOption && highOption.parentElement) {
+            highOption.parentElement.insertBefore(option, highOption);
+          } else {
+            elements.thinkingMode.appendChild(option);
+          }
+        }
+        const offOption = elements.thinkingMode.querySelector('option[value="off"]');
+        if (isCodex && offOption) {
+          offOption.remove();
+        }
+        if (!isCodex && !offOption) {
+          const option = document.createElement("option");
+          option.value = "off";
+          option.textContent = "思考：关闭";
+          const lowOption = elements.thinkingMode.querySelector('option[value="low"]');
+          if (lowOption && lowOption.parentElement) {
+            lowOption.parentElement.insertBefore(option, lowOption);
+          } else {
+            elements.thinkingMode.appendChild(option);
+          }
+        }
+        if (!isCodex && xhighOption) {
+          xhighOption.remove();
+        }
+        if (isCodex && !xhighOption) {
+          const option = document.createElement("option");
+          option.value = "xhigh";
+          option.textContent = "思考：超高";
+          elements.thinkingMode.appendChild(option);
+        }
+        if (isGemini && state.thinkingMode === "medium") {
+          updateThinkingMode("low");
+        }
+        if (isCodex && state.thinkingMode === "off") {
+          updateThinkingMode("low");
+        }
+        if (!isCodex && state.thinkingMode === "xhigh") {
+          updateThinkingMode("high");
+        }
+      }
+
+      function updateThinkingMode(nextMode) {
+        state.thinkingMode = nextMode;
+        elements.thinkingMode.value = nextMode;
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "thinkingMode",
+          value: nextMode,
+        });
+      }
+
+      function renderMessages() {
+        elements.messages.innerHTML = "";
+        state.messages.forEach((message) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "message " + message.role;
+          if (message.role === "trace") {
+            const traceClass = message.kind === "thinking" ? "trace-thinking" : "trace-nonthinking";
+            wrapper.classList.add(traceClass);
+          }
+
+          const bubble = document.createElement("div");
+          bubble.className = "bubble";
+          bubble.innerHTML = renderMessageContent(message);
+
+          if (message.role === "user" && message.createdAt) {
+            const time = document.createElement("div");
+            time.className = "message-time";
+            time.textContent = formatDateTime(message.createdAt);
+            wrapper.appendChild(time);
+          }
+          wrapper.appendChild(bubble);
+          elements.messages.appendChild(wrapper);
+        });
+
+        elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
+        updateRunWait();
+        elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior: "smooth" });
+        updateTaskList();
+      }
+
+      function renderSessionList() {
+        elements.sessionList.innerHTML = "";
+        if (!state.sessionState.sessions.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "暂无会话历史";
+          elements.sessionList.appendChild(empty);
+          return;
+        }
+        state.sessionState.sessions.forEach((session) => {
+          const item = document.createElement("div");
+          item.className = "session-item";
+
+          const label = document.createElement("div");
+          label.className = "session-label";
+          const cliLabel = session.cli ? "[" + session.cli + "] " : "";
+          label.textContent = cliLabel + (session.label || "未命名会话");
+
+          const actions = document.createElement("div");
+          actions.className = "session-actions";
+
+          const loadButton = document.createElement("button");
+          loadButton.className = "secondary";
+          loadButton.textContent = "加载";
+          loadButton.addEventListener("click", () => {
+            state.messages = [];
+            renderMessages();
+            closeHistory();
+            vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
+          });
+
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "ghost";
+          deleteButton.textContent = "删除";
+          deleteButton.addEventListener("click", () => {
+            vscode.postMessage({ type: "deleteSession", sessionId: session.id, cli: session.cli });
+          });
+
+          const copyButton = document.createElement("button");
+          copyButton.className = "ghost";
+          copyButton.textContent = "复制ID";
+          copyButton.addEventListener("click", () => {
+            copySessionId(session.id);
+          });
+
+          actions.appendChild(loadButton);
+          actions.appendChild(copyButton);
+          actions.appendChild(deleteButton);
+          item.appendChild(label);
+          item.appendChild(actions);
+          elements.sessionList.appendChild(item);
+        });
+      }
+
+      function appendMessage(message) {
+        if (!message) {
+          return;
+        }
+        if ((message.role === "user" || message.role === "system") && !message.createdAt) {
+          message.createdAt = Date.now();
+        }
+        const last = state.messages[state.messages.length - 1];
+        if (message.role === "assistant") {
+          if (last && last.role === "assistant") {
+            assistantRedirects[message.id] = last.id;
+            if (message.content) {
+              const prefix = last.content ? "\\n" : "";
+              last.content = last.content + prefix + message.content;
+            }
+            renderMessages();
+            return;
+          }
+          state.messages.push(message);
+          assistantRedirects[message.id] = message.id;
+          renderMessages();
+          return;
+        }
+        const sameRole = last && last.role === message.role;
+        const sameTraceKind = message.role !== "trace" || last.kind === message.kind;
+        if (sameRole && sameTraceKind) {
+          const prefix = last.content ? "\\n" : "";
+          last.content = last.content + prefix + (message.content || "");
+          renderMessages();
+          return;
+        }
+        state.messages.push(message);
+        renderMessages();
+      }
+
+      function appendAssistantDelta(id, content) {
+        const resolvedId = assistantRedirects[id] || id;
+        let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
+        const last = state.messages[state.messages.length - 1];
+        const isLastAssistant = last && last.role === "assistant" && last.id === resolvedId;
+        if (targetIndex === -1 || !isLastAssistant) {
+          const newId = createMessageId();
+          assistantRedirects[id] = newId;
+          state.messages.push({ id: newId, role: "assistant", content: "" });
+          targetIndex = state.messages.length - 1;
+        }
+        const target = state.messages[targetIndex];
+        target.content += content;
+        renderMessages();
+      }
+
+      function renderMessageContent(message) {
+        if (message.role === "system") {
+          const content = escapeHtml(message.content || "");
+          const time = message.createdAt ? formatDateTime(message.createdAt) : "";
+          if (time) {
+            return (
+              '<div class="system-line">' +
+              '<span class="system-text">' +
+              content +
+              '</span>' +
+              '<span class="system-time">' +
+              time +
+              "</span>" +
+              "</div>"
+            );
+          }
+          return content;
+        }
+        if (message.role === "trace") {
+          return renderTraceContent(message.content || "");
+        }
+        return renderMarkdown(message.content);
+      }
+
+      function renderTraceContent(content) {
+        if (!content) {
+          return "";
+        }
+        const expanded = expandFileChangeTraceContent(String(content));
+        const lines = expanded.split(/\\r?\\n/);
+        const htmlLines = lines.map((line) => {
+          const cleanLine = stripAnsi(line);
+          const trimmed = cleanLine.trimStart();
+          const kind = getDiffLineKind(trimmed);
+          const prefixed = kind ? ensureDiffPrefix(cleanLine, trimmed, kind) : cleanLine;
+          const safeText = escapeHtml(prefixed || "");
+          const isLineNumbered = isLineNumberedLine(trimmed);
+          const className = (kind ? "trace-line diff-" + kind : "trace-line") + (isLineNumbered ? " line-numbered" : "");
+          return '<div class="' + className + '">' + (safeText || "&nbsp;") + "</div>";
+        });
+        return '<div class="trace-content">' + htmlLines.join("") + "</div>";
+      }
+
+      function expandFileChangeTraceContent(content) {
+        const toolMatch = content.match(/^调用工具:\\s*(\\S+)/);
+        if (!toolMatch) {
+          return content;
+        }
+        const toolName = toolMatch[1];
+        const inputIndex = content.indexOf("\\n输入:\\n");
+        if (inputIndex === -1) {
+          return content;
+        }
+        const rawJson = content.slice(inputIndex + "\\n输入:\\n".length).trim();
+        if (!rawJson) {
+          return content;
+        }
+        let input;
+        try {
+          input = JSON.parse(rawJson);
+        } catch {
+          return content;
+        }
+        const diffLines = buildToolInputDiffLines(toolName, input);
+        if (!diffLines.length) {
+          return content;
+        }
+        return content + "\\n\\n文件变更:\\n" + diffLines.join("\\n");
+      }
+
+      function buildToolInputDiffLines(toolName, input) {
+        const maxLines = 200;
+        if (!input || typeof input !== "object") {
+          return [];
+        }
+        const tool = String(toolName || "").toLowerCase();
+        if (tool === "write" && typeof input.content === "string") {
+          return formatDiffLines(input.content, "added", maxLines);
+        }
+        if (tool === "edit") {
+          const oldText = typeof input.old_string === "string" ? input.old_string : "";
+          const newText = typeof input.new_string === "string" ? input.new_string : "";
+          return [
+            ...formatDiffLines(oldText, "removed", maxLines),
+            ...formatDiffLines(newText, "added", maxLines),
+          ].filter((line) => line);
+        }
+        if (tool === "multiedit" && Array.isArray(input.edits)) {
+          const lines = [];
+          input.edits.forEach((edit) => {
+            if (!edit || typeof edit !== "object") {
+              return;
+            }
+            const oldText = typeof edit.old_string === "string" ? edit.old_string : "";
+            const newText = typeof edit.new_string === "string" ? edit.new_string : "";
+            lines.push(...formatDiffLines(oldText, "removed", maxLines));
+            lines.push(...formatDiffLines(newText, "added", maxLines));
+          });
+          return lines.filter((line) => line);
+        }
+        return [];
+      }
+
+      function formatDiffLines(text, kind, maxLines) {
+        if (!text) {
+          return [];
+        }
+        const prefix = kind === "removed" ? "-" : "+";
+        const lines = String(text).split(/\\r?\\n/);
+        const limited = lines.slice(0, maxLines);
+        const formatted = limited.map((line) => {
+          const trimmed = line.trimStart();
+          if (trimmed.startsWith("+") || trimmed.startsWith("-")) {
+            return line;
+          }
+          return prefix + " " + line;
+        });
+        if (lines.length > maxLines) {
+          formatted.push(prefix + " ...");
+        }
+        return formatted;
+      }
+
+      function stripAnsi(value) {
+        if (!value) {
+          return "";
+        }
+        return String(value).replace(/\\u001b\\[[0-9;]*m/g, "");
+      }
+
+      function getDiffLineKind(trimmed) {
+        if (!trimmed) {
+          return "";
+        }
+        if (trimmed.startsWith("+++") || trimmed.startsWith("---")) {
+          return "";
+        }
+        if (trimmed.startsWith("+")) {
+          return "added";
+        }
+        if (trimmed.startsWith("-")) {
+          return "removed";
+        }
+        if (new RegExp("^(?:added|add|新增|添加)\\\\b[:：]?\\\\s+", "i").test(trimmed)) {
+          return "added";
+        }
+        if (new RegExp("^(?:removed|remove|deleted|delete|删除|移除)\\\\b[:：]?\\\\s+", "i").test(trimmed)) {
+          return "removed";
+        }
+        return "";
+      }
+
+      function ensureDiffPrefix(line, trimmed, kind) {
+        if (!trimmed) {
+          return line;
+        }
+        const prefix = kind === "added" ? "+" : "-";
+        if (trimmed.startsWith(prefix)) {
+          return line;
+        }
+        return prefix + " " + line;
+      }
+
+      function renderMarkdown(content) {
+        if (!content) {
+          return "";
+        }
+        const normalized = wrapLineNumberedBlocks(content);
+        if (typeof marked === "undefined" || !marked.parse) {
+          return escapeHtml(normalized);
+        }
+        return marked.parse(normalized, { breaks: true });
+      }
+
+      function isLineNumberedLine(value) {
+        return /^\\s*\\d+\\s*(?:→|->)\\s*/.test(value);
+      }
+
+      function wrapLineNumberedBlocks(content) {
+        const lines = String(content).split(/\\r?\\n/);
+        const output = [];
+        let inFence = false;
+        let inNumberBlock = false;
+        let numberBlock = [];
+        const flushNumberBlock = () => {
+          if (!inNumberBlock) {
+            return;
+          }
+          output.push("\`\`\`text", ...numberBlock, "\`\`\`");
+          numberBlock = [];
+          inNumberBlock = false;
+        };
+        lines.forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("\`\`\`")) {
+            flushNumberBlock();
+            inFence = !inFence;
+            output.push(line);
+            return;
+          }
+          if (!inFence && isLineNumberedLine(line)) {
+            inNumberBlock = true;
+            numberBlock.push(line);
+            return;
+          }
+          flushNumberBlock();
+          output.push(line);
+        });
+        flushNumberBlock();
+        return output.join("\\n");
+      }
+
+      function updateTaskList() {
+        if (state.taskList.source === "external") {
+          renderTaskList();
+          return;
+        }
+        const items = extractTaskListFromMessages(state.messages);
+        state.taskList.items = items;
+        if (items.length) {
+          state.taskList.open = true;
+        } else {
+          state.taskList.open = false;
+        }
+        renderTaskList();
+      }
+
+      function renderTaskList() {
+        if (!elements.taskListPanel || !elements.taskListDetails || !elements.taskListBody) {
+          return;
+        }
+        const items = state.taskList.items;
+        if (!items.length) {
+          elements.taskListPanel.style.display = "none";
+          elements.taskListDetails.open = false;
+          if (elements.taskListCount) {
+            elements.taskListCount.textContent = "";
+          }
+          elements.taskListBody.innerHTML = "";
+          return;
+        }
+        elements.taskListPanel.style.display = "block";
+        state.taskList.open = true;
+        elements.taskListDetails.open = true;
+        if (elements.taskListCount) {
+          elements.taskListCount.textContent = "(" + items.length + ")";
+        }
+        const list = document.createElement("ul");
+        list.className = "tasklist-items";
+        items.forEach((item) => {
+          const li = document.createElement("li");
+          li.className = "tasklist-item";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.className = "tasklist-checkbox";
+          checkbox.checked = item.done;
+          checkbox.disabled = true;
+          const text = document.createElement("span");
+          text.textContent = item.text;
+          li.appendChild(checkbox);
+          li.appendChild(text);
+          list.appendChild(li);
+        });
+        elements.taskListBody.innerHTML = "";
+        elements.taskListBody.appendChild(list);
+      }
+
+      function extractTaskListFromMessages(messages) {
+        let lastItems = [];
+        if (!Array.isArray(messages)) {
+          return lastItems;
+        }
+        messages.forEach((message) => {
+          if (!message || message.role !== "assistant") {
+            return;
+          }
+          const items = parseTaskListFromText(message.content || "");
+          if (items.length) {
+            lastItems = items;
+          }
+        });
+        return lastItems;
+      }
+
+      function parseTaskListFromText(text) {
+        if (!text) {
+          return [];
+        }
+        const lines = String(text).split(/\\r?\\n/);
+        const headerRegex = /^\\s*(tasklist|todolist)\\s*:\\s*(.*)$/i;
+        const itemRegex = /^\\s*(?:[-*]|\\d+\\.)?\\s*\\[(x|\\s)\\]\\s+(.*)$/i;
+        let items = [];
+        for (let i = 0; i < lines.length; i += 1) {
+          const line = lines[i];
+          const headerMatch = line.match(headerRegex);
+          if (!headerMatch) {
+            continue;
+          }
+          const sectionItems = [];
+          const inlinePart = (headerMatch[2] || "").trim();
+          if (inlinePart) {
+            const inlineMatch = inlinePart.match(itemRegex);
+            if (inlineMatch) {
+              sectionItems.push({
+                done: inlineMatch[1].toLowerCase() === "x",
+                text: inlineMatch[2].trim(),
+              });
+            }
+          }
+          for (let j = i + 1; j < lines.length; j += 1) {
+            const nextLine = lines[j];
+            if (!nextLine.trim()) {
+              break;
+            }
+            const itemMatch = nextLine.match(itemRegex);
+            if (!itemMatch) {
+              if (sectionItems.length) {
+                break;
+              }
+              continue;
+            }
+            sectionItems.push({
+              done: itemMatch[1].toLowerCase() === "x",
+              text: itemMatch[2].trim(),
+            });
+          }
+          if (sectionItems.length) {
+            items = sectionItems;
+          }
+        }
+        return items;
+      }
+
+      function normalizeTaskListItems(items) {
+        if (!Array.isArray(items)) {
+          return [];
+        }
+        return items
+          .map((item) => {
+            if (!item || typeof item !== "object") {
+              return null;
+            }
+            const record = item;
+            const text =
+              typeof record.text === "string"
+                ? record.text
+                : typeof record.content === "string"
+                  ? record.content
+                  : "";
+            if (!text.trim()) {
+              return null;
+            }
+            const done =
+              typeof record.done === "boolean"
+                ? record.done
+                : typeof record.completed === "boolean"
+                  ? record.completed
+                  : record.status === "completed";
+            return { text: text.trim(), done: Boolean(done) };
+          })
+          .filter(Boolean);
+      }
+
+      function escapeHtml(value) {
+        return value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function showToast(message) {
+        if (!elements.toast) {
+          return;
+        }
+        elements.toast.textContent = message;
+        elements.toast.classList.add("visible");
+        if (toastTimer) {
+          clearTimeout(toastTimer);
+        }
+        toastTimer = setTimeout(() => {
+          elements.toast.classList.remove("visible");
+        }, 1600);
+      }
+
+      function copySessionId(sessionId) {
+        if (!sessionId) {
+          return;
+        }
+        const value = String(sessionId);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(value).then(
+            () => showToast("已复制"),
+            () => fallbackCopySessionId(value)
+          );
+          return;
+        }
+        fallbackCopySessionId(value);
+      }
+
+      function fallbackCopySessionId(value) {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand("copy");
+          showToast("已复制");
+        } catch (error) {
+          showToast("复制失败");
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+
+      function updateRunningState(isRunning) {
+        state.isRunning = isRunning;
+        elements.sendPrompt.disabled = isRunning;
+        elements.promptInput.disabled = isRunning;
+        elements.newSession.disabled = isRunning;
+        elements.stopRun.disabled = !isRunning;
+        elements.thinkingMode.disabled = isRunning;
+        elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
+        elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
+        elements.historyButton.disabled = isRunning;
+        updateRunWait();
+      }
+
+      function updateRunWait() {
+        if (!elements.runWait) {
+          return;
+        }
+        elements.runWait.style.display = state.isRunning ? "flex" : "none";
+      }
+
+      function sendPrompt() {
+        const prompt = elements.promptInput.value.trim();
+        if (!prompt || state.isRunning) {
+          return;
+        }
+        elements.promptInput.value = "";
+        if (!state.configState.activeConfigId) {
+          appendMessage({
+            id: createMessageId(),
+            role: "system",
+            content: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
+            createdAt: Date.now(),
+          });
+          return;
+        }
+        appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
+        vscode.postMessage({ type: "sendPrompt", prompt });
+      }
+
+      function insertPromptText(text) {
+        const input = elements.promptInput;
+        const value = input.value || "";
+        const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : value.length;
+        const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : value.length;
+        input.value = value.slice(0, selectionStart) + text + value.slice(selectionEnd);
+        const nextPos = selectionStart + text.length;
+        input.selectionStart = nextPos;
+        input.selectionEnd = nextPos;
+        input.focus();
+      }
+
+      function buildInsertText(paths, prefix = "@") {
+        if (!Array.isArray(paths) || paths.length === 0) {
+          return "";
+        }
+        return paths.map((item) => prefix + item).join(" ") + " ";
+      }
+
+      function requestWorkspacePathPick() {
+        vscode.postMessage({ type: "pickWorkspacePath" });
+      }
+
+      function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") {
+              resolve(reader.result);
+              return;
+            }
+            reject(new Error("无法读取文件内容"));
+          };
+          reader.onerror = () => {
+            reject(new Error("无法读取文件内容"));
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function handleFileSelection(fileList) {
+        if (!fileList || fileList.length === 0) {
+          return;
+        }
+        const files = Array.from(fileList);
+        try {
+          const payloadFiles = [];
+          for (const file of files) {
+            const dataUrl = await readFileAsDataUrl(file);
+            payloadFiles.push({ name: file.name, type: file.type || "", dataUrl });
+          }
+          vscode.postMessage({ type: "uploadFiles", files: payloadFiles });
+        } catch (error) {
+          appendMessage({
+            id: createMessageId(),
+            role: "system",
+            content: "文件读取失败，请重试。",
+          });
+        }
+      }
+
+      function getClipboardFiles(event) {
+        const items = event.clipboardData && event.clipboardData.items
+          ? Array.from(event.clipboardData.items)
+          : [];
+        const files = items
+          .filter((item) => item.kind === "file")
+          .map((item) => item.getAsFile())
+          .filter((file) => file);
+        return files;
+      }
+
+      function getDropUris(event) {
+        const dataTransfer = event.dataTransfer;
+        if (!dataTransfer) {
+          return [];
+        }
+        const uriLines = (dataTransfer.getData("text/uri-list") || "")
+          .split(/\\r?\\n/)
+          .map((line) => line.trim())
+          .filter((line) => line && !line.startsWith("#"));
+        const uris = new Set(uriLines);
+        const textData = (dataTransfer.getData("text/plain") || "").trim();
+        if (textData.startsWith("file://")) {
+          uris.add(textData);
+        }
+        return Array.from(uris);
+      }
+
+      function createMessageId() {
+        return "web_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+      }
+
+      function formatDateTime(timestamp) {
+        const date = new Date(timestamp);
+        const pad = (value) => String(value).padStart(2, "0");
+        const year = date.getFullYear();
+        const month = pad(date.getMonth() + 1);
+        const day = pad(date.getDate());
+        const hours = pad(date.getHours());
+        const minutes = pad(date.getMinutes());
+        const seconds = pad(date.getSeconds());
+        return year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds;
+      }
+
+      elements.currentCli.addEventListener("change", (event) => {
+        vscode.postMessage({ type: "selectCli", cli: event.target.value });
+      });
+
+      elements.configSelect.addEventListener("change", (event) => {
+        state.selectedConfigId = event.target.value || "";
+        if (!state.selectedConfigId) {
+          return;
+        }
+        vscode.postMessage({
+          type: "applyConfig",
+          cli: state.currentCli,
+          configId: state.selectedConfigId,
+        });
+      });
+
+      elements.newSession.addEventListener("click", () => {
+        state.messages = [];
+        state.taskList.items = [];
+        state.taskList.open = false;
+        state.taskList.source = "auto";
+        renderMessages();
+        renderTaskList();
+        vscode.postMessage({ type: "newSession" });
+      });
+
+      if (elements.taskListDetails) {
+        elements.taskListDetails.addEventListener("toggle", () => {
+          if (state.taskList.items.length && !elements.taskListDetails.open) {
+            elements.taskListDetails.open = true;
+            state.taskList.open = true;
+            return;
+          }
+          state.taskList.open = elements.taskListDetails.open;
+        });
+      }
+
+      elements.thinkingMode.addEventListener("change", (event) => {
+        const nextMode = event.target.value || "off";
+        state.thinkingMode = nextMode;
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "thinkingMode",
+          value: nextMode,
+        });
+      });
+
+      elements.openConfig.addEventListener("click", () => {
+        vscode.postMessage({ type: "openConfig" });
+      });
+
+      elements.attachmentButton.addEventListener("click", () => {
+        elements.attachmentInput.click();
+      });
+
+      elements.attachmentInput.addEventListener("change", (event) => {
+        const input = event.target;
+        if (!input || !input.files) {
+          return;
+        }
+        handleFileSelection(input.files);
+        input.value = "";
+      });
+
+      function openHistory() {
+        renderSessionList();
+        elements.historyOverlay.classList.add("visible");
+      }
+
+      function closeHistory() {
+        elements.historyOverlay.classList.remove("visible");
+      }
+
+      function openRules() {
+        elements.rulesOverlay.classList.add("visible");
+      }
+
+      function closeRules() {
+        elements.rulesOverlay.classList.remove("visible");
+      }
+
+      function openHelp() {
+        elements.helpOverlay.classList.add("visible");
+      }
+
+      function closeHelp() {
+        elements.helpOverlay.classList.remove("visible");
+      }
+
+      function setHelpTab(tab) {
+        const isInstall = tab === "install";
+        elements.helpTabInstall.classList.toggle("active", isInstall);
+        elements.helpTabThinking.classList.toggle("active", !isInstall);
+        elements.helpTabInstall.setAttribute("aria-selected", String(isInstall));
+        elements.helpTabThinking.setAttribute("aria-selected", String(!isInstall));
+        elements.helpPanelInstall.classList.toggle("active", isInstall);
+        elements.helpPanelThinking.classList.toggle("active", !isInstall);
+      }
+
+      function setRulesHint(message) {
+        elements.rulesHint.textContent = message || "";
+      }
+
+      function collectRuleTargets() {
+        const targets = [];
+        if (elements.rulesSaveCodex.checked) {
+          targets.push("codex");
+        }
+        if (elements.rulesSaveClaude.checked) {
+          targets.push("claude");
+        }
+        if (elements.rulesSaveGemini.checked) {
+          targets.push("gemini");
+        }
+        return targets;
+      }
+
+      function updateRulesPath(cli) {
+        if (!elements.rulesPath) {
+          return;
+        }
+        const scopePaths = state.rulePaths ? state.rulePaths[state.ruleScope] : null;
+        const pathText = scopePaths && scopePaths[cli] ? scopePaths[cli] : "";
+        if (!pathText && state.ruleScope === "project") {
+          elements.rulesPath.textContent = "路径：未检测到工作区";
+          return;
+        }
+        elements.rulesPath.textContent = pathText ? "路径：" + pathText : "";
+      }
+
+      function updateRulesScope(scope) {
+        state.ruleScope = scope;
+        const isGlobal = scope === "global";
+        elements.scopeGlobal.className = isGlobal ? "help-tab active" : "help-tab";
+        elements.scopeProject.className = isGlobal ? "help-tab" : "help-tab active";
+        elements.scopeGlobal.setAttribute("aria-selected", String(isGlobal));
+        elements.scopeProject.setAttribute("aria-selected", String(!isGlobal));
+        updateRulesPath(elements.rulesLoadCli.value);
+      }
+
+      elements.historyButton.addEventListener("click", () => {
+        openHistory();
+      });
+
+      elements.closeHistory.addEventListener("click", () => {
+        closeHistory();
+      });
+
+      elements.clearAllHistory.addEventListener("click", () => {
+        vscode.postMessage({ type: "clearAllSessions" });
+      });
+
+      elements.historyOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.historyOverlay) {
+          closeHistory();
+        }
+      });
+
+      elements.rulesButton.addEventListener("click", () => {
+        setRulesHint("");
+        updateRulesScope(state.ruleScope);
+        openRules();
+      });
+
+      elements.closeRules.addEventListener("click", () => {
+        closeRules();
+      });
+
+      elements.rulesOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.rulesOverlay) {
+          closeRules();
+        }
+      });
+
+      elements.helpButton.addEventListener("click", () => {
+        setHelpTab("install");
+        openHelp();
+      });
+
+      elements.closeHelp.addEventListener("click", () => {
+        closeHelp();
+      });
+
+      elements.helpOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.helpOverlay) {
+          closeHelp();
+        }
+      });
+
+      elements.helpTabInstall.addEventListener("click", () => {
+        setHelpTab("install");
+      });
+
+      elements.helpTabThinking.addEventListener("click", () => {
+        setHelpTab("thinking");
+      });
+
+      elements.loadRules.addEventListener("click", () => {
+        const cli = elements.rulesLoadCli.value;
+        setRulesHint("正在加载...");
+        vscode.postMessage({ type: "loadRules", cli, scope: state.ruleScope });
+      });
+
+      elements.rulesLoadCli.addEventListener("change", (event) => {
+        updateRulesPath(event.target.value);
+      });
+
+      elements.scopeGlobal.addEventListener("click", () => {
+        updateRulesScope("global");
+        setRulesHint("");
+      });
+
+      elements.scopeProject.addEventListener("click", () => {
+        updateRulesScope("project");
+        setRulesHint("");
+      });
+
+      elements.saveRules.addEventListener("click", () => {
+        const targets = collectRuleTargets();
+        if (!targets.length) {
+          setRulesHint("请选择至少一个 CLI 进行覆盖保存。");
+          return;
+        }
+        const content = elements.rulesInput.value || "";
+        setRulesHint("正在保存...");
+        vscode.postMessage({ type: "saveRules", content, targets, scope: state.ruleScope });
+      });
+
+      elements.sendPrompt.addEventListener("click", () => {
+        sendPrompt();
+      });
+
+      elements.pathPickerButton.addEventListener("click", () => {
+        requestWorkspacePathPick();
+      });
+
+      elements.stopRun.addEventListener("click", () => {
+        vscode.postMessage({ type: "stopRun" });
+      });
+
+      elements.promptInput.addEventListener("compositionstart", () => {
+        isComposing = true;
+      });
+
+      elements.promptInput.addEventListener("compositionend", () => {
+        isComposing = false;
+      });
+
+      elements.promptInput.addEventListener("keydown", (event) => {
+        if (event.key === "@" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          requestWorkspacePathPick();
+          return;
+        }
+        if (
+          event.key === "Enter"
+          && !event.shiftKey
+          && !event.isComposing
+          && !isComposing
+          && event.keyCode !== 229
+        ) {
+          event.preventDefault();
+          sendPrompt();
+        }
+      });
+
+      elements.promptInput.addEventListener("paste", (event) => {
+        const files = getClipboardFiles(event);
+        if (!files.length) {
+          return;
+        }
+        event.preventDefault();
+        handleFileSelection(files);
+      });
+
+      elements.promptInput.addEventListener("dragover", (event) => {
+        event.preventDefault();
+      });
+
+      elements.promptInput.addEventListener("drop", (event) => {
+        const uris = getDropUris(event);
+        if (uris.length) {
+          event.preventDefault();
+          vscode.postMessage({ type: "resolveDropPaths", uris });
+          return;
+        }
+        const files = event.dataTransfer && event.dataTransfer.files
+          ? Array.from(event.dataTransfer.files)
+          : [];
+        if (files.length) {
+          event.preventDefault();
+          handleFileSelection(files);
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (data.type === "state") {
+          applyState(data.payload);
+        }
+        if (data.type === "setMessages") {
+          state.messages = Array.isArray(data.messages) ? data.messages : [];
+          state.taskList.source = "auto";
+          renderMessages();
+        }
+        if (data.type === "appendMessage") {
+          appendMessage(data.message);
+        }
+        if (data.type === "assistantDelta") {
+          appendAssistantDelta(data.id, data.content);
+        }
+        if (data.type === "traceSegment") {
+          appendMessage({ id: createMessageId(), role: "trace", content: data.content, kind: data.kind });
+        }
+        if (data.type === "runStatus") {
+          updateRunningState(data.status === "start");
+          if (data.status === "start") {
+            Object.keys(assistantRedirects).forEach((key) => {
+              delete assistantRedirects[key];
+            });
+          }
+          if (data.message) {
+            appendMessage({ id: createMessageId(), role: "system", content: data.message });
+          }
+        }
+        if (data.type === "removeMessage") {
+          if (data.id) {
+            state.messages = state.messages.filter((message) => message.id !== data.id);
+            renderMessages();
+          }
+        }
+        if (data.type === "uploadResult") {
+          const insertText = buildInsertText(data.paths);
+          if (insertText) {
+            insertPromptText(insertText);
+          }
+          if (data.error) {
+            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          }
+        }
+        if (data.type === "dropPathsResult") {
+          const insertText = buildInsertText(data.paths);
+          if (insertText) {
+            insertPromptText(insertText);
+          }
+          if (data.error) {
+            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          }
+        }
+        if (data.type === "pickWorkspacePathResult") {
+          const insertText = buildInsertText(data.paths);
+          if (insertText) {
+            insertPromptText(insertText);
+          } else if (data.canceled || data.error) {
+            insertPromptText("@");
+          }
+          if (data.error) {
+            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          }
+        }
+        if (data.type === "taskListUpdate") {
+          const normalized = normalizeTaskListItems(data.items);
+          if (normalized.length) {
+            state.taskList.items = normalized;
+            state.taskList.open = true;
+            state.taskList.source = "external";
+            renderTaskList();
+          } else {
+            state.taskList.items = [];
+            state.taskList.open = false;
+            state.taskList.source = "auto";
+            renderTaskList();
+          }
+        }
+        if (data.type === "rulesContent") {
+          if (data.error) {
+            setRulesHint(data.error);
+            return;
+          }
+          elements.rulesInput.value = typeof data.content === "string" ? data.content : "";
+          const scopeLabel = data.scope === "project" ? "项目规则" : "全局规则";
+          setRulesHint("已加载 " + scopeLabel + "：" + data.cli + "。");
+        }
+        if (data.type === "rulesSaved") {
+          if (data.error) {
+            setRulesHint(data.error);
+            return;
+          }
+          const scopeLabel = data.scope === "project" ? "项目规则" : "全局规则";
+          setRulesHint(
+            scopeLabel + "已保存到：" + (Array.isArray(data.targets) ? data.targets.join(", ") : "")
+          );
+        }
+      });
+
+      updateAppHeight();
+      window.addEventListener("resize", scheduleAppHeightUpdate);
+      vscode.postMessage({ type: "requestState" });
+    </script>
+  </body>
+</html>`;
+}
+
+function getNonce(): string {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+  for (let i = 0; i < 32; i += 1) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+
+  return text;
+}
+
+function getMarkedScript(): string {
+  if (cachedMarkedScript) {
+    return cachedMarkedScript;
+  }
+  const scriptPath = path.join(__dirname, "..", "..", "node_modules", "marked", "marked.min.js");
+  cachedMarkedScript = readFileSync(scriptPath, "utf8");
+  return cachedMarkedScript;
+}

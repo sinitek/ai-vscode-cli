@@ -1,0 +1,449 @@
+[
+  {
+    "id": "filesystem",
+    "name": "Filesystem",
+    "description": "允许 LLM 访问本地文件系统。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/path/to/allowed/directory"
+      ]
+    }
+  },
+  {
+    "id": "postgres",
+    "name": "PostgreSQL",
+    "description": "只读访问 PostgreSQL 数据库并查看架构。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://user:password@localhost:5432/dbname"
+      ]
+    }
+  },
+  {
+    "id": "mysql",
+    "name": "MySQL",
+    "description": "MySQL 数据库访问与管理。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/mysql",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-mysql",
+        "mysql://user:password@localhost:3306/dbname"
+      ]
+    }
+  },
+  {
+    "id": "sqlite",
+    "name": "SQLite",
+    "description": "交互式操作 SQLite 数据库。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
+    "category": "文件与数据",
+    "config": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "/path/to/database.db"
+      ]
+    }
+  },
+  {
+    "id": "google-drive",
+    "name": "Google Drive",
+    "description": "访问和搜索 Google Drive 中的文件。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/gdrive",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-gdrive"
+      ]
+    }
+  },
+  {
+    "id": "excel-mcp-server",
+    "name": "Excel",
+    "description": "使用开源 Excel MCP 直接读取和修改 Excel 工作簿，无需本地安装 Office。",
+    "homepage": "https://github.com/haris-musa/excel-mcp-server",
+    "category": "文件与数据",
+    "config": {
+      "command": "uvx",
+      "args": [
+        "excel-mcp-server",
+        "stdio"
+      ]
+    }
+  },
+  {
+    "id": "ms-365",
+    "name": "Microsoft 365",
+    "description": "官方 Graph API 驱动的 365 套件 MCP，覆盖 Word/Excel/OneDrive/邮件等文件访问与操作。",
+    "homepage": "https://github.com/softeria/ms-365-mcp-server",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@softeria/ms-365-mcp-server"
+      ],
+      "env": {
+        "MS365_MCP_CLIENT_ID": "<AZURE_APP_CLIENT_ID>",
+        "MS365_MCP_CLIENT_SECRET": "<AZURE_APP_CLIENT_SECRET>",
+        "MS365_MCP_TENANT_ID": "common"
+      }
+    }
+  },
+  {
+    "id": "docling",
+    "name": "Docling",
+    "description": "Docling 官方 MCP，提供高保真 PDF 等文档解析为结构化结果。",
+    "homepage": "https://github.com/docling-project/docling-mcp",
+    "category": "文件与数据",
+    "config": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "docling-mcp",
+        "docling-mcp-server",
+        "--transport",
+        "stdio"
+      ]
+    }
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "description": "集成 GitHub API 进行仓库管理、Issue 和 PR 操作。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+    "category": "开发工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
+      }
+    }
+  },
+  {
+    "id": "gitlab",
+    "name": "GitLab",
+    "description": "集成 GitLab API 进行项目管理。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/gitlab",
+    "category": "开发工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-gitlab"
+      ],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4"
+      }
+    }
+  },
+  {
+    "id": "sentry",
+    "name": "Sentry",
+    "description": "从 Sentry.io 获取和分析问题。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sentry",
+    "category": "开发工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sentry"
+      ],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "<YOUR_TOKEN>"
+      }
+    }
+  },
+  {
+    "id": "git",
+    "name": "Git",
+    "description": "本地 Git 仓库操作工具。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+    "category": "开发工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git"
+      ]
+    }
+  },
+  {
+    "id": "docker",
+    "name": "Docker",
+    "description": "管理 Docker 容器、镜像和卷。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/docker",
+    "category": "基础设施",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-docker"
+      ]
+    }
+  },
+  {
+    "id": "kubernetes",
+    "name": "Kubernetes",
+    "description": "管理 Kubernetes 集群资源。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/kubernetes",
+    "category": "基础设施",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-kubernetes"
+      ]
+    }
+  },
+  {
+    "id": "fetch",
+    "name": "Fetch",
+    "description": "获取并处理网页内容，将 HTML 转换为 Markdown。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+    "category": "网络与浏览器",
+    "config": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    }
+  },
+  {
+    "id": "puppeteer",
+    "name": "Puppeteer",
+    "description": "浏览器自动化和网页抓取。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+    "category": "网络与浏览器",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ]
+    }
+  },
+  {
+    "id": "brave-search",
+    "name": "Brave Search",
+    "description": "使用 Brave Search API 进行网络和本地搜索。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+    "category": "网络与浏览器",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "<YOUR_API_KEY>"
+      }
+    }
+  },
+  {
+    "id": "google-maps",
+    "name": "Google Maps",
+    "description": "获取位置、路线和地点详情。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/google-maps",
+    "category": "网络与浏览器",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-google-maps"
+      ],
+      "env": {
+        "GOOGLE_MAPS_API_KEY": "<YOUR_API_KEY>"
+      }
+    }
+  },
+  {
+    "id": "slack",
+    "name": "Slack",
+    "description": "Slack 频道管理和消息收发。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+    "category": "生产力工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "<YOUR_BOT_TOKEN>",
+        "SLACK_TEAM_ID": "<YOUR_TEAM_ID>"
+      }
+    }
+  },
+  {
+    "id": "notion",
+    "name": "Notion",
+    "description": "访问和管理 Notion 页面与数据库。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/notion",
+    "category": "生产力工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-notion"
+      ],
+      "env": {
+        "NOTION_API_KEY": "<YOUR_API_KEY>"
+      }
+    }
+  },
+  {
+    "id": "linear",
+    "name": "Linear",
+    "description": "Linear 项目管理与问题追踪。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/linear",
+    "category": "生产力工具",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-linear"
+      ],
+      "env": {
+        "LINEAR_API_KEY": "<YOUR_API_KEY>"
+      }
+    }
+  },
+  {
+    "id": "sequential-thinking",
+    "name": "Sequential Thinking",
+    "description": "帮助模型进行复杂的顺序思考和推理。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+    "category": "AI与智能",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    }
+  },
+  {
+    "id": "context7",
+    "name": "Context7",
+    "description": "为 AI 提供最新的、特定版本的文档和代码示例。",
+    "homepage": "https://github.com/upstash/context7-mcp",
+    "category": "AI与智能",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
+    }
+  },
+  {
+    "id": "memory",
+    "name": "Memory",
+    "description": "基于知识图谱的持久化记忆系统。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+    "category": "AI与智能",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    }
+  },
+  {
+    "id": "zai-mcp-server",
+    "name": "智普-图片识别",
+    "description": "调用智谱通用图像理解能力进行图片内容识别。",
+    "homepage": "https://www.zhipuai.cn/",
+    "category": "AI与智能",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@z_ai/mcp-server"
+      ],
+      "env": {
+        "Z_AI_API_KEY": "<YOUR_API_KEY>",
+        "Z_AI_MODE": "ZHIPU"
+      }
+    }
+  },
+  {
+    "id": "time",
+    "name": "Time",
+    "description": "获取当前时间和时区信息。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+    "category": "其他",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-time"
+      ]
+    }
+  },
+  {
+    "id": "everything",
+    "name": "Everything",
+    "description": "MCP 参考实现，包含各种工具示例。",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
+    "category": "其他",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-everything"
+      ]
+    }
+  },
+  {
+    "id": "web-search-prime",
+    "name": "智普-联网搜索",
+    "description": "通过大模型开放平台的 Web Search Prime 接口进行联网搜索。",
+    "homepage": "https://open.bigmodel.cn/",
+    "category": "网络与浏览器",
+    "config": {
+      "type": "http",
+      "url": "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "Bearer <your_api_key>"
+      }
+    }
+  },
+  {
+    "id": "web-reader",
+    "name": "智普-网页读取",
+    "description": "通过大模型开放平台的 Web Reader 接口读取网页内容。",
+    "homepage": "https://open.bigmodel.cn/",
+    "category": "网络与浏览器",
+    "config": {
+      "type": "http",
+      "url": "https://open.bigmodel.cn/api/mcp/web_reader/mcp",
+      "headers": {
+        "Authorization": "Bearer <your_api_key>"
+      }
+    }
+  }
+]

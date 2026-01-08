@@ -1,0 +1,100 @@
+// Config API
+const detectConfigApiMode = () =>
+    typeof window < "u" && window.electronAPI?.config ? "ipc" : "http",
+  CONFIG_API_BASE = "http://127.0.0.1:9001/api",
+  CONFIG_API_URL = `${CONFIG_API_BASE}/config`,
+  requestConfigApi = async (e, t) => {
+    const n = await fetch(`${CONFIG_API_URL}${e}`, {
+        ...t,
+        headers: { "Content-Type": "application/json", ...(t?.headers ?? {}) },
+      }),
+      r = await n.text();
+    let o = null;
+    try {
+      o = r ? JSON.parse(r) : null;
+    } catch {}
+    if (!n.ok) {
+      const l = o?.message ?? `请求失败(${n.status})`;
+      throw new Error(l);
+    }
+    if (o && o.success === !1) throw new Error(o.message ?? "请求失败");
+    if (o && o.success === !0) return o.data;
+  },
+  httpConfigApi = {
+    getList: (e) => requestConfigApi(`/list/${e}`),
+    getById: (e, t) => requestConfigApi(`/${e}/${t}`),
+    save: async (e) => (
+      await requestConfigApi("/save", { method: "POST", body: JSON.stringify(e) }),
+      e
+    ),
+    delete: (e, t) => requestConfigApi(`/${e}/${t}`, { method: "DELETE" }),
+    getCurrent: (e) => requestConfigApi(`/current/${e}`),
+    apply: (e, t) =>
+      requestConfigApi(`/apply/${e}`, { method: "POST", body: JSON.stringify(t) }),
+    backup: (e) => requestConfigApi(`/backup/${e}`, { method: "POST" }),
+    getBackups: async (e) => (await requestConfigApi(`/backups/${e}`)).backups,
+    initDefault: (e) => requestConfigApi(`/init/${e}`, { method: "POST" }),
+    getMcpMarketplaceList: () =>
+      fetch(`${CONFIG_API_BASE}/config/mcp/marketplace`).then(async (e) => {
+        if (!e.ok) throw new Error(`获取 MCP 市场失败(${e.status})`);
+        const t = await e.json();
+        if (t?.success === !1)
+          throw new Error(t.message ?? "获取 MCP 市场失败");
+        return t?.data ?? [];
+      }),
+  },
+  getIpcConfigApi = () => {
+    if (!window.electronAPI?.config) throw new Error("Electron API 未就绪");
+    return window.electronAPI.config;
+  },
+  configApiMode = detectConfigApiMode(),
+  configApi = configApiMode === "ipc" ? getIpcConfigApi() : httpConfigApi,
+  fetchMcpMarketplaceList = async () => {
+    try {
+      return configApi.getMcpMarketplaceList();
+    } catch (e) {
+      throw (console.error("获取 MCP 市场列表失败:", e), e);
+    }
+  },
+  fetchConfigList = async (e) => {
+    try {
+      return configApi.getList(e);
+    } catch (t) {
+      throw (console.error("获取配置列表失败:", t), t);
+    }
+  },
+  saveConfigItem = async (e) => {
+    try {
+      return configApi.save(e);
+    } catch (t) {
+      throw (console.error("保存配置失败:", t), t);
+    }
+  },
+  deleteConfigItem = async (e, t) => {
+    try {
+      await configApi.delete(e, t);
+    } catch (n) {
+      throw (console.error("删除配置失败:", n), n);
+    }
+  },
+  applyConfigItem = async (e, t) => {
+    try {
+      return configApi.apply(e, t);
+    } catch (n) {
+      throw (console.error("应用配置失败:", n), n);
+    }
+  },
+  backupConfigItem = async (e) => {
+    try {
+      return configApi.backup(e);
+    } catch (t) {
+      throw (console.error("备份配置失败:", t), t);
+    }
+  },
+  initDefaultConfigItem = async (e) => {
+    try {
+      return configApi.initDefault(e);
+    } catch (t) {
+      throw (console.error("初始化默认配置失败:", t), t);
+    }
+  };
