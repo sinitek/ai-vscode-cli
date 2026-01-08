@@ -930,6 +930,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         taskListBody: document.getElementById("taskListBody"),
       };
       let isComposing = false;
+      let lastCompositionEndAt = 0;
+      const compositionEnterGuardMs = 150;
       const assistantRedirects = {};
       let toastTimer = null;
       let resizeFrame = 0;
@@ -2013,6 +2015,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.promptInput.addEventListener("compositionend", () => {
         isComposing = false;
+        lastCompositionEndAt = Date.now();
       });
 
       elements.promptInput.addEventListener("keydown", (event) => {
@@ -2027,6 +2030,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           && !event.isComposing
           && !isComposing
           && event.keyCode !== 229
+          && Date.now() - lastCompositionEndAt > compositionEnterGuardMs
         ) {
           event.preventDefault();
           sendPrompt();
