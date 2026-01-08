@@ -637,6 +637,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .tasklist-checkbox {
         margin-top: 2px;
+        appearance: none;
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--vscode-checkbox-border);
+        border-radius: 3px;
+        background: var(--vscode-checkbox-background);
+        position: relative;
+        flex-shrink: 0;
+      }
+      .tasklist-checkbox:checked {
+        background: var(--vscode-gitDecoration-addedResourceForeground);
+        border-color: var(--vscode-gitDecoration-addedResourceForeground);
+      }
+      .tasklist-checkbox:checked::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 4px;
+        height: 8px;
+        border: solid var(--vscode-checkbox-foreground);
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
       }
     </style>
   </head>
@@ -800,7 +824,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </ul>
             </div>
             <div class="help-section">
-              <h4>中国境内加速</h4>
+              <h4>安装加速（也许有效）</h4>
               <ul>
                 <li>一次性加速：<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
                 <li>设置全局镜像：<code>npm config set registry https://registry.npmmirror.com</code></li>
@@ -930,6 +954,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         taskListBody: document.getElementById("taskListBody"),
       };
       let isComposing = false;
+      let lastCompositionEndAt = 0;
+      const compositionEnterGuardMs = 150;
       const assistantRedirects = {};
       let toastTimer = null;
       let resizeFrame = 0;
@@ -1643,6 +1669,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runWait.style.display = state.isRunning ? "flex" : "none";
       }
 
+      function resetTaskListForRunStart() {
+        if (!state.taskList.items.length) {
+          return;
+        }
+        state.taskList.items = [];
+        state.taskList.open = false;
+        state.taskList.source = "auto";
+        renderTaskList();
+      }
+
       function sendPrompt() {
         const prompt = elements.promptInput.value.trim();
         if (!prompt || state.isRunning) {
@@ -2013,6 +2049,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.promptInput.addEventListener("compositionend", () => {
         isComposing = false;
+        lastCompositionEndAt = Date.now();
       });
 
       elements.promptInput.addEventListener("keydown", (event) => {
@@ -2027,6 +2064,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           && !event.isComposing
           && !isComposing
           && event.keyCode !== 229
+          && Date.now() - lastCompositionEndAt > compositionEnterGuardMs
         ) {
           event.preventDefault();
           sendPrompt();
@@ -2087,6 +2125,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             Object.keys(assistantRedirects).forEach((key) => {
               delete assistantRedirects[key];
             });
+            resetTaskListForRunStart();
           }
           if (data.message) {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
