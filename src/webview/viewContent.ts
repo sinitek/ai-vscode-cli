@@ -800,7 +800,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </ul>
             </div>
             <div class="help-section">
-              <h4>中国境内加速</h4>
+              <h4>安装加速（也许有效）</h4>
               <ul>
                 <li>一次性加速：<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
                 <li>设置全局镜像：<code>npm config set registry https://registry.npmmirror.com</code></li>
