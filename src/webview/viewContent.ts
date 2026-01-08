@@ -637,6 +637,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .tasklist-checkbox {
         margin-top: 2px;
+        appearance: none;
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--vscode-checkbox-border);
+        border-radius: 3px;
+        background: var(--vscode-checkbox-background);
+        position: relative;
+        flex-shrink: 0;
+      }
+      .tasklist-checkbox:checked {
+        background: var(--vscode-testing-iconPassed);
+        border-color: var(--vscode-testing-iconPassed);
+      }
+      .tasklist-checkbox:checked::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 4px;
+        height: 8px;
+        border: solid var(--vscode-checkbox-foreground);
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
       }
     </style>
   </head>
