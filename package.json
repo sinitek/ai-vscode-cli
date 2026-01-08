@@ -1,0 +1,845 @@
+{
+  "name": "sinitek-cli-tools",
+  "displayName": "携宁 CLI 助手",
+  "description": "VS Code extension to run Codex, Claude, and Gemini CLI tools.",
+  "version": "0.0.1",
+  "publisher": "sinitek",
+  "repository": {
+    "type": "git",
+    "url": "https://codeup.aliyun.com/62491de354d036291ae14d9c/vscode/sinitek_cli.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:sinitek-cli-tools.selectCli",
+    "onCommand:sinitek-cli-tools.runCli",
+    "onCommand:sinitek-cli-tools.runCliThinkingOn",
+    "onCommand:sinitek-cli-tools.runCliThinkingOff",
+    "onCommand:sinitek-cli-tools.openPanel",
+    "onView:sinitek-cli-tools.panelView",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sinitek-cli-tools.selectCli",
+        "title": "CLI Bridge: Select CLI"
+      },
+      {
+        "command": "sinitek-cli-tools.runCli",
+        "title": "CLI Bridge: Run Current CLI"
+      },
+      {
+        "command": "sinitek-cli-tools.runCliThinkingOn",
+        "title": "CLI Bridge: Run Current CLI (Thinking On)"
+      },
+      {
+        "command": "sinitek-cli-tools.runCliThinkingOff",
+        "title": "CLI Bridge: Run Current CLI (Thinking Off)"
+      },
+      {
+        "command": "sinitek-cli-tools.openPanel",
+        "title": "CLI Bridge: Open Panel"
+      }
+    ],
+    "configuration": {
+      "title": "CLI Bridge",
+      "properties": {
+        "sinitek-cli-tools.defaultCli": {
+          "type": "string",
+          "enum": [
+            "codex",
+            "claude",
+            "gemini"
+          ],
+          "default": "codex",
+          "description": "Default CLI to run when the extension activates."
+        },
+        "sinitek-cli-tools.commands.codex": {
+          "type": "string",
+          "default": "codex",
+          "description": "Command used to run Codex CLI."
+        },
+        "sinitek-cli-tools.commands.claude": {
+          "type": "string",
+          "default": "claude",
+          "description": "Command used to run Claude CLI."
+        },
+        "sinitek-cli-tools.commands.gemini": {
+          "type": "string",
+          "default": "gemini",
+          "description": "Command used to run Gemini CLI."
+        },
+        "sinitek-cli-tools.args.codex": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--sandbox",
+            "danger-full-access",
+            "--enable",
+            "web_search_request"
+          ],
+          "description": "Default arguments for Codex CLI."
+        },
+        "sinitek-cli-tools.args.claude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--dangerously-skip-permissions"
+          ],
+          "description": "Default arguments for Claude CLI."
+        },
+        "sinitek-cli-tools.args.gemini": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y"
+          ],
+          "description": "Default arguments for Gemini CLI."
+        },
+        "sinitek-cli-tools.autoOpenPanel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the CLI Bridge panel automatically on activation."
+        },
+        "sinitek-cli-tools.rememberSelectedCli": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist the selected CLI as the default CLI."
+        },
+        "sinitek-cli-tools.disableMarketplaceUpdateCheckInDev": {
+          "type": "boolean",
+          "default": true,
+          "description": "Disable VS Code marketplace update checks while running this extension in development mode."
+        },
+        "sinitek-cli-tools.thinkingMode": {
+          "type": "string",
+          "enum": [
+            "off",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Global thinking mode for all CLIs."
+        },
+        "sinitek-cli-tools.thinkingModeCodex": {
+          "type": "string",
+          "enum": [
+            "on",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "default": "medium",
+          "description": "Thinking mode for Codex CLI."
+        },
+        "sinitek-cli-tools.thinkingModeClaude": {
+          "type": "string",
+          "enum": [
+            "off",
+            "on",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Thinking mode for Claude CLI."
+        },
+        "sinitek-cli-tools.thinkingModeGemini": {
+          "type": "string",
+          "enum": [
+            "off",
+            "on",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Thinking mode for Gemini CLI."
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Codex CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.low": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Codex CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.medium": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Codex CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.high": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Codex CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.xhigh": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Codex CLI when thinking mode is xhigh."
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Claude CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.off": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--max-thinking-tokens",
+            "0"
+          ],
+          "description": "Extra arguments for Claude CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.low": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Claude CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.medium": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Claude CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.high": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Claude CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingArgs.gemini.on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Gemini CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingArgs.gemini.off": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Gemini CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingArgs.gemini.low": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Gemini CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingArgs.gemini.medium": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Gemini CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingArgs.gemini.high": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments for Gemini CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.off": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.on": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.low": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.medium": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.high": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.xhigh": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Codex CLI when thinking mode is xhigh."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.claude.off": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Claude CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.claude.on": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Claude CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.claude.low": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Claude CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.claude.medium": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Claude CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.claude.high": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Claude CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.gemini.off": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Gemini CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.gemini.on": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Gemini CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.gemini.low": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Gemini CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.gemini.medium": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Gemini CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.gemini.high": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt prefix for Gemini CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.off": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.on": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.low": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.medium": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.high": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.xhigh": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "Prompt suffix for Codex CLI when thinking mode is xhigh."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.claude.off": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Claude CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.claude.on": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Claude CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.claude.low": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Claude CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.claude.medium": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Claude CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.claude.high": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Claude CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.gemini.off": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Gemini CLI when thinking mode is off."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.gemini.on": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Gemini CLI when thinking mode is on."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.gemini.low": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Gemini CLI when thinking mode is low."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.gemini.medium": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Gemini CLI when thinking mode is medium."
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.gemini.high": {
+          "type": "string",
+          "default": "",
+          "description": "Prompt suffix for Gemini CLI when thinking mode is high."
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.off": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is off.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.on": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is on.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.low": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is low.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.medium": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is medium.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.high": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is high.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.xhigh": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Codex CLI when thinking mode is xhigh.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.claude.off": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Claude CLI when thinking mode is off.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.claude.on": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Claude CLI when thinking mode is on.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.claude.low": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Claude CLI when thinking mode is low.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.claude.medium": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Claude CLI when thinking mode is medium.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.claude.high": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Claude CLI when thinking mode is high.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.off": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Gemini CLI when thinking mode is off.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.on": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Gemini CLI when thinking mode is on.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.low": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Gemini CLI when thinking mode is low.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.medium": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Gemini CLI when thinking mode is medium.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.high": {
+          "type": "array",
+          "default": [],
+          "description": "Workspace config files for Gemini CLI when thinking mode is high.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative or absolute file path."
+              },
+              "content": {
+                "type": "string",
+                "description": "File content to write."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        }
+      }
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "sinitekCliBridgePanel",
+          "title": "携宁 CLI 助手",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "sinitekCliBridgePanel": [
+        {
+          "id": "sinitek-cli-tools.panelView",
+          "name": "携宁 CLI 助手",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^18.18.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "marked": "^15.0.12"
+  }
+}
