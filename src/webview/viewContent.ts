@@ -1645,6 +1645,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runWait.style.display = state.isRunning ? "flex" : "none";
       }
 
+      function resetTaskListForRunStart() {
+        if (!state.taskList.items.length) {
+          return;
+        }
+        state.taskList.items = [];
+        state.taskList.open = false;
+        state.taskList.source = "auto";
+        renderTaskList();
+      }
+
       function sendPrompt() {
         const prompt = elements.promptInput.value.trim();
         if (!prompt || state.isRunning) {
@@ -2091,6 +2101,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             Object.keys(assistantRedirects).forEach((key) => {
               delete assistantRedirects[key];
             });
+            resetTaskListForRunStart();
           }
           if (data.message) {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
