@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "VS Code extension to run Codex, Claude, and Gemini CLI tools.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "sinitek",
   "repository": {
     "type": "git",
