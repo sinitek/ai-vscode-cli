@@ -2,6 +2,18 @@
 
 本文件基于本机已安装 CLI 的 `--help` 输出整理（codex / gemini / claude）。如官方版本更新，以各 CLI 的 `--help` 与官方文档为准。
 
+## Windows 注意事项（找不到命令 / ENOENT）
+
+如果在 VS Code 插件内运行时报错 `spawn <cli> ENOENT`，通常表示 Extension Host 找不到可执行文件：
+
+- 先在 PowerShell 里验证：`where codex` / `where claude` / `where gemini`
+- Windows 下若通过 npm 全局安装，常见位置为 `%APPDATA%\\npm\\<cli>.cmd`（例如 `%APPDATA%\\npm\\codex.cmd`）
+- 可在 VS Code 设置中将命令改为绝对路径：
+  - `sinitek-cli-tools.commands.codex`
+  - `sinitek-cli-tools.commands.claude`
+  - `sinitek-cli-tools.commands.gemini`
+- 安装/修改 PATH 后需重启 VS Code
+
 ## Codex CLI
 
 用途：OpenAI Codex CLI，用于交互式或非交互式任务、代码审查、MCP 管理等。

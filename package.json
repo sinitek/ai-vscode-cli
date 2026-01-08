@@ -837,9 +837,11 @@
   "devDependencies": {
     "@types/node": "^18.18.0",
     "@types/vscode": "^1.85.0",
+    "@types/cross-spawn": "^6.0.6",
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "marked": "^15.0.12"
   }
 }
