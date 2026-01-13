@@ -1694,6 +1694,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
           return;
         }
+        resetTaskListForRunStart();
         appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
         vscode.postMessage({ type: "sendPrompt", prompt });
       }
