@@ -1652,7 +1652,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function updateRunningState(isRunning) {
         state.isRunning = isRunning;
         elements.sendPrompt.disabled = isRunning;
-        elements.promptInput.disabled = isRunning;
+        elements.promptInput.disabled = false;
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
