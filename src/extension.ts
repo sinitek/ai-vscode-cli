@@ -41,6 +41,7 @@ let skipUserBlock = false;
 let skipCodexBlock = false;
 let activeCompletionSent = false;
 let activeRunId: string | undefined;
+let activeTaskRun: TaskRunDraft | null = null;
 let activeMessageTarget: ChatMessage[] | null = null;
 let activeMessageIndex: number | null = null;
 let activeSessionId: string | null = null;
@@ -74,6 +75,7 @@ const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
+const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
 const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
@@ -109,6 +111,26 @@ type SessionRecord = {
 };
 
 type SessionStore = Record<CliName, { currentId: string | null; sessions: SessionRecord[] }>;
+
+type TaskRunStatus = "end" | "error" | "stopped";
+
+type TaskRunDraft = {
+  id: string;
+  cli: CliName;
+  sessionId: string | null;
+  prompt: string;
+  startedAt: number;
+};
+
+type TaskRunRecord = TaskRunDraft & {
+  endedAt: number;
+  durationMs: number;
+  status: TaskRunStatus;
+};
+
+type TaskStore = {
+  runs: TaskRunRecord[];
+};
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -1114,6 +1136,7 @@ async function runPrompt(prompt: string): Promise<void> {
   const userMessageId = createMessageId();
   const runId = createMessageId();
   activeRunId = runId;
+  startTaskRun(runId, currentCli, sessionId, prompt);
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
   activeCliForRun = currentCli;
@@ -1320,7 +1343,7 @@ async function runPrompt(prompt: string): Promise<void> {
         if (currentCli === "codex" || currentCli === "gemini") {
           flushTraceBuffer();
         }
-        appendCompletionMessage();
+        appendCompletionMessage(status);
         persistActiveMessages();
         clearActiveRun();
       },
@@ -1359,7 +1382,7 @@ async function runPrompt(prompt: string): Promise<void> {
         if (currentCli === "codex" || currentCli === "gemini") {
           flushTraceBuffer();
         }
-        appendCompletionMessage();
+        appendCompletionMessage("error");
         persistActiveMessages();
         clearActiveRun();
       },
@@ -1401,7 +1424,7 @@ function stopActiveRun(): void {
   if (currentCli === "codex" || currentCli === "gemini") {
     flushTraceBuffer();
   }
-  appendCompletionMessage();
+  appendCompletionMessage("stopped");
   if (removedPlaceholder && activeAssistantMessageId) {
     sendPanelMessage({ type: "removeMessage", id: activeAssistantMessageId });
   }
@@ -1419,6 +1442,7 @@ function clearActiveRun(): void {
   skipCodexBlock = false;
   activeCompletionSent = false;
   activeRunId = undefined;
+  activeTaskRun = null;
   activeMessageTarget = null;
   activeMessageIndex = null;
   activeSessionId = null;
@@ -1662,20 +1686,32 @@ function getTraceSegmentKind(content: string): "thinking" | "normal" {
   return firstLine.trim().startsWith("thinking") ? "thinking" : "normal";
 }
 
-function appendCompletionMessage(): void {
+function startTaskRun(runId: string, cli: CliName, sessionId: string | null, prompt: string): void {
+  activeTaskRun = {
+    id: runId,
+    cli,
+    sessionId,
+    prompt,
+    startedAt: Date.now(),
+  };
+}
+
+function appendCompletionMessage(status: TaskRunStatus): void {
   if (activeCompletionSent) {
     return;
   }
-  if (!activeMessageTarget) {
-    return;
-  }
+  const taskRecord = finalizeTaskRun(activeRunId, status);
+  const durationText = taskRecord ? formatDuration(taskRecord.durationMs) : null;
   const message = {
     id: createMessageId(),
     role: "system" as const,
-    content: "该任务已完成",
+    content: durationText ? `任务已完成,执行 ${durationText}` : "任务已完成",
     createdAt: Date.now(),
   };
   activeCompletionSent = true;
+  if (!activeMessageTarget) {
+    return;
+  }
   appendMessageToStore(activeMessageTarget, message);
   sendPanelMessage({ type: "appendMessage", message });
 }
@@ -1690,6 +1726,66 @@ function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: 
 
 function sendPanelMessage(payload: Record<string, unknown>): void {
   viewProvider?.postMessage(payload);
+}
+
+function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus): TaskRunRecord | null {
+  if (!runId || !activeTaskRun || activeTaskRun.id !== runId) {
+    return null;
+  }
+  const endedAt = Date.now();
+  const durationMs = Math.max(0, endedAt - activeTaskRun.startedAt);
+  const record: TaskRunRecord = {
+    ...activeTaskRun,
+    endedAt,
+    durationMs,
+    status,
+  };
+  activeTaskRun = null;
+  appendTaskRun(record);
+  return record;
+}
+
+function appendTaskRun(record: TaskRunRecord): void {
+  const store = readTaskStore();
+  store.runs.push(record);
+  writeTaskStore(store);
+}
+
+function readTaskStore(): TaskStore {
+  try {
+    if (!fs.existsSync(TASK_STORE_FILE)) {
+      return { runs: [] };
+    }
+    const raw = fs.readFileSync(TASK_STORE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.runs)) {
+      return { runs: [] };
+    }
+    return { runs: parsed.runs as TaskRunRecord[] };
+  } catch (error) {
+    void logError("task-store-read-error", { error: String(error) });
+    return { runs: [] };
+  }
+}
+
+function writeTaskStore(store: TaskStore): void {
+  try {
+    const dirPath = path.dirname(TASK_STORE_FILE);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.writeFileSync(TASK_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
+  } catch (error) {
+    void logError("task-store-write-error", { error: String(error) });
+  }
+}
+
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${pad(minutes)}:${pad(seconds)}`;
 }
 
 function loadSessionStore(): SessionStore {
