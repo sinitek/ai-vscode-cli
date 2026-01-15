@@ -271,9 +271,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         align-items: center;
         gap: 8px;
       }
-      .run-wait:not(.is-running) .typing {
-        display: none;
-      }
       .typing {
         display: inline-flex;
         gap: 4px;
@@ -631,20 +628,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 12px;
         opacity: 0.7;
       }
-      .tasklist-summary {
-        margin-top: 8px;
-        font-size: 12px;
-        color: var(--vscode-descriptionForeground);
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .tasklist-summary-title {
-        font-weight: 600;
-      }
-      .tasklist-summary-item {
-        margin-left: 16px;
-      }
       .tasklist-items {
         list-style: none;
         padding: 8px 0 0;
@@ -988,37 +971,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let resizeFrame = 0;
       let runWaitTimer = null;
       let runWaitStartAt = 0;
-      let lastRunDurationMs = 0;
-      const runWaitDurations = new Map();
-      const runWaitSessionFallback = "new";
-
-      function buildRunWaitKey(cli, sessionId) {
-        const normalizedSession = sessionId || runWaitSessionFallback;
-        return cli + "::" + normalizedSession;
-      }
-
-      function getStoredRunWaitDuration(cli, sessionId) {
-        const key = buildRunWaitKey(cli, sessionId);
-        const value = runWaitDurations.get(key);
-        return typeof value === "number" ? value : 0;
-      }
-
-      function setStoredRunWaitDuration(cli, sessionId, durationMs) {
-        const key = buildRunWaitKey(cli, sessionId);
-        runWaitDurations.set(key, Math.max(0, durationMs || 0));
-      }
-
-      function syncRunWaitForContextChange(previousCli, previousSessionId) {
-        if (state.isRunning) {
-          return;
-        }
-        if (previousCli === state.currentCli && previousSessionId === state.sessionState.currentSessionId) {
-          return;
-        }
-        lastRunDurationMs = getStoredRunWaitDuration(state.currentCli, state.sessionState.currentSessionId);
-        updateRunWaitTime(lastRunDurationMs);
-        updateRunWait();
-      }
 
       function updateAppHeight() {
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
@@ -1036,7 +988,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function applyState(panelState) {
         const previousCli = state.currentCli;
-        const previousSessionId = state.sessionState.currentSessionId;
         state.currentCli = panelState.currentCli;
         if (previousCli !== state.currentCli) {
           state.autoAppliedConfig = false;
@@ -1070,7 +1021,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.thinkingMode.value = state.thinkingMode;
         renderConfigOptions();
         renderSessionList();
-        syncRunWaitForContextChange(previousCli, previousSessionId);
       }
 
       function renderConfigOptions() {
@@ -1541,22 +1491,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.taskListCount) {
           elements.taskListCount.textContent = "(" + items.length + ")";
         }
-        const completedItems = items.filter((item) => item.done);
-        const summaryItems = completedItems.slice(Math.max(0, completedItems.length - 4));
-        const summary = document.createElement("div");
-        summary.className = "tasklist-summary";
-        if (summaryItems.length) {
-          const title = document.createElement("div");
-          title.className = "tasklist-summary-title";
-          title.textContent = "已完成步骤摘要";
-          summary.appendChild(title);
-          summaryItems.forEach((item) => {
-            const line = document.createElement("div");
-            line.className = "tasklist-summary-item";
-            line.textContent = item.text;
-            summary.appendChild(line);
-          });
-        }
         const list = document.createElement("ul");
         list.className = "tasklist-items";
         items.forEach((item) => {
@@ -1574,9 +1508,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           list.appendChild(li);
         });
         elements.taskListBody.innerHTML = "";
-        if (summaryItems.length) {
-          elements.taskListBody.appendChild(summary);
-        }
         elements.taskListBody.appendChild(list);
       }
 
@@ -1754,9 +1685,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.runWait) {
           return;
         }
-        const shouldShow = state.isRunning || lastRunDurationMs > 0;
-        elements.runWait.style.display = shouldShow ? "flex" : "none";
-        elements.runWait.classList.toggle("is-running", state.isRunning);
+        elements.runWait.style.display = state.isRunning ? "flex" : "none";
       }
 
       function startRunWaitTimer() {
@@ -1765,8 +1694,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         stopRunWaitTimer();
         runWaitStartAt = Date.now();
-        lastRunDurationMs = 0;
-        setStoredRunWaitDuration(state.currentCli, state.sessionState.currentSessionId, 0);
         updateRunWaitTime(0);
         runWaitTimer = window.setInterval(() => {
           updateRunWaitTime(Date.now() - runWaitStartAt);
@@ -1778,12 +1705,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           clearInterval(runWaitTimer);
           runWaitTimer = null;
         }
-        if (runWaitStartAt) {
-          lastRunDurationMs = Math.max(0, Date.now() - runWaitStartAt);
-        }
         runWaitStartAt = 0;
-        setStoredRunWaitDuration(state.currentCli, state.sessionState.currentSessionId, lastRunDurationMs);
-        updateRunWaitTime(lastRunDurationMs);
+        updateRunWaitTime(0);
       }
 
       function updateRunWaitTime(elapsedMs) {

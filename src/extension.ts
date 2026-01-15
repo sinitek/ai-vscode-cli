@@ -100,7 +100,6 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   claude: "CLAUDE.md",
   gemini: "GEMINI.md",
 };
-const SHOW_TRACE_MESSAGES = false;
 
 type SessionRecord = {
   id: string;
@@ -1163,9 +1162,6 @@ async function runPrompt(prompt: string): Promise<void> {
   skipCodexBlock = false;
   activeCompletionSent = false;
   const appendClaudeTraceMessage = (content: string): void => {
-    if (!SHOW_TRACE_MESSAGES) {
-      return;
-    }
     if (!activeMessageTarget) {
       return;
     }
@@ -1503,7 +1499,7 @@ function ensureAssistantMessage(): void {
 }
 
 function startTraceMessage(cli: CliName): void {
-  if (!SHOW_TRACE_MESSAGES || (cli !== "codex" && cli !== "gemini")) {
+  if (cli !== "codex" && cli !== "gemini") {
     activeTraceMessageId = undefined;
     return;
   }
