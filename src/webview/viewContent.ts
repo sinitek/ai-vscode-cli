@@ -268,6 +268,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       /* Typing Indicator */
       .run-wait {
         padding-left: 4px;
+        align-items: center;
+        gap: 8px;
       }
       .typing {
         display: inline-flex;
@@ -283,6 +285,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 50%;
         background: var(--vscode-descriptionForeground);
         animation: typingPulse 1.4s infinite ease-in-out both;
+      }
+      .run-wait-time {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        font-variant-numeric: tabular-nums;
       }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
@@ -697,6 +704,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
           </span>
+          <span id="runWaitTime" class="run-wait-time">00:00</span>
         </div>
       </div>
 
@@ -902,6 +910,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           items: [],
           open: false,
           source: "auto",
+          startIndex: 0,
         },
       };
 
@@ -914,6 +923,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         messages: document.getElementById("messages"),
         emptyState: document.getElementById("emptyState"),
         runWait: document.getElementById("runWait"),
+        runWaitTime: document.getElementById("runWaitTime"),
         configSelect: document.getElementById("configSelect"),
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
@@ -959,6 +969,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const assistantRedirects = {};
       let toastTimer = null;
       let resizeFrame = 0;
+      let runWaitTimer = null;
+      let runWaitStartAt = 0;
 
       function updateAppHeight() {
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
@@ -1449,7 +1461,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           renderTaskList();
           return;
         }
-        const items = extractTaskListFromMessages(state.messages);
+        const items = extractTaskListFromMessages(state.messages, state.taskList.startIndex);
         state.taskList.items = items;
         if (items.length) {
           state.taskList.open = true;
@@ -1499,20 +1511,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.taskListBody.appendChild(list);
       }
 
-      function extractTaskListFromMessages(messages) {
+      function extractTaskListFromMessages(messages, startIndex = 0) {
         let lastItems = [];
         if (!Array.isArray(messages)) {
           return lastItems;
         }
-        messages.forEach((message) => {
+        const start = Number.isInteger(startIndex) ? Math.max(0, startIndex) : 0;
+        for (let i = start; i < messages.length; i += 1) {
+          const message = messages[i];
           if (!message || message.role !== "assistant") {
-            return;
+            continue;
           }
           const items = parseTaskListFromText(message.content || "");
           if (items.length) {
             lastItems = items;
           }
-        });
+        }
         return lastItems;
       }
 
@@ -1659,6 +1673,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
+        if (isRunning) {
+          startRunWaitTimer();
+        } else {
+          stopRunWaitTimer();
+        }
         updateRunWait();
       }
 
@@ -1669,10 +1688,43 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runWait.style.display = state.isRunning ? "flex" : "none";
       }
 
-      function resetTaskListForRunStart() {
-        if (!state.taskList.items.length) {
+      function startRunWaitTimer() {
+        if (!elements.runWaitTime) {
           return;
         }
+        stopRunWaitTimer();
+        runWaitStartAt = Date.now();
+        updateRunWaitTime(0);
+        runWaitTimer = window.setInterval(() => {
+          updateRunWaitTime(Date.now() - runWaitStartAt);
+        }, 1000);
+      }
+
+      function stopRunWaitTimer() {
+        if (runWaitTimer) {
+          clearInterval(runWaitTimer);
+          runWaitTimer = null;
+        }
+        runWaitStartAt = 0;
+        updateRunWaitTime(0);
+      }
+
+      function updateRunWaitTime(elapsedMs) {
+        if (!elements.runWaitTime) {
+          return;
+        }
+        elements.runWaitTime.textContent = formatElapsedTime(elapsedMs);
+      }
+
+      function formatElapsedTime(elapsedMs) {
+        const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      }
+
+      function resetTaskListForRunStart() {
+        state.taskList.startIndex = state.messages.length;
         state.taskList.items = [];
         state.taskList.open = false;
         state.taskList.source = "auto";
@@ -1825,6 +1877,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.taskList.items = [];
         state.taskList.open = false;
         state.taskList.source = "auto";
+        state.taskList.startIndex = 0;
         renderMessages();
         renderTaskList();
         vscode.postMessage({ type: "newSession" });
@@ -2109,6 +2162,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (data.type === "setMessages") {
           state.messages = Array.isArray(data.messages) ? data.messages : [];
           state.taskList.source = "auto";
+          state.taskList.startIndex = 0;
           renderMessages();
         }
         if (data.type === "appendMessage") {
