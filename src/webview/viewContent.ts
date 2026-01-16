@@ -1670,7 +1670,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
-        elements.sendPrompt.style.display = "inline-flex";
+        elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
         if (isRunning) {
