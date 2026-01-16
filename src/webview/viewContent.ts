@@ -1665,12 +1665,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function updateRunningState(isRunning) {
         state.isRunning = isRunning;
-        elements.sendPrompt.disabled = isRunning;
+        elements.sendPrompt.disabled = false;
         elements.promptInput.disabled = false;
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
-        elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
+        elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
         if (isRunning) {
@@ -1733,7 +1733,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function sendPrompt() {
         const prompt = elements.promptInput.value.trim();
-        if (!prompt || state.isRunning) {
+        if (!prompt) {
           return;
         }
         elements.promptInput.value = "";

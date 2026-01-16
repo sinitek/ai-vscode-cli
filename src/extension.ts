@@ -1106,9 +1106,8 @@ async function runPrompt(prompt: string): Promise<void> {
     return;
   }
   if (activeProcess) {
-    sendRunStatus("error", "已有任务在运行，请先停止。");
-    void logError("runPrompt-blocked", { reason: "activeProcess", cli: currentCli });
-    return;
+    stopActiveRun();
+    void logInfo("runPrompt-preempt", { cli: currentCli });
   }
 
   const cwd = resolveWorkspaceCwd();
@@ -1260,7 +1259,9 @@ async function runPrompt(prompt: string): Promise<void> {
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
-        void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+        if (currentCli !== "codex") {
+          void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+        }
       },
       onStderr: (chunk) => {
         rawStderr += chunk;
@@ -1285,7 +1286,9 @@ async function runPrompt(prompt: string): Promise<void> {
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
-        void logCliStream(currentCli, activeSessionId, "stderr", chunk);
+        if (currentCli !== "codex") {
+          void logCliStream(currentCli, activeSessionId, "stderr", chunk);
+        }
       },
       onExit: (code) => {
         if (activeRunId !== runId) {
@@ -1330,14 +1333,16 @@ async function runPrompt(prompt: string): Promise<void> {
             }
           }
         }
-        void logCliRaw(currentCli, activeSessionId, {
-          command,
-          args,
-          cwd,
-          exitCode: code,
-          raw: rawStdout,
-          stderr: rawStderr,
-        });
+        if (currentCli !== "codex") {
+          void logCliRaw(currentCli, activeSessionId, {
+            command,
+            args,
+            cwd,
+            exitCode: code,
+            raw: rawStdout,
+            stderr: rawStderr,
+          });
+        }
         const status = code === 0 ? "end" : "error";
         sendRunStatus(status, code === 0 ? undefined : `CLI 退出码: ${code ?? "unknown"}`);
         if (currentCli === "codex" || currentCli === "gemini") {
@@ -1370,14 +1375,16 @@ async function runPrompt(prompt: string): Promise<void> {
           cli: currentCli,
           error: isNotFound ? `${error.message} (ENOENT)` : error.message,
         });
-        void logCliRaw(currentCli, activeSessionId, {
-          command,
-          args,
-          cwd,
-          error: error.message,
-          raw: rawStdout,
-          stderr: rawStderr,
-        });
+        if (currentCli !== "codex") {
+          void logCliRaw(currentCli, activeSessionId, {
+            command,
+            args,
+            cwd,
+            error: error.message,
+            raw: rawStdout,
+            stderr: rawStderr,
+          });
+        }
         sendRunStatus("error", userMessage);
         if (currentCli === "codex" || currentCli === "gemini") {
           flushTraceBuffer();
@@ -1572,14 +1579,18 @@ function flushTraceSegment(): void {
     return;
   }
   const content = activeTraceSegmentLines.join("\n");
-  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(content);
+  const { content: execDisplayContent, shouldPersist: execShouldPersist } =
+    formatCodexExecSegmentForDisplay(content);
+  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(
+    execDisplayContent
+  );
   const kind = getTraceSegmentKind(displayContent);
   activeTraceSegmentLines = [];
   if (activeCliForRun === "codex" && kind === "thinking") {
     appendAssistantChunk(`${displayContent}\n`);
     return;
   }
-  if (activeMessageTarget && shouldPersist) {
+  if (activeMessageTarget && shouldPersist && execShouldPersist) {
     appendMessageToStore(activeMessageTarget, {
       id: createMessageId(),
       role: "trace",
@@ -1592,6 +1603,40 @@ function flushTraceSegment(): void {
     content: displayContent,
     kind,
   });
+}
+
+function formatCodexExecSegmentForDisplay(
+  content: string
+): { content: string; shouldPersist: boolean } {
+  if (activeCliForRun !== "codex") {
+    return { content, shouldPersist: true };
+  }
+  const lines = content.split("\n");
+  const firstLineIndex = lines.findIndex((line) => line.trim());
+  if (firstLineIndex === -1) {
+    return { content, shouldPersist: true };
+  }
+  const firstLine = lines[firstLineIndex].trim();
+  if (!firstLine.startsWith("exec")) {
+    return { content, shouldPersist: true };
+  }
+  let commandLine = firstLine;
+  if (firstLine === "exec" || firstLine === "exec:") {
+    const nextLine = lines
+      .slice(firstLineIndex + 1)
+      .map((line) => line.trim())
+      .find((line) => line.length);
+    if (nextLine) {
+      const normalized = nextLine.replace(/^\$\s*/, "");
+      commandLine = `exec ${normalized}`;
+    }
+  } else if (firstLine.startsWith("exec:")) {
+    const normalized = firstLine.slice("exec:".length).trim();
+    if (normalized) {
+      commandLine = `exec ${normalized}`;
+    }
+  }
+  return { content: commandLine, shouldPersist: true };
 }
 
 function formatTraceSegmentForDisplay(content: string): { content: string; shouldPersist: boolean } {
