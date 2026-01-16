@@ -403,6 +403,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         transition: all 0.2s;
         height: 26px;
       }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      button:disabled:hover {
+        background: inherit;
+      }
       
       .action-button {
         background: var(--vscode-button-background);
@@ -413,6 +420,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .action-button:hover {
         background: var(--vscode-button-hoverBackground);
       }
+      .action-button:disabled {
+        color: var(--vscode-disabledForeground);
+      }
       
       .secondary {
         background: var(--vscode-button-secondaryBackground);
@@ -422,6 +432,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .secondary:hover {
         background: var(--vscode-button-secondaryHoverBackground);
+      }
+      .secondary:disabled {
+        color: var(--vscode-disabledForeground);
       }
       
       .stop-button {
