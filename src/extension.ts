@@ -1180,6 +1180,7 @@ async function runPrompt(prompt: string): Promise<void> {
   let sessionBuffer = "";
   let claudeBuffer = "";
   let claudeStreamRemainder = "";
+  let claudeLogRemainder = "";
   let claudeStreamHasText = false;
   const claudeToolUseIds = new Set<string>();
   const claudeToolResultIds = new Set<string>();
@@ -1199,7 +1200,7 @@ async function runPrompt(prompt: string): Promise<void> {
   skipUserBlock = false;
   skipCodexBlock = false;
   activeCompletionSent = false;
-  const appendClaudeTraceMessage = (content: string): void => {
+  const appendClaudeTraceMessage = (content: string, persist: boolean = true): void => {
     if (!activeMessageTarget) {
       return;
     }
@@ -1209,8 +1210,62 @@ async function runPrompt(prompt: string): Promise<void> {
       content,
       createdAt: Date.now(),
     };
-    appendMessageToStore(activeMessageTarget, message);
+    if (persist) {
+      appendMessageToStore(activeMessageTarget, message);
+    }
     sendPanelMessage({ type: "appendMessage", message });
+  };
+  const sanitizeClaudeLogChunk = (chunk: string): { content: string; redacted: boolean } => {
+    const combined = claudeLogRemainder + chunk;
+    const lines = combined.split(/\r?\n/);
+    claudeLogRemainder = lines.pop() ?? "";
+    let redacted = false;
+    const keptLines: string[] = [];
+    const shouldRedactLine = (value: string): boolean => {
+      try {
+        const payload = JSON.parse(value) as Record<string, unknown>;
+        const toolEvents = extractClaudeToolEvents(payload);
+        return toolEvents.some((event) => {
+          if (event.kind !== "tool_result" || !event.toolUseId) {
+            return false;
+          }
+          const toolName = claudeToolUseNames.get(event.toolUseId);
+          return typeof toolName === "string" && toolName.toLowerCase() === "read";
+        });
+      } catch {
+        return false;
+      }
+    };
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        keptLines.push(line);
+        return;
+      }
+      if (trimmed.startsWith("event:")) {
+        keptLines.push(line);
+        return;
+      }
+      if (trimmed.startsWith("data:")) {
+        const dataValue = trimmed.slice(5).trim();
+        if (dataValue && dataValue !== "[DONE]" && shouldRedactLine(dataValue)) {
+          redacted = true;
+          return;
+        }
+        keptLines.push(line);
+        return;
+      }
+      if (shouldRedactLine(trimmed)) {
+        redacted = true;
+        return;
+      }
+      keptLines.push(line);
+    });
+    let content = keptLines.join("\n");
+    if (content && chunk.endsWith("\n")) {
+      content += "\n";
+    }
+    return { content, redacted };
   };
   const handleClaudeToolEvents = (events: ClaudeToolEvent[]): void => {
     if (!events.length) {
@@ -1246,7 +1301,10 @@ async function runPrompt(prompt: string): Promise<void> {
       if (toolName === "Edit") {
         return;
       }
-      appendClaudeTraceMessage(formatClaudeToolResultMessage(event, toolName));
+      const shouldPersist = !(
+        typeof toolName === "string" && toolName.toLowerCase() === "read"
+      );
+      appendClaudeTraceMessage(formatClaudeToolResultMessage(event, toolName), shouldPersist);
     });
   };
 
@@ -1276,7 +1334,16 @@ async function runPrompt(prompt: string): Promise<void> {
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
         if (currentCli !== "codex") {
-          void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+          if (shouldParseClaudeStream) {
+            const sanitized = sanitizeClaudeLogChunk(chunk);
+            if (sanitized.content) {
+              void logCliStream(currentCli, activeSessionId, "stdout", sanitized.content);
+            } else if (!sanitized.redacted) {
+              void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+            }
+          } else {
+            void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+          }
         }
       },
       onStderr: (chunk) => {

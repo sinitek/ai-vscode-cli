@@ -1649,7 +1649,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function escapeHtml(value) {
-        return value
+        const text = typeof value === "string" ? value : value == null ? "" : String(value);
+        return text
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
