@@ -2691,6 +2691,9 @@ function formatClaudeToolResultMessage(
   toolName?: string
 ): string {
   const header = toolName ? `工具结果: ${toolName}` : "工具结果";
+  if (typeof toolName === "string" && toolName.toLowerCase() === "read") {
+    return header;
+  }
   const output = formatClaudeToolPayload(event.content);
   if (!output) {
     return header;
