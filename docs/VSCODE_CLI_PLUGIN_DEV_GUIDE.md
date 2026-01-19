@@ -94,6 +94,11 @@ npm init @vscode/extension
 
 ## 核心实现
 
+## 聊天面板消息渲染规则
+
+- 同角色连续消息可合并为同一气泡，便于减少碎片。
+- `file update` 类型消息必须保持独立气泡，不允许与前后任何消息合并或追加。
+
 ### 配置读取（src/cli/config.ts）
 
 ```ts
@@ -197,6 +202,9 @@ export function activate(context: vscode.ExtensionContext) {
 ```
 
 可在面板内切换思考模式（全局：`off` / `low` / `medium` / `high`；Codex 额外支持 `xhigh`），并可针对不同档位配置：
+
+补充说明：
+- 思考模式的面板选择会按工作区分别保存，数据位于 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`。
 
 ```json
 {

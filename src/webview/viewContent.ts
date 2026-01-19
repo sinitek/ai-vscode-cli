@@ -1206,6 +1206,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function getFirstNonEmptyLine(text) {
+        if (!text || typeof text !== "string") {
+          return "";
+        }
+        const lines = text.split("\\n");
+        for (let i = 0; i < lines.length; i += 1) {
+          const trimmed = lines[i].trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "";
+      }
+
+      function isFileUpdateMessage(message) {
+        if (!message) {
+          return false;
+        }
+        const firstLine = getFirstNonEmptyLine(message.content || "");
+        return firstLine.startsWith("file update");
+      }
+
       function appendMessage(message) {
         if (!message) {
           return;
@@ -1214,8 +1236,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           message.createdAt = Date.now();
         }
         const last = state.messages[state.messages.length - 1];
+        const isFileUpdate = isFileUpdateMessage(message);
+        const lastIsFileUpdate = last && isFileUpdateMessage(last);
         if (message.role === "assistant") {
-          if (last && last.role === "assistant") {
+          if (last && last.role === "assistant" && !isFileUpdate && !lastIsFileUpdate) {
             assistantRedirects[message.id] = last.id;
             if (message.content) {
               const prefix = last.content ? "\\n" : "";
@@ -1231,7 +1255,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         const sameRole = last && last.role === message.role;
         const sameTraceKind = message.role !== "trace" || last.kind === message.kind;
-        if (sameRole && sameTraceKind) {
+        if (sameRole && sameTraceKind && !isFileUpdate && !lastIsFileUpdate) {
           const prefix = last.content ? "\\n" : "";
           last.content = last.content + prefix + (message.content || "");
           renderMessages();
@@ -1428,7 +1452,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (typeof marked === "undefined" || !marked.parse) {
           return escapeHtml(normalized);
         }
-        return marked.parse(normalized, { breaks: true });
+        const renderer = new marked.Renderer();
+        renderer.html = (html) => escapeHtml(html);
+        return marked.parse(normalized, { breaks: true, renderer });
       }
 
       function isLineNumberedLine(value) {

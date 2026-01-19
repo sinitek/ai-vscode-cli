@@ -48,6 +48,7 @@ let activeSessionId: string | null = null;
 let activeCliForRun: CliName | null = null;
 let extensionContext: vscode.ExtensionContext;
 let sessionStore: SessionStore;
+let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
@@ -70,6 +71,7 @@ const LOCAL_SESSION_PREFIX = "local_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
+const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
@@ -132,12 +134,17 @@ type TaskStore = {
   runs: TaskRunRecord[];
 };
 
+type WorkspaceSettings = {
+  thinkingMode?: ThinkingMode;
+};
+
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   extensionUri = context.extensionUri;
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   currentCli = getDefaultCli();
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
+  workspaceSettings = loadWorkspaceSettings();
   sessionStore = loadSessionStore();
   ensureLatestSessionForCli(currentCli);
   void initLogger();
@@ -535,6 +542,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "updateSetting" && message.key) {
+    if (message.key === "thinkingMode") {
+      if (isThinkingMode(message.value)) {
+        workspaceSettings.thinkingMode = message.value;
+        saveWorkspaceSettings(workspaceSettings);
+      }
+      await postPanelState();
+      return;
+    }
     const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
     await config.update(message.key, message.value, vscode.ConfigurationTarget.Global);
     await postPanelState();
@@ -560,7 +575,7 @@ async function buildPanelState(): Promise<PanelState> {
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
-    thinkingMode: getThinkingMode(currentCli),
+    thinkingMode: getWorkspaceThinkingMode(currentCli),
     rulePaths: {
       global: CLI_RULE_PATHS_GLOBAL,
       project: getProjectRulePaths(),
@@ -590,6 +605,7 @@ function ensureWorkspaceSessionStore(): void {
 function applyWorkspaceSessionStore(workspaceKey: string): void {
   activeWorkspaceKey = workspaceKey;
   sessionStore = loadSessionStore();
+  workspaceSettings = loadWorkspaceSettings();
   sessionMessageCache.clear();
   for (const cli of CLI_LIST) {
     pendingSessionLabels[cli] = null;
@@ -1114,7 +1130,7 @@ async function runPrompt(prompt: string): Promise<void> {
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: currentCli });
   }
-  const thinkingMode = getThinkingMode(currentCli);
+  const thinkingMode = getWorkspaceThinkingMode(currentCli);
   applyThinkingWorkspaceFiles(currentCli, thinkingMode, cwd);
   preparePendingLabel(currentCli, prompt);
   const sessionId = getCurrentSessionId(currentCli);
@@ -1831,6 +1847,71 @@ function formatDuration(durationMs: number): string {
   const seconds = totalSeconds % 60;
   const pad = (value: number): string => String(value).padStart(2, "0");
   return `${pad(minutes)}:${pad(seconds)}`;
+}
+
+function isThinkingMode(value: unknown): value is ThinkingMode {
+  return value === "off"
+    || value === "on"
+    || value === "low"
+    || value === "medium"
+    || value === "high"
+    || value === "xhigh";
+}
+
+function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
+  if (cli !== "codex" && mode === "xhigh") {
+    return "high";
+  }
+  if (cli === "codex" && mode === "off") {
+    return "low";
+  }
+  return mode;
+}
+
+function getWorkspaceThinkingMode(cli: CliName): ThinkingMode {
+  if (workspaceSettings.thinkingMode && isThinkingMode(workspaceSettings.thinkingMode)) {
+    return normalizeThinkingModeForCli(cli, workspaceSettings.thinkingMode);
+  }
+  return getThinkingMode(cli);
+}
+
+function loadWorkspaceSettings(): WorkspaceSettings {
+  const filePath = getWorkspaceSettingsFilePath();
+  if (!filePath || !fs.existsSync(filePath)) {
+    return {};
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    const thinkingMode = (parsed as WorkspaceSettings).thinkingMode;
+    return isThinkingMode(thinkingMode) ? { thinkingMode } : {};
+  } catch (error) {
+    void logError("workspace-settings-read-error", { error: String(error) });
+    return {};
+  }
+}
+
+function saveWorkspaceSettings(next: WorkspaceSettings): void {
+  const filePath = getWorkspaceSettingsFilePath();
+  if (!filePath) {
+    return;
+  }
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
+  } catch (error) {
+    void logError("workspace-settings-write-error", { error: String(error) });
+  }
+}
+
+function getWorkspaceSettingsFilePath(): string | null {
+  if (!activeWorkspaceKey) {
+    return null;
+  }
+  return path.join(WORKSPACE_SETTINGS_DIR, `${activeWorkspaceKey}.json`);
 }
 
 function loadSessionStore(): SessionStore {
