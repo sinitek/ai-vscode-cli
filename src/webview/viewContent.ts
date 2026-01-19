@@ -133,6 +133,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        white-space: pre-wrap;
       }
 
       /* Assistant Message - Clean, width-filling */
@@ -1299,6 +1300,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           return content;
         }
+        if (message.role === "user") {
+          return escapeHtml(message.content || "");
+        }
         if (message.role === "trace") {
           return renderTraceContent(message.content || "");
         }
@@ -1649,7 +1653,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function escapeHtml(value) {
-        const text = typeof value === "string" ? value : value == null ? "" : String(value);
+        let text = "";
+        if (typeof value === "string") {
+          text = value;
+        } else if (value && typeof value === "object" && "text" in value) {
+          const tokenText = value.text;
+          text = typeof tokenText === "string" ? tokenText : tokenText == null ? "" : String(tokenText);
+        } else {
+          text = value == null ? "" : String(value);
+        }
         return text
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
