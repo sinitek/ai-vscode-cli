@@ -17,7 +17,14 @@ import {
   getThinkingPromptSuffix,
   getThinkingWorkspaceFiles,
 } from "./cli/config";
-import { buildCliArgs, buildProcessLabel, runCli, runCliStream, type RunProcess } from "./cli/commandRunner";
+import {
+  buildCliArgs,
+  buildProcessLabel,
+  resolveCliCommand,
+  runCli,
+  runCliStream,
+  type RunProcess,
+} from "./cli/commandRunner";
 import { CliName, CLI_LIST, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
@@ -317,6 +324,32 @@ async function restoreMarketplaceUpdateCheck(): Promise<void> {
 
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
+}
+
+function isWindowsCmdCommand(command: string | undefined): boolean {
+  if (!command || process.platform !== "win32") {
+    return false;
+  }
+  const lower = command.toLowerCase();
+  return lower.endsWith(".cmd") || lower.endsWith(".bat");
+}
+
+function resolveBundledClaudeCliPath(): string | undefined {
+  try {
+    return require.resolve("@anthropic-ai/claude-agent-sdk/cli.js");
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveClaudeInteractiveEntrypoint(command: string | undefined): string | undefined {
+  if (!command) {
+    return undefined;
+  }
+  if (isWindowsCmdCommand(command)) {
+    return resolveBundledClaudeCliPath();
+  }
+  return command;
 }
 
 function collectDirectoryPaths(filePath: string, dirSet: Set<string>): void {
@@ -1677,6 +1710,13 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   const debugLogging = getDebugLogging();
   const args = getCliArgs(cli);
   const command = getCliCommand(cli);
+  const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
+  const commandForRunner = cli === "claude"
+    ? (resolvedCommand?.command ?? "claude")
+    : command;
+  const claudeEntrypoint = cli === "claude"
+    ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
+    : undefined;
   const messageTarget = sessionId ? loadSessionMessages(cli, sessionId) : pendingSessionMessages[cli];
   void logInfo("runPrompt-interactive-start", {
     cli,
@@ -1753,11 +1793,16 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     interactiveInput = input;
     rawStdout = "";
     rawStderr = "";
+    const logCommand = cli === "claude" ? commandForRunner : command;
     void logCliInteractiveStart(cli, activeSessionId, {
-      command,
+      command: logCommand,
       args,
       cwd,
       stdin: input,
+      resolvedCommand: cli === "claude" ? resolvedCommand?.command : undefined,
+      resolvedFrom: cli === "claude" ? resolvedCommand?.resolvedFrom : undefined,
+      execPath: cli === "claude" ? process.execPath : undefined,
+      entrypoint: claudeEntrypoint,
     });
   };
   const appendDebugStdout = (chunk: string): void => {
@@ -2060,13 +2105,13 @@ async function runPromptInteractive(prompt: string): Promise<void> {
         ? interactiveRunnerManager.getOrCreateClaudeRunner({
             sessionId,
             mappedSessionId,
-            command,
+            command: commandForRunner,
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
           })
         : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-            command,
+            command: commandForRunner,
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
@@ -2111,7 +2156,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
           runner.dispose();
           runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-            command,
+            command: commandForRunner,
             args,
             cwd: cwd ?? undefined,
             thinkingMode,

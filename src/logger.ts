@@ -130,6 +130,10 @@ type CliInteractiveStart = {
   args: string[];
   cwd?: string;
   stdin?: string;
+  resolvedCommand?: string;
+  resolvedFrom?: string;
+  execPath?: string;
+  entrypoint?: string;
 };
 
 function formatCliPrefix(sessionLabel: string, tag: string, time: string): string {
@@ -161,6 +165,18 @@ export async function logCliInteractiveStart(
   const commandLine = [payload.command, ...payload.args].join(" ").trim();
   const lines: string[] = [];
   lines.push(`${formatCliPrefix(sessionLabel, "command", time)} ${commandLine}`);
+  if (payload.resolvedCommand) {
+    lines.push(`${formatCliPrefix(sessionLabel, "resolved", time)} ${payload.resolvedCommand}`);
+  }
+  if (payload.resolvedFrom) {
+    lines.push(`${formatCliPrefix(sessionLabel, "resolved-from", time)} ${payload.resolvedFrom}`);
+  }
+  if (payload.execPath) {
+    lines.push(`${formatCliPrefix(sessionLabel, "exec", time)} ${payload.execPath}`);
+  }
+  if (payload.entrypoint) {
+    lines.push(`${formatCliPrefix(sessionLabel, "entrypoint", time)} ${payload.entrypoint}`);
+  }
   if (payload.cwd) {
     lines.push(`${formatCliPrefix(sessionLabel, "cwd", time)} ${payload.cwd}`);
   }

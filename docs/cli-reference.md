@@ -7,9 +7,12 @@
 当启用 `sinitek-cli-tools.interactive.codex/claude`（默认开启）时，插件会优先通过 SDK 以“常驻 Runner”方式与 CLI 交互，避免每次发送都重新启动进程；SDK 会尽量复用 CLI 的会话/线程。
 
 - 仍会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径（用于 SDK 的 path override）。
+- Claude 交互模式会尝试将 `sinitek-cli-tools.commands.claude`（含默认值 `claude`）解析为实际可执行路径，以复用全局登录与配置；解析失败则回退到 SDK 内置 CLI。
+- Windows 下若解析到 `.cmd/.bat`，交互模式会忽略该覆盖并回退到 SDK 内置 `cli.js`（SDK v2 交互会话不支持直接 spawn `.cmd/.bat`，否则可能触发 `spawn EINVAL`）。
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
 - SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
 - 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
+- 交互模式使用 Extension Host 的环境变量与工作目录（优先当前工作区）。如果你在 shell profile 里设置了 `ANTHROPIC_API_KEY` 或依赖项目内 `.claude/settings.json` 注入环境变量，请确保 VS Code 启动时能读取到这些变量，或开启对应工作区；否则可能出现 `Invalid API key · Please run /login`。
 
 ## Windows 注意事项（找不到命令 / ENOENT）
 

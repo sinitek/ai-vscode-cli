@@ -1,5 +1,7 @@
+import { spawn } from "child_process";
 import { CliName, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
+import { logInfo } from "../logger";
 
 export type ClaudeStreamHandlers = {
   onAssistantDelta: (chunk: string) => void;
@@ -7,6 +9,67 @@ export type ClaudeStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
 };
+
+type SpawnOptions = {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+};
+
+function isWindowsCmd(command: string | undefined): boolean {
+  if (!command || process.platform !== "win32") {
+    return false;
+  }
+  const lower = command.toLowerCase();
+  return lower.endsWith(".cmd") || lower.endsWith(".bat");
+}
+
+function cmdQuoteArg(value: string): string {
+  if (value === "") {
+    return "\"\"";
+  }
+  const needsQuotes = /[ \t"&|<>()^]/.test(value) || value.includes("\"");
+  if (!needsQuotes) {
+    return value;
+  }
+  return `"${value.replace(/"/g, "\"\"")}"`;
+}
+
+function spawnCmdProcess(options: SpawnOptions) {
+  const env = options.env ?? process.env;
+  const comspec = env.COMSPEC ?? process.env.COMSPEC ?? "cmd.exe";
+  const inner = [options.command, ...options.args].map(cmdQuoteArg).join(" ");
+  return spawn(comspec, ["/d", "/s", "/c", inner], {
+    cwd: options.cwd,
+    env,
+    signal: options.signal,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function spawnDirectProcess(options: SpawnOptions) {
+  return spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function spawnClaudeProcess(options: SpawnOptions) {
+  const isCmd = isWindowsCmd(options.command);
+  void logInfo("claude-interactive-spawn-options", {
+    command: options.command,
+    args: options.args,
+    cwd: options.cwd,
+    isCmd,
+  });
+  return isCmd ? spawnCmdProcess(options) : spawnDirectProcess(options);
+}
 
 function pickArgValue(args: string[], key: string): string | null {
   const index = args.findIndex((arg) => arg === key);
@@ -19,6 +82,14 @@ function pickArgValue(args: string[], key: string): string | null {
 function defaultModelFromArgs(args: string[]): string {
   const fromArg = pickArgValue(args, "--model");
   return fromArg ? fromArg : "sonnet";
+}
+
+function resolveBundledClaudeCliPath(): string | null {
+  try {
+    return require.resolve("@anthropic-ai/claude-agent-sdk/cli.js");
+  } catch {
+    return null;
+  }
 }
 
 function formatToolLine(prefix: string, payload: unknown): string {
@@ -169,11 +240,26 @@ export class ClaudeInteractiveRunner {
     const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
     const model = defaultModelFromArgs(this.options.args);
 
-    const commandOverride =
+    const rawCommandOverride =
       this.options.command && this.options.command !== "claude" ? this.options.command : undefined;
+    const commandOverride =
+      rawCommandOverride && !isWindowsCmd(rawCommandOverride) ? rawCommandOverride : undefined;
+    const bundledCliPath = resolveBundledClaudeCliPath();
+    const effectiveCliPath = commandOverride ?? bundledCliPath;
+    void logInfo("claude-interactive-spawn-path", {
+      command: this.options.command,
+      commandOverride,
+      commandOverrideIsCmd: rawCommandOverride ? isWindowsCmd(rawCommandOverride) : false,
+      ignoredCommandOverride: commandOverride ? undefined : rawCommandOverride,
+      bundledCliPath,
+      effectiveCliPath,
+      execPath: process.execPath,
+      cwd: this.options.cwd,
+    });
 
     const sessionOptions: any = {
       model,
+      cwd: this.options.cwd,
       env: process.env,
       pathToClaudeCodeExecutable: commandOverride,
       permissionMode: "bypassPermissions",
@@ -186,6 +272,8 @@ export class ClaudeInteractiveRunner {
     if (typeof maxThinkingTokens === "number") {
       sessionOptions.maxThinkingTokens = maxThinkingTokens;
     }
+    sessionOptions.spawnClaudeCodeProcess = (spawnOptions: SpawnOptions) =>
+      spawnClaudeProcess(spawnOptions);
 
     this.session = this.options.sessionId
       ? resumeFn(this.options.sessionId, sessionOptions)

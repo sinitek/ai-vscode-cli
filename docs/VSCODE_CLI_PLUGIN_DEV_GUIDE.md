@@ -306,3 +306,8 @@ py -3.12 vscode_extension_win.py package
      - `sinitek-cli-tools.commands.gemini`
 2) 参数包含空格：使用数组配置，插件会自动处理转义。
 3) 想用别名：建议配置为完整命令，避免依赖 shell alias。
+4) 交互模式 Claude 提示 `Invalid API key · Please run /login`：
+   - 交互模式在 Extension Host 内运行，使用 VS Code 启动时的环境变量与工作区 cwd。
+   - Claude 交互模式会尝试解析 PATH 中的 `claude` 可执行文件（Windows `.cmd/.bat` 通过 `cmd.exe` 启动），请确保 CLI 已安装且 PATH 可见。
+   - 如果 API key 仅在 shell profile 中设置，请确保 VS Code 启动环境可读取；或把 key 写入系统环境变量 / 项目内 `.claude/settings.json`。
+   - 可临时关闭 `sinitek-cli-tools.interactive.claude` 验证是否为交互模式差异导致。
