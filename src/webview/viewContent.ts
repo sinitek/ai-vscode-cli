@@ -751,17 +751,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
-            <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
-              <option value="off">思考：关闭</option>
-              <option value="low">思考：低</option>
-              <option value="medium">思考：中</option>
-              <option value="high">思考：高</option>
-            </select>
-            <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
-            <button id="sendPrompt" class="action-button">发送</button>
-            <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
-          </div>
-        </div>
+             <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
+               <option value="off">思考：关闭</option>
+               <option value="low">思考：低</option>
+               <option value="medium">思考：中</option>
+               <option value="high">思考：高</option>
+             </select>
+             <select id="interactiveMode" class="thinking-select" aria-label="交互模式">
+               <option value="on">交互：开启(Beta)</option>
+               <option value="off">交互：关闭</option>
+             </select>
+             <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
+             <button id="sendPrompt" class="action-button">发送</button>
+             <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
+           </div>
+         </div>
       </div>
 
       <div id="historyOverlay" class="overlay">
@@ -917,6 +921,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           sessions: [],
         },
         thinkingMode: "medium",
+        interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
         taskList: {
@@ -940,6 +945,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         configSelect: document.getElementById("configSelect"),
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
+        interactiveMode: document.getElementById("interactiveMode"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
         attachmentInput: document.getElementById("attachmentInput"),
@@ -1024,6 +1030,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
+        state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {
@@ -1032,6 +1039,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateRulesScope(state.ruleScope);
         syncThinkingOptions();
         elements.thinkingMode.value = state.thinkingMode;
+        syncInteractiveOptions();
+        if (elements.interactiveMode) {
+          elements.interactiveMode.value = state.interactive && state.interactive.enabled ? "on" : "off";
+        }
         renderConfigOptions();
         renderSessionList();
       }
@@ -1110,6 +1121,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!isCodex && state.thinkingMode === "xhigh") {
           updateThinkingMode("high");
         }
+      }
+
+      function syncInteractiveOptions() {
+        if (!elements.interactiveMode) {
+          return;
+        }
+        const supported = Boolean(state.interactive && state.interactive.supported);
+        elements.interactiveMode.style.display = supported ? "" : "none";
+        elements.interactiveMode.disabled = !supported || state.isRunning;
       }
 
       function updateThinkingMode(nextMode) {
@@ -1683,6 +1703,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
+        syncInteractiveOptions();
         elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
@@ -1916,6 +1937,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           value: nextMode,
         });
       });
+
+      if (elements.interactiveMode) {
+        elements.interactiveMode.addEventListener("change", (event) => {
+          const nextValue = event.target.value || "on";
+          const enabled = nextValue === "on";
+          state.interactive.enabled = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "interactive." + state.currentCli,
+            value: enabled,
+          });
+        });
+      }
 
       elements.openConfig.addEventListener("click", () => {
         vscode.postMessage({ type: "openConfig" });

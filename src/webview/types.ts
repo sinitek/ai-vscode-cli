@@ -51,6 +51,10 @@ export type PanelState = {
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
   thinkingMode: ThinkingMode;
+  interactive: {
+    supported: boolean;
+    enabled: boolean;
+  };
   rulePaths: {
     global: Record<CliName, string>;
     project: Record<CliName, string | null>;

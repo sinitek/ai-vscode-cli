@@ -2,6 +2,14 @@
 
 本文件基于本机已安装 CLI 的 `--help` 输出整理（codex / gemini / claude）。如官方版本更新，以各 CLI 的 `--help` 与官方文档为准。
 
+## 插件“交互模式”说明
+
+当启用 `sinitek-cli-tools.interactive.codex/claude`（默认开启）时，插件会优先通过 SDK 以“常驻 Runner”方式与 CLI 交互，避免每次发送都重新启动进程；SDK 会尽量复用 CLI 的会话/线程。
+
+- 仍会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径（用于 SDK 的 path override）。
+- 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
+- SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
+
 ## Windows 注意事项（找不到命令 / ENOENT）
 
 如果在 VS Code 插件内运行时报错 `spawn <cli> ENOENT`，通常表示 Extension Host 找不到可执行文件：

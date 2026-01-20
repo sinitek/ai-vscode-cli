@@ -218,6 +218,43 @@ export function activate(context: vscode.ExtensionContext) {
 
 逻辑复用同一个 `runCli`，仅在运行前注入参数。
 
+## 支持“交互模式”（常驻 Runner + 上下文压缩）
+
+本项目已按 `docs/支持交互.md` 落地 **Codex + Claude** 的交互模式（Gemini 暂不纳入）。
+
+### 行为概述
+
+- 默认开启（Beta）：同一会话内多轮对话复用 SDK Runner（避免“一问一进程”的冷启动）。
+- 自动降级：SDK 初始化/运行失败时自动降级回现有“一问一进程”模式。
+- 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
+- 空闲释放：10 分钟无交互自动释放 Runner。
+
+### 设置项（工作区级）
+
+- `sinitek-cli-tools.interactive.codex`：是否开启 Codex 交互模式（默认 true）
+- `sinitek-cli-tools.interactive.claude`：是否开启 Claude 交互模式（默认 true）
+
+面板内会显示“交互：开启/关闭(Beta)”下拉，修改后会写入当前工作区设置（scope=resource）。
+
+### 上下文压缩（混合模式）
+
+- 触发阈值（满足任一即提示）：
+  - 轮数阈值：30（按 user 消息条数估算）
+  - 字符阈值：24000（按消息 content 总长度估算）
+- 提示时机：点击发送后、真正发给模型前弹窗确认。
+- 按钮：`现在压缩 / 这次跳过 / 本会话不再提示`（“本会话不再提示”仅内存生效，不落盘）。
+- 策略：压缩后新开 thread/session 继续、旧 thread/session 冻结；新上下文包含“摘要 + 最近 3 轮原文”。
+
+### 会话映射落盘
+
+压缩会导致底层 thread/session 发生变化，但扩展侧会话 ID 保持不变，因此需要映射落盘：
+
+- `~/.sinitek_cli/sessions/<workspaceKey>.meta.json`
+- 结构示例：
+  - `byCli.codex[sessionId] -> { threadId, frozenThreadIds, updatedAt }`
+  - `byCli.claude[sessionId] -> { sessionId, frozenSessionIds, updatedAt }`
+
+
 ## 调试与运行
 
 ```

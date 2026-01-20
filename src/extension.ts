@@ -8,6 +8,9 @@ import {
   getDefaultCli,
   getRememberSelectedCli,
   getCliCommand,
+  getCliArgs,
+  getInteractiveEnabled,
+  isInteractiveSupported,
   getThinkingMode,
   getThinkingPromptPrefix,
   getThinkingPromptSuffix,
@@ -27,12 +30,21 @@ import { initLogger, logCliRaw, logCliStream, logDebug, logError, logInfo } from
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
+import { InteractiveRunnerManager } from "./interactive/manager";
+import {
+  getMappedThreadId,
+  readSessionMeta,
+  upsertMapping,
+  writeSessionMeta,
+} from "./interactive/metaStore";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
 let viewProvider: CliBridgeViewProvider | undefined;
 let activeProcess: RunProcess | undefined;
+let interactiveRunnerManager: InteractiveRunnerManager;
+let activeInteractiveStop: (() => void) | null = null;
 let activeAssistantMessageId: string | undefined;
 let activeTraceMessageId: string | undefined;
 let activeTraceBuffer = "";
@@ -103,6 +115,12 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   gemini: "GEMINI.md",
 };
 
+const CONTEXT_COMPACT_TURN_THRESHOLD = 30;
+const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
+const FROZEN_THREAD_LIMIT = 5;
+const KEEP_RECENT_TURNS = 3;
+const suppressCompactPrompt = new Set<string>();
+
 type SessionRecord = {
   id: string;
   label: string;
@@ -135,6 +153,7 @@ type TaskStore = {
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   extensionUri = context.extensionUri;
+  interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   currentCli = getDefaultCli();
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
@@ -214,6 +233,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("sinitek-cli-tools")) {
+        if (!activeProcess && !activeInteractiveStop) {
+          interactiveRunnerManager?.disposeAll();
+        }
         currentCli = getDefaultCli();
         updateStatusBar();
         void postPanelState();
@@ -235,6 +257,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   void restoreMarketplaceUpdateCheck();
+  interactiveRunnerManager?.disposeAll();
 }
 
 async function maybeDisableMarketplaceUpdateCheckInDev(
@@ -331,6 +354,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
   if (message.type === "selectCli" && message.cli) {
     await setCurrentCli(message.cli);
+    interactiveRunnerManager?.disposeAll();
     const latestSessionId = getLatestSessionId(currentCli);
     if (latestSessionId) {
       setCurrentSession(currentCli, latestSessionId);
@@ -344,6 +368,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
   if (message.type === "selectSession") {
     await setCurrentCli(message.cli);
+    interactiveRunnerManager?.disposeAll();
     setCurrentSession(message.cli, message.sessionId);
     await postPanelState();
     sendSessionMessagesToPanel(message.cli, message.sessionId);
@@ -360,6 +385,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       return;
     }
     const wasCurrent = getCurrentSessionId(message.cli) === message.sessionId;
+    interactiveRunnerManager?.disposeIfMatches(message.cli, message.sessionId);
     deleteSession(message.cli, message.sessionId);
     if (wasCurrent && currentCli === message.cli) {
       startNewSession(message.cli);
@@ -380,6 +406,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (confirmed !== "清空") {
       return;
     }
+    interactiveRunnerManager?.disposeAll();
     clearAllSessions();
     startNewSession(currentCli);
     await postPanelState();
@@ -388,6 +415,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "newSession") {
+    interactiveRunnerManager?.disposeAll();
     startNewSession(currentCli);
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, null);
@@ -536,7 +564,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
   if (message.type === "updateSetting" && message.key) {
     const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-    await config.update(message.key, message.value, vscode.ConfigurationTarget.Global);
+    const target = message.key.startsWith("interactive.")
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    await config.update(message.key, message.value, target);
     await postPanelState();
     return;
   }
@@ -561,6 +592,10 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     thinkingMode: getThinkingMode(currentCli),
+    interactive: {
+      supported: isInteractiveSupported(currentCli),
+      enabled: getInteractiveEnabled(currentCli),
+    },
     rulePaths: {
       global: CLI_RULE_PATHS_GLOBAL,
       project: getProjectRulePaths(),
@@ -580,7 +615,7 @@ function ensureWorkspaceSessionStore(): void {
   if (workspaceKey === activeWorkspaceKey) {
     return;
   }
-  if (activeProcess) {
+  if (activeProcess || activeInteractiveStop) {
     pendingWorkspaceKey = workspaceKey;
     return;
   }
@@ -591,6 +626,8 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   activeWorkspaceKey = workspaceKey;
   sessionStore = loadSessionStore();
   sessionMessageCache.clear();
+  interactiveRunnerManager?.disposeAll();
+  suppressCompactPrompt.clear();
   for (const cli of CLI_LIST) {
     pendingSessionLabels[cli] = null;
     pendingSessionMessages[cli] = [];
@@ -1105,7 +1142,39 @@ async function runPrompt(prompt: string): Promise<void> {
   if (!prompt) {
     return;
   }
-  if (activeProcess) {
+
+  const interactiveEnabled = getInteractiveEnabled(currentCli);
+  const shouldUseInteractive = interactiveEnabled && isInteractiveSupported(currentCli);
+
+  if (shouldUseInteractive) {
+    try {
+      await runPromptInteractive(prompt);
+      return;
+    } catch (error) {
+      void logError("runPrompt-interactive-fallback", {
+        cli: currentCli,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      sendPanelMessage({
+        type: "appendMessage",
+        message: {
+          id: createMessageId(),
+          role: "system",
+          content: "交互模式初始化/运行失败，已自动降级为普通模式。",
+          createdAt: Date.now(),
+        },
+      });
+    }
+  }
+
+  await runPromptOneShot(prompt);
+}
+
+async function runPromptOneShot(prompt: string): Promise<void> {
+  if (!prompt) {
+    return;
+  }
+  if (activeProcess || activeInteractiveStop) {
     stopActiveRun();
     void logInfo("runPrompt-preempt", { cli: currentCli });
   }
@@ -1402,6 +1471,505 @@ async function runPrompt(prompt: string): Promise<void> {
   });
 }
 
+function getCompactPromptKey(cli: CliName, sessionId: string): string {
+  return `${activeWorkspaceKey}:${cli}:${sessionId}`;
+}
+
+function estimateSessionSize(messages: ChatMessage[]): { turns: number; chars: number } {
+  const turns = messages.filter((message) => message.role === "user" && message.content.trim()).length;
+  const chars = messages.reduce((sum, message) => sum + (message.content?.length ?? 0), 0);
+  return { turns, chars };
+}
+
+function extractRecentTurns(messages: ChatMessage[], maxTurns: number): ChatMessage[] {
+  // Keep the last N user turns (+ following assistant if present).
+  const result: ChatMessage[] = [];
+  let collected = 0;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg) {
+      continue;
+    }
+    if (msg.role === "user") {
+      // include assistant after this user message if it exists
+      const assistant = messages[i + 1];
+      if (assistant && assistant.role === "assistant") {
+        result.push(assistant);
+      }
+      result.push(msg);
+      collected += 1;
+      if (collected >= maxTurns) {
+        break;
+      }
+    }
+  }
+  return result.reverse();
+}
+
+function formatTurnsForBootstrap(messages: ChatMessage[]): string {
+  const lines: string[] = [];
+  for (const message of messages) {
+    const content = (message.content ?? "").trimEnd();
+    if (!content) {
+      continue;
+    }
+    if (message.role === "user") {
+      lines.push("USER:");
+      lines.push(content);
+      lines.push("");
+    } else if (message.role === "assistant") {
+      lines.push("ASSISTANT:");
+      lines.push(content);
+      lines.push("");
+    }
+  }
+  return lines.join("\n").trim() + "\n";
+}
+
+function buildCompactionPrompt(): string {
+  return [
+    "请把当前会话压缩为结构化摘要，输出必须是纯文本（不要 Markdown）。",
+    "要求：",
+    "1) 保留关键信息，避免冗余。",
+    "2) 每条尽量短，必要时引用关键文件路径/命令/结论。",
+    "3) 严格按照以下模板输出，并保持标题不变：",
+    "",
+    "【会话摘要】",
+    "FACTS:",
+    "- ...",
+    "TODOS:",
+    "- [ ] ...",
+    "DECISIONS:",
+    "- ...",
+    "CONSTRAINTS:",
+    "- ...",
+    "INDEX:",
+    "- file: <path> - <note>",
+    "- cmd: <command> - <note>",
+    "- conclusion: <text> - <note>",
+  ].join("\n");
+}
+
+function appendTraceMessage(content: string, kind: "thinking" | "normal" = "normal"): void {
+  if (!activeMessageTarget) {
+    return;
+  }
+  if (!content.trim()) {
+    return;
+  }
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "trace",
+    content,
+    createdAt: Date.now(),
+    kind,
+  };
+  appendMessageToStore(activeMessageTarget, message);
+  sendPanelMessage({ type: "traceSegment", content, kind });
+}
+
+function appendSystemMessage(content: string): void {
+  if (!activeMessageTarget) {
+    return;
+  }
+  if (!content.trim()) {
+    return;
+  }
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content,
+    createdAt: Date.now(),
+  };
+  appendMessageToStore(activeMessageTarget, message);
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+async function runPromptInteractive(prompt: string): Promise<void> {
+  if (!prompt) {
+    return;
+  }
+  if (activeProcess || activeInteractiveStop) {
+    stopActiveRun();
+    void logInfo("runPrompt-preempt", { cli: currentCli });
+  }
+
+  const cli = currentCli;
+  const cwd = resolveWorkspaceCwd();
+  const thinkingMode = getThinkingMode(cli);
+  applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
+  preparePendingLabel(cli, prompt);
+
+  const sessionId = getCurrentSessionId(cli);
+  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt);
+  const messageTarget = sessionId ? loadSessionMessages(cli, sessionId) : pendingSessionMessages[cli];
+
+  let shouldCompact = false;
+  if (sessionId && (cli === "codex" || cli === "claude")) {
+    const key = getCompactPromptKey(cli, sessionId);
+    if (!suppressCompactPrompt.has(key)) {
+      const size = estimateSessionSize(messageTarget);
+      if (
+        size.turns >= CONTEXT_COMPACT_TURN_THRESHOLD
+        || size.chars >= CONTEXT_COMPACT_CHAR_THRESHOLD
+      ) {
+        const selection = await vscode.window.showInformationMessage(
+          `当前会话较长（轮数 ${size.turns} / 字符 ${size.chars}），建议压缩上下文以提升性能。`,
+          "现在压缩",
+          "这次跳过",
+          "本会话不再提示"
+        );
+        if (selection === "本会话不再提示") {
+          suppressCompactPrompt.add(key);
+        } else if (selection === "现在压缩") {
+          shouldCompact = true;
+        }
+      }
+    }
+  }
+
+  const userMessageId = createMessageId();
+  const runId = createMessageId();
+  activeRunId = runId;
+  startTaskRun(runId, cli, sessionId, prompt);
+  activeMessageTarget = messageTarget;
+  activeSessionId = sessionId;
+  activeCliForRun = cli;
+
+  appendMessageToStore(messageTarget, {
+    id: userMessageId,
+    role: "user",
+    content: prompt,
+    createdAt: Date.now(),
+  });
+  activeAssistantMessageId = undefined;
+  activeMessageIndex = null;
+  activeCompletionSent = false;
+
+  sendRunStatus("start");
+
+  const cleanupAfterRun = (status: TaskRunStatus, userMessage?: string): void => {
+    sendRunStatus(status === "end" ? "end" : status, userMessage);
+    appendCompletionMessage(status);
+    persistActiveMessages();
+    clearActiveRun();
+  };
+
+  let stopCurrentTurn: (() => void) | null = null;
+
+  const stopFn = (): void => {
+    if (activeRunId !== runId) {
+      return;
+    }
+    // Prevent re-entry; also ensures later abort errors won't clobber UI state.
+    if (activeInteractiveStop === stopFn) {
+      activeInteractiveStop = null;
+    }
+    const removedPlaceholder = removeActiveAssistantPlaceholder();
+    appendStopMessageToStore();
+    try {
+      stopCurrentTurn?.();
+    } catch {
+      // ignore
+    }
+    interactiveRunnerManager?.stopCurrentTurnAndRebuild();
+    void logInfo("runPrompt-stopped", { cli });
+    sendRunStatus("stopped", "用户已终止");
+    appendCompletionMessage("stopped");
+    if (removedPlaceholder && activeAssistantMessageId) {
+      sendPanelMessage({ type: "removeMessage", id: activeAssistantMessageId });
+    }
+    persistActiveMessages();
+    clearActiveRun();
+  };
+  activeInteractiveStop = stopFn;
+
+  const args = getCliArgs(cli);
+  const command = getCliCommand(cli);
+
+  const ensureSessionIdForNewSession = (newId: string): void => {
+    if (getCurrentSessionId(cli)) {
+      return;
+    }
+    adoptSessionId(cli, newId);
+    upsertInteractiveMapping(cli, newId, newId);
+  };
+
+  try {
+    if (cli === "codex") {
+      const mappedThreadId = sessionId ? resolveInteractiveMappedId(cli, sessionId) : null;
+      let runner = sessionId
+        ? interactiveRunnerManager.getOrCreateCodexRunner({
+            sessionId,
+            threadId: mappedThreadId,
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+          })
+        : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+            threadId: null,
+          });
+
+      let compactionSummary: string | null = null;
+      let oldThreadId: string | null = null;
+      let freezeOldThreadId: string | null = null;
+
+      if (shouldCompact && sessionId) {
+        oldThreadId = mappedThreadId;
+        try {
+          stopCurrentTurn = () => runner.stopAndRebuild();
+          const summaryResult = await runner.runForText(buildCompactionPrompt());
+          compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+        } catch (error) {
+          compactionSummary = null;
+          appendSystemMessage("上下文压缩失败（摘要任务执行异常），已继续原始请求。");
+          void logError("context-compact-summary-failed", {
+            cli,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        if (compactionSummary && oldThreadId) {
+          // Freeze happens when new thread starts (so we can record old->new).
+          freezeOldThreadId = oldThreadId;
+          const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
+          const bootstrap = [
+            "你正在继续一个已压缩上下文的会话。",
+            "",
+            compactionSummary,
+            "",
+            "【最近对话】",
+            formatTurnsForBootstrap(recent),
+            "【当前请求】",
+            thinkingPrompt,
+          ].join("\n");
+
+          // Create a brand new thread for the real user prompt.
+          runner.dispose();
+          runner = new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+            threadId: null,
+          });
+
+          stopCurrentTurn = () => runner.stopAndRebuild();
+          await runner.runStreamed(bootstrap, {
+            onAssistantDelta: (chunk) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendAssistantChunk(chunk);
+            },
+            onTrace: (content, kind) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+            },
+            onTaskListUpdate: (items) => {
+              sendPanelMessage({ type: "taskListUpdate", items });
+            },
+            onThreadId: (threadId) => {
+              if (!sessionId) {
+                ensureSessionIdForNewSession(threadId);
+                interactiveRunnerManager.setCurrentRunner("codex", threadId, runner);
+                return;
+              }
+              if (freezeOldThreadId) {
+                upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: freezeOldThreadId });
+                appendSystemMessage(`【会话摘要】已压缩：${freezeOldThreadId} -> ${threadId}`);
+                if (compactionSummary) {
+                  appendTraceMessage(compactionSummary);
+                }
+                interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner);
+              }
+            },
+          });
+          cleanupAfterRun("end");
+          return;
+        }
+      }
+
+      // Normal interactive run (no compaction)
+      let uiSessionId: string | null = sessionId;
+      stopCurrentTurn = () => runner.stopAndRebuild();
+      await runner.runStreamed(thinkingPrompt, {
+        onAssistantDelta: (chunk) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendAssistantChunk(chunk);
+        },
+        onTrace: (content, kind) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+        },
+        onTaskListUpdate: (items) => {
+          sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onThreadId: (threadId) => {
+          if (!uiSessionId) {
+            ensureSessionIdForNewSession(threadId);
+            uiSessionId = threadId;
+          } else {
+            upsertInteractiveMapping(cli, uiSessionId, threadId);
+          }
+          interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner);
+        },
+      });
+      cleanupAfterRun("end");
+      return;
+    }
+
+    if (cli === "claude") {
+      const mappedSessionId = sessionId ? resolveInteractiveMappedId(cli, sessionId) : null;
+      let runner = sessionId
+        ? interactiveRunnerManager.getOrCreateClaudeRunner({
+            sessionId,
+            mappedSessionId,
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+          })
+        : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+            sessionId: null,
+          });
+
+      let compactionSummary: string | null = null;
+      const oldId = mappedSessionId;
+
+      if (shouldCompact && sessionId) {
+        try {
+          stopCurrentTurn = () => runner.stopAndRebuild();
+          const summaryResult = await runner.runForText(buildCompactionPrompt());
+          compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+        } catch (error) {
+          compactionSummary = null;
+          appendSystemMessage("上下文压缩失败（摘要任务执行异常），已继续原始请求。");
+          void logError("context-compact-summary-failed", {
+            cli,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        if (compactionSummary && oldId) {
+          const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
+          const bootstrap = [
+            "你正在继续一个已压缩上下文的会话。",
+            "",
+            compactionSummary,
+            "",
+            "【最近对话】",
+            formatTurnsForBootstrap(recent),
+            "【当前请求】",
+            thinkingPrompt,
+          ].join("\n");
+
+          runner.dispose();
+          runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+            command,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+            sessionId: null,
+          });
+
+          stopCurrentTurn = () => runner.stopAndRebuild();
+          await runner.runStreamed(bootstrap, {
+            onAssistantDelta: (chunk) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendAssistantChunk(chunk);
+            },
+            onTrace: (content) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendTraceMessage(content);
+            },
+            onTaskListUpdate: (items) => {
+              sendPanelMessage({ type: "taskListUpdate", items });
+            },
+            onSessionId: (newSessionId) => {
+              upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: oldId });
+              appendSystemMessage(`【会话摘要】已压缩：${oldId} -> ${newSessionId}`);
+              if (compactionSummary) {
+                appendTraceMessage(compactionSummary);
+              }
+              interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner);
+            },
+          });
+          cleanupAfterRun("end");
+          return;
+        }
+      }
+
+      let uiSessionId: string | null = sessionId;
+      stopCurrentTurn = () => runner.stopAndRebuild();
+      await runner.runStreamed(thinkingPrompt, {
+        onAssistantDelta: (chunk) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendAssistantChunk(chunk);
+        },
+        onTrace: (content) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendTraceMessage(content);
+        },
+        onTaskListUpdate: (items) => {
+          sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onSessionId: (newSessionId) => {
+          if (!uiSessionId) {
+            ensureSessionIdForNewSession(newSessionId);
+            uiSessionId = newSessionId;
+          } else {
+            upsertInteractiveMapping(cli, uiSessionId, newSessionId);
+          }
+          interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner);
+        },
+      });
+      cleanupAfterRun("end");
+      return;
+    }
+
+    // Unsupported: fall back to one-shot.
+    await runPromptOneShot(prompt);
+  } catch (error) {
+    if (activeRunId !== runId) {
+      // This run was preempted/stopped; ignore errors from aborted streams.
+      return;
+    }
+    void logError("runPrompt-interactive-error", {
+      cli,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
+    throw error;
+  } finally {
+    if (activeInteractiveStop === stopFn) {
+      activeInteractiveStop = null;
+    }
+  }
+}
+
 function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
   const configKey = `sinitek-cli-tools.commands.${cli}`;
   if (process.platform === "win32") {
@@ -1420,6 +1988,10 @@ function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
 }
 
 function stopActiveRun(): void {
+  if (activeInteractiveStop) {
+    activeInteractiveStop();
+    return;
+  }
   if (!activeProcess) {
     return;
   }
@@ -1441,6 +2013,7 @@ function stopActiveRun(): void {
 
 function clearActiveRun(): void {
   activeProcess = undefined;
+  activeInteractiveStop = null;
   activeAssistantMessageId = undefined;
   activeTraceMessageId = undefined;
   activeTraceBuffer = "";
@@ -2080,6 +2653,58 @@ function getSessionFilePath(): string {
   return path.join(SESSION_DIR, `${activeWorkspaceKey}.json`);
 }
 
+function getSessionMetaFilePath(): string {
+  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+    return path.join(DATA_DIR, "sessions.meta.json");
+  }
+  return path.join(SESSION_DIR, `${activeWorkspaceKey}.meta.json`);
+}
+
+function readSessionMetaStore(): ReturnType<typeof readSessionMeta> {
+  return readSessionMeta(getSessionMetaFilePath());
+}
+
+function writeSessionMetaStore(meta: ReturnType<typeof readSessionMeta>): void {
+  writeSessionMeta(getSessionMetaFilePath(), meta);
+}
+
+function resolveInteractiveMappedId(cli: CliName, sessionId: string): string {
+  const meta = readSessionMetaStore();
+  const mapped = getMappedThreadId(meta, cli, sessionId);
+  return mapped ?? sessionId;
+}
+
+function upsertInteractiveMapping(
+  cli: CliName,
+  sessionId: string,
+  mappedId: string,
+  options: { freezePrevious?: string } = {}
+): void {
+  const meta = readSessionMetaStore();
+  const next = upsertMapping(meta, cli, sessionId, mappedId, {
+    freezePrevious: options.freezePrevious,
+    maxFrozen: FROZEN_THREAD_LIMIT,
+  });
+  writeSessionMetaStore(next);
+}
+
+function deleteInteractiveMapping(cli: CliName, sessionId: string): void {
+  const meta = readSessionMetaStore() as any;
+  if (!meta?.byCli) {
+    return;
+  }
+  if (cli === "codex" && meta.byCli.codex && meta.byCli.codex[sessionId]) {
+    delete meta.byCli.codex[sessionId];
+    writeSessionMetaStore(meta);
+    return;
+  }
+  if (cli === "claude" && meta.byCli.claude && meta.byCli.claude[sessionId]) {
+    delete meta.byCli.claude[sessionId];
+    writeSessionMetaStore(meta);
+    return;
+  }
+}
+
 function getMessageDir(): string {
   if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
     return LEGACY_MESSAGE_DIR;
@@ -2207,6 +2832,7 @@ function deleteSession(cli: CliName, sessionId: string): void {
   }
   sessions.splice(index, 1);
   sessionMessageCache.delete(getSessionKey(cli, sessionId));
+  deleteInteractiveMapping(cli, sessionId);
   const filePath = getMessageFile(cli, sessionId);
   try {
     if (fs.existsSync(filePath)) {
@@ -2232,6 +2858,14 @@ function clearAllSessions(): void {
     clearMessageStorage();
   } catch (error) {
     void logError("session-messages-clear-error", { error: String(error) });
+  }
+  try {
+    const metaFile = getSessionMetaFilePath();
+    if (fs.existsSync(metaFile)) {
+      fs.unlinkSync(metaFile);
+    }
+  } catch (error) {
+    void logError("session-meta-clear-error", { error: String(error) });
   }
   void persistSessionStore(sessionStore);
   void logInfo("session-clear-all", {});
