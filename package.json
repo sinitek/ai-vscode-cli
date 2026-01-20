@@ -120,6 +120,11 @@
           "default": true,
           "description": "Persist the selected CLI as the default CLI."
         },
+        "sinitek-cli-tools.debug": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable debug logging for CLI stdin/stdout/stderr."
+        },
         "sinitek-cli-tools.interactive.codex": {
           "type": "boolean",
           "default": true,

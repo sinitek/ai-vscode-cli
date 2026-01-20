@@ -51,6 +51,8 @@ type CliRawLog = {
   cwd?: string;
   exitCode?: number | null;
   error?: string;
+  stdin?: string;
+  stdout?: string;
   raw: string;
   stderr?: string;
 };
@@ -76,6 +78,8 @@ export async function logCliRaw(
     cwd: payload.cwd,
     exitCode: payload.exitCode,
     error: payload.error,
+    stdin: payload.stdin,
+    stdout: payload.stdout ?? payload.raw,
     raw: payload.raw,
     stderr: payload.stderr,
   };
@@ -119,6 +123,68 @@ export async function logCliStream(
     content: normalized,
   };
   await fs.appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+}
+
+type CliInteractiveStart = {
+  command: string;
+  args: string[];
+  cwd?: string;
+  stdin?: string;
+};
+
+function formatCliPrefix(sessionLabel: string, tag: string, time: string): string {
+  return `[${time}] [session:${sessionLabel}] [${tag}]`;
+}
+
+function normalizeCliContent(content: string): string {
+  return content.replace(/\r\n/g, "\n");
+}
+
+function prefixCliContent(prefix: string, content: string): string {
+  const normalized = normalizeCliContent(content);
+  const lines = normalized.split("\n");
+  return lines.map((line) => `${prefix} ${line}`).join("\n");
+}
+
+export async function logCliInteractiveStart(
+  cli: string,
+  sessionId: string | null | undefined,
+  payload: CliInteractiveStart
+): Promise<void> {
+  if (!logsDirPath) {
+    return;
+  }
+  const date = formatLocalDate(new Date());
+  const filePath = path.join(logsDirPath, `sinitek-cli.${cli}.${date}.log`);
+  const time = new Date().toISOString();
+  const sessionLabel = sessionId ?? "new";
+  const commandLine = [payload.command, ...payload.args].join(" ").trim();
+  const lines: string[] = [];
+  lines.push(`${formatCliPrefix(sessionLabel, "command", time)} ${commandLine}`);
+  if (payload.cwd) {
+    lines.push(`${formatCliPrefix(sessionLabel, "cwd", time)} ${payload.cwd}`);
+  }
+  if (payload.stdin !== undefined) {
+    lines.push(prefixCliContent(formatCliPrefix(sessionLabel, "stdin", time), payload.stdin));
+  }
+  await fs.appendFile(filePath, `${lines.join("\n")}\n`, "utf8");
+}
+
+export async function logCliInteractiveOutput(
+  cli: string,
+  sessionId: string | null | undefined,
+  stream: "stdout" | "stderr" | "event" | "trace",
+  content: string
+): Promise<void> {
+  if (!logsDirPath || !content) {
+    return;
+  }
+  const date = formatLocalDate(new Date());
+  const filePath = path.join(logsDirPath, `sinitek-cli.${cli}.${date}.log`);
+  const time = new Date().toISOString();
+  const sessionLabel = sessionId ?? "new";
+  const prefixed = prefixCliContent(formatCliPrefix(sessionLabel, stream, time), content);
+  await fs.appendFile(filePath, `${prefixed}\n`, "utf8");
 }
 
 async function appendLog(

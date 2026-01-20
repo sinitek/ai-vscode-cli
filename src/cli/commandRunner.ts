@@ -10,6 +10,7 @@ type RunCliOptions = {
   thinkingMode?: ThinkingMode;
 };
 
+const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
 const LOCAL_SESSION_PREFIX = "local_";
 const KILL_GRACE_MS = 2000;
 
@@ -159,6 +160,7 @@ type StreamHandlers = {
 type RunStreamOptions = RunCliOptions & {
   cwd?: string;
   sessionId?: string | null;
+  processLabel?: string;
 };
 
 export type RunProcess = {
@@ -191,6 +193,11 @@ export function buildCliArgs(
   }
 
   return buildPromptArgs(cli, sharedArgs, prompt);
+}
+
+export function buildProcessLabel(cli: CliName, sessionId?: string | null): string {
+  const suffix = sessionId ? sessionId : "new";
+  return `${PROCESS_LABEL_PREFIX}-${cli}/${suffix}`;
 }
 
 function buildSessionArgs(
@@ -270,9 +277,11 @@ export function runCliStream(
     };
   }
   const fullArgs = buildCliArgs(cli, options, prompt);
+  const processLabel = options.processLabel;
   const child = spawn(resolved.command, fullArgs, {
     cwd: options.cwd,
     env: process.env,
+    argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],

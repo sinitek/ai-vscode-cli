@@ -28,6 +28,11 @@ export function getRememberSelectedCli(): boolean {
   return config.get<boolean>("rememberSelectedCli", true);
 }
 
+export function getDebugLogging(): boolean {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return config.get<boolean>("debug", true);
+}
+
 export function isInteractiveSupported(cli: CliName): boolean {
   return cli === "codex" || cli === "claude";
 }

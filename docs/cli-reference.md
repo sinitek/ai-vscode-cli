@@ -9,6 +9,7 @@
 - 仍会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径（用于 SDK 的 path override）。
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
 - SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
+- 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
 
 ## Windows 注意事项（找不到命令 / ENOENT）
 

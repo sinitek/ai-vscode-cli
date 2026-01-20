@@ -50,6 +50,7 @@ export type PanelState = {
   currentCli: CliName;
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
+  debug: boolean;
   thinkingMode: ThinkingMode;
   interactive: {
     supported: boolean;

@@ -85,6 +85,11 @@ npm init @vscode/extension
           "type": "array",
           "items": { "type": "string" },
           "default": ["-y"]
+        },
+        "sinitek-cli-tools.debug": {
+          "type": "boolean",
+          "default": true,
+          "description": "开启调试日志，记录 CLI stdin/stdout/stderr。"
         }
       }
     }
@@ -260,6 +265,8 @@ export function activate(context: vscode.ExtensionContext) {
 ```
 F5
 ```
+
+如需查看底层 CLI 的标准输入/输出/错误，可在设置中勾选 `sinitek-cli-tools.debug`，日志会写入 `~/.sinitek_cli/logs`。
 
 在新窗口中打开命令面板，执行：
 - `CLI Bridge: Select CLI`

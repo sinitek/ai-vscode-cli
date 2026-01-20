@@ -7,6 +7,7 @@ import {
   getAutoOpenPanel,
   getDefaultCli,
   getRememberSelectedCli,
+  getDebugLogging,
   getCliCommand,
   getCliArgs,
   getInteractiveEnabled,
@@ -16,7 +17,7 @@ import {
   getThinkingPromptSuffix,
   getThinkingWorkspaceFiles,
 } from "./cli/config";
-import { buildCliArgs, runCli, runCliStream, type RunProcess } from "./cli/commandRunner";
+import { buildCliArgs, buildProcessLabel, runCli, runCliStream, type RunProcess } from "./cli/commandRunner";
 import { CliName, CLI_LIST, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
@@ -26,7 +27,16 @@ import {
   SessionSummary,
   UploadFilePayload,
 } from "./webview/types";
-import { initLogger, logCliRaw, logCliStream, logDebug, logError, logInfo } from "./logger";
+import {
+  initLogger,
+  logCliRaw,
+  logCliStream,
+  logCliInteractiveStart,
+  logCliInteractiveOutput,
+  logDebug,
+  logError,
+  logInfo,
+} from "./logger";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
@@ -58,6 +68,8 @@ let activeMessageTarget: ChatMessage[] | null = null;
 let activeMessageIndex: number | null = null;
 let activeSessionId: string | null = null;
 let activeCliForRun: CliName | null = null;
+let activeProcessTitleRunId: string | null = null;
+let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
 let sessionStore: SessionStore;
 let configManagerPanel: ConfigManagerPanel | undefined;
@@ -591,6 +603,7 @@ async function buildPanelState(): Promise<PanelState> {
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
+    debug: getDebugLogging(),
     thinkingMode: getThinkingMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -1138,6 +1151,44 @@ function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
 
+type ErrorInfo = {
+  message: string;
+  name?: string;
+  code?: string;
+  stack?: string;
+};
+
+function getErrorInfo(error: unknown): ErrorInfo {
+  if (error instanceof Error) {
+    const code = typeof (error as { code?: unknown }).code === "string"
+      ? String((error as { code?: unknown }).code)
+      : undefined;
+    return {
+      message: error.message,
+      name: error.name,
+      code,
+      stack: error.stack,
+    };
+  }
+  if (typeof error === "string") {
+    return { message: error };
+  }
+  if (error && typeof error === "object") {
+    const record = error as { message?: unknown; name?: unknown; code?: unknown; stack?: unknown };
+    const message = typeof record.message === "string" ? record.message : String(error);
+    const name = typeof record.name === "string" ? record.name : undefined;
+    const code = typeof record.code === "string" ? record.code : undefined;
+    const stack = typeof record.stack === "string" ? record.stack : undefined;
+    return { message, name, code, stack };
+  }
+  return { message: String(error) };
+}
+
+function isAbortErrorInfo(info: ErrorInfo): boolean {
+  const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
+  return combined.includes("abort");
+}
+
 async function runPrompt(prompt: string): Promise<void> {
   if (!prompt) {
     return;
@@ -1151,9 +1202,23 @@ async function runPrompt(prompt: string): Promise<void> {
       await runPromptInteractive(prompt);
       return;
     } catch (error) {
+      const info = getErrorInfo(error);
+      if (isAbortErrorInfo(info)) {
+        void logInfo("runPrompt-interactive-abort-ignored", {
+          cli: currentCli,
+          error: info.message,
+          errorName: info.name,
+          errorCode: info.code,
+          errorStack: info.stack,
+        });
+        return;
+      }
       void logError("runPrompt-interactive-fallback", {
         cli: currentCli,
-        error: error instanceof Error ? error.message : String(error),
+        error: info.message,
+        errorName: info.name,
+        errorCode: info.code,
+        errorStack: info.stack,
       });
       sendPanelMessage({
         type: "appendMessage",
@@ -1188,6 +1253,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   preparePendingLabel(currentCli, prompt);
   const sessionId = getCurrentSessionId(currentCli);
   const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, prompt);
+  const debugLogging = getDebugLogging();
   const messageTarget = sessionId
     ? loadSessionMessages(currentCli, sessionId)
     : pendingSessionMessages[currentCli];
@@ -1204,6 +1270,8 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   const userMessageId = createMessageId();
   const runId = createMessageId();
   activeRunId = runId;
+  const processLabel = buildProcessLabel(currentCli, sessionId ?? runId);
+  applyProcessTitle(runId, currentCli, sessionId);
   startTaskRun(runId, currentCli, sessionId, prompt);
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
@@ -1328,7 +1396,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
-        if (currentCli !== "codex") {
+        if (debugLogging) {
           void logCliStream(currentCli, activeSessionId, "stdout", chunk);
         }
       },
@@ -1355,7 +1423,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
-        if (currentCli !== "codex") {
+        if (debugLogging) {
           void logCliStream(currentCli, activeSessionId, "stderr", chunk);
         }
       },
@@ -1402,12 +1470,14 @@ async function runPromptOneShot(prompt: string): Promise<void> {
             }
           }
         }
-        if (currentCli !== "codex") {
+        if (debugLogging) {
           void logCliRaw(currentCli, activeSessionId, {
             command,
             args,
             cwd,
             exitCode: code,
+            stdin: thinkingPrompt,
+            stdout: rawStdout,
             raw: rawStdout,
             stderr: rawStderr,
           });
@@ -1444,12 +1514,14 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           cli: currentCli,
           error: isNotFound ? `${error.message} (ENOENT)` : error.message,
         });
-        if (currentCli !== "codex") {
+        if (debugLogging) {
           void logCliRaw(currentCli, activeSessionId, {
             command,
             args,
             cwd,
             error: error.message,
+            stdin: thinkingPrompt,
+            stdout: rawStdout,
             raw: rawStdout,
             stderr: rawStderr,
           });
@@ -1463,8 +1535,8 @@ async function runPromptOneShot(prompt: string): Promise<void> {
         clearActiveRun();
       },
     },
-    { cwd, sessionId }
-  );
+      { cwd, sessionId, processLabel }
+    );
   void logInfo("runPrompt-spawned", {
     cli: currentCli,
     pid: activeProcess?.pid ?? null,
@@ -1602,7 +1674,17 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
   const sessionId = getCurrentSessionId(cli);
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt);
+  const debugLogging = getDebugLogging();
+  const args = getCliArgs(cli);
+  const command = getCliCommand(cli);
   const messageTarget = sessionId ? loadSessionMessages(cli, sessionId) : pendingSessionMessages[cli];
+  void logInfo("runPrompt-interactive-start", {
+    cli,
+    sessionId,
+    thinkingMode,
+    cwd,
+    promptLength: prompt.length,
+  });
 
   let shouldCompact = false;
   if (sessionId && (cli === "codex" || cli === "claude")) {
@@ -1613,12 +1695,23 @@ async function runPromptInteractive(prompt: string): Promise<void> {
         size.turns >= CONTEXT_COMPACT_TURN_THRESHOLD
         || size.chars >= CONTEXT_COMPACT_CHAR_THRESHOLD
       ) {
+        void logInfo("context-compact-suggested", {
+          cli,
+          sessionId,
+          turns: size.turns,
+          chars: size.chars,
+        });
         const selection = await vscode.window.showInformationMessage(
           `当前会话较长（轮数 ${size.turns} / 字符 ${size.chars}），建议压缩上下文以提升性能。`,
           "现在压缩",
           "这次跳过",
           "本会话不再提示"
         );
+        void logInfo("context-compact-selection", {
+          cli,
+          sessionId,
+          selection: selection ?? "dismissed",
+        });
         if (selection === "本会话不再提示") {
           suppressCompactPrompt.add(key);
         } else if (selection === "现在压缩") {
@@ -1631,6 +1724,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   const userMessageId = createMessageId();
   const runId = createMessageId();
   activeRunId = runId;
+  applyProcessTitle(runId, cli, sessionId);
   startTaskRun(runId, cli, sessionId, prompt);
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
@@ -1646,9 +1740,95 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   activeMessageIndex = null;
   activeCompletionSent = false;
 
+  let interactiveInput = thinkingPrompt;
+  let rawStdout = "";
+  let rawStderr = "";
+  let didLogInteractiveIo = false;
+  let didLogInteractiveStart = false;
+  const startInteractiveLog = (input: string): void => {
+    if (!debugLogging || didLogInteractiveStart) {
+      return;
+    }
+    didLogInteractiveStart = true;
+    interactiveInput = input;
+    rawStdout = "";
+    rawStderr = "";
+    void logCliInteractiveStart(cli, activeSessionId, {
+      command,
+      args,
+      cwd,
+      stdin: input,
+    });
+  };
+  const appendDebugStdout = (chunk: string): void => {
+    if (!debugLogging) {
+      return;
+    }
+    rawStdout += chunk;
+    startInteractiveLog(interactiveInput);
+    void logCliInteractiveOutput(cli, activeSessionId, "stdout", chunk);
+  };
+  const appendTraceLog = (content: string): void => {
+    if (!debugLogging) {
+      return;
+    }
+    if (!content.trim()) {
+      return;
+    }
+    const normalized = content.endsWith("\n") ? content : content + "\n";
+    rawStderr += normalized;
+    startInteractiveLog(interactiveInput);
+    void logCliInteractiveOutput(cli, activeSessionId, "trace", normalized);
+  };
+  const appendDebugEvent = (event: unknown): void => {
+    if (!debugLogging) {
+      return;
+    }
+    let text = "";
+    if (typeof event === "string") {
+      text = event;
+    } else {
+      try {
+        text = JSON.stringify(event);
+      } catch {
+        text = String(event);
+      }
+    }
+    if (!text.trim()) {
+      return;
+    }
+    startInteractiveLog(interactiveInput);
+    void logCliInteractiveOutput(cli, activeSessionId, "event", text);
+  };
+  const logInteractiveIo = (status: TaskRunStatus, userMessage?: string): void => {
+    if (!debugLogging || didLogInteractiveIo) {
+      return;
+    }
+    didLogInteractiveIo = true;
+    void logCliRaw(cli, activeSessionId, {
+      command,
+      args,
+      cwd,
+      exitCode: status === "end" ? 0 : null,
+      error: status === "error" ? userMessage : undefined,
+      stdin: interactiveInput,
+      stdout: rawStdout,
+      raw: rawStdout,
+      stderr: rawStderr,
+    });
+  };
+
   sendRunStatus("start");
 
   const cleanupAfterRun = (status: TaskRunStatus, userMessage?: string): void => {
+    void logInfo("runPrompt-interactive-end", {
+      cli,
+      sessionId,
+      runId,
+      status,
+      message: userMessage ?? null,
+    });
+    logInteractiveIo(status, userMessage);
     sendRunStatus(status === "end" ? "end" : status, userMessage);
     appendCompletionMessage(status);
     persistActiveMessages();
@@ -1661,6 +1841,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     if (activeRunId !== runId) {
       return;
     }
+    void logInfo("runPrompt-interactive-stop-requested", { cli, sessionId, runId });
     // Prevent re-entry; also ensures later abort errors won't clobber UI state.
     if (activeInteractiveStop === stopFn) {
       activeInteractiveStop = null;
@@ -1672,6 +1853,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     } catch {
       // ignore
     }
+    logInteractiveIo("stopped", "用户已终止");
     interactiveRunnerManager?.stopCurrentTurnAndRebuild();
     void logInfo("runPrompt-stopped", { cli });
     sendRunStatus("stopped", "用户已终止");
@@ -1683,9 +1865,6 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     clearActiveRun();
   };
   activeInteractiveStop = stopFn;
-
-  const args = getCliArgs(cli);
-  const command = getCliCommand(cli);
 
   const ensureSessionIdForNewSession = (newId: string): void => {
     if (getCurrentSessionId(cli)) {
@@ -1734,6 +1913,12 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           });
         }
         if (compactionSummary && oldThreadId) {
+          void logInfo("context-compact-summary", {
+            cli,
+            sessionId,
+            oldThreadId,
+            summaryLength: compactionSummary.length,
+          });
           // Freeze happens when new thread starts (so we can record old->new).
           freezeOldThreadId = oldThreadId;
           const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
@@ -1759,25 +1944,42 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           });
 
           stopCurrentTurn = () => runner.stopAndRebuild();
+          startInteractiveLog(bootstrap);
           await runner.runStreamed(bootstrap, {
             onAssistantDelta: (chunk) => {
               if (activeRunId !== runId) {
                 return;
               }
               appendAssistantChunk(chunk);
+              appendDebugStdout(chunk);
             },
             onTrace: (content, kind) => {
               if (activeRunId !== runId) {
                 return;
               }
               appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+              appendTraceLog(content);
+            },
+            onEvent: (event) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendDebugEvent(event);
             },
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items });
             },
             onThreadId: (threadId) => {
+              updateProcessTitle(cli, threadId);
               if (!sessionId) {
                 ensureSessionIdForNewSession(threadId);
+                void logInfo("runPrompt-interactive-codex-thread", {
+                  cli,
+                  sessionId: threadId,
+                  threadId,
+                  originalSessionId: null,
+                  mode: "compaction",
+                });
                 interactiveRunnerManager.setCurrentRunner("codex", threadId, runner);
                 return;
               }
@@ -1787,6 +1989,12 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                 if (compactionSummary) {
                   appendTraceMessage(compactionSummary);
                 }
+                void logInfo("runPrompt-interactive-codex-thread-compacted", {
+                  cli,
+                  sessionId,
+                  threadId,
+                  previousThreadId: freezeOldThreadId,
+                });
                 interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner);
               }
             },
@@ -1799,29 +2007,46 @@ async function runPromptInteractive(prompt: string): Promise<void> {
       // Normal interactive run (no compaction)
       let uiSessionId: string | null = sessionId;
       stopCurrentTurn = () => runner.stopAndRebuild();
+      startInteractiveLog(thinkingPrompt);
       await runner.runStreamed(thinkingPrompt, {
         onAssistantDelta: (chunk) => {
           if (activeRunId !== runId) {
             return;
           }
           appendAssistantChunk(chunk);
+          appendDebugStdout(chunk);
         },
         onTrace: (content, kind) => {
           if (activeRunId !== runId) {
             return;
           }
           appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+          appendTraceLog(content);
+        },
+        onEvent: (event) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendDebugEvent(event);
         },
         onTaskListUpdate: (items) => {
           sendPanelMessage({ type: "taskListUpdate", items });
         },
         onThreadId: (threadId) => {
+          updateProcessTitle(cli, threadId);
           if (!uiSessionId) {
             ensureSessionIdForNewSession(threadId);
             uiSessionId = threadId;
           } else {
             upsertInteractiveMapping(cli, uiSessionId, threadId);
           }
+          void logInfo("runPrompt-interactive-codex-thread", {
+            cli,
+            sessionId: uiSessionId,
+            threadId,
+            originalSessionId: sessionId,
+            mode: "normal",
+          });
           interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner);
         },
       });
@@ -1866,6 +2091,12 @@ async function runPromptInteractive(prompt: string): Promise<void> {
         }
 
         if (compactionSummary && oldId) {
+          void logInfo("context-compact-summary", {
+            cli,
+            sessionId,
+            oldThreadId: oldId,
+            summaryLength: compactionSummary.length,
+          });
           const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
           const bootstrap = [
             "你正在继续一个已压缩上下文的会话。",
@@ -1888,28 +2119,38 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           });
 
           stopCurrentTurn = () => runner.stopAndRebuild();
+          startInteractiveLog(bootstrap);
           await runner.runStreamed(bootstrap, {
             onAssistantDelta: (chunk) => {
               if (activeRunId !== runId) {
                 return;
               }
               appendAssistantChunk(chunk);
+              appendDebugStdout(chunk);
             },
             onTrace: (content) => {
               if (activeRunId !== runId) {
                 return;
               }
               appendTraceMessage(content);
+              appendTraceLog(content);
             },
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items });
             },
             onSessionId: (newSessionId) => {
+              updateProcessTitle(cli, newSessionId);
               upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: oldId });
               appendSystemMessage(`【会话摘要】已压缩：${oldId} -> ${newSessionId}`);
               if (compactionSummary) {
                 appendTraceMessage(compactionSummary);
               }
+              void logInfo("runPrompt-interactive-claude-session-compacted", {
+                cli,
+                sessionId,
+                newSessionId,
+                previousSessionId: oldId,
+              });
               interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner);
             },
           });
@@ -1920,29 +2161,40 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
       let uiSessionId: string | null = sessionId;
       stopCurrentTurn = () => runner.stopAndRebuild();
+      startInteractiveLog(thinkingPrompt);
       await runner.runStreamed(thinkingPrompt, {
         onAssistantDelta: (chunk) => {
           if (activeRunId !== runId) {
             return;
           }
           appendAssistantChunk(chunk);
+          appendDebugStdout(chunk);
         },
         onTrace: (content) => {
           if (activeRunId !== runId) {
             return;
           }
           appendTraceMessage(content);
+          appendTraceLog(content);
         },
         onTaskListUpdate: (items) => {
           sendPanelMessage({ type: "taskListUpdate", items });
         },
         onSessionId: (newSessionId) => {
+          updateProcessTitle(cli, newSessionId);
           if (!uiSessionId) {
             ensureSessionIdForNewSession(newSessionId);
             uiSessionId = newSessionId;
           } else {
             upsertInteractiveMapping(cli, uiSessionId, newSessionId);
           }
+          void logInfo("runPrompt-interactive-claude-session", {
+            cli,
+            sessionId: uiSessionId,
+            newSessionId,
+            originalSessionId: sessionId,
+            mode: "normal",
+          });
           interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner);
         },
       });
@@ -1957,9 +2209,24 @@ async function runPromptInteractive(prompt: string): Promise<void> {
       // This run was preempted/stopped; ignore errors from aborted streams.
       return;
     }
+    const info = getErrorInfo(error);
+    if (isAbortErrorInfo(info)) {
+      void logInfo("runPrompt-interactive-aborted", {
+        cli,
+        error: info.message,
+        errorName: info.name,
+        errorCode: info.code,
+        errorStack: info.stack,
+      });
+      cleanupAfterRun("stopped", "运行已终止");
+      return;
+    }
     void logError("runPrompt-interactive-error", {
       cli,
-      error: error instanceof Error ? error.message : String(error),
+      error: info.message,
+      errorName: info.name,
+      errorCode: info.code,
+      errorStack: info.stack,
     });
     cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
     throw error;
@@ -2012,6 +2279,7 @@ function stopActiveRun(): void {
 }
 
 function clearActiveRun(): void {
+  restoreProcessTitle();
   activeProcess = undefined;
   activeInteractiveStop = null;
   activeAssistantMessageId = undefined;
@@ -2931,6 +3199,33 @@ function getSessionIdPatterns(cli: CliName): RegExp[] {
   return base;
 }
 
+function applyProcessTitle(runId: string, cli: CliName, sessionId: string | null): void {
+  if (!activeProcessTitleBase) {
+    activeProcessTitleBase = process.title;
+  }
+  const labelId = sessionId ?? runId;
+  activeProcessTitleRunId = runId;
+  process.title = buildProcessLabel(cli, labelId);
+}
+
+function updateProcessTitle(cli: CliName, sessionId: string): void {
+  if (!activeRunId || activeRunId !== activeProcessTitleRunId || activeCliForRun !== cli) {
+    return;
+  }
+  process.title = buildProcessLabel(cli, sessionId);
+}
+
+function restoreProcessTitle(): void {
+  if (!activeProcessTitleRunId) {
+    return;
+  }
+  if (activeProcessTitleBase) {
+    process.title = activeProcessTitleBase;
+  }
+  activeProcessTitleBase = null;
+  activeProcessTitleRunId = null;
+}
+
 function adoptSessionId(cli: CliName, sessionId: string): void {
   const current = getCurrentSessionId(cli);
   if (current === sessionId) {
@@ -2939,6 +3234,7 @@ function adoptSessionId(cli: CliName, sessionId: string): void {
   setCurrentSession(cli, sessionId);
   assignPendingLabel(cli, sessionId);
   attachPendingMessages(cli, sessionId);
+  updateProcessTitle(cli, sessionId);
   void postPanelState();
   void logInfo("session-detected", { cli, sessionId });
 }

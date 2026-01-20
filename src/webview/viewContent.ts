@@ -389,6 +389,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         width: 100%;
         justify-content: flex-end;
       }
+      .debug-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        cursor: pointer;
+        user-select: none;
+        height: 26px;
+      }
+      .debug-toggle input {
+        margin: 0;
+      }
 
       /* Buttons */
       button {
@@ -761,6 +774,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                <option value="on">交互：开启(Beta)</option>
                <option value="off">交互：关闭</option>
              </select>
+             <label class="debug-toggle" title="调试日志">
+               <input type="checkbox" id="debugMode" />
+               <span>调试</span>
+             </label>
              <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
              <button id="sendPrompt" class="action-button">发送</button>
              <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
@@ -920,6 +937,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           currentSessionId: null,
           sessions: [],
         },
+        debug: true,
         thinkingMode: "medium",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
@@ -946,6 +964,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
         interactiveMode: document.getElementById("interactiveMode"),
+        debugMode: document.getElementById("debugMode"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
         attachmentInput: document.getElementById("attachmentInput"),
@@ -1030,6 +1049,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
+        state.debug = Boolean(panelState.debug);
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         elements.currentCli.value = panelState.currentCli;
@@ -1039,6 +1059,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateRulesScope(state.ruleScope);
         syncThinkingOptions();
         elements.thinkingMode.value = state.thinkingMode;
+        if (elements.debugMode) {
+          elements.debugMode.checked = state.debug;
+        }
         syncInteractiveOptions();
         if (elements.interactiveMode) {
           elements.interactiveMode.value = state.interactive && state.interactive.enabled ? "on" : "off";
@@ -1703,6 +1726,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
+        if (elements.debugMode) {
+          elements.debugMode.disabled = isRunning;
+        }
         syncInteractiveOptions();
         elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
@@ -1946,6 +1972,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({
             type: "updateSetting",
             key: "interactive." + state.currentCli,
+            value: enabled,
+          });
+        });
+      }
+      if (elements.debugMode) {
+        elements.debugMode.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.debug = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "debug",
             value: enabled,
           });
         });

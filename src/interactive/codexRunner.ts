@@ -8,6 +8,7 @@ export type CodexStreamHandlers = {
   onTrace: (content: string, kind?: CodexTraceKind) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
+  onEvent?: (event: unknown) => void;
 };
 
 type CodexThreadOptions = Record<string, unknown>;
@@ -220,6 +221,7 @@ export class CodexInteractiveRunner {
     let lastAgentText = "";
 
     for await (const event of streamed.events as AsyncGenerator<any>) {
+      handlers.onEvent?.(event);
       if (event?.type === "thread.started" && typeof event.thread_id === "string") {
         this.options.threadId = event.thread_id;
         handlers.onThreadId(event.thread_id);
