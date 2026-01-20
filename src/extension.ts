@@ -1701,6 +1701,11 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
   const cli = currentCli;
   const cwd = resolveWorkspaceCwd();
+  void logInfo("resolve-workspace-cwd-debug", {
+    cwd,
+    cwdType: cwd === undefined ? "undefined" : typeof cwd,
+    workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? [],
+  });
   const thinkingMode = getThinkingMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
   preparePendingLabel(cli, prompt);

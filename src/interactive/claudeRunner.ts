@@ -1,4 +1,7 @@
 import { spawn } from "child_process";
+import * as os from "os";
+import * as fs from "fs/promises";
+import * as path from "path";
 import { CliName, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
 import { logInfo } from "../logger";
@@ -183,6 +186,28 @@ function clampThinkingTokens(mode: ThinkingMode): number | null {
   return null;
 }
 
+async function loadClaudeSettings(): Promise<Record<string, string>> {
+  const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
+  try {
+    const content = await fs.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(content);
+    if (settings?.env && typeof settings.env === "object") {
+      const envVars: Record<string, string> = {};
+      for (const [key, value] of Object.entries(settings.env)) {
+        if (typeof value === "string") {
+          envVars[key] = value;
+        } else if (value !== null && value !== undefined) {
+          envVars[key] = String(value);
+        }
+      }
+      return envVars;
+    }
+  } catch (error) {
+    // 配置文件不存在或读取失败，忽略
+  }
+  return {};
+}
+
 export class ClaudeInteractiveRunner {
   public readonly cli: CliName = "claude";
   private session: any | null = null;
@@ -246,6 +271,14 @@ export class ClaudeInteractiveRunner {
       rawCommandOverride && !isWindowsCmd(rawCommandOverride) ? rawCommandOverride : undefined;
     const bundledCliPath = resolveBundledClaudeCliPath();
     const effectiveCliPath = commandOverride ?? bundledCliPath;
+
+    // 从 ~/.claude/settings.json 加载环境变量
+    const claudeSettings = await loadClaudeSettings();
+    // 将 ANTHROPIC_AUTH_TOKEN 映射为 ANTHROPIC_API_KEY（SDK 可能使用这个名字）
+    if (claudeSettings.ANTHROPIC_AUTH_TOKEN && !claudeSettings.ANTHROPIC_API_KEY) {
+      claudeSettings.ANTHROPIC_API_KEY = claudeSettings.ANTHROPIC_AUTH_TOKEN;
+    }
+
     void logInfo("claude-interactive-spawn-path", {
       command: this.options.command,
       commandOverride,
@@ -255,12 +288,18 @@ export class ClaudeInteractiveRunner {
       effectiveCliPath,
       execPath: process.execPath,
       cwd: this.options.cwd,
+      claudeSettingsKeys: Object.keys(claudeSettings),
     });
 
     const sessionOptions: any = {
       model,
-      cwd: this.options.cwd,
-      env: process.env,
+      cwd: this.options.cwd ?? os.homedir(),
+      env: {
+        ...process.env,
+        HOME: os.homedir(),
+        USERPROFILE: os.homedir(),
+        ...claudeSettings,
+      },
       pathToClaudeCodeExecutable: commandOverride,
       permissionMode: "bypassPermissions",
       // auto-allow everything (matches `--dangerously-skip-permissions` intent)
