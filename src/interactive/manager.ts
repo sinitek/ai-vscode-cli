@@ -9,6 +9,7 @@ type RunnerEntry =
       cli: "codex";
       sessionId: string;
       runner: CodexInteractiveRunner;
+      thinkingMode: ThinkingMode;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     }
@@ -16,6 +17,7 @@ type RunnerEntry =
       cli: "claude";
       sessionId: string;
       runner: ClaudeInteractiveRunner;
+      thinkingMode: ThinkingMode;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     };
@@ -55,12 +57,17 @@ export class InteractiveRunnerManager {
     this.disposeAll();
   }
 
-  public setCurrentRunner(cli: "codex" | "claude", sessionId: string, runner: any): void {
+  public setCurrentRunner(
+    cli: "codex" | "claude",
+    sessionId: string,
+    runner: any,
+    thinkingMode: ThinkingMode
+  ): void {
     this.disposeAll();
     const entry: RunnerEntry =
       cli === "codex"
-        ? { cli, sessionId, runner, idleTimer: null, lastUsedAt: Date.now() }
-        : { cli, sessionId, runner, idleTimer: null, lastUsedAt: Date.now() };
+        ? { cli, sessionId, runner, thinkingMode, idleTimer: null, lastUsedAt: Date.now() }
+        : { cli, sessionId, runner, thinkingMode, idleTimer: null, lastUsedAt: Date.now() };
     this.current = entry;
     this.touch();
   }
@@ -78,10 +85,12 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
   }): CodexInteractiveRunner {
     if (this.current && this.current.cli === "codex" && this.current.sessionId === options.sessionId) {
-      this.touch();
-      return this.current.runner;
+      if (this.current.thinkingMode === options.thinkingMode) {
+        this.touch();
+        return this.current.runner;
+      }
+      this.disposeAll();
     }
-    this.disposeAll();
     const runner = new CodexInteractiveRunner({
       command: options.command,
       args: options.args,
@@ -93,6 +102,7 @@ export class InteractiveRunnerManager {
       cli: "codex",
       sessionId: options.sessionId,
       runner,
+      thinkingMode: options.thinkingMode,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -109,10 +119,12 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
   }): ClaudeInteractiveRunner {
     if (this.current && this.current.cli === "claude" && this.current.sessionId === options.sessionId) {
-      this.touch();
-      return this.current.runner;
+      if (this.current.thinkingMode === options.thinkingMode) {
+        this.touch();
+        return this.current.runner;
+      }
+      this.disposeAll();
     }
-    this.disposeAll();
     const runner = new ClaudeInteractiveRunner({
       command: options.command,
       args: options.args,
@@ -124,6 +136,7 @@ export class InteractiveRunnerManager {
       cli: "claude",
       sessionId: options.sessionId,
       runner,
+      thinkingMode: options.thinkingMode,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -165,4 +178,3 @@ export class InteractiveRunnerManager {
     entry.idleTimer = null;
   }
 }
-

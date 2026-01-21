@@ -2061,7 +2061,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                   originalSessionId: null,
                   mode: "compaction",
                 });
-                interactiveRunnerManager.setCurrentRunner("codex", threadId, runner);
+                interactiveRunnerManager.setCurrentRunner("codex", threadId, runner, thinkingMode);
                 return;
               }
               if (freezeOldThreadId) {
@@ -2076,7 +2076,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                   threadId,
                   previousThreadId: freezeOldThreadId,
                 });
-                interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner);
+                interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
               }
             },
           });
@@ -2128,7 +2128,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             originalSessionId: sessionId,
             mode: "normal",
           });
-          interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner);
+          interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode);
         },
       });
       cleanupAfterRun("end");
@@ -2232,7 +2232,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                 newSessionId,
                 previousSessionId: oldId,
               });
-              interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner);
+              interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
             },
           });
           cleanupAfterRun("end");
@@ -2276,7 +2276,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             originalSessionId: sessionId,
             mode: "normal",
           });
-          interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner);
+          interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode);
         },
       });
       cleanupAfterRun("end");

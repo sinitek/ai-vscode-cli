@@ -233,6 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
 - 自动降级：SDK 初始化/运行失败时自动降级回现有“一问一进程”模式。
 - 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
 - 空闲释放：10 分钟无交互自动释放 Runner。
+- 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
 
 ### 设置项（工作区级）
 
