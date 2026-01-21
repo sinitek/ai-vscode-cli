@@ -1135,10 +1135,19 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
   try {
     const configs = await configService.getConfigList(cli);
     if (configs.length === 0) {
+      void logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
       return { configs: [], activeConfigId: null };
     }
     const current = await configService.getCurrentConfig(cli);
+    void logInfo("loadConfigState-current", { cli, hasCurrent: !!current, currentKeys: current ? Object.keys(current) : [] });
     const active = configs.find((config) => matchesActiveConfig(cli, config, current));
+    void logInfo("loadConfigState-result", {
+      cli,
+      totalConfigs: configs.length,
+      activeConfigId: active ? active.id : null,
+      activeConfigName: active ? active.name : null,
+      allConfigIds: configs.map(c => c.id),
+    });
     return {
       configs: configs.map((config) => ({
         id: config.id,
