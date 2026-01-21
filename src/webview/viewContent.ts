@@ -1036,6 +1036,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           ? state.configState.configs
           : [];
         let nextSelected = state.configState.activeConfigId || "";
+
+        // 如果后端返回的 activeConfigId 为 null，但前端已有有效选择，且该选择仍然在配置列表中，则保持前端选择
+        if (!nextSelected && state.selectedConfigId) {
+          const configExists = configs.some(c => c.id === state.selectedConfigId);
+          if (configExists) {
+            nextSelected = state.selectedConfigId;
+          }
+        }
+
         if (!nextSelected && configs.length > 0) {
           nextSelected = configs[0].id;
           if (!state.autoAppliedConfig) {
@@ -1797,7 +1806,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.promptInput.value = "";
-        if (!state.configState.activeConfigId) {
+        // 优先检查前端选择的配置，如果没有则检查后端的 activeConfigId
+        const hasConfig = state.selectedConfigId || state.configState.activeConfigId;
+        if (!hasConfig) {
           appendMessage({
             id: createMessageId(),
             role: "system",

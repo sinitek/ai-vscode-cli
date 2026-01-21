@@ -1075,15 +1075,37 @@ function matchesActiveConfig(
   current: CurrentConfig
 ): boolean {
   if (platform === "claude") {
+    const configContentNormalized = normalizeJson(config.content, "{}");
+    const currentContentNormalized = normalizeJson(current.content, "{}");
+    const contentMatch = configContentNormalized === currentContentNormalized;
+
     const configMcp = parseJsonObject(config.mcpContent);
     const currentMcp = parseJsonObject(current.mcpContent);
     const mcpMatch = configMcp && currentMcp
       ? isDeepEqualSubset(configMcp, currentMcp)
       : normalizeJson(config.mcpContent, "{}") === normalizeJson(current.mcpContent, "{}");
-    return (
-      normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}") &&
-      mcpMatch
-    );
+
+    const result = contentMatch && mcpMatch;
+    void logInfo("matchesActiveConfig-claude", {
+      configId: config.id,
+      configName: config.name,
+      contentMatch,
+      mcpMatch,
+      result,
+      configContentLength: config.content?.length || 0,
+      currentContentLength: current.content?.length || 0,
+      configContentPreview: config.content?.slice(0, 100),
+      currentContentPreview: current.content?.slice(0, 100),
+      // 添加 MCP 详细信息
+      configMcpLength: config.mcpContent?.length || 0,
+      currentMcpLength: current.mcpContent?.length || 0,
+      configMcpPreview: config.mcpContent?.slice(0, 200),
+      currentMcpPreview: current.mcpContent?.slice(0, 200),
+      configMcpParsed: !!configMcp,
+      currentMcpParsed: !!currentMcp,
+      isDeepEqualSubset: configMcp && currentMcp,
+    });
+    return result;
   }
   if (platform === "gemini") {
     return (
