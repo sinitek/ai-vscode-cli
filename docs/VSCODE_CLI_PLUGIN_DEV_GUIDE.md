@@ -26,6 +26,10 @@ sinitek-cli-tools/
       types.ts
 ```
 
+说明：
+- Webview 依赖 `media/marked.min.js`（内嵌到 HTML）；升级 `marked` 版本后需同步更新该文件。
+- `.vscodeignore` 会排除 `node_modules`，避免运行时从 `node_modules` 读取前端资源。
+
 ## 初始化工程
 
 推荐使用官方脚手架：
@@ -302,6 +306,10 @@ Windows 下可使用：
 ```
 py -3.12 vscode_extension_win.py package
 ```
+
+注意：
+- 本项目未使用打包器（webpack/esbuild），运行时依赖需随 VSIX 一起打包。
+- `.vscodeignore` 需要排除 `node_modules`，但必须放行运行时依赖（当前白名单：`@anthropic-ai/claude-agent-sdk` / `@openai/codex-sdk` / `zod`），否则动态导入会在运行时找不到模块。
 
 ## 常见问题
 

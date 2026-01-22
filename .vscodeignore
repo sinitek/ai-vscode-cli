@@ -1,0 +1,51 @@
+# Source files
+.vscode/**
+.vscode-test/**
+src/**
+tsconfig.json
+**/*.ts
+**/*.map
+.gitignore
+
+# Dependencies
+node_modules/**
+!node_modules/@anthropic-ai/**
+!node_modules/@anthropic-ai/claude-agent-sdk/**
+!node_modules/@openai/**
+!node_modules/@openai/codex-sdk/**
+!node_modules/cross-spawn/**
+!node_modules/isexe/**
+!node_modules/path-key/**
+!node_modules/shebang-command/**
+!node_modules/shebang-regex/**
+!node_modules/which/**
+!node_modules/zod/**
+
+# Build outputs - keep compiled JS but exclude source maps and old VSIX files
+dist/**/*.map
+dist/**/*.vsix
+
+# Development files
+.history/**
+.git/**
+**/.git/**
+
+# Logs directory (causes EISDIR error in secretlint)
+logs
+logs/**
+
+# Python scripts
+vscode_extension_win.py
+dev_run_mac.sh
+export_vscode_extension.sh
+
+# Lock files
+package-lock.json
+yarn.lock
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+
+# Misc
+.DS_Store

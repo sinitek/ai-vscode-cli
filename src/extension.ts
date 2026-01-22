@@ -409,6 +409,18 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     return;
   }
 
+  if (message.type === "webviewError") {
+    void logError("webview-runtime-error", {
+      message: message.message,
+      source: message.source ?? null,
+      line: message.lineno ?? null,
+      column: message.colno ?? null,
+      reason: message.reason ?? null,
+      stack: message.stack ?? null,
+    });
+    return;
+  }
+
   if (message.type === "selectCli" && message.cli) {
     await setCurrentCli(message.cli);
     interactiveRunnerManager?.disposeAll();
