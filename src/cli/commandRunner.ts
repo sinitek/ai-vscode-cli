@@ -10,6 +10,7 @@ type RunCliOptions = {
   thinkingMode?: ThinkingMode;
 };
 
+const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
 const LOCAL_SESSION_PREFIX = "local_";
 const KILL_GRACE_MS = 2000;
 
@@ -21,7 +22,7 @@ function escapeShellArg(value: string): string {
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 
-type ResolvedCliCommand = {
+export type ResolvedCliCommand = {
   command: string;
   resolvedFrom: "config" | "path" | "windows-npm-bin";
 };
@@ -36,23 +37,17 @@ function fileExists(targetPath: string): boolean {
 }
 
 function resolveExistingCommandPath(command: string): string | null {
-  if (fileExists(command)) {
-    return command;
-  }
-  if (process.platform !== "win32") {
-    return null;
-  }
-  if (path.extname(command)) {
-    return null;
-  }
-  const exts = getWindowsPathExts();
-  for (const ext of exts) {
-    const candidate = `${command}${ext}`;
-    if (fileExists(candidate)) {
-      return candidate;
+  if (process.platform === "win32" && !path.extname(command)) {
+    const exts = getWindowsPathExts();
+    for (const ext of exts) {
+      const candidate = `${command}${ext}`;
+      if (fileExists(candidate)) {
+        return candidate;
+      }
     }
+    return fileExists(command) ? command : null;
   }
-  return null;
+  return fileExists(command) ? command : null;
 }
 
 function getWindowsPathExts(): string[] {
@@ -109,21 +104,36 @@ function getWindowsNpmBinDirs(): string[] {
   return Array.from(dirs);
 }
 
-function resolveCliCommand(command: string): ResolvedCliCommand | null {
-  const looksLikePath = command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
-  if (path.isAbsolute(command) || looksLikePath) {
-    const resolved = resolveExistingCommandPath(command);
+function normalizeCommandInput(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\""))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+export function resolveCliCommand(command: string): ResolvedCliCommand | null {
+  const normalized = normalizeCommandInput(command);
+  const looksLikePath = normalized.includes(path.sep) || (process.platform === "win32" && normalized.includes("/"));
+  if (path.isAbsolute(normalized) || looksLikePath) {
+    const resolved = resolveExistingCommandPath(normalized);
     return resolved ? { command: resolved, resolvedFrom: "config" } : null;
   }
 
   if (process.platform === "win32") {
-    const resolvedFromNpmBin = resolveCommandOnPath(command, getWindowsNpmBinDirs());
+    const resolvedFromNpmBin = resolveCommandOnPath(normalized, getWindowsNpmBinDirs());
     if (resolvedFromNpmBin) {
       return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
     }
   }
 
-  const resolvedFromPath = resolveCommandOnPath(command);
+  const resolvedFromPath = resolveCommandOnPath(normalized);
   if (resolvedFromPath) {
     return { command: resolvedFromPath, resolvedFrom: "path" };
   }
@@ -159,6 +169,7 @@ type StreamHandlers = {
 type RunStreamOptions = RunCliOptions & {
   cwd?: string;
   sessionId?: string | null;
+  processLabel?: string;
 };
 
 export type RunProcess = {
@@ -191,6 +202,11 @@ export function buildCliArgs(
   }
 
   return buildPromptArgs(cli, sharedArgs, prompt);
+}
+
+export function buildProcessLabel(cli: CliName, sessionId?: string | null): string {
+  const suffix = sessionId ? sessionId : "new";
+  return `${PROCESS_LABEL_PREFIX}-${cli}/${suffix}`;
 }
 
 function buildSessionArgs(
@@ -270,9 +286,11 @@ export function runCliStream(
     };
   }
   const fullArgs = buildCliArgs(cli, options, prompt);
+  const processLabel = options.processLabel;
   const child = spawn(resolved.command, fullArgs, {
     cwd: options.cwd,
     env: process.env,
+    argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],

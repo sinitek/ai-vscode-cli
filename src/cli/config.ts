@@ -28,6 +28,23 @@ export function getRememberSelectedCli(): boolean {
   return config.get<boolean>("rememberSelectedCli", true);
 }
 
+export function getDebugLogging(): boolean {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return config.get<boolean>("debug", false);
+}
+
+export function isInteractiveSupported(cli: CliName): boolean {
+  return cli === "codex" || cli === "claude";
+}
+
+export function getInteractiveEnabled(cli: CliName): boolean {
+  if (!isInteractiveSupported(cli)) {
+    return false;
+  }
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return config.get<boolean>(`interactive.${cli}`, true);
+}
+
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<string[]>(`thinkingArgs.${cli}.${mode}`, []);

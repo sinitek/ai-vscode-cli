@@ -44,13 +44,19 @@ export type ChatMessage = {
   content: string;
   createdAt?: number;
   kind?: "thinking" | "normal";
+  merge?: boolean;
 };
 
 export type PanelState = {
   currentCli: CliName;
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
+  debug: boolean;
   thinkingMode: ThinkingMode;
+  interactive: {
+    supported: boolean;
+    enabled: boolean;
+  };
   rulePaths: {
     global: Record<CliName, string>;
     project: Record<CliName, string | null>;

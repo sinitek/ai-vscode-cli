@@ -115,6 +115,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-direction: column;
         gap: 6px;
         max-width: 100%;
+        min-width: 0;
       }
       /* User Message - Distinct Bubble */
       .message.user {
@@ -132,6 +133,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 10px 14px;
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
+        box-sizing: border-box;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         white-space: pre-wrap;
       }
@@ -147,6 +149,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 12px;
         max-width: 100%;
         width: 100%;
+        box-sizing: border-box;
       }
       
       /* Markdown Styles */
@@ -166,6 +169,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         margin: 12px 0;
         font-family: var(--vscode-editor-font-family);
         font-size: 12px;
+        box-sizing: border-box;
+        max-width: 100%;
       }
       .message.assistant .bubble code {
         font-family: var(--vscode-editor-font-family);
@@ -209,6 +214,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 0;
         font-size: 12px;
         width: 100%;
+        box-sizing: border-box;
       }
       .message.system .system-line {
         display: flex;
@@ -233,6 +239,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: var(--radius-md);
         white-space: pre-wrap;
         border-left: 3px solid var(--vscode-minimap-findMatchHighlight);
+        box-sizing: border-box;
+      }
+      .trace-time {
+        margin-top: 6px;
+        font-size: 11px;
+        opacity: 0.7;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
       }
       .message.trace.trace-nonthinking .bubble {
         opacity: 1;
@@ -389,6 +403,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 8px;
         width: 100%;
         justify-content: flex-end;
+      }
+      .debug-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        cursor: pointer;
+        user-select: none;
+        height: 26px;
+      }
+      .debug-toggle input {
+        margin: 0;
       }
 
       /* Buttons */
@@ -752,17 +779,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
-            <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
-              <option value="off">思考：关闭</option>
-              <option value="low">思考：低</option>
-              <option value="medium">思考：中</option>
-              <option value="high">思考：高</option>
-            </select>
-            <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
-            <button id="sendPrompt" class="action-button">发送</button>
-            <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
-          </div>
-        </div>
+             <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
+               <option value="off">思考：关闭</option>
+               <option value="low">思考：低</option>
+               <option value="medium">思考：中</option>
+               <option value="high">思考：高</option>
+             </select>
+             <select id="interactiveMode" class="thinking-select" aria-label="交互模式">
+               <option value="on">交互：开启(Beta)</option>
+               <option value="off">交互：关闭</option>
+             </select>
+             <label class="debug-toggle" title="调试日志">
+               <input type="checkbox" id="debugMode" />
+               <span>调试</span>
+             </label>
+             <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
+             <button id="sendPrompt" class="action-button">发送</button>
+             <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
+           </div>
+         </div>
       </div>
 
       <div id="historyOverlay" class="overlay">
@@ -917,7 +952,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           currentSessionId: null,
           sessions: [],
         },
+        debug: false,
         thinkingMode: "medium",
+        interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
         taskList: {
@@ -941,6 +978,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         configSelect: document.getElementById("configSelect"),
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
+        interactiveMode: document.getElementById("interactiveMode"),
+        debugMode: document.getElementById("debugMode"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
         attachmentInput: document.getElementById("attachmentInput"),
@@ -1012,6 +1051,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           ? state.configState.configs
           : [];
         let nextSelected = state.configState.activeConfigId || "";
+
+        // 如果后端返回的 activeConfigId 为 null，但前端已有有效选择，且该选择仍然在配置列表中，则保持前端选择
+        if (!nextSelected && state.selectedConfigId) {
+          const configExists = configs.some(c => c.id === state.selectedConfigId);
+          if (configExists) {
+            nextSelected = state.selectedConfigId;
+          }
+        }
+
         if (!nextSelected && configs.length > 0) {
           nextSelected = configs[0].id;
           if (!state.autoAppliedConfig) {
@@ -1025,6 +1073,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
+        state.debug = Boolean(panelState.debug);
+        state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {
@@ -1033,6 +1083,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateRulesScope(state.ruleScope);
         syncThinkingOptions();
         elements.thinkingMode.value = state.thinkingMode;
+        if (elements.debugMode) {
+          elements.debugMode.checked = state.debug;
+        }
+        syncInteractiveOptions();
+        if (elements.interactiveMode) {
+          elements.interactiveMode.value = state.interactive && state.interactive.enabled ? "on" : "off";
+        }
         renderConfigOptions();
         renderSessionList();
       }
@@ -1111,6 +1168,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!isCodex && state.thinkingMode === "xhigh") {
           updateThinkingMode("high");
         }
+      }
+
+      function syncInteractiveOptions() {
+        if (!elements.interactiveMode) {
+          return;
+        }
+        const supported = Boolean(state.interactive && state.interactive.supported);
+        elements.interactiveMode.style.display = supported ? "" : "none";
+        elements.interactiveMode.disabled = !supported || state.isRunning;
       }
 
       function updateThinkingMode(nextMode) {
@@ -1233,7 +1299,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!message) {
           return;
         }
-        if ((message.role === "user" || message.role === "system") && !message.createdAt) {
+        if ((message.role === "user" || message.role === "system" || message.role === "trace") && !message.createdAt) {
           message.createdAt = Date.now();
         }
         const last = state.messages[state.messages.length - 1];
@@ -1256,7 +1322,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         const sameRole = last && last.role === message.role;
         const sameTraceKind = message.role !== "trace" || last.kind === message.kind;
-        if (sameRole && sameTraceKind && !isFileUpdate && !lastIsFileUpdate) {
+        const allowMerge = message.merge !== false && (!last || last.merge !== false);
+        if (sameRole && sameTraceKind && allowMerge) {
           const prefix = last.content ? "\\n" : "";
           last.content = last.content + prefix + (message.content || "");
           renderMessages();
@@ -1304,7 +1371,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return escapeHtml(message.content || "");
         }
         if (message.role === "trace") {
-          return renderTraceContent(message.content || "");
+          const content = renderTraceContent(message.content || "");
+          const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
+          if (time) {
+            return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
+          }
+          return content;
         }
         return renderMarkdown(message.content);
       }
@@ -1722,6 +1794,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = isRunning;
+        if (elements.debugMode) {
+          elements.debugMode.disabled = isRunning;
+        }
+        syncInteractiveOptions();
         elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
@@ -1789,7 +1865,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.promptInput.value = "";
-        if (!state.configState.activeConfigId) {
+        // 优先检查前端选择的配置，如果没有则检查后端的 activeConfigId
+        const hasConfig = state.selectedConfigId || state.configState.activeConfigId;
+        if (!hasConfig) {
           appendMessage({
             id: createMessageId(),
             role: "system",
@@ -1908,6 +1986,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds;
       }
 
+      function formatDateTimeWithMs(timestamp) {
+        const date = new Date(timestamp);
+        const pad = (value) => String(value).padStart(2, "0");
+        const padMs = (value) => String(value).padStart(3, "0");
+        const year = date.getFullYear();
+        const month = pad(date.getMonth() + 1);
+        const day = pad(date.getDate());
+        const hours = pad(date.getHours());
+        const minutes = pad(date.getMinutes());
+        const seconds = pad(date.getSeconds());
+        const ms = padMs(date.getMilliseconds());
+        return year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds + "." + ms;
+      }
+
       elements.currentCli.addEventListener("change", (event) => {
         vscode.postMessage({ type: "selectCli", cli: event.target.value });
       });
@@ -1955,6 +2047,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           value: nextMode,
         });
       });
+
+      if (elements.interactiveMode) {
+        elements.interactiveMode.addEventListener("change", (event) => {
+          const nextValue = event.target.value || "on";
+          const enabled = nextValue === "on";
+          state.interactive.enabled = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "interactive." + state.currentCli,
+            value: enabled,
+          });
+        });
+      }
+      if (elements.debugMode) {
+        elements.debugMode.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.debug = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "debug",
+            value: enabled,
+          });
+        });
+      }
 
       elements.openConfig.addEventListener("click", () => {
         vscode.postMessage({ type: "openConfig" });
@@ -2224,7 +2340,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           appendAssistantDelta(data.id, data.content);
         }
         if (data.type === "traceSegment") {
-          appendMessage({ id: createMessageId(), role: "trace", content: data.content, kind: data.kind });
+          appendMessage({
+            id: createMessageId(),
+            role: "trace",
+            content: data.content,
+            kind: data.kind,
+            merge: data.merge,
+          });
         }
         if (data.type === "runStatus") {
           updateRunningState(data.status === "start");

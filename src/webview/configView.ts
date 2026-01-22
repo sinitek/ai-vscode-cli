@@ -114,11 +114,8 @@ export function getConfigViewHtml(
           if (!label) {
             return;
           }
+          // 只隐藏"更新配置"按钮，保留"激活配置"按钮
           if (label === "更新配置") {
-            button.style.display = "none";
-            return;
-          }
-          if (label === "激活配置") {
             button.style.display = "none";
             return;
           }
