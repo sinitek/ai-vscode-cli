@@ -135,6 +135,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         max-width: 85%;
         box-sizing: border-box;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        white-space: pre-wrap;
       }
 
       /* Assistant Message - Clean, width-filling */
@@ -1272,6 +1273,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function getFirstNonEmptyLine(text) {
+        if (!text || typeof text !== "string") {
+          return "";
+        }
+        const lines = text.split("\\n");
+        for (let i = 0; i < lines.length; i += 1) {
+          const trimmed = lines[i].trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+        return "";
+      }
+
+      function isFileUpdateMessage(message) {
+        if (!message) {
+          return false;
+        }
+        const firstLine = getFirstNonEmptyLine(message.content || "");
+        return firstLine.startsWith("file update");
+      }
+
       function appendMessage(message) {
         if (!message) {
           return;
@@ -1280,8 +1303,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           message.createdAt = Date.now();
         }
         const last = state.messages[state.messages.length - 1];
+        const isFileUpdate = isFileUpdateMessage(message);
+        const lastIsFileUpdate = last && isFileUpdateMessage(last);
         if (message.role === "assistant") {
-          if (last && last.role === "assistant") {
+          if (last && last.role === "assistant" && !isFileUpdate && !lastIsFileUpdate) {
             assistantRedirects[message.id] = last.id;
             if (message.content) {
               const prefix = last.content ? "\\n" : "";
@@ -1341,6 +1366,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             );
           }
           return content;
+        }
+        if (message.role === "user") {
+          return escapeHtml(message.content || "");
         }
         if (message.role === "trace") {
           const content = renderTraceContent(message.content || "");
@@ -1500,7 +1528,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (typeof marked === "undefined" || !marked.parse) {
           return escapeHtml(normalized);
         }
-        return marked.parse(normalized, { breaks: true });
+        const renderer = new marked.Renderer();
+        renderer.html = (html) => escapeHtml(html);
+        return marked.parse(normalized, { breaks: true, renderer });
       }
 
       function isLineNumberedLine(value) {
@@ -1695,7 +1725,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function escapeHtml(value) {
-        return value
+        let text = "";
+        if (typeof value === "string") {
+          text = value;
+        } else if (value && typeof value === "object" && "text" in value) {
+          const tokenText = value.text;
+          text = typeof tokenText === "string" ? tokenText : tokenText == null ? "" : String(tokenText);
+        } else {
+          text = value == null ? "" : String(value);
+        }
+        return text
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");

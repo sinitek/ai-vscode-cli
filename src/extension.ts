@@ -82,6 +82,7 @@ let activeProcessTitleRunId: string | null = null;
 let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
 let sessionStore: SessionStore;
+let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
@@ -104,6 +105,7 @@ const LOCAL_SESSION_PREFIX = "local_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
+const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
@@ -172,6 +174,10 @@ type TaskStore = {
   runs: TaskRunRecord[];
 };
 
+type WorkspaceSettings = {
+  thinkingMode?: ThinkingMode;
+};
+
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   extensionUri = context.extensionUri;
@@ -179,6 +185,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   currentCli = getDefaultCli();
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
+  workspaceSettings = loadWorkspaceSettings();
   sessionStore = loadSessionStore();
   ensureLatestSessionForCli(currentCli);
   void initLogger();
@@ -613,6 +620,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "updateSetting" && message.key) {
+    if (message.key === "thinkingMode") {
+      if (isThinkingMode(message.value)) {
+        workspaceSettings.thinkingMode = message.value;
+        saveWorkspaceSettings(workspaceSettings);
+      }
+      await postPanelState();
+      return;
+    }
     const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
     const target = message.key.startsWith("interactive.")
       ? vscode.ConfigurationTarget.Workspace
@@ -642,7 +657,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     debug: getDebugLogging(),
-    thinkingMode: getThinkingMode(currentCli),
+    thinkingMode: getWorkspaceThinkingMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
       enabled: getInteractiveEnabled(currentCli),
@@ -676,6 +691,7 @@ function ensureWorkspaceSessionStore(): void {
 function applyWorkspaceSessionStore(workspaceKey: string): void {
   activeWorkspaceKey = workspaceKey;
   sessionStore = loadSessionStore();
+  workspaceSettings = loadWorkspaceSettings();
   sessionMessageCache.clear();
   interactiveRunnerManager?.disposeAll();
   suppressCompactPrompt.clear();
@@ -1326,7 +1342,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: currentCli });
   }
-  const thinkingMode = getThinkingMode(currentCli);
+  const thinkingMode = getWorkspaceThinkingMode(currentCli);
   applyThinkingWorkspaceFiles(currentCli, thinkingMode, cwd);
   preparePendingLabel(currentCli, prompt);
   const sessionId = getCurrentSessionId(currentCli);
@@ -1399,6 +1415,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   let sessionBuffer = "";
   let claudeBuffer = "";
   let claudeStreamRemainder = "";
+  let claudeLogRemainder = "";
   let claudeStreamHasText = false;
   const claudeToolUseIds = new Set<string>();
   const claudeToolResultIds = new Set<string>();
@@ -1418,7 +1435,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   skipUserBlock = false;
   skipCodexBlock = false;
   activeCompletionSent = false;
-  const appendClaudeTraceMessage = (content: string): void => {
+  const appendClaudeTraceMessage = (content: string, persist: boolean = true): void => {
     if (!activeMessageTarget) {
       return;
     }
@@ -1428,8 +1445,62 @@ async function runPromptOneShot(prompt: string): Promise<void> {
       content,
       createdAt: Date.now(),
     };
-    appendMessageToStore(activeMessageTarget, message);
+    if (persist) {
+      appendMessageToStore(activeMessageTarget, message);
+    }
     sendPanelMessage({ type: "appendMessage", message });
+  };
+  const sanitizeClaudeLogChunk = (chunk: string): { content: string; redacted: boolean } => {
+    const combined = claudeLogRemainder + chunk;
+    const lines = combined.split(/\r?\n/);
+    claudeLogRemainder = lines.pop() ?? "";
+    let redacted = false;
+    const keptLines: string[] = [];
+    const shouldRedactLine = (value: string): boolean => {
+      try {
+        const payload = JSON.parse(value) as Record<string, unknown>;
+        const toolEvents = extractClaudeToolEvents(payload);
+        return toolEvents.some((event) => {
+          if (event.kind !== "tool_result" || !event.toolUseId) {
+            return false;
+          }
+          const toolName = claudeToolUseNames.get(event.toolUseId);
+          return typeof toolName === "string" && toolName.toLowerCase() === "read";
+        });
+      } catch {
+        return false;
+      }
+    };
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        keptLines.push(line);
+        return;
+      }
+      if (trimmed.startsWith("event:")) {
+        keptLines.push(line);
+        return;
+      }
+      if (trimmed.startsWith("data:")) {
+        const dataValue = trimmed.slice(5).trim();
+        if (dataValue && dataValue !== "[DONE]" && shouldRedactLine(dataValue)) {
+          redacted = true;
+          return;
+        }
+        keptLines.push(line);
+        return;
+      }
+      if (shouldRedactLine(trimmed)) {
+        redacted = true;
+        return;
+      }
+      keptLines.push(line);
+    });
+    let content = keptLines.join("\n");
+    if (content && chunk.endsWith("\n")) {
+      content += "\n";
+    }
+    return { content, redacted };
   };
   const handleClaudeToolEvents = (events: ClaudeToolEvent[]): void => {
     if (!events.length) {
@@ -1465,7 +1536,10 @@ async function runPromptOneShot(prompt: string): Promise<void> {
       if (toolName === "Edit") {
         return;
       }
-      appendClaudeTraceMessage(formatClaudeToolResultMessage(event, toolName));
+      const shouldPersist = !(
+        typeof toolName === "string" && toolName.toLowerCase() === "read"
+      );
+      appendClaudeTraceMessage(formatClaudeToolResultMessage(event, toolName), shouldPersist);
     });
   };
 
@@ -2854,6 +2928,71 @@ function formatDuration(durationMs: number): string {
   return `${pad(minutes)}:${pad(seconds)}`;
 }
 
+function isThinkingMode(value: unknown): value is ThinkingMode {
+  return value === "off"
+    || value === "on"
+    || value === "low"
+    || value === "medium"
+    || value === "high"
+    || value === "xhigh";
+}
+
+function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
+  if (cli !== "codex" && mode === "xhigh") {
+    return "high";
+  }
+  if (cli === "codex" && mode === "off") {
+    return "low";
+  }
+  return mode;
+}
+
+function getWorkspaceThinkingMode(cli: CliName): ThinkingMode {
+  if (workspaceSettings.thinkingMode && isThinkingMode(workspaceSettings.thinkingMode)) {
+    return normalizeThinkingModeForCli(cli, workspaceSettings.thinkingMode);
+  }
+  return getThinkingMode(cli);
+}
+
+function loadWorkspaceSettings(): WorkspaceSettings {
+  const filePath = getWorkspaceSettingsFilePath();
+  if (!filePath || !fs.existsSync(filePath)) {
+    return {};
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    const thinkingMode = (parsed as WorkspaceSettings).thinkingMode;
+    return isThinkingMode(thinkingMode) ? { thinkingMode } : {};
+  } catch (error) {
+    void logError("workspace-settings-read-error", { error: String(error) });
+    return {};
+  }
+}
+
+function saveWorkspaceSettings(next: WorkspaceSettings): void {
+  const filePath = getWorkspaceSettingsFilePath();
+  if (!filePath) {
+    return;
+  }
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
+  } catch (error) {
+    void logError("workspace-settings-write-error", { error: String(error) });
+  }
+}
+
+function getWorkspaceSettingsFilePath(): string | null {
+  if (!activeWorkspaceKey) {
+    return null;
+  }
+  return path.join(WORKSPACE_SETTINGS_DIR, `${activeWorkspaceKey}.json`);
+}
+
 function loadSessionStore(): SessionStore {
   const stored = readSessionFile() ?? extensionContext.globalState.get<SessionStore>(getSessionStoreKey());
   const normalized = ensureSessionStore(stored);
@@ -3720,6 +3859,9 @@ function formatClaudeToolResultMessage(
   toolName?: string
 ): string {
   const header = toolName ? `工具结果: ${toolName}` : "工具结果";
+  if (typeof toolName === "string" && toolName.toLowerCase() === "read") {
+    return header;
+  }
   const output = formatClaudeToolPayload(event.content);
   if (!output) {
     return header;
