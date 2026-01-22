@@ -267,7 +267,8 @@ export function activate(context: vscode.ExtensionContext) {
 F5
 ```
 
-如需查看底层 CLI 的标准输入/输出/错误，可在设置中勾选 `sinitek-cli-tools.debug`，日志会写入 `~/.sinitek_cli/logs`。
+默认仅记录必要启动信息（工作目录、启动参数、启动环境变量，敏感字段会脱敏）到 `~/.sinitek_cli/logs`，异常也会记录。
+如需查看底层 CLI 的标准输入/输出/错误，可在设置中勾选 `sinitek-cli-tools.debug`。调试开启后，除了必要日志外，还会在 `sinitek-cli.<cli>.<date>.log` 中记录流式输出，并额外追加 Claude/Codex 的模型 JSON 事件与格式化文本输出。
 
 在新窗口中打开命令面板，执行：
 - `CLI Bridge: Select CLI`

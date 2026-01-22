@@ -63,6 +63,12 @@ export class InteractiveRunnerManager {
     runner: any,
     thinkingMode: ThinkingMode
   ): void {
+    if (this.current && this.current.runner === runner) {
+      this.current.sessionId = sessionId;
+      this.current.thinkingMode = thinkingMode;
+      this.touch();
+      return;
+    }
     this.disposeAll();
     const entry: RunnerEntry =
       cli === "codex"

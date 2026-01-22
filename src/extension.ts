@@ -41,8 +41,11 @@ import {
   logCliInteractiveStart,
   logCliInteractiveOutput,
   logDebug,
+  logEssential,
   logError,
   logInfo,
+  sanitizeEnv,
+  setDebugLogging,
 } from "./logger";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
@@ -179,6 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
   sessionStore = loadSessionStore();
   ensureLatestSessionForCli(currentCli);
   void initLogger();
+  setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
     onConfigChanged: () => {
       void postPanelState();
@@ -255,6 +259,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!activeProcess && !activeInteractiveStop) {
           interactiveRunnerManager?.disposeAll();
         }
+        setDebugLogging(getDebugLogging());
         currentCli = getDefaultCli();
         updateStatusBar();
         void postPanelState();
@@ -770,9 +775,21 @@ function mergePromptSections(prefix: string, prompt: string, suffix: string): st
   return sections.join("\n");
 }
 
-function buildThinkingPrompt(cli: CliName, mode: ThinkingMode, prompt: string): string {
-  const prefix = getThinkingPromptPrefix(cli, mode);
-  const suffix = getThinkingPromptSuffix(cli, mode);
+type ThinkingPromptOptions = {
+  includePrefix?: boolean;
+  includeSuffix?: boolean;
+};
+
+function buildThinkingPrompt(
+  cli: CliName,
+  mode: ThinkingMode,
+  prompt: string,
+  options: ThinkingPromptOptions = {}
+): string {
+  const includePrefix = options.includePrefix !== false;
+  const includeSuffix = options.includeSuffix !== false;
+  const prefix = includePrefix ? getThinkingPromptPrefix(cli, mode) : "";
+  const suffix = includeSuffix ? getThinkingPromptSuffix(cli, mode) : "";
   if (!prefix.trim() && !suffix.trim()) {
     return prompt;
   }
@@ -1085,27 +1102,7 @@ function matchesActiveConfig(
       ? isDeepEqualSubset(configMcp, currentMcp)
       : normalizeJson(config.mcpContent, "{}") === normalizeJson(current.mcpContent, "{}");
 
-    const result = contentMatch && mcpMatch;
-    void logInfo("matchesActiveConfig-claude", {
-      configId: config.id,
-      configName: config.name,
-      contentMatch,
-      mcpMatch,
-      result,
-      configContentLength: config.content?.length || 0,
-      currentContentLength: current.content?.length || 0,
-      configContentPreview: config.content?.slice(0, 100),
-      currentContentPreview: current.content?.slice(0, 100),
-      // 添加 MCP 详细信息
-      configMcpLength: config.mcpContent?.length || 0,
-      currentMcpLength: current.mcpContent?.length || 0,
-      configMcpPreview: config.mcpContent?.slice(0, 200),
-      currentMcpPreview: current.mcpContent?.slice(0, 200),
-      configMcpParsed: !!configMcp,
-      currentMcpParsed: !!currentMcp,
-      isDeepEqualSubset: configMcp && currentMcp,
-    });
-    return result;
+    return contentMatch && mcpMatch;
   }
   if (platform === "gemini") {
     return (
@@ -1161,15 +1158,7 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
       return { configs: [], activeConfigId: null };
     }
     const current = await configService.getCurrentConfig(cli);
-    void logInfo("loadConfigState-current", { cli, hasCurrent: !!current, currentKeys: current ? Object.keys(current) : [] });
     const active = configs.find((config) => matchesActiveConfig(cli, config, current));
-    void logInfo("loadConfigState-result", {
-      cli,
-      totalConfigs: configs.length,
-      activeConfigId: active ? active.id : null,
-      activeConfigName: active ? active.name : null,
-      allConfigIds: configs.map(c => c.id),
-    });
     return {
       configs: configs.map((config) => ({
         id: config.id,
@@ -1253,6 +1242,31 @@ function isAbortErrorInfo(info: ErrorInfo): boolean {
   return combined.includes("abort");
 }
 
+function redactPromptArg(args: string[], prompt?: string): string[] {
+  if (!prompt) {
+    return args;
+  }
+  const redacted = [...args];
+  for (let i = redacted.length - 1; i >= 0; i -= 1) {
+    if (redacted[i] === prompt) {
+      redacted[i] = `<prompt:${prompt.length}>`;
+      break;
+    }
+  }
+  return redacted;
+}
+
+function logCliStartup(payload: {
+  cli: CliName;
+  cwd?: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  mode: "one-shot" | "interactive";
+}): void {
+  void logEssential("cli-startup", payload);
+}
+
 async function runPrompt(prompt: string): Promise<void> {
   if (!prompt) {
     return;
@@ -1318,11 +1332,31 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   const sessionId = getCurrentSessionId(currentCli);
   const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, prompt);
   const debugLogging = getDebugLogging();
+  const logModelOutput = (content: string): void => {
+    if (!debugLogging) {
+      return;
+    }
+    if (currentCli !== "claude" && currentCli !== "codex") {
+      return;
+    }
+    if (!content) {
+      return;
+    }
+    void logCliInteractiveOutput(currentCli, activeSessionId, "stdout", content);
+  };
   const messageTarget = sessionId
     ? loadSessionMessages(currentCli, sessionId)
     : pendingSessionMessages[currentCli];
   const args = buildCliArgs(currentCli, { sessionId, thinkingMode }, thinkingPrompt);
   const command = getCliCommand(currentCli);
+  logCliStartup({
+    cli: currentCli,
+    cwd,
+    command,
+    args: redactPromptArg(args, thinkingPrompt),
+    env: sanitizeEnv(process.env),
+    mode: "one-shot",
+  });
   void logInfo("runPrompt-start", {
     cli: currentCli,
     command: getCliCommand(currentCli),
@@ -1441,6 +1475,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
     {
       onStdout: (chunk) => {
         rawStdout += chunk;
+        let formattedOutput = "";
         if (shouldParseClaudeStream) {
           claudeBuffer += chunk;
           const parsed = parseClaudeStreamChunk(claudeStreamRemainder, chunk);
@@ -1448,6 +1483,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           if (parsed.text) {
             claudeStreamHasText = true;
             appendAssistantChunk(parsed.text);
+            formattedOutput = parsed.text;
           }
           if (parsed.toolEvents.length) {
             handleClaudeToolEvents(parsed.toolEvents);
@@ -1457,15 +1493,20 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           }
         } else {
           appendAssistantChunk(chunk);
+          formattedOutput = chunk;
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
           captureSessionFromBuffer(currentCli, sessionBuffer);
         }
         if (debugLogging) {
           void logCliStream(currentCli, activeSessionId, "stdout", chunk);
         }
+        if (formattedOutput) {
+          logModelOutput(formattedOutput);
+        }
       },
       onStderr: (chunk) => {
         rawStderr += chunk;
+        let formattedOutput = "";
         if (currentCli === "codex" || currentCli === "gemini") {
           appendTraceLines(chunk);
         }
@@ -1476,6 +1517,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           if (parsed.text) {
             claudeStreamHasText = true;
             appendAssistantChunk(parsed.text);
+            formattedOutput = parsed.text;
           }
           if (parsed.toolEvents.length) {
             handleClaudeToolEvents(parsed.toolEvents);
@@ -1490,6 +1532,9 @@ async function runPromptOneShot(prompt: string): Promise<void> {
         if (debugLogging) {
           void logCliStream(currentCli, activeSessionId, "stderr", chunk);
         }
+        if (formattedOutput) {
+          logModelOutput(formattedOutput);
+        }
       },
       onExit: (code) => {
         if (activeRunId !== runId) {
@@ -1502,6 +1547,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           if (flushed.text) {
             claudeStreamHasText = true;
             appendAssistantChunk(flushed.text);
+            logModelOutput(flushed.text);
           }
           if (flushed.toolEvents.length) {
             handleClaudeToolEvents(flushed.toolEvents);
@@ -1513,6 +1559,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
             const parsed = parseClaudeStreamOutput(claudeBuffer);
             if (parsed.text) {
               appendAssistantChunk(parsed.text);
+              logModelOutput(parsed.text);
               claudeStreamHasText = true;
             }
             if (parsed.toolEvents.length) {
@@ -1524,6 +1571,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
               const fallback = parseClaudeJsonOutput(claudeBuffer);
               if (fallback.text) {
                 appendAssistantChunk(fallback.text);
+                logModelOutput(fallback.text);
               }
               if (fallback.toolEvents.length) {
                 handleClaudeToolEvents(fallback.toolEvents);
@@ -1742,7 +1790,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   preparePendingLabel(cli, prompt);
 
   const sessionId = getCurrentSessionId(cli);
-  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt);
+  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
   const args = getCliArgs(cli);
   const command = getCliCommand(cli);
@@ -1750,6 +1798,14 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   const commandForRunner = cli === "claude"
     ? (resolvedCommand?.command ?? "claude")
     : command;
+  logCliStartup({
+    cli,
+    cwd,
+    command: commandForRunner,
+    args,
+    env: sanitizeEnv(process.env),
+    mode: "interactive",
+  });
   const claudeEntrypoint = cli === "claude"
     ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
     : undefined;
@@ -2216,6 +2272,12 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               appendTraceMessage(content);
               appendTraceLog(content);
             },
+            onEvent: (event) => {
+              if (activeRunId !== runId) {
+                return;
+              }
+              appendDebugEvent(event);
+            },
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items });
             },
@@ -2257,6 +2319,12 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           }
           appendTraceMessage(content);
           appendTraceLog(content);
+        },
+        onEvent: (event) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendDebugEvent(event);
         },
         onTaskListUpdate: (items) => {
           sendPanelMessage({ type: "taskListUpdate", items });

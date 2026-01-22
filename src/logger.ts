@@ -1,9 +1,11 @@
-import * as vscode from "vscode";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 
 let logsDirPath: string | undefined;
+let debugLoggingEnabled = false;
+
+const ENV_REDACT_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD|PASS|AUTH)/i;
 
 export async function initLogger(): Promise<void> {
   const logsDir = resolveLogsDir();
@@ -12,6 +14,22 @@ export async function initLogger(): Promise<void> {
   }
   await fs.mkdir(logsDir, { recursive: true });
   logsDirPath = logsDir;
+}
+
+export function setDebugLogging(enabled: boolean): void {
+  debugLoggingEnabled = enabled;
+}
+
+export function sanitizeEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const entries = Object.entries(env)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => {
+      const normalized = String(value);
+      const redacted = ENV_REDACT_PATTERN.test(key) ? "[redacted]" : normalized;
+      return [key, redacted] as const;
+    })
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  return Object.fromEntries(entries);
 }
 
 export async function logInfo(message: string, data?: unknown): Promise<void> {
@@ -23,7 +41,11 @@ export async function logDebug(message: string, data?: unknown): Promise<void> {
 }
 
 export async function logError(message: string, data?: unknown): Promise<void> {
-  await appendLog("ERROR", message, data);
+  await appendLog("ERROR", message, data, { force: true });
+}
+
+export async function logEssential(message: string, data?: unknown): Promise<void> {
+  await appendLog("INFO", message, data, { force: true });
 }
 
 export async function logAssistantRaw(
@@ -31,7 +53,7 @@ export async function logAssistantRaw(
   content: string,
   sessionId?: string | null
 ): Promise<void> {
-  if (!logsDirPath || !content) {
+  if (!logsDirPath || !debugLoggingEnabled || !content) {
     return;
   }
   const date = formatLocalDate(new Date());
@@ -62,7 +84,7 @@ export async function logCliRaw(
   sessionId: string | null | undefined,
   payload: Omit<CliRawLog, "time" | "sessionId">
 ): Promise<void> {
-  if (!logsDirPath) {
+  if (!logsDirPath || !debugLoggingEnabled) {
     return;
   }
   const date = formatLocalDate(new Date());
@@ -102,7 +124,7 @@ export async function logCliStream(
   stream: "stdout" | "stderr",
   content: string
 ): Promise<void> {
-  if (!logsDirPath) {
+  if (!logsDirPath || !debugLoggingEnabled) {
     return;
   }
   const date = formatLocalDate(new Date());
@@ -155,7 +177,7 @@ export async function logCliInteractiveStart(
   sessionId: string | null | undefined,
   payload: CliInteractiveStart
 ): Promise<void> {
-  if (!logsDirPath) {
+  if (!logsDirPath || !debugLoggingEnabled) {
     return;
   }
   const date = formatLocalDate(new Date());
@@ -192,7 +214,7 @@ export async function logCliInteractiveOutput(
   stream: "stdout" | "stderr" | "event" | "trace",
   content: string
 ): Promise<void> {
-  if (!logsDirPath || !content) {
+  if (!logsDirPath || !debugLoggingEnabled || !content) {
     return;
   }
   const date = formatLocalDate(new Date());
@@ -203,12 +225,20 @@ export async function logCliInteractiveOutput(
   await fs.appendFile(filePath, `${prefixed}\n`, "utf8");
 }
 
+type AppendLogOptions = {
+  force?: boolean;
+};
+
 async function appendLog(
   level: "DEBUG" | "INFO" | "ERROR",
   message: string,
-  data?: unknown
+  data?: unknown,
+  options: AppendLogOptions = {}
 ): Promise<void> {
   if (!logsDirPath) {
+    return;
+  }
+  if (!debugLoggingEnabled && !options.force && level !== "ERROR") {
     return;
   }
   const time = new Date().toISOString();

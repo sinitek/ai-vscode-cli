@@ -10,6 +10,7 @@ export type ClaudeStreamHandlers = {
   onTrace: (content: string) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
+  onEvent?: (event: unknown) => void;
 };
 
 function pickArgValue(args: string[], key: string): string | null {
@@ -242,6 +243,7 @@ export class ClaudeInteractiveRunner {
         if (this.disposed) {
           break;
         }
+        handlers.onEvent?.(msg);
 
         // 更新 session_id
         if (msg?.session_id && typeof msg.session_id === "string" && msg.session_id !== this.options.sessionId) {
