@@ -1,0 +1,40 @@
+# Source files
+.vscode/**
+.vscode-test/**
+src/**
+tsconfig.json
+**/*.ts
+**/*.map
+.gitignore
+
+# Dependencies
+node_modules/**
+
+# Build outputs - keep compiled JS but exclude source maps and old VSIX files
+dist/**/*.map
+dist/**/*.vsix
+
+# Development files
+.history/**
+.git/**
+**/.git/**
+
+# Logs directory (causes EISDIR error in secretlint)
+logs
+logs/**
+
+# Python scripts
+vscode_extension_win.py
+dev_run_mac.sh
+export_vscode_extension.sh
+
+# Lock files
+package-lock.json
+yarn.lock
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+
+# Misc
+.DS_Store
