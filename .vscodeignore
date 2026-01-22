@@ -9,6 +9,17 @@ tsconfig.json
 
 # Dependencies
 node_modules/**
+!node_modules/@anthropic-ai/**
+!node_modules/@anthropic-ai/claude-agent-sdk/**
+!node_modules/@openai/**
+!node_modules/@openai/codex-sdk/**
+!node_modules/cross-spawn/**
+!node_modules/isexe/**
+!node_modules/path-key/**
+!node_modules/shebang-command/**
+!node_modules/shebang-regex/**
+!node_modules/which/**
+!node_modules/zod/**
 
 # Build outputs - keep compiled JS but exclude source maps and old VSIX files
 dist/**/*.map

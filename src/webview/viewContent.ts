@@ -1,4 +1,5 @@
 import { CLI_LIST } from "../cli/types";
+import { logError } from "../logger";
 import { readFileSync } from "fs";
 import * as path from "path";
 
@@ -937,6 +938,47 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     </script>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      function postWebviewError(payload) {
+        try {
+          vscode.postMessage(Object.assign({ type: "webviewError" }, payload));
+        } catch {
+          // ignore
+        }
+      }
+      function normalizeReason(reason) {
+        if (!reason) {
+          return "";
+        }
+        if (reason instanceof Error) {
+          return reason.message || String(reason);
+        }
+        if (typeof reason === "string") {
+          return reason;
+        }
+        try {
+          return JSON.stringify(reason);
+        } catch {
+          return String(reason);
+        }
+      }
+      window.addEventListener("error", (event) => {
+        postWebviewError({
+          message: event && event.message ? event.message : "webview-error",
+          source: event && event.filename ? event.filename : undefined,
+          lineno: event && typeof event.lineno === "number" ? event.lineno : undefined,
+          colno: event && typeof event.colno === "number" ? event.colno : undefined,
+          stack: event && event.error && event.error.stack ? String(event.error.stack) : undefined,
+        });
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event ? normalizeReason(event.reason) : "";
+        const stack = event && event.reason && event.reason.stack ? String(event.reason.stack) : undefined;
+        postWebviewError({
+          message: "webview-unhandledrejection",
+          reason,
+          stack,
+        });
+      });
 
       const state = {
         currentCli: "codex",
@@ -2450,10 +2492,22 @@ function getNonce(): string {
 }
 
 function getMarkedScript(): string {
-  if (cachedMarkedScript) {
+  if (cachedMarkedScript !== undefined) {
     return cachedMarkedScript;
   }
-  const scriptPath = path.join(__dirname, "..", "..", "node_modules", "marked", "marked.min.js");
-  cachedMarkedScript = readFileSync(scriptPath, "utf8");
+  const candidates = [
+    path.join(__dirname, "..", "..", "media", "marked.min.js"),
+    path.join(__dirname, "..", "..", "node_modules", "marked", "marked.min.js"),
+  ];
+  for (const scriptPath of candidates) {
+    try {
+      cachedMarkedScript = readFileSync(scriptPath, "utf8");
+      return cachedMarkedScript;
+    } catch {
+      // Keep checking next candidate.
+    }
+  }
+  void logError("webview-marked-script-missing", { candidates });
+  cachedMarkedScript = "";
   return cachedMarkedScript;
 }

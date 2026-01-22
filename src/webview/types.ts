@@ -23,7 +23,16 @@ export type PanelMessage =
   | { type: "pickWorkspacePath" }
   | { type: "uploadFiles"; files: UploadFilePayload[] }
   | { type: "loadRules"; cli: CliName; scope: "global" | "project" }
-  | { type: "saveRules"; content: string; targets: CliName[]; scope: "global" | "project" };
+  | { type: "saveRules"; content: string; targets: CliName[]; scope: "global" | "project" }
+  | {
+      type: "webviewError";
+      message: string;
+      stack?: string;
+      source?: string;
+      lineno?: number;
+      colno?: number;
+      reason?: string;
+    };
 
 export type UploadFilePayload = {
   name: string;
