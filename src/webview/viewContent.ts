@@ -952,7 +952,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           currentSessionId: null,
           sessions: [],
         },
-        debug: true,
+        debug: false,
         thinkingMode: "medium",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },

@@ -88,7 +88,7 @@ npm init @vscode/extension
         },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "开启调试日志，记录 CLI stdin/stdout/stderr。"
         }
       }

@@ -30,7 +30,7 @@ export function getRememberSelectedCli(): boolean {
 
 export function getDebugLogging(): boolean {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return config.get<boolean>("debug", true);
+  return config.get<boolean>("debug", false);
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {

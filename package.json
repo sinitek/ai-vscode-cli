@@ -122,7 +122,7 @@
         },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable debug logging for CLI stdin/stdout/stderr."
         },
         "sinitek-cli-tools.interactive.codex": {
