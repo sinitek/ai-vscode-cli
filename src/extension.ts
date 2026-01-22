@@ -1734,22 +1734,49 @@ function buildCompactionPrompt(): string {
   ].join("\n");
 }
 
-function appendTraceMessage(content: string, kind: "thinking" | "normal" = "normal"): void {
+type TraceMessageOptions = {
+  merge?: boolean;
+};
+
+function isCommandExecutionTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  const trimmed = firstLine.trim();
+  return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
+}
+
+function resolveTraceMerge(content: string, merge?: boolean): boolean {
+  if (merge !== undefined) {
+    return merge;
+  }
+  return !isCommandExecutionTrace(content);
+}
+
+function appendTraceMessage(
+  content: string,
+  kind: "thinking" | "normal" = "normal",
+  options: TraceMessageOptions = {}
+): void {
   if (!activeMessageTarget) {
     return;
   }
   if (!content.trim()) {
     return;
   }
+  const shouldMerge = resolveTraceMerge(content, options.merge);
+  const mergePayload = shouldMerge ? {} : { merge: false };
   const message: ChatMessage = {
     id: createMessageId(),
     role: "trace",
     content,
     createdAt: Date.now(),
     kind,
+    ...mergePayload,
   };
   appendMessageToStore(activeMessageTarget, message);
-  sendPanelMessage({ type: "traceSegment", content, kind });
+  sendPanelMessage({ type: "traceSegment", content, kind, ...mergePayload });
 }
 
 function appendSystemMessage(content: string): void {
@@ -2090,11 +2117,11 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               appendAssistantChunk(chunk);
               appendDebugStdout(chunk);
             },
-            onTrace: (content, kind) => {
+            onTrace: (content, kind, meta) => {
               if (activeRunId !== runId) {
                 return;
               }
-              appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+              appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
               appendTraceLog(content);
             },
             onEvent: (event) => {
@@ -2153,11 +2180,11 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           appendAssistantChunk(chunk);
           appendDebugStdout(chunk);
         },
-        onTrace: (content, kind) => {
+        onTrace: (content, kind, meta) => {
           if (activeRunId !== runId) {
             return;
           }
-          appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal");
+          appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
           appendTraceLog(content);
         },
         onEvent: (event) => {
@@ -2575,6 +2602,8 @@ function flushTraceSegment(): void {
     execDisplayContent
   );
   const kind = getTraceSegmentKind(displayContent);
+  const shouldMerge = resolveTraceMerge(displayContent);
+  const mergePayload = shouldMerge ? {} : { merge: false };
   activeTraceSegmentLines = [];
   if (activeCliForRun === "codex" && kind === "thinking") {
     appendAssistantChunk(`${displayContent}\n`);
@@ -2586,12 +2615,14 @@ function flushTraceSegment(): void {
       role: "trace",
       content: displayContent,
       createdAt: Date.now(),
+      ...mergePayload,
     });
   }
   sendPanelMessage({
     type: "traceSegment",
     content: displayContent,
     kind,
+    ...mergePayload,
   });
 }
 

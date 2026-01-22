@@ -115,6 +115,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-direction: column;
         gap: 6px;
         max-width: 100%;
+        min-width: 0;
       }
       /* User Message - Distinct Bubble */
       .message.user {
@@ -132,6 +133,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 10px 14px;
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
+        box-sizing: border-box;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
       }
 
@@ -146,6 +148,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 12px;
         max-width: 100%;
         width: 100%;
+        box-sizing: border-box;
       }
       
       /* Markdown Styles */
@@ -165,6 +168,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         margin: 12px 0;
         font-family: var(--vscode-editor-font-family);
         font-size: 12px;
+        box-sizing: border-box;
+        max-width: 100%;
       }
       .message.assistant .bubble code {
         font-family: var(--vscode-editor-font-family);
@@ -208,6 +213,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 0;
         font-size: 12px;
         width: 100%;
+        box-sizing: border-box;
       }
       .message.system .system-line {
         display: flex;
@@ -232,6 +238,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: var(--radius-md);
         white-space: pre-wrap;
         border-left: 3px solid var(--vscode-minimap-findMatchHighlight);
+        box-sizing: border-box;
+      }
+      .trace-time {
+        margin-top: 6px;
+        font-size: 11px;
+        opacity: 0.7;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
       }
       .message.trace.trace-nonthinking .bubble {
         opacity: 1;
@@ -1262,7 +1276,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!message) {
           return;
         }
-        if ((message.role === "user" || message.role === "system") && !message.createdAt) {
+        if ((message.role === "user" || message.role === "system" || message.role === "trace") && !message.createdAt) {
           message.createdAt = Date.now();
         }
         const last = state.messages[state.messages.length - 1];
@@ -1283,7 +1297,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         const sameRole = last && last.role === message.role;
         const sameTraceKind = message.role !== "trace" || last.kind === message.kind;
-        if (sameRole && sameTraceKind) {
+        const allowMerge = message.merge !== false && (!last || last.merge !== false);
+        if (sameRole && sameTraceKind && allowMerge) {
           const prefix = last.content ? "\\n" : "";
           last.content = last.content + prefix + (message.content || "");
           renderMessages();
@@ -1328,7 +1343,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return content;
         }
         if (message.role === "trace") {
-          return renderTraceContent(message.content || "");
+          const content = renderTraceContent(message.content || "");
+          const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
+          if (time) {
+            return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
+          }
+          return content;
         }
         return renderMarkdown(message.content);
       }
@@ -1927,6 +1947,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds;
       }
 
+      function formatDateTimeWithMs(timestamp) {
+        const date = new Date(timestamp);
+        const pad = (value) => String(value).padStart(2, "0");
+        const padMs = (value) => String(value).padStart(3, "0");
+        const year = date.getFullYear();
+        const month = pad(date.getMonth() + 1);
+        const day = pad(date.getDate());
+        const hours = pad(date.getHours());
+        const minutes = pad(date.getMinutes());
+        const seconds = pad(date.getSeconds());
+        const ms = padMs(date.getMilliseconds());
+        return year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds + "." + ms;
+      }
+
       elements.currentCli.addEventListener("change", (event) => {
         vscode.postMessage({ type: "selectCli", cli: event.target.value });
       });
@@ -2267,7 +2301,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           appendAssistantDelta(data.id, data.content);
         }
         if (data.type === "traceSegment") {
-          appendMessage({ id: createMessageId(), role: "trace", content: data.content, kind: data.kind });
+          appendMessage({
+            id: createMessageId(),
+            role: "trace",
+            content: data.content,
+            kind: data.kind,
+            merge: data.merge,
+          });
         }
         if (data.type === "runStatus") {
           updateRunningState(data.status === "start");

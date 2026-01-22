@@ -44,6 +44,7 @@ export type ChatMessage = {
   content: string;
   createdAt?: number;
   kind?: "thinking" | "normal";
+  merge?: boolean;
 };
 
 export type PanelState = {

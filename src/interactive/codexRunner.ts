@@ -3,9 +3,13 @@ import { dynamicImport } from "./dynamicImport";
 
 export type CodexTraceKind = "thinking" | "normal";
 
+export type CodexTraceMeta = {
+  merge?: boolean;
+};
+
 export type CodexStreamHandlers = {
   onAssistantDelta: (chunk: string) => void;
-  onTrace: (content: string, kind?: CodexTraceKind) => void;
+  onTrace: (content: string, kind?: CodexTraceKind, meta?: CodexTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
   onEvent?: (event: unknown) => void;
@@ -227,6 +231,19 @@ export class CodexInteractiveRunner {
         handlers.onThreadId(event.thread_id);
         continue;
       }
+      if (event?.type === "error") {
+        const message = typeof event.message === "string" ? event.message.trim() : "";
+        if (message) {
+          const lower = message.toLowerCase();
+          const prefix = lower.startsWith("reconnecting")
+            ? "【重连】"
+            : lower.startsWith("retrying")
+            ? "【重试】"
+            : "【错误】";
+          handlers.onTrace(`${prefix}${message}`);
+        }
+        continue;
+      }
 
       if ((event?.type === "item.started" || event?.type === "item.updated" || event?.type === "item.completed") && event.item) {
         const item = event.item as any;
@@ -266,7 +283,7 @@ export class CodexInteractiveRunner {
             status ? `状态：${status}${exitCode ? `（exit=${exitCode}）` : ""}` : "",
             output ? `输出：\n${output}` : "",
           ].filter(Boolean);
-          handlers.onTrace(lines.join("\n"));
+          handlers.onTrace(lines.join("\n"), "normal", { merge: false });
           continue;
         }
         if (item.type === "file_change") {
