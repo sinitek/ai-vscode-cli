@@ -1,7 +1,15 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
-import { ApplyPayload, ConfigItem, ConfigPlatform, CurrentConfig, McpMarketplaceItem } from "./types";
+import {
+  ApplyPayload,
+  ConfigItem,
+  ConfigPlatform,
+  CurrentConfig,
+  McpMarketplaceItem,
+  CodexSkillItem,
+} from "./types";
+import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
 
 const CONFIG_DIR_NAME = "__config";
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
@@ -196,6 +204,9 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
       if (config.platform === "gemini" && config.envContent === undefined) {
         config.envContent = "";
       }
+      if (config.platform === "codex" && config.codexSkills === undefined) {
+        config.codexSkills = [];
+      }
       configs.push(config);
     } catch {
       // 跳过损坏配置
@@ -256,6 +267,9 @@ export async function getConfigById(
     if (config.platform === "gemini" && config.envContent === undefined) {
       config.envContent = "";
     }
+    if (config.platform === "codex" && config.codexSkills === undefined) {
+      config.codexSkills = [];
+    }
     return config;
   } catch {
     return null;
@@ -304,6 +318,7 @@ export async function initDefaultConfig(platform: ConfigPlatform): Promise<Confi
     } else {
       defaultConfig.configContent = "";
       defaultConfig.authContent = "{}";
+      defaultConfig.codexSkills = [];
     }
   }
 
@@ -336,7 +351,11 @@ export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayloa
     if (payload.configContent === undefined || payload.authContent === undefined) {
       throw new Error("Codex 配置不完整");
     }
-    await writeCodexConfig(payload.configContent, payload.authContent);
+    const nextConfig =
+      payload.codexSkills === undefined
+        ? payload.configContent
+        : mergeCodexSkillsConfig(payload.configContent, payload.codexSkills);
+    await writeCodexConfig(nextConfig, payload.authContent);
     return;
   }
   await writeGeminiConfig(payload.content ?? "{}", payload.envContent ?? "");
@@ -367,4 +386,8 @@ export async function getMcpMarketplaceList(): Promise<McpMarketplaceItem[]> {
   }
 
   return [];
+}
+
+export async function getCodexSkillsList(): Promise<CodexSkillItem[]> {
+  return listCodexSkills();
 }

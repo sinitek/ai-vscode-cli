@@ -10,7 +10,8 @@ export type ConfigAction =
   | "backup"
   | "getBackups"
   | "initDefault"
-  | "getMcpMarketplaceList";
+  | "getMcpMarketplaceList"
+  | "getCodexSkillsList";
 
 export type ConfigRequestPayload =
   | { action: "getList"; platform: ConfigPlatform }
@@ -22,7 +23,8 @@ export type ConfigRequestPayload =
   | { action: "backup"; platform: ConfigPlatform }
   | { action: "getBackups"; platform: ConfigPlatform }
   | { action: "initDefault"; platform: ConfigPlatform }
-  | { action: "getMcpMarketplaceList" };
+  | { action: "getMcpMarketplaceList" }
+  | { action: "getCodexSkillsList" };
 
 export type ConfigRequestMessage = {
   type: "config:request";

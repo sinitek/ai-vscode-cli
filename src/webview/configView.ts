@@ -104,6 +104,7 @@ export function getConfigViewHtml(
           getBackups: (platform) => requestConfig("getBackups", { platform }),
           initDefault: (platform) => requestConfig("initDefault", { platform }),
           getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
+          getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
         },
       };
 

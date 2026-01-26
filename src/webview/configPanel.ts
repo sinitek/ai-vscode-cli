@@ -97,6 +97,9 @@ export class ConfigManagerPanel {
         case "getMcpMarketplaceList":
           response.data = await configService.getMcpMarketplaceList();
           break;
+        case "getCodexSkillsList":
+          response.data = await configService.getCodexSkillsList();
+          break;
         default:
           response.success = false;
           response.error = "未知请求";

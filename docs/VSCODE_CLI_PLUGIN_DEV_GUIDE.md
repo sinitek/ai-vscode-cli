@@ -133,6 +133,15 @@ export function getCliArgs(cli: CliName): string[] {
 }
 ```
 
+### Codex Skills 配置
+
+- 配置面板会读取 `~/.codex/skills` 下的技能目录（需包含 `SKILL.md`）。
+- 在配置页可对单个技能进行启用/禁用，并支持一键启用/禁用。
+- 保存时会将技能状态写入 `~/.codex/config.toml` 的受控区块：
+  - `# --- sinitek codex skills start ---`
+  - `# --- sinitek codex skills end ---`
+- 该区块只写入禁用项（`enabled = false`），不影响用户自定义的其它 TOML 配置。
+
 ### CLI 调用（src/cli/commandRunner.ts）
 
 ```ts

@@ -76,6 +76,7 @@ const ConfigListPanel = () => {
                       platform: k,
                       configContent: "",
                       authContent: "{}",
+                      codexSkills: [],
                     })),
                 o(T.id, T.platform),
                 Kt.success("添加成功"));
@@ -157,6 +158,7 @@ const ConfigListPanel = () => {
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
                     authContent: L.authContent,
+                    codexSkills: L.codexSkills ?? [],
                   }),
             m(L.platform, L.id),
             Kt.success(`已应用配置: ${L.name}`));
@@ -1568,6 +1570,8 @@ const ConfigEditorPanel = () => {
       [m, v] = c.useState(""),
       [p, h] = c.useState(""),
       [b, x] = c.useState(""),
+      [C, Z] = c.useState([]),
+      [j, q] = c.useState(!1),
       [S, y] = c.useState(null),
       [$, w] = c.useState(!1),
       O = e ? n(e, t || void 0) : null,
@@ -1632,7 +1636,7 @@ const ConfigEditorPanel = () => {
       };
     c.useEffect(() => {
       if (!O) {
-        (s(""), f(""), x(""), v(""), h(""));
+        (s(""), f(""), x(""), v(""), h(""), Z([]));
         return;
       }
       O.platform === "claude"
@@ -1641,6 +1645,46 @@ const ConfigEditorPanel = () => {
           ? (s(O.content || "{}"), x(O.envContent || ""), v(""), h(""))
           : (v(O.configContent || ""), h(O.authContent || "{}"), s(""), x(""));
     }, [O]);
+    const G = c.useCallback((W, H) => {
+      const k = new Map();
+      (Array.isArray(H) ? H : []).forEach((L) => {
+        if (L && L.name) k.set(L.name, L);
+      });
+      return (Array.isArray(W) ? W : []).map((L) => {
+        const U = k.get(L.name);
+        return {
+          name: L.name,
+          path: L.path,
+          description: L.description,
+          enabled: U ? U.enabled !== !1 : !1,
+        };
+      });
+    }, []);
+    c.useEffect(() => {
+      let W = !1;
+      if (!O || O.platform !== "codex") {
+        Z([]);
+        return;
+      }
+      (async () => {
+        q(!0);
+        try {
+          const H = await fetchCodexSkillsList();
+          if (!W) {
+            const k = G(H, O.codexSkills);
+            Z(k);
+          }
+        } catch (H) {
+          console.error("获取 Codex Skills 失败:", H);
+          Kt.error("获取 Codex Skills 失败");
+        } finally {
+          W || q(!1);
+        }
+      })();
+      return () => {
+        W = !0;
+      };
+    }, [O, G]);
     const _ = (W) => {
         try {
           return (JSON.parse(W), !0);
@@ -1765,15 +1809,70 @@ const ConfigEditorPanel = () => {
           }
           try {
             const W = M(p);
-            (await r(O.id, { configContent: m, authContent: W }),
+            (await r(O.id, { configContent: m, authContent: W, codexSkills: C }),
               h(W),
               Kt.success("保存成功"),
-              await A({ configContent: m, authContent: W }));
+              await A({ configContent: m, authContent: W, codexSkills: C }));
           } catch (W) {
             Kt.error("保存失败: " + W);
           }
         }
       };
+    const J = async (W, H) => {
+        const k = C.map((L) => (L.name === W ? { ...L, enabled: H } : L));
+        Z(k);
+        try {
+          if (O) {
+            await r(O.id, { codexSkills: k });
+            if (o(O.platform) === O.id) {
+              if (!_(p)) {
+                Kt.error("auth.json格式不正确");
+                return;
+              }
+              const L = M(p);
+              await applyConfigItem("codex", {
+                configContent: m,
+                authContent: L,
+                codexSkills: k,
+              });
+              const U = await fetchCurrentConfig("codex");
+              U?.configContent !== void 0 && v(U.configContent);
+              U?.authContent !== void 0 && h(U.authContent);
+              Kt.success("已更新当前激活的配置");
+            }
+          }
+        } catch (L) {
+          Kt.error("更新技能失败: " + L);
+        }
+      },
+      K = async (W) => {
+        const H = C.map((k) => ({ ...k, enabled: W }));
+        Z(H);
+        try {
+          if (O) {
+            await r(O.id, { codexSkills: H });
+            if (o(O.platform) === O.id) {
+              if (!_(p)) {
+                Kt.error("auth.json格式不正确");
+                return;
+              }
+              const k = M(p);
+              await applyConfigItem("codex", {
+                configContent: m,
+                authContent: k,
+                codexSkills: H,
+              });
+              const L = await fetchCurrentConfig("codex");
+              L?.configContent !== void 0 && v(L.configContent);
+              L?.authContent !== void 0 && h(L.authContent);
+              Kt.success("已更新当前激活的配置");
+            }
+          }
+        } catch (k) {
+          Kt.error("更新技能失败: " + k);
+        }
+      },
+      Q = c.useMemo(() => C.filter((W) => W.enabled !== !1).length, [C]);
     return O
       ? O.platform === "claude"
         ? be.jsxs("div", {
@@ -2174,6 +2273,129 @@ const ConfigEditorPanel = () => {
                             fontFamily: "monospace",
                             fontSize: "13px",
                           },
+                        }),
+                      ],
+                    }),
+                    be.jsxs("div", {
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                      },
+                      children: [
+                        be.jsxs("div", {
+                          style: {
+                            marginBottom: "8px",
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            justifyContent: "space-between",
+                          },
+                          children: [
+                            be.jsxs("span", {
+                              children: [be.jsx(Ya, {}), " Skills"],
+                            }),
+                            be.jsxs("div", {
+                              style: { display: "flex", gap: "8px" },
+                              children: [
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!0),
+                                  disabled: C.length === 0,
+                                  children: "一键启用",
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!1),
+                                  disabled: C.length === 0,
+                                  children: "一键禁用",
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "8px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: j
+                            ? "技能列表加载中..."
+                            : `已启用 ${Q} / ${C.length}`,
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            padding: "8px",
+                            maxHeight: "240px",
+                            overflow: "auto",
+                            background:
+                              "var(--background-color-secondary, #f5f5f5)",
+                          },
+                          children:
+                            C.length === 0
+                              ? be.jsx("div", {
+                                  style: {
+                                    color: "var(--text-color-secondary)",
+                                    fontSize: "12px",
+                                  },
+                                  children: "未检测到 Skills，请先安装到 ~/.codex/skills",
+                                })
+                              : C.map((W) =>
+                                  be.jsx(
+                                    "label",
+                                    {
+                                      style: {
+                                        display: "flex",
+                                        gap: "10px",
+                                        padding: "8px",
+                                        borderRadius: "6px",
+                                        background: "var(--background-color)",
+                                        border: "1px solid var(--border-color)",
+                                        marginBottom: "8px",
+                                      },
+                                      children: be.jsxs("div", {
+                                        style: { display: "flex", gap: "8px", width: "100%" },
+                                        children: [
+                                          be.jsx("input", {
+                                            type: "checkbox",
+                                            checked: W.enabled !== !1,
+                                            onChange: (H) => J(W.name, H.target.checked),
+                                          }),
+                                          be.jsxs("div", {
+                                            style: {
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: "2px",
+                                              flex: 1,
+                                            },
+                                            children: [
+                                              be.jsx("div", { children: W.name }),
+                                              be.jsx("div", {
+                                                style: {
+                                                  color: "var(--text-color-secondary)",
+                                                  fontSize: "12px",
+                                                },
+                                                children: W.path,
+                                              }),
+                                              W.description &&
+                                                be.jsx("div", {
+                                                  style: {
+                                                    color: "var(--text-color-secondary)",
+                                                    fontSize: "12px",
+                                                  },
+                                                  children: W.description,
+                                                }),
+                                            ],
+                                          }),
+                                        ],
+                                      }),
+                                    },
+                                    W.name,
+                                  ),
+                                ),
                         }),
                       ],
                     }),

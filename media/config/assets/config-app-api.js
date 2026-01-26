@@ -42,6 +42,7 @@ const detectConfigApiMode = () =>
           throw new Error(t.message ?? "获取 MCP 市场失败");
         return t?.data ?? [];
       }),
+    getCodexSkillsList: () => requestConfigApi("/codex/skills"),
   },
   getIpcConfigApi = () => {
     if (!window.electronAPI?.config) throw new Error("Electron API 未就绪");
@@ -54,6 +55,13 @@ const detectConfigApiMode = () =>
       return configApi.getMcpMarketplaceList();
     } catch (e) {
       throw (console.error("获取 MCP 市场列表失败:", e), e);
+    }
+  },
+  fetchCodexSkillsList = async () => {
+    try {
+      return configApi.getCodexSkillsList();
+    } catch (e) {
+      throw (console.error("获取 Codex Skills 失败:", e), e);
     }
   },
   fetchConfigList = async (e) => {
@@ -96,5 +104,12 @@ const detectConfigApiMode = () =>
       return configApi.initDefault(e);
     } catch (t) {
       throw (console.error("初始化默认配置失败:", t), t);
+    }
+  },
+  fetchCurrentConfig = async (e) => {
+    try {
+      return configApi.getCurrent(e);
+    } catch (t) {
+      throw (console.error("获取当前配置失败:", t), t);
     }
   };

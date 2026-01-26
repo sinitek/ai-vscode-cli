@@ -50,6 +50,7 @@ import {
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
+import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
 import {
   getMappedThreadId,
@@ -1145,7 +1146,7 @@ function matchesActiveConfig(
 }
 
 function normalizeConfigText(value: string | undefined): string {
-  const normalized = normalizeLineEndings(value ?? "");
+  const normalized = stripCodexSkillsBlock(normalizeLineEndings(value ?? ""));
   return normalized
     .split("\n")
     .map((line) => line.replace(/\s+$/g, ""))
@@ -1170,6 +1171,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
       envContent: config.envContent,
       configContent: config.configContent,
       authContent: config.authContent,
+      codexSkills: config.codexSkills,
     });
   } catch (error) {
     void vscode.window.showErrorMessage(

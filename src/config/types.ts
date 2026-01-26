@@ -9,8 +9,19 @@ export type ConfigItem = {
   envContent?: string;
   configContent?: string;
   authContent?: string;
+  codexSkills?: CodexSkillToggle[];
   createdAt: number;
   updatedAt: number;
+};
+
+export type CodexSkillItem = {
+  name: string;
+  path: string;
+  description?: string;
+};
+
+export type CodexSkillToggle = CodexSkillItem & {
+  enabled: boolean;
 };
 
 export type McpMarketplaceItem = {
@@ -35,6 +46,7 @@ export type ApplyPayload = {
   envContent?: string;
   configContent?: string;
   authContent?: string;
+  codexSkills?: CodexSkillToggle[];
 };
 
 export type CurrentConfig = {
