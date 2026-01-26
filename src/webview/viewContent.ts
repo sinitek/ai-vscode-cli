@@ -419,6 +419,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         margin: 0;
       }
 
+      .fixed-width-button {
+        width: 60px;
+        flex: 0 0 auto;
+      }
+
       /* Buttons */
       button {
         display: inline-flex;
@@ -642,6 +647,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 0 16px;
       }
 
+      .tool-settings-modal {
+        width: 420px;
+      }
+      .tool-settings-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .tool-settings-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .tool-settings-label {
+        font-size: 12px;
+        color: var(--vscode-foreground);
+      }
+
       /* Tasklist Panel */
       .tasklist-panel {
         padding: 8px 16px 12px;
@@ -725,6 +750,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               <path d="M12 16.5h.01" />
             </svg>
           </button>
+          <button id="toolSettingsButton" class="secondary icon-button" title="工具设置" aria-label="工具设置">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+              <circle cx="9" cy="6" r="2" />
+              <circle cx="15" cy="12" r="2" />
+              <circle cx="11" cy="18" r="2" />
+            </svg>
+          </button>
           <button id="rulesButton" class="secondary icon-button" title="规则配置" aria-label="规则配置">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
@@ -786,17 +821,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                <option value="medium">思考：中</option>
                <option value="high">思考：高</option>
              </select>
-             <select id="interactiveMode" class="thinking-select" aria-label="交互模式">
-               <option value="on">交互：开启(Beta)</option>
-               <option value="off">交互：关闭</option>
-             </select>
-             <label class="debug-toggle" title="调试日志">
-               <input type="checkbox" id="debugMode" />
-               <span>调试</span>
-             </label>
-             <button id="historyButton" class="secondary action-button" title="历史会话">历史</button>
-             <button id="sendPrompt" class="action-button">发送</button>
-             <button id="stopRun" class="action-button stop-button" style="display: none;">停止</button>
+             <button id="historyButton" class="secondary action-button fixed-width-button" title="历史会话">历史</button>
+             <button id="sendPrompt" class="action-button fixed-width-button">发送</button>
+             <button id="stopRun" class="action-button stop-button fixed-width-button" style="display: none;">停止</button>
            </div>
          </div>
       </div>
@@ -848,6 +875,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <div class="rules-hint" id="rulesHint"></div>
           <div class="rules-actions">
             <button id="saveRules" class="action-button">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="toolSettingsOverlay" class="overlay">
+        <div class="modal tool-settings-modal">
+          <div class="modal-header">
+            <div class="title">工具设置</div>
+            <button id="closeToolSettings" class="secondary">关闭</button>
+          </div>
+          <div class="tool-settings-body">
+            <div id="interactiveRow" class="tool-settings-row">
+              <div class="tool-settings-label">交互</div>
+              <select id="interactiveMode" class="thinking-select" aria-label="交互模式">
+                <option value="on">开启(Beta)</option>
+                <option value="off">关闭</option>
+              </select>
+            </div>
+            <div class="tool-settings-row">
+              <div class="tool-settings-label">调试</div>
+              <label class="debug-toggle" title="调试日志">
+                <input type="checkbox" id="debugMode" />
+                <span>开启</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -1048,10 +1100,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         helpButton: document.getElementById("helpButton"),
         helpOverlay: document.getElementById("helpOverlay"),
         closeHelp: document.getElementById("closeHelp"),
+        toolSettingsButton: document.getElementById("toolSettingsButton"),
+        toolSettingsOverlay: document.getElementById("toolSettingsOverlay"),
+        closeToolSettings: document.getElementById("closeToolSettings"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
         helpPanelThinking: document.getElementById("helpPanelThinking"),
+        interactiveRow: document.getElementById("interactiveRow"),
         toast: document.getElementById("toast"),
         taskListPanel: document.getElementById("taskListPanel"),
         taskListDetails: document.getElementById("taskListDetails"),
@@ -1217,7 +1273,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        elements.interactiveMode.style.display = supported ? "" : "none";
+        if (elements.interactiveRow) {
+          elements.interactiveRow.style.display = supported ? "flex" : "none";
+        } else {
+          elements.interactiveMode.style.display = supported ? "" : "none";
+        }
         elements.interactiveMode.disabled = !supported || state.isRunning;
       }
 
@@ -1413,7 +1473,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return escapeHtml(message.content || "");
         }
         if (message.role === "trace") {
-          const content = renderTraceContent(message.content || "");
+          const content = renderMarkdown(message.content || "");
           const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
           if (time) {
             return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
@@ -2156,6 +2216,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.helpOverlay.classList.remove("visible");
       }
 
+      function openToolSettings() {
+        elements.toolSettingsOverlay.classList.add("visible");
+      }
+
+      function closeToolSettings() {
+        elements.toolSettingsOverlay.classList.remove("visible");
+      }
+
       function setHelpTab(tab) {
         const isInstall = tab === "install";
         elements.helpTabInstall.classList.toggle("active", isInstall);
@@ -2253,6 +2321,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       elements.helpOverlay.addEventListener("click", (event) => {
         if (event.target === elements.helpOverlay) {
           closeHelp();
+        }
+      });
+
+      elements.toolSettingsButton.addEventListener("click", () => {
+        openToolSettings();
+      });
+
+      elements.closeToolSettings.addEventListener("click", () => {
+        closeToolSettings();
+      });
+
+      elements.toolSettingsOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.toolSettingsOverlay) {
+          closeToolSettings();
         }
       });
 
