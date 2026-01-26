@@ -82,6 +82,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         width: 16px;
         height: 16px;
       }
+      #commonCommandButton span {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 16px;
+      }
       #pathPickerButton span {
         width: 16px;
         height: 16px;
@@ -667,6 +678,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         color: var(--vscode-foreground);
       }
 
+      .common-commands-modal {
+        width: 360px;
+      }
+      .common-commands-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .common-command-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .common-command-button {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .common-command-desc {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
       /* Tasklist Panel */
       .tasklist-panel {
         padding: 8px 16px 12px;
@@ -807,6 +841,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
           <div class="input-actions">
+            <button id="commonCommandButton" class="secondary icon-button" title="常用指令" aria-label="常用指令">
+              <span>&gt;_</span>
+            </button>
             <button id="pathPickerButton" class="secondary icon-button" title="插入路径" aria-label="插入路径">
               <span>@</span>
             </button>
@@ -899,6 +936,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <input type="checkbox" id="debugMode" />
                 <span>开启</span>
               </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="commonCommandsOverlay" class="overlay">
+        <div class="modal common-commands-modal">
+          <div class="modal-header">
+            <div class="title">常用指令</div>
+            <button id="closeCommonCommands" class="secondary">关闭</button>
+          </div>
+          <div class="common-commands-body">
+            <div class="common-command-list">
+              <button id="commandCompact" class="action-button common-command-button">
+                <span>压缩上下文</span>
+                <span class="common-command-desc">压缩后下一个任务节省 token 数消耗</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1074,6 +1128,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         thinkingMode: document.getElementById("thinkingMode"),
         interactiveMode: document.getElementById("interactiveMode"),
         debugMode: document.getElementById("debugMode"),
+        commonCommandButton: document.getElementById("commonCommandButton"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
         attachmentInput: document.getElementById("attachmentInput"),
@@ -1103,6 +1158,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         toolSettingsButton: document.getElementById("toolSettingsButton"),
         toolSettingsOverlay: document.getElementById("toolSettingsOverlay"),
         closeToolSettings: document.getElementById("closeToolSettings"),
+        commonCommandsOverlay: document.getElementById("commonCommandsOverlay"),
+        closeCommonCommands: document.getElementById("closeCommonCommands"),
+        commandCompact: document.getElementById("commandCompact"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
@@ -1279,6 +1337,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.interactiveMode.style.display = supported ? "" : "none";
         }
         elements.interactiveMode.disabled = !supported || state.isRunning;
+        syncCommonCommandOptions();
+      }
+
+      function syncCommonCommandOptions() {
+        if (!elements.commonCommandButton) {
+          return;
+        }
+        const supported = Boolean(state.interactive && state.interactive.supported);
+        const enabled = Boolean(state.interactive && state.interactive.enabled);
+        const visible = supported && enabled;
+        elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
+        elements.commonCommandButton.disabled = !visible || state.isRunning;
+        if (elements.commandCompact) {
+          elements.commandCompact.disabled = !visible || state.isRunning;
+        }
       }
 
       function updateThinkingMode(nextMode) {
@@ -1473,7 +1546,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return escapeHtml(message.content || "");
         }
         if (message.role === "trace") {
-          const content = renderMarkdown(message.content || "");
+          const content = renderTraceContent(message.content || "");
           const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
           if (time) {
             return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
@@ -2224,6 +2297,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.toolSettingsOverlay.classList.remove("visible");
       }
 
+      function openCommonCommands() {
+        elements.commonCommandsOverlay.classList.add("visible");
+      }
+
+      function closeCommonCommands() {
+        elements.commonCommandsOverlay.classList.remove("visible");
+      }
+
       function setHelpTab(tab) {
         const isInstall = tab === "install";
         elements.helpTabInstall.classList.toggle("active", isInstall);
@@ -2336,6 +2417,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (event.target === elements.toolSettingsOverlay) {
           closeToolSettings();
         }
+      });
+
+      elements.commonCommandButton.addEventListener("click", () => {
+        openCommonCommands();
+      });
+
+      elements.closeCommonCommands.addEventListener("click", () => {
+        closeCommonCommands();
+      });
+
+      elements.commonCommandsOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.commonCommandsOverlay) {
+          closeCommonCommands();
+        }
+      });
+
+      elements.commandCompact.addEventListener("click", () => {
+        closeCommonCommands();
+        vscode.postMessage({ type: "runCommonCommand", command: "compactContext" });
       });
 
       elements.helpTabInstall.addEventListener("click", () => {

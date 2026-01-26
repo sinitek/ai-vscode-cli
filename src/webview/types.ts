@@ -18,6 +18,7 @@ export type PanelMessage =
   | { type: "updateSetting"; key: string; value: unknown }
   | { type: "sendPrompt"; prompt: string }
   | { type: "stopRun" }
+  | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openConfig" }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }

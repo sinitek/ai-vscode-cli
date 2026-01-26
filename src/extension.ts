@@ -650,6 +650,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     return;
   }
 
+  if (message.type === "runCommonCommand" && message.command === "compactContext") {
+    await runContextCompactionCommand();
+    return;
+  }
+
   if (message.type === "sendPrompt" && typeof message.prompt === "string") {
     await runPrompt(message.prompt.trim());
     return;
@@ -1884,6 +1889,256 @@ function appendSystemMessage(content: string): void {
   sendPanelMessage({ type: "appendMessage", message });
 }
 
+function appendSystemMessageForCli(cli: CliName, sessionId: string | null, content: string): void {
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content,
+    createdAt: Date.now(),
+  };
+  if (sessionId) {
+    const target = loadSessionMessages(cli, sessionId);
+    appendMessageToStore(target, message);
+    saveSessionMessages(cli, sessionId, target);
+  } else {
+    pendingSessionMessages[cli].push(message);
+  }
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+async function runContextCompactionCommand(): Promise<void> {
+  const cli = currentCli;
+  if (!isInteractiveSupported(cli) || !getInteractiveEnabled(cli)) {
+    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前未开启交互模式，无法执行压缩。");
+    return;
+  }
+  if (cli !== "codex" && cli !== "claude") {
+    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前 CLI 不支持上下文压缩。");
+    return;
+  }
+  if (activeProcess || activeInteractiveStop) {
+    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前任务运行中，请稍后再试。");
+    return;
+  }
+  const sessionId = getCurrentSessionId(cli);
+  if (!sessionId) {
+    appendSystemMessageForCli(cli, sessionId, "当前会话尚未建立，无法压缩。");
+    return;
+  }
+
+  const cwd = resolveWorkspaceCwd();
+  const thinkingMode = getThinkingMode(cli);
+  applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
+
+  const args = getCliArgs(cli);
+  const command = getCliCommand(cli);
+  const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
+  const commandForRunner = cli === "claude"
+    ? (resolvedCommand?.command ?? "claude")
+    : command;
+  logCliStartup({
+    cli,
+    cwd,
+    command: commandForRunner,
+    args,
+    env: sanitizeEnv(process.env),
+    mode: "interactive",
+  });
+
+  const messageTarget = loadSessionMessages(cli, sessionId);
+  const runId = createMessageId();
+  activeRunId = runId;
+  applyProcessTitle(runId, cli, sessionId);
+  startTaskRun(runId, cli, sessionId, "压缩上下文");
+  activeMessageTarget = messageTarget;
+  activeSessionId = sessionId;
+  activeCliForRun = cli;
+
+  sendRunStatus("start");
+
+  let stopCurrentTurn: (() => void) | null = null;
+  const stopFn = (): void => {
+    if (activeRunId !== runId) {
+      return;
+    }
+    void logInfo("context-compact-stop-requested", { cli, sessionId, runId });
+    if (activeInteractiveStop === stopFn) {
+      activeInteractiveStop = null;
+    }
+    appendStopMessageToStore();
+    try {
+      stopCurrentTurn?.();
+    } catch {
+      // ignore
+    }
+    sendRunStatus("stopped", "用户已终止");
+    appendCompletionMessage("stopped");
+    persistActiveMessages();
+    clearActiveRun();
+  };
+  activeInteractiveStop = stopFn;
+
+  try {
+    if (cli === "codex") {
+      const mappedThreadId = resolveInteractiveMappedId(cli, sessionId);
+      let runner = interactiveRunnerManager.getOrCreateCodexRunner({
+        sessionId,
+        threadId: mappedThreadId,
+        command,
+        args,
+        cwd: cwd ?? undefined,
+        thinkingMode,
+      });
+      stopCurrentTurn = () => runner.stopAndRebuild();
+
+      const summaryResult = await runner.runForText(buildCompactionPrompt());
+      const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+      if (!compactionSummary || !mappedThreadId) {
+        appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
+        cleanupAfterRun("end");
+        return;
+      }
+
+      const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
+      const bootstrap = [
+        "你正在继续一个已压缩上下文的会话。",
+        "",
+        compactionSummary,
+        "",
+        "【最近对话】",
+        formatTurnsForBootstrap(recent),
+      ].join("\n");
+
+      runner.dispose();
+      runner = new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
+        command,
+        args,
+        cwd: cwd ?? undefined,
+        thinkingMode,
+        threadId: null,
+      });
+
+      stopCurrentTurn = () => runner.stopAndRebuild();
+      await runner.runStreamed(bootstrap, {
+        onAssistantDelta: () => {},
+        onTrace: () => {},
+        onEvent: () => {},
+        onTaskListUpdate: (items) => {
+          sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onThreadId: (threadId) => {
+          updateProcessTitle(cli, threadId);
+          upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: mappedThreadId });
+          appendSystemMessage(`【会话摘要】已压缩：${mappedThreadId} -> ${threadId}`);
+          appendTraceMessage(compactionSummary);
+          void logInfo("context-compact-codex-complete", {
+            cli,
+            sessionId,
+            threadId,
+            previousThreadId: mappedThreadId,
+          });
+          interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
+        },
+      });
+      cleanupAfterRun("end");
+      return;
+    }
+
+    if (cli === "claude") {
+      const mappedSessionId = resolveInteractiveMappedId(cli, sessionId);
+      let runner = interactiveRunnerManager.getOrCreateClaudeRunner({
+        sessionId,
+        mappedSessionId,
+        command: commandForRunner,
+        args,
+        cwd: cwd ?? undefined,
+        thinkingMode,
+      });
+
+      stopCurrentTurn = () => runner.stopAndRebuild();
+      const summaryResult = await runner.runForText(buildCompactionPrompt());
+      const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+      if (!compactionSummary || !mappedSessionId) {
+        appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
+        cleanupAfterRun("end");
+        return;
+      }
+
+      const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
+      const bootstrap = [
+        "你正在继续一个已压缩上下文的会话。",
+        "",
+        compactionSummary,
+        "",
+        "【最近对话】",
+        formatTurnsForBootstrap(recent),
+      ].join("\n");
+
+      runner.dispose();
+      runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+        command: commandForRunner,
+        args,
+        cwd: cwd ?? undefined,
+        thinkingMode,
+        sessionId: null,
+      });
+
+      stopCurrentTurn = () => runner.stopAndRebuild();
+      await runner.runStreamed(bootstrap, {
+        onAssistantDelta: () => {},
+        onTrace: () => {},
+        onEvent: () => {},
+        onTaskListUpdate: (items) => {
+          sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onSessionId: (newSessionId) => {
+          updateProcessTitle(cli, newSessionId);
+          upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: mappedSessionId });
+          appendSystemMessage(`【会话摘要】已压缩：${mappedSessionId} -> ${newSessionId}`);
+          appendTraceMessage(compactionSummary);
+          void logInfo("context-compact-claude-complete", {
+            cli,
+            sessionId,
+            newSessionId,
+            previousSessionId: mappedSessionId,
+          });
+          interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
+        },
+      });
+      cleanupAfterRun("end");
+      return;
+    }
+
+    cleanupAfterRun("end");
+  } catch (error) {
+    appendSystemMessage("上下文压缩失败（执行异常），未进行会话切换。");
+    void logError("context-compact-command-failed", {
+      cli,
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
+  } finally {
+    if (activeInteractiveStop === stopFn) {
+      activeInteractiveStop = null;
+    }
+  }
+
+  function cleanupAfterRun(status: TaskRunStatus, userMessage?: string): void {
+    void logInfo("context-compact-command-end", {
+      cli,
+      sessionId,
+      runId,
+      status,
+      message: userMessage ?? null,
+    });
+    sendRunStatus(status === "end" ? "end" : status, userMessage);
+    appendCompletionMessage(status);
+    persistActiveMessages();
+    clearActiveRun();
+  }
+}
+
 async function runPromptInteractive(prompt: string): Promise<void> {
   if (!prompt) {
     return;
@@ -1933,40 +2188,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     promptLength: prompt.length,
   });
 
-  let shouldCompact = false;
-  if (sessionId && (cli === "codex" || cli === "claude")) {
-    const key = getCompactPromptKey(cli, sessionId);
-    if (!suppressCompactPrompt.has(key)) {
-      const size = estimateSessionSize(messageTarget);
-      if (
-        size.turns >= CONTEXT_COMPACT_TURN_THRESHOLD
-        || size.chars >= CONTEXT_COMPACT_CHAR_THRESHOLD
-      ) {
-        void logInfo("context-compact-suggested", {
-          cli,
-          sessionId,
-          turns: size.turns,
-          chars: size.chars,
-        });
-        const selection = await vscode.window.showInformationMessage(
-          `当前会话较长（轮数 ${size.turns} / 字符 ${size.chars}），建议压缩上下文以提升性能。`,
-          "现在压缩",
-          "这次跳过",
-          "本会话不再提示"
-        );
-        void logInfo("context-compact-selection", {
-          cli,
-          sessionId,
-          selection: selection ?? "dismissed",
-        });
-        if (selection === "本会话不再提示") {
-          suppressCompactPrompt.add(key);
-        } else if (selection === "现在压缩") {
-          shouldCompact = true;
-        }
-      }
-    }
-  }
+  const shouldCompact = false;
 
   const userMessageId = createMessageId();
   const runId = createMessageId();
