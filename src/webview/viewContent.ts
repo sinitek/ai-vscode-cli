@@ -129,6 +129,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         max-width: 100%;
         min-width: 0;
       }
+      .message .bubble {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
       /* User Message - Distinct Bubble */
       .message.user {
         align-items: flex-end;
@@ -140,7 +145,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         margin-bottom: 4px;
       }
       .message.user .bubble {
-        background: var(--vscode-button-secondaryBackground);
+        background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
         color: var(--vscode-button-secondaryForeground);
         padding: 10px 14px;
         border-radius: 16px 16px 4px 16px;
@@ -183,6 +188,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 12px;
         box-sizing: border-box;
         max-width: 100%;
+        overflow-wrap: normal;
+        word-break: normal;
       }
       .message.assistant .bubble code {
         font-family: var(--vscode-editor-font-family);
@@ -258,13 +265,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .message.trace.trace-type-exec .bubble {
         --trace-accent: var(
-          --vscode-charts-blue,
-          var(--vscode-activityBarBadge-background, var(--vscode-minimap-findMatchHighlight))
+          --vscode-notificationsWarningIcon-foreground,
+          var(
+            --vscode-editorWarning-foreground,
+            var(
+              --vscode-charts-orange,
+              var(--vscode-editorWarning-border, var(--vscode-minimap-findMatchHighlight)))
+          )
         );
         --trace-title-fg: var(--trace-accent);
         --trace-title-bg: var(
-          --vscode-editor-selectionHighlightBackground,
-          var(--vscode-editor-inactiveSelectionBackground)
+          --vscode-diffEditor-insertedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
         );
         --trace-title-border: var(--trace-accent);
       }
