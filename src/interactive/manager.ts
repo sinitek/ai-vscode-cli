@@ -2,7 +2,7 @@ import { CliName, ThinkingMode } from "../cli/types";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 type RunnerEntry =
   | {
@@ -24,14 +24,17 @@ type RunnerEntry =
 
 export class InteractiveRunnerManager {
   private current: RunnerEntry | null = null;
+  private activeRunCount = 0;
 
   public disposeAll(): void {
     if (!this.current) {
+      this.activeRunCount = 0;
       return;
     }
     this.clearIdleTimer(this.current);
     this.current.runner.dispose();
     this.current = null;
+    this.activeRunCount = 0;
   }
 
   public disposeIfMatches(cli: CliName, sessionId: string | null): void {
@@ -158,12 +161,34 @@ export class InteractiveRunnerManager {
     this.touch();
   }
 
+  public beginActiveRun(): void {
+    this.activeRunCount += 1;
+    if (!this.current) {
+      return;
+    }
+    this.current.lastUsedAt = Date.now();
+    this.clearIdleTimer(this.current);
+  }
+
+  public endActiveRun(): void {
+    if (this.activeRunCount > 0) {
+      this.activeRunCount -= 1;
+    }
+    if (this.activeRunCount > 0) {
+      return;
+    }
+    this.touch();
+  }
+
   private touch(): void {
     if (!this.current) {
       return;
     }
     this.current.lastUsedAt = Date.now();
     this.clearIdleTimer(this.current);
+    if (this.activeRunCount > 0) {
+      return;
+    }
     this.current.idleTimer = setTimeout(() => {
       // Dispose on idle.
       if (!this.current) {

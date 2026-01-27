@@ -2014,7 +2014,14 @@ async function runContextCompactionCommand(): Promise<void> {
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
 
-      const summaryResult = await runner.runForText(buildCompactionPrompt());
+      const summaryResult = await (async () => {
+        interactiveRunnerManager?.beginActiveRun();
+        try {
+          return await runner.runForText(buildCompactionPrompt());
+        } finally {
+          interactiveRunnerManager?.endActiveRun();
+        }
+      })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
       if (!compactionSummary || !mappedThreadId) {
         appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
@@ -2042,27 +2049,32 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      await runner.runStreamed(bootstrap, {
-        onAssistantDelta: () => {},
-        onTrace: () => {},
-        onEvent: () => {},
-        onTaskListUpdate: (items) => {
-          sendPanelMessage({ type: "taskListUpdate", items });
-        },
-        onThreadId: (threadId) => {
-          updateProcessTitle(cli, threadId);
-          upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: mappedThreadId });
-          appendSystemMessage(`【会话摘要】已压缩：${mappedThreadId} -> ${threadId}`);
-          appendTraceMessage(compactionSummary);
-          void logInfo("context-compact-codex-complete", {
-            cli,
-            sessionId,
-            threadId,
-            previousThreadId: mappedThreadId,
-          });
-          interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
-        },
-      });
+      interactiveRunnerManager?.beginActiveRun();
+      try {
+        await runner.runStreamed(bootstrap, {
+          onAssistantDelta: () => {},
+          onTrace: () => {},
+          onEvent: () => {},
+          onTaskListUpdate: (items) => {
+            sendPanelMessage({ type: "taskListUpdate", items });
+          },
+          onThreadId: (threadId) => {
+            updateProcessTitle(cli, threadId);
+            upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: mappedThreadId });
+            appendSystemMessage(`【会话摘要】已压缩：${mappedThreadId} -> ${threadId}`);
+            appendTraceMessage(compactionSummary);
+            void logInfo("context-compact-codex-complete", {
+              cli,
+              sessionId,
+              threadId,
+              previousThreadId: mappedThreadId,
+            });
+            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
+          },
+        });
+      } finally {
+        interactiveRunnerManager?.endActiveRun();
+      }
       cleanupAfterRun("end");
       return;
     }
@@ -2079,7 +2091,14 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      const summaryResult = await runner.runForText(buildCompactionPrompt());
+      const summaryResult = await (async () => {
+        interactiveRunnerManager?.beginActiveRun();
+        try {
+          return await runner.runForText(buildCompactionPrompt());
+        } finally {
+          interactiveRunnerManager?.endActiveRun();
+        }
+      })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
       if (!compactionSummary || !mappedSessionId) {
         appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
@@ -2107,27 +2126,32 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      await runner.runStreamed(bootstrap, {
-        onAssistantDelta: () => {},
-        onTrace: () => {},
-        onEvent: () => {},
-        onTaskListUpdate: (items) => {
-          sendPanelMessage({ type: "taskListUpdate", items });
-        },
-        onSessionId: (newSessionId) => {
-          updateProcessTitle(cli, newSessionId);
-          upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: mappedSessionId });
-          appendSystemMessage(`【会话摘要】已压缩：${mappedSessionId} -> ${newSessionId}`);
-          appendTraceMessage(compactionSummary);
-          void logInfo("context-compact-claude-complete", {
-            cli,
-            sessionId,
-            newSessionId,
-            previousSessionId: mappedSessionId,
-          });
-          interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
-        },
-      });
+      interactiveRunnerManager?.beginActiveRun();
+      try {
+        await runner.runStreamed(bootstrap, {
+          onAssistantDelta: () => {},
+          onTrace: () => {},
+          onEvent: () => {},
+          onTaskListUpdate: (items) => {
+            sendPanelMessage({ type: "taskListUpdate", items });
+          },
+          onSessionId: (newSessionId) => {
+            updateProcessTitle(cli, newSessionId);
+            upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: mappedSessionId });
+            appendSystemMessage(`【会话摘要】已压缩：${mappedSessionId} -> ${newSessionId}`);
+            appendTraceMessage(compactionSummary);
+            void logInfo("context-compact-claude-complete", {
+              cli,
+              sessionId,
+              newSessionId,
+              previousSessionId: mappedSessionId,
+            });
+            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
+          },
+        });
+      } finally {
+        interactiveRunnerManager?.endActiveRun();
+      }
       cleanupAfterRun("end");
       return;
     }
@@ -2399,7 +2423,14 @@ async function runPromptInteractive(prompt: string): Promise<void> {
         oldThreadId = mappedThreadId;
         try {
           stopCurrentTurn = () => runner.stopAndRebuild();
-          const summaryResult = await runner.runForText(buildCompactionPrompt());
+          const summaryResult = await (async () => {
+            interactiveRunnerManager?.beginActiveRun();
+            try {
+              return await runner.runForText(buildCompactionPrompt());
+            } finally {
+              interactiveRunnerManager?.endActiveRun();
+            }
+          })();
           compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
         } catch (error) {
           compactionSummary = null;
@@ -2442,60 +2473,65 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
           stopCurrentTurn = () => runner.stopAndRebuild();
           startInteractiveLog(bootstrap);
-          await runner.runStreamed(bootstrap, {
-            onAssistantDelta: (chunk) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendAssistantChunk(chunk);
-              appendDebugStdout(chunk);
-            },
-            onTrace: (content, kind, meta) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
-              appendTraceLog(content);
-            },
-            onEvent: (event) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendDebugEvent(event);
-            },
-            onTaskListUpdate: (items) => {
-              sendPanelMessage({ type: "taskListUpdate", items });
-            },
-            onThreadId: (threadId) => {
-              updateProcessTitle(cli, threadId);
-              if (!sessionId) {
-                ensureSessionIdForNewSession(threadId);
-                void logInfo("runPrompt-interactive-codex-thread", {
-                  cli,
-                  sessionId: threadId,
-                  threadId,
-                  originalSessionId: null,
-                  mode: "compaction",
-                });
-                interactiveRunnerManager.setCurrentRunner("codex", threadId, runner, thinkingMode);
-                return;
-              }
-              if (freezeOldThreadId) {
-                upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: freezeOldThreadId });
-                appendSystemMessage(`【会话摘要】已压缩：${freezeOldThreadId} -> ${threadId}`);
-                if (compactionSummary) {
-                  appendTraceMessage(compactionSummary);
+          interactiveRunnerManager?.beginActiveRun();
+          try {
+            await runner.runStreamed(bootstrap, {
+              onAssistantDelta: (chunk) => {
+                if (activeRunId !== runId) {
+                  return;
                 }
-                void logInfo("runPrompt-interactive-codex-thread-compacted", {
-                  cli,
-                  sessionId,
-                  threadId,
-                  previousThreadId: freezeOldThreadId,
-                });
-                interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
-              }
-            },
-          });
+                appendAssistantChunk(chunk);
+                appendDebugStdout(chunk);
+              },
+              onTrace: (content, kind, meta) => {
+                if (activeRunId !== runId) {
+                  return;
+                }
+                appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
+                appendTraceLog(content);
+              },
+              onEvent: (event) => {
+                if (activeRunId !== runId) {
+                  return;
+                }
+                appendDebugEvent(event);
+              },
+              onTaskListUpdate: (items) => {
+                sendPanelMessage({ type: "taskListUpdate", items });
+              },
+              onThreadId: (threadId) => {
+                updateProcessTitle(cli, threadId);
+                if (!sessionId) {
+                  ensureSessionIdForNewSession(threadId);
+                  void logInfo("runPrompt-interactive-codex-thread", {
+                    cli,
+                    sessionId: threadId,
+                    threadId,
+                    originalSessionId: null,
+                    mode: "compaction",
+                  });
+                  interactiveRunnerManager.setCurrentRunner("codex", threadId, runner, thinkingMode);
+                  return;
+                }
+                if (freezeOldThreadId) {
+                  upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: freezeOldThreadId });
+                  appendSystemMessage(`【会话摘要】已压缩：${freezeOldThreadId} -> ${threadId}`);
+                  if (compactionSummary) {
+                    appendTraceMessage(compactionSummary);
+                  }
+                  void logInfo("runPrompt-interactive-codex-thread-compacted", {
+                    cli,
+                    sessionId,
+                    threadId,
+                    previousThreadId: freezeOldThreadId,
+                  });
+                  interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
+                }
+              },
+            });
+          } finally {
+            interactiveRunnerManager?.endActiveRun();
+          }
           cleanupAfterRun("end");
           return;
         }
@@ -2505,48 +2541,53 @@ async function runPromptInteractive(prompt: string): Promise<void> {
       let uiSessionId: string | null = sessionId;
       stopCurrentTurn = () => runner.stopAndRebuild();
       startInteractiveLog(thinkingPrompt);
-      await runner.runStreamed(thinkingPrompt, {
-        onAssistantDelta: (chunk) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendAssistantChunk(chunk);
-          appendDebugStdout(chunk);
-        },
-        onTrace: (content, kind, meta) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
-          appendTraceLog(content);
-        },
-        onEvent: (event) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendDebugEvent(event);
-        },
-        onTaskListUpdate: (items) => {
-          sendPanelMessage({ type: "taskListUpdate", items });
-        },
-        onThreadId: (threadId) => {
-          updateProcessTitle(cli, threadId);
-          if (!uiSessionId) {
-            ensureSessionIdForNewSession(threadId);
-            uiSessionId = threadId;
-          } else {
-            upsertInteractiveMapping(cli, uiSessionId, threadId);
-          }
-          void logInfo("runPrompt-interactive-codex-thread", {
-            cli,
-            sessionId: uiSessionId,
-            threadId,
-            originalSessionId: sessionId,
-            mode: "normal",
-          });
-          interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode);
-        },
-      });
+      interactiveRunnerManager?.beginActiveRun();
+      try {
+        await runner.runStreamed(thinkingPrompt, {
+          onAssistantDelta: (chunk) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendAssistantChunk(chunk);
+            appendDebugStdout(chunk);
+          },
+          onTrace: (content, kind, meta) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendTraceMessage(content, kind === "thinking" ? "thinking" : "normal", meta);
+            appendTraceLog(content);
+          },
+          onEvent: (event) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendDebugEvent(event);
+          },
+          onTaskListUpdate: (items) => {
+            sendPanelMessage({ type: "taskListUpdate", items });
+          },
+          onThreadId: (threadId) => {
+            updateProcessTitle(cli, threadId);
+            if (!uiSessionId) {
+              ensureSessionIdForNewSession(threadId);
+              uiSessionId = threadId;
+            } else {
+              upsertInteractiveMapping(cli, uiSessionId, threadId);
+            }
+            void logInfo("runPrompt-interactive-codex-thread", {
+              cli,
+              sessionId: uiSessionId,
+              threadId,
+              originalSessionId: sessionId,
+              mode: "normal",
+            });
+            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode);
+          },
+        });
+      } finally {
+        interactiveRunnerManager?.endActiveRun();
+      }
       cleanupAfterRun("end");
       return;
     }
@@ -2576,7 +2617,14 @@ async function runPromptInteractive(prompt: string): Promise<void> {
       if (shouldCompact && sessionId) {
         try {
           stopCurrentTurn = () => runner.stopAndRebuild();
-          const summaryResult = await runner.runForText(buildCompactionPrompt());
+          const summaryResult = await (async () => {
+            interactiveRunnerManager?.beginActiveRun();
+            try {
+              return await runner.runForText(buildCompactionPrompt());
+            } finally {
+              interactiveRunnerManager?.endActiveRun();
+            }
+          })();
           compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
         } catch (error) {
           compactionSummary = null;
@@ -2617,46 +2665,51 @@ async function runPromptInteractive(prompt: string): Promise<void> {
 
           stopCurrentTurn = () => runner.stopAndRebuild();
           startInteractiveLog(bootstrap);
-          await runner.runStreamed(bootstrap, {
-            onAssistantDelta: (chunk) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendAssistantChunk(chunk);
-              appendDebugStdout(chunk);
-            },
-            onTrace: (content) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendTraceMessage(content);
-              appendTraceLog(content);
-            },
-            onEvent: (event) => {
-              if (activeRunId !== runId) {
-                return;
-              }
-              appendDebugEvent(event);
-            },
-            onTaskListUpdate: (items) => {
-              sendPanelMessage({ type: "taskListUpdate", items });
-            },
-            onSessionId: (newSessionId) => {
-              updateProcessTitle(cli, newSessionId);
-              upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: oldId });
-              appendSystemMessage(`【会话摘要】已压缩：${oldId} -> ${newSessionId}`);
-              if (compactionSummary) {
-                appendTraceMessage(compactionSummary);
-              }
-              void logInfo("runPrompt-interactive-claude-session-compacted", {
-                cli,
-                sessionId,
-                newSessionId,
-                previousSessionId: oldId,
-              });
-              interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
-            },
-          });
+          interactiveRunnerManager?.beginActiveRun();
+          try {
+            await runner.runStreamed(bootstrap, {
+              onAssistantDelta: (chunk) => {
+                if (activeRunId !== runId) {
+                  return;
+                }
+                appendAssistantChunk(chunk);
+                appendDebugStdout(chunk);
+              },
+              onTrace: (content) => {
+                if (activeRunId !== runId) {
+                  return;
+                }
+                appendTraceMessage(content);
+                appendTraceLog(content);
+              },
+              onEvent: (event) => {
+                if (activeRunId !== runId) {
+                  return;
+                }
+                appendDebugEvent(event);
+              },
+              onTaskListUpdate: (items) => {
+                sendPanelMessage({ type: "taskListUpdate", items });
+              },
+              onSessionId: (newSessionId) => {
+                updateProcessTitle(cli, newSessionId);
+                upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: oldId });
+                appendSystemMessage(`【会话摘要】已压缩：${oldId} -> ${newSessionId}`);
+                if (compactionSummary) {
+                  appendTraceMessage(compactionSummary);
+                }
+                void logInfo("runPrompt-interactive-claude-session-compacted", {
+                  cli,
+                  sessionId,
+                  newSessionId,
+                  previousSessionId: oldId,
+                });
+                interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
+              },
+            });
+          } finally {
+            interactiveRunnerManager?.endActiveRun();
+          }
           cleanupAfterRun("end");
           return;
         }
@@ -2665,48 +2718,53 @@ async function runPromptInteractive(prompt: string): Promise<void> {
       let uiSessionId: string | null = sessionId;
       stopCurrentTurn = () => runner.stopAndRebuild();
       startInteractiveLog(thinkingPrompt);
-      await runner.runStreamed(thinkingPrompt, {
-        onAssistantDelta: (chunk) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendAssistantChunk(chunk);
-          appendDebugStdout(chunk);
-        },
-        onTrace: (content) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendTraceMessage(content);
-          appendTraceLog(content);
-        },
-        onEvent: (event) => {
-          if (activeRunId !== runId) {
-            return;
-          }
-          appendDebugEvent(event);
-        },
-        onTaskListUpdate: (items) => {
-          sendPanelMessage({ type: "taskListUpdate", items });
-        },
-        onSessionId: (newSessionId) => {
-          updateProcessTitle(cli, newSessionId);
-          if (!uiSessionId) {
-            ensureSessionIdForNewSession(newSessionId);
-            uiSessionId = newSessionId;
-          } else {
-            upsertInteractiveMapping(cli, uiSessionId, newSessionId);
-          }
-          void logInfo("runPrompt-interactive-claude-session", {
-            cli,
-            sessionId: uiSessionId,
-            newSessionId,
-            originalSessionId: sessionId,
-            mode: "normal",
-          });
-          interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode);
-        },
-      });
+      interactiveRunnerManager?.beginActiveRun();
+      try {
+        await runner.runStreamed(thinkingPrompt, {
+          onAssistantDelta: (chunk) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendAssistantChunk(chunk);
+            appendDebugStdout(chunk);
+          },
+          onTrace: (content) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendTraceMessage(content);
+            appendTraceLog(content);
+          },
+          onEvent: (event) => {
+            if (activeRunId !== runId) {
+              return;
+            }
+            appendDebugEvent(event);
+          },
+          onTaskListUpdate: (items) => {
+            sendPanelMessage({ type: "taskListUpdate", items });
+          },
+          onSessionId: (newSessionId) => {
+            updateProcessTitle(cli, newSessionId);
+            if (!uiSessionId) {
+              ensureSessionIdForNewSession(newSessionId);
+              uiSessionId = newSessionId;
+            } else {
+              upsertInteractiveMapping(cli, uiSessionId, newSessionId);
+            }
+            void logInfo("runPrompt-interactive-claude-session", {
+              cli,
+              sessionId: uiSessionId,
+              newSessionId,
+              originalSessionId: sessionId,
+              mode: "normal",
+            });
+            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode);
+          },
+        });
+      } finally {
+        interactiveRunnerManager?.endActiveRun();
+      }
       cleanupAfterRun("end");
       return;
     }
