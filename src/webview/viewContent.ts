@@ -366,8 +366,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .trace-header {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        align-items: flex-start;
+        justify-content: flex-start;
+        flex-direction: column;
         gap: 8px;
         margin-bottom: 6px;
       }
@@ -386,17 +387,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 11px;
         color: var(--vscode-descriptionForeground);
         font-family: var(--vscode-editor-font-family);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1;
-        text-align: right;
+        width: 100%;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        text-align: left;
       }
       .trace-time {
         margin-top: 6px;
         font-size: 11px;
         opacity: 0.7;
-        text-align: right;
+        text-align: left;
         font-variant-numeric: tabular-nums;
       }
       .message.trace.trace-nonthinking .bubble {
