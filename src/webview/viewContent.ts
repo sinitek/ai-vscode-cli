@@ -623,20 +623,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         width: 100%;
         justify-content: flex-end;
       }
-      .context-budget {
-        font-size: 11px;
-        color: var(--vscode-descriptionForeground);
-        line-height: 1;
-        padding: 0 4px;
-        display: inline-flex;
-        align-items: center;
-        height: 20px;
-        border-radius: 10px;
-        user-select: none;
-      }
-      .context-budget.warning {
-        color: var(--vscode-inputValidation-warningForeground);
-      }
       .debug-toggle {
         display: inline-flex;
         align-items: center;
@@ -1062,7 +1048,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
           <div class="input-actions">
-            <span id="contextBudget" class="context-budget" title="上下文余量">CTX --</span>
             <button id="commonCommandButton" class="secondary icon-button" title="常用指令" aria-label="常用指令">
               <span>&gt;_</span>
             </button>
@@ -1333,9 +1318,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           source: "auto",
           startIndex: 0,
         },
-        contextBudget: {
-          entries: {},
-        },
       };
 
       const elements = {
@@ -1396,7 +1378,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         taskListDetails: document.getElementById("taskListDetails"),
         taskListCount: document.getElementById("taskListCount"),
         taskListBody: document.getElementById("taskListBody"),
-        contextBudget: document.getElementById("contextBudget"),
       };
       let isComposing = false;
       let lastCompositionEndAt = 0;
@@ -1458,7 +1439,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.debug = Boolean(panelState.debug);
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
-        state.contextBudget = panelState.contextBudget || { entries: {} };
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {
           elements.rulesLoadCli.value = panelState.currentCli;
@@ -1475,7 +1455,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         renderConfigOptions();
         renderSessionList();
-        updateContextBudgetIndicator();
       }
 
       function renderConfigOptions() {
@@ -1579,69 +1558,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.commonCommandButton.disabled = !visible || state.isRunning;
         if (elements.commandCompact) {
           elements.commandCompact.disabled = !visible || state.isRunning;
-        }
-        updateContextBudgetIndicator();
-      }
-
-      function buildContextBudgetKey(cli, sessionId) {
-        return cli + "::" + sessionId;
-      }
-
-      function formatContextBudgetTitle(entry) {
-        if (!entry) {
-          return "当前 CLI 暂不提供上下文余量";
-        }
-        const parts = [];
-        if (entry.model) {
-          parts.push("model: " + entry.model);
-        }
-        if (typeof entry.usedTokens === "number") {
-          parts.push("used: " + entry.usedTokens);
-        }
-        if (entry.contextWindow) {
-          parts.push("window: " + entry.contextWindow);
-        }
-        if (typeof entry.remainingPercent === "number") {
-          parts.push("remaining: " + Math.round(entry.remainingPercent) + "%");
-        }
-        if (entry.source) {
-          parts.push("source: " + entry.source);
-        }
-        return parts.length ? parts.join(" | ") : "上下文余量未知";
-      }
-
-      function updateContextBudgetIndicator() {
-        if (!elements.contextBudget) {
-          return;
-        }
-        const supported = Boolean(state.interactive && state.interactive.supported);
-        const enabled = Boolean(state.interactive && state.interactive.enabled);
-        const visible = supported && enabled;
-        elements.contextBudget.style.display = visible ? "inline-flex" : "none";
-        elements.contextBudget.classList.remove("warning");
-        if (!visible) {
-          return;
-        }
-        const sessionId = state.sessionState.currentSessionId;
-        if (!sessionId) {
-          elements.contextBudget.textContent = "CTX --";
-          elements.contextBudget.title = "暂无会话";
-          return;
-        }
-        const key = buildContextBudgetKey(state.currentCli, sessionId);
-        const entry = state.contextBudget && state.contextBudget.entries
-          ? state.contextBudget.entries[key]
-          : null;
-        if (!entry || typeof entry.remainingPercent !== "number") {
-          elements.contextBudget.textContent = "CTX --";
-          elements.contextBudget.title = formatContextBudgetTitle(entry);
-          return;
-        }
-        const rounded = Math.round(entry.remainingPercent);
-        elements.contextBudget.textContent = "CTX " + rounded + "%";
-        elements.contextBudget.title = formatContextBudgetTitle(entry);
-        if (rounded <= 10) {
-          elements.contextBudget.classList.add("warning");
         }
       }
 
@@ -3050,17 +2966,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             state.taskList.open = false;
             state.taskList.source = "auto";
             renderTaskList();
-          }
-        }
-        if (data.type === "updateContextBudget") {
-          if (data.entry && data.entry.cli && data.entry.sessionId) {
-            const key = buildContextBudgetKey(data.entry.cli, data.entry.sessionId);
-            if (state.contextBudget && state.contextBudget.entries) {
-              state.contextBudget.entries[key] = data.entry;
-            } else {
-              state.contextBudget = { entries: { [key]: data.entry } };
-            }
-            updateContextBudgetIndicator();
           }
         }
         if (data.type === "rulesContent") {
