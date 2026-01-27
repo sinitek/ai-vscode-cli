@@ -118,6 +118,9 @@ const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
+const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
+  compactContext: "压缩上下文",
+};
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
 const TEMP_FILE_RANDOM_LENGTH = 8;
@@ -652,6 +655,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "runCommonCommand" && message.command === "compactContext") {
+    const label = COMMON_COMMAND_LABELS[message.command] ?? message.command;
+    appendUserMessageForCli(currentCli, getCurrentSessionId(currentCli), `常用指令：${label}`, {
+      merge: false,
+    });
     await runContextCompactionCommand();
     return;
   }
@@ -1918,6 +1925,29 @@ function appendSystemMessageForCli(cli: CliName, sessionId: string | null, conte
     role: "system",
     content,
     createdAt: Date.now(),
+  };
+  if (sessionId) {
+    const target = loadSessionMessages(cli, sessionId);
+    appendMessageToStore(target, message);
+    saveSessionMessages(cli, sessionId, target);
+  } else {
+    pendingSessionMessages[cli].push(message);
+  }
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+function appendUserMessageForCli(
+  cli: CliName,
+  sessionId: string | null,
+  content: string,
+  options: { merge?: boolean } = {}
+): void {
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "user",
+    content,
+    createdAt: Date.now(),
+    ...(options.merge === false ? { merge: false } : {}),
   };
   if (sessionId) {
     const target = loadSessionMessages(cli, sessionId);
