@@ -8,7 +8,7 @@ import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../tr
 
 export type ClaudeStreamHandlers = {
   onAssistantDelta: (chunk: string) => void;
-  onTrace: (content: string) => void;
+  onTrace: (content: string, meta?: { merge?: boolean }) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
   onEvent?: (event: unknown) => void;
@@ -287,7 +287,7 @@ export class ClaudeInteractiveRunner {
                   handlers.onTaskListUpdate(items);
                 }
               }
-              handlers.onTrace(formatClaudeToolUseMessage(name || undefined, input));
+              handlers.onTrace(formatClaudeToolUseMessage(name || undefined, input), { merge: false });
             }
             if (block.type === "tool_result") {
               const toolName =

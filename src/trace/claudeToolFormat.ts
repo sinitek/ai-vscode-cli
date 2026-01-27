@@ -44,7 +44,7 @@ function stripToolPayloadKeys(value: unknown, keys: Set<string>): unknown {
 }
 
 export function formatClaudeToolUseMessage(name: string | undefined, input: unknown): string {
-  const header = name ? `调用工具: ${name}` : "调用工具";
+  const header = name ? `tool: ${name}` : "tool";
   const payload =
     name === "Edit"
       ? stripToolPayloadKeys(parseToolPayload(input), EDIT_TOOL_REDACT_KEYS)

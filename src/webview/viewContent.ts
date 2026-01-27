@@ -316,7 +316,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         );
         --trace-title-border: var(--trace-accent);
       }
-      .message.trace.trace-type-tool-use .bubble {
+      .message.trace.trace-type-tool-use-0 .bubble {
         --trace-accent: var(
           --vscode-notificationsWarningIcon-foreground,
           var(
@@ -332,6 +332,48 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
         );
         --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-use-1 .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-modifiedResourceForeground,
+          var(--vscode-charts-blue, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-diffEditor-modifiedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-use-2 .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-addedResourceForeground,
+          var(--vscode-charts-green, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-diffEditor-insertedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-use-3 .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-stageModifiedResourceForeground,
+          var(--vscode-charts-purple, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-editor-selectionHighlightBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-use-0 .trace-title,
+      .message.trace.trace-type-tool-use-1 .trace-title,
+      .message.trace.trace-type-tool-use-2 .trace-title,
+      .message.trace.trace-type-tool-use-3 .trace-title {
+        text-transform: none;
       }
       .message.trace.trace-type-tool-result .bubble {
         --trace-accent: var(
@@ -1869,8 +1911,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return next;
       }
 
+      function getToolStyleBucket(name) {
+        if (!name) {
+          return 0;
+        }
+        let hash = 0;
+        for (let i = 0; i < name.length; i += 1) {
+          hash = (hash + name.charCodeAt(i) * (i + 1)) % 1024;
+        }
+        return hash % 4;
+      }
+
       function getTraceTypeDefinition(line) {
         const trimmed = line.trim();
+        const toolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\s*(.+)?$/i);
+        if (toolMatch) {
+          const toolName = toolMatch[1] ? toolMatch[1].trim() : "";
+          const bucket = getToolStyleBucket(toolName);
+          return {
+            type: "tool-use-" + bucket,
+            title: toolName || "tool",
+            match: /^(?:tool|调用工具)[:：]?\s*(.+)?$/i,
+            detail: () => "",
+          };
+        }
         const definitions = [
           {
             type: "git-update",
@@ -1895,12 +1959,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             title: "应用补丁",
             match: /^apply_patch\\b/i,
             detail: (value) => value.replace(/^apply_patch\\b[:：]?\\s*/i, "").trim(),
-          },
-          {
-            type: "tool-use",
-            title: "工具调用",
-            match: /^调用工具\\b/i,
-            detail: (value) => value.replace(/^调用工具[:：]?\\s*/i, "").trim(),
           },
           {
             type: "tool-result",
@@ -1937,7 +1995,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function expandFileChangeTraceContent(content) {
-        const toolMatch = content.match(/^调用工具:\\s*(\\S+)/);
+        const toolMatch = content.match(/^(?:tool|调用工具)[:：]\\s*(\\S+)/i);
         if (!toolMatch) {
           return content;
         }

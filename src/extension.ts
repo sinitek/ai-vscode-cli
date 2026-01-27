@@ -2889,11 +2889,11 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                 appendAssistantChunk(chunk);
                 appendDebugStdout(chunk);
               },
-              onTrace: (content) => {
+              onTrace: (content, meta) => {
                 if (activeRunId !== runId) {
                   return;
                 }
-                appendTraceMessage(content);
+                appendTraceMessage(content, "normal", meta);
                 appendTraceLog(content);
               },
               onEvent: (event) => {
@@ -2943,11 +2943,11 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             appendAssistantChunk(chunk);
             appendDebugStdout(chunk);
           },
-          onTrace: (content) => {
+          onTrace: (content, meta) => {
             if (activeRunId !== runId) {
               return;
             }
-            appendTraceMessage(content);
+            appendTraceMessage(content, "normal", meta);
             appendTraceLog(content);
           },
           onEvent: (event) => {
