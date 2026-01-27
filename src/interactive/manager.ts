@@ -129,6 +129,14 @@ export class InteractiveRunnerManager {
   }): ClaudeInteractiveRunner {
     if (this.current && this.current.cli === "claude" && this.current.sessionId === options.sessionId) {
       if (this.current.thinkingMode === options.thinkingMode) {
+        // 确保 runner 的 sessionId 与最新的 mappedSessionId 一致
+        // 如果 runner 内部已有 sessionId，优先使用它（因为它是 SDK 返回的真实 session）
+        // 否则使用 mappedSessionId
+        const runnerSessionId = this.current.runner.getSessionId();
+        const expectedSessionId = runnerSessionId || options.mappedSessionId;
+        if (expectedSessionId && runnerSessionId !== expectedSessionId) {
+          this.current.runner.updateSessionId(expectedSessionId);
+        }
         this.touch();
         return this.current.runner;
       }

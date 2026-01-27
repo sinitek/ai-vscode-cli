@@ -29,6 +29,7 @@ import { CliName, CLI_LIST, ThinkingMode, ThinkingWorkspaceFile } from "./cli/ty
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
+  ContextBudgetEntry,
   PanelMessage,
   PanelState,
   SessionSummary,
@@ -149,6 +150,7 @@ const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
 const KEEP_RECENT_TURNS = 3;
 const suppressCompactPrompt = new Set<string>();
+const CONTEXT_BUDGET_KEY_SEPARATOR = "::";
 
 type SessionRecord = {
   id: string;
@@ -182,6 +184,8 @@ type TaskStore = {
 type WorkspaceSettings = {
   thinkingMode?: ThinkingMode;
 };
+
+const contextBudgets = new Map<string, ContextBudgetEntry>();
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -694,12 +698,190 @@ async function buildPanelState(): Promise<PanelState> {
     },
     sessionState: buildSessionState(currentCli),
     configState,
+    contextBudget: buildContextBudgetState(),
   };
+}
+
+function buildContextBudgetState(): PanelState["contextBudget"] {
+  const entries: Record<string, ContextBudgetEntry> = {};
+  for (const [key, value] of contextBudgets.entries()) {
+    entries[key] = value;
+  }
+  return { entries };
 }
 
 async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
   viewProvider?.postState(state);
+}
+
+function buildContextBudgetKey(cli: CliName, sessionId: string): string {
+  return `${cli}${CONTEXT_BUDGET_KEY_SEPARATOR}${sessionId}`;
+}
+
+function updateContextBudget(entry: ContextBudgetEntry): void {
+  const key = buildContextBudgetKey(entry.cli, entry.sessionId);
+  contextBudgets.set(key, entry);
+  sendPanelMessage({ type: "updateContextBudget", entry });
+}
+
+function removeContextBudget(cli: CliName, sessionId: string): void {
+  const key = buildContextBudgetKey(cli, sessionId);
+  contextBudgets.delete(key);
+}
+
+function clearContextBudgets(): void {
+  contextBudgets.clear();
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function clampPercent(value: number): number {
+  if (Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function calculateRemainingPercent(usedTokens: number, contextWindow: number | null): number | null {
+  if (!contextWindow || contextWindow <= 0) {
+    return null;
+  }
+  return clampPercent((1 - usedTokens / contextWindow) * 100);
+}
+
+function updateContextBudgetFromCodexEvent(cli: CliName, sessionId: string | null, event: unknown): void {
+  if (!sessionId || !event || typeof event !== "object") {
+    return;
+  }
+  const record = event as { type?: string; usage?: Record<string, unknown> };
+  if (record.type !== "turn.completed" || !record.usage) {
+    return;
+  }
+  const inputTokens = toNumber(record.usage.input_tokens);
+  const cachedInputTokens = toNumber(record.usage.cached_input_tokens);
+  const outputTokens = toNumber(record.usage.output_tokens);
+  const usedTokens = inputTokens + cachedInputTokens + outputTokens;
+  updateContextBudget({
+    cli,
+    sessionId,
+    usedTokens,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    contextWindow: null,
+    remainingPercent: null,
+    source: "codex",
+    updatedAt: Date.now(),
+  });
+}
+
+function pickClaudeModelUsage(modelUsage: Record<string, unknown> | undefined): { model: string; usage: Record<string, unknown> } | null {
+  if (!modelUsage || typeof modelUsage !== "object") {
+    return null;
+  }
+  const keys = Object.keys(modelUsage);
+  if (!keys.length) {
+    return null;
+  }
+  const model = keys[0];
+  const usage = modelUsage[model];
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+  return { model, usage: usage as Record<string, unknown> };
+}
+
+// Claude 模型上下文窗口静态映射表（用于 SDK 未返回 contextWindow 时的兜底估算）
+const CLAUDE_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // Claude 4.5 系列
+  "claude-opus-4-5-20251101": 200000,
+  "claude-sonnet-4-5-20251101": 200000,
+  // Claude 4 系列
+  "claude-sonnet-4-20250514": 200000,
+  "claude-opus-4-20250514": 200000,
+  // Claude 3.5 系列
+  "claude-3-5-sonnet-20241022": 200000,
+  "claude-3-5-sonnet-20240620": 200000,
+  "claude-3-5-haiku-20241022": 200000,
+  // Claude 3 系列
+  "claude-3-opus-20240229": 200000,
+  "claude-3-sonnet-20240229": 200000,
+  "claude-3-haiku-20240307": 200000,
+  // 别名
+  sonnet: 200000,
+  opus: 200000,
+  haiku: 200000,
+};
+
+function getClaudeContextWindowByModel(model: string | undefined): number | null {
+  if (!model) {
+    return null;
+  }
+  // 精确匹配
+  if (CLAUDE_MODEL_CONTEXT_WINDOWS[model]) {
+    return CLAUDE_MODEL_CONTEXT_WINDOWS[model];
+  }
+  // 模糊匹配：检查模型名是否包含已知关键字
+  const lowerModel = model.toLowerCase();
+  if (lowerModel.includes("opus") || lowerModel.includes("sonnet") || lowerModel.includes("haiku")) {
+    return 200000; // Claude 系列默认 200k
+  }
+  return null;
+}
+
+function updateContextBudgetFromClaudeEvent(cli: CliName, sessionId: string | null, event: unknown): void {
+  if (!sessionId || !event || typeof event !== "object") {
+    return;
+  }
+  const record = event as {
+    type?: string;
+    is_error?: boolean;
+    usage?: Record<string, unknown>;
+    modelUsage?: Record<string, unknown>;
+  };
+  if (record.type !== "result" || !record.usage) {
+    return;
+  }
+  const usage = record.usage;
+  const inputTokens = toNumber(usage.input_tokens ?? usage.inputTokens);
+  const cacheReadInputTokens = toNumber(usage.cache_read_input_tokens ?? usage.cacheReadInputTokens);
+  const cacheCreationInputTokens = toNumber(usage.cache_creation_input_tokens ?? usage.cacheCreationInputTokens);
+  const outputTokens = toNumber(usage.output_tokens ?? usage.outputTokens);
+  // 根据设计文档：cache_read_input_tokens 不计入 usedTokens
+  const usedTokens = inputTokens + cacheCreationInputTokens + outputTokens;
+  const modelUsage = pickClaudeModelUsage(record.modelUsage);
+  const model = modelUsage?.model;
+
+  // 优先使用 SDK 返回的 contextWindow，否则使用静态映射表兜底
+  const sdkContextWindow = modelUsage ? toNumber(modelUsage.usage.contextWindow) : null;
+  const fallbackContextWindow = getClaudeContextWindowByModel(model);
+  const contextWindow = sdkContextWindow || fallbackContextWindow;
+  const remainingPercent = calculateRemainingPercent(usedTokens, contextWindow);
+
+  // 判断数据来源：SDK 提供 vs 静态映射估算
+  const source: "claude" | "estimate" = sdkContextWindow ? "claude" : "estimate";
+
+  if (record.is_error && usedTokens === 0 && !contextWindow) {
+    return;
+  }
+
+  updateContextBudget({
+    cli,
+    sessionId,
+    usedTokens,
+    inputTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
+    outputTokens,
+    contextWindow,
+    remainingPercent,
+    source,
+    model,
+    updatedAt: Date.now(),
+  });
 }
 
 function ensureWorkspaceSessionStore(): void {
@@ -2525,6 +2707,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                   return;
                 }
                 appendDebugEvent(event);
+                updateContextBudgetFromCodexEvent(cli, sessionId ?? null, event);
               },
               onTaskListUpdate: (items) => {
                 sendPanelMessage({ type: "taskListUpdate", items });
@@ -2593,6 +2776,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               return;
             }
             appendDebugEvent(event);
+            updateContextBudgetFromCodexEvent(cli, uiSessionId ?? sessionId ?? null, event);
           },
           onTaskListUpdate: (items) => {
             sendPanelMessage({ type: "taskListUpdate", items });
@@ -2717,6 +2901,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                   return;
                 }
                 appendDebugEvent(event);
+                updateContextBudgetFromClaudeEvent(cli, sessionId ?? null, event);
               },
               onTaskListUpdate: (items) => {
                 sendPanelMessage({ type: "taskListUpdate", items });
@@ -2770,6 +2955,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               return;
             }
             appendDebugEvent(event);
+            updateContextBudgetFromClaudeEvent(cli, uiSessionId ?? sessionId ?? null, event);
           },
           onTaskListUpdate: (items) => {
             sendPanelMessage({ type: "taskListUpdate", items });
@@ -3773,6 +3959,7 @@ function deleteSession(cli: CliName, sessionId: string): void {
   }
   sessions.splice(index, 1);
   sessionMessageCache.delete(getSessionKey(cli, sessionId));
+  removeContextBudget(cli, sessionId);
   deleteInteractiveMapping(cli, sessionId);
   const filePath = getMessageFile(cli, sessionId);
   try {
@@ -3791,6 +3978,7 @@ function deleteSession(cli: CliName, sessionId: string): void {
 
 function clearAllSessions(): void {
   sessionMessageCache.clear();
+  clearContextBudgets();
   for (const cli of CLI_LIST) {
     sessionStore[cli].currentId = null;
     sessionStore[cli].sessions = [];

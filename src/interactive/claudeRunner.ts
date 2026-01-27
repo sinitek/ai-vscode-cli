@@ -149,6 +149,10 @@ export class ClaudeInteractiveRunner {
     return this.options.sessionId ?? null;
   }
 
+  public updateSessionId(sessionId: string): void {
+    (this.options as { sessionId: string | null }).sessionId = sessionId;
+  }
+
   public dispose(): void {
     this.disposed = true;
     this.abortController?.abort();
@@ -206,6 +210,9 @@ export class ClaudeInteractiveRunner {
       model,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
+      // 设置较大的 maxTurns 限制，避免复杂任务被过早中断
+      // SDK 默认值为 10，对于交互模式来说太小了
+      maxTurns: 200,
       // 传递环境变量给 SDK
       env: {
         ...process.env,

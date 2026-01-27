@@ -57,6 +57,26 @@ export type ChatMessage = {
   merge?: boolean;
 };
 
+export type ContextBudgetEntry = {
+  cli: CliName;
+  sessionId: string;
+  usedTokens: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  outputTokens?: number;
+  contextWindow: number | null;
+  remainingPercent: number | null;
+  source: "codex" | "claude" | "estimate" | "unknown";
+  model?: string;
+  updatedAt: number;
+};
+
+export type ContextBudgetState = {
+  entries: Record<string, ContextBudgetEntry>;
+};
+
 export type PanelState = {
   currentCli: CliName;
   autoOpenPanel: boolean;
@@ -79,4 +99,5 @@ export type PanelState = {
     configs: ConfigSummary[];
     activeConfigId: string | null;
   };
+  contextBudget: ContextBudgetState;
 };
