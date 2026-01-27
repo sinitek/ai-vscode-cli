@@ -52,6 +52,7 @@ import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
+import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "./trace/claudeToolFormat";
 import {
   getMappedThreadId,
   readSessionMeta,
@@ -1542,7 +1543,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
             sendPanelMessage({ type: "taskListUpdate", items });
           }
         }
-        appendClaudeTraceMessage(formatClaudeToolUseMessage(event));
+        appendClaudeTraceMessage(formatClaudeToolUseMessage(event.name, event.input));
         return;
       }
       if (event.toolUseId && claudeToolResultIds.has(event.toolUseId)) {
@@ -1558,7 +1559,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
       const shouldPersist = !(
         typeof toolName === "string" && toolName.toLowerCase() === "read"
       );
-      appendClaudeTraceMessage(formatClaudeToolResultMessage(event, toolName), shouldPersist);
+      appendClaudeTraceMessage(formatClaudeToolResultMessage(event.content, toolName), shouldPersist);
     });
   };
 
@@ -1831,6 +1832,11 @@ type TraceMessageOptions = {
   merge?: boolean;
 };
 
+type TraceDisplayResult = {
+  content: string;
+  shouldPersist: boolean;
+};
+
 function isCommandExecutionTrace(content: string): boolean {
   const firstLine = content.split("\n").find((line) => line.trim());
   if (!firstLine) {
@@ -1838,6 +1844,13 @@ function isCommandExecutionTrace(content: string): boolean {
   }
   const trimmed = firstLine.trim();
   return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
+}
+
+function normalizeTraceContentForDisplay(content: string): TraceDisplayResult {
+  const { content: execContent, shouldPersist: execShouldPersist } =
+    formatCodexExecSegmentForDisplay(content);
+  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(execContent);
+  return { content: displayContent, shouldPersist: shouldPersist && execShouldPersist };
 }
 
 function resolveTraceMerge(content: string, merge?: boolean): boolean {
@@ -1858,18 +1871,28 @@ function appendTraceMessage(
   if (!content.trim()) {
     return;
   }
-  const shouldMerge = resolveTraceMerge(content, options.merge);
+  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content);
+  if (!displayContent.trim()) {
+    return;
+  }
+  if (activeCliForRun === "codex" && kind === "thinking") {
+    appendAssistantChunk(`${displayContent}\n`);
+    return;
+  }
+  const shouldMerge = resolveTraceMerge(displayContent, options.merge);
   const mergePayload = shouldMerge ? {} : { merge: false };
   const message: ChatMessage = {
     id: createMessageId(),
     role: "trace",
-    content,
+    content: displayContent,
     createdAt: Date.now(),
     kind,
     ...mergePayload,
   };
-  appendMessageToStore(activeMessageTarget, message);
-  sendPanelMessage({ type: "traceSegment", content, kind, ...mergePayload });
+  if (shouldPersist) {
+    appendMessageToStore(activeMessageTarget, message);
+  }
+  sendPanelMessage({ type: "traceSegment", content: displayContent, kind, ...mergePayload });
 }
 
 function appendSystemMessage(content: string): void {
@@ -2948,11 +2971,11 @@ function formatCodexExecSegmentForDisplay(
     return { content, shouldPersist: true };
   }
   const firstLine = lines[firstLineIndex].trim();
-  if (!firstLine.startsWith("exec")) {
+  if (!firstLine.startsWith("exec") && !firstLine.startsWith("【执行命令】")) {
     return { content, shouldPersist: true };
   }
   let commandLine = firstLine;
-  if (firstLine === "exec" || firstLine === "exec:") {
+  if (firstLine === "exec" || firstLine === "exec:" || firstLine === "【执行命令】") {
     const nextLine = lines
       .slice(firstLineIndex + 1)
       .map((line) => line.trim())
@@ -2965,6 +2988,13 @@ function formatCodexExecSegmentForDisplay(
     const normalized = firstLine.slice("exec:".length).trim();
     if (normalized) {
       commandLine = `exec ${normalized}`;
+    }
+  } else if (firstLine.startsWith("【执行命令】")) {
+    const normalized = firstLine.slice("【执行命令】".length).trim();
+    if (normalized) {
+      commandLine = `exec ${normalized}`;
+    } else {
+      commandLine = "exec";
     }
   }
   return { content: commandLine, shouldPersist: true };
@@ -4062,78 +4092,6 @@ function extractTodoWriteItems(input: unknown): TaskListItem[] {
       return { text: text.trim(), done: Boolean(done) };
     })
     .filter((item): item is TaskListItem => Boolean(item));
-}
-
-function formatClaudeToolPayload(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function formatClaudeToolUseMessage(event: Extract<ClaudeToolEvent, { kind: "tool_use" }>): string {
-  const header = event.name ? `调用工具: ${event.name}` : "调用工具";
-  const input =
-    event.name === "Edit"
-      ? formatClaudeToolPayload(stripToolPayloadKeys(parseToolPayload(event.input), EDIT_TOOL_REDACT_KEYS))
-      : formatClaudeToolPayload(event.input);
-  if (!input) {
-    return header;
-  }
-  return `${header}\n输入:\n${input}`;
-}
-
-function formatClaudeToolResultMessage(
-  event: Extract<ClaudeToolEvent, { kind: "tool_result" }>,
-  toolName?: string
-): string {
-  const header = toolName ? `工具结果: ${toolName}` : "工具结果";
-  if (typeof toolName === "string" && toolName.toLowerCase() === "read") {
-    return header;
-  }
-  const output = formatClaudeToolPayload(event.content);
-  if (!output) {
-    return header;
-  }
-  return `${header}\n输出:\n${output}`;
-}
-
-const EDIT_TOOL_REDACT_KEYS = new Set(["old_string", "new_string"]);
-
-function parseToolPayload(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
-}
-
-function stripToolPayloadKeys(value: unknown, keys: Set<string>): unknown {
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => stripToolPayloadKeys(item, keys));
-  }
-  const record = value as Record<string, unknown>;
-  const next: Record<string, unknown> = {};
-  Object.entries(record).forEach(([key, itemValue]) => {
-    if (keys.has(key)) {
-      return;
-    }
-    next[key] = stripToolPayloadKeys(itemValue, keys);
-  });
-  return next;
 }
 
 function extractJsonObject(value: string): string | undefined {

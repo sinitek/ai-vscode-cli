@@ -223,6 +223,7 @@ export class CodexInteractiveRunner {
 
     const streamed = await this.thread.runStreamed(prompt, { signal });
     let lastAgentText = "";
+    const seenCommandExecutions = new Set<string>();
 
     for await (const event of streamed.events as AsyncGenerator<any>) {
       handlers.onEvent?.(event);
@@ -235,11 +236,9 @@ export class CodexInteractiveRunner {
         const message = typeof event.message === "string" ? event.message.trim() : "";
         if (message) {
           const lower = message.toLowerCase();
-          const prefix = lower.startsWith("reconnecting")
-            ? "【重连】"
-            : lower.startsWith("retrying")
-            ? "【重试】"
-            : "【错误】";
+          const prefix = lower.startsWith("reconnecting") || lower.startsWith("retrying")
+            ? "warning "
+            : "error ";
           handlers.onTrace(`${prefix}${message}`);
         }
         continue;
@@ -274,16 +273,18 @@ export class CodexInteractiveRunner {
           continue;
         }
         if (item.type === "command_execution") {
-          const command = typeof item.command === "string" ? item.command : "";
-          const output = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
-          const status = typeof item.status === "string" ? item.status : "";
-          const exitCode = item.exit_code !== undefined ? String(item.exit_code) : "";
-          const lines = [
-            `【执行命令】${command}`.trim(),
-            status ? `状态：${status}${exitCode ? `（exit=${exitCode}）` : ""}` : "",
-            output ? `输出：\n${output}` : "",
-          ].filter(Boolean);
-          handlers.onTrace(lines.join("\n"), "normal", { merge: false });
+          const command = typeof item.command === "string" ? item.command.trim() : "";
+          const commandLine = command ? `exec ${command}` : "exec";
+          const commandId = typeof item.id === "string" ? item.id : "";
+          if (commandId) {
+            if (seenCommandExecutions.has(commandId)) {
+              continue;
+            }
+            seenCommandExecutions.add(commandId);
+          } else if (event?.type !== "item.completed") {
+            continue;
+          }
+          handlers.onTrace(commandLine, "normal", { merge: false });
           continue;
         }
         if (item.type === "file_change") {
@@ -292,7 +293,7 @@ export class CodexInteractiveRunner {
           const list = changes
             .map((c: any) => (c && typeof c.path === "string" ? `${c.kind ?? "update"}: ${c.path}` : ""))
             .filter(Boolean);
-          handlers.onTrace(["【文件变更】", status ? `状态：${status}` : "", ...list].filter(Boolean).join("\n"));
+          handlers.onTrace(["file update", status ? `status: ${status}` : "", ...list].filter(Boolean).join("\n"));
           continue;
         }
         if (item.type === "mcp_tool_call") {
@@ -300,7 +301,7 @@ export class CodexInteractiveRunner {
           const tool = typeof item.tool === "string" ? item.tool : "";
           const status = typeof item.status === "string" ? item.status : "";
           handlers.onTrace(
-            ["【MCP】", `${server} :: ${tool}`.trim(), status ? `状态：${status}` : "", `参数：${safeStringify(item.arguments)}`]
+            ["mcp", `${server} :: ${tool}`.trim(), status ? `status: ${status}` : "", `params: ${safeStringify(item.arguments)}`]
               .filter(Boolean)
               .join("\n")
           );
@@ -309,14 +310,14 @@ export class CodexInteractiveRunner {
         if (item.type === "web_search") {
           const query = typeof item.query === "string" ? item.query : "";
           if (query) {
-            handlers.onTrace(`【Web 搜索】${query}`);
+            handlers.onTrace(`web search ${query}`);
           }
           continue;
         }
         if (item.type === "error") {
           const message = typeof item.message === "string" ? item.message : "";
           if (message) {
-            handlers.onTrace(`【错误】${message}`);
+            handlers.onTrace(`error ${message}`);
           }
           continue;
         }
@@ -324,7 +325,7 @@ export class CodexInteractiveRunner {
 
       if (event?.type === "turn.failed") {
         const message = event?.error?.message ? String(event.error.message) : "turn.failed";
-        handlers.onTrace(`【失败】${message}`);
+        handlers.onTrace(`error ${message}`);
         continue;
       }
     }

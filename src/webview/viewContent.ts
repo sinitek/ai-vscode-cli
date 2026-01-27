@@ -250,8 +250,147 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 8px 12px;
         border-radius: var(--radius-md);
         white-space: pre-wrap;
-        border-left: 3px solid var(--vscode-minimap-findMatchHighlight);
+        border-left: 3px solid var(--trace-accent, var(--vscode-minimap-findMatchHighlight));
+        --trace-title-fg: var(--vscode-badge-foreground);
+        --trace-title-bg: var(--vscode-badge-background);
+        --trace-title-border: transparent;
         box-sizing: border-box;
+      }
+      .message.trace.trace-type-exec .bubble {
+        --trace-accent: var(
+          --vscode-charts-blue,
+          var(--vscode-activityBarBadge-background, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-editor-selectionHighlightBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-git-update .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-modifiedResourceForeground,
+          var(--vscode-charts-blue, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-diffEditor-modifiedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-file-update .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-addedResourceForeground,
+          var(--vscode-charts-green, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-diffEditor-insertedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-apply-patch .bubble {
+        --trace-accent: var(
+          --vscode-gitDecoration-stageModifiedResourceForeground,
+          var(--vscode-charts-purple, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-editor-selectionHighlightBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-use .bubble {
+        --trace-accent: var(
+          --vscode-charts-purple,
+          var(--vscode-terminal-ansiMagenta, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-editor-selectionHighlightBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-tool-result .bubble {
+        --trace-accent: var(
+          --vscode-charts-green,
+          var(--vscode-terminal-ansiGreen, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-diffEditor-insertedTextBackground,
+          var(--vscode-editor-selectionHighlightBackground, var(--vscode-editor-inactiveSelectionBackground))
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-warning .bubble {
+        --trace-accent: var(
+          --vscode-editorWarning-foreground,
+          var(--vscode-notificationsWarningIcon-foreground, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-inputValidation-warningBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-error .bubble {
+        --trace-accent: var(
+          --vscode-editorError-foreground,
+          var(--vscode-notificationsErrorIcon-foreground, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-inputValidation-errorBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .message.trace.trace-type-thinking .bubble {
+        --trace-accent: var(
+          --vscode-editorInfo-foreground,
+          var(--vscode-notificationsInfoIcon-foreground, var(--vscode-minimap-findMatchHighlight))
+        );
+        --trace-title-fg: var(--trace-accent);
+        --trace-title-bg: var(
+          --vscode-inputValidation-infoBackground,
+          var(--vscode-editor-inactiveSelectionBackground)
+        );
+        --trace-title-border: var(--trace-accent);
+      }
+      .trace-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .trace-title {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--trace-title-bg, var(--vscode-badge-background));
+        color: var(--trace-title-fg, var(--vscode-badge-foreground));
+        border: 1px solid var(--trace-title-border, transparent);
+        text-transform: uppercase;
+      }
+      .trace-detail {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        font-family: var(--vscode-editor-font-family);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        text-align: right;
       }
       .trace-time {
         margin-top: 6px;
@@ -1372,6 +1511,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (message.role === "trace") {
             const traceClass = message.kind === "thinking" ? "trace-thinking" : "trace-nonthinking";
             wrapper.classList.add(traceClass);
+            const tracePresentation = getTracePresentation(message.content || "");
+            if (tracePresentation.type) {
+              wrapper.classList.add("trace-type-" + tracePresentation.type);
+            }
           }
 
           const bubble = document.createElement("div");
@@ -1560,9 +1703,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!content) {
           return "";
         }
-        const expanded = expandFileChangeTraceContent(String(content));
-        const lines = expanded.split(/\\r?\\n/);
-        const htmlLines = lines.map((line) => {
+        const presentation = getTracePresentation(content);
+        const htmlLines = presentation.lines.map((line) => {
           const cleanLine = stripAnsi(line);
           const trimmed = cleanLine.trimStart();
           const kind = getDiffLineKind(trimmed);
@@ -1572,7 +1714,109 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const className = (kind ? "trace-line diff-" + kind : "trace-line") + (isLineNumbered ? " line-numbered" : "");
           return '<div class="' + className + '">' + (safeText || "&nbsp;") + "</div>";
         });
-        return '<div class="trace-content">' + htmlLines.join("") + "</div>";
+        const header = presentation.title
+          ? '<div class="trace-header">' +
+            '<span class="trace-title">' +
+            escapeHtml(presentation.title) +
+            "</span>" +
+            (presentation.detail
+              ? '<span class="trace-detail">' + escapeHtml(presentation.detail) + "</span>"
+              : '<span class="trace-detail"></span>') +
+            "</div>"
+          : "";
+        return header + '<div class="trace-content">' + htmlLines.join("") + "</div>";
+      }
+
+      function getTracePresentation(content) {
+        const expanded = expandFileChangeTraceContent(String(content || ""));
+        const lines = expanded.split(/\\r?\\n/);
+        const normalizedLines = lines.slice();
+        const firstIndex = normalizedLines.findIndex((line) => line.trim());
+        if (firstIndex === -1) {
+          return { type: "", title: "", detail: "", lines: normalizedLines };
+        }
+        const firstLine = normalizedLines[firstIndex].trim();
+        const definition = getTraceTypeDefinition(firstLine);
+        if (!definition) {
+          return { type: "", title: "", detail: "", lines: normalizedLines };
+        }
+        const detail = definition.detail ? definition.detail(firstLine) : "";
+        const bodyLines = normalizedLines.slice(0, firstIndex).concat(normalizedLines.slice(firstIndex + 1));
+        return {
+          type: definition.type,
+          title: definition.title,
+          detail,
+          lines: stripLeadingEmptyLines(bodyLines),
+        };
+      }
+
+      function stripLeadingEmptyLines(lines) {
+        const next = lines.slice();
+        while (next.length && !next[0].trim()) {
+          next.shift();
+        }
+        return next;
+      }
+
+      function getTraceTypeDefinition(line) {
+        const trimmed = line.trim();
+        const definitions = [
+          {
+            type: "git-update",
+            title: "Git 更新",
+            match: /^git\\s+update\\b/i,
+            detail: (value) => value.replace(/^git\\s+update\\b[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "exec",
+            title: "执行命令",
+            match: /^(?:exec\\b|【执行命令】)/i,
+            detail: (value) => value.replace(/^(?:exec\\b|【执行命令】)[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "file-update",
+            title: "文件变更",
+            match: /^file\\s+update\\b/i,
+            detail: (value) => value.replace(/^file\\s+update\\b[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "apply-patch",
+            title: "应用补丁",
+            match: /^apply_patch\\b/i,
+            detail: (value) => value.replace(/^apply_patch\\b[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "tool-use",
+            title: "工具调用",
+            match: /^调用工具\\b/i,
+            detail: (value) => value.replace(/^调用工具[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "tool-result",
+            title: "工具结果",
+            match: /^工具结果\\b/i,
+            detail: (value) => value.replace(/^工具结果[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "warning",
+            title: "警告",
+            match: /^warning\\b/i,
+            detail: (value) => value.replace(/^warning\\b[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "error",
+            title: "错误",
+            match: /^error\\b/i,
+            detail: (value) => value.replace(/^error\\b[:：]?\\s*/i, "").trim(),
+          },
+          {
+            type: "thinking",
+            title: "思考",
+            match: /^thinking\\b/i,
+            detail: (value) => value.replace(/^thinking\\b[:：]?\\s*/i, "").trim(),
+          },
+        ];
+        return definitions.find((definition) => definition.match.test(trimmed)) || null;
       }
 
       function expandFileChangeTraceContent(content) {

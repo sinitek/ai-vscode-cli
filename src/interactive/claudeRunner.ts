@@ -4,6 +4,7 @@ import * as path from "path";
 import { CliName, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
 import { logInfo } from "../logger";
+import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 
 export type ClaudeStreamHandlers = {
   onAssistantDelta: (chunk: string) => void;
@@ -24,20 +25,6 @@ function pickArgValue(args: string[], key: string): string | null {
 function defaultModelFromArgs(args: string[]): string {
   const fromArg = pickArgValue(args, "--model");
   return fromArg ? fromArg : "sonnet";
-}
-
-function formatToolLine(prefix: string, payload: unknown): string {
-  if (payload === null || payload === undefined) {
-    return prefix;
-  }
-  if (typeof payload === "string") {
-    return `${prefix} ${payload}`;
-  }
-  try {
-    return `${prefix}\n${JSON.stringify(payload, null, 2)}`;
-  } catch {
-    return `${prefix} ${String(payload)}`;
-  }
 }
 
 function extractTextFromMessage(message: any): string {
@@ -293,10 +280,16 @@ export class ClaudeInteractiveRunner {
                   handlers.onTaskListUpdate(items);
                 }
               }
-              handlers.onTrace(formatToolLine(`【工具调用】${name}`.trim(), input));
+              handlers.onTrace(formatClaudeToolUseMessage(name || undefined, input));
             }
             if (block.type === "tool_result") {
-              handlers.onTrace(formatToolLine("【工具结果】", block.content ?? block));
+              const toolName =
+                typeof block.name === "string"
+                  ? block.name
+                  : typeof block.tool_name === "string"
+                    ? block.tool_name
+                    : undefined;
+              handlers.onTrace(formatClaudeToolResultMessage(block.content ?? block, toolName));
             }
           }
           continue;
@@ -304,7 +297,6 @@ export class ClaudeInteractiveRunner {
 
         // 工具进度
         if (msg?.type === "tool_progress") {
-          handlers.onTrace(`【工具执行中】${msg.tool_name ?? ""}`.trim());
           continue;
         }
 
@@ -312,7 +304,11 @@ export class ClaudeInteractiveRunner {
         if (msg?.type === "system" && msg.subtype === "hook_response") {
           const stdout = typeof msg.stdout === "string" ? msg.stdout : "";
           const stderr = typeof msg.stderr === "string" ? msg.stderr : "";
-          const content = [msg.hook_name ? `【Hook】${msg.hook_name}` : "【Hook】", stdout && `stdout:\n${stdout}`, stderr && `stderr:\n${stderr}`]
+          const content = [
+            msg.hook_name ? `hook ${msg.hook_name}` : "hook",
+            stdout && `stdout:\n${stdout}`,
+            stderr && `stderr:\n${stderr}`,
+          ]
             .filter(Boolean)
             .join("\n");
           if (content.trim()) {
@@ -324,7 +320,7 @@ export class ClaudeInteractiveRunner {
         // 系统消息 - 状态
         if (msg?.type === "system" && msg.subtype === "status") {
           if (msg.status) {
-            handlers.onTrace(`【状态】${String(msg.status)}`);
+            handlers.onTrace(`status: ${String(msg.status)}`);
           }
           continue;
         }
