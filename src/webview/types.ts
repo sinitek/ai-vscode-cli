@@ -53,6 +53,7 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system" | "trace";
   content: string;
   createdAt?: number;
+  sequence?: number;
   kind?: "thinking" | "normal";
   merge?: boolean;
 };

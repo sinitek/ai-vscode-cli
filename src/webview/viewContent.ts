@@ -1605,6 +1605,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateTaskList();
       }
 
+      function normalizeMessageOrder(messages) {
+        if (!Array.isArray(messages) || messages.length <= 1) {
+          return Array.isArray(messages) ? messages : [];
+        }
+        const entries = messages.map((message, index) => ({ message, index }));
+        const allHaveSequence = entries.every((entry) => typeof entry.message.sequence === "number");
+        if (!allHaveSequence) {
+          return messages;
+        }
+        return entries
+          .slice()
+          .sort((a, b) => (a.message.sequence - b.message.sequence) || (a.index - b.index))
+          .map((entry) => entry.message);
+      }
+
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
         if (!state.sessionState.sessions.length) {
@@ -2887,7 +2902,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           applyState(data.payload);
         }
         if (data.type === "setMessages") {
-          state.messages = Array.isArray(data.messages) ? data.messages : [];
+          const incoming = Array.isArray(data.messages) ? data.messages : [];
+          state.messages = normalizeMessageOrder(incoming);
           state.taskList.source = "auto";
           state.taskList.startIndex = 0;
           renderMessages();

@@ -3531,7 +3531,23 @@ function assignPendingLabel(cli: CliName, sessionId: string): void {
 }
 
 function appendMessageToStore(target: ChatMessage[], message: ChatMessage): void {
+  if (typeof message.sequence !== "number") {
+    message.sequence = getNextMessageSequence(target);
+  }
   target.push(message);
+}
+
+function getNextMessageSequence(messages: ChatMessage[]): number {
+  if (!messages.length) {
+    return 0;
+  }
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const current = messages[i];
+    if (typeof current.sequence === "number") {
+      return current.sequence + 1;
+    }
+  }
+  return messages.length;
 }
 
 function appendAssistantChunkToStore(chunk: string): void {
@@ -3752,7 +3768,24 @@ function sanitizeMessages(messages: ChatMessage[]): { messages: ChatMessage[]; c
     }
     cleaned.push(message);
   }
-  return { messages: changed ? cleaned : messages, changed };
+  const normalized = ensureMessageSequence(cleaned);
+  return { messages: normalized.messages, changed: changed || normalized.changed };
+}
+
+function ensureMessageSequence(messages: ChatMessage[]): { messages: ChatMessage[]; changed: boolean } {
+  if (messages.length === 0) {
+    return { messages, changed: false };
+  }
+  let changed = false;
+  let nextSequence = 0;
+  for (const message of messages) {
+    if (message.sequence !== nextSequence) {
+      message.sequence = nextSequence;
+      changed = true;
+    }
+    nextSequence += 1;
+  }
+  return { messages, changed };
 }
 
 function sendSessionMessagesToPanel(cli: CliName, sessionId: string | null): void {
