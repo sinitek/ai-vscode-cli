@@ -797,6 +797,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         justify-content: space-between;
         background: var(--vscode-editor-background);
       }
+      .session-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .session-label {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .session-subtitle {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .session-item:hover {
         border-color: var(--vscode-focusBorder);
       }
@@ -1633,10 +1652,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const item = document.createElement("div");
           item.className = "session-item";
 
+          const info = document.createElement("div");
+          info.className = "session-info";
+
           const label = document.createElement("div");
           label.className = "session-label";
           const cliLabel = session.cli ? "[" + session.cli + "] " : "";
           label.textContent = cliLabel + (session.label || "未命名会话");
+          if (session.firstPrompt) {
+            label.title = session.firstPrompt;
+          } else {
+            label.title = session.label || "未命名会话";
+          }
+
+          const subtitle = document.createElement("div");
+          subtitle.className = "session-subtitle";
+          subtitle.textContent = session.createdAt ? formatDateTime(session.createdAt) : "";
+
+          info.appendChild(label);
+          info.appendChild(subtitle);
 
           const actions = document.createElement("div");
           actions.className = "session-actions";
@@ -1668,7 +1702,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           actions.appendChild(loadButton);
           actions.appendChild(copyButton);
           actions.appendChild(deleteButton);
-          item.appendChild(label);
+          item.appendChild(info);
           item.appendChild(actions);
           elements.sessionList.appendChild(item);
         });

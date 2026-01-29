@@ -94,6 +94,11 @@ const pendingSessionLabels: Record<CliName, string | null> = {
   claude: null,
   gemini: null,
 };
+const pendingSessionPrompts: Record<CliName, string | null> = {
+  codex: null,
+  claude: null,
+  gemini: null,
+};
 const pendingSessionMessages: Record<CliName, ChatMessage[]> = {
   codex: [],
   claude: [],
@@ -155,6 +160,7 @@ type SessionRecord = {
   label: string;
   createdAt: number;
   lastUsedAt: number;
+  firstPrompt?: string;
 };
 
 type SessionStore = Record<CliName, { currentId: string | null; sessions: SessionRecord[] }>;
@@ -3378,6 +3384,7 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
               label: session.label ?? "未命名会话",
               createdAt: session.createdAt ?? Date.now(),
               lastUsedAt: session.lastUsedAt ?? Date.now(),
+              firstPrompt: session.firstPrompt ?? undefined,
             }))
           : [],
       };
@@ -3388,22 +3395,43 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
 
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
+  let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
     records.forEach((record) => {
+      let firstPrompt = record.firstPrompt;
+      if (!firstPrompt) {
+        const resolved = resolveSessionFirstPrompt(item, record.id);
+        if (resolved) {
+          record.firstPrompt = resolved;
+          firstPrompt = resolved;
+          shouldPersist = true;
+        }
+      }
       allSessions.push({
         id: record.id,
         label: record.label,
+        createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
+        firstPrompt,
       });
     });
+  }
+  if (shouldPersist) {
+    void persistSessionStore(sessionStore);
   }
   const sessions = allSessions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
   return {
     currentSessionId: sessionStore[cli]?.currentId ?? null,
     sessions,
   };
+}
+
+function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | null {
+  const messages = loadSessionMessages(cli, sessionId);
+  const first = messages.find((message) => message.role === "user" && message.content.trim());
+  return first ? first.content : null;
 }
 
 function ensureLatestSessionForCli(cli: CliName): void {
@@ -3446,6 +3474,7 @@ function setCurrentSession(cli: CliName, sessionId: string | null): void {
 
 function startNewSession(cli: CliName): void {
   pendingSessionLabels[cli] = null;
+  pendingSessionPrompts[cli] = null;
   pendingSessionMessages[cli] = [];
   setCurrentSession(cli, null);
   void logInfo("session-new", { cli });
@@ -3505,6 +3534,12 @@ function preparePendingLabel(cli: CliName, prompt: string): void {
   if (getCurrentSessionId(cli)) {
     return;
   }
+  if (!pendingSessionPrompts[cli]) {
+    const normalizedPrompt = String(prompt ?? "").trim();
+    if (normalizedPrompt) {
+      pendingSessionPrompts[cli] = normalizedPrompt;
+    }
+  }
   if (pendingSessionLabels[cli]) {
     return;
   }
@@ -3517,7 +3552,18 @@ function preparePendingLabel(cli: CliName, prompt: string): void {
 
 function assignPendingLabel(cli: CliName, sessionId: string): void {
   const label = pendingSessionLabels[cli];
+  const firstPrompt = pendingSessionPrompts[cli];
   if (!label) {
+    if (firstPrompt) {
+      const sessions = sessionStore[cli].sessions;
+      const existing = sessions.find((item) => item.id === sessionId);
+      if (existing && !existing.firstPrompt) {
+        existing.firstPrompt = firstPrompt;
+        void persistSessionStore(sessionStore);
+        void postPanelState();
+      }
+    }
+    pendingSessionPrompts[cli] = null;
     return;
   }
   const sessions = sessionStore[cli].sessions;
@@ -3525,7 +3571,11 @@ function assignPendingLabel(cli: CliName, sessionId: string): void {
   if (existing && existing.label === "未命名会话") {
     existing.label = label;
   }
+  if (existing && firstPrompt && !existing.firstPrompt) {
+    existing.firstPrompt = firstPrompt;
+  }
   pendingSessionLabels[cli] = null;
+  pendingSessionPrompts[cli] = null;
   void persistSessionStore(sessionStore);
   void postPanelState();
 }

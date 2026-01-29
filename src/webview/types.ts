@@ -44,8 +44,10 @@ export type UploadFilePayload = {
 export type SessionSummary = {
   id: string;
   label: string;
+  createdAt: number;
   lastUsedAt: number;
   cli: CliName;
+  firstPrompt?: string;
 };
 
 export type ChatMessage = {
