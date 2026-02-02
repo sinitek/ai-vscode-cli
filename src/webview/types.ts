@@ -15,6 +15,7 @@ export type PanelMessage =
   | { type: "deleteSession"; sessionId: string; cli: CliName }
   | { type: "applyConfig"; cli: CliName; configId: string }
   | { type: "clearAllSessions" }
+  | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
   | { type: "sendPrompt"; prompt: string }
   | { type: "stopRun" }
@@ -50,6 +51,13 @@ export type SessionSummary = {
   firstPrompt?: string;
 };
 
+export type PromptHistoryItem = {
+  id: string;
+  prompt: string;
+  createdAt: number;
+  cli: CliName;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system" | "trace";
@@ -78,6 +86,7 @@ export type PanelState = {
     currentSessionId: string | null;
     sessions: SessionSummary[];
   };
+  promptHistory: PromptHistoryItem[];
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;

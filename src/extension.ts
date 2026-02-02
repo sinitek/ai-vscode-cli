@@ -31,6 +31,7 @@ import {
   ChatMessage,
   PanelMessage,
   PanelState,
+  PromptHistoryItem,
   SessionSummary,
   UploadFilePayload,
 } from "./webview/types";
@@ -84,6 +85,7 @@ let activeProcessTitleRunId: string | null = null;
 let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
 let sessionStore: SessionStore;
+let promptHistoryStore: PromptHistoryStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
@@ -113,11 +115,13 @@ const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
 const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
+const PROMPT_HISTORY_DIR = path.join(DATA_DIR, "prompt-history");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
+const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
 const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
@@ -149,6 +153,7 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   gemini: "GEMINI.md",
 };
 
+const PROMPT_HISTORY_LIMIT = 200;
 const CONTEXT_COMPACT_TURN_THRESHOLD = 30;
 const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
@@ -164,6 +169,10 @@ type SessionRecord = {
 };
 
 type SessionStore = Record<CliName, { currentId: string | null; sessions: SessionRecord[] }>;
+
+type PromptHistoryStore = {
+  items: PromptHistoryItem[];
+};
 
 type TaskRunStatus = "end" | "error" | "stopped";
 
@@ -199,6 +208,7 @@ export function activate(context: vscode.ExtensionContext): void {
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
   workspaceSettings = loadWorkspaceSettings();
   sessionStore = loadSessionStore();
+  promptHistoryStore = loadPromptHistoryStore();
   ensureLatestSessionForCli(currentCli);
   void initLogger();
   setDebugLogging(getDebugLogging());
@@ -495,6 +505,20 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     return;
   }
 
+  if (message.type === "clearPromptHistory") {
+    const confirmed = await vscode.window.showWarningMessage(
+      "确认清空当前工作区的历史提示词？",
+      { modal: true },
+      "清空"
+    );
+    if (confirmed !== "清空") {
+      return;
+    }
+    clearPromptHistory();
+    await postPanelState();
+    return;
+  }
+
   if (message.type === "newSession") {
     interactiveRunnerManager?.disposeAll();
     startNewSession(currentCli);
@@ -671,7 +695,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "sendPrompt" && typeof message.prompt === "string") {
-    await runPrompt(message.prompt.trim());
+    const trimmed = message.prompt.trim();
+    if (!trimmed) {
+      return;
+    }
+    recordPromptHistory(trimmed, currentCli);
+    await postPanelState();
+    await runPrompt(trimmed);
     return;
   }
 
@@ -700,6 +730,7 @@ async function buildPanelState(): Promise<PanelState> {
       project: getProjectRulePaths(),
     },
     sessionState: buildSessionState(currentCli),
+    promptHistory: buildPromptHistoryState(),
     configState,
   };
 }
@@ -725,6 +756,7 @@ function ensureWorkspaceSessionStore(): void {
 function applyWorkspaceSessionStore(workspaceKey: string): void {
   activeWorkspaceKey = workspaceKey;
   sessionStore = loadSessionStore();
+  promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
   sessionMessageCache.clear();
   interactiveRunnerManager?.disposeAll();
@@ -3353,6 +3385,116 @@ function getWorkspaceSettingsFilePath(): string | null {
     return null;
   }
   return path.join(WORKSPACE_SETTINGS_DIR, `${activeWorkspaceKey}.json`);
+}
+
+function loadPromptHistoryStore(): PromptHistoryStore {
+  const stored = readPromptHistoryFile();
+  const normalized = ensurePromptHistoryStore(stored);
+  writePromptHistoryFile(normalized);
+  return normalized;
+}
+
+function ensurePromptHistoryStore(store?: PromptHistoryStore): PromptHistoryStore {
+  const items = Array.isArray(store?.items) ? store?.items : [];
+  const normalized = items
+    .map((item) => normalizePromptHistoryItem(item))
+    .filter((item): item is PromptHistoryItem => Boolean(item));
+  normalized.sort((a, b) => b.createdAt - a.createdAt);
+  if (normalized.length > PROMPT_HISTORY_LIMIT) {
+    normalized.length = PROMPT_HISTORY_LIMIT;
+  }
+  return { items: normalized };
+}
+
+function normalizePromptHistoryItem(item: unknown): PromptHistoryItem | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const record = item as PromptHistoryItem;
+  const prompt = typeof record.prompt === "string" ? record.prompt.trim() : "";
+  if (!prompt) {
+    return null;
+  }
+  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
+  const cli = isCliName(record.cli) ? record.cli : currentCli;
+  const id = typeof record.id === "string" && record.id.trim()
+    ? record.id
+    : createPromptHistoryId(createdAt);
+  return {
+    id,
+    prompt,
+    createdAt,
+    cli,
+  };
+}
+
+function createPromptHistoryId(timestamp?: number): string {
+  const base = typeof timestamp === "number" ? timestamp : Date.now();
+  return `prompt_${base}_${Math.random().toString(16).slice(2)}`;
+}
+
+function buildPromptHistoryState(): PromptHistoryItem[] {
+  return promptHistoryStore?.items ? [...promptHistoryStore.items] : [];
+}
+
+function recordPromptHistory(prompt: string, cli: CliName): void {
+  const normalized = String(prompt ?? "").trim();
+  if (!normalized) {
+    return;
+  }
+  if (!promptHistoryStore) {
+    promptHistoryStore = loadPromptHistoryStore();
+  }
+  promptHistoryStore.items.unshift({
+    id: createPromptHistoryId(),
+    prompt: normalized,
+    createdAt: Date.now(),
+    cli,
+  });
+  if (promptHistoryStore.items.length > PROMPT_HISTORY_LIMIT) {
+    promptHistoryStore.items = promptHistoryStore.items.slice(0, PROMPT_HISTORY_LIMIT);
+  }
+  writePromptHistoryFile(promptHistoryStore);
+}
+
+function clearPromptHistory(): void {
+  if (!promptHistoryStore) {
+    promptHistoryStore = loadPromptHistoryStore();
+  }
+  promptHistoryStore.items = [];
+  writePromptHistoryFile(promptHistoryStore);
+  void logInfo("prompt-history-cleared", { workspace: activeWorkspaceKey });
+}
+
+function getPromptHistoryFilePath(): string {
+  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+    return LEGACY_PROMPT_HISTORY_FILE;
+  }
+  return path.join(PROMPT_HISTORY_DIR, `${activeWorkspaceKey}.json`);
+}
+
+function readPromptHistoryFile(): PromptHistoryStore | undefined {
+  try {
+    const filePath = getPromptHistoryFilePath();
+    if (!fs.existsSync(filePath)) {
+      return undefined;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw) as PromptHistoryStore;
+  } catch (error) {
+    void logError("prompt-history-read-error", { error: String(error) });
+    return undefined;
+  }
+}
+
+function writePromptHistoryFile(store: PromptHistoryStore): void {
+  try {
+    const filePath = getPromptHistoryFilePath();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf8");
+  } catch (error) {
+    void logError("prompt-history-write-error", { error: String(error) });
+  }
 }
 
 function loadSessionStore(): SessionStore {

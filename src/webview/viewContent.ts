@@ -754,6 +754,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         overflow-y: auto;
       }
 
+      .history-tabs {
+        display: flex;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+      }
+      .history-panel {
+        display: none;
+        flex: 1;
+        min-height: 0;
+      }
+      .history-panel.active {
+        display: flex;
+        flex-direction: column;
+      }
+      .history-panel.prompts {
+        padding: 16px;
+        overflow-y: auto;
+      }
+      .history-panel.sessions {
+        overflow: hidden;
+      }
+
       .rules-modal {
         padding: 0 0 16px;
         gap: 12px;
@@ -818,6 +841,65 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .session-item:hover {
         border-color: var(--vscode-focusBorder);
+      }
+
+      .prompt-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .prompt-item {
+        padding: 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        background: var(--vscode-editor-background);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .prompt-item:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      .prompt-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .prompt-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .prompt-preview {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+      }
+      .prompt-meta {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .prompt-actions {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .prompt-full {
+        display: none;
+        white-space: pre-wrap;
+        border-top: 1px dashed var(--vscode-widget-border);
+        padding-top: 8px;
+        color: var(--vscode-editor-foreground);
+      }
+      .prompt-item.expanded .prompt-full {
+        display: block;
       }
       
       /* Toast */
@@ -1092,15 +1174,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       </div>
 
       <div id="historyOverlay" class="overlay">
-        <div class="modal">
+        <div class="modal history-modal">
           <div class="modal-header">
-            <div class="title">历史会话</div>
+            <div class="title">历史记录</div>
             <div class="session-actions">
-              <button id="clearAllHistory" class="ghost">清空全部</button>
+              <button id="clearAllHistory" class="ghost">清空会话</button>
               <button id="closeHistory" class="secondary">关闭</button>
             </div>
           </div>
-          <div id="sessionList" class="session-list"></div>
+          <div class="history-tabs help-tabs" role="tablist" aria-label="历史记录">
+            <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">历史提示词</button>
+            <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">历史会话</button>
+          </div>
+          <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
+            <div id="promptHistoryList" class="prompt-list"></div>
+          </div>
+          <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
+            <div id="sessionList" class="session-list"></div>
+          </div>
         </div>
       </div>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -1326,11 +1417,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           currentSessionId: null,
           sessions: [],
         },
+        promptHistory: [],
         debug: false,
         thinkingMode: "medium",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
+        historyTab: "sessions",
+        promptHistoryExpandedId: null,
         taskList: {
           items: [],
           open: false,
@@ -1363,6 +1457,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         historyOverlay: document.getElementById("historyOverlay"),
         closeHistory: document.getElementById("closeHistory"),
         clearAllHistory: document.getElementById("clearAllHistory"),
+        historyTabPrompts: document.getElementById("historyTabPrompts"),
+        historyTabSessions: document.getElementById("historyTabSessions"),
+        historyPanelPrompts: document.getElementById("historyPanelPrompts"),
+        historyPanelSessions: document.getElementById("historyPanelSessions"),
+        promptHistoryList: document.getElementById("promptHistoryList"),
         sessionList: document.getElementById("sessionList"),
         rulesButton: document.getElementById("rulesButton"),
         rulesOverlay: document.getElementById("rulesOverlay"),
@@ -1428,6 +1527,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           state.autoAppliedConfig = false;
         }
         state.sessionState = panelState.sessionState;
+        state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         const configs = Array.isArray(state.configState.configs)
           ? state.configState.configs
@@ -1474,6 +1574,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         renderConfigOptions();
         renderSessionList();
+        renderPromptHistoryList();
       }
 
       function renderConfigOptions() {
@@ -1706,6 +1807,117 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           item.appendChild(actions);
           elements.sessionList.appendChild(item);
         });
+      }
+
+      function renderPromptHistoryList() {
+        if (!elements.promptHistoryList) {
+          return;
+        }
+        elements.promptHistoryList.innerHTML = "";
+        const items = Array.isArray(state.promptHistory) ? state.promptHistory : [];
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "暂无历史提示词";
+          elements.promptHistoryList.appendChild(empty);
+          return;
+        }
+        const expandedId = state.promptHistoryExpandedId;
+        if (expandedId && !items.some((item) => item.id === expandedId)) {
+          state.promptHistoryExpandedId = null;
+        }
+        items.forEach((item) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "prompt-item";
+          if (state.promptHistoryExpandedId === item.id) {
+            wrapper.classList.add("expanded");
+          }
+
+          const header = document.createElement("div");
+          header.className = "prompt-header";
+
+          const info = document.createElement("div");
+          info.className = "prompt-info";
+
+          const preview = document.createElement("div");
+          preview.className = "prompt-preview";
+          preview.textContent = buildPromptPreview(item.prompt);
+          preview.title = item.prompt || "";
+
+          const meta = document.createElement("div");
+          meta.className = "prompt-meta";
+          const cliLabel = item.cli ? "[" + item.cli + "] " : "";
+          const timeLabel = item.createdAt ? formatDateTime(item.createdAt) : "";
+          meta.textContent = cliLabel + timeLabel;
+
+          info.appendChild(preview);
+          info.appendChild(meta);
+
+          const actions = document.createElement("div");
+          actions.className = "prompt-actions";
+
+          const viewButton = document.createElement("button");
+          viewButton.className = "ghost";
+          viewButton.textContent = state.promptHistoryExpandedId === item.id ? "收起" : "查看";
+          viewButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            togglePromptHistoryExpanded(item.id);
+          });
+
+          const useButton = document.createElement("button");
+          useButton.className = "secondary";
+          useButton.textContent = "复用";
+          useButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            applyPromptHistory(item.prompt || "");
+          });
+
+          actions.appendChild(viewButton);
+          actions.appendChild(useButton);
+
+          header.appendChild(info);
+          header.appendChild(actions);
+
+          const full = document.createElement("div");
+          full.className = "prompt-full";
+          full.textContent = item.prompt || "";
+
+          wrapper.appendChild(header);
+          wrapper.appendChild(full);
+
+          wrapper.addEventListener("click", () => {
+            togglePromptHistoryExpanded(item.id);
+          });
+
+          elements.promptHistoryList.appendChild(wrapper);
+        });
+      }
+
+      function buildPromptPreview(prompt) {
+        const normalized = String(prompt || "").replace(/\\s+/g, " ").trim();
+        if (!normalized) {
+          return "（空提示词）";
+        }
+        const limit = 60;
+        if (normalized.length <= limit) {
+          return normalized;
+        }
+        return normalized.slice(0, limit) + "…";
+      }
+
+      function togglePromptHistoryExpanded(id) {
+        state.promptHistoryExpandedId = state.promptHistoryExpandedId === id ? null : id;
+        renderPromptHistoryList();
+      }
+
+      function applyPromptHistory(prompt) {
+        const content = String(prompt || "");
+        elements.promptInput.value = content;
+        const end = content.length;
+        elements.promptInput.selectionStart = end;
+        elements.promptInput.selectionEnd = end;
+        elements.promptInput.focus();
+        closeHistory();
       }
 
       function getFirstNonEmptyLine(text) {
@@ -2650,6 +2862,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function openHistory() {
         renderSessionList();
+        renderPromptHistoryList();
+        setHistoryTab(state.historyTab);
         elements.historyOverlay.classList.add("visible");
       }
 
@@ -2687,6 +2901,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function closeCommonCommands() {
         elements.commonCommandsOverlay.classList.remove("visible");
+      }
+
+      function setHistoryTab(tab) {
+        const isPrompts = tab === "prompts";
+        state.historyTab = isPrompts ? "prompts" : "sessions";
+        elements.historyTabPrompts.classList.toggle("active", isPrompts);
+        elements.historyTabSessions.classList.toggle("active", !isPrompts);
+        elements.historyTabPrompts.setAttribute("aria-selected", String(isPrompts));
+        elements.historyTabSessions.setAttribute("aria-selected", String(!isPrompts));
+        elements.historyPanelPrompts.classList.toggle("active", isPrompts);
+        elements.historyPanelSessions.classList.toggle("active", !isPrompts);
+        if (elements.clearAllHistory) {
+          elements.clearAllHistory.textContent = isPrompts ? "清空提示词" : "清空会话";
+        }
       }
 
       function setHelpTab(tab) {
@@ -2749,7 +2977,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.clearAllHistory.addEventListener("click", () => {
+        if (state.historyTab === "prompts") {
+          vscode.postMessage({ type: "clearPromptHistory" });
+          return;
+        }
         vscode.postMessage({ type: "clearAllSessions" });
+      });
+
+      elements.historyTabPrompts.addEventListener("click", () => {
+        setHistoryTab("prompts");
+      });
+
+      elements.historyTabSessions.addEventListener("click", () => {
+        setHistoryTab("sessions");
       });
 
       elements.historyOverlay.addEventListener("click", (event) => {
