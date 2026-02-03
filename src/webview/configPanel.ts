@@ -20,14 +20,14 @@ export class ConfigManagerPanel {
 
   public show(): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.One, true);
+      this.panel.reveal(vscode.ViewColumn.Active, true);
       return;
     }
 
     this.panel = vscode.window.createWebviewPanel(
       "sinitek-cli-tools.configManager",
       "携宁 CLI 助手 - 配置",
-      vscode.ViewColumn.One,
+      vscode.ViewColumn.Active,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
