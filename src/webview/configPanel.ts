@@ -5,6 +5,7 @@ import {
   ConfigResponseMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
+import { logInfo } from "../logger";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
@@ -37,8 +38,12 @@ export class ConfigManagerPanel {
 
     this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
 
-    this.panel.webview.onDidReceiveMessage((message: ConfigRequestMessage) => {
-      void this.handleRequest(message);
+    this.panel.webview.onDidReceiveMessage((message: ConfigRequestMessage | { type: "config:debug"; payload?: unknown }) => {
+      if (message && message.type === "config:debug") {
+        void logInfo("config-view-debug", message.payload ?? {});
+        return;
+      }
+      void this.handleRequest(message as ConfigRequestMessage);
     });
 
     this.panel.onDidDispose(() => {

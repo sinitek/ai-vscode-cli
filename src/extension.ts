@@ -1174,9 +1174,11 @@ function matchesActiveConfig(
   current: CurrentConfig
 ): boolean {
   if (platform === "claude") {
-    const configContentNormalized = normalizeJson(config.content, "{}");
-    const currentContentNormalized = normalizeJson(current.content, "{}");
-    const contentMatch = configContentNormalized === currentContentNormalized;
+    const configContentObj = parseJsonObject(config.content);
+    const currentContentObj = parseJsonObject(current.content);
+    const contentMatch = configContentObj && currentContentObj
+      ? isDeepEqualSubset(configContentObj, currentContentObj)
+      : normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}");
 
     const configMcp = parseJsonObject(config.mcpContent);
     const currentMcp = parseJsonObject(current.mcpContent);
@@ -1187,25 +1189,89 @@ function matchesActiveConfig(
     return contentMatch && mcpMatch;
   }
   if (platform === "gemini") {
+    const configContentObj = parseJsonObject(config.content);
+    const currentContentObj = parseJsonObject(current.content);
+    const contentMatch = configContentObj && currentContentObj
+      ? isDeepEqualSubset(configContentObj, currentContentObj)
+      : normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}");
     return (
-      normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}") &&
+      contentMatch &&
       normalizeLineEndings(config.envContent) === normalizeLineEndings(current.envContent)
     );
   }
   return (
-    normalizeConfigText(config.configContent) === normalizeConfigText(current.configContent) &&
+    areLinesSubset(
+      normalizeConfigLines(config.configContent),
+      normalizeConfigLines(current.configContent)
+    ) &&
     normalizeJson(config.authContent, "{}") === normalizeJson(current.authContent, "{}")
   );
 }
 
-function normalizeConfigText(value: string | undefined): string {
+function normalizeConfigLines(value: string | undefined): string[] {
   const normalized = stripCodexSkillsBlock(normalizeLineEndings(value ?? ""));
   return normalized
     .split("\n")
     .map((line) => line.replace(/\s+$/g, ""))
     .filter((line) => !/^\s*#/.test(line))
-    .join("\n")
-    .trim();
+    .map((line) => normalizeTomlLine(line))
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function areLinesSubset(required: string[], actual: string[]): boolean {
+  if (required.length === 0) {
+    return true;
+  }
+  if (actual.length < required.length) {
+    return false;
+  }
+  const counts = new Map<string, number>();
+  actual.forEach((line) => {
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  });
+  for (const line of required) {
+    const count = counts.get(line) ?? 0;
+    if (count <= 0) {
+      return false;
+    }
+    counts.set(line, count - 1);
+  }
+  return true;
+}
+
+function normalizeTomlLine(line: string): string {
+  if (!line) {
+    return "";
+  }
+  let inDouble = false;
+  let inSingle = false;
+  let escaped = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && inDouble) {
+      escaped = true;
+      continue;
+    }
+    if (char === "\"" && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (char === "=" && !inDouble && !inSingle) {
+      const left = line.slice(0, i).trimEnd();
+      const right = line.slice(i + 1).trimStart();
+      return `${left} = ${right}`.trim();
+    }
+  }
+  return line.trim();
 }
 
 async function applyConfigById(cli: CliName, configId: string): Promise<void> {

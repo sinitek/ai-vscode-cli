@@ -92,6 +92,14 @@ export function getConfigViewHtml(
         });
       }
 
+      function postConfigDebug(payload) {
+        try {
+          vscode.postMessage({ type: "config:debug", payload });
+        } catch (error) {
+          // ignore
+        }
+      }
+
       window.electronAPI = {
         config: {
           getList: (platform) => requestConfig("getList", { platform }),
@@ -246,31 +254,123 @@ export function getConfigViewHtml(
         }
       }
 
+      const CODEX_SKILLS_BLOCK_START = "# --- sinitek codex skills start ---";
+      const CODEX_SKILLS_BLOCK_END = "# --- sinitek codex skills end ---";
+
+      function escapeRegExp(value) {
+        return value.replace(/[.*+?^$\\{}()|[\\]\\\\]/g, "\\\\$&");
+      }
+
+      function stripCodexSkillsBlock(content) {
+        const start = escapeRegExp(CODEX_SKILLS_BLOCK_START);
+        const end = escapeRegExp(CODEX_SKILLS_BLOCK_END);
+        const regex = new RegExp(start + "[\\\\s\\\\S]*?" + end + "\\\\s*", "g");
+        return content.replace(regex, "").trimEnd();
+      }
+
+      function normalizeConfigLines(value) {
+        const normalized = stripCodexSkillsBlock(normalizeLineEndings(value ?? ""));
+        return normalized
+          .split("\\n")
+          .map((line) => line.replace(/\\s+$/g, ""))
+          .filter((line) => !/^\\s*#/.test(line))
+          .map((line) => normalizeTomlLine(line))
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+      }
+
+      function areLinesSubset(required, actual) {
+        if (!required.length) {
+          return true;
+        }
+        if (actual.length < required.length) {
+          return false;
+        }
+        const counts = new Map();
+        actual.forEach((line) => {
+          counts.set(line, (counts.get(line) || 0) + 1);
+        });
+        for (const line of required) {
+          const count = counts.get(line) || 0;
+          if (count <= 0) {
+            return false;
+          }
+          counts.set(line, count - 1);
+        }
+        return true;
+      }
+
+      function normalizeTomlLine(line) {
+        if (!line) {
+          return "";
+        }
+        let inDouble = false;
+        let inSingle = false;
+        let escaped = false;
+        for (let i = 0; i < line.length; i += 1) {
+          const char = line[i];
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === "\\\\" && inDouble) {
+            escaped = true;
+            continue;
+          }
+          if (char === "\\\"" && !inSingle) {
+            inDouble = !inDouble;
+            continue;
+          }
+          if (char === "'" && !inDouble) {
+            inSingle = !inSingle;
+            continue;
+          }
+          if (char === "=" && !inDouble && !inSingle) {
+            const left = line.slice(0, i).trimEnd();
+            const right = line.slice(i + 1).trimStart();
+            return (left + " = " + right).trim();
+          }
+        }
+        return line.trim();
+      }
+
       function matchActiveConfig(platform, config, current) {
         if (!config || !current) {
           return false;
         }
         if (platform === "claude") {
+          const configContentObj = parseJsonObject(config.content);
+          const currentContentObj = parseJsonObject(current.content);
+          const contentMatch = configContentObj && currentContentObj
+            ? isDeepEqualSubset(configContentObj, currentContentObj)
+            : normalizeJson(config.content) === normalizeJson(current.content);
           const configMcp = parseJsonObject(config.mcpContent);
           const currentMcp = parseJsonObject(current.mcpContent);
           const mcpMatch = configMcp && currentMcp
             ? isDeepEqualSubset(configMcp, currentMcp)
             : normalizeJson(config.mcpContent ?? "{}") === normalizeJson(current.mcpContent ?? "{}");
           return (
-            normalizeJson(config.content) === normalizeJson(current.content) &&
+            contentMatch &&
             mcpMatch
           );
         }
         if (platform === "gemini") {
+          const configContentObj = parseJsonObject(config.content);
+          const currentContentObj = parseJsonObject(current.content);
+          const contentMatch = configContentObj && currentContentObj
+            ? isDeepEqualSubset(configContentObj, currentContentObj)
+            : normalizeJson(config.content) === normalizeJson(current.content);
           return (
-            normalizeJson(config.content) === normalizeJson(current.content) &&
+            contentMatch &&
             normalizeLineEndings(config.envContent ?? "") ===
               normalizeLineEndings(current.envContent ?? "")
           );
         }
         return (
-          normalizeLineEndings(config.configContent ?? "") ===
-            normalizeLineEndings(current.configContent ?? "") &&
+          areLinesSubset(
+            normalizeConfigLines(config.configContent),
+            normalizeConfigLines(current.configContent)
+          ) &&
           normalizeJson(config.authContent ?? "{}") === normalizeJson(current.authContent ?? "{}")
         );
       }
@@ -278,25 +378,59 @@ export function getConfigViewHtml(
       async function syncActiveConfigIds() {
         const platforms = ["claude", "codex", "gemini"];
         let updated = false;
+        postConfigDebug({
+          event: "syncActive:start",
+          platforms,
+          time: Date.now(),
+        });
         await Promise.all(
           platforms.map(async (platform) => {
             let configs = [];
             try {
               configs = await requestConfig("getList", { platform });
             } catch (error) {
+              postConfigDebug({
+                event: "syncActive:error",
+                platform,
+                step: "getList",
+                message: error && error.message ? String(error.message) : String(error),
+              });
               return;
             }
             if (!Array.isArray(configs) || configs.length === 0) {
+              postConfigDebug({
+                event: "syncActive:empty",
+                platform,
+                count: Array.isArray(configs) ? configs.length : 0,
+              });
               return;
             }
             let current = null;
             try {
               current = await requestConfig("getCurrent", { platform });
             } catch (error) {
+              postConfigDebug({
+                event: "syncActive:error",
+                platform,
+                step: "getCurrent",
+                message: error && error.message ? String(error.message) : String(error),
+              });
               return;
             }
             const matched = configs.find((config) => matchActiveConfig(platform, config, current));
             const storedActiveId = getStoredActiveId(platform, configs);
+            const matchMap = configs.map((config) => ({
+              id: config.id,
+              match: matchActiveConfig(platform, config, current),
+            }));
+            postConfigDebug({
+              event: "syncActive:result",
+              platform,
+              count: configs.length,
+              storedActiveId,
+              matchedId: matched ? matched.id : null,
+              matchMap,
+            });
             if (matched) {
               if (storedActiveId !== matched.id) {
                 try {
@@ -305,6 +439,11 @@ export function getConfigViewHtml(
                     JSON.stringify(matched.id)
                   );
                   updated = true;
+                  postConfigDebug({
+                    event: "syncActive:update",
+                    platform,
+                    activeId: matched.id,
+                  });
                 } catch (error) {
                   // ignore storage error
                 }
@@ -315,12 +454,22 @@ export function getConfigViewHtml(
               try {
                 localStorage.removeItem(ACTIVE_CONFIG_KEY_PREFIX + platform);
                 updated = true;
+                postConfigDebug({
+                  event: "syncActive:clear",
+                  platform,
+                  previousId: storedActiveId,
+                });
               } catch (error) {
                 // ignore storage error
               }
             }
           })
         );
+        postConfigDebug({
+          event: "syncActive:done",
+          updated,
+          time: Date.now(),
+        });
         return updated;
       }
 
