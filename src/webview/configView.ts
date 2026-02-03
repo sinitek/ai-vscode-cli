@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
@@ -27,6 +28,7 @@ export function getConfigViewHtml(
   extensionUri: vscode.Uri
 ): string {
   const nonce = getNonce();
+  const downloadsDir = path.join(os.homedir(), "Downloads");
   const assetsFsPath = path.join(extensionUri.fsPath, ...ASSETS_DIR);
   const jsFile = findAssetFile(assetsFsPath, ".js");
   const cssFile = findAssetFile(assetsFsPath, ".css");
@@ -67,6 +69,7 @@ export function getConfigViewHtml(
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const configBase = ${JSON.stringify(configBaseUri)};
+      const downloadsDir = ${JSON.stringify(downloadsDir)};
       try {
         history.replaceState(null, "", configBase + "/index.html");
       } catch (error) {
@@ -100,6 +103,17 @@ export function getConfigViewHtml(
         }
       }
 
+      window.sinitekConfigBridge = {
+        downloadsDir,
+        openPath: (path) => {
+          try {
+            vscode.postMessage({ type: "config:openPath", path });
+          } catch (error) {
+            // ignore
+          }
+        },
+      };
+
       window.electronAPI = {
         config: {
           getList: (platform) => requestConfig("getList", { platform }),
@@ -113,20 +127,27 @@ export function getConfigViewHtml(
           initDefault: (platform) => requestConfig("initDefault", { platform }),
           getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
+          exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };
 
       function disableReadonlyActions() {
+        const hiddenAttr = "data-readonly-hidden";
         const buttons = Array.from(document.querySelectorAll("button, [role='button']"));
         buttons.forEach((button) => {
           const label = (button.textContent || "").trim();
           if (!label) {
             return;
           }
-          // 只隐藏"更新配置"按钮，保留"激活配置"按钮
+          // 只隐藏"更新配置"按钮，保留"激活"按钮
           if (label === "更新配置") {
             button.style.display = "none";
+            button.setAttribute(hiddenAttr, "true");
             return;
+          }
+          if (button.getAttribute(hiddenAttr) === "true") {
+            button.style.display = "";
+            button.removeAttribute(hiddenAttr);
           }
         });
       }
@@ -134,7 +155,11 @@ export function getConfigViewHtml(
       const readonlyObserver = new MutationObserver(() => {
         disableReadonlyActions();
       });
-      readonlyObserver.observe(document.body, { childList: true, subtree: true });
+      readonlyObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
 
       window.addEventListener("message", (event) => {
         const data = event.data;

@@ -1,11 +1,15 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import { getConfigViewHtml } from "./configView";
 import {
   ConfigRequestMessage,
   ConfigResponseMessage,
+  ConfigOpenPathMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
-import { logInfo } from "../logger";
+import { logEssential, logInfo } from "../logger";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
@@ -38,9 +42,23 @@ export class ConfigManagerPanel {
 
     this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
 
-    this.panel.webview.onDidReceiveMessage((message: ConfigRequestMessage | { type: "config:debug"; payload?: unknown }) => {
+    this.panel.webview.onDidReceiveMessage(
+      (
+        message:
+          | ConfigRequestMessage
+          | ConfigOpenPathMessage
+          | { type: "config:debug"; payload?: unknown }
+      ) => {
       if (message && message.type === "config:debug") {
         void logInfo("config-view-debug", message.payload ?? {});
+        return;
+      }
+      if (message && message.type === "config:openPath") {
+        const target = message.path;
+        if (target) {
+          const uri = vscode.Uri.file(target);
+          void vscode.commands.executeCommand("revealFileInOS", uri);
+        }
         return;
       }
       void this.handleRequest(message as ConfigRequestMessage);
@@ -105,6 +123,28 @@ export class ConfigManagerPanel {
         case "getCodexSkillsList":
           response.data = await configService.getCodexSkillsList();
           break;
+        case "exportConfigs": {
+          const payload = message.payload;
+          if (!payload || typeof payload.content !== "string") {
+            throw new Error("导出内容不能为空");
+          }
+          const rawName = payload.fileName || "";
+          const safeName = rawName
+            ? path.basename(rawName).replace(/[\\/:*?"<>|]/g, "_")
+            : `sinitek-cli-configs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+          const targetName = safeName.endsWith(".json") ? safeName : `${safeName}.json`;
+          let downloadsDir = path.join(os.homedir(), "Downloads");
+          try {
+            await fs.promises.mkdir(downloadsDir, { recursive: true });
+          } catch {
+            downloadsDir = os.homedir();
+          }
+          const targetPath = path.join(downloadsDir, targetName);
+          await fs.promises.writeFile(targetPath, payload.content, "utf8");
+          response.data = { path: targetPath, fileName: targetName, downloadsDir };
+          void logEssential("config-export", { path: targetPath });
+          break;
+        }
         default:
           response.success = false;
           response.error = "未知请求";

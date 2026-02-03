@@ -11,7 +11,8 @@ export type ConfigAction =
   | "getBackups"
   | "initDefault"
   | "getMcpMarketplaceList"
-  | "getCodexSkillsList";
+  | "getCodexSkillsList"
+  | "exportConfigs";
 
 export type ConfigRequestPayload =
   | { action: "getList"; platform: ConfigPlatform }
@@ -24,7 +25,8 @@ export type ConfigRequestPayload =
   | { action: "getBackups"; platform: ConfigPlatform }
   | { action: "initDefault"; platform: ConfigPlatform }
   | { action: "getMcpMarketplaceList" }
-  | { action: "getCodexSkillsList" };
+  | { action: "getCodexSkillsList" }
+  | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
 
 export type ConfigRequestMessage = {
   type: "config:request";
@@ -37,4 +39,9 @@ export type ConfigResponseMessage = {
   success: boolean;
   data?: unknown;
   error?: string;
+};
+
+export type ConfigOpenPathMessage = {
+  type: "config:openPath";
+  path: string;
 };

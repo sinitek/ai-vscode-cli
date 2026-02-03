@@ -34,9 +34,22 @@ const ConfigListPanel = () => {
       [p, h] = c.useState(null),
       [b, x] = c.useState(null),
       [S, y] = c.useState(null),
+      [exportOpen, setExportOpen] = c.useState(!1),
+      [exportResult, setExportResult] = c.useState(""),
+      [importOpen, setImportOpen] = c.useState(!1),
+      [exportSelection, setExportSelection] = c.useState({}),
+      [importItems, setImportItems] = c.useState(null),
+      [importError, setImportError] = c.useState(""),
+      [isImporting, setIsImporting] = c.useState(!1),
       $ = c.useMemo(() => e.filter((k) => k.platform === "claude"), [e]),
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
       O = c.useMemo(() => e.filter((k) => k.platform === "gemini"), [e]),
+      exportSelectedCount = c.useMemo(
+        () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
+        [e, exportSelection],
+      ),
+      exportAllChecked = e.length > 0 && exportSelectedCount === e.length,
+      exportAnySelected = exportSelectedCount > 0,
       I = (k) => {
         const L =
           k === "claude" ? "Claude" : k === "codex" ? "Codex" : "Gemini";
@@ -228,6 +241,148 @@ const ConfigListPanel = () => {
             },
           }));
       },
+      openExportModal = () => {
+        setExportSelection((k) => {
+          const L = {};
+          e.forEach((G) => {
+            L[G.id] = k[G.id] ?? !1;
+          });
+          return L;
+        });
+        setExportResult("");
+        setExportOpen(!0);
+      },
+      openImportModal = () => {
+        setImportOpen(!0);
+        setImportItems(null);
+        setImportError("");
+      },
+      toggleExportAll = (k) => {
+        const L = {};
+        e.forEach((G) => {
+          L[G.id] = k;
+        });
+        setExportSelection(L);
+      },
+      toggleExportItem = (k, L) => {
+        setExportSelection((G) => ({ ...G, [k]: L }));
+      },
+      doExport = async () => {
+        const k = e.filter((L) => exportSelection[L.id]);
+        if (k.length === 0) {
+          Kt.warning("请选择要导出的配置");
+          return;
+        }
+        const L = {
+          version: 1,
+          exportedAt: Date.now(),
+          configs: k.map((G) => ({
+            name: G.name,
+            platform: G.platform,
+            content: G.content,
+            mcpContent: G.mcpContent,
+            envContent: G.envContent,
+            configContent: G.configContent,
+            authContent: G.authContent,
+          })),
+        };
+        const G = JSON.stringify(L, null, 2);
+        const Y = `sinitek-cli-configs-${new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")}.json`;
+        try {
+          const U = await exportConfigsItem({ fileName: Y, content: G });
+          const T = U?.path || U?.fileName || Y;
+          setExportResult(T);
+          if (U?.downloadsDir) {
+            window.sinitekConfigBridge?.openPath?.(U.downloadsDir);
+          }
+          Kt.success(`已导出到: ${T}`);
+        } catch (U) {
+          const T = new Blob([G], { type: "application/json" });
+          const F = URL.createObjectURL(T);
+          const K = document.createElement("a");
+          (K.href = F),
+            (K.download = Y),
+            document.body.appendChild(K),
+            K.click(),
+            document.body.removeChild(K),
+            URL.revokeObjectURL(F);
+          setExportResult(Y);
+          Kt.warning("导出已触发下载，请检查浏览器下载目录");
+        }
+      },
+      readFileText = (k) =>
+        new Promise((L, G) => {
+          const U = new FileReader();
+          (U.onload = () => L(String(U.result || ""))),
+            (U.onerror = () => G(U.error || new Error("读取文件失败"))),
+            U.readAsText(k);
+        }),
+      normalizeImportItem = (k) => {
+        if (!k || !k.platform) return null;
+        const L = k.platform,
+          G = k.name || `${L} 配置 ${Date.now()}`;
+        if (L === "claude") {
+          return {
+            name: G,
+            platform: L,
+            content: k.content ?? "{}",
+            mcpContent: k.mcpContent ?? "{}",
+          };
+        }
+        if (L === "gemini") {
+          return {
+            name: G,
+            platform: L,
+            content: k.content ?? "{}",
+            envContent: k.envContent ?? "",
+          };
+        }
+        if (L === "codex") {
+          return {
+            name: G,
+            platform: L,
+            configContent: k.configContent ?? "",
+            authContent: k.authContent ?? "{}",
+          };
+        }
+        return null;
+      },
+      handleImportFile = async (k) => {
+        if (!k) return;
+        setImportError("");
+        setImportItems(null);
+        try {
+          const L = await readFileText(k),
+            G = JSON.parse(L),
+            U = Array.isArray(G) ? G : G?.configs;
+          if (!Array.isArray(U)) throw new Error("导入文件格式不正确");
+          const T = U.map(normalizeImportItem).filter(Boolean);
+          if (T.length === 0) throw new Error("未找到可导入配置");
+          setImportItems(T);
+        } catch (L) {
+          setImportError(`解析失败: ${L && L.message ? L.message : L}`);
+        }
+      },
+      applyImport = async () => {
+        if (!importItems || importItems.length === 0) {
+          Kt.warning("没有可导入的配置");
+          return;
+        }
+        setIsImporting(!0);
+        try {
+          for (const k of importItems) {
+            await l(k);
+          }
+          Kt.success(`已导入 ${importItems.length} 项配置`);
+          setImportOpen(!1);
+        } catch (k) {
+          Kt.error("导入失败: " + k);
+        } finally {
+          setIsImporting(!1);
+        }
+      },
       H = (k, L) => {
         const G =
             k === "claude" ? "Claude" : k === "codex" ? "Codex" : "Gemini",
@@ -265,6 +420,8 @@ const ConfigListPanel = () => {
             onClick: () => I(k),
             children: "添加配置",
           }),
+          headStyle: { paddingLeft: "8px", paddingRight: "8px" },
+          bodyStyle: { paddingLeft: "8px", paddingRight: "8px" },
           style: { marginBottom: "16px" },
           children: be.jsx("div", {
             onDragOver: (F) => N(F, ""),
@@ -315,7 +472,7 @@ const ConfigListPanel = () => {
                               color: "#fff",
                             }
                           : void 0,
-                        children: Y ? "更新配置" : "激活配置",
+                        children: Y ? "更新配置" : "激活",
                       }),
                       be.jsx(xn, {
                         type: "text",
@@ -361,8 +518,307 @@ const ConfigListPanel = () => {
         });
       };
     return be.jsxs("div", {
-      style: { height: "100%", padding: "16px", overflow: "auto" },
-      children: [H("claude", $), H("codex", w), H("gemini", O)],
+      style: { height: "100%", padding: "8px", overflow: "auto" },
+      children: [
+        be.jsxs("div", {
+          style: {
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "8px",
+            marginBottom: "8px",
+          },
+          children: [
+            be.jsx(xn, { size: "small", onClick: openExportModal, children: "导出" }),
+            be.jsx(xn, { size: "small", onClick: openImportModal, children: "导入" }),
+          ],
+        }),
+        H("claude", $),
+        H("codex", w),
+        H("gemini", O),
+        be.jsx(xr, {
+          title: "导出配置",
+          open: exportOpen,
+          onCancel: () => setExportOpen(!1),
+          width: 720,
+          footer: null,
+          destroyOnClose: !0,
+          children: be.jsxs("div", {
+            style: { display: "flex", flexDirection: "column", gap: "12px" },
+            children: [
+              be.jsxs("div", {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                },
+                children: [
+                  be.jsxs("label", {
+                    style: { display: "flex", alignItems: "center", gap: "8px" },
+                    children: [
+                      be.jsx("input", {
+                        type: "checkbox",
+                        checked: exportAllChecked,
+                        disabled: e.length === 0,
+                        onChange: (k) => toggleExportAll(k.target.checked),
+                      }),
+                      be.jsx("span", { children: "全选" }),
+                    ],
+                  }),
+                  be.jsx("div", {
+                    style: {
+                      color: "var(--text-color-secondary)",
+                      fontSize: "12px",
+                    },
+                    children: `已选择 ${exportSelectedCount} / ${e.length}`,
+                  }),
+                ],
+              }),
+              be.jsx("div", {
+                style: {
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "6px",
+                  padding: "8px",
+                  maxHeight: "360px",
+                  overflow: "auto",
+                  background: "var(--bg-color-layout)",
+                },
+                children:
+                  e.length === 0
+                    ? be.jsx("div", {
+                        style: {
+                          color: "var(--text-color-secondary)",
+                          fontSize: "12px",
+                        },
+                        children: "暂无配置可导出",
+                      })
+                    : e.map((k) =>
+                        be.jsx(
+                          "div",
+                          {
+                            style: {
+                              display: "flex",
+                              gap: "10px",
+                              padding: "8px",
+                              borderRadius: "6px",
+                              background: "var(--bg-color-container)",
+                              border: "1px solid var(--border-color)",
+                              marginBottom: "8px",
+                            },
+                            children: be.jsxs("div", {
+                              style: { display: "flex", gap: "8px", width: "100%" },
+                              children: [
+                                be.jsx("input", {
+                                  type: "checkbox",
+                                  checked: exportSelection[k.id] === !0,
+                                  onChange: (L) => toggleExportItem(k.id, L.target.checked),
+                                }),
+                                be.jsxs("div", {
+                                  style: {
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "2px",
+                                    flex: 1,
+                                  },
+                                  children: [
+                                    be.jsx("div", { children: k.name }),
+                                    be.jsx("div", {
+                                      style: {
+                                        color: "var(--text-color-secondary)",
+                                        fontSize: "12px",
+                                      },
+                                      children:
+                                        k.platform === "claude"
+                                          ? "Claude"
+                                          : k.platform === "codex"
+                                            ? "Codex"
+                                            : "Gemini",
+                                    }),
+                                  ],
+                                }),
+                              ],
+                            }),
+                          },
+                          k.id,
+                        ),
+                      ),
+              }),
+              exportResult
+                ? be.jsxs("div", {
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      background: "var(--bg-color-container)",
+                      border: "1px solid var(--border-color)",
+                    },
+                    children: [
+                      be.jsxs("div", {
+                        style: {
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                          minWidth: 0,
+                        },
+                        children: [
+                          be.jsx("div", {
+                            style: { fontSize: "12px", color: "var(--text-color-secondary)" },
+                            children: "已导出到",
+                          }),
+                          be.jsx("div", {
+                            style: {
+                              fontSize: "12px",
+                              wordBreak: "break-all",
+                              color: "var(--text-color)",
+                            },
+                            children: exportResult,
+                          }),
+                        ],
+                      }),
+                      window.sinitekConfigBridge?.downloadsDir
+                        ? be.jsx(xn, {
+                            size: "small",
+                            onClick: () =>
+                              window.sinitekConfigBridge?.openPath?.(
+                                window.sinitekConfigBridge?.downloadsDir,
+                              ),
+                            children: "打开下载文件夹",
+                          })
+                        : null,
+                    ],
+                  })
+                : null,
+              be.jsxs("div", {
+                style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+                children: [
+                  be.jsx(xn, { onClick: () => setExportOpen(!1), children: "取消" }),
+                  be.jsx(xn, {
+                    type: "primary",
+                    disabled: !exportAnySelected,
+                    onClick: doExport,
+                    children: `导出 (${exportSelectedCount})`,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        }),
+        be.jsx(xr, {
+          title: "导入配置",
+          open: importOpen,
+          onCancel: () => {
+            setImportOpen(!1);
+            setImportItems(null);
+            setImportError("");
+          },
+          width: 720,
+          footer: null,
+          destroyOnClose: !0,
+          children: be.jsxs("div", {
+            style: { display: "flex", flexDirection: "column", gap: "12px" },
+            children: [
+              be.jsx("div", {
+                style: { color: "var(--text-color-secondary)", fontSize: "12px" },
+                children: "请选择导出的 JSON 文件进行导入",
+              }),
+              be.jsx("input", {
+                type: "file",
+                accept: "application/json",
+                onChange: (k) => {
+                  const L = k.target.files?.[0];
+                  L && handleImportFile(L);
+                  k.target.value = "";
+                },
+              }),
+              importError
+                ? be.jsx("div", {
+                    style: { color: "var(--error-color)", fontSize: "12px" },
+                    children: importError,
+                  })
+                : null,
+              importItems
+                ? be.jsxs("div", {
+                    style: { display: "flex", flexDirection: "column", gap: "8px" },
+                    children: [
+                      be.jsx("div", {
+                        style: {
+                          color: "var(--text-color-secondary)",
+                          fontSize: "12px",
+                        },
+                        children: `准备导入 ${importItems.length} 项配置`,
+                      }),
+                      be.jsx("div", {
+                        style: {
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "6px",
+                          padding: "8px",
+                          maxHeight: "320px",
+                          overflow: "auto",
+                          background: "var(--bg-color-layout)",
+                        },
+                        children: importItems.map((k, L) =>
+                          be.jsx(
+                            "div",
+                            {
+                              style: {
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "2px",
+                                padding: "8px",
+                                borderRadius: "6px",
+                                background: "var(--bg-color-container)",
+                                border: "1px solid var(--border-color)",
+                                marginBottom: "8px",
+                              },
+                              children: [
+                                be.jsx("div", { children: k.name }),
+                                be.jsx("div", {
+                                  style: {
+                                    color: "var(--text-color-secondary)",
+                                    fontSize: "12px",
+                                  },
+                                  children:
+                                    k.platform === "claude"
+                                      ? "Claude"
+                                      : k.platform === "codex"
+                                        ? "Codex"
+                                        : "Gemini",
+                                }),
+                              ],
+                            },
+                            `${k.platform}_${k.name}_${L}`,
+                          ),
+                        ),
+                      }),
+                    ],
+                  })
+                : null,
+              be.jsxs("div", {
+                style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+                children: [
+                  be.jsx(xn, {
+                    onClick: () => {
+                      setImportOpen(!1);
+                      setImportItems(null);
+                      setImportError("");
+                    },
+                    children: "取消",
+                  }),
+                  be.jsx(xn, {
+                    type: "primary",
+                    loading: isImporting,
+                    disabled: !importItems || importItems.length === 0,
+                    onClick: applyImport,
+                    children: importItems ? `导入 (${importItems.length})` : "导入",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        }),
+      ],
     });
   };
 /*!
@@ -1881,6 +2337,7 @@ const ConfigEditorPanel = () => {
               display: "flex",
               flexDirection: "column",
               padding: "16px",
+              minHeight: 0,
             },
             children: [
               be.jsx(aa, {
@@ -1901,11 +2358,18 @@ const ConfigEditorPanel = () => {
                     }),
                   ],
                 }),
-                style: { flex: 1, display: "flex", flexDirection: "column" },
+                style: {
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                },
                 bodyStyle: {
                   flex: 1,
                   display: "flex",
                   flexDirection: "column",
+                  overflow: "auto",
+                  minHeight: 0,
                 },
                 children: be.jsxs("div", {
                   style: {
@@ -2010,6 +2474,7 @@ const ConfigEditorPanel = () => {
                 display: "flex",
                 flexDirection: "column",
                 padding: "16px",
+                minHeight: 0,
               },
               children: [
                 be.jsxs(aa, {
@@ -2030,13 +2495,20 @@ const ConfigEditorPanel = () => {
                       }),
                     ],
                   }),
-                  style: { flex: 1, display: "flex", flexDirection: "column" },
+                  style: {
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                  },
                   bodyStyle: {
                     flex: 1,
                     display: "flex",
                     flexDirection: "column",
                     padding: "16px",
                     gap: "16px",
+                    overflow: "auto",
+                    minHeight: 0,
                   },
                   children: [
                     be.jsxs("div", {
@@ -2153,6 +2625,7 @@ const ConfigEditorPanel = () => {
                 display: "flex",
                 flexDirection: "column",
                 padding: "16px",
+                minHeight: 0,
               },
               children: [
                 be.jsxs(aa, {
@@ -2173,13 +2646,20 @@ const ConfigEditorPanel = () => {
                       }),
                     ],
                   }),
-                  style: { flex: 1, display: "flex", flexDirection: "column" },
+                  style: {
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                  },
                   bodyStyle: {
                     flex: 1,
                     display: "flex",
                     flexDirection: "column",
                     padding: "16px",
                     gap: "16px",
+                    overflow: "auto",
+                    minHeight: 0,
                   },
                   children: [
                     be.jsxs("div", {
@@ -2329,8 +2809,6 @@ const ConfigEditorPanel = () => {
                             border: "1px solid var(--border-color)",
                             borderRadius: "6px",
                             padding: "8px",
-                            maxHeight: "240px",
-                            overflow: "auto",
                             background:
                               "var(--background-color-secondary, #f5f5f5)",
                           },
@@ -2455,7 +2933,7 @@ const ConfigManagerLayout = () => {
           be.jsxs(Li, {
             children: [
               be.jsx(zk, {
-                width: "50%",
+                width: 500,
                 style: {
                   background: "#fff",
                   borderRight: "1px solid var(--border-color)",

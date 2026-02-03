@@ -43,6 +43,9 @@ const detectConfigApiMode = () =>
         return t?.data ?? [];
       }),
     getCodexSkillsList: () => requestConfigApi("/codex/skills"),
+    exportConfigs: async () => {
+      throw new Error("当前模式不支持导出文件");
+    },
   },
   getIpcConfigApi = () => {
     if (!window.electronAPI?.config) throw new Error("Electron API 未就绪");
@@ -111,5 +114,13 @@ const detectConfigApiMode = () =>
       return configApi.getCurrent(e);
     } catch (t) {
       throw (console.error("获取当前配置失败:", t), t);
+    }
+  },
+  exportConfigsItem = async (e) => {
+    if (!configApi.exportConfigs) throw new Error("当前模式不支持导出文件");
+    try {
+      return configApi.exportConfigs(e);
+    } catch (t) {
+      throw (console.error("导出配置失败:", t), t);
     }
   };
