@@ -1,5 +1,7 @@
 import { CliName, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
+import * as fs from "fs";
+import * as path from "path";
 
 export type CodexTraceKind = "thinking" | "normal";
 
@@ -16,6 +18,111 @@ export type CodexStreamHandlers = {
 };
 
 type CodexThreadOptions = Record<string, unknown>;
+
+function mapNodeArchToVendorArch(arch: string): "x86_64" | "aarch64" | null {
+  // Codex SDK vendors only a small set of arch names.
+  if (arch === "x64") {
+    return "x86_64";
+  }
+  if (arch === "arm64") {
+    return "aarch64";
+  }
+  return null;
+}
+
+function mapPlatformToVendorSuffix(platform: NodeJS.Platform): string | null {
+  if (platform === "win32") {
+    return "pc-windows-msvc";
+  }
+  if (platform === "darwin") {
+    return "apple-darwin";
+  }
+  if (platform === "linux") {
+    // The SDK packages musl-static binaries.
+    return "unknown-linux-musl";
+  }
+  return null;
+}
+
+function resolveCodexSdkBundledBinaryPath(): string | null {
+  try {
+    const pkgJson = require.resolve("@openai/codex-sdk/package.json");
+    const pkgRoot = path.dirname(pkgJson);
+    const vendorRoot = path.join(pkgRoot, "vendor");
+    if (!fs.existsSync(vendorRoot)) {
+      return null;
+    }
+
+    const binaryName = process.platform === "win32" ? "codex.exe" : "codex";
+    const relBinary = path.join("codex", binaryName);
+
+    const arch = mapNodeArchToVendorArch(process.arch);
+    const suffix = mapPlatformToVendorSuffix(process.platform);
+    if (arch && suffix) {
+      const expected = path.join(vendorRoot, `${arch}-${suffix}`, relBinary);
+      if (fs.existsSync(expected)) {
+        return expected;
+      }
+    }
+
+    // Fallback: search any vendor target folder for the bundled binary.
+    const entries = fs.readdirSync(vendorRoot, { withFileTypes: true });
+    const candidates: string[] = [];
+    for (const ent of entries) {
+      if (!ent.isDirectory()) {
+        continue;
+      }
+      const p = path.join(vendorRoot, ent.name, relBinary);
+      if (fs.existsSync(p)) {
+        candidates.push(p);
+      }
+    }
+    if (candidates.length === 1) {
+      return candidates[0] ?? null;
+    }
+
+    // Prefer a candidate matching our arch if multiple exist.
+    if (arch) {
+      const preferred = candidates.find((p) => p.includes(`${path.sep}${arch}-`));
+      if (preferred) {
+        return preferred;
+      }
+    }
+
+    return candidates[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function ensureExecutable(filePath: string): void {
+  if (process.platform === "win32") {
+    return;
+  }
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return;
+  } catch {
+    // Continue to chmod.
+  }
+
+  try {
+    const st = fs.statSync(filePath);
+    // Keep existing bits and add +x for user/group/other.
+    const nextMode = (st.mode ?? 0) | 0o111;
+    fs.chmodSync(filePath, nextMode);
+  } catch {
+    // Best-effort: if chmod fails, the subsequent spawn will surface the error.
+  }
+}
+
+function bestEffortFixCodexSdkBundledBinaryPermissions(): void {
+  const bundled = resolveCodexSdkBundledBinaryPath();
+  if (!bundled) {
+    return;
+  }
+  ensureExecutable(bundled);
+}
 
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let i = 0; i < args.length; i += 1) {
@@ -154,6 +261,8 @@ export class CodexInteractiveRunner {
     if (this.codex) {
       return;
     }
+    // VSIX packaging (zip) can drop executable bits on Linux/WSL, causing spawn EACCES.
+    bestEffortFixCodexSdkBundledBinaryPermissions();
     const mod = await dynamicImport<any>("@openai/codex-sdk");
     const CodexCtor = mod?.Codex;
     if (!CodexCtor) {
