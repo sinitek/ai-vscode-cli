@@ -2718,14 +2718,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.promptInput.disabled = false;
         elements.newSession.disabled = isRunning;
         elements.stopRun.disabled = !isRunning;
-        elements.thinkingMode.disabled = isRunning;
+        elements.thinkingMode.disabled = false;
         if (elements.debugMode) {
           elements.debugMode.disabled = isRunning;
         }
         syncInteractiveOptions();
         elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
-        elements.historyButton.disabled = isRunning;
+        elements.historyButton.disabled = false;
         if (isRunning) {
           startRunWaitTimer();
         } else {

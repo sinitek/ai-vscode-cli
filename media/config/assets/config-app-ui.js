@@ -372,8 +372,15 @@ const ConfigListPanel = () => {
         }
         setIsImporting(!0);
         try {
-          for (const k of importItems) {
-            await l(k);
+          const k = new Map(e.map((L) => [`${L.platform}::${L.name}`, L]));
+          for (const L of importItems) {
+            const G = k.get(`${L.platform}::${L.name}`);
+            if (G) {
+              await s(G.id, L);
+            } else {
+              const U = await l(L);
+              k.set(`${U.platform}::${U.name}`, U);
+            }
           }
           Kt.success(`已导入 ${importItems.length} 项配置`);
           setImportOpen(!1);
