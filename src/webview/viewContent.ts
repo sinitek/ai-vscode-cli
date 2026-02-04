@@ -732,6 +732,89 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-direction: column;
         overflow: hidden;
       }
+
+      .run-conflict-modal {
+        width: 420px;
+      }
+      .run-conflict-body {
+        padding: 0 16px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .run-conflict-desc {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .run-conflict-preview {
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        max-height: 120px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .run-conflict-actions {
+        padding: 0 16px 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .run-queue-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .run-queue-indicator:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+      }
+      .run-queue-count {
+        color: var(--vscode-descriptionForeground);
+      }
+      .queue-modal {
+        width: 520px;
+      }
+      .queue-body {
+        padding: 12px 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .queue-empty {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .queue-item {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        padding: 10px;
+        background: var(--vscode-editor-background);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .queue-text {
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .queue-actions {
+        display: flex;
+        align-items: center;
+      }
       
       .modal-header {
         padding: 16px;
@@ -1117,14 +1200,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">输入需求，开始对话。</div>
         <div id="messages" class="messages"></div>
-        <div id="runWait" class="run-wait" style="display: none;">
-          <span class="typing">
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-          </span>
-          <span id="runWaitTime" class="run-wait-time">00:00</span>
-        </div>
+      <div id="runWait" class="run-wait" style="display: none;">
+        <span class="typing">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </span>
+        <span id="runWaitTime" class="run-wait-time">00:00</span>
+        <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="查看队列">
+          队列
+          <span id="queueCount" class="run-queue-count">0</span>
+        </button>
+      </div>
       </div>
 
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
@@ -1272,6 +1359,34 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div id="runConflictOverlay" class="overlay">
+        <div class="modal run-conflict-modal">
+          <div class="modal-header">
+            <div class="title">任务执行中</div>
+            <button id="closeRunConflict" class="secondary">关闭</button>
+          </div>
+          <div class="run-conflict-body">
+            <div>检测到当前任务仍在执行，要如何处理这条消息？</div>
+            <div class="run-conflict-desc">选择“暂停并发送”将终止当前任务并立即发送。</div>
+            <div id="runConflictPrompt" class="run-conflict-preview"></div>
+          </div>
+          <div class="run-conflict-actions">
+            <button id="queuePrompt" class="secondary action-button">加入队列</button>
+            <button id="pauseAndSend" class="action-button">暂停并发送</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="queueOverlay" class="overlay">
+        <div class="modal queue-modal">
+          <div class="modal-header">
+            <div class="title">队列提示词</div>
+            <button id="closeQueue" class="secondary">关闭</button>
+          </div>
+          <div id="queueBody" class="queue-body"></div>
         </div>
       </div>
 
@@ -1443,6 +1558,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         emptyState: document.getElementById("emptyState"),
         runWait: document.getElementById("runWait"),
         runWaitTime: document.getElementById("runWaitTime"),
+        queueIndicator: document.getElementById("queueIndicator"),
+        queueCount: document.getElementById("queueCount"),
         configSelect: document.getElementById("configSelect"),
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
@@ -1486,6 +1603,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         commonCommandsOverlay: document.getElementById("commonCommandsOverlay"),
         closeCommonCommands: document.getElementById("closeCommonCommands"),
         commandCompact: document.getElementById("commandCompact"),
+        runConflictOverlay: document.getElementById("runConflictOverlay"),
+        closeRunConflict: document.getElementById("closeRunConflict"),
+        queuePrompt: document.getElementById("queuePrompt"),
+        pauseAndSend: document.getElementById("pauseAndSend"),
+        runConflictPrompt: document.getElementById("runConflictPrompt"),
+        queueOverlay: document.getElementById("queueOverlay"),
+        closeQueue: document.getElementById("closeQueue"),
+        queueBody: document.getElementById("queueBody"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
@@ -1503,6 +1628,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const assistantRedirects = {};
       let toastTimer = null;
       let resizeFrame = 0;
+      const pendingPromptQueue = [];
+      let pendingRunPrompt = "";
+      let suppressQueueFlushOnce = false;
       let runWaitTimer = null;
       let runWaitStartAt = 0;
 
@@ -2630,12 +2758,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderTaskList();
       }
 
-      function sendPrompt() {
-        const prompt = elements.promptInput.value.trim();
+      function dispatchPrompt(prompt) {
         if (!prompt) {
-          return;
+          return false;
         }
-        elements.promptInput.value = "";
+        const shouldSuppressFlush = state.isRunning;
         // 优先检查前端选择的配置，如果没有则检查后端的 activeConfigId
         const hasConfig = state.selectedConfigId || state.configState.activeConfigId;
         if (!hasConfig) {
@@ -2645,11 +2772,145 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             content: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
             createdAt: Date.now(),
           });
-          return;
+          return false;
+        }
+        if (shouldSuppressFlush) {
+          suppressQueueFlushOnce = true;
         }
         resetTaskListForRunStart();
         appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
         vscode.postMessage({ type: "sendPrompt", prompt });
+        return true;
+      }
+
+      function openRunConflictOverlay(prompt) {
+        if (!elements.runConflictOverlay) {
+          dispatchPrompt(prompt);
+          return;
+        }
+        pendingRunPrompt = prompt;
+        if (elements.runConflictPrompt) {
+          elements.runConflictPrompt.textContent = prompt;
+        }
+        elements.runConflictOverlay.classList.add("visible");
+      }
+
+      function closeRunConflictOverlay() {
+        if (!elements.runConflictOverlay) {
+          return;
+        }
+        elements.runConflictOverlay.classList.remove("visible");
+        pendingRunPrompt = "";
+      }
+
+      function updateQueueIndicator() {
+        if (!elements.queueIndicator || !elements.queueCount) {
+          return;
+        }
+        const count = pendingPromptQueue.length;
+        elements.queueCount.textContent = String(count);
+        elements.queueIndicator.style.display = count > 0 ? "inline-flex" : "none";
+        if (elements.queueOverlay && elements.queueOverlay.classList.contains("visible")) {
+          renderQueueOverlay();
+        }
+      }
+
+      function renderQueueOverlay() {
+        if (!elements.queueBody) {
+          return;
+        }
+        elements.queueBody.innerHTML = "";
+        if (!pendingPromptQueue.length) {
+          const empty = document.createElement("div");
+          empty.className = "queue-empty";
+          empty.textContent = "当前没有待发送的提示词。";
+          elements.queueBody.appendChild(empty);
+          return;
+        }
+        pendingPromptQueue.forEach((prompt, index) => {
+          const row = document.createElement("div");
+          row.className = "queue-item";
+
+          const text = document.createElement("div");
+          text.className = "queue-text";
+          text.textContent = prompt;
+
+          const actions = document.createElement("div");
+          actions.className = "queue-actions";
+
+          const removeButton = document.createElement("button");
+          removeButton.className = "secondary action-button";
+          removeButton.textContent = "取消";
+          removeButton.addEventListener("click", () => {
+            clearQueuedPromptIndex(index);
+          });
+
+          actions.appendChild(removeButton);
+          row.appendChild(text);
+          row.appendChild(actions);
+          elements.queueBody.appendChild(row);
+        });
+      }
+
+      function openQueueOverlay() {
+        if (!elements.queueOverlay) {
+          return;
+        }
+        renderQueueOverlay();
+        elements.queueOverlay.classList.add("visible");
+      }
+
+      function closeQueueOverlay() {
+        if (!elements.queueOverlay) {
+          return;
+        }
+        elements.queueOverlay.classList.remove("visible");
+      }
+
+      function queuePromptForLater(prompt) {
+        if (!prompt) {
+          return;
+        }
+        pendingPromptQueue.push(prompt);
+        updateQueueIndicator();
+        showToast("已加入队列");
+      }
+
+      function clearQueuedPromptIndex(index) {
+        if (index < 0 || index >= pendingPromptQueue.length) {
+          return;
+        }
+        pendingPromptQueue.splice(index, 1);
+        updateQueueIndicator();
+        renderQueueOverlay();
+      }
+
+      function flushPendingPromptQueue() {
+        if (state.isRunning) {
+          return;
+        }
+        if (!pendingPromptQueue.length) {
+          return;
+        }
+        const nextPrompt = pendingPromptQueue.shift();
+        updateQueueIndicator();
+        const sent = dispatchPrompt(nextPrompt);
+        if (!sent) {
+          showToast("队列发送失败，请先激活配置");
+        }
+      }
+
+      function sendPrompt() {
+        const prompt = elements.promptInput.value.trim();
+        if (!prompt) {
+          return;
+        }
+        if (state.isRunning) {
+          openRunConflictOverlay(prompt);
+          return;
+        }
+        elements.promptInput.value = "";
+        dispatchPrompt(prompt);
       }
 
       function insertPromptText(text) {
@@ -3062,6 +3323,51 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         vscode.postMessage({ type: "runCommonCommand", command: "compactContext" });
       });
 
+      elements.runConflictOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.runConflictOverlay) {
+          closeRunConflictOverlay();
+        }
+      });
+
+      elements.closeRunConflict.addEventListener("click", () => {
+        closeRunConflictOverlay();
+      });
+
+      elements.queuePrompt.addEventListener("click", () => {
+        if (!pendingRunPrompt) {
+          closeRunConflictOverlay();
+          return;
+        }
+        queuePromptForLater(pendingRunPrompt);
+        elements.promptInput.value = "";
+        closeRunConflictOverlay();
+      });
+
+      elements.pauseAndSend.addEventListener("click", () => {
+        if (!pendingRunPrompt) {
+          closeRunConflictOverlay();
+          return;
+        }
+        const prompt = pendingRunPrompt;
+        elements.promptInput.value = "";
+        closeRunConflictOverlay();
+        dispatchPrompt(prompt);
+      });
+
+      elements.queueIndicator.addEventListener("click", () => {
+        openQueueOverlay();
+      });
+
+      elements.queueOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.queueOverlay) {
+          closeQueueOverlay();
+        }
+      });
+
+      elements.closeQueue.addEventListener("click", () => {
+        closeQueueOverlay();
+      });
+
       elements.helpTabInstall.addEventListener("click", () => {
         setHelpTab("install");
       });
@@ -3207,6 +3513,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           if (data.message) {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
+          }
+          if (data.status !== "start") {
+            if (suppressQueueFlushOnce) {
+              suppressQueueFlushOnce = false;
+            } else {
+              flushPendingPromptQueue();
+            }
           }
         }
         if (data.type === "removeMessage") {
