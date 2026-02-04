@@ -88,6 +88,14 @@ export class ConfigManagerPanel {
         case "getList":
           response.data = await configService.getConfigList(message.platform);
           break;
+        case "getOrder":
+          response.data = await configService.getConfigOrder(message.platform);
+          break;
+        case "setOrder":
+          await configService.setConfigOrder(message.platform, message.order);
+          response.data = true;
+          this.handlers.onConfigChanged?.();
+          break;
         case "getById":
           response.data = await configService.getConfigById(message.platform, message.id);
           break;

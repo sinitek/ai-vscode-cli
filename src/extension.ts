@@ -1274,6 +1274,23 @@ function normalizeTomlLine(line: string): string {
   return line.trim();
 }
 
+function applyConfigOrder(configs: ConfigItem[], orderIds: string[]): ConfigItem[] {
+  if (!orderIds || orderIds.length === 0) {
+    return configs;
+  }
+  const used = new Set<string>();
+  const ordered: ConfigItem[] = [];
+  for (const id of orderIds) {
+    const match = configs.find((item) => item.id === id);
+    if (match) {
+      ordered.push(match);
+      used.add(match.id);
+    }
+  }
+  const remaining = configs.filter((item) => !used.has(item.id));
+  return [...ordered, ...remaining];
+}
+
 async function applyConfigById(cli: CliName, configId: string): Promise<void> {
   if (!configId) {
     return;
@@ -1306,10 +1323,21 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
       void logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
       return { configs: [], activeConfigId: null };
     }
+    let orderIds: string[] = [];
+    try {
+      const order = await configService.getConfigOrder(cli);
+      orderIds = order[cli] ?? [];
+    } catch (error) {
+      void logInfo("loadConfigState-order-failed", {
+        cli,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const orderedConfigs = applyConfigOrder(configs, orderIds);
     const current = await configService.getCurrentConfig(cli);
-    const active = configs.find((config) => matchesActiveConfig(cli, config, current));
+    const active = orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
     return {
-      configs: configs.map((config) => ({
+      configs: orderedConfigs.map((config) => ({
         id: config.id,
         name: config.name,
         platform: config.platform,

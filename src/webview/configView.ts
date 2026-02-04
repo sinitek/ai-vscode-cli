@@ -117,6 +117,8 @@ export function getConfigViewHtml(
       window.electronAPI = {
         config: {
           getList: (platform) => requestConfig("getList", { platform }),
+          getOrder: (platform) => requestConfig("getOrder", { platform }),
+          setOrder: (platform, order) => requestConfig("setOrder", { platform, order }),
           getById: (platform, id) => requestConfig("getById", { platform, id }),
           save: (config) => requestConfig("save", { config }),
           delete: (platform, id) => requestConfig("delete", { platform, id }),

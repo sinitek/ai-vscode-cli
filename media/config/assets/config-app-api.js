@@ -22,6 +22,9 @@ const detectConfigApiMode = () =>
   },
   httpConfigApi = {
     getList: (e) => requestConfigApi(`/list/${e}`),
+    getOrder: (e) => requestConfigApi(`/order/${e}`),
+    setOrder: (e, t) =>
+      requestConfigApi(`/order/${e}`, { method: "POST", body: JSON.stringify(t) }),
     getById: (e, t) => requestConfigApi(`/${e}/${t}`),
     save: async (e) => (
       await requestConfigApi("/save", { method: "POST", body: JSON.stringify(e) }),
@@ -72,6 +75,20 @@ const detectConfigApiMode = () =>
       return configApi.getList(e);
     } catch (t) {
       throw (console.error("获取配置列表失败:", t), t);
+    }
+  },
+  fetchConfigOrder = async (e) => {
+    try {
+      return configApi.getOrder(e);
+    } catch (t) {
+      throw (console.error("获取配置顺序失败:", t), t);
+    }
+  },
+  saveConfigOrder = async (e, t) => {
+    try {
+      return configApi.setOrder(e, t);
+    } catch (t) {
+      throw (console.error("保存配置顺序失败:", t), t);
     }
   },
   saveConfigItem = async (e) => {

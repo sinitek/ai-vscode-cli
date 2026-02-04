@@ -117,22 +117,47 @@ const CONFIG_STORAGE_KEYS = {
             fetchConfigList("codex"),
             fetchConfigList("gemini"),
           ]),
-          l = loadStoredOrder(),
-          s = mergeOrderWithConfigs(n, l.claude),
-          u = mergeOrderWithConfigs(r, l.codex),
-          f = mergeOrderWithConfigs(o, l.gemini),
-          m = { claude: s.order, codex: u.order, gemini: f.order },
-          v = [...s.configs, ...u.configs, ...f.configs],
-          p = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_claude`) || null,
-          h = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_codex`) || null,
-          b = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_gemini`) || null;
+          [l, s, u] = await Promise.all([
+            fetchConfigOrder("claude").catch(() => null),
+            fetchConfigOrder("codex").catch(() => null),
+            fetchConfigOrder("gemini").catch(() => null),
+          ]),
+          f = loadStoredOrder(),
+          m = {
+            claude: l?.claude?.length ? l.claude : f.claude,
+            codex: s?.codex?.length ? s.codex : f.codex,
+            gemini: u?.gemini?.length ? u.gemini : f.gemini,
+          },
+          v = mergeOrderWithConfigs(n, m.claude),
+          p = mergeOrderWithConfigs(r, m.codex),
+          h = mergeOrderWithConfigs(o, m.gemini),
+          b = { claude: v.order, codex: p.order, gemini: h.order },
+          g = [...v.configs, ...p.configs, ...h.configs],
+          y = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_claude`) || null,
+          w = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_codex`) || null,
+          A = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_gemini`) || null;
         (e({
-          configs: v,
-          activeConfigIds: { claude: p, codex: h, gemini: b },
-          configOrders: m,
+          configs: g,
+          activeConfigIds: { claude: y, codex: w, gemini: A },
+          configOrders: b,
           isLoading: !1,
         }),
-          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, m));
+          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, b));
+        const k = !l?.claude?.length && f.claude.length > 0,
+          C = !s?.codex?.length && f.codex.length > 0,
+          T = !u?.gemini?.length && f.gemini.length > 0;
+        k &&
+          saveConfigOrder("claude", b).catch((E) =>
+            console.error("同步 Claude 配置顺序失败:", E)
+          );
+        C &&
+          saveConfigOrder("codex", b).catch((E) =>
+            console.error("同步 Codex 配置顺序失败:", E)
+          );
+        T &&
+          saveConfigOrder("gemini", b).catch((E) =>
+            console.error("同步 Gemini 配置顺序失败:", E)
+          );
       } catch (n) {
         throw (console.error("加载配置失败:", n), e({ isLoading: !1 }), n);
       }
@@ -150,6 +175,18 @@ const CONFIG_STORAGE_KEYS = {
             u = appendOrderForConfigs(l, s),
             f = [...t().configs, ...l];
           (e({ configs: f, configOrders: u }), storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, u));
+          n &&
+            saveConfigOrder("claude", u).catch((m) =>
+              console.error("同步 Claude 配置顺序失败:", m)
+            );
+          r &&
+            saveConfigOrder("codex", u).catch((m) =>
+              console.error("同步 Codex 配置顺序失败:", m)
+            );
+          o &&
+            saveConfigOrder("gemini", u).catch((m) =>
+              console.error("同步 Gemini 配置顺序失败:", m)
+            );
         }
       } catch (n) {
         throw (console.error("初始化默认配置失败:", n), n);
@@ -166,7 +203,14 @@ const CONFIG_STORAGE_KEYS = {
         await saveConfigItem(r);
         const o = [...t().configs, r],
           l = appendOrderForConfigs([r], t().configOrders);
-        return (e({ configs: o, configOrders: l }), storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, l), r);
+        return (
+          e({ configs: o, configOrders: l }),
+          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, l),
+          saveConfigOrder(r.platform, l).catch((s) =>
+            console.error("同步配置顺序失败:", s)
+          ),
+          r
+        );
       } catch (r) {
         throw (console.error("添加配置失败:", r), r);
       }
@@ -191,6 +235,9 @@ const CONFIG_STORAGE_KEYS = {
           s = l[n].filter((p) => p !== r),
           u = { ...l, [n]: s };
         (e({ configs: o, configOrders: u }), storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, u));
+        saveConfigOrder(n, u).catch((f) =>
+          console.error("同步配置顺序失败:", f)
+        );
         const f = t().activeConfigIds;
         f[n] === r &&
           (e({ activeConfigIds: { ...f, [n]: null } }),
@@ -224,6 +271,9 @@ const CONFIG_STORAGE_KEYS = {
           selectedConfigPlatform: f.platform,
         }),
         storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, v),
+        saveConfigOrder(f.platform, v).catch((p) =>
+          console.error("同步配置顺序失败:", p)
+        ),
         f
       );
     },
@@ -261,6 +311,9 @@ const CONFIG_STORAGE_KEYS = {
       };
       (e({ configs: [...s.claude, ...s.codex, ...s.gemini], configOrders: p }),
         storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, p));
+      saveConfigOrder(n, p).catch((h) =>
+        console.error("同步配置顺序失败:", h)
+      );
     },
     getConfigById: (n, r) => {
       const o = t().configs.filter((l) => l.id === n);

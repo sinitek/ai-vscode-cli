@@ -1,7 +1,9 @@
-import { ApplyPayload, ConfigItem, ConfigPlatform } from "../config/types";
+import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform } from "../config/types";
 
 export type ConfigAction =
   | "getList"
+  | "getOrder"
+  | "setOrder"
   | "getById"
   | "save"
   | "delete"
@@ -16,6 +18,8 @@ export type ConfigAction =
 
 export type ConfigRequestPayload =
   | { action: "getList"; platform: ConfigPlatform }
+  | { action: "getOrder"; platform: ConfigPlatform }
+  | { action: "setOrder"; platform: ConfigPlatform; order: ConfigOrder }
   | { action: "getById"; platform: ConfigPlatform; id: string }
   | { action: "save"; config: ConfigItem }
   | { action: "delete"; platform: ConfigPlatform; id: string }

@@ -4,6 +4,7 @@ import * as os from "os";
 import {
   ApplyPayload,
   ConfigItem,
+  ConfigOrder,
   ConfigPlatform,
   CurrentConfig,
   McpMarketplaceItem,
@@ -12,6 +13,7 @@ import {
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
 
 const CONFIG_DIR_NAME = "__config";
+const CONFIG_ORDER_FILE = "config-order.json";
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
 
 const CONFIG_PATHS = {
@@ -183,6 +185,10 @@ function getConfigDir(platform: ConfigPlatform): string {
   return CONFIG_PATHS[platform].configDir;
 }
 
+function getConfigOrderPath(platform: ConfigPlatform): string {
+  return path.join(getConfigDir(platform), CONFIG_ORDER_FILE);
+}
+
 function getConfigFilePath(platform: ConfigPlatform, configId: string): string {
   return path.join(getConfigDir(platform), `${configId}.json`);
 }
@@ -215,6 +221,43 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
 
   configs.sort((a, b) => b.createdAt - a.createdAt);
   return configs;
+}
+
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], gemini: [] };
+
+function normalizeConfigOrder(order: ConfigOrder): ConfigOrder {
+  return {
+    claude: Array.isArray(order.claude) ? [...order.claude] : [],
+    codex: Array.isArray(order.codex) ? [...order.codex] : [],
+    gemini: Array.isArray(order.gemini) ? [...order.gemini] : [],
+  };
+}
+
+export async function getConfigOrder(platform: ConfigPlatform): Promise<ConfigOrder> {
+  const orderPath = getConfigOrderPath(platform);
+  try {
+    const content = await fs.readFile(orderPath, "utf-8");
+    const parsed = JSON.parse(content) as ConfigOrder;
+    if (!parsed || typeof parsed !== "object") {
+      return { ...DEFAULT_CONFIG_ORDER };
+    }
+    return normalizeConfigOrder(parsed);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ...DEFAULT_CONFIG_ORDER };
+    }
+    throw error;
+  }
+}
+
+export async function setConfigOrder(
+  platform: ConfigPlatform,
+  order: ConfigOrder
+): Promise<void> {
+  const orderPath = getConfigOrderPath(platform);
+  await ensureDir(path.dirname(orderPath));
+  const normalized = normalizeConfigOrder(order);
+  await fs.writeFile(orderPath, JSON.stringify(normalized, null, 2), "utf-8");
 }
 
 function formatJSONString(value: string): string {

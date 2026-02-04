@@ -1,5 +1,7 @@
 export type ConfigPlatform = "claude" | "codex" | "gemini";
 
+export type ConfigOrder = Record<ConfigPlatform, string[]>;
+
 export type ConfigItem = {
   id: string;
   name: string;
