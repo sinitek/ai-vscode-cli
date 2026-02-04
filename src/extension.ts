@@ -91,6 +91,9 @@ let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
 let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | null = null;
+let configHeartbeatTimer: NodeJS.Timeout | null = null;
+let configHeartbeatRunning = false;
+let configHeartbeatSnapshot: ConfigHeartbeatSnapshot | null = null;
 const pendingSessionLabels: Record<CliName, string | null> = {
   codex: null,
   claude: null,
@@ -127,6 +130,7 @@ const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
+const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: "压缩上下文",
 };
@@ -195,7 +199,14 @@ type TaskStore = {
 };
 
 type WorkspaceSettings = {
+  currentCli?: CliName;
   thinkingMode?: ThinkingMode;
+};
+
+type ConfigHeartbeatSnapshot = {
+  cli: CliName;
+  activeConfigId: string | null;
+  configIds: string[];
 };
 
 
@@ -204,9 +215,10 @@ export function activate(context: vscode.ExtensionContext): void {
   extensionUri = context.extensionUri;
   interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
-  currentCli = getDefaultCli();
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
   workspaceSettings = loadWorkspaceSettings();
+  // Restore currentCli from workspace settings, or use default
+  currentCli = workspaceSettings.currentCli || getDefaultCli();
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   ensureLatestSessionForCli(currentCli);
@@ -218,6 +230,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
   startTempCleanup(context);
+  startConfigHeartbeat(context);
 
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = "sinitek-cli-tools.openPanel";
@@ -735,9 +748,136 @@ async function buildPanelState(): Promise<PanelState> {
   };
 }
 
+async function buildPanelStateWithConfigState(
+  configState: PanelState["configState"]
+): Promise<PanelState> {
+  ensureWorkspaceSessionStore();
+  const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
+
+  return {
+    currentCli,
+    autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
+    rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
+    debug: getDebugLogging(),
+    thinkingMode: getWorkspaceThinkingMode(currentCli),
+    interactive: {
+      supported: isInteractiveSupported(currentCli),
+      enabled: getInteractiveEnabled(currentCli),
+    },
+    rulePaths: {
+      global: CLI_RULE_PATHS_GLOBAL,
+      project: getProjectRulePaths(),
+    },
+    sessionState: buildSessionState(currentCli),
+    promptHistory: buildPromptHistoryState(),
+    configState,
+  };
+}
+
 async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
+  updateConfigHeartbeatSnapshot(state.currentCli, state.configState);
   viewProvider?.postState(state);
+}
+
+function shouldRefreshConfigState(
+  cli: CliName,
+  configState: PanelState["configState"]
+): boolean {
+  const nextIds = configState.configs.map((config) => config.id);
+  if (!configHeartbeatSnapshot || configHeartbeatSnapshot.cli !== cli) {
+    return true;
+  }
+  if (configHeartbeatSnapshot.activeConfigId !== configState.activeConfigId) {
+    return true;
+  }
+  if (configHeartbeatSnapshot.configIds.length !== nextIds.length) {
+    return true;
+  }
+  for (let i = 0; i < nextIds.length; i += 1) {
+    if (configHeartbeatSnapshot.configIds[i] !== nextIds[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function updateConfigHeartbeatSnapshot(
+  cli: CliName,
+  configState: PanelState["configState"]
+): void {
+  configHeartbeatSnapshot = {
+    cli,
+    activeConfigId: configState.activeConfigId,
+    configIds: configState.configs.map((config) => config.id),
+  };
+}
+
+function getConfigHeartbeatPayload(configState: PanelState["configState"]): {
+  activeConfigId: string | null;
+  configIds: string[];
+} {
+  return {
+    activeConfigId: configState.activeConfigId,
+    configIds: configState.configs.map((config) => config.id),
+  };
+}
+
+async function pollConfigHeartbeat(): Promise<void> {
+  if (configHeartbeatRunning) {
+    return;
+  }
+  configHeartbeatRunning = true;
+  const targetCli = currentCli;
+  const workspaceKey = activeWorkspaceKey;
+  try {
+    const configState = await loadConfigState(targetCli);
+    if (targetCli !== currentCli) {
+      return;
+    }
+    void logDebug("config-heartbeat-tick", {
+      workspaceKey,
+      cli: targetCli,
+      snapshot: configHeartbeatSnapshot,
+      next: getConfigHeartbeatPayload(configState),
+    });
+    if (!shouldRefreshConfigState(targetCli, configState)) {
+      return;
+    }
+    updateConfigHeartbeatSnapshot(targetCli, configState);
+    void logEssential("config-heartbeat-change", {
+      workspaceKey,
+      cli: targetCli,
+      state: getConfigHeartbeatPayload(configState),
+    });
+    const state = await buildPanelStateWithConfigState(configState);
+    viewProvider?.postState(state);
+    configManagerPanel?.syncActiveConfig();
+  } catch (error) {
+    void logError("config-heartbeat-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    configHeartbeatRunning = false;
+  }
+}
+
+function startConfigHeartbeat(context: vscode.ExtensionContext): void {
+  if (configHeartbeatTimer) {
+    clearInterval(configHeartbeatTimer);
+    configHeartbeatTimer = null;
+  }
+  configHeartbeatTimer = setInterval(() => {
+    void pollConfigHeartbeat();
+  }, CONFIG_HEARTBEAT_INTERVAL_MS);
+  context.subscriptions.push(
+    new vscode.Disposable(() => {
+      if (configHeartbeatTimer) {
+        clearInterval(configHeartbeatTimer);
+        configHeartbeatTimer = null;
+      }
+    })
+  );
 }
 
 
@@ -758,6 +898,10 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
+  // Restore currentCli from workspace settings, or keep current if not set
+  if (workspaceSettings.currentCli) {
+    currentCli = workspaceSettings.currentCli;
+  }
   sessionMessageCache.clear();
   interactiveRunnerManager?.disposeAll();
   suppressCompactPrompt.clear();
@@ -1300,6 +1444,11 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
     void vscode.window.showWarningMessage("配置不存在或已删除");
     return;
   }
+  void logEssential("apply-config", {
+    workspaceKey: activeWorkspaceKey,
+    cli,
+    configId,
+  });
   try {
     await configService.applyConfig(cli, {
       content: config.content,
@@ -1357,10 +1506,9 @@ async function setCurrentCli(cli: CliName): Promise<void> {
   currentCli = cli;
   updateStatusBar();
 
-  if (getRememberSelectedCli()) {
-    const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-    await config.update("defaultCli", cli, vscode.ConfigurationTarget.Global);
-  }
+  // Save to workspace settings instead of global config
+  workspaceSettings.currentCli = cli;
+  saveWorkspaceSettings(workspaceSettings);
 }
 
 function updateStatusBar(): void {
@@ -3080,10 +3228,16 @@ function appendAssistantChunk(chunk: string): void {
 }
 
 function ensureAssistantMessage(): void {
-  if (activeAssistantMessageId) {
+  if (!activeMessageTarget) {
     return;
   }
-  if (!activeMessageTarget) {
+  const last = activeMessageTarget[activeMessageTarget.length - 1];
+  if (
+    activeAssistantMessageId &&
+    last &&
+    last.role === "assistant" &&
+    last.id === activeAssistantMessageId
+  ) {
     return;
   }
   const assistantId = createMessageId();
@@ -3453,8 +3607,16 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     if (!parsed || typeof parsed !== "object") {
       return {};
     }
+    const result: WorkspaceSettings = {};
     const thinkingMode = (parsed as WorkspaceSettings).thinkingMode;
-    return isThinkingMode(thinkingMode) ? { thinkingMode } : {};
+    if (isThinkingMode(thinkingMode)) {
+      result.thinkingMode = thinkingMode;
+    }
+    const currentCli = (parsed as WorkspaceSettings).currentCli;
+    if (currentCli && isCliName(currentCli)) {
+      result.currentCli = currentCli;
+    }
+    return result;
   } catch (error) {
     void logError("workspace-settings-read-error", { error: String(error) });
     return {};
