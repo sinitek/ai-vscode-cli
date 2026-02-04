@@ -642,6 +642,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex: 0 0 auto;
       }
 
+      .icon-action-button {
+        width: 40px;
+        padding: 0;
+        flex: 0 0 auto;
+        height: 32px;
+      }
+      .icon-action-button .icon {
+        width: 22px;
+        height: 22px;
+      }
+
       /* Buttons */
       button {
         display: inline-flex;
@@ -1253,9 +1264,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                <option value="medium">思考：中</option>
                <option value="high">思考：高</option>
              </select>
-             <button id="historyButton" class="secondary action-button fixed-width-button" title="历史会话">历史</button>
-             <button id="sendPrompt" class="action-button fixed-width-button">发送</button>
-             <button id="stopRun" class="action-button stop-button fixed-width-button" style="display: none;">停止</button>
+             <button id="historyButton" class="secondary action-button icon-action-button" title="历史会话" aria-label="历史会话">
+               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                 <path d="M3 12a9 9 0 1 0 3-6.7" />
+                 <path d="M3 5v4h4" />
+                 <path d="M12 7v5l3 3" />
+               </svg>
+             </button>
+             <button id="sendPrompt" class="action-button icon-action-button" title="发送" aria-label="发送">
+               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                 <path d="M22 2L11 13" />
+                 <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+               </svg>
+             </button>
+             <button id="stopRun" class="action-button stop-button icon-action-button" title="停止" aria-label="停止" disabled style="display: none;">
+               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                 <rect x="5" y="5" width="14" height="14" rx="2" />
+               </svg>
+             </button>
            </div>
          </div>
       </div>
@@ -2697,7 +2723,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.debugMode.disabled = isRunning;
         }
         syncInteractiveOptions();
-        elements.sendPrompt.style.display = isRunning ? "none" : "inline-flex";
+        elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = isRunning;
         if (isRunning) {
