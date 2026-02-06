@@ -307,6 +307,16 @@ vsce package
 
 已封装快捷脚本：`./export_vscode_extension.sh`，会自动输出到 `dist/<name>-<version>.vsix`。
 
+如需一键构建 + 打包 + 发布到 Marketplace：
+
+```
+./publish_vscode_extension.sh
+```
+
+说明：
+- 首次发布请先完成 `vsce login <PublisherID>`，或设置环境变量 `VSCE_PAT` / `VSCODE_MARKETPLACE_PAT`（脚本会自动读取）。
+- 脚本会执行：`npm run build` → `vsce package` → `vsce publish --packagePath <vsix>`。
+
 Windows 下可使用：
 
 ```
