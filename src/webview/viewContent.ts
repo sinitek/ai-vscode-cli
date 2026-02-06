@@ -821,10 +821,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 12px;
         white-space: pre-wrap;
         word-break: break-word;
+        flex: 1;
+        min-width: 0;
       }
       .queue-actions {
         display: flex;
         align-items: center;
+      }
+      .queue-remove-button {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border-radius: 6px;
+      }
+      .queue-remove-button .icon {
+        width: 14px;
+        height: 14px;
       }
       
       .modal-header {
@@ -1410,7 +1422,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <div class="modal queue-modal">
           <div class="modal-header">
             <div class="title">队列提示词</div>
-            <button id="closeQueue" class="secondary">关闭</button>
+            <button id="closeQueue" class="secondary icon-button" title="关闭" aria-label="关闭">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
           </div>
           <div id="queueBody" class="queue-body"></div>
         </div>
@@ -1659,6 +1676,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let suppressQueueFlushOnce = false;
       let runWaitTimer = null;
       let runWaitStartAt = 0;
+      const queuePromptPreviewLimit = 200;
+      const queuePromptPreviewSuffix = "...";
 
       function updateAppHeight() {
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
@@ -2859,14 +2878,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const text = document.createElement("div");
           text.className = "queue-text";
-          text.textContent = prompt;
+          const promptText = typeof prompt === "string" ? prompt : prompt == null ? "" : String(prompt);
+          const previewText =
+            promptText.length > queuePromptPreviewLimit
+              ? promptText.slice(0, Math.max(0, queuePromptPreviewLimit - queuePromptPreviewSuffix.length)) +
+                queuePromptPreviewSuffix
+              : promptText;
+          text.textContent = previewText;
+          if (previewText !== promptText) {
+            text.title = promptText;
+          }
 
           const actions = document.createElement("div");
           actions.className = "queue-actions";
 
           const removeButton = document.createElement("button");
-          removeButton.className = "secondary action-button";
-          removeButton.textContent = "取消";
+          removeButton.className = "icon-button queue-remove-button";
+          removeButton.setAttribute("aria-label", "取消");
+          removeButton.setAttribute("title", "取消");
+          removeButton.innerHTML =
+            '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<line x1="6" y1="6" x2="18" y2="18" />' +
+            '<line x1="18" y1="6" x2="6" y2="18" />' +
+            "</svg>";
           removeButton.addEventListener("click", () => {
             clearQueuedPromptIndex(index);
           });
