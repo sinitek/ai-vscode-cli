@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { logError } from "../logger";
 import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
+import { resolveLocale, t } from "../i18n";
 
 type ViewHandlers = {
   onMessage: (message: PanelMessage) => void;
@@ -52,6 +53,22 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
     void this.view.webview.postMessage(payload);
   }
 
+  public reload(): void {
+    if (!this.view) {
+      return;
+    }
+    try {
+      this.view.webview.html = getWebviewHtml(this.view.webview);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void logError("webview-html-reload-failed", {
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      this.view.webview.html = buildFallbackHtml(this.view.webview, message);
+    }
+  }
+
   public reveal(): void {
     if (!this.view) {
       return;
@@ -62,13 +79,14 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
 
 function buildFallbackHtml(webview: vscode.Webview, errorMessage: string): string {
   const safeMessage = escapeHtml(errorMessage);
+  const locale = resolveLocale();
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${locale}">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>携宁 CLI 助手</title>
+    <title>${t("panel.appTitle")}</title>
     <style>
       body {
         font-family: var(--vscode-font-family);
@@ -91,8 +109,8 @@ function buildFallbackHtml(webview: vscode.Webview, errorMessage: string): strin
     </style>
   </head>
   <body>
-    <div class="error">面板渲染失败：${safeMessage}</div>
-    <div class="hint">日志路径：~/.sinitek_cli/logs</div>
+    <div class="error">${t("panel.renderFailed", { error: safeMessage })}</div>
+    <div class="hint">${t("panel.logPath", { path: "~/.sinitek_cli/logs" })}</div>
   </body>
 </html>`;
 }

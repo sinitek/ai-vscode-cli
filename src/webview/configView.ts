@@ -2,8 +2,104 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { resolveLocale, t } from "../i18n";
 
 const ASSETS_DIR = ["media", "config", "assets"];
+
+const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
+  "携宁 CLI 配置": "Sinitek CLI Config",
+  "添加配置": "Add Config",
+  "更新配置": "Update Config",
+  "激活": "Activate",
+  "保存": "Save",
+  "删除配置": "Delete Config",
+  "重命名": "Rename",
+  "重命名配置": "Rename Config",
+  "确认删除": "Confirm Delete",
+  "确认": "Confirm",
+  "取消": "Cancel",
+  "导出": "Export",
+  "导入": "Import",
+  "导出配置": "Export Configs",
+  "导入配置": "Import Configs",
+  "全选": "Select All",
+  "一键导入": "Import All",
+  "一键启用": "Enable All",
+  "一键禁用": "Disable All",
+  "删除成功": "Deleted successfully",
+  "重命名成功": "Renamed successfully",
+  "保存成功": "Saved successfully",
+  "已更新当前激活的配置": "Updated the active config",
+  "已添加": "Added",
+  "添加": "Add",
+  "复制配置": "Copy Config",
+  "复制失败，请手动复制": "Copy failed. Please copy manually.",
+  "启动命令": "Run Command",
+  "安装命令": "Install Command",
+  "MCP 市场": "MCP Marketplace",
+  "发现并添加常用的 Model Context Protocol (MCP) 服务器到您的配置中。": "Discover and add common Model Context Protocol (MCP) servers to your configs.",
+  "暂无配置": "No configs",
+  "暂无配置可导出": "No configs to export",
+  "请从左侧选择一个配置": "Select a config from the left.",
+  "请先选择一个配置": "Please select a config first.",
+  "请选择要导出的配置": "Select configs to export.",
+  "请选择导出的 JSON 文件进行导入": "Select an exported JSON file to import.",
+  "打开下载文件夹": "Open downloads folder",
+  "导出已触发下载，请检查浏览器下载目录": "Export triggered. Check your downloads folder.",
+  "没有可导入的配置": "No configs to import.",
+  "配置名称不能为空": "Config name cannot be empty.",
+  "配置名称未改变": "Config name unchanged.",
+  "添加成功": "Added successfully.",
+  "配置未填写": "Config is empty.",
+  "需配置环境变量": "Environment variables required.",
+  "查看范例": "View example",
+  "请输入配置名称": "Enter config name",
+  "请输入新的配置名称": "Enter new config name",
+  "请输入JSON配置": "Enter JSON config",
+  "请输入TOML配置": "Enter TOML config",
+  "请输入 .env 配置": "Enter .env config",
+  "请输入 MCP 配置（.claude.json）": "Enter MCP config (.claude.json)",
+  "技能列表加载中...": "Loading skills list...",
+  "未检测到 Skills，请先安装到 ~/.codex/skills": "No skills detected. Install to ~/.codex/skills first.",
+  "获取 Codex Skills 失败": "Failed to fetch Codex skills.",
+  "更新技能失败": "Failed to update skills.",
+  "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
+  "添加 MCP 失败": "Failed to add MCP.",
+  "JSON格式不正确": "Invalid JSON format.",
+  "auth.json格式不正确": "Invalid auth.json format.",
+  "当前配置不是有效的 JSON，无法自动添加 MCP": "Current config is not valid JSON; cannot auto-add MCP.",
+  "当前配置不是有效的 TOML，无法自动添加 MCP": "Current config is not valid TOML; cannot auto-add MCP.",
+  "AI与智能": "AI & Intelligence",
+  "文件与数据": "Files & Data",
+  "开发工具": "Developer Tools",
+  "基础设施": "Infrastructure",
+  "网络与浏览器": "Web & Browser",
+  "生产力工具": "Productivity",
+  "其他": "Other",
+  "已导入范例内容，请确认后保存": "Example content imported. Please review and save.",
+};
+
+const CONFIG_TRANSLATION_PATTERNS_EN = [
+  { pattern: "^已导出到[:：]?\\s*(.+)$", replace: "Exported to: $1" },
+  { pattern: "^已导入\\s*(\\d+)\\s*项配置$", replace: "Imported $1 configs" },
+  { pattern: "^准备导入\\s*(\\d+)\\s*项配置$", replace: "Ready to import $1 configs" },
+  { pattern: "^导出\\s*\\((\\d+)\\)$", replace: "Export ($1)" },
+  { pattern: "^导入\\s*\\((\\d+)\\)$", replace: "Import ($1)" },
+  { pattern: "^已选择\\s*(\\d+)$", replace: "Selected $1" },
+  { pattern: "^已应用配置[:：]?\\s*(.+)$", replace: "Applied config: $1" },
+  { pattern: "^应用配置失败[:：]?\\s*(.+)$", replace: "Failed to apply config: $1" },
+  { pattern: "^已复制配置[:：]?\\s*(.+)$", replace: "Copied config: $1" },
+  { pattern: "^复制失败[:：]?\\s*(.+)$", replace: "Copy failed: $1" },
+  { pattern: "^添加失败[:：]?\\s*(.+)$", replace: "Add failed: $1" },
+  { pattern: "^删除失败[:：]?\\s*(.+)$", replace: "Delete failed: $1" },
+  { pattern: "^重命名失败[:：]?\\s*(.+)$", replace: "Rename failed: $1" },
+  { pattern: "^保存失败[:：]?\\s*(.+)$", replace: "Save failed: $1" },
+  { pattern: "^导入失败[:：]?\\s*(.+)$", replace: "Import failed: $1" },
+  { pattern: "^已添加 MCP[:：]?\\s*(.+)$", replace: "Added MCP: $1" },
+  { pattern: "^MCP Server (.+) 已存在，将被覆盖$", replace: "MCP Server $1 already exists and will be overwritten." },
+  { pattern: "^已保存，但更新激活配置失败[:：]?\\s*(.+)$", replace: "Saved, but failed to update active config: $1" },
+  { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" }
+] as const;
 
 function getNonce(): string {
   const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -28,6 +124,7 @@ export function getConfigViewHtml(
   extensionUri: vscode.Uri
 ): string {
   const nonce = getNonce();
+  const locale = resolveLocale();
   const downloadsDir = path.join(os.homedir(), "Downloads");
   const assetsFsPath = path.join(extensionUri.fsPath, ...ASSETS_DIR);
   const jsFile = findAssetFile(assetsFsPath, ".js");
@@ -53,7 +150,7 @@ export function getConfigViewHtml(
     .toString();
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${locale}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -61,7 +158,7 @@ export function getConfigViewHtml(
       content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'nonce-${nonce}'; worker-src ${webview.cspSource} blob:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>携宁 CLI 助手</title>
+    <title>${t("config.appTitle")}</title>
     <link rel="stylesheet" href="${cssUri}" />
   </head>
   <body>
@@ -70,10 +167,77 @@ export function getConfigViewHtml(
       const vscode = acquireVsCodeApi();
       const configBase = ${JSON.stringify(configBaseUri)};
       const downloadsDir = ${JSON.stringify(downloadsDir)};
+      const configLocale = ${JSON.stringify(locale)};
+      const configTranslations = ${JSON.stringify(CONFIG_TRANSLATIONS_EN)};
+      const configTranslationPatterns = ${JSON.stringify(CONFIG_TRANSLATION_PATTERNS_EN)};
       try {
         history.replaceState(null, "", configBase + "/index.html");
       } catch (error) {
         // ignore
+      }
+
+      function translateConfigText(value) {
+        if (configLocale !== "en" || !value) {
+          return value;
+        }
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return value;
+        }
+        if (Object.prototype.hasOwnProperty.call(configTranslations, trimmed)) {
+          const translated = configTranslations[trimmed];
+          return value.replace(trimmed, translated);
+        }
+        for (const rule of configTranslationPatterns) {
+          const regex = new RegExp(rule.pattern);
+          if (regex.test(trimmed)) {
+            const translated = trimmed.replace(regex, rule.replace);
+            return value.replace(trimmed, translated);
+          }
+        }
+        return value;
+      }
+
+      function translateConfigElement(element) {
+        const attrNames = ["title", "placeholder", "aria-label"];
+        attrNames.forEach((attr) => {
+          const current = element.getAttribute(attr);
+          if (!current) {
+            return;
+          }
+          const translated = translateConfigText(current);
+          if (translated !== current) {
+            element.setAttribute(attr, translated);
+          }
+        });
+      }
+
+      function translateConfigNode(node) {
+        if (!node) {
+          return;
+        }
+        if (node.nodeType === Node.TEXT_NODE) {
+          const current = node.nodeValue || "";
+          const translated = translateConfigText(current);
+          if (translated !== current) {
+            node.nodeValue = translated;
+          }
+          return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return;
+        }
+        const element = node;
+        translateConfigElement(element);
+        Array.from(element.childNodes).forEach(translateConfigNode);
+      }
+
+      function applyConfigTranslations() {
+        if (configLocale !== "en") {
+          return;
+        }
+        translateConfigNode(document.body);
+        document.title = translateConfigText(document.title);
       }
 
       const pendingRequests = new Map();
@@ -133,6 +297,7 @@ export function getConfigViewHtml(
         },
       };
 
+      const updateConfigLabel = ${JSON.stringify(t("config.updateLabel"))};
       function disableReadonlyActions() {
         const hiddenAttr = "data-readonly-hidden";
         const buttons = Array.from(document.querySelectorAll("button, [role='button']"));
@@ -142,7 +307,7 @@ export function getConfigViewHtml(
             return;
           }
           // 只隐藏"更新配置"按钮，保留"激活"按钮
-          if (label === "更新配置") {
+          if (label === updateConfigLabel) {
             button.style.display = "none";
             button.setAttribute(hiddenAttr, "true");
             return;
@@ -163,6 +328,18 @@ export function getConfigViewHtml(
         characterData: true,
       });
 
+      if (configLocale === "en") {
+        applyConfigTranslations();
+        const i18nObserver = new MutationObserver(() => {
+          applyConfigTranslations();
+        });
+        i18nObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
+
       window.addEventListener("message", (event) => {
         const data = event.data;
         if (!data || data.type !== "config:response") {
@@ -176,7 +353,7 @@ export function getConfigViewHtml(
         if (data.success) {
           pending.resolve(data.data);
         } else {
-          pending.reject(new Error(data.error || "请求失败"));
+          pending.reject(new Error(data.error || ${JSON.stringify(t("config.requestFailed"))}));
         }
       });
 

@@ -11,6 +11,7 @@ import {
   CodexSkillItem,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
+import { t } from "../i18n";
 
 const CONFIG_DIR_NAME = "__config";
 const CONFIG_ORDER_FILE = "config-order.json";
@@ -95,7 +96,7 @@ export async function writeClaudeMcpConfig(content: string): Promise<void> {
 
   const incoming = JSON.parse(content);
   if (!isPlainObject(incoming)) {
-    throw new Error("MCP 配置必须是对象");
+    throw new Error(t("config.mcpMustBeObject"));
   }
 
   let existingConfig: Record<string, unknown> = {};
@@ -331,7 +332,7 @@ export async function initDefaultConfig(platform: ConfigPlatform): Promise<Confi
 
   const defaultConfig: ConfigItem = {
     id: generateId(),
-    name: "默认",
+    name: t("config.defaultName"),
     platform,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -392,7 +393,7 @@ export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayloa
   }
   if (platform === "codex") {
     if (payload.configContent === undefined || payload.authContent === undefined) {
-      throw new Error("Codex 配置不完整");
+      throw new Error(t("config.codexIncomplete"));
     }
     const nextConfig =
       payload.codexSkills === undefined

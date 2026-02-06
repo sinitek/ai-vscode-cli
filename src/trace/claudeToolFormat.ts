@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 const EDIT_TOOL_REDACT_KEYS = new Set(["old_string", "new_string"]);
 
 function formatClaudeToolPayload(value: unknown): string {
@@ -53,11 +55,13 @@ export function formatClaudeToolUseMessage(name: string | undefined, input: unkn
   if (!formattedInput) {
     return header;
   }
-  return `${header}\n输入:\n${formattedInput}`;
+  return `${header}\n${t("tool.inputLabel")}:\n${formattedInput}`;
 }
 
 export function formatClaudeToolResultMessage(content: unknown, toolName?: string): string {
-  const header = toolName ? `工具结果: ${toolName}` : "工具结果";
+  const header = toolName
+    ? `${t("tool.resultLabel")}: ${toolName}`
+    : t("tool.resultLabel");
   if (typeof toolName === "string" && toolName.toLowerCase() === "read") {
     return header;
   }
@@ -65,5 +69,5 @@ export function formatClaudeToolResultMessage(content: unknown, toolName?: strin
   if (!output) {
     return header;
   }
-  return `${header}\n输出:\n${output}`;
+  return `${header}\n${t("tool.outputLabel")}:\n${output}`;
 }

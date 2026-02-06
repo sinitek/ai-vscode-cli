@@ -26,6 +26,7 @@ import {
   type RunProcess,
 } from "./cli/commandRunner";
 import { CliName, CLI_LIST, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
@@ -132,8 +133,12 @@ const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
-  compactContext: "压缩上下文",
+  compactContext: t("common.compactContext"),
 };
+const UNNAMED_SESSION_LABELS = new Set([
+  t("session.unnamed", undefined, "zh-CN"),
+  t("session.unnamed", undefined, "en"),
+]);
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
 const TEMP_FILE_RANDOM_LENGTH = 8;
@@ -252,7 +257,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("sinitek-cli-tools.selectCli", async () => {
       const selection = await vscode.window.showQuickPick(CLI_LIST, {
-        placeHolder: "选择要使用的 CLI",
+        placeHolder: t("command.selectCliPlaceholder"),
       });
 
       if (!selection || !isCliName(selection)) {
@@ -260,7 +265,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       await setCurrentCli(selection);
-      vscode.window.showInformationMessage(`当前 CLI：${currentCli}`);
+      vscode.window.showInformationMessage(
+        t("command.currentCliInfo", { cli: currentCli })
+      );
     })
   );
 
@@ -420,7 +427,7 @@ async function buildWorkspacePathItems(): Promise<Array<vscode.QuickPickItem & {
       collectDirectoryPaths(relativePath, dirSet);
       return {
         label: relativePath,
-        description: "文件",
+        description: t("pathPicker.file"),
         value: relativePath,
       };
     });
@@ -428,7 +435,7 @@ async function buildWorkspacePathItems(): Promise<Array<vscode.QuickPickItem & {
     .sort((a, b) => a.localeCompare(b))
     .map((dirPath) => ({
       label: dirPath + "/",
-      description: "目录",
+      description: t("pathPicker.folder"),
       value: dirPath,
     }));
   const sortedFileItems = fileItems.sort((a, b) => a.label.localeCompare(b.label));
@@ -480,12 +487,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "deleteSession") {
+    const confirmLabel = t("common.delete");
     const confirmed = await vscode.window.showWarningMessage(
-      "确认删除该会话历史？",
+      t("session.confirmDelete"),
       { modal: true },
-      "删除"
+      confirmLabel
     );
-    if (confirmed !== "删除") {
+    if (confirmed !== confirmLabel) {
       return;
     }
     const wasCurrent = getCurrentSessionId(message.cli) === message.sessionId;
@@ -502,12 +510,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "clearAllSessions") {
+    const confirmLabel = t("common.clear");
     const confirmed = await vscode.window.showWarningMessage(
-      "确认清空所有 CLI 的历史会话？",
+      t("session.confirmClearAll"),
       { modal: true },
-      "清空"
+      confirmLabel
     );
-    if (confirmed !== "清空") {
+    if (confirmed !== confirmLabel) {
       return;
     }
     interactiveRunnerManager?.disposeAll();
@@ -519,12 +528,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "clearPromptHistory") {
+    const confirmLabel = t("common.clear");
     const confirmed = await vscode.window.showWarningMessage(
-      "确认清空当前工作区的历史提示词？",
+      t("session.confirmClearPromptHistory"),
       { modal: true },
-      "清空"
+      confirmLabel
     );
-    if (confirmed !== "清空") {
+    if (confirmed !== confirmLabel) {
       return;
     }
     clearPromptHistory();
@@ -570,7 +580,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       viewProvider?.postMessage({
         type: "dropPathsResult",
         paths: [],
-        error: "解析拖拽文件失败，请重试。",
+        error: t("pathPicker.dropParseError"),
       });
       logError("resolve drop paths failed", error);
     }
@@ -582,7 +592,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       viewProvider?.postMessage({
         type: "pickWorkspacePathResult",
         paths: [],
-        error: "当前没有打开的工作区，无法选择文件或目录。",
+        error: t("pathPicker.noWorkspace"),
         canceled: true,
       });
       return;
@@ -593,7 +603,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
         canPickMany: true,
         matchOnDescription: true,
         ignoreFocusOut: true,
-        placeHolder: "选择文件或目录，输入关键字过滤",
+        placeHolder: t("pathPicker.placeholder"),
       });
       if (!selections || selections.length === 0) {
         viewProvider?.postMessage({
@@ -611,7 +621,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       viewProvider?.postMessage({
         type: "pickWorkspacePathResult",
         paths: [],
-        error: "读取工作区路径失败，请重试。",
+        error: t("pathPicker.readError"),
         canceled: true,
       });
       logError("pick workspace path failed", error);
@@ -644,7 +654,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
         type: "rulesContent",
         cli: message.cli,
         scope: message.scope,
-        error: noWorkspace ? "未找到工作区，无法加载项目规则。" : "加载规则失败，请重试。",
+        error: noWorkspace ? t("rules.loadNoWorkspace") : t("rules.loadFailed"),
       });
       logError("load rules failed", error);
     }
@@ -656,7 +666,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (!targets.length) {
       viewProvider?.postMessage({
         type: "rulesSaved",
-        error: "未选择有效的 CLI。",
+        error: t("rules.invalidCli"),
       });
       return;
     }
@@ -673,7 +683,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       const noWorkspace = error instanceof Error && error.message === "no-workspace";
       viewProvider?.postMessage({
         type: "rulesSaved",
-        error: noWorkspace ? "未找到工作区，无法保存项目规则。" : "保存规则失败，请重试。",
+        error: noWorkspace ? t("rules.saveNoWorkspace") : t("rules.saveFailed"),
       });
       logError("save rules failed", error);
     }
@@ -689,6 +699,17 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "locale") {
+      const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
+      const nextValue = typeof message.value === "string" ? message.value : "auto";
+      const resolved =
+        nextValue === "zh-CN" || nextValue === "en" || nextValue === "auto" ? nextValue : "auto";
+      await config.update("locale", resolved, vscode.ConfigurationTarget.Global);
+      updateStatusBar();
+      viewProvider?.reload();
+      configManagerPanel?.reload();
+      return;
+    }
     const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
     const target = message.key.startsWith("interactive.")
       ? vscode.ConfigurationTarget.Workspace
@@ -700,9 +721,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
   if (message.type === "runCommonCommand" && message.command === "compactContext") {
     const label = COMMON_COMMAND_LABELS[message.command] ?? message.command;
-    appendUserMessageForCli(currentCli, getCurrentSessionId(currentCli), `常用指令：${label}`, {
-      merge: false,
-    });
+    appendUserMessageForCli(
+      currentCli,
+      getCurrentSessionId(currentCli),
+      t("common.commonCommandPrefix", { label }),
+      { merge: false }
+    );
     await runContextCompactionCommand();
     return;
   }
@@ -733,6 +757,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     debug: getDebugLogging(),
+    locale: getLocaleSetting(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -759,6 +784,7 @@ async function buildPanelStateWithConfigState(
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     debug: getDebugLogging(),
+    locale: getLocaleSetting(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -1299,7 +1325,7 @@ async function saveUploadedFiles(
     for (const file of files) {
       const buffer = decodeDataUrl(file.dataUrl);
       if (!buffer) {
-        return { paths: savedPaths, error: "文件内容解析失败，请重试。" };
+        return { paths: savedPaths, error: t("upload.parseError") };
       }
       const targetPath = buildTempFilePath(file.name);
       fs.writeFileSync(targetPath, buffer);
@@ -1308,7 +1334,7 @@ async function saveUploadedFiles(
     return { paths: savedPaths };
   } catch (error) {
     logError("save-uploaded-files-failed", error);
-    return { paths: savedPaths, error: "文件保存失败，请重试。" };
+    return { paths: savedPaths, error: t("upload.saveError") };
   }
 }
 
@@ -1441,7 +1467,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
   }
   const config = await configService.getConfigById(cli, configId);
   if (!config) {
-    void vscode.window.showWarningMessage("配置不存在或已删除");
+    void vscode.window.showWarningMessage(t("config.notFound"));
     return;
   }
   void logEssential("apply-config", {
@@ -1460,7 +1486,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
     });
   } catch (error) {
     void vscode.window.showErrorMessage(
-      `配置应用失败：${error instanceof Error ? error.message : String(error)}`
+      t("config.applyFailed", { error: error instanceof Error ? error.message : String(error) })
     );
   }
 }
@@ -1516,8 +1542,8 @@ function updateStatusBar(): void {
     return;
   }
 
-  statusBarItem.text = `携宁 CLI 配置: ${currentCli}`;
-  statusBarItem.tooltip = "打开携宁 CLI 配置面板";
+  statusBarItem.text = t("statusBar.text", { cli: currentCli });
+  statusBarItem.tooltip = t("statusBar.tooltip");
 }
 
 async function revealPanelView(): Promise<void> {
@@ -1628,7 +1654,7 @@ async function runPrompt(prompt: string): Promise<void> {
         message: {
           id: createMessageId(),
           role: "system",
-          content: "交互模式初始化/运行失败，已自动降级为普通模式。",
+          content: t("interactive.fallback"),
           createdAt: Date.now(),
         },
       });
@@ -1978,7 +2004,10 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           });
         }
         const status = code === 0 ? "end" : "error";
-        sendRunStatus(status, code === 0 ? undefined : `CLI 退出码: ${code ?? "unknown"}`);
+        sendRunStatus(
+          status,
+          code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" })
+        );
         if (currentCli === "codex" || currentCli === "gemini") {
           flushTraceBuffer();
         }
@@ -1996,8 +2025,9 @@ async function runPromptOneShot(prompt: string): Promise<void> {
           ? buildCliCommandNotFoundMessage(currentCli, command)
           : error.message;
         if (isNotFound) {
-          void vscode.window.showErrorMessage(userMessage, "打开设置").then((selection) => {
-            if (selection === "打开设置") {
+          const openSettingsLabel = t("common.openSettings");
+          void vscode.window.showErrorMessage(userMessage, openSettingsLabel).then((selection) => {
+            if (selection === openSettingsLabel) {
               void vscode.commands.executeCommand(
                 "workbench.action.openSettings",
                 `sinitek-cli-tools.commands.${currentCli}`
@@ -2095,13 +2125,13 @@ function formatTurnsForBootstrap(messages: ChatMessage[]): string {
 
 function buildCompactionPrompt(): string {
   return [
-    "请把当前会话压缩为结构化摘要，输出必须是纯文本（不要 Markdown）。",
-    "要求：",
-    "1) 保留关键信息，避免冗余。",
-    "2) 每条尽量短，必要时引用关键文件路径/命令/结论。",
-    "3) 严格按照以下模板输出，并保持标题不变：",
+    t("compact.systemPrompt"),
+    t("compact.systemPrompt.reqTitle"),
+    t("compact.systemPrompt.req1"),
+    t("compact.systemPrompt.req2"),
+    t("compact.systemPrompt.req3"),
     "",
-    "【会话摘要】",
+    t("compact.systemPrompt.summaryTitle"),
     "FACTS:",
     "- ...",
     "TODOS:",
@@ -2244,20 +2274,32 @@ function appendUserMessageForCli(
 async function runContextCompactionCommand(): Promise<void> {
   const cli = currentCli;
   if (!isInteractiveSupported(cli) || !getInteractiveEnabled(cli)) {
-    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前未开启交互模式，无法执行压缩。");
+    appendSystemMessageForCli(
+      cli,
+      getCurrentSessionId(cli),
+      t("rules.noInteractiveForCompact")
+    );
     return;
   }
   if (cli !== "codex" && cli !== "claude") {
-    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前 CLI 不支持上下文压缩。");
+    appendSystemMessageForCli(
+      cli,
+      getCurrentSessionId(cli),
+      t("rules.compactUnsupported")
+    );
     return;
   }
   if (activeProcess || activeInteractiveStop) {
-    appendSystemMessageForCli(cli, getCurrentSessionId(cli), "当前任务运行中，请稍后再试。");
+    appendSystemMessageForCli(
+      cli,
+      getCurrentSessionId(cli),
+      t("rules.compactRunning")
+    );
     return;
   }
   const sessionId = getCurrentSessionId(cli);
   if (!sessionId) {
-    appendSystemMessageForCli(cli, sessionId, "当前会话尚未建立，无法压缩。");
+    appendSystemMessageForCli(cli, sessionId, t("rules.compactNoSession"));
     return;
   }
 
@@ -2284,7 +2326,7 @@ async function runContextCompactionCommand(): Promise<void> {
   const runId = createMessageId();
   activeRunId = runId;
   applyProcessTitle(runId, cli, sessionId);
-  startTaskRun(runId, cli, sessionId, "压缩上下文");
+  startTaskRun(runId, cli, sessionId, t("common.compactContext"));
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
   activeCliForRun = cli;
@@ -2306,7 +2348,7 @@ async function runContextCompactionCommand(): Promise<void> {
     } catch {
       // ignore
     }
-    sendRunStatus("stopped", "用户已终止");
+    sendRunStatus("stopped", t("run.stoppedByUser"));
     appendCompletionMessage("stopped");
     persistActiveMessages();
     clearActiveRun();
@@ -2336,18 +2378,18 @@ async function runContextCompactionCommand(): Promise<void> {
       })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
       if (!compactionSummary || !mappedThreadId) {
-        appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
+        appendSystemMessage(t("compact.failEmpty"));
         cleanupAfterRun("end");
         return;
       }
 
       const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
       const bootstrap = [
-        "你正在继续一个已压缩上下文的会话。",
+        t("compact.resumeNotice"),
         "",
         compactionSummary,
         "",
-        "【最近对话】",
+        t("compact.systemPrompt.recentTitle"),
         formatTurnsForBootstrap(recent),
       ].join("\n");
 
@@ -2373,7 +2415,9 @@ async function runContextCompactionCommand(): Promise<void> {
           onThreadId: (threadId) => {
             updateProcessTitle(cli, threadId);
             upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: mappedThreadId });
-            appendSystemMessage(`【会话摘要】已压缩：${mappedThreadId} -> ${threadId}`);
+            appendSystemMessage(
+              t("compact.summaryCompressed", { from: mappedThreadId, to: threadId })
+            );
             appendTraceMessage(compactionSummary);
             void logInfo("context-compact-codex-complete", {
               cli,
@@ -2413,18 +2457,18 @@ async function runContextCompactionCommand(): Promise<void> {
       })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
       if (!compactionSummary || !mappedSessionId) {
-        appendSystemMessage("上下文压缩失败（摘要为空），未进行会话切换。");
+        appendSystemMessage(t("compact.failEmpty"));
         cleanupAfterRun("end");
         return;
       }
 
       const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
       const bootstrap = [
-        "你正在继续一个已压缩上下文的会话。",
+        t("compact.resumeNotice"),
         "",
         compactionSummary,
         "",
-        "【最近对话】",
+        t("compact.systemPrompt.recentTitle"),
         formatTurnsForBootstrap(recent),
       ].join("\n");
 
@@ -2450,7 +2494,9 @@ async function runContextCompactionCommand(): Promise<void> {
           onSessionId: (newSessionId) => {
             updateProcessTitle(cli, newSessionId);
             upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: mappedSessionId });
-            appendSystemMessage(`【会话摘要】已压缩：${mappedSessionId} -> ${newSessionId}`);
+            appendSystemMessage(
+              t("compact.summaryCompressed", { from: mappedSessionId, to: newSessionId })
+            );
             appendTraceMessage(compactionSummary);
             void logInfo("context-compact-claude-complete", {
               cli,
@@ -2470,7 +2516,7 @@ async function runContextCompactionCommand(): Promise<void> {
 
     cleanupAfterRun("end");
   } catch (error) {
-    appendSystemMessage("上下文压缩失败（执行异常），未进行会话切换。");
+    appendSystemMessage(t("compact.failException"));
     void logError("context-compact-command-failed", {
       cli,
       sessionId,
@@ -2686,10 +2732,10 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     } catch {
       // ignore
     }
-    logInteractiveIo("stopped", "用户已终止");
+    logInteractiveIo("stopped", t("run.stoppedByUser"));
     interactiveRunnerManager?.stopCurrentTurnAndRebuild();
     void logInfo("runPrompt-stopped", { cli });
-    sendRunStatus("stopped", "用户已终止");
+    sendRunStatus("stopped", t("run.stoppedByUser"));
     appendCompletionMessage("stopped");
     if (removedPlaceholder && activeAssistantMessageId) {
       sendPanelMessage({ type: "removeMessage", id: activeAssistantMessageId });
@@ -2746,7 +2792,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
         } catch (error) {
           compactionSummary = null;
-          appendSystemMessage("上下文压缩失败（摘要任务执行异常），已继续原始请求。");
+          appendSystemMessage(t("compact.failContinue"));
           void logError("context-compact-summary-failed", {
             cli,
             error: error instanceof Error ? error.message : String(error),
@@ -2763,13 +2809,13 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           freezeOldThreadId = oldThreadId;
           const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
           const bootstrap = [
-            "你正在继续一个已压缩上下文的会话。",
+            t("compact.resumeNotice"),
             "",
             compactionSummary,
             "",
-            "【最近对话】",
+            t("compact.systemPrompt.recentTitle"),
             formatTurnsForBootstrap(recent),
-            "【当前请求】",
+            t("compact.systemPrompt.requestTitle"),
             thinkingPrompt,
           ].join("\n");
 
@@ -2827,7 +2873,9 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                 }
                 if (freezeOldThreadId) {
                   upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: freezeOldThreadId });
-                  appendSystemMessage(`【会话摘要】已压缩：${freezeOldThreadId} -> ${threadId}`);
+                  appendSystemMessage(
+                    t("compact.summaryCompressed", { from: freezeOldThreadId, to: threadId })
+                  );
                   if (compactionSummary) {
                     appendTraceMessage(compactionSummary);
                   }
@@ -2940,7 +2988,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
         } catch (error) {
           compactionSummary = null;
-          appendSystemMessage("上下文压缩失败（摘要任务执行异常），已继续原始请求。");
+          appendSystemMessage(t("compact.failContinue"));
           void logError("context-compact-summary-failed", {
             cli,
             error: error instanceof Error ? error.message : String(error),
@@ -2956,13 +3004,13 @@ async function runPromptInteractive(prompt: string): Promise<void> {
           });
           const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
           const bootstrap = [
-            "你正在继续一个已压缩上下文的会话。",
+            t("compact.resumeNotice"),
             "",
             compactionSummary,
             "",
-            "【最近对话】",
+            t("compact.systemPrompt.recentTitle"),
             formatTurnsForBootstrap(recent),
-            "【当前请求】",
+            t("compact.systemPrompt.requestTitle"),
             thinkingPrompt,
           ].join("\n");
 
@@ -3006,7 +3054,9 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               onSessionId: (newSessionId) => {
                 updateProcessTitle(cli, newSessionId);
                 upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: oldId });
-                appendSystemMessage(`【会话摘要】已压缩：${oldId} -> ${newSessionId}`);
+                appendSystemMessage(
+                  t("compact.summaryCompressed", { from: oldId, to: newSessionId })
+                );
                 if (compactionSummary) {
                   appendTraceMessage(compactionSummary);
                 }
@@ -3097,7 +3147,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
         errorCode: info.code,
         errorStack: info.stack,
       });
-      cleanupAfterRun("stopped", "运行已终止");
+      cleanupAfterRun("stopped", t("run.stopped"));
       return;
     }
     void logError("runPrompt-interactive-error", {
@@ -3120,16 +3170,16 @@ function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
   const configKey = `sinitek-cli-tools.commands.${cli}`;
   if (process.platform === "win32") {
     return [
-      `找不到 CLI 可执行文件：${command}`,
-      `请确认已安装且 VS Code 可访问 PATH；或在设置中把 ${configKey} 配置为绝对路径（常见为 %APPDATA%\\\\npm\\\\${command}.cmd）。`,
-      `在 PowerShell 运行：where ${command}`,
-      "提示：安装/修改 PATH 后需重启 VS Code。",
+      t("cli.notFound.win.title", { command }),
+      t("cli.notFound.win.hint1", { configKey, command }),
+      t("cli.notFound.win.hint2", { command }),
+      t("cli.notFound.win.hint3"),
     ].join("\n");
   }
   return [
-    `找不到 CLI 可执行文件：${command}`,
-    `请确认已安装且 PATH 可见；或在设置中把 ${configKey} 配置为绝对路径。`,
-    `在终端运行：which ${command}`,
+    t("cli.notFound.unix.title", { command }),
+    t("cli.notFound.unix.hint1", { configKey }),
+    t("cli.notFound.unix.hint2", { command }),
   ].join("\n");
 }
 
@@ -3145,7 +3195,7 @@ function stopActiveRun(): void {
   appendStopMessageToStore();
   activeProcess.kill();
   void logInfo("runPrompt-stopped", { cli: currentCli });
-  sendRunStatus("stopped", "用户已终止");
+  sendRunStatus("stopped", t("run.stoppedByUser"));
   if (currentCli === "codex" || currentCli === "gemini") {
     flushTraceBuffer();
   }
@@ -3205,7 +3255,7 @@ function appendStopMessageToStore(): void {
   appendMessageToStore(activeMessageTarget, {
     id: createMessageId(),
     role: "system",
-    content: "用户已终止",
+    content: t("run.stoppedByUser"),
     createdAt: Date.now(),
   });
 }
@@ -3487,7 +3537,9 @@ function appendCompletionMessage(status: TaskRunStatus): void {
   const message = {
     id: createMessageId(),
     role: "system" as const,
-    content: durationText ? `任务已完成,执行 ${durationText}` : "任务已完成",
+    content: durationText
+      ? t("run.completedWithDuration", { duration: durationText })
+      : t("run.completed"),
     createdAt: Date.now(),
   };
   activeCompletionSent = true;
@@ -3779,7 +3831,7 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
         sessions: Array.isArray(current.sessions)
           ? current.sessions.map((session) => ({
               id: session.id,
-              label: session.label ?? "未命名会话",
+              label: session.label ?? t("session.unnamed"),
               createdAt: session.createdAt ?? Date.now(),
               lastUsedAt: session.lastUsedAt ?? Date.now(),
               firstPrompt: session.firstPrompt ?? undefined,
@@ -3894,7 +3946,7 @@ function touchSession(cli: CliName, sessionId: string): void {
     existing.lastUsedAt = now;
     return;
   }
-  sessions.push({ id: sessionId, label: "未命名会话", createdAt: now, lastUsedAt: now });
+  sessions.push({ id: sessionId, label: t("session.unnamed"), createdAt: now, lastUsedAt: now });
 }
 
 async function persistSessionStore(nextStore: SessionStore): Promise<void> {
@@ -3966,7 +4018,7 @@ function assignPendingLabel(cli: CliName, sessionId: string): void {
   }
   const sessions = sessionStore[cli].sessions;
   const existing = sessions.find((item) => item.id === sessionId);
-  if (existing && existing.label === "未命名会话") {
+  if (existing && UNNAMED_SESSION_LABELS.has(existing.label)) {
     existing.label = label;
   }
   if (existing && firstPrompt && !existing.firstPrompt) {

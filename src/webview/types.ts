@@ -73,6 +73,7 @@ export type PanelState = {
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
   debug: boolean;
+  locale: string;
   thinkingMode: ThinkingMode;
   interactive: {
     supported: boolean;

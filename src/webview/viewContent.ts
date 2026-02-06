@@ -1,22 +1,322 @@
 import { CLI_LIST } from "../cli/types";
 import { logError } from "../logger";
+import { AppLocale, resolveLocale } from "../i18n";
 import { readFileSync } from "fs";
 import * as path from "path";
+
+const WEBVIEW_I18N = {
+  en: {
+    appTitle: "Sinitek CLI Assistant",
+    panelTitle: "AI Chat",
+    headerHelp: "Help",
+    headerToolSettings: "Tool Settings",
+    headerRules: "Rules",
+    headerNewSession: "New Session",
+    emptyState: "Type your request to start chatting.",
+    queueIndicatorAria: "View queue",
+    queueIndicatorLabel: "Queue",
+    taskListTitle: "Task List",
+    cliSelectAria: "CLI selection",
+    configSelectAria: "Config selection",
+    openConfigButton: "Config",
+    promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, supports pasting attachments...",
+    commonCommandButton: "Common Commands",
+    pathPickerButton: "Insert Path",
+    attachmentButton: "Upload Attachment",
+    thinkingModeAria: "Thinking mode",
+    thinkingOptionOff: "Thinking: Off",
+    thinkingOptionLow: "Thinking: Low",
+    thinkingOptionMedium: "Thinking: Medium",
+    thinkingOptionHigh: "Thinking: High",
+    thinkingOptionXHigh: "Thinking: X-High",
+    historyButton: "History",
+    sendButton: "Send",
+    stopButton: "Stop",
+    historyTitle: "History",
+    historyClearSessions: "Clear Sessions",
+    historyClearPrompts: "Clear Prompts",
+    historyClose: "Close",
+    historyTabsLabel: "History",
+    historyTabPrompts: "Prompt History",
+    historyTabSessions: "Sessions",
+    rulesTitle: "Rules",
+    rulesClose: "Close",
+    rulesScopeLabel: "Scope",
+    rulesScopeGlobal: "Global Rules",
+    rulesScopeProject: "Project Rules",
+    rulesLoadCliAria: "Load CLI",
+    rulesLoadButton: "Load",
+    rulesInputPlaceholder: "Enter rules...",
+    rulesSaveLabel: "Save to:",
+    rulesSaveGroupLabel: "Save to",
+    rulesSaveButton: "Save",
+    toolSettingsTitle: "Tool Settings",
+    toolSettingsClose: "Close",
+    toolSettingsInteractiveLabel: "Interactive",
+    toolSettingsInteractiveAria: "Interactive mode",
+    toolSettingsInteractiveOn: "On (Beta)",
+    toolSettingsInteractiveOff: "Off",
+    toolSettingsDebugLabel: "Debug",
+    toolSettingsDebugTitle: "Debug Logs",
+    toolSettingsDebugToggle: "On",
+    toolSettingsLanguageLabel: "Language",
+    toolSettingsLanguageAria: "Language setting",
+    toolSettingsLanguageAuto: "Auto (VS Code)",
+    toolSettingsLanguageZh: "Chinese (Simplified)",
+    toolSettingsLanguageEn: "English",
+    commonCommandsTitle: "Common Commands",
+    commonCommandsClose: "Close",
+    commonCommandCompactTitle: "Compact Context",
+    commonCommandCompactDesc: "After compaction, the next task uses fewer tokens.",
+    runConflictTitle: "Task Running",
+    runConflictClose: "Close",
+    runConflictBody: "A task is still running. How should this message be handled?",
+    runConflictDesc: "Choose “Pause and Send” to stop the current task and send immediately.",
+    runConflictQueueButton: "Add to Queue",
+    runConflictPauseButton: "Pause and Send",
+    queueTitle: "Queued Prompts",
+    queueCloseLabel: "Close",
+    queueEmpty: "No queued prompts.",
+    queueRemoveLabel: "Remove",
+    helpTitle: "Help",
+    helpClose: "Close",
+    helpTabsLabel: "Help",
+    helpTabInstall: "Install",
+    helpTabThinking: "Thinking Mode",
+    helpInstallWindows: "Windows Install",
+    helpInstallMac: "macOS Install",
+    helpInstallAccel: "Install Acceleration (Maybe)",
+    helpInstallAccelOnce: "One-time acceleration:",
+    helpInstallAccelSet: "Set global mirror:",
+    helpInstallAccelReset: "Restore official registry:",
+    helpRemoveEnvTitle: "Remove System Environment Overrides",
+    helpRemoveEnvItem1: "Before using this tool, remove system-level env overrides for the CLI to avoid conflicts with config files.",
+    helpRemoveEnvItemMac: "macOS: Check and remove related settings in ~/.zprofile, ~/.zshrc, or ~/.bash_profile.",
+    helpRemoveEnvItemWin: "Windows: Remove CLI-related entries in System Properties > Advanced > Environment Variables.",
+    helpThinkingGeneralTitle: "General",
+    helpThinkingGeneralItem: "Thinking mode controls reasoning intensity. Higher means more reliable but slower and more costly.",
+    helpThinkingCodexTitle: "Codex",
+    helpThinkingCodexItem1: "Control intensity via model_reasoning_effort.",
+    helpThinkingCodexItem2: "Options: low / medium / high (no explicit off; low is minimal).",
+    helpThinkingGeminiTitle: "Gemini",
+    helpThinkingGeminiItem1: "Controlled via thinkingConfig in the config file.",
+    helpThinkingGeminiItem2: "Gemini 2.5: not supported yet; Gemini 3: thinkingLevel.",
+    helpThinkingGeminiItem3: "Common values: minimal / low / medium / high (varies by model).",
+    helpThinkingClaudeTitle: "Claude",
+    helpThinkingClaudeItem1: "Use --max-thinking-tokens to control thinking tokens.",
+    helpThinkingClaudeItem2: "0 means off; higher values increase reasoning depth.",
+    noConfigOption: "No configs",
+    historyEmptySessions: "No session history",
+    historyEmptyPrompts: "No prompt history",
+    sessionDefaultLabel: "Untitled Session",
+    sessionLoadLabel: "Load",
+    sessionDeleteLabel: "Delete",
+    sessionCopyIdLabel: "Copy ID",
+    promptViewLabel: "View",
+    promptCollapseLabel: "Collapse",
+    promptReuseLabel: "Reuse",
+    promptEmptyLabel: "(Empty prompt)",
+    traceToolFallback: "tool",
+    traceGitUpdate: "Git Update",
+    traceExec: "Run Command",
+    traceFileUpdate: "File Changes",
+    traceApplyPatch: "Apply Patch",
+    traceToolResult: "Tool Result",
+    traceWarning: "Warning",
+    traceError: "Error",
+    traceThinking: "Thinking",
+    traceWebSearch: "Web Search",
+    traceInputLabel: "Input",
+    traceOutputLabel: "Output",
+    traceFileChangesLabel: "File Changes",
+    toastCopied: "Copied",
+    toastCopyFailed: "Copy failed",
+    toastQueueAdded: "Added to queue",
+    toastQueueSendFailed: "Failed to send queued prompt. Activate a config first.",
+    toastNoActiveConfig: "No active config for the current CLI. Activate one in the config page first.",
+    toastFileReadFailed: "Failed to read file content.",
+    toastReadFileFailed: "Failed to read file. Please try again.",
+    rulesPathNoWorkspace: "Path: No workspace detected",
+    rulesPathPrefix: "Path: ",
+    rulesHintLoading: "Loading...",
+    rulesHintSaving: "Saving...",
+    rulesHintSelectCli: "Select at least one CLI to overwrite.",
+    rulesHintLoaded: "Loaded {scope}: {cli}.",
+    rulesHintSaved: "{scope} saved to: {targets}",
+    thinkingOptionLabelLow: "Thinking: Low",
+    thinkingOptionLabelOff: "Thinking: Off",
+    thinkingOptionLabelMedium: "Thinking: Medium",
+    thinkingOptionLabelHigh: "Thinking: High",
+    thinkingOptionLabelXHigh: "Thinking: X-High",
+  },
+  "zh-CN": {
+    appTitle: "携宁 CLI 助手",
+    panelTitle: "AI 对话",
+    headerHelp: "使用说明",
+    headerToolSettings: "工具设置",
+    headerRules: "规则配置",
+    headerNewSession: "新建会话",
+    emptyState: "输入需求，开始对话。",
+    queueIndicatorAria: "查看队列",
+    queueIndicatorLabel: "队列",
+    taskListTitle: "任务列表",
+    cliSelectAria: "CLI 选择",
+    configSelectAria: "配置选择",
+    openConfigButton: "配置",
+    promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，支持附件黏贴...",
+    commonCommandButton: "常用指令",
+    pathPickerButton: "插入路径",
+    attachmentButton: "上传附件",
+    thinkingModeAria: "思考模式",
+    thinkingOptionOff: "思考：关闭",
+    thinkingOptionLow: "思考：低",
+    thinkingOptionMedium: "思考：中",
+    thinkingOptionHigh: "思考：高",
+    thinkingOptionXHigh: "思考：超高",
+    historyButton: "历史会话",
+    sendButton: "发送",
+    stopButton: "停止",
+    historyTitle: "历史记录",
+    historyClearSessions: "清空会话",
+    historyClearPrompts: "清空提示词",
+    historyClose: "关闭",
+    historyTabsLabel: "历史记录",
+    historyTabPrompts: "历史提示词",
+    historyTabSessions: "历史会话",
+    rulesTitle: "规则",
+    rulesClose: "关闭",
+    rulesScopeLabel: "规则范围",
+    rulesScopeGlobal: "全局规则",
+    rulesScopeProject: "项目规则",
+    rulesLoadCliAria: "加载 CLI",
+    rulesLoadButton: "加载",
+    rulesInputPlaceholder: "输入规则内容...",
+    rulesSaveLabel: "保存覆盖到：",
+    rulesSaveGroupLabel: "保存覆盖到",
+    rulesSaveButton: "保存",
+    toolSettingsTitle: "工具设置",
+    toolSettingsClose: "关闭",
+    toolSettingsInteractiveLabel: "交互",
+    toolSettingsInteractiveAria: "交互模式",
+    toolSettingsInteractiveOn: "开启(Beta)",
+    toolSettingsInteractiveOff: "关闭",
+    toolSettingsDebugLabel: "调试",
+    toolSettingsDebugTitle: "调试日志",
+    toolSettingsDebugToggle: "开启",
+    toolSettingsLanguageLabel: "语言",
+    toolSettingsLanguageAria: "语言设置",
+    toolSettingsLanguageAuto: "自动（跟随 VS Code）",
+    toolSettingsLanguageZh: "中文（简体）",
+    toolSettingsLanguageEn: "英文",
+    commonCommandsTitle: "常用指令",
+    commonCommandsClose: "关闭",
+    commonCommandCompactTitle: "压缩上下文",
+    commonCommandCompactDesc: "压缩后下一个任务节省 token 数消耗",
+    runConflictTitle: "任务执行中",
+    runConflictClose: "关闭",
+    runConflictBody: "检测到当前任务仍在执行，要如何处理这条消息？",
+    runConflictDesc: "选择“暂停并发送”将终止当前任务并立即发送。",
+    runConflictQueueButton: "加入队列",
+    runConflictPauseButton: "暂停并发送",
+    queueTitle: "队列提示词",
+    queueCloseLabel: "关闭",
+    queueEmpty: "当前没有待发送的提示词。",
+    queueRemoveLabel: "取消",
+    helpTitle: "使用说明",
+    helpClose: "关闭",
+    helpTabsLabel: "使用说明",
+    helpTabInstall: "安装",
+    helpTabThinking: "思考模式",
+    helpInstallWindows: "Windows 安装",
+    helpInstallMac: "macOS 安装",
+    helpInstallAccel: "安装加速（也许有效）",
+    helpInstallAccelOnce: "一次性加速：",
+    helpInstallAccelSet: "设置全局镜像：",
+    helpInstallAccelReset: "恢复官方源：",
+    helpRemoveEnvTitle: "移除系统环境变量配置",
+    helpRemoveEnvItem1: "使用该工具前需清理对 CLI 的系统级环境变量修改，避免与配置文件冲突。",
+    helpRemoveEnvItemMac: "macOS：检查并移除 ~/.zprofile、~/.zshrc 或 ~/.bash_profile 中相关设置。",
+    helpRemoveEnvItemWin: "Windows：通过“系统属性 > 高级 > 环境变量”删除为 CLI 手动添加的相关设置。",
+    helpThinkingGeneralTitle: "通用说明",
+    helpThinkingGeneralItem: "思考模式用于调节推理强度，越高通常更稳但更慢、成本更高。",
+    helpThinkingCodexTitle: "Codex",
+    helpThinkingCodexItem1: "通过配置 model_reasoning_effort 控制强度。",
+    helpThinkingCodexItem2: "可选值：low / medium / high（无显式关闭，low 近似最低）。",
+    helpThinkingGeminiTitle: "Gemini",
+    helpThinkingGeminiItem1: "通过配置文件的 thinkingConfig 控制。",
+    helpThinkingGeminiItem2: "Gemini 2.5：暂不支持；Gemini 3：thinkingLevel。",
+    helpThinkingGeminiItem3: "常见值：minimal / low / medium / high（随模型而异）。",
+    helpThinkingClaudeTitle: "Claude",
+    helpThinkingClaudeItem1: "使用 --max-thinking-tokens 控制思考 token 数。",
+    helpThinkingClaudeItem2: "0 视为关闭，数值越高推理越深入。",
+    noConfigOption: "暂无配置",
+    historyEmptySessions: "暂无会话历史",
+    historyEmptyPrompts: "暂无历史提示词",
+    sessionDefaultLabel: "未命名会话",
+    sessionLoadLabel: "加载",
+    sessionDeleteLabel: "删除",
+    sessionCopyIdLabel: "复制ID",
+    promptViewLabel: "查看",
+    promptCollapseLabel: "收起",
+    promptReuseLabel: "复用",
+    promptEmptyLabel: "（空提示词）",
+    traceToolFallback: "工具",
+    traceGitUpdate: "Git 更新",
+    traceExec: "执行命令",
+    traceFileUpdate: "文件变更",
+    traceApplyPatch: "应用补丁",
+    traceToolResult: "工具结果",
+    traceWarning: "警告",
+    traceError: "错误",
+    traceThinking: "思考",
+    traceWebSearch: "网络查询",
+    traceInputLabel: "输入",
+    traceOutputLabel: "输出",
+    traceFileChangesLabel: "文件变更",
+    toastCopied: "已复制",
+    toastCopyFailed: "复制失败",
+    toastQueueAdded: "已加入队列",
+    toastQueueSendFailed: "队列发送失败，请先激活配置",
+    toastNoActiveConfig: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
+    toastFileReadFailed: "无法读取文件内容",
+    toastReadFileFailed: "文件读取失败，请重试。",
+    rulesPathNoWorkspace: "路径：未检测到工作区",
+    rulesPathPrefix: "路径：",
+    rulesHintLoading: "正在加载...",
+    rulesHintSaving: "正在保存...",
+    rulesHintSelectCli: "请选择至少一个 CLI 进行覆盖保存。",
+    rulesHintLoaded: "已加载 {scope}：{cli}。",
+    rulesHintSaved: "{scope}已保存到：{targets}",
+    thinkingOptionLabelLow: "思考：低",
+    thinkingOptionLabelOff: "思考：关闭",
+    thinkingOptionLabelMedium: "思考：中",
+    thinkingOptionLabelHigh: "思考：高",
+    thinkingOptionLabelXHigh: "思考：超高",
+  },
+} as const;
+
+type WebviewI18nKey = keyof typeof WEBVIEW_I18N.en;
+
+function getWebviewStrings(locale: AppLocale): Record<WebviewI18nKey, string> {
+  return locale === "zh-CN" ? WEBVIEW_I18N["zh-CN"] : WEBVIEW_I18N.en;
+}
 
 let cachedMarkedScript: string | undefined;
 
 export function getWebviewHtml(webview: { cspSource: string }): string {
   const nonce = getNonce();
+  const locale = resolveLocale();
+  const i18n = getWebviewStrings(locale);
   const cliOptions = CLI_LIST.map((cli) => `<option value="${cli}">${cli}</option>`).join("");
   const markedScript = getMarkedScript();
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${locale}">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>携宁 CLI 配置</title>
+    <title>${i18n.appTitle}</title>
     <style>
       :root {
         --radius-sm: 4px;
@@ -1189,16 +1489,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
   <body>
     <div class="app">
       <div class="header">
-        <div class="title">AI 对话</div>
+        <div class="title">${i18n.panelTitle}</div>
         <div class="header-actions">
-          <button id="helpButton" class="secondary icon-button" title="使用说明" aria-label="使用说明">
+          <button id="helpButton" class="secondary icon-button" title="${i18n.headerHelp}" aria-label="${i18n.headerHelp}">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="9" />
               <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.8" />
               <path d="M12 16.5h.01" />
             </svg>
           </button>
-          <button id="toolSettingsButton" class="secondary icon-button" title="工具设置" aria-label="工具设置">
+          <button id="toolSettingsButton" class="secondary icon-button" title="${i18n.headerToolSettings}" aria-label="${i18n.headerToolSettings}">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="4" y1="6" x2="20" y2="6" />
               <line x1="4" y1="12" x2="20" y2="12" />
@@ -1208,7 +1508,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               <circle cx="11" cy="18" r="2" />
             </svg>
           </button>
-          <button id="rulesButton" class="secondary icon-button" title="规则配置" aria-label="规则配置">
+          <button id="rulesButton" class="secondary icon-button" title="${i18n.headerRules}" aria-label="${i18n.headerRules}">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
               <path d="M14 3v4h4" />
@@ -1216,12 +1516,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               <path d="M8 15h8" />
             </svg>
           </button>
-          <button id="newSession" class="secondary icon-button" title="新建会话" aria-label="新建会话">＋</button>
+          <button id="newSession" class="secondary icon-button" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}">＋</button>
         </div>
       </div>
 
       <div id="chatArea" class="chat-area">
-        <div id="emptyState" class="empty-state">输入需求，开始对话。</div>
+        <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
       <div id="runWait" class="run-wait" style="display: none;">
         <span class="typing">
@@ -1230,8 +1530,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span class="typing-dot"></span>
         </span>
         <span id="runWaitTime" class="run-wait-time">00:00</span>
-        <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="查看队列">
-          队列
+        <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
+          ${i18n.queueIndicatorLabel}
           <span id="queueCount" class="run-queue-count">0</span>
         </button>
       </div>
@@ -1240,7 +1540,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
         <details id="taskListDetails">
           <summary>
-            <span>任务列表</span>
+            <span>${i18n.taskListTitle}</span>
             <span id="taskListCount" class="tasklist-count"></span>
           </summary>
           <div id="taskListBody"></div>
@@ -1249,47 +1549,47 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       <div class="input-area">
         <div class="config-select-row">
-          <select id="currentCli" class="cli-select" aria-label="CLI 选择">${cliOptions}</select>
-          <select id="configSelect" class="config-select" aria-label="配置选择"></select>
-          <button id="openConfig" class="secondary action-button" title="配置">配置</button>
+          <select id="currentCli" class="cli-select" aria-label="${i18n.cliSelectAria}">${cliOptions}</select>
+          <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
+          <button id="openConfig" class="secondary action-button" title="${i18n.openConfigButton}">${i18n.openConfigButton}</button>
         </div>
         <div class="input-box">
-          <textarea id="promptInput" rows="3" placeholder="Shift + Enter 换行，输入 @ 选择文件/目录，支持附件黏贴..."></textarea>
+          <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
           <div class="input-actions">
-            <button id="commonCommandButton" class="secondary icon-button" title="常用指令" aria-label="常用指令">
+            <button id="commonCommandButton" class="secondary icon-button" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}">
               <span>&gt;_</span>
             </button>
-            <button id="pathPickerButton" class="secondary icon-button" title="插入路径" aria-label="插入路径">
+            <button id="pathPickerButton" class="secondary icon-button" title="${i18n.pathPickerButton}" aria-label="${i18n.pathPickerButton}">
               <span>@</span>
             </button>
-            <button id="attachmentButton" class="secondary icon-button" title="上传附件" aria-label="上传附件">
+            <button id="attachmentButton" class="secondary icon-button" title="${i18n.attachmentButton}" aria-label="${i18n.attachmentButton}">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
-             <select id="thinkingMode" class="thinking-select" aria-label="思考模式">
-               <option value="off">思考：关闭</option>
-               <option value="low">思考：低</option>
-               <option value="medium">思考：中</option>
-               <option value="high">思考：高</option>
+             <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
+               <option value="off">${i18n.thinkingOptionOff}</option>
+               <option value="low">${i18n.thinkingOptionLow}</option>
+               <option value="medium">${i18n.thinkingOptionMedium}</option>
+               <option value="high">${i18n.thinkingOptionHigh}</option>
              </select>
-             <button id="historyButton" class="secondary action-button icon-action-button" title="历史会话" aria-label="历史会话">
+             <button id="historyButton" class="secondary action-button icon-action-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                  <path d="M3 12a9 9 0 1 0 3-6.7" />
                  <path d="M3 5v4h4" />
                  <path d="M12 7v5l3 3" />
                </svg>
              </button>
-             <button id="sendPrompt" class="action-button icon-action-button" title="发送" aria-label="发送">
+             <button id="sendPrompt" class="action-button icon-action-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                  <path d="M22 2L11 13" />
                  <path d="M22 2L15 22L11 13L2 9L22 2Z" />
                </svg>
              </button>
-             <button id="stopRun" class="action-button stop-button icon-action-button" title="停止" aria-label="停止" disabled style="display: none;">
+             <button id="stopRun" class="action-button stop-button icon-action-button" title="${i18n.stopButton}" aria-label="${i18n.stopButton}" disabled style="display: none;">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
                  <rect x="5" y="5" width="14" height="14" rx="2" />
                </svg>
@@ -1301,15 +1601,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="historyOverlay" class="overlay">
         <div class="modal history-modal">
           <div class="modal-header">
-            <div class="title">历史记录</div>
+            <div class="title">${i18n.historyTitle}</div>
             <div class="session-actions">
-              <button id="clearAllHistory" class="ghost">清空会话</button>
-              <button id="closeHistory" class="secondary">关闭</button>
+              <button id="clearAllHistory" class="ghost">${i18n.historyClearSessions}</button>
+              <button id="closeHistory" class="secondary icon-button" title="${i18n.historyClose}" aria-label="${i18n.historyClose}">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="history-tabs help-tabs" role="tablist" aria-label="历史记录">
-            <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">历史提示词</button>
-            <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">历史会话</button>
+          <div class="history-tabs help-tabs" role="tablist" aria-label="${i18n.historyTabsLabel}">
+            <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabPrompts}</button>
+            <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
           </div>
           <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
             <div id="promptHistoryList" class="prompt-list"></div>
@@ -1324,28 +1629,33 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="rulesOverlay" class="overlay">
         <div class="modal rules-modal">
           <div class="modal-header">
-            <div class="title">规则</div>
+            <div class="title">${i18n.rulesTitle}</div>
             <div class="session-actions">
-              <button id="closeRules" class="secondary">关闭</button>
+              <button id="closeRules" class="secondary icon-button" title="${i18n.rulesClose}" aria-label="${i18n.rulesClose}">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="rules-scope help-tabs" role="tablist" aria-label="规则范围">
-            <button id="scopeGlobal" class="help-tab active" role="tab" aria-selected="true">全局规则</button>
-            <button id="scopeProject" class="help-tab" role="tab" aria-selected="false">项目规则</button>
+          <div class="rules-scope help-tabs" role="tablist" aria-label="${i18n.rulesScopeLabel}">
+            <button id="scopeGlobal" class="help-tab active" role="tab" aria-selected="true">${i18n.rulesScopeGlobal}</button>
+            <button id="scopeProject" class="help-tab" role="tab" aria-selected="false">${i18n.rulesScopeProject}</button>
           </div>
           <div class="rules-row">
-            <select id="rulesLoadCli" class="cli-select" aria-label="加载 CLI">
+            <select id="rulesLoadCli" class="cli-select" aria-label="${i18n.rulesLoadCliAria}">
               <option value="codex">codex</option>
               <option value="claude">claude</option>
               <option value="gemini">gemini</option>
             </select>
-            <button id="loadRules" class="secondary action-button">加载</button>
+            <button id="loadRules" class="secondary action-button">${i18n.rulesLoadButton}</button>
           </div>
           <div id="rulesPath" class="rules-path"></div>
-          <textarea id="rulesInput" class="rules-textarea" rows="10" placeholder="输入规则内容..."></textarea>
+          <textarea id="rulesInput" class="rules-textarea" rows="10" placeholder="${i18n.rulesInputPlaceholder}"></textarea>
           <div class="rules-row rules-save-row">
-            <span>保存覆盖到：</span>
-            <div class="rules-checkboxes" role="group" aria-label="保存覆盖到">
+            <span>${i18n.rulesSaveLabel}</span>
+            <div class="rules-checkboxes" role="group" aria-label="${i18n.rulesSaveGroupLabel}">
               <label><input type="checkbox" id="rulesSaveCodex" /> codex</label>
               <label><input type="checkbox" id="rulesSaveClaude" /> claude</label>
               <label><input type="checkbox" id="rulesSaveGemini" /> gemini</label>
@@ -1353,7 +1663,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           </div>
           <div class="rules-hint" id="rulesHint"></div>
           <div class="rules-actions">
-            <button id="saveRules" class="action-button">保存</button>
+            <button id="saveRules" class="action-button">${i18n.rulesSaveButton}</button>
           </div>
         </div>
       </div>
@@ -1361,23 +1671,36 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="toolSettingsOverlay" class="overlay">
         <div class="modal tool-settings-modal">
           <div class="modal-header">
-            <div class="title">工具设置</div>
-            <button id="closeToolSettings" class="secondary">关闭</button>
+            <div class="title">${i18n.toolSettingsTitle}</div>
+            <button id="closeToolSettings" class="secondary icon-button" title="${i18n.toolSettingsClose}" aria-label="${i18n.toolSettingsClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
           </div>
           <div class="tool-settings-body">
             <div id="interactiveRow" class="tool-settings-row">
-              <div class="tool-settings-label">交互</div>
-              <select id="interactiveMode" class="thinking-select" aria-label="交互模式">
-                <option value="on">开启(Beta)</option>
-                <option value="off">关闭</option>
+              <div class="tool-settings-label">${i18n.toolSettingsInteractiveLabel}</div>
+              <select id="interactiveMode" class="thinking-select" aria-label="${i18n.toolSettingsInteractiveAria}">
+                <option value="on">${i18n.toolSettingsInteractiveOn}</option>
+                <option value="off">${i18n.toolSettingsInteractiveOff}</option>
               </select>
             </div>
             <div class="tool-settings-row">
-              <div class="tool-settings-label">调试</div>
-              <label class="debug-toggle" title="调试日志">
+              <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
                 <input type="checkbox" id="debugMode" />
-                <span>开启</span>
+                <span>${i18n.toolSettingsDebugToggle}</span>
               </label>
+            </div>
+            <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
+              <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
+                <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
+                <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
+                <option value="en">${i18n.toolSettingsLanguageEn}</option>
+              </select>
             </div>
           </div>
         </div>
@@ -1386,14 +1709,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="commonCommandsOverlay" class="overlay">
         <div class="modal common-commands-modal">
           <div class="modal-header">
-            <div class="title">常用指令</div>
-            <button id="closeCommonCommands" class="secondary">关闭</button>
+            <div class="title">${i18n.commonCommandsTitle}</div>
+            <button id="closeCommonCommands" class="secondary icon-button" title="${i18n.commonCommandsClose}" aria-label="${i18n.commonCommandsClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
           </div>
           <div class="common-commands-body">
             <div class="common-command-list">
               <button id="commandCompact" class="action-button common-command-button">
-                <span>压缩上下文</span>
-                <span class="common-command-desc">压缩后下一个任务节省 token 数消耗</span>
+                <span>${i18n.commonCommandCompactTitle}</span>
+                <span class="common-command-desc">${i18n.commonCommandCompactDesc}</span>
               </button>
             </div>
           </div>
@@ -1403,17 +1731,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="runConflictOverlay" class="overlay">
         <div class="modal run-conflict-modal">
           <div class="modal-header">
-            <div class="title">任务执行中</div>
-            <button id="closeRunConflict" class="secondary">关闭</button>
+            <div class="title">${i18n.runConflictTitle}</div>
+            <button id="closeRunConflict" class="secondary icon-button" title="${i18n.runConflictClose}" aria-label="${i18n.runConflictClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
           </div>
           <div class="run-conflict-body">
-            <div>检测到当前任务仍在执行，要如何处理这条消息？</div>
-            <div class="run-conflict-desc">选择“暂停并发送”将终止当前任务并立即发送。</div>
+            <div>${i18n.runConflictBody}</div>
+            <div class="run-conflict-desc">${i18n.runConflictDesc}</div>
             <div id="runConflictPrompt" class="run-conflict-preview"></div>
           </div>
           <div class="run-conflict-actions">
-            <button id="queuePrompt" class="secondary action-button">加入队列</button>
-            <button id="pauseAndSend" class="action-button">暂停并发送</button>
+            <button id="queuePrompt" class="secondary action-button">${i18n.runConflictQueueButton}</button>
+            <button id="pauseAndSend" class="action-button">${i18n.runConflictPauseButton}</button>
           </div>
         </div>
       </div>
@@ -1421,8 +1754,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="queueOverlay" class="overlay">
         <div class="modal queue-modal">
           <div class="modal-header">
-            <div class="title">队列提示词</div>
-            <button id="closeQueue" class="secondary icon-button" title="关闭" aria-label="关闭">
+            <div class="title">${i18n.queueTitle}</div>
+            <button id="closeQueue" class="secondary icon-button" title="${i18n.queueCloseLabel}" aria-label="${i18n.queueCloseLabel}">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="6" y1="6" x2="18" y2="18" />
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -1436,18 +1769,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div id="helpOverlay" class="overlay">
         <div class="modal help-modal">
           <div class="modal-header">
-            <div class="title">使用说明</div>
+            <div class="title">${i18n.helpTitle}</div>
             <div class="session-actions">
-              <button id="closeHelp" class="secondary">关闭</button>
+              <button id="closeHelp" class="secondary icon-button" title="${i18n.helpClose}" aria-label="${i18n.helpClose}">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="help-tabs" role="tablist" aria-label="使用说明">
-            <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">安装</button>
-            <button id="helpTabThinking" class="help-tab" role="tab" aria-selected="false">思考模式</button>
+          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
+            <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">${i18n.helpTabInstall}</button>
+            <button id="helpTabThinking" class="help-tab" role="tab" aria-selected="false">${i18n.helpTabThinking}</button>
           </div>
           <div id="helpPanelInstall" class="help-panel active" role="tabpanel">
             <div class="help-section">
-              <h4>Windows 安装</h4>
+              <h4>${i18n.helpInstallWindows}</h4>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
@@ -1455,7 +1793,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </ul>
             </div>
             <div class="help-section">
-              <h4>macOS 安装</h4>
+              <h4>${i18n.helpInstallMac}</h4>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
@@ -1463,49 +1801,49 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </ul>
             </div>
             <div class="help-section">
-              <h4>安装加速（也许有效）</h4>
+              <h4>${i18n.helpInstallAccel}</h4>
               <ul>
-                <li>一次性加速：<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
-                <li>设置全局镜像：<code>npm config set registry https://registry.npmmirror.com</code></li>
-                <li>恢复官方源：<code>npm config set registry https://registry.npmjs.org</code></li>
+                <li>${i18n.helpInstallAccelOnce}<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
+                <li>${i18n.helpInstallAccelSet}<code>npm config set registry https://registry.npmmirror.com</code></li>
+                <li>${i18n.helpInstallAccelReset}<code>npm config set registry https://registry.npmjs.org</code></li>
               </ul>
             </div>
             <div class="help-section">
-              <h4>移除系统环境变量配置</h4>
+              <h4>${i18n.helpRemoveEnvTitle}</h4>
               <ul>
-                <li>使用该工具前需清理对 CLI 的系统级环境变量修改，避免与配置文件冲突。</li>
-                <li>macOS：检查并移除 <code>~/.zprofile</code>、<code>~/.zshrc</code> 或 <code>~/.bash_profile</code> 中相关设置。</li>
-                <li>Windows：通过“系统属性 &gt; 高级 &gt; 环境变量”删除为 CLI 手动添加的相关设置。</li>
+                <li>${i18n.helpRemoveEnvItem1}</li>
+                <li>${i18n.helpRemoveEnvItemMac}</li>
+                <li>${i18n.helpRemoveEnvItemWin}</li>
               </ul>
             </div>
           </div>
           <div id="helpPanelThinking" class="help-panel" role="tabpanel">
             <div class="help-section">
-              <h4>通用说明</h4>
+              <h4>${i18n.helpThinkingGeneralTitle}</h4>
               <ul>
-                <li>思考模式用于调节推理强度，越高通常更稳但更慢、成本更高。</li>
+                <li>${i18n.helpThinkingGeneralItem}</li>
               </ul>
             </div>
             <div class="help-section">
-              <h4>Codex</h4>
+              <h4>${i18n.helpThinkingCodexTitle}</h4>
               <ul>
-                <li>通过配置 <code>model_reasoning_effort</code> 控制强度。</li>
-                <li>可选值：<code>low</code> / <code>medium</code> / <code>high</code>（无显式关闭，<code>low</code> 近似最低）。</li>
+                <li>${i18n.helpThinkingCodexItem1}</li>
+                <li>${i18n.helpThinkingCodexItem2}</li>
               </ul>
             </div>
             <div class="help-section">
-              <h4>Gemini</h4>
+              <h4>${i18n.helpThinkingGeminiTitle}</h4>
               <ul>
-                <li>通过配置文件的 <code>thinkingConfig</code> 控制。</li>
-                <li>Gemini 2.5：暂不支持；Gemini 3：<code>thinkingLevel</code>。</li>
-                <li>常见值：<code>minimal</code> / <code>low</code> / <code>medium</code> / <code>high</code>（随模型而异）。</li>
+                <li>${i18n.helpThinkingGeminiItem1}</li>
+                <li>${i18n.helpThinkingGeminiItem2}</li>
+                <li>${i18n.helpThinkingGeminiItem3}</li>
               </ul>
             </div>
             <div class="help-section">
-              <h4>Claude</h4>
+              <h4>${i18n.helpThinkingClaudeTitle}</h4>
               <ul>
-                <li>使用 <code>--max-thinking-tokens</code> 控制思考 token 数。</li>
-                <li><code>0</code> 视为关闭，数值越高推理越深入。</li>
+                <li>${i18n.helpThinkingClaudeItem1}</li>
+                <li>${i18n.helpThinkingClaudeItem2}</li>
               </ul>
             </div>
           </div>
@@ -1519,6 +1857,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     </script>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const i18n = ${JSON.stringify(i18n)};
+      const traceMarkers = {
+        input: ["Input", "输入"],
+        output: ["Output", "输出"],
+        toolResult: ["Tool result", "工具结果"],
+        fileChanges: ["File changes", "文件变更"],
+      };
+      function formatTemplate(template, params) {
+        if (!params) {
+          return template;
+        }
+        return template.replace(/\\{(\\w+)\\}/g, (match, key) => {
+          if (Object.prototype.hasOwnProperty.call(params, key)) {
+            return String(params[key]);
+          }
+          return match;
+        });
+      }
+      function t(key, params) {
+        const template = i18n[key] || key;
+        return formatTemplate(template, params);
+      }
       function postWebviewError(payload) {
         try {
           vscode.postMessage(Object.assign({ type: "webviewError" }, payload));
@@ -1577,6 +1937,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         },
         promptHistory: [],
         debug: false,
+        locale: "auto",
         thinkingMode: "medium",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
@@ -1608,6 +1969,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         thinkingMode: document.getElementById("thinkingMode"),
         interactiveMode: document.getElementById("interactiveMode"),
         debugMode: document.getElementById("debugMode"),
+        languageSelect: document.getElementById("languageSelect"),
         commonCommandButton: document.getElementById("commonCommandButton"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
@@ -1729,6 +2091,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
         state.debug = Boolean(panelState.debug);
+        state.locale = typeof panelState.locale === "string" ? panelState.locale : "auto";
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         elements.currentCli.value = panelState.currentCli;
@@ -1740,6 +2103,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.thinkingMode.value = state.thinkingMode;
         if (elements.debugMode) {
           elements.debugMode.checked = state.debug;
+        }
+        if (elements.languageSelect) {
+          elements.languageSelect.value = state.locale || "auto";
         }
         syncInteractiveOptions();
         if (elements.interactiveMode) {
@@ -1758,7 +2124,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (configs.length === 0) {
           const option = document.createElement("option");
           option.value = "";
-          option.textContent = "暂无配置";
+          option.textContent = t("noConfigOption");
           elements.configSelect.appendChild(option);
           elements.configSelect.value = "";
           return;
@@ -1783,7 +2149,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!isGemini && !mediumOption) {
           const option = document.createElement("option");
           option.value = "medium";
-          option.textContent = "思考：中";
+          option.textContent = t("thinkingOptionLabelMedium");
           const highOption = elements.thinkingMode.querySelector('option[value="high"]');
           if (highOption && highOption.parentElement) {
             highOption.parentElement.insertBefore(option, highOption);
@@ -1798,7 +2164,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!isCodex && !offOption) {
           const option = document.createElement("option");
           option.value = "off";
-          option.textContent = "思考：关闭";
+          option.textContent = t("thinkingOptionLabelOff");
           const lowOption = elements.thinkingMode.querySelector('option[value="low"]');
           if (lowOption && lowOption.parentElement) {
             lowOption.parentElement.insertBefore(option, lowOption);
@@ -1812,7 +2178,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (isCodex && !xhighOption) {
           const option = document.createElement("option");
           option.value = "xhigh";
-          option.textContent = "思考：超高";
+          option.textContent = t("thinkingOptionLabelXHigh");
           elements.thinkingMode.appendChild(option);
         }
         if (isGemini && state.thinkingMode === "medium") {
@@ -1918,7 +2284,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!state.sessionState.sessions.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = "暂无会话历史";
+          empty.textContent = t("historyEmptySessions");
           elements.sessionList.appendChild(empty);
           return;
         }
@@ -1932,11 +2298,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const label = document.createElement("div");
           label.className = "session-label";
           const cliLabel = session.cli ? "[" + session.cli + "] " : "";
-          label.textContent = cliLabel + (session.label || "未命名会话");
+          label.textContent = cliLabel + (session.label || t("sessionDefaultLabel"));
           if (session.firstPrompt) {
             label.title = session.firstPrompt;
           } else {
-            label.title = session.label || "未命名会话";
+            label.title = session.label || t("sessionDefaultLabel");
           }
 
           const subtitle = document.createElement("div");
@@ -1951,7 +2317,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const loadButton = document.createElement("button");
           loadButton.className = "secondary";
-          loadButton.textContent = "加载";
+          loadButton.textContent = t("sessionLoadLabel");
           loadButton.addEventListener("click", () => {
             state.messages = [];
             renderMessages();
@@ -1961,14 +2327,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const deleteButton = document.createElement("button");
           deleteButton.className = "ghost";
-          deleteButton.textContent = "删除";
+          deleteButton.textContent = t("sessionDeleteLabel");
           deleteButton.addEventListener("click", () => {
             vscode.postMessage({ type: "deleteSession", sessionId: session.id, cli: session.cli });
           });
 
           const copyButton = document.createElement("button");
           copyButton.className = "ghost";
-          copyButton.textContent = "复制ID";
+          copyButton.textContent = t("sessionCopyIdLabel");
           copyButton.addEventListener("click", () => {
             copySessionId(session.id);
           });
@@ -1991,7 +2357,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!items.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = "暂无历史提示词";
+          empty.textContent = t("historyEmptyPrompts");
           elements.promptHistoryList.appendChild(empty);
           return;
         }
@@ -2031,7 +2397,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const viewButton = document.createElement("button");
           viewButton.className = "ghost";
-          viewButton.textContent = state.promptHistoryExpandedId === item.id ? "收起" : "查看";
+          viewButton.textContent = state.promptHistoryExpandedId === item.id
+            ? t("promptCollapseLabel")
+            : t("promptViewLabel");
           viewButton.addEventListener("click", (event) => {
             event.stopPropagation();
             togglePromptHistoryExpanded(item.id);
@@ -2039,7 +2407,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const useButton = document.createElement("button");
           useButton.className = "secondary";
-          useButton.textContent = "复用";
+          useButton.textContent = t("promptReuseLabel");
           useButton.addEventListener("click", (event) => {
             event.stopPropagation();
             applyPromptHistory(item.prompt || "");
@@ -2069,7 +2437,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function buildPromptPreview(prompt) {
         const normalized = String(prompt || "").replace(/\\s+/g, " ").trim();
         if (!normalized) {
-          return "（空提示词）";
+          return t("promptEmptyLabel");
         }
         const limit = 60;
         if (normalized.length <= limit) {
@@ -2280,7 +2648,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const bucket = getToolStyleBucket(toolName);
           return {
             type: "tool-use-" + bucket,
-            title: toolName || "tool",
+            title: toolName || t("traceToolFallback"),
             match: /^(?:tool|调用工具)[:：]?\s*(.+)?$/i,
             detail: () => "",
           };
@@ -2288,55 +2656,55 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const definitions = [
           {
             type: "git-update",
-            title: "Git 更新",
+            title: t("traceGitUpdate"),
             match: /^git\\s+update\\b/i,
             detail: (value) => value.replace(/^git\\s+update\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "exec",
-            title: "执行命令",
+            title: t("traceExec"),
             match: /^(?:exec\\b|【执行命令】)/i,
             detail: (value) => value.replace(/^(?:exec\\b|【执行命令】)[:：]?\\s*/i, "").trim(),
           },
           {
             type: "file-update",
-            title: "文件变更",
+            title: t("traceFileUpdate"),
             match: /^file\\s+update\\b/i,
             detail: (value) => value.replace(/^file\\s+update\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "apply-patch",
-            title: "应用补丁",
+            title: t("traceApplyPatch"),
             match: /^apply_patch\\b/i,
             detail: (value) => value.replace(/^apply_patch\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "tool-result",
-            title: "工具结果",
-            match: /^工具结果\\b/i,
-            detail: (value) => value.replace(/^工具结果[:：]?\\s*/i, "").trim(),
+            title: t("traceToolResult"),
+            match: /^(?:tool\\s*result|工具结果)\\b/i,
+            detail: (value) => value.replace(/^(?:tool\\s*result|工具结果)[:：]?\\s*/i, "").trim(),
           },
           {
             type: "warning",
-            title: "警告",
-            match: /^warning\\b/i,
-            detail: (value) => value.replace(/^warning\\b[:：]?\\s*/i, "").trim(),
+            title: t("traceWarning"),
+            match: /^(?:warning|警告)\\b/i,
+            detail: (value) => value.replace(/^(?:warning|警告)\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "error",
-            title: "错误",
-            match: /^error\\b/i,
-            detail: (value) => value.replace(/^error\\b[:：]?\\s*/i, "").trim(),
+            title: t("traceError"),
+            match: /^(?:error|错误)\\b/i,
+            detail: (value) => value.replace(/^(?:error|错误)\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "thinking",
-            title: "思考",
-            match: /^thinking\\b/i,
-            detail: (value) => value.replace(/^thinking\\b[:：]?\\s*/i, "").trim(),
+            title: t("traceThinking"),
+            match: /^(?:thinking|思考)\\b/i,
+            detail: (value) => value.replace(/^(?:thinking|思考)\\b[:：]?\\s*/i, "").trim(),
           },
           {
             type: "web-search",
-            title: "网络查询",
+            title: t("traceWebSearch"),
             match: /^(?:web\\s*search\\b|【网络查询】)/i,
             detail: (value) => value.replace(/^(?:web\\s*search\\b|【网络查询】)[:：]?\\s*/i, "").trim(),
           },
@@ -2350,11 +2718,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return content;
         }
         const toolName = toolMatch[1];
-        const inputIndex = content.indexOf("\\n输入:\\n");
-        if (inputIndex === -1) {
+        const inputMarker = traceMarkers.input.find((label) =>
+          content.includes("\\n" + label + ":\\n")
+        );
+        if (!inputMarker) {
           return content;
         }
-        const rawJson = content.slice(inputIndex + "\\n输入:\\n".length).trim();
+        const inputIndex = content.indexOf("\\n" + inputMarker + ":\\n");
+        const rawJson = content.slice(inputIndex + ("\\n" + inputMarker + ":\\n").length).trim();
         if (!rawJson) {
           return content;
         }
@@ -2368,7 +2739,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!diffLines.length) {
           return content;
         }
-        return content + "\\n\\n文件变更:\\n" + diffLines.join("\\n");
+        return content + "\\n\\n" + t("traceFileChangesLabel") + ":\\n" + diffLines.join("\\n");
       }
 
       function buildToolInputDiffLines(toolName, input) {
@@ -2705,7 +3076,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const value = String(sessionId);
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(value).then(
-            () => showToast("已复制"),
+            () => showToast(t("toastCopied")),
             () => fallbackCopySessionId(value)
           );
           return;
@@ -2723,9 +3094,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         textarea.select();
         try {
           document.execCommand("copy");
-          showToast("已复制");
+          showToast(t("toastCopied"));
         } catch (error) {
-          showToast("复制失败");
+          showToast(t("toastCopyFailed"));
         } finally {
           document.body.removeChild(textarea);
         }
@@ -2814,7 +3185,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           appendMessage({
             id: createMessageId(),
             role: "system",
-            content: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
+            content: t("toastNoActiveConfig"),
             createdAt: Date.now(),
           });
           return false;
@@ -2868,7 +3239,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!pendingPromptQueue.length) {
           const empty = document.createElement("div");
           empty.className = "queue-empty";
-          empty.textContent = "当前没有待发送的提示词。";
+          empty.textContent = t("queueEmpty");
           elements.queueBody.appendChild(empty);
           return;
         }
@@ -2894,8 +3265,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
           const removeButton = document.createElement("button");
           removeButton.className = "icon-button queue-remove-button";
-          removeButton.setAttribute("aria-label", "取消");
-          removeButton.setAttribute("title", "取消");
+          removeButton.setAttribute("aria-label", t("queueRemoveLabel"));
+          removeButton.setAttribute("title", t("queueRemoveLabel"));
           removeButton.innerHTML =
             '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
             'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -2934,7 +3305,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         pendingPromptQueue.push(prompt);
         updateQueueIndicator();
-        showToast("已加入队列");
+        showToast(t("toastQueueAdded"));
       }
 
       function clearQueuedPromptIndex(index) {
@@ -2957,7 +3328,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateQueueIndicator();
         const sent = dispatchPrompt(nextPrompt);
         if (!sent) {
-          showToast("队列发送失败，请先激活配置");
+          showToast(t("toastQueueSendFailed"));
         }
       }
 
@@ -3005,10 +3376,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               resolve(reader.result);
               return;
             }
-            reject(new Error("无法读取文件内容"));
+            reject(new Error(t("toastFileReadFailed")));
           };
           reader.onerror = () => {
-            reject(new Error("无法读取文件内容"));
+            reject(new Error(t("toastFileReadFailed")));
           };
           reader.readAsDataURL(file);
         });
@@ -3030,7 +3401,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           appendMessage({
             id: createMessageId(),
             role: "system",
-            content: "文件读取失败，请重试。",
+            content: t("toastReadFileFailed"),
           });
         }
       }
@@ -3164,6 +3535,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
         });
       }
+      if (elements.languageSelect) {
+        elements.languageSelect.addEventListener("change", (event) => {
+          const nextValue = event.target.value || "auto";
+          state.locale = nextValue;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "locale",
+            value: nextValue,
+          });
+        });
+      }
 
       elements.openConfig.addEventListener("click", () => {
         vscode.postMessage({ type: "openConfig" });
@@ -3235,7 +3617,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.historyPanelPrompts.classList.toggle("active", isPrompts);
         elements.historyPanelSessions.classList.toggle("active", !isPrompts);
         if (elements.clearAllHistory) {
-          elements.clearAllHistory.textContent = isPrompts ? "清空提示词" : "清空会话";
+          elements.clearAllHistory.textContent = isPrompts
+            ? t("historyClearPrompts")
+            : t("historyClearSessions");
         }
       }
 
@@ -3274,10 +3658,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const scopePaths = state.rulePaths ? state.rulePaths[state.ruleScope] : null;
         const pathText = scopePaths && scopePaths[cli] ? scopePaths[cli] : "";
         if (!pathText && state.ruleScope === "project") {
-          elements.rulesPath.textContent = "路径：未检测到工作区";
+          elements.rulesPath.textContent = t("rulesPathNoWorkspace");
           return;
         }
-        elements.rulesPath.textContent = pathText ? "路径：" + pathText : "";
+        elements.rulesPath.textContent = pathText ? t("rulesPathPrefix") + pathText : "";
       }
 
       function updateRulesScope(scope) {
@@ -3439,7 +3823,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.loadRules.addEventListener("click", () => {
         const cli = elements.rulesLoadCli.value;
-        setRulesHint("正在加载...");
+        setRulesHint(t("rulesHintLoading"));
         vscode.postMessage({ type: "loadRules", cli, scope: state.ruleScope });
       });
 
@@ -3460,11 +3844,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       elements.saveRules.addEventListener("click", () => {
         const targets = collectRuleTargets();
         if (!targets.length) {
-          setRulesHint("请选择至少一个 CLI 进行覆盖保存。");
+          setRulesHint(t("rulesHintSelectCli"));
           return;
         }
         const content = elements.rulesInput.value || "";
-        setRulesHint("正在保存...");
+        setRulesHint(t("rulesHintSaving"));
         vscode.postMessage({ type: "saveRules", content, targets, scope: state.ruleScope });
       });
 
@@ -3638,17 +4022,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             return;
           }
           elements.rulesInput.value = typeof data.content === "string" ? data.content : "";
-          const scopeLabel = data.scope === "project" ? "项目规则" : "全局规则";
-          setRulesHint("已加载 " + scopeLabel + "：" + data.cli + "。");
+          const scopeLabel = data.scope === "project"
+            ? t("rulesScopeProject")
+            : t("rulesScopeGlobal");
+          setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: data.cli }));
         }
         if (data.type === "rulesSaved") {
           if (data.error) {
             setRulesHint(data.error);
             return;
           }
-          const scopeLabel = data.scope === "project" ? "项目规则" : "全局规则";
+          const scopeLabel = data.scope === "project"
+            ? t("rulesScopeProject")
+            : t("rulesScopeGlobal");
           setRulesHint(
-            scopeLabel + "已保存到：" + (Array.isArray(data.targets) ? data.targets.join(", ") : "")
+            t("rulesHintSaved", {
+              scope: scopeLabel,
+              targets: Array.isArray(data.targets) ? data.targets.join(", ") : "",
+            })
           );
         }
       });

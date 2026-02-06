@@ -10,6 +10,7 @@ import {
 } from "./configProtocol";
 import * as configService from "../config/configService";
 import { logEssential, logInfo } from "../logger";
+import { t } from "../i18n";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
@@ -31,7 +32,7 @@ export class ConfigManagerPanel {
 
     this.panel = vscode.window.createWebviewPanel(
       "sinitek-cli-tools.configManager",
-      "携宁 CLI 助手 - 配置",
+      t("config.panelTitle"),
       vscode.ViewColumn.Active,
       {
         enableScripts: true,
@@ -74,6 +75,14 @@ export class ConfigManagerPanel {
       return;
     }
     void this.panel.webview.postMessage({ type: "config:syncActive" });
+  }
+
+  public reload(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.title = t("config.panelTitle");
+    this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
   }
 
   private async handleRequest(message: ConfigRequestMessage): Promise<void> {
@@ -134,7 +143,7 @@ export class ConfigManagerPanel {
         case "exportConfigs": {
           const payload = message.payload;
           if (!payload || typeof payload.content !== "string") {
-            throw new Error("导出内容不能为空");
+            throw new Error(t("config.exportContentEmpty"));
           }
           const rawName = payload.fileName || "";
           const safeName = rawName
@@ -155,7 +164,7 @@ export class ConfigManagerPanel {
         }
         default:
           response.success = false;
-          response.error = "未知请求";
+          response.error = t("config.unknownRequest");
           break;
       }
     } catch (error) {
