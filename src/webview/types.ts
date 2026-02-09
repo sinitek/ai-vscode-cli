@@ -17,7 +17,12 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
-  | { type: "sendPrompt"; prompt: string; interactiveMode?: InteractiveMode }
+  | {
+      type: "sendPrompt";
+      prompt: string;
+      interactiveMode?: InteractiveMode;
+      contextOptions?: PromptContextOptions;
+    }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openConfig" }
@@ -40,6 +45,18 @@ export type UploadFilePayload = {
   name: string;
   type: string;
   dataUrl: string;
+};
+
+export type PromptContextOptions = {
+  includeCurrentFile?: boolean;
+  includeSelection?: boolean;
+};
+
+export type EditorContextState = {
+  filePath: string | null;
+  fileLabel: string | null;
+  hasSelection: boolean;
+  selectionLabel: string | null;
 };
 
 export type SessionSummary = {
@@ -66,6 +83,7 @@ export type ChatMessage = {
   sequence?: number;
   kind?: "thinking" | "normal";
   merge?: boolean;
+  contextTags?: string[];
 };
 
 export type PanelState = {
@@ -93,4 +111,5 @@ export type PanelState = {
     configs: ConfigSummary[];
     activeConfigId: string | null;
   };
+  editorContext: EditorContextState;
 };

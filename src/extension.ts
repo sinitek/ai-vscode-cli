@@ -30,8 +30,10 @@ import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
+  EditorContextState,
   PanelMessage,
   PanelState,
+  PromptContextOptions,
   PromptHistoryItem,
   SessionSummary,
   UploadFilePayload,
@@ -321,6 +323,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       ensureWorkspaceSessionStore();
       void postPanelState();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      postEditorContextState();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      if (event.textEditor === vscode.window.activeTextEditor) {
+        postEditorContextState();
+      }
     })
   );
 
@@ -756,9 +772,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       workspaceSettings.interactiveModeByCli[currentCli] = message.interactiveMode;
       saveWorkspaceSettings(workspaceSettings);
     }
+    const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
+    const promptInput: PromptRunInput = {
+      displayPrompt: trimmed,
+      modelPrompt: contextBuild.modelPrompt,
+      contextTags: contextBuild.contextTags,
+    };
     recordPromptHistory(trimmed, currentCli);
     await postPanelState();
-    await runPrompt(trimmed);
+    await runPrompt(promptInput);
     return;
   }
 
@@ -791,6 +813,7 @@ async function buildPanelState(): Promise<PanelState> {
     sessionState: buildSessionState(currentCli),
     promptHistory: buildPromptHistoryState(),
     configState,
+    editorContext: buildEditorContextState(),
   };
 }
 
@@ -819,6 +842,7 @@ async function buildPanelStateWithConfigState(
     sessionState: buildSessionState(currentCli),
     promptHistory: buildPromptHistoryState(),
     configState,
+    editorContext: buildEditorContextState(),
   };
 }
 
@@ -826,6 +850,13 @@ async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
   updateConfigHeartbeatSnapshot(state.currentCli, state.configState);
   viewProvider?.postState(state);
+}
+
+function postEditorContextState(): void {
+  viewProvider?.postMessage({
+    type: "editorContext",
+    payload: buildEditorContextState(),
+  });
 }
 
 function shouldRefreshConfigState(
@@ -1577,6 +1608,17 @@ function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
 
+type PromptRunInput = {
+  displayPrompt: string;
+  modelPrompt: string;
+  contextTags: string[];
+};
+
+type PromptContextBuildResult = {
+  modelPrompt: string;
+  contextTags: string[];
+};
+
 type ErrorInfo = {
   message: string;
   name?: string;
@@ -1640,7 +1682,8 @@ function logCliStartup(payload: {
   void logEssential("cli-startup", payload);
 }
 
-async function runPrompt(prompt: string): Promise<void> {
+async function runPrompt(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
@@ -1650,7 +1693,7 @@ async function runPrompt(prompt: string): Promise<void> {
 
   if (shouldUseInteractive) {
     try {
-      await runPromptInteractive(prompt);
+      await runPromptInteractive(input);
       return;
     } catch (error) {
       const info = getErrorInfo(error);
@@ -1683,10 +1726,15 @@ async function runPrompt(prompt: string): Promise<void> {
     }
   }
 
-  await runPromptOneShot(prompt);
+  await runPromptOneShot(input);
 }
 
-async function runPromptOneShot(prompt: string): Promise<void> {
+async function runPromptOneShot(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
+  const modelPrompt = input.modelPrompt || prompt;
+  const contextTags = Array.isArray(input.contextTags)
+    ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
   if (!prompt) {
     return;
   }
@@ -1703,7 +1751,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   applyThinkingWorkspaceFiles(currentCli, thinkingMode, cwd);
   preparePendingLabel(currentCli, prompt);
   const sessionId = getCurrentSessionId(currentCli);
-  const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, prompt);
+  const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
   const logModelOutput = (content: string): void => {
     if (!debugLogging) {
@@ -1739,6 +1787,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
     thinkingMode,
   });
   const userMessageId = createMessageId();
+  const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
   const processLabel = buildProcessLabel(currentCli, sessionId ?? runId);
@@ -1751,7 +1800,20 @@ async function runPromptOneShot(prompt: string): Promise<void> {
     id: userMessageId,
     role: "user",
     content: prompt,
-    createdAt: Date.now(),
+    createdAt: userCreatedAt,
+    merge: false,
+    contextTags,
+  });
+  sendPanelMessage({
+    type: "appendMessage",
+    message: {
+      id: userMessageId,
+      role: "user",
+      content: prompt,
+      createdAt: userCreatedAt,
+      merge: false,
+      contextTags,
+    },
   });
   const shouldDeferAssistant = true;
   if (!shouldDeferAssistant) {
@@ -2571,7 +2633,12 @@ async function runContextCompactionCommand(): Promise<void> {
   }
 }
 
-async function runPromptInteractive(prompt: string): Promise<void> {
+async function runPromptInteractive(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
+  const modelPrompt = input.modelPrompt || prompt;
+  const contextTags = Array.isArray(input.contextTags)
+    ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
   if (!prompt) {
     return;
   }
@@ -2593,7 +2660,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   preparePendingLabel(cli, prompt);
 
   const sessionId = getCurrentSessionId(cli);
-  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt, { includeSuffix: false });
+  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
   const args = getCliArgs(cli);
   const command = getCliCommand(cli);
@@ -2620,11 +2687,13 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     interactiveMode,
     cwd,
     promptLength: prompt.length,
+    modelPromptLength: modelPrompt.length,
   });
 
   const shouldCompact = false;
 
   const userMessageId = createMessageId();
+  const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
   applyProcessTitle(runId, cli, sessionId);
@@ -2637,7 +2706,20 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     id: userMessageId,
     role: "user",
     content: prompt,
-    createdAt: Date.now(),
+    createdAt: userCreatedAt,
+    merge: false,
+    contextTags,
+  });
+  sendPanelMessage({
+    type: "appendMessage",
+    message: {
+      id: userMessageId,
+      role: "user",
+      content: prompt,
+      createdAt: userCreatedAt,
+      merge: false,
+      contextTags,
+    },
   });
   activeAssistantMessageId = undefined;
   activeMessageIndex = null;
@@ -3167,7 +3249,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     }
 
     // Unsupported: fall back to one-shot.
-    await runPromptOneShot(prompt);
+    await runPromptOneShot({ displayPrompt: prompt, modelPrompt, contextTags });
   } catch (error) {
     if (activeRunId !== runId) {
       // This run was preempted/stopped; ignore errors from aborted streams.
@@ -4883,6 +4965,135 @@ function extractClaudeSessionId(payload: Record<string, unknown>): string | unde
     }
   }
   return undefined;
+}
+
+function normalizePromptContextOptions(
+  options?: PromptContextOptions
+): Required<PromptContextOptions> {
+  return {
+    includeCurrentFile: options?.includeCurrentFile !== false,
+    includeSelection: options?.includeSelection !== false,
+  };
+}
+
+function getEditorDisplayPath(document: vscode.TextDocument): string {
+  const relativePath = vscode.workspace.asRelativePath(document.uri, false);
+  if (relativePath) {
+    return relativePath.replace(/\\/g, "/");
+  }
+  if (document.fileName) {
+    return document.fileName.replace(/\\/g, "/");
+  }
+  return document.uri.toString(true);
+}
+
+function getPrimaryNonEmptySelection(editor: vscode.TextEditor): vscode.Selection | null {
+  const selections = Array.isArray(editor.selections) && editor.selections.length
+    ? editor.selections
+    : [editor.selection];
+  for (const selection of selections) {
+    if (!selection.isEmpty) {
+      return selection;
+    }
+  }
+  return null;
+}
+
+function formatSelectionLabel(selection: vscode.Selection): string {
+  const startLine = selection.start.line + 1;
+  const startChar = selection.start.character + 1;
+  const endLine = selection.end.line + 1;
+  const endChar = selection.end.character + 1;
+  if (startLine === endLine) {
+    return `L${startLine}:${startChar}-${endChar}`;
+  }
+  return `L${startLine}:${startChar}-L${endLine}:${endChar}`;
+}
+
+function buildEditorContextState(): EditorContextState {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return {
+      filePath: null,
+      fileLabel: null,
+      hasSelection: false,
+      selectionLabel: null,
+    };
+  }
+  const fileLabel = getEditorDisplayPath(editor.document);
+  const selection = getPrimaryNonEmptySelection(editor);
+  return {
+    filePath: fileLabel,
+    fileLabel,
+    hasSelection: Boolean(selection),
+    selectionLabel: selection ? formatSelectionLabel(selection) : null,
+  };
+}
+
+type ActiveEditorPromptContext = {
+  fileLabel: string;
+  hasSelection: boolean;
+  selectionLabel: string | null;
+};
+
+function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return null;
+  }
+  const fileLabel = getEditorDisplayPath(editor.document);
+  const selection = getPrimaryNonEmptySelection(editor);
+  return {
+    fileLabel,
+    hasSelection: Boolean(selection),
+    selectionLabel: selection ? formatSelectionLabel(selection) : null,
+  };
+}
+
+function buildPromptWithAutoContext(
+  prompt: string,
+  options?: PromptContextOptions
+): PromptContextBuildResult {
+  if (!prompt) {
+    return { modelPrompt: prompt, contextTags: [] };
+  }
+  const normalized = normalizePromptContextOptions(options);
+  if (!normalized.includeCurrentFile && !normalized.includeSelection) {
+    return { modelPrompt: prompt, contextTags: [] };
+  }
+  const context = getActiveEditorPromptContext();
+  if (!context) {
+    return { modelPrompt: prompt, contextTags: [] };
+  }
+
+  const referenceLines: string[] = [];
+  const contextTags: string[] = [];
+
+  if (normalized.includeCurrentFile) {
+    referenceLines.push(`@${context.fileLabel}`);
+    contextTags.push(`Current File: ${context.fileLabel}`);
+  }
+
+  if (normalized.includeSelection && context.hasSelection) {
+    const selectionTag = context.selectionLabel
+      ? `Selection: ${context.selectionLabel}`
+      : "Selection";
+    contextTags.push(selectionTag);
+    if (context.selectionLabel) {
+      referenceLines.push(`Selected range in @${context.fileLabel}: ${context.selectionLabel}`);
+    } else {
+      referenceLines.push(`Selected range in @${context.fileLabel}`);
+    }
+  }
+
+  if (!referenceLines.length) {
+    return { modelPrompt: prompt, contextTags: [] };
+  }
+
+  return {
+    modelPrompt: [prompt, "", "----", "Auto Context References:", ...referenceLines].join("\n"),
+    contextTags,
+  };
 }
 
 function resolveWorkspaceCwd(): string | undefined {
