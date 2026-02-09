@@ -18,6 +18,9 @@ const WEBVIEW_I18N = {
     taskListTitle: "Task List",
     cliSelectAria: "CLI selection",
     configSelectAria: "Config selection",
+    interactiveModeSelectAria: "Interactive response mode",
+    interactiveModeCoding: "Coding",
+    interactiveModePlan: "Plan",
     openConfigButton: "Config",
     promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, supports pasting attachments...",
     commonCommandButton: "Common Commands",
@@ -162,6 +165,9 @@ const WEBVIEW_I18N = {
     taskListTitle: "任务列表",
     cliSelectAria: "CLI 选择",
     configSelectAria: "配置选择",
+    interactiveModeSelectAria: "交互回复模式",
+    interactiveModeCoding: "编码",
+    interactiveModePlan: "规划",
     openConfigButton: "配置",
     promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，支持附件黏贴...",
     commonCommandButton: "常用指令",
@@ -873,8 +879,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-color: var(--vscode-focusBorder);
       }
       
-      .cli-select { min-width: 100px; }
-      .config-select { flex: 1; }
+      .cli-select {
+        flex: 0 0 88px;
+        min-width: 88px;
+      }
+      .config-select {
+        flex: 0 0 44%;
+        min-width: 120px;
+      }
+      .interactive-mode-select {
+        flex: 0 0 92px;
+        min-width: 92px;
+      }
 
       /* Input Box Container */
       .input-box {
@@ -1551,6 +1567,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <div class="config-select-row">
           <select id="currentCli" class="cli-select" aria-label="${i18n.cliSelectAria}">${cliOptions}</select>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
+          <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
+            <option value="coding">${i18n.interactiveModeCoding}</option>
+            <option value="plan">${i18n.interactiveModePlan}</option>
+          </select>
           <button id="openConfig" class="secondary action-button" title="${i18n.openConfigButton}">${i18n.openConfigButton}</button>
         </div>
         <div class="input-box">
@@ -1939,6 +1959,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debug: false,
         locale: "auto",
         thinkingMode: "medium",
+        interactiveMode: "coding",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
@@ -1965,6 +1986,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
         configSelect: document.getElementById("configSelect"),
+        interactiveModeSelect: document.getElementById("interactiveModeSelect"),
         promptInput: document.getElementById("promptInput"),
         thinkingMode: document.getElementById("thinkingMode"),
         interactiveMode: document.getElementById("interactiveMode"),
@@ -2090,6 +2112,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
+        state.interactiveMode = panelState.interactiveMode === "plan" ? "plan" : "coding";
         state.debug = Boolean(panelState.debug);
         state.locale = typeof panelState.locale === "string" ? panelState.locale : "auto";
         state.interactive = panelState.interactive || { supported: false, enabled: false };
@@ -2110,6 +2133,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         syncInteractiveOptions();
         if (elements.interactiveMode) {
           elements.interactiveMode.value = state.interactive && state.interactive.enabled ? "on" : "off";
+        }
+        if (elements.interactiveModeSelect) {
+          elements.interactiveModeSelect.value = state.interactiveMode;
         }
         renderConfigOptions();
         renderSessionList();
@@ -2203,7 +2229,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.interactiveMode.style.display = supported ? "" : "none";
         }
         elements.interactiveMode.disabled = !supported || state.isRunning;
+        syncInteractiveModeSelector();
         syncCommonCommandOptions();
+      }
+
+      function syncInteractiveModeSelector() {
+        if (!elements.interactiveModeSelect) {
+          return;
+        }
+        const supported = Boolean(state.interactive && state.interactive.supported);
+        const enabled = Boolean(state.interactive && state.interactive.enabled);
+        const visible = supported && enabled;
+        elements.interactiveModeSelect.style.display = visible ? "" : "none";
+        elements.interactiveModeSelect.disabled = !visible || state.isRunning;
+        elements.interactiveModeSelect.value = state.interactiveMode === "plan" ? "plan" : "coding";
       }
 
       function syncCommonCommandOptions() {
@@ -3195,7 +3234,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         resetTaskListForRunStart();
         appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
-        vscode.postMessage({ type: "sendPrompt", prompt });
+        vscode.postMessage({
+          type: "sendPrompt",
+          prompt,
+          interactiveMode: state.interactiveMode,
+        });
         return true;
       }
 
@@ -3517,10 +3560,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const nextValue = event.target.value || "on";
           const enabled = nextValue === "on";
           state.interactive.enabled = enabled;
+          syncInteractiveModeSelector();
           vscode.postMessage({
             type: "updateSetting",
             key: "interactive." + state.currentCli,
             value: enabled,
+          });
+        });
+      }
+      if (elements.interactiveModeSelect) {
+        elements.interactiveModeSelect.addEventListener("change", (event) => {
+          const nextMode = event.target.value === "plan" ? "plan" : "coding";
+          state.interactiveMode = nextMode;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "interactiveMode." + state.currentCli,
+            value: nextMode,
           });
         });
       }

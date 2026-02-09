@@ -25,7 +25,7 @@ import {
   runCliStream,
   type RunProcess,
 } from "./cli/commandRunner";
-import { CliName, CLI_LIST, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import { CliName, CLI_LIST, InteractiveMode, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
@@ -206,6 +206,7 @@ type TaskStore = {
 type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
+  interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
 };
 
 type ConfigHeartbeatSnapshot = {
@@ -699,6 +700,18 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key.startsWith("interactiveMode.")) {
+      const cliValue = message.key.slice("interactiveMode.".length);
+      if (isCliName(cliValue) && isInteractiveMode(message.value)) {
+        if (!workspaceSettings.interactiveModeByCli) {
+          workspaceSettings.interactiveModeByCli = {};
+        }
+        workspaceSettings.interactiveModeByCli[cliValue] = message.value;
+        saveWorkspaceSettings(workspaceSettings);
+      }
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
       const nextValue = typeof message.value === "string" ? message.value : "auto";
@@ -736,6 +749,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (!trimmed) {
       return;
     }
+    if (isInteractiveMode(message.interactiveMode)) {
+      if (!workspaceSettings.interactiveModeByCli) {
+        workspaceSettings.interactiveModeByCli = {};
+      }
+      workspaceSettings.interactiveModeByCli[currentCli] = message.interactiveMode;
+      saveWorkspaceSettings(workspaceSettings);
+    }
     recordPromptHistory(trimmed, currentCli);
     await postPanelState();
     await runPrompt(trimmed);
@@ -759,6 +779,7 @@ async function buildPanelState(): Promise<PanelState> {
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
+    interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
       enabled: getInteractiveEnabled(currentCli),
@@ -786,6 +807,7 @@ async function buildPanelStateWithConfigState(
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
+    interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
       enabled: getInteractiveEnabled(currentCli),
@@ -2305,6 +2327,7 @@ async function runContextCompactionCommand(): Promise<void> {
 
   const cwd = resolveWorkspaceCwd();
   const thinkingMode = getThinkingMode(cli);
+  const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
   const args = getCliArgs(cli);
@@ -2365,6 +2388,7 @@ async function runContextCompactionCommand(): Promise<void> {
         args,
         cwd: cwd ?? undefined,
         thinkingMode,
+        interactiveMode,
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
 
@@ -2399,6 +2423,7 @@ async function runContextCompactionCommand(): Promise<void> {
         args,
         cwd: cwd ?? undefined,
         thinkingMode,
+        interactiveMode,
         threadId: null,
       });
 
@@ -2425,7 +2450,7 @@ async function runContextCompactionCommand(): Promise<void> {
               threadId,
               previousThreadId: mappedThreadId,
             });
-            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
+            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode);
           },
         });
       } finally {
@@ -2444,6 +2469,7 @@ async function runContextCompactionCommand(): Promise<void> {
         args,
         cwd: cwd ?? undefined,
         thinkingMode,
+        interactiveMode,
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
@@ -2478,6 +2504,7 @@ async function runContextCompactionCommand(): Promise<void> {
         args,
         cwd: cwd ?? undefined,
         thinkingMode,
+        interactiveMode,
         sessionId: null,
       });
 
@@ -2504,7 +2531,7 @@ async function runContextCompactionCommand(): Promise<void> {
               newSessionId,
               previousSessionId: mappedSessionId,
             });
-            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
+            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode, interactiveMode);
           },
         });
       } finally {
@@ -2561,6 +2588,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? [],
   });
   const thinkingMode = getThinkingMode(cli);
+  const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
   preparePendingLabel(cli, prompt);
 
@@ -2589,6 +2617,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     cli,
     sessionId,
     thinkingMode,
+    interactiveMode,
     cwd,
     promptLength: prompt.length,
   });
@@ -2764,12 +2793,14 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
           })
         : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
             command,
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
             threadId: null,
           });
 
@@ -2826,6 +2857,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
             threadId: null,
           });
 
@@ -2868,7 +2900,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                     originalSessionId: null,
                     mode: "compaction",
                   });
-                  interactiveRunnerManager.setCurrentRunner("codex", threadId, runner, thinkingMode);
+                  interactiveRunnerManager.setCurrentRunner("codex", threadId, runner, thinkingMode, interactiveMode);
                   return;
                 }
                 if (freezeOldThreadId) {
@@ -2885,7 +2917,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                     threadId,
                     previousThreadId: freezeOldThreadId,
                   });
-                  interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode);
+                  interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode);
                 }
               },
             });
@@ -2942,7 +2974,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               originalSessionId: sessionId,
               mode: "normal",
             });
-            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode);
+            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode);
           },
         });
       } finally {
@@ -2962,12 +2994,14 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
           })
         : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
             command: commandForRunner,
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
             sessionId: null,
           });
 
@@ -3020,6 +3054,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
             args,
             cwd: cwd ?? undefined,
             thinkingMode,
+            interactiveMode,
             sessionId: null,
           });
 
@@ -3066,7 +3101,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
                   newSessionId,
                   previousSessionId: oldId,
                 });
-                interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode);
+                interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode, interactiveMode);
               },
             });
           } finally {
@@ -3121,7 +3156,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
               originalSessionId: sessionId,
               mode: "normal",
             });
-            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode);
+            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode);
           },
         });
       } finally {
@@ -3631,6 +3666,10 @@ function isThinkingMode(value: unknown): value is ThinkingMode {
     || value === "xhigh";
 }
 
+function isInteractiveMode(value: unknown): value is InteractiveMode {
+  return value === "coding" || value === "plan";
+}
+
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
   if (cli !== "codex" && mode === "xhigh") {
     return "high";
@@ -3646,6 +3685,18 @@ function getWorkspaceThinkingMode(cli: CliName): ThinkingMode {
     return normalizeThinkingModeForCli(cli, workspaceSettings.thinkingMode);
   }
   return getThinkingMode(cli);
+}
+
+function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
+  const perCli = workspaceSettings.interactiveModeByCli;
+  if (!perCli) {
+    return "coding";
+  }
+  const mode = perCli[cli];
+  if (isInteractiveMode(mode)) {
+    return mode;
+  }
+  return "coding";
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {
@@ -3667,6 +3718,19 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     const currentCli = (parsed as WorkspaceSettings).currentCli;
     if (currentCli && isCliName(currentCli)) {
       result.currentCli = currentCli;
+    }
+    const interactiveModeByCli = (parsed as WorkspaceSettings).interactiveModeByCli;
+    if (interactiveModeByCli && typeof interactiveModeByCli === "object") {
+      const normalized: Partial<Record<CliName, InteractiveMode>> = {};
+      CLI_LIST.forEach((cli) => {
+        const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
+        if (isInteractiveMode(mode)) {
+          normalized[cli] = mode;
+        }
+      });
+      if (Object.keys(normalized).length > 0) {
+        result.interactiveModeByCli = normalized;
+      }
     }
     return result;
   } catch (error) {

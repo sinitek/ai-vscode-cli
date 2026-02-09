@@ -1,7 +1,7 @@
 import * as os from "os";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { CliName, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
@@ -141,6 +141,7 @@ export class ClaudeInteractiveRunner {
       args: string[];
       cwd?: string;
       thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
       sessionId: string | null;
     }
   ) {}
@@ -201,6 +202,7 @@ export class ClaudeInteractiveRunner {
       model,
       cwd,
       maxThinkingTokens,
+      interactiveMode: this.options.interactiveMode,
       sessionId: this.options.sessionId,
       claudeSettingsKeys: Object.keys(claudeSettings),
     });
@@ -208,8 +210,7 @@ export class ClaudeInteractiveRunner {
     const queryOptions: any = {
       cwd,
       model,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
+      permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
       // 设置较大的 maxTurns 限制，避免复杂任务被过早中断
       // SDK 默认值为 10，对于交互模式来说太小了
       maxTurns: 200,
@@ -219,6 +220,10 @@ export class ClaudeInteractiveRunner {
         ...claudeSettings,
       },
     };
+
+    if (queryOptions.permissionMode === "bypassPermissions") {
+      queryOptions.allowDangerouslySkipPermissions = true;
+    }
 
     if (typeof maxThinkingTokens === "number") {
       queryOptions.maxThinkingTokens = maxThinkingTokens;

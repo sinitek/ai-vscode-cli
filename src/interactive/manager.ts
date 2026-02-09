@@ -1,4 +1,4 @@
-import { CliName, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 
@@ -10,6 +10,7 @@ type RunnerEntry =
       sessionId: string;
       runner: CodexInteractiveRunner;
       thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     }
@@ -18,6 +19,7 @@ type RunnerEntry =
       sessionId: string;
       runner: ClaudeInteractiveRunner;
       thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     };
@@ -64,19 +66,21 @@ export class InteractiveRunnerManager {
     cli: "codex" | "claude",
     sessionId: string,
     runner: any,
-    thinkingMode: ThinkingMode
+    thinkingMode: ThinkingMode,
+    interactiveMode: InteractiveMode
   ): void {
     if (this.current && this.current.runner === runner) {
       this.current.sessionId = sessionId;
       this.current.thinkingMode = thinkingMode;
+      this.current.interactiveMode = interactiveMode;
       this.touch();
       return;
     }
     this.disposeAll();
     const entry: RunnerEntry =
       cli === "codex"
-        ? { cli, sessionId, runner, thinkingMode, idleTimer: null, lastUsedAt: Date.now() }
-        : { cli, sessionId, runner, thinkingMode, idleTimer: null, lastUsedAt: Date.now() };
+        ? { cli, sessionId, runner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() }
+        : { cli, sessionId, runner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() };
     this.current = entry;
     this.touch();
   }
@@ -92,9 +96,13 @@ export class InteractiveRunnerManager {
     args: string[];
     cwd?: string;
     thinkingMode: ThinkingMode;
+    interactiveMode: InteractiveMode;
   }): CodexInteractiveRunner {
     if (this.current && this.current.cli === "codex" && this.current.sessionId === options.sessionId) {
-      if (this.current.thinkingMode === options.thinkingMode) {
+      if (
+        this.current.thinkingMode === options.thinkingMode
+        && this.current.interactiveMode === options.interactiveMode
+      ) {
         this.touch();
         return this.current.runner;
       }
@@ -105,6 +113,7 @@ export class InteractiveRunnerManager {
       args: options.args,
       cwd: options.cwd,
       thinkingMode: options.thinkingMode,
+      interactiveMode: options.interactiveMode,
       threadId: options.threadId,
     });
     this.current = {
@@ -112,6 +121,7 @@ export class InteractiveRunnerManager {
       sessionId: options.sessionId,
       runner,
       thinkingMode: options.thinkingMode,
+      interactiveMode: options.interactiveMode,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -126,9 +136,13 @@ export class InteractiveRunnerManager {
     args: string[];
     cwd?: string;
     thinkingMode: ThinkingMode;
+    interactiveMode: InteractiveMode;
   }): ClaudeInteractiveRunner {
     if (this.current && this.current.cli === "claude" && this.current.sessionId === options.sessionId) {
-      if (this.current.thinkingMode === options.thinkingMode) {
+      if (
+        this.current.thinkingMode === options.thinkingMode
+        && this.current.interactiveMode === options.interactiveMode
+      ) {
         // 确保 runner 的 sessionId 与最新的 mappedSessionId 一致
         // 如果 runner 内部已有 sessionId，优先使用它（因为它是 SDK 返回的真实 session）
         // 否则使用 mappedSessionId
@@ -147,6 +161,7 @@ export class InteractiveRunnerManager {
       args: options.args,
       cwd: options.cwd,
       thinkingMode: options.thinkingMode,
+      interactiveMode: options.interactiveMode,
       sessionId: options.mappedSessionId,
     });
     this.current = {
@@ -154,6 +169,7 @@ export class InteractiveRunnerManager {
       sessionId: options.sessionId,
       runner,
       thinkingMode: options.thinkingMode,
+      interactiveMode: options.interactiveMode,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };

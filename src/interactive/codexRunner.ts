@@ -1,4 +1,4 @@
-import { CliName, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { dynamicImport } from "./dynamicImport";
 import * as fs from "fs";
 import * as path from "path";
@@ -154,7 +154,12 @@ function mapCodexReasoningEffort(mode: ThinkingMode): string {
   return "medium";
 }
 
-function buildCodexThreadOptions(args: string[], cwd: string | undefined, thinkingMode: ThinkingMode): CodexThreadOptions {
+function buildCodexThreadOptions(
+  args: string[],
+  cwd: string | undefined,
+  thinkingMode: ThinkingMode,
+  interactiveMode: InteractiveMode
+): CodexThreadOptions {
   const options: CodexThreadOptions = {
     workingDirectory: cwd,
     skipGitRepoCheck: true,
@@ -202,6 +207,12 @@ function buildCodexThreadOptions(args: string[], cwd: string | undefined, thinki
     options.networkAccessEnabled = true;
   }
 
+  if (interactiveMode === "plan") {
+    // Plan mode keeps the session interactive but enforces a read-only stance.
+    options.sandboxMode = "read-only";
+    options.approvalPolicy = "untrusted";
+  }
+
   return options;
 }
 
@@ -246,6 +257,7 @@ export class CodexInteractiveRunner {
       args: string[];
       cwd?: string;
       thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
       threadId: string | null;
     }
   ) {}
@@ -283,7 +295,8 @@ export class CodexInteractiveRunner {
     const threadOptions = buildCodexThreadOptions(
       this.options.args,
       this.options.cwd,
-      this.options.thinkingMode
+      this.options.thinkingMode,
+      this.options.interactiveMode
     );
     if (this.options.threadId) {
       this.thread = this.codex.resumeThread(this.options.threadId, threadOptions);

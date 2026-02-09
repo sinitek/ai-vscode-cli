@@ -251,9 +251,10 @@ export function activate(context: vscode.ExtensionContext) {
 ### 行为概述
 
 - 默认开启（Beta）：同一会话内多轮对话复用 SDK Runner（避免“一问一进程”的冷启动）。
+- 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。
 - 自动降级：SDK 初始化/运行失败时自动降级回现有“一问一进程”模式。
 - 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
-- 空闲释放：10 分钟无交互自动释放 Runner。
+- 空闲释放：24 小时无交互自动释放 Runner。
 - 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
 
 ### 设置项（工作区级）
@@ -262,6 +263,12 @@ export function activate(context: vscode.ExtensionContext) {
 - `sinitek-cli-tools.interactive.claude`：是否开启 Claude 交互模式（默认 true）
 
 面板内会显示“交互：开启/关闭(Beta)”下拉，修改后会写入当前工作区设置（scope=resource）。
+
+输入区“配置”按钮左侧还提供 `coding / plan` 模式切换：
+- `coding`：保持当前可执行编辑/工具调用策略。
+- `plan`：
+  - Codex 交互 Runner 强制 `sandbox=read-only` + `approval=untrusted`。
+  - Claude 交互 Runner 使用 `permissionMode=plan`。
 
 ### 上下文压缩（手动触发）
 

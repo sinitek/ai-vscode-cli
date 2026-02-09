@@ -1,4 +1,4 @@
-import { CliName, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 
 export type ConfigSummary = {
@@ -17,7 +17,7 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
-  | { type: "sendPrompt"; prompt: string }
+  | { type: "sendPrompt"; prompt: string; interactiveMode?: InteractiveMode }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openConfig" }
@@ -79,6 +79,7 @@ export type PanelState = {
     supported: boolean;
     enabled: boolean;
   };
+  interactiveMode: InteractiveMode;
   rulePaths: {
     global: Record<CliName, string>;
     project: Record<CliName, string | null>;

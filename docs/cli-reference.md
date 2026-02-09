@@ -10,6 +10,8 @@
 - Claude 交互模式会尝试将 `sinitek-cli-tools.commands.claude`（含默认值 `claude`）解析为实际可执行路径，以复用全局登录与配置；解析失败则回退到 SDK 内置 CLI。
 - Windows 下若解析到 `.cmd/.bat`，交互模式会忽略该覆盖并回退到 SDK 内置 `cli.js`（SDK v2 交互会话不支持直接 spawn `.cmd/.bat`，否则可能触发 `spawn EINVAL`）。
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
+- 交互模式下支持 `coding / plan` 两种会话模式，默认 `coding`。面板入口位于输入区“配置”按钮左侧。
+- `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
 - 切换思考模式后，会在下一次交互前重建 Runner，并沿用已有会话/线程 ID 继续对话。
 - SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
 - 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
