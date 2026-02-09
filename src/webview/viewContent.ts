@@ -177,10 +177,10 @@ const WEBVIEW_I18N = {
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
-    contextTagCurrentFile: "\u5f53\u524d\u6587\u4ef6",
-    contextTagSelection: "\u9009\u4e2d\u5185\u5bb9",
-    contextTagSelectionWithRange: "\u9009\u4e2d\u5185\u5bb9\uff08{range}\uff09",
-    contextTagRemoveAria: "\u79fb\u9664\u4e0a\u4e0b\u6587\uff1a{label}",
+    contextTagCurrentFile: "Current File",
+    contextTagSelection: "Selection",
+    contextTagSelectionWithRange: "Selection ({range})",
+    contextTagRemoveAria: "Remove context: {label}",
     thinkingModeAria: "思考模式",
     thinkingOptionOff: "思考：关闭",
     thinkingOptionLow: "思考：低",
@@ -338,6 +338,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         --radius-lg: 12px;
         --gap-sm: 8px;
         --gap-md: 16px;
+        --panel-content-padding: 16px;
       }
       body {
         font-family: var(--vscode-font-family);
@@ -423,9 +424,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex: 1;
         overflow-y: auto;
         padding: 20px 16px;
+        margin: 0 var(--panel-content-padding);
         background: var(--vscode-editor-background);
         min-height: 0;
         box-sizing: border-box;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
+        border-radius: 10px;
       }
       .messages {
         display: flex;
@@ -465,8 +469,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
         box-sizing: border-box;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         white-space: pre-wrap;
+      }
+      .message.user .user-context-tags {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .message.user .user-context-tag {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        border: 1px solid var(--vscode-inputOption-activeBorder, var(--vscode-input-border));
+        background: var(--vscode-inputOption-activeBackground, var(--vscode-editorWidget-background));
+        color: var(--vscode-inputOption-activeForeground, var(--vscode-input-foreground));
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       /* Assistant Message - Clean, width-filling */
@@ -475,7 +500,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .message.assistant .bubble {
         background: transparent;
-        border: 1px solid var(--vscode-widget-border);
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         border-radius: var(--radius-md);
         padding: 12px;
         max-width: 100%;
@@ -860,7 +885,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       /* Input Area */
       .input-area {
-        padding: 16px;
+        padding: 16px var(--panel-content-padding);
         background: var(--vscode-editor-background);
       }
       
@@ -902,7 +927,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       /* Input Box Container */
       .input-box {
-        border: 1px solid var(--vscode-input-border);
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.55)));
         background: var(--vscode-input-background);
         border-radius: 10px;
         padding: 12px;
@@ -911,6 +936,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 10px;
         transition: border-color 0.2s, box-shadow 0.2s;
         position: relative;
+        box-shadow: 0 0 0 1px var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
       }
       .input-box:focus-within {
         border-color: var(--vscode-focusBorder);
@@ -2028,6 +2054,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           includeSelection: false,
           dismissedFileKey: "",
           dismissedSelectionKey: "",
+          autoIncludeArmed: true,
         },
       };
 
@@ -2141,16 +2168,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         };
       }
 
+      function getFileTagKeyFor(editorContext) {
+        if (!editorContext) {
+          return "";
+        }
+        return editorContext.filePath || editorContext.fileLabel || "";
+      }
+
+      function getSelectionTagKeyFor(editorContext) {
+        if (!editorContext || !editorContext.hasSelection) {
+          return "";
+        }
+        const base = getFileTagKeyFor(editorContext);
+        return base + "::" + (editorContext.selectionLabel || "selection");
+      }
+
       function getCurrentFileTagKey() {
-        return state.editorContext.filePath || state.editorContext.fileLabel || "";
+        return getFileTagKeyFor(state.editorContext);
       }
 
       function getSelectionTagKey() {
-        if (!state.editorContext.hasSelection) {
-          return "";
-        }
-        const base = state.editorContext.filePath || state.editorContext.fileLabel || "";
-        return base + "::" + (state.editorContext.selectionLabel || "selection");
+        return getSelectionTagKeyFor(state.editorContext);
       }
 
       function syncPromptContextWithEditorContext(options = {}) {
@@ -2158,6 +2196,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (resetDismissed) {
           state.promptContext.dismissedFileKey = "";
           state.promptContext.dismissedSelectionKey = "";
+        }
+
+        if (!state.promptContext.autoIncludeArmed) {
+          return;
         }
 
         const fileKey = getCurrentFileTagKey();
@@ -2251,8 +2293,51 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.promptContextTags.style.display = "flex";
       }
 
+      function rearmPromptContextOnEditorChange(previousContext, nextContext) {
+        const previousFileKey = getFileTagKeyFor(previousContext);
+        const previousSelectionKey = getSelectionTagKeyFor(previousContext);
+        const nextFileKey = getFileTagKeyFor(nextContext);
+        const nextSelectionKey = getSelectionTagKeyFor(nextContext);
+
+        if (previousFileKey !== nextFileKey) {
+          if (!nextFileKey) {
+            state.promptContext.includeCurrentFile = false;
+            state.promptContext.dismissedFileKey = "";
+          } else if (state.promptContext.dismissedFileKey === nextFileKey) {
+            state.promptContext.includeCurrentFile = false;
+          } else {
+            state.promptContext.includeCurrentFile = true;
+            if (state.promptContext.dismissedFileKey) {
+              state.promptContext.dismissedFileKey = "";
+            }
+          }
+        }
+
+        if (previousSelectionKey !== nextSelectionKey) {
+          if (!nextSelectionKey) {
+            state.promptContext.includeSelection = false;
+            state.promptContext.dismissedSelectionKey = "";
+          } else if (state.promptContext.dismissedSelectionKey === nextSelectionKey) {
+            state.promptContext.includeSelection = false;
+          } else {
+            state.promptContext.includeSelection = true;
+            if (state.promptContext.dismissedSelectionKey) {
+              state.promptContext.dismissedSelectionKey = "";
+            }
+          }
+        }
+      }
+
       function applyEditorContext(payload, options = {}) {
-        state.editorContext = normalizeEditorContext(payload);
+        const nextEditorContext = normalizeEditorContext(payload);
+        const previousEditorContext = state.editorContext;
+        const shouldAutoRearm = options.autoRearm !== false;
+
+        if (shouldAutoRearm && !state.promptContext.autoIncludeArmed) {
+          rearmPromptContextOnEditorChange(previousEditorContext, nextEditorContext);
+        }
+
+        state.editorContext = nextEditorContext;
         syncPromptContextWithEditorContext(options);
         renderPromptContextTags();
       }
@@ -2296,8 +2381,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         };
       }
 
-      function resetPromptContextForNextPrompt() {
+      function armPromptContextForConversationStart() {
+        state.promptContext.autoIncludeArmed = true;
         syncPromptContextWithEditorContext({ resetDismissed: true });
+        renderPromptContextTags();
+      }
+
+      function resetPromptContextForNextPrompt() {
+        state.promptContext.autoIncludeArmed = false;
+        state.promptContext.includeCurrentFile = false;
+        state.promptContext.includeSelection = false;
         renderPromptContextTags();
       }
 
@@ -2600,6 +2693,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             state.messages = [];
             renderMessages();
             closeHistory();
+            armPromptContextForConversationStart();
             vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
           });
 
@@ -2816,6 +2910,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderMessages();
       }
 
+      function renderUserMessageContent(message) {
+        const content = escapeHtml(message.content || "");
+        const tags = Array.isArray(message.contextTags)
+          ? message.contextTags.filter((tag) => typeof tag === "string" && tag.trim())
+          : [];
+        if (!tags.length) {
+          return content;
+        }
+        const tagsHtml = tags
+          .map((tag) => '<span class="user-context-tag" title="' + escapeHtml(tag) + '">' + escapeHtml(tag) + '</span>')
+          .join("");
+        return '<div class="user-message-content">' + content + '</div>' +
+          '<div class="user-context-tags">' + tagsHtml + '</div>';
+      }
+
       function renderMessageContent(message) {
         if (message.role === "system") {
           const content = escapeHtml(message.content || "");
@@ -2835,7 +2944,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return content;
         }
         if (message.role === "user") {
-          return escapeHtml(message.content || "");
+          return renderUserMessageContent(message);
         }
         if (message.role === "trace") {
           const content = renderTraceContent(message.content || "");
@@ -3474,7 +3583,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           suppressQueueFlushOnce = true;
         }
         resetTaskListForRunStart();
-        appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
         vscode.postMessage({
           type: "sendPrompt",
           prompt,
@@ -3763,6 +3871,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       elements.currentCli.addEventListener("change", (event) => {
+        armPromptContextForConversationStart();
         vscode.postMessage({ type: "selectCli", cli: event.target.value });
       });
 
@@ -3786,6 +3895,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.taskList.startIndex = 0;
         renderMessages();
         renderTaskList();
+        armPromptContextForConversationStart();
         vscode.postMessage({ type: "newSession" });
       });
 

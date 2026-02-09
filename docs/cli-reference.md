@@ -183,11 +183,12 @@
 
 ## Auto Context Tag (Current File / Selection)
 - Two removable default tags are shown above the input: `Current File` and `Selection`.
-- If a tag is kept, its context is included automatically for the next send; removing a tag only affects the current pending prompt.
+- Tags are auto-included once, then cleared after a successful send; changing active file/selection auto-arms for next send. If a tag is manually removed, it only re-arms after its corresponding context actually changes.
 - Webview adds `contextOptions` to `sendPrompt`:
   - `includeCurrentFile: boolean`
   - `includeSelection: boolean`
-- Extension injects this context before sending to CLI, with limits:
-  - current file content: up to 12000 chars
-  - selected content: up to 6000 chars
+- Extension injects references before sending to CLI (uses `@<relative-path>` instead of raw file content).
+  - current file -> `@<relative-path>`
+  - selection -> range hint like `Selected range in @<relative-path>: Lx:Cx-Ly:Cy`
+- User bubble only shows compact context tags (similar to input tags), avoiding long context text in chat history.
 - Extension syncs editor state through `state.editorContext` and incremental `editorContext` messages.

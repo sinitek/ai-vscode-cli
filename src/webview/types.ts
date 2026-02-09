@@ -83,6 +83,7 @@ export type ChatMessage = {
   sequence?: number;
   kind?: "thinking" | "normal";
   merge?: boolean;
+  contextTags?: string[];
 };
 
 export type PanelState = {

@@ -134,9 +134,6 @@ const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
-const AUTO_CONTEXT_FILE_CHAR_LIMIT = 12000;
-const AUTO_CONTEXT_SELECTION_CHAR_LIMIT = 6000;
-const AUTO_CONTEXT_TRUNCATE_SUFFIX = "\n...[truncated]";
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
 };
@@ -775,9 +772,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       workspaceSettings.interactiveModeByCli[currentCli] = message.interactiveMode;
       saveWorkspaceSettings(workspaceSettings);
     }
+    const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
     const promptInput: PromptRunInput = {
       displayPrompt: trimmed,
-      modelPrompt: buildPromptWithAutoContext(trimmed, message.contextOptions),
+      modelPrompt: contextBuild.modelPrompt,
+      contextTags: contextBuild.contextTags,
     };
     recordPromptHistory(trimmed, currentCli);
     await postPanelState();
@@ -1612,6 +1611,12 @@ function isCliName(value: string): value is CliName {
 type PromptRunInput = {
   displayPrompt: string;
   modelPrompt: string;
+  contextTags: string[];
+};
+
+type PromptContextBuildResult = {
+  modelPrompt: string;
+  contextTags: string[];
 };
 
 type ErrorInfo = {
@@ -1727,6 +1732,9 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
 async function runPromptOneShot(input: PromptRunInput): Promise<void> {
   const prompt = input.displayPrompt;
   const modelPrompt = input.modelPrompt || prompt;
+  const contextTags = Array.isArray(input.contextTags)
+    ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
   if (!prompt) {
     return;
   }
@@ -1779,6 +1787,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
     thinkingMode,
   });
   const userMessageId = createMessageId();
+  const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
   const processLabel = buildProcessLabel(currentCli, sessionId ?? runId);
@@ -1791,7 +1800,20 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
     id: userMessageId,
     role: "user",
     content: prompt,
-    createdAt: Date.now(),
+    createdAt: userCreatedAt,
+    merge: false,
+    contextTags,
+  });
+  sendPanelMessage({
+    type: "appendMessage",
+    message: {
+      id: userMessageId,
+      role: "user",
+      content: prompt,
+      createdAt: userCreatedAt,
+      merge: false,
+      contextTags,
+    },
   });
   const shouldDeferAssistant = true;
   if (!shouldDeferAssistant) {
@@ -2614,6 +2636,9 @@ async function runContextCompactionCommand(): Promise<void> {
 async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   const prompt = input.displayPrompt;
   const modelPrompt = input.modelPrompt || prompt;
+  const contextTags = Array.isArray(input.contextTags)
+    ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
   if (!prompt) {
     return;
   }
@@ -2668,6 +2693,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   const shouldCompact = false;
 
   const userMessageId = createMessageId();
+  const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
   applyProcessTitle(runId, cli, sessionId);
@@ -2680,7 +2706,20 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
     id: userMessageId,
     role: "user",
     content: prompt,
-    createdAt: Date.now(),
+    createdAt: userCreatedAt,
+    merge: false,
+    contextTags,
+  });
+  sendPanelMessage({
+    type: "appendMessage",
+    message: {
+      id: userMessageId,
+      role: "user",
+      content: prompt,
+      createdAt: userCreatedAt,
+      merge: false,
+      contextTags,
+    },
   });
   activeAssistantMessageId = undefined;
   activeMessageIndex = null;
@@ -3210,7 +3249,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
     }
 
     // Unsupported: fall back to one-shot.
-    await runPromptOneShot({ displayPrompt: prompt, modelPrompt });
+    await runPromptOneShot({ displayPrompt: prompt, modelPrompt, contextTags });
   } catch (error) {
     if (activeRunId !== runId) {
       // This run was preempted/stopped; ignore errors from aborted streams.
@@ -4971,20 +5010,6 @@ function formatSelectionLabel(selection: vscode.Selection): string {
   return `L${startLine}:${startChar}-L${endLine}:${endChar}`;
 }
 
-function truncateAutoContext(
-  text: string,
-  limit: number
-): { text: string; truncated: boolean } {
-  if (text.length <= limit) {
-    return { text, truncated: false };
-  }
-  return {
-    text: text.slice(0, Math.max(0, limit - AUTO_CONTEXT_TRUNCATE_SUFFIX.length)) +
-      AUTO_CONTEXT_TRUNCATE_SUFFIX,
-    truncated: true,
-  };
-}
-
 function buildEditorContextState(): EditorContextState {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -5007,12 +5032,8 @@ function buildEditorContextState(): EditorContextState {
 
 type ActiveEditorPromptContext = {
   fileLabel: string;
-  languageId: string;
-  fileText: string;
-  fileTextTruncated: boolean;
-  selectionText: string;
+  hasSelection: boolean;
   selectionLabel: string | null;
-  selectionTruncated: boolean;
 };
 
 function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
@@ -5021,60 +5042,58 @@ function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
     return null;
   }
   const fileLabel = getEditorDisplayPath(editor.document);
-  const fileTextResult = truncateAutoContext(editor.document.getText(), AUTO_CONTEXT_FILE_CHAR_LIMIT);
   const selection = getPrimaryNonEmptySelection(editor);
-  const selectionRawText = selection ? editor.document.getText(selection) : "";
-  const selectionTextResult = truncateAutoContext(selectionRawText, AUTO_CONTEXT_SELECTION_CHAR_LIMIT);
   return {
     fileLabel,
-    languageId: editor.document.languageId || "text",
-    fileText: fileTextResult.text,
-    fileTextTruncated: fileTextResult.truncated,
-    selectionText: selectionTextResult.text,
+    hasSelection: Boolean(selection),
     selectionLabel: selection ? formatSelectionLabel(selection) : null,
-    selectionTruncated: selectionTextResult.truncated,
   };
 }
 
-function buildPromptWithAutoContext(prompt: string, options?: PromptContextOptions): string {
+function buildPromptWithAutoContext(
+  prompt: string,
+  options?: PromptContextOptions
+): PromptContextBuildResult {
   if (!prompt) {
-    return prompt;
+    return { modelPrompt: prompt, contextTags: [] };
   }
   const normalized = normalizePromptContextOptions(options);
   if (!normalized.includeCurrentFile && !normalized.includeSelection) {
-    return prompt;
+    return { modelPrompt: prompt, contextTags: [] };
   }
   const context = getActiveEditorPromptContext();
   if (!context) {
-    return prompt;
+    return { modelPrompt: prompt, contextTags: [] };
   }
-  const sections: string[] = [];
+
+  const referenceLines: string[] = [];
+  const contextTags: string[] = [];
+
   if (normalized.includeCurrentFile) {
-    const fileSection = [
-      `[Current File] ${context.fileLabel}`,
-      `\`\`\`${context.languageId}`,
-      context.fileText,
-      "```",
-    ];
-    if (context.fileTextTruncated) {
-      fileSection.push("[Current file content truncated]");
+    referenceLines.push(`@${context.fileLabel}`);
+    contextTags.push(`Current File: ${context.fileLabel}`);
+  }
+
+  if (normalized.includeSelection && context.hasSelection) {
+    const selectionTag = context.selectionLabel
+      ? `Selection: ${context.selectionLabel}`
+      : "Selection";
+    contextTags.push(selectionTag);
+    if (context.selectionLabel) {
+      referenceLines.push(`Selected range in @${context.fileLabel}: ${context.selectionLabel}`);
+    } else {
+      referenceLines.push(`Selected range in @${context.fileLabel}`);
     }
-    sections.push(fileSection.join("\n"));
   }
-  if (normalized.includeSelection && context.selectionText) {
-    const selectionTitle = context.selectionLabel
-      ? `[Selection ${context.selectionLabel}] ${context.fileLabel}`
-      : `[Selection] ${context.fileLabel}`;
-    const selectionSection = [selectionTitle, "```", context.selectionText, "```"];
-    if (context.selectionTruncated) {
-      selectionSection.push("[Selection content truncated]");
-    }
-    sections.push(selectionSection.join("\n"));
+
+  if (!referenceLines.length) {
+    return { modelPrompt: prompt, contextTags: [] };
   }
-  if (!sections.length) {
-    return prompt;
-  }
-  return [prompt, "", "----", "Auto Context (from VS Code):", ...sections].join("\n\n");
+
+  return {
+    modelPrompt: [prompt, "", "----", "Auto Context References:", ...referenceLines].join("\n"),
+    contextTags,
+  };
 }
 
 function resolveWorkspaceCwd(): string | undefined {
