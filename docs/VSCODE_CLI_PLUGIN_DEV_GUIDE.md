@@ -352,3 +352,15 @@ py -3.12 vscode_extension_win.py package
    - Claude 交互模式会尝试解析 PATH 中的 `claude` 可执行文件（Windows `.cmd/.bat` 通过 `cmd.exe` 启动），请确保 CLI 已安装且 PATH 可见。
    - 如果 API key 仅在 shell profile 中设置，请确保 VS Code 启动环境可读取；或把 key 写入系统环境变量 / 项目内 `.claude/settings.json`。
    - 可临时关闭 `sinitek-cli-tools.interactive.claude` 验证是否为交互模式差异导致。
+
+
+## Auto Context Tag (Current File / Selection)
+- Two removable default tags are shown above the input: `Current File` and `Selection`.
+- If a tag is kept, its context is included automatically for the next send; removing a tag only affects the current pending prompt.
+- Webview adds `contextOptions` to `sendPrompt`:
+  - `includeCurrentFile: boolean`
+  - `includeSelection: boolean`
+- Extension injects this context before sending to CLI, with limits:
+  - current file content: up to 12000 chars
+  - selected content: up to 6000 chars
+- Extension syncs editor state through `state.editorContext` and incremental `editorContext` messages.

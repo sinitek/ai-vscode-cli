@@ -30,8 +30,10 @@ import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
+  EditorContextState,
   PanelMessage,
   PanelState,
+  PromptContextOptions,
   PromptHistoryItem,
   SessionSummary,
   UploadFilePayload,
@@ -132,6 +134,9 @@ const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
+const AUTO_CONTEXT_FILE_CHAR_LIMIT = 12000;
+const AUTO_CONTEXT_SELECTION_CHAR_LIMIT = 6000;
+const AUTO_CONTEXT_TRUNCATE_SUFFIX = "\n...[truncated]";
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
 };
@@ -321,6 +326,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       ensureWorkspaceSessionStore();
       void postPanelState();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      postEditorContextState();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      if (event.textEditor === vscode.window.activeTextEditor) {
+        postEditorContextState();
+      }
     })
   );
 
@@ -756,9 +775,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       workspaceSettings.interactiveModeByCli[currentCli] = message.interactiveMode;
       saveWorkspaceSettings(workspaceSettings);
     }
+    const promptInput: PromptRunInput = {
+      displayPrompt: trimmed,
+      modelPrompt: buildPromptWithAutoContext(trimmed, message.contextOptions),
+    };
     recordPromptHistory(trimmed, currentCli);
     await postPanelState();
-    await runPrompt(trimmed);
+    await runPrompt(promptInput);
     return;
   }
 
@@ -791,6 +814,7 @@ async function buildPanelState(): Promise<PanelState> {
     sessionState: buildSessionState(currentCli),
     promptHistory: buildPromptHistoryState(),
     configState,
+    editorContext: buildEditorContextState(),
   };
 }
 
@@ -819,6 +843,7 @@ async function buildPanelStateWithConfigState(
     sessionState: buildSessionState(currentCli),
     promptHistory: buildPromptHistoryState(),
     configState,
+    editorContext: buildEditorContextState(),
   };
 }
 
@@ -826,6 +851,13 @@ async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
   updateConfigHeartbeatSnapshot(state.currentCli, state.configState);
   viewProvider?.postState(state);
+}
+
+function postEditorContextState(): void {
+  viewProvider?.postMessage({
+    type: "editorContext",
+    payload: buildEditorContextState(),
+  });
 }
 
 function shouldRefreshConfigState(
@@ -1577,6 +1609,11 @@ function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
 
+type PromptRunInput = {
+  displayPrompt: string;
+  modelPrompt: string;
+};
+
 type ErrorInfo = {
   message: string;
   name?: string;
@@ -1640,7 +1677,8 @@ function logCliStartup(payload: {
   void logEssential("cli-startup", payload);
 }
 
-async function runPrompt(prompt: string): Promise<void> {
+async function runPrompt(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
@@ -1650,7 +1688,7 @@ async function runPrompt(prompt: string): Promise<void> {
 
   if (shouldUseInteractive) {
     try {
-      await runPromptInteractive(prompt);
+      await runPromptInteractive(input);
       return;
     } catch (error) {
       const info = getErrorInfo(error);
@@ -1683,10 +1721,12 @@ async function runPrompt(prompt: string): Promise<void> {
     }
   }
 
-  await runPromptOneShot(prompt);
+  await runPromptOneShot(input);
 }
 
-async function runPromptOneShot(prompt: string): Promise<void> {
+async function runPromptOneShot(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
+  const modelPrompt = input.modelPrompt || prompt;
   if (!prompt) {
     return;
   }
@@ -1703,7 +1743,7 @@ async function runPromptOneShot(prompt: string): Promise<void> {
   applyThinkingWorkspaceFiles(currentCli, thinkingMode, cwd);
   preparePendingLabel(currentCli, prompt);
   const sessionId = getCurrentSessionId(currentCli);
-  const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, prompt);
+  const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
   const logModelOutput = (content: string): void => {
     if (!debugLogging) {
@@ -2571,7 +2611,9 @@ async function runContextCompactionCommand(): Promise<void> {
   }
 }
 
-async function runPromptInteractive(prompt: string): Promise<void> {
+async function runPromptInteractive(input: PromptRunInput): Promise<void> {
+  const prompt = input.displayPrompt;
+  const modelPrompt = input.modelPrompt || prompt;
   if (!prompt) {
     return;
   }
@@ -2593,7 +2635,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
   preparePendingLabel(cli, prompt);
 
   const sessionId = getCurrentSessionId(cli);
-  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, prompt, { includeSuffix: false });
+  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
   const args = getCliArgs(cli);
   const command = getCliCommand(cli);
@@ -2620,6 +2662,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     interactiveMode,
     cwd,
     promptLength: prompt.length,
+    modelPromptLength: modelPrompt.length,
   });
 
   const shouldCompact = false;
@@ -3167,7 +3210,7 @@ async function runPromptInteractive(prompt: string): Promise<void> {
     }
 
     // Unsupported: fall back to one-shot.
-    await runPromptOneShot(prompt);
+    await runPromptOneShot({ displayPrompt: prompt, modelPrompt });
   } catch (error) {
     if (activeRunId !== runId) {
       // This run was preempted/stopped; ignore errors from aborted streams.
@@ -4883,6 +4926,155 @@ function extractClaudeSessionId(payload: Record<string, unknown>): string | unde
     }
   }
   return undefined;
+}
+
+function normalizePromptContextOptions(
+  options?: PromptContextOptions
+): Required<PromptContextOptions> {
+  return {
+    includeCurrentFile: options?.includeCurrentFile !== false,
+    includeSelection: options?.includeSelection !== false,
+  };
+}
+
+function getEditorDisplayPath(document: vscode.TextDocument): string {
+  const relativePath = vscode.workspace.asRelativePath(document.uri, false);
+  if (relativePath) {
+    return relativePath.replace(/\\/g, "/");
+  }
+  if (document.fileName) {
+    return document.fileName.replace(/\\/g, "/");
+  }
+  return document.uri.toString(true);
+}
+
+function getPrimaryNonEmptySelection(editor: vscode.TextEditor): vscode.Selection | null {
+  const selections = Array.isArray(editor.selections) && editor.selections.length
+    ? editor.selections
+    : [editor.selection];
+  for (const selection of selections) {
+    if (!selection.isEmpty) {
+      return selection;
+    }
+  }
+  return null;
+}
+
+function formatSelectionLabel(selection: vscode.Selection): string {
+  const startLine = selection.start.line + 1;
+  const startChar = selection.start.character + 1;
+  const endLine = selection.end.line + 1;
+  const endChar = selection.end.character + 1;
+  if (startLine === endLine) {
+    return `L${startLine}:${startChar}-${endChar}`;
+  }
+  return `L${startLine}:${startChar}-L${endLine}:${endChar}`;
+}
+
+function truncateAutoContext(
+  text: string,
+  limit: number
+): { text: string; truncated: boolean } {
+  if (text.length <= limit) {
+    return { text, truncated: false };
+  }
+  return {
+    text: text.slice(0, Math.max(0, limit - AUTO_CONTEXT_TRUNCATE_SUFFIX.length)) +
+      AUTO_CONTEXT_TRUNCATE_SUFFIX,
+    truncated: true,
+  };
+}
+
+function buildEditorContextState(): EditorContextState {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return {
+      filePath: null,
+      fileLabel: null,
+      hasSelection: false,
+      selectionLabel: null,
+    };
+  }
+  const fileLabel = getEditorDisplayPath(editor.document);
+  const selection = getPrimaryNonEmptySelection(editor);
+  return {
+    filePath: fileLabel,
+    fileLabel,
+    hasSelection: Boolean(selection),
+    selectionLabel: selection ? formatSelectionLabel(selection) : null,
+  };
+}
+
+type ActiveEditorPromptContext = {
+  fileLabel: string;
+  languageId: string;
+  fileText: string;
+  fileTextTruncated: boolean;
+  selectionText: string;
+  selectionLabel: string | null;
+  selectionTruncated: boolean;
+};
+
+function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return null;
+  }
+  const fileLabel = getEditorDisplayPath(editor.document);
+  const fileTextResult = truncateAutoContext(editor.document.getText(), AUTO_CONTEXT_FILE_CHAR_LIMIT);
+  const selection = getPrimaryNonEmptySelection(editor);
+  const selectionRawText = selection ? editor.document.getText(selection) : "";
+  const selectionTextResult = truncateAutoContext(selectionRawText, AUTO_CONTEXT_SELECTION_CHAR_LIMIT);
+  return {
+    fileLabel,
+    languageId: editor.document.languageId || "text",
+    fileText: fileTextResult.text,
+    fileTextTruncated: fileTextResult.truncated,
+    selectionText: selectionTextResult.text,
+    selectionLabel: selection ? formatSelectionLabel(selection) : null,
+    selectionTruncated: selectionTextResult.truncated,
+  };
+}
+
+function buildPromptWithAutoContext(prompt: string, options?: PromptContextOptions): string {
+  if (!prompt) {
+    return prompt;
+  }
+  const normalized = normalizePromptContextOptions(options);
+  if (!normalized.includeCurrentFile && !normalized.includeSelection) {
+    return prompt;
+  }
+  const context = getActiveEditorPromptContext();
+  if (!context) {
+    return prompt;
+  }
+  const sections: string[] = [];
+  if (normalized.includeCurrentFile) {
+    const fileSection = [
+      `[Current File] ${context.fileLabel}`,
+      `\`\`\`${context.languageId}`,
+      context.fileText,
+      "```",
+    ];
+    if (context.fileTextTruncated) {
+      fileSection.push("[Current file content truncated]");
+    }
+    sections.push(fileSection.join("\n"));
+  }
+  if (normalized.includeSelection && context.selectionText) {
+    const selectionTitle = context.selectionLabel
+      ? `[Selection ${context.selectionLabel}] ${context.fileLabel}`
+      : `[Selection] ${context.fileLabel}`;
+    const selectionSection = [selectionTitle, "```", context.selectionText, "```"];
+    if (context.selectionTruncated) {
+      selectionSection.push("[Selection content truncated]");
+    }
+    sections.push(selectionSection.join("\n"));
+  }
+  if (!sections.length) {
+    return prompt;
+  }
+  return [prompt, "", "----", "Auto Context (from VS Code):", ...sections].join("\n\n");
 }
 
 function resolveWorkspaceCwd(): string | undefined {

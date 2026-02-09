@@ -179,3 +179,15 @@
 
 思考模式（非交互）：
 - 使用 `--print` 非交互时，可用 `--max-thinking-tokens` 控制思考 token 数；设为 `0` 可视为关闭。
+
+
+## Auto Context Tag (Current File / Selection)
+- Two removable default tags are shown above the input: `Current File` and `Selection`.
+- If a tag is kept, its context is included automatically for the next send; removing a tag only affects the current pending prompt.
+- Webview adds `contextOptions` to `sendPrompt`:
+  - `includeCurrentFile: boolean`
+  - `includeSelection: boolean`
+- Extension injects this context before sending to CLI, with limits:
+  - current file content: up to 12000 chars
+  - selected content: up to 6000 chars
+- Extension syncs editor state through `state.editorContext` and incremental `editorContext` messages.
