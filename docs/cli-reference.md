@@ -179,3 +179,16 @@
 
 思考模式（非交互）：
 - 使用 `--print` 非交互时，可用 `--max-thinking-tokens` 控制思考 token 数；设为 `0` 可视为关闭。
+
+
+## Auto Context Tag (Current File / Selection)
+- Two removable default tags are shown above the input: `Current File` and `Selection`.
+- Tags are auto-included once, then cleared after a successful send; changing active file/selection auto-arms for next send. If a tag is manually removed, it only re-arms after its corresponding context actually changes.
+- Webview adds `contextOptions` to `sendPrompt`:
+  - `includeCurrentFile: boolean`
+  - `includeSelection: boolean`
+- Extension injects references before sending to CLI (uses `@<relative-path>` instead of raw file content).
+  - current file -> `@<relative-path>`
+  - selection -> range hint like `Selected range in @<relative-path>: Lx:Cx-Ly:Cy`
+- User bubble only shows compact context tags (similar to input tags), avoiding long context text in chat history.
+- Extension syncs editor state through `state.editorContext` and incremental `editorContext` messages.

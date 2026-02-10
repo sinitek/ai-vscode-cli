@@ -26,6 +26,10 @@ const WEBVIEW_I18N = {
     commonCommandButton: "Common Commands",
     pathPickerButton: "Insert Path",
     attachmentButton: "Upload Attachment",
+    contextTagCurrentFile: "Current File",
+    contextTagSelection: "Selection",
+    contextTagSelectionWithRange: "Selection ({range})",
+    contextTagRemoveAria: "Remove context: {label}",
     thinkingModeAria: "Thinking mode",
     thinkingOptionOff: "Thinking: Off",
     thinkingOptionLow: "Thinking: Low",
@@ -178,6 +182,10 @@ const WEBVIEW_I18N = {
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
+    contextTagCurrentFile: "Current File",
+    contextTagSelection: "Selection",
+    contextTagSelectionWithRange: "Selection ({range})",
+    contextTagRemoveAria: "Remove context: {label}",
     thinkingModeAria: "思考模式",
     thinkingOptionOff: "思考：关闭",
     thinkingOptionLow: "思考：低",
@@ -340,6 +348,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         --radius-lg: 12px;
         --gap-sm: 8px;
         --gap-md: 16px;
+        --panel-content-padding: 16px;
       }
       body {
         font-family: var(--vscode-font-family);
@@ -425,9 +434,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex: 1;
         overflow-y: auto;
         padding: 20px 16px;
+        margin: 0 var(--panel-content-padding);
         background: var(--vscode-editor-background);
         min-height: 0;
         box-sizing: border-box;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
+        border-radius: 10px;
       }
       .messages {
         display: flex;
@@ -467,8 +479,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
         box-sizing: border-box;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         white-space: pre-wrap;
+      }
+      .message.user .user-context-tags {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .message.user .user-context-tag {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        border: 1px solid var(--vscode-inputOption-activeBorder, var(--vscode-input-border));
+        background: var(--vscode-inputOption-activeBackground, var(--vscode-editorWidget-background));
+        color: var(--vscode-inputOption-activeForeground, var(--vscode-input-foreground));
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       /* Assistant Message - Clean, width-filling */
@@ -477,7 +510,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .message.assistant .bubble {
         background: transparent;
-        border: 1px solid var(--vscode-widget-border);
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         border-radius: var(--radius-md);
         padding: 12px;
         max-width: 100%;
@@ -876,7 +909,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       /* Input Area */
       .input-area {
-        padding: 16px;
+        padding: 16px var(--panel-content-padding);
         background: var(--vscode-editor-background);
       }
       
@@ -920,7 +953,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       /* Input Box Container */
       .input-box {
-        border: 1px solid var(--vscode-input-border);
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.55)));
         background: var(--vscode-input-background);
         border-radius: 10px;
         padding: 12px;
@@ -929,10 +962,48 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 10px;
         transition: border-color 0.2s, box-shadow 0.2s;
         position: relative;
+        box-shadow: 0 0 0 1px var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
       }
       .input-box:focus-within {
         border-color: var(--vscode-focusBorder);
         box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+      }
+      .prompt-context-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .prompt-context-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        max-width: 100%;
+        border: 1px solid var(--vscode-inputOption-activeBorder, var(--vscode-input-border));
+        background: var(--vscode-inputOption-activeBackground, var(--vscode-editorWidget-background));
+        color: var(--vscode-inputOption-activeForeground, var(--vscode-input-foreground));
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+      }
+      .prompt-context-tag-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .prompt-context-tag-remove {
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        padding: 0;
+        width: 14px;
+        height: 14px;
+        font-size: 12px;
+        line-height: 1;
+        border-radius: 50%;
+      }
+      .prompt-context-tag-remove:hover {
+        background: var(--vscode-toolbar-hoverBackground);
       }
       
       .input-box textarea {
@@ -1626,6 +1697,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           </select>
         </div>
         <div class="input-box">
+          <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
           <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
@@ -2040,6 +2112,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           source: "auto",
           startIndex: 0,
         },
+        editorContext: {
+          filePath: null,
+          fileLabel: null,
+          hasSelection: false,
+          selectionLabel: null,
+        },
+        promptContext: {
+          includeCurrentFile: false,
+          includeSelection: false,
+          dismissedFileKey: "",
+          dismissedSelectionKey: "",
+          autoIncludeArmed: true,
+        },
       };
 
       const elements = {
@@ -2058,6 +2143,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         configSelect: document.getElementById("configSelect"),
         interactiveModeSelect: document.getElementById("interactiveModeSelect"),
         promptInput: document.getElementById("promptInput"),
+        promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
         interactiveMode: document.getElementById("interactiveMode"),
         debugMode: document.getElementById("debugMode"),
@@ -2129,13 +2215,258 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let toastTimer = null;
       let resizeFrame = 0;
       const pendingPromptQueue = [];
-      let pendingRunPrompt = "";
+      let pendingRunPrompt = null;
       let suppressQueueFlushOnce = false;
       let runWaitTimer = null;
       let runWaitStartAt = 0;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
       let currentRunPrompt = "";
+
+      function normalizeEditorContext(payload) {
+        const filePath = payload && typeof payload.filePath === "string" && payload.filePath
+          ? payload.filePath
+          : null;
+        const fileLabel = payload && typeof payload.fileLabel === "string" && payload.fileLabel
+          ? payload.fileLabel
+          : filePath;
+        const hasSelection = Boolean(payload && payload.hasSelection);
+        const selectionLabel = payload && typeof payload.selectionLabel === "string" && payload.selectionLabel
+          ? payload.selectionLabel
+          : null;
+        return {
+          filePath,
+          fileLabel,
+          hasSelection,
+          selectionLabel,
+        };
+      }
+
+      function getFileTagKeyFor(editorContext) {
+        if (!editorContext) {
+          return "";
+        }
+        return editorContext.filePath || editorContext.fileLabel || "";
+      }
+
+      function getSelectionTagKeyFor(editorContext) {
+        if (!editorContext || !editorContext.hasSelection) {
+          return "";
+        }
+        const base = getFileTagKeyFor(editorContext);
+        return base + "::" + (editorContext.selectionLabel || "selection");
+      }
+
+      function getCurrentFileTagKey() {
+        return getFileTagKeyFor(state.editorContext);
+      }
+
+      function getSelectionTagKey() {
+        return getSelectionTagKeyFor(state.editorContext);
+      }
+
+      function syncPromptContextWithEditorContext(options = {}) {
+        const resetDismissed = Boolean(options.resetDismissed);
+        if (resetDismissed) {
+          state.promptContext.dismissedFileKey = "";
+          state.promptContext.dismissedSelectionKey = "";
+        }
+
+        if (!state.promptContext.autoIncludeArmed) {
+          return;
+        }
+
+        const fileKey = getCurrentFileTagKey();
+        if (!fileKey) {
+          state.promptContext.includeCurrentFile = false;
+          state.promptContext.dismissedFileKey = "";
+        } else {
+          state.promptContext.includeCurrentFile = state.promptContext.dismissedFileKey !== fileKey;
+        }
+
+        const selectionKey = getSelectionTagKey();
+        if (!selectionKey) {
+          state.promptContext.includeSelection = false;
+          state.promptContext.dismissedSelectionKey = "";
+        } else {
+          state.promptContext.includeSelection = state.promptContext.dismissedSelectionKey !== selectionKey;
+        }
+      }
+
+      function formatSelectionContextTagLabel() {
+        if (state.editorContext.selectionLabel) {
+          return t("contextTagSelectionWithRange", { range: state.editorContext.selectionLabel });
+        }
+        return t("contextTagSelection");
+      }
+
+      function removePromptContextTag(kind) {
+        if (kind === "file") {
+          state.promptContext.includeCurrentFile = false;
+          state.promptContext.dismissedFileKey = getCurrentFileTagKey();
+        }
+        if (kind === "selection") {
+          state.promptContext.includeSelection = false;
+          state.promptContext.dismissedSelectionKey = getSelectionTagKey();
+        }
+        renderPromptContextTags();
+      }
+
+      function renderPromptContextTags() {
+        if (!elements.promptContextTags) {
+          return;
+        }
+        elements.promptContextTags.innerHTML = "";
+        const tags = [];
+
+        if (state.editorContext.fileLabel && state.promptContext.includeCurrentFile) {
+          tags.push({
+            kind: "file",
+            text: t("contextTagCurrentFile") + ": " + state.editorContext.fileLabel,
+            shortLabel: t("contextTagCurrentFile"),
+          });
+        }
+
+        if (state.editorContext.hasSelection && state.promptContext.includeSelection) {
+          tags.push({
+            kind: "selection",
+            text: formatSelectionContextTagLabel(),
+            shortLabel: t("contextTagSelection"),
+          });
+        }
+
+        if (!tags.length) {
+          elements.promptContextTags.style.display = "none";
+          return;
+        }
+
+        tags.forEach((tag) => {
+          const chip = document.createElement("div");
+          chip.className = "prompt-context-tag";
+
+          const label = document.createElement("span");
+          label.className = "prompt-context-tag-label";
+          label.textContent = tag.text;
+          label.title = tag.text;
+
+          const removeButton = document.createElement("button");
+          removeButton.type = "button";
+          removeButton.className = "prompt-context-tag-remove";
+          removeButton.textContent = "x";
+          removeButton.setAttribute("aria-label", t("contextTagRemoveAria", { label: tag.shortLabel }));
+          removeButton.setAttribute("title", t("contextTagRemoveAria", { label: tag.shortLabel }));
+          removeButton.addEventListener("click", () => {
+            removePromptContextTag(tag.kind);
+          });
+
+          chip.appendChild(label);
+          chip.appendChild(removeButton);
+          elements.promptContextTags.appendChild(chip);
+        });
+
+        elements.promptContextTags.style.display = "flex";
+      }
+
+      function rearmPromptContextOnEditorChange(previousContext, nextContext) {
+        const previousFileKey = getFileTagKeyFor(previousContext);
+        const previousSelectionKey = getSelectionTagKeyFor(previousContext);
+        const nextFileKey = getFileTagKeyFor(nextContext);
+        const nextSelectionKey = getSelectionTagKeyFor(nextContext);
+
+        if (previousFileKey !== nextFileKey) {
+          if (!nextFileKey) {
+            state.promptContext.includeCurrentFile = false;
+            state.promptContext.dismissedFileKey = "";
+          } else if (state.promptContext.dismissedFileKey === nextFileKey) {
+            state.promptContext.includeCurrentFile = false;
+          } else {
+            state.promptContext.includeCurrentFile = true;
+            if (state.promptContext.dismissedFileKey) {
+              state.promptContext.dismissedFileKey = "";
+            }
+          }
+        }
+
+        if (previousSelectionKey !== nextSelectionKey) {
+          if (!nextSelectionKey) {
+            state.promptContext.includeSelection = false;
+            state.promptContext.dismissedSelectionKey = "";
+          } else if (state.promptContext.dismissedSelectionKey === nextSelectionKey) {
+            state.promptContext.includeSelection = false;
+          } else {
+            state.promptContext.includeSelection = true;
+            if (state.promptContext.dismissedSelectionKey) {
+              state.promptContext.dismissedSelectionKey = "";
+            }
+          }
+        }
+      }
+
+      function applyEditorContext(payload, options = {}) {
+        const nextEditorContext = normalizeEditorContext(payload);
+        const previousEditorContext = state.editorContext;
+        const shouldAutoRearm = options.autoRearm !== false;
+
+        if (shouldAutoRearm && !state.promptContext.autoIncludeArmed) {
+          rearmPromptContextOnEditorChange(previousEditorContext, nextEditorContext);
+        }
+
+        state.editorContext = nextEditorContext;
+        syncPromptContextWithEditorContext(options);
+        renderPromptContextTags();
+      }
+
+      function buildPromptPayload(prompt) {
+        const includeCurrentFile = Boolean(state.promptContext.includeCurrentFile && getCurrentFileTagKey());
+        const includeSelection = Boolean(state.promptContext.includeSelection && state.editorContext.hasSelection);
+        return {
+          prompt,
+          contextOptions: {
+            includeCurrentFile,
+            includeSelection,
+          },
+        };
+      }
+
+      function normalizePromptPayload(payload) {
+        if (!payload) {
+          return null;
+        }
+        if (typeof payload === "string") {
+          return {
+            prompt: payload,
+            contextOptions: {
+              includeCurrentFile: true,
+              includeSelection: true,
+            },
+          };
+        }
+        const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
+        if (!prompt) {
+          return null;
+        }
+        const contextOptions = payload.contextOptions || {};
+        return {
+          prompt,
+          contextOptions: {
+            includeCurrentFile: contextOptions.includeCurrentFile !== false,
+            includeSelection: contextOptions.includeSelection !== false,
+          },
+        };
+      }
+
+      function armPromptContextForConversationStart() {
+        state.promptContext.autoIncludeArmed = true;
+        syncPromptContextWithEditorContext({ resetDismissed: true });
+        renderPromptContextTags();
+      }
+
+      function resetPromptContextForNextPrompt() {
+        state.promptContext.autoIncludeArmed = false;
+        state.promptContext.includeCurrentFile = false;
+        state.promptContext.includeSelection = false;
+        renderPromptContextTags();
+      }
 
       function updateAppHeight() {
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
@@ -2214,6 +2545,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderConfigOptions();
         renderSessionList();
         renderPromptHistoryList();
+        applyEditorContext(panelState.editorContext);
       }
 
       function renderConfigOptions() {
@@ -2435,6 +2767,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             state.messages = [];
             renderMessages();
             closeHistory();
+            armPromptContextForConversationStart();
             vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
           });
 
@@ -2651,6 +2984,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderMessages();
       }
 
+      function renderUserMessageContent(message) {
+        const content = escapeHtml(message.content || "");
+        const tags = Array.isArray(message.contextTags)
+          ? message.contextTags.filter((tag) => typeof tag === "string" && tag.trim())
+          : [];
+        if (!tags.length) {
+          return content;
+        }
+        const tagsHtml = tags
+          .map((tag) => '<span class="user-context-tag" title="' + escapeHtml(tag) + '">' + escapeHtml(tag) + '</span>')
+          .join("");
+        return '<div class="user-message-content">' + content + '</div>' +
+          '<div class="user-context-tags">' + tagsHtml + '</div>';
+      }
+
       function renderMessageContent(message) {
         if (message.role === "system") {
           const content = escapeHtml(message.content || "");
@@ -2670,7 +3018,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return content;
         }
         if (message.role === "user") {
-          return escapeHtml(message.content || "");
+          return renderUserMessageContent(message);
         }
         if (message.role === "trace") {
           const content = renderTraceContent(message.content || "");
@@ -3289,12 +3637,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderTaskList();
       }
 
-      function dispatchPrompt(prompt) {
-        if (!prompt) {
+      function dispatchPrompt(payload) {
+        const normalizedPayload = normalizePromptPayload(payload);
+        if (!normalizedPayload) {
           return false;
         }
+        const prompt = normalizedPayload.prompt;
         const shouldSuppressFlush = state.isRunning;
-        // 优先检查前端选择的配置，如果没有则检查后端的 activeConfigId
+        // ?????????????????????? activeConfigId
         const hasConfig = state.selectedConfigId || state.configState.activeConfigId;
         if (!hasConfig) {
           appendMessage({
@@ -3309,23 +3659,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           suppressQueueFlushOnce = true;
         }
         resetTaskListForRunStart();
-        appendMessage({ id: createMessageId(), role: "user", content: prompt, createdAt: Date.now() });
         vscode.postMessage({
           type: "sendPrompt",
           prompt,
           interactiveMode: state.interactiveMode,
+          contextOptions: normalizedPayload.contextOptions,
         });
         return true;
       }
 
-      function openRunConflictOverlay(prompt) {
-        if (!elements.runConflictOverlay) {
-          dispatchPrompt(prompt);
+      function openRunConflictOverlay(payload) {
+        const normalizedPayload = normalizePromptPayload(payload);
+        if (!normalizedPayload) {
           return;
         }
-        pendingRunPrompt = prompt;
+        if (!elements.runConflictOverlay) {
+          const sent = dispatchPrompt(normalizedPayload);
+          if (sent) {
+            resetPromptContextForNextPrompt();
+          }
+          return;
+        }
+        pendingRunPrompt = normalizedPayload;
         if (elements.runConflictPrompt) {
-          elements.runConflictPrompt.textContent = prompt;
+          elements.runConflictPrompt.textContent = normalizedPayload.prompt;
         }
         elements.runConflictOverlay.classList.add("visible");
       }
@@ -3335,7 +3692,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.runConflictOverlay.classList.remove("visible");
-        pendingRunPrompt = "";
+        pendingRunPrompt = null;
       }
 
       function getRunPromptText() {
@@ -3403,13 +3760,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.queueBody.appendChild(empty);
           return;
         }
-        pendingPromptQueue.forEach((prompt, index) => {
+        pendingPromptQueue.forEach((item, index) => {
+          const payload = normalizePromptPayload(item);
+          const promptText = payload ? payload.prompt : "";
           const row = document.createElement("div");
           row.className = "queue-item";
 
           const text = document.createElement("div");
           text.className = "queue-text";
-          const promptText = typeof prompt === "string" ? prompt : prompt == null ? "" : String(prompt);
           const previewText =
             promptText.length > queuePromptPreviewLimit
               ? promptText.slice(0, Math.max(0, queuePromptPreviewLimit - queuePromptPreviewSuffix.length)) +
@@ -3459,11 +3817,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.queueOverlay.classList.remove("visible");
       }
 
-      function queuePromptForLater(prompt) {
-        if (!prompt) {
+      function queuePromptForLater(payload) {
+        const normalizedPayload = normalizePromptPayload(payload);
+        if (!normalizedPayload) {
           return;
         }
-        pendingPromptQueue.push(prompt);
+        pendingPromptQueue.push(normalizedPayload);
         updateQueueIndicator();
         showToast(t("toastQueueAdded"));
       }
@@ -3484,9 +3843,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!pendingPromptQueue.length) {
           return;
         }
-        const nextPrompt = pendingPromptQueue.shift();
+        const nextPromptPayload = pendingPromptQueue.shift();
         updateQueueIndicator();
-        const sent = dispatchPrompt(nextPrompt);
+        const sent = dispatchPrompt(nextPromptPayload);
         if (!sent) {
           showToast(t("toastQueueSendFailed"));
         }
@@ -3497,12 +3856,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!prompt) {
           return;
         }
+        const promptPayload = buildPromptPayload(prompt);
         if (state.isRunning) {
-          openRunConflictOverlay(prompt);
+          openRunConflictOverlay(promptPayload);
           return;
         }
         elements.promptInput.value = "";
-        dispatchPrompt(prompt);
+        const sent = dispatchPrompt(promptPayload);
+        if (sent) {
+          resetPromptContextForNextPrompt();
+        }
       }
 
       function insertPromptText(text) {
@@ -3625,6 +3988,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       elements.currentCli.addEventListener("change", (event) => {
+        armPromptContextForConversationStart();
         vscode.postMessage({ type: "selectCli", cli: event.target.value });
       });
 
@@ -3648,6 +4012,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.taskList.startIndex = 0;
         renderMessages();
         renderTaskList();
+        armPromptContextForConversationStart();
         vscode.postMessage({ type: "newSession" });
       });
 
@@ -3951,24 +4316,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.queuePrompt.addEventListener("click", () => {
-        if (!pendingRunPrompt) {
+        const promptPayload = normalizePromptPayload(pendingRunPrompt);
+        if (!promptPayload) {
           closeRunConflictOverlay();
           return;
         }
-        queuePromptForLater(pendingRunPrompt);
+        queuePromptForLater(promptPayload);
         elements.promptInput.value = "";
         closeRunConflictOverlay();
+        resetPromptContextForNextPrompt();
       });
 
       elements.pauseAndSend.addEventListener("click", () => {
-        if (!pendingRunPrompt) {
+        const promptPayload = normalizePromptPayload(pendingRunPrompt);
+        if (!promptPayload) {
           closeRunConflictOverlay();
           return;
         }
-        const prompt = pendingRunPrompt;
         elements.promptInput.value = "";
         closeRunConflictOverlay();
-        dispatchPrompt(prompt);
+        const sent = dispatchPrompt(promptPayload);
+        if (sent) {
+          resetPromptContextForNextPrompt();
+        }
       });
 
       elements.queueIndicator.addEventListener("click", () => {
@@ -4111,6 +4481,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const data = event.data;
         if (data.type === "state") {
           applyState(data.payload);
+        }
+        if (data.type === "editorContext") {
+          applyEditorContext(data.payload);
         }
         if (data.type === "setMessages") {
           const incoming = Array.isArray(data.messages) ? data.messages : [];
