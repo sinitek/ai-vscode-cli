@@ -3590,6 +3590,7 @@ function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: 
     type: "runStatus",
     status,
     message,
+    prompt: status === "start" ? activeTaskRun?.prompt : undefined,
   });
 }
 

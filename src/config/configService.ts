@@ -198,23 +198,52 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
   const configDir = getConfigDir(platform);
   await ensureDir(configDir);
   const files = await fs.readdir(configDir);
-  const jsonFiles = files.filter((file) => file.endsWith(".json"));
+  const jsonFiles = files.filter(
+    (file) => file.endsWith(".json") && file !== CONFIG_ORDER_FILE
+  );
   const configs: ConfigItem[] = [];
 
   for (const file of jsonFiles) {
     try {
       const content = await fs.readFile(path.join(configDir, file), "utf-8");
-      const config = JSON.parse(content) as ConfigItem;
-      if (config.platform === "claude" && config.mcpContent === undefined) {
-        config.mcpContent = "{}";
+      const config = JSON.parse(content) as Partial<ConfigItem>;
+
+      // 仅加载合法配置，避免把顺序文件或其他元数据误当成配置项。
+      if (
+        !isPlainObject(config) ||
+        typeof config.id !== "string" ||
+        config.id.length === 0 ||
+        typeof config.name !== "string" ||
+        config.name.length === 0 ||
+        config.platform !== platform
+      ) {
+        continue;
       }
-      if (config.platform === "gemini" && config.envContent === undefined) {
-        config.envContent = "";
+
+      const normalizedConfig: ConfigItem = {
+        ...config,
+        id: config.id,
+        name: config.name,
+        platform: config.platform,
+        createdAt:
+          typeof config.createdAt === "number" && Number.isFinite(config.createdAt)
+            ? config.createdAt
+            : Date.now(),
+        updatedAt:
+          typeof config.updatedAt === "number" && Number.isFinite(config.updatedAt)
+            ? config.updatedAt
+            : Date.now(),
+      };
+      if (normalizedConfig.platform === "claude" && normalizedConfig.mcpContent === undefined) {
+        normalizedConfig.mcpContent = "{}";
       }
-      if (config.platform === "codex" && config.codexSkills === undefined) {
-        config.codexSkills = [];
+      if (normalizedConfig.platform === "gemini" && normalizedConfig.envContent === undefined) {
+        normalizedConfig.envContent = "";
       }
-      configs.push(config);
+      if (normalizedConfig.platform === "codex" && normalizedConfig.codexSkills === undefined) {
+        normalizedConfig.codexSkills = [];
+      }
+      configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
     }

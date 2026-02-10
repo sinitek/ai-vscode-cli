@@ -81,6 +81,11 @@ const WEBVIEW_I18N = {
     queueCloseLabel: "Close",
     queueEmpty: "No queued prompts.",
     queueRemoveLabel: "Remove",
+    runPromptViewAria: "View current running prompt",
+    runPromptViewLabel: "Prompt",
+    runPromptTitle: "Current Task Prompt",
+    runPromptClose: "Close",
+    runPromptEmpty: "No running prompt available.",
     helpTitle: "Help",
     helpClose: "Close",
     helpTabsLabel: "Help",
@@ -228,6 +233,11 @@ const WEBVIEW_I18N = {
     queueCloseLabel: "关闭",
     queueEmpty: "当前没有待发送的提示词。",
     queueRemoveLabel: "取消",
+    runPromptViewAria: "查看当前执行提示词",
+    runPromptViewLabel: "提示词",
+    runPromptTitle: "当前任务提示词",
+    runPromptClose: "关闭",
+    runPromptEmpty: "暂无可查看的提示词。",
     helpTitle: "使用说明",
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
@@ -831,6 +841,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         color: var(--vscode-descriptionForeground);
         font-variant-numeric: tabular-nums;
       }
+      .run-prompt-button {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        height: 24px;
+      }
+      .run-prompt-button:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+      }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
       @keyframes typingPulse {
@@ -862,6 +886,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 8px;
         margin-bottom: 10px;
         align-items: center;
+        flex-wrap: nowrap;
+        overflow: hidden;
       }
       
       select {
@@ -880,16 +906,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       
       .cli-select {
-        flex: 0 0 88px;
+        flex: 0 1 88px;
         min-width: 88px;
       }
       .config-select {
-        flex: 0 0 44%;
+        flex: 1 1 165px;
         min-width: 120px;
       }
       .interactive-mode-select {
-        flex: 0 0 92px;
-        min-width: 92px;
+        flex: 0 1 69px;
+        min-width: 69px;
       }
 
       /* Input Box Container */
@@ -1153,6 +1179,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .queue-remove-button .icon {
         width: 14px;
         height: 14px;
+      }
+      .run-prompt-modal {
+        width: 560px;
+      }
+      .run-prompt-body {
+        padding: 12px 16px 16px;
+      }
+      .run-prompt-preview {
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       
       .modal-header {
@@ -1546,6 +1590,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span class="typing-dot"></span>
         </span>
         <span id="runWaitTime" class="run-wait-time">00:00</span>
+        <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
+          ${i18n.runPromptViewLabel}
+        </button>
         <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
           ${i18n.queueIndicatorLabel}
           <span id="queueCount" class="run-queue-count">0</span>
@@ -1565,13 +1612,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       <div class="input-area">
         <div class="config-select-row">
+          <button id="openConfig" class="secondary icon-button" title="${i18n.openConfigButton}" aria-label="${i18n.openConfigButton}">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3.5" />
+              <path d="M19.4 15a1.8 1.8 0 0 0 .36 2l.03.03a2 2 0 0 1-2.83 2.83l-.03-.03a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1 1.63V21a2 2 0 0 1-4 0v-.05a1.8 1.8 0 0 0-1-1.63 1.8 1.8 0 0 0-2 .36l-.03.03a2 2 0 1 1-2.83-2.83l.03-.03a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.63-1H3a2 2 0 0 1 0-4h.05a1.8 1.8 0 0 0 1.63-1 1.8 1.8 0 0 0-.36-2l-.03-.03A2 2 0 1 1 7.12 3.9l.03.03a1.8 1.8 0 0 0 2 .36 1.8 1.8 0 0 0 1-1.63V2a2 2 0 0 1 4 0v.05a1.8 1.8 0 0 0 1 1.63 1.8 1.8 0 0 0 2-.36l.03-.03a2 2 0 1 1 2.83 2.83l-.03.03a1.8 1.8 0 0 0-.36 2 1.8 1.8 0 0 0 1.63 1H22a2 2 0 0 1 0 4h-.05a1.8 1.8 0 0 0-1.63 1Z" />
+            </svg>
+          </button>
           <select id="currentCli" class="cli-select" aria-label="${i18n.cliSelectAria}">${cliOptions}</select>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
           <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="plan">${i18n.interactiveModePlan}</option>
           </select>
-          <button id="openConfig" class="secondary action-button" title="${i18n.openConfigButton}">${i18n.openConfigButton}</button>
         </div>
         <div class="input-box">
           <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
@@ -1786,6 +1838,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         </div>
       </div>
 
+      <div id="runPromptOverlay" class="overlay">
+        <div class="modal run-prompt-modal">
+          <div class="modal-header">
+            <div class="title">${i18n.runPromptTitle}</div>
+            <button id="closeRunPrompt" class="secondary icon-button" title="${i18n.runPromptClose}" aria-label="${i18n.runPromptClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="run-prompt-body">
+            <div id="runPromptContent" class="run-prompt-preview"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="helpOverlay" class="overlay">
         <div class="modal help-modal">
           <div class="modal-header">
@@ -1983,6 +2052,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         emptyState: document.getElementById("emptyState"),
         runWait: document.getElementById("runWait"),
         runWaitTime: document.getElementById("runWaitTime"),
+        runPromptButton: document.getElementById("runPromptButton"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
         configSelect: document.getElementById("configSelect"),
@@ -2038,6 +2108,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         queueOverlay: document.getElementById("queueOverlay"),
         closeQueue: document.getElementById("closeQueue"),
         queueBody: document.getElementById("queueBody"),
+        runPromptOverlay: document.getElementById("runPromptOverlay"),
+        closeRunPrompt: document.getElementById("closeRunPrompt"),
+        runPromptContent: document.getElementById("runPromptContent"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
@@ -2062,6 +2135,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let runWaitStartAt = 0;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
+      let currentRunPrompt = "";
 
       function updateAppHeight() {
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
@@ -3159,8 +3233,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           startRunWaitTimer();
         } else {
           stopRunWaitTimer();
+          closeRunPromptOverlay();
         }
         updateRunWait();
+        updateRunPromptButton();
       }
 
       function updateRunWait() {
@@ -3260,6 +3336,47 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         elements.runConflictOverlay.classList.remove("visible");
         pendingRunPrompt = "";
+      }
+
+      function getRunPromptText() {
+        const prompt = String(currentRunPrompt || "");
+        return prompt.trim() ? prompt : t("runPromptEmpty");
+      }
+
+      function updateRunPromptButton() {
+        if (!elements.runPromptButton) {
+          return;
+        }
+        const hasPrompt = String(currentRunPrompt || "").trim().length > 0;
+        elements.runPromptButton.style.display = state.isRunning && hasPrompt ? "inline-flex" : "none";
+      }
+
+      function openRunPromptOverlay() {
+        if (!state.isRunning || !elements.runPromptOverlay || !elements.runPromptContent) {
+          return;
+        }
+        elements.runPromptContent.textContent = getRunPromptText();
+        elements.runPromptOverlay.classList.add("visible");
+      }
+
+      function closeRunPromptOverlay() {
+        if (!elements.runPromptOverlay) {
+          return;
+        }
+        elements.runPromptOverlay.classList.remove("visible");
+      }
+
+      function updateCurrentRunPrompt(prompt) {
+        currentRunPrompt = typeof prompt === "string" ? prompt : "";
+        updateRunPromptButton();
+        if (
+          state.isRunning
+          && elements.runPromptOverlay
+          && elements.runPromptOverlay.classList.contains("visible")
+          && elements.runPromptContent
+        ) {
+          elements.runPromptContent.textContent = getRunPromptText();
+        }
       }
 
       function updateQueueIndicator() {
@@ -3858,6 +3975,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         openQueueOverlay();
       });
 
+      elements.runPromptButton.addEventListener("click", () => {
+        openRunPromptOverlay();
+      });
+
+      elements.runPromptOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.runPromptOverlay) {
+          closeRunPromptOverlay();
+        }
+      });
+
+      elements.closeRunPrompt.addEventListener("click", () => {
+        closeRunPromptOverlay();
+      });
+
       elements.queueOverlay.addEventListener("click", (event) => {
         if (event.target === elements.queueOverlay) {
           closeQueueOverlay();
@@ -4004,6 +4135,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
         }
         if (data.type === "runStatus") {
+          updateCurrentRunPrompt(data.status === "start" ? data.prompt : "");
           updateRunningState(data.status === "start");
           if (data.status === "start") {
             Object.keys(assistantRedirects).forEach((key) => {
