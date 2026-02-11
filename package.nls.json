@@ -18,6 +18,7 @@
   "config.rememberSelectedCli.description": "Persist the selected CLI as the default CLI.",
   "config.debug.description": "Enable debug logging for CLI stdin/stdout/stderr.",
   "config.locale.description": "Extension UI language. Auto follows VS Code display language.",
+  "config.macTaskShell.description": "macOS shell used to run AI chat tasks (zsh or bash).",
   "config.interactive.codex.description": "Enable interactive (persistent) mode for Codex (Beta).",
   "config.interactive.claude.description": "Enable interactive (persistent) mode for Claude (Beta).",
   "config.disableMarketplaceUpdateCheckInDev.description": "Disable VS Code marketplace update checks while running this extension in development mode.",

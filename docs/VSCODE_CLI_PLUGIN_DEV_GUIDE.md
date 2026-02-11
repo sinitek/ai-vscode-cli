@@ -90,6 +90,12 @@ npm init @vscode/extension
           "items": { "type": "string" },
           "default": ["-y"]
         },
+        "sinitek-cli-tools.macTaskShell": {
+          "type": "string",
+          "enum": ["zsh", "bash"],
+          "default": "zsh",
+          "description": "macOS 下对话任务执行使用的 shell。"
+        },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
           "default": false,

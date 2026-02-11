@@ -135,6 +135,15 @@
           "default": "auto",
           "description": "%config.locale.description%"
         },
+        "sinitek-cli-tools.macTaskShell": {
+          "type": "string",
+          "enum": [
+            "zsh",
+            "bash"
+          ],
+          "default": "zsh",
+          "description": "%config.macTaskShell.description%"
+        },
         "sinitek-cli-tools.interactive.codex": {
           "type": "boolean",
           "default": true,

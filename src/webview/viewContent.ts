@@ -71,6 +71,10 @@ const WEBVIEW_I18N = {
     toolSettingsLanguageAuto: "Auto (VS Code)",
     toolSettingsLanguageZh: "Chinese (Simplified)",
     toolSettingsLanguageEn: "English",
+    toolSettingsMacShellLabel: "Task Shell",
+    toolSettingsMacShellAria: "Task shell for macOS",
+    toolSettingsMacShellZsh: "zsh",
+    toolSettingsMacShellBash: "bash",
     commonCommandsTitle: "Common Commands",
     commonCommandsClose: "Close",
     commonCommandCompactTitle: "Compact Context",
@@ -227,6 +231,10 @@ const WEBVIEW_I18N = {
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
     toolSettingsLanguageZh: "中文（简体）",
     toolSettingsLanguageEn: "英文",
+    toolSettingsMacShellLabel: "任务 Shell",
+    toolSettingsMacShellAria: "macOS 任务 Shell",
+    toolSettingsMacShellZsh: "zsh",
+    toolSettingsMacShellBash: "bash",
     commonCommandsTitle: "常用指令",
     commonCommandsClose: "关闭",
     commonCommandCompactTitle: "压缩上下文",
@@ -1846,6 +1854,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <option value="en">${i18n.toolSettingsLanguageEn}</option>
               </select>
             </div>
+            <div id="macTaskShellRow" class="tool-settings-row" style="display: none;">
+              <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
+              <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
+                <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
+                <option value="bash">${i18n.toolSettingsMacShellBash}</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -2099,6 +2114,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptHistory: [],
         debug: false,
         locale: "auto",
+        isMac: false,
+        macTaskShell: "zsh",
         thinkingMode: "medium",
         interactiveMode: "coding",
         interactive: { supported: false, enabled: true },
@@ -2148,6 +2165,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         interactiveMode: document.getElementById("interactiveMode"),
         debugMode: document.getElementById("debugMode"),
         languageSelect: document.getElementById("languageSelect"),
+        macTaskShellRow: document.getElementById("macTaskShellRow"),
+        macTaskShell: document.getElementById("macTaskShell"),
         commonCommandButton: document.getElementById("commonCommandButton"),
         pathPickerButton: document.getElementById("pathPickerButton"),
         attachmentButton: document.getElementById("attachmentButton"),
@@ -2520,6 +2539,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.interactiveMode = panelState.interactiveMode === "plan" ? "plan" : "coding";
         state.debug = Boolean(panelState.debug);
         state.locale = typeof panelState.locale === "string" ? panelState.locale : "auto";
+        state.isMac = Boolean(panelState.isMac);
+        state.macTaskShell = panelState.macTaskShell === "bash" ? "bash" : "zsh";
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         elements.currentCli.value = panelState.currentCli;
@@ -2534,6 +2555,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
+        }
+        if (elements.macTaskShellRow) {
+          elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";
+        }
+        if (elements.macTaskShell) {
+          elements.macTaskShell.value = state.macTaskShell;
         }
         syncInteractiveOptions();
         if (elements.interactiveMode) {
@@ -4079,6 +4106,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({
             type: "updateSetting",
             key: "locale",
+            value: nextValue,
+          });
+        });
+      }
+      if (elements.macTaskShell) {
+        elements.macTaskShell.addEventListener("change", (event) => {
+          const nextValue = event.target.value === "bash" ? "bash" : "zsh";
+          state.macTaskShell = nextValue;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "macTaskShell",
             value: nextValue,
           });
         });

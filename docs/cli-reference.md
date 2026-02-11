@@ -12,6 +12,7 @@
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
 - 交互模式下支持 `coding / plan` 两种会话模式，默认 `coding`。面板入口位于输入区“配置”按钮左侧。
 - `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
+- macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。
 - 切换思考模式后，会在下一次交互前重建 Runner，并沿用已有会话/线程 ID 继续对话。
 - SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
 - 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
@@ -28,6 +29,7 @@
   - `sinitek-cli-tools.commands.claude`
   - `sinitek-cli-tools.commands.gemini`
 - 安装/修改 PATH 后需重启 VS Code
+- 插件加载后会预检测 `codex/claude/gemini` 三个 CLI 的可用性；当你切换到某个未安装 CLI 分组时，会弹出“一键安装”提示，确认后才会执行对应 npm 全局安装命令。
 
 ## Codex CLI
 

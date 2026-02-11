@@ -8,6 +8,7 @@ import {
   getDefaultCli,
   getRememberSelectedCli,
   getDebugLogging,
+  getMacTaskShell,
   getCliCommand,
   getCliArgs,
   getInteractiveEnabled,
@@ -23,9 +24,11 @@ import {
   resolveCliCommand,
   runCli,
   runCliStream,
+  isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
-import { CliName, CLI_LIST, InteractiveMode, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
@@ -137,6 +140,7 @@ const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
 };
+const CLI_INSTALL_TERMINAL_PREFIX = "CLI Install";
 const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
@@ -217,6 +221,18 @@ type ConfigHeartbeatSnapshot = {
   configIds: string[];
 };
 
+type CliInstallStatus = {
+  command: string;
+  installed: boolean;
+  checkedAt: number;
+};
+
+const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
+  codex: null,
+  claude: null,
+  gemini: null,
+};
+
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -239,6 +255,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   startTempCleanup(context);
   startConfigHeartbeat(context);
+  void refreshCliInstallStatuses();
 
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = "sinitek-cli-tools.openPanel";
@@ -313,6 +330,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         setDebugLogging(getDebugLogging());
         currentCli = getDefaultCli();
+        void refreshCliInstallStatuses();
         updateStatusBar();
         void postPanelState();
       }
@@ -739,6 +757,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       configManagerPanel?.reload();
       return;
     }
+    if (message.key === "macTaskShell") {
+      if (process.platform === "darwin" && isMacTaskShell(message.value)) {
+        const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
+        await config.update("macTaskShell", message.value, vscode.ConfigurationTarget.Global);
+      }
+      await postPanelState();
+      return;
+    }
     const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
     const target = message.key.startsWith("interactive.")
       ? vscode.ConfigurationTarget.Workspace
@@ -800,6 +826,8 @@ async function buildPanelState(): Promise<PanelState> {
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
+    isMac: process.platform === "darwin",
+    macTaskShell: getMacTaskShell(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
@@ -829,6 +857,8 @@ async function buildPanelStateWithConfigState(
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
+    isMac: process.platform === "darwin",
+    macTaskShell: getMacTaskShell(),
     thinkingMode: getWorkspaceThinkingMode(currentCli),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
@@ -1581,13 +1611,64 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
   }
 }
 
+async function refreshCliInstallStatuses(): Promise<void> {
+  await Promise.all(CLI_LIST.map(async (cli) => {
+    await refreshCliInstallStatus(cli);
+  }));
+}
+
+async function refreshCliInstallStatus(cli: CliName): Promise<CliInstallStatus> {
+  const command = getCliCommand(cli);
+  let installed = false;
+  try {
+    installed = await isCliCommandAvailable(command);
+  } catch (error) {
+    installed = false;
+    void logError("cli-install-status-detect-failed", {
+      cli,
+      command,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const status: CliInstallStatus = {
+    command,
+    installed,
+    checkedAt: Date.now(),
+  };
+  cliInstallStatuses[cli] = status;
+  return status;
+}
+
+async function getCliInstallStatus(cli: CliName): Promise<CliInstallStatus> {
+  const command = getCliCommand(cli);
+  const cached = cliInstallStatuses[cli];
+  if (cached && cached.command === command) {
+    return cached;
+  }
+  return refreshCliInstallStatus(cli);
+}
+
+async function maybePromptInstallOnCliGroupSwitch(cli: CliName): Promise<void> {
+  const status = await getCliInstallStatus(cli);
+  if (status.installed) {
+    return;
+  }
+  await promptInstallMissingCli(cli, status.command);
+}
+
 async function setCurrentCli(cli: CliName): Promise<void> {
+  const previousCli = currentCli;
   currentCli = cli;
   updateStatusBar();
 
   // Save to workspace settings instead of global config
   workspaceSettings.currentCli = cli;
   saveWorkspaceSettings(workspaceSettings);
+
+  if (previousCli !== cli) {
+    await maybePromptInstallOnCliGroupSwitch(cli);
+  }
 }
 
 function updateStatusBar(): void {
@@ -3283,6 +3364,40 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   }
 }
 
+async function promptInstallMissingCli(cli: CliName, command: string): Promise<void> {
+  const installLabel = t("cli.install.actionInstall");
+  const openSettingsLabel = t("common.openSettings");
+  const message = [
+    t("cli.install.prompt", { cli: getCliDisplayName(cli), command }),
+    buildCliCommandNotFoundMessage(cli, command),
+  ].join("\n\n");
+  const selection = await vscode.window.showWarningMessage(
+    message,
+    installLabel,
+    openSettingsLabel
+  );
+  if (selection === installLabel) {
+    const installCommand = getCliInstallCommand(cli);
+    const terminal = vscode.window.createTerminal({
+      name: `${CLI_INSTALL_TERMINAL_PREFIX}: ${cli}`,
+    });
+    terminal.show();
+    terminal.sendText(installCommand);
+    cliInstallStatuses[cli] = null;
+    void logInfo("cli-install-triggered", { cli, command, installCommand });
+    void vscode.window.showInformationMessage(
+      t("cli.install.started", { command: installCommand })
+    );
+    return;
+  }
+  if (selection === openSettingsLabel) {
+    void vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      `sinitek-cli-tools.commands.${cli}`
+    );
+  }
+}
+
 function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
   const configKey = `sinitek-cli-tools.commands.${cli}`;
   if (process.platform === "win32") {
@@ -3751,6 +3866,10 @@ function isThinkingMode(value: unknown): value is ThinkingMode {
 
 function isInteractiveMode(value: unknown): value is InteractiveMode {
   return value === "coding" || value === "plan";
+}
+
+function isMacTaskShell(value: unknown): value is MacTaskShell {
+  return value === "zsh" || value === "bash";
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {

@@ -1,7 +1,26 @@
+import * as path from "path";
 import * as vscode from "vscode";
-import { CliName, ThinkingMode, ThinkingWorkspaceFile } from "./types";
+import { CliName, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 
 export const CONFIG_NAMESPACE = "sinitek-cli-tools";
+const MAC_TASK_SHELL_KEY = "macTaskShell";
+const DEFAULT_MAC_TASK_SHELL: MacTaskShell = "zsh";
+
+function normalizeMacTaskShell(value: unknown): MacTaskShell | null {
+  if (value === "zsh" || value === "bash") {
+    return value;
+  }
+  return null;
+}
+
+function detectCurrentMacTaskShell(): MacTaskShell {
+  const currentShell = process.env.SHELL;
+  const shellName = currentShell ? path.basename(currentShell).toLowerCase() : "";
+  if (shellName === "bash") {
+    return "bash";
+  }
+  return "zsh";
+}
 
 export function getDefaultCli(): CliName {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
@@ -31,6 +50,23 @@ export function getRememberSelectedCli(): boolean {
 export function getDebugLogging(): boolean {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<boolean>("debug", false);
+}
+
+export function getMacTaskShell(): MacTaskShell {
+  if (process.platform !== "darwin") {
+    return DEFAULT_MAC_TASK_SHELL;
+  }
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const inspected = config.inspect<unknown>(MAC_TASK_SHELL_KEY);
+  const explicitValue = normalizeMacTaskShell(
+    inspected?.workspaceFolderValue
+    ?? inspected?.workspaceValue
+    ?? inspected?.globalValue
+  );
+  if (explicitValue) {
+    return explicitValue;
+  }
+  return detectCurrentMacTaskShell();
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {

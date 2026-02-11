@@ -1,4 +1,4 @@
-import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, MacTaskShell, ThinkingMode } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 
 export type ConfigSummary = {
@@ -92,6 +92,8 @@ export type PanelState = {
   rememberSelectedCli: boolean;
   debug: boolean;
   locale: string;
+  isMac: boolean;
+  macTaskShell: MacTaskShell;
   thinkingMode: ThinkingMode;
   interactive: {
     supported: boolean;

@@ -6,6 +6,8 @@ export type ThinkingMode = "off" | "on" | "low" | "medium" | "high" | "xhigh";
 
 export type InteractiveMode = "coding" | "plan";
 
+export type MacTaskShell = "zsh" | "bash";
+
 export type ThinkingWorkspaceFile = {
   path: string;
   content: string;

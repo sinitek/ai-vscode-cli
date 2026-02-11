@@ -3,8 +3,8 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "cross-spawn";
-import { CliName, ThinkingMode } from "./types";
-import { getCliArgs, getCliCommand, getThinkingArgs } from "./config";
+import { CliName, MacTaskShell, ThinkingMode } from "./types";
+import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
@@ -26,6 +26,10 @@ export type ResolvedCliCommand = {
   command: string;
   resolvedFrom: "config" | "path" | "windows-npm-bin";
 };
+
+function isPathLikeCommand(command: string): boolean {
+  return command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
+}
 
 function fileExists(targetPath: string): boolean {
   try {
@@ -120,7 +124,7 @@ function normalizeCommandInput(command: string): string {
 
 export function resolveCliCommand(command: string): ResolvedCliCommand | null {
   const normalized = normalizeCommandInput(command);
-  const looksLikePath = normalized.includes(path.sep) || (process.platform === "win32" && normalized.includes("/"));
+  const looksLikePath = isPathLikeCommand(normalized);
   if (path.isAbsolute(normalized) || looksLikePath) {
     const resolved = resolveExistingCommandPath(normalized);
     return resolved ? { command: resolved, resolvedFrom: "config" } : null;
@@ -139,6 +143,45 @@ export function resolveCliCommand(command: string): ResolvedCliCommand | null {
   }
 
   return null;
+}
+
+function checkCommandAvailableOnMacShell(command: string, shell: MacTaskShell): Promise<boolean> {
+  return new Promise((resolve) => {
+    const shellPath = resolveMacTaskShellExecutable(shell);
+    const commandLine = `command -v ${escapeShellArg(command)} >/dev/null 2>&1`;
+    const child = spawn(shellPath, ["-lc", commandLine], {
+      env: process.env,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.on("error", () => {
+      resolve(false);
+    });
+    child.on("close", (code) => {
+      resolve(code === 0);
+    });
+  });
+}
+
+export async function isCliCommandAvailable(command: string): Promise<boolean> {
+  const normalized = normalizeCommandInput(command);
+  if (!normalized) {
+    return false;
+  }
+
+  if (resolveCliCommand(normalized)) {
+    return true;
+  }
+
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  if (path.isAbsolute(normalized) || isPathLikeCommand(normalized)) {
+    return false;
+  }
+
+  return checkCommandAvailableOnMacShell(normalized, getMacTaskShell());
 }
 
 export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise<void> {
@@ -266,6 +309,15 @@ function ensureClaudePrintArgs(sharedArgs: string[]): string[] {
   return args;
 }
 
+
+function buildShellCommandLine(command: string, args: string[]): string {
+  return [command, ...args].map((segment) => escapeShellArg(segment)).join(" ");
+}
+
+function resolveMacTaskShellExecutable(shell: MacTaskShell): string {
+  return shell === "bash" ? "/bin/bash" : "/bin/zsh";
+}
+
 export function runCliStream(
   cli: CliName,
   prompt: string,
@@ -273,21 +325,37 @@ export function runCliStream(
   options: RunStreamOptions = {}
 ): RunProcess {
   const configuredCommand = getCliCommand(cli);
-  const resolved = resolveCliCommand(configuredCommand);
-  if (!resolved) {
-    const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
-    error.code = "ENOENT";
-    handlers.onError(error);
-    handlers.onExit(127);
-    return {
-      pid: undefined,
-      resolvedCommand: undefined,
-      kill: () => false,
-    };
-  }
   const fullArgs = buildCliArgs(cli, options, prompt);
   const processLabel = options.processLabel;
-  const child = spawn(resolved.command, fullArgs, {
+
+  let commandToSpawn: string;
+  let argsToSpawn: string[];
+  let resolvedCommand: string | undefined;
+
+  if (process.platform === "darwin") {
+    const macTaskShell = getMacTaskShell();
+    commandToSpawn = resolveMacTaskShellExecutable(macTaskShell);
+    argsToSpawn = ["-lc", buildShellCommandLine(configuredCommand, fullArgs)];
+    resolvedCommand = configuredCommand;
+  } else {
+    const resolved = resolveCliCommand(configuredCommand);
+    if (!resolved) {
+      const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
+      error.code = "ENOENT";
+      handlers.onError(error);
+      handlers.onExit(127);
+      return {
+        pid: undefined,
+        resolvedCommand: undefined,
+        kill: () => false,
+      };
+    }
+    commandToSpawn = resolved.command;
+    argsToSpawn = fullArgs;
+    resolvedCommand = resolved.command;
+  }
+
+  const child = spawn(commandToSpawn, argsToSpawn, {
     cwd: options.cwd,
     env: process.env,
     argv0: processLabel,
@@ -325,7 +393,7 @@ export function runCliStream(
 
   return {
     pid: child.pid,
-    resolvedCommand: resolved.command,
+    resolvedCommand,
     kill: (signal) => killProcessTree(child, signal),
   };
 }
