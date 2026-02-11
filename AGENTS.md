@@ -9,11 +9,11 @@
 - docs/VSCODE_CLI_PLUGIN_DEV_GUIDE
 当你发现这个手册写的不对或者要补充时必须去修改目标文件
 
-# AI CLI 助手调用代码参考
-目标系统：/Users/fangjiawei/work/full_stack_black_light_framework/frontend/src/pages/ai-demo/AiAssistantDemoPage.tsx
+# 开发注意事项
+- 本插件有国际化功能，支持中英文，新增修改功能时务必支持国际化。
 
 # 本工具存储数据
 ~/.sinitek_cli/
 
-# AI 助手气泡显示规则
-三个 cli 的回复气泡必须按照流式消息时间顺序展示， 如果下一条消息和上一条消息类型一样，可以 append 在上一条气泡里，如果不一样就要新建气泡， 然后永远不要把内容补充到以前的气泡里。 
+# 本工具功能清单
+- docs/插件功能清单.md 你在新增修改功能后要同步修改这个文件
