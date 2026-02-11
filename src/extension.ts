@@ -765,11 +765,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
-    const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-    const target = message.key.startsWith("interactive.")
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
-    await config.update(message.key, message.value, target);
+    await updatePanelSetting(message.key, message.value);
     await postPanelState();
     return;
   }
@@ -1019,6 +1015,31 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
     pendingSessionMessages[cli] = [];
   }
   ensureLatestSessionForCli(currentCli);
+}
+
+async function updatePanelSetting(key: string, value: unknown): Promise<void> {
+  const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
+  if (!key.startsWith("interactive.")) {
+    await config.update(key, value, vscode.ConfigurationTarget.Global);
+    return;
+  }
+
+  const hasWorkspace = Boolean(vscode.workspace.workspaceFolders?.length);
+  if (!hasWorkspace) {
+    await config.update(key, value, vscode.ConfigurationTarget.Global);
+    return;
+  }
+
+  try {
+    await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+  } catch (error) {
+    await config.update(key, value, vscode.ConfigurationTarget.Global);
+    void logInfo("updateSetting-workspace-fallback-global", {
+      key,
+      value,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function buildWorkspaceKey(root: string | undefined): string {
