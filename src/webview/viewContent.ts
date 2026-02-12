@@ -88,6 +88,12 @@ const WEBVIEW_I18N = {
     queueTitle: "Queued Prompts",
     queueCloseLabel: "Close",
     queueEmpty: "No queued prompts.",
+    queueEditLabel: "Edit",
+    queueSaveLabel: "Save",
+    queueCancelEditLabel: "Cancel",
+    queueEditPlaceholder: "Update prompt before sending...",
+    queueMoveUpLabel: "Move up",
+    queueMoveDownLabel: "Move down",
     queueRemoveLabel: "Remove",
     runPromptViewAria: "View current running prompt",
     runPromptViewLabel: "Prompt",
@@ -148,6 +154,8 @@ const WEBVIEW_I18N = {
     toastCopied: "Copied",
     toastCopyFailed: "Copy failed",
     toastQueueAdded: "Added to queue",
+    toastQueueUpdated: "Queued prompt updated",
+    toastQueueEmptyPrompt: "Prompt cannot be empty",
     toastQueueSendFailed: "Failed to send queued prompt. Activate a config first.",
     toastNoActiveConfig: "No active config for the current CLI. Activate one in the config page first.",
     toastFileReadFailed: "Failed to read file content.",
@@ -248,6 +256,12 @@ const WEBVIEW_I18N = {
     queueTitle: "队列提示词",
     queueCloseLabel: "关闭",
     queueEmpty: "当前没有待发送的提示词。",
+    queueEditLabel: "编辑",
+    queueSaveLabel: "保存",
+    queueCancelEditLabel: "取消",
+    queueEditPlaceholder: "发送前可在这里修改提示词...",
+    queueMoveUpLabel: "上移",
+    queueMoveDownLabel: "下移",
     queueRemoveLabel: "取消",
     runPromptViewAria: "查看当前执行提示词",
     runPromptViewLabel: "提示词",
@@ -308,6 +322,8 @@ const WEBVIEW_I18N = {
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
+    toastQueueUpdated: "队列提示词已更新",
+    toastQueueEmptyPrompt: "提示词不能为空",
     toastQueueSendFailed: "队列发送失败，请先激活配置",
     toastNoActiveConfig: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
     toastFileReadFailed: "无法读取文件内容",
@@ -1234,24 +1250,53 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 10px;
         background: var(--vscode-editor-background);
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
+        flex-direction: column;
+        gap: 10px;
       }
       .queue-text {
         font-size: 12px;
         white-space: pre-wrap;
         word-break: break-word;
-        flex: 1;
         min-width: 0;
+      }
+      .queue-edit-input {
+        width: 100%;
+        min-height: 88px;
+        max-height: 220px;
+        resize: vertical;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 8px;
+        background: var(--vscode-input-background, var(--vscode-editor-background));
+        color: var(--vscode-input-foreground, var(--vscode-foreground));
+        font-family: inherit;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px;
+      }
+      .queue-edit-input:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+        box-shadow: 0 0 0 1px var(--vscode-focusBorder);
       }
       .queue-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .queue-edit-button {
+        padding: 0 10px;
+      }
+      .queue-order-button {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border-radius: 6px;
       }
       .queue-remove-button {
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
         padding: 0;
         border-radius: 6px;
       }
@@ -2234,6 +2279,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let toastTimer = null;
       let resizeFrame = 0;
       const pendingPromptQueue = [];
+      let queueEditingIndex = -1;
+      let queueEditingDraft = "";
       let pendingRunPrompt = null;
       let suppressQueueFlushOnce = false;
       let runWaitTimer = null;
@@ -3775,10 +3822,78 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function normalizeQueueEditingState() {
+        if (queueEditingIndex < 0) {
+          return;
+        }
+        if (queueEditingIndex >= pendingPromptQueue.length) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+        }
+      }
+
+      function startQueuedPromptEdit(index) {
+        if (index < 0 || index >= pendingPromptQueue.length) {
+          return;
+        }
+        const payload = normalizePromptPayload(pendingPromptQueue[index]);
+        if (!payload) {
+          return;
+        }
+        queueEditingIndex = index;
+        queueEditingDraft = payload.prompt;
+        renderQueueOverlay();
+      }
+
+      function cancelQueuedPromptEdit() {
+        if (queueEditingIndex < 0) {
+          return;
+        }
+        queueEditingIndex = -1;
+        queueEditingDraft = "";
+        renderQueueOverlay();
+      }
+
+      function saveQueuedPromptEdit() {
+        if (queueEditingIndex < 0 || queueEditingIndex >= pendingPromptQueue.length) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+          renderQueueOverlay();
+          return;
+        }
+        const nextPrompt = String(queueEditingDraft || "").trim();
+        if (!nextPrompt) {
+          showToast(t("toastQueueEmptyPrompt"));
+          return;
+        }
+        const currentPayload = normalizePromptPayload(pendingPromptQueue[queueEditingIndex]);
+        if (!currentPayload) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+          renderQueueOverlay();
+          return;
+        }
+        if (nextPrompt === currentPayload.prompt) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+          renderQueueOverlay();
+          return;
+        }
+        pendingPromptQueue[queueEditingIndex] = {
+          prompt: nextPrompt,
+          contextOptions: currentPayload.contextOptions,
+        };
+        queueEditingIndex = -1;
+        queueEditingDraft = "";
+        updateQueueIndicator();
+        showToast(t("toastQueueUpdated"));
+      }
+
       function renderQueueOverlay() {
         if (!elements.queueBody) {
           return;
         }
+        normalizeQueueEditingState();
         elements.queueBody.innerHTML = "";
         if (!pendingPromptQueue.length) {
           const empty = document.createElement("div");
@@ -3787,26 +3902,109 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.queueBody.appendChild(empty);
           return;
         }
+        let editInputToFocus = null;
         pendingPromptQueue.forEach((item, index) => {
           const payload = normalizePromptPayload(item);
           const promptText = payload ? payload.prompt : "";
+          const isEditing = queueEditingIndex === index;
           const row = document.createElement("div");
           row.className = "queue-item";
 
-          const text = document.createElement("div");
-          text.className = "queue-text";
-          const previewText =
-            promptText.length > queuePromptPreviewLimit
-              ? promptText.slice(0, Math.max(0, queuePromptPreviewLimit - queuePromptPreviewSuffix.length)) +
-                queuePromptPreviewSuffix
-              : promptText;
-          text.textContent = previewText;
-          if (previewText !== promptText) {
-            text.title = promptText;
+          if (isEditing) {
+            const editor = document.createElement("textarea");
+            editor.className = "queue-edit-input";
+            editor.placeholder = t("queueEditPlaceholder");
+            editor.value = queueEditingDraft;
+            editor.addEventListener("input", () => {
+              queueEditingDraft = editor.value;
+            });
+            editor.addEventListener("keydown", (event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                saveQueuedPromptEdit();
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancelQueuedPromptEdit();
+              }
+            });
+            editInputToFocus = editor;
+            row.appendChild(editor);
+          } else {
+            const text = document.createElement("div");
+            text.className = "queue-text";
+            const previewText =
+              promptText.length > queuePromptPreviewLimit
+                ? promptText.slice(0, Math.max(0, queuePromptPreviewLimit - queuePromptPreviewSuffix.length)) +
+                  queuePromptPreviewSuffix
+                : promptText;
+            text.textContent = previewText;
+            if (previewText !== promptText) {
+              text.title = promptText;
+            }
+            row.appendChild(text);
           }
 
           const actions = document.createElement("div");
           actions.className = "queue-actions";
+
+          if (isEditing) {
+            const cancelButton = document.createElement("button");
+            cancelButton.className = "ghost queue-edit-button";
+            cancelButton.textContent = t("queueCancelEditLabel");
+            cancelButton.addEventListener("click", () => {
+              cancelQueuedPromptEdit();
+            });
+
+            const saveButton = document.createElement("button");
+            saveButton.className = "secondary queue-edit-button";
+            saveButton.textContent = t("queueSaveLabel");
+            saveButton.addEventListener("click", () => {
+              saveQueuedPromptEdit();
+            });
+
+            actions.appendChild(cancelButton);
+            actions.appendChild(saveButton);
+          } else {
+            const editButton = document.createElement("button");
+            editButton.className = "secondary queue-edit-button";
+            editButton.textContent = t("queueEditLabel");
+            editButton.addEventListener("click", () => {
+              startQueuedPromptEdit(index);
+            });
+            actions.appendChild(editButton);
+          }
+
+          const moveUpButton = document.createElement("button");
+          moveUpButton.className = "icon-button queue-order-button";
+          moveUpButton.setAttribute("aria-label", t("queueMoveUpLabel"));
+          moveUpButton.setAttribute("title", t("queueMoveUpLabel"));
+          moveUpButton.innerHTML =
+            '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<line x1="12" y1="18" x2="12" y2="6" />' +
+            '<polyline points="6 12 12 6 18 12" />' +
+            "</svg>";
+          moveUpButton.disabled = index === 0;
+          moveUpButton.addEventListener("click", () => {
+            moveQueuedPrompt(index, index - 1);
+          });
+
+          const moveDownButton = document.createElement("button");
+          moveDownButton.className = "icon-button queue-order-button";
+          moveDownButton.setAttribute("aria-label", t("queueMoveDownLabel"));
+          moveDownButton.setAttribute("title", t("queueMoveDownLabel"));
+          moveDownButton.innerHTML =
+            '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<line x1="12" y1="6" x2="12" y2="18" />' +
+            '<polyline points="6 12 12 18 18 12" />' +
+            "</svg>";
+          moveDownButton.disabled = index === pendingPromptQueue.length - 1;
+          moveDownButton.addEventListener("click", () => {
+            moveQueuedPrompt(index, index + 1);
+          });
 
           const removeButton = document.createElement("button");
           removeButton.className = "icon-button queue-remove-button";
@@ -3822,11 +4020,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             clearQueuedPromptIndex(index);
           });
 
+          actions.appendChild(moveUpButton);
+          actions.appendChild(moveDownButton);
           actions.appendChild(removeButton);
-          row.appendChild(text);
           row.appendChild(actions);
           elements.queueBody.appendChild(row);
         });
+        if (editInputToFocus) {
+          setTimeout(() => {
+            editInputToFocus.focus();
+            const length = editInputToFocus.value.length;
+            editInputToFocus.setSelectionRange(length, length);
+          }, 0);
+        }
       }
 
       function openQueueOverlay() {
@@ -3854,13 +4060,45 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         showToast(t("toastQueueAdded"));
       }
 
+      function moveQueuedPrompt(fromIndex, toIndex) {
+        if (fromIndex < 0 || fromIndex >= pendingPromptQueue.length) {
+          return;
+        }
+        if (toIndex < 0 || toIndex >= pendingPromptQueue.length) {
+          return;
+        }
+        if (fromIndex === toIndex) {
+          return;
+        }
+        const moved = pendingPromptQueue.splice(fromIndex, 1);
+        if (!moved.length) {
+          return;
+        }
+        pendingPromptQueue.splice(toIndex, 0, moved[0]);
+
+        if (queueEditingIndex === fromIndex) {
+          queueEditingIndex = toIndex;
+        } else if (fromIndex < queueEditingIndex && queueEditingIndex <= toIndex) {
+          queueEditingIndex -= 1;
+        } else if (toIndex <= queueEditingIndex && queueEditingIndex < fromIndex) {
+          queueEditingIndex += 1;
+        }
+
+        updateQueueIndicator();
+      }
+
       function clearQueuedPromptIndex(index) {
         if (index < 0 || index >= pendingPromptQueue.length) {
           return;
         }
         pendingPromptQueue.splice(index, 1);
+        if (queueEditingIndex === index) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+        } else if (queueEditingIndex > index) {
+          queueEditingIndex -= 1;
+        }
         updateQueueIndicator();
-        renderQueueOverlay();
       }
 
       function flushPendingPromptQueue() {
@@ -3871,6 +4109,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const nextPromptPayload = pendingPromptQueue.shift();
+        if (queueEditingIndex === 0) {
+          queueEditingIndex = -1;
+          queueEditingDraft = "";
+        } else if (queueEditingIndex > 0) {
+          queueEditingIndex -= 1;
+        }
         updateQueueIndicator();
         const sent = dispatchPrompt(nextPromptPayload);
         if (!sent) {
