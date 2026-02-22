@@ -76,6 +76,13 @@
 - `-h, --help`：帮助。
 - `-V, --version`：版本。
 
+
+插件内 Codex MCP 市场（配置中心）：
+- 点击 MCP 市场中的“添加”时，插件会直接调用 `codex mcp add ...` 安装，而不是只在编辑器里拼接 `config.toml` 文本。
+- 插件会调用 `codex mcp list --json` 回读已安装 MCP 列表，用于展示已安装状态。
+- 对于 HTTP MCP，优先写入 `--url`；若 `Authorization` 头可解析为环境变量引用（如 `Bearer $TOKEN`），会自动映射到 `--bearer-token-env-var`。
+- Marketplace 中的占位环境变量（如 `<YOUR_API_KEY>`）不会直接写入，会跳过并给出提示，避免把模板值写进本机配置。
+
 思考模式（非交互）：
 - 使用 `codex exec` 时，可通过 `-c model_reasoning_effort="<level>"` 调整思考强度（`low` / `medium` / `high`）。
 - Codex CLI 没有明确的“关闭”参数，可将 `model_reasoning_effort` 设为 `low` 以尽量降低推理。

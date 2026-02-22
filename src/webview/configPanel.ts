@@ -140,6 +140,12 @@ export class ConfigManagerPanel {
         case "getCodexSkillsList":
           response.data = await configService.getCodexSkillsList();
           break;
+        case "getCodexMcpServerIds":
+          response.data = await configService.getCodexMcpServerIds();
+          break;
+        case "installCodexMcp":
+          response.data = await configService.installCodexMcpServer(message.mcpId);
+          break;
         case "exportConfigs": {
           const payload = message.payload;
           if (!payload || typeof payload.content !== "string") {

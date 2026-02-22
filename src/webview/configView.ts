@@ -65,6 +65,7 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "更新技能失败": "Failed to update skills.",
   "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
   "添加 MCP 失败": "Failed to add MCP.",
+  "安装 MCP 失败": "Failed to install MCP.",
   "JSON格式不正确": "Invalid JSON format.",
   "auth.json格式不正确": "Invalid auth.json format.",
   "当前配置不是有效的 JSON，无法自动添加 MCP": "Current config is not valid JSON; cannot auto-add MCP.",
@@ -96,6 +97,7 @@ const CONFIG_TRANSLATION_PATTERNS_EN = [
   { pattern: "^保存失败[:：]?\\s*(.+)$", replace: "Save failed: $1" },
   { pattern: "^导入失败[:：]?\\s*(.+)$", replace: "Import failed: $1" },
   { pattern: "^已添加 MCP[:：]?\\s*(.+)$", replace: "Added MCP: $1" },
+  { pattern: "^已安装 MCP[:：]?\\s*(.+)$", replace: "Installed MCP: $1" },
   { pattern: "^MCP Server (.+) 已存在，将被覆盖$", replace: "MCP Server $1 already exists and will be overwritten." },
   { pattern: "^已保存，但更新激活配置失败[:：]?\\s*(.+)$", replace: "Saved, but failed to update active config: $1" },
   { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" }
@@ -293,6 +295,8 @@ export function getConfigViewHtml(
           initDefault: (platform) => requestConfig("initDefault", { platform }),
           getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
+          getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
+          installCodexMcp: (mcpId) => requestConfig("installCodexMcp", { mcpId }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };

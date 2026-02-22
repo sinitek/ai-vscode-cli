@@ -14,6 +14,8 @@ export type ConfigAction =
   | "initDefault"
   | "getMcpMarketplaceList"
   | "getCodexSkillsList"
+  | "getCodexMcpServerIds"
+  | "installCodexMcp"
   | "exportConfigs";
 
 export type ConfigRequestPayload =
@@ -30,6 +32,8 @@ export type ConfigRequestPayload =
   | { action: "initDefault"; platform: ConfigPlatform }
   | { action: "getMcpMarketplaceList" }
   | { action: "getCodexSkillsList" }
+  | { action: "getCodexMcpServerIds" }
+  | { action: "installCodexMcp"; mcpId: string }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
 
 export type ConfigRequestMessage = {

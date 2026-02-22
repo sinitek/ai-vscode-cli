@@ -42,6 +42,12 @@ export type McpMarketplaceItem = {
   };
 };
 
+export type CodexMcpInstallResult = {
+  serverId: string;
+  commandArgs: string[];
+  warnings: string[];
+};
+
 export type ApplyPayload = {
   content?: string;
   mcpContent?: string;

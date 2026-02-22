@@ -2033,6 +2033,7 @@ const ConfigEditorPanel = () => {
       [m, v] = c.useState(""),
       [p, h] = c.useState(""),
       [b, x] = c.useState(""),
+      [codexMcpServerIds, setCodexMcpServerIds] = c.useState([]),
       [C, Z] = c.useState([]),
       [j, q] = c.useState(!1),
       [S, y] = c.useState(null),
@@ -2040,6 +2041,8 @@ const ConfigEditorPanel = () => {
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null,
       R = c.useMemo(() => {
+        if (t === "codex" && Array.isArray(codexMcpServerIds) && codexMcpServerIds.length > 0)
+          return codexMcpServerIds;
         if (t === "codex") {
           try {
             const H = g1(m || "");
@@ -2053,27 +2056,27 @@ const ConfigEditorPanel = () => {
           if (H && H.mcpServers) return Object.keys(H.mcpServers);
         } catch {}
         return [];
-      }, [l, u, m, t]),
-      P = (W) => {
+      }, [l, u, m, t, codexMcpServerIds]),
+      P = async (W) => {
         try {
           if (t === "codex") {
-            const U = m || "";
-            let T = {};
+            const U = await installCodexMcpById(W.id);
+            const T = Array.isArray(U?.warnings) ? U.warnings : [];
+            T.forEach((k) => Kt.warning(k));
             try {
-              T = g1(U) || {};
-            } catch {
-              if (!U.trim()) T = {};
-              else {
-                Kt.error("当前配置不是有效的 TOML，无法自动添加 MCP");
-                return;
-              }
+              const k = await fetchCurrentConfig("codex");
+              k?.configContent !== void 0 && v(k.configContent);
+              k?.authContent !== void 0 && h(k.authContent);
+            } catch (k) {
+              console.error("刷新 Codex 配置失败:", k);
             }
-            (T.mcp_servers || (T.mcp_servers = {}),
-              T.mcp_servers[W.id] &&
-                Kt.warning(`MCP Server ${W.id} 已存在，将被覆盖`),
-              (T.mcp_servers[W.id] = W.config));
-            const F = Ik(T);
-            (v(F), Kt.success(`已添加 MCP: ${W.name}`));
+            try {
+              const k = await fetchCodexMcpServerIds();
+              Array.isArray(k) && setCodexMcpServerIds(k);
+            } catch (k) {
+              console.error("刷新 Codex MCP 列表失败:", k);
+            }
+            Kt.success(`已安装 MCP: ${W.name}`);
             return;
           }
           const k = (t === "claude" ? u : l) || "{}";
@@ -2094,12 +2097,13 @@ const ConfigEditorPanel = () => {
           const G = JSON.stringify(L, null, 2);
           (t === "claude" ? f(G) : s(G), Kt.success(`已添加 MCP: ${W.name}`));
         } catch (H) {
-          (console.error("添加 MCP 失败:", H), Kt.error("添加 MCP 失败"));
+          console.error("添加 MCP 失败:", H),
+            Kt.error(t === "codex" ? "安装 MCP 失败" : "添加 MCP 失败");
         }
       };
     c.useEffect(() => {
       if (!O) {
-        (s(""), f(""), x(""), v(""), h(""), Z([]));
+        (s(""), f(""), x(""), v(""), h(""), Z([]), setCodexMcpServerIds([]));
         return;
       }
       O.platform === "claude"
@@ -2107,6 +2111,24 @@ const ConfigEditorPanel = () => {
         : O.platform === "gemini"
           ? (s(O.content || "{}"), x(O.envContent || ""), v(""), h(""))
           : (v(O.configContent || ""), h(O.authContent || "{}"), s(""), x(""));
+    }, [O]);
+    c.useEffect(() => {
+      let W = !1;
+      if (!O || O.platform !== "codex") {
+        setCodexMcpServerIds([]);
+        return;
+      }
+      (async () => {
+        try {
+          const H = await fetchCodexMcpServerIds();
+          W || setCodexMcpServerIds(Array.isArray(H) ? H : []);
+        } catch (H) {
+          (console.error("获取 Codex MCP 列表失败:", H), W || setCodexMcpServerIds([]));
+        }
+      })();
+      return () => {
+        W = !0;
+      };
     }, [O]);
     const G = c.useCallback((W, H) => {
       const k = new Map();

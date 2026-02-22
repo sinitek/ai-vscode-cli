@@ -148,6 +148,13 @@ export function getCliArgs(cli: CliName): string[] {
   - `# --- sinitek codex skills end ---`
 - 该区块只写入禁用项（`enabled = false`），不影响用户自定义的其它 TOML 配置。
 
+### Codex MCP 市场安装策略
+
+- Codex 平台在配置中心点击 MCP 市场“添加”时，会调用真实命令安装：`codex mcp add ...`。
+- 安装状态通过 `codex mcp list --json` 回读，而不是仅根据编辑器中的 TOML 文本推断。
+- stdio MCP 会按可用 `env` 值追加 `--env KEY=VALUE`；占位值（如 `<YOUR_API_KEY>`）会跳过并给出警告。
+- HTTP MCP 会优先写入 `--url`；当 `Authorization` 头是 `Bearer $TOKEN` / `Bearer ${TOKEN}` 时，自动映射为 `--bearer-token-env-var TOKEN`。
+
 ### CLI 调用（src/cli/commandRunner.ts）
 
 ```ts

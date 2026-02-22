@@ -46,6 +46,12 @@ const detectConfigApiMode = () =>
         return t?.data ?? [];
       }),
     getCodexSkillsList: () => requestConfigApi("/codex/skills"),
+    getCodexMcpServerIds: async () => {
+      throw new Error("当前模式不支持读取 Codex MCP");
+    },
+    installCodexMcp: async () => {
+      throw new Error("当前模式不支持安装 Codex MCP");
+    },
     exportConfigs: async () => {
       throw new Error("当前模式不支持导出文件");
     },
@@ -68,6 +74,23 @@ const detectConfigApiMode = () =>
       return configApi.getCodexSkillsList();
     } catch (e) {
       throw (console.error("获取 Codex Skills 失败:", e), e);
+    }
+  },
+  fetchCodexMcpServerIds = async () => {
+    if (!configApi.getCodexMcpServerIds) return [];
+    try {
+      return configApi.getCodexMcpServerIds();
+    } catch (e) {
+      throw (console.error("获取 Codex MCP 列表失败:", e), e);
+    }
+  },
+  installCodexMcpById = async (e) => {
+    if (!configApi.installCodexMcp)
+      throw new Error("当前模式不支持安装 Codex MCP");
+    try {
+      return configApi.installCodexMcp(e);
+    } catch (t) {
+      throw (console.error("安装 Codex MCP 失败:", t), t);
     }
   },
   fetchConfigList = async (e) => {

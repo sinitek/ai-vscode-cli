@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import { spawn } from "cross-spawn";
 import {
   ApplyPayload,
   ConfigItem,
@@ -9,8 +10,10 @@ import {
   CurrentConfig,
   McpMarketplaceItem,
   CodexSkillItem,
+  CodexMcpInstallResult,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
+import { getCliCommand } from "../cli/config";
 import { t } from "../i18n";
 
 const CONFIG_DIR_NAME = "__config";
@@ -442,6 +445,220 @@ export async function backupConfig(platform: ConfigPlatform): Promise<string[]> 
     return backupCodexConfig();
   }
   return backupGeminiConfig();
+}
+
+const CODEX_MCP_COMMAND_TIMEOUT_MS = 120000;
+
+type CodexRunResult = {
+  stdout: string;
+  stderr: string;
+};
+
+function parseCommandParts(command: string): string[] {
+  const parts = command.match(/(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S+)/g) ?? [];
+  return parts.map((part) => {
+    if (
+      (part.startsWith("\"") && part.endsWith("\""))
+      || (part.startsWith("'") && part.endsWith("'"))
+    ) {
+      return part.slice(1, -1);
+    }
+    return part;
+  });
+}
+
+function getCodexCommandParts(): string[] {
+  const command = getCliCommand("codex").trim();
+  return parseCommandParts(command || "codex");
+}
+
+async function runCodexCommand(args: string[], timeoutMs = CODEX_MCP_COMMAND_TIMEOUT_MS): Promise<CodexRunResult> {
+  const commandParts = getCodexCommandParts();
+  if (commandParts.length === 0 || !commandParts[0]) {
+    throw new Error("Codex command is empty.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(commandParts[0], [...commandParts.slice(1), ...args], {
+      env: process.env,
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill();
+      reject(new Error(`codex ${args.join(" ")} timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+    };
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const message = stderr.trim() || stdout.trim() || `exit code ${code}`;
+      reject(new Error(`codex ${args.join(" ")} failed: ${message}`));
+    });
+  });
+}
+
+function isPlaceholderEnvValue(value: string): boolean {
+  const trimmed = value.trim();
+  return /^<[^>]+>$/.test(trimmed) || /^\$\{?YOUR_/i.test(trimmed) || /^YOUR_/i.test(trimmed);
+}
+
+function extractBearerTokenEnvVar(value: string): string | null {
+  const trimmed = value.trim();
+  const plainMatch = /^Bearer\s+\$([A-Za-z_][A-Za-z0-9_]*)$/i.exec(trimmed);
+  if (plainMatch?.[1]) {
+    return plainMatch[1];
+  }
+  const wrappedMatch = /^Bearer\s+\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/i.exec(trimmed);
+  if (wrappedMatch?.[1]) {
+    return wrappedMatch[1];
+  }
+  return null;
+}
+
+function uniqueWarnings(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
+}
+
+function buildCodexMcpInstallArgs(item: McpMarketplaceItem): { commandArgs: string[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const config = item.config ?? {};
+  const isHttp = config.type === "http" || typeof config.url === "string";
+
+  if (isHttp) {
+    const url = config.url?.trim();
+    if (!url) {
+      throw new Error(`MCP ${item.id} is missing http url.`);
+    }
+
+    const commandArgs = ["mcp", "add", item.id, "--url", url];
+    const headers = config.headers ?? {};
+    const authHeader = headers.Authorization ?? headers.authorization;
+
+    if (typeof authHeader === "string" && authHeader.trim()) {
+      const bearerTokenEnvVar = extractBearerTokenEnvVar(authHeader);
+      if (bearerTokenEnvVar) {
+        commandArgs.push("--bearer-token-env-var", bearerTokenEnvVar);
+      } else {
+        warnings.push(
+          `MCP ${item.id}: authorization header cannot be converted, please set bearer token env var manually.`,
+        );
+      }
+    }
+
+    const unsupportedHeaderKeys = Object.keys(headers).filter(
+      (key) => key.toLowerCase() !== "authorization",
+    );
+    if (unsupportedHeaderKeys.length > 0) {
+      warnings.push(
+        `MCP ${item.id}: custom headers are not supported by codex mcp add (${unsupportedHeaderKeys.join(", ")}).`,
+      );
+    }
+
+    return { commandArgs, warnings: uniqueWarnings(warnings) };
+  }
+
+  const command = config.command?.trim();
+  if (!command) {
+    throw new Error(`MCP ${item.id} is missing command.`);
+  }
+
+  const commandArgs = ["mcp", "add", item.id];
+  if (config.env && typeof config.env === "object") {
+    for (const [envName, envValue] of Object.entries(config.env)) {
+      if (!envName || typeof envValue !== "string") {
+        continue;
+      }
+      const trimmedValue = envValue.trim();
+      if (!trimmedValue || isPlaceholderEnvValue(trimmedValue)) {
+        warnings.push(`MCP ${item.id}: skipped template env ${envName}.`);
+        continue;
+      }
+      commandArgs.push("--env", `${envName}=${trimmedValue}`);
+    }
+  }
+
+  const mcpArgs = Array.isArray(config.args)
+    ? config.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+  commandArgs.push("--", command, ...mcpArgs);
+
+  return { commandArgs, warnings: uniqueWarnings(warnings) };
+}
+
+function parseCodexMcpServerIds(rawContent: string): string[] {
+  const parsed = JSON.parse(rawContent) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error("Invalid codex mcp list output.");
+  }
+
+  return parsed
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return "";
+      }
+      const record = item as Record<string, unknown>;
+      return typeof record.name === "string" ? record.name.trim() : "";
+    })
+    .filter((name) => name.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export async function getCodexMcpServerIds(): Promise<string[]> {
+  const { stdout } = await runCodexCommand(["mcp", "list", "--json"]);
+  return parseCodexMcpServerIds(stdout);
+}
+
+export async function installCodexMcpServer(mcpId: string): Promise<CodexMcpInstallResult> {
+  const marketplace = await getMcpMarketplaceList();
+  const item = marketplace.find((entry) => entry.id === mcpId);
+  if (!item) {
+    throw new Error(`MCP ${mcpId} not found in marketplace.`);
+  }
+
+  const { commandArgs, warnings } = buildCodexMcpInstallArgs(item);
+  await runCodexCommand(commandArgs);
+  return {
+    serverId: item.id,
+    commandArgs,
+    warnings,
+  };
 }
 
 export async function getMcpMarketplaceList(): Promise<McpMarketplaceItem[]> {
