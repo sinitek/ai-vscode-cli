@@ -2451,7 +2451,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let lastScrollToBottomVisible = false;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
-      const CHAT_BOTTOM_THRESHOLD_PX = 20;
+      const CHAT_BOTTOM_THRESHOLD_PX = 50;
       let currentRunPrompt = "";
 
       function normalizeEditorContext(payload) {
