@@ -13,6 +13,7 @@ const WEBVIEW_I18N = {
     headerRules: "Rules",
     headerNewSession: "New Session",
     emptyState: "Type your request to start chatting.",
+    scrollToBottomAria: "Jump to latest message",
     queueIndicatorAria: "View queue",
     queueIndicatorLabel: "Queue",
     taskListTitle: "Task List",
@@ -197,6 +198,7 @@ const WEBVIEW_I18N = {
     headerRules: "规则配置",
     headerNewSession: "新建会话",
     emptyState: "输入需求，开始对话。",
+    scrollToBottomAria: "跳转到最新消息",
     queueIndicatorAria: "查看队列",
     queueIndicatorLabel: "队列",
     taskListTitle: "任务列表",
@@ -496,6 +498,39 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         box-sizing: border-box;
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         border-radius: 10px;
+        position: relative;
+      }
+      .scroll-to-bottom-button {
+        position: absolute;
+        right: 16px;
+        bottom: 16px;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-button-border));
+        background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
+        color: var(--vscode-foreground);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transform: translateY(6px);
+        pointer-events: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        z-index: 3;
+      }
+      .scroll-to-bottom-button.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+      .scroll-to-bottom-button:hover {
+        background: var(--vscode-toolbar-hoverBackground, var(--vscode-button-hoverBackground));
+      }
+      .scroll-to-bottom-button .icon {
+        width: 14px;
+        height: 14px;
       }
       .messages {
         display: flex;
@@ -1826,6 +1861,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span id="queueCount" class="run-queue-count">0</span>
         </button>
       </div>
+        <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="6" x2="12" y2="18" />
+            <polyline points="7 13 12 18 17 13" />
+          </svg>
+        </button>
       </div>
 
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
@@ -2307,6 +2348,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runPromptButton: document.getElementById("runPromptButton"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
+        scrollToBottomButton: document.getElementById("scrollToBottomButton"),
         configSelect: document.getElementById("configSelect"),
         interactiveModeSelect: document.getElementById("interactiveModeSelect"),
         promptInput: document.getElementById("promptInput"),
@@ -2859,6 +2901,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return distanceToBottom <= threshold;
       }
 
+      function scrollChatToBottom(behavior = "smooth") {
+        elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior });
+      }
+
+      function updateScrollToBottomButton(forceHide = false) {
+        if (!elements.scrollToBottomButton) {
+          return;
+        }
+        const hasMessages = state.messages.length > 0;
+        const shouldShow = !forceHide && hasMessages && !isChatNearBottom();
+        elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
+        elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
+      }
+
       function captureOpenTraceCollapsibleKeys() {
         traceCollapsibleOpenKeys.clear();
         const nodes = elements.messages.querySelectorAll("details.trace-collapsible[data-trace-key]");
@@ -2909,7 +2965,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
         updateRunWait();
         if (shouldAutoScroll) {
-          elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior: "smooth" });
+          scrollChatToBottom("smooth");
+          updateScrollToBottomButton(true);
+        } else {
+          updateScrollToBottomButton();
         }
         updateTaskList();
       }
@@ -4982,6 +5041,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.pathPickerButton.addEventListener("click", () => {
         requestWorkspacePathPick();
+      });
+
+      elements.scrollToBottomButton.addEventListener("click", () => {
+        scrollChatToBottom("smooth");
+        updateScrollToBottomButton(true);
+      });
+
+      elements.chatArea.addEventListener("scroll", () => {
+        updateScrollToBottomButton();
       });
 
       elements.stopRun.addEventListener("click", () => {
