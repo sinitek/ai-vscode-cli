@@ -2449,9 +2449,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let runWaitTimer = null;
       let runWaitStartAt = 0;
       let lastScrollToBottomVisible = false;
+      let followLatestMessages = true;
+      let suppressScrollButtonUntil = 0;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
       const CHAT_BOTTOM_THRESHOLD_PX = 50;
+      const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       let currentRunPrompt = "";
 
       function normalizeEditorContext(payload) {
@@ -2922,8 +2925,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return getChatDistanceToBottom() <= threshold;
       }
 
-      function scrollChatToBottom(behavior = "smooth") {
+      function isScrollButtonSuppressed() {
+        return Date.now() < suppressScrollButtonUntil;
+      }
+
+      function scrollChatToBottom(behavior = "auto") {
         elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior });
+      }
+
+      function stickChatToBottom(behavior = "auto") {
+        followLatestMessages = true;
+        suppressScrollButtonUntil = Date.now() + AUTO_SCROLL_BUTTON_SUPPRESS_MS;
+        updateScrollToBottomButton(true);
+        scrollChatToBottom(behavior);
+        requestAnimationFrame(() => {
+          scrollChatToBottom("auto");
+          updateScrollToBottomButton(true);
+        });
+        setTimeout(() => {
+          updateScrollToBottomButton();
+        }, AUTO_SCROLL_BUTTON_SUPPRESS_MS + 20);
       }
 
       function updateScrollToBottomButton(forceHide = false) {
@@ -2933,7 +2954,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const hasMessages = state.messages.length > 0;
         const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
         const distanceToBottom = getChatDistanceToBottom();
-        const shouldShow = !forceHide && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
+        const buttonSuppressed = isScrollButtonSuppressed();
+        const shouldShow = !forceHide && !buttonSuppressed && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
         elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
         elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
         if (elements.scrollToBottomWrap) {
@@ -2943,6 +2965,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const debugPayload = {
             visible: shouldShow,
             forceHide,
+            buttonSuppressed,
+            followLatestMessages,
             distanceToBottom,
             scrollTop: elements.chatArea.scrollTop,
             scrollHeight: elements.chatArea.scrollHeight,
@@ -2970,7 +2994,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function renderMessages() {
-        const shouldAutoScroll = !elements.messages.childElementCount || isChatNearBottom();
+        const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
         captureOpenTraceCollapsibleKeys();
         elements.messages.innerHTML = "";
         state.messages.forEach((message) => {
@@ -3005,8 +3029,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
         updateRunWait();
         if (shouldAutoScroll) {
-          scrollChatToBottom("smooth");
-          updateScrollToBottomButton(true);
+          stickChatToBottom("auto");
         } else {
           updateScrollToBottomButton();
         }
@@ -5084,11 +5107,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.scrollToBottomButton.addEventListener("click", () => {
-        scrollChatToBottom("smooth");
-        updateScrollToBottomButton(true);
+        stickChatToBottom("smooth");
       });
 
       elements.chatArea.addEventListener("scroll", () => {
+        if (!isScrollButtonSuppressed()) {
+          followLatestMessages = isChatNearBottom();
+        }
         updateScrollToBottomButton();
       });
 
