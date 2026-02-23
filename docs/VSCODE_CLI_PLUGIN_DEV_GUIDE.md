@@ -115,7 +115,7 @@ npm init @vscode/extension
 - Trace 统一经由 `traceSegment` 事件进入前端（包含 Claude one-shot 与 interactive），避免不同 CLI 走不同渲染分支。
 - `file update`、`exec`、`tool/调用工具` 类型 trace 必须保持独立气泡（`merge=false`），不允许与前后消息合并。
 - `kind=thinking` 的事件统一走助手增量输出（`appendAssistantChunk`），不单独渲染 trace 气泡。
-- 有新气泡时，仅当聊天已在底部才自动滚动；若用户正在查看历史位置，保持当前位置与已展开/收起状态不变。
+- 有新气泡时，仅当聊天已在底部才自动滚动（贴底判定阈值 20px）；若用户正在查看历史位置，保持当前位置与已展开/收起状态不变。
 - 当聊天未贴底时，右下角显示蓝色“跳转到最新消息”浮动图标；点击后平滑滚动到最底部。
 
 ### 配置读取（src/cli/config.ts）

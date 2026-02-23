@@ -2451,6 +2451,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let lastScrollToBottomVisible = false;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
+      const CHAT_BOTTOM_THRESHOLD_PX = 20;
       let currentRunPrompt = "";
 
       function normalizeEditorContext(payload) {
@@ -2917,7 +2918,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return elements.chatArea.scrollHeight - (elements.chatArea.scrollTop + elements.chatArea.clientHeight);
       }
 
-      function isChatNearBottom(threshold = 24) {
+      function isChatNearBottom(threshold = CHAT_BOTTOM_THRESHOLD_PX) {
         return getChatDistanceToBottom() <= threshold;
       }
 
@@ -2932,7 +2933,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const hasMessages = state.messages.length > 0;
         const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
         const distanceToBottom = getChatDistanceToBottom();
-        const shouldShow = !forceHide && hasMessages && hasOverflow && distanceToBottom > 24;
+        const shouldShow = !forceHide && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
         elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
         elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
         if (elements.scrollToBottomWrap) {
@@ -2946,6 +2947,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             scrollTop: elements.chatArea.scrollTop,
             scrollHeight: elements.chatArea.scrollHeight,
             clientHeight: elements.chatArea.clientHeight,
+            threshold: CHAT_BOTTOM_THRESHOLD_PX,
           };
           console.debug("[scroll-to-bottom]", debugPayload);
           postWebviewDebug("scroll-to-bottom-visibility", debugPayload);
