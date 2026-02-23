@@ -39,6 +39,11 @@ export type PanelMessage =
       lineno?: number;
       colno?: number;
       reason?: string;
+    }
+  | {
+      type: "webviewDebug";
+      event: string;
+      payload?: unknown;
     };
 
 export type UploadFilePayload = {

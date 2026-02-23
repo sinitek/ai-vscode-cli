@@ -500,16 +500,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 10px;
         position: relative;
       }
-      .scroll-to-bottom-button {
-        position: absolute;
-        right: 16px;
+      .scroll-to-bottom-wrap {
+        position: sticky;
         bottom: 16px;
-        width: 32px;
-        height: 32px;
+        height: 0;
+        display: flex;
+        justify-content: flex-end;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .scroll-to-bottom-button {
+        width: 34px;
+        height: 34px;
         border-radius: 999px;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-button-border));
-        background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
-        color: var(--vscode-foreground);
+        border: 1px solid var(--vscode-button-border, var(--vscode-button-background));
+        background: var(--vscode-button-background, var(--vscode-focusBorder));
+        color: var(--vscode-button-foreground, var(--vscode-editor-background));
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -518,7 +524,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         transform: translateY(6px);
         pointer-events: none;
         transition: opacity 0.15s ease, transform 0.15s ease;
-        z-index: 3;
+        box-shadow: 0 1px 3px color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent);
       }
       .scroll-to-bottom-button.visible {
         opacity: 1;
@@ -526,7 +532,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         pointer-events: auto;
       }
       .scroll-to-bottom-button:hover {
-        background: var(--vscode-toolbar-hoverBackground, var(--vscode-button-hoverBackground));
+        background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
       }
       .scroll-to-bottom-button .icon {
         width: 14px;
@@ -1861,12 +1867,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span id="queueCount" class="run-queue-count">0</span>
         </button>
       </div>
-        <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="6" x2="12" y2="18" />
-            <polyline points="7 13 12 18 17 13" />
-          </svg>
-        </button>
+        <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
+          <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="6" x2="12" y2="18" />
+              <polyline points="7 13 12 18 17 13" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
@@ -2252,6 +2260,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           // ignore
         }
       }
+      function postWebviewDebug(event, payload) {
+        try {
+          vscode.postMessage({ type: "webviewDebug", event, payload });
+        } catch {
+          // ignore
+        }
+      }
       function normalizeReason(reason) {
         if (!reason) {
           return "";
@@ -2348,6 +2363,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runPromptButton: document.getElementById("runPromptButton"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
+        scrollToBottomWrap: document.getElementById("scrollToBottomWrap"),
         scrollToBottomButton: document.getElementById("scrollToBottomButton"),
         configSelect: document.getElementById("configSelect"),
         interactiveModeSelect: document.getElementById("interactiveModeSelect"),
@@ -2432,6 +2448,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let suppressQueueFlushOnce = false;
       let runWaitTimer = null;
       let runWaitStartAt = 0;
+      let lastScrollToBottomVisible = false;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
       let currentRunPrompt = "";
@@ -2896,9 +2913,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function getChatDistanceToBottom() {
+        return elements.chatArea.scrollHeight - (elements.chatArea.scrollTop + elements.chatArea.clientHeight);
+      }
+
       function isChatNearBottom(threshold = 24) {
-        const distanceToBottom = elements.chatArea.scrollHeight - (elements.chatArea.scrollTop + elements.chatArea.clientHeight);
-        return distanceToBottom <= threshold;
+        return getChatDistanceToBottom() <= threshold;
       }
 
       function scrollChatToBottom(behavior = "smooth") {
@@ -2910,9 +2930,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const hasMessages = state.messages.length > 0;
-        const shouldShow = !forceHide && hasMessages && !isChatNearBottom();
+        const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
+        const distanceToBottom = getChatDistanceToBottom();
+        const shouldShow = !forceHide && hasMessages && hasOverflow && distanceToBottom > 24;
         elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
         elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
+        if (elements.scrollToBottomWrap) {
+          elements.scrollToBottomWrap.setAttribute("aria-hidden", String(!shouldShow));
+        }
+        if (state.debug && shouldShow !== lastScrollToBottomVisible) {
+          const debugPayload = {
+            visible: shouldShow,
+            forceHide,
+            distanceToBottom,
+            scrollTop: elements.chatArea.scrollTop,
+            scrollHeight: elements.chatArea.scrollHeight,
+            clientHeight: elements.chatArea.clientHeight,
+          };
+          console.debug("[scroll-to-bottom]", debugPayload);
+          postWebviewDebug("scroll-to-bottom-visibility", debugPayload);
+        }
+        lastScrollToBottomVisible = shouldShow;
       }
 
       function captureOpenTraceCollapsibleKeys() {

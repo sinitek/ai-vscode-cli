@@ -499,6 +499,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     return;
   }
 
+  if (message.type === "webviewDebug") {
+    void logDebug("webview-debug", {
+      event: message.event,
+      payload: message.payload ?? null,
+    });
+    return;
+  }
+
   if (message.type === "selectCli" && message.cli) {
     await setCurrentCli(message.cli);
     interactiveRunnerManager?.disposeAll();
