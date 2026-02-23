@@ -4,8 +4,13 @@ import * as os from "os";
 
 let logsDirPath: string | undefined;
 let debugLoggingEnabled = false;
+let logRetentionCleanupPromise: Promise<void> | null = null;
+const logWriteQueues = new Map<string, Promise<void>>();
 
 const ENV_REDACT_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD|PASS|AUTH)/i;
+const LOG_RETENTION_DAYS = 7;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export async function initLogger(): Promise<void> {
   const logsDir = resolveLogsDir();
@@ -18,6 +23,21 @@ export async function initLogger(): Promise<void> {
 
 export function setDebugLogging(enabled: boolean): void {
   debugLoggingEnabled = enabled;
+}
+
+export function scheduleLogRetentionCleanup(): void {
+  if (!logsDirPath || logRetentionCleanupPromise) {
+    return;
+  }
+  logRetentionCleanupPromise = pruneExpiredLogs(logsDirPath)
+    .catch((error) => {
+      void appendLog("ERROR", "logs-retention-cleanup-failed", {
+        error: String(error),
+      }, { force: true });
+    })
+    .finally(() => {
+      logRetentionCleanupPromise = null;
+    });
 }
 
 export function sanitizeEnv(env: Record<string, string | undefined>): Record<string, string> {
@@ -58,11 +78,10 @@ export async function logAssistantRaw(
   }
   const date = formatLocalDate(new Date());
   const filename = `sinitek-cli.${cli}.${date}.log`;
-  const filePath = path.join(logsDirPath, filename);
   const time = new Date().toISOString();
   const sessionLabel = sessionId ? sessionId : "new";
   const line = `[${time}] [session:${sessionLabel}]\n${content}\n\n`;
-  await fs.appendFile(filePath, line, "utf8");
+  await appendToSegmentedLog(filename, line);
 }
 
 type CliRawLog = {
@@ -89,7 +108,6 @@ export async function logCliRaw(
   }
   const date = formatLocalDate(new Date());
   const filename = `sinitek-cli.${cli}.${date}.log`;
-  const filePath = path.join(logsDirPath, filename);
   const time = new Date().toISOString();
   const sessionLabel = sessionId ?? "new";
   const entry: CliRawLog = {
@@ -105,7 +123,7 @@ export async function logCliRaw(
     raw: payload.raw,
     stderr: payload.stderr,
   };
-  await fs.appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+  await appendToSegmentedLog(filename, `${JSON.stringify(entry)}\n`);
 }
 
 const STREAM_LOG_PREVIEW_LIMIT = 400;
@@ -129,7 +147,6 @@ export async function logCliStream(
   }
   const date = formatLocalDate(new Date());
   const filename = `sinitek-cli.${cli}.${date}.log`;
-  const filePath = path.join(logsDirPath, filename);
   const time = new Date().toISOString();
   const sessionLabel = sessionId ?? "new";
   const normalized = content.replace(/\r\n/g, "\n");
@@ -144,7 +161,7 @@ export async function logCliStream(
     preview,
     content: normalized,
   };
-  await fs.appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+  await appendToSegmentedLog(filename, `${JSON.stringify(entry)}\n`);
 }
 
 type CliInteractiveStart = {
@@ -181,7 +198,7 @@ export async function logCliInteractiveStart(
     return;
   }
   const date = formatLocalDate(new Date());
-  const filePath = path.join(logsDirPath, `sinitek-cli.${cli}.${date}.log`);
+  const filename = `sinitek-cli.${cli}.${date}.log`;
   const time = new Date().toISOString();
   const sessionLabel = sessionId ?? "new";
   const commandLine = [payload.command, ...payload.args].join(" ").trim();
@@ -205,7 +222,7 @@ export async function logCliInteractiveStart(
   if (payload.stdin !== undefined) {
     lines.push(prefixCliContent(formatCliPrefix(sessionLabel, "stdin", time), payload.stdin));
   }
-  await fs.appendFile(filePath, `${lines.join("\n")}\n`, "utf8");
+  await appendToSegmentedLog(filename, `${lines.join("\n")}\n`);
 }
 
 export async function logCliInteractiveOutput(
@@ -218,11 +235,11 @@ export async function logCliInteractiveOutput(
     return;
   }
   const date = formatLocalDate(new Date());
-  const filePath = path.join(logsDirPath, `sinitek-cli.${cli}.${date}.log`);
+  const filename = `sinitek-cli.${cli}.${date}.log`;
   const time = new Date().toISOString();
   const sessionLabel = sessionId ?? "new";
   const prefixed = prefixCliContent(formatCliPrefix(sessionLabel, stream, time), content);
-  await fs.appendFile(filePath, `${prefixed}\n`, "utf8");
+  await appendToSegmentedLog(filename, `${prefixed}\n`);
 }
 
 type AppendLogOptions = {
@@ -244,9 +261,124 @@ async function appendLog(
   const time = new Date().toISOString();
   const payload = formatData(data);
   const date = formatLocalDate(new Date());
-  const filePath = path.join(logsDirPath, `sinitek-cli.${date}.log`);
+  const filename = `sinitek-cli.${date}.log`;
   const line = `[${time}] [${level}] ${message}${payload}\n`;
-  await fs.appendFile(filePath, line, "utf8");
+  await appendToSegmentedLog(filename, line);
+}
+
+async function pruneExpiredLogs(dirPath: string): Promise<void> {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const cutoffMs = Date.now() - LOG_RETENTION_DAYS * ONE_DAY_MS;
+  let removed = 0;
+
+  await Promise.all(entries.map(async (entry) => {
+    if (!entry.isFile() || !entry.name.endsWith(".log")) {
+      return;
+    }
+    const filePath = path.join(dirPath, entry.name);
+    try {
+      const stat = await fs.stat(filePath);
+      if (stat.mtimeMs < cutoffMs) {
+        await fs.unlink(filePath);
+        removed += 1;
+      }
+    } catch {
+      // Ignore races where files are removed between readdir/stat/unlink.
+    }
+  }));
+
+  if (removed > 0) {
+    await appendLog("DEBUG", "logs-retention-pruned", {
+      removed,
+      retentionDays: LOG_RETENTION_DAYS,
+    });
+  }
+}
+
+async function appendToSegmentedLog(baseFilename: string, content: string): Promise<void> {
+  if (!logsDirPath) {
+    return;
+  }
+  const queueKey = baseFilename;
+  const previous = logWriteQueues.get(queueKey) ?? Promise.resolve();
+  const current = previous
+    .catch(() => undefined)
+    .then(async () => {
+      if (!logsDirPath) {
+        return;
+      }
+      const contentSize = Buffer.byteLength(content, "utf8");
+      const target = await resolveSegmentedLogPath(logsDirPath, baseFilename, contentSize);
+      await fs.appendFile(target, content, "utf8");
+    });
+  logWriteQueues.set(queueKey, current);
+  try {
+    await current;
+  } finally {
+    if (logWriteQueues.get(queueKey) === current) {
+      logWriteQueues.delete(queueKey);
+    }
+  }
+}
+
+async function resolveSegmentedLogPath(
+  dirPath: string,
+  baseFilename: string,
+  incomingBytes: number
+): Promise<string> {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const indexes = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => parseLogSegmentIndex(baseFilename, entry.name))
+    .filter((value): value is number => value !== null);
+
+  const latestIndex = indexes.length ? Math.max(...indexes) : 0;
+  const latestFilename = buildSegmentFilename(baseFilename, latestIndex);
+  const latestPath = path.join(dirPath, latestFilename);
+  const latestSize = await getFileSizeSafe(latestPath);
+  if (latestSize + incomingBytes <= MAX_LOG_FILE_SIZE_BYTES) {
+    return latestPath;
+  }
+  const nextIndex = latestIndex + 1;
+  return path.join(dirPath, buildSegmentFilename(baseFilename, nextIndex));
+}
+
+async function getFileSizeSafe(filePath: string): Promise<number> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.size;
+  } catch {
+    return 0;
+  }
+}
+
+function parseLogSegmentIndex(baseFilename: string, fileName: string): number | null {
+  if (fileName === baseFilename) {
+    return 0;
+  }
+  if (!baseFilename.endsWith(".log")) {
+    return null;
+  }
+  const stem = baseFilename.slice(0, -4);
+  if (!fileName.startsWith(`${stem}.`) || !fileName.endsWith(".log")) {
+    return null;
+  }
+  const suffix = fileName.slice(stem.length + 1, -4);
+  if (!/^\d+$/.test(suffix)) {
+    return null;
+  }
+  return Number(suffix);
+}
+
+function buildSegmentFilename(baseFilename: string, index: number): string {
+  if (index <= 0) {
+    return baseFilename;
+  }
+  if (!baseFilename.endsWith(".log")) {
+    return `${baseFilename}.${index}`;
+  }
+  const stem = baseFilename.slice(0, -4);
+  return `${stem}.${index}.log`;
 }
 
 function formatData(data?: unknown): string {

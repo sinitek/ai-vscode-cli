@@ -141,6 +141,18 @@ const WEBVIEW_I18N = {
     traceToolFallback: "tool",
     traceGitUpdate: "Git Update",
     traceExec: "Run Command",
+    traceExecTagTest: "Test",
+    traceExecTagBuild: "Build",
+    traceExecTagTypeCheck: "Type Check",
+    traceExecTagLint: "Lint",
+    traceExecTagInstall: "Install",
+    traceExecTagGitRead: "Git Read",
+    traceExecTagGitWrite: "Git Write",
+    traceExecTagSearch: "Search",
+    traceExecTagFileRead: "File Read",
+    traceExecTagFileWrite: "File Write",
+    traceExecTagRun: "Run",
+    traceExecTagOther: "General",
     traceFileUpdate: "File Changes",
     traceApplyPatch: "Apply Patch",
     traceToolResult: "Tool Result",
@@ -309,6 +321,18 @@ const WEBVIEW_I18N = {
     traceToolFallback: "工具",
     traceGitUpdate: "Git 更新",
     traceExec: "执行命令",
+    traceExecTagTest: "测试",
+    traceExecTagBuild: "构建",
+    traceExecTagTypeCheck: "类型检查",
+    traceExecTagLint: "代码检查",
+    traceExecTagInstall: "安装",
+    traceExecTagGitRead: "Git 查询",
+    traceExecTagGitWrite: "Git 变更",
+    traceExecTagSearch: "检索",
+    traceExecTagFileRead: "读取",
+    traceExecTagFileWrite: "写入",
+    traceExecTagRun: "运行",
+    traceExecTagOther: "通用",
     traceFileUpdate: "文件变更",
     traceApplyPatch: "应用补丁",
     traceToolResult: "工具结果",
@@ -813,6 +837,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 8px;
         margin-bottom: 6px;
       }
+      .trace-tag-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
       .trace-title {
         font-size: 11px;
         font-weight: 600;
@@ -823,6 +853,37 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         color: var(--trace-title-fg, var(--vscode-badge-foreground));
         border: 1px solid var(--trace-title-border, transparent);
         text-transform: uppercase;
+      }
+      .trace-command-tag {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-descriptionForeground);
+      }
+      .trace-command-tag.cmd-purpose-test,
+      .trace-command-tag.cmd-purpose-typecheck,
+      .trace-command-tag.cmd-purpose-lint {
+        color: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen));
+      }
+      .trace-command-tag.cmd-purpose-build,
+      .trace-command-tag.cmd-purpose-install {
+        color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow));
+      }
+      .trace-command-tag.cmd-purpose-git-read,
+      .trace-command-tag.cmd-purpose-search,
+      .trace-command-tag.cmd-purpose-file-read {
+        color: var(--vscode-charts-blue, var(--vscode-terminal-ansiBlue));
+      }
+      .trace-command-tag.cmd-purpose-git-write,
+      .trace-command-tag.cmd-purpose-file-write {
+        color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-terminal-ansiMagenta));
+      }
+      .trace-command-tag.cmd-purpose-run {
+        color: var(--vscode-terminal-ansiCyan, var(--vscode-charts-foreground));
       }
       .trace-detail {
         font-size: 11px;
@@ -2761,6 +2822,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (tracePresentation.type) {
               wrapper.classList.add("trace-type-" + tracePresentation.type);
             }
+            if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
+              wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
+            }
           }
 
           const bubble = document.createElement("div");
@@ -3122,9 +3186,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
         const header = presentation.title
           ? '<div class="trace-header">' +
+            '<div class="trace-tag-row">' +
             '<span class="trace-title">' +
             escapeHtml(presentation.title) +
             "</span>" +
+            (presentation.commandTag
+              ? '<span class="trace-command-tag cmd-purpose-' +
+                escapeHtml(presentation.commandTag.type) +
+                '\">' +
+                escapeHtml(presentation.commandTag.label) +
+                "</span>"
+              : "") +
+            "</div>" +
             (presentation.detail
               ? '<span class="trace-detail">' + escapeHtml(presentation.detail) + "</span>"
               : '<span class="trace-detail"></span>') +
@@ -3139,12 +3212,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const normalizedLines = lines.slice();
         const firstIndex = normalizedLines.findIndex((line) => line.trim());
         if (firstIndex === -1) {
-          return { type: "", title: "", detail: "", lines: normalizedLines };
+          return { type: "", title: "", detail: "", lines: normalizedLines, commandTag: null };
         }
         const firstLine = normalizedLines[firstIndex].trim();
         const definition = getTraceTypeDefinition(firstLine);
         if (!definition) {
-          return { type: "", title: "", detail: "", lines: normalizedLines };
+          return { type: "", title: "", detail: "", lines: normalizedLines, commandTag: null };
         }
         const detail = definition.detail ? definition.detail(firstLine) : "";
         const bodyLines = normalizedLines.slice(0, firstIndex).concat(normalizedLines.slice(firstIndex + 1));
@@ -3153,6 +3226,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           title: definition.title,
           detail,
           lines: stripLeadingEmptyLines(bodyLines),
+          commandTag: definition.type === "exec" ? classifyCommandPurposeTag(detail) : null,
         };
       }
 
@@ -3162,6 +3236,94 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           next.shift();
         }
         return next;
+      }
+
+      function classifyCommandPurposeTag(rawCommand) {
+        const command = unwrapShellCommand(rawCommand);
+        const normalized = normalizeCommandForMatching(command);
+        if (!normalized) {
+          return null;
+        }
+
+        const has = (pattern) => pattern.test(normalized);
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+(run\\s+)?test\\b/) || has(/(?:^|[;&|()\\s])node\\s+--test\\b/) || has(/(?:^|[;&|()\\s])(vitest|jest|ava|mocha|pytest|go\\s+test|cargo\\s+test)\\b/) || has(/(?:^|[;&|()\\s])mvn\\b[^\\n]*\\btest\\b/) || has(/(?:^|[;&|()\\s])gradle\\b[^\\n]*\\btest\\b/)) {
+          return { type: "test", label: t("traceExecTagTest") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+(run\\s+)?build\\b/) || has(/(?:^|[;&|()\\s])tsc\\b/) || has(/(?:^|[;&|()\\s])mvn\\b[^\\n]*\\bcompile\\b/) || has(/(?:^|[;&|()\\s])gradle\\b[^\\n]*\\bbuild\\b/) || has(/(?:^|[;&|()\\s])(go\\s+build|cargo\\s+build)\\b/)) {
+          return { type: "build", label: t("traceExecTagBuild") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+run\\s+typecheck\\b/) || has(/(?:^|[;&|()\\s])(typecheck|tsc\\s+--noemit|mypy|pyright)\\b/)) {
+          return { type: "typecheck", label: t("traceExecTagTypeCheck") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+run\\s+lint\\b/) || has(/(?:^|[;&|()\\s])(eslint|stylelint|biome\\s+check|ruff|golangci-lint)\\b/)) {
+          return { type: "lint", label: t("traceExecTagLint") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun|pip|pip3|poetry|brew|apt|apt-get|yum|dnf|pacman)\\s+(install|add)\\b/) || has(/(?:^|[;&|()\\s])mvn\\s+dependency:/)) {
+          return { type: "install", label: t("traceExecTagInstall") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])git\\b/)) {
+          if (has(/(?:^|[;&|()\\s])git\\s+(add|commit|push|pull|merge|rebase|cherry-pick|reset|checkout|switch|restore|stash|revert|tag)\\b/)) {
+            return { type: "git-write", label: t("traceExecTagGitWrite") };
+          }
+          return { type: "git-read", label: t("traceExecTagGitRead") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(rg|grep|find|ack|ag)\\b/)) {
+          return { type: "search", label: t("traceExecTagSearch") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(cat|sed|head|tail|less|more|ls|tree|wc|nl|stat)\\b/)) {
+          return { type: "file-read", label: t("traceExecTagFileRead") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(cp|mv|rm|mkdir|touch|chmod|chown|tee|truncate)\\b/) || has(/>\\s*[^&]/)) {
+          return { type: "file-write", label: t("traceExecTagFileWrite") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+(run\\s+)?(dev|start|serve)\\b/) || has(/(?:^|[;&|()\\s])(node|python|python3|java|go\\s+run|cargo\\s+run|docker)\\b/)) {
+          return { type: "run", label: t("traceExecTagRun") };
+        }
+
+        return { type: "other", label: t("traceExecTagOther") };
+      }
+
+      function unwrapShellCommand(rawCommand) {
+        if (!rawCommand) {
+          return "";
+        }
+        let command = String(rawCommand || "").trim();
+        const shellMatch = command.match(/^(bash|zsh|sh)\\s+-lc\\s+([\\s\\S]+)$/i);
+        if (!shellMatch) {
+          return command;
+        }
+        const script = shellMatch[2] ? shellMatch[2].trim() : "";
+        return stripWrappedQuotes(script);
+      }
+
+      function stripWrappedQuotes(value) {
+        if (!value || value.length < 2) {
+          return value;
+        }
+        const first = value[0];
+        const last = value[value.length - 1];
+        if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+          return value.slice(1, -1);
+        }
+        return value;
+      }
+
+      function normalizeCommandForMatching(command) {
+        return String(command || "")
+          .replace(/\\r?\\n/g, " ")
+          .replace(/\\s+/g, " ")
+          .trim()
+          .toLowerCase();
       }
 
       function getToolStyleBucket(name) {
@@ -3177,14 +3339,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function getTraceTypeDefinition(line) {
         const trimmed = line.trim();
-        const toolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\s*(.+)?$/i);
+        const toolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\\s*(.+)?$/i);
         if (toolMatch) {
           const toolName = toolMatch[1] ? toolMatch[1].trim() : "";
           const bucket = getToolStyleBucket(toolName);
           return {
             type: "tool-use-" + bucket,
             title: toolName || t("traceToolFallback"),
-            match: /^(?:tool|调用工具)[:：]?\s*(.+)?$/i,
+            match: /^(?:tool|调用工具)[:：]?\\s*(.+)?$/i,
             detail: () => "",
           };
         }

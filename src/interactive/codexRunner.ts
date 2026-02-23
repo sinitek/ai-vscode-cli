@@ -244,6 +244,41 @@ function extractDelta(previous: string, next: string): string {
   return next.slice(i);
 }
 
+function collectReasoningFragments(value: unknown, output: string[]): void {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (normalized) {
+      output.push(normalized);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectReasoningFragments(item, output));
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  ["text", "summary", "content", "title"].forEach((key) => {
+    if (key in record) {
+      collectReasoningFragments(record[key], output);
+    }
+  });
+}
+
+function extractReasoningText(item: Record<string, unknown>): string {
+  const fragments: string[] = [];
+  collectReasoningFragments(item.text, fragments);
+  collectReasoningFragments(item.summary, fragments);
+  collectReasoningFragments(item.content, fragments);
+  if (!fragments.length) {
+    return "";
+  }
+  const unique = fragments.filter((value, index) => fragments.indexOf(value) === index);
+  return unique.join("\n").trim();
+}
+
 export class CodexInteractiveRunner {
   public readonly cli: CliName = "codex";
   private codex: any | null = null;
@@ -388,8 +423,8 @@ export class CodexInteractiveRunner {
           continue;
         }
         if (item.type === "reasoning") {
-          const text = typeof item.text === "string" ? item.text : "";
-          if (text.trim()) {
+          const text = extractReasoningText(item);
+          if (text) {
             handlers.onTrace(text, "thinking");
           }
           continue;

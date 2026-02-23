@@ -52,6 +52,7 @@ import {
   logError,
   logInfo,
   sanitizeEnv,
+  scheduleLogRetentionCleanup,
   setDebugLogging,
 } from "./logger";
 import { ConfigManagerPanel } from "./webview/configPanel";
@@ -1789,6 +1790,8 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
   if (!prompt) {
     return;
   }
+
+  scheduleLogRetentionCleanup();
 
   const interactiveEnabled = getInteractiveEnabled(currentCli);
   const shouldUseInteractive = interactiveEnabled && isInteractiveSupported(currentCli);
