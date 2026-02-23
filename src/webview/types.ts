@@ -81,7 +81,7 @@ export type ChatMessage = {
   content: string;
   createdAt?: number;
   sequence?: number;
-  kind?: "thinking" | "normal";
+  kind?: "thinking" | "normal" | "tool-use";
   merge?: boolean;
   contextTags?: string[];
 };

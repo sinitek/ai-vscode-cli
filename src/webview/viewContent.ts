@@ -151,6 +151,7 @@ const WEBVIEW_I18N = {
     traceExecTagSearch: "Search",
     traceExecTagFileRead: "File Read",
     traceExecTagFileWrite: "File Write",
+    traceExecTagPython: "Python",
     traceExecTagRun: "Run",
     traceExecTagOther: "General",
     traceFileUpdate: "File Changes",
@@ -163,6 +164,9 @@ const WEBVIEW_I18N = {
     traceInputLabel: "Input",
     traceOutputLabel: "Output",
     traceFileChangesLabel: "File Changes",
+    traceExpandCommand: "Show full command",
+    traceExpandChanges: "Show file changes",
+    traceExpandThinking: "Show thinking details",
     toastCopied: "Copied",
     toastCopyFailed: "Copy failed",
     toastQueueAdded: "Added to queue",
@@ -331,6 +335,7 @@ const WEBVIEW_I18N = {
     traceExecTagSearch: "检索",
     traceExecTagFileRead: "读取",
     traceExecTagFileWrite: "写入",
+    traceExecTagPython: "Python",
     traceExecTagRun: "运行",
     traceExecTagOther: "通用",
     traceFileUpdate: "文件变更",
@@ -343,6 +348,9 @@ const WEBVIEW_I18N = {
     traceInputLabel: "输入",
     traceOutputLabel: "输出",
     traceFileChangesLabel: "文件变更",
+    traceExpandCommand: "展开查看完整命令",
+    traceExpandChanges: "展开查看文件变更",
+    traceExpandThinking: "展开查看思考详情",
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
@@ -882,6 +890,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .trace-command-tag.cmd-purpose-file-write {
         color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-terminal-ansiMagenta));
       }
+      .trace-command-tag.cmd-purpose-python {
+        color: var(--vscode-terminal-ansiBlue, var(--vscode-charts-blue));
+      }
       .trace-command-tag.cmd-purpose-run {
         color: var(--vscode-terminal-ansiCyan, var(--vscode-charts-foreground));
       }
@@ -901,6 +912,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         text-align: left;
         font-variant-numeric: tabular-nums;
       }
+      .message.trace.trace-thinking .bubble {
+        background: transparent;
+        border-left: none;
+        padding: 4px 0;
+      }
       .message.trace.trace-nonthinking .bubble {
         opacity: 1;
       }
@@ -908,6 +924,33 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         flex-direction: column;
         gap: 0;
+      }
+      .trace-collapsible {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .trace-collapsible summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 6px 10px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        user-select: none;
+      }
+      .trace-collapsible summary::-webkit-details-marker {
+        display: none;
+      }
+      .trace-collapsible summary::before {
+        content: "▸";
+        margin-right: 6px;
+      }
+      .trace-collapsible[open] summary::before {
+        content: "▾";
+      }
+      .trace-collapsible .trace-content {
+        border-top: 1px solid var(--vscode-widget-border);
+        padding: 6px 10px 8px;
       }
       .trace-line {
         white-space: pre-wrap;
@@ -2249,6 +2292,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           autoIncludeArmed: true,
         },
       };
+      const traceCollapsibleOpenKeys = new Set();
 
       const elements = {
         currentCli: document.getElementById("currentCli"),
@@ -2810,15 +2854,36 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function isChatNearBottom(threshold = 24) {
+        const distanceToBottom = elements.chatArea.scrollHeight - (elements.chatArea.scrollTop + elements.chatArea.clientHeight);
+        return distanceToBottom <= threshold;
+      }
+
+      function captureOpenTraceCollapsibleKeys() {
+        traceCollapsibleOpenKeys.clear();
+        const nodes = elements.messages.querySelectorAll("details.trace-collapsible[data-trace-key]");
+        nodes.forEach((node) => {
+          if (!node.open) {
+            return;
+          }
+          const key = node.getAttribute("data-trace-key");
+          if (key) {
+            traceCollapsibleOpenKeys.add(key);
+          }
+        });
+      }
+
       function renderMessages() {
+        const shouldAutoScroll = !elements.messages.childElementCount || isChatNearBottom();
+        captureOpenTraceCollapsibleKeys();
         elements.messages.innerHTML = "";
         state.messages.forEach((message) => {
           const wrapper = document.createElement("div");
           wrapper.className = "message " + message.role;
           if (message.role === "trace") {
-            const traceClass = message.kind === "thinking" ? "trace-thinking" : "trace-nonthinking";
-            wrapper.classList.add(traceClass);
             const tracePresentation = getTracePresentation(message.content || "");
+            const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
+            wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
             if (tracePresentation.type) {
               wrapper.classList.add("trace-type-" + tracePresentation.type);
             }
@@ -2843,7 +2908,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
         updateRunWait();
-        elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior: "smooth" });
+        if (shouldAutoScroll) {
+          elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior: "smooth" });
+        }
         updateTaskList();
       }
 
@@ -3159,7 +3226,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return renderUserMessageContent(message);
         }
         if (message.role === "trace") {
-          const content = renderTraceContent(message.content || "");
+          const content = renderTraceContent(message);
           const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
           if (time) {
             return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
@@ -3169,21 +3236,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return renderMarkdown(message.content);
       }
 
-      function renderTraceContent(content) {
+      function renderTraceContent(message) {
+        const content = message && typeof message.content === "string" ? message.content : "";
         if (!content) {
           return "";
         }
+        const traceKey = message && typeof message.id === "string" ? message.id : "";
         const presentation = getTracePresentation(content);
-        const htmlLines = presentation.lines.map((line) => {
-          const cleanLine = stripAnsi(line);
-          const trimmed = cleanLine.trimStart();
-          const kind = getDiffLineKind(trimmed);
-          const prefixed = kind ? ensureDiffPrefix(cleanLine, trimmed, kind) : cleanLine;
-          const safeText = escapeHtml(prefixed || "");
-          const isLineNumbered = isLineNumberedLine(trimmed);
-          const className = (kind ? "trace-line diff-" + kind : "trace-line") + (isLineNumbered ? " line-numbered" : "");
-          return '<div class="' + className + '">' + (safeText || "&nbsp;") + "</div>";
-        });
+        const bodyHtml = renderTraceBodyLines(presentation.lines);
         const header = presentation.title
           ? '<div class="trace-header">' +
             '<div class="trace-tag-row">' +
@@ -3193,7 +3253,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             (presentation.commandTag
               ? '<span class="trace-command-tag cmd-purpose-' +
                 escapeHtml(presentation.commandTag.type) +
-                '\">' +
+                '">' +
                 escapeHtml(presentation.commandTag.label) +
                 "</span>"
               : "") +
@@ -3203,7 +3263,68 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               : '<span class="trace-detail"></span>') +
             "</div>"
           : "";
-        return header + '<div class="trace-content">' + htmlLines.join("") + "</div>";
+        if (shouldCollapseTraceContent(presentation)) {
+          const summary = '<summary>' + escapeHtml(getTraceCollapseSummaryText(presentation)) + "</summary>";
+          const keyAttr = traceKey ? ' data-trace-key="' + escapeHtml(traceKey) + '"' : "";
+          const openAttr = traceKey && traceCollapsibleOpenKeys.has(traceKey) ? " open" : "";
+          return header + '<details class="trace-collapsible"' + keyAttr + openAttr + '>' + summary + bodyHtml + "</details>";
+        }
+        return header + bodyHtml;
+      }
+      function renderTraceBodyLines(lines) {
+        const htmlLines = lines.map((line) => {
+          const cleanLine = stripAnsi(line);
+          const trimmed = cleanLine.trimStart();
+          const kind = getDiffLineKind(trimmed);
+          const prefixed = kind ? ensureDiffPrefix(cleanLine, trimmed, kind) : cleanLine;
+          const safeText = escapeHtml(prefixed || "");
+          const isLineNumbered = isLineNumberedLine(trimmed);
+          const className = (kind ? "trace-line diff-" + kind : "trace-line") + (isLineNumbered ? " line-numbered" : "");
+          return '<div class="' + className + '">' + (safeText || "&nbsp;") + "</div>";
+        });
+        return '<div class="trace-content">' + htmlLines.join("") + "</div>";
+      }
+
+      function shouldCollapseTraceContent(presentation) {
+        if (!presentation) {
+          return false;
+        }
+        const lines = Array.isArray(presentation.lines) ? presentation.lines : [];
+        if (presentation.type === "file-update") {
+          return hasDiffLikeLines(lines) || lines.length >= 4;
+        }
+        if (presentation.type === "thinking") {
+          const detail = String(presentation.detail || "").trim();
+          const hasBody = lines.some((line) => String(line || "").trim().length > 0);
+          return hasBody || detail.length > 0;
+        }
+        if (presentation.type !== "exec") {
+          return false;
+        }
+        const detail = String(presentation.detail || "").toLowerCase();
+        const hasHeredocMarker = /<<['"]?[a-z0-9_]+['"]?/i.test(detail);
+        const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
+        return hasHeredocMarker || lines.length >= 6 || totalChars >= 600;
+      }
+
+      function getTraceCollapseSummaryText(presentation) {
+        if (presentation && presentation.type === "file-update") {
+          return t("traceExpandChanges");
+        }
+        if (presentation && presentation.type === "thinking") {
+          return t("traceExpandThinking");
+        }
+        return t("traceExpandCommand");
+      }
+
+      function hasDiffLikeLines(lines) {
+        return lines.some((line) => {
+          const value = String(line || "").trim();
+          return value.startsWith("diff --git")
+            || value.startsWith("@@")
+            || (value.startsWith("+") && !value.startsWith("+++"))
+            || (value.startsWith("-") && !value.startsWith("---"));
+        });
       }
 
       function getTracePresentation(content) {
@@ -3281,12 +3402,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (has(/(?:^|[;&|()\\s])(cat|sed|head|tail|less|more|ls|tree|wc|nl|stat)\\b/)) {
           return { type: "file-read", label: t("traceExecTagFileRead") };
         }
-
         if (has(/(?:^|[;&|()\\s])(cp|mv|rm|mkdir|touch|chmod|chown|tee|truncate)\\b/) || has(/>\\s*[^&]/)) {
           return { type: "file-write", label: t("traceExecTagFileWrite") };
         }
 
-        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+(run\\s+)?(dev|start|serve)\\b/) || has(/(?:^|[;&|()\\s])(node|python|python3|java|go\\s+run|cargo\\s+run|docker)\\b/)) {
+        if (has(/(?:^|[;&|()\\s'"])python(?:3|2)?\\b/) || has(/(?:^|[;&|()\\s'"])(uv\\s+run\\s+python|poetry\\s+run\\s+python)\\b/)) {
+          return { type: "python", label: t("traceExecTagPython") };
+        }
+
+        if (has(/(?:^|[;&|()\\s])(npm|pnpm|yarn|bun)\\s+(run\\s+)?(dev|start|serve)\\b/) || has(/(?:^|[;&|()\\s])(node|java|go\\s+run|cargo\\s+run|docker)\\b/)) {
           return { type: "run", label: t("traceExecTagRun") };
         }
 
@@ -4934,6 +5058,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           state.messages = normalizeMessageOrder(incoming);
           state.taskList.source = "auto";
           state.taskList.startIndex = 0;
+          traceCollapsibleOpenKeys.clear();
           renderMessages();
         }
         if (data.type === "appendMessage") {

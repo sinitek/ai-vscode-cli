@@ -1959,20 +1959,14 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
   skipUserBlock = false;
   skipCodexBlock = false;
   activeCompletionSent = false;
-  const appendClaudeTraceMessage = (content: string, persist: boolean = true): void => {
-    if (!activeMessageTarget) {
-      return;
-    }
-    const message = {
-      id: createMessageId(),
-      role: "trace" as const,
-      content,
-      createdAt: Date.now(),
-    };
-    if (persist) {
-      appendMessageToStore(activeMessageTarget, message);
-    }
-    sendPanelMessage({ type: "appendMessage", message });
+  const appendClaudeTraceMessage = (
+    content: string,
+    options: { kind?: TraceMessageKind; merge?: boolean; persist?: boolean } = {}
+  ): void => {
+    appendTraceMessage(content, options.kind ?? "normal", {
+      merge: options.merge,
+      persist: options.persist,
+    });
   };
   const sanitizeClaudeLogChunk = (chunk: string): { content: string; redacted: boolean } => {
     const combined = claudeLogRemainder + chunk;
@@ -2047,7 +2041,10 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
             sendPanelMessage({ type: "taskListUpdate", items });
           }
         }
-        appendClaudeTraceMessage(formatClaudeToolUseMessage(event.name, event.input));
+        appendClaudeTraceMessage(formatClaudeToolUseMessage(event.name, event.input), {
+          kind: "tool-use",
+          merge: false,
+        });
         return;
       }
       if (event.toolUseId && claudeToolResultIds.has(event.toolUseId)) {
@@ -2063,7 +2060,9 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
       const shouldPersist = !(
         typeof toolName === "string" && toolName.toLowerCase() === "read"
       );
-      appendClaudeTraceMessage(formatClaudeToolResultMessage(event.content, toolName), shouldPersist);
+      appendClaudeTraceMessage(formatClaudeToolResultMessage(event.content, toolName), {
+        persist: shouldPersist,
+      });
     });
   };
 
@@ -2338,12 +2337,15 @@ function buildCompactionPrompt(): string {
 
 type TraceMessageOptions = {
   merge?: boolean;
+  persist?: boolean;
 };
 
 type TraceDisplayResult = {
   content: string;
   shouldPersist: boolean;
 };
+
+type TraceMessageKind = "thinking" | "normal" | "tool-use";
 
 function isCommandExecutionTrace(content: string): boolean {
   const firstLine = content.split("\n").find((line) => line.trim());
@@ -2352,6 +2354,41 @@ function isCommandExecutionTrace(content: string): boolean {
   }
   const trimmed = firstLine.trim();
   return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
+}
+
+function isFileUpdateTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return firstLine.trim().startsWith("file update");
+}
+
+function isToolUseTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:tool|调用工具)[:：]?\s*(.+)?$/i.test(firstLine.trim());
+}
+
+function isThinkingTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  const trimmed = firstLine.trim();
+  return trimmed.startsWith("thinking") || trimmed.startsWith("思考");
+}
+
+function resolveTraceKind(content: string, kind: TraceMessageKind): TraceMessageKind {
+  if (kind === "thinking" || isThinkingTrace(content)) {
+    return "thinking";
+  }
+  if (isToolUseTrace(content)) {
+    return "tool-use";
+  }
+  return "normal";
 }
 
 function normalizeTraceContentForDisplay(content: string): TraceDisplayResult {
@@ -2365,12 +2402,16 @@ function resolveTraceMerge(content: string, merge?: boolean): boolean {
   if (merge !== undefined) {
     return merge;
   }
-  return !isCommandExecutionTrace(content);
+  return !(
+    isCommandExecutionTrace(content)
+    || isFileUpdateTrace(content)
+    || isToolUseTrace(content)
+  );
 }
 
 function appendTraceMessage(
   content: string,
-  kind: "thinking" | "normal" = "normal",
+  kind: TraceMessageKind = "normal",
   options: TraceMessageOptions = {}
 ): void {
   if (!activeMessageTarget) {
@@ -2383,7 +2424,8 @@ function appendTraceMessage(
   if (!displayContent.trim()) {
     return;
   }
-  if (activeCliForRun === "codex" && kind === "thinking") {
+  const resolvedKind = resolveTraceKind(displayContent, kind);
+  if (resolvedKind === "thinking") {
     appendAssistantChunk(`${displayContent}\n`);
     return;
   }
@@ -2394,13 +2436,13 @@ function appendTraceMessage(
     role: "trace",
     content: displayContent,
     createdAt: Date.now(),
-    kind,
+    kind: resolvedKind,
     ...mergePayload,
   };
-  if (shouldPersist) {
+  if (shouldPersist && options.persist !== false) {
     appendMessageToStore(activeMessageTarget, message);
   }
-  sendPanelMessage({ type: "traceSegment", content: displayContent, kind, ...mergePayload });
+  sendPanelMessage({ type: "traceSegment", content: displayContent, kind: resolvedKind, ...mergePayload });
 }
 
 function appendSystemMessage(content: string): void {
@@ -3617,13 +3659,14 @@ function flushTraceSegment(): void {
     execDisplayContent
   );
   const kind = getTraceSegmentKind(displayContent);
-  const shouldMerge = resolveTraceMerge(displayContent);
-  const mergePayload = shouldMerge ? {} : { merge: false };
-  activeTraceSegmentLines = [];
-  if (activeCliForRun === "codex" && kind === "thinking") {
+  if (kind === "thinking") {
+    activeTraceSegmentLines = [];
     appendAssistantChunk(`${displayContent}\n`);
     return;
   }
+  const shouldMerge = resolveTraceMerge(displayContent);
+  const mergePayload = shouldMerge ? {} : { merge: false };
+  activeTraceSegmentLines = [];
   if (activeMessageTarget && shouldPersist && execShouldPersist) {
     appendMessageToStore(activeMessageTarget, {
       id: createMessageId(),
@@ -3656,15 +3699,15 @@ function formatCodexExecSegmentForDisplay(
   if (!firstLine.startsWith("exec") && !firstLine.startsWith("【执行命令】")) {
     return { content, shouldPersist: true };
   }
+
   let commandLine = firstLine;
+  let consumedLineIndex = firstLineIndex;
   if (firstLine === "exec" || firstLine === "exec:" || firstLine === "【执行命令】") {
-    const nextLine = lines
-      .slice(firstLineIndex + 1)
-      .map((line) => line.trim())
-      .find((line) => line.length);
-    if (nextLine) {
-      const normalized = nextLine.replace(/^\$\s*/, "");
+    const nextLineIndex = lines.findIndex((line, index) => index > firstLineIndex && line.trim());
+    if (nextLineIndex !== -1) {
+      const normalized = lines[nextLineIndex].trim().replace(/^\$\s*/, "");
       commandLine = `exec ${normalized}`;
+      consumedLineIndex = nextLineIndex;
     }
   } else if (firstLine.startsWith("exec:")) {
     const normalized = firstLine.slice("exec:".length).trim();
@@ -3679,31 +3722,14 @@ function formatCodexExecSegmentForDisplay(
       commandLine = "exec";
     }
   }
-  return { content: commandLine, shouldPersist: true };
+
+  const trailingLines = lines.slice(consumedLineIndex + 1);
+  const merged = [commandLine, ...trailingLines].join("\n").trimEnd();
+  return { content: merged || commandLine, shouldPersist: true };
 }
 
 function formatTraceSegmentForDisplay(content: string): { content: string; shouldPersist: boolean } {
-  const lines = content.split("\n");
-  const firstLineIndex = lines.findIndex((line) => line.trim());
-  if (firstLineIndex === -1) {
-    return { content, shouldPersist: true };
-  }
-  const firstLine = lines[firstLineIndex].trim();
-  if (!firstLine.startsWith("file update")) {
-    return { content, shouldPersist: true };
-  }
-  const nextLineIndex = lines.findIndex((line, index) => index > firstLineIndex && line.trim());
-  if (nextLineIndex === -1) {
-    return { content, shouldPersist: true };
-  }
-  const nextLine = lines[nextLineIndex].trim();
-  if (!nextLine.startsWith("diff --git")) {
-    return { content, shouldPersist: true };
-  }
-  return {
-    content: [lines[firstLineIndex], lines[nextLineIndex]].join("\n"),
-    shouldPersist: false,
-  };
+  return { content, shouldPersist: true };
 }
 
 function shouldIgnoreTraceLine(line: string, hasSegment: boolean): boolean {
@@ -3761,6 +3787,7 @@ function isTraceSegmentStart(line: string): boolean {
   const trimmed = line.trim();
   return Boolean(
     trimmed.startsWith("thinking")
+      || trimmed.startsWith("思考")
       || trimmed.startsWith("exec")
       || trimmed.startsWith("file update")
       || trimmed.startsWith("apply_patch")
@@ -3770,8 +3797,7 @@ function isTraceSegmentStart(line: string): boolean {
 }
 
 function getTraceSegmentKind(content: string): "thinking" | "normal" {
-  const firstLine = content.split("\n").find((line) => line.trim()) ?? "";
-  return firstLine.trim().startsWith("thinking") ? "thinking" : "normal";
+  return isThinkingTrace(content) ? "thinking" : "normal";
 }
 
 function startTaskRun(runId: string, cli: CliName, sessionId: string | null, prompt: string): void {
