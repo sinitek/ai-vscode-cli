@@ -98,9 +98,14 @@ const WEBVIEW_I18N = {
     queueRemoveLabel: "Remove",
     runPromptViewAria: "View current running prompt",
     runPromptViewLabel: "Prompt",
+    runStreamViewAria: "View live stream messages",
+    runStreamViewLabel: "Stream",
     runPromptTitle: "Current Task Prompt",
     runPromptClose: "Close",
     runPromptEmpty: "No running prompt available.",
+    runStreamTitle: "Live Raw Stream Messages",
+    runStreamClose: "Close",
+    runStreamEmpty: "Waiting for stream output...",
     helpTitle: "Help",
     helpClose: "Close",
     helpTabsLabel: "Help",
@@ -283,9 +288,14 @@ const WEBVIEW_I18N = {
     queueRemoveLabel: "取消",
     runPromptViewAria: "查看当前执行提示词",
     runPromptViewLabel: "提示词",
+    runStreamViewAria: "查看流式消息",
+    runStreamViewLabel: "流式消息",
     runPromptTitle: "当前任务提示词",
     runPromptClose: "关闭",
     runPromptEmpty: "暂无可查看的提示词。",
+    runStreamTitle: "实时原始流式消息",
+    runStreamClose: "关闭",
+    runStreamEmpty: "等待流式输出...",
     helpTitle: "使用说明",
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
@@ -1057,6 +1067,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .run-prompt-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
       }
+      .run-stream-button {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        height: 24px;
+      }
+      .run-stream-button:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+      }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
       @keyframes typingPulse {
@@ -1467,6 +1491,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         white-space: pre-wrap;
         word-break: break-word;
       }
+      .run-stream-modal {
+        width: 760px;
+      }
+      .run-stream-body {
+        padding: 12px 16px 16px;
+      }
+      .run-stream-preview {
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        height: min(56vh, 520px);
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+      }
+      .run-stream-preview.run-stream-empty {
+        color: var(--vscode-descriptionForeground);
+      }
       
       .modal-header {
         padding: 16px;
@@ -1858,6 +1904,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span class="typing-dot"></span>
           <span class="typing-dot"></span>
         </span>
+        <button id="runStreamButton" class="run-stream-button" style="display: none;" aria-label="${i18n.runStreamViewAria}" title="${i18n.runStreamViewAria}">
+          ${i18n.runStreamViewLabel}
+        </button>
         <span id="runWaitTime" class="run-wait-time">00:00</span>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}
@@ -2140,6 +2189,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         </div>
       </div>
 
+      <div id="runStreamOverlay" class="overlay">
+        <div class="modal run-stream-modal">
+          <div class="modal-header">
+            <div class="title">${i18n.runStreamTitle}</div>
+            <button id="closeRunStream" class="secondary icon-button" title="${i18n.runStreamClose}" aria-label="${i18n.runStreamClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="run-stream-body">
+            <div id="runStreamContent" class="run-stream-preview run-stream-empty">${i18n.runStreamEmpty}</div>
+          </div>
+        </div>
+      </div>
+
       <div id="helpOverlay" class="overlay">
         <div class="modal help-modal">
           <div class="modal-header">
@@ -2359,6 +2425,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         messages: document.getElementById("messages"),
         emptyState: document.getElementById("emptyState"),
         runWait: document.getElementById("runWait"),
+        runStreamButton: document.getElementById("runStreamButton"),
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
         queueIndicator: document.getElementById("queueIndicator"),
@@ -2424,6 +2491,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runPromptOverlay: document.getElementById("runPromptOverlay"),
         closeRunPrompt: document.getElementById("closeRunPrompt"),
         runPromptContent: document.getElementById("runPromptContent"),
+        runStreamOverlay: document.getElementById("runStreamOverlay"),
+        closeRunStream: document.getElementById("closeRunStream"),
+        runStreamContent: document.getElementById("runStreamContent"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
@@ -2456,6 +2526,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const CHAT_BOTTOM_THRESHOLD_PX = 50;
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       let currentRunPrompt = "";
+      let currentRunRawStream = "";
 
       function normalizeEditorContext(payload) {
         const filePath = payload && typeof payload.filePath === "string" && payload.filePath
@@ -4060,13 +4131,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = false;
         if (isRunning) {
+          resetRunRawStream();
           startRunWaitTimer();
         } else {
           stopRunWaitTimer();
           closeRunPromptOverlay();
+          closeRunStreamOverlay();
         }
         updateRunWait();
         updateRunPromptButton();
+        updateRunStreamButton();
       }
 
       function updateRunWait() {
@@ -4216,6 +4290,68 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         ) {
           elements.runPromptContent.textContent = getRunPromptText();
         }
+      }
+
+      function getRunStreamText() {
+        return currentRunRawStream || "";
+      }
+
+      function stickRunStreamToBottom() {
+        if (!elements.runStreamContent) {
+          return;
+        }
+        elements.runStreamContent.scrollTop = elements.runStreamContent.scrollHeight;
+      }
+
+      function updateRunStreamContent() {
+        if (!elements.runStreamContent) {
+          return;
+        }
+        const content = getRunStreamText();
+        const hasContent = content.length > 0;
+        elements.runStreamContent.classList.toggle("run-stream-empty", !hasContent);
+        elements.runStreamContent.textContent = hasContent ? content : t("runStreamEmpty");
+        if (hasContent) {
+          stickRunStreamToBottom();
+        }
+      }
+
+      function resetRunRawStream() {
+        currentRunRawStream = "";
+        updateRunStreamContent();
+      }
+
+      function appendRunRawStream(content) {
+        if (typeof content !== "string" || !content) {
+          return;
+        }
+        currentRunRawStream += content;
+        updateRunStreamContent();
+      }
+
+      function updateRunStreamButton() {
+        if (!elements.runStreamButton) {
+          return;
+        }
+        elements.runStreamButton.style.display = state.isRunning ? "inline-flex" : "none";
+      }
+
+      function openRunStreamOverlay() {
+        if (!state.isRunning || !elements.runStreamOverlay) {
+          return;
+        }
+        updateRunStreamContent();
+        elements.runStreamOverlay.classList.add("visible");
+        requestAnimationFrame(() => {
+          stickRunStreamToBottom();
+        });
+      }
+
+      function closeRunStreamOverlay() {
+        if (!elements.runStreamOverlay) {
+          return;
+        }
+        elements.runStreamOverlay.classList.remove("visible");
       }
 
       function updateQueueIndicator() {
@@ -5039,6 +5175,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         openRunPromptOverlay();
       });
 
+      elements.runStreamButton.addEventListener("click", () => {
+        openRunStreamOverlay();
+      });
+
       elements.runPromptOverlay.addEventListener("click", (event) => {
         if (event.target === elements.runPromptOverlay) {
           closeRunPromptOverlay();
@@ -5047,6 +5187,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.closeRunPrompt.addEventListener("click", () => {
         closeRunPromptOverlay();
+      });
+
+      elements.runStreamOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.runStreamOverlay) {
+          closeRunStreamOverlay();
+        }
+      });
+
+      elements.closeRunStream.addEventListener("click", () => {
+        closeRunStreamOverlay();
       });
 
       elements.queueOverlay.addEventListener("click", (event) => {
@@ -5199,6 +5349,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (data.type === "assistantDelta") {
           appendAssistantDelta(data.id, data.content);
+        }
+        if (data.type === "rawStreamDelta") {
+          appendRunRawStream(data.content);
         }
         if (data.type === "traceSegment") {
           appendMessage({

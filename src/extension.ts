@@ -2080,6 +2080,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
     {
       onStdout: (chunk) => {
         rawStdout += chunk;
+        sendRawStreamDelta(chunk, { stream: "stdout" });
         let formattedOutput = "";
         if (shouldParseClaudeStream) {
           claudeBuffer += chunk;
@@ -2111,6 +2112,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
       },
       onStderr: (chunk) => {
         rawStderr += chunk;
+        sendRawStreamDelta(chunk, { stream: "stderr" });
         let formattedOutput = "";
         if (currentCli === "codex" || currentCli === "gemini") {
           appendTraceLines(chunk);
@@ -2650,7 +2652,9 @@ async function runContextCompactionCommand(): Promise<void> {
         await runner.runStreamed(bootstrap, {
           onAssistantDelta: () => {},
           onTrace: () => {},
-          onEvent: () => {},
+          onEvent: (event) => {
+            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
+          },
           onTaskListUpdate: (items) => {
             sendPanelMessage({ type: "taskListUpdate", items });
           },
@@ -2731,7 +2735,9 @@ async function runContextCompactionCommand(): Promise<void> {
         await runner.runStreamed(bootstrap, {
           onAssistantDelta: () => {},
           onTrace: () => {},
-          onEvent: () => {},
+          onEvent: (event) => {
+            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
+          },
           onTaskListUpdate: (items) => {
             sendPanelMessage({ type: "taskListUpdate", items });
           },
@@ -3108,6 +3114,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
                   return;
                 }
                 appendAssistantChunk(chunk);
+                sendRawStreamDelta(chunk, { stream: "stdout" });
                 appendDebugStdout(chunk);
               },
               onTrace: (content, kind, meta) => {
@@ -3121,6 +3128,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
                 if (activeRunId !== runId) {
                   return;
                 }
+                sendRawStreamDelta(event, { stream: "event", appendNewline: true });
                 appendDebugEvent(event);
               },
               onTaskListUpdate: (items) => {
@@ -3178,6 +3186,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
               return;
             }
             appendAssistantChunk(chunk);
+            sendRawStreamDelta(chunk, { stream: "stdout" });
             appendDebugStdout(chunk);
           },
           onTrace: (content, kind, meta) => {
@@ -3191,6 +3200,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
             if (activeRunId !== runId) {
               return;
             }
+            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
             appendDebugEvent(event);
           },
           onTaskListUpdate: (items) => {
@@ -3305,6 +3315,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
                   return;
                 }
                 appendAssistantChunk(chunk);
+                sendRawStreamDelta(chunk, { stream: "stdout" });
                 appendDebugStdout(chunk);
               },
               onTrace: (content, meta) => {
@@ -3318,6 +3329,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
                 if (activeRunId !== runId) {
                   return;
                 }
+                sendRawStreamDelta(event, { stream: "event", appendNewline: true });
                 appendDebugEvent(event);
               },
               onTaskListUpdate: (items) => {
@@ -3360,6 +3372,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
               return;
             }
             appendAssistantChunk(chunk);
+            sendRawStreamDelta(chunk, { stream: "stdout" });
             appendDebugStdout(chunk);
           },
           onTrace: (content, meta) => {
@@ -3373,6 +3386,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
             if (activeRunId !== runId) {
               return;
             }
+            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
             appendDebugEvent(event);
           },
           onTaskListUpdate: (items) => {
@@ -3846,6 +3860,38 @@ function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: 
     status,
     message,
     prompt: status === "start" ? activeTaskRun?.prompt : undefined,
+  });
+}
+
+function normalizeRawStreamContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (content === null || content === undefined) {
+    return "";
+  }
+  try {
+    return JSON.stringify(content);
+  } catch {
+    return String(content);
+  }
+}
+
+function sendRawStreamDelta(
+  content: unknown,
+  options: { stream?: "stdout" | "stderr" | "event"; appendNewline?: boolean } = {}
+): void {
+  let normalized = normalizeRawStreamContent(content);
+  if (!normalized) {
+    return;
+  }
+  if (options.appendNewline && !normalized.endsWith("\n")) {
+    normalized += "\n";
+  }
+  sendPanelMessage({
+    type: "rawStreamDelta",
+    content: normalized,
+    stream: options.stream ?? "stdout",
   });
 }
 
