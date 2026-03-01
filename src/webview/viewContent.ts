@@ -106,6 +106,11 @@ const WEBVIEW_I18N = {
     runStreamTitle: "Live Raw Stream Messages",
     runStreamClose: "Close",
     runStreamEmpty: "Waiting for stream output...",
+    runStreamRecordIndex: "Line {index}",
+    runStreamRecordEmpty: "(empty message)",
+    runStreamSourceStdout: "stdout",
+    runStreamSourceStderr: "stderr",
+    runStreamSourceEvent: "event",
     helpTitle: "Help",
     helpClose: "Close",
     helpTabsLabel: "Help",
@@ -296,6 +301,11 @@ const WEBVIEW_I18N = {
     runStreamTitle: "实时原始流式消息",
     runStreamClose: "关闭",
     runStreamEmpty: "等待流式输出...",
+    runStreamRecordIndex: "第 {index} 条",
+    runStreamRecordEmpty: "（空消息）",
+    runStreamSourceStdout: "标准输出",
+    runStreamSourceStderr: "错误输出",
+    runStreamSourceEvent: "事件",
     helpTitle: "使用说明",
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
@@ -1501,17 +1511,77 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         background: var(--vscode-editor-background);
         border: 1px solid var(--vscode-widget-border);
         border-radius: 8px;
-        padding: 10px;
+        padding: 8px;
         font-size: 12px;
         color: var(--vscode-foreground);
         height: min(56vh, 520px);
         overflow: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
         font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
       }
       .run-stream-preview.run-stream-empty {
         color: var(--vscode-descriptionForeground);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .run-stream-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .run-stream-item {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .run-stream-item summary {
+        list-style: none;
+      }
+      .run-stream-item summary::-webkit-details-marker {
+        display: none;
+      }
+      .run-stream-item-summary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        cursor: pointer;
+      }
+      .run-stream-item-summary:hover {
+        background: var(--vscode-list-hoverBackground);
+      }
+      .run-stream-item-index {
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+      }
+      .run-stream-item-source {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 999px;
+        padding: 0 6px;
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+      }
+      .run-stream-item-time {
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+      }
+      .run-stream-item-preview {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .run-stream-item-content {
+        margin: 0;
+        padding: 0 8px 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--vscode-foreground);
+        border-top: 1px solid var(--vscode-widget-border);
+      }
+      .run-stream-bottom-gap {
+        height: 72px;
       }
       
       .modal-header {
@@ -2525,8 +2595,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const queuePromptPreviewSuffix = "...";
       const CHAT_BOTTOM_THRESHOLD_PX = 50;
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
+      const RUN_STREAM_PREVIEW_MAX_LENGTH = 220;
       let currentRunPrompt = "";
-      let currentRunRawStream = "";
+      let runStreamRecordCounter = 0;
+      const runStreamRecords = [];
+      const runStreamOpenRecordIds = new Set();
 
       function normalizeEditorContext(payload) {
         const filePath = payload && typeof payload.filePath === "string" && payload.filePath
@@ -4292,8 +4365,63 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function getRunStreamText() {
-        return currentRunRawStream || "";
+      function resolveRunStreamSourceLabel(source) {
+        if (source === "stderr") {
+          return t("runStreamSourceStderr");
+        }
+        if (source === "event") {
+          return t("runStreamSourceEvent");
+        }
+        return t("runStreamSourceStdout");
+      }
+
+      function normalizeRunStreamSource(source) {
+        if (source === "stderr" || source === "event") {
+          return source;
+        }
+        return "stdout";
+      }
+
+      function normalizeRunStreamRecordContent(content) {
+        if (typeof content === "string") {
+          return content;
+        }
+        if (content === null || content === undefined) {
+          return "";
+        }
+        return String(content);
+      }
+
+      function buildRunStreamPreview(content) {
+        const normalized = String(content || "")
+          .replace(/\\r\\n/g, "\\n")
+          .replace(/\\n/g, " ↵ ")
+          .replace(/\\s+/g, " ")
+          .trim();
+        if (!normalized) {
+          return t("runStreamRecordEmpty");
+        }
+        if (normalized.length <= RUN_STREAM_PREVIEW_MAX_LENGTH) {
+          return normalized;
+        }
+        return normalized.slice(0, RUN_STREAM_PREVIEW_MAX_LENGTH - 3) + "...";
+      }
+
+      function captureOpenRunStreamRecordIds() {
+        runStreamOpenRecordIds.clear();
+        if (!elements.runStreamContent) {
+          return;
+        }
+        const openNodes = elements.runStreamContent.querySelectorAll("details.run-stream-item[data-stream-record-id]");
+        openNodes.forEach((node) => {
+          if (!node.open) {
+            return;
+          }
+          const recordId = node.getAttribute("data-stream-record-id");
+          if (recordId) {
+            runStreamOpenRecordIds.add(recordId);
+          }
+        });
       }
 
       function stickRunStreamToBottom() {
@@ -4303,29 +4431,94 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runStreamContent.scrollTop = elements.runStreamContent.scrollHeight;
       }
 
+      function renderRunStreamRecord(record, index) {
+        const details = document.createElement("details");
+        details.className = "run-stream-item";
+        details.setAttribute("data-stream-record-id", record.id);
+        if (runStreamOpenRecordIds.has(record.id)) {
+          details.open = true;
+        }
+
+        const summary = document.createElement("summary");
+        summary.className = "run-stream-item-summary";
+
+        const indexNode = document.createElement("span");
+        indexNode.className = "run-stream-item-index";
+        indexNode.textContent = t("runStreamRecordIndex", { index: index + 1 });
+
+        const sourceNode = document.createElement("span");
+        sourceNode.className = "run-stream-item-source";
+        sourceNode.textContent = resolveRunStreamSourceLabel(record.source);
+
+        const timeNode = document.createElement("span");
+        timeNode.className = "run-stream-item-time";
+        timeNode.textContent = formatDateTimeWithMs(record.createdAt);
+
+        const previewNode = document.createElement("span");
+        previewNode.className = "run-stream-item-preview";
+        previewNode.textContent = buildRunStreamPreview(record.content);
+
+        summary.appendChild(indexNode);
+        summary.appendChild(sourceNode);
+        summary.appendChild(timeNode);
+        summary.appendChild(previewNode);
+
+        const contentNode = document.createElement("pre");
+        contentNode.className = "run-stream-item-content";
+        contentNode.textContent = record.content || t("runStreamRecordEmpty");
+
+        details.appendChild(summary);
+        details.appendChild(contentNode);
+        return details;
+      }
+
       function updateRunStreamContent() {
         if (!elements.runStreamContent) {
           return;
         }
-        const content = getRunStreamText();
-        const hasContent = content.length > 0;
-        elements.runStreamContent.classList.toggle("run-stream-empty", !hasContent);
-        elements.runStreamContent.textContent = hasContent ? content : t("runStreamEmpty");
-        if (hasContent) {
-          stickRunStreamToBottom();
+        if (!runStreamRecords.length) {
+          elements.runStreamContent.classList.add("run-stream-empty");
+          elements.runStreamContent.textContent = t("runStreamEmpty");
+          return;
         }
+
+        captureOpenRunStreamRecordIds();
+        elements.runStreamContent.classList.remove("run-stream-empty");
+        elements.runStreamContent.innerHTML = "";
+
+        const list = document.createElement("div");
+        list.className = "run-stream-list";
+        runStreamRecords.forEach((record, index) => {
+          list.appendChild(renderRunStreamRecord(record, index));
+        });
+
+        const bottomGap = document.createElement("div");
+        bottomGap.className = "run-stream-bottom-gap";
+
+        elements.runStreamContent.appendChild(list);
+        elements.runStreamContent.appendChild(bottomGap);
+        stickRunStreamToBottom();
       }
 
       function resetRunRawStream() {
-        currentRunRawStream = "";
+        runStreamRecordCounter = 0;
+        runStreamRecords.length = 0;
+        runStreamOpenRecordIds.clear();
         updateRunStreamContent();
       }
 
-      function appendRunRawStream(content) {
-        if (typeof content !== "string" || !content) {
+      function appendRunRawStream(content, source) {
+        const normalizedContent = normalizeRunStreamRecordContent(content);
+        if (!normalizedContent) {
           return;
         }
-        currentRunRawStream += content;
+        runStreamRecordCounter += 1;
+        runStreamRecords.push({
+          id: "stream-record-" + runStreamRecordCounter,
+          content: normalizedContent,
+          source: normalizeRunStreamSource(source),
+          createdAt: Date.now(),
+        });
         updateRunStreamContent();
       }
 
@@ -5351,7 +5544,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           appendAssistantDelta(data.id, data.content);
         }
         if (data.type === "rawStreamDelta") {
-          appendRunRawStream(data.content);
+          appendRunRawStream(data.content, data.stream);
         }
         if (data.type === "traceSegment") {
           appendMessage({
