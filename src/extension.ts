@@ -37,6 +37,7 @@ import {
   PanelMessage,
   PanelState,
   PromptContextOptions,
+  ConversationTabSummary,
   PromptHistoryItem,
   SessionSummary,
   UploadFilePayload,
@@ -88,6 +89,7 @@ let activeMessageTarget: ChatMessage[] | null = null;
 let activeMessageIndex: number | null = null;
 let activeSessionId: string | null = null;
 let activeCliForRun: CliName | null = null;
+let activeTabIdForRun: string | null = null;
 let activeProcessTitleRunId: string | null = null;
 let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
@@ -101,26 +103,18 @@ let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | 
 let configHeartbeatTimer: NodeJS.Timeout | null = null;
 let configHeartbeatRunning = false;
 let configHeartbeatSnapshot: ConfigHeartbeatSnapshot | null = null;
-const pendingSessionLabels: Record<CliName, string | null> = {
-  codex: null,
-  claude: null,
-  gemini: null,
+const conversationTabStore: ConversationTabsState = {
+  activeTabId: null,
+  tabs: [],
 };
-const pendingSessionPrompts: Record<CliName, string | null> = {
-  codex: null,
-  claude: null,
-  gemini: null,
-};
-const pendingSessionMessages: Record<CliName, ChatMessage[]> = {
-  codex: [],
-  claude: [],
-  gemini: [],
-};
+const pendingSessionDrafts: Record<string, PendingSessionDraft> = {};
 const sessionMessageCache = new Map<string, ChatMessage[]>();
+const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
 const SESSION_LABEL_LIMIT = 16;
 const LOCAL_SESSION_PREFIX = "local_";
+const CONVERSATION_TAB_PREFIX = "tab_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
@@ -210,10 +204,41 @@ type TaskStore = {
   runs: TaskRunRecord[];
 };
 
+type ConversationTabRecord = {
+  id: string;
+  cli: CliName;
+  sessionId: string | null;
+  createdAt: number;
+};
+
+type ConversationTabsState = {
+  activeTabId: string | null;
+  tabs: ConversationTabRecord[];
+};
+
+type PendingSessionDraft = {
+  label: string | null;
+  firstPrompt: string | null;
+  messages: ChatMessage[];
+};
+
+type ParallelTabRun = {
+  runId: string;
+  tabId: string;
+  cli: CliName;
+  sessionId: string | null;
+  prompt: string;
+  startedAt: number;
+  process: RunProcess;
+  messageTarget: ChatMessage[];
+  stopped: boolean;
+};
+
 type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  conversationTabs?: ConversationTabsState;
 };
 
 type ConfigHeartbeatSnapshot = {
@@ -246,7 +271,8 @@ export function activate(context: vscode.ExtensionContext): void {
   currentCli = workspaceSettings.currentCli || getDefaultCli();
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
-  ensureLatestSessionForCli(currentCli);
+  initializeConversationTabsFromWorkspaceSettings();
+  syncCurrentSessionWithActiveTab();
   void initLogger();
   setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
@@ -326,7 +352,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("sinitek-cli-tools")) {
-        if (!activeProcess && !activeInteractiveStop) {
+        if (!hasAnyTaskRunning()) {
           interactiveRunnerManager?.disposeAll();
         }
         setDebugLogging(getDebugLogging());
@@ -510,23 +536,92 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   if (message.type === "selectCli" && message.cli) {
     await setCurrentCli(message.cli);
     interactiveRunnerManager?.disposeAll();
-    const latestSessionId = getLatestSessionId(currentCli);
-    if (latestSessionId) {
-      setCurrentSession(currentCli, latestSessionId);
-    } else {
-      startNewSession(currentCli);
-    }
+    const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
-    sendSessionMessagesToPanel(currentCli, latestSessionId ?? null);
+    sendSessionMessagesToPanel(currentCli, activeSessionId);
     return;
   }
 
   if (message.type === "selectSession") {
-    await setCurrentCli(message.cli);
+    await setCurrentCli(message.cli, { syncActiveTab: false });
     interactiveRunnerManager?.disposeAll();
-    setCurrentSession(message.cli, message.sessionId);
+    if (message.sessionId) {
+      const existingTabId = findConversationTabIdBySession(message.cli, message.sessionId);
+      if (existingTabId) {
+        const switched = setActiveConversationTab(existingTabId);
+        if (switched && currentCli !== switched.cli) {
+          currentCli = switched.cli;
+          updateStatusBar();
+          workspaceSettings.currentCli = currentCli;
+          saveWorkspaceSettings(workspaceSettings);
+        }
+      } else {
+        updateActiveConversationTabSession(message.cli, message.sessionId);
+        setCurrentSession(message.cli, message.sessionId);
+      }
+    } else {
+      startNewSession(message.cli);
+    }
+    const selectedSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
-    sendSessionMessagesToPanel(message.cli, message.sessionId);
+    sendSessionMessagesToPanel(currentCli, selectedSessionId);
+    return;
+  }
+
+  if (message.type === "selectConversationTab") {
+    if (!getConversationTabById(message.tabId)) {
+      return;
+    }
+    const previousCli = currentCli;
+    if (!hasAnyTaskRunning()) {
+      interactiveRunnerManager?.disposeAll();
+    }
+    const switched = setActiveConversationTab(message.tabId);
+    if (!switched) {
+      return;
+    }
+    if (currentCli !== switched.cli) {
+      currentCli = switched.cli;
+      updateStatusBar();
+      workspaceSettings.currentCli = currentCli;
+      saveWorkspaceSettings(workspaceSettings);
+    }
+    if (previousCli !== switched.cli) {
+      await maybePromptInstallOnCliGroupSwitch(switched.cli);
+    }
+    await postPanelState();
+    sendSessionMessagesToPanel(switched.cli, switched.sessionId, message.tabId);
+    return;
+  }
+
+  if (message.type === "closeConversationTab") {
+    if (isTabRunActive(message.tabId)) {
+      return;
+    }
+    const closingTab = getConversationTabById(message.tabId);
+    if (!closingTab) {
+      return;
+    }
+    const previousCli = currentCli;
+    const next = closeConversationTab(message.tabId);
+    if (closingTab.sessionId && !findConversationTabIdBySession(closingTab.cli, closingTab.sessionId)) {
+      interactiveRunnerManager?.disposeIfMatches(closingTab.cli, closingTab.sessionId);
+    }
+    if (next && currentCli !== next.cli) {
+      currentCli = next.cli;
+      updateStatusBar();
+      workspaceSettings.currentCli = currentCli;
+      saveWorkspaceSettings(workspaceSettings);
+    }
+    if (next && previousCli !== next.cli) {
+      await maybePromptInstallOnCliGroupSwitch(next.cli);
+    }
+    await postPanelState();
+    if (next) {
+      sendSessionMessagesToPanel(next.cli, next.sessionId);
+    } else {
+      sendSessionMessagesToPanel(currentCli, null);
+    }
     return;
   }
 
@@ -540,16 +635,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (confirmed !== confirmLabel) {
       return;
     }
-    const wasCurrent = getCurrentSessionId(message.cli) === message.sessionId;
     interactiveRunnerManager?.disposeIfMatches(message.cli, message.sessionId);
     deleteSession(message.cli, message.sessionId);
-    if (wasCurrent && currentCli === message.cli) {
-      startNewSession(message.cli);
-    }
+    detachConversationTabsFromSession(message.cli, message.sessionId);
+    const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
-    if (currentCli === message.cli && getCurrentSessionId(message.cli) === null) {
-      sendSessionMessagesToPanel(message.cli, null);
-    }
+    sendSessionMessagesToPanel(currentCli, activeSessionId);
     return;
   }
 
@@ -565,9 +656,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     }
     interactiveRunnerManager?.disposeAll();
     clearAllSessions();
-    startNewSession(currentCli);
+    const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
-    sendSessionMessagesToPanel(currentCli, null);
+    sendSessionMessagesToPanel(currentCli, activeSessionId);
     return;
   }
 
@@ -587,10 +678,29 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "newSession") {
-    interactiveRunnerManager?.disposeAll();
-    startNewSession(currentCli);
+    const sessionId = addConversationTab(currentCli, null);
     await postPanelState();
-    sendSessionMessagesToPanel(currentCli, null);
+    sendSessionMessagesToPanel(currentCli, sessionId);
+    return;
+  }
+
+  if (message.type === "resetConversationTabSession") {
+    const activeTab = getActiveConversationTab();
+    if (activeTab && isTabRunActive(activeTab.id)) {
+      return;
+    }
+    if (!activeTab) {
+      return;
+    }
+    const previousSessionId = activeTab.sessionId;
+    const targetCli = activeTab.cli;
+    startNewSession(targetCli);
+    if (previousSessionId && !findConversationTabIdBySession(targetCli, previousSessionId)) {
+      interactiveRunnerManager?.disposeIfMatches(targetCli, previousSessionId);
+    }
+    const activeSessionId = syncCurrentSessionWithActiveTab();
+    await postPanelState();
+    sendSessionMessagesToPanel(currentCli, activeSessionId);
     return;
   }
 
@@ -796,11 +906,40 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (!trimmed) {
       return;
     }
+
+    const requestedTabId = typeof message.tabId === "string" && message.tabId
+      ? message.tabId
+      : null;
+    if (requestedTabId) {
+      const requestedTab = getConversationTabById(requestedTabId);
+      if (requestedTab) {
+        const switched = setActiveConversationTab(requestedTabId);
+        if (switched && currentCli !== switched.cli) {
+          currentCli = switched.cli;
+          updateStatusBar();
+          workspaceSettings.currentCli = currentCli;
+          saveWorkspaceSettings(workspaceSettings);
+        }
+      }
+    }
+
+    const activeTab = getActiveConversationTab();
+    const targetCli = activeTab?.cli
+      ?? (isCliName(message.cli ?? "") ? message.cli : currentCli)
+      ?? currentCli;
+
+    if (currentCli !== targetCli) {
+      currentCli = targetCli;
+      updateStatusBar();
+      workspaceSettings.currentCli = currentCli;
+      saveWorkspaceSettings(workspaceSettings);
+    }
+
     if (isInteractiveMode(message.interactiveMode)) {
       if (!workspaceSettings.interactiveModeByCli) {
         workspaceSettings.interactiveModeByCli = {};
       }
-      workspaceSettings.interactiveModeByCli[currentCli] = message.interactiveMode;
+      workspaceSettings.interactiveModeByCli[targetCli] = message.interactiveMode;
       saveWorkspaceSettings(workspaceSettings);
     }
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
@@ -809,14 +948,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       modelPrompt: contextBuild.modelPrompt,
       contextTags: contextBuild.contextTags,
     };
-    recordPromptHistory(trimmed, currentCli);
+    recordPromptHistory(trimmed, targetCli);
     await postPanelState();
     await runPrompt(promptInput);
     return;
   }
 
   if (message.type === "stopRun") {
-    stopActiveRun();
+    stopRunForTab(getActiveConversationTabId());
   }
 }
 
@@ -844,6 +983,7 @@ async function buildPanelState(): Promise<PanelState> {
       project: getProjectRulePaths(),
     },
     sessionState: buildSessionState(currentCli),
+    conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
     editorContext: buildEditorContextState(),
@@ -875,6 +1015,7 @@ async function buildPanelStateWithConfigState(
       project: getProjectRulePaths(),
     },
     sessionState: buildSessionState(currentCli),
+    conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
     editorContext: buildEditorContextState(),
@@ -1000,7 +1141,7 @@ function ensureWorkspaceSessionStore(): void {
   if (workspaceKey === activeWorkspaceKey) {
     return;
   }
-  if (activeProcess || activeInteractiveStop) {
+  if (hasAnyTaskRunning()) {
     pendingWorkspaceKey = workspaceKey;
     return;
   }
@@ -1019,11 +1160,13 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   sessionMessageCache.clear();
   interactiveRunnerManager?.disposeAll();
   suppressCompactPrompt.clear();
-  for (const cli of CLI_LIST) {
-    pendingSessionLabels[cli] = null;
-    pendingSessionMessages[cli] = [];
-  }
-  ensureLatestSessionForCli(currentCli);
+  Object.keys(pendingSessionDrafts).forEach((tabId) => {
+    delete pendingSessionDrafts[tabId];
+  });
+  conversationTabStore.activeTabId = null;
+  conversationTabStore.tabs = [];
+  initializeConversationTabsFromWorkspaceSettings();
+  syncCurrentSessionWithActiveTab();
 }
 
 async function updatePanelSetting(key: string, value: unknown): Promise<void> {
@@ -1687,10 +1830,34 @@ async function maybePromptInstallOnCliGroupSwitch(cli: CliName): Promise<void> {
   await promptInstallMissingCli(cli, status.command);
 }
 
-async function setCurrentCli(cli: CliName): Promise<void> {
+async function setCurrentCli(
+  cli: CliName,
+  options: { syncActiveTab?: boolean } = {}
+): Promise<void> {
   const previousCli = currentCli;
   currentCli = cli;
   updateStatusBar();
+
+  const syncActiveTab = options.syncActiveTab !== false;
+  if (syncActiveTab) {
+    const activeTab = getActiveConversationTab();
+    if (activeTab && activeTab.cli !== cli) {
+      activeTab.cli = cli;
+      // Keep each tab isolated: switching CLI on a tab starts from a fresh session binding.
+      activeTab.sessionId = null;
+      clearPendingSessionDraft(activeTab.id);
+      persistConversationTabsToWorkspaceSettings();
+    }
+  }
+
+  const refreshedActiveTab = getActiveConversationTab();
+  let sessionId: string | null = null;
+  if (syncActiveTab && refreshedActiveTab && refreshedActiveTab.cli === cli) {
+    sessionId = refreshedActiveTab.sessionId;
+  } else {
+    sessionId = getCurrentSessionId(cli) ?? getLatestSessionId(cli);
+  }
+  setCurrentSession(cli, sessionId, { syncConversationTab: false });
 
   // Save to workspace settings instead of global config
   workspaceSettings.currentCli = cli;
@@ -1723,6 +1890,12 @@ type PromptRunInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
+};
+
+type PromptRunTarget = {
+  tabId: string;
+  cli: CliName;
+  sessionId: string | null;
 };
 
 type PromptContextBuildResult = {
@@ -1793,26 +1966,313 @@ function logCliStartup(payload: {
   void logEssential("cli-startup", payload);
 }
 
+function isPrimaryRunActive(): boolean {
+  return Boolean(activeRunId && (activeProcess || activeInteractiveStop));
+}
+
+function getPrimaryRunTabId(): string | null {
+  if (!isPrimaryRunActive()) {
+    return null;
+  }
+  return activeTabIdForRun;
+}
+
+function hasAnyTaskRunning(): boolean {
+  return isPrimaryRunActive() || parallelRunsByTabId.size > 0;
+}
+
+function isTabRunActive(tabId: string | null): boolean {
+  if (!tabId) {
+    return false;
+  }
+  if (parallelRunsByTabId.has(tabId)) {
+    return true;
+  }
+  return getPrimaryRunTabId() === tabId;
+}
+
+function hasOtherTabRun(activeTabId: string | null): boolean {
+  if (!activeTabId) {
+    return hasAnyTaskRunning();
+  }
+  if (parallelRunsByTabId.size > 0) {
+    for (const tabId of parallelRunsByTabId.keys()) {
+      if (tabId !== activeTabId) {
+        return true;
+      }
+    }
+  }
+  const primaryTabId = getPrimaryRunTabId();
+  return Boolean(primaryTabId && primaryTabId !== activeTabId);
+}
+
+function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {
+  if (!tabId) {
+    return null;
+  }
+  const tab = getConversationTabById(tabId);
+  if (!tab) {
+    return null;
+  }
+  return {
+    tabId: tab.id,
+    cli: tab.cli,
+    sessionId: tab.sessionId,
+  };
+}
+
+function sendRunStatusForTab(
+  tabId: string,
+  status: "start" | "end" | "error" | "stopped",
+  options: { message?: string; prompt?: string; startedAt?: number } = {}
+): void {
+  sendPanelMessage({
+    type: "runStatus",
+    status,
+    message: options.message,
+    prompt: status === "start" ? options.prompt : undefined,
+    startedAt: status === "start" ? options.startedAt : undefined,
+    tabId,
+  });
+}
+
+function persistMessagesForTab(cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]): void {
+  if (sessionId) {
+    saveSessionMessages(cli, sessionId, messages);
+    return;
+  }
+  updatePendingSessionDraft(tabId, { messages });
+  ensureLocalSession(cli, tabId);
+}
+
+function getLiveMessagesForTab(tabId: string): ChatMessage[] | null {
+  const parallelRun = parallelRunsByTabId.get(tabId);
+  if (parallelRun?.messageTarget) {
+    return parallelRun.messageTarget;
+  }
+  if (getPrimaryRunTabId() === tabId && activeMessageTarget) {
+    return activeMessageTarget;
+  }
+  return null;
+}
+
+function stopParallelRunForTab(tabId: string, message?: string): boolean {
+  const run = parallelRunsByTabId.get(tabId);
+  if (!run) {
+    return false;
+  }
+  run.stopped = true;
+  run.process.kill();
+  const stopMessage = message || t("run.stoppedByUser");
+  const systemMessage: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content: stopMessage,
+    createdAt: Date.now(),
+  };
+  appendMessageToStore(run.messageTarget, systemMessage);
+  sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: run.tabId });
+  const taskRecord: TaskRunRecord = {
+    id: run.runId,
+    cli: run.cli,
+    sessionId: run.sessionId,
+    prompt: run.prompt,
+    startedAt: run.startedAt,
+    endedAt: Date.now(),
+    durationMs: Math.max(0, Date.now() - run.startedAt),
+    status: "stopped",
+  };
+  appendTaskRun(taskRecord);
+  sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
+  parallelRunsByTabId.delete(tabId);
+  persistMessagesForTab(run.cli, run.sessionId, run.tabId, run.messageTarget);
+  return true;
+}
+
+function stopRunForTab(tabId: string | null): void {
+  if (!tabId) {
+    return;
+  }
+  if (stopParallelRunForTab(tabId)) {
+    return;
+  }
+  if (getPrimaryRunTabId() === tabId) {
+    stopActiveRun();
+  }
+}
+
+async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
+  const prompt = input.displayPrompt;
+  if (!prompt) {
+    return;
+  }
+  const runCli = target.cli;
+  const modelPrompt = input.modelPrompt || prompt;
+  const contextTags = Array.isArray(input.contextTags)
+    ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+    : [];
+  const cwd = resolveWorkspaceCwd();
+  const thinkingMode = getWorkspaceThinkingMode(runCli);
+  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
+
+  preparePendingLabel(runCli, target.tabId, prompt);
+  let sessionId = target.sessionId;
+  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
+  const messageTarget = sessionId
+    ? loadSessionMessages(runCli, sessionId)
+    : getPendingSessionDraft(target.tabId).messages;
+
+  const userMessage: ChatMessage = {
+    id: createMessageId(),
+    role: "user",
+    content: prompt,
+    createdAt: Date.now(),
+    merge: false,
+    contextTags,
+  };
+  appendMessageToStore(messageTarget, userMessage);
+  sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
+
+  const runId = createMessageId();
+  const startedAt = Date.now();
+  sendRunStatusForTab(target.tabId, "start", { prompt, startedAt });
+
+  let rawStdout = "";
+  let rawStderr = "";
+
+  const process = runCliStream(
+    runCli,
+    thinkingPrompt,
+    {
+      onStdout: (chunk: string) => {
+        rawStdout += chunk;
+        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
+      },
+      onStderr: (chunk: string) => {
+        rawStderr += chunk;
+        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
+      },
+      onExit: (code: number | null) => {
+        const current = parallelRunsByTabId.get(target.tabId);
+        if (!current || current.runId !== runId) {
+          return;
+        }
+        parallelRunsByTabId.delete(target.tabId);
+        const detectedSessionId = extractSessionId(runCli, `${rawStdout}
+${rawStderr}`);
+        if (!sessionId && detectedSessionId) {
+          sessionId = detectedSessionId;
+          adoptSessionId(runCli, detectedSessionId, target.tabId);
+        }
+        const assistantText = runCli === "claude"
+          ? (parseClaudeStreamOutput(rawStdout).text || parseClaudeJsonOutput(rawStdout).text || rawStdout)
+          : rawStdout;
+        const finalText = String(assistantText || "").trim();
+        if (finalText) {
+          const assistantMessage: ChatMessage = {
+            id: createMessageId(),
+            role: "assistant",
+            content: finalText,
+            createdAt: Date.now(),
+          };
+          appendMessageToStore(messageTarget, assistantMessage);
+          sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
+        }
+        const status: TaskRunStatus = code === 0 ? "end" : "error";
+        const message = code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" });
+        sendRunStatusForTab(target.tabId, status === "end" ? "end" : "error", { message });
+
+        const taskRecord: TaskRunRecord = {
+          id: runId,
+          cli: runCli,
+          sessionId,
+          prompt,
+          startedAt,
+          endedAt: Date.now(),
+          durationMs: Math.max(0, Date.now() - startedAt),
+          status,
+        };
+        appendTaskRun(taskRecord);
+
+        const completionMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: t("run.completedWithDuration", { duration: formatDuration(taskRecord.durationMs) }),
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(messageTarget, completionMessage);
+        sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+        persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+      },
+      onError: (error: Error) => {
+        const current = parallelRunsByTabId.get(target.tabId);
+        if (!current || current.runId !== runId) {
+          return;
+        }
+        parallelRunsByTabId.delete(target.tabId);
+        const userMessage = error instanceof Error ? error.message : String(error);
+        const systemMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: userMessage,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(messageTarget, systemMessage);
+        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+        sendRunStatusForTab(target.tabId, "error", { message: userMessage });
+        persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+      },
+    },
+    { cwd, sessionId, thinkingMode, processLabel: buildProcessLabel(runCli, sessionId ?? runId) }
+  );
+
+  parallelRunsByTabId.set(target.tabId, {
+    runId,
+    tabId: target.tabId,
+    cli: runCli,
+    sessionId,
+    prompt,
+    startedAt,
+    process,
+    messageTarget,
+    stopped: false,
+  });
+}
+
 async function runPrompt(input: PromptRunInput): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
 
+  const target = resolvePromptRunTarget(getActiveConversationTabId());
+  if (!target) {
+    return;
+  }
+
+  if (isTabRunActive(target.tabId)) {
+    stopRunForTab(target.tabId);
+  }
+
   scheduleLogRetentionCleanup();
 
-  const interactiveEnabled = getInteractiveEnabled(currentCli);
-  const shouldUseInteractive = interactiveEnabled && isInteractiveSupported(currentCli);
+  if (hasOtherTabRun(target.tabId)) {
+    await runPromptParallel(input, target);
+    return;
+  }
+
+  const interactiveEnabled = getInteractiveEnabled(target.cli);
+  const shouldUseInteractive = interactiveEnabled && isInteractiveSupported(target.cli);
 
   if (shouldUseInteractive) {
     try {
-      await runPromptInteractive(input);
+      await runPromptInteractive(input, target);
       return;
     } catch (error) {
       const info = getErrorInfo(error);
       if (isAbortErrorInfo(info)) {
         void logInfo("runPrompt-interactive-abort-ignored", {
-          cli: currentCli,
+          cli: target.cli,
           error: info.message,
           errorName: info.name,
           errorCode: info.code,
@@ -1821,7 +2281,7 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
         return;
       }
       void logError("runPrompt-interactive-fallback", {
-        cli: currentCli,
+        cli: target.cli,
         error: info.message,
         errorName: info.name,
         errorCode: info.code,
@@ -1835,15 +2295,17 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
           content: t("interactive.fallback"),
           createdAt: Date.now(),
         },
+        tabId: target.tabId,
       });
     }
   }
 
-  await runPromptOneShot(input);
+  await runPromptOneShot(input, target);
 }
 
-async function runPromptOneShot(input: PromptRunInput): Promise<void> {
+async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
+  const runCli = target.cli;
   const modelPrompt = input.modelPrompt || prompt;
   const contextTags = Array.isArray(input.contextTags)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
@@ -1851,40 +2313,36 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
   if (!prompt) {
     return;
   }
-  if (activeProcess || activeInteractiveStop) {
-    stopActiveRun();
-    void logInfo("runPrompt-preempt", { cli: currentCli });
-  }
-
   const cwd = resolveWorkspaceCwd();
   if (!cwd) {
-    void logInfo("runPrompt-no-workspace", { cli: currentCli });
+    void logInfo("runPrompt-no-workspace", { cli: runCli });
   }
-  const thinkingMode = getWorkspaceThinkingMode(currentCli);
-  applyThinkingWorkspaceFiles(currentCli, thinkingMode, cwd);
-  preparePendingLabel(currentCli, prompt);
-  const sessionId = getCurrentSessionId(currentCli);
-  const thinkingPrompt = buildThinkingPrompt(currentCli, thinkingMode, modelPrompt);
+  const thinkingMode = getWorkspaceThinkingMode(runCli);
+  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
+  const activeTabId = target.tabId;
+  preparePendingLabel(runCli, activeTabId, prompt);
+  const sessionId = target.sessionId;
+  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
   const logModelOutput = (content: string): void => {
     if (!debugLogging) {
       return;
     }
-    if (currentCli !== "claude" && currentCli !== "codex") {
+    if (runCli !== "claude" && runCli !== "codex") {
       return;
     }
     if (!content) {
       return;
     }
-    void logCliInteractiveOutput(currentCli, activeSessionId, "stdout", content);
+    void logCliInteractiveOutput(runCli, activeSessionId, "stdout", content);
   };
   const messageTarget = sessionId
-    ? loadSessionMessages(currentCli, sessionId)
-    : pendingSessionMessages[currentCli];
-  const args = buildCliArgs(currentCli, { sessionId, thinkingMode }, thinkingPrompt);
-  const command = getCliCommand(currentCli);
+    ? loadSessionMessages(runCli, sessionId)
+    : getPendingSessionDraft(activeTabId).messages;
+  const args = buildCliArgs(runCli, { sessionId, thinkingMode }, thinkingPrompt);
+  const command = getCliCommand(runCli);
   logCliStartup({
-    cli: currentCli,
+    cli: runCli,
     cwd,
     command,
     args: redactPromptArg(args, thinkingPrompt),
@@ -1892,8 +2350,8 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
     mode: "one-shot",
   });
   void logInfo("runPrompt-start", {
-    cli: currentCli,
-    command: getCliCommand(currentCli),
+    cli: runCli,
+    command: getCliCommand(runCli),
     args,
     cwd,
     sessionId,
@@ -1903,12 +2361,13 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
   const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
-  const processLabel = buildProcessLabel(currentCli, sessionId ?? runId);
-  applyProcessTitle(runId, currentCli, sessionId);
-  startTaskRun(runId, currentCli, sessionId, prompt);
+  const processLabel = buildProcessLabel(runCli, sessionId ?? runId);
+  applyProcessTitle(runId, runCli, sessionId);
+  startTaskRun(runId, runCli, sessionId, prompt);
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
-  activeCliForRun = currentCli;
+  activeCliForRun = runCli;
+  activeTabIdForRun = activeTabId;
   appendMessageToStore(messageTarget, {
     id: userMessageId,
     role: "user",
@@ -1943,7 +2402,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
     activeAssistantMessageId = undefined;
     activeMessageIndex = null;
   }
-  const shouldParseClaudeStream = currentCli === "claude";
+  const shouldParseClaudeStream = runCli === "claude";
   let sessionBuffer = "";
   let claudeBuffer = "";
   let claudeStreamRemainder = "";
@@ -1961,7 +2420,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
       message: { id: activeAssistantMessageId, role: "assistant", content: "" },
     });
   }
-  startTraceMessage(currentCli);
+  startTraceMessage(runCli);
   activeTraceBuffer = "";
   activeTraceSegmentLines = [];
   skipUserBlock = false;
@@ -2075,10 +2534,10 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
   };
 
   activeProcess = runCliStream(
-    currentCli,
+    runCli,
     thinkingPrompt,
     {
-      onStdout: (chunk) => {
+      onStdout: (chunk: string) => {
         rawStdout += chunk;
         sendRawStreamDelta(chunk, { stream: "stdout" });
         let formattedOutput = "";
@@ -2095,26 +2554,26 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
             handleClaudeToolEvents(parsed.toolEvents);
           }
           if (parsed.sessionId) {
-            adoptSessionId(currentCli, parsed.sessionId);
+            adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
           }
         } else {
           appendAssistantChunk(chunk);
           formattedOutput = chunk;
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-          captureSessionFromBuffer(currentCli, sessionBuffer);
+          captureSessionFromBuffer(runCli, sessionBuffer);
         }
         if (debugLogging) {
-          void logCliStream(currentCli, activeSessionId, "stdout", chunk);
+          void logCliStream(runCli, activeSessionId, "stdout", chunk);
         }
         if (formattedOutput) {
           logModelOutput(formattedOutput);
         }
       },
-      onStderr: (chunk) => {
+      onStderr: (chunk: string) => {
         rawStderr += chunk;
         sendRawStreamDelta(chunk, { stream: "stderr" });
         let formattedOutput = "";
-        if (currentCli === "codex" || currentCli === "gemini") {
+        if (runCli === "codex" || runCli === "gemini") {
           appendTraceLines(chunk);
         }
         if (shouldParseClaudeStream) {
@@ -2130,24 +2589,24 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
             handleClaudeToolEvents(parsed.toolEvents);
           }
           if (parsed.sessionId) {
-            adoptSessionId(currentCli, parsed.sessionId);
+            adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
           }
         } else {
           sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-          captureSessionFromBuffer(currentCli, sessionBuffer);
+          captureSessionFromBuffer(runCli, sessionBuffer);
         }
         if (debugLogging) {
-          void logCliStream(currentCli, activeSessionId, "stderr", chunk);
+          void logCliStream(runCli, activeSessionId, "stderr", chunk);
         }
         if (formattedOutput) {
           logModelOutput(formattedOutput);
         }
       },
-      onExit: (code) => {
+      onExit: (code: number | null) => {
         if (activeRunId !== runId) {
           return;
         }
-        void logInfo("runPrompt-exit", { cli: currentCli, code });
+        void logInfo("runPrompt-exit", { cli: runCli, code });
         if (shouldParseClaudeStream) {
           const flushed = parseClaudeStreamChunk(claudeStreamRemainder, "\n");
           claudeStreamRemainder = flushed.remainder;
@@ -2160,7 +2619,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
             handleClaudeToolEvents(flushed.toolEvents);
           }
           if (flushed.sessionId) {
-            adoptSessionId(currentCli, flushed.sessionId);
+            adoptSessionId(runCli, flushed.sessionId, activeTabIdForRun);
           }
           if (!claudeStreamHasText) {
             const parsed = parseClaudeStreamOutput(claudeBuffer);
@@ -2173,7 +2632,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
               handleClaudeToolEvents(parsed.toolEvents);
             }
             if (parsed.sessionId) {
-              adoptSessionId(currentCli, parsed.sessionId);
+              adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
             } else if (!parsed.text) {
               const fallback = parseClaudeJsonOutput(claudeBuffer);
               if (fallback.text) {
@@ -2184,13 +2643,13 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
                 handleClaudeToolEvents(fallback.toolEvents);
               }
               if (fallback.sessionId) {
-                adoptSessionId(currentCli, fallback.sessionId);
+                adoptSessionId(runCli, fallback.sessionId, activeTabIdForRun);
               }
             }
           }
         }
         if (debugLogging) {
-          void logCliRaw(currentCli, activeSessionId, {
+          void logCliRaw(runCli, activeSessionId, {
             command,
             args,
             cwd,
@@ -2206,21 +2665,21 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
           status,
           code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" })
         );
-        if (currentCli === "codex" || currentCli === "gemini") {
+        if (runCli === "codex" || runCli === "gemini") {
           flushTraceBuffer();
         }
         appendCompletionMessage(status);
         persistActiveMessages();
         clearActiveRun();
       },
-      onError: (error) => {
+      onError: (error: Error) => {
         if (activeRunId !== runId) {
           return;
         }
         const errnoError = error as NodeJS.ErrnoException;
         const isNotFound = errnoError?.code === "ENOENT";
         const userMessage = isNotFound
-          ? buildCliCommandNotFoundMessage(currentCli, command)
+          ? buildCliCommandNotFoundMessage(runCli, command)
           : error.message;
         if (isNotFound) {
           const openSettingsLabel = t("common.openSettings");
@@ -2228,17 +2687,17 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
             if (selection === openSettingsLabel) {
               void vscode.commands.executeCommand(
                 "workbench.action.openSettings",
-                `sinitek-cli-tools.commands.${currentCli}`
+                `sinitek-cli-tools.commands.${runCli}`
               );
             }
           });
         }
         void logError("runPrompt-error", {
-          cli: currentCli,
+          cli: runCli,
           error: isNotFound ? `${error.message} (ENOENT)` : error.message,
         });
         if (debugLogging) {
-          void logCliRaw(currentCli, activeSessionId, {
+          void logCliRaw(runCli, activeSessionId, {
             command,
             args,
             cwd,
@@ -2250,7 +2709,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
           });
         }
         sendRunStatus("error", userMessage);
-        if (currentCli === "codex" || currentCli === "gemini") {
+        if (runCli === "codex" || runCli === "gemini") {
           flushTraceBuffer();
         }
         appendCompletionMessage("error");
@@ -2261,7 +2720,7 @@ async function runPromptOneShot(input: PromptRunInput): Promise<void> {
       { cwd, sessionId, processLabel }
     );
   void logInfo("runPrompt-spawned", {
-    cli: currentCli,
+    cli: runCli,
     pid: activeProcess?.pid ?? null,
   });
 }
@@ -2484,7 +2943,11 @@ function appendSystemMessageForCli(cli: CliName, sessionId: string | null, conte
     appendMessageToStore(target, message);
     saveSessionMessages(cli, sessionId, target);
   } else {
-    pendingSessionMessages[cli].push(message);
+    const tabId = getActiveConversationTabId();
+    if (!tabId) {
+      return;
+    }
+    getPendingSessionDraft(tabId).messages.push(message);
   }
   sendPanelMessage({ type: "appendMessage", message });
 }
@@ -2507,7 +2970,11 @@ function appendUserMessageForCli(
     appendMessageToStore(target, message);
     saveSessionMessages(cli, sessionId, target);
   } else {
-    pendingSessionMessages[cli].push(message);
+    const tabId = getActiveConversationTabId();
+    if (!tabId) {
+      return;
+    }
+    getPendingSessionDraft(tabId).messages.push(message);
   }
   sendPanelMessage({ type: "appendMessage", message });
 }
@@ -2794,7 +3261,7 @@ async function runContextCompactionCommand(): Promise<void> {
   }
 }
 
-async function runPromptInteractive(input: PromptRunInput): Promise<void> {
+async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   const modelPrompt = input.modelPrompt || prompt;
   const contextTags = Array.isArray(input.contextTags)
@@ -2803,12 +3270,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   if (!prompt) {
     return;
   }
-  if (activeProcess || activeInteractiveStop) {
-    stopActiveRun();
-    void logInfo("runPrompt-preempt", { cli: currentCli });
-  }
-
-  const cli = currentCli;
+  const cli = target.cli;
   const cwd = resolveWorkspaceCwd();
   void logInfo("resolve-workspace-cwd-debug", {
     cwd,
@@ -2818,9 +3280,10 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   const thinkingMode = getThinkingMode(cli);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
-  preparePendingLabel(cli, prompt);
+  const activeTabId = target.tabId;
+  preparePendingLabel(cli, activeTabId, prompt);
 
-  const sessionId = getCurrentSessionId(cli);
+  const sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
   const args = getCliArgs(cli);
@@ -2840,7 +3303,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   const claudeEntrypoint = cli === "claude"
     ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
     : undefined;
-  const messageTarget = sessionId ? loadSessionMessages(cli, sessionId) : pendingSessionMessages[cli];
+  const messageTarget = sessionId ? loadSessionMessages(cli, sessionId) : getPendingSessionDraft(activeTabId).messages;
   void logInfo("runPrompt-interactive-start", {
     cli,
     sessionId,
@@ -2862,6 +3325,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
   activeCliForRun = cli;
+  activeTabIdForRun = activeTabId;
 
   appendMessageToStore(messageTarget, {
     id: userMessageId,
@@ -3018,10 +3482,11 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
   activeInteractiveStop = stopFn;
 
   const ensureSessionIdForNewSession = (newId: string): void => {
-    if (getCurrentSessionId(cli)) {
+    const tab = getConversationTabById(activeTabId);
+    if (tab && tab.sessionId) {
       return;
     }
-    adoptSessionId(cli, newId);
+    adoptSessionId(cli, newId, activeTabId);
     upsertInteractiveMapping(cli, newId, newId);
   };
 
@@ -3418,7 +3883,7 @@ async function runPromptInteractive(input: PromptRunInput): Promise<void> {
     }
 
     // Unsupported: fall back to one-shot.
-    await runPromptOneShot({ displayPrompt: prompt, modelPrompt, contextTags });
+    await runPromptOneShot({ displayPrompt: prompt, modelPrompt, contextTags }, target);
   } catch (error) {
     if (activeRunId !== runId) {
       // This run was preempted/stopped; ignore errors from aborted streams.
@@ -3544,7 +4009,8 @@ function clearActiveRun(): void {
   activeMessageIndex = null;
   activeSessionId = null;
   activeCliForRun = null;
-  if (pendingWorkspaceKey) {
+  activeTabIdForRun = null;
+  if (pendingWorkspaceKey && !hasAnyTaskRunning()) {
     const nextKey = pendingWorkspaceKey;
     pendingWorkspaceKey = null;
     applyWorkspaceSessionStore(nextKey);
@@ -3860,6 +4326,7 @@ function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: 
     status,
     message,
     prompt: status === "start" ? activeTaskRun?.prompt : undefined,
+    startedAt: status === "start" ? activeTaskRun?.startedAt : undefined,
   });
 }
 
@@ -3896,6 +4363,26 @@ function sendRawStreamDelta(
 }
 
 function sendPanelMessage(payload: Record<string, unknown>): void {
+  const type = typeof payload.type === "string" ? payload.type : "";
+  const shouldAttachTabId = Boolean(
+    activeTabIdForRun
+    && (
+      type === "appendMessage"
+      || type === "assistantDelta"
+      || type === "traceSegment"
+      || type === "rawStreamDelta"
+      || type === "removeMessage"
+      || type === "runStatus"
+    )
+    && !Object.prototype.hasOwnProperty.call(payload, "tabId")
+  );
+  if (shouldAttachTabId) {
+    viewProvider?.postMessage({
+      ...payload,
+      tabId: activeTabIdForRun,
+    });
+    return;
+  }
   viewProvider?.postMessage(payload);
 }
 
@@ -4036,6 +4523,24 @@ function loadWorkspaceSettings(): WorkspaceSettings {
       });
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
+      }
+    }
+    const conversationTabs = (parsed as WorkspaceSettings).conversationTabs;
+    if (conversationTabs && typeof conversationTabs === "object") {
+      const record = conversationTabs as ConversationTabsState;
+      const tabs = Array.isArray(record.tabs)
+        ? record.tabs
+          .map((tab) => sanitizeConversationTabRecord(tab))
+          .filter((tab): tab is ConversationTabRecord => Boolean(tab))
+        : [];
+      if (tabs.length > 0) {
+        const activeTabId = typeof record.activeTabId === "string" && tabs.some((tab) => tab.id === record.activeTabId)
+          ? record.activeTabId
+          : tabs[tabs.length - 1].id;
+        result.conversationTabs = {
+          activeTabId,
+          tabs,
+        };
       }
     }
     return result;
@@ -4262,7 +4767,7 @@ function ensureLatestSessionForCli(cli: CliName): void {
   if (getCurrentSessionId(cli) === latestSessionId) {
     return;
   }
-  setCurrentSession(cli, latestSessionId);
+  setCurrentSession(cli, latestSessionId, { syncConversationTab: false });
 }
 
 function getLatestSessionId(cli: CliName): string | null {
@@ -4280,7 +4785,268 @@ function getCurrentSessionId(cli: CliName): string | null {
   return sessionStore[cli]?.currentId ?? null;
 }
 
-function setCurrentSession(cli: CliName, sessionId: string | null): void {
+function buildConversationTabsState(): {
+  activeTabId: string | null;
+  tabs: ConversationTabSummary[];
+} {
+  const state = ensureConversationTabs();
+  return {
+    activeTabId: state.activeTabId,
+    tabs: state.tabs.map((tab) => ({
+      id: tab.id,
+      cli: tab.cli,
+      sessionId: tab.sessionId,
+      createdAt: tab.createdAt,
+    })),
+  };
+}
+
+function initializeConversationTabsFromWorkspaceSettings(): void {
+  const normalized = normalizeConversationTabsState(workspaceSettings.conversationTabs);
+  conversationTabStore.activeTabId = normalized.activeTabId;
+  conversationTabStore.tabs = normalized.tabs;
+  persistConversationTabsToWorkspaceSettings();
+}
+
+function normalizeConversationTabsState(
+  value?: ConversationTabsState
+): ConversationTabsState {
+  const now = Date.now();
+  const records = Array.isArray(value?.tabs)
+    ? value.tabs
+      .map((tab) => sanitizeConversationTabRecord(tab))
+      .filter((tab): tab is ConversationTabRecord => Boolean(tab))
+    : [];
+  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
+  const tabs = records.length > 0
+    ? records
+    : [{ id: createConversationTabId(), cli: fallbackCli, sessionId: getLatestSessionId(fallbackCli), createdAt: now }];
+  const tabIds = new Set(tabs.map((tab) => tab.id));
+  const activeTabId = value?.activeTabId && tabIds.has(value.activeTabId)
+    ? value.activeTabId
+    : tabs[tabs.length - 1].id;
+  return {
+    activeTabId,
+    tabs: tabs.map((tab) => ({
+      id: tab.id,
+      cli: tab.cli,
+      sessionId: tab.sessionId,
+      createdAt: tab.createdAt,
+    })),
+  };
+}
+
+function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as ConversationTabRecord;
+  const id = typeof record.id === "string" && record.id.trim()
+    ? record.id
+    : createConversationTabId();
+  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
+  const cli = isCliName((record as { cli?: unknown }).cli as string)
+    ? ((record as { cli: CliName }).cli)
+    : fallbackCli;
+  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
+  const sessionId = typeof record.sessionId === "string" && record.sessionId.trim()
+    ? record.sessionId
+    : null;
+  return {
+    id,
+    cli,
+    sessionId,
+    createdAt,
+  };
+}
+
+function ensureConversationTabs(): ConversationTabsState {
+  if (Array.isArray(conversationTabStore.tabs) && conversationTabStore.tabs.length > 0) {
+    if (
+      !conversationTabStore.activeTabId
+      || !conversationTabStore.tabs.some((tab) => tab.id === conversationTabStore.activeTabId)
+    ) {
+      conversationTabStore.activeTabId = conversationTabStore.tabs[conversationTabStore.tabs.length - 1].id;
+      persistConversationTabsToWorkspaceSettings();
+    }
+    return conversationTabStore;
+  }
+  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
+  const fallbackTab: ConversationTabRecord = {
+    id: createConversationTabId(),
+    cli: fallbackCli,
+    sessionId: getLatestSessionId(fallbackCli),
+    createdAt: Date.now(),
+  };
+  conversationTabStore.tabs = [fallbackTab];
+  conversationTabStore.activeTabId = fallbackTab.id;
+  persistConversationTabsToWorkspaceSettings();
+  return conversationTabStore;
+}
+
+function persistConversationTabsToWorkspaceSettings(): void {
+  const state = ensureConversationTabs();
+  workspaceSettings.conversationTabs = {
+    activeTabId: state.activeTabId,
+    tabs: state.tabs.map((tab) => ({
+      id: tab.id,
+      cli: tab.cli,
+      sessionId: tab.sessionId,
+      createdAt: tab.createdAt,
+    })),
+  };
+  saveWorkspaceSettings(workspaceSettings);
+}
+
+function getConversationTabById(tabId: string): ConversationTabRecord | null {
+  const state = ensureConversationTabs();
+  const tab = state.tabs.find((item) => item.id === tabId);
+  return tab ?? null;
+}
+
+function getActiveConversationTabId(): string | null {
+  const state = ensureConversationTabs();
+  return state.activeTabId;
+}
+
+function getActiveConversationTab(): ConversationTabRecord | null {
+  const state = ensureConversationTabs();
+  if (!state.activeTabId) {
+    return null;
+  }
+  return state.tabs.find((item) => item.id === state.activeTabId) ?? null;
+}
+
+function getActiveConversationSessionId(cli: CliName): string | null {
+  const activeTab = getActiveConversationTab();
+  if (!activeTab || activeTab.cli !== cli) {
+    return null;
+  }
+  return activeTab.sessionId;
+}
+
+function findConversationTabIdBySession(cli: CliName, sessionId: string): string | null {
+  const state = ensureConversationTabs();
+  const matched = state.tabs.find((tab) => tab.cli === cli && tab.sessionId === sessionId);
+  return matched ? matched.id : null;
+}
+
+function updateActiveConversationTabSession(cli: CliName, sessionId: string | null): void {
+  const tab = getActiveConversationTab();
+  if (!tab || tab.cli !== cli) {
+    return;
+  }
+  if (tab.sessionId === sessionId) {
+    return;
+  }
+  tab.sessionId = sessionId;
+  persistConversationTabsToWorkspaceSettings();
+}
+
+function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
+  const state = ensureConversationTabs();
+  const tab = state.tabs.find((item) => item.id === tabId);
+  if (!tab) {
+    return null;
+  }
+  if (state.activeTabId !== tabId) {
+    state.activeTabId = tabId;
+    persistConversationTabsToWorkspaceSettings();
+  }
+  setCurrentSession(tab.cli, tab.sessionId, { syncConversationTab: false });
+  return {
+    cli: tab.cli,
+    sessionId: tab.sessionId,
+  };
+}
+
+function addConversationTab(
+  cli: CliName,
+  sessionId: string | null,
+  options: { skipPersist?: boolean } = {}
+): string | null {
+  const state = ensureConversationTabs();
+  const tab: ConversationTabRecord = {
+    id: createConversationTabId(),
+    cli,
+    sessionId,
+    createdAt: Date.now(),
+  };
+  state.tabs.push(tab);
+  state.activeTabId = tab.id;
+  if (!options.skipPersist) {
+    persistConversationTabsToWorkspaceSettings();
+  }
+  setCurrentSession(cli, sessionId, { syncConversationTab: false });
+  return sessionId;
+}
+
+function closeConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
+  const state = ensureConversationTabs();
+  if (state.tabs.length <= 1) {
+    const active = getActiveConversationTab();
+    return active ? { cli: active.cli, sessionId: active.sessionId } : null;
+  }
+  const index = state.tabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) {
+    const active = getActiveConversationTab();
+    return active ? { cli: active.cli, sessionId: active.sessionId } : null;
+  }
+  clearPendingSessionDraft(tabId);
+  state.tabs.splice(index, 1);
+  if (!state.activeTabId || state.activeTabId === tabId) {
+    const fallbackIndex = index > 0 ? index - 1 : 0;
+    state.activeTabId = state.tabs[fallbackIndex]?.id ?? state.tabs[0].id;
+  }
+  persistConversationTabsToWorkspaceSettings();
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    return null;
+  }
+  setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
+  return {
+    cli: activeTab.cli,
+    sessionId: activeTab.sessionId,
+  };
+}
+
+function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {
+  const state = ensureConversationTabs();
+  let changed = false;
+  state.tabs.forEach((tab) => {
+    if (tab.cli === cli && tab.sessionId === sessionId) {
+      tab.sessionId = null;
+      clearPendingSessionDraft(tab.id);
+      changed = true;
+    }
+  });
+  if (changed) {
+    persistConversationTabsToWorkspaceSettings();
+  }
+}
+
+function syncCurrentSessionWithActiveTab(preferredCli?: CliName): string | null {
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    const cli = preferredCli ?? currentCli;
+    setCurrentSession(cli, null, { syncConversationTab: false });
+    return null;
+  }
+  if (currentCli !== activeTab.cli) {
+    currentCli = activeTab.cli;
+    updateStatusBar();
+    workspaceSettings.currentCli = currentCli;
+    saveWorkspaceSettings(workspaceSettings);
+  }
+  setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
+  return activeTab.sessionId;
+}
+
+function setCurrentSession(
+  cli: CliName,
+  sessionId: string | null,
+  options: { syncConversationTab?: boolean } = {}
+): void {
   if (!sessionStore[cli]) {
     sessionStore[cli] = { currentId: null, sessions: [] };
   }
@@ -4288,16 +5054,27 @@ function setCurrentSession(cli: CliName, sessionId: string | null): void {
   if (sessionId) {
     touchSession(cli, sessionId);
   }
+  if (options.syncConversationTab !== false) {
+    updateActiveConversationTabSession(cli, sessionId);
+  }
   void persistSessionStore(sessionStore);
   void logInfo("session-selected", { cli, sessionId });
 }
 
 function startNewSession(cli: CliName): void {
-  pendingSessionLabels[cli] = null;
-  pendingSessionPrompts[cli] = null;
-  pendingSessionMessages[cli] = [];
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    return;
+  }
+  if (activeTab.cli !== cli) {
+    activeTab.cli = cli;
+    activeTab.sessionId = null;
+    persistConversationTabsToWorkspaceSettings();
+  }
+  clearPendingSessionDraft(activeTab.id);
+  updatePendingSessionDraft(activeTab.id, { messages: [] });
   setCurrentSession(cli, null);
-  void logInfo("session-new", { cli });
+  void logInfo("session-new", { cli, tabId: activeTab.id });
 }
 
 function captureSessionFromBuffer(cli: CliName, buffer: string): void {
@@ -4305,7 +5082,7 @@ function captureSessionFromBuffer(cli: CliName, buffer: string): void {
   if (!sessionId) {
     return;
   }
-  adoptSessionId(cli, sessionId);
+  adoptSessionId(cli, sessionId, activeTabIdForRun);
 }
 
 function touchSession(cli: CliName, sessionId: string): void {
@@ -4336,43 +5113,83 @@ function createLocalSessionId(): string {
   return `${LOCAL_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function ensureLocalSession(cli: CliName): void {
+function createConversationTabId(): string {
+  return `${CONVERSATION_TAB_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getPendingSessionDraft(tabId: string): PendingSessionDraft {
+  if (!pendingSessionDrafts[tabId]) {
+    pendingSessionDrafts[tabId] = {
+      label: null,
+      firstPrompt: null,
+      messages: [],
+    };
+  }
+  return pendingSessionDrafts[tabId];
+}
+
+function updatePendingSessionDraft(
+  tabId: string,
+  patch: Partial<PendingSessionDraft>
+): PendingSessionDraft {
+  const draft = getPendingSessionDraft(tabId);
+  if (patch.label !== undefined) {
+    draft.label = patch.label;
+  }
+  if (patch.firstPrompt !== undefined) {
+    draft.firstPrompt = patch.firstPrompt;
+  }
+  if (patch.messages !== undefined) {
+    draft.messages = patch.messages;
+  }
+  return draft;
+}
+
+function clearPendingSessionDraft(tabId: string): void {
+  if (pendingSessionDrafts[tabId]) {
+    delete pendingSessionDrafts[tabId];
+  }
+}
+
+function ensureLocalSession(cli: CliName, tabId: string): void {
   if (cli !== "gemini") {
     return;
   }
   if (getCurrentSessionId(cli)) {
     return;
   }
-  const pending = pendingSessionMessages[cli];
-  if (!pending || pending.length === 0) {
+  const draft = getPendingSessionDraft(tabId);
+  if (!draft.messages.length) {
     return;
   }
-  adoptSessionId(cli, createLocalSessionId());
+  adoptSessionId(cli, createLocalSessionId(), tabId);
 }
 
-function preparePendingLabel(cli: CliName, prompt: string): void {
+function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void {
   if (getCurrentSessionId(cli)) {
     return;
   }
-  if (!pendingSessionPrompts[cli]) {
+  const draft = getPendingSessionDraft(tabId);
+  if (!draft.firstPrompt) {
     const normalizedPrompt = String(prompt ?? "").trim();
     if (normalizedPrompt) {
-      pendingSessionPrompts[cli] = normalizedPrompt;
+      draft.firstPrompt = normalizedPrompt;
     }
   }
-  if (pendingSessionLabels[cli]) {
+  if (draft.label) {
     return;
   }
   const trimmed = prompt.replace(/\s+/g, " ").trim();
   if (!trimmed) {
     return;
   }
-  pendingSessionLabels[cli] = trimmed.slice(0, SESSION_LABEL_LIMIT);
+  draft.label = trimmed.slice(0, SESSION_LABEL_LIMIT);
 }
 
-function assignPendingLabel(cli: CliName, sessionId: string): void {
-  const label = pendingSessionLabels[cli];
-  const firstPrompt = pendingSessionPrompts[cli];
+function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): void {
+  const draft = getPendingSessionDraft(tabId);
+  const label = draft.label;
+  const firstPrompt = draft.firstPrompt;
   if (!label) {
     if (firstPrompt) {
       const sessions = sessionStore[cli].sessions;
@@ -4383,7 +5200,7 @@ function assignPendingLabel(cli: CliName, sessionId: string): void {
         void postPanelState();
       }
     }
-    pendingSessionPrompts[cli] = null;
+    draft.firstPrompt = null;
     return;
   }
   const sessions = sessionStore[cli].sessions;
@@ -4394,8 +5211,8 @@ function assignPendingLabel(cli: CliName, sessionId: string): void {
   if (existing && firstPrompt && !existing.firstPrompt) {
     existing.firstPrompt = firstPrompt;
   }
-  pendingSessionLabels[cli] = null;
-  pendingSessionPrompts[cli] = null;
+  draft.label = null;
+  draft.firstPrompt = null;
   void persistSessionStore(sessionStore);
   void postPanelState();
 }
@@ -4448,23 +5265,27 @@ function persistActiveMessages(): void {
     return;
   }
   if (!activeSessionId) {
-    pendingSessionMessages[activeCliForRun] = activeMessageTarget;
-    ensureLocalSession(activeCliForRun);
+    if (!activeTabIdForRun) {
+      return;
+    }
+    updatePendingSessionDraft(activeTabIdForRun, { messages: activeMessageTarget });
+    ensureLocalSession(activeCliForRun, activeTabIdForRun);
     return;
   }
   saveSessionMessages(activeCliForRun, activeSessionId, activeMessageTarget);
 }
 
-function attachPendingMessages(cli: CliName, sessionId: string): void {
-  const pending = pendingSessionMessages[cli];
+function attachPendingMessages(cli: CliName, tabId: string, sessionId: string): void {
+  const draft = getPendingSessionDraft(tabId);
+  const pending = draft.messages;
   if (!pending || pending.length === 0) {
     return;
   }
   const existing = loadSessionMessages(cli, sessionId);
   const merged = [...existing, ...pending];
-  pendingSessionMessages[cli] = [];
+  draft.messages = [];
   saveSessionMessages(cli, sessionId, merged);
-  if (activeCliForRun === cli && activeSessionId === null) {
+  if (activeCliForRun === cli && activeTabIdForRun === tabId && activeSessionId === null) {
     activeSessionId = sessionId;
     activeMessageTarget = merged;
     activeMessageIndex = merged.length - 1;
@@ -4658,15 +5479,55 @@ function ensureMessageSequence(messages: ChatMessage[]): { messages: ChatMessage
   return { messages, changed };
 }
 
-function sendSessionMessagesToPanel(cli: CliName, sessionId: string | null): void {
-  if (!sessionId) {
-    sendPanelMessage({ type: "setMessages", messages: [] });
+function sendSessionMessagesToPanel(
+  cli: CliName,
+  sessionId: string | null,
+  tabId: string | null = getActiveConversationTabId()
+): void {
+  const targetTabId = tabId ?? getActiveConversationTabId();
+  if (!targetTabId) {
+    sendPanelMessage({ type: "setMessages", messages: [], tabId: null });
     return;
   }
-  const messages = loadSessionMessages(cli, sessionId);
+
+  const liveMessages = getLiveMessagesForTab(targetTabId);
+  if (liveMessages) {
+    sendPanelMessage({ type: "setMessages", messages: liveMessages, tabId: targetTabId });
+    void logDebug("setMessages-live", {
+      cli,
+      sessionId,
+      tabId: targetTabId,
+      size: liveMessages.length,
+      source: "active-run",
+    });
+    return;
+  }
+
+  if (!sessionId) {
+    const draftMessages = getPendingSessionDraft(targetTabId).messages;
+    sendPanelMessage({ type: "setMessages", messages: draftMessages, tabId: targetTabId });
+    void logDebug("setMessages-draft", {
+      cli,
+      sessionId,
+      tabId: targetTabId,
+      size: draftMessages.length,
+      source: "draft",
+    });
+    return;
+  }
+
+  const sessionMessages = loadSessionMessages(cli, sessionId);
   sendPanelMessage({
     type: "setMessages",
-    messages,
+    messages: sessionMessages,
+    tabId: targetTabId,
+  });
+  void logDebug("setMessages-session", {
+    cli,
+    sessionId,
+    tabId: targetTabId,
+    size: sessionMessages.length,
+    source: "session-store",
   });
 }
 
@@ -4700,6 +5561,14 @@ function clearAllSessions(): void {
     sessionStore[cli].currentId = null;
     sessionStore[cli].sessions = [];
   }
+  Object.keys(pendingSessionDrafts).forEach((tabId) => {
+    delete pendingSessionDrafts[tabId];
+  });
+  const tabs = ensureConversationTabs();
+  tabs.tabs.forEach((tab) => {
+    tab.sessionId = null;
+  });
+  persistConversationTabsToWorkspaceSettings();
   try {
     clearMessageStorage();
   } catch (error) {
@@ -4804,17 +5673,48 @@ function restoreProcessTitle(): void {
   activeProcessTitleRunId = null;
 }
 
-function adoptSessionId(cli: CliName, sessionId: string): void {
-  const current = getCurrentSessionId(cli);
-  if (current === sessionId) {
-    return;
+function adoptSessionId(cli: CliName, sessionId: string, tabId: string | null = null): void {
+  const targetTabId = tabId ?? getActiveConversationTabId();
+  let changed = false;
+  if (targetTabId) {
+    const tab = getConversationTabById(targetTabId);
+    if (tab && (tab.cli !== cli || tab.sessionId !== sessionId)) {
+      tab.cli = cli;
+      tab.sessionId = sessionId;
+      changed = true;
+    }
   }
-  setCurrentSession(cli, sessionId);
-  assignPendingLabel(cli, sessionId);
-  attachPendingMessages(cli, sessionId);
+  if (changed) {
+    persistConversationTabsToWorkspaceSettings();
+  }
+  const current = getCurrentSessionId(cli);
+  if (current !== sessionId) {
+    setCurrentSession(cli, sessionId, { syncConversationTab: false });
+  }
+  if (targetTabId) {
+    assignPendingLabel(cli, targetTabId, sessionId);
+    attachPendingMessages(cli, targetTabId, sessionId);
+  }
+
+  if (
+    targetTabId
+    && getPrimaryRunTabId() === targetTabId
+    && activeCliForRun === cli
+  ) {
+    activeSessionId = sessionId;
+    activeMessageTarget = loadSessionMessages(cli, sessionId);
+    activeMessageIndex = activeMessageTarget.length > 0 ? activeMessageTarget.length - 1 : null;
+  }
+
+  const parallelRun = targetTabId ? parallelRunsByTabId.get(targetTabId) : undefined;
+  if (parallelRun && parallelRun.cli === cli) {
+    parallelRun.sessionId = sessionId;
+    parallelRun.messageTarget = loadSessionMessages(cli, sessionId);
+  }
+
   updateProcessTitle(cli, sessionId);
   void postPanelState();
-  void logInfo("session-detected", { cli, sessionId });
+  void logInfo("session-detected", { cli, sessionId, tabId: targetTabId });
 }
 
 type ClaudeToolEvent =

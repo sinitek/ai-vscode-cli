@@ -11,7 +11,10 @@ export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
+  | { type: "selectConversationTab"; tabId: string; cli: CliName }
+  | { type: "closeConversationTab"; tabId: string; cli: CliName }
   | { type: "newSession" }
+  | { type: "resetConversationTabSession" }
   | { type: "deleteSession"; sessionId: string; cli: CliName }
   | { type: "applyConfig"; cli: CliName; configId: string }
   | { type: "clearAllSessions" }
@@ -22,6 +25,8 @@ export type PanelMessage =
       prompt: string;
       interactiveMode?: InteractiveMode;
       contextOptions?: PromptContextOptions;
+      tabId?: string;
+      cli?: CliName;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
@@ -73,6 +78,13 @@ export type SessionSummary = {
   firstPrompt?: string;
 };
 
+export type ConversationTabSummary = {
+  id: string;
+  cli: CliName;
+  sessionId: string | null;
+  createdAt: number;
+};
+
 export type PromptHistoryItem = {
   id: string;
   prompt: string;
@@ -112,6 +124,10 @@ export type PanelState = {
   sessionState: {
     currentSessionId: string | null;
     sessions: SessionSummary[];
+  };
+  conversationTabs: {
+    activeTabId: string | null;
+    tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];
   configState: {

@@ -12,6 +12,10 @@ const WEBVIEW_I18N = {
     headerToolSettings: "Tool Settings",
     headerRules: "Rules",
     headerNewSession: "New Session",
+    headerResetSession: "Reset Current Tab",
+    conversationTabsAria: "Parallel conversations",
+    conversationTabLabel: "Session {index}",
+    conversationTabCloseAria: "Close {label}",
     emptyState: "Type your request to start chatting.",
     scrollToBottomAria: "Jump to latest message",
     queueIndicatorAria: "View queue",
@@ -41,7 +45,7 @@ const WEBVIEW_I18N = {
     sendButton: "Send",
     stopButton: "Stop",
     historyTitle: "History",
-    historyClearSessions: "Clear Sessions",
+    historyClearSessions: "Reset Current Tab",
     historyClearPrompts: "Clear Prompts",
     historyClose: "Close",
     historyTabsLabel: "History",
@@ -207,6 +211,10 @@ const WEBVIEW_I18N = {
     headerToolSettings: "工具设置",
     headerRules: "规则配置",
     headerNewSession: "新建会话",
+    headerResetSession: "重置当前标签页",
+    conversationTabsAria: "并行会话",
+    conversationTabLabel: "会话{index}",
+    conversationTabCloseAria: "关闭{label}",
     emptyState: "输入需求，开始对话。",
     scrollToBottomAria: "跳转到最新消息",
     queueIndicatorAria: "查看队列",
@@ -236,7 +244,7 @@ const WEBVIEW_I18N = {
     sendButton: "发送",
     stopButton: "停止",
     historyTitle: "历史记录",
-    historyClearSessions: "清空会话",
+    historyClearSessions: "重置当前标签页",
     historyClearPrompts: "清空提示词",
     historyClose: "关闭",
     historyTabsLabel: "历史记录",
@@ -480,6 +488,57 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .icon-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
         opacity: 1;
+      }
+      .conversation-tabs {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px 0;
+        overflow-x: auto;
+      }
+      .conversation-tabs.visible {
+        display: flex;
+      }
+      .conversation-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        background: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+        cursor: pointer;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .conversation-tab:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+      }
+      .conversation-tab.active {
+        background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-secondaryBackground));
+        color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-secondaryForeground));
+      }
+      .conversation-tab.disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+      .conversation-tab-label {
+        font-size: 12px;
+      }
+      .conversation-tab-close {
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0;
+        width: 14px;
+        height: 14px;
+      }
+      .conversation-tab-close:disabled {
+        cursor: default;
       }
       .icon {
         width: 16px;
@@ -1962,8 +2021,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             </svg>
           </button>
           <button id="newSession" class="secondary icon-button" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}">＋</button>
+          <button id="resetSession" class="secondary icon-button" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+              <polyline points="20 4 20 10 14 10" />
+            </svg>
+          </button>
         </div>
       </div>
+
+      <div id="conversationTabs" class="conversation-tabs" role="tablist" aria-label="${i18n.conversationTabsAria}"></div>
 
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
@@ -2452,6 +2519,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           currentSessionId: null,
           sessions: [],
         },
+        conversationTabs: {
+          activeTabId: null,
+          tabs: [],
+        },
         promptHistory: [],
         debug: false,
         locale: "auto",
@@ -2490,6 +2561,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         currentCli: document.getElementById("currentCli"),
         openConfig: document.getElementById("openConfig"),
         newSession: document.getElementById("newSession"),
+        resetSession: document.getElementById("resetSession"),
+        conversationTabs: document.getElementById("conversationTabs"),
         stopRun: document.getElementById("stopRun"),
         chatArea: document.getElementById("chatArea"),
         messages: document.getElementById("messages"),
@@ -2581,11 +2654,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const assistantRedirects = {};
       let toastTimer = null;
       let resizeFrame = 0;
-      const pendingPromptQueue = [];
-      let queueEditingIndex = -1;
-      let queueEditingDraft = "";
-      let pendingRunPrompt = null;
-      let suppressQueueFlushOnce = false;
+      const TAB_RUNTIME_DEFAULT_KEY = "__default__";
+      const conversationRuntimeByTabId = Object.create(null);
       let runWaitTimer = null;
       let runWaitStartAt = 0;
       let lastScrollToBottomVisible = false;
@@ -2596,10 +2666,123 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const CHAT_BOTTOM_THRESHOLD_PX = 50;
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       const RUN_STREAM_PREVIEW_MAX_LENGTH = 220;
-      let currentRunPrompt = "";
-      let runStreamRecordCounter = 0;
-      const runStreamRecords = [];
-      const runStreamOpenRecordIds = new Set();
+      const RUN_STREAM_AUTO_SCROLL_THRESHOLD_PX = 50;
+      const runningTabStartedAtById = Object.create(null);
+
+      function createConversationRuntimeState() {
+        return {
+          messages: [],
+          pendingPromptQueue: [],
+          queueEditingIndex: -1,
+          queueEditingDraft: "",
+          pendingRunPrompt: null,
+          suppressQueueFlushOnce: false,
+          currentRunPrompt: "",
+          runStreamRecordCounter: 0,
+          runStreamRecords: [],
+          runStreamOpenRecordIds: new Set(),
+          overlays: {
+            runConflict: false,
+            queue: false,
+            runPrompt: false,
+            runStream: false,
+          },
+        };
+      }
+
+      function resolveConversationRuntimeKey(tabId) {
+        return typeof tabId === "string" && tabId ? tabId : TAB_RUNTIME_DEFAULT_KEY;
+      }
+
+      function getConversationRuntimeState(tabId, options = {}) {
+        const key = resolveConversationRuntimeKey(tabId);
+        const shouldCreate = options.create !== false;
+        if (!conversationRuntimeByTabId[key] && shouldCreate) {
+          conversationRuntimeByTabId[key] = createConversationRuntimeState();
+        }
+        return conversationRuntimeByTabId[key] || null;
+      }
+
+      function getActiveConversationRuntimeState(options = {}) {
+        const activeTabId = state.conversationTabs ? state.conversationTabs.activeTabId : null;
+        return getConversationRuntimeState(activeTabId, options);
+      }
+
+      function pruneConversationRuntimeStates(tabIds) {
+        const validKeys = new Set([TAB_RUNTIME_DEFAULT_KEY]);
+        if (Array.isArray(tabIds)) {
+          tabIds.forEach((tabId) => {
+            if (typeof tabId === "string" && tabId) {
+              validKeys.add(tabId);
+            }
+          });
+        }
+        Object.keys(conversationRuntimeByTabId).forEach((key) => {
+          if (!validKeys.has(key)) {
+            delete conversationRuntimeByTabId[key];
+          }
+        });
+      }
+
+      function isRuntimeStateForActiveTab(tabId) {
+        const activeTabId = getActiveConversationTabId();
+        return resolveConversationRuntimeKey(tabId) === resolveConversationRuntimeKey(activeTabId);
+      }
+
+      function ensureRuntimeStateMessages(runtimeState) {
+        if (!runtimeState || !Array.isArray(runtimeState.messages)) {
+          if (runtimeState) {
+            runtimeState.messages = [];
+          }
+          return [];
+        }
+        return runtimeState.messages;
+      }
+
+      function syncActiveMessagesFromRuntime(options = {}) {
+        const runtimeState = getActiveConversationRuntimeState({ create: true });
+        const nextMessages = ensureRuntimeStateMessages(runtimeState);
+        state.messages = nextMessages;
+        if (options.render !== false) {
+          renderMessages();
+        }
+      }
+
+      function setMessagesForTab(tabId, messages, options = {}) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: true });
+        runtimeState.messages = Array.isArray(messages) ? messages : [];
+        if (isRuntimeStateForActiveTab(tabId)) {
+          state.messages = runtimeState.messages;
+          if (options.render !== false) {
+            renderMessages();
+          }
+        }
+      }
+
+      function resetConversationRuntimeState(tabId) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        if (!runtimeState) {
+          return;
+        }
+        ensureRuntimeStateMessages(runtimeState).length = 0;
+        runtimeState.pendingPromptQueue.length = 0;
+        runtimeState.queueEditingIndex = -1;
+        runtimeState.queueEditingDraft = "";
+        runtimeState.pendingRunPrompt = null;
+        runtimeState.suppressQueueFlushOnce = false;
+        runtimeState.currentRunPrompt = "";
+        runtimeState.runStreamRecordCounter = 0;
+        runtimeState.runStreamRecords.length = 0;
+        runtimeState.runStreamOpenRecordIds.clear();
+        runtimeState.overlays.runConflict = false;
+        runtimeState.overlays.queue = false;
+        runtimeState.overlays.runPrompt = false;
+        runtimeState.overlays.runStream = false;
+        if (isRuntimeStateForActiveTab(tabId)) {
+          syncActiveMessagesFromRuntime();
+          syncConversationControlsForActiveTab();
+        }
+      }
 
       function normalizeEditorContext(payload) {
         const filePath = payload && typeof payload.filePath === "string" && payload.filePath
@@ -2867,6 +3050,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           state.autoAppliedConfig = false;
         }
         state.sessionState = panelState.sessionState;
+        state.conversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const tabIds = Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs.map((tab) => tab.id)
+          : [];
+        pruneConversationRuntimeStates(tabIds);
+        syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         const configs = Array.isArray(state.configState.configs)
@@ -2929,6 +3118,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.interactiveModeSelect.value = state.interactiveMode;
         }
         renderConfigOptions();
+        syncRunningStateForActiveTab();
+        renderConversationTabs();
         renderSessionList();
         renderPromptHistoryList();
         applyEditorContext(panelState.editorContext);
@@ -3033,7 +3224,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const enabled = Boolean(state.interactive && state.interactive.enabled);
         const visible = supported && enabled;
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
-        elements.interactiveModeSelect.disabled = !visible || state.isRunning;
+        elements.interactiveModeSelect.disabled = !visible;
         elements.interactiveModeSelect.value = state.interactiveMode === "plan" ? "plan" : "coding";
       }
 
@@ -3195,6 +3386,132 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           .map((entry) => entry.message);
       }
 
+      function getActiveConversationTabId() {
+        return state.conversationTabs ? state.conversationTabs.activeTabId : null;
+      }
+
+      function isTabRunning(tabId) {
+        if (!tabId || typeof tabId !== "string") {
+          return false;
+        }
+        return typeof runningTabStartedAtById[tabId] === "number";
+      }
+
+      function getTabRunStartedAt(tabId) {
+        if (!tabId || typeof tabId !== "string") {
+          return 0;
+        }
+        const value = runningTabStartedAtById[tabId];
+        return typeof value === "number" ? value : 0;
+      }
+
+      function shouldHandleTabScopedEvent(data) {
+        const eventTabId = data && typeof data.tabId === "string" ? data.tabId : null;
+        if (!eventTabId) {
+          return true;
+        }
+        const activeTabId = getActiveConversationTabId();
+        return !activeTabId || eventTabId === activeTabId;
+      }
+
+      function syncConversationControlsForActiveTab() {
+        updateQueueIndicator();
+        updateRunPromptButton();
+        updateRunStreamButton();
+        syncRunConflictOverlay();
+        syncQueueOverlay();
+        syncRunPromptOverlay();
+        syncRunStreamOverlay();
+      }
+
+      function syncRunningStateForActiveTab() {
+        const activeTabId = getActiveConversationTabId();
+        const isRunningOnActiveTab = isTabRunning(activeTabId);
+        updateRunningState(isRunningOnActiveTab, {
+          preserveRunArtifacts: true,
+          startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
+        });
+        syncConversationControlsForActiveTab();
+      }
+
+      function renderConversationTabs() {
+        if (!elements.conversationTabs) {
+          return;
+        }
+        const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs
+          : [];
+        const activeTabId = state.conversationTabs ? state.conversationTabs.activeTabId : null;
+        elements.conversationTabs.innerHTML = "";
+        const showTabs = tabs.length > 1;
+        elements.conversationTabs.classList.toggle("visible", showTabs);
+        if (!showTabs) {
+          return;
+        }
+        const groupIndexes = Object.create(null);
+
+        tabs.forEach((tab) => {
+          const tabItem = document.createElement("div");
+          tabItem.className = "conversation-tab";
+          const isActive = tab.id === activeTabId;
+          if (isActive) {
+            tabItem.classList.add("active");
+          }
+          tabItem.setAttribute("role", "tab");
+          tabItem.setAttribute("aria-selected", String(isActive));
+          tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
+          tabItem.setAttribute("aria-disabled", "false");
+
+          const cliLabel = typeof tab.cli === "string" && tab.cli ? tab.cli : "session";
+          const groupIndex = (groupIndexes[cliLabel] || 0) + 1;
+          groupIndexes[cliLabel] = groupIndex;
+          const labelText = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
+          const label = document.createElement("span");
+          label.className = "conversation-tab-label";
+          label.textContent = labelText;
+          tabItem.appendChild(label);
+
+          const closeButton = document.createElement("button");
+          closeButton.type = "button";
+          closeButton.className = "conversation-tab-close";
+          closeButton.textContent = "×";
+          closeButton.title = t("conversationTabCloseAria", { label: labelText });
+          closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
+          closeButton.disabled = isTabRunning(tab.id);
+          closeButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            vscode.postMessage({ type: "closeConversationTab", tabId: tab.id, cli: tab.cli });
+          });
+          tabItem.appendChild(closeButton);
+
+          const selectTab = () => {
+            if (tab.id === activeTabId) {
+              return;
+            }
+            if (state.conversationTabs) {
+              state.conversationTabs.activeTabId = tab.id;
+            }
+            syncActiveMessagesFromRuntime();
+            syncRunningStateForActiveTab();
+            armPromptContextForConversationStart();
+            vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
+          };
+
+          tabItem.addEventListener("click", () => {
+            selectTab();
+          });
+          tabItem.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              selectTab();
+            }
+          });
+
+          elements.conversationTabs.appendChild(tabItem);
+        });
+      }
+
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
         if (!state.sessionState.sessions.length) {
@@ -3235,8 +3552,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           loadButton.className = "secondary";
           loadButton.textContent = t("sessionLoadLabel");
           loadButton.addEventListener("click", () => {
-            state.messages = [];
-            renderMessages();
+            setMessagesForTab(getActiveConversationTabId(), []);
             closeHistory();
             armPromptContextForConversationStart();
             vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
@@ -4189,11 +4505,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function updateRunningState(isRunning) {
+      function updateRunningState(isRunning, options = {}) {
+        const wasRunning = state.isRunning;
+        const preserveRunArtifacts = Boolean(options.preserveRunArtifacts);
+        const startedAt = typeof options.startedAt === "number" ? options.startedAt : 0;
+        const shouldResyncRunningClock = isRunning && startedAt > 0 && runWaitStartAt > 0 && runWaitStartAt !== startedAt;
         state.isRunning = isRunning;
         elements.sendPrompt.disabled = false;
         elements.promptInput.disabled = false;
-        elements.newSession.disabled = isRunning;
+        elements.newSession.disabled = false;
+        if (elements.resetSession) {
+          elements.resetSession.disabled = isTabRunning(getActiveConversationTabId());
+        }
+        renderConversationTabs();
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = false;
         if (elements.debugMode) {
@@ -4203,13 +4527,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
         elements.historyButton.disabled = false;
-        if (isRunning) {
-          resetRunRawStream();
-          startRunWaitTimer();
-        } else {
+        if (isRunning && !wasRunning) {
+          if (!preserveRunArtifacts) {
+            resetRunRawStream();
+          }
+          startRunWaitTimer(startedAt || Date.now());
+        } else if (!isRunning && wasRunning) {
           stopRunWaitTimer();
           closeRunPromptOverlay();
           closeRunStreamOverlay();
+        } else if (shouldResyncRunningClock) {
+          // When switching between two running tabs, keep the timer bound to the active tab run.
+          runWaitStartAt = startedAt;
+          updateRunWaitTime(Date.now() - runWaitStartAt);
         }
         updateRunWait();
         updateRunPromptButton();
@@ -4223,13 +4553,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runWait.style.display = state.isRunning ? "flex" : "none";
       }
 
-      function startRunWaitTimer() {
+      function startRunWaitTimer(startAt = Date.now()) {
         if (!elements.runWaitTime) {
           return;
         }
         stopRunWaitTimer();
-        runWaitStartAt = Date.now();
-        updateRunWaitTime(0);
+        runWaitStartAt = startAt;
+        updateRunWaitTime(Date.now() - runWaitStartAt);
         runWaitTimer = window.setInterval(() => {
           updateRunWaitTime(Date.now() - runWaitStartAt);
         }, 1000);
@@ -4285,16 +4615,38 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return false;
         }
         if (shouldSuppressFlush) {
-          suppressQueueFlushOnce = true;
+          const runtimeState = getActiveConversationRuntimeState();
+          if (runtimeState) {
+            runtimeState.suppressQueueFlushOnce = true;
+          }
         }
         resetTaskListForRunStart();
+        const activeTabId = getActiveConversationTabId();
+        const activeTab = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs.find((tab) => tab && tab.id === activeTabId)
+          : null;
         vscode.postMessage({
           type: "sendPrompt",
           prompt,
           interactiveMode: state.interactiveMode,
           contextOptions: normalizedPayload.contextOptions,
+          tabId: activeTabId || undefined,
+          cli: activeTab && activeTab.cli ? activeTab.cli : state.currentCli,
         });
         return true;
+      }
+
+      function syncRunConflictOverlay() {
+        if (!elements.runConflictOverlay) {
+          return;
+        }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const payload = runtimeState ? normalizePromptPayload(runtimeState.pendingRunPrompt) : null;
+        const visible = Boolean(runtimeState && runtimeState.overlays.runConflict && payload);
+        if (elements.runConflictPrompt) {
+          elements.runConflictPrompt.textContent = visible && payload ? payload.prompt : "";
+        }
+        elements.runConflictOverlay.classList.toggle("visible", visible);
       }
 
       function openRunConflictOverlay(payload) {
@@ -4309,23 +4661,33 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           return;
         }
-        pendingRunPrompt = normalizedPayload;
-        if (elements.runConflictPrompt) {
-          elements.runConflictPrompt.textContent = normalizedPayload.prompt;
-        }
-        elements.runConflictOverlay.classList.add("visible");
-      }
-
-      function closeRunConflictOverlay() {
-        if (!elements.runConflictOverlay) {
+        const runtimeState = getActiveConversationRuntimeState();
+        if (!runtimeState) {
           return;
         }
-        elements.runConflictOverlay.classList.remove("visible");
-        pendingRunPrompt = null;
+        runtimeState.pendingRunPrompt = normalizedPayload;
+        runtimeState.overlays.runConflict = true;
+        syncRunConflictOverlay();
       }
 
-      function getRunPromptText() {
-        const prompt = String(currentRunPrompt || "");
+      function closeRunConflictOverlay(options = {}) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (runtimeState) {
+          runtimeState.overlays.runConflict = false;
+          if (options.clearPending !== false) {
+            runtimeState.pendingRunPrompt = null;
+          }
+        }
+        syncRunConflictOverlay();
+      }
+
+      function isRunArtifactsVisibleForActiveTab() {
+        return true;
+      }
+
+      function getRunPromptText(tabId) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        const prompt = String(runtimeState && runtimeState.currentRunPrompt ? runtimeState.currentRunPrompt : "");
         return prompt.trim() ? prompt : t("runPromptEmpty");
       }
 
@@ -4333,36 +4695,61 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.runPromptButton) {
           return;
         }
-        const hasPrompt = String(currentRunPrompt || "").trim().length > 0;
-        elements.runPromptButton.style.display = state.isRunning && hasPrompt ? "inline-flex" : "none";
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
+        elements.runPromptButton.style.display = hasPrompt && isRunArtifactsVisibleForActiveTab() ? "inline-flex" : "none";
+      }
+
+      function syncRunPromptOverlay() {
+        if (!elements.runPromptOverlay || !elements.runPromptContent) {
+          return;
+        }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
+        const visible = Boolean(runtimeState && runtimeState.overlays.runPrompt && hasPrompt && isRunArtifactsVisibleForActiveTab());
+        if (visible) {
+          elements.runPromptContent.textContent = getRunPromptText(getActiveConversationTabId());
+        } else {
+          elements.runPromptContent.textContent = "";
+          if (runtimeState) {
+            runtimeState.overlays.runPrompt = false;
+          }
+        }
+        elements.runPromptOverlay.classList.toggle("visible", visible);
       }
 
       function openRunPromptOverlay() {
-        if (!state.isRunning || !elements.runPromptOverlay || !elements.runPromptContent) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState) {
           return;
         }
-        elements.runPromptContent.textContent = getRunPromptText();
-        elements.runPromptOverlay.classList.add("visible");
+        const hasPrompt = String(runtimeState.currentRunPrompt || "").trim().length > 0;
+        if (!hasPrompt || !isRunArtifactsVisibleForActiveTab()) {
+          return;
+        }
+        runtimeState.overlays.runPrompt = true;
+        syncRunPromptOverlay();
       }
 
       function closeRunPromptOverlay() {
-        if (!elements.runPromptOverlay) {
-          return;
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (runtimeState) {
+          runtimeState.overlays.runPrompt = false;
         }
-        elements.runPromptOverlay.classList.remove("visible");
+        syncRunPromptOverlay();
       }
 
-      function updateCurrentRunPrompt(prompt) {
-        currentRunPrompt = typeof prompt === "string" ? prompt : "";
-        updateRunPromptButton();
-        if (
-          state.isRunning
-          && elements.runPromptOverlay
-          && elements.runPromptOverlay.classList.contains("visible")
-          && elements.runPromptContent
-        ) {
-          elements.runPromptContent.textContent = getRunPromptText();
+      function updateCurrentRunPrompt(prompt, tabId) {
+        const runtimeState = getConversationRuntimeState(tabId);
+        if (!runtimeState) {
+          return;
         }
+        runtimeState.currentRunPrompt = typeof prompt === "string" ? prompt : "";
+        if (!isRuntimeStateForActiveTab(tabId)) {
+          return;
+        }
+        updateRunPromptButton();
+        syncRunPromptOverlay();
       }
 
       function resolveRunStreamSourceLabel(source) {
@@ -4407,8 +4794,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return normalized.slice(0, RUN_STREAM_PREVIEW_MAX_LENGTH - 3) + "...";
       }
 
-      function captureOpenRunStreamRecordIds() {
-        runStreamOpenRecordIds.clear();
+      function captureOpenRunStreamRecordIds(runtimeState) {
+        if (!runtimeState) {
+          return;
+        }
+        runtimeState.runStreamOpenRecordIds.clear();
         if (!elements.runStreamContent) {
           return;
         }
@@ -4419,9 +4809,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           const recordId = node.getAttribute("data-stream-record-id");
           if (recordId) {
-            runStreamOpenRecordIds.add(recordId);
+            runtimeState.runStreamOpenRecordIds.add(recordId);
           }
         });
+      }
+
+      function getRunStreamBottomDistance() {
+        if (!elements.runStreamContent) {
+          return 0;
+        }
+        return elements.runStreamContent.scrollHeight - (
+          elements.runStreamContent.scrollTop + elements.runStreamContent.clientHeight
+        );
+      }
+
+      function isRunStreamNearBottom(threshold = 50) {
+        return getRunStreamBottomDistance() <= threshold;
       }
 
       function stickRunStreamToBottom() {
@@ -4431,11 +4834,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runStreamContent.scrollTop = elements.runStreamContent.scrollHeight;
       }
 
-      function renderRunStreamRecord(record, index) {
+      function renderRunStreamRecord(record, index, runtimeState) {
         const details = document.createElement("details");
         details.className = "run-stream-item";
         details.setAttribute("data-stream-record-id", record.id);
-        if (runStreamOpenRecordIds.has(record.id)) {
+        if (runtimeState && runtimeState.runStreamOpenRecordIds.has(record.id)) {
           details.open = true;
         }
 
@@ -4476,20 +4879,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.runStreamContent) {
           return;
         }
-        if (!runStreamRecords.length) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState || !runtimeState.runStreamRecords.length) {
           elements.runStreamContent.classList.add("run-stream-empty");
           elements.runStreamContent.textContent = t("runStreamEmpty");
           return;
         }
 
-        captureOpenRunStreamRecordIds();
+        const shouldAutoStick = isRunStreamNearBottom(RUN_STREAM_AUTO_SCROLL_THRESHOLD_PX);
+        captureOpenRunStreamRecordIds(runtimeState);
         elements.runStreamContent.classList.remove("run-stream-empty");
         elements.runStreamContent.innerHTML = "";
 
         const list = document.createElement("div");
         list.className = "run-stream-list";
-        runStreamRecords.forEach((record, index) => {
-          list.appendChild(renderRunStreamRecord(record, index));
+        runtimeState.runStreamRecords.forEach((record, index) => {
+          list.appendChild(renderRunStreamRecord(record, index, runtimeState));
         });
 
         const bottomGap = document.createElement("div");
@@ -4497,131 +4902,182 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
         elements.runStreamContent.appendChild(list);
         elements.runStreamContent.appendChild(bottomGap);
-        stickRunStreamToBottom();
+        if (shouldAutoStick) {
+          stickRunStreamToBottom();
+        }
       }
 
-      function resetRunRawStream() {
-        runStreamRecordCounter = 0;
-        runStreamRecords.length = 0;
-        runStreamOpenRecordIds.clear();
-        updateRunStreamContent();
+      function resetRunRawStream(tabId, options = {}) {
+        const runtimeState = getConversationRuntimeState(tabId);
+        if (!runtimeState) {
+          return;
+        }
+        runtimeState.runStreamRecordCounter = 0;
+        runtimeState.runStreamRecords.length = 0;
+        runtimeState.runStreamOpenRecordIds.clear();
+        runtimeState.overlays.runStream = false;
+        if (isRuntimeStateForActiveTab(tabId)) {
+          updateRunStreamContent();
+          updateRunStreamButton();
+          if (options.syncOverlay !== false) {
+            syncRunStreamOverlay();
+          }
+        }
       }
 
-      function appendRunRawStream(content, source) {
+      function appendRunRawStream(content, source, tabId) {
         const normalizedContent = normalizeRunStreamRecordContent(content);
         if (!normalizedContent) {
           return;
         }
-        runStreamRecordCounter += 1;
-        runStreamRecords.push({
-          id: "stream-record-" + runStreamRecordCounter,
+        const runtimeState = getConversationRuntimeState(tabId);
+        if (!runtimeState) {
+          return;
+        }
+        runtimeState.runStreamRecordCounter += 1;
+        runtimeState.runStreamRecords.push({
+          id: "stream-record-" + runtimeState.runStreamRecordCounter,
           content: normalizedContent,
           source: normalizeRunStreamSource(source),
           createdAt: Date.now(),
         });
-        updateRunStreamContent();
+        if (isRuntimeStateForActiveTab(tabId)) {
+          updateRunStreamContent();
+          updateRunStreamButton();
+          syncRunStreamOverlay();
+        }
       }
 
       function updateRunStreamButton() {
         if (!elements.runStreamButton) {
           return;
         }
-        elements.runStreamButton.style.display = state.isRunning ? "inline-flex" : "none";
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
+        const canShowForActiveTab = isRunArtifactsVisibleForActiveTab();
+        elements.runStreamButton.style.display = canShowForActiveTab && (state.isRunning || hasRecords) ? "inline-flex" : "none";
       }
 
-      function openRunStreamOverlay() {
-        if (!state.isRunning || !elements.runStreamOverlay) {
-          return;
-        }
-        updateRunStreamContent();
-        elements.runStreamOverlay.classList.add("visible");
-        requestAnimationFrame(() => {
-          stickRunStreamToBottom();
-        });
-      }
-
-      function closeRunStreamOverlay() {
+      function syncRunStreamOverlay() {
         if (!elements.runStreamOverlay) {
           return;
         }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
+        const visible = Boolean(runtimeState && runtimeState.overlays.runStream && hasRecords && isRunArtifactsVisibleForActiveTab());
+        if (visible) {
+          updateRunStreamContent();
+          elements.runStreamOverlay.classList.add("visible");
+          return;
+        }
+        if (runtimeState) {
+          runtimeState.overlays.runStream = false;
+        }
         elements.runStreamOverlay.classList.remove("visible");
+      }
+
+      function openRunStreamOverlay() {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState || !runtimeState.runStreamRecords.length || !isRunArtifactsVisibleForActiveTab()) {
+          return;
+        }
+        runtimeState.overlays.runStream = true;
+        syncRunStreamOverlay();
+      }
+
+      function closeRunStreamOverlay() {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (runtimeState) {
+          runtimeState.overlays.runStream = false;
+        }
+        syncRunStreamOverlay();
       }
 
       function updateQueueIndicator() {
         if (!elements.queueIndicator || !elements.queueCount) {
           return;
         }
-        const count = pendingPromptQueue.length;
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const count = runtimeState ? runtimeState.pendingPromptQueue.length : 0;
         elements.queueCount.textContent = String(count);
         elements.queueIndicator.style.display = count > 0 ? "inline-flex" : "none";
-        if (elements.queueOverlay && elements.queueOverlay.classList.contains("visible")) {
+        if (runtimeState && runtimeState.overlays.queue) {
           renderQueueOverlay();
         }
       }
 
-      function normalizeQueueEditingState() {
-        if (queueEditingIndex < 0) {
+      function normalizeQueueEditingState(runtimeState) {
+        if (!runtimeState || runtimeState.queueEditingIndex < 0) {
           return;
         }
-        if (queueEditingIndex >= pendingPromptQueue.length) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
+        if (runtimeState.queueEditingIndex >= runtimeState.pendingPromptQueue.length) {
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
         }
       }
 
       function startQueuedPromptEdit(index) {
-        if (index < 0 || index >= pendingPromptQueue.length) {
+        const runtimeState = getActiveConversationRuntimeState();
+        if (!runtimeState) {
           return;
         }
-        const payload = normalizePromptPayload(pendingPromptQueue[index]);
+        if (index < 0 || index >= runtimeState.pendingPromptQueue.length) {
+          return;
+        }
+        const payload = normalizePromptPayload(runtimeState.pendingPromptQueue[index]);
         if (!payload) {
           return;
         }
-        queueEditingIndex = index;
-        queueEditingDraft = payload.prompt;
+        runtimeState.queueEditingIndex = index;
+        runtimeState.queueEditingDraft = payload.prompt;
         renderQueueOverlay();
       }
 
       function cancelQueuedPromptEdit() {
-        if (queueEditingIndex < 0) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState || runtimeState.queueEditingIndex < 0) {
           return;
         }
-        queueEditingIndex = -1;
-        queueEditingDraft = "";
+        runtimeState.queueEditingIndex = -1;
+        runtimeState.queueEditingDraft = "";
         renderQueueOverlay();
       }
 
       function saveQueuedPromptEdit() {
-        if (queueEditingIndex < 0 || queueEditingIndex >= pendingPromptQueue.length) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState) {
+          return;
+        }
+        if (runtimeState.queueEditingIndex < 0 || runtimeState.queueEditingIndex >= runtimeState.pendingPromptQueue.length) {
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
           renderQueueOverlay();
           return;
         }
-        const nextPrompt = String(queueEditingDraft || "").trim();
+        const nextPrompt = String(runtimeState.queueEditingDraft || "").trim();
         if (!nextPrompt) {
           showToast(t("toastQueueEmptyPrompt"));
           return;
         }
-        const currentPayload = normalizePromptPayload(pendingPromptQueue[queueEditingIndex]);
+        const currentPayload = normalizePromptPayload(runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex]);
         if (!currentPayload) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
           renderQueueOverlay();
           return;
         }
         if (nextPrompt === currentPayload.prompt) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
           renderQueueOverlay();
           return;
         }
-        pendingPromptQueue[queueEditingIndex] = {
+        runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex] = {
           prompt: nextPrompt,
           contextOptions: currentPayload.contextOptions,
         };
-        queueEditingIndex = -1;
-        queueEditingDraft = "";
+        runtimeState.queueEditingIndex = -1;
+        runtimeState.queueEditingDraft = "";
         updateQueueIndicator();
         showToast(t("toastQueueUpdated"));
       }
@@ -4630,9 +5086,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.queueBody) {
           return;
         }
-        normalizeQueueEditingState();
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState) {
+          elements.queueBody.innerHTML = "";
+          const empty = document.createElement("div");
+          empty.className = "queue-empty";
+          empty.textContent = t("queueEmpty");
+          elements.queueBody.appendChild(empty);
+          return;
+        }
+        normalizeQueueEditingState(runtimeState);
         elements.queueBody.innerHTML = "";
-        if (!pendingPromptQueue.length) {
+        if (!runtimeState.pendingPromptQueue.length) {
           const empty = document.createElement("div");
           empty.className = "queue-empty";
           empty.textContent = t("queueEmpty");
@@ -4640,10 +5105,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         let editInputToFocus = null;
-        pendingPromptQueue.forEach((item, index) => {
+        runtimeState.pendingPromptQueue.forEach((item, index) => {
           const payload = normalizePromptPayload(item);
           const promptText = payload ? payload.prompt : "";
-          const isEditing = queueEditingIndex === index;
+          const isEditing = runtimeState.queueEditingIndex === index;
           const row = document.createElement("div");
           row.className = "queue-item";
 
@@ -4651,9 +5116,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             const editor = document.createElement("textarea");
             editor.className = "queue-edit-input";
             editor.placeholder = t("queueEditPlaceholder");
-            editor.value = queueEditingDraft;
+            editor.value = runtimeState.queueEditingDraft;
             editor.addEventListener("input", () => {
-              queueEditingDraft = editor.value;
+              runtimeState.queueEditingDraft = editor.value;
             });
             editor.addEventListener("keydown", (event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -4669,18 +5134,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             editInputToFocus = editor;
             row.appendChild(editor);
           } else {
-            const text = document.createElement("div");
-            text.className = "queue-text";
+            const textNode = document.createElement("div");
+            textNode.className = "queue-text";
             const previewText =
               promptText.length > queuePromptPreviewLimit
                 ? promptText.slice(0, Math.max(0, queuePromptPreviewLimit - queuePromptPreviewSuffix.length)) +
                   queuePromptPreviewSuffix
                 : promptText;
-            text.textContent = previewText;
+            textNode.textContent = previewText;
             if (previewText !== promptText) {
-              text.title = promptText;
+              textNode.title = promptText;
             }
-            row.appendChild(text);
+            row.appendChild(textNode);
           }
 
           const actions = document.createElement("div");
@@ -4738,7 +5203,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             '<line x1="12" y1="6" x2="12" y2="18" />' +
             '<polyline points="6 12 12 18 18 12" />' +
             "</svg>";
-          moveDownButton.disabled = index === pendingPromptQueue.length - 1;
+          moveDownButton.disabled = index === runtimeState.pendingPromptQueue.length - 1;
           moveDownButton.addEventListener("click", () => {
             moveQueuedPrompt(index, index + 1);
           });
@@ -4772,19 +5237,33 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function openQueueOverlay() {
+      function syncQueueOverlay() {
         if (!elements.queueOverlay) {
           return;
         }
-        renderQueueOverlay();
-        elements.queueOverlay.classList.add("visible");
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const visible = Boolean(runtimeState && runtimeState.overlays.queue);
+        if (visible) {
+          renderQueueOverlay();
+        }
+        elements.queueOverlay.classList.toggle("visible", visible);
+      }
+
+      function openQueueOverlay() {
+        const runtimeState = getActiveConversationRuntimeState();
+        if (!runtimeState) {
+          return;
+        }
+        runtimeState.overlays.queue = true;
+        syncQueueOverlay();
       }
 
       function closeQueueOverlay() {
-        if (!elements.queueOverlay) {
-          return;
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (runtimeState) {
+          runtimeState.overlays.queue = false;
         }
-        elements.queueOverlay.classList.remove("visible");
+        syncQueueOverlay();
       }
 
       function queuePromptForLater(payload) {
@@ -4792,48 +5271,60 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!normalizedPayload) {
           return;
         }
-        pendingPromptQueue.push(normalizedPayload);
+        const runtimeState = getActiveConversationRuntimeState();
+        if (!runtimeState) {
+          return;
+        }
+        runtimeState.pendingPromptQueue.push(normalizedPayload);
         updateQueueIndicator();
         showToast(t("toastQueueAdded"));
       }
 
       function moveQueuedPrompt(fromIndex, toIndex) {
-        if (fromIndex < 0 || fromIndex >= pendingPromptQueue.length) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState) {
           return;
         }
-        if (toIndex < 0 || toIndex >= pendingPromptQueue.length) {
+        if (fromIndex < 0 || fromIndex >= runtimeState.pendingPromptQueue.length) {
+          return;
+        }
+        if (toIndex < 0 || toIndex >= runtimeState.pendingPromptQueue.length) {
           return;
         }
         if (fromIndex === toIndex) {
           return;
         }
-        const moved = pendingPromptQueue.splice(fromIndex, 1);
+        const moved = runtimeState.pendingPromptQueue.splice(fromIndex, 1);
         if (!moved.length) {
           return;
         }
-        pendingPromptQueue.splice(toIndex, 0, moved[0]);
+        runtimeState.pendingPromptQueue.splice(toIndex, 0, moved[0]);
 
-        if (queueEditingIndex === fromIndex) {
-          queueEditingIndex = toIndex;
-        } else if (fromIndex < queueEditingIndex && queueEditingIndex <= toIndex) {
-          queueEditingIndex -= 1;
-        } else if (toIndex <= queueEditingIndex && queueEditingIndex < fromIndex) {
-          queueEditingIndex += 1;
+        if (runtimeState.queueEditingIndex === fromIndex) {
+          runtimeState.queueEditingIndex = toIndex;
+        } else if (fromIndex < runtimeState.queueEditingIndex && runtimeState.queueEditingIndex <= toIndex) {
+          runtimeState.queueEditingIndex -= 1;
+        } else if (toIndex <= runtimeState.queueEditingIndex && runtimeState.queueEditingIndex < fromIndex) {
+          runtimeState.queueEditingIndex += 1;
         }
 
         updateQueueIndicator();
       }
 
       function clearQueuedPromptIndex(index) {
-        if (index < 0 || index >= pendingPromptQueue.length) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState) {
           return;
         }
-        pendingPromptQueue.splice(index, 1);
-        if (queueEditingIndex === index) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
-        } else if (queueEditingIndex > index) {
-          queueEditingIndex -= 1;
+        if (index < 0 || index >= runtimeState.pendingPromptQueue.length) {
+          return;
+        }
+        runtimeState.pendingPromptQueue.splice(index, 1);
+        if (runtimeState.queueEditingIndex === index) {
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
+        } else if (runtimeState.queueEditingIndex > index) {
+          runtimeState.queueEditingIndex -= 1;
         }
         updateQueueIndicator();
       }
@@ -4842,15 +5333,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (state.isRunning) {
           return;
         }
-        if (!pendingPromptQueue.length) {
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState || !runtimeState.pendingPromptQueue.length) {
           return;
         }
-        const nextPromptPayload = pendingPromptQueue.shift();
-        if (queueEditingIndex === 0) {
-          queueEditingIndex = -1;
-          queueEditingDraft = "";
-        } else if (queueEditingIndex > 0) {
-          queueEditingIndex -= 1;
+        const nextPromptPayload = runtimeState.pendingPromptQueue.shift();
+        if (runtimeState.queueEditingIndex === 0) {
+          runtimeState.queueEditingIndex = -1;
+          runtimeState.queueEditingDraft = "";
+        } else if (runtimeState.queueEditingIndex > 0) {
+          runtimeState.queueEditingIndex -= 1;
         }
         updateQueueIndicator();
         const sent = dispatchPrompt(nextPromptPayload);
@@ -5012,17 +5504,36 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       });
 
-      elements.newSession.addEventListener("click", () => {
-        state.messages = [];
+      function resetActiveViewForNewConversation() {
+        setMessagesForTab(getActiveConversationTabId(), []);
         state.taskList.items = [];
         state.taskList.open = false;
         state.taskList.source = "auto";
         state.taskList.startIndex = 0;
         renderMessages();
         renderTaskList();
+      }
+
+      elements.newSession.addEventListener("click", () => {
+        resetActiveViewForNewConversation();
         armPromptContextForConversationStart();
         vscode.postMessage({ type: "newSession" });
       });
+
+      if (elements.resetSession) {
+        elements.resetSession.addEventListener("click", () => {
+          if (isTabRunning(getActiveConversationTabId())) {
+            return;
+          }
+          const activeTabId = getActiveConversationTabId();
+          if (activeTabId) {
+            resetConversationRuntimeState(activeTabId);
+          }
+          resetActiveViewForNewConversation();
+          armPromptContextForConversationStart();
+          vscode.postMessage({ type: "resetConversationTabSession" });
+        });
+      }
 
       if (elements.taskListDetails) {
         elements.taskListDetails.addEventListener("toggle", () => {
@@ -5243,7 +5754,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({ type: "clearPromptHistory" });
           return;
         }
-        vscode.postMessage({ type: "clearAllSessions" });
+        vscode.postMessage({ type: "resetConversationTabSession" });
       });
 
       elements.historyTabPrompts.addEventListener("click", () => {
@@ -5335,7 +5846,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.queuePrompt.addEventListener("click", () => {
-        const promptPayload = normalizePromptPayload(pendingRunPrompt);
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const promptPayload = normalizePromptPayload(runtimeState ? runtimeState.pendingRunPrompt : null);
         if (!promptPayload) {
           closeRunConflictOverlay();
           return;
@@ -5347,7 +5859,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.pauseAndSend.addEventListener("click", () => {
-        const promptPayload = normalizePromptPayload(pendingRunPrompt);
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const promptPayload = normalizePromptPayload(runtimeState ? runtimeState.pendingRunPrompt : null);
         if (!promptPayload) {
           closeRunConflictOverlay();
           return;
@@ -5530,23 +6043,41 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           applyEditorContext(data.payload);
         }
         if (data.type === "setMessages") {
+          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
           const incoming = Array.isArray(data.messages) ? data.messages : [];
-          state.messages = normalizeMessageOrder(incoming);
+          setMessagesForTab(eventTabId, normalizeMessageOrder(incoming), { render: false });
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
           state.taskList.source = "auto";
           state.taskList.startIndex = 0;
           traceCollapsibleOpenKeys.clear();
+          syncConversationControlsForActiveTab();
           renderMessages();
         }
         if (data.type === "appendMessage") {
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
           appendMessage(data.message);
         }
         if (data.type === "assistantDelta") {
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
           appendAssistantDelta(data.id, data.content);
         }
         if (data.type === "rawStreamDelta") {
-          appendRunRawStream(data.content, data.stream);
+          const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+          appendRunRawStream(data.content, data.stream, eventTabId || getActiveConversationTabId());
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
         }
         if (data.type === "traceSegment") {
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
           appendMessage({
             id: createMessageId(),
             role: "trace",
@@ -5556,8 +6087,35 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
         }
         if (data.type === "runStatus") {
-          updateCurrentRunPrompt(data.status === "start" ? data.prompt : "");
-          updateRunningState(data.status === "start");
+          const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+          const targetTabId = eventTabId || getActiveConversationTabId();
+          const runtimeState = getConversationRuntimeState(targetTabId);
+          if (data.status === "start") {
+            runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
+            resetRunRawStream(targetTabId, { syncOverlay: false });
+            updateCurrentRunPrompt(data.prompt, targetTabId);
+          } else if (eventTabId) {
+            delete runningTabStartedAtById[eventTabId];
+          } else {
+            const fallbackTabId = getActiveConversationTabId();
+            if (fallbackTabId) {
+              delete runningTabStartedAtById[fallbackTabId];
+            }
+          }
+
+          if (!shouldHandleTabScopedEvent(data)) {
+            if (data.status !== "start" && runtimeState && runtimeState.suppressQueueFlushOnce) {
+              runtimeState.suppressQueueFlushOnce = false;
+            }
+            return;
+          }
+
+          const activeTabId = getActiveConversationTabId();
+          const isRunningOnActiveTab = isTabRunning(activeTabId);
+          updateRunningState(isRunningOnActiveTab, {
+            preserveRunArtifacts: true,
+            startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
+          });
           if (data.status === "start") {
             Object.keys(assistantRedirects).forEach((key) => {
               delete assistantRedirects[key];
@@ -5568,17 +6126,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
           }
           if (data.status !== "start") {
-            if (suppressQueueFlushOnce) {
-              suppressQueueFlushOnce = false;
+            if (runtimeState && runtimeState.suppressQueueFlushOnce) {
+              runtimeState.suppressQueueFlushOnce = false;
             } else {
               flushPendingPromptQueue();
             }
           }
+          syncConversationControlsForActiveTab();
         }
         if (data.type === "removeMessage") {
+          if (!shouldHandleTabScopedEvent(data)) {
+            return;
+          }
           if (data.id) {
-            state.messages = state.messages.filter((message) => message.id !== data.id);
-            renderMessages();
+            const nextMessages = state.messages.filter((message) => message.id !== data.id);
+            setMessagesForTab(getActiveConversationTabId(), nextMessages);
           }
         }
         if (data.type === "uploadResult") {
