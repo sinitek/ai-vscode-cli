@@ -6,12 +6,30 @@ import { dynamicImport } from "./dynamicImport";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 
+export type ClaudeTraceKind = "thinking" | "normal" | "tool-use";
+
+export type ClaudeTraceMeta = {
+  merge?: boolean;
+};
+
 export type ClaudeStreamHandlers = {
   onAssistantDelta: (chunk: string) => void;
-  onTrace: (content: string, meta?: { merge?: boolean }) => void;
+  onTrace: (content: string, kind?: ClaudeTraceKind, meta?: ClaudeTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
   onEvent?: (event: unknown) => void;
+};
+
+type ClaudeToolUseEvent = {
+  id?: string;
+  name?: string;
+  input?: unknown;
+};
+
+type ClaudeToolResultEvent = {
+  toolUseId?: string;
+  toolName?: string;
+  content?: unknown;
 };
 
 function pickArgValue(args: string[], key: string): string | null {
@@ -102,6 +120,105 @@ function clampThinkingTokens(mode: ThinkingMode): number | null {
     return 8192;
   }
   return null;
+}
+
+function getMessageContentBlocks(message: unknown): Record<string, unknown>[] {
+  if (!message || typeof message !== "object") {
+    return [];
+  }
+  const content = (message as Record<string, unknown>).content;
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.filter(
+    (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object"
+  );
+}
+
+function extractThinkingText(block: Record<string, unknown>): string {
+  if (block.type !== "thinking") {
+    return "";
+  }
+  if (typeof block.thinking === "string") {
+    return block.thinking;
+  }
+  if (typeof block.text === "string") {
+    return block.text;
+  }
+  return "";
+}
+
+function extractToolUseEvent(block: Record<string, unknown>): ClaudeToolUseEvent | null {
+  if (block.type !== "tool_use") {
+    return null;
+  }
+  const id = typeof block.id === "string" ? block.id : undefined;
+  const name = typeof block.name === "string" ? block.name : undefined;
+  return {
+    id,
+    name,
+    input: block.input,
+  };
+}
+
+function extractToolResultEvent(block: Record<string, unknown>): ClaudeToolResultEvent | null {
+  if (block.type !== "tool_result") {
+    return null;
+  }
+  const toolUseId =
+    typeof block.tool_use_id === "string"
+      ? block.tool_use_id
+      : typeof block.toolUseId === "string"
+        ? block.toolUseId
+        : undefined;
+  const toolName =
+    typeof block.name === "string"
+      ? block.name
+      : typeof block.tool_name === "string"
+        ? block.tool_name
+        : undefined;
+  return {
+    toolUseId,
+    toolName,
+    content: Object.prototype.hasOwnProperty.call(block, "content") ? block.content : block,
+  };
+}
+
+function extractDeltaTextFromStreamEvent(event: any): string {
+  if (typeof event?.delta?.text === "string") {
+    return event.delta.text;
+  }
+  if (
+    typeof event?.delta?.type === "string"
+    && event.delta.type === "text_delta"
+    && typeof event.delta.text === "string"
+  ) {
+    return event.delta.text;
+  }
+  if (typeof event?.content_block?.text === "string" && event.type === "content_block_delta") {
+    return event.content_block.text;
+  }
+  return "";
+}
+
+function extractBlocksFromStreamEvent(event: any): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = [];
+  const pushBlock = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    blocks.push(value as Record<string, unknown>);
+  };
+  pushBlock(event?.content_block);
+  pushBlock(event?.contentBlock);
+  pushBlock(event?.block);
+  pushBlock(event?.delta?.content_block);
+  pushBlock(event?.delta?.contentBlock);
+  const messageBlocks = getMessageContentBlocks(event?.message);
+  if (messageBlocks.length) {
+    blocks.push(...messageBlocks);
+  }
+  return blocks;
 }
 
 async function loadClaudeSettings(): Promise<Record<string, string>> {
@@ -234,6 +351,94 @@ export class ClaudeInteractiveRunner {
     }
 
     let lastAssistantText = "";
+    const seenToolUseIds = new Set<string>();
+    const seenToolResultIds = new Set<string>();
+    const toolUseNames = new Map<string, string>();
+    const seenThinkingKeys = new Set<string>();
+
+    const emitThinkingTrace = (
+      source: string,
+      messageId: string | undefined,
+      block: Record<string, unknown>,
+      blockIndex: number
+    ): void => {
+      const rawText = extractThinkingText(block);
+      const normalizedText = rawText.trim();
+      if (!normalizedText) {
+        return;
+      }
+      const signature = typeof block.signature === "string" ? block.signature : "";
+      const key = [source, messageId ?? "", signature || normalizedText, String(blockIndex)].join("::");
+      if (seenThinkingKeys.has(key)) {
+        return;
+      }
+      seenThinkingKeys.add(key);
+      const content = /^(?:thinking|思考)\b/i.test(normalizedText)
+        ? normalizedText
+        : `thinking ${normalizedText}`;
+      handlers.onTrace(content, "thinking", { merge: false });
+    };
+
+    const emitToolUseTrace = (toolUse: ClaudeToolUseEvent): void => {
+      if (toolUse.id && seenToolUseIds.has(toolUse.id)) {
+        return;
+      }
+      if (toolUse.id) {
+        seenToolUseIds.add(toolUse.id);
+      }
+      if (toolUse.id && toolUse.name) {
+        toolUseNames.set(toolUse.id, toolUse.name);
+      }
+      if (toolUse.name === "TodoWrite") {
+        const items = extractTodoWriteItems(toolUse.input);
+        if (items.length) {
+          handlers.onTaskListUpdate(items);
+        }
+      }
+      handlers.onTrace(
+        formatClaudeToolUseMessage(toolUse.name, toolUse.input),
+        "tool-use",
+        { merge: false }
+      );
+    };
+
+    const emitToolResultTrace = (toolResult: ClaudeToolResultEvent): void => {
+      if (toolResult.toolUseId && seenToolResultIds.has(toolResult.toolUseId)) {
+        return;
+      }
+      if (toolResult.toolUseId) {
+        seenToolResultIds.add(toolResult.toolUseId);
+      }
+      const resolvedToolName =
+        toolResult.toolName
+        ?? (toolResult.toolUseId ? toolUseNames.get(toolResult.toolUseId) : undefined);
+      handlers.onTrace(
+        formatClaudeToolResultMessage(toolResult.content, resolvedToolName),
+        "normal",
+        { merge: false }
+      );
+    };
+
+    const processMessageBlocks = (
+      blocks: Record<string, unknown>[],
+      source: string,
+      messageId?: string
+    ): void => {
+      blocks.forEach((block, blockIndex) => {
+        emitThinkingTrace(source, messageId, block, blockIndex);
+
+        const toolUse = extractToolUseEvent(block);
+        if (toolUse) {
+          emitToolUseTrace(toolUse);
+          return;
+        }
+
+        const toolResult = extractToolResultEvent(block);
+        if (toolResult) {
+          emitToolResultTrace(toolResult);
+        }
+      });
+    };
 
     try {
       const queryResult = queryFn({ prompt, options: queryOptions });
@@ -253,14 +458,19 @@ export class ClaudeInteractiveRunner {
         // 流式事件
         if (msg?.type === "stream_event" && msg.event) {
           const event = msg.event as any;
-          const deltaText =
-            typeof event?.delta?.text === "string"
-              ? event.delta.text
-              : typeof event?.delta?.type === "string" && event.delta.type === "text_delta" && typeof event.delta.text === "string"
-                ? event.delta.text
-                : "";
+          const deltaText = extractDeltaTextFromStreamEvent(event);
           if (deltaText) {
             handlers.onAssistantDelta(deltaText);
+          }
+          const eventBlocks = extractBlocksFromStreamEvent(event);
+          if (eventBlocks.length) {
+            const streamMessageId =
+              typeof event?.message?.id === "string"
+                ? event.message.id
+                : typeof event?.id === "string"
+                  ? event.id
+                  : undefined;
+            processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
           }
           continue;
         }
@@ -278,31 +488,20 @@ export class ClaudeInteractiveRunner {
             lastAssistantText = fullText;
           }
 
-          const blocks = Array.isArray(msg.message?.content) ? msg.message.content : [];
-          for (const block of blocks as any[]) {
-            if (!block || typeof block !== "object") {
-              continue;
-            }
-            if (block.type === "tool_use") {
-              const name = typeof block.name === "string" ? block.name : "";
-              const input = block.input;
-              if (name === "TodoWrite") {
-                const items = extractTodoWriteItems(input);
-                if (items.length) {
-                  handlers.onTaskListUpdate(items);
-                }
-              }
-              handlers.onTrace(formatClaudeToolUseMessage(name || undefined, input), { merge: false });
-            }
-            if (block.type === "tool_result") {
-              const toolName =
-                typeof block.name === "string"
-                  ? block.name
-                  : typeof block.tool_name === "string"
-                    ? block.tool_name
-                    : undefined;
-              handlers.onTrace(formatClaudeToolResultMessage(block.content ?? block, toolName));
-            }
+          const blocks = getMessageContentBlocks(msg.message);
+          if (blocks.length) {
+            const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
+            processMessageBlocks(blocks, "assistant", messageId);
+          }
+          continue;
+        }
+
+        // 用户事件里也会带 tool_result（例如 AskUserQuestion/ExitPlanMode 的结果）
+        if (msg?.type === "user" && msg.message) {
+          const blocks = getMessageContentBlocks(msg.message);
+          if (blocks.length) {
+            const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
+            processMessageBlocks(blocks, "user", messageId);
           }
           continue;
         }

@@ -99,6 +99,7 @@ let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
+let lastResolvedWorkspaceCwd: string | undefined;
 let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | null = null;
 let configHeartbeatTimer: NodeJS.Timeout | null = null;
 let configHeartbeatRunning = false;
@@ -2528,6 +2529,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         typeof toolName === "string" && toolName.toLowerCase() === "read"
       );
       appendClaudeTraceMessage(formatClaudeToolResultMessage(event.content, toolName), {
+        merge: false,
         persist: shouldPersist,
       });
     });
@@ -2841,6 +2843,30 @@ function isToolUseTrace(content: string): boolean {
   return /^(?:tool|调用工具)[:：]?\s*(.+)?$/i.test(firstLine.trim());
 }
 
+function isToolResultTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:tool\s*result|工具结果)\b/i.test(firstLine.trim());
+}
+
+function isWarningOrErrorTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
+}
+
+function isWebSearchTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:web\s*search\b|【网络查询】)/i.test(firstLine.trim());
+}
+
 function isThinkingTrace(content: string): boolean {
   const firstLine = content.split("\n").find((line) => line.trim());
   if (!firstLine) {
@@ -2871,10 +2897,14 @@ function resolveTraceMerge(content: string, merge?: boolean): boolean {
   if (merge !== undefined) {
     return merge;
   }
+  // Structured trace events keep an independent bubble so tags, style and collapse state stay stable.
   return !(
     isCommandExecutionTrace(content)
     || isFileUpdateTrace(content)
     || isToolUseTrace(content)
+    || isToolResultTrace(content)
+    || isWarningOrErrorTrace(content)
+    || isWebSearchTrace(content)
   );
 }
 
@@ -3272,11 +3302,6 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   }
   const cli = target.cli;
   const cwd = resolveWorkspaceCwd();
-  void logInfo("resolve-workspace-cwd-debug", {
-    cwd,
-    cwdType: cwd === undefined ? "undefined" : typeof cwd,
-    workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? [],
-  });
   const thinkingMode = getThinkingMode(cli);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
@@ -3783,11 +3808,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
                 sendRawStreamDelta(chunk, { stream: "stdout" });
                 appendDebugStdout(chunk);
               },
-              onTrace: (content, meta) => {
+              onTrace: (content, kind, meta) => {
                 if (activeRunId !== runId) {
                   return;
                 }
-                appendTraceMessage(content, "normal", meta);
+                appendTraceMessage(content, kind ?? "normal", meta);
                 appendTraceLog(content);
               },
               onEvent: (event) => {
@@ -3840,11 +3865,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             sendRawStreamDelta(chunk, { stream: "stdout" });
             appendDebugStdout(chunk);
           },
-          onTrace: (content, meta) => {
+          onTrace: (content, kind, meta) => {
             if (activeRunId !== runId) {
               return;
             }
-            appendTraceMessage(content, "normal", meta);
+            appendTraceMessage(content, kind ?? "normal", meta);
             appendTraceLog(content);
           },
           onEvent: (event) => {
@@ -6220,12 +6245,54 @@ function buildPromptWithAutoContext(
   };
 }
 
-function resolveWorkspaceCwd(): string | undefined {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    return undefined;
+function isPathWithinWorkspace(targetPath: string, workspacePath: string): boolean {
+  if (!targetPath || !workspacePath) {
+    return false;
   }
-  return folders[0].uri.fsPath;
+  const relativePath = path.relative(workspacePath, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function resolveWorkspaceCwd(): string | undefined {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const folderPaths = workspaceFolders
+    .map((folder) => folder?.uri?.fsPath)
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  const activeEditorPath = (() => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.uri.scheme !== "file") {
+      return "";
+    }
+    return editor.document.uri.fsPath;
+  })();
+
+  if (activeEditorPath) {
+    const matchedWorkspace = folderPaths.find((workspacePath) =>
+      isPathWithinWorkspace(activeEditorPath, workspacePath)
+    );
+    if (matchedWorkspace) {
+      lastResolvedWorkspaceCwd = matchedWorkspace;
+      return matchedWorkspace;
+    }
+  }
+
+  if (folderPaths.length > 0) {
+    lastResolvedWorkspaceCwd = folderPaths[0];
+    return folderPaths[0];
+  }
+
+  if (activeEditorPath) {
+    const activeEditorDir = path.dirname(activeEditorPath);
+    lastResolvedWorkspaceCwd = activeEditorDir;
+    return activeEditorDir;
+  }
+
+  if (lastResolvedWorkspaceCwd) {
+    return lastResolvedWorkspaceCwd;
+  }
+
+  return undefined;
 }
 
 function createMessageId(): string {

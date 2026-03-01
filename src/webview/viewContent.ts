@@ -182,6 +182,7 @@ const WEBVIEW_I18N = {
     traceExpandCommand: "Show full command",
     traceExpandChanges: "Show file changes",
     traceExpandThinking: "Show thinking details",
+    traceExpandTool: "Show tool details",
     toastCopied: "Copied",
     toastCopyFailed: "Copy failed",
     toastQueueAdded: "Added to queue",
@@ -381,6 +382,7 @@ const WEBVIEW_I18N = {
     traceExpandCommand: "展开查看完整命令",
     traceExpandChanges: "展开查看文件变更",
     traceExpandThinking: "展开查看思考详情",
+    traceExpandTool: "展开查看工具详情",
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
@@ -3880,13 +3882,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const hasBody = lines.some((line) => String(line || "").trim().length > 0);
           return hasBody || detail.length > 0;
         }
-        if (presentation.type !== "exec") {
+        if (presentation.type === "exec") {
+          const detail = String(presentation.detail || "").toLowerCase();
+          const hasHeredocMarker = /<<['"]?[a-z0-9_]+['"]?/i.test(detail);
+          const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
+          return hasHeredocMarker || lines.length >= 6 || totalChars >= 600;
+        }
+        const isToolTrace = presentation.type === "tool-result"
+          || String(presentation.type || "").startsWith("tool-use-");
+        if (!isToolTrace) {
           return false;
         }
-        const detail = String(presentation.detail || "").toLowerCase();
-        const hasHeredocMarker = /<<['"]?[a-z0-9_]+['"]?/i.test(detail);
         const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
-        return hasHeredocMarker || lines.length >= 6 || totalChars >= 600;
+        const hasStructuredPayload = lines.some((line) => {
+          const trimmed = String(line || "").trim();
+          return trimmed.startsWith("{")
+            || trimmed.startsWith("[")
+            || trimmed.startsWith("输入:")
+            || trimmed.startsWith("Input:")
+            || trimmed.startsWith("输出:")
+            || trimmed.startsWith("Output:");
+        });
+        return hasStructuredPayload || lines.length >= 8 || totalChars >= 480;
       }
 
       function getTraceCollapseSummaryText(presentation) {
@@ -3895,6 +3912,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (presentation && presentation.type === "thinking") {
           return t("traceExpandThinking");
+        }
+        const isToolTrace = presentation
+          && (presentation.type === "tool-result" || String(presentation.type || "").startsWith("tool-use-"));
+        if (isToolTrace) {
+          return t("traceExpandTool");
         }
         return t("traceExpandCommand");
       }

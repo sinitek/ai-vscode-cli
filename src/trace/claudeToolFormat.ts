@@ -16,6 +16,22 @@ function formatClaudeToolPayload(value: unknown): string {
   }
 }
 
+function extractShellCommandFromToolInput(input: unknown): string {
+  if (!input || typeof input !== "object") {
+    return "";
+  }
+  const record = input as Record<string, unknown>;
+  const directCommand =
+    typeof record.command === "string"
+      ? record.command
+      : typeof record.cmd === "string"
+        ? record.cmd
+        : typeof record.script === "string"
+          ? record.script
+          : "";
+  return directCommand.trim();
+}
+
 function parseToolPayload(value: unknown): unknown {
   if (typeof value !== "string") {
     return value;
@@ -46,6 +62,11 @@ function stripToolPayloadKeys(value: unknown, keys: Set<string>): unknown {
 }
 
 export function formatClaudeToolUseMessage(name: string | undefined, input: unknown): string {
+  const normalizedName = typeof name === "string" ? name.toLowerCase() : "";
+  if (normalizedName === "bash") {
+    const command = extractShellCommandFromToolInput(parseToolPayload(input));
+    return command ? `exec ${command}` : "exec";
+  }
   const header = name ? `tool: ${name}` : "tool";
   const payload =
     name === "Edit"
