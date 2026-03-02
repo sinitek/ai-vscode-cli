@@ -34,6 +34,12 @@ export type PanelMessage =
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
   | { type: "uploadFiles"; files: UploadFilePayload[] }
+  | {
+      type: "exportRunStream";
+      records: RunStreamExportRecordPayload[];
+      tabId?: string | null;
+      cli?: CliName;
+    }
   | { type: "loadRules"; cli: CliName; scope: "global" | "project" }
   | { type: "saveRules"; content: string; targets: CliName[]; scope: "global" | "project" }
   | {
@@ -60,6 +66,13 @@ export type UploadFilePayload = {
 export type PromptContextOptions = {
   includeCurrentFile?: boolean;
   includeSelection?: boolean;
+};
+
+export type RunStreamExportRecordPayload = {
+  id?: string;
+  content?: string;
+  source?: "stdout" | "stderr" | "event" | string;
+  createdAt?: number;
 };
 
 export type EditorContextState = {

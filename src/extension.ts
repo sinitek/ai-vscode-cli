@@ -41,6 +41,7 @@ import {
   PromptHistoryItem,
   SessionSummary,
   UploadFilePayload,
+  RunStreamExportRecordPayload,
 } from "./webview/types";
 import {
   initLogger,
@@ -132,6 +133,7 @@ const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
+const RUN_STREAM_EXPORT_FILENAME_PREFIX = "sinitek-run-stream";
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
@@ -252,6 +254,18 @@ type CliInstallStatus = {
   command: string;
   installed: boolean;
   checkedAt: number;
+};
+
+type RunStreamExportRecord = {
+  index: number;
+  content: string;
+  source: "stdout" | "stderr" | "event";
+  createdAt: number;
+};
+
+type RunStreamExportResult = {
+  path: string;
+  fileName: string;
 };
 
 const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
@@ -799,6 +813,36 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       paths: result.paths,
       error: result.error,
     });
+    return;
+  }
+
+  if (message.type === "exportRunStream") {
+    const targetTabId = typeof message.tabId === "string" && message.tabId
+      ? message.tabId
+      : getActiveConversationTabId();
+    const targetCli = message.cli && isCliName(message.cli) ? message.cli : currentCli;
+    try {
+      const exportResult = await exportRunStreamRecordsToTxt(message.records, {
+        cli: targetCli,
+        tabId: targetTabId,
+      });
+      viewProvider?.postMessage({
+        type: "runStreamExportResult",
+        tabId: targetTabId,
+        path: exportResult.path,
+        fileName: exportResult.fileName,
+      });
+    } catch (error) {
+      const messageText = error instanceof Error && error.message
+        ? error.message
+        : t("runStream.exportFailed");
+      viewProvider?.postMessage({
+        type: "runStreamExportResult",
+        tabId: targetTabId,
+        error: messageText,
+      });
+      logError("export run stream failed", error);
+    }
     return;
   }
 
@@ -1601,6 +1645,116 @@ async function saveUploadedFiles(
     logError("save-uploaded-files-failed", error);
     return { paths: savedPaths, error: t("upload.saveError") };
   }
+}
+
+function normalizeRunStreamExportSource(
+  source: RunStreamExportRecordPayload["source"]
+): "stdout" | "stderr" | "event" {
+  if (source === "stderr") {
+    return "stderr";
+  }
+  if (source === "event") {
+    return "event";
+  }
+  return "stdout";
+}
+
+function normalizeRunStreamExportRecords(
+  records: RunStreamExportRecordPayload[]
+): RunStreamExportRecord[] {
+  if (!Array.isArray(records) || records.length === 0) {
+    return [];
+  }
+  const normalized: RunStreamExportRecord[] = [];
+  for (const rawRecord of records) {
+    if (!rawRecord || typeof rawRecord !== "object") {
+      continue;
+    }
+    const content = typeof rawRecord.content === "string" ? rawRecord.content : "";
+    if (!content.trim()) {
+      continue;
+    }
+    const createdAt = typeof rawRecord.createdAt === "number" && Number.isFinite(rawRecord.createdAt)
+      ? rawRecord.createdAt
+      : Date.now();
+    normalized.push({
+      index: normalized.length + 1,
+      content,
+      source: normalizeRunStreamExportSource(rawRecord.source),
+      createdAt,
+    });
+  }
+  return normalized;
+}
+
+function buildRunStreamExportFileName(timestamp: number): string {
+  const iso = new Date(timestamp).toISOString().replace(/[:.]/g, "-");
+  return `${RUN_STREAM_EXPORT_FILENAME_PREFIX}-${iso}.txt`;
+}
+
+function formatRunStreamExportContent(
+  records: RunStreamExportRecord[],
+  options: { cli: CliName; tabId: string | null; exportedAt: number }
+): string {
+  const lines: string[] = [
+    "# Sinitek CLI Run Stream Export",
+    `Exported At: ${new Date(options.exportedAt).toISOString()}`,
+    `CLI: ${options.cli}`,
+    `Tab ID: ${options.tabId ?? "-"}`,
+    `Record Count: ${records.length}`,
+    "",
+  ];
+  for (const record of records) {
+    lines.push(
+      `## Line ${record.index} | ${record.source} | ${new Date(record.createdAt).toISOString()}`
+    );
+    lines.push(record.content);
+    lines.push("");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function resolveRunStreamExportDirectory(): Promise<string> {
+  let targetDir = path.join(os.homedir(), "Downloads");
+  try {
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    return targetDir;
+  } catch {
+    targetDir = os.homedir();
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    return targetDir;
+  }
+}
+
+async function exportRunStreamRecordsToTxt(
+  records: RunStreamExportRecordPayload[],
+  options: { cli: CliName; tabId: string | null }
+): Promise<RunStreamExportResult> {
+  const normalizedRecords = normalizeRunStreamExportRecords(records);
+  if (!normalizedRecords.length) {
+    throw new Error(t("runStream.exportEmpty"));
+  }
+  const exportedAt = Date.now();
+  const fileName = buildRunStreamExportFileName(exportedAt);
+  const targetDir = await resolveRunStreamExportDirectory();
+  const targetPath = path.join(targetDir, fileName);
+  const content = formatRunStreamExportContent(normalizedRecords, {
+    cli: options.cli,
+    tabId: options.tabId,
+    exportedAt,
+  });
+  await fs.promises.writeFile(targetPath, content, "utf8");
+  void logEssential("run-stream-export", {
+    path: targetPath,
+    fileName,
+    recordCount: normalizedRecords.length,
+    cli: options.cli,
+    tabId: options.tabId ?? null,
+  });
+  return {
+    path: targetPath,
+    fileName,
+  };
 }
 
 function matchesActiveConfig(

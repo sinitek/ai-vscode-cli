@@ -109,6 +109,9 @@ const WEBVIEW_I18N = {
     runPromptEmpty: "No running prompt available.",
     runStreamTitle: "Live Raw Stream Messages",
     runStreamClose: "Close",
+    runStreamExportLabel: "Export TXT",
+    runStreamExportAria: "Export all stream messages as a TXT file",
+    runStreamExporting: "Exporting...",
     runStreamEmpty: "Waiting for stream output...",
     runStreamRecordIndex: "Line {index}",
     runStreamRecordEmpty: "(empty message)",
@@ -192,6 +195,9 @@ const WEBVIEW_I18N = {
     toastNoActiveConfig: "No active config for the current CLI. Activate one in the config page first.",
     toastFileReadFailed: "Failed to read file content.",
     toastReadFileFailed: "Failed to read file. Please try again.",
+    toastRunStreamExportEmpty: "No stream messages to export.",
+    toastRunStreamExportSuccess: "Exported to: {path}",
+    toastRunStreamExportFailed: "Failed to export stream messages: {error}",
     rulesPathNoWorkspace: "Path: No workspace detected",
     rulesPathPrefix: "Path: ",
     rulesHintLoading: "Loading...",
@@ -309,6 +315,9 @@ const WEBVIEW_I18N = {
     runPromptEmpty: "暂无可查看的提示词。",
     runStreamTitle: "实时原始流式消息",
     runStreamClose: "关闭",
+    runStreamExportLabel: "导出 TXT",
+    runStreamExportAria: "导出全部流式消息为 TXT 文件",
+    runStreamExporting: "导出中...",
     runStreamEmpty: "等待流式输出...",
     runStreamRecordIndex: "第 {index} 条",
     runStreamRecordEmpty: "（空消息）",
@@ -392,6 +401,9 @@ const WEBVIEW_I18N = {
     toastNoActiveConfig: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
     toastFileReadFailed: "无法读取文件内容",
     toastReadFileFailed: "文件读取失败，请重试。",
+    toastRunStreamExportEmpty: "暂无可导出的流式消息。",
+    toastRunStreamExportSuccess: "已导出到：{path}",
+    toastRunStreamExportFailed: "导出流式消息失败：{error}",
     rulesPathNoWorkspace: "路径：未检测到工作区",
     rulesPathPrefix: "路径：",
     rulesHintLoading: "正在加载...",
@@ -1572,6 +1584,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .run-stream-body {
         padding: 12px 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .run-stream-toolbar {
+        display: flex;
+        justify-content: flex-end;
       }
       .run-stream-preview {
         background: var(--vscode-editor-background);
@@ -2346,6 +2365,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             </button>
           </div>
           <div class="run-stream-body">
+            <div class="run-stream-toolbar">
+              <button id="exportRunStream" class="secondary action-button" title="${i18n.runStreamExportAria}" aria-label="${i18n.runStreamExportAria}">${i18n.runStreamExportLabel}</button>
+            </div>
             <div id="runStreamContent" class="run-stream-preview run-stream-empty">${i18n.runStreamEmpty}</div>
           </div>
         </div>
@@ -2645,6 +2667,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runPromptContent: document.getElementById("runPromptContent"),
         runStreamOverlay: document.getElementById("runStreamOverlay"),
         closeRunStream: document.getElementById("closeRunStream"),
+        exportRunStream: document.getElementById("exportRunStream"),
         runStreamContent: document.getElementById("runStreamContent"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
@@ -2662,6 +2685,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const compositionEnterGuardMs = 150;
       const assistantRedirects = {};
       let toastTimer = null;
+      let runStreamExportPending = false;
       let resizeFrame = 0;
       const TAB_RUNTIME_DEFAULT_KEY = "__default__";
       const conversationRuntimeByTabId = Object.create(null);
@@ -5060,6 +5084,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!runtimeState || !runtimeState.runStreamRecords.length) {
           elements.runStreamContent.classList.add("run-stream-empty");
           elements.runStreamContent.textContent = t("runStreamEmpty");
+          updateRunStreamExportButton();
           return;
         }
 
@@ -5082,6 +5107,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (shouldAutoStick) {
           stickRunStreamToBottom();
         }
+        updateRunStreamExportButton();
       }
 
       function resetRunRawStream(tabId, options = {}) {
@@ -5093,6 +5119,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamOpenRecordIds.clear();
         runtimeState.overlays.runStream = false;
+        runStreamExportPending = false;
         if (isRuntimeStateForActiveTab(tabId)) {
           updateRunStreamContent();
           updateRunStreamButton();
@@ -5133,6 +5160,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
         const canShowForActiveTab = isRunArtifactsVisibleForActiveTab();
         elements.runStreamButton.style.display = canShowForActiveTab && (state.isRunning || hasRecords) ? "inline-flex" : "none";
+        updateRunStreamExportButton();
         updateRunWait();
       }
 
@@ -5161,6 +5189,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         runtimeState.overlays.runStream = true;
         syncRunStreamOverlay();
+        updateRunStreamExportButton();
       }
 
       function closeRunStreamOverlay() {
@@ -5169,6 +5198,70 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           runtimeState.overlays.runStream = false;
         }
         syncRunStreamOverlay();
+        updateRunStreamExportButton();
+      }
+
+      function updateRunStreamExportButton() {
+        if (!elements.exportRunStream) {
+          return;
+        }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length);
+        elements.exportRunStream.disabled = runStreamExportPending || !hasRecords;
+        elements.exportRunStream.textContent = runStreamExportPending
+          ? t("runStreamExporting")
+          : t("runStreamExportLabel");
+      }
+
+      function buildRunStreamExportPayload(runtimeState) {
+        if (!runtimeState || !Array.isArray(runtimeState.runStreamRecords)) {
+          return [];
+        }
+        return runtimeState.runStreamRecords.map((record) => ({
+          id: record.id,
+          content: record.content,
+          source: record.source,
+          createdAt: record.createdAt,
+        }));
+      }
+
+      function requestRunStreamExport() {
+        if (runStreamExportPending) {
+          return;
+        }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        if (!runtimeState || !runtimeState.runStreamRecords.length) {
+          showToast(t("toastRunStreamExportEmpty"));
+          updateRunStreamExportButton();
+          return;
+        }
+        runStreamExportPending = true;
+        updateRunStreamExportButton();
+        vscode.postMessage({
+          type: "exportRunStream",
+          records: buildRunStreamExportPayload(runtimeState),
+          tabId: getActiveConversationTabId(),
+          cli: state.currentCli,
+        });
+      }
+
+      function handleRunStreamExportResult(data) {
+        runStreamExportPending = false;
+        updateRunStreamExportButton();
+        if (!shouldHandleTabScopedEvent(data)) {
+          return;
+        }
+        const errorMessage = typeof data.error === "string" ? data.error.trim() : "";
+        if (errorMessage) {
+          showToast(t("toastRunStreamExportFailed", { error: errorMessage }));
+          return;
+        }
+        const exportPath = typeof data.path === "string" && data.path
+          ? data.path
+          : typeof data.fileName === "string"
+            ? data.fileName
+            : "";
+        showToast(t("toastRunStreamExportSuccess", { path: exportPath }));
       }
 
       function updateQueueIndicator() {
@@ -6064,6 +6157,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         openRunStreamOverlay();
       });
 
+      elements.exportRunStream.addEventListener("click", () => {
+        requestRunStreamExport();
+      });
+
       elements.runPromptOverlay.addEventListener("click", (event) => {
         if (event.target === elements.runPromptOverlay) {
           closeRunPromptOverlay();
@@ -6372,6 +6469,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (data.error) {
             appendMessage({ id: createMessageId(), role: "system", content: data.error });
           }
+        }
+        if (data.type === "runStreamExportResult") {
+          handleRunStreamExportResult(data);
         }
         if (data.type === "taskListUpdate") {
           const normalized = normalizeTaskListItems(data.items);
