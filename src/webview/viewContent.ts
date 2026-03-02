@@ -1124,6 +1124,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         color: var(--vscode-descriptionForeground);
         font-variant-numeric: tabular-nums;
       }
+      .run-status-text {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        white-space: nowrap;
+      }
       .run-prompt-button {
         display: inline-flex;
         align-items: center;
@@ -2043,6 +2048,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <span class="typing-dot"></span>
           <span class="typing-dot"></span>
         </span>
+        <span id="runStatusText" class="run-status-text" style="display: none;"></span>
         <button id="runStreamButton" class="run-stream-button" style="display: none;" aria-label="${i18n.runStreamViewAria}" title="${i18n.runStreamViewAria}">
           ${i18n.runStreamViewLabel}
         </button>
@@ -2570,6 +2576,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         messages: document.getElementById("messages"),
         emptyState: document.getElementById("emptyState"),
         runWait: document.getElementById("runWait"),
+        runStatusText: document.getElementById("runStatusText"),
         runStreamButton: document.getElementById("runStreamButton"),
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
@@ -2680,6 +2687,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           pendingRunPrompt: null,
           suppressQueueFlushOnce: false,
           currentRunPrompt: "",
+          lastRunStatusMessage: "",
           runStreamRecordCounter: 0,
           runStreamRecords: [],
           runStreamOpenRecordIds: new Set(),
@@ -2753,12 +2761,124 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function setMessagesForTab(tabId, messages, options = {}) {
         const runtimeState = getConversationRuntimeState(tabId, { create: true });
         runtimeState.messages = Array.isArray(messages) ? messages : [];
+        hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
         if (isRuntimeStateForActiveTab(tabId)) {
           state.messages = runtimeState.messages;
           if (options.render !== false) {
             renderMessages();
           }
         }
+      }
+
+      function isRunStatusSummaryText(content) {
+        const normalized = String(content || "").trim();
+        if (!normalized) {
+          return false;
+        }
+        return /^(?:任务已完成|运行已终止|用户已终止|CLI\s*退出码[:：]\s*\S+|Task completed|Run stopped|Stopped by user|CLI exit code:\s*\S+)/i.test(normalized);
+      }
+
+      function shouldHideSystemRunStatusMessage(message) {
+        if (!message || message.role !== "system") {
+          return false;
+        }
+        return isRunStatusSummaryText(message.content);
+      }
+
+      function deriveLatestRunPromptFromMessages(messages) {
+        if (!Array.isArray(messages)) {
+          return "";
+        }
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const item = messages[i];
+          if (!item || item.role !== "user") {
+            continue;
+          }
+          const prompt = String(item.content || "").trim();
+          if (prompt) {
+            return prompt;
+          }
+        }
+        return "";
+      }
+
+      function deriveLatestRunStatusMessageFromMessages(messages) {
+        if (!Array.isArray(messages)) {
+          return "";
+        }
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const item = messages[i];
+          if (!item || item.role !== "system") {
+            continue;
+          }
+          const content = String(item.content || "").trim();
+          if (isRunStatusSummaryText(content)) {
+            return content;
+          }
+        }
+        return "";
+      }
+
+      function deriveRunStreamRecordsFromMessages(messages) {
+        if (!Array.isArray(messages) || !messages.length) {
+          return [];
+        }
+        let startIndex = 0;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const item = messages[i];
+          if (item && item.role === "user") {
+            startIndex = i + 1;
+            break;
+          }
+        }
+        const records = [];
+        for (let i = startIndex; i < messages.length; i += 1) {
+          const item = messages[i];
+          if (!item || item.role === "user") {
+            continue;
+          }
+          const content = normalizeRunStreamRecordContent(item.content);
+          if (!String(content || "").trim()) {
+            continue;
+          }
+          if (item.role === "system" && isRunStatusSummaryText(content)) {
+            continue;
+          }
+          const source = item.role === "assistant"
+            ? "stdout"
+            : "event";
+          records.push({
+            content,
+            source,
+            createdAt: typeof item.createdAt === "number" ? item.createdAt : Date.now(),
+          });
+        }
+        return records;
+      }
+
+      function hydrateRunArtifactsFromMessages(tabId, messages) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        if (!runtimeState || isTabRunning(tabId)) {
+          return;
+        }
+
+        const promptFromMessages = deriveLatestRunPromptFromMessages(messages);
+        if (promptFromMessages) {
+          runtimeState.currentRunPrompt = promptFromMessages;
+        }
+
+        const statusFromMessages = deriveLatestRunStatusMessageFromMessages(messages);
+        runtimeState.lastRunStatusMessage = statusFromMessages || "";
+
+        const derivedRecords = deriveRunStreamRecordsFromMessages(messages);
+        runtimeState.runStreamRecordCounter = derivedRecords.length;
+        runtimeState.runStreamOpenRecordIds.clear();
+        runtimeState.runStreamRecords = derivedRecords.map((record, index) => ({
+          id: "rehydrated-stream-record-" + (index + 1),
+          content: record.content,
+          source: normalizeRunStreamSource(record.source),
+          createdAt: record.createdAt,
+        }));
       }
 
       function resetConversationRuntimeState(tabId) {
@@ -2773,6 +2893,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runtimeState.pendingRunPrompt = null;
         runtimeState.suppressQueueFlushOnce = false;
         runtimeState.currentRunPrompt = "";
+        runtimeState.lastRunStatusMessage = "";
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamOpenRecordIds.clear();
@@ -3335,6 +3456,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         captureOpenTraceCollapsibleKeys();
         elements.messages.innerHTML = "";
         state.messages.forEach((message) => {
+          if (shouldHideSystemRunStatusMessage(message)) {
+            return;
+          }
           const wrapper = document.createElement("div");
           wrapper.className = "message " + message.role;
           if (message.role === "trace") {
@@ -4572,7 +4696,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.runWait) {
           return;
         }
-        elements.runWait.style.display = state.isRunning ? "flex" : "none";
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
+        const hasStreamRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
+        const hasQueuedPrompts = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
+        const hasRunStatusSummary = Boolean(runtimeState && String(runtimeState.lastRunStatusMessage || "").trim().length > 0);
+        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary;
+
+        elements.runWait.style.display = shouldShowRunRow ? "flex" : "none";
+
+        const typingNode = elements.runWait.querySelector(".typing");
+        if (typingNode) {
+          typingNode.style.display = state.isRunning ? "inline-flex" : "none";
+        }
+        if (elements.runWaitTime) {
+          elements.runWaitTime.style.display = state.isRunning ? "inline" : "none";
+        }
+        if (elements.runStatusText) {
+          const summary = !state.isRunning && runtimeState
+            ? String(runtimeState.lastRunStatusMessage || "").trim()
+            : "";
+          elements.runStatusText.textContent = summary;
+          elements.runStatusText.style.display = summary ? "inline" : "none";
+        }
       }
 
       function startRunWaitTimer(startAt = Date.now()) {
@@ -4728,6 +4874,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const runtimeState = getActiveConversationRuntimeState({ create: false });
         const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
         elements.runPromptButton.style.display = hasPrompt && isRunArtifactsVisibleForActiveTab() ? "inline-flex" : "none";
+        updateRunWait();
       }
 
       function syncRunPromptOverlay() {
@@ -4986,6 +5133,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
         const canShowForActiveTab = isRunArtifactsVisibleForActiveTab();
         elements.runStreamButton.style.display = canShowForActiveTab && (state.isRunning || hasRecords) ? "inline-flex" : "none";
+        updateRunWait();
       }
 
       function syncRunStreamOverlay() {
@@ -5031,6 +5179,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const count = runtimeState ? runtimeState.pendingPromptQueue.length : 0;
         elements.queueCount.textContent = String(count);
         elements.queueIndicator.style.display = count > 0 ? "inline-flex" : "none";
+        updateRunWait();
         if (runtimeState && runtimeState.overlays.queue) {
           renderQueueOverlay();
         }
@@ -6086,10 +6235,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           renderMessages();
         }
         if (data.type === "appendMessage") {
+          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+          const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
+          let statusSummaryUpdated = false;
+          if (runtimeState && data.message && data.message.role === "system") {
+            const content = String(data.message.content || "").trim();
+            if (isRunStatusSummaryText(content)) {
+              runtimeState.lastRunStatusMessage = content;
+              statusSummaryUpdated = true;
+            }
+          }
           if (!shouldHandleTabScopedEvent(data)) {
             return;
           }
           appendMessage(data.message);
+          if (statusSummaryUpdated) {
+            syncConversationControlsForActiveTab();
+          }
         }
         if (data.type === "assistantDelta") {
           if (!shouldHandleTabScopedEvent(data)) {
@@ -6124,12 +6286,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
             resetRunRawStream(targetTabId, { syncOverlay: false });
             updateCurrentRunPrompt(data.prompt, targetTabId);
-          } else if (eventTabId) {
-            delete runningTabStartedAtById[eventTabId];
+            if (runtimeState) {
+              runtimeState.lastRunStatusMessage = "";
+            }
           } else {
-            const fallbackTabId = getActiveConversationTabId();
-            if (fallbackTabId) {
-              delete runningTabStartedAtById[fallbackTabId];
+            if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
+              runtimeState.lastRunStatusMessage = data.message.trim();
+            }
+            if (eventTabId) {
+              delete runningTabStartedAtById[eventTabId];
+            } else {
+              const fallbackTabId = getActiveConversationTabId();
+              if (fallbackTabId) {
+                delete runningTabStartedAtById[fallbackTabId];
+              }
             }
           }
 

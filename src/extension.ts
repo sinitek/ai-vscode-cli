@@ -557,7 +557,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
           saveWorkspaceSettings(workspaceSettings);
         }
       } else {
-        updateActiveConversationTabSession(message.cli, message.sessionId);
+        const activeTab = getActiveConversationTab();
+        if (activeTab && activeTab.cli !== message.cli) {
+          activeTab.cli = message.cli;
+          activeTab.sessionId = message.sessionId;
+          clearPendingSessionDraft(activeTab.id);
+          persistConversationTabsToWorkspaceSettings();
+        } else {
+          updateActiveConversationTabSession(message.cli, message.sessionId);
+        }
         setCurrentSession(message.cli, message.sessionId);
       }
     } else {
