@@ -3766,7 +3766,6 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
                   return;
                 }
                 appendAssistantChunk(chunk);
-                sendRawStreamDelta(chunk, { stream: "stdout" });
                 appendDebugStdout(chunk);
               },
               onTrace: (content, kind, meta) => {
@@ -3838,7 +3837,6 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               return;
             }
             appendAssistantChunk(chunk);
-            sendRawStreamDelta(chunk, { stream: "stdout" });
             appendDebugStdout(chunk);
           },
           onTrace: (content, kind, meta) => {
@@ -3967,7 +3965,6 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
                   return;
                 }
                 appendAssistantChunk(chunk);
-                sendRawStreamDelta(chunk, { stream: "stdout" });
                 appendDebugStdout(chunk);
               },
               onTrace: (content, kind, meta) => {
@@ -4024,7 +4021,6 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               return;
             }
             appendAssistantChunk(chunk);
-            sendRawStreamDelta(chunk, { stream: "stdout" });
             appendDebugStdout(chunk);
           },
           onTrace: (content, kind, meta) => {

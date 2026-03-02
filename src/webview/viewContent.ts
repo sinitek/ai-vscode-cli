@@ -2843,43 +2843,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return "";
       }
 
-      function deriveRunStreamRecordsFromMessages(messages) {
-        if (!Array.isArray(messages) || !messages.length) {
-          return [];
-        }
-        let startIndex = 0;
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-          const item = messages[i];
-          if (item && item.role === "user") {
-            startIndex = i + 1;
-            break;
-          }
-        }
-        const records = [];
-        for (let i = startIndex; i < messages.length; i += 1) {
-          const item = messages[i];
-          if (!item || item.role === "user") {
-            continue;
-          }
-          const content = normalizeRunStreamRecordContent(item.content);
-          if (!String(content || "").trim()) {
-            continue;
-          }
-          if (item.role === "system" && isRunStatusSummaryText(content)) {
-            continue;
-          }
-          const source = item.role === "assistant"
-            ? "stdout"
-            : "event";
-          records.push({
-            content,
-            source,
-            createdAt: typeof item.createdAt === "number" ? item.createdAt : Date.now(),
-          });
-        }
-        return records;
-      }
-
       function hydrateRunArtifactsFromMessages(tabId, messages) {
         const runtimeState = getConversationRuntimeState(tabId, { create: false });
         if (!runtimeState || isTabRunning(tabId)) {
@@ -2894,15 +2857,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const statusFromMessages = deriveLatestRunStatusMessageFromMessages(messages);
         runtimeState.lastRunStatusMessage = statusFromMessages || "";
 
-        const derivedRecords = deriveRunStreamRecordsFromMessages(messages);
-        runtimeState.runStreamRecordCounter = derivedRecords.length;
-        runtimeState.runStreamOpenRecordIds.clear();
-        runtimeState.runStreamRecords = derivedRecords.map((record, index) => ({
-          id: "rehydrated-stream-record-" + (index + 1),
-          content: record.content,
-          source: normalizeRunStreamSource(record.source),
-          createdAt: record.createdAt,
-        }));
       }
 
       function resetConversationRuntimeState(tabId) {
