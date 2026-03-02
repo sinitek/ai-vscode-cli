@@ -4618,6 +4618,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderTaskList();
       }
 
+      function closeTaskListForRunCompletion() {
+        state.taskList.startIndex = state.messages.length;
+        state.taskList.items = [];
+        state.taskList.open = false;
+        state.taskList.source = "auto";
+        renderTaskList();
+      }
+
       function dispatchPrompt(payload) {
         const normalizedPayload = normalizePromptPayload(payload);
         if (!normalizedPayload) {
@@ -6148,6 +6156,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
           }
           if (data.status !== "start") {
+            closeTaskListForRunCompletion();
             if (runtimeState && runtimeState.suppressQueueFlushOnce) {
               runtimeState.suppressQueueFlushOnce = false;
             } else {

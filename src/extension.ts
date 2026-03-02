@@ -4241,7 +4241,75 @@ function formatCodexExecSegmentForDisplay(
   return { content: merged || commandLine, shouldPersist: true };
 }
 
+function isGeminiNoiseTraceLine(trimmed: string): boolean {
+  if (!trimmed) {
+    return false;
+  }
+  const normalized = trimmed.toLowerCase();
+  if (normalized.includes(".npmrc") && normalized.includes("globalconfig")) {
+    return true;
+  }
+  if (normalized.includes("yolo mode is enabled")) {
+    return true;
+  }
+  if (normalized.includes("nvm use --delete-prefix") && normalized.includes("--silent")) {
+    return true;
+  }
+  if (normalized.includes("failed to connect to ide companion extension")) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeGeminiTraceLine(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return line;
+  }
+  if (/^\[(?:error|err)\]\s*/i.test(trimmed)) {
+    return `error ${trimmed.replace(/^\[(?:error|err)\]\s*/i, "").trim()}`;
+  }
+  if (/^\[(?:warn|warning)\]\s*/i.test(trimmed)) {
+    return `warning ${trimmed.replace(/^\[(?:warn|warning)\]\s*/i, "").trim()}`;
+  }
+  if (/^(?:running|executing)\s+command(?:\s*[:：]|\s+)\s*/i.test(trimmed)) {
+    return `exec ${trimmed.replace(/^(?:running|executing)\s+command(?:\s*[:：]|\s+)\s*/i, "").trim()}`;
+  }
+  if (/^(?:tool(?:\s+call)?|调用工具)\s*[:：]\s*/i.test(trimmed)) {
+    return `tool: ${trimmed.replace(/^(?:tool(?:\s+call)?|调用工具)\s*[:：]\s*/i, "").trim()}`;
+  }
+  if (/^(?:tool\s*result|工具结果)\s*[:：]?\s*/i.test(trimmed)) {
+    return `tool result ${trimmed.replace(/^(?:tool\s*result|工具结果)\s*[:：]?\s*/i, "").trim()}`.trim();
+  }
+  if (/^(?:thinking|thought|思考)\s*[:：]\s*/i.test(trimmed)) {
+    return `thinking ${trimmed.replace(/^(?:thinking|thought|思考)\s*[:：]\s*/i, "").trim()}`;
+  }
+  if (/^web\s*search\s*[:：]\s*/i.test(trimmed)) {
+    return `web search ${trimmed.replace(/^web\s*search\s*[:：]\s*/i, "").trim()}`;
+  }
+  return trimmed;
+}
+
+function formatGeminiTraceSegmentForDisplay(
+  content: string
+): { content: string; shouldPersist: boolean } {
+  if (activeCliForRun !== "gemini") {
+    return { content, shouldPersist: true };
+  }
+  const normalizedLines = content
+    .split("\n")
+    .map((line) => normalizeGeminiTraceLine(line));
+  const normalizedContent = normalizedLines.join("\n").trimEnd();
+  if (!normalizedContent.trim()) {
+    return { content: "", shouldPersist: false };
+  }
+  return { content: normalizedContent, shouldPersist: true };
+}
+
 function formatTraceSegmentForDisplay(content: string): { content: string; shouldPersist: boolean } {
+  if (activeCliForRun === "gemini") {
+    return formatGeminiTraceSegmentForDisplay(content);
+  }
   return { content, shouldPersist: true };
 }
 
@@ -4255,6 +4323,9 @@ function shouldIgnoreTraceLine(line: string, hasSegment: boolean): boolean {
       skipCodexBlock = false;
     }
     return !hasSegment;
+  }
+  if (activeCliForRun === "gemini" && isGeminiNoiseTraceLine(trimmed)) {
+    return true;
   }
   if (skipUserBlock) {
     if (isTraceSegmentStart(trimmed)) {
@@ -4306,6 +4377,11 @@ function isTraceSegmentStart(line: string): boolean {
       || trimmed.startsWith("apply_patch")
       || trimmed.startsWith("warning")
       || trimmed.startsWith("error")
+      || /^\[(?:error|err|warn|warning)\]/i.test(trimmed)
+      || /^(?:tool(?:\s+call)?|调用工具)\s*[:：]/i.test(trimmed)
+      || /^(?:tool\s*result|工具结果)/i.test(trimmed)
+      || /^(?:running|executing)\s+command/i.test(trimmed)
+      || /^(?:web\s*search|【网络查询】)/i.test(trimmed)
   );
 }
 
