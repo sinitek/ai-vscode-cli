@@ -1169,6 +1169,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .run-stream-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
       }
+      .run-stream-button.run-stream-button-warning {
+        border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+        background: var(--vscode-inputValidation-warningBackground, var(--vscode-editor-inactiveSelectionBackground));
+        color: var(--vscode-editorWarning-foreground);
+      }
+      .run-stream-button.run-stream-button-warning:hover {
+        background: var(--vscode-inputValidation-warningBackground, var(--vscode-editor-inactiveSelectionBackground));
+      }
+      .run-stream-button.run-stream-button-critical {
+        border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+        background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-inactiveSelectionBackground));
+        color: var(--vscode-errorForeground);
+      }
+      .run-stream-button.run-stream-button-critical:hover {
+        background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-inactiveSelectionBackground));
+      }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
       @keyframes typingPulse {
@@ -2691,6 +2707,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const conversationRuntimeByTabId = Object.create(null);
       let runWaitTimer = null;
       let runWaitStartAt = 0;
+      let runStreamStaleTimer = null;
       let lastScrollToBottomVisible = false;
       let followLatestMessages = true;
       let suppressScrollButtonUntil = 0;
@@ -2700,6 +2717,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       const RUN_STREAM_PREVIEW_MAX_LENGTH = 220;
       const RUN_STREAM_AUTO_SCROLL_THRESHOLD_PX = 50;
+      const RUN_STREAM_STALE_WARNING_MS = 60 * 1000;
+      const RUN_STREAM_STALE_CRITICAL_MS = 5 * 60 * 1000;
+      const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const runningTabStartedAtById = Object.create(null);
 
       function createConversationRuntimeState() {
@@ -4989,6 +5009,67 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.runStreamContent.scrollTop = elements.runStreamContent.scrollHeight;
       }
 
+      function getLatestRunStreamRecordTimestamp(runtimeState) {
+        if (!runtimeState || !Array.isArray(runtimeState.runStreamRecords) || !runtimeState.runStreamRecords.length) {
+          return 0;
+        }
+        const latestRecord = runtimeState.runStreamRecords[runtimeState.runStreamRecords.length - 1];
+        return latestRecord && typeof latestRecord.createdAt === "number" ? latestRecord.createdAt : 0;
+      }
+
+      function resolveRunStreamButtonStaleLevel(runtimeState, now = Date.now()) {
+        const latestTimestamp = getLatestRunStreamRecordTimestamp(runtimeState);
+        if (!latestTimestamp || now <= latestTimestamp) {
+          return "normal";
+        }
+        const idleMs = now - latestTimestamp;
+        if (idleMs >= RUN_STREAM_STALE_CRITICAL_MS) {
+          return "critical";
+        }
+        if (idleMs >= RUN_STREAM_STALE_WARNING_MS) {
+          return "warning";
+        }
+        return "normal";
+      }
+
+      function applyRunStreamButtonStaleLevel(runtimeState) {
+        if (!elements.runStreamButton) {
+          return;
+        }
+        const staleLevel = resolveRunStreamButtonStaleLevel(runtimeState);
+        elements.runStreamButton.classList.toggle("run-stream-button-warning", staleLevel === "warning");
+        elements.runStreamButton.classList.toggle("run-stream-button-critical", staleLevel === "critical");
+      }
+
+      function stopRunStreamStaleTimer() {
+        if (runStreamStaleTimer) {
+          window.clearInterval(runStreamStaleTimer);
+          runStreamStaleTimer = null;
+        }
+      }
+
+      function ensureRunStreamStaleTimer(shouldRun) {
+        if (!shouldRun) {
+          stopRunStreamStaleTimer();
+          return;
+        }
+        if (runStreamStaleTimer) {
+          return;
+        }
+        runStreamStaleTimer = window.setInterval(() => {
+          const runtimeState = getActiveConversationRuntimeState({ create: false });
+          applyRunStreamButtonStaleLevel(runtimeState);
+        }, RUN_STREAM_STALE_REFRESH_INTERVAL_MS);
+      }
+
+      function getRunStreamButtonLabel(recordCount) {
+        const baseLabel = t("runStreamViewLabel");
+        if (!recordCount) {
+          return baseLabel;
+        }
+        return baseLabel + "(" + recordCount + ")";
+      }
+
       function renderRunStreamRecord(record, index, runtimeState) {
         const details = document.createElement("details");
         details.className = "run-stream-item";
@@ -5111,9 +5192,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const runtimeState = getActiveConversationRuntimeState({ create: false });
-        const hasRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
+        const recordCount = runtimeState && Array.isArray(runtimeState.runStreamRecords)
+          ? runtimeState.runStreamRecords.length
+          : 0;
+        const hasRecords = recordCount > 0;
         const canShowForActiveTab = isRunArtifactsVisibleForActiveTab();
-        elements.runStreamButton.style.display = canShowForActiveTab && (state.isRunning || hasRecords) ? "inline-flex" : "none";
+        const isButtonVisible = canShowForActiveTab && (state.isRunning || hasRecords);
+        const shouldHighlightStale = state.isRunning && hasRecords;
+        elements.runStreamButton.textContent = getRunStreamButtonLabel(recordCount);
+        elements.runStreamButton.style.display = isButtonVisible ? "inline-flex" : "none";
+        applyRunStreamButtonStaleLevel(shouldHighlightStale ? runtimeState : null);
+        ensureRunStreamStaleTimer(isButtonVisible && shouldHighlightStale);
         updateRunStreamExportButton();
         updateRunWait();
       }
@@ -5143,6 +5232,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         runtimeState.overlays.runStream = true;
         syncRunStreamOverlay();
+        window.requestAnimationFrame(() => {
+          stickRunStreamToBottom();
+        });
         updateRunStreamExportButton();
       }
 
