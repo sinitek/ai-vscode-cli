@@ -274,19 +274,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 ### 行为概述
 
-- 默认开启（Beta）：同一会话内多轮对话复用 SDK Runner（避免“一问一进程”的冷启动）。
+- 固定开启（Beta）：`codex/claude` 分组同一会话内多轮对话复用 SDK Runner（避免“一问一进程”的冷启动）。
 - 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。
-- 自动降级：SDK 初始化/运行失败时自动降级回现有“一问一进程”模式。
+- 不自动降级：`codex/claude` 分组在 SDK 初始化/运行失败时不回退到非交互模式，直接返回错误。
 - 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
 - 空闲释放：24 小时无交互自动释放 Runner。
 - 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
 
-### 设置项（工作区级）
+### 设置项说明
 
-- `sinitek-cli-tools.interactive.codex`：是否开启 Codex 交互模式（默认 true）
-- `sinitek-cli-tools.interactive.claude`：是否开启 Claude 交互模式（默认 true）
-
-面板内会显示“交互：开启/关闭(Beta)”下拉，修改后会写入当前工作区设置（scope=resource）。
+- 已移除 `sinitek-cli-tools.interactive.codex` / `sinitek-cli-tools.interactive.claude` 开关配置。
+- 面板内不再提供“交互开/关”切换。
+- `codex/claude` 固定交互，`gemini` 保持非交互。
 
 输入区“配置”按钮左侧还提供 `coding / plan` 模式切换：
 - `coding`：保持当前可执行编辑/工具调用策略。
@@ -375,7 +374,7 @@ py -3.12 vscode_extension_win.py package
    - 交互模式在 Extension Host 内运行，使用 VS Code 启动时的环境变量与工作区 cwd。
    - Claude 交互模式会尝试解析 PATH 中的 `claude` 可执行文件（Windows `.cmd/.bat` 通过 `cmd.exe` 启动），请确保 CLI 已安装且 PATH 可见。
    - 如果 API key 仅在 shell profile 中设置，请确保 VS Code 启动环境可读取；或把 key 写入系统环境变量 / 项目内 `.claude/settings.json`。
-   - 可临时关闭 `sinitek-cli-tools.interactive.claude` 验证是否为交互模式差异导致。
+   - 当前分组固定使用交互模式，如需规避问题请先排查 CLI 登录态、PATH、环境变量与工作区目录。
 
 
 ## Auto Context Tag (Current File / Selection)

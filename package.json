@@ -144,18 +144,6 @@
           "default": "zsh",
           "description": "%config.macTaskShell.description%"
         },
-        "sinitek-cli-tools.interactive.codex": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%config.interactive.codex.description%"
-        },
-        "sinitek-cli-tools.interactive.claude": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%config.interactive.claude.description%"
-        },
         "sinitek-cli-tools.disableMarketplaceUpdateCheckInDev": {
           "type": "boolean",
           "default": true,

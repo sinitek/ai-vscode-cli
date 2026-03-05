@@ -4,7 +4,7 @@
 
 ## 插件“交互模式”说明
 
-当启用 `sinitek-cli-tools.interactive.codex/claude`（默认开启）时，插件会优先通过 SDK 以“常驻 Runner”方式与 CLI 交互，避免每次发送都重新启动进程；SDK 会尽量复用 CLI 的会话/线程。
+`codex` / `claude` 分组固定使用交互模式（常驻 Runner），`gemini` 分组保持非交互模式。对于支持交互的分组，插件会通过 SDK 复用会话/线程，避免每次发送都重新启动进程。
 
 - 仍会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径（用于 SDK 的 path override）。
 - Claude 交互模式会尝试将 `sinitek-cli-tools.commands.claude`（含默认值 `claude`）解析为实际可执行路径，以复用全局登录与配置；解析失败则回退到 SDK 内置 CLI。
@@ -14,7 +14,7 @@
 - `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
 - macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。
 - 切换思考模式后，会在下一次交互前重建 Runner，并沿用已有会话/线程 ID 继续对话。
-- SDK 初始化/运行失败会自动降级回“一问一进程”的 CLI 调用方式。
+- 支持交互的分组在 SDK 初始化/运行失败时不会自动降级到非交互模式，会直接在会话中返回失败信息。
 - 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
 - 交互模式使用 Extension Host 的环境变量与工作目录（优先当前工作区）。如果你在 shell profile 里设置了 `ANTHROPIC_API_KEY` 或依赖项目内 `.claude/settings.json` 注入环境变量，请确保 VS Code 启动时能读取到这些变量，或开启对应工作区；否则可能出现 `Invalid API key · Please run /login`。
 

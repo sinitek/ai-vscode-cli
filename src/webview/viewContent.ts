@@ -64,10 +64,6 @@ const WEBVIEW_I18N = {
     rulesSaveButton: "Save",
     toolSettingsTitle: "Tool Settings",
     toolSettingsClose: "Close",
-    toolSettingsInteractiveLabel: "Interactive",
-    toolSettingsInteractiveAria: "Interactive mode",
-    toolSettingsInteractiveOn: "On (Beta)",
-    toolSettingsInteractiveOff: "Off",
     toolSettingsDebugLabel: "Debug",
     toolSettingsDebugTitle: "Debug Logs",
     toolSettingsDebugToggle: "On",
@@ -270,10 +266,6 @@ const WEBVIEW_I18N = {
     rulesSaveButton: "保存",
     toolSettingsTitle: "工具设置",
     toolSettingsClose: "关闭",
-    toolSettingsInteractiveLabel: "交互",
-    toolSettingsInteractiveAria: "交互模式",
-    toolSettingsInteractiveOn: "开启(Beta)",
-    toolSettingsInteractiveOff: "关闭",
     toolSettingsDebugLabel: "调试",
     toolSettingsDebugTitle: "调试日志",
     toolSettingsDebugToggle: "开启",
@@ -2259,13 +2251,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             </button>
           </div>
           <div class="tool-settings-body">
-            <div id="interactiveRow" class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsInteractiveLabel}</div>
-              <select id="interactiveMode" class="thinking-select" aria-label="${i18n.toolSettingsInteractiveAria}">
-                <option value="on">${i18n.toolSettingsInteractiveOn}</option>
-                <option value="off">${i18n.toolSettingsInteractiveOff}</option>
-              </select>
-            </div>
             <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
               <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
@@ -2621,7 +2606,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptInput: document.getElementById("promptInput"),
         promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
-        interactiveMode: document.getElementById("interactiveMode"),
         debugMode: document.getElementById("debugMode"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
@@ -2683,7 +2667,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
         helpPanelThinking: document.getElementById("helpPanelThinking"),
-        interactiveRow: document.getElementById("interactiveRow"),
         toast: document.getElementById("toast"),
         taskListPanel: document.getElementById("taskListPanel"),
         taskListDetails: document.getElementById("taskListDetails"),
@@ -3276,9 +3259,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.macTaskShell.value = state.macTaskShell;
         }
         syncInteractiveOptions();
-        if (elements.interactiveMode) {
-          elements.interactiveMode.value = state.interactive && state.interactive.enabled ? "on" : "off";
-        }
         if (elements.interactiveModeSelect) {
           elements.interactiveModeSelect.value = state.interactiveMode;
         }
@@ -3367,16 +3347,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function syncInteractiveOptions() {
-        if (!elements.interactiveMode) {
-          return;
-        }
-        const supported = Boolean(state.interactive && state.interactive.supported);
-        if (elements.interactiveRow) {
-          elements.interactiveRow.style.display = supported ? "flex" : "none";
-        } else {
-          elements.interactiveMode.style.display = supported ? "" : "none";
-        }
-        elements.interactiveMode.disabled = !supported || state.isRunning;
         syncInteractiveModeSelector();
         syncCommonCommandOptions();
       }
@@ -3386,8 +3356,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        const enabled = Boolean(state.interactive && state.interactive.enabled);
-        const visible = supported && enabled;
+        const visible = supported;
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
         elements.interactiveModeSelect.disabled = !visible;
         elements.interactiveModeSelect.value = state.interactiveMode === "plan" ? "plan" : "coding";
@@ -3398,8 +3367,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        const enabled = Boolean(state.interactive && state.interactive.enabled);
-        const visible = supported && enabled;
+        const visible = supported;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
         elements.commonCommandButton.disabled = !visible || state.isRunning;
         if (elements.commandCompact) {
@@ -5940,19 +5908,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       });
 
-      if (elements.interactiveMode) {
-        elements.interactiveMode.addEventListener("change", (event) => {
-          const nextValue = event.target.value || "on";
-          const enabled = nextValue === "on";
-          state.interactive.enabled = enabled;
-          syncInteractiveModeSelector();
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "interactive." + state.currentCli,
-            value: enabled,
-          });
-        });
-      }
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = event.target.value === "plan" ? "plan" : "coding";

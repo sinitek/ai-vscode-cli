@@ -11,7 +11,6 @@ import {
   getMacTaskShell,
   getCliCommand,
   getCliArgs,
-  getInteractiveEnabled,
   isInteractiveSupported,
   getThinkingMode,
   getThinkingPromptPrefix,
@@ -1031,7 +1030,7 @@ async function buildPanelState(): Promise<PanelState> {
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
-      enabled: getInteractiveEnabled(currentCli),
+      enabled: isInteractiveSupported(currentCli),
     },
     rulePaths: {
       global: CLI_RULE_PATHS_GLOBAL,
@@ -1063,7 +1062,7 @@ async function buildPanelStateWithConfigState(
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
-      enabled: getInteractiveEnabled(currentCli),
+      enabled: isInteractiveSupported(currentCli),
     },
     rulePaths: {
       global: CLI_RULE_PATHS_GLOBAL,
@@ -1226,27 +1225,7 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
 
 async function updatePanelSetting(key: string, value: unknown): Promise<void> {
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-  if (!key.startsWith("interactive.")) {
-    await config.update(key, value, vscode.ConfigurationTarget.Global);
-    return;
-  }
-
-  const hasWorkspace = Boolean(vscode.workspace.workspaceFolders?.length);
-  if (!hasWorkspace) {
-    await config.update(key, value, vscode.ConfigurationTarget.Global);
-    return;
-  }
-
-  try {
-    await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-  } catch (error) {
-    await config.update(key, value, vscode.ConfigurationTarget.Global);
-    void logInfo("updateSetting-workspace-fallback-global", {
-      key,
-      value,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  await config.update(key, value, vscode.ConfigurationTarget.Global);
 }
 
 function buildWorkspaceKey(root: string | undefined): string {
@@ -2431,8 +2410,7 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
     return;
   }
 
-  const interactiveEnabled = getInteractiveEnabled(target.cli);
-  const shouldUseInteractive = interactiveEnabled && isInteractiveSupported(target.cli);
+  const shouldUseInteractive = isInteractiveSupported(target.cli);
 
   if (shouldUseInteractive) {
     try {
@@ -2450,23 +2428,14 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
         });
         return;
       }
-      void logError("runPrompt-interactive-fallback", {
+      void logError("runPrompt-interactive-failed", {
         cli: target.cli,
         error: info.message,
         errorName: info.name,
         errorCode: info.code,
         errorStack: info.stack,
       });
-      sendPanelMessage({
-        type: "appendMessage",
-        message: {
-          id: createMessageId(),
-          role: "system",
-          content: t("interactive.fallback"),
-          createdAt: Date.now(),
-        },
-        tabId: target.tabId,
-      });
+      return;
     }
   }
 
@@ -3180,15 +3149,7 @@ function appendUserMessageForCli(
 
 async function runContextCompactionCommand(): Promise<void> {
   const cli = currentCli;
-  if (!isInteractiveSupported(cli) || !getInteractiveEnabled(cli)) {
-    appendSystemMessageForCli(
-      cli,
-      getCurrentSessionId(cli),
-      t("rules.noInteractiveForCompact")
-    );
-    return;
-  }
-  if (cli !== "codex" && cli !== "claude") {
+  if (!isInteractiveSupported(cli)) {
     appendSystemMessageForCli(
       cli,
       getCurrentSessionId(cli),
