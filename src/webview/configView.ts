@@ -60,8 +60,12 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "请输入 .env 配置": "Enter .env config",
   "请输入 MCP 配置（.claude.json）": "Enter MCP config (.claude.json)",
   "技能列表加载中...": "Loading skills list...",
-  "未检测到 Skills，请先安装到 ~/.codex/skills": "No skills detected. Install to ~/.codex/skills first.",
+  "未检测到 Skills，请先安装到 ~/.claude/skills": "No skills detected. Install to ~/.claude/skills first.",
+  "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills": "No skills detected. Install to ~/.agents/skills or workspace .codex/skills first.",
+  "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills": "No skills detected. Install to ~/.gemini/skills or workspace .gemini/skills first.",
+  "获取 Claude Skills 失败": "Failed to fetch Claude skills.",
   "获取 Codex Skills 失败": "Failed to fetch Codex skills.",
+  "获取 Gemini Skills 失败": "Failed to fetch Gemini skills.",
   "更新技能失败": "Failed to update skills.",
   "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
   "添加 MCP 失败": "Failed to add MCP.",
@@ -294,7 +298,9 @@ export function getConfigViewHtml(
           getBackups: (platform) => requestConfig("getBackups", { platform }),
           initDefault: (platform) => requestConfig("initDefault", { platform }),
           getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
+          getClaudeSkillsList: () => requestConfig("getClaudeSkillsList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
+          getGeminiSkillsList: () => requestConfig("getGeminiSkillsList", {}),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
           installCodexMcp: (mcpId) => requestConfig("installCodexMcp", { mcpId }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
@@ -542,16 +548,136 @@ export function getConfigViewHtml(
         return line.trim();
       }
 
+      function normalizeSkillRule(rule) {
+        return typeof rule === "string" ? rule.trim() : "";
+      }
+
+      function collectManagedClaudeSkillRules(skills) {
+        const managedRules = new Set();
+        (Array.isArray(skills) ? skills : []).forEach((skill) => {
+          if (!skill || typeof skill !== "object") {
+            return;
+          }
+          const name = typeof skill.name === "string" ? skill.name.trim() : "";
+          if (!name) {
+            return;
+          }
+          managedRules.add("Skill(" + name + ")");
+        });
+        return managedRules;
+      }
+
+      function stripManagedClaudeSkillRules(content, skills) {
+        const managedRules = collectManagedClaudeSkillRules(skills);
+        if (!managedRules.size) {
+          return content ?? "{}";
+        }
+        const parsed = parseJsonObject(content ?? "{}");
+        if (!parsed || typeof parsed !== "object") {
+          return content ?? "";
+        }
+
+        const next = { ...parsed };
+        const permissions = next.permissions && typeof next.permissions === "object" && !Array.isArray(next.permissions)
+          ? { ...next.permissions }
+          : null;
+        if (!permissions) {
+          return JSON.stringify(next);
+        }
+
+        const deny = Array.isArray(permissions.deny)
+          ? permissions.deny
+              .filter((rule) => typeof rule === "string")
+              .map((rule) => normalizeSkillRule(rule))
+              .filter((rule) => rule && !managedRules.has(rule))
+          : [];
+
+        if (deny.length) {
+          permissions.deny = deny;
+        } else {
+          delete permissions.deny;
+        }
+
+        if (Object.keys(permissions).length) {
+          next.permissions = permissions;
+        } else {
+          delete next.permissions;
+        }
+
+        return JSON.stringify(next);
+      }
+
+      function collectManagedGeminiSkillNames(skills) {
+        const managedNames = new Set();
+        (Array.isArray(skills) ? skills : []).forEach((skill) => {
+          if (!skill || typeof skill !== "object") {
+            return;
+          }
+          const name = typeof skill.name === "string" ? skill.name.trim() : "";
+          if (!name) {
+            return;
+          }
+          managedNames.add(name);
+        });
+        return managedNames;
+      }
+
+      function stripManagedGeminiSkillRules(content, skills) {
+        const managedNames = collectManagedGeminiSkillNames(skills);
+        const parsed = parseJsonObject(content ?? "{}");
+        if (!parsed || typeof parsed !== "object") {
+          return content ?? "";
+        }
+        if (!managedNames.size) {
+          return JSON.stringify(parsed);
+        }
+
+        const next = { ...parsed };
+        const nextSkills = next.skills && typeof next.skills === "object" && !Array.isArray(next.skills)
+          ? { ...next.skills }
+          : null;
+        if (!nextSkills) {
+          return JSON.stringify(next);
+        }
+
+        if (nextSkills.enabled === true) {
+          delete nextSkills.enabled;
+        }
+
+        const disabled = Array.isArray(nextSkills.disabled)
+          ? nextSkills.disabled
+              .filter((item) => typeof item === "string")
+              .map((item) => item.trim())
+              .filter((item) => item && !managedNames.has(item))
+          : [];
+
+        if (disabled.length) {
+          nextSkills.disabled = disabled;
+        } else {
+          delete nextSkills.disabled;
+        }
+
+        if (Object.keys(nextSkills).length) {
+          next.skills = nextSkills;
+        } else {
+          delete next.skills;
+        }
+
+        return JSON.stringify(next);
+      }
+
       function matchActiveConfig(platform, config, current) {
         if (!config || !current) {
           return false;
         }
         if (platform === "claude") {
-          const configContentObj = parseJsonObject(config.content);
-          const currentContentObj = parseJsonObject(current.content);
+          const normalizedConfigContent = stripManagedClaudeSkillRules(config.content, config.claudeSkills);
+          const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
+          const configContentObj = parseJsonObject(normalizedConfigContent);
+          const currentContentObj = parseJsonObject(normalizedCurrentContent);
           const contentMatch = configContentObj && currentContentObj
             ? isDeepEqualSubset(configContentObj, currentContentObj)
-            : normalizeJson(config.content) === normalizeJson(current.content);
+            : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
           const configMcp = parseJsonObject(config.mcpContent);
           const currentMcp = parseJsonObject(current.mcpContent);
           const mcpMatch = configMcp && currentMcp
@@ -563,11 +689,13 @@ export function getConfigViewHtml(
           );
         }
         if (platform === "gemini") {
-          const configContentObj = parseJsonObject(config.content);
-          const currentContentObj = parseJsonObject(current.content);
+          const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);
+          const normalizedCurrentContent = stripManagedGeminiSkillRules(current.content, config.geminiSkills);
+          const configContentObj = parseJsonObject(normalizedConfigContent);
+          const currentContentObj = parseJsonObject(normalizedCurrentContent);
           const contentMatch = configContentObj && currentContentObj
             ? isDeepEqualSubset(configContentObj, currentContentObj)
-            : normalizeJson(config.content) === normalizeJson(current.content);
+            : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
           return (
             contentMatch &&
             normalizeLineEndings(config.envContent ?? "") ===

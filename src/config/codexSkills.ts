@@ -7,7 +7,11 @@ import { AppLocale, resolveLocale, t } from "../i18n";
 export const CODEX_SKILLS_BLOCK_START = "# --- sinitek codex skills start ---";
 export const CODEX_SKILLS_BLOCK_END = "# --- sinitek codex skills end ---";
 
-const CODEX_SKILLS_DIR = path.join(os.homedir(), ".codex", "skills");
+const LEGACY_CODEX_SKILLS_DIR = path.join(os.homedir(), ".codex", "skills");
+const HOME_AGENTS_SKILLS_DIR = path.join(os.homedir(), ".agents", "skills");
+const SYSTEM_CODEX_SKILLS_DIR = path.join(path.sep, "etc", "codex", "skills");
+const WORKSPACE_CODEX_SKILLS_RELATIVE_DIR = path.join(".codex", "skills");
+const WORKSPACE_AGENTS_SKILLS_RELATIVE_DIR = path.join(".agents", "skills");
 
 const SKILL_DESC: Record<AppLocale, Record<string, string>> = {
   "zh-CN": {
@@ -147,6 +151,101 @@ function toShortDescription(locale: AppLocale, name: string, description?: strin
   return t("skill.descriptionMissing", undefined, locale);
 }
 
+function normalizeWorkspaceRoots(workspaceRoots: string[] | undefined): string[] {
+  if (!Array.isArray(workspaceRoots)) {
+    return [];
+  }
+  const unique = new Set<string>();
+  workspaceRoots.forEach((root) => {
+    if (typeof root !== "string") {
+      return;
+    }
+    const normalized = root.trim();
+    if (!normalized) {
+      return;
+    }
+    unique.add(path.resolve(normalized));
+  });
+  return [...unique];
+}
+
+function collectAncestorDirs(startPath: string): string[] {
+  const output: string[] = [];
+  let current = path.resolve(startPath);
+  while (true) {
+    output.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return output;
+}
+
+function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] {
+  const roots: string[] = [];
+  const seen = new Set<string>();
+  const append = (candidate: string | undefined): void => {
+    if (!candidate) {
+      return;
+    }
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    roots.push(normalized);
+  };
+
+  normalizeWorkspaceRoots(workspaceRoots).forEach((workspaceRoot) => {
+    collectAncestorDirs(workspaceRoot).forEach((ancestor) => {
+      append(path.join(ancestor, WORKSPACE_CODEX_SKILLS_RELATIVE_DIR));
+      append(path.join(ancestor, WORKSPACE_AGENTS_SKILLS_RELATIVE_DIR));
+    });
+  });
+
+  append(HOME_AGENTS_SKILLS_DIR);
+  append(LEGACY_CODEX_SKILLS_DIR);
+  append(process.env.CODEX_HOME ? path.join(process.env.CODEX_HOME, "skills") : undefined);
+  append(SYSTEM_CODEX_SKILLS_DIR);
+
+  return roots;
+}
+
+async function listSkillDirNames(skillRoot: string): Promise<string[]> {
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = await fs.promises.readdir(skillRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const dirs: string[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      dirs.push(entry.name);
+      continue;
+    }
+    if (!entry.isSymbolicLink()) {
+      continue;
+    }
+    try {
+      const linkTargetStat = await fs.promises.stat(path.join(skillRoot, entry.name));
+      if (linkTargetStat.isDirectory()) {
+        dirs.push(entry.name);
+      }
+    } catch {
+      // Ignore broken symlinks.
+    }
+  }
+
+  return dirs;
+}
+
 export function mergeCodexSkillsConfig(
   baseConfig: string,
   skills: CodexSkillToggle[] | undefined
@@ -165,29 +264,30 @@ export function mergeCodexSkillsConfig(
   return nextContent ? `${nextContent}\n\n${block}\n` : `${block}\n`;
 }
 
-export async function listCodexSkills(): Promise<CodexSkillItem[]> {
+export async function listCodexSkills(workspaceRoots?: string[]): Promise<CodexSkillItem[]> {
   const locale = resolveLocale();
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = await fs.promises.readdir(CODEX_SKILLS_DIR, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const dirs = entries
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-    .map((entry) => entry.name);
-  const skills: CodexSkillItem[] = [];
-  for (const name of dirs) {
-    const skillPath = path.join(CODEX_SKILLS_DIR, name);
-    try {
-      const skillFile = path.join(skillPath, "SKILL.md");
-      await fs.promises.access(skillFile);
-      const content = await fs.promises.readFile(skillFile, "utf-8");
-      const description = toShortDescription(locale, name, extractSkillDescription(content));
-      skills.push({ name, path: skillPath, description });
-    } catch {
-      // skip non-skill directories
+  const skillRoots = resolveCodexSkillRoots(workspaceRoots);
+  const skillsByName = new Map<string, CodexSkillItem>();
+
+  for (const skillRoot of skillRoots) {
+    const dirs = await listSkillDirNames(skillRoot);
+    for (const name of dirs) {
+      if (skillsByName.has(name)) {
+        continue;
+      }
+      const skillPath = path.join(skillRoot, name);
+      try {
+        const skillFile = path.join(skillPath, "SKILL.md");
+        await fs.promises.access(skillFile);
+        const content = await fs.promises.readFile(skillFile, "utf-8");
+        const description = toShortDescription(locale, name, extractSkillDescription(content));
+        skillsByName.set(name, { name, path: skillPath, description });
+      } catch {
+        // skip non-skill directories
+      }
     }
   }
+
+  const skills = [...skillsByName.values()];
   return skills.sort((a, b) => a.name.localeCompare(b.name));
 }

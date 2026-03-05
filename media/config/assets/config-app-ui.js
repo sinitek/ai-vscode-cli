@@ -76,6 +76,7 @@ const ConfigListPanel = () => {
                     platform: k,
                     content: "{}",
                     mcpContent: "{}",
+                    claudeSkills: [],
                   }))
                 : k === "gemini"
                   ? (T = await l({
@@ -83,6 +84,7 @@ const ConfigListPanel = () => {
                       platform: k,
                       content: "{}",
                       envContent: "",
+                      geminiSkills: [],
                     }))
                   : (T = await l({
                       name: U,
@@ -162,11 +164,13 @@ const ConfigListPanel = () => {
               ? await applyConfigItem(L.platform, {
                   content: L.content,
                   mcpContent: L.mcpContent,
+                  claudeSkills: L.claudeSkills ?? [],
                 })
               : L.platform === "gemini"
                 ? await applyConfigItem(L.platform, {
                     content: L.content,
                     envContent: L.envContent ?? "",
+                    geminiSkills: L.geminiSkills ?? [],
                   })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
@@ -2130,38 +2134,113 @@ const ConfigEditorPanel = () => {
         W = !0;
       };
     }, [O]);
-    const G = c.useCallback((W, H) => {
-      const k = new Map();
-      (Array.isArray(H) ? H : []).forEach((L) => {
-        if (L && L.name) k.set(L.name, L);
+    const tt = c.useCallback((W) => {
+      const H = new Set();
+      try {
+        const k = JSON.parse(W || "{}");
+        const L = k && typeof k === "object" ? k.permissions : null;
+        const U = L && typeof L === "object" && Array.isArray(L.deny) ? L.deny : [];
+        U.forEach((T) => {
+          if (typeof T !== "string") {
+            return;
+          }
+          const F = T.trim().match(/^Skill\((.+)\)$/);
+          if (!F || !F[1]) {
+            return;
+          }
+          const Y = F[1].trim();
+          if (Y) {
+            H.add(Y);
+          }
+        });
+      } catch {
+        // ignore parse errors
+      }
+      return H;
+    }, []);
+    const nt = c.useCallback((W) => {
+      const H = new Set();
+      let k = !1;
+      try {
+        const L = JSON.parse(W || "{}");
+        const U = L && typeof L === "object" && !Array.isArray(L) ? L.skills : null;
+        if (U && typeof U === "object" && !Array.isArray(U)) {
+          U.enabled === !1 && (k = !0);
+          const T = Array.isArray(U.disabled) ? U.disabled : [];
+          T.forEach((F) => {
+            if (typeof F !== "string") {
+              return;
+            }
+            const Y = F.trim();
+            if (Y) {
+              H.add(Y);
+            }
+          });
+        }
+      } catch {
+        // ignore parse errors
+      }
+      return { disabled: H, allDisabled: k };
+    }, []);
+    const G = c.useCallback((W, H, k, L) => {
+      const U = new Map(),
+        T = new Map();
+      (Array.isArray(H) ? H : []).forEach((F) => {
+        if (!F) {
+          return;
+        }
+        F.path && T.set(F.path, F), F.name && U.set(F.name, F);
       });
-      return (Array.isArray(W) ? W : []).map((L) => {
-        const U = k.get(L.name);
+      const F = k instanceof Set ? k : new Set(),
+        Y = L === !0;
+      return (Array.isArray(W) ? W : []).map((ie) => {
+        const Le = (ie.path && T.get(ie.path)) || U.get(ie.name);
         return {
-          name: L.name,
-          path: L.path,
-          description: L.description,
-          enabled: U ? U.enabled !== !1 : !1,
+          name: ie.name,
+          path: ie.path,
+          description: ie.description,
+          enabled: Le ? Le.enabled !== !1 : Y ? !1 : !F.has(ie.name),
         };
       });
     }, []);
     c.useEffect(() => {
       let W = !1;
-      if (!O || O.platform !== "codex") {
+      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "gemini")) {
         Z([]);
         return;
       }
       (async () => {
         q(!0);
         try {
-          const H = await fetchCodexSkillsList();
+          const H =
+            O.platform === "claude"
+              ? await fetchClaudeSkillsList()
+              : O.platform === "gemini"
+                ? await fetchGeminiSkillsList()
+                : await fetchCodexSkillsList();
           if (!W) {
-            const k = G(H, O.codexSkills);
-            Z(k);
+            let k = new Set();
+            let L = !1;
+            if (O.platform === "claude") {
+              k = tt(O.content || "{}");
+            } else if (O.platform === "gemini") {
+              const U = nt(O.content || "{}");
+              k = U.disabled;
+              L = U.allDisabled;
+            }
+            const U = O.platform === "claude" ? O.claudeSkills : O.platform === "gemini" ? O.geminiSkills : O.codexSkills;
+            const T = G(H, U, k, L);
+            Z(T);
           }
         } catch (H) {
-          console.error("获取 Codex Skills 失败:", H);
-          Kt.error("获取 Codex Skills 失败");
+          const k =
+            O.platform === "claude"
+              ? "获取 Claude Skills 失败"
+              : O.platform === "gemini"
+                ? "获取 Gemini Skills 失败"
+                : "获取 Codex Skills 失败";
+          console.error(k + ":", H);
+          Kt.error(k);
         } finally {
           W || q(!1);
         }
@@ -2169,7 +2248,7 @@ const ConfigEditorPanel = () => {
       return () => {
         W = !0;
       };
-    }, [O, G]);
+    }, [O, G, tt, nt]);
     const _ = (W) => {
         try {
           return (JSON.parse(W), !0);
@@ -2265,11 +2344,11 @@ const ConfigEditorPanel = () => {
           try {
             const W = M(l),
               H = M(u);
-            (await r(O.id, { content: W, mcpContent: H }),
+            (await r(O.id, { content: W, mcpContent: H, claudeSkills: C }),
               s(W),
               f(H),
               Kt.success("保存成功"),
-              await A({ content: W, mcpContent: H }));
+              await A({ content: W, mcpContent: H, claudeSkills: C }));
           } catch (W) {
             Kt.error("保存失败: " + W);
           }
@@ -2280,10 +2359,10 @@ const ConfigEditorPanel = () => {
           }
           try {
             const W = M(l);
-            (await r(O.id, { content: W, envContent: b }),
+            (await r(O.id, { content: W, envContent: b, geminiSkills: C }),
               s(W),
               Kt.success("保存成功"),
-              await A({ content: W, envContent: b }));
+              await A({ content: W, envContent: b, geminiSkills: C }));
           } catch (W) {
             Kt.error("保存失败: " + W);
           }
@@ -2303,31 +2382,68 @@ const ConfigEditorPanel = () => {
           }
         }
       };
-    const J = async (W, H) => {
-        const k = C.map((L) => (L.name === W ? { ...L, enabled: H } : L));
-        Z(k);
+    const J = async (W, H, k) => {
+        const L = C.map((U) => (U.name === W && (k ? U.path === k : !0) ? { ...U, enabled: H } : U));
+        Z(L);
         try {
           if (O) {
-            await r(O.id, { codexSkills: k });
+            const U =
+              O.platform === "claude"
+                ? { claudeSkills: L }
+                : O.platform === "gemini"
+                  ? { geminiSkills: L }
+                  : { codexSkills: L };
+            await r(O.id, U);
             if (o(O.platform) === O.id) {
-              if (!_(p)) {
-                Kt.error("auth.json格式不正确");
-                return;
+              if (O.platform === "claude") {
+                if (!_(l) || !_(u)) {
+                  Kt.error("JSON格式不正确");
+                  return;
+                }
+                const T = M(l);
+                const F = M(u);
+                await applyConfigItem("claude", {
+                  content: T,
+                  mcpContent: F,
+                  claudeSkills: L,
+                });
+                const Y = await fetchCurrentConfig("claude");
+                Y?.content !== void 0 && s(Y.content);
+                Y?.mcpContent !== void 0 && f(Y.mcpContent);
+              } else if (O.platform === "gemini") {
+                if (!_(l)) {
+                  Kt.error("JSON格式不正确");
+                  return;
+                }
+                const T = M(l);
+                await applyConfigItem("gemini", {
+                  content: T,
+                  envContent: b,
+                  geminiSkills: L,
+                });
+                const F = await fetchCurrentConfig("gemini");
+                F?.content !== void 0 && s(F.content);
+                F?.envContent !== void 0 && x(F.envContent);
+              } else {
+                if (!_(p)) {
+                  Kt.error("auth.json格式不正确");
+                  return;
+                }
+                const T = M(p);
+                await applyConfigItem("codex", {
+                  configContent: m,
+                  authContent: T,
+                  codexSkills: L,
+                });
+                const F = await fetchCurrentConfig("codex");
+                F?.configContent !== void 0 && v(F.configContent);
+                F?.authContent !== void 0 && h(F.authContent);
               }
-              const L = M(p);
-              await applyConfigItem("codex", {
-                configContent: m,
-                authContent: L,
-                codexSkills: k,
-              });
-              const U = await fetchCurrentConfig("codex");
-              U?.configContent !== void 0 && v(U.configContent);
-              U?.authContent !== void 0 && h(U.authContent);
               Kt.success("已更新当前激活的配置");
             }
           }
-        } catch (L) {
-          Kt.error("更新技能失败: " + L);
+        } catch (U) {
+          Kt.error("更新技能失败: " + U);
         }
       },
       K = async (W) => {
@@ -2335,21 +2451,58 @@ const ConfigEditorPanel = () => {
         Z(H);
         try {
           if (O) {
-            await r(O.id, { codexSkills: H });
+            const k =
+              O.platform === "claude"
+                ? { claudeSkills: H }
+                : O.platform === "gemini"
+                  ? { geminiSkills: H }
+                  : { codexSkills: H };
+            await r(O.id, k);
             if (o(O.platform) === O.id) {
-              if (!_(p)) {
-                Kt.error("auth.json格式不正确");
-                return;
+              if (O.platform === "claude") {
+                if (!_(l) || !_(u)) {
+                  Kt.error("JSON格式不正确");
+                  return;
+                }
+                const L = M(l);
+                const U = M(u);
+                await applyConfigItem("claude", {
+                  content: L,
+                  mcpContent: U,
+                  claudeSkills: H,
+                });
+                const T = await fetchCurrentConfig("claude");
+                T?.content !== void 0 && s(T.content);
+                T?.mcpContent !== void 0 && f(T.mcpContent);
+              } else if (O.platform === "gemini") {
+                if (!_(l)) {
+                  Kt.error("JSON格式不正确");
+                  return;
+                }
+                const L = M(l);
+                await applyConfigItem("gemini", {
+                  content: L,
+                  envContent: b,
+                  geminiSkills: H,
+                });
+                const U = await fetchCurrentConfig("gemini");
+                U?.content !== void 0 && s(U.content);
+                U?.envContent !== void 0 && x(U.envContent);
+              } else {
+                if (!_(p)) {
+                  Kt.error("auth.json格式不正确");
+                  return;
+                }
+                const L = M(p);
+                await applyConfigItem("codex", {
+                  configContent: m,
+                  authContent: L,
+                  codexSkills: H,
+                });
+                const U = await fetchCurrentConfig("codex");
+                U?.configContent !== void 0 && v(U.configContent);
+                U?.authContent !== void 0 && h(U.authContent);
               }
-              const k = M(p);
-              await applyConfigItem("codex", {
-                configContent: m,
-                authContent: k,
-                codexSkills: H,
-              });
-              const L = await fetchCurrentConfig("codex");
-              L?.configContent !== void 0 && v(L.configContent);
-              L?.authContent !== void 0 && h(L.authContent);
               Kt.success("已更新当前激活的配置");
             }
           }
@@ -2478,6 +2631,127 @@ const ConfigEditorPanel = () => {
                             fontFamily: "monospace",
                             fontSize: "13px",
                           },
+                        }),
+                      ],
+                    }),
+                    be.jsxs("div", {
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                      },
+                      children: [
+                        be.jsxs("div", {
+                          style: {
+                            marginBottom: "8px",
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            justifyContent: "space-between",
+                          },
+                          children: [
+                            be.jsxs("span", {
+                              children: [be.jsx(Ya, {}), " Skills"],
+                            }),
+                            be.jsxs("div", {
+                              style: { display: "flex", gap: "8px" },
+                              children: [
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!0),
+                                  disabled: C.length === 0,
+                                  children: "一键启用",
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!1),
+                                  disabled: C.length === 0,
+                                  children: "一键禁用",
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "8px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: j
+                            ? "技能列表加载中..."
+                            : `已启用 ${Q} / ${C.length}`,
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            padding: "8px",
+                            background:
+                              "var(--background-color-secondary, #f5f5f5)",
+                          },
+                          children:
+                            C.length === 0
+                              ? be.jsx("div", {
+                                  style: {
+                                    color: "var(--text-color-secondary)",
+                                    fontSize: "12px",
+                                  },
+                                  children: "未检测到 Skills，请先安装到 ~/.claude/skills",
+                                })
+                              : C.map((W) =>
+                                  be.jsx(
+                                    "label",
+                                    {
+                                      style: {
+                                        display: "flex",
+                                        gap: "10px",
+                                        padding: "8px",
+                                        borderRadius: "6px",
+                                        background: "var(--background-color)",
+                                        border: "1px solid var(--border-color)",
+                                        marginBottom: "8px",
+                                      },
+                                      children: be.jsxs("div", {
+                                        style: { display: "flex", gap: "8px", width: "100%" },
+                                        children: [
+                                          be.jsx("input", {
+                                            type: "checkbox",
+                                            checked: W.enabled !== !1,
+                                            onChange: (H) => J(W.name, H.target.checked, W.path),
+                                          }),
+                                          be.jsxs("div", {
+                                            style: {
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: "2px",
+                                              flex: 1,
+                                            },
+                                            children: [
+                                              be.jsx("div", { children: W.name }),
+                                              be.jsx("div", {
+                                                style: {
+                                                  color: "var(--text-color-secondary)",
+                                                  fontSize: "12px",
+                                                },
+                                                children: W.path,
+                                              }),
+                                              W.description &&
+                                                be.jsx("div", {
+                                                  style: {
+                                                    color: "var(--text-color-secondary)",
+                                                    fontSize: "12px",
+                                                  },
+                                                  children: W.description,
+                                                }),
+                                            ],
+                                          }),
+                                        ],
+                                      }),
+                                    },
+                                    W.name,
+                                  ),
+                                ),
                         }),
                       ],
                     }),
@@ -2631,6 +2905,129 @@ const ConfigEditorPanel = () => {
                             fontFamily: "monospace",
                             fontSize: "13px",
                           },
+                        }),
+                      ],
+                    }),
+                    be.jsxs("div", {
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                      },
+                      children: [
+                        be.jsxs("div", {
+                          style: {
+                            marginBottom: "8px",
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            justifyContent: "space-between",
+                          },
+                          children: [
+                            be.jsxs("span", {
+                              children: [be.jsx(Ya, {}), " Skills"],
+                            }),
+                            be.jsxs("div", {
+                              style: { display: "flex", gap: "8px" },
+                              children: [
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!0),
+                                  disabled: C.length === 0,
+                                  children: "一键启用",
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => K(!1),
+                                  disabled: C.length === 0,
+                                  children: "一键禁用",
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "8px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: j
+                            ? "技能列表加载中..."
+                            : `已启用 ${Q} / ${C.length}`,
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            padding: "8px",
+                            background:
+                              "var(--background-color-secondary, #f5f5f5)",
+                          },
+                          children:
+                            C.length === 0
+                              ? be.jsx("div", {
+                                  style: {
+                                    color: "var(--text-color-secondary)",
+                                    fontSize: "12px",
+                                  },
+                                  children: "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills",
+                                })
+                              : C.map((W) =>
+                                  be.jsx(
+                                    "label",
+                                    {
+                                      style: {
+                                        display: "flex",
+                                        gap: "10px",
+                                        padding: "8px",
+                                        borderRadius: "6px",
+                                        background: "var(--background-color)",
+                                        border: "1px solid var(--border-color)",
+                                        marginBottom: "8px",
+                                      },
+                                      children: be.jsxs("div", {
+                                        style: { display: "flex", gap: "8px", width: "100%" },
+                                        children: [
+                                          be.jsx("input", {
+                                            type: "checkbox",
+                                            checked: W.enabled !== !1,
+                                            onChange: (H) => J(W.name, H.target.checked, W.path),
+                                          }),
+                                          be.jsxs("div", {
+                                            style: {
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: "2px",
+                                              flex: 1,
+                                            },
+                                            children: [
+                                              be.jsx("div", { children: W.name }),
+                                              be.jsx("div", {
+                                                style: {
+                                                  fontSize: "11px",
+                                                  color: "var(--text-color-secondary)",
+                                                  wordBreak: "break-all",
+                                                },
+                                                children: W.path,
+                                              }),
+                                              W.description
+                                                ? be.jsx("div", {
+                                                    style: {
+                                                      fontSize: "11px",
+                                                      color: "var(--text-color-secondary)",
+                                                    },
+                                                    children: W.description,
+                                                  })
+                                                : null,
+                                            ],
+                                          }),
+                                        ],
+                                      }),
+                                    },
+                                    W.name,
+                                  ),
+                                ),
                         }),
                       ],
                     }),
@@ -2848,7 +3245,7 @@ const ConfigEditorPanel = () => {
                                     color: "var(--text-color-secondary)",
                                     fontSize: "12px",
                                   },
-                                  children: "未检测到 Skills，请先安装到 ~/.codex/skills",
+                                  children: "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills",
                                 })
                               : C.map((W) =>
                                   be.jsx(
@@ -2869,7 +3266,7 @@ const ConfigEditorPanel = () => {
                                           be.jsx("input", {
                                             type: "checkbox",
                                             checked: W.enabled !== !1,
-                                            onChange: (H) => J(W.name, H.target.checked),
+                                            onChange: (H) => J(W.name, H.target.checked, W.path),
                                           }),
                                           be.jsxs("div", {
                                             style: {

@@ -13,7 +13,9 @@ export type ConfigAction =
   | "getBackups"
   | "initDefault"
   | "getMcpMarketplaceList"
+  | "getClaudeSkillsList"
   | "getCodexSkillsList"
+  | "getGeminiSkillsList"
   | "getCodexMcpServerIds"
   | "installCodexMcp"
   | "exportConfigs";
@@ -31,7 +33,9 @@ export type ConfigRequestPayload =
   | { action: "getBackups"; platform: ConfigPlatform }
   | { action: "initDefault"; platform: ConfigPlatform }
   | { action: "getMcpMarketplaceList" }
+  | { action: "getClaudeSkillsList" }
   | { action: "getCodexSkillsList" }
+  | { action: "getGeminiSkillsList" }
   | { action: "getCodexMcpServerIds" }
   | { action: "installCodexMcp"; mcpId: string }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } };

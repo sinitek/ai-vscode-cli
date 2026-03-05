@@ -137,9 +137,23 @@ export class ConfigManagerPanel {
         case "getMcpMarketplaceList":
           response.data = await configService.getMcpMarketplaceList();
           break;
-        case "getCodexSkillsList":
-          response.data = await configService.getCodexSkillsList();
+        case "getClaudeSkillsList":
+          response.data = await configService.getClaudeSkillsList();
           break;
+        case "getCodexSkillsList": {
+          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
+            .map((folder) => folder.uri.fsPath)
+            .filter((item) => typeof item === "string" && item.trim().length > 0);
+          response.data = await configService.getCodexSkillsList(workspaceRoots);
+          break;
+        }
+        case "getGeminiSkillsList": {
+          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
+            .map((folder) => folder.uri.fsPath)
+            .filter((item) => typeof item === "string" && item.trim().length > 0);
+          response.data = await configService.getGeminiSkillsList(workspaceRoots);
+          break;
+        }
         case "getCodexMcpServerIds":
           response.data = await configService.getCodexMcpServerIds();
           break;

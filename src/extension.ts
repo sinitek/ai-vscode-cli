@@ -61,6 +61,8 @@ import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
+import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
+import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "./trace/claudeToolFormat";
 import {
@@ -1763,11 +1765,13 @@ function matchesActiveConfig(
   current: CurrentConfig
 ): boolean {
   if (platform === "claude") {
-    const configContentObj = parseJsonObject(config.content);
-    const currentContentObj = parseJsonObject(current.content);
+    const normalizedConfigContent = stripManagedClaudeSkillRules(config.content, config.claudeSkills);
+    const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
+    const configContentObj = parseJsonObject(normalizedConfigContent);
+    const currentContentObj = parseJsonObject(normalizedCurrentContent);
     const contentMatch = configContentObj && currentContentObj
       ? isDeepEqualSubset(configContentObj, currentContentObj)
-      : normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}");
+      : normalizeJson(normalizedConfigContent, "{}") === normalizeJson(normalizedCurrentContent, "{}");
 
     const configMcp = parseJsonObject(config.mcpContent);
     const currentMcp = parseJsonObject(current.mcpContent);
@@ -1778,11 +1782,13 @@ function matchesActiveConfig(
     return contentMatch && mcpMatch;
   }
   if (platform === "gemini") {
-    const configContentObj = parseJsonObject(config.content);
-    const currentContentObj = parseJsonObject(current.content);
+    const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);
+    const normalizedCurrentContent = stripManagedGeminiSkillRules(current.content, config.geminiSkills);
+    const configContentObj = parseJsonObject(normalizedConfigContent);
+    const currentContentObj = parseJsonObject(normalizedCurrentContent);
     const contentMatch = configContentObj && currentContentObj
       ? isDeepEqualSubset(configContentObj, currentContentObj)
-      : normalizeJson(config.content, "{}") === normalizeJson(current.content, "{}");
+      : normalizeJson(normalizedConfigContent, "{}") === normalizeJson(normalizedCurrentContent, "{}");
     return (
       contentMatch &&
       normalizeLineEndings(config.envContent) === normalizeLineEndings(current.envContent)
@@ -1902,6 +1908,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
       configContent: config.configContent,
       authContent: config.authContent,
       codexSkills: config.codexSkills,
+      claudeSkills: config.claudeSkills,
     });
   } catch (error) {
     void vscode.window.showErrorMessage(
@@ -4632,6 +4639,7 @@ function sendPanelMessage(payload: Record<string, unknown>): void {
       || type === "rawStreamDelta"
       || type === "removeMessage"
       || type === "runStatus"
+      || type === "taskListUpdate"
     )
     && !Object.prototype.hasOwnProperty.call(payload, "tabId")
   );

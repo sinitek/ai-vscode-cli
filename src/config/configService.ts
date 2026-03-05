@@ -9,10 +9,14 @@ import {
   ConfigPlatform,
   CurrentConfig,
   McpMarketplaceItem,
+  ClaudeSkillItem,
   CodexSkillItem,
+  GeminiSkillItem,
   CodexMcpInstallResult,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
+import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
+import { listGeminiSkills, mergeGeminiSkillsConfig } from "./geminiSkills";
 import { getCliCommand } from "../cli/config";
 import { t } from "../i18n";
 
@@ -237,11 +241,19 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
             ? config.updatedAt
             : Date.now(),
       };
-      if (normalizedConfig.platform === "claude" && normalizedConfig.mcpContent === undefined) {
-        normalizedConfig.mcpContent = "{}";
+      if (normalizedConfig.platform === "claude") {
+        if (normalizedConfig.mcpContent === undefined) {
+          normalizedConfig.mcpContent = "{}";
+        }
+        if (normalizedConfig.claudeSkills === undefined) {
+          normalizedConfig.claudeSkills = [];
+        }
       }
       if (normalizedConfig.platform === "gemini" && normalizedConfig.envContent === undefined) {
         normalizedConfig.envContent = "";
+      }
+      if (normalizedConfig.platform === "gemini" && normalizedConfig.geminiSkills === undefined) {
+        normalizedConfig.geminiSkills = [];
       }
       if (normalizedConfig.platform === "codex" && normalizedConfig.codexSkills === undefined) {
         normalizedConfig.codexSkills = [];
@@ -319,6 +331,9 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.platform === "gemini" && configToSave.envContent === undefined) {
     configToSave.envContent = "";
   }
+  if (configToSave.platform === "gemini" && configToSave.geminiSkills === undefined) {
+    configToSave.geminiSkills = [];
+  }
 
   const filePath = getConfigFilePath(config.platform, config.id);
   await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), "utf-8");
@@ -337,11 +352,19 @@ export async function getConfigById(
     const filePath = getConfigFilePath(platform, configId);
     const content = await fs.readFile(filePath, "utf-8");
     const config = JSON.parse(content) as ConfigItem;
-    if (config.platform === "claude" && config.mcpContent === undefined) {
-      config.mcpContent = "{}";
+    if (config.platform === "claude") {
+      if (config.mcpContent === undefined) {
+        config.mcpContent = "{}";
+      }
+      if (config.claudeSkills === undefined) {
+        config.claudeSkills = [];
+      }
     }
     if (config.platform === "gemini" && config.envContent === undefined) {
       config.envContent = "";
+    }
+    if (config.platform === "gemini" && config.geminiSkills === undefined) {
+      config.geminiSkills = [];
     }
     if (config.platform === "codex" && config.codexSkills === undefined) {
       config.codexSkills = [];
@@ -375,6 +398,7 @@ export async function initDefaultConfig(platform: ConfigPlatform): Promise<Confi
       const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
       defaultConfig.content = content;
       defaultConfig.mcpContent = mcpContent;
+      defaultConfig.claudeSkills = [];
     } else if (platform === "codex") {
       const { config, auth } = await readCodexConfig();
       defaultConfig.configContent = config;
@@ -383,14 +407,17 @@ export async function initDefaultConfig(platform: ConfigPlatform): Promise<Confi
       const { settings, env } = await readGeminiConfig();
       defaultConfig.content = settings;
       defaultConfig.envContent = env;
+      defaultConfig.geminiSkills = [];
     }
   } catch {
     if (platform === "claude") {
       defaultConfig.content = "{}";
       defaultConfig.mcpContent = "{}";
+      defaultConfig.claudeSkills = [];
     } else if (platform === "gemini") {
       defaultConfig.content = "{}";
       defaultConfig.envContent = "";
+      defaultConfig.geminiSkills = [];
     } else {
       defaultConfig.configContent = "";
       defaultConfig.authContent = "{}";
@@ -417,7 +444,11 @@ export async function getCurrentConfig(platform: ConfigPlatform): Promise<Curren
 
 export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayload): Promise<void> {
   if (platform === "claude") {
-    await writeClaudeConfig(payload.content ?? "{}");
+    const nextSettings =
+      payload.claudeSkills === undefined
+        ? payload.content ?? "{}"
+        : mergeClaudeSkillsConfig(payload.content ?? "{}", payload.claudeSkills);
+    await writeClaudeConfig(nextSettings);
     if (payload.mcpContent) {
       await writeClaudeMcpConfig(payload.mcpContent);
     }
@@ -434,7 +465,11 @@ export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayloa
     await writeCodexConfig(nextConfig, payload.authContent);
     return;
   }
-  await writeGeminiConfig(payload.content ?? "{}", payload.envContent ?? "");
+  const nextSettings =
+    payload.geminiSkills === undefined
+      ? payload.content ?? "{}"
+      : mergeGeminiSkillsConfig(payload.content ?? "{}", payload.geminiSkills);
+  await writeGeminiConfig(nextSettings, payload.envContent ?? "");
 }
 
 export async function backupConfig(platform: ConfigPlatform): Promise<string[]> {
@@ -678,6 +713,14 @@ export async function getMcpMarketplaceList(): Promise<McpMarketplaceItem[]> {
   return [];
 }
 
-export async function getCodexSkillsList(): Promise<CodexSkillItem[]> {
-  return listCodexSkills();
+export async function getClaudeSkillsList(): Promise<ClaudeSkillItem[]> {
+  return listClaudeSkills();
+}
+
+export async function getCodexSkillsList(workspaceRoots?: string[]): Promise<CodexSkillItem[]> {
+  return listCodexSkills(workspaceRoots);
+}
+
+export async function getGeminiSkillsList(workspaceRoots?: string[]): Promise<GeminiSkillItem[]> {
+  return listGeminiSkills(workspaceRoots);
 }

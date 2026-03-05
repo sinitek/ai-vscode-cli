@@ -12,8 +12,20 @@ export type ConfigItem = {
   configContent?: string;
   authContent?: string;
   codexSkills?: CodexSkillToggle[];
+  claudeSkills?: ClaudeSkillToggle[];
+  geminiSkills?: GeminiSkillToggle[];
   createdAt: number;
   updatedAt: number;
+};
+
+export type ClaudeSkillItem = {
+  name: string;
+  path: string;
+  description?: string;
+};
+
+export type ClaudeSkillToggle = ClaudeSkillItem & {
+  enabled: boolean;
 };
 
 export type CodexSkillItem = {
@@ -23,6 +35,16 @@ export type CodexSkillItem = {
 };
 
 export type CodexSkillToggle = CodexSkillItem & {
+  enabled: boolean;
+};
+
+export type GeminiSkillItem = {
+  name: string;
+  path: string;
+  description?: string;
+};
+
+export type GeminiSkillToggle = GeminiSkillItem & {
   enabled: boolean;
 };
 
@@ -55,6 +77,8 @@ export type ApplyPayload = {
   configContent?: string;
   authContent?: string;
   codexSkills?: CodexSkillToggle[];
+  claudeSkills?: ClaudeSkillToggle[];
+  geminiSkills?: GeminiSkillToggle[];
 };
 
 export type CurrentConfig = {

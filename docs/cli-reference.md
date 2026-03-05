@@ -83,6 +83,14 @@
 - 对于 HTTP MCP，优先写入 `--url`；若 `Authorization` 头可解析为环境变量引用（如 `Bearer $TOKEN`），会自动映射到 `--bearer-token-env-var`。
 - Marketplace 中的占位环境变量（如 `<YOUR_API_KEY>`）不会直接写入，会跳过并给出提示，避免把模板值写进本机配置。
 
+插件内 Codex Skills（配置中心）：
+- 技能列表按优先级扫描：工作区及父目录 `.codex/skills` / `.agents/skills` → `~/.agents/skills` → `~/.codex/skills`（兼容）→ `/etc/codex/skills`。
+- 勾选默认即启用；取消勾选时，才会在 `~/.codex/config.toml` 追加对应 `[[skills.config]]` 且 `enabled = false` 的禁用条目。
+
+插件内 Gemini Skills（配置中心）：
+- 技能列表按优先级扫描：工作区及父目录 `.gemini/skills` → `~/.gemini/skills` → `/etc/gemini/skills`。
+- 勾选默认即启用；取消勾选时，才会在 `~/.gemini/settings.json` 的 `skills.disabled` 写入禁用列表（并确保 `skills.enabled=true`）。
+
 思考模式（非交互）：
 - 使用 `codex exec` 时，可通过 `-c model_reasoning_effort="<level>"` 调整思考强度（`low` / `medium` / `high`）。
 - Codex CLI 没有明确的“关闭”参数，可将 `model_reasoning_effort` 设为 `low` 以尽量降低推理。

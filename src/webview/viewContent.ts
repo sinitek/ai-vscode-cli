@@ -322,7 +322,7 @@ const WEBVIEW_I18N = {
     runStreamRecordIndex: "第 {index} 条",
     runStreamRecordEmpty: "（空消息）",
     runStreamSourceStdout: "标准输出",
-    runStreamSourceStderr: "错误输出",
+    runStreamSourceStderr: "其它输出",
     runStreamSourceEvent: "事件",
     helpTitle: "使用说明",
     helpClose: "关闭",
@@ -2581,12 +2581,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         ruleScope: "global",
         historyTab: "sessions",
         promptHistoryExpandedId: null,
-        taskList: {
-          items: [],
-          open: false,
-          source: "auto",
-          startIndex: 0,
-        },
         editorContext: {
           filePath: null,
           fileLabel: null,
@@ -2722,6 +2716,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const runningTabStartedAtById = Object.create(null);
 
+      function createTaskListState() {
+        return {
+          items: [],
+          open: false,
+          source: "auto",
+          startIndex: 0,
+        };
+      }
+
       function createConversationRuntimeState() {
         return {
           messages: [],
@@ -2735,6 +2738,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           runStreamRecordCounter: 0,
           runStreamRecords: [],
           runStreamOpenRecordIds: new Set(),
+          taskList: createTaskListState(),
           overlays: {
             runConflict: false,
             queue: false,
@@ -2793,6 +2797,44 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return runtimeState.messages;
       }
 
+      function ensureRuntimeTaskList(runtimeState) {
+        if (!runtimeState || !runtimeState.taskList || typeof runtimeState.taskList !== "object") {
+          if (runtimeState) {
+            runtimeState.taskList = createTaskListState();
+          }
+          return null;
+        }
+        if (!Array.isArray(runtimeState.taskList.items)) {
+          runtimeState.taskList.items = [];
+        }
+        runtimeState.taskList.open = Boolean(runtimeState.taskList.open);
+        runtimeState.taskList.source = runtimeState.taskList.source === "external" ? "external" : "auto";
+        runtimeState.taskList.startIndex = Number.isInteger(runtimeState.taskList.startIndex)
+          ? Math.max(0, runtimeState.taskList.startIndex)
+          : 0;
+        return runtimeState.taskList;
+      }
+
+      function getTaskListState(tabId, options = {}) {
+        const runtimeState = getConversationRuntimeState(tabId, options);
+        return ensureRuntimeTaskList(runtimeState);
+      }
+
+      function getActiveTaskListState(options = {}) {
+        const runtimeState = getActiveConversationRuntimeState(options);
+        return ensureRuntimeTaskList(runtimeState);
+      }
+
+      function resetTaskListState(taskListState, startIndex = 0) {
+        if (!taskListState) {
+          return;
+        }
+        taskListState.startIndex = Number.isInteger(startIndex) ? Math.max(0, startIndex) : 0;
+        taskListState.items = [];
+        taskListState.open = false;
+        taskListState.source = "auto";
+      }
+
       function syncActiveMessagesFromRuntime(options = {}) {
         const runtimeState = getActiveConversationRuntimeState({ create: true });
         const nextMessages = ensureRuntimeStateMessages(runtimeState);
@@ -2805,6 +2847,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function setMessagesForTab(tabId, messages, options = {}) {
         const runtimeState = getConversationRuntimeState(tabId, { create: true });
         runtimeState.messages = Array.isArray(messages) ? messages : [];
+        resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
         hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
         if (isRuntimeStateForActiveTab(tabId)) {
           state.messages = runtimeState.messages;
@@ -2884,6 +2927,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!runtimeState) {
           return;
         }
+        resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
         ensureRuntimeStateMessages(runtimeState).length = 0;
         runtimeState.pendingPromptQueue.length = 0;
         runtimeState.queueEditingIndex = -1;
@@ -4434,25 +4478,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function updateTaskList() {
-        if (state.taskList.source === "external") {
+        const taskListState = getActiveTaskListState({ create: true });
+        if (!taskListState) {
           renderTaskList();
           return;
         }
-        const items = extractTaskListFromMessages(state.messages, state.taskList.startIndex);
-        state.taskList.items = items;
-        if (items.length) {
-          state.taskList.open = true;
-        } else {
-          state.taskList.open = false;
+        if (taskListState.source === "external") {
+          renderTaskList(taskListState);
+          return;
         }
-        renderTaskList();
+        const items = extractTaskListFromMessages(state.messages, taskListState.startIndex);
+        taskListState.items = items;
+        taskListState.open = items.length > 0;
+        renderTaskList(taskListState);
       }
 
-      function renderTaskList() {
+      function renderTaskList(taskListState) {
         if (!elements.taskListPanel || !elements.taskListDetails || !elements.taskListBody) {
           return;
         }
-        const items = state.taskList.items;
+        const activeTaskListState = taskListState || getActiveTaskListState({ create: false });
+        const items = activeTaskListState && Array.isArray(activeTaskListState.items)
+          ? activeTaskListState.items
+          : [];
         if (!items.length) {
           elements.taskListPanel.style.display = "none";
           elements.taskListDetails.open = false;
@@ -4463,7 +4511,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.taskListPanel.style.display = "block";
-        state.taskList.open = true;
+        if (activeTaskListState) {
+          activeTaskListState.open = true;
+        }
         elements.taskListDetails.open = true;
         if (elements.taskListCount) {
           elements.taskListCount.textContent = "(" + items.length + ")";
@@ -4754,20 +4804,34 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
       }
 
-      function resetTaskListForRunStart() {
-        state.taskList.startIndex = state.messages.length;
-        state.taskList.items = [];
-        state.taskList.open = false;
-        state.taskList.source = "auto";
-        renderTaskList();
+      function resetTaskListForRunStart(tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
+        const startIndex = runtimeState
+          ? ensureRuntimeStateMessages(runtimeState).length
+          : isRuntimeStateForActiveTab(targetTabId)
+            ? state.messages.length
+            : 0;
+        const taskListState = getTaskListState(targetTabId);
+        resetTaskListState(taskListState, startIndex);
+        if (isRuntimeStateForActiveTab(targetTabId)) {
+          renderTaskList(taskListState);
+        }
       }
 
-      function closeTaskListForRunCompletion() {
-        state.taskList.startIndex = state.messages.length;
-        state.taskList.items = [];
-        state.taskList.open = false;
-        state.taskList.source = "auto";
-        renderTaskList();
+      function closeTaskListForRunCompletion(tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
+        const startIndex = runtimeState
+          ? ensureRuntimeStateMessages(runtimeState).length
+          : isRuntimeStateForActiveTab(targetTabId)
+            ? state.messages.length
+            : 0;
+        const taskListState = getTaskListState(targetTabId);
+        resetTaskListState(taskListState, startIndex);
+        if (isRuntimeStateForActiveTab(targetTabId)) {
+          renderTaskList(taskListState);
+        }
       }
 
       function dispatchPrompt(payload) {
@@ -5824,10 +5888,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function resetActiveViewForNewConversation() {
         setMessagesForTab(getActiveConversationTabId(), []);
-        state.taskList.items = [];
-        state.taskList.open = false;
-        state.taskList.source = "auto";
-        state.taskList.startIndex = 0;
         renderMessages();
         renderTaskList();
       }
@@ -5855,12 +5915,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       if (elements.taskListDetails) {
         elements.taskListDetails.addEventListener("toggle", () => {
-          if (state.taskList.items.length && !elements.taskListDetails.open) {
+          const taskListState = getActiveTaskListState({ create: false });
+          const hasItems = Boolean(taskListState && Array.isArray(taskListState.items) && taskListState.items.length);
+          if (hasItems && !elements.taskListDetails.open) {
             elements.taskListDetails.open = true;
-            state.taskList.open = true;
+            if (taskListState) {
+              taskListState.open = true;
+            }
             return;
           }
-          state.taskList.open = elements.taskListDetails.open;
+          if (taskListState) {
+            taskListState.open = elements.taskListDetails.open;
+          }
         });
       }
 
@@ -6371,8 +6437,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (!shouldHandleTabScopedEvent(data)) {
             return;
           }
-          state.taskList.source = "auto";
-          state.taskList.startIndex = 0;
           traceCollapsibleOpenKeys.clear();
           syncConversationControlsForActiveTab();
           renderMessages();
@@ -6432,6 +6496,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (runtimeState) {
               runtimeState.lastRunStatusMessage = "";
             }
+            resetTaskListForRunStart(targetTabId);
           } else {
             if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
               runtimeState.lastRunStatusMessage = data.message.trim();
@@ -6444,6 +6509,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 delete runningTabStartedAtById[fallbackTabId];
               }
             }
+            closeTaskListForRunCompletion(targetTabId);
           }
 
           if (!shouldHandleTabScopedEvent(data)) {
@@ -6463,13 +6529,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             Object.keys(assistantRedirects).forEach((key) => {
               delete assistantRedirects[key];
             });
-            resetTaskListForRunStart();
           }
           if (data.message) {
             appendMessage({ id: createMessageId(), role: "system", content: data.message });
           }
           if (data.status !== "start") {
-            closeTaskListForRunCompletion();
             if (runtimeState && runtimeState.suppressQueueFlushOnce) {
               runtimeState.suppressQueueFlushOnce = false;
             } else {
@@ -6520,17 +6584,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           handleRunStreamExportResult(data);
         }
         if (data.type === "taskListUpdate") {
+          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+          const taskListState = getTaskListState(eventTabId);
+          if (!taskListState) {
+            return;
+          }
           const normalized = normalizeTaskListItems(data.items);
           if (normalized.length) {
-            state.taskList.items = normalized;
-            state.taskList.open = true;
-            state.taskList.source = "external";
-            renderTaskList();
+            taskListState.items = normalized;
+            taskListState.open = true;
+            taskListState.source = "external";
           } else {
-            state.taskList.items = [];
-            state.taskList.open = false;
-            state.taskList.source = "auto";
-            renderTaskList();
+            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
+            const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
+            resetTaskListState(taskListState, startIndex);
+          }
+          if (isRuntimeStateForActiveTab(eventTabId)) {
+            renderTaskList(taskListState);
           }
         }
         if (data.type === "rulesContent") {

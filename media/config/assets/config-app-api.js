@@ -45,7 +45,9 @@ const detectConfigApiMode = () =>
           throw new Error(t.message ?? "获取 MCP 市场失败");
         return t?.data ?? [];
       }),
+    getClaudeSkillsList: () => requestConfigApi("/claude/skills"),
     getCodexSkillsList: () => requestConfigApi("/codex/skills"),
+    getGeminiSkillsList: () => requestConfigApi("/gemini/skills"),
     getCodexMcpServerIds: async () => {
       throw new Error("当前模式不支持读取 Codex MCP");
     },
@@ -69,11 +71,25 @@ const detectConfigApiMode = () =>
       throw (console.error("获取 MCP 市场列表失败:", e), e);
     }
   },
+  fetchClaudeSkillsList = async () => {
+    try {
+      return configApi.getClaudeSkillsList();
+    } catch (e) {
+      throw (console.error("获取 Claude Skills 失败:", e), e);
+    }
+  },
   fetchCodexSkillsList = async () => {
     try {
       return configApi.getCodexSkillsList();
     } catch (e) {
       throw (console.error("获取 Codex Skills 失败:", e), e);
+    }
+  },
+  fetchGeminiSkillsList = async () => {
+    try {
+      return configApi.getGeminiSkillsList();
+    } catch (e) {
+      throw (console.error("获取 Gemini Skills 失败:", e), e);
     }
   },
   fetchCodexMcpServerIds = async () => {

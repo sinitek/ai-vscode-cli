@@ -145,12 +145,19 @@ export function getCliArgs(cli: CliName): string[] {
 
 ### Codex Skills 配置
 
-- 配置面板会读取 `~/.codex/skills` 下的技能目录（需包含 `SKILL.md`）。
+- 配置面板会按优先级读取技能目录（需包含 `SKILL.md`）：工作区及其父目录的 `.codex/skills` / `.agents/skills` → `~/.agents/skills` → `~/.codex/skills`（兼容旧路径）→ `/etc/codex/skills`。
 - 在配置页可对单个技能进行启用/禁用，并支持一键启用/禁用。
 - 保存时会将技能状态写入 `~/.codex/config.toml` 的受控区块：
   - `# --- sinitek codex skills start ---`
   - `# --- sinitek codex skills end ---`
 - 该区块只写入禁用项（`enabled = false`），不影响用户自定义的其它 TOML 配置。
+
+### Gemini Skills 配置
+
+- 配置面板会按优先级读取技能目录（需包含 `SKILL.md`）：工作区及其父目录 `.gemini/skills` → `~/.gemini/skills` → `/etc/gemini/skills`。
+- 在配置页可对单个技能进行启用/禁用，并支持一键启用/禁用。
+- 保存时会将禁用状态写入 `~/.gemini/settings.json` 的 `skills.disabled`；默认保持 `skills.enabled = true`。
+- 仅管理当前面板可见技能名对应的禁用项，不会覆盖用户手动维护的其它 `skills.disabled` 规则。
 
 ### Codex MCP 市场安装策略
 
