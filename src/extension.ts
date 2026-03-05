@@ -2090,6 +2090,12 @@ function isAbortErrorInfo(info: ErrorInfo): boolean {
   return combined.includes("abort");
 }
 
+function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
+  const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
+  return combined.includes("claude_session_not_found")
+    || combined.includes("no conversation found with session id:");
+}
+
 function redactPromptArg(args: string[], prompt?: string): string[] {
   if (!prompt) {
     return args;
@@ -3981,51 +3987,79 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       let uiSessionId: string | null = sessionId;
       stopCurrentTurn = () => runner.stopAndRebuild();
       startInteractiveLog(thinkingPrompt);
+      const runStreamHandlers = {
+        onAssistantDelta: (chunk: string) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendAssistantChunk(chunk);
+          appendDebugStdout(chunk);
+        },
+        onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          appendTraceMessage(content, kind ?? "normal", meta);
+          appendTraceLog(content);
+        },
+        onEvent: (event: unknown) => {
+          if (activeRunId !== runId) {
+            return;
+          }
+          sendRawStreamDelta(event, { stream: "event", appendNewline: true });
+          appendDebugEvent(event);
+        },
+        onTaskListUpdate: (items: { text: string; done: boolean }[]) => {
+          sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onSessionId: (newSessionId: string) => {
+          updateProcessTitle(cli, newSessionId);
+          if (!uiSessionId) {
+            ensureSessionIdForNewSession(newSessionId);
+            uiSessionId = newSessionId;
+          } else {
+            upsertInteractiveMapping(cli, uiSessionId, newSessionId);
+          }
+          void logInfo("runPrompt-interactive-claude-session", {
+            cli,
+            sessionId: uiSessionId,
+            newSessionId,
+            originalSessionId: sessionId,
+            mode: "normal",
+          });
+          interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode);
+        },
+      };
       interactiveRunnerManager?.beginActiveRun();
       try {
-        await runner.runStreamed(thinkingPrompt, {
-          onAssistantDelta: (chunk) => {
-            if (activeRunId !== runId) {
-              return;
-            }
-            appendAssistantChunk(chunk);
-            appendDebugStdout(chunk);
-          },
-          onTrace: (content, kind, meta) => {
-            if (activeRunId !== runId) {
-              return;
-            }
-            appendTraceMessage(content, kind ?? "normal", meta);
-            appendTraceLog(content);
-          },
-          onEvent: (event) => {
-            if (activeRunId !== runId) {
-              return;
-            }
-            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
-            appendDebugEvent(event);
-          },
-          onTaskListUpdate: (items) => {
-            sendPanelMessage({ type: "taskListUpdate", items });
-          },
-          onSessionId: (newSessionId) => {
-            updateProcessTitle(cli, newSessionId);
-            if (!uiSessionId) {
-              ensureSessionIdForNewSession(newSessionId);
-              uiSessionId = newSessionId;
-            } else {
-              upsertInteractiveMapping(cli, uiSessionId, newSessionId);
-            }
-            void logInfo("runPrompt-interactive-claude-session", {
-              cli,
-              sessionId: uiSessionId,
-              newSessionId,
-              originalSessionId: sessionId,
-              mode: "normal",
-            });
-            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode);
-          },
-        });
+        try {
+          await runner.runStreamed(thinkingPrompt, runStreamHandlers);
+        } catch (error) {
+          const info = getErrorInfo(error);
+          if (!sessionId || !isClaudeSessionNotFoundErrorInfo(info)) {
+            throw error;
+          }
+          appendSystemMessage(t("claude.sessionResetRetry"));
+          void logInfo("runPrompt-interactive-claude-session-reset-retry", {
+            cli,
+            sessionId,
+            mappedSessionId,
+            error: info.message,
+            errorCode: info.code,
+          });
+          runner.dispose();
+          runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+            command: commandForRunner,
+            args,
+            cwd: cwd ?? undefined,
+            thinkingMode,
+            interactiveMode,
+            sessionId: null,
+          });
+          uiSessionId = null;
+          stopCurrentTurn = () => runner.stopAndRebuild();
+          await runner.runStreamed(thinkingPrompt, runStreamHandlers);
+        }
       } finally {
         interactiveRunnerManager?.endActiveRun();
       }

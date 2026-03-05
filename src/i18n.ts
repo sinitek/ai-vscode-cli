@@ -142,6 +142,7 @@ const MESSAGES = {
     "config.mcpMustBeObject": "MCP config must be an object.",
     "config.requestFailed": "Request failed.",
     "skill.descriptionMissing": "Description unavailable",
+    "claude.sessionResetRetry": "Claude session expired. Automatically starting a new session and retrying.",
   },
   "zh-CN": {
     "common.compactContext": "压缩上下文",
@@ -240,6 +241,7 @@ const MESSAGES = {
     "config.mcpMustBeObject": "MCP 配置必须是对象",
     "config.requestFailed": "请求失败",
     "skill.descriptionMissing": "技能说明暂缺",
+    "claude.sessionResetRetry": "检测到 Claude 会话已失效，已自动创建新会话并重试。",
   },
 } as const;
 

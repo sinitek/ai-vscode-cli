@@ -184,6 +184,22 @@ function extractToolResultEvent(block: Record<string, unknown>): ClaudeToolResul
   };
 }
 
+function extractSessionNotFoundErrorMessage(msg: any): string | null {
+  if (!msg || msg.type !== "result") {
+    return null;
+  }
+  const subtype = typeof msg.subtype === "string" ? msg.subtype : "";
+  const isError = msg.is_error === true || subtype === "error_during_execution";
+  if (!isError) {
+    return null;
+  }
+  const errors = Array.isArray(msg.errors)
+    ? msg.errors.filter((item: unknown): item is string => typeof item === "string")
+    : [];
+  const matched = errors.find((item: string) => /No conversation found with session ID:/i.test(item));
+  return matched ?? null;
+}
+
 function extractDeltaTextFromStreamEvent(event: any): string {
   if (typeof event?.delta?.text === "string") {
     return event.delta.text;
@@ -538,6 +554,12 @@ export class ClaudeInteractiveRunner {
 
         // 结果消息
         if (msg?.type === "result") {
+          const sessionNotFound = extractSessionNotFoundErrorMessage(msg);
+          if (sessionNotFound) {
+            const error = new Error(sessionNotFound) as Error & { code?: string };
+            error.code = "CLAUDE_SESSION_NOT_FOUND";
+            throw error;
+          }
           const resultText = typeof msg.result === "string" ? msg.result : "";
           if (resultText && !lastAssistantText) {
             handlers.onAssistantDelta(resultText);
