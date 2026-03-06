@@ -112,7 +112,7 @@ npm init @vscode/extension
 ## 聊天面板消息渲染规则
 
 - 同角色连续消息可合并为同一气泡，便于减少碎片。
-- Trace 统一经由 `traceSegment` 事件进入前端（包含 Claude one-shot 与 interactive），避免不同 CLI 走不同渲染分支。
+- Trace 统一经由 `traceSegment` 事件进入前端（包含 Gemini one-shot 与 Codex/Claude interactive），避免不同 CLI 走不同渲染分支。
 - `file update`、`exec`、`tool/调用工具` 类型 trace 必须保持独立气泡（`merge=false`），不允许与前后消息合并。
 - `kind=thinking` 的事件统一走助手增量输出（`appendAssistantChunk`），不单独渲染 trace 气泡。
 - 有新气泡时，仅当聊天已在底部才自动滚动（贴底判定阈值 20px）；若用户正在查看历史位置，保持当前位置与已展开/收起状态不变。
@@ -280,6 +280,7 @@ export function activate(context: vscode.ExtensionContext) {
 - 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
 - 空闲释放：24 小时无交互自动释放 Runner。
 - 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
+- 抢占式切换：当 `codex/claude` 在任意 Tab 启动新任务时，会先停止其他运行中的任务，再接管当前交互 Runner；不允许回退到非交互子进程。
 
 ### 设置项说明
 

@@ -258,57 +258,15 @@ function buildSessionArgs(
   sessionId: string,
   prompt: string
 ): string[] {
-  switch (cli) {
-    case "codex":
-      return ["exec", ...sharedArgs, "resume", sessionId, prompt];
-    case "gemini":
-      if (sessionId.startsWith(LOCAL_SESSION_PREFIX)) {
-        return [...sharedArgs, prompt];
-      }
-      return [...sharedArgs, "--resume", sessionId, prompt];
-    case "claude":
-      return [...ensureClaudePrintArgs(sharedArgs), "--resume", sessionId, prompt];
-    default:
-      return [...sharedArgs, prompt];
-  }
-}
-
-function buildPromptArgs(cli: CliName, sharedArgs: string[], prompt: string): string[] {
-  if (cli === "codex") {
-    return ["exec", ...sharedArgs, prompt];
-  }
-  if (cli === "claude") {
-    return [...ensureClaudePrintArgs(sharedArgs), prompt];
+  if (cli === "gemini" && !sessionId.startsWith(LOCAL_SESSION_PREFIX)) {
+    return [...sharedArgs, "--resume", sessionId, prompt];
   }
   return [...sharedArgs, prompt];
 }
 
-function ensureClaudePrintArgs(sharedArgs: string[]): string[] {
-  const args = [...sharedArgs];
-  const hasPrint = args.includes("--print") || args.includes("-p");
-  if (!hasPrint) {
-    args.push("--print");
-  }
-  const outputFormatIndex = args.findIndex((arg) => arg === "--output-format" || arg === "-o");
-  const defaultOutputFormat = "stream-json";
-  if (outputFormatIndex === -1) {
-    args.push("--output-format", defaultOutputFormat);
-  } else if (args.length > outputFormatIndex + 1) {
-    args[outputFormatIndex + 1] = defaultOutputFormat;
-  } else {
-    args.push(defaultOutputFormat);
-  }
-  const outputFormat = args[outputFormatIndex === -1 ? args.length - 1 : outputFormatIndex + 1];
-  const hasIncludePartial = args.includes("--include-partial-messages");
-  if (outputFormat === "stream-json" && !hasIncludePartial) {
-    args.push("--include-partial-messages");
-  }
-  if (outputFormat === "stream-json" && !args.includes("--verbose")) {
-    args.push("--verbose");
-  }
-  return args;
+function buildPromptArgs(_cli: CliName, sharedArgs: string[], prompt: string): string[] {
+  return [...sharedArgs, prompt];
 }
-
 
 function buildShellCommandLine(command: string, args: string[]): string {
   return [command, ...args].map((segment) => escapeShellArg(segment)).join(" ");
@@ -363,15 +321,7 @@ export function runCliStream(
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  if (cli === "codex") {
-    try {
-      child.stdin?.write("\n");
-    } finally {
-      child.stdin?.end();
-    }
-  } else {
-    child.stdin?.end();
-  }
+  child.stdin?.end();
 
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (data) => {

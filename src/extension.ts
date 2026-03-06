@@ -63,7 +63,6 @@ import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
-import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "./trace/claudeToolFormat";
 import {
   getMappedThreadId,
   readSessionMeta,
@@ -2256,12 +2255,29 @@ function stopRunForTab(tabId: string | null): void {
   }
 }
 
+function stopOtherRunsExceptTab(tabId: string | null): void {
+  const parallelTabIds = Array.from(parallelRunsByTabId.keys());
+  parallelTabIds.forEach((parallelTabId) => {
+    if (parallelTabId !== tabId) {
+      stopParallelRunForTab(parallelTabId);
+    }
+  });
+
+  const primaryTabId = getPrimaryRunTabId();
+  if (primaryTabId && primaryTabId !== tabId) {
+    stopActiveRun();
+  }
+}
+
 async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
   const runCli = target.cli;
+  if (runCli !== "gemini") {
+    throw new Error(`parallel-run-unsupported:${runCli}`);
+  }
   const modelPrompt = input.modelPrompt || prompt;
   const contextTags = Array.isArray(input.contextTags)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
@@ -2319,10 +2335,7 @@ ${rawStderr}`);
           sessionId = detectedSessionId;
           adoptSessionId(runCli, detectedSessionId, target.tabId);
         }
-        const assistantText = runCli === "claude"
-          ? (parseClaudeStreamOutput(rawStdout).text || parseClaudeJsonOutput(rawStdout).text || rawStdout)
-          : rawStdout;
-        const finalText = String(assistantText || "").trim();
+        const finalText = String(rawStdout || "").trim();
         if (finalText) {
           const assistantMessage: ChatMessage = {
             id: createMessageId(),
@@ -2411,14 +2424,12 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
 
   scheduleLogRetentionCleanup();
 
-  if (hasOtherTabRun(target.tabId)) {
-    await runPromptParallel(input, target);
-    return;
-  }
-
   const shouldUseInteractive = isInteractiveSupported(target.cli);
 
   if (shouldUseInteractive) {
+    if (hasOtherTabRun(target.tabId)) {
+      stopOtherRunsExceptTab(target.tabId);
+    }
     try {
       await runPromptInteractive(input, target);
       return;
@@ -2445,12 +2456,20 @@ async function runPrompt(input: PromptRunInput): Promise<void> {
     }
   }
 
+  if (hasOtherTabRun(target.tabId)) {
+    await runPromptParallel(input, target);
+    return;
+  }
+
   await runPromptOneShot(input, target);
 }
 
 async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   const runCli = target.cli;
+  if (runCli !== "gemini") {
+    throw new Error(`one-shot-run-unsupported:${runCli}`);
+  }
   const modelPrompt = input.modelPrompt || prompt;
   const contextTags = Array.isArray(input.contextTags)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
@@ -2469,18 +2488,6 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
-  const logModelOutput = (content: string): void => {
-    if (!debugLogging) {
-      return;
-    }
-    if (runCli !== "claude" && runCli !== "codex") {
-      return;
-    }
-    if (!content) {
-      return;
-    }
-    void logCliInteractiveOutput(runCli, activeSessionId, "stdout", content);
-  };
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(activeTabId).messages;
@@ -2502,6 +2509,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     sessionId,
     thinkingMode,
   });
+
   const userMessageId = createMessageId();
   const userCreatedAt = Date.now();
   const runId = createMessageId();
@@ -2532,220 +2540,50 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       contextTags,
     },
   });
-  const shouldDeferAssistant = true;
-  if (!shouldDeferAssistant) {
-    const assistantId = createMessageId();
-    activeAssistantMessageId = assistantId;
-    appendMessageToStore(messageTarget, {
-      id: assistantId,
-      role: "assistant",
-      content: "",
-      createdAt: Date.now(),
-    });
-    activeMessageIndex = messageTarget.length - 1;
-  } else {
-    activeAssistantMessageId = undefined;
-    activeMessageIndex = null;
-  }
-  const shouldParseClaudeStream = runCli === "claude";
-  let sessionBuffer = "";
-  let claudeBuffer = "";
-  let claudeStreamRemainder = "";
-  let claudeLogRemainder = "";
-  let claudeStreamHasText = false;
-  const claudeToolUseIds = new Set<string>();
-  const claudeToolResultIds = new Set<string>();
-  const claudeToolUseNames = new Map<string, string>();
-  let rawStdout = "";
-  let rawStderr = "";
-  sendRunStatus("start");
-  if (!shouldDeferAssistant && activeAssistantMessageId) {
-    sendPanelMessage({
-      type: "appendMessage",
-      message: { id: activeAssistantMessageId, role: "assistant", content: "" },
-    });
-  }
+
+  activeAssistantMessageId = undefined;
+  activeMessageIndex = null;
   startTraceMessage(runCli);
   activeTraceBuffer = "";
   activeTraceSegmentLines = [];
   skipUserBlock = false;
   skipCodexBlock = false;
   activeCompletionSent = false;
-  const appendClaudeTraceMessage = (
-    content: string,
-    options: { kind?: TraceMessageKind; merge?: boolean; persist?: boolean } = {}
-  ): void => {
-    appendTraceMessage(content, options.kind ?? "normal", {
-      merge: options.merge,
-      persist: options.persist,
-    });
-  };
-  const sanitizeClaudeLogChunk = (chunk: string): { content: string; redacted: boolean } => {
-    const combined = claudeLogRemainder + chunk;
-    const lines = combined.split(/\r?\n/);
-    claudeLogRemainder = lines.pop() ?? "";
-    let redacted = false;
-    const keptLines: string[] = [];
-    const shouldRedactLine = (value: string): boolean => {
-      try {
-        const payload = JSON.parse(value) as Record<string, unknown>;
-        const toolEvents = extractClaudeToolEvents(payload);
-        return toolEvents.some((event) => {
-          if (event.kind !== "tool_result" || !event.toolUseId) {
-            return false;
-          }
-          const toolName = claudeToolUseNames.get(event.toolUseId);
-          return typeof toolName === "string" && toolName.toLowerCase() === "read";
-        });
-      } catch {
-        return false;
-      }
-    };
-    lines.forEach((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        keptLines.push(line);
-        return;
-      }
-      if (trimmed.startsWith("event:")) {
-        keptLines.push(line);
-        return;
-      }
-      if (trimmed.startsWith("data:")) {
-        const dataValue = trimmed.slice(5).trim();
-        if (dataValue && dataValue !== "[DONE]" && shouldRedactLine(dataValue)) {
-          redacted = true;
-          return;
-        }
-        keptLines.push(line);
-        return;
-      }
-      if (shouldRedactLine(trimmed)) {
-        redacted = true;
-        return;
-      }
-      keptLines.push(line);
-    });
-    let content = keptLines.join("\n");
-    if (content && chunk.endsWith("\n")) {
-      content += "\n";
-    }
-    return { content, redacted };
-  };
-  const handleClaudeToolEvents = (events: ClaudeToolEvent[]): void => {
-    if (!events.length) {
-      return;
-    }
-    events.forEach((event) => {
-      if (event.kind === "tool_use") {
-        if (event.id && claudeToolUseIds.has(event.id)) {
-          return;
-        }
-        if (event.id) {
-          claudeToolUseIds.add(event.id);
-        }
-        if (event.id && event.name) {
-          claudeToolUseNames.set(event.id, event.name);
-        }
-        if (event.name === "TodoWrite") {
-          const items = extractTodoWriteItems(event.input);
-          if (items.length) {
-            sendPanelMessage({ type: "taskListUpdate", items });
-          }
-        }
-        appendClaudeTraceMessage(formatClaudeToolUseMessage(event.name, event.input), {
-          kind: "tool-use",
-          merge: false,
-        });
-        return;
-      }
-      if (event.toolUseId && claudeToolResultIds.has(event.toolUseId)) {
-        return;
-      }
-      if (event.toolUseId) {
-        claudeToolResultIds.add(event.toolUseId);
-      }
-      const toolName = event.toolUseId ? claudeToolUseNames.get(event.toolUseId) : undefined;
-      if (toolName === "Edit") {
-        return;
-      }
-      const shouldPersist = !(
-        typeof toolName === "string" && toolName.toLowerCase() === "read"
-      );
-      appendClaudeTraceMessage(formatClaudeToolResultMessage(event.content, toolName), {
-        merge: false,
-        persist: shouldPersist,
-      });
-    });
-  };
+
+  let sessionBuffer = "";
+  let rawStdout = "";
+  let rawStderr = "";
+
+  sendRunStatus("start");
 
   activeProcess = runCliStream(
     runCli,
     thinkingPrompt,
     {
       onStdout: (chunk: string) => {
+        if (activeRunId !== runId) {
+          return;
+        }
         rawStdout += chunk;
         sendRawStreamDelta(chunk, { stream: "stdout" });
-        let formattedOutput = "";
-        if (shouldParseClaudeStream) {
-          claudeBuffer += chunk;
-          const parsed = parseClaudeStreamChunk(claudeStreamRemainder, chunk);
-          claudeStreamRemainder = parsed.remainder;
-          if (parsed.text) {
-            claudeStreamHasText = true;
-            appendAssistantChunk(parsed.text);
-            formattedOutput = parsed.text;
-          }
-          if (parsed.toolEvents.length) {
-            handleClaudeToolEvents(parsed.toolEvents);
-          }
-          if (parsed.sessionId) {
-            adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
-          }
-        } else {
-          appendAssistantChunk(chunk);
-          formattedOutput = chunk;
-          sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-          captureSessionFromBuffer(runCli, sessionBuffer);
-        }
+        sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
+        captureSessionFromBuffer(runCli, sessionBuffer);
+        appendAssistantChunk(chunk);
         if (debugLogging) {
           void logCliStream(runCli, activeSessionId, "stdout", chunk);
         }
-        if (formattedOutput) {
-          logModelOutput(formattedOutput);
-        }
       },
       onStderr: (chunk: string) => {
+        if (activeRunId !== runId) {
+          return;
+        }
         rawStderr += chunk;
         sendRawStreamDelta(chunk, { stream: "stderr" });
-        let formattedOutput = "";
-        if (runCli === "codex" || runCli === "gemini") {
-          appendTraceLines(chunk);
-        }
-        if (shouldParseClaudeStream) {
-          claudeBuffer += chunk;
-          const parsed = parseClaudeStreamChunk(claudeStreamRemainder, chunk);
-          claudeStreamRemainder = parsed.remainder;
-          if (parsed.text) {
-            claudeStreamHasText = true;
-            appendAssistantChunk(parsed.text);
-            formattedOutput = parsed.text;
-          }
-          if (parsed.toolEvents.length) {
-            handleClaudeToolEvents(parsed.toolEvents);
-          }
-          if (parsed.sessionId) {
-            adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
-          }
-        } else {
-          sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-          captureSessionFromBuffer(runCli, sessionBuffer);
-        }
+        sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
+        captureSessionFromBuffer(runCli, sessionBuffer);
+        appendTraceLines(chunk);
         if (debugLogging) {
           void logCliStream(runCli, activeSessionId, "stderr", chunk);
-        }
-        if (formattedOutput) {
-          logModelOutput(formattedOutput);
         }
       },
       onExit: (code: number | null) => {
@@ -2753,47 +2591,6 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           return;
         }
         void logInfo("runPrompt-exit", { cli: runCli, code });
-        if (shouldParseClaudeStream) {
-          const flushed = parseClaudeStreamChunk(claudeStreamRemainder, "\n");
-          claudeStreamRemainder = flushed.remainder;
-          if (flushed.text) {
-            claudeStreamHasText = true;
-            appendAssistantChunk(flushed.text);
-            logModelOutput(flushed.text);
-          }
-          if (flushed.toolEvents.length) {
-            handleClaudeToolEvents(flushed.toolEvents);
-          }
-          if (flushed.sessionId) {
-            adoptSessionId(runCli, flushed.sessionId, activeTabIdForRun);
-          }
-          if (!claudeStreamHasText) {
-            const parsed = parseClaudeStreamOutput(claudeBuffer);
-            if (parsed.text) {
-              appendAssistantChunk(parsed.text);
-              logModelOutput(parsed.text);
-              claudeStreamHasText = true;
-            }
-            if (parsed.toolEvents.length) {
-              handleClaudeToolEvents(parsed.toolEvents);
-            }
-            if (parsed.sessionId) {
-              adoptSessionId(runCli, parsed.sessionId, activeTabIdForRun);
-            } else if (!parsed.text) {
-              const fallback = parseClaudeJsonOutput(claudeBuffer);
-              if (fallback.text) {
-                appendAssistantChunk(fallback.text);
-                logModelOutput(fallback.text);
-              }
-              if (fallback.toolEvents.length) {
-                handleClaudeToolEvents(fallback.toolEvents);
-              }
-              if (fallback.sessionId) {
-                adoptSessionId(runCli, fallback.sessionId, activeTabIdForRun);
-              }
-            }
-          }
-        }
         if (debugLogging) {
           void logCliRaw(runCli, activeSessionId, {
             command,
@@ -2811,9 +2608,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           status,
           code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" })
         );
-        if (runCli === "codex" || runCli === "gemini") {
-          flushTraceBuffer();
-        }
+        flushTraceBuffer();
         appendCompletionMessage(status);
         persistActiveMessages();
         clearActiveRun();
@@ -2855,16 +2650,15 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           });
         }
         sendRunStatus("error", userMessage);
-        if (runCli === "codex" || runCli === "gemini") {
-          flushTraceBuffer();
-        }
+        flushTraceBuffer();
         appendCompletionMessage("error");
         persistActiveMessages();
         clearActiveRun();
       },
     },
-      { cwd, sessionId, processLabel }
-    );
+    { cwd, sessionId, thinkingMode, processLabel }
+  );
+
   void logInfo("runPrompt-spawned", {
     cli: runCli,
     pid: activeProcess?.pid ?? null,
@@ -4067,8 +3861,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       return;
     }
 
-    // Unsupported: fall back to one-shot.
-    await runPromptOneShot({ displayPrompt: prompt, modelPrompt, contextTags }, target);
+    throw new Error(`interactive-runner-unsupported:${cli}`);
   } catch (error) {
     if (activeRunId !== runId) {
       // This run was preempted/stopped; ignore errors from aborted streams.
@@ -5977,380 +5770,6 @@ function adoptSessionId(cli: CliName, sessionId: string, tabId: string | null = 
   updateProcessTitle(cli, sessionId);
   void postPanelState();
   void logInfo("session-detected", { cli, sessionId, tabId: targetTabId });
-}
-
-type ClaudeToolEvent =
-  | { kind: "tool_use"; id?: string; name?: string; input?: unknown }
-  | { kind: "tool_result"; toolUseId?: string; content?: unknown };
-
-type TaskListItem = {
-  text: string;
-  done: boolean;
-};
-
-type ClaudeJsonParseResult = {
-  text: string;
-  sessionId?: string;
-  toolEvents: ClaudeToolEvent[];
-};
-
-type ClaudeStreamParseResult = {
-  text: string;
-  sessionId?: string;
-  remainder: string;
-  toolEvents: ClaudeToolEvent[];
-};
-
-function parseClaudeJsonOutput(raw: string): ClaudeJsonParseResult {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return { text: "", toolEvents: [] };
-  }
-  const jsonText = extractJsonObject(trimmed);
-  if (!jsonText) {
-    return { text: trimmed, toolEvents: [] };
-  }
-  try {
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    const text = extractClaudeText(parsed) ?? trimmed;
-    const sessionId = extractClaudeSessionId(parsed);
-    const toolEvents = extractClaudeToolEvents(parsed);
-    return { text, sessionId, toolEvents };
-  } catch (error) {
-    void logError("claude-json-parse-error", { error: String(error) });
-    return { text: trimmed, toolEvents: [] };
-  }
-}
-
-function parseClaudeStreamChunk(remainder: string, chunk: string): ClaudeStreamParseResult {
-  const combined = remainder + chunk;
-  const lines = combined.split(/\r?\n/);
-  const nextRemainder = lines.pop() ?? "";
-  let text = "";
-  let sessionId: string | undefined;
-  const toolEvents: ClaudeToolEvent[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    if (trimmed.startsWith("event:")) {
-      continue;
-    }
-    if (trimmed.startsWith("data:")) {
-      const dataValue = trimmed.slice(5).trim();
-      if (!dataValue || dataValue === "[DONE]") {
-        continue;
-      }
-      const parsed = parseClaudeStreamLine(dataValue);
-      if (parsed.text) {
-        text += parsed.text;
-      }
-      if (parsed.toolEvents.length) {
-        toolEvents.push(...parsed.toolEvents);
-      }
-      if (!sessionId && parsed.sessionId) {
-        sessionId = parsed.sessionId;
-      }
-      continue;
-    }
-    const parsed = parseClaudeStreamLine(trimmed);
-    if (parsed.text) {
-      text += parsed.text;
-    }
-    if (parsed.toolEvents.length) {
-      toolEvents.push(...parsed.toolEvents);
-    }
-    if (!sessionId && parsed.sessionId) {
-      sessionId = parsed.sessionId;
-    }
-  }
-  return { text, sessionId, remainder: nextRemainder, toolEvents };
-}
-
-function parseClaudeStreamLine(
-  value: string
-): { text: string; sessionId?: string; toolEvents: ClaudeToolEvent[] } {
-  let payload: Record<string, unknown> | undefined;
-  try {
-    payload = JSON.parse(value) as Record<string, unknown>;
-  } catch {
-    return { text: "", toolEvents: [] };
-  }
-  const delta = extractClaudeStreamText(payload) ?? extractClaudeText(payload);
-  const sessionId = extractClaudeSessionId(payload);
-  const toolEvents = extractClaudeToolEvents(payload);
-  return { text: delta ?? "", sessionId, toolEvents };
-}
-
-function parseClaudeStreamOutput(raw: string): { text: string; sessionId?: string; toolEvents: ClaudeToolEvent[] } {
-  const lines = raw.split(/\r?\n/);
-  let text = "";
-  let sessionId: string | undefined;
-  const toolEvents: ClaudeToolEvent[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    if (trimmed.startsWith("event:")) {
-      continue;
-    }
-    if (trimmed.startsWith("data:")) {
-      const dataValue = trimmed.slice(5).trim();
-      if (!dataValue || dataValue === "[DONE]") {
-        continue;
-      }
-      const parsed = parseClaudeStreamLine(dataValue);
-      if (parsed.text) {
-        text += parsed.text;
-      }
-      if (parsed.toolEvents.length) {
-        toolEvents.push(...parsed.toolEvents);
-      }
-      if (!sessionId && parsed.sessionId) {
-        sessionId = parsed.sessionId;
-      }
-      continue;
-    }
-    const parsed = parseClaudeStreamLine(trimmed);
-    if (parsed.text) {
-      text += parsed.text;
-    }
-    if (parsed.toolEvents.length) {
-      toolEvents.push(...parsed.toolEvents);
-    }
-    if (!sessionId && parsed.sessionId) {
-      sessionId = parsed.sessionId;
-    }
-  }
-  return { text, sessionId, toolEvents };
-}
-
-function extractClaudeStreamText(payload: Record<string, unknown>): string | undefined {
-  const delta = payload.delta;
-  if (delta && typeof delta === "object") {
-    const deltaRecord = delta as Record<string, unknown>;
-    const deltaText = deltaRecord.text ?? deltaRecord.content;
-    if (typeof deltaText === "string") {
-      return deltaText;
-    }
-    const deltaContent = deltaRecord.delta;
-    if (deltaContent && typeof deltaContent === "object") {
-      const nested = deltaContent as Record<string, unknown>;
-      const nestedText = nested.text ?? nested.content;
-      if (typeof nestedText === "string") {
-        return nestedText;
-      }
-    }
-  }
-  const contentBlock = payload.content_block ?? payload.contentBlock;
-  if (contentBlock && typeof contentBlock === "object") {
-    const blockRecord = contentBlock as Record<string, unknown>;
-    const blockText = blockRecord.text ?? blockRecord.content;
-    if (typeof blockText === "string") {
-      return blockText;
-    }
-  }
-  const outputText = payload.output_text;
-  if (typeof outputText === "string") {
-    return outputText;
-  }
-  return undefined;
-}
-
-function extractClaudeToolEvents(payload: Record<string, unknown>): ClaudeToolEvent[] {
-  const events: ClaudeToolEvent[] = [];
-  const message = payload.message;
-  if (message && typeof message === "object") {
-    events.push(...extractClaudeToolEventsFromMessage(message as Record<string, unknown>));
-  }
-  const event = payload.event;
-  if (event && typeof event === "object") {
-    const eventMessage = (event as Record<string, unknown>).message;
-    if (eventMessage && typeof eventMessage === "object") {
-      events.push(...extractClaudeToolEventsFromMessage(eventMessage as Record<string, unknown>));
-    }
-  }
-  return events;
-}
-
-function extractClaudeToolEventsFromMessage(message: Record<string, unknown>): ClaudeToolEvent[] {
-  const content = message.content;
-  if (!Array.isArray(content)) {
-    return [];
-  }
-  const events: ClaudeToolEvent[] = [];
-  content.forEach((item) => {
-    if (!item || typeof item !== "object") {
-      return;
-    }
-    const record = item as Record<string, unknown>;
-    const type = record.type;
-    if (type === "tool_use") {
-      const id = typeof record.id === "string" ? record.id : undefined;
-      const name = typeof record.name === "string" ? record.name : undefined;
-      events.push({ kind: "tool_use", id, name, input: record.input });
-      return;
-    }
-    if (type === "tool_result") {
-      const toolUseId =
-        typeof record.tool_use_id === "string"
-          ? record.tool_use_id
-          : typeof record.toolUseId === "string"
-            ? record.toolUseId
-            : undefined;
-      events.push({ kind: "tool_result", toolUseId, content: record.content });
-    }
-  });
-  return events;
-}
-
-function extractTodoWriteItems(input: unknown): TaskListItem[] {
-  if (typeof input === "string") {
-    try {
-      return extractTodoWriteItems(JSON.parse(input));
-    } catch {
-      return [];
-    }
-  }
-  if (!input || typeof input !== "object") {
-    return [];
-  }
-  const record = input as Record<string, unknown>;
-  const todos = record.todos;
-  if (!Array.isArray(todos)) {
-    return [];
-  }
-  return todos
-    .map((todo) => {
-      if (!todo || typeof todo !== "object") {
-        return null;
-      }
-      const todoRecord = todo as Record<string, unknown>;
-      const text =
-        typeof todoRecord.content === "string"
-          ? todoRecord.content
-          : typeof todoRecord.text === "string"
-            ? todoRecord.text
-            : "";
-      if (!text.trim()) {
-        return null;
-      }
-      const status = typeof todoRecord.status === "string" ? todoRecord.status.toLowerCase() : "";
-      const done =
-        typeof todoRecord.done === "boolean"
-          ? todoRecord.done
-          : typeof todoRecord.completed === "boolean"
-            ? todoRecord.completed
-            : status === "completed";
-      return { text: text.trim(), done: Boolean(done) };
-    })
-    .filter((item): item is TaskListItem => Boolean(item));
-}
-
-function extractJsonObject(value: string): string | undefined {
-  const start = value.indexOf("{");
-  const end = value.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    return undefined;
-  }
-  return value.slice(start, end + 1);
-}
-
-function extractClaudeText(payload: Record<string, unknown>): string | undefined {
-  const directText = extractClaudeTextFromPayload(payload);
-  if (directText) {
-    return directText;
-  }
-  const result = payload.result;
-  if (typeof result === "string") {
-    return result;
-  }
-  if (result && typeof result === "object") {
-    return extractClaudeTextFromPayload(result as Record<string, unknown>);
-  }
-  return undefined;
-}
-
-function extractClaudeTextFromPayload(payload: Record<string, unknown>): string | undefined {
-  const text = payload.text;
-  if (typeof text === "string") {
-    return text;
-  }
-  const message = payload.message;
-  if (typeof message === "string") {
-    return message;
-  }
-  if (message && typeof message === "object") {
-    const nested = extractClaudeTextFromPayload(message as Record<string, unknown>);
-    if (nested) {
-      return nested;
-    }
-  }
-  const content = payload.content;
-  if (Array.isArray(content)) {
-    const parts = content
-      .map((item) => extractClaudeTextFromBlock(item))
-      .filter((item): item is string => Boolean(item));
-    if (parts.length > 0) {
-      return parts.join("");
-    }
-  }
-  const outputText = payload.output_text;
-  if (typeof outputText === "string") {
-    return outputText;
-  }
-  return undefined;
-}
-
-function extractClaudeTextFromBlock(block: unknown): string | undefined {
-  if (typeof block === "string") {
-    return block;
-  }
-  if (!block || typeof block !== "object") {
-    return undefined;
-  }
-  const record = block as Record<string, unknown>;
-  const text = record.text;
-  if (typeof text === "string") {
-    return text;
-  }
-  const content = record.content;
-  if (typeof content === "string") {
-    return content;
-  }
-  if (Array.isArray(content)) {
-    const parts = content
-      .map((item) => extractClaudeTextFromBlock(item))
-      .filter((item): item is string => Boolean(item));
-    if (parts.length > 0) {
-      return parts.join("");
-    }
-  }
-  return undefined;
-}
-
-function extractClaudeSessionId(payload: Record<string, unknown>): string | undefined {
-  const sessionId = payload.session_id ?? payload.sessionId;
-  if (typeof sessionId === "string") {
-    return sessionId;
-  }
-  const message = payload.message;
-  if (message && typeof message === "object") {
-    const nested = extractClaudeSessionId(message as Record<string, unknown>);
-    if (nested) {
-      return nested;
-    }
-  }
-  const result = payload.result;
-  if (result && typeof result === "object") {
-    const nested = extractClaudeSessionId(result as Record<string, unknown>);
-    if (nested) {
-      return nested;
-    }
-  }
-  return undefined;
 }
 
 function normalizePromptContextOptions(
