@@ -33,7 +33,7 @@ const WEBVIEW_I18N = {
     attachmentButton: "Upload Attachment",
     contextTagCurrentFile: "Current File",
     contextTagSelection: "Selection",
-    contextTagSelectionWithRange: "Selection ({range})",
+    contextTagSelectionWithRange: "Current File: {file} [{range}]",
     contextTagRemoveAria: "Remove context: {label}",
     thinkingModeAria: "Thinking mode",
     thinkingOptionOff: "Thinking: Off",
@@ -233,10 +233,10 @@ const WEBVIEW_I18N = {
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
-    contextTagCurrentFile: "Current File",
-    contextTagSelection: "Selection",
-    contextTagSelectionWithRange: "Selection ({range})",
-    contextTagRemoveAria: "Remove context: {label}",
+    contextTagCurrentFile: "当前文件",
+    contextTagSelection: "选中内容",
+    contextTagSelectionWithRange: "当前文件: {file} [{range}]",
+    contextTagRemoveAria: "移除上下文：{label}",
     thinkingModeAria: "思考模式",
     thinkingOptionOff: "思考：关闭",
     thinkingOptionLow: "思考：低",
@@ -3002,20 +3002,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function formatSelectionContextTagLabel() {
-        if (state.editorContext.selectionLabel) {
-          return t("contextTagSelectionWithRange", { range: state.editorContext.selectionLabel });
+      function formatPromptContextTagLabel() {
+        if (!state.editorContext.fileLabel) {
+          return state.editorContext.selectionLabel
+            ? "[" + state.editorContext.selectionLabel + "]"
+            : t("contextTagSelection");
         }
-        return t("contextTagSelection");
+        if (state.editorContext.hasSelection && state.promptContext.includeSelection && state.editorContext.selectionLabel) {
+          return t("contextTagSelectionWithRange", {
+            file: state.editorContext.fileLabel,
+            range: state.editorContext.selectionLabel,
+          });
+        }
+        return t("contextTagCurrentFile") + ": " + state.editorContext.fileLabel;
       }
 
       function removePromptContextTag(kind) {
-        if (kind === "file") {
+        if (kind === "editorContext") {
           state.promptContext.includeCurrentFile = false;
-          state.promptContext.dismissedFileKey = getCurrentFileTagKey();
-        }
-        if (kind === "selection") {
           state.promptContext.includeSelection = false;
+          state.promptContext.dismissedFileKey = getCurrentFileTagKey();
           state.promptContext.dismissedSelectionKey = getSelectionTagKey();
         }
         renderPromptContextTags();
@@ -3026,53 +3032,35 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.promptContextTags.innerHTML = "";
-        const tags = [];
+        const hasFileTag = Boolean(state.editorContext.fileLabel && state.promptContext.includeCurrentFile);
+        const hasSelectionTag = Boolean(state.editorContext.hasSelection && state.promptContext.includeSelection);
 
-        if (state.editorContext.fileLabel && state.promptContext.includeCurrentFile) {
-          tags.push({
-            kind: "file",
-            text: t("contextTagCurrentFile") + ": " + state.editorContext.fileLabel,
-            shortLabel: t("contextTagCurrentFile"),
-          });
-        }
-
-        if (state.editorContext.hasSelection && state.promptContext.includeSelection) {
-          tags.push({
-            kind: "selection",
-            text: formatSelectionContextTagLabel(),
-            shortLabel: t("contextTagSelection"),
-          });
-        }
-
-        if (!tags.length) {
+        if (!hasFileTag && !hasSelectionTag) {
           elements.promptContextTags.style.display = "none";
           return;
         }
 
-        tags.forEach((tag) => {
-          const chip = document.createElement("div");
-          chip.className = "prompt-context-tag";
+        const chip = document.createElement("div");
+        chip.className = "prompt-context-tag";
 
-          const label = document.createElement("span");
-          label.className = "prompt-context-tag-label";
-          label.textContent = tag.text;
-          label.title = tag.text;
+        const label = document.createElement("span");
+        label.className = "prompt-context-tag-label";
+        label.textContent = formatPromptContextTagLabel();
+        label.title = label.textContent;
 
-          const removeButton = document.createElement("button");
-          removeButton.type = "button";
-          removeButton.className = "prompt-context-tag-remove";
-          removeButton.textContent = "x";
-          removeButton.setAttribute("aria-label", t("contextTagRemoveAria", { label: tag.shortLabel }));
-          removeButton.setAttribute("title", t("contextTagRemoveAria", { label: tag.shortLabel }));
-          removeButton.addEventListener("click", () => {
-            removePromptContextTag(tag.kind);
-          });
-
-          chip.appendChild(label);
-          chip.appendChild(removeButton);
-          elements.promptContextTags.appendChild(chip);
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "prompt-context-tag-remove";
+        removeButton.textContent = "x";
+        removeButton.setAttribute("aria-label", t("contextTagRemoveAria", { label: t("contextTagCurrentFile") }));
+        removeButton.setAttribute("title", t("contextTagRemoveAria", { label: t("contextTagCurrentFile") }));
+        removeButton.addEventListener("click", () => {
+          removePromptContextTag("editorContext");
         });
 
+        chip.appendChild(label);
+        chip.appendChild(removeButton);
+        elements.promptContextTags.appendChild(chip);
         elements.promptContextTags.style.display = "flex";
       }
 

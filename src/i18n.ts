@@ -47,6 +47,8 @@ function formatMessage(
 const MESSAGES = {
   en: {
     "common.compactContext": "Compact context",
+    "common.currentFile": "Current File",
+    "common.currentFileWithRange": "Current File: {file} [{range}]",
     "common.commonCommandPrefix": "Common command: {label}",
     "common.delete": "Delete",
     "common.clear": "Clear",
@@ -146,6 +148,8 @@ const MESSAGES = {
   },
   "zh-CN": {
     "common.compactContext": "压缩上下文",
+    "common.currentFile": "当前文件",
+    "common.currentFileWithRange": "当前文件: {file} [{range}]",
     "common.commonCommandPrefix": "常用指令：{label}",
     "common.delete": "删除",
     "common.clear": "清空",

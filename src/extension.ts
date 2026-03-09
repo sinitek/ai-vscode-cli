@@ -5841,6 +5841,16 @@ type ActiveEditorPromptContext = {
   selectionLabel: string | null;
 };
 
+function formatContextTagLabel(context: ActiveEditorPromptContext): string {
+  if (context.hasSelection && context.selectionLabel) {
+    return t("common.currentFileWithRange", {
+      file: context.fileLabel,
+      range: context.selectionLabel,
+    });
+  }
+  return `${t("common.currentFile")}: ${context.fileLabel}`;
+}
+
 function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -5874,21 +5884,16 @@ function buildPromptWithAutoContext(
   const referenceLines: string[] = [];
   const contextTags: string[] = [];
 
-  if (normalized.includeCurrentFile) {
-    referenceLines.push(`@${context.fileLabel}`);
-    contextTags.push(`Current File: ${context.fileLabel}`);
-  }
-
   if (normalized.includeSelection && context.hasSelection) {
-    const selectionTag = context.selectionLabel
-      ? `Selection: ${context.selectionLabel}`
-      : "Selection";
-    contextTags.push(selectionTag);
+    contextTags.push(formatContextTagLabel(context));
     if (context.selectionLabel) {
       referenceLines.push(`Selected range in @${context.fileLabel}: ${context.selectionLabel}`);
     } else {
       referenceLines.push(`Selected range in @${context.fileLabel}`);
     }
+  } else if (normalized.includeCurrentFile) {
+    referenceLines.push(`@${context.fileLabel}`);
+    contextTags.push(formatContextTagLabel(context));
   }
 
   if (!referenceLines.length) {
