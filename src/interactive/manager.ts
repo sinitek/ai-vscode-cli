@@ -25,68 +25,67 @@ type RunnerEntry =
     };
 
 export class InteractiveRunnerManager {
-  private current: RunnerEntry | null = null;
-  private activeRunCount = 0;
+  private readonly entries = new Map<string, RunnerEntry>();
+  private currentKey: string | null = null;
 
   public disposeAll(): void {
-    if (!this.current) {
-      this.activeRunCount = 0;
-      return;
+    for (const entry of this.entries.values()) {
+      this.clearIdleTimer(entry);
+      entry.runner.dispose();
     }
-    this.clearIdleTimer(this.current);
-    this.current.runner.dispose();
-    this.current = null;
-    this.activeRunCount = 0;
+    this.entries.clear();
+    this.currentKey = null;
   }
 
   public disposeIfMatches(cli: CliName, sessionId: string | null): void {
-    if (!this.current) {
+    if (!sessionId) {
       return;
     }
-    if (this.current.cli !== cli) {
-      return;
-    }
-    if (!sessionId || this.current.sessionId !== sessionId) {
-      return;
-    }
-    this.disposeAll();
+    this.disposeEntry(this.buildKey(cli as "codex" | "claude", sessionId));
   }
 
   public disposeForCli(cli: CliName): void {
-    if (!this.current) {
-      return;
+    for (const [key, entry] of this.entries.entries()) {
+      if (entry.cli === cli) {
+        this.disposeEntry(key);
+      }
     }
-    if (this.current.cli !== cli) {
-      return;
-    }
-    this.disposeAll();
   }
 
   public setCurrentRunner(
     cli: "codex" | "claude",
     sessionId: string,
-    runner: any,
+    runner: CodexInteractiveRunner | ClaudeInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode
   ): void {
-    if (this.current && this.current.runner === runner) {
-      this.current.sessionId = sessionId;
-      this.current.thinkingMode = thinkingMode;
-      this.current.interactiveMode = interactiveMode;
-      this.touch();
+    const key = this.buildKey(cli, sessionId);
+    const existing = this.entries.get(key);
+    if (existing && existing.runner === runner) {
+      existing.sessionId = sessionId;
+      existing.thinkingMode = thinkingMode;
+      existing.interactiveMode = interactiveMode;
+      this.currentKey = key;
+      this.touch(existing);
       return;
     }
-    this.disposeAll();
+    if (existing) {
+      this.disposeEntry(key);
+    }
     const entry: RunnerEntry =
       cli === "codex"
-        ? { cli, sessionId, runner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() }
-        : { cli, sessionId, runner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() };
-    this.current = entry;
-    this.touch();
+        ? { cli, sessionId, runner: runner as CodexInteractiveRunner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() }
+        : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() };
+    this.entries.set(key, entry);
+    this.currentKey = key;
+    this.touch(entry);
   }
 
   public getCurrent(): RunnerEntry | null {
-    return this.current;
+    if (!this.currentKey) {
+      return null;
+    }
+    return this.entries.get(this.currentKey) ?? null;
   }
 
   public getOrCreateCodexRunner(options: {
@@ -98,15 +97,18 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
   }): CodexInteractiveRunner {
-    if (this.current && this.current.cli === "codex" && this.current.sessionId === options.sessionId) {
+    const key = this.buildKey("codex", options.sessionId);
+    const existing = this.entries.get(key);
+    if (existing && existing.cli === "codex") {
       if (
-        this.current.thinkingMode === options.thinkingMode
-        && this.current.interactiveMode === options.interactiveMode
+        existing.thinkingMode === options.thinkingMode
+        && existing.interactiveMode === options.interactiveMode
       ) {
-        this.touch();
-        return this.current.runner;
+        this.currentKey = key;
+        this.touch(existing);
+        return existing.runner;
       }
-      this.disposeAll();
+      this.disposeEntry(key);
     }
     const runner = new CodexInteractiveRunner({
       command: options.command,
@@ -116,7 +118,7 @@ export class InteractiveRunnerManager {
       interactiveMode: options.interactiveMode,
       threadId: options.threadId,
     });
-    this.current = {
+    const entry: RunnerEntry = {
       cli: "codex",
       sessionId: options.sessionId,
       runner,
@@ -125,7 +127,9 @@ export class InteractiveRunnerManager {
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
-    this.touch();
+    this.entries.set(key, entry);
+    this.currentKey = key;
+    this.touch(entry);
     return runner;
   }
 
@@ -138,23 +142,23 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
   }): ClaudeInteractiveRunner {
-    if (this.current && this.current.cli === "claude" && this.current.sessionId === options.sessionId) {
+    const key = this.buildKey("claude", options.sessionId);
+    const existing = this.entries.get(key);
+    if (existing && existing.cli === "claude") {
       if (
-        this.current.thinkingMode === options.thinkingMode
-        && this.current.interactiveMode === options.interactiveMode
+        existing.thinkingMode === options.thinkingMode
+        && existing.interactiveMode === options.interactiveMode
       ) {
-        // 确保 runner 的 sessionId 与最新的 mappedSessionId 一致
-        // 如果 runner 内部已有 sessionId，优先使用它（因为它是 SDK 返回的真实 session）
-        // 否则使用 mappedSessionId
-        const runnerSessionId = this.current.runner.getSessionId();
+        const runnerSessionId = existing.runner.getSessionId();
         const expectedSessionId = runnerSessionId || options.mappedSessionId;
         if (expectedSessionId && runnerSessionId !== expectedSessionId) {
-          this.current.runner.updateSessionId(expectedSessionId);
+          existing.runner.updateSessionId(expectedSessionId);
         }
-        this.touch();
-        return this.current.runner;
+        this.currentKey = key;
+        this.touch(existing);
+        return existing.runner;
       }
-      this.disposeAll();
+      this.disposeEntry(key);
     }
     const runner = new ClaudeInteractiveRunner({
       command: options.command,
@@ -164,7 +168,7 @@ export class InteractiveRunnerManager {
       interactiveMode: options.interactiveMode,
       sessionId: options.mappedSessionId,
     });
-    this.current = {
+    const entry: RunnerEntry = {
       cli: "claude",
       sessionId: options.sessionId,
       runner,
@@ -173,54 +177,66 @@ export class InteractiveRunnerManager {
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
-    this.touch();
+    this.entries.set(key, entry);
+    this.currentKey = key;
+    this.touch(entry);
     return runner;
   }
 
   public stopCurrentTurnAndRebuild(): void {
-    if (!this.current) {
+    const entry = this.getCurrent();
+    if (!entry) {
       return;
     }
-    this.current.runner.stopAndRebuild();
-    this.touch();
+    entry.runner.stopAndRebuild();
+    this.touch(entry);
   }
 
   public beginActiveRun(): void {
-    this.activeRunCount += 1;
-    if (!this.current) {
+    const entry = this.getCurrent();
+    if (!entry) {
       return;
     }
-    this.current.lastUsedAt = Date.now();
-    this.clearIdleTimer(this.current);
+    entry.lastUsedAt = Date.now();
+    this.clearIdleTimer(entry);
   }
 
   public endActiveRun(): void {
-    if (this.activeRunCount > 0) {
-      this.activeRunCount -= 1;
-    }
-    if (this.activeRunCount > 0) {
+    const entry = this.getCurrent();
+    if (!entry) {
       return;
     }
-    this.touch();
+    this.touch(entry);
   }
 
-  private touch(): void {
-    if (!this.current) {
+  private buildKey(cli: "codex" | "claude", sessionId: string): string {
+    return `${cli}:${sessionId}`;
+  }
+
+  private disposeEntry(key: string): void {
+    const entry = this.entries.get(key);
+    if (!entry) {
       return;
     }
-    this.current.lastUsedAt = Date.now();
-    this.clearIdleTimer(this.current);
-    if (this.activeRunCount > 0) {
-      return;
+    this.clearIdleTimer(entry);
+    entry.runner.dispose();
+    this.entries.delete(key);
+    if (this.currentKey === key) {
+      this.currentKey = null;
     }
-    this.current.idleTimer = setTimeout(() => {
-      // Dispose on idle.
-      if (!this.current) {
+  }
+
+  private touch(entry: RunnerEntry): void {
+    entry.lastUsedAt = Date.now();
+    this.clearIdleTimer(entry);
+    entry.idleTimer = setTimeout(() => {
+      const currentEntry = this.entries.get(this.buildKey(entry.cli, entry.sessionId));
+      if (!currentEntry || currentEntry !== entry) {
         return;
       }
-      const idleFor = Date.now() - this.current.lastUsedAt;
+      const idleFor = Date.now() - currentEntry.lastUsedAt;
       if (idleFor >= IDLE_TIMEOUT_MS - 2000) {
-        this.disposeAll();
+        this.disposeEntry(this.buildKey(currentEntry.cli, currentEntry.sessionId));
       }
     }, IDLE_TIMEOUT_MS);
   }

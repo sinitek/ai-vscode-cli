@@ -17,7 +17,11 @@ export type ConfigAction =
   | "getCodexSkillsList"
   | "getGeminiSkillsList"
   | "getCodexMcpServerIds"
+  | "getCodexMcpHealth"
+  | "getMcpHealth"
+  | "installMcp"
   | "installCodexMcp"
+  | "uninstallMcp"
   | "exportConfigs";
 
 export type ConfigRequestPayload =
@@ -37,7 +41,16 @@ export type ConfigRequestPayload =
   | { action: "getCodexSkillsList" }
   | { action: "getGeminiSkillsList" }
   | { action: "getCodexMcpServerIds" }
+  | { action: "getCodexMcpHealth" }
+  | { action: "getMcpHealth"; platform: ConfigPlatform }
+  | {
+      action: "installMcp";
+      platform: ConfigPlatform;
+      mcpId: string;
+      envOverrides?: Record<string, string>;
+    }
   | { action: "installCodexMcp"; mcpId: string }
+  | { action: "uninstallMcp"; platform: ConfigPlatform; mcpId: string }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
 
 export type ConfigRequestMessage = {
@@ -56,4 +69,9 @@ export type ConfigResponseMessage = {
 export type ConfigOpenPathMessage = {
   type: "config:openPath";
   path: string;
+};
+
+export type ConfigOpenExternalMessage = {
+  type: "config:openExternal";
+  url: string;
 };

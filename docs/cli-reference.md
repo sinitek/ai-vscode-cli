@@ -78,9 +78,12 @@
 - `-V, --version`：版本。
 
 
-插件内 Codex MCP 市场（配置中心）：
-- 点击 MCP 市场中的“添加”时，插件会直接调用 `codex mcp add ...` 安装，而不是只在编辑器里拼接 `config.toml` 文本。
-- 插件会调用 `codex mcp list --json` 回读已安装 MCP 列表，用于展示已安装状态。
+插件内 MCP 市场（配置中心）：
+- 三个平台点击“添加”都会直接调用真实命令安装，而不是只在编辑器里修改配置文本：Codex 使用 `codex mcp add ...`，Claude 的 stdio MCP 会优先通过 `claude mcp add-json --scope user ...` 写入完整配置，Claude 的 HTTP/SSE MCP 使用 `claude mcp add --scope user ...`，Gemini 使用 `gemini mcp add --scope user ...`。
+- 对于市场配置中声明了环境变量的 MCP，插件会先弹出环境变量填写窗口，再执行安装命令；窗口内会优先打开市场条目配置的 `signupUrl`（未配置时回退到 `homepage`），方便直接跳转到官网/注册地址。
+- 已添加 MCP 支持直接卸载：Codex 调用 `codex mcp remove <name>`，Claude 调用 `claude mcp remove --scope user <name>`，Gemini 调用 `gemini mcp remove --scope user <name>`；为兼容本地配置状态，插件还会同步清理对应配置文件中的 MCP 条目。
+- 插件会调用实际 MCP 列表命令回读状态：Codex 使用 `codex mcp list --json`，Claude 使用 `claude mcp list`，Gemini 使用 `gemini mcp list`。
+- Claude 分组不再提供 `~/.claude.json` 的文本编辑区，MCP 统一通过市场中的真实命令安装、卸载与检测。
 - 对于 HTTP MCP，优先写入 `--url`；若 `Authorization` 头可解析为环境变量引用（如 `Bearer $TOKEN`），会自动映射到 `--bearer-token-env-var`。
 - Marketplace 中的占位环境变量（如 `<YOUR_API_KEY>`）不会直接写入，会跳过并给出提示，避免把模板值写进本机配置。
 

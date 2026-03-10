@@ -1795,16 +1795,43 @@ function Ik(e, { maxDepth: t = 1e3, numbersAsFloat: n = !1 } = {}) {
 `
     : r;
 }
-const { Paragraph: p1, Text: _k, Title: Mk } = lc,
-  jv = ({ onAdd: e, installedIds: t = [] }) => {
-    const [n, r] = c.useState(!1),
-      [o, l] = c.useState([]),
-      s = c.useMemo(
+const { Paragraph: p1, Text: _k, Title: Mk } = lc;
+
+function p1HealthLabel(e) {
+  if (!e) return "检测中";
+  if (e.status === "healthy") return "健康";
+  if (e.status === "unhealthy") return "不健康";
+  return e.installed ? "未知" : "未安装";
+}
+
+function p1HealthColor(e) {
+  if (!e) return "default";
+  if (e.status === "healthy") return "success";
+  if (e.status === "unhealthy") return "error";
+  return "default";
+}
+
+const jv = ({
+    onAdd: e,
+    onRemove: t,
+    onCheckHealth: n,
+    onOpenHealthDetail: r0,
+    installedIds: r = [],
+    platform: o = "claude",
+    healthItems: l = [],
+    healthLoading: s = !1,
+    addingId: a = "",
+    removingId: u = "",
+  }) => {
+    const [f, m] = c.useState(!1),
+      [marketItems, setMarketItems] = c.useState([]),
+      extraItem = c.useMemo(
         () => ({
           id: "zai-mcp-server",
           name: "Zhipu 图片识别",
           description: "调用智谱通用图像理解能力进行图片内容识别。",
           homepage: "https://www.zhipuai.cn/",
+          signupUrl: "https://open.bigmodel.cn/usercenter/apikeys",
           category: "AI与智能",
           config: {
             command: "npx",
@@ -1813,25 +1840,26 @@ const { Paragraph: p1, Text: _k, Title: Mk } = lc,
           },
         }),
         [],
-      );
+      ),
+      healthById = c.useMemo(() => new Map((Array.isArray(l) ? l : []).map((p) => [p.serverId, p])), [l]);
     c.useEffect(() => {
-      u();
+      p();
     }, []);
-    const u = async () => {
-        r(!0);
+    const p = async () => {
+        m(!0);
         try {
-          const p = await fetchMcpMarketplaceList(),
-            h = p.some((b) => b.id === s.id);
-          l(h ? p : [...p, s]);
+          const h = await fetchMcpMarketplaceList(),
+            x = h.some((b) => b.id === extraItem.id);
+          setMarketItems(x ? h : [...h, extraItem]);
         } catch {
           Kt.error("加载 MCP 市场数据失败");
         } finally {
-          r(!1);
+          m(!1);
         }
       },
-      f = c.useMemo(() => {
-        const p = Array.from(new Set(o.map((b) => b.category || "其他"))),
-          h = [
+      h = c.useMemo(() => {
+        const x = Array.from(new Set(marketItems.map((b) => b.category || "其他"))),
+          S = [
             "AI与智能",
             "文件与数据",
             "开发工具",
@@ -1840,56 +1868,86 @@ const { Paragraph: p1, Text: _k, Title: Mk } = lc,
             "生产力工具",
             "其他",
           ];
-        return p.sort((b, x) => {
-          const S = h.indexOf(b),
-            y = h.indexOf(x);
-          return S !== -1 && y !== -1
-            ? S - y
-            : S !== -1
+        return x.sort((b, y) => {
+          const W = S.indexOf(b),
+            H = S.indexOf(y);
+          return W !== -1 && H !== -1
+            ? W - H
+            : W !== -1
               ? -1
-              : y !== -1
+              : H !== -1
                 ? 1
-                : b.localeCompare(x);
+                : b.localeCompare(y);
         });
-      }, [o]),
-      m = c.useMemo(() => {
-        const p = {};
+      }, [marketItems]),
+      x = c.useMemo(() => {
+        const b = {};
         return (
-          o.forEach((h) => {
-            const b = h.category || "其他";
-            (p[b] || (p[b] = []), p[b].push(h));
+          marketItems.forEach((S) => {
+            const y = S.category || "其他";
+            (b[y] || (b[y] = []), b[y].push(S));
           }),
-          p
+          b
         );
-      }, [o]);
-    if (n && o.length === 0)
+      }, [marketItems]);
+    if (f && marketItems.length === 0)
       return be.jsx("div", {
         style: { textAlign: "center", padding: "50px" },
         children: be.jsx(oh, { size: "large" }),
       });
-    const v = f.map((p) => ({
-      key: p,
-      label: p,
+    const S = h.map((b) => ({
+      key: b,
+      label: b,
       children: be.jsx(Bs, {
         grid: { gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 },
-        dataSource: m[p],
-        renderItem: (h) =>
-          be.jsx(Bs.Item, {
+        dataSource: x[b],
+        renderItem: (y) => {
+          const W = r.includes(y.id),
+            H = healthById.get(y.id),
+            k = W && !!H;
+          return be.jsx(Bs.Item, {
             children: be.jsx(aa, {
-              title: be.jsx($s, { children: h.name }),
-              extra: t.includes(h.id)
-                ? be.jsx(Wg, { color: "success", children: "已添加" })
+              title: be.jsx($s, { children: y.name }),
+              extra: W
+                ? be.jsxs("div", {
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "flex-end",
+                      gap: "6px",
+                      flexWrap: "wrap",
+                    },
+                    children: [
+                      be.jsx(Wg, { color: "success", children: "已添加" }),
+                      k &&
+                        be.jsx(Wg, {
+                          color: p1HealthColor(H),
+                          title: H?.details || "",
+                          style: { cursor: H?.details ? "pointer" : void 0 },
+                          onClick: () => H?.details && typeof r0 == "function" && r0(y, H),
+                          children: p1HealthLabel(H),
+                        }),
+                      be.jsx(xn, {
+                        size: "small",
+                        danger: !0,
+                        loading: u === y.id,
+                        onClick: () => typeof t == "function" && t(y),
+                        children: "卸载",
+                      }),
+                    ],
+                  })
                 : be.jsx(xn, {
                     type: "primary",
                     size: "small",
                     icon: be.jsx(oO, {}),
-                    onClick: () => e(h),
+                    loading: a === y.id,
+                    onClick: () => e(y),
                     children: "添加",
                   }),
               size: "small",
               children: be.jsxs("div", {
                 style: {
-                  height: "120px",
+                  minHeight: "144px",
                   display: "flex",
                   flexDirection: "column",
                 },
@@ -1897,7 +1955,7 @@ const { Paragraph: p1, Text: _k, Title: Mk } = lc,
                   be.jsx(p1, {
                     ellipsis: { rows: 2 },
                     style: { marginBottom: "8px" },
-                    children: h.description,
+                    children: y.description,
                   }),
                   be.jsxs("div", {
                     style: { marginTop: "auto" },
@@ -1912,45 +1970,441 @@ const { Paragraph: p1, Text: _k, Title: Mk } = lc,
                         children: [
                           be.jsx(TH, {}),
                           " ",
-                          h.config.command
-                            ? `${h.config.command}${h.config.args?.[0] ? ` ${h.config.args[0]}` : ""}`
-                            : h.config.type && h.config.url
-                              ? `${h.config.type} ${h.config.url}`
+                          y.config.command
+                            ? `${y.config.command}${y.config.args?.[0] ? ` ${y.config.args[0]}` : ""}`
+                            : y.config.type && y.config.url
+                              ? `${y.config.type} ${y.config.url}`
                               : "配置未填写",
                         ],
                       }),
-                      h.config.env &&
+                      y.config.env &&
                         be.jsx(Wg, {
                           color: "blue",
-                          style: { fontSize: "10px", lineHeight: "18px" },
+                          style: { fontSize: "10px", lineHeight: "18px", marginBottom: "4px" },
                           children: "需配置环境变量",
                         }),
+                      k && H?.status === "unhealthy"
+                        ? be.jsxs("div", {
+                            style: {
+                              marginTop: "4px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                            },
+                            children: [
+                              be.jsxs(_k, {
+                                type: "danger",
+                                style: {
+                                  fontSize: "12px",
+                                  display: "block",
+                                  margin: 0,
+                                  flex: 1,
+                                },
+                                title: H.details,
+                                children: ["健康检查：", H.details],
+                              }),
+                              be.jsx(xn, {
+                                size: "small",
+                                onClick: () => typeof r0 == "function" && r0(y, H),
+                                children: "查看错误",
+                              }),
+                            ],
+                          })
+                        : null,
                     ],
                   }),
                 ],
               }),
             }),
-          }),
+          }, y.id);
+        },
       }),
     }));
     return be.jsxs("div", {
       style: { padding: "0 16px 16px 16px" },
       children: [
         be.jsxs("div", {
-          style: { marginBottom: "16px" },
+          style: {
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+          },
           children: [
-            be.jsx(Mk, { level: 4, children: "MCP 市场" }),
-            be.jsx(p1, {
-              type: "secondary",
-              children:
-                "发现并添加常用的 Model Context Protocol (MCP) 服务器到您的配置中。",
+            be.jsxs("div", {
+              children: [
+                be.jsx(Mk, { level: 4, children: "MCP 市场" }),
+                be.jsx(p1, {
+                  type: "secondary",
+                  children:
+                    "发现并添加常用的 Model Context Protocol (MCP) 服务器到您的配置中。",
+                }),
+              ],
+            }),
+            be.jsx(xn, {
+              onClick: () => typeof n == "function" && n(),
+              loading: s,
+              disabled: typeof n != "function",
+              children: "一键检测健康",
             }),
           ],
         }),
-        be.jsx(nh, { defaultActiveKey: f[0], items: v }),
+        be.jsx(nh, { defaultActiveKey: h[0], items: S }),
       ],
     });
   };
+
+function isMcpEnvPlaceholder(e) {
+  const t = String(e || "").trim();
+  return !t || /^<[^>]+>$/.test(t) || /^\$\{?YOUR_/i.test(t) || /^YOUR_/i.test(t);
+}
+
+function getMcpEnvEntries(e) {
+  const t = e?.config?.env;
+  return t && typeof t == "object"
+    ? Object.entries(t).filter(([n, r]) => !!n && typeof r == "string")
+    : [];
+}
+
+function createInitialMcpEnvDraft(e) {
+  const t = {};
+  return (
+    getMcpEnvEntries(e).forEach(([n, r]) => {
+      t[n] = isMcpEnvPlaceholder(r) ? "" : String(r || "");
+    }),
+    t
+  );
+}
+
+function getMissingMcpEnvNames(e, t) {
+  return getMcpEnvEntries(e)
+    .map(([n]) => n)
+    .filter((n) => !String(t?.[n] || "").trim());
+}
+
+const McpHealthDetailModal = ({ open: e, item: t, health: n, onClose: r }) =>
+  be.jsx(xr, {
+    title: "健康检查详情",
+    open: e,
+    onCancel: r,
+    width: 680,
+    footer: [be.jsx(xn, { onClick: r, children: "关闭" }, "close")],
+    destroyOnClose: !0,
+    children: n
+      ? be.jsxs("div", {
+          style: { display: "flex", flexDirection: "column", gap: "12px" },
+          children: [
+            be.jsxs("div", {
+              children: [
+                be.jsx("div", { style: { fontWeight: 600, marginBottom: "4px" }, children: t?.name || n.serverId }),
+                be.jsx("div", {
+                  style: { color: "var(--text-color-secondary)", fontSize: "12px" },
+                  children: `${n.platform} / ${n.serverId}`,
+                }),
+              ],
+            }),
+            be.jsxs("div", {
+              children: [
+                be.jsx("div", { style: { fontWeight: 600, marginBottom: "6px" }, children: "失败原因" }),
+                be.jsx("pre", {
+                  style: {
+                    margin: 0,
+                    padding: "12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color)",
+                    background: "var(--background-color)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    lineHeight: 1.6,
+                  },
+                  children: n.details || "未返回错误详情",
+                }),
+              ],
+            }),
+          ],
+        })
+      : null,
+  });
+
+const McpInstallEnvModal = ({
+  open: e,
+  item: t,
+  envValues: n,
+  onChange: r,
+  onClose: o,
+  onConfirm: l,
+  loading: s,
+}) => {
+  const u = getMcpEnvEntries(t),
+    f = t?.signupUrl || t?.homepage || "";
+  return be.jsx(xr, {
+    title: "环境变量配置",
+    open: e,
+    onCancel: o,
+    width: 640,
+    footer: null,
+    destroyOnClose: !0,
+    children: be.jsxs("div", {
+      style: { display: "flex", flexDirection: "column", gap: "12px" },
+      children: [
+        be.jsxs("div", {
+          style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
+          children: [
+            be.jsxs("div", {
+              style: { minWidth: 0, flex: "1 1 320px" },
+              children: [
+                be.jsx("div", { style: { fontWeight: 600 }, children: t?.name || "MCP" }),
+                t?.description
+                  ? be.jsx("div", {
+                      style: { color: "var(--text-color-secondary)", fontSize: "12px", marginTop: "4px" },
+                      children: t.description,
+                    })
+                  : null,
+                f
+                  ? be.jsxs("div", {
+                      style: {
+                        color: "var(--text-color-secondary)",
+                        fontSize: "12px",
+                        marginTop: "6px",
+                        wordBreak: "break-all",
+                      },
+                      children: ["注册地址: ", f],
+                    })
+                  : null,
+              ],
+            }),
+            f
+              ? be.jsx(xn, {
+                  onClick: () => window.sinitekConfigBridge?.openExternal?.(f),
+                  children: "官网/注册",
+                })
+              : null,
+          ],
+        }),
+        be.jsx("div", {
+          style: {
+            color: "var(--text-color-secondary)",
+            fontSize: "12px",
+            lineHeight: 1.6,
+            background: "var(--background-color)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "6px",
+            padding: "10px 12px",
+          },
+          children: "如未注册，请先前往官网完成注册或创建 API Key，再填写以下环境变量。",
+        }),
+        u.map(([m, v]) =>
+          be.jsxs(
+            "label",
+            {
+              style: { display: "flex", flexDirection: "column", gap: "6px" },
+              children: [
+                be.jsxs("div", {
+                  style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
+                  children: [
+                    be.jsx("span", { children: m }),
+                    be.jsx("span", {
+                      style: { color: "var(--text-color-secondary)", fontSize: "12px" },
+                      children: isMcpEnvPlaceholder(v) ? "必填" : "可编辑默认值",
+                    }),
+                  ],
+                }),
+                be.jsx("input", {
+                  value: n?.[m] ?? "",
+                  onChange: (h) => r(m, h.target.value),
+                  placeholder: String(v || ""),
+                  type: /key|token|secret|password/i.test(m) ? "password" : "text",
+                  style: {
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: "1px solid var(--border-color)",
+                    background: "var(--background-color)",
+                    color: "var(--text-color)",
+                    borderRadius: "6px",
+                    padding: "8px 10px",
+                  },
+                }),
+              ],
+            },
+            m,
+          ),
+        ),
+        be.jsxs("div", {
+          style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+          children: [
+            be.jsx(xn, { onClick: o, children: "取消" }),
+            be.jsx(xn, { type: "primary", loading: s, onClick: l, children: "保存并安装" }),
+          ],
+        }),
+      ],
+    }),
+  });
+};
+
+function skillsEmptyTextByPlatform(e) {
+  return e === "claude"
+    ? "未检测到 Skills，请先安装到 ~/.claude/skills"
+    : e === "gemini"
+      ? "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills"
+      : "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills";
+}
+
+function skillsTitleByPlatform(e) {
+  return e === "claude"
+    ? "Claude Skills"
+    : e === "gemini"
+      ? "Gemini Skills"
+      : "Codex Skills";
+}
+
+const renderSkillRows = (e, t) =>
+  e.map((n) =>
+    be.jsx(
+      "label",
+      {
+        style: {
+          display: "flex",
+          gap: "10px",
+          padding: "8px",
+          borderRadius: "6px",
+          background: "var(--background-color)",
+          border: "1px solid var(--border-color)",
+          marginBottom: "8px",
+        },
+        children: be.jsxs("div", {
+          style: { display: "flex", gap: "8px", width: "100%" },
+          children: [
+            be.jsx("input", {
+              type: "checkbox",
+              checked: n.enabled !== !1,
+              onChange: (r) => t(n.name, r.target.checked, n.path),
+            }),
+            be.jsxs("div", {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: "2px",
+                flex: 1,
+              },
+              children: [
+                be.jsx("div", { children: n.name }),
+                be.jsx("div", {
+                  style: {
+                    color: "var(--text-color-secondary)",
+                    fontSize: "12px",
+                    wordBreak: "break-all",
+                  },
+                  children: n.path,
+                }),
+                n.description
+                  ? be.jsx("div", {
+                      style: {
+                        color: "var(--text-color-secondary)",
+                        fontSize: "12px",
+                      },
+                      children: n.description,
+                    })
+                  : null,
+              ],
+            }),
+          ],
+        }),
+      },
+      `${n.name}:${n.path || ""}`,
+    ),
+  );
+
+const SkillsManagerModal = ({
+  open: e,
+  onClose: t,
+  platform: n,
+  skills: r,
+  enabledCount: o,
+  loading: l,
+  onToggle: s,
+  onToggleAll: u,
+}) => {
+  const f = skillsEmptyTextByPlatform(n);
+  return be.jsx(xr, {
+    title: skillsTitleByPlatform(n),
+    open: e,
+    onCancel: t,
+    width: 760,
+    footer: null,
+    destroyOnClose: !0,
+    children: be.jsxs("div", {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+        maxHeight: "70vh",
+      },
+      children: [
+        be.jsxs("div", {
+          style: {
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "8px",
+            flexWrap: "wrap",
+          },
+          children: [
+            be.jsx("div", {
+              style: {
+                color: "var(--text-color-secondary)",
+                fontSize: "12px",
+              },
+              children: l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
+            }),
+            be.jsxs("div", {
+              style: { display: "flex", gap: "8px" },
+              children: [
+                be.jsx(xn, {
+                  size: "small",
+                  onClick: () => u(!0),
+                  disabled: r.length === 0,
+                  children: "一键启用",
+                }),
+                be.jsx(xn, {
+                  size: "small",
+                  onClick: () => u(!1),
+                  disabled: r.length === 0,
+                  children: "一键禁用",
+                }),
+              ],
+            }),
+          ],
+        }),
+        be.jsx("div", {
+          style: {
+            overflow: "auto",
+            maxHeight: "calc(70vh - 56px)",
+            paddingRight: "4px",
+          },
+          children:
+            r.length === 0
+              ? be.jsx("div", {
+                  style: {
+                    color: "var(--text-color-secondary)",
+                    fontSize: "12px",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "6px",
+                    padding: "12px",
+                    background: "var(--background-color-secondary, #f5f5f5)",
+                  },
+                  children: f,
+                })
+              : renderSkillRows(r, s),
+        }),
+      ],
+    }),
+  });
+};
 
 const { TextArea: Qa } = zi;
 const ps = {
@@ -2038,10 +2492,19 @@ const ConfigEditorPanel = () => {
       [p, h] = c.useState(""),
       [b, x] = c.useState(""),
       [codexMcpServerIds, setCodexMcpServerIds] = c.useState([]),
+      [mcpHealthItems, setMcpHealthItems] = c.useState([]),
+      [mcpHealthLoading, setMcpHealthLoading] = c.useState(!1),
+      [installingMcpId, setInstallingMcpId] = c.useState(""),
+      [removingMcpId, setRemovingMcpId] = c.useState(""),
+      [installEnvModalOpen, setInstallEnvModalOpen] = c.useState(!1),
+      [pendingInstallMcpItem, setPendingInstallMcpItem] = c.useState(null),
+      [installEnvDraft, setInstallEnvDraft] = c.useState({}),
+      [healthDetailState, setHealthDetailState] = c.useState(null),
       [C, Z] = c.useState([]),
       [j, q] = c.useState(!1),
       [S, y] = c.useState(null),
       [$, w] = c.useState(!1),
+      [skillsModalOpen, setSkillsModalOpen] = c.useState(!1),
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null,
       R = c.useMemo(() => {
@@ -2057,82 +2520,152 @@ const ConfigEditorPanel = () => {
         const W = t === "claude" ? u : l;
         try {
           const H = JSON.parse(W || "{}");
-          if (H && H.mcpServers) return Object.keys(H.mcpServers);
+          if (H && H.mcpServers) {
+            const k = Object.keys(H.mcpServers),
+              L = Array.isArray(mcpHealthItems)
+                ? mcpHealthItems.filter((U) => U && U.installed).map((U) => U.serverId)
+                : [];
+            return Array.from(new Set([...k, ...L]));
+          }
         } catch {}
-        return [];
-      }, [l, u, m, t, codexMcpServerIds]),
-      P = async (W) => {
-        try {
-          if (t === "codex") {
-            const U = await installCodexMcpById(W.id);
-            const T = Array.isArray(U?.warnings) ? U.warnings : [];
-            T.forEach((k) => Kt.warning(k));
-            try {
-              const k = await fetchCurrentConfig("codex");
-              k?.configContent !== void 0 && v(k.configContent);
-              k?.authContent !== void 0 && h(k.authContent);
-            } catch (k) {
-              console.error("刷新 Codex 配置失败:", k);
-            }
-            try {
-              const k = await fetchCodexMcpServerIds();
-              Array.isArray(k) && setCodexMcpServerIds(k);
-            } catch (k) {
-              console.error("刷新 Codex MCP 列表失败:", k);
-            }
-            Kt.success(`已安装 MCP: ${W.name}`);
-            return;
-          }
-          const k = (t === "claude" ? u : l) || "{}";
-          let L;
+        return Array.isArray(mcpHealthItems)
+          ? mcpHealthItems.filter((H) => H && H.installed).map((H) => H.serverId)
+          : [];
+      }, [l, u, m, t, codexMcpServerIds, mcpHealthItems]),
+      checkMcpHealth = c.useCallback(
+        async (W = t, H = !1) => {
+          if (!W) return;
+          setMcpHealthLoading(!0);
           try {
-            L = JSON.parse(k);
-          } catch {
-            if (!k.trim()) L = {};
-            else {
-              Kt.error("当前配置不是有效的 JSON，无法自动添加 MCP");
-              return;
+            const k = await fetchMcpHealth(W);
+            Array.isArray(k) ? setMcpHealthItems(k) : setMcpHealthItems([]);
+            if (W === "codex" || H) {
+              try {
+                const L = await fetchCodexMcpServerIds();
+                Array.isArray(L) ? setCodexMcpServerIds(L) : setCodexMcpServerIds([]);
+              } catch (L) {
+                console.error("刷新 Codex MCP 列表失败:", L), setCodexMcpServerIds([]);
+              }
             }
+            Kt.success("MCP 健康检测完成");
+          } catch (k) {
+            const L = k instanceof Error ? k.message : String(k);
+            console.error("检测 MCP 健康状态失败:", k), Kt.error(`检测 MCP 健康状态失败: ${L}`);
+          } finally {
+            setMcpHealthLoading(!1);
           }
-          (L.mcpServers || (L.mcpServers = {}),
-            L.mcpServers[W.id] &&
-              Kt.warning(`MCP Server ${W.id} 已存在，将被覆盖`),
-            (L.mcpServers[W.id] = W.config));
-          const G = JSON.stringify(L, null, 2);
-          (t === "claude" ? f(G) : s(G), Kt.success(`已添加 MCP: ${W.name}`));
-        } catch (H) {
-          console.error("添加 MCP 失败:", H),
-            Kt.error(t === "codex" ? "安装 MCP 失败" : "添加 MCP 失败");
+        },
+        [t],
+      ),
+      refreshCurrentMcpConfig = c.useCallback(async (W) => {
+        if (W === "claude") {
+          const H = await fetchCurrentConfig("claude");
+          H?.content !== void 0 && s(H.content);
+          f("");
+          return;
         }
+        if (W === "gemini") {
+          const H = await fetchCurrentConfig("gemini");
+          H?.content !== void 0 && s(H.content);
+          H?.envContent !== void 0 && x(H.envContent);
+          return;
+        }
+        const H = await fetchCurrentConfig("codex");
+        H?.configContent !== void 0 && v(H.configContent);
+        H?.authContent !== void 0 && h(H.authContent);
+      }, []),
+      installMcpItem = async (W, H = {}) => {
+        try {
+          if (!t) return;
+          setInstallingMcpId(W.id);
+          const U = await installMcpById(t, W.id, H);
+          const T = Array.isArray(U?.warnings) ? U.warnings : [];
+          T.forEach((k) => Kt.warning(k));
+          try {
+            await refreshCurrentMcpConfig(t);
+          } catch (k) {
+            console.error("刷新 MCP 配置失败:", k);
+          }
+          await checkMcpHealth(t, t === "codex");
+          Kt.success(`已安装 MCP: ${W.name}`);
+          return !0;
+        } catch (H) {
+          console.error("安装 MCP 失败:", H), Kt.error("安装 MCP 失败");
+          return !1;
+        } finally {
+          setInstallingMcpId("");
+        }
+      },
+      P = async (W) => {
+        const H = getMcpEnvEntries(W);
+        if (H.length > 0) {
+          setPendingInstallMcpItem(W), setInstallEnvDraft(createInitialMcpEnvDraft(W)), setInstallEnvModalOpen(!0);
+          return;
+        }
+        await installMcpItem(W, {});
+      },
+      U = async (W) => {
+        if (!t) return;
+        setRemovingMcpId(W.id);
+        try {
+          await uninstallMcpById(t, W.id);
+          try {
+            await refreshCurrentMcpConfig(t);
+          } catch (H) {
+            console.error("刷新 MCP 配置失败:", H);
+          }
+          await checkMcpHealth(t, t === "codex");
+          Kt.success(`已卸载 MCP: ${W.name}`);
+        } catch (H) {
+          console.error("卸载 MCP 失败:", H), Kt.error("卸载 MCP 失败");
+        } finally {
+          setRemovingMcpId("");
+        }
+      },
+      V0 = (W, H) => {
+        setInstallEnvDraft((k) => ({ ...k, [W]: H }));
+      },
+      openHealthDetail = (W, H) => {
+        setHealthDetailState({ item: W, health: H });
+      },
+      Q0 = async () => {
+        const W = pendingInstallMcpItem;
+        if (!W) return;
+        const H = getMissingMcpEnvNames(W, installEnvDraft);
+        if (H.length > 0) {
+          Kt.error(`请填写环境变量: ${H.join(", ")}`);
+          return;
+        }
+        const k = await installMcpItem(W, installEnvDraft);
+        k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
       };
     c.useEffect(() => {
       if (!O) {
-        (s(""), f(""), x(""), v(""), h(""), Z([]), setCodexMcpServerIds([]));
+        (s(""),
+          f(""),
+          x(""),
+          v(""),
+          h(""),
+          Z([]),
+          setCodexMcpServerIds([]),
+          setMcpHealthItems([]),
+          setMcpHealthLoading(!1),
+          setInstallingMcpId(""),
+          setInstallEnvModalOpen(!1),
+          setPendingInstallMcpItem(null),
+          setInstallEnvDraft({}),
+          setHealthDetailState(null),
+          setSkillsModalOpen(!1));
         return;
       }
       O.platform === "claude"
-        ? (s(O.content || "{}"), f(O.mcpContent || "{}"), x(""), v(""), h(""))
+        ? (s(O.content || "{}"), f(""), x(""), v(""), h(""))
         : O.platform === "gemini"
           ? (s(O.content || "{}"), x(O.envContent || ""), v(""), h(""))
           : (v(O.configContent || ""), h(O.authContent || "{}"), s(""), x(""));
     }, [O]);
     c.useEffect(() => {
-      let W = !1;
-      if (!O || O.platform !== "codex") {
-        setCodexMcpServerIds([]);
-        return;
-      }
-      (async () => {
-        try {
-          const H = await fetchCodexMcpServerIds();
-          W || setCodexMcpServerIds(Array.isArray(H) ? H : []);
-        } catch (H) {
-          (console.error("获取 Codex MCP 列表失败:", H), W || setCodexMcpServerIds([]));
-        }
-      })();
-      return () => {
-        W = !0;
-      };
+      setMcpHealthItems([]), setMcpHealthLoading(!1), O?.platform !== "codex" && setCodexMcpServerIds([]);
     }, [O]);
     const tt = c.useCallback((W) => {
       const H = new Set();
@@ -2337,18 +2870,17 @@ const ConfigEditorPanel = () => {
           return;
         }
         if (O.platform === "claude") {
-          if (!_(l) || !_(u)) {
+          if (!_(l)) {
             Kt.error("JSON格式不正确");
             return;
           }
           try {
-            const W = M(l),
-              H = M(u);
-            (await r(O.id, { content: W, mcpContent: H, claudeSkills: C }),
+            const W = M(l);
+            (await r(O.id, { content: W, claudeSkills: C }),
               s(W),
-              f(H),
+              f(""),
               Kt.success("保存成功"),
-              await A({ content: W, mcpContent: H, claudeSkills: C }));
+              await A({ content: W, claudeSkills: C }));
           } catch (W) {
             Kt.error("保存失败: " + W);
           }
@@ -2396,20 +2928,18 @@ const ConfigEditorPanel = () => {
             await r(O.id, U);
             if (o(O.platform) === O.id) {
               if (O.platform === "claude") {
-                if (!_(l) || !_(u)) {
+                if (!_(l)) {
                   Kt.error("JSON格式不正确");
                   return;
                 }
                 const T = M(l);
-                const F = M(u);
                 await applyConfigItem("claude", {
                   content: T,
-                  mcpContent: F,
                   claudeSkills: L,
                 });
                 const Y = await fetchCurrentConfig("claude");
                 Y?.content !== void 0 && s(Y.content);
-                Y?.mcpContent !== void 0 && f(Y.mcpContent);
+                f("");
               } else if (O.platform === "gemini") {
                 if (!_(l)) {
                   Kt.error("JSON格式不正确");
@@ -2460,20 +2990,18 @@ const ConfigEditorPanel = () => {
             await r(O.id, k);
             if (o(O.platform) === O.id) {
               if (O.platform === "claude") {
-                if (!_(l) || !_(u)) {
+                if (!_(l)) {
                   Kt.error("JSON格式不正确");
                   return;
                 }
                 const L = M(l);
-                const U = M(u);
                 await applyConfigItem("claude", {
                   content: L,
-                  mcpContent: U,
                   claudeSkills: H,
                 });
                 const T = await fetchCurrentConfig("claude");
                 T?.content !== void 0 && s(T.content);
-                T?.mcpContent !== void 0 && f(T.mcpContent);
+                f("");
               } else if (O.platform === "gemini") {
                 if (!_(l)) {
                   Kt.error("JSON格式不正确");
@@ -2528,9 +3056,12 @@ const ConfigEditorPanel = () => {
                   style: { display: "flex", gap: "8px" },
                   children: [
                     be.jsx(xn, {
-                      icon: be.jsx(Rv, {}),
                       onClick: () => w(!0),
-                      children: "MCP 市场",
+                      children: "MCP(全局)",
+                    }),
+                    be.jsx(xn, {
+                      onClick: () => setSkillsModalOpen(!0),
+                      children: "Skills",
                     }),
                     be.jsx(xn, {
                       type: "primary",
@@ -2604,37 +3135,7 @@ const ConfigEditorPanel = () => {
                         }),
                       ],
                     }),
-                    be.jsxs("div", {
-                      style: {
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "12px",
-                            color: "var(--text-color-secondary)",
-                          },
-                          children: [
-                            be.jsx(Ya, {}),
-                            " 配置文件路径: ~/.claude.json（仅 MCP）",
-                          ],
-                        }),
-                        be.jsx(Qa, {
-                          value: u,
-                          onChange: (H) => f(H.target.value),
-                          placeholder: "请输入 MCP 配置（.claude.json）",
-                          rows: 10,
-                          style: {
-                            flex: 1,
-                            fontFamily: "monospace",
-                            fontSize: "13px",
-                          },
-                        }),
-                      ],
-                    }),
-                    be.jsxs("div", {
+                    !1 && be.jsxs("div", {
                       style: {
                         display: "flex",
                         flexDirection: "column",
@@ -2765,7 +3266,45 @@ const ConfigEditorPanel = () => {
                 width: 1e3,
                 footer: null,
                 destroyOnClose: !0,
-                children: be.jsx(jv, { onAdd: P, installedIds: R }),
+                children: be.jsx(jv, {
+                  onAdd: P,
+                  onRemove: U,
+                  onCheckHealth: () => checkMcpHealth(t),
+                  onOpenHealthDetail: openHealthDetail,
+                  installedIds: R,
+                  platform: t,
+                  healthItems: mcpHealthItems,
+                  healthLoading: mcpHealthLoading,
+                  addingId: installingMcpId,
+                  removingId: removingMcpId,
+                }),
+              }),
+              be.jsx(McpInstallEnvModal, {
+                open: installEnvModalOpen,
+                item: pendingInstallMcpItem,
+                envValues: installEnvDraft,
+                onChange: V0,
+                onClose: () => {
+                  setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
+                },
+                onConfirm: Q0,
+                loading: !!installingMcpId,
+              }),
+              be.jsx(McpHealthDetailModal, {
+                open: !!healthDetailState,
+                item: healthDetailState?.item || null,
+                health: healthDetailState?.health || null,
+                onClose: () => setHealthDetailState(null),
+              }),
+              be.jsx(SkillsManagerModal, {
+                open: skillsModalOpen,
+                onClose: () => setSkillsModalOpen(!1),
+                platform: O.platform,
+                skills: C,
+                enabledCount: Q,
+                loading: j,
+                onToggle: J,
+                onToggleAll: K,
               }),
               B(),
             ],
@@ -2786,10 +3325,13 @@ const ConfigEditorPanel = () => {
                     style: { display: "flex", gap: "8px" },
                     children: [
                       be.jsx(xn, {
-                        icon: be.jsx(Rv, {}),
                         onClick: () => w(!0),
-                        children: "MCP 市场",
+                        children: "MCP(全局)",
                       }),
+                    be.jsx(xn, {
+                      onClick: () => setSkillsModalOpen(!0),
+                      children: "Skills",
+                    }),
                       be.jsx(xn, {
                         type: "primary",
                         icon: be.jsx(Pv, {}),
@@ -2908,7 +3450,7 @@ const ConfigEditorPanel = () => {
                         }),
                       ],
                     }),
-                    be.jsxs("div", {
+                    !1 && be.jsxs("div", {
                       style: {
                         display: "flex",
                         flexDirection: "column",
@@ -3040,7 +3582,44 @@ const ConfigEditorPanel = () => {
                   width: 1e3,
                   footer: null,
                   destroyOnClose: !0,
-                  children: be.jsx(jv, { onAdd: P, installedIds: R }),
+                  children: be.jsx(jv, {
+                    onAdd: P,
+                    onRemove: U,
+                    onCheckHealth: () => checkMcpHealth(t),
+                    installedIds: R,
+                    platform: t,
+                    healthItems: mcpHealthItems,
+                    healthLoading: mcpHealthLoading,
+                    addingId: installingMcpId,
+                    removingId: removingMcpId,
+                  }),
+                }),
+                be.jsx(McpInstallEnvModal, {
+                  open: installEnvModalOpen,
+                  item: pendingInstallMcpItem,
+                  envValues: installEnvDraft,
+                  onChange: V0,
+                  onClose: () => {
+                    setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
+                  },
+                  onConfirm: Q0,
+                  loading: !!installingMcpId,
+                }),
+                be.jsx(McpHealthDetailModal, {
+                open: !!healthDetailState,
+                item: healthDetailState?.item || null,
+                health: healthDetailState?.health || null,
+                onClose: () => setHealthDetailState(null),
+              }),
+              be.jsx(SkillsManagerModal, {
+                  open: skillsModalOpen,
+                  onClose: () => setSkillsModalOpen(!1),
+                  platform: O.platform,
+                  skills: C,
+                  enabledCount: Q,
+                  loading: j,
+                  onToggle: J,
+                  onToggleAll: K,
                 }),
                 B(),
               ],
@@ -3060,10 +3639,13 @@ const ConfigEditorPanel = () => {
                     style: { display: "flex", gap: "8px" },
                     children: [
                       be.jsx(xn, {
-                        icon: be.jsx(Rv, {}),
                         onClick: () => w(!0),
-                        children: "MCP 市场",
+                        children: "MCP(全局)",
                       }),
+                    be.jsx(xn, {
+                      onClick: () => setSkillsModalOpen(!0),
+                      children: "Skills",
+                    }),
                       be.jsx(xn, {
                         type: "primary",
                         icon: be.jsx(Pv, {}),
@@ -3182,7 +3764,7 @@ const ConfigEditorPanel = () => {
                         }),
                       ],
                     }),
-                    be.jsxs("div", {
+                    !1 && be.jsxs("div", {
                       style: {
                         display: "flex",
                         flexDirection: "column",
@@ -3312,7 +3894,44 @@ const ConfigEditorPanel = () => {
                   width: 1e3,
                   footer: null,
                   destroyOnClose: !0,
-                  children: be.jsx(jv, { onAdd: P, installedIds: R }),
+                  children: be.jsx(jv, {
+                    onAdd: P,
+                    onRemove: U,
+                    onCheckHealth: () => checkMcpHealth(t),
+                    installedIds: R,
+                    platform: t,
+                    healthItems: mcpHealthItems,
+                    healthLoading: mcpHealthLoading,
+                    addingId: installingMcpId,
+                    removingId: removingMcpId,
+                  }),
+                }),
+                be.jsx(McpInstallEnvModal, {
+                  open: installEnvModalOpen,
+                  item: pendingInstallMcpItem,
+                  envValues: installEnvDraft,
+                  onChange: V0,
+                  onClose: () => {
+                    setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
+                  },
+                  onConfirm: Q0,
+                  loading: !!installingMcpId,
+                }),
+                be.jsx(McpHealthDetailModal, {
+                open: !!healthDetailState,
+                item: healthDetailState?.item || null,
+                health: healthDetailState?.health || null,
+                onClose: () => setHealthDetailState(null),
+              }),
+              be.jsx(SkillsManagerModal, {
+                  open: skillsModalOpen,
+                  onClose: () => setSkillsModalOpen(!1),
+                  platform: O.platform,
+                  skills: C,
+                  enabledCount: Q,
+                  loading: j,
+                  onToggle: J,
+                  onToggleAll: K,
                 }),
                 B(),
               ],

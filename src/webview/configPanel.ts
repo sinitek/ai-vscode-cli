@@ -6,6 +6,7 @@ import { getConfigViewHtml } from "./configView";
 import {
   ConfigRequestMessage,
   ConfigResponseMessage,
+  ConfigOpenExternalMessage,
   ConfigOpenPathMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
@@ -48,6 +49,7 @@ export class ConfigManagerPanel {
         message:
           | ConfigRequestMessage
           | ConfigOpenPathMessage
+          | ConfigOpenExternalMessage
           | { type: "config:debug"; payload?: unknown }
       ) => {
       if (message && message.type === "config:debug") {
@@ -59,6 +61,13 @@ export class ConfigManagerPanel {
         if (target) {
           const uri = vscode.Uri.file(target);
           void vscode.commands.executeCommand("revealFileInOS", uri);
+        }
+        return;
+      }
+      if (message && message.type === "config:openExternal") {
+        const target = message.url;
+        if (target) {
+          void vscode.env.openExternal(vscode.Uri.parse(target));
         }
         return;
       }
@@ -157,8 +166,24 @@ export class ConfigManagerPanel {
         case "getCodexMcpServerIds":
           response.data = await configService.getCodexMcpServerIds();
           break;
+        case "getCodexMcpHealth":
+          response.data = await configService.getCodexMcpHealth();
+          break;
+        case "getMcpHealth":
+          response.data = await configService.getMcpHealth(message.platform);
+          break;
+        case "installMcp":
+          response.data = await configService.installMcpServer(
+            message.platform,
+            message.mcpId,
+            message.envOverrides,
+          );
+          break;
         case "installCodexMcp":
           response.data = await configService.installCodexMcpServer(message.mcpId);
+          break;
+        case "uninstallMcp":
+          response.data = await configService.uninstallMcpServer(message.platform, message.mcpId);
           break;
         case "exportConfigs": {
           const payload = message.payload;

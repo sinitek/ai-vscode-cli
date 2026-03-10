@@ -24,6 +24,7 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "导入配置": "Import Configs",
   "全选": "Select All",
   "一键导入": "Import All",
+  "一键检测健康": "Check Health",
   "一键启用": "Enable All",
   "一键禁用": "Disable All",
   "删除成功": "Deleted successfully",
@@ -31,7 +32,21 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "保存成功": "Saved successfully",
   "已更新当前激活的配置": "Updated the active config",
   "已添加": "Added",
+  "技能": "Skills",
+  "Claude 技能管理": "Claude Skills",
+  "Gemini 技能管理": "Gemini Skills",
+  "Codex 技能管理": "Codex Skills",
+  "健康": "Healthy",
+  "不健康": "Unhealthy",
+  "检测中": "Checking",
+  "未知": "Unknown",
+  "未安装": "Not installed",
   "添加": "Add",
+  "打开官网": "Open Website",
+  "官网/注册": "Website / Sign Up",
+  "如未注册，请先前往官网完成注册或创建 API Key，再填写以下环境变量。": "If needed, open the official site to sign up or create an API key before filling in the environment variables below.",
+  "注册地址": "Registration URL",
+  "卸载": "Remove",
   "复制配置": "Copy Config",
   "复制失败，请手动复制": "Copy failed. Please copy manually.",
   "启动命令": "Run Command",
@@ -52,14 +67,25 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "添加成功": "Added successfully.",
   "配置未填写": "Config is empty.",
   "需配置环境变量": "Environment variables required.",
+  "健康检查": "Health Check",
+  "MCP 健康检测完成": "MCP health check completed.",
+  "环境变量配置": "Environment Variables",
+  "保存并安装": "Save and Install",
+  "请填写环境变量": "Please fill in the environment variables.",
+  "必填": "Required",
+  "可编辑默认值": "Editable default",
+  "查看错误": "View Error",
+  "健康检查详情": "Health Check Details",
+  "失败原因": "Failure Reason",
+  "关闭": "Close",
   "查看范例": "View example",
   "请输入配置名称": "Enter config name",
   "请输入新的配置名称": "Enter new config name",
   "请输入JSON配置": "Enter JSON config",
   "请输入TOML配置": "Enter TOML config",
   "请输入 .env 配置": "Enter .env config",
-  "请输入 MCP 配置（.claude.json）": "Enter MCP config (.claude.json)",
   "技能列表加载中...": "Loading skills list...",
+  "Skills 加载中...": "Loading Skills...",
   "未检测到 Skills，请先安装到 ~/.claude/skills": "No skills detected. Install to ~/.claude/skills first.",
   "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills": "No skills detected. Install to ~/.agents/skills or workspace .codex/skills first.",
   "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills": "No skills detected. Install to ~/.gemini/skills or workspace .gemini/skills first.",
@@ -70,6 +96,7 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
   "添加 MCP 失败": "Failed to add MCP.",
   "安装 MCP 失败": "Failed to install MCP.",
+  "卸载 MCP 失败": "Failed to remove MCP.",
   "JSON格式不正确": "Invalid JSON format.",
   "auth.json格式不正确": "Invalid auth.json format.",
   "当前配置不是有效的 JSON，无法自动添加 MCP": "Current config is not valid JSON; cannot auto-add MCP.",
@@ -102,6 +129,12 @@ const CONFIG_TRANSLATION_PATTERNS_EN = [
   { pattern: "^导入失败[:：]?\\s*(.+)$", replace: "Import failed: $1" },
   { pattern: "^已添加 MCP[:：]?\\s*(.+)$", replace: "Added MCP: $1" },
   { pattern: "^已安装 MCP[:：]?\\s*(.+)$", replace: "Installed MCP: $1" },
+  { pattern: "^已卸载 MCP[:：]?\\s*(.+)$", replace: "Removed MCP: $1" },
+  { pattern: "^请填写环境变量[:：]?\\s*(.+)$", replace: "Please fill in environment variables: $1" },
+  { pattern: "^检测 MCP 健康状态失败[:：]?\\s*(.+)$", replace: "Failed to check MCP health: $1" },
+  { pattern: "^检测命令失败[:：]?\\s*(.+)$", replace: "Health command failed: $1" },
+  { pattern: "^已启用\\s*(\\d+)\\s*/\\s*(\\d+)$", replace: "$1 enabled / $2 total" },
+  { pattern: "^健康检查[:：]?\\s*(.+)$", replace: "Health check: $1" },
   { pattern: "^MCP Server (.+) 已存在，将被覆盖$", replace: "MCP Server $1 already exists and will be overwritten." },
   { pattern: "^已保存，但更新激活配置失败[:：]?\\s*(.+)$", replace: "Saved, but failed to update active config: $1" },
   { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" }
@@ -282,6 +315,13 @@ export function getConfigViewHtml(
             // ignore
           }
         },
+        openExternal: (url) => {
+          try {
+            vscode.postMessage({ type: "config:openExternal", url });
+          } catch (error) {
+            // ignore
+          }
+        },
       };
 
       window.electronAPI = {
@@ -302,7 +342,12 @@ export function getConfigViewHtml(
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
           getGeminiSkillsList: () => requestConfig("getGeminiSkillsList", {}),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
+          getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),
+          getMcpHealth: (platform) => requestConfig("getMcpHealth", { platform }),
+          installMcp: (platform, mcpId, envOverrides) =>
+            requestConfig("installMcp", { platform, mcpId, envOverrides }),
           installCodexMcp: (mcpId) => requestConfig("installCodexMcp", { mcpId }),
+          uninstallMcp: (platform, mcpId) => requestConfig("uninstallMcp", { platform, mcpId }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };
@@ -675,18 +720,9 @@ export function getConfigViewHtml(
           const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
           const configContentObj = parseJsonObject(normalizedConfigContent);
           const currentContentObj = parseJsonObject(normalizedCurrentContent);
-          const contentMatch = configContentObj && currentContentObj
+          return configContentObj && currentContentObj
             ? isDeepEqualSubset(configContentObj, currentContentObj)
             : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
-          const configMcp = parseJsonObject(config.mcpContent);
-          const currentMcp = parseJsonObject(current.mcpContent);
-          const mcpMatch = configMcp && currentMcp
-            ? isDeepEqualSubset(configMcp, currentMcp)
-            : normalizeJson(config.mcpContent ?? "{}") === normalizeJson(current.mcpContent ?? "{}");
-          return (
-            contentMatch &&
-            mcpMatch
-          );
         }
         if (platform === "gemini") {
           const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);

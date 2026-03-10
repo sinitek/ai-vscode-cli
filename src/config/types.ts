@@ -53,6 +53,7 @@ export type McpMarketplaceItem = {
   name: string;
   description: string;
   homepage: string;
+  signupUrl?: string;
   category: string;
   config: {
     command?: string;
@@ -69,6 +70,22 @@ export type CodexMcpInstallResult = {
   commandArgs: string[];
   warnings: string[];
 };
+
+export type McpHealthStatus = "healthy" | "unhealthy" | "unknown";
+
+export type McpHealthItem = {
+  platform: ConfigPlatform;
+  serverId: string;
+  installed: boolean;
+  enabled: boolean;
+  status: McpHealthStatus;
+  checkedAt?: string;
+  latencyMs?: number;
+  details: string;
+};
+
+export type CodexMcpHealthStatus = McpHealthStatus;
+export type CodexMcpHealthItem = McpHealthItem;
 
 export type ApplyPayload = {
   content?: string;

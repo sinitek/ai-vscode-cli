@@ -51,8 +51,20 @@ const detectConfigApiMode = () =>
     getCodexMcpServerIds: async () => {
       throw new Error("当前模式不支持读取 Codex MCP");
     },
+    getCodexMcpHealth: async () => {
+      throw new Error("当前模式不支持检测 Codex MCP 健康状态");
+    },
+    getMcpHealth: async () => {
+      throw new Error("当前模式不支持检测 MCP 健康状态");
+    },
+    installMcp: async () => {
+      throw new Error("当前模式不支持安装 MCP");
+    },
     installCodexMcp: async () => {
       throw new Error("当前模式不支持安装 Codex MCP");
+    },
+    uninstallMcp: async () => {
+      throw new Error("当前模式不支持卸载 MCP");
     },
     exportConfigs: async () => {
       throw new Error("当前模式不支持导出文件");
@@ -100,6 +112,30 @@ const detectConfigApiMode = () =>
       throw (console.error("获取 Codex MCP 列表失败:", e), e);
     }
   },
+  fetchCodexMcpHealth = async () => {
+    if (!configApi.getCodexMcpHealth) return [];
+    try {
+      return configApi.getCodexMcpHealth();
+    } catch (e) {
+      throw (console.error("获取 Codex MCP 健康状态失败:", e), e);
+    }
+  },
+  fetchMcpHealth = async (e) => {
+    if (!configApi.getMcpHealth) return [];
+    try {
+      return configApi.getMcpHealth(e);
+    } catch (t) {
+      throw (console.error("获取 MCP 健康状态失败:", t), t);
+    }
+  },
+  installMcpById = async (e, t, n) => {
+    if (!configApi.installMcp) throw new Error("当前模式不支持安装 MCP");
+    try {
+      return configApi.installMcp(e, t, n);
+    } catch (r) {
+      throw (console.error("安装 MCP 失败:", r), r);
+    }
+  },
   installCodexMcpById = async (e) => {
     if (!configApi.installCodexMcp)
       throw new Error("当前模式不支持安装 Codex MCP");
@@ -107,6 +143,14 @@ const detectConfigApiMode = () =>
       return configApi.installCodexMcp(e);
     } catch (t) {
       throw (console.error("安装 Codex MCP 失败:", t), t);
+    }
+  },
+  uninstallMcpById = async (e, t) => {
+    if (!configApi.uninstallMcp) throw new Error("当前模式不支持卸载 MCP");
+    try {
+      return configApi.uninstallMcp(e, t);
+    } catch (n) {
+      throw (console.error("卸载 MCP 失败:", n), n);
     }
   },
   fetchConfigList = async (e) => {

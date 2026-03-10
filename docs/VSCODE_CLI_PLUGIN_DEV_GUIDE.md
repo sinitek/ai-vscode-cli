@@ -159,10 +159,25 @@ export function getCliArgs(cli: CliName): string[] {
 - 保存时会将禁用状态写入 `~/.gemini/settings.json` 的 `skills.disabled`；默认保持 `skills.enabled = true`。
 - 仅管理当前面板可见技能名对应的禁用项，不会覆盖用户手动维护的其它 `skills.disabled` 规则。
 
-### Codex MCP 市场安装策略
+### 多 Tab 并发执行
+
+- Interactive 模式下，运行态、停止控制、消息流、任务列表都会按 Tab 隔离。
+- 在某个 Tab 中启动新任务时，不会再自动中断其他 Tab 正在运行的任务。
+- 切换 Tab 只会切换当前展示的消息、运行状态与任务列表，不会向 CLI 发送停止指令。
+
+### MCP 市场安装/卸载策略
 
 - Codex 平台在配置中心点击 MCP 市场“添加”时，会调用真实命令安装：`codex mcp add ...`。
-- 安装状态通过 `codex mcp list --json` 回读，而不是仅根据编辑器中的 TOML 文本推断。
+- Claude 平台在配置中心点击 MCP 市场“添加”时，会调用真实命令安装；其中 stdio MCP 优先通过 `claude mcp add-json --scope user ...` 写入完整配置，避免 `claude mcp add` 在带 `--env` 参数时把环境变量误写进命令参数。HTTP/SSE MCP 仍使用 `claude mcp add --scope user ...`。
+- Gemini 平台在配置中心点击 MCP 市场“添加”时，会调用真实命令安装：`gemini mcp add --scope user ...`；当当前 `gemini` 命令受本机 Node 版本影响无法直接执行时，插件会回退到 Node 20 + Gemini CLI 入口执行命令。
+- 如果某个 MCP 在市场配置中声明了 `env`，安装前会先弹出环境变量配置窗口，要求用户填写变量值；窗口内会优先使用该 MCP 的 `signupUrl` 作为官网/注册地址点击入口；若未配置则回退到 `homepage`，便于先注册再回填。
+- 例如 Context7 条目会要求填写 `CONTEXT7_API_KEY`，并提供 `https://context7.com/dashboard` 作为登录/创建 API Key 的入口。
+- Codex 平台在配置中心点击 MCP 市场“卸载”时，会调用真实命令卸载：`codex mcp remove <name>`，并兼容性地同步清理 `~/.codex/config.toml` 中对应的 `[mcp_servers.<name>]` 配置段。
+- Claude 平台在配置中心点击 MCP 市场“卸载”时，会调用真实命令卸载：`claude mcp remove --scope user <name>`，并兼容性地同步清理 `~/.claude.json` 中的 `mcpServers.<name>`。
+- Gemini 平台在配置中心点击 MCP 市场“卸载”时，会调用真实命令卸载：`gemini mcp remove --scope user <name>`；当当前 `gemini` 命令受本机 Node 版本影响无法直接执行时，插件会回退到 Node 20 + Gemini CLI 入口执行命令；同时兼容性地同步清理 `~/.gemini/settings.json` 中的 `mcpServers.<name>`。
+- Codex 安装状态通过 `codex mcp list --json` 回读，而不是仅根据编辑器中的 TOML 文本推断。
+- Claude / Gemini 的健康状态分别通过实际 `claude mcp list` / `gemini mcp list` 命令解析。
+- Claude 分组界面不再提供 `~/.claude.json` 文本编辑区，避免与当前命令式 MCP 管理方式重复。
 - stdio MCP 会按可用 `env` 值追加 `--env KEY=VALUE`；占位值（如 `<YOUR_API_KEY>`）会跳过并给出警告。
 - HTTP MCP 会优先写入 `--url`；当 `Authorization` 头是 `Bearer $TOKEN` / `Bearer ${TOKEN}` 时，自动映射为 `--bearer-token-env-var TOKEN`。
 

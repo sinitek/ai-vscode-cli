@@ -104,7 +104,8 @@
         "MS365_MCP_CLIENT_SECRET": "<AZURE_APP_CLIENT_SECRET>",
         "MS365_MCP_TENANT_ID": "common"
       }
-    }
+    },
+    "signupUrl": "https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
   },
   {
     "id": "docling",
@@ -138,7 +139,8 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
       }
-    }
+    },
+    "signupUrl": "https://github.com/settings/tokens"
   },
   {
     "id": "gitlab",
@@ -156,7 +158,8 @@
         "GITLAB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>",
         "GITLAB_API_URL": "https://gitlab.com/api/v4"
       }
-    }
+    },
+    "signupUrl": "https://gitlab.com/-/user_settings/personal_access_tokens"
   },
   {
     "id": "sentry",
@@ -173,7 +176,8 @@
       "env": {
         "SENTRY_AUTH_TOKEN": "<YOUR_TOKEN>"
       }
-    }
+    },
+    "signupUrl": "https://sentry.io/settings/account/api/auth-tokens/"
   },
   {
     "id": "git",
@@ -259,7 +263,8 @@
       "env": {
         "BRAVE_API_KEY": "<YOUR_API_KEY>"
       }
-    }
+    },
+    "signupUrl": "https://api.search.brave.com/app/keys"
   },
   {
     "id": "google-maps",
@@ -276,7 +281,8 @@
       "env": {
         "GOOGLE_MAPS_API_KEY": "<YOUR_API_KEY>"
       }
-    }
+    },
+    "signupUrl": "https://console.cloud.google.com/google/maps-apis/credentials"
   },
   {
     "id": "slack",
@@ -294,7 +300,8 @@
         "SLACK_BOT_TOKEN": "<YOUR_BOT_TOKEN>",
         "SLACK_TEAM_ID": "<YOUR_TEAM_ID>"
       }
-    }
+    },
+    "signupUrl": "https://api.slack.com/apps"
   },
   {
     "id": "notion",
@@ -311,7 +318,8 @@
       "env": {
         "NOTION_API_KEY": "<YOUR_API_KEY>"
       }
-    }
+    },
+    "signupUrl": "https://www.notion.so/profile/integrations"
   },
   {
     "id": "linear",
@@ -328,7 +336,8 @@
       "env": {
         "LINEAR_API_KEY": "<YOUR_API_KEY>"
       }
-    }
+    },
+    "signupUrl": "https://linear.app/settings/api"
   },
   {
     "id": "sequential-thinking",
@@ -348,15 +357,19 @@
     "id": "context7",
     "name": "Context7",
     "description": "为 AI 提供最新的、特定版本的文档和代码示例。",
-    "homepage": "https://github.com/upstash/context7-mcp",
+    "homepage": "https://context7.com/dashboard",
     "category": "AI与智能",
     "config": {
       "command": "npx",
       "args": [
         "-y",
         "@upstash/context7-mcp@latest"
-      ]
-    }
+      ],
+      "env": {
+        "CONTEXT7_API_KEY": "<YOUR_CONTEXT7_API_KEY>"
+      }
+    },
+    "signupUrl": "https://context7.com/dashboard"
   },
   {
     "id": "memory",
@@ -388,7 +401,8 @@
         "Z_AI_API_KEY": "<YOUR_API_KEY>",
         "Z_AI_MODE": "ZHIPU"
       }
-    }
+    },
+    "signupUrl": "https://open.bigmodel.cn/usercenter/apikeys"
   },
   {
     "id": "time",
