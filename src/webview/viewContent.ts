@@ -1170,10 +1170,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         align-items: center;
         border: 1px solid transparent;
         border-radius: 999px;
-        padding: 2px 8px;
-        font-size: 12px;
+        padding: 0 8px;
+        font-size: 11px;
         line-height: 1;
-        height: 24px;
+        height: 18px;
         white-space: nowrap;
       }
       .run-stream-stale-badge.run-stream-stale-badge-warning {
