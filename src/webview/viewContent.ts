@@ -114,6 +114,8 @@ const WEBVIEW_I18N = {
     runStreamSourceStdout: "stdout",
     runStreamSourceStderr: "stderr",
     runStreamSourceEvent: "event",
+    runStreamSlowLabel: "Slow",
+    runStreamVerySlowLabel: "Very Slow",
     helpTitle: "Help",
     helpClose: "Close",
     helpTabsLabel: "Help",
@@ -316,6 +318,8 @@ const WEBVIEW_I18N = {
     runStreamSourceStdout: "标准输出",
     runStreamSourceStderr: "其它输出",
     runStreamSourceEvent: "事件",
+    runStreamSlowLabel: "慢",
+    runStreamVerySlowLabel: "极慢",
     helpTitle: "使用说明",
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
@@ -1161,21 +1165,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .run-stream-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
       }
-      .run-stream-button.run-stream-button-warning {
+      .run-stream-stale-badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        line-height: 1;
+        height: 24px;
+        white-space: nowrap;
+      }
+      .run-stream-stale-badge.run-stream-stale-badge-warning {
         border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
         background: var(--vscode-inputValidation-warningBackground, var(--vscode-editor-inactiveSelectionBackground));
         color: var(--vscode-editorWarning-foreground);
       }
-      .run-stream-button.run-stream-button-warning:hover {
-        background: var(--vscode-inputValidation-warningBackground, var(--vscode-editor-inactiveSelectionBackground));
-      }
-      .run-stream-button.run-stream-button-critical {
+      .run-stream-stale-badge.run-stream-stale-badge-critical {
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
         background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-inactiveSelectionBackground));
         color: var(--vscode-errorForeground);
-      }
-      .run-stream-button.run-stream-button-critical:hover {
-        background: var(--vscode-inputValidation-errorBackground, var(--vscode-editor-inactiveSelectionBackground));
       }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
@@ -2079,6 +2088,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <button id="runStreamButton" class="run-stream-button" style="display: none;" aria-label="${i18n.runStreamViewAria}" title="${i18n.runStreamViewAria}">
           ${i18n.runStreamViewLabel}
         </button>
+        <span id="runStreamStaleBadge" class="run-stream-stale-badge" style="display: none;"></span>
         <span id="runWaitTime" class="run-wait-time">00:00</span>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}
@@ -2595,6 +2605,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runWait: document.getElementById("runWait"),
         runStatusText: document.getElementById("runStatusText"),
         runStreamButton: document.getElementById("runStreamButton"),
+        runStreamStaleBadge: document.getElementById("runStreamStaleBadge"),
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
         queueIndicator: document.getElementById("queueIndicator"),
@@ -2694,8 +2705,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       const RUN_STREAM_PREVIEW_MAX_LENGTH = 220;
       const RUN_STREAM_AUTO_SCROLL_THRESHOLD_PX = 50;
-      const RUN_STREAM_STALE_WARNING_MS = 60 * 1000;
-      const RUN_STREAM_STALE_CRITICAL_MS = 5 * 60 * 1000;
+      const RUN_STREAM_STALE_WARNING_MS = 30 * 1000;
+      const RUN_STREAM_STALE_CRITICAL_MS = 2 * 60 * 1000;
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const runningTabStartedAtById = Object.create(null);
 
@@ -5052,13 +5063,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return "normal";
       }
 
+      function getRunStreamStaleBadgeLabel(staleLevel) {
+        if (staleLevel === "critical") {
+          return t("runStreamVerySlowLabel");
+        }
+        if (staleLevel === "warning") {
+          return t("runStreamSlowLabel");
+        }
+        return "";
+      }
+
       function applyRunStreamButtonStaleLevel(runtimeState) {
-        if (!elements.runStreamButton) {
+        if (!elements.runStreamStaleBadge) {
           return;
         }
         const staleLevel = resolveRunStreamButtonStaleLevel(runtimeState);
-        elements.runStreamButton.classList.toggle("run-stream-button-warning", staleLevel === "warning");
-        elements.runStreamButton.classList.toggle("run-stream-button-critical", staleLevel === "critical");
+        const isVisible = staleLevel !== "normal";
+        elements.runStreamStaleBadge.textContent = getRunStreamStaleBadgeLabel(staleLevel);
+        elements.runStreamStaleBadge.style.display = isVisible ? "inline-flex" : "none";
+        elements.runStreamStaleBadge.classList.toggle("run-stream-stale-badge-warning", staleLevel === "warning");
+        elements.runStreamStaleBadge.classList.toggle("run-stream-stale-badge-critical", staleLevel === "critical");
       }
 
       function stopRunStreamStaleTimer() {
