@@ -150,6 +150,8 @@ const MESSAGES = {
     "skill.installAlreadyExists": "Skill already exists: {path}",
     "skill.installArchiveInvalid": "Bundled official skill archive is invalid.",
     "skill.installZipToolMissing": "No ZIP extraction tool is available on this system.",
+    "skill.uninstallMissing": "Installed skill directory does not exist: {path}",
+    "skill.updateNotInstalled": "Skill is not installed yet: {path}",
     "claude.sessionResetRetry": "Claude session expired. Automatically starting a new session and retrying.",
   },
   "zh-CN": {
@@ -257,6 +259,8 @@ const MESSAGES = {
     "skill.installAlreadyExists": "Skill 已存在：{path}",
     "skill.installArchiveInvalid": "内置官方 Skill 压缩包结构无效。",
     "skill.installZipToolMissing": "当前系统缺少可用的 ZIP 解压工具。",
+    "skill.uninstallMissing": "未找到已安装的 Skill 目录：{path}",
+    "skill.updateNotInstalled": "Skill 尚未安装：{path}",
     "claude.sessionResetRetry": "检测到 Claude 会话已失效，已自动创建新会话并重试。",
   },
 } as const;

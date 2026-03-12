@@ -169,6 +169,12 @@ export class ConfigManagerPanel {
         case "installOfficialSkill":
           response.data = await configService.installOfficialSkill(message.platform, message.skillId);
           break;
+        case "updateOfficialSkill":
+          response.data = await configService.updateOfficialSkill(message.platform, message.skillId);
+          break;
+        case "uninstallOfficialSkill":
+          response.data = await configService.uninstallOfficialSkill(message.platform, message.skillId);
+          break;
         case "getCodexMcpServerIds":
           response.data = await configService.getCodexMcpServerIds();
           break;

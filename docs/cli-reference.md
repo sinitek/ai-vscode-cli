@@ -91,11 +91,13 @@
 - 技能列表读取 `~/.claude/skills` 下包含 `SKILL.md` 的目录。
 - 勾选默认即启用；取消勾选时，会在 `~/.claude/settings.json` 的 `permissions.deny` 写入 `Skill(<skill-name>)` 规则。
 - Skills 弹窗内置 `anthropics/skills` 官方 GitHub 快照，可直接安装 `document-skills` / `example-skills` / `claude-api` 分组中的技能到 `~/.claude/skills/<skill-name>`。
+- 对于通过插件安装/更新的官方 Skill，会记录元数据并判断版本状态；在“安装 Skills”与“已安装 Skills”两个标签页中都可直接更新、卸载，并展示“最新 / 可更新 / 版本未知”状态。
 
 插件内 Codex Skills（配置中心）：
 - 技能列表按优先级扫描：工作区及父目录 `.codex/skills` / `.agents/skills` → `~/.agents/skills` → `~/.codex/skills`（兼容）→ `/etc/codex/skills`。
 - 勾选默认即启用；取消勾选时，才会在 `~/.codex/config.toml` 追加对应 `[[skills.config]]` 且 `enabled = false` 的禁用条目。
 - Skills 弹窗内置 `openai/skills` 官方 curated GitHub 快照，可直接安装到 `$CODEX_HOME/skills/<skill-name>`；若未设置 `CODEX_HOME`，则安装到 `~/.codex/skills/<skill-name>`。
+- 对于通过插件安装/更新的官方 Skill，会记录元数据并判断版本状态；在“安装 Skills”与“已安装 Skills”两个标签页中都可直接更新、卸载，并展示“最新 / 可更新 / 版本未知”状态。
 
 插件内 Gemini Skills（配置中心）：
 - 技能列表按优先级扫描：工作区及父目录 `.gemini/skills` → `~/.gemini/skills` → `/etc/gemini/skills`。

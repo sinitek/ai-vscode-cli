@@ -18,6 +18,8 @@ export type ConfigAction =
   | "getGeminiSkillsList"
   | "getOfficialSkillsCatalog"
   | "installOfficialSkill"
+  | "updateOfficialSkill"
+  | "uninstallOfficialSkill"
   | "getCodexMcpServerIds"
   | "getCodexMcpHealth"
   | "getMcpHealth"
@@ -44,6 +46,8 @@ export type ConfigRequestPayload =
   | { action: "getGeminiSkillsList" }
   | { action: "getOfficialSkillsCatalog"; platform: OfficialSkillPlatform }
   | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
+  | { action: "updateOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
+  | { action: "uninstallOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "getCodexMcpServerIds" }
   | { action: "getCodexMcpHealth" }
   | { action: "getMcpHealth"; platform: ConfigPlatform }

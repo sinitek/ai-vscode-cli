@@ -58,6 +58,8 @@ export type OfficialSkillCatalogPlatformMeta = {
   notes?: string;
 };
 
+export type OfficialSkillInstallState = "not_installed" | "installed" | "update_available" | "unknown_source";
+
 export type OfficialSkillCatalogItem = {
   id: string;
   platform: OfficialSkillPlatform;
@@ -71,6 +73,14 @@ export type OfficialSkillCatalogItem = {
   sourceRef: string;
   sourcePath: string;
   sourceUrl: string;
+  installed?: boolean;
+  installedPath?: string;
+  installedSourceRef?: string;
+  installedSourceRepo?: string;
+  installState?: OfficialSkillInstallState;
+  canInstall?: boolean;
+  canUpdate?: boolean;
+  canUninstall?: boolean;
 };
 
 export type OfficialSkillCatalog = {
@@ -84,6 +94,7 @@ export type OfficialSkillInstallResult = {
   skillId: string;
   skillName: string;
   targetDir: string;
+  action: "install" | "update" | "uninstall";
 };
 
 export type McpMarketplaceItem = {

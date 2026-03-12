@@ -18,6 +18,7 @@ import {
   OfficialSkillCatalog,
   OfficialSkillCatalogItem,
   OfficialSkillInstallResult,
+  OfficialSkillInstallState,
   OfficialSkillPlatform,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
@@ -53,6 +54,7 @@ const OFFICIAL_SKILL_CATALOG_PATH = path.join(__dirname, "..", "..", "media", "o
 const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
 const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
 const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
+const OFFICIAL_SKILL_METADATA_FILE = ".sinitek-official-skill.json";
 const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
 
 async function ensureDir(dirPath: string): Promise<void> {
@@ -696,6 +698,112 @@ function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform): strin
   return platform === "claude" ? OFFICIAL_CLAUDE_SKILLS_DIR : OFFICIAL_CODEX_SKILLS_DIR;
 }
 
+type OfficialSkillMetadata = {
+  schemaVersion: 1;
+  platform: OfficialSkillPlatform;
+  skillId: string;
+  name: string;
+  sourceRepo: string;
+  sourceRef: string;
+  sourcePath: string;
+  archivePath: string;
+  installedAt: string;
+};
+
+function buildOfficialSkillMetadata(item: OfficialSkillCatalogItem): OfficialSkillMetadata {
+  return {
+    schemaVersion: 1,
+    platform: item.platform,
+    skillId: item.id,
+    name: item.name,
+    sourceRepo: item.sourceRepo,
+    sourceRef: item.sourceRef,
+    sourcePath: item.sourcePath,
+    archivePath: item.archivePath,
+    installedAt: new Date().toISOString(),
+  };
+}
+
+function getOfficialSkillTargetDir(item: Pick<OfficialSkillCatalogItem, "platform" | "installFolderName">): string {
+  return path.join(resolveOfficialSkillInstallRoot(item.platform), item.installFolderName);
+}
+
+function getOfficialSkillMetadataPath(skillDir: string): string {
+  return path.join(skillDir, OFFICIAL_SKILL_METADATA_FILE);
+}
+
+async function writeOfficialSkillMetadata(
+  skillDir: string,
+  item: OfficialSkillCatalogItem,
+): Promise<void> {
+  const metadataPath = getOfficialSkillMetadataPath(skillDir);
+  const content = JSON.stringify(buildOfficialSkillMetadata(item), null, 2);
+  await fs.writeFile(metadataPath, `${content}
+`, "utf-8");
+}
+
+async function readOfficialSkillMetadata(skillDir: string): Promise<OfficialSkillMetadata | null> {
+  try {
+    const content = await fs.readFile(getOfficialSkillMetadataPath(skillDir), "utf-8");
+    const parsed = JSON.parse(content) as Partial<OfficialSkillMetadata>;
+    if (!parsed || parsed.schemaVersion !== 1) {
+      return null;
+    }
+    if (!isOfficialSkillPlatform(String(parsed.platform ?? ""))) {
+      return null;
+    }
+    if (
+      typeof parsed.skillId !== "string"
+      || typeof parsed.name !== "string"
+      || typeof parsed.sourceRepo !== "string"
+      || typeof parsed.sourceRef !== "string"
+      || typeof parsed.sourcePath !== "string"
+      || typeof parsed.archivePath !== "string"
+      || typeof parsed.installedAt !== "string"
+    ) {
+      return null;
+    }
+    return parsed as OfficialSkillMetadata;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveOfficialSkillCatalogItemState(
+  item: OfficialSkillCatalogItem,
+): Promise<OfficialSkillCatalogItem> {
+  const targetDir = getOfficialSkillTargetDir(item);
+  if (!(await pathExists(targetDir))) {
+    return {
+      ...item,
+      installed: false,
+      installedPath: targetDir,
+      installState: "not_installed",
+      canInstall: true,
+      canUpdate: false,
+      canUninstall: false,
+    };
+  }
+
+  const metadata = await readOfficialSkillMetadata(targetDir);
+  let installState: OfficialSkillInstallState = "unknown_source";
+  if (metadata && metadata.sourceRepo === item.sourceRepo && metadata.sourcePath === item.sourcePath) {
+    installState = metadata.sourceRef === item.sourceRef ? "installed" : "update_available";
+  }
+
+  return {
+    ...item,
+    installed: true,
+    installedPath: targetDir,
+    installedSourceRef: metadata?.sourceRef,
+    installedSourceRepo: metadata?.sourceRepo,
+    installState,
+    canInstall: false,
+    canUpdate: installState === "update_available" || installState === "unknown_source",
+    canUninstall: true,
+  };
+}
+
 function quotePowerShellLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -832,20 +940,27 @@ async function moveDirectory(sourceDir: string, targetDir: string): Promise<void
   }
 }
 
-async function installBundledOfficialSkill(item: OfficialSkillCatalogItem): Promise<OfficialSkillInstallResult> {
+async function installBundledOfficialSkill(
+  item: OfficialSkillCatalogItem,
+  options?: { overwrite?: boolean },
+): Promise<OfficialSkillInstallResult> {
   const archivePath = path.join(OFFICIAL_SKILL_ASSETS_ROOT, item.archivePath);
   if (!(await pathExists(archivePath))) {
     throw new Error(t("skill.installAssetMissing", { path: archivePath }));
   }
 
-  const installRoot = resolveOfficialSkillInstallRoot(item.platform);
-  const targetDir = path.join(installRoot, item.installFolderName);
-  if (await pathExists(targetDir)) {
+  const targetDir = getOfficialSkillTargetDir(item);
+  const targetExists = await pathExists(targetDir);
+  if (targetExists && !options?.overwrite) {
     throw new Error(t("skill.installAlreadyExists", { path: targetDir }));
   }
+  if (!targetExists && options?.overwrite) {
+    throw new Error(t("skill.updateNotInstalled", { path: targetDir }));
+  }
 
-  await ensureDir(installRoot);
+  await ensureDir(path.dirname(targetDir));
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), `sinitek-skill-${item.platform}-`));
+  const backupDir = path.join(tempRoot, `${item.installFolderName}-backup`);
   try {
     await extractZipArchive(archivePath, tempRoot);
     const extractedDir = path.join(tempRoot, item.installFolderName);
@@ -853,7 +968,22 @@ async function installBundledOfficialSkill(item: OfficialSkillCatalogItem): Prom
     if (!(await pathExists(skillFile))) {
       throw new Error(t("skill.installArchiveInvalid"));
     }
-    await moveDirectory(extractedDir, targetDir);
+    await writeOfficialSkillMetadata(extractedDir, item);
+
+    if (targetExists) {
+      await moveDirectory(targetDir, backupDir);
+    }
+
+    try {
+      await moveDirectory(extractedDir, targetDir);
+    } catch (error) {
+      if (await pathExists(backupDir)) {
+        await moveDirectory(backupDir, targetDir);
+      }
+      throw error;
+    }
+
+    await fs.rm(backupDir, { recursive: true, force: true });
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
@@ -863,6 +993,24 @@ async function installBundledOfficialSkill(item: OfficialSkillCatalogItem): Prom
     skillId: item.id,
     skillName: item.name,
     targetDir,
+    action: options?.overwrite ? "update" : "install",
+  };
+}
+
+async function uninstallBundledOfficialSkill(
+  item: OfficialSkillCatalogItem,
+): Promise<OfficialSkillInstallResult> {
+  const targetDir = getOfficialSkillTargetDir(item);
+  if (!(await pathExists(targetDir))) {
+    throw new Error(t("skill.uninstallMissing", { path: targetDir }));
+  }
+  await fs.rm(targetDir, { recursive: true, force: true });
+  return {
+    platform: item.platform,
+    skillId: item.id,
+    skillName: item.name,
+    targetDir,
+    action: "uninstall",
   };
 }
 
@@ -2055,15 +2203,16 @@ export async function getOfficialSkillsCatalog(
     throw new Error(t("skill.installUnsupportedPlatform"));
   }
   const catalog = await readOfficialSkillsCatalogFile();
-  return catalog.skills
+  const items = catalog.skills
     .filter((item) => item.platform === platform)
     .sort((left, right) => left.name.localeCompare(right.name));
+  return Promise.all(items.map((item) => resolveOfficialSkillCatalogItemState(item)));
 }
 
-export async function installOfficialSkill(
+async function getOfficialSkillCatalogEntry(
   platform: OfficialSkillPlatform,
   skillId: string,
-): Promise<OfficialSkillInstallResult> {
+): Promise<OfficialSkillCatalogItem> {
   if (!isOfficialSkillPlatform(platform)) {
     throw new Error(t("skill.installUnsupportedPlatform"));
   }
@@ -2072,5 +2221,29 @@ export async function installOfficialSkill(
   if (!item) {
     throw new Error(t("skill.catalogMissing"));
   }
+  return item;
+}
+
+export async function installOfficialSkill(
+  platform: OfficialSkillPlatform,
+  skillId: string,
+): Promise<OfficialSkillInstallResult> {
+  const item = await getOfficialSkillCatalogEntry(platform, skillId);
   return installBundledOfficialSkill(item);
+}
+
+export async function updateOfficialSkill(
+  platform: OfficialSkillPlatform,
+  skillId: string,
+): Promise<OfficialSkillInstallResult> {
+  const item = await getOfficialSkillCatalogEntry(platform, skillId);
+  return installBundledOfficialSkill(item, { overwrite: true });
+}
+
+export async function uninstallOfficialSkill(
+  platform: OfficialSkillPlatform,
+  skillId: string,
+): Promise<OfficialSkillInstallResult> {
+  const item = await getOfficialSkillCatalogEntry(platform, skillId);
+  return uninstallBundledOfficialSkill(item);
 }

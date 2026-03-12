@@ -2266,67 +2266,136 @@ function officialSkillInstallRootTextByPlatform(e) {
   return e === "claude" ? "~/.claude/skills" : "~/.codex/skills";
 }
 
-const renderSkillRows = (e, t) =>
-  e.map((n) =>
-    be.jsx(
-      "label",
+function shortOfficialSkillRef(e) {
+  return typeof e == "string" && e.trim() ? e.trim().slice(0, 8) : "未知";
+}
+
+function officialSkillStatusText(e) {
+  switch (e) {
+    case "installed":
+      return "最新";
+    case "update_available":
+      return "可更新";
+    case "unknown_source":
+      return "版本未知";
+    default:
+      return "未安装";
+  }
+}
+
+const renderSkillRows = (e, t, n, r, o, l) =>
+  e.map((s) => {
+    const u = (n || []).find((f) => f.installed && f.installedPath === s.path),
+      m = u ? officialSkillStatusText(u.installState || (u.installed ? "unknown_source" : "not_installed")) : "",
+      v = u && l && l.skillId === u.id ? l.action : "";
+    return be.jsx(
+      "div",
       {
         style: {
           display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
           gap: "10px",
           padding: "8px",
           borderRadius: "6px",
           background: "var(--background-color)",
           border: "1px solid var(--border-color)",
           marginBottom: "8px",
+          flexWrap: "wrap",
         },
-        children: be.jsxs("div", {
-          style: { display: "flex", gap: "8px", width: "100%" },
-          children: [
-            be.jsx("input", {
-              type: "checkbox",
-              checked: n.enabled !== !1,
-              onChange: (r) => t(n.name, r.target.checked, n.path),
-            }),
-            be.jsxs("div", {
-              style: {
-                display: "flex",
-                flexDirection: "column",
-                gap: "2px",
-                flex: 1,
-              },
-              children: [
-                be.jsx("div", { children: n.name }),
-                be.jsx("div", {
-                  style: {
-                    color: "var(--text-color-secondary)",
-                    fontSize: "12px",
-                    wordBreak: "break-all",
-                  },
-                  children: n.path,
-                }),
-                n.description
-                  ? be.jsx("div", {
-                      style: {
-                        color: "var(--text-color-secondary)",
-                        fontSize: "12px",
-                      },
-                      children: n.description,
-                    })
-                  : null,
-              ],
-            }),
-          ],
-        }),
+        children: [
+          be.jsxs("div", {
+            style: { display: "flex", gap: "8px", flex: 1, minWidth: 0 },
+            children: [
+              be.jsx("input", {
+                type: "checkbox",
+                checked: s.enabled !== !1,
+                onChange: (f) => t(s.name, f.target.checked, s.path),
+              }),
+              be.jsxs("div", {
+                style: {
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                  flex: 1,
+                  minWidth: 0,
+                },
+                children: [
+                  be.jsxs("div", {
+                    style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+                    children: [
+                      be.jsx("div", { children: s.name }),
+                      u
+                        ? be.jsx("span", {
+                            style: {
+                              fontSize: "11px",
+                              lineHeight: 1,
+                              padding: "3px 8px",
+                              borderRadius: "999px",
+                              color: "var(--text-color-secondary)",
+                              border: "1px solid var(--border-color)",
+                            },
+                            children: m,
+                          })
+                        : null,
+                    ],
+                  }),
+                  be.jsx("div", {
+                    style: {
+                      color: "var(--text-color-secondary)",
+                      fontSize: "12px",
+                      wordBreak: "break-all",
+                    },
+                    children: s.path,
+                  }),
+                  s.description
+                    ? be.jsx("div", {
+                        style: {
+                          color: "var(--text-color-secondary)",
+                          fontSize: "12px",
+                        },
+                        children: s.description,
+                      })
+                    : null,
+                ],
+              }),
+            ],
+          }),
+          u
+            ? be.jsxs("div", {
+                style: { display: "flex", gap: "8px", flexWrap: "wrap" },
+                children: [
+                  u.canUpdate
+                    ? be.jsx(xn, {
+                        size: "small",
+                        type: "primary",
+                        loading: v === "update",
+                        onClick: () => r(u),
+                        children: v === "update" ? "更新中..." : "更新",
+                      })
+                    : null,
+                  u.canUninstall
+                    ? be.jsx(xn, {
+                        size: "small",
+                        loading: v === "uninstall",
+                        onClick: () => o(u),
+                        children: v === "uninstall" ? "卸载中..." : "卸载",
+                      })
+                    : null,
+                ],
+              })
+            : null,
+        ],
       },
-      `${n.name}:${n.path || ""}`,
-    ),
-  );
+      `${s.name}:${s.path || ""}`,
+    );
+  });
 
-const renderOfficialSkillRows = (e, t, n, r) =>
-  e.map((o) => {
-    const l = t.has(o.name),
-      s = officialSkillInstallRootTextByPlatform(o.platform) + "/" + o.installFolderName;
+const renderOfficialSkillRows = (e, t, n, r, o) =>
+  e.map((l) => {
+    const u = n && n.skillId === l.id ? n.action : "",
+      f = l.installState || (l.installed ? "unknown_source" : "not_installed"),
+      m = officialSkillStatusText(f);
     return be.jsx(
       "div",
       {
@@ -2345,17 +2414,32 @@ const renderOfficialSkillRows = (e, t, n, r) =>
             style: {
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: "8px",
               flexWrap: "wrap",
             },
             children: [
               be.jsxs("div", {
-                style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+                style: { display: "flex", flexDirection: "column", gap: "6px", flex: 1, minWidth: 0 },
                 children: [
-                  be.jsx("div", { children: o.name }),
-                  o.group
-                    ? be.jsx("span", {
+                  be.jsxs("div", {
+                    style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+                    children: [
+                      be.jsx("div", { children: l.name }),
+                      l.group
+                        ? be.jsx("span", {
+                            style: {
+                              fontSize: "11px",
+                              lineHeight: 1,
+                              padding: "3px 8px",
+                              borderRadius: "999px",
+                              color: "var(--text-color-secondary)",
+                              border: "1px solid var(--border-color)",
+                            },
+                            children: l.group,
+                          })
+                        : null,
+                      be.jsx("span", {
                         style: {
                           fontSize: "11px",
                           lineHeight: 1,
@@ -2364,54 +2448,57 @@ const renderOfficialSkillRows = (e, t, n, r) =>
                           color: "var(--text-color-secondary)",
                           border: "1px solid var(--border-color)",
                         },
-                        children: o.group,
+                        children: m,
+                      }),
+                    ],
+                  }),
+                  l.description
+                    ? be.jsx("div", {
+                        style: {
+                          color: "var(--text-color-secondary)",
+                          fontSize: "12px",
+                        },
+                        children: l.description,
                       })
                     : null,
                 ],
               }),
-              be.jsx(xn, {
-                size: "small",
-                type: l ? "default" : "primary",
-                disabled: l,
-                loading: n === o.id,
-                onClick: () => r(o),
-                children: l ? "已安装" : n === o.id ? "安装中..." : "直接安装",
-              }),
-            ],
-          }),
-          o.description
-            ? be.jsx("div", {
-                style: {
-                  color: "var(--text-color-secondary)",
-                  fontSize: "12px",
-                },
-                children: o.description,
-              })
-            : null,
-          be.jsxs("div", {
-            style: {
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: "4px 8px",
-              fontSize: "12px",
-              color: "var(--text-color-secondary)",
-            },
-            children: [
-              be.jsx("span", { children: "官方来源" }),
-              be.jsx("span", {
-                style: { wordBreak: "break-all" },
-                children: o.sourceRepo,
-              }),
-              be.jsx("span", { children: "安装到" }),
-              be.jsx("span", {
-                style: { wordBreak: "break-all" },
-                children: s,
+              be.jsxs("div", {
+                style: { display: "flex", gap: "8px", flexWrap: "wrap" },
+                children: [
+                  l.canInstall
+                    ? be.jsx(xn, {
+                        size: "small",
+                        type: "primary",
+                        loading: u === "install",
+                        onClick: () => r(l),
+                        children: u === "install" ? "安装中..." : "直接安装",
+                      })
+                    : null,
+                  l.canUpdate
+                    ? be.jsx(xn, {
+                        size: "small",
+                        type: "primary",
+                        loading: u === "update",
+                        onClick: () => o(l),
+                        children: u === "update" ? "更新中..." : "更新",
+                      })
+                    : null,
+                  l.canUninstall
+                    ? be.jsx(xn, {
+                        size: "small",
+                        loading: u === "uninstall",
+                        onClick: () => t(l),
+                        children: u === "uninstall" ? "卸载中..." : "卸载",
+                      })
+                    : null,
+                ],
               }),
             ],
           }),
         ],
       },
-      o.id,
+      l.id,
     );
   });
 
@@ -2427,10 +2514,85 @@ const SkillsManagerModal = ({
   officialSkills: f,
   officialLoading: m,
   onInstallOfficialSkill: v,
-  installingSkillId: p,
+  onUninstallOfficialSkill: p,
+  onUpdateOfficialSkill: h,
+  pendingOfficialSkillAction: b,
 }) => {
-  const h = skillsEmptyTextByPlatform(n),
-    b = new Set((Array.isArray(r) ? r : []).map((x) => x.name));
+  const x = skillsEmptyTextByPlatform(n),
+    [g, C0] = c.useState("installed");
+  c.useEffect(() => {
+    e && C0("installed");
+  }, [e, n]);
+  const E0 = g === "installed",
+    k0 = {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: "120px",
+      borderRadius: "999px",
+      padding: "7px 14px",
+      fontSize: "12px",
+      fontWeight: 600,
+      cursor: "pointer",
+      transition: "background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease",
+    },
+    L0 = (T) =>
+      T
+        ? {
+            ...k0,
+            border: "1px solid var(--vscode-button-background, var(--button-background, var(--border-color)))",
+            background: "var(--vscode-button-background, var(--button-background, var(--background-color)))",
+            color: "var(--vscode-button-foreground, var(--button-foreground, var(--text-on-accent, var(--text-color))))",
+            boxShadow: "0 0 0 1px var(--vscode-focusBorder, var(--border-color)) inset",
+          }
+        : {
+            ...k0,
+            border: "1px solid var(--border-color)",
+            background: "var(--background-color-secondary, transparent)",
+            color: "var(--text-color-secondary)",
+            boxShadow: "none",
+          },
+    T0 = l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
+    A0 = m ? "Skills 加载中..." : `官方 Skills ${f.length}`,
+    P0 = E0
+      ? r.length === 0
+        ? be.jsx("div", {
+            style: {
+              color: "var(--text-color-secondary)",
+              fontSize: "12px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              padding: "12px",
+              background: "var(--background-color-secondary, #f5f5f5)",
+            },
+            children: x,
+          })
+        : renderSkillRows(r, s, f, h, p, b)
+      : m
+        ? be.jsx("div", {
+            style: {
+              color: "var(--text-color-secondary)",
+              fontSize: "12px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              padding: "12px",
+              background: "var(--background-color-secondary, #f5f5f5)",
+            },
+            children: "Skills 加载中...",
+          })
+        : f.length === 0
+          ? be.jsx("div", {
+              style: {
+                color: "var(--text-color-secondary)",
+                fontSize: "12px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "6px",
+                padding: "12px",
+                background: "var(--background-color-secondary, #f5f5f5)",
+              },
+              children: "暂无内置官方 Skills",
+            })
+          : renderOfficialSkillRows(f, p, b, v, h);
   return be.jsx(xr, {
     title: skillsTitleByPlatform(n),
     open: e,
@@ -2449,114 +2611,96 @@ const SkillsManagerModal = ({
         be.jsxs("div", {
           style: {
             display: "flex",
+            gap: "8px",
+            borderBottom: "1px solid var(--border-color)",
+            padding: "4px",
+            paddingBottom: "12px",
+            borderRadius: "10px",
+            background: "var(--background-color-secondary, transparent)",
+          },
+          children: [
+            be.jsx("button", {
+              type: "button",
+              onClick: () => C0("installed"),
+              style: L0(E0),
+              children: "已安装 Skills",
+            }),
+            be.jsx("button", {
+              type: "button",
+              onClick: () => C0("market"),
+              style: L0(!E0),
+              children: "安装 Skills",
+            }),
+          ],
+        }),
+        be.jsxs("div", {
+          style: {
+            display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             gap: "8px",
             flexWrap: "wrap",
           },
           children: [
-            be.jsx("div", {
-              style: {
-                color: "var(--text-color-secondary)",
-                fontSize: "12px",
-              },
-              children: l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
-            }),
-            be.jsxs("div", {
-              style: { display: "flex", gap: "8px" },
-              children: [
-                be.jsx(xn, {
-                  size: "small",
-                  onClick: () => u(!0),
-                  disabled: r.length === 0,
-                  children: "一键启用",
-                }),
-                be.jsx(xn, {
-                  size: "small",
-                  onClick: () => u(!1),
-                  disabled: r.length === 0,
-                  children: "一键禁用",
-                }),
-              ],
-            }),
-          ],
-        }),
-        be.jsxs("div", {
-          style: {
-            overflow: "auto",
-            maxHeight: "calc(70vh - 56px)",
-            paddingRight: "4px",
-          },
-          children: [
-            r.length === 0
+            E0
               ? be.jsx("div", {
                   style: {
                     color: "var(--text-color-secondary)",
                     fontSize: "12px",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "6px",
-                    padding: "12px",
-                    background: "var(--background-color-secondary, #f5f5f5)",
-                    marginBottom: f.length > 0 ? "12px" : 0,
                   },
-                  children: h,
+                  children: T0,
                 })
-              : renderSkillRows(r, s),
-            n !== "gemini"
-              ? be.jsxs("div", {
+              : be.jsxs("div", {
                   style: {
                     display: "flex",
                     flexDirection: "column",
-                    gap: "8px",
-                    marginTop: r.length > 0 ? "12px" : 0,
+                    gap: "4px",
                   },
                   children: [
-                    be.jsxs("div", {
+                    be.jsx("div", {
                       style: {
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
+                        color: "var(--text-color-secondary)",
+                        fontSize: "12px",
                       },
-                      children: [
-                        be.jsx("div", { children: "内置官方 Skills" }),
-                        be.jsx("div", {
-                          style: {
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: "内置官方 GitHub 快照，可直接安装到用户 Skills 目录",
-                        }),
-                      ],
+                      children: A0,
                     }),
-                    m
-                      ? be.jsx("div", {
-                          style: {
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "6px",
-                            padding: "12px",
-                            background: "var(--background-color-secondary, #f5f5f5)",
-                          },
-                          children: "Skills 加载中...",
-                        })
-                      : f.length === 0
-                        ? be.jsx("div", {
-                            style: {
-                              color: "var(--text-color-secondary)",
-                              fontSize: "12px",
-                              border: "1px solid var(--border-color)",
-                              borderRadius: "6px",
-                              padding: "12px",
-                              background: "var(--background-color-secondary, #f5f5f5)",
-                            },
-                            children: "暂无内置官方 Skills",
-                          })
-                        : renderOfficialSkillRows(f, b, p, v),
+                    be.jsx("div", {
+                      style: {
+                        color: "var(--text-color-secondary)",
+                        fontSize: "12px",
+                      },
+                      children: "内置官方 GitHub 快照，可直接安装到用户 Skills 目录",
+                    }),
+                  ],
+                }),
+            E0
+              ? be.jsxs("div", {
+                  style: { display: "flex", gap: "8px" },
+                  children: [
+                    be.jsx(xn, {
+                      size: "small",
+                      onClick: () => u(!0),
+                      disabled: r.length === 0,
+                      children: "一键启用",
+                    }),
+                    be.jsx(xn, {
+                      size: "small",
+                      onClick: () => u(!1),
+                      disabled: r.length === 0,
+                      children: "一键禁用",
+                    }),
                   ],
                 })
               : null,
           ],
+        }),
+        be.jsx("div", {
+          style: {
+            overflow: "auto",
+            maxHeight: "calc(70vh - 108px)",
+            paddingRight: "4px",
+          },
+          children: P0,
         }),
       ],
     }),
@@ -2661,7 +2805,8 @@ const ConfigEditorPanel = () => {
       [j, q] = c.useState(!1),
       [officialSkills, setOfficialSkills] = c.useState([]),
       [officialSkillsLoading, setOfficialSkillsLoading] = c.useState(!1),
-      [installingSkillId, setInstallingSkillId] = c.useState(""),
+      [officialSkillActionId, setOfficialSkillActionId] = c.useState(""),
+      [officialSkillActionType, setOfficialSkillActionType] = c.useState(""),
       [S, y] = c.useState(null),
       [$, w] = c.useState(!1),
       [skillsModalOpen, setSkillsModalOpen] = c.useState(!1),
@@ -2799,23 +2944,35 @@ const ConfigEditorPanel = () => {
         const k = await installMcpItem(W, installEnvDraft);
         k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
       },
-      X0 = async (W) => {
+      te = async (W, H) => {
         if (!O || (O.platform !== "claude" && O.platform !== "codex")) return;
-        setInstallingSkillId(W.id);
+        setOfficialSkillActionId(W.id), setOfficialSkillActionType(H);
         try {
-          const H = await installOfficialSkillById(O.platform, W.id);
+          const k =
+            H === "install"
+              ? await installOfficialSkillById(O.platform, W.id)
+              : H === "update"
+                ? await updateOfficialSkillById(O.platform, W.id)
+                : await uninstallOfficialSkillById(O.platform, W.id);
           await loadSkillsState(O);
-          Kt.success(`已安装 Skill: ${H.skillName || W.name}`);
-        } catch (H) {
-          const k = H instanceof Error ? H.message : String(H);
-          console.error("安装 Skill 失败:", H),
-            k.includes("Skill 已存在") || k.includes("already exists")
+          H === "install"
+            ? Kt.success(`已安装 Skill: ${k.skillName || W.name}`)
+            : H === "update"
+              ? Kt.success(`已更新 Skill: ${k.skillName || W.name}`)
+              : Kt.success(`已卸载 Skill: ${k.skillName || W.name}`);
+        } catch (k) {
+          const L = k instanceof Error ? k.message : String(k);
+          console.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} Skill 失败:`, k),
+            H === "install" && (L.includes("Skill 已存在") || L.includes("already exists"))
               ? Kt.error(`Skill 已存在: ${W.name}`)
-              : Kt.error(`安装 Skill 失败: ${k}`);
+              : Kt.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} Skill 失败: ${L}`);
         } finally {
-          setInstallingSkillId("");
+          setOfficialSkillActionId(""), setOfficialSkillActionType("");
         }
-      };
+      },
+      X0 = async (W) => te(W, "install"),
+      ee = async (W) => te(W, "update"),
+      ne = async (W) => te(W, "uninstall");
     c.useEffect(() => {
       if (!O) {
         (s(""),
@@ -2834,7 +2991,8 @@ const ConfigEditorPanel = () => {
           setHealthDetailState(null),
           setOfficialSkills([]),
           setOfficialSkillsLoading(!1),
-          setInstallingSkillId(""),
+          setOfficialSkillActionId(""),
+          setOfficialSkillActionType(""),
           setSkillsModalOpen(!1));
         return;
       }
@@ -3499,7 +3657,9 @@ const ConfigEditorPanel = () => {
                 officialSkills,
                 officialLoading: officialSkillsLoading,
                 onInstallOfficialSkill: X0,
-                installingSkillId,
+                onUninstallOfficialSkill: ne,
+                onUpdateOfficialSkill: ee,
+                pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
               }),
               B(),
             ],
@@ -3818,7 +3978,9 @@ const ConfigEditorPanel = () => {
                   officialSkills,
                   officialLoading: officialSkillsLoading,
                   onInstallOfficialSkill: X0,
-                  installingSkillId,
+                  onUninstallOfficialSkill: ne,
+                  onUpdateOfficialSkill: ee,
+                  pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
                 }),
                 B(),
               ],
@@ -4134,7 +4296,9 @@ const ConfigEditorPanel = () => {
                   officialSkills,
                   officialLoading: officialSkillsLoading,
                   onInstallOfficialSkill: X0,
-                  installingSkillId,
+                  onUninstallOfficialSkill: ne,
+                  onUpdateOfficialSkill: ee,
+                  pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
                 }),
                 B(),
               ],
