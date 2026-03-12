@@ -2262,6 +2262,10 @@ function skillsTitleByPlatform(e) {
       : "Codex Skills";
 }
 
+function officialSkillInstallRootTextByPlatform(e) {
+  return e === "claude" ? "~/.claude/skills" : "~/.codex/skills";
+}
+
 const renderSkillRows = (e, t) =>
   e.map((n) =>
     be.jsx(
@@ -2319,6 +2323,98 @@ const renderSkillRows = (e, t) =>
     ),
   );
 
+const renderOfficialSkillRows = (e, t, n, r) =>
+  e.map((o) => {
+    const l = t.has(o.name),
+      s = officialSkillInstallRootTextByPlatform(o.platform) + "/" + o.installFolderName;
+    return be.jsx(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "10px 12px",
+          borderRadius: "6px",
+          background: "var(--background-color)",
+          border: "1px solid var(--border-color)",
+          marginBottom: "8px",
+        },
+        children: [
+          be.jsxs("div", {
+            style: {
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+            },
+            children: [
+              be.jsxs("div", {
+                style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+                children: [
+                  be.jsx("div", { children: o.name }),
+                  o.group
+                    ? be.jsx("span", {
+                        style: {
+                          fontSize: "11px",
+                          lineHeight: 1,
+                          padding: "3px 8px",
+                          borderRadius: "999px",
+                          color: "var(--text-color-secondary)",
+                          border: "1px solid var(--border-color)",
+                        },
+                        children: o.group,
+                      })
+                    : null,
+                ],
+              }),
+              be.jsx(xn, {
+                size: "small",
+                type: l ? "default" : "primary",
+                disabled: l,
+                loading: n === o.id,
+                onClick: () => r(o),
+                children: l ? "已安装" : n === o.id ? "安装中..." : "直接安装",
+              }),
+            ],
+          }),
+          o.description
+            ? be.jsx("div", {
+                style: {
+                  color: "var(--text-color-secondary)",
+                  fontSize: "12px",
+                },
+                children: o.description,
+              })
+            : null,
+          be.jsxs("div", {
+            style: {
+              display: "grid",
+              gridTemplateColumns: "auto 1fr",
+              gap: "4px 8px",
+              fontSize: "12px",
+              color: "var(--text-color-secondary)",
+            },
+            children: [
+              be.jsx("span", { children: "官方来源" }),
+              be.jsx("span", {
+                style: { wordBreak: "break-all" },
+                children: o.sourceRepo,
+              }),
+              be.jsx("span", { children: "安装到" }),
+              be.jsx("span", {
+                style: { wordBreak: "break-all" },
+                children: s,
+              }),
+            ],
+          }),
+        ],
+      },
+      o.id,
+    );
+  });
+
 const SkillsManagerModal = ({
   open: e,
   onClose: t,
@@ -2328,8 +2424,13 @@ const SkillsManagerModal = ({
   loading: l,
   onToggle: s,
   onToggleAll: u,
+  officialSkills: f,
+  officialLoading: m,
+  onInstallOfficialSkill: v,
+  installingSkillId: p,
 }) => {
-  const f = skillsEmptyTextByPlatform(n);
+  const h = skillsEmptyTextByPlatform(n),
+    b = new Set((Array.isArray(r) ? r : []).map((x) => x.name));
   return be.jsx(xr, {
     title: skillsTitleByPlatform(n),
     open: e,
@@ -2380,13 +2481,13 @@ const SkillsManagerModal = ({
             }),
           ],
         }),
-        be.jsx("div", {
+        be.jsxs("div", {
           style: {
             overflow: "auto",
             maxHeight: "calc(70vh - 56px)",
             paddingRight: "4px",
           },
-          children:
+          children: [
             r.length === 0
               ? be.jsx("div", {
                   style: {
@@ -2396,10 +2497,66 @@ const SkillsManagerModal = ({
                     borderRadius: "6px",
                     padding: "12px",
                     background: "var(--background-color-secondary, #f5f5f5)",
+                    marginBottom: f.length > 0 ? "12px" : 0,
                   },
-                  children: f,
+                  children: h,
                 })
               : renderSkillRows(r, s),
+            n !== "gemini"
+              ? be.jsxs("div", {
+                  style: {
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    marginTop: r.length > 0 ? "12px" : 0,
+                  },
+                  children: [
+                    be.jsxs("div", {
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "4px",
+                      },
+                      children: [
+                        be.jsx("div", { children: "内置官方 Skills" }),
+                        be.jsx("div", {
+                          style: {
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: "内置官方 GitHub 快照，可直接安装到用户 Skills 目录",
+                        }),
+                      ],
+                    }),
+                    m
+                      ? be.jsx("div", {
+                          style: {
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            padding: "12px",
+                            background: "var(--background-color-secondary, #f5f5f5)",
+                          },
+                          children: "Skills 加载中...",
+                        })
+                      : f.length === 0
+                        ? be.jsx("div", {
+                            style: {
+                              color: "var(--text-color-secondary)",
+                              fontSize: "12px",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: "6px",
+                              padding: "12px",
+                              background: "var(--background-color-secondary, #f5f5f5)",
+                            },
+                            children: "暂无内置官方 Skills",
+                          })
+                        : renderOfficialSkillRows(f, b, p, v),
+                  ],
+                })
+              : null,
+          ],
         }),
       ],
     }),
@@ -2502,6 +2659,9 @@ const ConfigEditorPanel = () => {
       [healthDetailState, setHealthDetailState] = c.useState(null),
       [C, Z] = c.useState([]),
       [j, q] = c.useState(!1),
+      [officialSkills, setOfficialSkills] = c.useState([]),
+      [officialSkillsLoading, setOfficialSkillsLoading] = c.useState(!1),
+      [installingSkillId, setInstallingSkillId] = c.useState(""),
       [S, y] = c.useState(null),
       [$, w] = c.useState(!1),
       [skillsModalOpen, setSkillsModalOpen] = c.useState(!1),
@@ -2638,6 +2798,23 @@ const ConfigEditorPanel = () => {
         }
         const k = await installMcpItem(W, installEnvDraft);
         k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
+      },
+      X0 = async (W) => {
+        if (!O || (O.platform !== "claude" && O.platform !== "codex")) return;
+        setInstallingSkillId(W.id);
+        try {
+          const H = await installOfficialSkillById(O.platform, W.id);
+          await loadSkillsState(O);
+          Kt.success(`已安装 Skill: ${H.skillName || W.name}`);
+        } catch (H) {
+          const k = H instanceof Error ? H.message : String(H);
+          console.error("安装 Skill 失败:", H),
+            k.includes("Skill 已存在") || k.includes("already exists")
+              ? Kt.error(`Skill 已存在: ${W.name}`)
+              : Kt.error(`安装 Skill 失败: ${k}`);
+        } finally {
+          setInstallingSkillId("");
+        }
       };
     c.useEffect(() => {
       if (!O) {
@@ -2655,6 +2832,9 @@ const ConfigEditorPanel = () => {
           setPendingInstallMcpItem(null),
           setInstallEnvDraft({}),
           setHealthDetailState(null),
+          setOfficialSkills([]),
+          setOfficialSkillsLoading(!1),
+          setInstallingSkillId(""),
           setSkillsModalOpen(!1));
         return;
       }
@@ -2736,52 +2916,63 @@ const ConfigEditorPanel = () => {
         };
       });
     }, []);
+    const loadSkillsState = c.useCallback(async (W, H = () => !1) => {
+      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "gemini")) {
+        Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
+        return;
+      }
+      q(!0), W.platform !== "gemini" ? setOfficialSkillsLoading(!0) : setOfficialSkillsLoading(!1);
+      const k = W.platform === "claude"
+          ? fetchClaudeSkillsList()
+          : W.platform === "gemini"
+            ? fetchGeminiSkillsList()
+            : fetchCodexSkillsList(),
+        L = W.platform === "gemini" ? Promise.resolve([]) : fetchOfficialSkillsCatalog(W.platform),
+        [U, T] = await Promise.allSettled([k, L]);
+      if (H()) return;
+      if (U.status === "fulfilled") {
+        let F = new Set();
+        let Y = !1;
+        if (W.platform === "claude") {
+          F = tt(W.content || "{}");
+        } else if (W.platform === "gemini") {
+          const ie = nt(W.content || "{}");
+          F = ie.disabled;
+          Y = ie.allDisabled;
+        }
+        const ie = W.platform === "claude" ? W.claudeSkills : W.platform === "gemini" ? W.geminiSkills : W.codexSkills;
+        Z(G(U.value, ie, F, Y));
+      } else {
+        const F =
+          W.platform === "claude"
+            ? "获取 Claude Skills 失败"
+            : W.platform === "gemini"
+              ? "获取 Gemini Skills 失败"
+              : "获取 Codex Skills 失败";
+        console.error(F + ":", U.reason), Kt.error(F), Z([]);
+      }
+      if (W.platform !== "gemini") {
+        if (T.status === "fulfilled") {
+          setOfficialSkills(Array.isArray(T.value) ? T.value : []);
+        } else {
+          console.error("获取官方 Skills 失败:", T.reason), Kt.error("获取官方 Skills 失败"), setOfficialSkills([]);
+        }
+      } else {
+        setOfficialSkills([]);
+      }
+      q(!1), setOfficialSkillsLoading(!1);
+    }, [G, tt, nt]);
     c.useEffect(() => {
       let W = !1;
       if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "gemini")) {
-        Z([]);
+        Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
-      (async () => {
-        q(!0);
-        try {
-          const H =
-            O.platform === "claude"
-              ? await fetchClaudeSkillsList()
-              : O.platform === "gemini"
-                ? await fetchGeminiSkillsList()
-                : await fetchCodexSkillsList();
-          if (!W) {
-            let k = new Set();
-            let L = !1;
-            if (O.platform === "claude") {
-              k = tt(O.content || "{}");
-            } else if (O.platform === "gemini") {
-              const U = nt(O.content || "{}");
-              k = U.disabled;
-              L = U.allDisabled;
-            }
-            const U = O.platform === "claude" ? O.claudeSkills : O.platform === "gemini" ? O.geminiSkills : O.codexSkills;
-            const T = G(H, U, k, L);
-            Z(T);
-          }
-        } catch (H) {
-          const k =
-            O.platform === "claude"
-              ? "获取 Claude Skills 失败"
-              : O.platform === "gemini"
-                ? "获取 Gemini Skills 失败"
-                : "获取 Codex Skills 失败";
-          console.error(k + ":", H);
-          Kt.error(k);
-        } finally {
-          W || q(!1);
-        }
-      })();
+      loadSkillsState(O, () => W);
       return () => {
         W = !0;
       };
-    }, [O, G, tt, nt]);
+    }, [O, loadSkillsState]);
     const _ = (W) => {
         try {
           return (JSON.parse(W), !0);
@@ -3305,6 +3496,10 @@ const ConfigEditorPanel = () => {
                 loading: j,
                 onToggle: J,
                 onToggleAll: K,
+                officialSkills,
+                officialLoading: officialSkillsLoading,
+                onInstallOfficialSkill: X0,
+                installingSkillId,
               }),
               B(),
             ],
@@ -3620,6 +3815,10 @@ const ConfigEditorPanel = () => {
                   loading: j,
                   onToggle: J,
                   onToggleAll: K,
+                  officialSkills,
+                  officialLoading: officialSkillsLoading,
+                  onInstallOfficialSkill: X0,
+                  installingSkillId,
                 }),
                 B(),
               ],
@@ -3932,6 +4131,10 @@ const ConfigEditorPanel = () => {
                   loading: j,
                   onToggle: J,
                   onToggleAll: K,
+                  officialSkills,
+                  officialLoading: officialSkillsLoading,
+                  onInstallOfficialSkill: X0,
+                  installingSkillId,
                 }),
                 B(),
               ],

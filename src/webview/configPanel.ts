@@ -163,6 +163,12 @@ export class ConfigManagerPanel {
           response.data = await configService.getGeminiSkillsList(workspaceRoots);
           break;
         }
+        case "getOfficialSkillsCatalog":
+          response.data = await configService.getOfficialSkillsCatalog(message.platform);
+          break;
+        case "installOfficialSkill":
+          response.data = await configService.installOfficialSkill(message.platform, message.skillId);
+          break;
         case "getCodexMcpServerIds":
           response.data = await configService.getCodexMcpServerIds();
           break;

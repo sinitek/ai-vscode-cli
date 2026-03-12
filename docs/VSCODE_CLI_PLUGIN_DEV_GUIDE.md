@@ -143,10 +143,18 @@ export function getCliArgs(cli: CliName): string[] {
 }
 ```
 
+### Claude Skills 配置
+
+- 配置面板会读取 `~/.claude/skills` 下包含 `SKILL.md` 的技能目录。
+- 在配置页可对单个技能进行启用/禁用，并支持一键启用/禁用。
+- 保存时会将禁用状态写入 `~/.claude/settings.json` 的 `permissions.deny`，规则格式为 `Skill(<skill-name>)`。
+- Claude Skills 弹窗内置 `anthropics/skills` 官方 GitHub 快照（按官方 marketplace 分组整理为 `document-skills`、`example-skills`、`claude-api`），点击“直接安装”会将对应 ZIP 解压到 `~/.claude/skills/<skill-name>`。
+
 ### Codex Skills 配置
 
 - 配置面板会按优先级读取技能目录（需包含 `SKILL.md`）：工作区及其父目录的 `.codex/skills` / `.agents/skills` → `~/.agents/skills` → `~/.codex/skills`（兼容旧路径）→ `/etc/codex/skills`。
 - 在配置页可对单个技能进行启用/禁用，并支持一键启用/禁用。
+- Codex Skills 弹窗内置 `openai/skills` 官方 curated GitHub 快照，点击“直接安装”会优先解压到 `$CODEX_HOME/skills/<skill-name>`；若未设置 `CODEX_HOME`，则解压到 `~/.codex/skills/<skill-name>`。
 - 保存时会将技能状态写入 `~/.codex/config.toml` 的受控区块：
   - `# --- sinitek codex skills start ---`
   - `# --- sinitek codex skills end ---`

@@ -92,7 +92,18 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "获取 Claude Skills 失败": "Failed to fetch Claude skills.",
   "获取 Codex Skills 失败": "Failed to fetch Codex skills.",
   "获取 Gemini Skills 失败": "Failed to fetch Gemini skills.",
+  "获取官方 Skills 失败": "Failed to fetch bundled official skills.",
   "更新技能失败": "Failed to update skills.",
+  "内置官方 Skills": "Bundled Official Skills",
+  "内置官方 GitHub 快照，可直接安装到用户 Skills 目录": "Bundled GitHub snapshot; install directly into the user skills directory.",
+  "直接安装": "Install",
+  "安装中...": "Installing...",
+  "已安装": "Installed",
+  "暂无内置官方 Skills": "No bundled official skills.",
+  "安装 Skill 失败": "Failed to install skill.",
+  "Skill 已存在": "Skill already exists.",
+  "官方来源": "Official Source",
+  "安装到": "Install To",
   "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
   "添加 MCP 失败": "Failed to add MCP.",
   "安装 MCP 失败": "Failed to install MCP.",
@@ -137,7 +148,10 @@ const CONFIG_TRANSLATION_PATTERNS_EN = [
   { pattern: "^健康检查[:：]?\\s*(.+)$", replace: "Health check: $1" },
   { pattern: "^MCP Server (.+) 已存在，将被覆盖$", replace: "MCP Server $1 already exists and will be overwritten." },
   { pattern: "^已保存，但更新激活配置失败[:：]?\\s*(.+)$", replace: "Saved, but failed to update active config: $1" },
-  { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" }
+  { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" },
+  { pattern: "^已安装 Skill[:：]?\\s*(.+)$", replace: "Installed skill: $1" },
+  { pattern: "^安装 Skill 失败[:：]?\\s*(.+)$", replace: "Failed to install skill: $1" },
+  { pattern: "^Skill 已存在[:：]?\\s*(.+)$", replace: "Skill already exists: $1" }
 ] as const;
 
 function getNonce(): string {
@@ -341,6 +355,8 @@ export function getConfigViewHtml(
           getClaudeSkillsList: () => requestConfig("getClaudeSkillsList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
           getGeminiSkillsList: () => requestConfig("getGeminiSkillsList", {}),
+          getOfficialSkillsCatalog: (platform) => requestConfig("getOfficialSkillsCatalog", { platform }),
+          installOfficialSkill: (platform, skillId) => requestConfig("installOfficialSkill", { platform, skillId }),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
           getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),
           getMcpHealth: (platform) => requestConfig("getMcpHealth", { platform }),

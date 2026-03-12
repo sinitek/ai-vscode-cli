@@ -15,6 +15,10 @@ import {
   CodexMcpInstallResult,
   CodexMcpHealthItem,
   McpHealthItem,
+  OfficialSkillCatalog,
+  OfficialSkillCatalogItem,
+  OfficialSkillInstallResult,
+  OfficialSkillPlatform,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
 import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
@@ -44,6 +48,12 @@ const CONFIG_PATHS = {
     configDir: path.join(os.homedir(), ".gemini", CONFIG_DIR_NAME),
   },
 } as const;
+
+const OFFICIAL_SKILL_CATALOG_PATH = path.join(__dirname, "..", "..", "media", "official_skills_catalog.json");
+const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
+const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
+const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
+const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
 
 async function ensureDir(dirPath: string): Promise<void> {
   try {
@@ -663,6 +673,197 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function isOfficialSkillPlatform(value: string): value is OfficialSkillPlatform {
+  return value === "claude" || value === "codex";
+}
+
+async function readOfficialSkillsCatalogFile(): Promise<OfficialSkillCatalog> {
+  try {
+    const content = await fs.readFile(OFFICIAL_SKILL_CATALOG_PATH, "utf-8");
+    const parsed = JSON.parse(content) as OfficialSkillCatalog;
+    if (!parsed || !Array.isArray(parsed.skills)) {
+      throw new Error("invalid catalog");
+    }
+    return parsed;
+  } catch {
+    throw new Error(t("skill.catalogMissing"));
+  }
+}
+
+function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform): string {
+  return platform === "claude" ? OFFICIAL_CLAUDE_SKILLS_DIR : OFFICIAL_CODEX_SKILLS_DIR;
+}
+
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function runUtilityCommand(
+  command: string,
+  args: string[],
+  label: string,
+  timeoutMs = ZIP_EXTRACTION_TIMEOUT_MS,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: process.env,
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill();
+      reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+    };
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const details = stderr.trim() || stdout.trim() || `${label} exited with code ${code}.`;
+      reject(new Error(details));
+    });
+  });
+}
+
+function isMissingCommandError(error: unknown, commandName: string): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(`spawn ${commandName} ENOENT`) || message.includes(`'${commandName}' is not recognized`);
+}
+
+async function extractZipArchive(zipPath: string, destinationDir: string): Promise<void> {
+  if (process.platform === "win32") {
+    try {
+      await runUtilityCommand(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Expand-Archive -LiteralPath ${quotePowerShellLiteral(zipPath)} -DestinationPath ${quotePowerShellLiteral(destinationDir)} -Force`,
+        ],
+        "Expand-Archive",
+      );
+      return;
+    } catch (error) {
+      if (!isMissingCommandError(error, "powershell.exe")) {
+        throw error;
+      }
+    }
+  } else {
+    try {
+      await runUtilityCommand("unzip", ["-oq", zipPath, "-d", destinationDir], "unzip");
+      return;
+    } catch (error) {
+      if (!isMissingCommandError(error, "unzip")) {
+        throw error;
+      }
+    }
+  }
+
+  const pythonScript = [
+    "import sys, zipfile",
+    "zip_path, output_dir = sys.argv[1], sys.argv[2]",
+    "with zipfile.ZipFile(zip_path) as archive:",
+    "    archive.extractall(output_dir)",
+  ].join("\n");
+
+  for (const pythonCommand of ["python3", "python"]) {
+    try {
+      await runUtilityCommand(pythonCommand, ["-c", pythonScript, zipPath, destinationDir], pythonCommand);
+      return;
+    } catch (error) {
+      if (!isMissingCommandError(error, pythonCommand)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(t("skill.installZipToolMissing"));
+}
+
+async function moveDirectory(sourceDir: string, targetDir: string): Promise<void> {
+  try {
+    await fs.rename(sourceDir, targetDir);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code !== "EXDEV") {
+      throw error;
+    }
+    await fs.cp(sourceDir, targetDir, { recursive: true });
+    await fs.rm(sourceDir, { recursive: true, force: true });
+  }
+}
+
+async function installBundledOfficialSkill(item: OfficialSkillCatalogItem): Promise<OfficialSkillInstallResult> {
+  const archivePath = path.join(OFFICIAL_SKILL_ASSETS_ROOT, item.archivePath);
+  if (!(await pathExists(archivePath))) {
+    throw new Error(t("skill.installAssetMissing", { path: archivePath }));
+  }
+
+  const installRoot = resolveOfficialSkillInstallRoot(item.platform);
+  const targetDir = path.join(installRoot, item.installFolderName);
+  if (await pathExists(targetDir)) {
+    throw new Error(t("skill.installAlreadyExists", { path: targetDir }));
+  }
+
+  await ensureDir(installRoot);
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), `sinitek-skill-${item.platform}-`));
+  try {
+    await extractZipArchive(archivePath, tempRoot);
+    const extractedDir = path.join(tempRoot, item.installFolderName);
+    const skillFile = path.join(extractedDir, "SKILL.md");
+    if (!(await pathExists(skillFile))) {
+      throw new Error(t("skill.installArchiveInvalid"));
+    }
+    await moveDirectory(extractedDir, targetDir);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+
+  return {
+    platform: item.platform,
+    skillId: item.id,
+    skillName: item.name,
+    targetDir,
+  };
 }
 
 function compareNodeVersionDesc(left: string, right: string): number {
@@ -1845,4 +2046,31 @@ export async function getCodexSkillsList(workspaceRoots?: string[]): Promise<Cod
 
 export async function getGeminiSkillsList(workspaceRoots?: string[]): Promise<GeminiSkillItem[]> {
   return listGeminiSkills(workspaceRoots);
+}
+
+export async function getOfficialSkillsCatalog(
+  platform: OfficialSkillPlatform,
+): Promise<OfficialSkillCatalogItem[]> {
+  if (!isOfficialSkillPlatform(platform)) {
+    throw new Error(t("skill.installUnsupportedPlatform"));
+  }
+  const catalog = await readOfficialSkillsCatalogFile();
+  return catalog.skills
+    .filter((item) => item.platform === platform)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function installOfficialSkill(
+  platform: OfficialSkillPlatform,
+  skillId: string,
+): Promise<OfficialSkillInstallResult> {
+  if (!isOfficialSkillPlatform(platform)) {
+    throw new Error(t("skill.installUnsupportedPlatform"));
+  }
+  const catalog = await readOfficialSkillsCatalogFile();
+  const item = catalog.skills.find((entry) => entry.platform === platform && entry.id === skillId);
+  if (!item) {
+    throw new Error(t("skill.catalogMissing"));
+  }
+  return installBundledOfficialSkill(item);
 }

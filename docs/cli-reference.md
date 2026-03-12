@@ -87,9 +87,15 @@
 - 对于 HTTP MCP，优先写入 `--url`；若 `Authorization` 头可解析为环境变量引用（如 `Bearer $TOKEN`），会自动映射到 `--bearer-token-env-var`。
 - Marketplace 中的占位环境变量（如 `<YOUR_API_KEY>`）不会直接写入，会跳过并给出提示，避免把模板值写进本机配置。
 
+插件内 Claude Skills（配置中心）：
+- 技能列表读取 `~/.claude/skills` 下包含 `SKILL.md` 的目录。
+- 勾选默认即启用；取消勾选时，会在 `~/.claude/settings.json` 的 `permissions.deny` 写入 `Skill(<skill-name>)` 规则。
+- Skills 弹窗内置 `anthropics/skills` 官方 GitHub 快照，可直接安装 `document-skills` / `example-skills` / `claude-api` 分组中的技能到 `~/.claude/skills/<skill-name>`。
+
 插件内 Codex Skills（配置中心）：
 - 技能列表按优先级扫描：工作区及父目录 `.codex/skills` / `.agents/skills` → `~/.agents/skills` → `~/.codex/skills`（兼容）→ `/etc/codex/skills`。
 - 勾选默认即启用；取消勾选时，才会在 `~/.codex/config.toml` 追加对应 `[[skills.config]]` 且 `enabled = false` 的禁用条目。
+- Skills 弹窗内置 `openai/skills` 官方 curated GitHub 快照，可直接安装到 `$CODEX_HOME/skills/<skill-name>`；若未设置 `CODEX_HOME`，则安装到 `~/.codex/skills/<skill-name>`。
 
 插件内 Gemini Skills（配置中心）：
 - 技能列表按优先级扫描：工作区及父目录 `.gemini/skills` → `~/.gemini/skills` → `/etc/gemini/skills`。

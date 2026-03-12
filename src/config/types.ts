@@ -48,6 +48,44 @@ export type GeminiSkillToggle = GeminiSkillItem & {
   enabled: boolean;
 };
 
+export type OfficialSkillPlatform = "claude" | "codex";
+
+export type OfficialSkillCatalogPlatformMeta = {
+  repo: string;
+  ref: string;
+  sourceUrl: string;
+  installRootHint: string;
+  notes?: string;
+};
+
+export type OfficialSkillCatalogItem = {
+  id: string;
+  platform: OfficialSkillPlatform;
+  group: string;
+  groupDescription?: string;
+  name: string;
+  description?: string;
+  archivePath: string;
+  installFolderName: string;
+  sourceRepo: string;
+  sourceRef: string;
+  sourcePath: string;
+  sourceUrl: string;
+};
+
+export type OfficialSkillCatalog = {
+  generatedAt: string;
+  platforms: Partial<Record<OfficialSkillPlatform, OfficialSkillCatalogPlatformMeta>>;
+  skills: OfficialSkillCatalogItem[];
+};
+
+export type OfficialSkillInstallResult = {
+  platform: OfficialSkillPlatform;
+  skillId: string;
+  skillName: string;
+  targetDir: string;
+};
+
 export type McpMarketplaceItem = {
   id: string;
   name: string;

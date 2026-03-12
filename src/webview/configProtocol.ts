@@ -1,4 +1,4 @@
-import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform } from "../config/types";
+import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform, OfficialSkillPlatform } from "../config/types";
 
 export type ConfigAction =
   | "getList"
@@ -16,6 +16,8 @@ export type ConfigAction =
   | "getClaudeSkillsList"
   | "getCodexSkillsList"
   | "getGeminiSkillsList"
+  | "getOfficialSkillsCatalog"
+  | "installOfficialSkill"
   | "getCodexMcpServerIds"
   | "getCodexMcpHealth"
   | "getMcpHealth"
@@ -40,6 +42,8 @@ export type ConfigRequestPayload =
   | { action: "getClaudeSkillsList" }
   | { action: "getCodexSkillsList" }
   | { action: "getGeminiSkillsList" }
+  | { action: "getOfficialSkillsCatalog"; platform: OfficialSkillPlatform }
+  | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "getCodexMcpServerIds" }
   | { action: "getCodexMcpHealth" }
   | { action: "getMcpHealth"; platform: ConfigPlatform }

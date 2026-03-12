@@ -48,6 +48,12 @@ const detectConfigApiMode = () =>
     getClaudeSkillsList: () => requestConfigApi("/claude/skills"),
     getCodexSkillsList: () => requestConfigApi("/codex/skills"),
     getGeminiSkillsList: () => requestConfigApi("/gemini/skills"),
+    getOfficialSkillsCatalog: async () => {
+      throw new Error("当前模式不支持读取内置官方 Skills");
+    },
+    installOfficialSkill: async () => {
+      throw new Error("当前模式不支持安装内置官方 Skills");
+    },
     getCodexMcpServerIds: async () => {
       throw new Error("当前模式不支持读取 Codex MCP");
     },
@@ -102,6 +108,22 @@ const detectConfigApiMode = () =>
       return configApi.getGeminiSkillsList();
     } catch (e) {
       throw (console.error("获取 Gemini Skills 失败:", e), e);
+    }
+  },
+  fetchOfficialSkillsCatalog = async (e) => {
+    if (!configApi.getOfficialSkillsCatalog) return [];
+    try {
+      return configApi.getOfficialSkillsCatalog(e);
+    } catch (t) {
+      throw (console.error("获取官方 Skills 失败:", t), t);
+    }
+  },
+  installOfficialSkillById = async (e, t) => {
+    if (!configApi.installOfficialSkill) throw new Error("当前模式不支持安装内置官方 Skills");
+    try {
+      return configApi.installOfficialSkill(e, t);
+    } catch (n) {
+      throw (console.error("安装 Skill 失败:", n), n);
     }
   },
   fetchCodexMcpServerIds = async () => {
