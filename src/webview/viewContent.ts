@@ -1097,6 +1097,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .trace-collapsible:not([open]) .trace-content {
         display: none;
       }
+      .trace-collapsible.trace-collapsible-tool-result:not([open]) .trace-content {
+        display: none !important;
+        max-height: 0;
+        overflow: hidden;
+      }
       .trace-line {
         white-space: pre-wrap;
       }
@@ -3555,6 +3560,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function forceCollapseToolResultBubbles() {
+        const nodes = elements.messages.querySelectorAll("details.trace-collapsible.trace-collapsible-tool-result[open]");
+        nodes.forEach((node) => {
+          try {
+            node.open = false;
+            node.removeAttribute("open");
+          } catch {
+            // ignore
+          }
+        });
+      }
+
       function renderMessages() {
         try {
           const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
@@ -3566,8 +3583,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             }
             const wrapper = document.createElement("div");
             wrapper.className = "message " + message.role;
-            if (message.role === "trace") {
-              const tracePresentation = getTracePresentation(message.content || "");
+            const tracePresentation = getTracePresentation(message.content || "");
+            const shouldUseTraceWrapper = message.role === "trace" || tracePresentation.type === "tool-result";
+            if (shouldUseTraceWrapper) {
+              wrapper.classList.add("trace");
               const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
               wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
               if (tracePresentation.type) {
@@ -3592,6 +3611,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             elements.messages.appendChild(wrapper);
           });
 
+          forceCollapseToolResultBubbles();
           elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
           updateRunWait();
           if (shouldAutoScroll) {
@@ -3947,6 +3967,48 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return "";
       }
 
+      function getMessageCollapseThreshold() {
+        return 50;
+      }
+
+      function normalizeCollapsePreviewText(content) {
+        const normalized = String(content || "")
+          .replace(/\\s+/g, " ")
+          .trim();
+        return normalized;
+      }
+
+      function shouldCollapseByContentLength(content) {
+        return normalizeCollapsePreviewText(content).length >= getMessageCollapseThreshold();
+      }
+
+      function buildBubbleCollapseSummaryText(content) {
+        const normalized = normalizeCollapsePreviewText(content);
+        if (!normalized) {
+          return "";
+        }
+        const limit = getMessageCollapseThreshold();
+        if (normalized.length <= limit) {
+          return normalized;
+        }
+        return normalized.slice(0, limit) + "…";
+      }
+
+      function renderCollapsibleBubbleContent(summaryText, bodyHtml, traceKey, options = {}) {
+        const keyAttr = traceKey ? ' data-trace-key="' + escapeHtml(traceKey) + '"' : "";
+        const extraClass = options.extraClass ? ' ' + options.extraClass : "";
+        const allowRestoreOpen = options.allowRestoreOpen !== false;
+        const openAttr = allowRestoreOpen && traceKey && traceCollapsibleOpenKeys.has(traceKey) ? " open" : "";
+        return '<details class="trace-collapsible' + extraClass + '"' + keyAttr + openAttr + '><summary>' + escapeHtml(summaryText) + '</summary>' + bodyHtml + '</details>';
+      }
+
+      function isThinkingLikeMessage(message, presentation) {
+        if (!message) {
+          return false;
+        }
+        return message.kind === "thinking" || (presentation && presentation.type === "thinking");
+      }
+
       function isFileUpdateMessage(message) {
         if (!message) {
           return false;
@@ -4025,7 +4087,54 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           '<div class="user-context-tags">' + tagsHtml + '</div>';
       }
 
+      function isToolResultLikeMessage(message) {
+        if (!message || message.role === "user") {
+          return false;
+        }
+        const presentation = getTracePresentation(message.content || "");
+        return presentation.type === "tool-result";
+      }
+
+      function renderToolResultLikeMessage(message) {
+        const content = renderTraceContent(message);
+        const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
+        if (time) {
+          return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
+        }
+        return content;
+      }
+
+      function renderAssistantMessageContent(message) {
+        const content = String(message && message.content ? message.content : "");
+        const presentation = getTracePresentation(content);
+        if (isThinkingLikeMessage(message, presentation)) {
+          return renderMarkdown(content);
+        }
+        const bodyHtml = '<div class="assistant-message-content">' + renderMarkdown(content) + '</div>';
+        if (!shouldCollapseByContentLength(content)) {
+          return bodyHtml;
+        }
+        return renderCollapsibleBubbleContent(
+          buildBubbleCollapseSummaryText(content),
+          bodyHtml,
+          message && message.id ? message.id : "",
+          { extraClass: "message-collapsible-generic" }
+        );
+      }
+
+      function renderTraceMessageContent(message) {
+        const content = renderTraceContent(message);
+        const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
+        if (time) {
+          return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
+        }
+        return content;
+      }
+
       function renderMessageContent(message) {
+        if (isToolResultLikeMessage(message)) {
+          return renderToolResultLikeMessage(message);
+        }
         if (message.role === "system") {
           const content = escapeHtml(message.content || "");
           const time = message.createdAt ? formatDateTime(message.createdAt) : "";
@@ -4047,14 +4156,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return renderUserMessageContent(message);
         }
         if (message.role === "trace") {
-          const content = renderTraceContent(message);
-          const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
-          if (time) {
-            return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
-          }
-          return content;
+          return renderTraceMessageContent(message);
         }
-        return renderMarkdown(message.content);
+        return renderAssistantMessageContent(message);
       }
 
       function safelyRenderMessageContent(message) {
@@ -4099,12 +4203,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               : '<span class="trace-detail"></span>') +
             "</div>"
           : "";
-        if (shouldCollapseTraceContent(presentation)) {
-          const summary = '<summary>' + escapeHtml(getTraceCollapseSummaryText(presentation)) + "</summary>";
-          const keyAttr = traceKey ? ' data-trace-key="' + escapeHtml(traceKey) + '"' : "";
-          const allowRestoreOpen = presentation.type !== "tool-result";
-          const openAttr = allowRestoreOpen && traceKey && traceCollapsibleOpenKeys.has(traceKey) ? " open" : "";
-          return header + '<details class="trace-collapsible"' + keyAttr + openAttr + '>' + summary + bodyHtml + "</details>";
+        if (shouldCollapseTraceContent(message, presentation)) {
+          const isToolResult = presentation.type === "tool-result";
+          return header + renderCollapsibleBubbleContent(
+            getTraceCollapseSummaryText(message, presentation),
+            bodyHtml,
+            traceKey,
+            {
+              extraClass: isToolResult ? "trace-collapsible-tool-result" : "message-collapsible-generic",
+              allowRestoreOpen: !isToolResult,
+            }
+          );
         }
         return header + bodyHtml;
       }
@@ -4122,44 +4231,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return '<div class="trace-content">' + htmlLines.join("") + "</div>";
       }
 
-      function shouldCollapseTraceContent(presentation) {
+      function shouldCollapseTraceContent(message, presentation) {
         if (!presentation) {
           return false;
         }
-        const lines = Array.isArray(presentation.lines) ? presentation.lines : [];
-        if (presentation.type === "file-update") {
-          return hasDiffLikeLines(lines) || lines.length >= 4;
-        }
-        if (presentation.type === "thinking") {
+        if (isThinkingLikeMessage(message, presentation)) {
           return false;
         }
-        if (presentation.type === "exec") {
-          const detail = String(presentation.detail || "").toLowerCase();
-          const hasHeredocMarker = /<<['"]?[a-z0-9_]+['"]?/i.test(detail);
-          const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
-          return hasHeredocMarker || lines.length >= 6 || totalChars >= 600;
-        }
-        if (presentation.type === "tool-result") {
-          return true;
-        }
-        const isToolUseTrace = String(presentation.type || "").startsWith("tool-use-");
-        if (!isToolUseTrace) {
-          return false;
-        }
-        const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
-        const hasStructuredPayload = lines.some((line) => {
-          const trimmed = String(line || "").trim();
-          return trimmed.startsWith("{")
-            || trimmed.startsWith("[")
-            || trimmed.startsWith("输入:")
-            || trimmed.startsWith("Input:")
-            || trimmed.startsWith("输出:")
-            || trimmed.startsWith("Output:");
-        });
-        return hasStructuredPayload || lines.length >= 8 || totalChars >= 480;
+        const sourceContent = message && typeof message.content === "string"
+          ? message.content
+          : (Array.isArray(presentation.lines) ? presentation.lines.join("\\n") : "");
+        return shouldCollapseByContentLength(sourceContent);
       }
 
-      function getTraceCollapseSummaryText(presentation) {
+      function getTraceCollapseSummaryText(message, presentation) {
         if (presentation && presentation.type === "file-update") {
           return t("traceExpandChanges");
         }
@@ -4172,9 +4257,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const isToolTrace = presentation
           && String(presentation.type || "").startsWith("tool-use-");
         if (isToolTrace) {
-          return t("traceExpandTool");
+          return buildBubbleCollapseSummaryText(message && message.content ? message.content : presentation.lines.join("\\n"));
         }
-        return t("traceExpandCommand");
+        return buildBubbleCollapseSummaryText(message && message.content ? message.content : presentation.lines.join("\\n"));
       }
 
       function getToolResultCollapseSummaryText(presentation) {
