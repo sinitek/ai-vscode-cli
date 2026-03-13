@@ -11,8 +11,6 @@ tsconfig.json
 node_modules/**
 !node_modules/@anthropic-ai/**
 !node_modules/@anthropic-ai/claude-agent-sdk/**
-!node_modules/@openai/**
-!node_modules/@openai/codex-sdk/**
 !node_modules/cross-spawn/**
 !node_modules/isexe/**
 !node_modules/path-key/**
