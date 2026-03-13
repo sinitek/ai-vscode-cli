@@ -1,7 +1,9 @@
+import type { ChildProcess } from "child_process";
+import { spawn } from "cross-spawn";
+import * as readline from "readline";
+import { getMacTaskShell } from "../cli/config";
+import { resolveCliCommand } from "../cli/commandRunner";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
-import { dynamicImport } from "./dynamicImport";
-import * as fs from "fs";
-import * as path from "path";
 
 export type CodexTraceKind = "thinking" | "normal";
 
@@ -18,111 +20,6 @@ export type CodexStreamHandlers = {
 };
 
 type CodexThreadOptions = Record<string, unknown>;
-
-function mapNodeArchToVendorArch(arch: string): "x86_64" | "aarch64" | null {
-  // Codex SDK vendors only a small set of arch names.
-  if (arch === "x64") {
-    return "x86_64";
-  }
-  if (arch === "arm64") {
-    return "aarch64";
-  }
-  return null;
-}
-
-function mapPlatformToVendorSuffix(platform: NodeJS.Platform): string | null {
-  if (platform === "win32") {
-    return "pc-windows-msvc";
-  }
-  if (platform === "darwin") {
-    return "apple-darwin";
-  }
-  if (platform === "linux") {
-    // The SDK packages musl-static binaries.
-    return "unknown-linux-musl";
-  }
-  return null;
-}
-
-function resolveCodexSdkBundledBinaryPath(): string | null {
-  try {
-    const pkgJson = require.resolve("@openai/codex-sdk/package.json");
-    const pkgRoot = path.dirname(pkgJson);
-    const vendorRoot = path.join(pkgRoot, "vendor");
-    if (!fs.existsSync(vendorRoot)) {
-      return null;
-    }
-
-    const binaryName = process.platform === "win32" ? "codex.exe" : "codex";
-    const relBinary = path.join("codex", binaryName);
-
-    const arch = mapNodeArchToVendorArch(process.arch);
-    const suffix = mapPlatformToVendorSuffix(process.platform);
-    if (arch && suffix) {
-      const expected = path.join(vendorRoot, `${arch}-${suffix}`, relBinary);
-      if (fs.existsSync(expected)) {
-        return expected;
-      }
-    }
-
-    // Fallback: search any vendor target folder for the bundled binary.
-    const entries = fs.readdirSync(vendorRoot, { withFileTypes: true });
-    const candidates: string[] = [];
-    for (const ent of entries) {
-      if (!ent.isDirectory()) {
-        continue;
-      }
-      const p = path.join(vendorRoot, ent.name, relBinary);
-      if (fs.existsSync(p)) {
-        candidates.push(p);
-      }
-    }
-    if (candidates.length === 1) {
-      return candidates[0] ?? null;
-    }
-
-    // Prefer a candidate matching our arch if multiple exist.
-    if (arch) {
-      const preferred = candidates.find((p) => p.includes(`${path.sep}${arch}-`));
-      if (preferred) {
-        return preferred;
-      }
-    }
-
-    return candidates[0] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function ensureExecutable(filePath: string): void {
-  if (process.platform === "win32") {
-    return;
-  }
-  try {
-    fs.accessSync(filePath, fs.constants.X_OK);
-    return;
-  } catch {
-    // Continue to chmod.
-  }
-
-  try {
-    const st = fs.statSync(filePath);
-    // Keep existing bits and add +x for user/group/other.
-    const nextMode = (st.mode ?? 0) | 0o111;
-    fs.chmodSync(filePath, nextMode);
-  } catch {
-    // Best-effort: if chmod fails, the subsequent spawn will surface the error.
-  }
-}
-
-function bestEffortFixCodexSdkBundledBinaryPermissions(): void {
-  const bundled = resolveCodexSdkBundledBinaryPath();
-  if (!bundled) {
-    return;
-  }
-  ensureExecutable(bundled);
-}
 
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let i = 0; i < args.length; i += 1) {
@@ -216,6 +113,132 @@ function buildCodexThreadOptions(
   return options;
 }
 
+function buildCodexExecArgs(
+  args: string[],
+  cwd: string | undefined,
+  thinkingMode: ThinkingMode,
+  interactiveMode: InteractiveMode,
+  threadId: string | null
+): string[] {
+  const options = buildCodexThreadOptions(args, cwd, thinkingMode, interactiveMode);
+  const commandArgs = ["exec", "--experimental-json"];
+
+  if (typeof options.model === "string" && options.model) {
+    commandArgs.push("--model", options.model);
+  }
+  if (typeof options.sandboxMode === "string" && options.sandboxMode) {
+    commandArgs.push("--sandbox", options.sandboxMode);
+  }
+  if (typeof options.workingDirectory === "string" && options.workingDirectory) {
+    commandArgs.push("--cd", options.workingDirectory);
+  }
+  if (Array.isArray(options.additionalDirectories)) {
+    for (const dir of options.additionalDirectories) {
+      if (typeof dir === "string" && dir) {
+        commandArgs.push("--add-dir", dir);
+      }
+    }
+  }
+  if (options.skipGitRepoCheck) {
+    commandArgs.push("--skip-git-repo-check");
+  }
+  if (typeof options.modelReasoningEffort === "string" && options.modelReasoningEffort) {
+    commandArgs.push("--config", `model_reasoning_effort="${options.modelReasoningEffort}"`);
+  }
+  if (typeof options.networkAccessEnabled === "boolean") {
+    commandArgs.push(
+      "--config",
+      `sandbox_workspace_write.network_access=${options.networkAccessEnabled}`
+    );
+  }
+  if (typeof options.webSearchMode === "string" && options.webSearchMode) {
+    commandArgs.push("--config", `web_search="${options.webSearchMode}"`);
+  } else if (options.webSearchEnabled === true) {
+    commandArgs.push("--config", 'web_search="live"');
+  } else if (options.webSearchEnabled === false) {
+    commandArgs.push("--config", 'web_search="disabled"');
+  }
+  if (typeof options.approvalPolicy === "string" && options.approvalPolicy) {
+    commandArgs.push("--config", `approval_policy="${options.approvalPolicy}"`);
+  }
+  if (threadId) {
+    commandArgs.push("resume", threadId);
+  }
+
+  return commandArgs;
+}
+
+function escapeShellArg(value: string): string {
+  if (value === "") {
+    return "''";
+  }
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function buildShellCommandLine(command: string, args: string[]): string {
+  return [command, ...args].map((segment) => escapeShellArg(segment)).join(" ");
+}
+
+function resolveMacTaskShellExecutable(): string {
+  return getMacTaskShell() === "bash" ? "/bin/bash" : "/bin/zsh";
+}
+
+function resolveSpawnCommand(command: string, args: string[]): { command: string; args: string[] } {
+  if (process.platform === "darwin") {
+    return {
+      command: resolveMacTaskShellExecutable(),
+      args: ["-lc", buildShellCommandLine(command, args)],
+    };
+  }
+
+  const resolved = resolveCliCommand(command);
+  if (!resolved) {
+    const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    throw error;
+  }
+
+  return {
+    command: resolved.command,
+    args,
+  };
+}
+
+function killProcessTree(
+  child: ChildProcess,
+  signal: NodeJS.Signals | number = "SIGTERM"
+): boolean {
+  if (!child.pid) {
+    return false;
+  }
+
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    return true;
+  }
+
+  const pid = child.pid;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function createAbortError(): Error {
+  const error = new Error("Codex run aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -281,9 +304,8 @@ function extractReasoningText(item: Record<string, unknown>): string {
 
 export class CodexInteractiveRunner {
   public readonly cli: CliName = "codex";
-  private codex: any | null = null;
-  private thread: any | null = null;
-  private abortController: AbortController | null = null;
+  private activeChild: ChildProcess | null = null;
+  private abortGeneration = 0;
   private disposed = false;
 
   public constructor(
@@ -305,49 +327,17 @@ export class CodexInteractiveRunner {
     if (this.disposed) {
       throw new Error("runner-disposed");
     }
-    if (this.codex) {
-      return;
-    }
-    // VSIX packaging (zip) can drop executable bits on Linux/WSL, causing spawn EACCES.
-    bestEffortFixCodexSdkBundledBinaryPermissions();
-    const mod = await dynamicImport<any>("@openai/codex-sdk");
-    const CodexCtor = mod?.Codex;
-    if (!CodexCtor) {
-      throw new Error("codex-sdk-missing-export");
-    }
-    const override =
-      this.options.command && this.options.command !== "codex" ? this.options.command : undefined;
-    this.codex = new CodexCtor(
-      override ? { codexPathOverride: override } : undefined
-    );
-  }
-
-  private async ensureThread(): Promise<void> {
-    await this.ensureReady();
-    if (this.thread) {
-      return;
-    }
-    const threadOptions = buildCodexThreadOptions(
-      this.options.args,
-      this.options.cwd,
-      this.options.thinkingMode,
-      this.options.interactiveMode
-    );
-    if (this.options.threadId) {
-      this.thread = this.codex.resumeThread(this.options.threadId, threadOptions);
-    } else {
-      this.thread = this.codex.startThread(threadOptions);
-    }
   }
 
   public rebuild(): void {
-    this.thread = null;
+    // No in-memory thread state to rebuild; thread continuity is tracked by threadId.
   }
 
   public stopAndRebuild(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
+    this.abortGeneration += 1;
+    if (this.activeChild) {
+      killProcessTree(this.activeChild);
+      this.activeChild = null;
     }
     this.rebuild();
   }
@@ -355,7 +345,6 @@ export class CodexInteractiveRunner {
   public dispose(): void {
     this.disposed = true;
     this.stopAndRebuild();
-    this.codex = null;
   }
 
   public async runForText(prompt: string): Promise<{ threadId: string | null; text: string }> {
@@ -371,122 +360,187 @@ export class CodexInteractiveRunner {
   }
 
   public async runStreamed(prompt: string, handlers: CodexStreamHandlers): Promise<void> {
-    await this.ensureThread();
-    if (!this.thread) {
-      throw new Error("codex-thread-missing");
-    }
-    this.abortController = new AbortController();
-    const { signal } = this.abortController;
-
-    const streamed = await this.thread.runStreamed(prompt, { signal });
+    await this.ensureReady();
+    const runGeneration = this.abortGeneration;
+    const commandArgs = buildCodexExecArgs(
+      this.options.args,
+      this.options.cwd,
+      this.options.thinkingMode,
+      this.options.interactiveMode,
+      this.options.threadId
+    );
+    const spawnCommand = resolveSpawnCommand(this.options.command, commandArgs);
+    const child = spawn(spawnCommand.command, spawnCommand.args, {
+      cwd: this.options.cwd,
+      env: process.env,
+      detached: process.platform !== "win32",
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.activeChild = child;
     let lastAgentText = "";
     const seenCommandExecutions = new Set<string>();
+    let spawnError: Error | null = null;
+    child.once("error", (error) => {
+      spawnError = error;
+    });
+    child.stdin?.write(prompt);
+    child.stdin?.end();
+    const stderrChunks: Buffer[] = [];
+    child.stderr?.on("data", (chunk: string | Buffer) => {
+      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
 
-    for await (const event of streamed.events as AsyncGenerator<any>) {
-      handlers.onEvent?.(event);
-      if (event?.type === "thread.started" && typeof event.thread_id === "string") {
-        this.options.threadId = event.thread_id;
-        handlers.onThreadId(event.thread_id);
-        continue;
-      }
-      if (event?.type === "error") {
-        const message = typeof event.message === "string" ? event.message.trim() : "";
-        if (message) {
-          const lower = message.toLowerCase();
-          const prefix = lower.startsWith("reconnecting") || lower.startsWith("retrying")
-            ? "warning "
-            : "error ";
-          handlers.onTrace(`${prefix}${message}`);
-        }
-        continue;
-      }
+    const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+      child.once("exit", (code, signal) => resolve({ code, signal }));
+    });
 
-      if ((event?.type === "item.started" || event?.type === "item.updated" || event?.type === "item.completed") && event.item) {
-        const item = event.item as any;
-        if (item.type === "agent_message") {
-          const nextText = typeof item.text === "string" ? item.text : "";
-          const delta = extractDelta(lastAgentText, nextText);
-          if (delta) {
-            handlers.onAssistantDelta(delta);
-          }
-          lastAgentText = nextText;
-          continue;
-        }
-        if (item.type === "todo_list") {
-          const items = Array.isArray(item.items) ? item.items : [];
-          const normalized = items
-            .filter((it: any) => it && typeof it.text === "string")
-            .map((it: any) => ({ text: it.text, done: Boolean(it.completed) }));
-          if (normalized.length) {
-            handlers.onTaskListUpdate(normalized);
-          }
-          continue;
-        }
-        if (item.type === "reasoning") {
-          const text = extractReasoningText(item);
-          if (text) {
-            handlers.onTrace(text, "thinking");
-          }
-          continue;
-        }
-        if (item.type === "command_execution") {
-          const command = typeof item.command === "string" ? item.command.trim() : "";
-          const commandLine = command ? `exec ${command}` : "exec";
-          const commandId = typeof item.id === "string" ? item.id : "";
-          if (commandId) {
-            if (seenCommandExecutions.has(commandId)) {
-              continue;
-            }
-            seenCommandExecutions.add(commandId);
-          } else if (event?.type !== "item.completed") {
-            continue;
-          }
-          handlers.onTrace(commandLine, "normal", { merge: false });
-          continue;
-        }
-        if (item.type === "file_change") {
-          const status = typeof item.status === "string" ? item.status : "";
-          const changes = Array.isArray(item.changes) ? item.changes : [];
-          const list = changes
-            .map((c: any) => (c && typeof c.path === "string" ? `${c.kind ?? "update"}: ${c.path}` : ""))
-            .filter(Boolean);
-          handlers.onTrace(["file update", status ? `status: ${status}` : "", ...list].filter(Boolean).join("\n"));
-          continue;
-        }
-        if (item.type === "mcp_tool_call") {
-          const server = typeof item.server === "string" ? item.server : "";
-          const tool = typeof item.tool === "string" ? item.tool : "";
-          const status = typeof item.status === "string" ? item.status : "";
-          handlers.onTrace(
-            ["mcp", `${server} :: ${tool}`.trim(), status ? `status: ${status}` : "", `params: ${safeStringify(item.arguments)}`]
-              .filter(Boolean)
-              .join("\n")
-          );
-          continue;
-        }
-        if (item.type === "web_search") {
-          const query = typeof item.query === "string" ? item.query : "";
-          if (query) {
-            handlers.onTrace(`web search ${query}`);
-          }
-          continue;
-        }
-        if (item.type === "error") {
-          const message = typeof item.message === "string" ? item.message : "";
-          if (message) {
-            handlers.onTrace(`error ${message}`);
-          }
-          continue;
-        }
-      }
-
-      if (event?.type === "turn.failed") {
-        const message = event?.error?.message ? String(event.error.message) : "turn.failed";
-        handlers.onTrace(`error ${message}`);
-        continue;
-      }
+    if (!child.stdout) {
+      child.kill();
+      throw new Error("Child process has no stdout");
     }
 
-    this.abortController = null;
+    const rl = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    });
+
+    try {
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        let event: any;
+        try {
+          event = JSON.parse(trimmed);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`Failed to parse item: ${trimmed}\n${message}`);
+        }
+
+        handlers.onEvent?.(event);
+        if (event?.type === "thread.started" && typeof event.thread_id === "string") {
+          this.options.threadId = event.thread_id;
+          handlers.onThreadId(event.thread_id);
+          continue;
+        }
+        if (event?.type === "error") {
+          const message = typeof event.message === "string" ? event.message.trim() : "";
+          if (message) {
+            const lower = message.toLowerCase();
+            const prefix = lower.startsWith("reconnecting") || lower.startsWith("retrying")
+              ? "warning "
+              : "error ";
+            handlers.onTrace(`${prefix}${message}`);
+          }
+          continue;
+        }
+
+        if ((event?.type === "item.started" || event?.type === "item.updated" || event?.type === "item.completed") && event.item) {
+          const item = event.item as any;
+          if (item.type === "agent_message") {
+            const nextText = typeof item.text === "string" ? item.text : "";
+            const delta = extractDelta(lastAgentText, nextText);
+            if (delta) {
+              handlers.onAssistantDelta(delta);
+            }
+            lastAgentText = nextText;
+            continue;
+          }
+          if (item.type === "todo_list") {
+            const items = Array.isArray(item.items) ? item.items : [];
+            const normalized = items
+              .filter((it: any) => it && typeof it.text === "string")
+              .map((it: any) => ({ text: it.text, done: Boolean(it.completed) }));
+            if (normalized.length) {
+              handlers.onTaskListUpdate(normalized);
+            }
+            continue;
+          }
+          if (item.type === "reasoning") {
+            const text = extractReasoningText(item);
+            if (text) {
+              handlers.onTrace(text, "thinking");
+            }
+            continue;
+          }
+          if (item.type === "command_execution") {
+            const command = typeof item.command === "string" ? item.command.trim() : "";
+            const commandLine = command ? `exec ${command}` : "exec";
+            const commandId = typeof item.id === "string" ? item.id : "";
+            if (commandId) {
+              if (seenCommandExecutions.has(commandId)) {
+                continue;
+              }
+              seenCommandExecutions.add(commandId);
+            } else if (event?.type !== "item.completed") {
+              continue;
+            }
+            handlers.onTrace(commandLine, "normal", { merge: false });
+            continue;
+          }
+          if (item.type === "file_change") {
+            const status = typeof item.status === "string" ? item.status : "";
+            const changes = Array.isArray(item.changes) ? item.changes : [];
+            const list = changes
+              .map((c: any) => (c && typeof c.path === "string" ? `${c.kind ?? "update"}: ${c.path}` : ""))
+              .filter(Boolean);
+            handlers.onTrace(["file update", status ? `status: ${status}` : "", ...list].filter(Boolean).join("\n"));
+            continue;
+          }
+          if (item.type === "mcp_tool_call") {
+            const server = typeof item.server === "string" ? item.server : "";
+            const tool = typeof item.tool === "string" ? item.tool : "";
+            const status = typeof item.status === "string" ? item.status : "";
+            handlers.onTrace(
+              ["mcp", `${server} :: ${tool}`.trim(), status ? `status: ${status}` : "", `params: ${safeStringify(item.arguments)}`]
+                .filter(Boolean)
+                .join("\n")
+            );
+            continue;
+          }
+          if (item.type === "web_search") {
+            const query = typeof item.query === "string" ? item.query : "";
+            if (query) {
+              handlers.onTrace(`web search ${query}`);
+            }
+            continue;
+          }
+          if (item.type === "error") {
+            const message = typeof item.message === "string" ? item.message : "";
+            if (message) {
+              handlers.onTrace(`error ${message}`);
+            }
+            continue;
+          }
+        }
+
+        if (event?.type === "turn.failed") {
+          const message = event?.error?.message ? String(event.error.message) : "turn.failed";
+          handlers.onTrace(`error ${message}`);
+          continue;
+        }
+      }
+
+      if (spawnError) {
+        throw spawnError;
+      }
+      const { code, signal } = await exitPromise;
+      if (this.abortGeneration !== runGeneration) {
+        throw createAbortError();
+      }
+      if (code !== 0 || signal) {
+        const stderrBuffer = Buffer.concat(stderrChunks);
+        const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
+        throw new Error(`Codex Exec exited with ${detail}: ${stderrBuffer.toString("utf8")}`);
+      }
+    } finally {
+      rl.close();
+      child.removeAllListeners();
+      if (this.activeChild === child) {
+        this.activeChild = null;
+      }
+    }
   }
 }

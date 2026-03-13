@@ -293,16 +293,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 逻辑复用同一个 `runCli`，仅在运行前注入参数。
 
-## 支持“交互模式”（常驻 Runner + 上下文压缩）
+## 支持“交互模式”（会话续接 + 上下文压缩）
 
 本项目已按 `docs/支持交互.md` 落地 **Codex + Claude** 的交互模式（Gemini 暂不纳入）。
 
 ### 行为概述
 
-- 固定开启（Beta）：`codex/claude` 分组同一会话内多轮对话复用 SDK Runner（避免“一问一进程”的冷启动）。
+- 固定开启（Beta）：`codex/claude` 分组保持交互式会话续接。
+- Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex exec --experimental-json` + `resume <threadId>` 延续会话；不会使用 `@openai/codex-sdk` 自带 vendored binary。
+- Claude 交互路径继续复用 SDK Runner，避免“一问一进程”的冷启动。
 - 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。
 - 不自动降级：`codex/claude` 分组在 SDK 初始化/运行失败时不回退到非交互模式，直接返回错误。
-- 切换会话释放 Runner：每个 CLI 只维护 1 个当前会话 Runner，切换会话会销毁旧 Runner。
+- 切换会话释放交互状态：每个 CLI 只维护 1 个当前会话交互状态，切换会话会销毁旧状态。
 - 空闲释放：24 小时无交互自动释放 Runner。
 - 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
 - 抢占式切换：当 `codex/claude` 在任意 Tab 启动新任务时，会先停止其他运行中的任务，再接管当前交互 Runner；不允许回退到非交互子进程。
@@ -381,7 +383,7 @@ py -3.12 vscode_extension_win.py package
 
 注意：
 - 本项目未使用打包器（webpack/esbuild），运行时依赖需随 VSIX 一起打包。
-- `.vscodeignore` 需要排除 `node_modules`，但必须放行运行时依赖（当前白名单：`@anthropic-ai/claude-agent-sdk` / `@openai/codex-sdk` / `zod`），否则动态导入会在运行时找不到模块。
+- `.vscodeignore` 需要排除 `node_modules`，但必须放行运行时依赖（当前至少包括 `@anthropic-ai/claude-agent-sdk` / `zod`；若后续恢复 Codex SDK 路径，再额外放行 `@openai/codex-sdk`），否则动态导入会在运行时找不到模块。
 
 ## 常见问题
 

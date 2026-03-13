@@ -4,12 +4,17 @@
 
 ## 插件“交互模式”说明
 
-`codex` / `claude` 分组固定使用交互模式（常驻 Runner），`gemini` 分组保持非交互模式。对于支持交互的分组，插件会通过 SDK 复用会话/线程，避免每次发送都重新启动进程。
+`codex` / `claude` 分组固定使用交互模式，`gemini` 分组保持非交互模式。当前实现中：
 
-- 仍会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径（用于 SDK 的 path override）。
+- Codex：直接调用用户本机安装的官方 `codex` CLI，并通过 threadId 做会话续接；不会使用 `@openai/codex-sdk` 自带的 vendored `codex` 二进制。
+- Claude：继续通过 SDK Runner 复用会话，避免每次发送都重新启动进程。
+
+- Codex/Claude 都会读取 `sinitek-cli-tools.commands.<cli>` 作为可执行文件路径来源。
 - Claude 交互模式会尝试将 `sinitek-cli-tools.commands.claude`（含默认值 `claude`）解析为实际可执行路径，以复用全局登录与配置；解析失败则回退到 SDK 内置 CLI。
+- Codex 交互模式会直接启动配置项 `sinitek-cli-tools.commands.codex` 指向的官方 CLI；若配置为默认值 `codex`，则解析本机 PATH/平台默认安装位置。
 - Windows 下若解析到 `.cmd/.bat`，交互模式会忽略该覆盖并回退到 SDK 内置 `cli.js`（SDK v2 交互会话不支持直接 spawn `.cmd/.bat`，否则可能触发 `spawn EINVAL`）。
-- 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到 SDK（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
+- 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到交互运行层（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
+- Codex 交互模式当前会把 `sandbox/approval/model/add-dir/web search` 等核心参数映射到 `codex exec --experimental-json`，并通过 `resume <threadId>` 延续会话。
 - 交互模式下支持 `coding / plan` 两种会话模式，默认 `coding`。面板入口位于输入区“配置”按钮左侧。
 - `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
 - macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。
