@@ -12,6 +12,7 @@ import {
 import * as configService from "../config/configService";
 import { logEssential, logInfo } from "../logger";
 import { t } from "../i18n";
+import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
@@ -226,7 +227,14 @@ export class ConfigManagerPanel {
       }
     } catch (error) {
       response.success = false;
-      response.error = error instanceof Error ? error.message : String(error);
+      response.error = buildErrorDetail(error);
+      if (message.action === "apply") {
+        void showErrorWithActions(
+          t("config.applyFailedTitle"),
+          error,
+          { detailTitle: t("config.applyFailedTitle") }
+        );
+      }
     }
 
     if (this.panel) {

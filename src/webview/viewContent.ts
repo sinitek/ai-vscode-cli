@@ -23,6 +23,7 @@ const WEBVIEW_I18N = {
     taskListTitle: "Task List",
     cliSelectAria: "CLI selection",
     configSelectAria: "Config selection",
+    commonUnknownError: "Unknown error",
     interactiveModeSelectAria: "Interactive response mode",
     interactiveModeCoding: "Coding",
     interactiveModePlan: "Plan",
@@ -105,6 +106,9 @@ const WEBVIEW_I18N = {
     runPromptEmpty: "No running prompt available.",
     runStreamTitle: "Live Raw Stream Messages",
     runStreamClose: "Close",
+    configApplyErrorTitle: "Config Switch Failed",
+    configApplyErrorClose: "Close",
+    configApplyErrorCopy: "Copy Details",
     runStreamExportLabel: "Export TXT",
     runStreamExportAria: "Export all stream messages as a TXT file",
     runStreamExporting: "Exporting...",
@@ -184,6 +188,7 @@ const WEBVIEW_I18N = {
     traceExpandChanges: "Show file changes",
     traceExpandThinking: "Show thinking details",
     traceExpandTool: "Show tool details",
+    traceExpandToolResult: "Show {tool} output",
     toastCopied: "Copied",
     toastCopyFailed: "Copy failed",
     toastQueueAdded: "Added to queue",
@@ -196,6 +201,7 @@ const WEBVIEW_I18N = {
     toastRunStreamExportEmpty: "No stream messages to export.",
     toastRunStreamExportSuccess: "Exported to: {path}",
     toastRunStreamExportFailed: "Failed to export stream messages: {error}",
+    toastConfigApplyErrorCopied: "Config error details copied",
     rulesPathNoWorkspace: "Path: No workspace detected",
     rulesPathPrefix: "Path: ",
     rulesHintLoading: "Loading...",
@@ -227,6 +233,7 @@ const WEBVIEW_I18N = {
     taskListTitle: "任务列表",
     cliSelectAria: "CLI 选择",
     configSelectAria: "配置选择",
+    commonUnknownError: "未知错误",
     interactiveModeSelectAria: "交互回复模式",
     interactiveModeCoding: "编码",
     interactiveModePlan: "规划",
@@ -309,6 +316,9 @@ const WEBVIEW_I18N = {
     runPromptEmpty: "暂无可查看的提示词。",
     runStreamTitle: "实时原始流式消息",
     runStreamClose: "关闭",
+    configApplyErrorTitle: "切换配置失败",
+    configApplyErrorClose: "关闭",
+    configApplyErrorCopy: "复制详情",
     runStreamExportLabel: "导出 TXT",
     runStreamExportAria: "导出全部流式消息为 TXT 文件",
     runStreamExporting: "导出中...",
@@ -388,6 +398,7 @@ const WEBVIEW_I18N = {
     traceExpandChanges: "展开查看文件变更",
     traceExpandThinking: "展开查看思考详情",
     traceExpandTool: "展开查看工具详情",
+    traceExpandToolResult: "展开查看 {tool} 输出",
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
@@ -400,6 +411,7 @@ const WEBVIEW_I18N = {
     toastRunStreamExportEmpty: "暂无可导出的流式消息。",
     toastRunStreamExportSuccess: "已导出到：{path}",
     toastRunStreamExportFailed: "导出流式消息失败：{error}",
+    toastConfigApplyErrorCopied: "已复制配置错误详情",
     rulesPathNoWorkspace: "路径：未检测到工作区",
     rulesPathPrefix: "路径：",
     rulesHintLoading: "正在加载...",
@@ -1082,6 +1094,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-top: 1px solid var(--vscode-widget-border);
         padding: 6px 10px 8px;
       }
+      .trace-collapsible:not([open]) .trace-content {
+        display: none;
+      }
       .trace-line {
         white-space: pre-wrap;
       }
@@ -1684,6 +1699,34 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .run-stream-bottom-gap {
         height: 72px;
+      }
+      .config-error-modal {
+        width: 720px;
+      }
+      .config-error-body {
+        padding: 12px 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .config-error-detail {
+        margin: 0;
+        padding: 12px;
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 360px;
+        overflow: auto;
+      }
+      .config-error-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
       }
       
       .modal-header {
@@ -2384,6 +2427,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         </div>
       </div>
 
+      <div id="configApplyErrorOverlay" class="overlay">
+        <div class="modal config-error-modal">
+          <div class="modal-header">
+            <div class="title">${i18n.configApplyErrorTitle}</div>
+            <button id="closeConfigApplyError" class="secondary icon-button" title="${i18n.configApplyErrorClose}" aria-label="${i18n.configApplyErrorClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="config-error-body">
+            <pre id="configApplyErrorContent" class="config-error-detail"></pre>
+            <div class="config-error-actions">
+              <button id="copyConfigApplyError" class="secondary action-button">${i18n.configApplyErrorCopy}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="helpOverlay" class="overlay">
         <div class="modal help-modal">
           <div class="modal-header">
@@ -2497,7 +2560,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const template = i18n[key] || key;
         return formatTemplate(template, params);
       }
+      function reportWebviewFailure(message, error, extra) {
+        const reason = error && error.message ? String(error.message) : String(error || "");
+        const stack = error && error.stack ? String(error.stack) : undefined;
+        console.error("[sinitek-webview]", message, {
+          reason,
+          stack,
+          extra: extra || null,
+        });
+        try {
+          vscode.postMessage(Object.assign({
+            type: "webviewError",
+            message,
+            reason,
+            stack,
+          }, extra || {}));
+        } catch {
+          // ignore
+        }
+      }
       function postWebviewError(payload) {
+        console.error("[sinitek-webview]", payload && payload.message ? payload.message : "webview-error", payload || null);
         try {
           vscode.postMessage(Object.assign({ type: "webviewError" }, payload));
         } catch {
@@ -2674,6 +2757,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         closeRunStream: document.getElementById("closeRunStream"),
         exportRunStream: document.getElementById("exportRunStream"),
         runStreamContent: document.getElementById("runStreamContent"),
+        configApplyErrorOverlay: document.getElementById("configApplyErrorOverlay"),
+        closeConfigApplyError: document.getElementById("closeConfigApplyError"),
+        copyConfigApplyError: document.getElementById("copyConfigApplyError"),
+        configApplyErrorContent: document.getElementById("configApplyErrorContent"),
         helpTabInstall: document.getElementById("helpTabInstall"),
         helpTabThinking: document.getElementById("helpTabThinking"),
         helpPanelInstall: document.getElementById("helpPanelInstall"),
@@ -2839,15 +2926,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function setMessagesForTab(tabId, messages, options = {}) {
-        const runtimeState = getConversationRuntimeState(tabId, { create: true });
-        runtimeState.messages = Array.isArray(messages) ? messages : [];
-        resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
-        hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
-        if (isRuntimeStateForActiveTab(tabId)) {
-          state.messages = runtimeState.messages;
-          if (options.render !== false) {
-            renderMessages();
+        try {
+          const runtimeState = getConversationRuntimeState(tabId, { create: true });
+          runtimeState.messages = Array.isArray(messages) ? messages : [];
+          resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
+          hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
+          if (isRuntimeStateForActiveTab(tabId)) {
+            state.messages = runtimeState.messages;
+            if (options.render !== false) {
+              renderMessages();
+            }
           }
+        } catch (error) {
+          reportWebviewFailure("setMessagesForTab-failed", error, {
+            tabId,
+            messageCount: Array.isArray(messages) ? messages.length : -1,
+          });
+          throw error;
         }
       }
 
@@ -3461,49 +3556,58 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function renderMessages() {
-        const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
-        captureOpenTraceCollapsibleKeys();
-        elements.messages.innerHTML = "";
-        state.messages.forEach((message) => {
-          if (shouldHideSystemRunStatusMessage(message)) {
-            return;
-          }
-          const wrapper = document.createElement("div");
-          wrapper.className = "message " + message.role;
-          if (message.role === "trace") {
-            const tracePresentation = getTracePresentation(message.content || "");
-            const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
-            wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
-            if (tracePresentation.type) {
-              wrapper.classList.add("trace-type-" + tracePresentation.type);
+        try {
+          const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
+          captureOpenTraceCollapsibleKeys();
+          elements.messages.innerHTML = "";
+          state.messages.forEach((message) => {
+            if (shouldHideSystemRunStatusMessage(message)) {
+              return;
             }
-            if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
-              wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
+            const wrapper = document.createElement("div");
+            wrapper.className = "message " + message.role;
+            if (message.role === "trace") {
+              const tracePresentation = getTracePresentation(message.content || "");
+              const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
+              wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
+              if (tracePresentation.type) {
+                wrapper.classList.add("trace-type-" + tracePresentation.type);
+              }
+              if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
+                wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
+              }
             }
+
+            const bubble = document.createElement("div");
+            bubble.className = "bubble";
+            bubble.innerHTML = safelyRenderMessageContent(message);
+
+            if (message.role === "user" && message.createdAt) {
+              const time = document.createElement("div");
+              time.className = "message-time";
+              time.textContent = formatDateTime(message.createdAt);
+              wrapper.appendChild(time);
+            }
+            wrapper.appendChild(bubble);
+            elements.messages.appendChild(wrapper);
+          });
+
+          elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
+          updateRunWait();
+          if (shouldAutoScroll) {
+            stickChatToBottom("auto");
+          } else {
+            updateScrollToBottomButton();
           }
-
-          const bubble = document.createElement("div");
-          bubble.className = "bubble";
-          bubble.innerHTML = renderMessageContent(message);
-
-          if (message.role === "user" && message.createdAt) {
-            const time = document.createElement("div");
-            time.className = "message-time";
-            time.textContent = formatDateTime(message.createdAt);
-            wrapper.appendChild(time);
-          }
-          wrapper.appendChild(bubble);
-          elements.messages.appendChild(wrapper);
-        });
-
-        elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
-        updateRunWait();
-        if (shouldAutoScroll) {
-          stickChatToBottom("auto");
-        } else {
-          updateScrollToBottomButton();
+          updateTaskList();
+        } catch (error) {
+          reportWebviewFailure("renderMessages-failed", error, {
+            activeTabId: getActiveConversationTabId(),
+            messageCount: Array.isArray(state.messages) ? state.messages.length : -1,
+          });
+          elements.messages.innerHTML = '<div class="message system"><div class="bubble"><div class="system-line"><span class="system-text">' + escapeHtml(t("session.loadFailedMessage")) + '</span></div></div></div>';
+          elements.emptyState.style.display = "none";
         }
-        updateTaskList();
       }
 
       function normalizeMessageOrder(messages) {
@@ -3953,6 +4057,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return renderMarkdown(message.content);
       }
 
+      function safelyRenderMessageContent(message) {
+        try {
+          return renderMessageContent(message);
+        } catch (error) {
+          const reason = error && error.message ? String(error.message) : String(error);
+          reportWebviewFailure("render-message-failed", error, {
+            role: message && message.role ? message.role : null,
+            id: message && message.id ? message.id : null,
+            kind: message && message.kind ? message.kind : null,
+            preview: message && typeof message.content === "string" ? message.content.slice(0, 300) : null,
+          });
+          return '<pre class="trace-content">render-message-failed: ' + escapeHtml(reason) + '</pre>';
+        }
+      }
+
       function renderTraceContent(message) {
         const content = message && typeof message.content === "string" ? message.content : "";
         if (!content) {
@@ -3983,7 +4102,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (shouldCollapseTraceContent(presentation)) {
           const summary = '<summary>' + escapeHtml(getTraceCollapseSummaryText(presentation)) + "</summary>";
           const keyAttr = traceKey ? ' data-trace-key="' + escapeHtml(traceKey) + '"' : "";
-          const openAttr = traceKey && traceCollapsibleOpenKeys.has(traceKey) ? " open" : "";
+          const allowRestoreOpen = presentation.type !== "tool-result";
+          const openAttr = allowRestoreOpen && traceKey && traceCollapsibleOpenKeys.has(traceKey) ? " open" : "";
           return header + '<details class="trace-collapsible"' + keyAttr + openAttr + '>' + summary + bodyHtml + "</details>";
         }
         return header + bodyHtml;
@@ -4011,9 +4131,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return hasDiffLikeLines(lines) || lines.length >= 4;
         }
         if (presentation.type === "thinking") {
-          const detail = String(presentation.detail || "").trim();
-          const hasBody = lines.some((line) => String(line || "").trim().length > 0);
-          return hasBody || detail.length > 0;
+          return false;
         }
         if (presentation.type === "exec") {
           const detail = String(presentation.detail || "").toLowerCase();
@@ -4021,9 +4139,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
           return hasHeredocMarker || lines.length >= 6 || totalChars >= 600;
         }
-        const isToolTrace = presentation.type === "tool-result"
-          || String(presentation.type || "").startsWith("tool-use-");
-        if (!isToolTrace) {
+        if (presentation.type === "tool-result") {
+          return true;
+        }
+        const isToolUseTrace = String(presentation.type || "").startsWith("tool-use-");
+        if (!isToolUseTrace) {
           return false;
         }
         const totalChars = lines.reduce((sum, line) => sum + String(line || "").length, 0);
@@ -4046,12 +4166,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (presentation && presentation.type === "thinking") {
           return t("traceExpandThinking");
         }
+        if (presentation && presentation.type === "tool-result") {
+          return getToolResultCollapseSummaryText(presentation);
+        }
         const isToolTrace = presentation
-          && (presentation.type === "tool-result" || String(presentation.type || "").startsWith("tool-use-"));
+          && String(presentation.type || "").startsWith("tool-use-");
         if (isToolTrace) {
           return t("traceExpandTool");
         }
         return t("traceExpandCommand");
+      }
+
+      function getToolResultCollapseSummaryText(presentation) {
+        const tool = String(presentation && presentation.detail ? presentation.detail : "").trim()
+          || t("traceToolResult");
+        return t("traceExpandToolResult", { tool });
       }
 
       function hasDiffLikeLines(lines) {
@@ -4633,22 +4762,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }, 1600);
       }
 
+      function copyTextToClipboard(value, successMessage = t("toastCopied")) {
+        if (!value) {
+          return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(value).then(
+            () => showToast(successMessage),
+            () => fallbackCopyText(value, successMessage)
+          );
+          return;
+        }
+        fallbackCopyText(value, successMessage);
+      }
+
       function copySessionId(sessionId) {
         if (!sessionId) {
           return;
         }
-        const value = String(sessionId);
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(value).then(
-            () => showToast(t("toastCopied")),
-            () => fallbackCopySessionId(value)
-          );
-          return;
-        }
-        fallbackCopySessionId(value);
+        copyTextToClipboard(String(sessionId));
       }
 
-      function fallbackCopySessionId(value) {
+      function fallbackCopyText(value, successMessage = t("toastCopied")) {
         const textarea = document.createElement("textarea");
         textarea.value = value;
         textarea.setAttribute("readonly", "true");
@@ -4658,7 +4793,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         textarea.select();
         try {
           document.execCommand("copy");
-          showToast(t("toastCopied"));
+          showToast(successMessage);
         } catch (error) {
           showToast(t("toastCopyFailed"));
         } finally {
@@ -5289,6 +5424,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         syncRunStreamOverlay();
         updateRunStreamExportButton();
+      }
+
+      function openConfigApplyErrorOverlay(detail) {
+        if (!elements.configApplyErrorOverlay || !elements.configApplyErrorContent) {
+          return;
+        }
+        const content = typeof detail === "string" && detail.trim()
+          ? detail.trim()
+          : t("commonUnknownError");
+        elements.configApplyErrorContent.textContent = content;
+        elements.configApplyErrorOverlay.classList.add("visible");
+      }
+
+      function closeConfigApplyErrorOverlay() {
+        if (!elements.configApplyErrorOverlay || !elements.configApplyErrorContent) {
+          return;
+        }
+        elements.configApplyErrorOverlay.classList.remove("visible");
+        elements.configApplyErrorContent.textContent = "";
       }
 
       function updateRunStreamExportButton() {
@@ -6260,6 +6414,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         closeRunStreamOverlay();
       });
 
+      elements.configApplyErrorOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.configApplyErrorOverlay) {
+          closeConfigApplyErrorOverlay();
+        }
+      });
+
+      elements.closeConfigApplyError.addEventListener("click", () => {
+        closeConfigApplyErrorOverlay();
+      });
+
+      elements.copyConfigApplyError.addEventListener("click", () => {
+        const detail = elements.configApplyErrorContent
+          ? String(elements.configApplyErrorContent.textContent || "")
+          : "";
+        if (!detail.trim()) {
+          return;
+        }
+        copyTextToClipboard(detail, t("toastConfigApplyErrorCopied"));
+      });
+
       elements.queueOverlay.addEventListener("click", (event) => {
         if (event.target === elements.queueOverlay) {
           closeQueueOverlay();
@@ -6390,211 +6564,229 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       window.addEventListener("message", (event) => {
-        const data = event.data;
-        if (data.type === "state") {
-          applyState(data.payload);
-        }
-        if (data.type === "editorContext") {
-          applyEditorContext(data.payload);
-        }
-        if (data.type === "setMessages") {
-          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
-          const incoming = Array.isArray(data.messages) ? data.messages : [];
-          setMessagesForTab(eventTabId, normalizeMessageOrder(incoming), { render: false });
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
+        try {
+          const data = event.data;
+          if (data.type === "state") {
+            applyState(data.payload);
           }
-          traceCollapsibleOpenKeys.clear();
-          syncConversationControlsForActiveTab();
-          renderMessages();
-        }
-        if (data.type === "appendMessage") {
-          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
-          const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
-          let statusSummaryUpdated = false;
-          if (runtimeState && data.message && data.message.role === "system") {
-            const content = String(data.message.content || "").trim();
-            if (isRunStatusSummaryText(content)) {
-              runtimeState.lastRunStatusMessage = content;
-              statusSummaryUpdated = true;
+          if (data.type === "editorContext") {
+            applyEditorContext(data.payload);
+          }
+          if (data.type === "setMessages") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            const incoming = Array.isArray(data.messages) ? data.messages : [];
+            setMessagesForTab(eventTabId, normalizeMessageOrder(incoming), { render: false });
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
             }
-          }
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
-          }
-          appendMessage(data.message);
-          if (statusSummaryUpdated) {
+            traceCollapsibleOpenKeys.clear();
             syncConversationControlsForActiveTab();
+            renderMessages();
           }
-        }
-        if (data.type === "assistantDelta") {
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
-          }
-          appendAssistantDelta(data.id, data.content);
-        }
-        if (data.type === "rawStreamDelta") {
-          const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
-          appendRunRawStream(data.content, data.stream, eventTabId || getActiveConversationTabId());
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
-          }
-        }
-        if (data.type === "traceSegment") {
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
-          }
-          appendMessage({
-            id: createMessageId(),
-            role: "trace",
-            content: data.content,
-            kind: data.kind,
-            merge: data.merge,
-          });
-        }
-        if (data.type === "runStatus") {
-          const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
-          const targetTabId = eventTabId || getActiveConversationTabId();
-          const runtimeState = getConversationRuntimeState(targetTabId);
-          if (data.status === "start") {
-            runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
-            resetRunRawStream(targetTabId, { syncOverlay: false });
-            updateCurrentRunPrompt(data.prompt, targetTabId);
-            if (runtimeState) {
-              runtimeState.lastRunStatusMessage = "";
-            }
-            resetTaskListForRunStart(targetTabId);
-          } else {
-            if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
-              runtimeState.lastRunStatusMessage = data.message.trim();
-            }
-            if (eventTabId) {
-              delete runningTabStartedAtById[eventTabId];
-            } else {
-              const fallbackTabId = getActiveConversationTabId();
-              if (fallbackTabId) {
-                delete runningTabStartedAtById[fallbackTabId];
-              }
-            }
-            closeTaskListForRunCompletion(targetTabId);
-          }
-
-          if (!shouldHandleTabScopedEvent(data)) {
-            if (data.status !== "start" && runtimeState && runtimeState.suppressQueueFlushOnce) {
-              runtimeState.suppressQueueFlushOnce = false;
-            }
-            return;
-          }
-
-          const activeTabId = getActiveConversationTabId();
-          const isRunningOnActiveTab = isTabRunning(activeTabId);
-          updateRunningState(isRunningOnActiveTab, {
-            preserveRunArtifacts: true,
-            startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
-          });
-          if (data.status === "start") {
-            Object.keys(assistantRedirects).forEach((key) => {
-              delete assistantRedirects[key];
+          if (data.type === "sessionLoadError") {
+            console.error("[sinitek-webview] sessionLoadError", {
+              title: data.title,
+              detail: data.detail,
+              tabId: data.tabId || null,
+              sessionId: data.sessionId || null,
+              cli: data.cli || null,
             });
           }
-          if (data.message) {
-            appendMessage({ id: createMessageId(), role: "system", content: data.message });
-          }
-          if (data.status !== "start") {
-            if (runtimeState && runtimeState.suppressQueueFlushOnce) {
-              runtimeState.suppressQueueFlushOnce = false;
-            } else {
-              flushPendingPromptQueue();
+          if (data.type === "appendMessage") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
+            let statusSummaryUpdated = false;
+            if (runtimeState && data.message && data.message.role === "system") {
+              const content = String(data.message.content || "").trim();
+              if (isRunStatusSummaryText(content)) {
+                runtimeState.lastRunStatusMessage = content;
+                statusSummaryUpdated = true;
+              }
+            }
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            appendMessage(data.message);
+            if (statusSummaryUpdated) {
+              syncConversationControlsForActiveTab();
             }
           }
-          syncConversationControlsForActiveTab();
-        }
-        if (data.type === "removeMessage") {
-          if (!shouldHandleTabScopedEvent(data)) {
-            return;
+          if (data.type === "assistantDelta") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            appendAssistantDelta(data.id, data.content);
           }
-          if (data.id) {
-            const nextMessages = state.messages.filter((message) => message.id !== data.id);
-            setMessagesForTab(getActiveConversationTabId(), nextMessages);
+          if (data.type === "rawStreamDelta") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            appendRunRawStream(data.content, data.stream, eventTabId || getActiveConversationTabId());
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
           }
-        }
-        if (data.type === "uploadResult") {
-          const insertText = buildInsertText(data.paths);
-          if (insertText) {
-            insertPromptText(insertText);
+          if (data.type === "traceSegment") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            appendMessage({
+              id: createMessageId(),
+              role: "trace",
+              content: data.content,
+              kind: data.kind,
+              merge: data.merge,
+            });
           }
-          if (data.error) {
-            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          if (data.type === "runStatus") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            const targetTabId = eventTabId || getActiveConversationTabId();
+            const runtimeState = getConversationRuntimeState(targetTabId);
+            if (data.status === "start") {
+              runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
+              resetRunRawStream(targetTabId, { syncOverlay: false });
+              updateCurrentRunPrompt(data.prompt, targetTabId);
+              if (runtimeState) {
+                runtimeState.lastRunStatusMessage = "";
+              }
+              resetTaskListForRunStart(targetTabId);
+            } else {
+              if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
+                runtimeState.lastRunStatusMessage = data.message.trim();
+              }
+              if (eventTabId) {
+                delete runningTabStartedAtById[eventTabId];
+              } else {
+                const fallbackTabId = getActiveConversationTabId();
+                if (fallbackTabId) {
+                  delete runningTabStartedAtById[fallbackTabId];
+                }
+              }
+              closeTaskListForRunCompletion(targetTabId);
+            }
+
+            if (!shouldHandleTabScopedEvent(data)) {
+              if (data.status !== "start" && runtimeState && runtimeState.suppressQueueFlushOnce) {
+                runtimeState.suppressQueueFlushOnce = false;
+              }
+              return;
+            }
+
+            const activeTabId = getActiveConversationTabId();
+            const isRunningOnActiveTab = isTabRunning(activeTabId);
+            updateRunningState(isRunningOnActiveTab, {
+              preserveRunArtifacts: true,
+              startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
+            });
+            if (data.status === "start") {
+              Object.keys(assistantRedirects).forEach((key) => {
+                delete assistantRedirects[key];
+              });
+            }
+            if (data.message) {
+              appendMessage({ id: createMessageId(), role: "system", content: data.message });
+            }
+            if (data.status !== "start") {
+              if (runtimeState && runtimeState.suppressQueueFlushOnce) {
+                runtimeState.suppressQueueFlushOnce = false;
+              } else {
+                flushPendingPromptQueue();
+              }
+            }
+            syncConversationControlsForActiveTab();
           }
-        }
-        if (data.type === "dropPathsResult") {
-          const insertText = buildInsertText(data.paths);
-          if (insertText) {
-            insertPromptText(insertText);
+          if (data.type === "removeMessage") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            if (data.id) {
+              const nextMessages = state.messages.filter((message) => message.id !== data.id);
+              setMessagesForTab(getActiveConversationTabId(), nextMessages);
+            }
           }
-          if (data.error) {
-            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          if (data.type === "uploadResult") {
+            const insertText = buildInsertText(data.paths);
+            if (insertText) {
+              insertPromptText(insertText);
+            }
+            if (data.error) {
+              appendMessage({ id: createMessageId(), role: "system", content: data.error });
+            }
           }
-        }
-        if (data.type === "pickWorkspacePathResult") {
-          const insertText = buildInsertText(data.paths);
-          if (insertText) {
-            insertPromptText(insertText);
-          } else if (data.canceled || data.error) {
-            insertPromptText("@");
+          if (data.type === "dropPathsResult") {
+            const insertText = buildInsertText(data.paths);
+            if (insertText) {
+              insertPromptText(insertText);
+            }
+            if (data.error) {
+              appendMessage({ id: createMessageId(), role: "system", content: data.error });
+            }
           }
-          if (data.error) {
-            appendMessage({ id: createMessageId(), role: "system", content: data.error });
+          if (data.type === "pickWorkspacePathResult") {
+            const insertText = buildInsertText(data.paths);
+            if (insertText) {
+              insertPromptText(insertText);
+            } else if (data.canceled || data.error) {
+              insertPromptText("@");
+            }
+            if (data.error) {
+              appendMessage({ id: createMessageId(), role: "system", content: data.error });
+            }
           }
-        }
-        if (data.type === "runStreamExportResult") {
-          handleRunStreamExportResult(data);
-        }
-        if (data.type === "taskListUpdate") {
-          const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
-          const taskListState = getTaskListState(eventTabId);
-          if (!taskListState) {
-            return;
+          if (data.type === "runStreamExportResult") {
+            handleRunStreamExportResult(data);
           }
-          const normalized = normalizeTaskListItems(data.items);
-          if (normalized.length) {
-            taskListState.items = normalized;
-            taskListState.open = true;
-            taskListState.source = "external";
-          } else {
-            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
-            const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
-            resetTaskListState(taskListState, startIndex);
+          if (data.type === "configApplyError") {
+            openConfigApplyErrorOverlay(data.error);
           }
-          if (isRuntimeStateForActiveTab(eventTabId)) {
-            renderTaskList(taskListState);
+          if (data.type === "taskListUpdate") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            const taskListState = getTaskListState(eventTabId);
+            if (!taskListState) {
+              return;
+            }
+            const normalized = normalizeTaskListItems(data.items);
+            if (normalized.length) {
+              taskListState.items = normalized;
+              taskListState.open = true;
+              taskListState.source = "external";
+            } else {
+              const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
+              const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
+              resetTaskListState(taskListState, startIndex);
+            }
+            if (isRuntimeStateForActiveTab(eventTabId)) {
+              renderTaskList(taskListState);
+            }
           }
-        }
-        if (data.type === "rulesContent") {
-          if (data.error) {
-            setRulesHint(data.error);
-            return;
+          if (data.type === "rulesContent") {
+            if (data.error) {
+              setRulesHint(data.error);
+              return;
+            }
+            elements.rulesInput.value = typeof data.content === "string" ? data.content : "";
+            const scopeLabel = data.scope === "project"
+              ? t("rulesScopeProject")
+              : t("rulesScopeGlobal");
+            setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: data.cli }));
           }
-          elements.rulesInput.value = typeof data.content === "string" ? data.content : "";
-          const scopeLabel = data.scope === "project"
-            ? t("rulesScopeProject")
-            : t("rulesScopeGlobal");
-          setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: data.cli }));
-        }
-        if (data.type === "rulesSaved") {
-          if (data.error) {
-            setRulesHint(data.error);
-            return;
+          if (data.type === "rulesSaved") {
+            if (data.error) {
+              setRulesHint(data.error);
+              return;
+            }
+            const scopeLabel = data.scope === "project"
+              ? t("rulesScopeProject")
+              : t("rulesScopeGlobal");
+            setRulesHint(
+              t("rulesHintSaved", {
+                scope: scopeLabel,
+                targets: Array.isArray(data.targets) ? data.targets.join(", ") : "",
+              })
+            );
           }
-          const scopeLabel = data.scope === "project"
-            ? t("rulesScopeProject")
-            : t("rulesScopeGlobal");
-          setRulesHint(
-            t("rulesHintSaved", {
-              scope: scopeLabel,
-              targets: Array.isArray(data.targets) ? data.targets.join(", ") : "",
-            })
-          );
+        } catch (error) {
+          reportWebviewFailure("window-message-handler-failed", error, {
+            eventType: event && event.data && event.data.type ? event.data.type : null,
+          });
         }
       });
 

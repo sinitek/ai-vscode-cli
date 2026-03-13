@@ -55,6 +55,14 @@ export type PanelMessage =
       type: "webviewDebug";
       event: string;
       payload?: unknown;
+    }
+  | {
+      type: "sessionLoadError";
+      title: string;
+      detail: string;
+      tabId?: string | null;
+      sessionId?: string | null;
+      cli?: CliName;
     };
 
 export type UploadFilePayload = {

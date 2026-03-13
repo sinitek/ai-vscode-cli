@@ -56,6 +56,7 @@ import {
   scheduleLogRetentionCleanup,
   setDebugLogging,
 } from "./logger";
+import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
@@ -63,6 +64,7 @@ import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
+import { recoverClaudeMessagesFromTranscript } from "./interactive/claudeTranscript";
 import {
   getMappedThreadId,
   readSessionMeta,
@@ -111,6 +113,7 @@ const conversationTabStore: ConversationTabsState = {
 };
 const pendingSessionDrafts: Record<string, PendingSessionDraft> = {};
 const sessionMessageCache = new Map<string, ChatMessage[]>();
+const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 const SESSION_STORE_KEY = "sessionStore";
@@ -550,6 +553,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       reason: message.reason ?? null,
       stack: message.stack ?? null,
     });
+    const detail = [
+      message.message,
+      message.reason ? `reason: ${message.reason}` : "",
+      message.source ? `source: ${message.source}` : "",
+      typeof message.lineno === "number" ? `line: ${message.lineno}` : "",
+      typeof message.colno === "number" ? `column: ${message.colno}` : "",
+      message.stack ?? "",
+    ].filter(Boolean).join("\n");
+    void showErrorWithActions(t("panel.runtimeError"), detail || message.message);
     return;
   }
 
@@ -558,6 +570,18 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       event: message.event,
       payload: message.payload ?? null,
     });
+    return;
+  }
+
+  if (message.type === "sessionLoadError") {
+    void logError("webview-session-load-error", {
+      title: message.title,
+      detail: message.detail,
+      tabId: message.tabId ?? null,
+      sessionId: message.sessionId ?? null,
+      cli: message.cli ?? null,
+    });
+    void showErrorWithActions(message.title, message.detail);
     return;
   }
 
@@ -747,9 +771,24 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "applyConfig") {
-    await applyConfigById(message.cli, message.configId);
-    await postPanelState();
-    configManagerPanel?.syncActiveConfig();
+    try {
+      await applyConfigById(message.cli, message.configId);
+      await postPanelState();
+      configManagerPanel?.syncActiveConfig();
+    } catch (error) {
+      const detail = buildErrorDetail(error);
+      viewProvider?.postMessage({
+        type: "configApplyError",
+        error: detail,
+        cli: message.cli,
+        configId: message.configId,
+      });
+      void showErrorWithActions(
+        t("config.applyFailedTitle"),
+        error,
+        { detailTitle: t("config.applyFailedTitle") }
+      );
+    }
     return;
   }
 
@@ -1891,21 +1930,15 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
     cli,
     configId,
   });
-  try {
-    await configService.applyConfig(cli, {
-      content: config.content,
-      mcpContent: config.mcpContent,
-      envContent: config.envContent,
-      configContent: config.configContent,
-      authContent: config.authContent,
-      codexSkills: config.codexSkills,
-      claudeSkills: config.claudeSkills,
-    });
-  } catch (error) {
-    void vscode.window.showErrorMessage(
-      t("config.applyFailed", { error: error instanceof Error ? error.message : String(error) })
-    );
-  }
+  await configService.applyConfig(cli, {
+    content: config.content,
+    mcpContent: config.mcpContent,
+    envContent: config.envContent,
+    configContent: config.configContent,
+    authContent: config.authContent,
+    codexSkills: config.codexSkills,
+    claudeSkills: config.claudeSkills,
+  });
 }
 
 async function loadConfigState(cli: CliName): Promise<PanelState["configState"]> {
@@ -2779,6 +2812,7 @@ function buildCompactionPrompt(): string {
 type TraceMessageOptions = {
   merge?: boolean;
   persist?: boolean;
+  forceTraceBubble?: boolean;
 };
 
 type TraceDisplayResult = {
@@ -2894,7 +2928,7 @@ function appendTraceMessage(
     return;
   }
   const resolvedKind = resolveTraceKind(displayContent, kind);
-  if (resolvedKind === "thinking") {
+  if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
     appendAssistantChunk(`${displayContent}\n`);
     return;
   }
@@ -3424,11 +3458,32 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     appendMessageToStore(messageTarget, message);
     sendPanelMessage({ type: "appendMessage", message, tabId });
     syncInteractiveRunEntry();
+    schedulePersistForInteractiveRun();
   };
+
+  let persistTimer: NodeJS.Timeout | null = null;
 
   const persistMessagesForInteractiveRun = (): void => {
     persistMessagesForTab(cli, uiSessionId, tabId, messageTarget);
     syncInteractiveRunEntry();
+  };
+
+  const flushPersistForInteractiveRun = (): void => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    persistMessagesForInteractiveRun();
+  };
+
+  const schedulePersistForInteractiveRun = (): void => {
+    if (persistTimer) {
+      return;
+    }
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      persistMessagesForInteractiveRun();
+    }, 200);
   };
 
   const refreshMessageTargetFromSession = (): void => {
@@ -3481,6 +3536,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     message.content += chunk;
     sendPanelMessage({ type: "assistantDelta", id: assistantMessageId, content: chunk, tabId });
     syncInteractiveRunEntry();
+    schedulePersistForInteractiveRun();
   };
 
   const removeAssistantPlaceholderForTab = (): boolean => {
@@ -3524,9 +3580,8 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       return;
     }
     const resolvedKind = resolveTraceKind(displayContent, kind);
-    if (resolvedKind === "thinking") {
-      appendAssistantChunkForTab(`${displayContent}
-`);
+    if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
+      appendAssistantChunkForTab(`${displayContent}\n`);
       return;
     }
     const shouldMerge = resolveTraceMerge(displayContent, options.merge);
@@ -3541,6 +3596,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     };
     if (shouldPersist && options.persist !== false) {
       appendMessageToStore(messageTarget, message);
+      schedulePersistForInteractiveRun();
     }
     sendPanelMessage({
       type: "traceSegment",
@@ -3588,7 +3644,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     }
     sendRunStatusForTab(tabId, status === "end" ? "end" : status);
     appendCompletionMessageForTab(status);
-    persistMessagesForInteractiveRun();
+    flushPersistForInteractiveRun();
     interactiveRunsByTabId.delete(tabId);
   };
 
@@ -3623,7 +3679,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     if (removedPlaceholder && assistantMessageId) {
       sendPanelMessage({ type: "removeMessage", id: assistantMessageId, tabId });
     }
-    persistMessagesForInteractiveRun();
+    flushPersistForInteractiveRun();
     interactiveRunsByTabId.delete(tabId);
   };
 
@@ -3752,7 +3808,10 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           if (!isCurrentRunActive()) {
             return;
           }
-          appendTraceMessageForTab(content, kind ?? "normal", meta);
+          appendTraceMessageForTab(content, kind ?? "normal", {
+            ...meta,
+            forceTraceBubble: kind === "thinking",
+          });
           appendTraceLog(content);
         },
         onEvent: (event: unknown) => {
@@ -5167,9 +5226,6 @@ function clearPendingSessionDraft(tabId: string): void {
 }
 
 function ensureLocalSession(cli: CliName, tabId: string): void {
-  if (cli !== "gemini") {
-    return;
-  }
   if (getCurrentSessionId(cli)) {
     return;
   }
@@ -5409,11 +5465,48 @@ function loadSessionMessages(cli: CliName, sessionId: string): ChatMessage[] {
   }
   const messages = readMessageFile(cli, sessionId);
   const sanitized = sanitizeMessages(messages);
-  if (sanitized.changed) {
-    writeMessageFile(cli, sessionId, sanitized.messages);
+  const recovered = maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
+  const resolvedMessages = recovered ?? sanitized.messages;
+  if (recovered || sanitized.changed) {
+    writeMessageFile(cli, sessionId, resolvedMessages);
   }
-  sessionMessageCache.set(key, sanitized.messages);
-  return sanitized.messages;
+  sessionMessageCache.set(key, resolvedMessages);
+  return resolvedMessages;
+}
+
+function maybeRecoverClaudeSessionMessages(
+  cli: CliName,
+  sessionId: string,
+  messages: ChatMessage[]
+): ChatMessage[] | null {
+  if (cli !== "claude") {
+    return null;
+  }
+  const hasConversationContent = messages.some((message) => message.role === "assistant" || message.role === "trace");
+  if (hasConversationContent) {
+    return null;
+  }
+  const hasAnyUserMessage = messages.some((message) => message.role === "user" && message.content.trim());
+  if (!hasAnyUserMessage) {
+    return null;
+  }
+  try {
+    const recovered = recoverClaudeMessagesFromTranscript(sessionId, messages);
+    if (recovered) {
+      void logInfo("claude-session-recovered-from-transcript", {
+        sessionId,
+        originalSize: messages.length,
+        recoveredSize: recovered.length,
+      });
+    }
+    return recovered;
+  } catch (error) {
+    void logError("claude-session-recover-failed", {
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 function saveSessionMessages(cli: CliName, sessionId: string, messages: ChatMessage[]): void {
@@ -5424,6 +5517,8 @@ function saveSessionMessages(cli: CliName, sessionId: string, messages: ChatMess
 }
 
 function readMessageFile(cli: CliName, sessionId: string): ChatMessage[] {
+  const key = getSessionKey(cli, sessionId);
+  sessionMessageLoadErrors.delete(key);
   try {
     const filePath = getMessageFile(cli, sessionId);
     if (!fs.existsSync(filePath)) {
@@ -5432,11 +5527,25 @@ function readMessageFile(cli: CliName, sessionId: string): ChatMessage[] {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.messages)) {
+      const detail = [
+        "session message file format invalid",
+        `cli: ${cli}`,
+        `sessionId: ${sessionId}`,
+        `file: ${filePath}`,
+      ].join("\n");
+      sessionMessageLoadErrors.set(key, detail);
       return [];
     }
     return parsed.messages as ChatMessage[];
   } catch (error) {
-    void logError("session-messages-read-error", { error: String(error) });
+    const detail = buildErrorDetail(error);
+    sessionMessageLoadErrors.set(key, detail);
+    void logError("session-messages-read-error", {
+      cli,
+      sessionId,
+      filePath: getMessageFile(cli, sessionId),
+      error: detail,
+    });
     return [];
   }
 }
@@ -5494,6 +5603,23 @@ function ensureMessageSequence(messages: ChatMessage[]): { messages: ChatMessage
   return { messages, changed };
 }
 
+function sendSessionLoadErrorToPanel(
+  cli: CliName,
+  sessionId: string | null,
+  detail: string,
+  tabId: string | null
+): void {
+  const targetTabId = tabId ?? getActiveConversationTabId();
+  sendPanelMessage({
+    type: "sessionLoadError",
+    title: t("session.loadFailedTitle"),
+    detail,
+    tabId: targetTabId,
+    sessionId,
+    cli,
+  });
+}
+
 function sendSessionMessagesToPanel(
   cli: CliName,
   sessionId: string | null,
@@ -5531,19 +5657,50 @@ function sendSessionMessagesToPanel(
     return;
   }
 
-  const sessionMessages = loadSessionMessages(cli, sessionId);
-  sendPanelMessage({
-    type: "setMessages",
-    messages: sessionMessages,
-    tabId: targetTabId,
-  });
-  void logDebug("setMessages-session", {
-    cli,
-    sessionId,
-    tabId: targetTabId,
-    size: sessionMessages.length,
-    source: "session-store",
-  });
+  try {
+    const sessionMessages = loadSessionMessages(cli, sessionId);
+    const counts = sessionMessages.reduce((acc, message) => {
+      const role = typeof message?.role === "string" ? message.role : "unknown";
+      acc[role] = (acc[role] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const loadError = sessionMessageLoadErrors.get(getSessionKey(cli, sessionId));
+    sendPanelMessage({
+      type: "setMessages",
+      messages: sessionMessages,
+      tabId: targetTabId,
+    });
+    if (loadError) {
+      sendSessionLoadErrorToPanel(cli, sessionId, loadError, targetTabId);
+      void showErrorWithActions(t("session.loadFailedTitle"), loadError);
+      void logError("session-load-surface-error", {
+        cli,
+        sessionId,
+        tabId: targetTabId,
+        detail: loadError,
+      });
+    }
+    void logDebug("setMessages-session", {
+      cli,
+      sessionId,
+      tabId: targetTabId,
+      size: sessionMessages.length,
+      counts,
+      source: "session-store",
+      loadError: loadError ?? null,
+    });
+  } catch (error) {
+    const detail = buildErrorDetail(error);
+    sendPanelMessage({ type: "setMessages", messages: [], tabId: targetTabId });
+    sendSessionLoadErrorToPanel(cli, sessionId, detail, targetTabId);
+    void logError("setMessages-session-failed", {
+      cli,
+      sessionId,
+      tabId: targetTabId,
+      error: detail,
+    });
+    void showErrorWithActions(t("session.loadFailedTitle"), detail);
+  }
 }
 
 function deleteSession(cli: CliName, sessionId: string): void {
