@@ -2929,7 +2929,7 @@ function appendTraceMessage(
   }
   const resolvedKind = resolveTraceKind(displayContent, kind);
   if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
-    appendAssistantChunk(`${displayContent}\n`);
+    appendAssistantChunk(`${displayContent}\n`, "thinking");
     return;
   }
   const shouldMerge = resolveTraceMerge(displayContent, options.merge);
@@ -3498,13 +3498,22 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     syncInteractiveRunEntry();
   };
 
-  const ensureAssistantMessage = (): void => {
+  const normalizeAssistantKindForTab = (kind?: ChatMessage["kind"]): "thinking" | "normal" => (
+    kind === "thinking" ? "thinking" : "normal"
+  );
+
+  const hasSameAssistantKindForTab = (message: ChatMessage | undefined, kind?: ChatMessage["kind"]): boolean => {
+    return normalizeAssistantKindForTab(message?.kind) === normalizeAssistantKindForTab(kind);
+  };
+
+  const ensureAssistantMessage = (kind?: ChatMessage["kind"]): void => {
     const last = messageTarget[messageTarget.length - 1];
     if (
       assistantMessageId
       && last
       && last.role === "assistant"
       && last.id === assistantMessageId
+      && hasSameAssistantKindForTab(last, kind)
     ) {
       return;
     }
@@ -3514,6 +3523,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       role: "assistant",
       content: "",
       createdAt: Date.now(),
+      ...(kind === "thinking" ? { kind: "thinking" } : {}),
     };
     appendMessageToStore(messageTarget, message);
     assistantMessageIndex = messageTarget.length - 1;
@@ -3521,11 +3531,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     syncInteractiveRunEntry();
   };
 
-  const appendAssistantChunkForTab = (chunk: string): void => {
+  const appendAssistantChunkForTab = (chunk: string, kind?: ChatMessage["kind"]): void => {
     if (!chunk) {
       return;
     }
-    ensureAssistantMessage();
+    ensureAssistantMessage(kind);
     if (!assistantMessageId || assistantMessageIndex === null) {
       return;
     }
@@ -3533,8 +3543,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     if (!message || message.role !== "assistant") {
       return;
     }
+    if (kind === "thinking") {
+      message.kind = "thinking";
+    }
     message.content += chunk;
-    sendPanelMessage({ type: "assistantDelta", id: assistantMessageId, content: chunk, tabId });
+    sendPanelMessage({ type: "assistantDelta", id: assistantMessageId, content: chunk, kind, tabId });
     syncInteractiveRunEntry();
     schedulePersistForInteractiveRun();
   };
@@ -3581,7 +3594,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     }
     const resolvedKind = resolveTraceKind(displayContent, kind);
     if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
-      appendAssistantChunkForTab(`${displayContent}\n`);
+      appendAssistantChunkForTab(`${displayContent}\n`, "thinking");
       return;
     }
     const shouldMerge = resolveTraceMerge(displayContent, options.merge);
@@ -4038,24 +4051,34 @@ function appendStopMessageToStore(): void {
   });
 }
 
-function appendAssistantChunk(chunk: string): void {
-  ensureAssistantMessage();
+function normalizeAssistantKind(kind?: ChatMessage["kind"]): "thinking" | "normal" {
+  return kind === "thinking" ? "thinking" : "normal";
+}
+
+function hasSameAssistantKind(message: ChatMessage | undefined, kind?: ChatMessage["kind"]): boolean {
+  return normalizeAssistantKind(message?.kind) === normalizeAssistantKind(kind);
+}
+
+function appendAssistantChunk(chunk: string, kind?: ChatMessage["kind"]): void {
+  ensureAssistantMessage(kind);
   if (!activeAssistantMessageId) {
     return;
   }
   void logDebug("assistant-chunk", {
     id: activeAssistantMessageId,
     size: chunk.length,
+    kind: kind ?? "normal",
   });
   sendPanelMessage({
     type: "assistantDelta",
     id: activeAssistantMessageId,
     content: chunk,
+    kind,
   });
-  appendAssistantChunkToStore(chunk);
+  appendAssistantChunkToStore(chunk, kind);
 }
 
-function ensureAssistantMessage(): void {
+function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
   if (!activeMessageTarget) {
     return;
   }
@@ -4064,22 +4087,25 @@ function ensureAssistantMessage(): void {
     activeAssistantMessageId &&
     last &&
     last.role === "assistant" &&
-    last.id === activeAssistantMessageId
+    last.id === activeAssistantMessageId &&
+    hasSameAssistantKind(last, kind)
   ) {
     return;
   }
   const assistantId = createMessageId();
   activeAssistantMessageId = assistantId;
-  appendMessageToStore(activeMessageTarget, {
+  const message: ChatMessage = {
     id: assistantId,
     role: "assistant",
     content: "",
     createdAt: Date.now(),
-  });
+    ...(kind === "thinking" ? { kind: "thinking" } : {}),
+  };
+  appendMessageToStore(activeMessageTarget, message);
   activeMessageIndex = activeMessageTarget.length - 1;
   sendPanelMessage({
     type: "appendMessage",
-    message: { id: assistantId, role: "assistant", content: "" },
+    message,
   });
 }
 
@@ -4141,7 +4167,7 @@ function flushTraceSegment(): void {
   const kind = getTraceSegmentKind(displayContent);
   if (kind === "thinking") {
     activeTraceSegmentLines = [];
-    appendAssistantChunk(`${displayContent}\n`);
+    appendAssistantChunk(`${displayContent}\n`, "thinking");
     return;
   }
   const shouldMerge = resolveTraceMerge(displayContent);
@@ -5308,13 +5334,16 @@ function getNextMessageSequence(messages: ChatMessage[]): number {
   return messages.length;
 }
 
-function appendAssistantChunkToStore(chunk: string): void {
+function appendAssistantChunkToStore(chunk: string, kind?: ChatMessage["kind"]): void {
   if (!activeMessageTarget || activeMessageIndex === null) {
     return;
   }
   const message = activeMessageTarget[activeMessageIndex];
   if (!message || message.role !== "assistant") {
     return;
+  }
+  if (kind === "thinking") {
+    message.kind = "thinking";
   }
   message.content += chunk;
 }

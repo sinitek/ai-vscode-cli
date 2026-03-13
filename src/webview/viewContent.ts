@@ -2966,6 +2966,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return isRunStatusSummaryText(message.content);
       }
 
+      function isFinalAssistantSummaryMessage(messageIndex) {
+        if (!Array.isArray(state.messages) || messageIndex < 0 || messageIndex >= state.messages.length) {
+          return false;
+        }
+        const current = state.messages[messageIndex];
+        if (!current || current.role !== "assistant") {
+          return false;
+        }
+        for (let i = messageIndex + 1; i < state.messages.length; i += 1) {
+          const next = state.messages[i];
+          if (!next) {
+            continue;
+          }
+          if (next.role === "system" && isRunStatusSummaryText(next.content)) {
+            return true;
+          }
+          if (next.role === "system" && !String(next.content || "").trim()) {
+            continue;
+          }
+          return false;
+        }
+        return false;
+      }
+
       function deriveLatestRunPromptFromMessages(messages) {
         if (!Array.isArray(messages)) {
           return "";
@@ -3599,7 +3623,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
             const bubble = document.createElement("div");
             bubble.className = "bubble";
-            bubble.innerHTML = safelyRenderMessageContent(message);
+            bubble.innerHTML = safelyRenderMessageContent(message, state.messages.indexOf(message));
 
             if (message.role === "user" && message.createdAt) {
               const time = document.createElement("div");
@@ -4009,12 +4033,64 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return message.kind === "thinking" || (presentation && presentation.type === "thinking");
       }
 
+      function isCodexReasoningStyleMessage(message) {
+        const content = String(message && message.content ? message.content : "");
+        if (!content) {
+          return false;
+        }
+        const trimmed = content.trimStart();
+        if (!trimmed.startsWith("**")) {
+          return false;
+        }
+        const titleEndIndex = trimmed.indexOf("**", 2);
+        if (titleEndIndex <= 2) {
+          return false;
+        }
+        const title = trimmed.slice(2, titleEndIndex).trim();
+        if (!title || !/[A-Za-z]/.test(title)) {
+          return false;
+        }
+        const firstWord = title.split(/\s+/)[0] || "";
+        if (!/ing$/i.test(firstWord)) {
+          return false;
+        }
+        const rest = trimmed.slice(titleEndIndex + 2);
+        return /\S/.test(rest);
+      }
+
+      function isTransparentBubbleMessage(message, presentation, messageIndex) {
+        if (!message) {
+          return false;
+        }
+        if (message.role === "assistant") {
+          // Assistant bubbles use the transparent style in current UI.
+          return true;
+        }
+        if (message.role === "trace") {
+          return isThinkingLikeMessage(message, presentation);
+        }
+        if (message.role === "system") {
+          return true;
+        }
+        return false;
+      }
+
       function isFileUpdateMessage(message) {
         if (!message) {
           return false;
         }
         const firstLine = getFirstNonEmptyLine(message.content || "");
         return firstLine.startsWith("file update");
+      }
+
+      function normalizeAssistantKind(kind) {
+        return kind === "thinking" ? "thinking" : "normal";
+      }
+
+      function isSameAssistantKind(left, right) {
+        const leftKind = left && typeof left === "object" ? left.kind : left;
+        const rightKind = right && typeof right === "object" ? right.kind : right;
+        return normalizeAssistantKind(leftKind) === normalizeAssistantKind(rightKind);
       }
 
       function appendMessage(message) {
@@ -4028,8 +4104,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const isFileUpdate = isFileUpdateMessage(message);
         const lastIsFileUpdate = last && isFileUpdateMessage(last);
         if (message.role === "assistant") {
-          if (last && last.role === "assistant" && !isFileUpdate && !lastIsFileUpdate) {
+          const canMergeAssistant = last
+            && last.role === "assistant"
+            && isSameAssistantKind(last, message)
+            && !isFileUpdate
+            && !lastIsFileUpdate;
+          if (canMergeAssistant) {
             assistantRedirects[message.id] = last.id;
+            if (message.kind === "thinking") {
+              last.kind = "thinking";
+            }
             if (message.content) {
               const prefix = last.content ? "\\n" : "";
               last.content = last.content + prefix + message.content;
@@ -4056,18 +4140,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderMessages();
       }
 
-      function appendAssistantDelta(id, content) {
+      function appendAssistantDelta(id, content, kind) {
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
-        const isLastAssistant = last && last.role === "assistant" && last.id === resolvedId;
+        const isLastAssistant = last
+          && last.role === "assistant"
+          && last.id === resolvedId
+          && isSameAssistantKind(last, kind);
         if (targetIndex === -1 || !isLastAssistant) {
           const newId = createMessageId();
           assistantRedirects[id] = newId;
-          state.messages.push({ id: newId, role: "assistant", content: "" });
+          state.messages.push({
+            id: newId,
+            role: "assistant",
+            content: "",
+            ...(kind === "thinking" ? { kind: "thinking" } : {}),
+          });
           targetIndex = state.messages.length - 1;
         }
         const target = state.messages[targetIndex];
+        if (kind === "thinking") {
+          target.kind = "thinking";
+        }
         target.content += content;
         renderMessages();
       }
@@ -4104,10 +4199,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return content;
       }
 
-      function renderAssistantMessageContent(message) {
+      function renderAssistantMessageContent(message, messageIndex) {
         const content = String(message && message.content ? message.content : "");
         const presentation = getTracePresentation(content);
-        if (isThinkingLikeMessage(message, presentation)) {
+        if (
+          isTransparentBubbleMessage(message, presentation, messageIndex)
+          || isThinkingLikeMessage(message, presentation)
+          || isCodexReasoningStyleMessage(message)
+          || isFinalAssistantSummaryMessage(messageIndex)
+        ) {
           return renderMarkdown(content);
         }
         const bodyHtml = '<div class="assistant-message-content">' + renderMarkdown(content) + '</div>';
@@ -4131,7 +4231,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return content;
       }
 
-      function renderMessageContent(message) {
+      function renderMessageContent(message, messageIndex) {
         if (isToolResultLikeMessage(message)) {
           return renderToolResultLikeMessage(message);
         }
@@ -4158,12 +4258,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (message.role === "trace") {
           return renderTraceMessageContent(message);
         }
-        return renderAssistantMessageContent(message);
+        return renderAssistantMessageContent(message, messageIndex);
       }
 
-      function safelyRenderMessageContent(message) {
+      function safelyRenderMessageContent(message, messageIndex) {
         try {
-          return renderMessageContent(message);
+          return renderMessageContent(message, messageIndex);
         } catch (error) {
           const reason = error && error.message ? String(error.message) : String(error);
           reportWebviewFailure("render-message-failed", error, {
@@ -4176,6 +4276,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function getTraceExpandedLines(content, presentation) {
+        const lines = Array.isArray(presentation && presentation.lines)
+          ? presentation.lines.filter((line) => String(line || "").trim().length > 0)
+          : [];
+        if (lines.length > 0) {
+          return lines;
+        }
+        if (presentation && typeof presentation.detail === "string" && presentation.detail.trim()) {
+          return [presentation.detail];
+        }
+        return String(content || "")
+          .split(/\\r?\\n/)
+          .filter((line) => String(line || "").trim().length > 0);
+      }
+
       function renderTraceContent(message) {
         const content = message && typeof message.content === "string" ? message.content : "";
         if (!content) {
@@ -4183,7 +4298,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         const traceKey = message && typeof message.id === "string" ? message.id : "";
         const presentation = getTracePresentation(content);
-        const bodyHtml = renderTraceBodyLines(presentation.lines);
+        const expandedLines = getTraceExpandedLines(content, presentation);
+        const bodyHtml = renderTraceBodyLines(expandedLines);
+        const shouldCollapse = shouldCollapseTraceContent(message, presentation);
+        const showDetailSummary = shouldCollapse;
         const header = presentation.title
           ? '<div class="trace-header">' +
             '<div class="trace-tag-row">' +
@@ -4198,12 +4316,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 "</span>"
               : "") +
             "</div>" +
-            (presentation.detail
+            (showDetailSummary && presentation.detail
               ? '<span class="trace-detail">' + escapeHtml(presentation.detail) + "</span>"
-              : '<span class="trace-detail"></span>') +
+              : "") +
             "</div>"
           : "";
-        if (shouldCollapseTraceContent(message, presentation)) {
+        if (shouldCollapse) {
           const isToolResult = presentation.type === "tool-result";
           return header + renderCollapsibleBubbleContent(
             getTraceCollapseSummaryText(message, presentation),
@@ -4235,13 +4353,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!presentation) {
           return false;
         }
+        if (isTransparentBubbleMessage(message, presentation, -1)) {
+          return false;
+        }
         if (isThinkingLikeMessage(message, presentation)) {
           return false;
         }
         const sourceContent = message && typeof message.content === "string"
           ? message.content
           : (Array.isArray(presentation.lines) ? presentation.lines.join("\\n") : "");
-        return shouldCollapseByContentLength(sourceContent);
+        if (!shouldCollapseByContentLength(sourceContent)) {
+          return false;
+        }
+        const expandedLines = getTraceExpandedLines(sourceContent, presentation);
+        const expandedText = normalizeCollapsePreviewText(expandedLines.join("\\n"));
+        const detailText = normalizeCollapsePreviewText(presentation && presentation.detail ? presentation.detail : "");
+        if (detailText && expandedText === detailText) {
+          return false;
+        }
+        return true;
       }
 
       function getTraceCollapseSummaryText(message, presentation) {
@@ -6700,7 +6830,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }
-            appendAssistantDelta(data.id, data.content);
+            appendAssistantDelta(data.id, data.content, data.kind);
           }
           if (data.type === "rawStreamDelta") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
