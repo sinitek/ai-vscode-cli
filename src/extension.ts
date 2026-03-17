@@ -5599,14 +5599,11 @@ function sanitizeMessages(messages: ChatMessage[]): { messages: ChatMessage[]; c
   const cleaned: ChatMessage[] = [];
   let changed = false;
   for (const message of messages) {
+    const content = typeof message.content === "string" ? message.content : "";
     if (
       (message.role === "assistant" || message.role === "trace")
-      && !message.content.trim()
+      && !content.trim()
     ) {
-      if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === "user") {
-        cleaned.pop();
-        changed = true;
-      }
       changed = true;
       continue;
     }
@@ -5874,8 +5871,34 @@ function restoreProcessTitle(): void {
   activeProcessTitleRunId = null;
 }
 
+function syncPendingDraftMessagesForSessionAdoption(cli: CliName, tabId: string | null): void {
+  if (!tabId) {
+    return;
+  }
+
+  const activeRunMatches = getPrimaryRunTabId() === tabId
+    && activeCliForRun === cli
+    && activeSessionId === null
+    && Array.isArray(activeMessageTarget)
+    && activeMessageTarget.length > 0;
+  if (activeRunMatches && activeMessageTarget) {
+    updatePendingSessionDraft(tabId, { messages: activeMessageTarget });
+  }
+
+  const parallelRun = parallelRunsByTabId.get(tabId);
+  if (parallelRun && parallelRun.cli === cli && parallelRun.sessionId === null && parallelRun.messageTarget.length > 0) {
+    updatePendingSessionDraft(tabId, { messages: parallelRun.messageTarget });
+  }
+
+  const interactiveRun = interactiveRunsByTabId.get(tabId);
+  if (interactiveRun && interactiveRun.cli === cli && interactiveRun.sessionId === null && interactiveRun.messageTarget.length > 0) {
+    updatePendingSessionDraft(tabId, { messages: interactiveRun.messageTarget });
+  }
+}
+
 function adoptSessionId(cli: CliName, sessionId: string, tabId: string | null = null): void {
   const targetTabId = tabId ?? getActiveConversationTabId();
+  syncPendingDraftMessagesForSessionAdoption(cli, targetTabId);
   let changed = false;
   if (targetTabId) {
     const tab = getConversationTabById(targetTabId);

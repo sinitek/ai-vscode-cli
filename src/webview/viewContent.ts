@@ -18,6 +18,8 @@ const WEBVIEW_I18N = {
     conversationTabCloseAria: "Close {label}",
     emptyState: "Type your request to start chatting.",
     scrollToBottomAria: "Jump to latest message",
+    resultOnlyLabel: "Results only",
+    resultOnlyAria: "Show only user messages and the final success reply",
     queueIndicatorAria: "View queue",
     queueIndicatorLabel: "Queue",
     taskListTitle: "Task List",
@@ -228,6 +230,8 @@ const WEBVIEW_I18N = {
     conversationTabCloseAria: "关闭{label}",
     emptyState: "输入需求，开始对话。",
     scrollToBottomAria: "跳转到最新消息",
+    resultOnlyLabel: "仅看结果",
+    resultOnlyAria: "仅显示用户消息和 AI 最终成功回复",
     queueIndicatorAria: "查看队列",
     queueIndicatorLabel: "队列",
     taskListTitle: "任务列表",
@@ -600,6 +604,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
         border-radius: 10px;
         position: relative;
+      }
+      .chat-filter-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        line-height: 1.4;
+        user-select: none;
+        cursor: pointer;
+        padding: 0 2px;
+      }
+      .chat-filter-toggle input {
+        margin: 0;
+        cursor: pointer;
       }
       .scroll-to-bottom-wrap {
         position: sticky;
@@ -2086,6 +2105,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       <div class="header">
         <div class="title">${i18n.panelTitle}</div>
         <div class="header-actions">
+          <label class="chat-filter-toggle" for="resultOnlyToggle" title="${i18n.resultOnlyAria}">
+            <input id="resultOnlyToggle" type="checkbox" aria-label="${i18n.resultOnlyAria}" />
+            <span>${i18n.resultOnlyLabel}</span>
+          </label>
           <button id="helpButton" class="secondary icon-button" title="${i18n.headerHelp}" aria-label="${i18n.headerHelp}">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="9" />
@@ -2122,6 +2145,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       </div>
 
       <div id="conversationTabs" class="conversation-tabs" role="tablist" aria-label="${i18n.conversationTabsAria}"></div>
+
 
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
@@ -2543,6 +2567,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     </script>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const persistedWebviewState = (() => {
+        try {
+          return vscode.getState() || {};
+        } catch {
+          return {};
+        }
+      })();
       const i18n = ${JSON.stringify(i18n)};
       const traceMarkers = {
         input: ["Input", "输入"],
@@ -2664,6 +2695,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         ruleScope: "global",
         historyTab: "sessions",
         promptHistoryExpandedId: null,
+        onlyShowFinalResults: Boolean(persistedWebviewState.onlyShowFinalResults),
         editorContext: {
           filePath: null,
           fileLabel: null,
@@ -2686,6 +2718,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         newSession: document.getElementById("newSession"),
         resetSession: document.getElementById("resetSession"),
         conversationTabs: document.getElementById("conversationTabs"),
+        resultOnlyToggle: document.getElementById("resultOnlyToggle"),
         stopRun: document.getElementById("stopRun"),
         chatArea: document.getElementById("chatArea"),
         messages: document.getElementById("messages"),
@@ -3381,6 +3414,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.macTaskShell) {
           elements.macTaskShell.value = state.macTaskShell;
         }
+        if (elements.resultOnlyToggle) {
+          elements.resultOnlyToggle.checked = state.onlyShowFinalResults;
+        }
         syncInteractiveOptions();
         if (elements.interactiveModeSelect) {
           elements.interactiveModeSelect.value = state.interactiveMode;
@@ -3596,15 +3632,50 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function shouldShowMessageInResultOnlyMode(message, messageIndex) {
+        if (!message) {
+          return false;
+        }
+        if (message.role === "user") {
+          return true;
+        }
+        return message.role === "assistant" && isFinalAssistantSummaryMessage(messageIndex);
+      }
+
+      function getVisibleMessages() {
+        if (!Array.isArray(state.messages) || state.messages.length === 0) {
+          return [];
+        }
+        return state.messages
+          .map((message, index) => ({ message, index }))
+          .filter(({ message, index }) => {
+            if (shouldHideSystemRunStatusMessage(message)) {
+              return false;
+            }
+            if (!state.onlyShowFinalResults) {
+              return true;
+            }
+            return shouldShowMessageInResultOnlyMode(message, index);
+          });
+      }
+
+      function persistWebviewUiState() {
+        try {
+          vscode.setState({
+            onlyShowFinalResults: state.onlyShowFinalResults,
+          });
+        } catch {
+          // ignore
+        }
+      }
+
       function renderMessages() {
         try {
           const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
           captureOpenTraceCollapsibleKeys();
           elements.messages.innerHTML = "";
-          state.messages.forEach((message) => {
-            if (shouldHideSystemRunStatusMessage(message)) {
-              return;
-            }
+          const visibleMessages = getVisibleMessages();
+          visibleMessages.forEach(({ message, index }) => {
             const wrapper = document.createElement("div");
             wrapper.className = "message " + message.role;
             const tracePresentation = getTracePresentation(message.content || "");
@@ -3623,7 +3694,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
             const bubble = document.createElement("div");
             bubble.className = "bubble";
-            bubble.innerHTML = safelyRenderMessageContent(message, state.messages.indexOf(message));
+            bubble.innerHTML = safelyRenderMessageContent(message, index);
 
             if (message.role === "user" && message.createdAt) {
               const time = document.createElement("div");
@@ -3636,7 +3707,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
 
           forceCollapseToolResultBubbles();
-          elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
+          elements.emptyState.style.display = visibleMessages.length === 0 ? "block" : "none";
           updateRunWait();
           if (shouldAutoScroll) {
             stickChatToBottom("auto");
@@ -6276,6 +6347,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (taskListState) {
             taskListState.open = elements.taskListDetails.open;
           }
+        });
+      }
+
+      if (elements.resultOnlyToggle) {
+        elements.resultOnlyToggle.addEventListener("change", (event) => {
+          state.onlyShowFinalResults = Boolean(event.target.checked);
+          persistWebviewUiState();
+          renderMessages();
         });
       }
 
