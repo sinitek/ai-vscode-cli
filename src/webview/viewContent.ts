@@ -4870,9 +4870,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const items = extractTaskListFromMessages(state.messages, taskListState.startIndex);
-        taskListState.items = items;
-        taskListState.open = items.length > 0;
+        setTaskListItems(taskListState, items);
         renderTaskList(taskListState);
+      }
+
+      function setTaskListItems(taskListState, items) {
+        if (!taskListState) {
+          return;
+        }
+        const nextItems = Array.isArray(items) ? items : [];
+        const hadItems = Array.isArray(taskListState.items) && taskListState.items.length > 0;
+        taskListState.items = nextItems;
+        if (!nextItems.length) {
+          taskListState.open = false;
+          return;
+        }
+        if (!hadItems) {
+          taskListState.open = true;
+        }
       }
 
       function renderTaskList(taskListState) {
@@ -4893,10 +4908,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.taskListPanel.style.display = "block";
-        if (activeTaskListState) {
-          activeTaskListState.open = true;
-        }
-        elements.taskListDetails.open = true;
+        elements.taskListDetails.open = activeTaskListState ? activeTaskListState.open : true;
         if (elements.taskListCount) {
           elements.taskListCount.textContent = "(" + items.length + ")";
         }
@@ -6337,15 +6349,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.taskListDetails.addEventListener("toggle", () => {
           const taskListState = getActiveTaskListState({ create: false });
           const hasItems = Boolean(taskListState && Array.isArray(taskListState.items) && taskListState.items.length);
-          if (hasItems && !elements.taskListDetails.open) {
-            elements.taskListDetails.open = true;
-            if (taskListState) {
-              taskListState.open = true;
-            }
-            return;
-          }
           if (taskListState) {
-            taskListState.open = elements.taskListDetails.open;
+            taskListState.open = hasItems ? elements.taskListDetails.open : false;
           }
         });
       }
@@ -7039,8 +7044,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             }
             const normalized = normalizeTaskListItems(data.items);
             if (normalized.length) {
-              taskListState.items = normalized;
-              taskListState.open = true;
+              setTaskListItems(taskListState, normalized);
               taskListState.source = "external";
             } else {
               const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
