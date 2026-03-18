@@ -3526,7 +3526,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        const visible = supported;
+        const isClaude = state.currentCli === "claude";
+        const visible = supported && isClaude;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
         elements.commonCommandButton.disabled = !visible || state.isRunning;
         if (elements.commandCompact) {
