@@ -549,6 +549,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         background: var(--vscode-toolbar-hoverBackground);
         opacity: 1;
       }
+      .send-icon-button {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        opacity: 1;
+      }
+      .send-icon-button:hover {
+        background: var(--vscode-button-hoverBackground);
+      }
+      .send-icon-button:disabled {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+      }
       .conversation-tabs {
         display: none;
         align-items: center;
@@ -1530,7 +1542,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .stop-button {
         background: var(--vscode-errorForeground);
         color: var(--vscode-button-foreground);
-        padding: 0 12px;
+        opacity: 1;
+      }
+      .stop-button:hover {
+        background: var(--vscode-inputValidation-errorBackground, var(--vscode-errorForeground));
+      }
+      .stop-button:disabled {
+        background: var(--vscode-errorForeground);
+        color: var(--vscode-button-foreground);
       }
       
       .ghost {
@@ -2407,13 +2426,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                <option value="medium">${i18n.thinkingOptionMedium}</option>
                <option value="high">${i18n.thinkingOptionHigh}</option>
              </select>
-             <button id="sendPrompt" class="action-button icon-action-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
+             <button id="sendPrompt" class="icon-button send-icon-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                  <path d="M22 2L11 13" />
                  <path d="M22 2L15 22L11 13L2 9L22 2Z" />
                </svg>
              </button>
-             <button id="stopRun" class="action-button stop-button icon-action-button" title="${i18n.stopButton}" aria-label="${i18n.stopButton}" disabled style="display: none;">
+             <button id="stopRun" class="icon-button stop-button" title="${i18n.stopButton}" aria-label="${i18n.stopButton}" disabled style="display: none;">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
                  <rect x="5" y="5" width="14" height="14" rx="2" />
                </svg>
