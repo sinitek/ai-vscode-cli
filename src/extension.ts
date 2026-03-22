@@ -129,6 +129,7 @@ const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
 const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
 const PROMPT_HISTORY_DIR = path.join(DATA_DIR, "prompt-history");
 const MODEL_STORE_FILE = path.join(DATA_DIR, "models.json");
+const DEFAULT_MODEL_STORE_KEY = "__default__";
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
@@ -266,6 +267,7 @@ type WorkspaceSettings = {
 type CliModelStore = {
   selectedByCli: Partial<Record<CliName, string>>;
   optionsByCli: Partial<Record<CliName, string[]>>;
+  thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
 };
 
 type ConfigHeartbeatSnapshot = {
@@ -614,6 +616,21 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (!addedModel) {
       return;
     }
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "renameCliModel" && message.cli) {
+    const renamedModel = renameCliModel(message.cli, message.previousModel, message.nextModel);
+    if (!renamedModel) {
+      return;
+    }
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "deleteCliModel" && message.cli) {
+    deleteCliModel(message.cli, message.model);
     await postPanelState();
     return;
   }
@@ -976,8 +993,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   if (message.type === "updateSetting" && message.key) {
     if (message.key === "thinkingMode") {
       if (isThinkingMode(message.value)) {
-        workspaceSettings.thinkingMode = message.value;
+        const normalizedThinkingMode = normalizeThinkingModeForCli(currentCli, message.value);
+        workspaceSettings.thinkingMode = normalizedThinkingMode;
         saveWorkspaceSettings(workspaceSettings);
+        setCliModelThinkingMode(currentCli, getSelectedCliModel(currentCli), normalizedThinkingMode);
       }
       await postPanelState();
       return;
@@ -1112,7 +1131,7 @@ async function buildPanelState(): Promise<PanelState> {
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
     macTaskShell: getMacTaskShell(),
-    thinkingMode: getWorkspaceThinkingMode(currentCli),
+    thinkingMode: getEffectiveThinkingMode(currentCli),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -1145,7 +1164,7 @@ async function buildPanelStateWithConfigState(
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
     macTaskShell: getMacTaskShell(),
-    thinkingMode: getWorkspaceThinkingMode(currentCli),
+    thinkingMode: getEffectiveThinkingMode(currentCli),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -2389,7 +2408,8 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
     : [];
   const cwd = resolveWorkspaceCwd();
-  const thinkingMode = getWorkspaceThinkingMode(runCli);
+  const selectedModel = input.model || getSelectedCliModel(runCli);
+  const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
 
   preparePendingLabel(runCli, target.tabId, prompt);
@@ -2412,7 +2432,6 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
   const runId = createMessageId();
   const startedAt = Date.now();
-  const selectedModel = getSelectedCliModel(runCli);
   sendRunStatusForTab(target.tabId, "start", { prompt, startedAt });
 
   let rawStdout = "";
@@ -2591,14 +2610,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: runCli });
   }
-  const thinkingMode = getWorkspaceThinkingMode(runCli);
+  const selectedModel = input.model || getSelectedCliModel(runCli);
+  const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const activeTabId = target.tabId;
   preparePendingLabel(runCli, activeTabId, prompt);
   const sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
-  const selectedModel = input.model || getSelectedCliModel(runCli);
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(activeTabId).messages;
@@ -3085,17 +3104,20 @@ async function runContextCompactionCommand(): Promise<void> {
   }
 
   const cwd = resolveWorkspaceCwd();
-  const thinkingMode = getThinkingMode(cli);
+  const selectedModel = getSelectedCliModel(cli);
+  const thinkingMode = getEffectiveThinkingMode(cli, selectedModel);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
-  const selectedModel = getSelectedCliModel(cli);
-  const args = getEffectiveCliArgs(cli);
+  const args = getEffectiveCliArgs(cli, selectedModel);
   const command = getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"
     ? (resolvedCommand?.command ?? "claude")
     : command;
+  const claudeEntrypoint = cli === "claude"
+    ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
+    : undefined;
   logCliStartup({
     cli,
     cwd,
@@ -3235,6 +3257,7 @@ async function runContextCompactionCommand(): Promise<void> {
         thinkingMode,
         interactiveMode,
         model: selectedModel,
+        entrypoint: claudeEntrypoint,
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
@@ -3351,7 +3374,8 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
 
   const cli = target.cli;
   const cwd = resolveWorkspaceCwd();
-  const thinkingMode = getThinkingMode(cli);
+  const selectedModel = input.model || getSelectedCliModel(cli);
+  const thinkingMode = getEffectiveThinkingMode(cli, selectedModel);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
@@ -3365,8 +3389,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
 
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
-  const selectedModel = input.model || getSelectedCliModel(cli);
-  const args = getEffectiveCliArgs(cli);
+  const args = getEffectiveCliArgs(cli, selectedModel);
   const command = getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"
@@ -3856,6 +3879,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             thinkingMode,
             interactiveMode,
             model: selectedModel,
+            entrypoint: claudeEntrypoint,
           })
         : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
             command: commandForRunner,
@@ -3864,6 +3888,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             thinkingMode,
             interactiveMode,
             model: selectedModel,
+            entrypoint: claudeEntrypoint,
             sessionId: null,
           });
 
@@ -3937,6 +3962,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             thinkingMode,
             interactiveMode,
             model: selectedModel,
+            entrypoint: claudeEntrypoint,
             sessionId: null,
           });
           stopCurrentTurn = () => runner.stopAndRebuild();
@@ -4639,6 +4665,41 @@ function getWorkspaceThinkingMode(cli: CliName): ThinkingMode {
   return getThinkingMode(cli);
 }
 
+function getCliModelThinkingKey(model: string | null): string {
+  return normalizeCliModelName(model) ?? DEFAULT_MODEL_STORE_KEY;
+}
+
+function getStoredCliModelThinkingMode(cli: CliName, model: string | null): ThinkingMode | null {
+  const cliThinking = modelStore?.thinkingByCliAndModel?.[cli];
+  if (!cliThinking || typeof cliThinking !== "object") {
+    return null;
+  }
+  const stored = cliThinking[getCliModelThinkingKey(model)];
+  if (!isThinkingMode(stored)) {
+    return null;
+  }
+  return normalizeThinkingModeForCli(cli, stored);
+}
+
+function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMode: ThinkingMode): void {
+  const normalizedThinkingMode = normalizeThinkingModeForCli(cli, thinkingMode);
+  const nextStore = ensureCliModelStore(modelStore);
+  const nextThinkingByCliAndModel = {
+    ...nextStore.thinkingByCliAndModel,
+  };
+  nextThinkingByCliAndModel[cli] = {
+    ...(nextThinkingByCliAndModel[cli] ?? {}),
+    [getCliModelThinkingKey(model)]: normalizedThinkingMode,
+  };
+  nextStore.thinkingByCliAndModel = nextThinkingByCliAndModel;
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+}
+
+function getEffectiveThinkingMode(cli: CliName, model: string | null = getSelectedCliModel(cli)): ThinkingMode {
+  return getStoredCliModelThinkingMode(cli, model) ?? getWorkspaceThinkingMode(cli);
+}
+
 function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
   const perCli = workspaceSettings.interactiveModeByCli;
   if (!perCli) {
@@ -4683,6 +4744,7 @@ function ensureCliModelStore(store?: CliModelStore): CliModelStore {
   const normalized: CliModelStore = {
     selectedByCli: {},
     optionsByCli: {},
+    thinkingByCliAndModel: {},
   };
   for (const cli of CLI_LIST) {
     const configuredModel = readModelArg(cli, getCliArgs(cli));
@@ -4696,6 +4758,23 @@ function ensureCliModelStore(store?: CliModelStore): CliModelStore {
     normalized.optionsByCli[cli] = mergedOptions;
     if (selectedModel) {
       normalized.selectedByCli[cli] = selectedModel;
+    }
+
+    const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
+    if (storedThinkingByModel && typeof storedThinkingByModel === "object") {
+      const normalizedThinkingByModel: Record<string, ThinkingMode> = {};
+      for (const [rawModelKey, rawThinkingMode] of Object.entries(storedThinkingByModel)) {
+        const normalizedModelKey = rawModelKey === DEFAULT_MODEL_STORE_KEY
+          ? DEFAULT_MODEL_STORE_KEY
+          : normalizeCliModelName(rawModelKey);
+        if (!normalizedModelKey || !isThinkingMode(rawThinkingMode)) {
+          continue;
+        }
+        normalizedThinkingByModel[normalizedModelKey] = normalizeThinkingModeForCli(cli, rawThinkingMode);
+      }
+      if (Object.keys(normalizedThinkingByModel).length > 0) {
+        normalized.thinkingByCliAndModel[cli] = normalizedThinkingByModel;
+      }
     }
   }
   return normalized;
@@ -4766,8 +4845,93 @@ function addCliModel(cli: CliName, model: string): string | null {
   return normalized;
 }
 
-function getEffectiveCliArgs(cli: CliName): string[] {
-  return applyModelArg(cli, getCliArgs(cli), getSelectedCliModel(cli));
+function renameCliModel(cli: CliName, previousModel: string, nextModel: string): string | null {
+  const previousNormalized = normalizeCliModelName(previousModel);
+  const nextNormalized = normalizeCliModelName(nextModel);
+  if (!previousNormalized || !nextNormalized) {
+    return null;
+  }
+  const previousKey = previousNormalized.toLowerCase();
+  const nextKey = nextNormalized.toLowerCase();
+  const nextStore = ensureCliModelStore(modelStore);
+  const currentOptions = nextStore.optionsByCli[cli] ?? [];
+  const duplicateExists = currentOptions.some((modelName) => {
+    const normalized = normalizeCliModelName(modelName);
+    if (!normalized) {
+      return false;
+    }
+    const currentKey = normalized.toLowerCase();
+    return currentKey === nextKey && currentKey !== previousKey;
+  });
+  if (duplicateExists) {
+    return null;
+  }
+
+  const renamedOptions = currentOptions.map((modelName) => {
+    const normalized = normalizeCliModelName(modelName);
+    return normalized && normalized.toLowerCase() === previousKey ? nextNormalized : modelName;
+  });
+  nextStore.optionsByCli[cli] = mergeUniqueModelNames(renamedOptions);
+
+  const selectedModel = getSelectedCliModel(cli);
+  if (selectedModel && selectedModel.toLowerCase() === previousKey) {
+    nextStore.selectedByCli[cli] = nextNormalized;
+  }
+
+  const cliThinking = nextStore.thinkingByCliAndModel?.[cli];
+  if (cliThinking) {
+    const matchedThinkingKey = Object.keys(cliThinking).find((key) => key.toLowerCase() === previousKey);
+    if (matchedThinkingKey) {
+      const nextThinking = { ...cliThinking };
+      nextThinking[nextNormalized] = nextThinking[matchedThinkingKey];
+      delete nextThinking[matchedThinkingKey];
+      nextStore.thinkingByCliAndModel[cli] = nextThinking;
+    }
+  }
+
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+  return nextNormalized;
+}
+
+function deleteCliModel(cli: CliName, model: string): void {
+  const normalized = normalizeCliModelName(model);
+  if (!normalized) {
+    return;
+  }
+  const targetKey = normalized.toLowerCase();
+  const nextStore = ensureCliModelStore(modelStore);
+  const currentOptions = nextStore.optionsByCli[cli] ?? [];
+  nextStore.optionsByCli[cli] = currentOptions.filter((modelName) => {
+    const currentNormalized = normalizeCliModelName(modelName);
+    return !(currentNormalized && currentNormalized.toLowerCase() === targetKey);
+  });
+
+  const selectedModel = getSelectedCliModel(cli);
+  if (selectedModel && selectedModel.toLowerCase() === targetKey) {
+    delete nextStore.selectedByCli[cli];
+  }
+
+  const cliThinking = nextStore.thinkingByCliAndModel?.[cli];
+  if (cliThinking) {
+    const matchedThinkingKey = Object.keys(cliThinking).find((key) => key.toLowerCase() === targetKey);
+    if (matchedThinkingKey) {
+      const nextThinking = { ...cliThinking };
+      delete nextThinking[matchedThinkingKey];
+      if (Object.keys(nextThinking).length > 0) {
+        nextStore.thinkingByCliAndModel[cli] = nextThinking;
+      } else {
+        delete nextStore.thinkingByCliAndModel[cli];
+      }
+    }
+  }
+
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+}
+
+function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCliModel(cli)): string[] {
+  return applyModelArg(cli, getCliArgs(cli), model);
 }
 
 function buildModelState(): PanelState["modelState"] {

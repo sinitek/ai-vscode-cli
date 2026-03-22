@@ -218,15 +218,21 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelXHigh: "Thinking: X-High",
     modelSelectAria: "Model selection",
     modelOptionDefault: "Model: Follow Config",
-    modelOptionAdd: "Add",
+    modelOptionManage: "Manage",
     modelAddPrompt: "Enter model name:",
-    modelAddTitle: "Add Model",
+    modelAddTitle: "Manage Models",
     modelAddLabel: "Model name",
     modelAddPlaceholder: "Enter model name, e.g. claude-sonnet-4-20250514",
     modelAddButton: "Add",
+    modelSaveButton: "Save",
     modelAddEmptyError: "Model name cannot be empty",
     modelAddExistsError: "Model already exists",
-    modelRemoveLabel: "Remove",
+    modelManageEmpty: "No models yet. Add one below.",
+    modelManageCancelEdit: "Cancel Edit",
+    modelManageEditing: "Editing: {model}",
+    modelEditLabel: "Edit",
+    modelRemoveLabel: "Delete",
+    modelDeleteConfirm: "Delete model \"{model}\"?",
   },
   "zh-CN": {
     appTitle: "携宁 CLI 助手",
@@ -441,15 +447,21 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelXHigh: "思考：超高",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
-    modelOptionAdd: "添加",
+    modelOptionManage: "管理",
     modelAddPrompt: "输入模型名称：",
-    modelAddTitle: "添加模型",
+    modelAddTitle: "管理模型",
     modelAddLabel: "模型名称",
     modelAddPlaceholder: "输入模型名称，如 claude-sonnet-4-20250514",
     modelAddButton: "添加",
+    modelSaveButton: "保存",
     modelAddEmptyError: "模型名称不能为空",
     modelAddExistsError: "模型已存在",
+    modelManageEmpty: "暂无模型，请在下方添加。",
+    modelManageCancelEdit: "取消编辑",
+    modelManageEditing: "正在编辑：{model}",
+    modelEditLabel: "编辑",
     modelRemoveLabel: "删除",
+    modelDeleteConfirm: "确认删除模型“{model}”？",
   },
 } as const;
 
@@ -1275,7 +1287,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       /* Controls Row (CLI, Config) */
       .config-select-row {
         display: flex;
-        gap: 8px;
+        gap: 4px;
         margin-bottom: 5px;
         align-items: center;
         flex-wrap: nowrap;
@@ -1310,8 +1322,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         min-width: 69px;
       }
       .model-select {
-        flex: 0 1 168px;
-        min-width: 132px;
+        flex: 0 1 118px;
+        min-width: 92px;
       }
 
       /* Input Box Container */
@@ -1434,7 +1446,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .input-actions {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         width: 100%;
         justify-content: flex-end;
       }
@@ -1458,7 +1470,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       .icon-action-button {
-        width: 40px;
+        width: 32px;
         padding: 0;
         flex: 0 0 auto;
         height: 32px;
@@ -1633,6 +1645,52 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+      }
+      .model-manager-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      .model-manager-empty {
+        padding: 10px 12px;
+        border: 1px dashed var(--vscode-widget-border);
+        border-radius: 8px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .model-manager-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        background: var(--vscode-editor-background);
+      }
+      .model-manager-name {
+        min-width: 0;
+        flex: 1 1 auto;
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        word-break: break-all;
+      }
+      .model-manager-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      .model-manager-button {
+        height: 24px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+      .model-edit-hint {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
       }
 
       .run-queue-indicator {
@@ -2332,23 +2390,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
+             <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
+               <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                 <path d="M5 6v4h4" />
+                 <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
+                 <path d="M12 8.2v4.2l2.8 1.9" />
+               </svg>
+             </button>
+             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
+               <option value="">${i18n.modelOptionDefault}</option>
+               <option value="__manage__">${i18n.modelOptionManage}</option>
+             </select>
              <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
                <option value="off">${i18n.thinkingOptionOff}</option>
                <option value="low">${i18n.thinkingOptionLow}</option>
                <option value="medium">${i18n.thinkingOptionMedium}</option>
                <option value="high">${i18n.thinkingOptionHigh}</option>
              </select>
-             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
-               <option value="">${i18n.modelOptionDefault}</option>
-               <option value="__add__">${i18n.modelOptionAdd}</option>
-             </select>
-             <button id="historyButton" class="secondary action-button icon-action-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
-               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                 <path d="M3 12a9 9 0 1 0 3-6.7" />
-                 <path d="M3 5v4h4" />
-                 <path d="M12 7v5l3 3" />
-               </svg>
-             </button>
              <button id="sendPrompt" class="action-button icon-action-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                  <path d="M22 2L11 13" />
@@ -2369,7 +2427,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <div class="modal-header">
             <div class="title">${i18n.historyTitle}</div>
             <div class="session-actions">
-              <button id="clearAllHistory" class="ghost">${i18n.historyClearSessions}</button>
               <button id="closeHistory" class="secondary icon-button" title="${i18n.historyClose}" aria-label="${i18n.historyClose}">
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="6" y1="6" x2="18" y2="18" />
@@ -2506,14 +2563,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             </button>
           </div>
           <div class="add-model-body">
+            <div id="modelManagerList" class="model-manager-list"></div>
             <div class="add-model-row">
               <label for="modelInput">${i18n.modelAddLabel}</label>
               <input id="modelInput" type="text" class="model-input" placeholder="${i18n.modelAddPlaceholder}" />
+              <div id="modelEditHint" class="model-edit-hint" style="display: none;"></div>
             </div>
             <div id="modelAddError" class="add-model-error" style="display: none;"></div>
           </div>
           <div class="add-model-actions">
             <button id="cancelAddModel" class="secondary action-button">${i18n.historyClose}</button>
+            <button id="clearModelEdit" class="secondary action-button" style="display: none;">${i18n.modelManageCancelEdit}</button>
             <button id="confirmAddModel" class="action-button">${i18n.modelAddButton}</button>
           </div>
         </div>
@@ -2956,8 +3016,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         addModelOverlay: document.getElementById("addModelOverlay"),
         closeAddModel: document.getElementById("closeAddModel"),
         cancelAddModel: document.getElementById("cancelAddModel"),
+        clearModelEdit: document.getElementById("clearModelEdit"),
         confirmAddModel: document.getElementById("confirmAddModel"),
+        modelManagerList: document.getElementById("modelManagerList"),
         modelInput: document.getElementById("modelInput"),
+        modelEditHint: document.getElementById("modelEditHint"),
         modelAddError: document.getElementById("modelAddError"),
       };
       let isComposing = false;
@@ -3564,6 +3627,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.thinkingMode.value = state.thinkingMode;
         if (elements.modelSelect) {
           updateModelSelectOptions();
+        }
+        if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
+          renderModelManagerList();
+          syncModelManageForm();
         }
         if (elements.debugMode) {
           elements.debugMode.checked = state.debug;
@@ -6539,7 +6606,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       // Model selection management
-      const MODEL_ADD_OPTION_VALUE = "__add__";
+      const MODEL_MANAGE_OPTION_VALUE = "__manage__";
+      let editingModelName = "";
 
       function getModelsForCurrentCli() {
         const cli = state.currentCli;
@@ -6547,6 +6615,105 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           ? state.modelsByCli[cli]
           : [];
         return models;
+      }
+
+      function showModelManageError(message) {
+        elements.modelAddError.textContent = message;
+        elements.modelAddError.style.display = "block";
+      }
+
+      function clearModelManageError() {
+        elements.modelAddError.textContent = "";
+        elements.modelAddError.style.display = "none";
+      }
+
+      function syncModelManageForm() {
+        const isEditing = Boolean(editingModelName);
+        if (elements.modelEditHint) {
+          elements.modelEditHint.textContent = isEditing ? t("modelManageEditing", { model: editingModelName }) : "";
+          elements.modelEditHint.style.display = isEditing ? "block" : "none";
+        }
+        if (elements.clearModelEdit) {
+          elements.clearModelEdit.style.display = isEditing ? "inline-flex" : "none";
+        }
+        if (elements.confirmAddModel) {
+          elements.confirmAddModel.textContent = isEditing ? t("modelSaveButton") : t("modelAddButton");
+        }
+      }
+
+      function resetModelManageForm() {
+        editingModelName = "";
+        elements.modelInput.value = "";
+        clearModelManageError();
+        syncModelManageForm();
+      }
+
+      function startEditModel(modelName) {
+        editingModelName = modelName;
+        elements.modelInput.value = modelName;
+        clearModelManageError();
+        syncModelManageForm();
+        elements.modelInput.focus();
+        elements.modelInput.select();
+      }
+
+      function renderModelManagerList() {
+        if (!elements.modelManagerList) {
+          return;
+        }
+        const availableModels = getModelsForCurrentCli();
+        elements.modelManagerList.innerHTML = "";
+        if (!availableModels.length) {
+          const empty = document.createElement("div");
+          empty.className = "model-manager-empty";
+          empty.textContent = t("modelManageEmpty");
+          elements.modelManagerList.appendChild(empty);
+          return;
+        }
+        availableModels.forEach((modelName) => {
+          const item = document.createElement("div");
+          item.className = "model-manager-item";
+
+          const name = document.createElement("div");
+          name.className = "model-manager-name";
+          name.textContent = modelName;
+          item.appendChild(name);
+
+          const actions = document.createElement("div");
+          actions.className = "model-manager-actions";
+
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "secondary action-button model-manager-button";
+          editButton.textContent = t("modelEditLabel");
+          editButton.addEventListener("click", () => {
+            startEditModel(modelName);
+          });
+          actions.appendChild(editButton);
+
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "secondary action-button model-manager-button";
+          deleteButton.textContent = t("modelRemoveLabel");
+          deleteButton.addEventListener("click", () => {
+            const confirmed = window.confirm(t("modelDeleteConfirm", { model: modelName }));
+            if (!confirmed) {
+              return;
+            }
+            if (editingModelName && editingModelName.toLowerCase() === String(modelName).toLowerCase()) {
+              resetModelManageForm();
+            }
+            vscode.postMessage({
+              type: "deleteCliModel",
+              cli: state.currentCli,
+              model: modelName,
+            });
+          });
+          actions.appendChild(deleteButton);
+
+          item.appendChild(actions);
+          elements.modelManagerList.appendChild(item);
+        });
       }
 
       function updateModelSelectOptions() {
@@ -6568,10 +6735,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.modelSelect.appendChild(option);
         });
 
-        const addOption = document.createElement("option");
-        addOption.value = MODEL_ADD_OPTION_VALUE;
-        addOption.textContent = t("modelOptionAdd");
-        elements.modelSelect.appendChild(addOption);
+        const manageOption = document.createElement("option");
+        manageOption.value = MODEL_MANAGE_OPTION_VALUE;
+        manageOption.textContent = t("modelOptionManage");
+        elements.modelSelect.appendChild(manageOption);
 
         const nextValue = typeof state.selectedModel === "string" ? state.selectedModel : "";
         if (nextValue && availableModels.includes(nextValue)) {
@@ -6588,12 +6755,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.modelSelect) {
           elements.modelSelect.value = state.selectedModel || "";
         }
-        elements.modelInput.value = "";
-        elements.modelAddError.textContent = "";
-        elements.modelAddError.style.display = "none";
+        resetModelManageForm();
+        renderModelManagerList();
         elements.addModelOverlay.classList.add("visible");
         elements.modelInput.focus();
-        elements.modelInput.select();
       }
 
       function hideAddModelDialog() {
@@ -6601,8 +6766,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         elements.addModelOverlay.classList.remove("visible");
-        elements.modelAddError.textContent = "";
-        elements.modelAddError.style.display = "none";
+        resetModelManageForm();
         if (elements.modelSelect) {
           elements.modelSelect.value = state.selectedModel || "";
         }
@@ -6611,28 +6775,42 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function confirmAddModel() {
         const modelName = elements.modelInput.value.trim();
         if (!modelName) {
-          elements.modelAddError.textContent = t("modelAddEmptyError");
-          elements.modelAddError.style.display = "block";
+          showModelManageError(t("modelAddEmptyError"));
           return;
         }
         const existingModels = getModelsForCurrentCli();
-        const duplicate = existingModels.some((model) => String(model).toLowerCase() === modelName.toLowerCase());
+        const editingKey = editingModelName ? editingModelName.toLowerCase() : "";
+        const duplicate = existingModels.some((model) => {
+          const currentKey = String(model).toLowerCase();
+          return currentKey === modelName.toLowerCase() && currentKey !== editingKey;
+        });
         if (duplicate) {
-          elements.modelAddError.textContent = t("modelAddExistsError");
-          elements.modelAddError.style.display = "block";
+          showModelManageError(t("modelAddExistsError"));
           return;
         }
-        vscode.postMessage({
-          type: "addCliModel",
-          cli: state.currentCli,
-          model: modelName,
-        });
-        hideAddModelDialog();
+        if (editingModelName) {
+          vscode.postMessage({
+            type: "renameCliModel",
+            cli: state.currentCli,
+            previousModel: editingModelName,
+            nextModel: modelName,
+          });
+        } else {
+          vscode.postMessage({
+            type: "addCliModel",
+            cli: state.currentCli,
+            model: modelName,
+          });
+        }
+        resetModelManageForm();
       }
 
       if (elements.addModelOverlay) {
         elements.closeAddModel.addEventListener("click", hideAddModelDialog);
         elements.cancelAddModel.addEventListener("click", hideAddModelDialog);
+        if (elements.clearModelEdit) {
+          elements.clearModelEdit.addEventListener("click", resetModelManageForm);
+        }
         elements.confirmAddModel.addEventListener("click", confirmAddModel);
         elements.addModelOverlay.addEventListener("click", (event) => {
           if (event.target === elements.addModelOverlay) {
@@ -6653,7 +6831,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateModelSelectOptions();
         elements.modelSelect.addEventListener("change", (event) => {
           const value = event.target.value || "";
-          if (value === MODEL_ADD_OPTION_VALUE) {
+          if (value === MODEL_MANAGE_OPTION_VALUE) {
             showAddModelDialog();
             return;
           }
@@ -6846,13 +7024,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         closeHistory();
       });
 
-      elements.clearAllHistory.addEventListener("click", () => {
-        if (state.historyTab === "prompts") {
-          vscode.postMessage({ type: "clearPromptHistory" });
-          return;
-        }
-        vscode.postMessage({ type: "resetConversationTabSession" });
-      });
+      if (elements.clearAllHistory) {
+        elements.clearAllHistory.addEventListener("click", () => {
+          if (state.historyTab === "prompts") {
+            vscode.postMessage({ type: "clearPromptHistory" });
+            return;
+          }
+          vscode.postMessage({ type: "resetConversationTabSession" });
+        });
+      }
 
       elements.historyTabPrompts.addEventListener("click", () => {
         setHistoryTab("prompts");

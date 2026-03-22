@@ -12,6 +12,8 @@ export type PanelMessage =
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null }
   | { type: "addCliModel"; cli: CliName; model: string }
+  | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string }
+  | { type: "deleteCliModel"; cli: CliName; model: string }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }

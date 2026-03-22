@@ -276,6 +276,7 @@ export class ClaudeInteractiveRunner {
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
       model?: string | null;
+      entrypoint?: string;
       sessionId: string | null;
     }
   ) {}
@@ -347,6 +348,10 @@ export class ClaudeInteractiveRunner {
       cwd,
       model,
       permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
+      // 与 Claude Code CLI 对齐：加载用户/项目/本地 settings
+      settingSources: ["user", "project", "local"],
+      // 使用当前配置的 Claude 可执行入口，避免 SDK 退回内置 CLI 导致自定义网关/包装脚本失效
+      pathToClaudeCodeExecutable: this.options.entrypoint,
       // 设置较大的 maxTurns 限制，避免复杂任务被过早中断
       // SDK 默认值为 10，对于交互模式来说太小了
       maxTurns: 200,

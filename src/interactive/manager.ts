@@ -150,6 +150,7 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
     model: string | null;
+    entrypoint?: string;
   }): ClaudeInteractiveRunner {
     const key = this.buildKey("claude", options.sessionId);
     const existing = this.entries.get(key);
@@ -177,6 +178,7 @@ export class InteractiveRunnerManager {
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
       model: options.model,
+      entrypoint: options.entrypoint,
       sessionId: options.mappedSessionId,
     });
     const entry: RunnerEntry = {
