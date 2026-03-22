@@ -216,6 +216,17 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMedium: "Thinking: Medium",
     thinkingOptionLabelHigh: "Thinking: High",
     thinkingOptionLabelXHigh: "Thinking: X-High",
+    modelSelectAria: "Model selection",
+    modelOptionDefault: "Model: Follow Config",
+    modelOptionAdd: "Add",
+    modelAddPrompt: "Enter model name:",
+    modelAddTitle: "Add Model",
+    modelAddLabel: "Model name",
+    modelAddPlaceholder: "Enter model name, e.g. claude-sonnet-4-20250514",
+    modelAddButton: "Add",
+    modelAddEmptyError: "Model name cannot be empty",
+    modelAddExistsError: "Model already exists",
+    modelRemoveLabel: "Remove",
   },
   "zh-CN": {
     appTitle: "携宁 CLI 助手",
@@ -428,6 +439,17 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMedium: "思考：中",
     thinkingOptionLabelHigh: "思考：高",
     thinkingOptionLabelXHigh: "思考：超高",
+    modelSelectAria: "模型选择",
+    modelOptionDefault: "默认",
+    modelOptionAdd: "添加",
+    modelAddPrompt: "输入模型名称：",
+    modelAddTitle: "添加模型",
+    modelAddLabel: "模型名称",
+    modelAddPlaceholder: "输入模型名称，如 claude-sonnet-4-20250514",
+    modelAddButton: "添加",
+    modelAddEmptyError: "模型名称不能为空",
+    modelAddExistsError: "模型已存在",
+    modelRemoveLabel: "删除",
   },
 } as const;
 
@@ -1246,15 +1268,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       /* Input Area */
       .input-area {
-        padding: 16px var(--panel-content-padding);
+        padding: 8px var(--panel-content-padding);
         background: var(--vscode-editor-background);
       }
-      
+
       /* Controls Row (CLI, Config) */
       .config-select-row {
         display: flex;
         gap: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
         align-items: center;
         flex-wrap: nowrap;
         overflow: hidden;
@@ -1286,6 +1308,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .interactive-mode-select {
         flex: 0 1 69px;
         min-width: 69px;
+      }
+      .model-select {
+        flex: 0 1 168px;
+        min-width: 132px;
       }
 
       /* Input Box Container */
@@ -1363,7 +1389,46 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-top: 12px;
+        margin-top: 6px;
+      }
+
+      .model-modal {
+        width: 420px;
+      }
+      .model-modal-body {
+        padding: 0 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .model-name-input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 8px;
+        background: var(--vscode-input-background, var(--vscode-editor-background));
+        color: var(--vscode-input-foreground, var(--vscode-foreground));
+        font-family: inherit;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px 10px;
+        outline: none;
+      }
+      .model-name-input:focus {
+        border-color: var(--vscode-focusBorder);
+      }
+      .model-dialog-hint {
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .model-dialog-hint.error {
+        color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+      }
+      .model-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
       }
       
       .input-actions {
@@ -1520,6 +1585,50 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         word-break: break-word;
       }
       .run-conflict-actions {
+        padding: 0 16px 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .add-model-modal {
+        width: 400px;
+      }
+      .add-model-body {
+        padding: 0 16px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .add-model-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .add-model-row label {
+        font-size: 13px;
+        color: var(--vscode-foreground);
+      }
+      .model-input {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid var(--vscode-input-border);
+        border-radius: 4px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .model-input:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+      }
+      .add-model-error {
+        color: var(--vscode-errorForeground);
+        font-size: 12px;
+        padding: 4px 0;
+      }
+      .add-model-actions {
         padding: 0 16px 16px;
         display: flex;
         justify-content: flex-end;
@@ -2072,7 +2181,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 13px;
       }
       .tasklist-checkbox {
-        margin-top: 2px;
+        margin-top: 6px;
         appearance: none;
         -webkit-appearance: none;
         width: 14px;
@@ -2229,6 +2338,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                <option value="medium">${i18n.thinkingOptionMedium}</option>
                <option value="high">${i18n.thinkingOptionHigh}</option>
              </select>
+             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
+               <option value="">${i18n.modelOptionDefault}</option>
+               <option value="__add__">${i18n.modelOptionAdd}</option>
+             </select>
              <button id="historyButton" class="secondary action-button icon-action-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                  <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -2377,6 +2490,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <span class="common-command-desc">${i18n.commonCommandCompactDesc}</span>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="addModelOverlay" class="overlay">
+        <div class="modal add-model-modal">
+          <div class="modal-header">
+            <div class="title">${i18n.modelAddTitle}</div>
+            <button id="closeAddModel" class="secondary icon-button" title="${i18n.rulesClose}" aria-label="${i18n.rulesClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="add-model-body">
+            <div class="add-model-row">
+              <label for="modelInput">${i18n.modelAddLabel}</label>
+              <input id="modelInput" type="text" class="model-input" placeholder="${i18n.modelAddPlaceholder}" />
+            </div>
+            <div id="modelAddError" class="add-model-error" style="display: none;"></div>
+          </div>
+          <div class="add-model-actions">
+            <button id="cancelAddModel" class="secondary action-button">${i18n.historyClose}</button>
+            <button id="confirmAddModel" class="action-button">${i18n.modelAddButton}</button>
           </div>
         </div>
       </div>
@@ -2674,6 +2812,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           activeConfigId: null,
         },
         selectedConfigId: "",
+        selectedModel: "",
+        modelsByCli: {
+          codex: [],
+          claude: [],
+          gemini: [],
+        },
         autoAppliedConfig: false,
         sessionState: {
           currentSessionId: null,
@@ -2738,6 +2882,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptInput: document.getElementById("promptInput"),
         promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
+        modelSelect: document.getElementById("modelSelect"),
         debugMode: document.getElementById("debugMode"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
@@ -2808,6 +2953,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         taskListDetails: document.getElementById("taskListDetails"),
         taskListCount: document.getElementById("taskListCount"),
         taskListBody: document.getElementById("taskListBody"),
+        addModelOverlay: document.getElementById("addModelOverlay"),
+        closeAddModel: document.getElementById("closeAddModel"),
+        cancelAddModel: document.getElementById("cancelAddModel"),
+        confirmAddModel: document.getElementById("confirmAddModel"),
+        modelInput: document.getElementById("modelInput"),
+        modelAddError: document.getElementById("modelAddError"),
       };
       let isComposing = false;
       let lastCompositionEndAt = 0;
@@ -3395,6 +3546,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.macTaskShell = panelState.macTaskShell === "bash" ? "bash" : "zsh";
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
+        // Handle modelState
+        if (panelState.modelState) {
+          state.modelsByCli = {
+            codex: panelState.modelState.optionsByCli?.codex || [],
+            claude: panelState.modelState.optionsByCli?.claude || [],
+            gemini: panelState.modelState.optionsByCli?.gemini || [],
+          };
+          state.selectedModel = panelState.modelState.selectedByCli?.[panelState.currentCli] || "";
+        }
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {
           elements.rulesLoadCli.value = panelState.currentCli;
@@ -3402,6 +3562,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateRulesScope(state.ruleScope);
         syncThinkingOptions();
         elements.thinkingMode.value = state.thinkingMode;
+        if (elements.modelSelect) {
+          updateModelSelectOptions();
+        }
         if (elements.debugMode) {
           elements.debugMode.checked = state.debug;
         }
@@ -5271,6 +5434,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           contextOptions: normalizedPayload.contextOptions,
           tabId: activeTabId || undefined,
           cli: activeTab && activeTab.cli ? activeTab.cli : state.currentCli,
+          model: state.selectedModel || undefined,
         });
         return true;
       }
@@ -6373,6 +6537,134 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           value: nextMode,
         });
       });
+
+      // Model selection management
+      const MODEL_ADD_OPTION_VALUE = "__add__";
+
+      function getModelsForCurrentCli() {
+        const cli = state.currentCli;
+        const models = state.modelsByCli && Array.isArray(state.modelsByCli[cli])
+          ? state.modelsByCli[cli]
+          : [];
+        return models;
+      }
+
+      function updateModelSelectOptions() {
+        if (!elements.modelSelect) {
+          return;
+        }
+        const availableModels = getModelsForCurrentCli();
+        elements.modelSelect.innerHTML = "";
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = t("modelOptionDefault");
+        elements.modelSelect.appendChild(defaultOption);
+
+        availableModels.forEach((modelName) => {
+          const option = document.createElement("option");
+          option.value = modelName;
+          option.textContent = modelName;
+          elements.modelSelect.appendChild(option);
+        });
+
+        const addOption = document.createElement("option");
+        addOption.value = MODEL_ADD_OPTION_VALUE;
+        addOption.textContent = t("modelOptionAdd");
+        elements.modelSelect.appendChild(addOption);
+
+        const nextValue = typeof state.selectedModel === "string" ? state.selectedModel : "";
+        if (nextValue && availableModels.includes(nextValue)) {
+          elements.modelSelect.value = nextValue;
+          return;
+        }
+        elements.modelSelect.value = "";
+      }
+
+      function showAddModelDialog() {
+        if (!elements.addModelOverlay) {
+          return;
+        }
+        if (elements.modelSelect) {
+          elements.modelSelect.value = state.selectedModel || "";
+        }
+        elements.modelInput.value = "";
+        elements.modelAddError.textContent = "";
+        elements.modelAddError.style.display = "none";
+        elements.addModelOverlay.classList.add("visible");
+        elements.modelInput.focus();
+        elements.modelInput.select();
+      }
+
+      function hideAddModelDialog() {
+        if (!elements.addModelOverlay) {
+          return;
+        }
+        elements.addModelOverlay.classList.remove("visible");
+        elements.modelAddError.textContent = "";
+        elements.modelAddError.style.display = "none";
+        if (elements.modelSelect) {
+          elements.modelSelect.value = state.selectedModel || "";
+        }
+      }
+
+      function confirmAddModel() {
+        const modelName = elements.modelInput.value.trim();
+        if (!modelName) {
+          elements.modelAddError.textContent = t("modelAddEmptyError");
+          elements.modelAddError.style.display = "block";
+          return;
+        }
+        const existingModels = getModelsForCurrentCli();
+        const duplicate = existingModels.some((model) => String(model).toLowerCase() === modelName.toLowerCase());
+        if (duplicate) {
+          elements.modelAddError.textContent = t("modelAddExistsError");
+          elements.modelAddError.style.display = "block";
+          return;
+        }
+        vscode.postMessage({
+          type: "addCliModel",
+          cli: state.currentCli,
+          model: modelName,
+        });
+        hideAddModelDialog();
+      }
+
+      if (elements.addModelOverlay) {
+        elements.closeAddModel.addEventListener("click", hideAddModelDialog);
+        elements.cancelAddModel.addEventListener("click", hideAddModelDialog);
+        elements.confirmAddModel.addEventListener("click", confirmAddModel);
+        elements.addModelOverlay.addEventListener("click", (event) => {
+          if (event.target === elements.addModelOverlay) {
+            hideAddModelDialog();
+          }
+        });
+        elements.modelInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            confirmAddModel();
+          } else if (event.key === "Escape") {
+            hideAddModelDialog();
+          }
+        });
+      }
+
+      if (elements.modelSelect) {
+        updateModelSelectOptions();
+        elements.modelSelect.addEventListener("change", (event) => {
+          const value = event.target.value || "";
+          if (value === MODEL_ADD_OPTION_VALUE) {
+            showAddModelDialog();
+            return;
+          }
+          state.selectedModel = value;
+          vscode.postMessage({
+            type: "selectCliModel",
+            cli: state.currentCli,
+            model: value || null,
+          });
+        });
+      }
 
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {

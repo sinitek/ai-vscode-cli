@@ -275,6 +275,7 @@ export class ClaudeInteractiveRunner {
       cwd?: string;
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
+      model?: string | null;
       sessionId: string | null;
     }
   ) {}
@@ -325,7 +326,9 @@ export class ClaudeInteractiveRunner {
     this.abortController = new AbortController();
 
     const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
-    const model = defaultModelFromArgs(this.options.args);
+    const model = typeof this.options.model === "string" && this.options.model.trim()
+      ? this.options.model.trim()
+      : defaultModelFromArgs(this.options.args);
     const cwd = this.options.cwd ?? os.homedir();
 
     // 从 ~/.claude/settings.json 加载环境变量

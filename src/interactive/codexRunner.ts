@@ -55,7 +55,8 @@ function buildCodexThreadOptions(
   args: string[],
   cwd: string | undefined,
   thinkingMode: ThinkingMode,
-  interactiveMode: InteractiveMode
+  interactiveMode: InteractiveMode,
+  modelOverride?: string | null
 ): CodexThreadOptions {
   const options: CodexThreadOptions = {
     workingDirectory: cwd,
@@ -63,7 +64,9 @@ function buildCodexThreadOptions(
     modelReasoningEffort: mapCodexReasoningEffort(thinkingMode),
   };
 
-  const model = pickArgValue(args, ["--model", "-m"]);
+  const model = typeof modelOverride === "string" && modelOverride.trim()
+    ? modelOverride.trim()
+    : pickArgValue(args, ["--model", "-m"]);
   if (model) {
     options.model = model;
   }
@@ -118,9 +121,10 @@ function buildCodexExecArgs(
   cwd: string | undefined,
   thinkingMode: ThinkingMode,
   interactiveMode: InteractiveMode,
-  threadId: string | null
+  threadId: string | null,
+  modelOverride?: string | null
 ): string[] {
-  const options = buildCodexThreadOptions(args, cwd, thinkingMode, interactiveMode);
+  const options = buildCodexThreadOptions(args, cwd, thinkingMode, interactiveMode, modelOverride);
   const commandArgs = ["exec", "--experimental-json"];
 
   if (typeof options.model === "string" && options.model) {
@@ -315,6 +319,7 @@ export class CodexInteractiveRunner {
       cwd?: string;
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
+      model?: string | null;
       threadId: string | null;
     }
   ) {}
@@ -367,7 +372,8 @@ export class CodexInteractiveRunner {
       this.options.cwd,
       this.options.thinkingMode,
       this.options.interactiveMode,
-      this.options.threadId
+      this.options.threadId,
+      this.options.model
     );
     const spawnCommand = resolveSpawnCommand(this.options.command, commandArgs);
     const child = spawn(spawnCommand.command, spawnCommand.args, {

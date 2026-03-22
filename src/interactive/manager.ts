@@ -11,6 +11,7 @@ type RunnerEntry =
       runner: CodexInteractiveRunner;
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
+      model: string | null;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     }
@@ -20,6 +21,7 @@ type RunnerEntry =
       runner: ClaudeInteractiveRunner;
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
+      model: string | null;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     };
@@ -57,7 +59,8 @@ export class InteractiveRunnerManager {
     sessionId: string,
     runner: CodexInteractiveRunner | ClaudeInteractiveRunner,
     thinkingMode: ThinkingMode,
-    interactiveMode: InteractiveMode
+    interactiveMode: InteractiveMode,
+    model: string | null
   ): void {
     const key = this.buildKey(cli, sessionId);
     const existing = this.entries.get(key);
@@ -65,6 +68,7 @@ export class InteractiveRunnerManager {
       existing.sessionId = sessionId;
       existing.thinkingMode = thinkingMode;
       existing.interactiveMode = interactiveMode;
+      existing.model = model;
       this.currentKey = key;
       this.touch(existing);
       return;
@@ -74,8 +78,8 @@ export class InteractiveRunnerManager {
     }
     const entry: RunnerEntry =
       cli === "codex"
-        ? { cli, sessionId, runner: runner as CodexInteractiveRunner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() }
-        : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, idleTimer: null, lastUsedAt: Date.now() };
+        ? { cli, sessionId, runner: runner as CodexInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() }
+        : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() };
     this.entries.set(key, entry);
     this.currentKey = key;
     this.touch(entry);
@@ -96,6 +100,7 @@ export class InteractiveRunnerManager {
     cwd?: string;
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
+    model: string | null;
   }): CodexInteractiveRunner {
     const key = this.buildKey("codex", options.sessionId);
     const existing = this.entries.get(key);
@@ -103,6 +108,7 @@ export class InteractiveRunnerManager {
       if (
         existing.thinkingMode === options.thinkingMode
         && existing.interactiveMode === options.interactiveMode
+        && existing.model === options.model
       ) {
         this.currentKey = key;
         this.touch(existing);
@@ -116,6 +122,7 @@ export class InteractiveRunnerManager {
       cwd: options.cwd,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
+      model: options.model,
       threadId: options.threadId,
     });
     const entry: RunnerEntry = {
@@ -124,6 +131,7 @@ export class InteractiveRunnerManager {
       runner,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
+      model: options.model,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -141,6 +149,7 @@ export class InteractiveRunnerManager {
     cwd?: string;
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
+    model: string | null;
   }): ClaudeInteractiveRunner {
     const key = this.buildKey("claude", options.sessionId);
     const existing = this.entries.get(key);
@@ -148,6 +157,7 @@ export class InteractiveRunnerManager {
       if (
         existing.thinkingMode === options.thinkingMode
         && existing.interactiveMode === options.interactiveMode
+        && existing.model === options.model
       ) {
         const runnerSessionId = existing.runner.getSessionId();
         const expectedSessionId = runnerSessionId || options.mappedSessionId;
@@ -166,6 +176,7 @@ export class InteractiveRunnerManager {
       cwd: options.cwd,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
+      model: options.model,
       sessionId: options.mappedSessionId,
     });
     const entry: RunnerEntry = {
@@ -174,6 +185,7 @@ export class InteractiveRunnerManager {
       runner,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
+      model: options.model,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };

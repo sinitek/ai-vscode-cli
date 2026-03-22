@@ -10,6 +10,8 @@ export type ConfigSummary = {
 export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
+  | { type: "selectCliModel"; cli: CliName; model: string | null }
+  | { type: "addCliModel"; cli: CliName; model: string }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }
@@ -27,6 +29,7 @@ export type PanelMessage =
       contextOptions?: PromptContextOptions;
       tabId?: string;
       cli?: CliName;
+      model?: string;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
@@ -154,6 +157,10 @@ export type PanelState = {
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;
+  };
+  modelState: {
+    selectedByCli: Record<CliName, string | null>;
+    optionsByCli: Record<CliName, string[]>;
   };
   editorContext: EditorContextState;
 };

@@ -26,6 +26,7 @@ import {
   isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
+import { applyModelArg, readModelArg } from "./cli/modelArgs";
 import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
@@ -98,6 +99,7 @@ let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
 let sessionStore: SessionStore;
 let promptHistoryStore: PromptHistoryStore;
+let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 let activeWorkspaceKey: string;
@@ -126,6 +128,7 @@ const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
 const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
 const PROMPT_HISTORY_DIR = path.join(DATA_DIR, "prompt-history");
+const MODEL_STORE_FILE = path.join(DATA_DIR, "models.json");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
@@ -260,6 +263,11 @@ type WorkspaceSettings = {
   conversationTabs?: ConversationTabsState;
 };
 
+type CliModelStore = {
+  selectedByCli: Partial<Record<CliName, string>>;
+  optionsByCli: Partial<Record<CliName, string[]>>;
+};
+
 type ConfigHeartbeatSnapshot = {
   cli: CliName;
   activeConfigId: string | null;
@@ -302,6 +310,7 @@ export function activate(context: vscode.ExtensionContext): void {
   currentCli = workspaceSettings.currentCli || getDefaultCli();
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
+  modelStore = loadModelStore();
   initializeConversationTabsFromWorkspaceSettings();
   syncCurrentSessionWithActiveTab();
   void initLogger();
@@ -591,6 +600,21 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, activeSessionId);
+    return;
+  }
+
+  if (message.type === "selectCliModel" && message.cli) {
+    selectCliModel(message.cli, message.model ?? null);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "addCliModel" && message.cli) {
+    const addedModel = addCliModel(message.cli, message.model);
+    if (!addedModel) {
+      return;
+    }
+    await postPanelState();
     return;
   }
 
@@ -970,6 +994,16 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key.startsWith("selectedModel.")) {
+      const cliValue = message.key.slice("selectedModel.".length);
+      if (isCliName(cliValue)) {
+        const modelValue = typeof message.value === "string" ? message.value : null;
+        selectCliModel(cliValue, modelValue);
+        modelStore = loadModelStore();
+      }
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
       const nextValue = typeof message.value === "string" ? message.value : "auto";
@@ -1052,6 +1086,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       displayPrompt: trimmed,
       modelPrompt: contextBuild.modelPrompt,
       contextTags: contextBuild.contextTags,
+      model: typeof message.model === "string" && message.model ? message.model : undefined,
     };
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
@@ -1091,6 +1126,7 @@ async function buildPanelState(): Promise<PanelState> {
     conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
+    modelState: buildModelState(),
     editorContext: buildEditorContextState(),
   };
 }
@@ -1123,6 +1159,7 @@ async function buildPanelStateWithConfigState(
     conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
+    modelState: buildModelState(),
     editorContext: buildEditorContextState(),
   };
 }
@@ -2084,6 +2121,7 @@ type PromptRunInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
+  model?: string;
 };
 
 type PromptRunTarget = {
@@ -2374,6 +2412,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
   const runId = createMessageId();
   const startedAt = Date.now();
+  const selectedModel = getSelectedCliModel(runCli);
   sendRunStatusForTab(target.tabId, "start", { prompt, startedAt });
 
   let rawStdout = "";
@@ -2459,7 +2498,13 @@ ${rawStderr}`);
         persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
       },
     },
-    { cwd, sessionId, thinkingMode, processLabel: buildProcessLabel(runCli, sessionId ?? runId) }
+    {
+      cwd,
+      sessionId,
+      thinkingMode,
+      model: selectedModel,
+      processLabel: buildProcessLabel(runCli, sessionId ?? runId),
+    }
   );
 
   parallelRunsByTabId.set(target.tabId, {
@@ -2553,10 +2598,11 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const debugLogging = getDebugLogging();
+  const selectedModel = input.model || getSelectedCliModel(runCli);
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(activeTabId).messages;
-  const args = buildCliArgs(runCli, { sessionId, thinkingMode }, thinkingPrompt);
+  const args = buildCliArgs(runCli, { sessionId, thinkingMode, model: selectedModel }, thinkingPrompt);
   const command = getCliCommand(runCli);
   logCliStartup({
     cli: runCli,
@@ -2573,6 +2619,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     cwd,
     sessionId,
     thinkingMode,
+    model: selectedModel,
   });
 
   const userMessageId = createMessageId();
@@ -2721,7 +2768,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         clearActiveRun();
       },
     },
-    { cwd, sessionId, thinkingMode, processLabel }
+    { cwd, sessionId, thinkingMode, model: selectedModel, processLabel }
   );
 
   void logInfo("runPrompt-spawned", {
@@ -3042,7 +3089,8 @@ async function runContextCompactionCommand(): Promise<void> {
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
-  const args = getCliArgs(cli);
+  const selectedModel = getSelectedCliModel(cli);
+  const args = getEffectiveCliArgs(cli);
   const command = getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"
@@ -3101,6 +3149,7 @@ async function runContextCompactionCommand(): Promise<void> {
         cwd: cwd ?? undefined,
         thinkingMode,
         interactiveMode,
+        model: selectedModel,
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
 
@@ -3136,6 +3185,7 @@ async function runContextCompactionCommand(): Promise<void> {
         cwd: cwd ?? undefined,
         thinkingMode,
         interactiveMode,
+        model: selectedModel,
         threadId: null,
       });
 
@@ -3164,7 +3214,7 @@ async function runContextCompactionCommand(): Promise<void> {
               threadId,
               previousThreadId: mappedThreadId,
             });
-            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode);
+            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
           },
         });
       } finally {
@@ -3184,6 +3234,7 @@ async function runContextCompactionCommand(): Promise<void> {
         cwd: cwd ?? undefined,
         thinkingMode,
         interactiveMode,
+        model: selectedModel,
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
@@ -3219,6 +3270,7 @@ async function runContextCompactionCommand(): Promise<void> {
         cwd: cwd ?? undefined,
         thinkingMode,
         interactiveMode,
+        model: selectedModel,
         sessionId: null,
       });
 
@@ -3247,7 +3299,7 @@ async function runContextCompactionCommand(): Promise<void> {
               newSessionId,
               previousSessionId: mappedSessionId,
             });
-            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode, interactiveMode);
+            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
           },
         });
       } finally {
@@ -3313,7 +3365,8 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
 
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
-  const args = getCliArgs(cli);
+  const selectedModel = input.model || getSelectedCliModel(cli);
+  const args = getEffectiveCliArgs(cli);
   const command = getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"
@@ -3336,6 +3389,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     sessionId: uiSessionId,
     thinkingMode,
     interactiveMode,
+    model: selectedModel,
     cwd,
     promptLength: prompt.length,
     modelPromptLength: modelPrompt.length,
@@ -3730,6 +3784,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             cwd: cwd ?? undefined,
             thinkingMode,
             interactiveMode,
+            model: selectedModel,
           })
         : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
             command,
@@ -3737,6 +3792,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             cwd: cwd ?? undefined,
             thinkingMode,
             interactiveMode,
+            model: selectedModel,
             threadId: null,
           });
 
@@ -3779,7 +3835,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             tabId,
           });
           if (uiSessionId) {
-            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode);
+            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
           }
           syncInteractiveRunEntry();
         },
@@ -3799,6 +3855,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             cwd: cwd ?? undefined,
             thinkingMode,
             interactiveMode,
+            model: selectedModel,
           })
         : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
             command: commandForRunner,
@@ -3806,6 +3863,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             cwd: cwd ?? undefined,
             thinkingMode,
             interactiveMode,
+            model: selectedModel,
             sessionId: null,
           });
 
@@ -3848,7 +3906,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             tabId,
           });
           if (uiSessionId) {
-            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode);
+            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
           }
           syncInteractiveRunEntry();
         },
@@ -3878,6 +3936,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             cwd: cwd ?? undefined,
             thinkingMode,
             interactiveMode,
+            model: selectedModel,
             sessionId: null,
           });
           stopCurrentTurn = () => runner.stopAndRebuild();
@@ -4590,6 +4649,135 @@ function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
     return mode;
   }
   return "coding";
+}
+
+function normalizeCliModelName(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function mergeUniqueModelNames(...groups: Array<readonly string[]>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const group of groups) {
+    for (const item of group) {
+      const normalized = normalizeCliModelName(item);
+      if (!normalized) {
+        continue;
+      }
+      const dedupeKey = normalized.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      result.push(normalized);
+    }
+  }
+  return result;
+}
+
+function ensureCliModelStore(store?: CliModelStore): CliModelStore {
+  const normalized: CliModelStore = {
+    selectedByCli: {},
+    optionsByCli: {},
+  };
+  for (const cli of CLI_LIST) {
+    const configuredModel = readModelArg(cli, getCliArgs(cli));
+    const storedOptions = Array.isArray(store?.optionsByCli?.[cli]) ? store?.optionsByCli?.[cli] ?? [] : [];
+    const selectedModel = normalizeCliModelName(store?.selectedByCli?.[cli]);
+    const mergedOptions = mergeUniqueModelNames(
+      configuredModel ? [configuredModel] : [],
+      storedOptions,
+      selectedModel ? [selectedModel] : []
+    );
+    normalized.optionsByCli[cli] = mergedOptions;
+    if (selectedModel) {
+      normalized.selectedByCli[cli] = selectedModel;
+    }
+  }
+  return normalized;
+}
+
+function readModelStore(): CliModelStore | undefined {
+  try {
+    if (!fs.existsSync(MODEL_STORE_FILE)) {
+      return undefined;
+    }
+    const raw = fs.readFileSync(MODEL_STORE_FILE, "utf8");
+    return JSON.parse(raw) as CliModelStore;
+  } catch (error) {
+    void logError("model-store-read-error", { error: String(error) });
+    return undefined;
+  }
+}
+
+function writeModelStore(store: CliModelStore): void {
+  try {
+    fs.mkdirSync(path.dirname(MODEL_STORE_FILE), { recursive: true });
+    fs.writeFileSync(MODEL_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
+  } catch (error) {
+    void logError("model-store-write-error", { error: String(error) });
+  }
+}
+
+function loadModelStore(): CliModelStore {
+  const normalized = ensureCliModelStore(readModelStore());
+  writeModelStore(normalized);
+  return normalized;
+}
+
+function getSelectedCliModel(cli: CliName): string | null {
+  return normalizeCliModelName(modelStore?.selectedByCli?.[cli]);
+}
+
+function getModelOptionsForCli(cli: CliName): string[] {
+  const configuredModel = readModelArg(cli, getCliArgs(cli));
+  const storedOptions = Array.isArray(modelStore?.optionsByCli?.[cli]) ? modelStore.optionsByCli[cli] ?? [] : [];
+  const selectedModel = getSelectedCliModel(cli);
+  return mergeUniqueModelNames(
+    configuredModel ? [configuredModel] : [],
+    storedOptions,
+    selectedModel ? [selectedModel] : []
+  );
+}
+
+function selectCliModel(cli: CliName, model: string | null): void {
+  const normalized = normalizeCliModelName(model);
+  const nextStore = ensureCliModelStore(modelStore);
+  if (normalized) {
+    nextStore.optionsByCli[cli] = mergeUniqueModelNames(nextStore.optionsByCli[cli] ?? [], [normalized]);
+    nextStore.selectedByCli[cli] = normalized;
+  } else {
+    delete nextStore.selectedByCli[cli];
+  }
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+}
+
+function addCliModel(cli: CliName, model: string): string | null {
+  const normalized = normalizeCliModelName(model);
+  if (!normalized) {
+    return null;
+  }
+  selectCliModel(cli, normalized);
+  return normalized;
+}
+
+function getEffectiveCliArgs(cli: CliName): string[] {
+  return applyModelArg(cli, getCliArgs(cli), getSelectedCliModel(cli));
+}
+
+function buildModelState(): PanelState["modelState"] {
+  const selectedByCli = {} as Record<CliName, string | null>;
+  const optionsByCli = {} as Record<CliName, string[]>;
+  for (const cli of CLI_LIST) {
+    selectedByCli[cli] = getSelectedCliModel(cli);
+    optionsByCli[cli] = getModelOptionsForCli(cli);
+  }
+  return { selectedByCli, optionsByCli };
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {

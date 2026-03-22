@@ -20,6 +20,9 @@
 - macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。
 - 切换思考模式后，会在下一次交互前重建 Runner，并沿用已有会话/线程 ID 继续对话。
 - 当 `codex/claude` 在任意 Tab 启动新任务时，如果还有其他运行中的任务，插件会先停止那些任务，再切换到当前交互 Runner；不会回退到一次性模式。
+- 输入区底部在“思考模式”右侧提供“模型”下拉；模型列表按 CLI 分组全局保存（`codex` / `claude` / `gemini` 各自独立），数据落盘到 `~/.sinitek_cli/models.json`。
+- 下拉中的“添加”会弹出输入框录入模型名；添加后立即加入当前 CLI 分组的可选列表，并作为该分组后续任务的默认选中项。
+- 模型传递方式按 CLI 分组处理：Codex 一次性/续接任务通过 `codex ... --model <model>`，Gemini 通过 `gemini --model <model>`（等价 `-m`），Claude 一次性模式通过 CLI `--model <model>`，Claude 交互模式通过 Agent SDK 的 `model` 字段传入。
 - 支持交互的分组在 SDK 初始化/运行失败时不会自动降级到非交互模式，会直接在会话中返回失败信息。
 - 交互模式在 Extension Host 内运行，Process Explorer 不会出现独立的 `claude/codex` 进程；插件会设置进程标题/argv0 为 `sinitek-ai-vscode-cli-<cli>/<sessionId>`（可在 Process Explorer 的 Command Line/Process Title 列查看）。
 - 交互模式使用 Extension Host 的环境变量与工作目录（优先当前工作区）。如果你在 shell profile 里设置了 `ANTHROPIC_API_KEY` 或依赖项目内 `.claude/settings.json` 注入环境变量，请确保 VS Code 启动时能读取到这些变量，或开启对应工作区；否则可能出现 `Invalid API key · Please run /login`。

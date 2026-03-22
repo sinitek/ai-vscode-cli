@@ -5,9 +5,11 @@ import * as path from "path";
 import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
+import { applyModelArg } from "./modelArgs";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
+  model?: string | null;
 };
 
 const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
@@ -231,7 +233,7 @@ export function buildCliArgs(
     ? getThinkingArgs(cli, options.thinkingMode)
     : [];
   const sessionId = options.sessionId ?? null;
-  let sharedArgs = [...baseArgs, ...thinkingArgs];
+  let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model);
   if (cli === "codex" && !sharedArgs.includes("--skip-git-repo-check")) {
     sharedArgs = [...sharedArgs, "--skip-git-repo-check"];
   }
