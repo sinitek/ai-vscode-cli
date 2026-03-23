@@ -5684,6 +5684,38 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return normalized.slice(0, RUN_STREAM_PREVIEW_MAX_LENGTH - 3) + "...";
       }
 
+      function tryFormatRunStreamJsonContent(content) {
+        const normalized = normalizeRunStreamRecordContent(content);
+        const trimmed = normalized.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const firstChar = trimmed.charAt(0);
+        if (firstChar !== "{" && firstChar !== "[") {
+          return null;
+        }
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (!parsed || typeof parsed !== "object") {
+            return null;
+          }
+          if (!Array.isArray(parsed) && Object.prototype.toString.call(parsed) !== "[object Object]") {
+            return null;
+          }
+          return JSON.stringify(parsed, null, 2);
+        } catch {
+          return null;
+        }
+      }
+
+      function formatRunStreamExpandedContent(content) {
+        const normalized = normalizeRunStreamRecordContent(content);
+        if (!normalized) {
+          return t("runStreamRecordEmpty");
+        }
+        return tryFormatRunStreamJsonContent(normalized) || normalized;
+      }
+
       function captureOpenRunStreamRecordIds(runtimeState) {
         if (!runtimeState) {
           return;
@@ -5832,7 +5864,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
         const contentNode = document.createElement("pre");
         contentNode.className = "run-stream-item-content";
-        contentNode.textContent = record.content || t("runStreamRecordEmpty");
+        contentNode.textContent = formatRunStreamExpandedContent(record.content);
 
         details.appendChild(summary);
         details.appendChild(contentNode);

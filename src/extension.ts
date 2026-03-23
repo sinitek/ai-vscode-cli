@@ -219,6 +219,7 @@ type ConversationTabRecord = {
   id: string;
   cli: CliName;
   sessionId: string | null;
+  sessionIdByCli: Partial<Record<CliName, string>>;
   createdAt: number;
 };
 
@@ -651,11 +652,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       } else {
         const activeTab = getActiveConversationTab();
         if (activeTab && activeTab.cli !== message.cli) {
-          activeTab.cli = message.cli;
-          activeTab.sessionId = message.sessionId;
-          clearPendingSessionDraft(activeTab.id);
+          switchConversationTabCli(activeTab, message.cli);
+          setConversationTabSessionIdForCli(activeTab, message.cli, message.sessionId);
+          clearPendingSessionDraft(activeTab.id, message.cli);
           persistConversationTabsToWorkspaceSettings();
         } else {
+          const activeTabId = getActiveConversationTabId();
+          if (activeTabId) {
+            clearPendingSessionDraft(activeTabId, message.cli);
+          }
           updateActiveConversationTabSession(message.cli, message.sessionId);
         }
         setCurrentSession(message.cli, message.sessionId);
@@ -2092,10 +2097,7 @@ async function setCurrentCli(
   if (syncActiveTab) {
     const activeTab = getActiveConversationTab();
     if (activeTab && activeTab.cli !== cli) {
-      activeTab.cli = cli;
-      // Keep each tab isolated: switching CLI on a tab starts from a fresh session binding.
-      activeTab.sessionId = null;
-      clearPendingSessionDraft(activeTab.id);
+      switchConversationTabCli(activeTab, cli);
       persistConversationTabsToWorkspaceSettings();
     }
   }
@@ -2103,7 +2105,7 @@ async function setCurrentCli(
   const refreshedActiveTab = getActiveConversationTab();
   let sessionId: string | null = null;
   if (syncActiveTab && refreshedActiveTab && refreshedActiveTab.cli === cli) {
-    sessionId = refreshedActiveTab.sessionId;
+    sessionId = getConversationTabSessionIdForCli(refreshedActiveTab, cli);
   } else {
     sessionId = getCurrentSessionId(cli) ?? getLatestSessionId(cli);
   }
@@ -2305,7 +2307,7 @@ function persistMessagesForTab(cli: CliName, sessionId: string | null, tabId: st
     saveSessionMessages(cli, sessionId, messages);
     return;
   }
-  updatePendingSessionDraft(tabId, { messages });
+  updatePendingSessionDraft(tabId, { messages }, cli);
   ensureLocalSession(cli, tabId);
 }
 
@@ -2417,7 +2419,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
-    : getPendingSessionDraft(target.tabId).messages;
+    : getPendingSessionDraft(target.tabId, runCli).messages;
 
   const userMessage: ChatMessage = {
     id: createMessageId(),
@@ -2620,7 +2622,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const debugLogging = getDebugLogging();
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
-    : getPendingSessionDraft(activeTabId).messages;
+    : getPendingSessionDraft(activeTabId, runCli).messages;
   const args = buildCliArgs(runCli, { sessionId, thinkingMode, model: selectedModel }, thinkingPrompt);
   const command = getCliCommand(runCli);
   logCliStartup({
@@ -3047,7 +3049,7 @@ function appendSystemMessageForCli(cli: CliName, sessionId: string | null, conte
     if (!tabId) {
       return;
     }
-    getPendingSessionDraft(tabId).messages.push(message);
+    getPendingSessionDraft(tabId, cli).messages.push(message);
   }
   sendPanelMessage({ type: "appendMessage", message });
 }
@@ -3074,7 +3076,7 @@ function appendUserMessageForCli(
     if (!tabId) {
       return;
     }
-    getPendingSessionDraft(tabId).messages.push(message);
+    getPendingSessionDraft(tabId, cli).messages.push(message);
   }
   sendPanelMessage({ type: "appendMessage", message });
 }
@@ -3385,7 +3387,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   let uiSessionId = target.sessionId;
   let messageTarget = uiSessionId
     ? loadSessionMessages(cli, uiSessionId)
-    : getPendingSessionDraft(tabId).messages;
+    : getPendingSessionDraft(tabId, cli).messages;
 
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
@@ -5272,7 +5274,13 @@ function normalizeConversationTabsState(
   const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
   const tabs = records.length > 0
     ? records
-    : [{ id: createConversationTabId(), cli: fallbackCli, sessionId: getLatestSessionId(fallbackCli), createdAt: now }];
+    : [{
+        id: createConversationTabId(),
+        cli: fallbackCli,
+        sessionId: getLatestSessionId(fallbackCli),
+        sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, fallbackCli, getLatestSessionId(fallbackCli)),
+        createdAt: now,
+      }];
   const tabIds = new Set(tabs.map((tab) => tab.id));
   const activeTabId = value?.activeTabId && tabIds.has(value.activeTabId)
     ? value.activeTabId
@@ -5283,6 +5291,7 @@ function normalizeConversationTabsState(
       id: tab.id,
       cli: tab.cli,
       sessionId: tab.sessionId,
+      sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
       createdAt: tab.createdAt,
     })),
   };
@@ -5304,12 +5313,79 @@ function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | 
   const sessionId = typeof record.sessionId === "string" && record.sessionId.trim()
     ? record.sessionId
     : null;
+  const sessionIdByCli = sanitizeConversationTabSessionIdMap(
+    (record as { sessionIdByCli?: unknown }).sessionIdByCli,
+    cli,
+    sessionId,
+  );
   return {
     id,
     cli,
     sessionId,
+    sessionIdByCli,
     createdAt,
   };
+}
+
+function sanitizeConversationTabSessionIdMap(
+  value: unknown,
+  cli: CliName,
+  sessionId: string | null,
+): Partial<Record<CliName, string>> {
+  const normalized: Partial<Record<CliName, string>> = {};
+  if (value && typeof value === "object") {
+    for (const item of CLI_LIST) {
+      const candidate = (value as Partial<Record<CliName, unknown>>)[item];
+      if (typeof candidate === "string" && candidate.trim()) {
+        normalized[item] = candidate;
+      }
+    }
+  }
+  if (sessionId) {
+    normalized[cli] = sessionId;
+  } else {
+    delete normalized[cli];
+  }
+  return normalized;
+}
+
+function getConversationTabSessionIdForCli(tab: ConversationTabRecord, cli: CliName): string | null {
+  const sessionId = tab.sessionIdByCli?.[cli];
+  return typeof sessionId === "string" && sessionId.trim() ? sessionId : null;
+}
+
+function setConversationTabSessionIdForCli(
+  tab: ConversationTabRecord,
+  cli: CliName,
+  sessionId: string | null,
+): boolean {
+  const normalizedSessionId = typeof sessionId === "string" && sessionId.trim()
+    ? sessionId
+    : null;
+  const previousSessionId = getConversationTabSessionIdForCli(tab, cli);
+  let changed = previousSessionId !== normalizedSessionId;
+  if (normalizedSessionId) {
+    tab.sessionIdByCli[cli] = normalizedSessionId;
+  } else if (tab.sessionIdByCli[cli]) {
+    delete tab.sessionIdByCli[cli];
+  }
+  if (tab.cli === cli && tab.sessionId !== normalizedSessionId) {
+    tab.sessionId = normalizedSessionId;
+    changed = true;
+  }
+  return changed;
+}
+
+function switchConversationTabCli(tab: ConversationTabRecord, cli: CliName): boolean {
+  const nextSessionId = getConversationTabSessionIdForCli(tab, cli);
+  const cliChanged = tab.cli !== cli;
+  const sessionChanged = tab.sessionId !== nextSessionId;
+  if (!cliChanged && !sessionChanged) {
+    return false;
+  }
+  tab.cli = cli;
+  tab.sessionId = nextSessionId;
+  return true;
 }
 
 function ensureConversationTabs(): ConversationTabsState {
@@ -5328,6 +5404,7 @@ function ensureConversationTabs(): ConversationTabsState {
     id: createConversationTabId(),
     cli: fallbackCli,
     sessionId: getLatestSessionId(fallbackCli),
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, fallbackCli, getLatestSessionId(fallbackCli)),
     createdAt: Date.now(),
   };
   conversationTabStore.tabs = [fallbackTab];
@@ -5344,6 +5421,7 @@ function persistConversationTabsToWorkspaceSettings(): void {
       id: tab.id,
       cli: tab.cli,
       sessionId: tab.sessionId,
+      sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
       createdAt: tab.createdAt,
     })),
   };
@@ -5371,10 +5449,10 @@ function getActiveConversationTab(): ConversationTabRecord | null {
 
 function getActiveConversationSessionId(cli: CliName): string | null {
   const activeTab = getActiveConversationTab();
-  if (!activeTab || activeTab.cli !== cli) {
+  if (!activeTab) {
     return null;
   }
-  return activeTab.sessionId;
+  return getConversationTabSessionIdForCli(activeTab, cli);
 }
 
 function findConversationTabIdBySession(cli: CliName, sessionId: string): string | null {
@@ -5385,13 +5463,13 @@ function findConversationTabIdBySession(cli: CliName, sessionId: string): string
 
 function updateActiveConversationTabSession(cli: CliName, sessionId: string | null): void {
   const tab = getActiveConversationTab();
-  if (!tab || tab.cli !== cli) {
+  if (!tab) {
     return;
   }
-  if (tab.sessionId === sessionId) {
+  const changed = setConversationTabSessionIdForCli(tab, cli, sessionId);
+  if (!changed) {
     return;
   }
-  tab.sessionId = sessionId;
   persistConversationTabsToWorkspaceSettings();
 }
 
@@ -5401,14 +5479,18 @@ function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: str
   if (!tab) {
     return null;
   }
+  const tabSessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+  if (tab.sessionId !== tabSessionId) {
+    tab.sessionId = tabSessionId;
+  }
   if (state.activeTabId !== tabId) {
     state.activeTabId = tabId;
     persistConversationTabsToWorkspaceSettings();
   }
-  setCurrentSession(tab.cli, tab.sessionId, { syncConversationTab: false });
+  setCurrentSession(tab.cli, tabSessionId, { syncConversationTab: false });
   return {
     cli: tab.cli,
-    sessionId: tab.sessionId,
+    sessionId: tabSessionId,
   };
 }
 
@@ -5422,6 +5504,7 @@ function addConversationTab(
     id: createConversationTabId(),
     cli,
     sessionId,
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
@@ -5466,10 +5549,9 @@ function detachConversationTabsFromSession(cli: CliName, sessionId: string): voi
   const state = ensureConversationTabs();
   let changed = false;
   state.tabs.forEach((tab) => {
-    if (tab.cli === cli && tab.sessionId === sessionId) {
-      tab.sessionId = null;
-      clearPendingSessionDraft(tab.id);
-      changed = true;
+    if (getConversationTabSessionIdForCli(tab, cli) === sessionId) {
+      changed = setConversationTabSessionIdForCli(tab, cli, null) || changed;
+      clearPendingSessionDraft(tab.id, cli);
     }
   });
   if (changed) {
@@ -5490,8 +5572,12 @@ function syncCurrentSessionWithActiveTab(preferredCli?: CliName): string | null 
     workspaceSettings.currentCli = currentCli;
     saveWorkspaceSettings(workspaceSettings);
   }
-  setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
-  return activeTab.sessionId;
+  const sessionId = getConversationTabSessionIdForCli(activeTab, activeTab.cli);
+  if (activeTab.sessionId !== sessionId) {
+    activeTab.sessionId = sessionId;
+  }
+  setCurrentSession(activeTab.cli, sessionId, { syncConversationTab: false });
+  return sessionId;
 }
 
 function setCurrentSession(
@@ -5518,13 +5604,16 @@ function startNewSession(cli: CliName): void {
   if (!activeTab) {
     return;
   }
+  let changed = false;
   if (activeTab.cli !== cli) {
-    activeTab.cli = cli;
-    activeTab.sessionId = null;
+    changed = switchConversationTabCli(activeTab, cli) || changed;
+  }
+  changed = setConversationTabSessionIdForCli(activeTab, cli, null) || changed;
+  if (changed) {
     persistConversationTabsToWorkspaceSettings();
   }
-  clearPendingSessionDraft(activeTab.id);
-  updatePendingSessionDraft(activeTab.id, { messages: [] });
+  clearPendingSessionDraft(activeTab.id, cli);
+  updatePendingSessionDraft(activeTab.id, { messages: [] }, cli);
   setCurrentSession(cli, null);
   void logInfo("session-new", { cli, tabId: activeTab.id });
 }
@@ -5569,22 +5658,40 @@ function createConversationTabId(): string {
   return `${CONVERSATION_TAB_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function getPendingSessionDraft(tabId: string): PendingSessionDraft {
-  if (!pendingSessionDrafts[tabId]) {
-    pendingSessionDrafts[tabId] = {
+function resolvePendingSessionDraftCli(tabId: string, cli?: CliName): CliName {
+  if (cli) {
+    return cli;
+  }
+  const tab = getConversationTabById(tabId);
+  if (tab) {
+    return tab.cli;
+  }
+  return currentCli;
+}
+
+function getPendingSessionDraftKey(tabId: string, cli: CliName): string {
+  return `${tabId}::${cli}`;
+}
+
+function getPendingSessionDraft(tabId: string, cli?: CliName): PendingSessionDraft {
+  const resolvedCli = resolvePendingSessionDraftCli(tabId, cli);
+  const draftKey = getPendingSessionDraftKey(tabId, resolvedCli);
+  if (!pendingSessionDrafts[draftKey]) {
+    pendingSessionDrafts[draftKey] = {
       label: null,
       firstPrompt: null,
       messages: [],
     };
   }
-  return pendingSessionDrafts[tabId];
+  return pendingSessionDrafts[draftKey];
 }
 
 function updatePendingSessionDraft(
   tabId: string,
-  patch: Partial<PendingSessionDraft>
+  patch: Partial<PendingSessionDraft>,
+  cli?: CliName,
 ): PendingSessionDraft {
-  const draft = getPendingSessionDraft(tabId);
+  const draft = getPendingSessionDraft(tabId, cli);
   if (patch.label !== undefined) {
     draft.label = patch.label;
   }
@@ -5597,17 +5704,24 @@ function updatePendingSessionDraft(
   return draft;
 }
 
-function clearPendingSessionDraft(tabId: string): void {
-  if (pendingSessionDrafts[tabId]) {
-    delete pendingSessionDrafts[tabId];
+function clearPendingSessionDraft(tabId: string, cli?: CliName): void {
+  if (cli) {
+    delete pendingSessionDrafts[getPendingSessionDraftKey(tabId, cli)];
+    return;
   }
+  const prefix = `${tabId}::`;
+  Object.keys(pendingSessionDrafts).forEach((key) => {
+    if (key === tabId || key.startsWith(prefix)) {
+      delete pendingSessionDrafts[key];
+    }
+  });
 }
 
 function ensureLocalSession(cli: CliName, tabId: string): void {
   if (getCurrentSessionId(cli)) {
     return;
   }
-  const draft = getPendingSessionDraft(tabId);
+  const draft = getPendingSessionDraft(tabId, cli);
   if (!draft.messages.length) {
     return;
   }
@@ -5618,7 +5732,7 @@ function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void 
   if (getCurrentSessionId(cli)) {
     return;
   }
-  const draft = getPendingSessionDraft(tabId);
+  const draft = getPendingSessionDraft(tabId, cli);
   if (!draft.firstPrompt) {
     const normalizedPrompt = String(prompt ?? "").trim();
     if (normalizedPrompt) {
@@ -5636,7 +5750,7 @@ function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void 
 }
 
 function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): void {
-  const draft = getPendingSessionDraft(tabId);
+  const draft = getPendingSessionDraft(tabId, cli);
   const label = draft.label;
   const firstPrompt = draft.firstPrompt;
   if (!label) {
@@ -5720,7 +5834,7 @@ function persistActiveMessages(): void {
     if (!activeTabIdForRun) {
       return;
     }
-    updatePendingSessionDraft(activeTabIdForRun, { messages: activeMessageTarget });
+    updatePendingSessionDraft(activeTabIdForRun, { messages: activeMessageTarget }, activeCliForRun);
     ensureLocalSession(activeCliForRun, activeTabIdForRun);
     return;
   }
@@ -5728,7 +5842,7 @@ function persistActiveMessages(): void {
 }
 
 function attachPendingMessages(cli: CliName, tabId: string, sessionId: string): void {
-  const draft = getPendingSessionDraft(tabId);
+  const draft = getPendingSessionDraft(tabId, cli);
   const pending = draft.messages;
   if (!pending || pending.length === 0) {
     return;
@@ -6023,7 +6137,7 @@ function sendSessionMessagesToPanel(
   }
 
   if (!sessionId) {
-    const draftMessages = getPendingSessionDraft(targetTabId).messages;
+    const draftMessages = getPendingSessionDraft(targetTabId, cli).messages;
     sendPanelMessage({ type: "setMessages", messages: draftMessages, tabId: targetTabId });
     void logDebug("setMessages-draft", {
       cli,
@@ -6117,6 +6231,7 @@ function clearAllSessions(): void {
   const tabs = ensureConversationTabs();
   tabs.tabs.forEach((tab) => {
     tab.sessionId = null;
+    tab.sessionIdByCli = {};
   });
   persistConversationTabsToWorkspaceSettings();
   try {
@@ -6234,17 +6349,17 @@ function syncPendingDraftMessagesForSessionAdoption(cli: CliName, tabId: string 
     && Array.isArray(activeMessageTarget)
     && activeMessageTarget.length > 0;
   if (activeRunMatches && activeMessageTarget) {
-    updatePendingSessionDraft(tabId, { messages: activeMessageTarget });
+    updatePendingSessionDraft(tabId, { messages: activeMessageTarget }, cli);
   }
 
   const parallelRun = parallelRunsByTabId.get(tabId);
   if (parallelRun && parallelRun.cli === cli && parallelRun.sessionId === null && parallelRun.messageTarget.length > 0) {
-    updatePendingSessionDraft(tabId, { messages: parallelRun.messageTarget });
+    updatePendingSessionDraft(tabId, { messages: parallelRun.messageTarget }, cli);
   }
 
   const interactiveRun = interactiveRunsByTabId.get(tabId);
   if (interactiveRun && interactiveRun.cli === cli && interactiveRun.sessionId === null && interactiveRun.messageTarget.length > 0) {
-    updatePendingSessionDraft(tabId, { messages: interactiveRun.messageTarget });
+    updatePendingSessionDraft(tabId, { messages: interactiveRun.messageTarget }, cli);
   }
 }
 
@@ -6254,10 +6369,9 @@ function adoptSessionId(cli: CliName, sessionId: string, tabId: string | null = 
   let changed = false;
   if (targetTabId) {
     const tab = getConversationTabById(targetTabId);
-    if (tab && (tab.cli !== cli || tab.sessionId !== sessionId)) {
-      tab.cli = cli;
-      tab.sessionId = sessionId;
-      changed = true;
+    if (tab) {
+      changed = switchConversationTabCli(tab, cli) || changed;
+      changed = setConversationTabSessionIdForCli(tab, cli, sessionId) || changed;
     }
   }
   if (changed) {
