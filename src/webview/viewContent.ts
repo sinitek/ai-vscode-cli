@@ -3882,11 +3882,25 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function isWarningOrErrorMessage(message) {
+        if (!message || (message.role !== "trace" && message.role !== "system")) {
+          return false;
+        }
+        const presentation = getTracePresentation(message.content || "");
+        return Boolean(
+          presentation
+          && (presentation.type === "warning" || presentation.type === "error")
+        );
+      }
+
       function shouldShowMessageInResultOnlyMode(message, messageIndex) {
         if (!message) {
           return false;
         }
         if (message.role === "user") {
+          return true;
+        }
+        if (isWarningOrErrorMessage(message)) {
           return true;
         }
         return message.role === "assistant" && isFinalAssistantSummaryMessage(messageIndex);
