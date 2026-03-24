@@ -10,10 +10,11 @@ export type ConfigSummary = {
 export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
-  | { type: "selectCliModel"; cli: CliName; model: string | null }
-  | { type: "addCliModel"; cli: CliName; model: string }
-  | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string }
-  | { type: "deleteCliModel"; cli: CliName; model: string }
+  | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
+  | { type: "addCliModel"; cli: CliName; model: string; configId?: string | null }
+  | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string; configId?: string | null }
+  | { type: "deleteCliModel"; cli: CliName; model: string; configId?: string | null }
+  | { type: "moveCliModel"; cli: CliName; model: string; direction: "up" | "down"; configId?: string | null }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }
@@ -163,6 +164,7 @@ export type PanelState = {
   modelState: {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
+    managedByCli: Record<CliName, string[]>;
   };
   editorContext: EditorContextState;
 };

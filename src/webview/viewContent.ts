@@ -231,6 +231,8 @@ const WEBVIEW_I18N = {
     modelManageCancelEdit: "Cancel Edit",
     modelManageEditing: "Editing: {model}",
     modelEditLabel: "Edit",
+    modelMoveUpLabel: "Move Up",
+    modelMoveDownLabel: "Move Down",
     modelRemoveLabel: "Delete",
     modelDeleteConfirm: "Delete model \"{model}\"?",
   },
@@ -460,6 +462,8 @@ const WEBVIEW_I18N = {
     modelManageCancelEdit: "取消编辑",
     modelManageEditing: "正在编辑：{model}",
     modelEditLabel: "编辑",
+    modelMoveUpLabel: "上移",
+    modelMoveDownLabel: "下移",
     modelRemoveLabel: "删除",
     modelDeleteConfirm: "确认删除模型“{model}”？",
   },
@@ -2897,6 +2901,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           claude: [],
           gemini: [],
         },
+        managedModelsByCli: {
+          codex: [],
+          claude: [],
+          gemini: [],
+        },
         autoAppliedConfig: false,
         sessionState: {
           currentSessionId: null,
@@ -3634,6 +3643,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             codex: panelState.modelState.optionsByCli?.codex || [],
             claude: panelState.modelState.optionsByCli?.claude || [],
             gemini: panelState.modelState.optionsByCli?.gemini || [],
+          };
+          state.managedModelsByCli = {
+            codex: panelState.modelState.managedByCli?.codex || [],
+            claude: panelState.modelState.managedByCli?.claude || [],
+            gemini: panelState.modelState.managedByCli?.gemini || [],
           };
           state.selectedModel = panelState.modelState.selectedByCli?.[panelState.currentCli] || "";
         }
@@ -6605,6 +6619,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.configSelect.addEventListener("change", (event) => {
         state.selectedConfigId = event.target.value || "";
+        state.selectedModel = "";
+        if (state.modelsByCli) {
+          state.modelsByCli[state.currentCli] = [];
+        }
+        if (state.managedModelsByCli) {
+          state.managedModelsByCli[state.currentCli] = [];
+        }
+        if (elements.modelSelect) {
+          updateModelSelectOptions();
+        }
+        if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
+          renderModelManagerList();
+        }
         if (!state.selectedConfigId) {
           return;
         }
@@ -6682,6 +6709,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return models;
       }
 
+      function getManagedModelsForCurrentCli() {
+        const cli = state.currentCli;
+        const models = state.managedModelsByCli && Array.isArray(state.managedModelsByCli[cli])
+          ? state.managedModelsByCli[cli]
+          : [];
+        return models;
+      }
+
+      function getCurrentModelConfigId() {
+        return state.selectedConfigId || state.configState.activeConfigId || null;
+      }
+
       function showModelManageError(message) {
         elements.modelAddError.textContent = message;
         elements.modelAddError.style.display = "block";
@@ -6726,7 +6765,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.modelManagerList) {
           return;
         }
-        const availableModels = getModelsForCurrentCli();
+        const availableModels = getManagedModelsForCurrentCli();
         elements.modelManagerList.innerHTML = "";
         if (!availableModels.length) {
           const empty = document.createElement("div");
@@ -6735,7 +6774,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.modelManagerList.appendChild(empty);
           return;
         }
-        availableModels.forEach((modelName) => {
+        availableModels.forEach((modelName, index) => {
           const item = document.createElement("div");
           item.className = "model-manager-item";
 
@@ -6756,15 +6795,43 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
           actions.appendChild(editButton);
 
+          const moveUpButton = document.createElement("button");
+          moveUpButton.type = "button";
+          moveUpButton.className = "secondary action-button model-manager-button";
+          moveUpButton.textContent = t("modelMoveUpLabel");
+          moveUpButton.disabled = index === 0;
+          moveUpButton.addEventListener("click", () => {
+            vscode.postMessage({
+              type: "moveCliModel",
+              cli: state.currentCli,
+              model: modelName,
+              direction: "up",
+              configId: getCurrentModelConfigId(),
+            });
+          });
+          actions.appendChild(moveUpButton);
+
+          const moveDownButton = document.createElement("button");
+          moveDownButton.type = "button";
+          moveDownButton.className = "secondary action-button model-manager-button";
+          moveDownButton.textContent = t("modelMoveDownLabel");
+          moveDownButton.disabled = index === availableModels.length - 1;
+          moveDownButton.addEventListener("click", () => {
+            vscode.postMessage({
+              type: "moveCliModel",
+              cli: state.currentCli,
+              model: modelName,
+              direction: "down",
+              configId: getCurrentModelConfigId(),
+            });
+          });
+          actions.appendChild(moveDownButton);
+
           const deleteButton = document.createElement("button");
           deleteButton.type = "button";
           deleteButton.className = "secondary action-button model-manager-button";
           deleteButton.textContent = t("modelRemoveLabel");
           deleteButton.addEventListener("click", () => {
-            const confirmed = window.confirm(t("modelDeleteConfirm", { model: modelName }));
-            if (!confirmed) {
-              return;
-            }
             if (editingModelName && editingModelName.toLowerCase() === String(modelName).toLowerCase()) {
               resetModelManageForm();
             }
@@ -6772,6 +6839,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               type: "deleteCliModel",
               cli: state.currentCli,
               model: modelName,
+              configId: getCurrentModelConfigId(),
             });
           });
           actions.appendChild(deleteButton);
@@ -6859,12 +6927,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             cli: state.currentCli,
             previousModel: editingModelName,
             nextModel: modelName,
+            configId: getCurrentModelConfigId(),
           });
         } else {
           vscode.postMessage({
             type: "addCliModel",
             cli: state.currentCli,
             model: modelName,
+            configId: getCurrentModelConfigId(),
           });
         }
         resetModelManageForm();
@@ -6905,6 +6975,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             type: "selectCliModel",
             cli: state.currentCli,
             model: value || null,
+            configId: getCurrentModelConfigId(),
           });
         });
       }

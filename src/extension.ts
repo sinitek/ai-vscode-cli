@@ -262,12 +262,13 @@ type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsState;
 };
 
 type CliModelStore = {
-  selectedByCli: Partial<Record<CliName, string>>;
-  optionsByCli: Partial<Record<CliName, string[]>>;
+  selectedByConfigId: Record<string, string>;
+  optionsByConfigId: Record<string, string[]>;
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
 };
 
@@ -607,13 +608,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "selectCliModel" && message.cli) {
-    selectCliModel(message.cli, message.model ?? null);
+    const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
+    selectCliModel(message.cli, message.model ?? null, configId);
     await postPanelState();
     return;
   }
 
   if (message.type === "addCliModel" && message.cli) {
-    const addedModel = addCliModel(message.cli, message.model);
+    const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
+    const addedModel = addCliModel(message.cli, message.model, configId);
     if (!addedModel) {
       return;
     }
@@ -622,7 +625,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "renameCliModel" && message.cli) {
-    const renamedModel = renameCliModel(message.cli, message.previousModel, message.nextModel);
+    const configId = typeof message.configId === "string" && message.configId
+      ? message.configId
+      : getActiveConfigIdForCli(message.cli);
+    const renamedModel = renameCliModel(message.cli, message.previousModel, message.nextModel, configId);
     if (!renamedModel) {
       return;
     }
@@ -631,7 +637,22 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "deleteCliModel" && message.cli) {
-    deleteCliModel(message.cli, message.model);
+    const configId = typeof message.configId === "string" && message.configId
+      ? message.configId
+      : getActiveConfigIdForCli(message.cli);
+    deleteCliModel(message.cli, message.model, configId);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "moveCliModel" && message.cli) {
+    const configId = typeof message.configId === "string" && message.configId
+      ? message.configId
+      : getActiveConfigIdForCli(message.cli);
+    const movedModel = moveCliModel(message.cli, message.model, message.direction, configId);
+    if (!movedModel) {
+      return;
+    }
     await postPanelState();
     return;
   }
@@ -1022,7 +1043,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       const cliValue = message.key.slice("selectedModel.".length);
       if (isCliName(cliValue)) {
         const modelValue = typeof message.value === "string" ? message.value : null;
-        selectCliModel(cliValue, modelValue);
+        selectCliModel(cliValue, modelValue, getActiveConfigIdForCli(cliValue));
         modelStore = loadModelStore();
       }
       await postPanelState();
@@ -1128,6 +1149,11 @@ async function buildPanelState(): Promise<PanelState> {
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
   const configState = await loadConfigState(currentCli);
 
+  const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
+    [currentCli]: configState.activeConfigId,
+  };
+  const selectedModel = getSelectedCliModel(currentCli, configState.activeConfigId);
+
   return {
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
@@ -1136,7 +1162,7 @@ async function buildPanelState(): Promise<PanelState> {
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
     macTaskShell: getMacTaskShell(),
-    thinkingMode: getEffectiveThinkingMode(currentCli),
+    thinkingMode: getEffectiveThinkingMode(currentCli, selectedModel),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -1150,7 +1176,7 @@ async function buildPanelState(): Promise<PanelState> {
     conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
-    modelState: buildModelState(),
+    modelState: buildModelState(activeConfigIdByCli),
     editorContext: buildEditorContextState(),
   };
 }
@@ -1161,6 +1187,11 @@ async function buildPanelStateWithConfigState(
   ensureWorkspaceSessionStore();
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
 
+  const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
+    [currentCli]: configState.activeConfigId,
+  };
+  const selectedModel = getSelectedCliModel(currentCli, configState.activeConfigId);
+
   return {
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
@@ -1169,7 +1200,7 @@ async function buildPanelStateWithConfigState(
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
     macTaskShell: getMacTaskShell(),
-    thinkingMode: getEffectiveThinkingMode(currentCli),
+    thinkingMode: getEffectiveThinkingMode(currentCli, selectedModel),
     interactiveMode: getWorkspaceInteractiveMode(currentCli),
     interactive: {
       supported: isInteractiveSupported(currentCli),
@@ -1183,7 +1214,7 @@ async function buildPanelStateWithConfigState(
     conversationTabs: buildConversationTabsState(),
     promptHistory: buildPromptHistoryState(),
     configState,
-    modelState: buildModelState(),
+    modelState: buildModelState(activeConfigIdByCli),
     editorContext: buildEditorContextState(),
   };
 }
@@ -1960,6 +1991,23 @@ function normalizeTomlLine(line: string): string {
   return line.trim();
 }
 
+function setWorkspaceActiveConfigId(cli: CliName, configId: string | null): void {
+  const nextActiveConfigIdByCli = {
+    ...(workspaceSettings.activeConfigIdByCli ?? {}),
+  };
+  if (configId) {
+    nextActiveConfigIdByCli[cli] = configId;
+  } else {
+    delete nextActiveConfigIdByCli[cli];
+  }
+  if (Object.keys(nextActiveConfigIdByCli).length > 0) {
+    workspaceSettings.activeConfigIdByCli = nextActiveConfigIdByCli;
+  } else {
+    delete workspaceSettings.activeConfigIdByCli;
+  }
+  saveWorkspaceSettings(workspaceSettings);
+}
+
 function applyConfigOrder(configs: ConfigItem[], orderIds: string[]): ConfigItem[] {
   if (!orderIds || orderIds.length === 0) {
     return configs;
@@ -2000,12 +2048,14 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
     codexSkills: config.codexSkills,
     claudeSkills: config.claudeSkills,
   });
+  setWorkspaceActiveConfigId(cli, configId);
 }
 
 async function loadConfigState(cli: CliName): Promise<PanelState["configState"]> {
   try {
     const configs = await configService.getConfigList(cli);
     if (configs.length === 0) {
+      setWorkspaceActiveConfigId(cli, null);
       void logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
       return { configs: [], activeConfigId: null };
     }
@@ -2021,14 +2071,24 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     }
     const orderedConfigs = applyConfigOrder(configs, orderIds);
     const current = await configService.getCurrentConfig(cli);
-    const active = orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
+    const preferredActiveConfigId = workspaceSettings.activeConfigIdByCli?.[cli] ?? null;
+    const preferredActive = preferredActiveConfigId
+      ? orderedConfigs.find((config) => config.id === preferredActiveConfigId) ?? null
+      : null;
+    const active = preferredActive && matchesActiveConfig(cli, preferredActive, current)
+      ? preferredActive
+      : orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
+    const activeConfigId = active ? active.id : null;
+    if (preferredActiveConfigId !== activeConfigId) {
+      setWorkspaceActiveConfigId(cli, activeConfigId);
+    }
     return {
       configs: orderedConfigs.map((config) => ({
         id: config.id,
         name: config.name,
         platform: config.platform,
       })),
-      activeConfigId: active ? active.id : null,
+      activeConfigId,
     };
   } catch (error) {
     void logError("panel-config-state", {
@@ -4744,22 +4804,28 @@ function mergeUniqueModelNames(...groups: Array<readonly string[]>): string[] {
 
 function ensureCliModelStore(store?: CliModelStore): CliModelStore {
   const normalized: CliModelStore = {
-    selectedByCli: {},
-    optionsByCli: {},
+    selectedByConfigId: {},
+    optionsByConfigId: {},
     thinkingByCliAndModel: {},
   };
+  const storedOptionsByConfigId = store?.optionsByConfigId;
+  if (storedOptionsByConfigId && typeof storedOptionsByConfigId === "object") {
+    for (const [configId, rawOptions] of Object.entries(storedOptionsByConfigId)) {
+      if (!configId || !Array.isArray(rawOptions)) {
+        continue;
+      }
+      normalized.optionsByConfigId[configId] = mergeUniqueModelNames(rawOptions);
+    }
+  }
   for (const cli of CLI_LIST) {
-    const configuredModel = readModelArg(cli, getCliArgs(cli));
-    const storedOptions = Array.isArray(store?.optionsByCli?.[cli]) ? store?.optionsByCli?.[cli] ?? [] : [];
-    const selectedModel = normalizeCliModelName(store?.selectedByCli?.[cli]);
-    const mergedOptions = mergeUniqueModelNames(
-      configuredModel ? [configuredModel] : [],
-      storedOptions,
-      selectedModel ? [selectedModel] : []
-    );
-    normalized.optionsByCli[cli] = mergedOptions;
-    if (selectedModel) {
-      normalized.selectedByCli[cli] = selectedModel;
+    const storedSelectedByConfigId = store?.selectedByConfigId;
+    if (storedSelectedByConfigId && typeof storedSelectedByConfigId === "object") {
+      for (const [configId, rawModel] of Object.entries(storedSelectedByConfigId)) {
+        const normalizedModel = normalizeCliModelName(rawModel);
+        if (configId && normalizedModel) {
+          normalized.selectedByConfigId[configId] = normalizedModel;
+        }
+      }
     }
 
     const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
@@ -4810,53 +4876,80 @@ function loadModelStore(): CliModelStore {
   return normalized;
 }
 
-function getSelectedCliModel(cli: CliName): string | null {
-  return normalizeCliModelName(modelStore?.selectedByCli?.[cli]);
+function getActiveConfigIdForCli(cli: CliName): string | null {
+  const snapshot = configHeartbeatSnapshot;
+  if (snapshot && snapshot.cli === cli && snapshot.activeConfigId) {
+    return snapshot.activeConfigId;
+  }
+  return null;
 }
 
-function getModelOptionsForCli(cli: CliName): string[] {
-  const configuredModel = readModelArg(cli, getCliArgs(cli));
-  const storedOptions = Array.isArray(modelStore?.optionsByCli?.[cli]) ? modelStore.optionsByCli[cli] ?? [] : [];
-  const selectedModel = getSelectedCliModel(cli);
+function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
+  if (!configId) {
+    return null;
+  }
+  return normalizeCliModelName(modelStore?.selectedByConfigId?.[configId]);
+}
+
+function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
+  if (!configId) {
+    return [];
+  }
+  const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
+    ? modelStore.optionsByConfigId[configId] ?? []
+    : [];
+  return mergeUniqueModelNames(storedOptions);
+}
+
+function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
+  if (!configId) {
+    return [];
+  }
+  const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
+    ? modelStore.optionsByConfigId[configId] ?? []
+    : [];
+  const selectedModel = getSelectedCliModel(cli, configId);
   return mergeUniqueModelNames(
-    configuredModel ? [configuredModel] : [],
     storedOptions,
     selectedModel ? [selectedModel] : []
   );
 }
 
-function selectCliModel(cli: CliName, model: string | null): void {
+function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
+  if (!configId) {
+    return;
+  }
   const normalized = normalizeCliModelName(model);
   const nextStore = ensureCliModelStore(modelStore);
   if (normalized) {
-    nextStore.optionsByCli[cli] = mergeUniqueModelNames(nextStore.optionsByCli[cli] ?? [], [normalized]);
-    nextStore.selectedByCli[cli] = normalized;
+    nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(nextStore.optionsByConfigId[configId] ?? [], [normalized]);
+    nextStore.selectedByConfigId[configId] = normalized;
   } else {
-    delete nextStore.selectedByCli[cli];
+    delete nextStore.selectedByConfigId[configId];
   }
   modelStore = ensureCliModelStore(nextStore);
   writeModelStore(modelStore);
 }
 
-function addCliModel(cli: CliName, model: string): string | null {
+function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const normalized = normalizeCliModelName(model);
-  if (!normalized) {
+  if (!normalized || !configId) {
     return null;
   }
-  selectCliModel(cli, normalized);
+  selectCliModel(cli, normalized, configId);
   return normalized;
 }
 
-function renameCliModel(cli: CliName, previousModel: string, nextModel: string): string | null {
+function renameCliModel(cli: CliName, previousModel: string, nextModel: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const previousNormalized = normalizeCliModelName(previousModel);
   const nextNormalized = normalizeCliModelName(nextModel);
-  if (!previousNormalized || !nextNormalized) {
+  if (!previousNormalized || !nextNormalized || !configId) {
     return null;
   }
   const previousKey = previousNormalized.toLowerCase();
   const nextKey = nextNormalized.toLowerCase();
   const nextStore = ensureCliModelStore(modelStore);
-  const currentOptions = nextStore.optionsByCli[cli] ?? [];
+  const currentOptions = nextStore.optionsByConfigId[configId] ?? [];
   const duplicateExists = currentOptions.some((modelName) => {
     const normalized = normalizeCliModelName(modelName);
     if (!normalized) {
@@ -4873,11 +4966,10 @@ function renameCliModel(cli: CliName, previousModel: string, nextModel: string):
     const normalized = normalizeCliModelName(modelName);
     return normalized && normalized.toLowerCase() === previousKey ? nextNormalized : modelName;
   });
-  nextStore.optionsByCli[cli] = mergeUniqueModelNames(renamedOptions);
+  nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(renamedOptions);
 
-  const selectedModel = getSelectedCliModel(cli);
-  if (selectedModel && selectedModel.toLowerCase() === previousKey) {
-    nextStore.selectedByCli[cli] = nextNormalized;
+  if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === previousKey) {
+    nextStore.selectedByConfigId[configId] = nextNormalized;
   }
 
   const cliThinking = nextStore.thinkingByCliAndModel?.[cli];
@@ -4886,7 +4978,6 @@ function renameCliModel(cli: CliName, previousModel: string, nextModel: string):
     if (matchedThinkingKey) {
       const nextThinking = { ...cliThinking };
       nextThinking[nextNormalized] = nextThinking[matchedThinkingKey];
-      delete nextThinking[matchedThinkingKey];
       nextStore.thinkingByCliAndModel[cli] = nextThinking;
     }
   }
@@ -4896,54 +4987,72 @@ function renameCliModel(cli: CliName, previousModel: string, nextModel: string):
   return nextNormalized;
 }
 
-function deleteCliModel(cli: CliName, model: string): void {
+function deleteCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): void {
   const normalized = normalizeCliModelName(model);
-  if (!normalized) {
+  if (!normalized || !configId) {
     return;
   }
   const targetKey = normalized.toLowerCase();
   const nextStore = ensureCliModelStore(modelStore);
-  const currentOptions = nextStore.optionsByCli[cli] ?? [];
-  nextStore.optionsByCli[cli] = currentOptions.filter((modelName) => {
+  const currentOptions = nextStore.optionsByConfigId[configId] ?? [];
+  nextStore.optionsByConfigId[configId] = currentOptions.filter((modelName) => {
     const currentNormalized = normalizeCliModelName(modelName);
     return !(currentNormalized && currentNormalized.toLowerCase() === targetKey);
   });
 
-  const selectedModel = getSelectedCliModel(cli);
-  if (selectedModel && selectedModel.toLowerCase() === targetKey) {
-    delete nextStore.selectedByCli[cli];
-  }
-
-  const cliThinking = nextStore.thinkingByCliAndModel?.[cli];
-  if (cliThinking) {
-    const matchedThinkingKey = Object.keys(cliThinking).find((key) => key.toLowerCase() === targetKey);
-    if (matchedThinkingKey) {
-      const nextThinking = { ...cliThinking };
-      delete nextThinking[matchedThinkingKey];
-      if (Object.keys(nextThinking).length > 0) {
-        nextStore.thinkingByCliAndModel[cli] = nextThinking;
-      } else {
-        delete nextStore.thinkingByCliAndModel[cli];
-      }
-    }
+  if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === targetKey) {
+    delete nextStore.selectedByConfigId[configId];
   }
 
   modelStore = ensureCliModelStore(nextStore);
   writeModelStore(modelStore);
 }
 
+function moveCliModel(cli: CliName, model: string, direction: "up" | "down", configId: string | null = getActiveConfigIdForCli(cli)): string | null {
+  const normalized = normalizeCliModelName(model);
+  if (!normalized || !configId) {
+    return null;
+  }
+  const targetKey = normalized.toLowerCase();
+  const nextStore = ensureCliModelStore(modelStore);
+  const currentOptions = [...(nextStore.optionsByConfigId[configId] ?? [])];
+  const currentIndex = currentOptions.findIndex((modelName) => {
+    const currentNormalized = normalizeCliModelName(modelName);
+    return Boolean(currentNormalized && currentNormalized.toLowerCase() === targetKey);
+  });
+  if (currentIndex < 0) {
+    return null;
+  }
+  const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (nextIndex < 0 || nextIndex >= currentOptions.length) {
+    return normalized;
+  }
+  const swapped = currentOptions[currentIndex];
+  currentOptions[currentIndex] = currentOptions[nextIndex];
+  currentOptions[nextIndex] = swapped;
+  nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(currentOptions);
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+  return normalized;
+}
+
 function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCliModel(cli)): string[] {
   return applyModelArg(cli, getCliArgs(cli), model);
 }
 
-function buildModelState(): PanelState["modelState"] {
+function buildModelState(
+  activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
+): PanelState["modelState"] {
   const selectedByCli = {} as Record<CliName, string | null>;
   const optionsByCli = {} as Record<CliName, string[]>;
+  const managedByCli = {} as Record<CliName, string[]>;
   for (const cli of CLI_LIST) {
-    selectedByCli[cli] = getSelectedCliModel(cli);
-    optionsByCli[cli] = getModelOptionsForCli(cli);
+    const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
+    selectedByCli[cli] = getSelectedCliModel(cli, activeConfigId);
+    optionsByCli[cli] = getModelOptionsForCli(cli, activeConfigId);
+    managedByCli[cli] = getManagedModelOptionsForCli(cli, activeConfigId);
   }
-  return { selectedByCli, optionsByCli };
+  return { selectedByCli, optionsByCli, managedByCli };
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {
@@ -4977,6 +5086,19 @@ function loadWorkspaceSettings(): WorkspaceSettings {
       });
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
+      }
+    }
+    const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
+    if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {
+      const normalized: Partial<Record<CliName, string>> = {};
+      CLI_LIST.forEach((cli) => {
+        const activeConfigId = (activeConfigIdByCli as Record<string, unknown>)[cli];
+        if (typeof activeConfigId === "string" && activeConfigId.trim()) {
+          normalized[cli] = activeConfigId;
+        }
+      });
+      if (Object.keys(normalized).length > 0) {
+        result.activeConfigIdByCli = normalized;
       }
     }
     const conversationTabs = (parsed as WorkspaceSettings).conversationTabs;
