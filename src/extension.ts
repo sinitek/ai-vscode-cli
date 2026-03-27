@@ -20,6 +20,7 @@ import {
 import {
   buildCliArgs,
   buildProcessLabel,
+  captureCliOutput,
   resolveCliCommand,
   runCli,
   runCliStream,
@@ -141,6 +142,23 @@ const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
+const CODEX_IMAGE_MIN_VERSION = "0.2.0";
+const CODEX_IMAGE_SUPPORT_CACHE_MS = 5 * 60 * 1000;
+const CODEX_IMAGE_SUPPORT_TIMEOUT_MS = 5000;
+const CODEX_IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".tif",
+  ".tiff",
+  ".svg",
+  ".heic",
+  ".heif",
+  ".avif",
+]);
 const RUN_STREAM_EXPORT_FILENAME_PREFIX = "sinitek-run-stream";
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
@@ -151,6 +169,22 @@ const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
 ]);
+
+function buildSessionLabelFromPrompt(prompt: string | null | undefined): string | null {
+  const trimmed = String(prompt ?? "").replace(/\s+/g, " ").trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, SESSION_LABEL_LIMIT);
+}
+
+function shouldUseFallbackSessionLabel(label: string | null | undefined): boolean {
+  if (typeof label !== "string") {
+    return true;
+  }
+  const trimmed = label.trim();
+  return !trimmed || UNNAMED_SESSION_LABELS.has(trimmed);
+}
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
 const TEMP_FILE_RANDOM_LENGTH = 8;
@@ -276,12 +310,25 @@ type ConfigHeartbeatSnapshot = {
   cli: CliName;
   activeConfigId: string | null;
   configIds: string[];
+  modelSelected: string | null;
+  managedModelOptions: string[];
 };
 
 type CliInstallStatus = {
   command: string;
   installed: boolean;
   checkedAt: number;
+};
+
+type CodexImageSupportStatus = {
+  command: string;
+  checkedAt: number;
+  version: string | null;
+  versionLabel: string | null;
+  supportsImageFlag: boolean;
+  supported: boolean;
+  reason: "supported" | "version-too-low" | "flag-missing" | "probe-failed";
+  probeError?: string;
 };
 
 type RunStreamExportRecord = {
@@ -301,6 +348,8 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   claude: null,
   gemini: null,
 };
+let codexImageSupportStatus: CodexImageSupportStatus | null = null;
+const codexImageSupportWarningKeys = new Set<string>();
 
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -1127,11 +1176,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       saveWorkspaceSettings(workspaceSettings);
     }
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
+    const imagePaths = targetCli === "codex"
+      ? await resolveCodexImagePathsForPrompt(trimmed)
+      : [];
     const promptInput: PromptRunInput = {
       displayPrompt: trimmed,
       modelPrompt: contextBuild.modelPrompt,
       contextTags: contextBuild.contextTags,
       model: typeof message.model === "string" && message.model ? message.model : undefined,
+      imagePaths: imagePaths.length ? imagePaths : undefined,
     };
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
@@ -1232,47 +1285,74 @@ function postEditorContextState(): void {
   });
 }
 
+function areStringListsEqual(previous: readonly string[], next: readonly string[]): boolean {
+  if (previous.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < previous.length; i += 1) {
+    if (previous[i] !== next[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function readNormalizedModelStoreFromDisk(): CliModelStore {
+  return ensureCliModelStore(readModelStore());
+}
+
+function getConfigHeartbeatPayload(
+  cli: CliName,
+  configState: PanelState["configState"],
+  store: CliModelStore = modelStore
+): ConfigHeartbeatSnapshot {
+  const activeConfigId = configState.activeConfigId;
+  const normalizedStore = ensureCliModelStore(store);
+  const modelSelected = activeConfigId
+    ? normalizeCliModelName(normalizedStore.selectedByConfigId[activeConfigId])
+    : null;
+  const managedModelOptions = activeConfigId
+    ? mergeUniqueModelNames(normalizedStore.optionsByConfigId[activeConfigId] ?? [])
+    : [];
+  return {
+    cli,
+    activeConfigId,
+    configIds: configState.configs.map((config) => config.id),
+    modelSelected,
+    managedModelOptions,
+  };
+}
+
 function shouldRefreshConfigState(
   cli: CliName,
-  configState: PanelState["configState"]
+  configState: PanelState["configState"],
+  store: CliModelStore = modelStore
 ): boolean {
-  const nextIds = configState.configs.map((config) => config.id);
+  const nextPayload = getConfigHeartbeatPayload(cli, configState, store);
   if (!configHeartbeatSnapshot || configHeartbeatSnapshot.cli !== cli) {
     return true;
   }
-  if (configHeartbeatSnapshot.activeConfigId !== configState.activeConfigId) {
+  if (configHeartbeatSnapshot.activeConfigId !== nextPayload.activeConfigId) {
     return true;
   }
-  if (configHeartbeatSnapshot.configIds.length !== nextIds.length) {
+  if (!areStringListsEqual(configHeartbeatSnapshot.configIds, nextPayload.configIds)) {
     return true;
   }
-  for (let i = 0; i < nextIds.length; i += 1) {
-    if (configHeartbeatSnapshot.configIds[i] !== nextIds[i]) {
-      return true;
-    }
+  if (configHeartbeatSnapshot.modelSelected !== nextPayload.modelSelected) {
+    return true;
+  }
+  if (!areStringListsEqual(configHeartbeatSnapshot.managedModelOptions, nextPayload.managedModelOptions)) {
+    return true;
   }
   return false;
 }
 
 function updateConfigHeartbeatSnapshot(
   cli: CliName,
-  configState: PanelState["configState"]
+  configState: PanelState["configState"],
+  store: CliModelStore = modelStore
 ): void {
-  configHeartbeatSnapshot = {
-    cli,
-    activeConfigId: configState.activeConfigId,
-    configIds: configState.configs.map((config) => config.id),
-  };
-}
-
-function getConfigHeartbeatPayload(configState: PanelState["configState"]): {
-  activeConfigId: string | null;
-  configIds: string[];
-} {
-  return {
-    activeConfigId: configState.activeConfigId,
-    configIds: configState.configs.map((config) => config.id),
-  };
+  configHeartbeatSnapshot = getConfigHeartbeatPayload(cli, configState, store);
 }
 
 async function pollConfigHeartbeat(): Promise<void> {
@@ -1284,23 +1364,26 @@ async function pollConfigHeartbeat(): Promise<void> {
   const workspaceKey = activeWorkspaceKey;
   try {
     const configState = await loadConfigState(targetCli);
+    const latestModelStore = readNormalizedModelStoreFromDisk();
+    modelStore = latestModelStore;
     if (targetCli !== currentCli) {
       return;
     }
+    const nextPayload = getConfigHeartbeatPayload(targetCli, configState, latestModelStore);
     void logDebug("config-heartbeat-tick", {
       workspaceKey,
       cli: targetCli,
       snapshot: configHeartbeatSnapshot,
-      next: getConfigHeartbeatPayload(configState),
+      next: nextPayload,
     });
-    if (!shouldRefreshConfigState(targetCli, configState)) {
+    if (!shouldRefreshConfigState(targetCli, configState, latestModelStore)) {
       return;
     }
-    updateConfigHeartbeatSnapshot(targetCli, configState);
+    updateConfigHeartbeatSnapshot(targetCli, configState, latestModelStore);
     void logEssential("config-heartbeat-change", {
       workspaceKey,
       cli: targetCli,
-      state: getConfigHeartbeatPayload(configState),
+      state: nextPayload,
     });
     const state = await buildPanelStateWithConfigState(configState);
     viewProvider?.postState(state);
@@ -1771,6 +1854,186 @@ async function saveUploadedFiles(
   }
 }
 
+function extractFirstLine(value: string): string | null {
+  const firstLine = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstLine ?? null;
+}
+
+function extractSemverVersion(value: string): string | null {
+  const match = /(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/.exec(value);
+  return match ? match[1] : null;
+}
+
+function parseSemverParts(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareSemver(left: string, right: string): number {
+  const leftParts = parseSemverParts(left);
+  const rightParts = parseSemverParts(right);
+  if (!leftParts || !rightParts) {
+    return left.localeCompare(right);
+  }
+  for (let index = 0; index < leftParts.length; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] > rightParts[index] ? 1 : -1;
+    }
+  }
+  const leftStable = !left.includes("-");
+  const rightStable = !right.includes("-");
+  if (leftStable !== rightStable) {
+    return leftStable ? 1 : -1;
+  }
+  return left.localeCompare(right);
+}
+
+function expandUserHomePath(targetPath: string): string {
+  if (targetPath === "~") {
+    return os.homedir();
+  }
+  if (targetPath.startsWith(`~${path.sep}`)) {
+    return path.join(os.homedir(), targetPath.slice(2));
+  }
+  return targetPath;
+}
+
+function resolvePromptReferencedPath(rawPath: string, cwd?: string | null): string | null {
+  const trimmed = rawPath.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const expanded = expandUserHomePath(trimmed);
+  if (path.isAbsolute(expanded)) {
+    return expanded;
+  }
+  if (cwd) {
+    return path.resolve(cwd, expanded);
+  }
+  return path.resolve(expanded);
+}
+
+function isImageAttachmentPath(filePath: string): boolean {
+  const extension = path.extname(filePath).toLowerCase();
+  if (!CODEX_IMAGE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function collectCodexImagePathsFromPrompt(prompt: string, cwd?: string | null): string[] {
+  if (!prompt.trim()) {
+    return [];
+  }
+  const imagePaths: string[] = [];
+  const seen = new Set<string>();
+  const tokenPattern = /@(?:"([^"]+)"|'([^']+)'|(\S+))/g;
+  for (const match of prompt.matchAll(tokenPattern)) {
+    const rawPath = match[1] ?? match[2] ?? match[3] ?? "";
+    const resolvedPath = resolvePromptReferencedPath(rawPath, cwd);
+    if (!resolvedPath || !isImageAttachmentPath(resolvedPath) || seen.has(resolvedPath)) {
+      continue;
+    }
+    seen.add(resolvedPath);
+    imagePaths.push(resolvedPath);
+  }
+  return imagePaths;
+}
+
+async function probeCodexImageSupportStatus(command: string): Promise<CodexImageSupportStatus> {
+  let version: string | null = null;
+  let versionLabel: string | null = null;
+  let supportsImageFlag = false;
+  const probeErrors: string[] = [];
+
+  try {
+    const versionResult = await captureCliOutput(command, ["--version"], {
+      timeoutMs: CODEX_IMAGE_SUPPORT_TIMEOUT_MS,
+    });
+    const versionOutput = [versionResult.stdout, versionResult.stderr].filter(Boolean).join("\n").trim();
+    versionLabel = extractFirstLine(versionOutput);
+    version = extractSemverVersion(versionOutput);
+  } catch (error) {
+    probeErrors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  try {
+    const helpResult = await captureCliOutput(command, ["exec", "--help"], {
+      timeoutMs: CODEX_IMAGE_SUPPORT_TIMEOUT_MS,
+    });
+    const helpOutput = [helpResult.stdout, helpResult.stderr].filter(Boolean).join("\n");
+    supportsImageFlag = /(?:^|\s)(?:-i,\s*)?--image\b/m.test(helpOutput);
+  } catch (error) {
+    probeErrors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  const versionTooLow = Boolean(version && compareSemver(version, CODEX_IMAGE_MIN_VERSION) < 0);
+  const supported = supportsImageFlag && !versionTooLow;
+  let reason: CodexImageSupportStatus["reason"] = "supported";
+  if (versionTooLow) {
+    reason = "version-too-low";
+  } else if (!supportsImageFlag) {
+    reason = probeErrors.length ? "probe-failed" : "flag-missing";
+  }
+
+  return {
+    command,
+    checkedAt: Date.now(),
+    version,
+    versionLabel,
+    supportsImageFlag,
+    supported,
+    reason,
+    probeError: probeErrors.length ? probeErrors.join("; ") : undefined,
+  };
+}
+
+async function getCodexImageSupportStatus(forceRefresh = false): Promise<CodexImageSupportStatus> {
+  const command = getCliCommand("codex");
+  const cached = codexImageSupportStatus;
+  if (
+    !forceRefresh
+    && cached
+    && cached.command === command
+    && Date.now() - cached.checkedAt < CODEX_IMAGE_SUPPORT_CACHE_MS
+  ) {
+    return cached;
+  }
+  const nextStatus = await probeCodexImageSupportStatus(command);
+  codexImageSupportStatus = nextStatus;
+  return nextStatus;
+}
+
+function buildCodexImageSupportWarningKey(status: CodexImageSupportStatus): string {
+  return [
+    status.command,
+    status.version ?? status.versionLabel ?? "unknown",
+    status.supportsImageFlag ? "image" : "no-image",
+    status.reason,
+  ].join("|");
+}
+
+async function resolveCodexImagePathsForPrompt(prompt: string): Promise<string[]> {
+  if (!prompt.trim()) {
+    return [];
+  }
+  const supportStatus = await getCodexImageSupportStatus();
+  if (!supportStatus.supported) {
+    return [];
+  }
+  return collectCodexImagePathsFromPrompt(prompt, resolveWorkspaceCwd());
+}
+
 function normalizeRunStreamExportSource(
   source: RunStreamExportRecordPayload["source"]
 ): "stdout" | "stderr" | "event" {
@@ -2139,10 +2402,69 @@ async function getCliInstallStatus(cli: CliName): Promise<CliInstallStatus> {
 
 async function maybePromptInstallOnCliGroupSwitch(cli: CliName): Promise<void> {
   const status = await getCliInstallStatus(cli);
-  if (status.installed) {
+  if (!status.installed) {
+    await promptInstallMissingCli(cli, status.command);
     return;
   }
-  await promptInstallMissingCli(cli, status.command);
+  if (cli === "codex") {
+    await maybePromptUpgradeCodexForImageSupport();
+  }
+}
+
+async function maybePromptUpgradeCodexForImageSupport(): Promise<void> {
+  const status = await getCodexImageSupportStatus();
+  if (status.supported) {
+    return;
+  }
+  const warningKey = buildCodexImageSupportWarningKey(status);
+  if (codexImageSupportWarningKeys.has(warningKey)) {
+    return;
+  }
+  codexImageSupportWarningKeys.add(warningKey);
+
+  const upgradeLabel = t("cli.codexImage.upgradeAction");
+  const openSettingsLabel = t("common.openSettings");
+  const versionLabel = status.versionLabel ?? status.version ?? t("cli.codexImage.versionUnknown");
+  const message = [
+    t("cli.codexImage.unsupported", {
+      version: versionLabel,
+      minVersion: CODEX_IMAGE_MIN_VERSION,
+      command: status.command,
+    }),
+    t("cli.codexImage.upgradeHint"),
+  ].join("\n\n");
+
+  const selection = await vscode.window.showWarningMessage(
+    message,
+    upgradeLabel,
+    openSettingsLabel
+  );
+
+  if (selection === upgradeLabel) {
+    const installCommand = getCliInstallCommand("codex");
+    const terminal = vscode.window.createTerminal({
+      name: `${CLI_INSTALL_TERMINAL_PREFIX}: codex`,
+    });
+    terminal.show();
+    terminal.sendText(installCommand);
+    codexImageSupportStatus = null;
+    void logInfo("codex-image-upgrade-triggered", {
+      command: status.command,
+      version: status.version,
+      installCommand,
+    });
+    void vscode.window.showInformationMessage(
+      t("cli.install.started", { command: installCommand })
+    );
+    return;
+  }
+
+  if (selection === openSettingsLabel) {
+    void vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      "sinitek-cli-tools.commands.codex"
+    );
+  }
 }
 
 async function setCurrentCli(
@@ -2203,6 +2525,7 @@ type PromptRunInput = {
   modelPrompt: string;
   contextTags: string[];
   model?: string;
+  imagePaths?: string[];
 };
 
 type PromptRunTarget = {
@@ -3451,7 +3774,13 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
 
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
   const debugLogging = getDebugLogging();
-  const args = getEffectiveCliArgs(cli, selectedModel);
+  const args = cli === "codex"
+    ? buildCliArgs(cli, {
+        thinkingMode,
+        model: selectedModel,
+        imagePaths: input.imagePaths,
+      })
+    : getEffectiveCliArgs(cli, selectedModel);
   const command = getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"
@@ -3478,6 +3807,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     cwd,
     promptLength: prompt.length,
     modelPromptLength: modelPrompt.length,
+    imagePaths: input.imagePaths ?? [],
     tabId,
   });
 
@@ -5280,13 +5610,23 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
       result[cli] = {
         currentId: current.currentId ?? null,
         sessions: Array.isArray(current.sessions)
-          ? current.sessions.map((session) => ({
-              id: session.id,
-              label: session.label ?? t("session.unnamed"),
-              createdAt: session.createdAt ?? Date.now(),
-              lastUsedAt: session.lastUsedAt ?? Date.now(),
-              firstPrompt: session.firstPrompt ?? undefined,
-            }))
+          ? current.sessions.map((session) => {
+              const firstPrompt = typeof session.firstPrompt === "string" && session.firstPrompt.trim()
+                ? session.firstPrompt
+                : undefined;
+              const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
+              const normalizedLabel = typeof session.label === "string" ? session.label.trim() : "";
+              const label = shouldUseFallbackSessionLabel(normalizedLabel)
+                ? (fallbackLabel ?? t("session.unnamed"))
+                : normalizedLabel;
+              return {
+                id: session.id,
+                label,
+                createdAt: session.createdAt ?? Date.now(),
+                lastUsedAt: session.lastUsedAt ?? Date.now(),
+                firstPrompt,
+              };
+            })
           : [],
       };
     }
@@ -5308,6 +5648,11 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
           firstPrompt = resolved;
           shouldPersist = true;
         }
+      }
+      const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
+      if (fallbackLabel && shouldUseFallbackSessionLabel(record.label)) {
+        record.label = fallbackLabel;
+        shouldPersist = true;
       }
       allSessions.push({
         id: record.id,
@@ -5864,11 +6209,11 @@ function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void 
   if (draft.label) {
     return;
   }
-  const trimmed = prompt.replace(/\s+/g, " ").trim();
-  if (!trimmed) {
+  const label = buildSessionLabelFromPrompt(prompt);
+  if (!label) {
     return;
   }
-  draft.label = trimmed.slice(0, SESSION_LABEL_LIMIT);
+  draft.label = label;
 }
 
 function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): void {
@@ -5890,7 +6235,7 @@ function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): voi
   }
   const sessions = sessionStore[cli].sessions;
   const existing = sessions.find((item) => item.id === sessionId);
-  if (existing && UNNAMED_SESSION_LABELS.has(existing.label)) {
+  if (existing && shouldUseFallbackSessionLabel(existing.label)) {
     existing.label = label;
   }
   if (existing && firstPrompt && !existing.firstPrompt) {

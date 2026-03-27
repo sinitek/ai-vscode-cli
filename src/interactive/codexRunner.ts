@@ -35,6 +35,17 @@ function hasFlag(args: string[], keys: string[]): boolean {
   return args.some((arg) => keys.includes(arg));
 }
 
+function collectArgValues(args: string[], keys: string[]): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (keys.includes(args[index]) && index + 1 < args.length) {
+      values.push(args[index + 1]);
+      index += 1;
+    }
+  }
+  return values;
+}
+
 function mapCodexReasoningEffort(mode: ThinkingMode): string {
   if (mode === "xhigh") {
     return "xhigh";
@@ -126,9 +137,15 @@ function buildCodexExecArgs(
 ): string[] {
   const options = buildCodexThreadOptions(args, cwd, thinkingMode, interactiveMode, modelOverride);
   const commandArgs = ["exec", "--experimental-json"];
+  const imagePaths = collectArgValues(args, ["--image", "-i"]);
 
   if (typeof options.model === "string" && options.model) {
     commandArgs.push("--model", options.model);
+  }
+  for (const imagePath of imagePaths) {
+    if (typeof imagePath === "string" && imagePath.trim()) {
+      commandArgs.push("--image", imagePath.trim());
+    }
   }
   if (typeof options.sandboxMode === "string" && options.sandboxMode) {
     commandArgs.push("--sandbox", options.sandboxMode);

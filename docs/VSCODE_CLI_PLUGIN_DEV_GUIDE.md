@@ -301,6 +301,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 - 固定开启（Beta）：`codex/claude` 分组保持交互式会话续接。
 - Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex exec --experimental-json` + `resume <threadId>` 延续会话；不会使用 `@openai/codex-sdk` 自带 vendored binary。
+- Codex 分组会把 prompt 中可解析到的本地图片 `@path` 自动透传到官方 `codex exec --image <FILE>` 通道；若当前 Codex 版本低于支持基线或帮助输出未暴露 `--image`，切换到 Codex 分组时会弹窗提示升级到最新版本，并继续保留 `@path` 兼容回退。
 - Claude 交互路径继续复用 SDK Runner，避免“一问一进程”的冷启动。
 - 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。
 - 不自动降级：`codex/claude` 分组在 SDK 初始化/运行失败时不回退到非交互模式，直接返回错误。
@@ -308,6 +309,23 @@ export function activate(context: vscode.ExtensionContext) {
 - 空闲释放：24 小时无交互自动释放 Runner。
 - 切换思考模式：下一次交互会重建 Runner，并沿用已有会话/线程 ID 继续对话。
 - 抢占式切换：当 `codex/claude` 在任意 Tab 启动新任务时，会先停止其他运行中的任务，再接管当前交互 Runner；不允许回退到非交互子进程。
+
+### Codex 非交互模式（官方补充，按当前实现对比后保留的增量建议）
+
+注意：当前插件里的 Codex 默认走交互路径，并且已经通过 `codex exec --experimental-json` + `resume <threadId>` 实现了 JSON 行事件解析与会话续接，因此这两项**不再算新增建议**。
+
+结合 OpenAI 官方文档、`codex-cli 0.110.0 --help` 与当前仓库实现，后续真正还值得补的主要是：
+
+- `--output-schema <FILE>`：要求最终返回严格 JSON，适合“结构化产物面板 / 自动表单回填 / 批处理结果”。
+- `-o, --output-last-message <FILE>`：把最终文本直接写文件，适合“生成 README / SQL / 提交说明 / 发布说明”。
+- `--ephemeral`：无落盘临时会话，适合敏感任务或一次性问答。
+- `codex review`：把“代码评审”从普通 prompt 独立成专用动作，支持 `--uncommitted` / `--base` / `--commit`。
+- `--profile` / `-c key=value`：当前仅有部分参数映射，可继续做“运行预设 / 档位模板”。
+- `codex cloud exec/status/apply`：适合“后台长任务 / 云端异步执行 / 回来再应用 diff”。
+- `codex app-server`：适合后续从“命令行包一层”演进到“协议层对接”，降低文本解析耦合。
+- `codex mcp-server`：适合把本插件或其它代理系统作为 Codex 的上游/下游工具编排节点。
+
+更完整的对比说明见：`docs/codex-非交互模式能力建议.md`
 
 ### 设置项说明
 

@@ -10,6 +10,7 @@ import { applyModelArg } from "./modelArgs";
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
   model?: string | null;
+  imagePaths?: string[];
 };
 
 const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
@@ -217,6 +218,13 @@ type RunStreamOptions = RunCliOptions & {
   processLabel?: string;
 };
 
+export type CapturedCliOutput = {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  resolvedCommand?: string;
+};
+
 export type RunProcess = {
   pid?: number;
   resolvedCommand?: string;
@@ -236,6 +244,18 @@ export function buildCliArgs(
   let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model);
   if (cli === "codex" && !sharedArgs.includes("--skip-git-repo-check")) {
     sharedArgs = [...sharedArgs, "--skip-git-repo-check"];
+  }
+  if (cli === "codex" && Array.isArray(options.imagePaths) && options.imagePaths.length) {
+    const normalizedImagePaths = options.imagePaths
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (normalizedImagePaths.length) {
+      sharedArgs = [
+        ...sharedArgs,
+        ...normalizedImagePaths.flatMap((imagePath) => ["--image", imagePath]),
+      ];
+    }
   }
 
   if (prompt === undefined || prompt === "") {
@@ -348,6 +368,104 @@ export function runCliStream(
     resolvedCommand,
     kill: (signal) => killProcessTree(child, signal),
   };
+}
+
+export function captureCliOutput(
+  command: string,
+  args: string[],
+  options: { cwd?: string; timeoutMs?: number } = {}
+): Promise<CapturedCliOutput> {
+  return new Promise((resolve, reject) => {
+    let commandToSpawn: string;
+    let argsToSpawn: string[];
+    let resolvedCommand: string | undefined;
+
+    if (process.platform === "darwin") {
+      const macTaskShell = getMacTaskShell();
+      commandToSpawn = resolveMacTaskShellExecutable(macTaskShell);
+      argsToSpawn = ["-lc", buildShellCommandLine(command, args)];
+      resolvedCommand = command;
+    } else {
+      const resolvedCli = resolveCliCommand(command);
+      if (!resolvedCli) {
+        const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
+        error.code = "ENOENT";
+        reject(error);
+        return;
+      }
+      commandToSpawn = resolvedCli.command;
+      argsToSpawn = args;
+      resolvedCommand = resolvedCli.command;
+    }
+
+    const child = spawn(commandToSpawn, argsToSpawn, {
+      cwd: options.cwd,
+      env: process.env,
+      detached: process.platform !== "win32",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    const finishResolve = (payload: CapturedCliOutput): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      resolve(payload);
+    };
+
+    const finishReject = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      reject(error);
+    };
+
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
+    });
+
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      finishReject(error);
+    });
+
+    child.on("close", (code) => {
+      finishResolve({
+        stdout,
+        stderr,
+        exitCode: code,
+        resolvedCommand,
+      });
+    });
+
+    const timeoutMs = typeof options.timeoutMs === "number" && options.timeoutMs > 0
+      ? options.timeoutMs
+      : 0;
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        killProcessTree(child, "SIGTERM");
+        finishReject(new Error(`capture-cli-output-timeout:${timeoutMs}`));
+      }, timeoutMs);
+    }
+  });
 }
 
 function killProcessTree(

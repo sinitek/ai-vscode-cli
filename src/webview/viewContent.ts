@@ -39,11 +39,11 @@ const WEBVIEW_I18N = {
     contextTagSelectionWithRange: "Current File: {file} [{range}]",
     contextTagRemoveAria: "Remove context: {label}",
     thinkingModeAria: "Thinking mode",
-    thinkingOptionOff: "Thinking: Off",
-    thinkingOptionLow: "Thinking: Low",
-    thinkingOptionMedium: "Thinking: Medium",
-    thinkingOptionHigh: "Thinking: High",
-    thinkingOptionXHigh: "Thinking: X-High",
+    thinkingOptionOff: "Off",
+    thinkingOptionLow: "Low",
+    thinkingOptionMedium: "Medium",
+    thinkingOptionHigh: "High",
+    thinkingOptionXHigh: "X-High",
     historyButton: "History",
     sendButton: "Send",
     stopButton: "Stop",
@@ -211,11 +211,11 @@ const WEBVIEW_I18N = {
     rulesHintSelectCli: "Select at least one CLI to overwrite.",
     rulesHintLoaded: "Loaded {scope}: {cli}.",
     rulesHintSaved: "{scope} saved to: {targets}",
-    thinkingOptionLabelLow: "Thinking: Low",
-    thinkingOptionLabelOff: "Thinking: Off",
-    thinkingOptionLabelMedium: "Thinking: Medium",
-    thinkingOptionLabelHigh: "Thinking: High",
-    thinkingOptionLabelXHigh: "Thinking: X-High",
+    thinkingOptionLabelLow: "Low",
+    thinkingOptionLabelOff: "Off",
+    thinkingOptionLabelMedium: "Medium",
+    thinkingOptionLabelHigh: "High",
+    thinkingOptionLabelXHigh: "X-High",
     modelSelectAria: "Model selection",
     modelOptionDefault: "Model: Follow Config",
     modelOptionManage: "Manage",
@@ -270,11 +270,11 @@ const WEBVIEW_I18N = {
     contextTagSelectionWithRange: "当前文件: {file} [{range}]",
     contextTagRemoveAria: "移除上下文：{label}",
     thinkingModeAria: "思考模式",
-    thinkingOptionOff: "思考：关闭",
-    thinkingOptionLow: "思考：低",
-    thinkingOptionMedium: "思考：中",
-    thinkingOptionHigh: "思考：高",
-    thinkingOptionXHigh: "思考：超高",
+    thinkingOptionOff: "关闭",
+    thinkingOptionLow: "低",
+    thinkingOptionMedium: "中",
+    thinkingOptionHigh: "高",
+    thinkingOptionXHigh: "超高",
     historyButton: "历史会话",
     sendButton: "发送",
     stopButton: "停止",
@@ -442,11 +442,11 @@ const WEBVIEW_I18N = {
     rulesHintSelectCli: "请选择至少一个 CLI 进行覆盖保存。",
     rulesHintLoaded: "已加载 {scope}：{cli}。",
     rulesHintSaved: "{scope}已保存到：{targets}",
-    thinkingOptionLabelLow: "思考：低",
-    thinkingOptionLabelOff: "思考：关闭",
-    thinkingOptionLabelMedium: "思考：中",
-    thinkingOptionLabelHigh: "思考：高",
-    thinkingOptionLabelXHigh: "思考：超高",
+    thinkingOptionLabelLow: "低",
+    thinkingOptionLabelOff: "关闭",
+    thinkingOptionLabelMedium: "中",
+    thinkingOptionLabelHigh: "高",
+    thinkingOptionLabelXHigh: "超高",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
     modelOptionManage: "管理",
@@ -1340,6 +1340,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .model-select {
         flex: 0 1 118px;
         min-width: 92px;
+      }
+      .thinking-select {
+        flex: 0 0 70px;
+        width: 70px;
+        min-width: 70px;
       }
 
       /* Input Box Container */

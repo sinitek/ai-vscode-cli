@@ -15,6 +15,7 @@
 - Windows 下若解析到 `.cmd/.bat`，交互模式会忽略该覆盖并回退到 SDK 内置 `cli.js`（SDK v2 交互会话不支持直接 spawn `.cmd/.bat`，否则可能触发 `spawn EINVAL`）。
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到交互运行层（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
 - Codex 交互模式当前会把 `sandbox/approval/model/add-dir/web search` 等核心参数映射到 `codex exec --experimental-json`，并通过 `resume <threadId>` 延续会话。
+- 当用户在 prompt 中插入可解析到的本地图片 `@path` 时，插件会在 Codex 分组下自动附加官方 `codex exec --image <FILE>` 参数；若当前 Codex 版本低于 `0.2.0` 或帮助输出未暴露 `--image`，切到 Codex 分组时会弹窗提示升级到最新版本，并继续回退到旧的 `@path` 兼容方式。
 - 交互模式下支持 `coding / plan` 两种会话模式，默认 `coding`。面板入口位于输入区“配置”按钮左侧。
 - `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
 - macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。
@@ -77,15 +78,51 @@
 - `--local-provider <OSS_PROVIDER>`：指定本地提供方（`lmstudio` 或 `ollama`）。
 - `-p, --profile <CONFIG_PROFILE>`：从 config.toml 选择配置 Profile。
 - `-s, --sandbox <SANDBOX_MODE>`：沙箱策略（`read-only` / `workspace-write` / `danger-full-access`）。
-- `-a, --ask-for-approval <APPROVAL_POLICY>`：审批策略（`untrusted` / `on-failure` / `on-request` / `never`）。
+- `-a, --ask-for-approval <APPROVAL_POLICY>`：审批策略（`untrusted` / `on-request` / `never`；`on-failure` 仍可用但官方已标记为 deprecated）。
 - `--full-auto`：低摩擦自动执行（`-a on-request` + `--sandbox workspace-write`）。
 - `--dangerously-bypass-approvals-and-sandbox`：跳过确认并禁用沙箱（高风险）。
 - `-C, --cd <DIR>`：指定工作目录。
-- `--search`：启用 web search 工具（默认关闭）。
-- 说明：`codex exec` 不支持 `--search`，需用 `--enable web_search_request` 启用搜索能力。
+- `--search`：启用 live web search（顶层 `codex` 命令可用）。
 - `--add-dir <DIR>`：额外可写目录。
 - `-h, --help`：帮助。
 - `-V, --version`：版本。
+
+### Codex 非交互模式（`codex exec`）官方补充能力
+
+以下内容基于 OpenAI 开发者文档与本机 `codex-cli 0.110.0` 的官方帮助输出补充：
+> 详细的面向本插件的产品化建议，见：`docs/codex-非交互模式能力建议.md`。
+
+
+- prompt 可直接作为位置参数传入；若省略或传入 `-`，则会从 `stdin` 读取，适合插件做“管道式/模板式”提交。
+- `codex exec resume [SESSION_ID] [PROMPT]` 支持恢复历史会话继续执行；可配合 `--last` 续接最近一次任务。
+- `--ephemeral`：本次运行不把 session 落盘，适合临时问答、敏感任务、一次性草稿生成。
+- `--json`：输出 JSONL 事件流，适合插件做结构化状态展示、事件时间线、可靠解析，而不是依赖纯文本切片。
+- `-o, --output-last-message <FILE>`：把 agent 最后一条消息写入文件，适合“生成到目标文件/剪贴板/新文档”场景。
+- `--output-schema <FILE>`：约束最终输出的 JSON 结构，适合插件做表单填充、任务卡片、脚手架元数据、批量操作结果等结构化返回。
+- `--skip-git-repo-check`：允许在非 Git 目录运行，适合纯文档目录、临时目录、单文件目录。
+- `--progress-cursor`：强制游标式进度更新，适合终端内联显示；VS Code Webview 若已有自定义流式 UI，一般优先保留 `--json`。
+- `--color <always|never|auto>`：控制颜色输出；如走日志落盘或解析文本，建议强制 `never`。
+
+### `codex review`（非交互代码评审）
+
+- `codex review [PROMPT]`：直接执行代码评审。
+- `--uncommitted`：评审当前 staged / unstaged / untracked 变更。
+- `--base <BRANCH>`：按基线分支评审。
+- `--commit <SHA>`：评审指定提交。
+- `--title <TITLE>`：指定评审标题。
+
+### `codex cloud`（实验性）
+
+- `codex cloud exec --env <ENV_ID> [QUERY]`：提交云端任务，不必在本地长时间占用前台进程。
+- `codex cloud status <TASK_ID>`：查询任务状态。
+- `codex cloud diff <TASK_ID>` / `codex cloud apply <TASK_ID>`：查看或应用云端任务的 diff。
+- 适合后续扩展“后台长任务 / 离线执行 / 多尝试(best-of-N) 结果比较”。
+
+### `codex app-server` / `codex mcp-server`
+
+- `codex app-server --listen stdio://|ws://IP:PORT`：运行 app server，可用于 IDE/GUI 与 Codex 的更稳定协议接入。
+- `codex app-server generate-ts` / `generate-json-schema`：可生成协议绑定，适合后续做强类型前后端对接。
+- `codex mcp-server`：把 Codex 作为 MCP server 暴露给其他客户端/代理系统调用。
 
 
 插件内 MCP 市场（配置中心）：
