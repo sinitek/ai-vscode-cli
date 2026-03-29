@@ -307,8 +307,8 @@ export function activate(context: vscode.ExtensionContext) {
 ### 行为概述
 
 - 固定开启（Beta）：`codex/claude` 分组保持交互式会话续接。
-- Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex exec --experimental-json` + `resume <threadId>` 延续会话；不会使用 `@openai/codex-sdk` 自带 vendored binary。
-- Codex 分组会把 prompt 中可解析到的本地图片 `@path` 自动透传到官方 `codex exec --image <FILE>` 通道；若当前 Codex 版本低于支持基线或帮助输出未暴露 `--image`，切换到 Codex 分组时会弹窗提示升级到最新版本，并继续保留 `@path` 兼容回退。
+- Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，并用 `thread/start` / `thread/resume` + `turn/start` 延续 threadId；不会使用 `@openai/codex-sdk` 自带 vendored binary。
+- Codex 分组会把 prompt 中可解析到的本地图片 `@path` 自动转成 app-server 的 `localImage` 输入；若当前 Codex 版本低于支持基线或帮助输出未暴露 `--image`，切换到 Codex 分组时会弹窗提示升级到最新版本，并继续保留 `@path` 兼容回退。
 - Claude 交互路径继续复用 SDK Runner，避免“一问一进程”的冷启动。
 - 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。
 - 不自动降级：`codex/claude` 分组在 SDK 初始化/运行失败时不回退到非交互模式，直接返回错误。
@@ -319,7 +319,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 ### Codex 非交互模式（官方补充，按当前实现对比后保留的增量建议）
 
-注意：当前插件里的 Codex 默认走交互路径，并且已经通过 `codex exec --experimental-json` + `resume <threadId>` 实现了 JSON 行事件解析与会话续接，因此这两项**不再算新增建议**。
+注意：当前插件里的 Codex 默认走交互路径，并且已经通过 `codex app-server --listen stdio://` 的 JSON-RPC 协议实现了 thread 续接与结构化事件解析，因此这两项**不再算新增建议**。
 
 结合 OpenAI 官方文档、`codex-cli 0.110.0 --help` 与当前仓库实现，后续真正还值得补的主要是：
 
@@ -329,7 +329,7 @@ export function activate(context: vscode.ExtensionContext) {
 - `codex review`：把“代码评审”从普通 prompt 独立成专用动作，支持 `--uncommitted` / `--base` / `--commit`。
 - `--profile` / `-c key=value`：当前仅有部分参数映射，可继续做“运行预设 / 档位模板”。
 - `codex cloud exec/status/apply`：适合“后台长任务 / 云端异步执行 / 回来再应用 diff”。
-- `codex app-server`：适合后续从“命令行包一层”演进到“协议层对接”，降低文本解析耦合。
+- `codex app-server`：插件当前已用于 Codex 交互模式，可继续补充更细的协议能力（如更完整的审批/工具状态映射）。
 - `codex mcp-server`：适合把本插件或其它代理系统作为 Codex 的上游/下游工具编排节点。
 
 更完整的对比说明见：`docs/codex-非交互模式能力建议.md`

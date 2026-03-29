@@ -14,8 +14,8 @@
 - Codex 交互模式会直接启动配置项 `sinitek-cli-tools.commands.codex` 指向的官方 CLI；若配置为默认值 `codex`，则解析本机 PATH/平台默认安装位置。
 - Windows 下若解析到 `.cmd/.bat`，交互模式会忽略该覆盖并回退到 SDK 内置 `cli.js`（SDK v2 交互会话不支持直接 spawn `.cmd/.bat`，否则可能触发 `spawn EINVAL`）。
 - 仍会读取 `sinitek-cli-tools.args.<cli>` 中的部分参数并映射到交互运行层（例如 Codex 的 sandbox/approval/model、Claude 的 model 等）。
-- Codex 交互模式当前会把 `sandbox/approval/model/add-dir/web search` 等核心参数映射到 `codex exec --experimental-json`，并通过 `resume <threadId>` 延续会话。
-- 当用户在 prompt 中插入可解析到的本地图片 `@path` 时，插件会在 Codex 分组下自动附加官方 `codex exec --image <FILE>` 参数；若当前 Codex 版本低于 `0.2.0` 或帮助输出未暴露 `--image`，切到 Codex 分组时会弹窗提示升级到最新版本，并继续回退到旧的 `@path` 兼容方式。
+- Codex 交互模式当前会把 `sandbox/approval/model/add-dir/web search` 等核心参数映射到 `codex app-server --listen stdio://` 的 JSON-RPC 会话，并通过 `thread/start` / `thread/resume` + `turn/start` 延续 threadId。
+- 当用户在 prompt 中插入可解析到的本地图片 `@path` 时，插件会在 Codex 分组下自动转成 app-server 的 `localImage` 输入；若当前 Codex 版本低于 `0.2.0` 或帮助输出未暴露 `--image`，切到 Codex 分组时会弹窗提示升级到最新版本，并继续回退到旧的 `@path` 兼容方式。
 - 交互模式下支持 `coding / plan` 两种会话模式，默认 `coding`。面板入口位于输入区“配置”按钮左侧。
 - `plan` 模式映射：Codex 强制 `read-only + untrusted`；Claude 使用 `permissionMode=plan`。
 - macOS 下可在工具设置中选择对话任务使用的 shell：`zsh` 或 `bash`（配置键：`sinitek-cli-tools.macTaskShell`，默认会按当前进程 shell 自动匹配）。

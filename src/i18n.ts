@@ -164,6 +164,13 @@ const MESSAGES = {
     "skill.uninstallMissing": "Installed skill directory does not exist: {path}",
     "skill.updateNotInstalled": "Package is not installed yet: {path}",
     "claude.sessionResetRetry": "Claude session expired. Automatically starting a new session and retrying.",
+    "codex.appServerTaskFailed": "Codex task failed",
+    "codex.appServerUnsupportedRequest": "Unsupported Codex app-server request: {method}",
+    "codex.appServerStdinUnavailable": "Codex app-server stdin is unavailable.",
+    "codex.appServerNoStdout": "Codex app-server process has no stdout.",
+    "codex.appServerParseFailed": "Failed to parse Codex app-server message: {error}",
+    "codex.appServerRequestFailed": "Codex app-server request failed.",
+    "codex.appServerExited": "Codex app-server exited with {detail}: {stderr}",
   },
   "zh-CN": {
     "common.compactContext": "压缩上下文",
@@ -284,6 +291,13 @@ const MESSAGES = {
     "skill.uninstallMissing": "未找到已安装的 Skill 目录：{path}",
     "skill.updateNotInstalled": "包尚未安装：{path}",
     "claude.sessionResetRetry": "检测到 Claude 会话已失效，已自动创建新会话并重试。",
+    "codex.appServerTaskFailed": "Codex 任务失败",
+    "codex.appServerUnsupportedRequest": "不支持的 Codex app-server 请求：{method}",
+    "codex.appServerStdinUnavailable": "Codex app-server 标准输入不可用。",
+    "codex.appServerNoStdout": "Codex app-server 进程没有标准输出。",
+    "codex.appServerParseFailed": "解析 Codex app-server 消息失败：{error}",
+    "codex.appServerRequestFailed": "Codex app-server 请求失败。",
+    "codex.appServerExited": "Codex app-server 异常退出（{detail}）：{stderr}",
   },
 } as const;
 
