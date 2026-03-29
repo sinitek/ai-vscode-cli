@@ -2258,12 +2258,42 @@ function skillsTitleByPlatform(e) {
   return e === "claude"
     ? "Claude Skills"
     : e === "gemini"
-      ? "Gemini Skills"
+      ? "Gemini Skills / Extensions"
       : "Codex Skills";
 }
 
 function officialSkillInstallRootTextByPlatform(e) {
-  return e === "claude" ? "~/.claude/skills" : "~/.codex/skills";
+  return e === "claude" ? "~/.claude/skills" : e === "gemini" ? "~/.gemini/extensions" : "~/.codex/skills";
+}
+
+function officialPackageLabelByPlatform(e) {
+  return e === "gemini" ? "Extensions" : "Skills";
+}
+
+function officialPackageSingularByPlatform(e) {
+  return e === "gemini" ? "Extension" : "Skill";
+}
+
+function officialPackageLoadingTextByPlatform(e) {
+  return `${officialPackageLabelByPlatform(e)} 加载中...`;
+}
+
+function officialPackageCountTextByPlatform(e, t) {
+  return `官方 ${officialPackageLabelByPlatform(e)} ${t}`;
+}
+
+function officialPackageEmptyTextByPlatform(e) {
+  return e === "gemini" ? "暂无内置官方 Extensions" : "暂无内置官方 Skills";
+}
+
+function officialPackageInstallHintByPlatform(e) {
+  return e === "gemini"
+    ? "内置官方 GitHub 快照，可直接安装到 ~/.gemini/extensions"
+    : "内置官方 GitHub 快照，可直接安装到用户 Skills 目录";
+}
+
+function officialPackageTabTextByPlatform(e) {
+  return e === "gemini" ? "安装 Extensions" : "安装 Skills";
 }
 
 function shortOfficialSkillRef(e) {
@@ -2553,7 +2583,7 @@ const SkillsManagerModal = ({
             boxShadow: "none",
           },
     T0 = l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
-    A0 = m ? "Skills 加载中..." : `官方 Skills ${f.length}`,
+    A0 = m ? officialPackageLoadingTextByPlatform(n) : officialPackageCountTextByPlatform(n, f.length),
     P0 = E0
       ? r.length === 0
         ? be.jsx("div", {
@@ -2578,7 +2608,7 @@ const SkillsManagerModal = ({
               padding: "12px",
               background: "var(--background-color-secondary, #f5f5f5)",
             },
-            children: "Skills 加载中...",
+            children: officialPackageLoadingTextByPlatform(n),
           })
         : f.length === 0
           ? be.jsx("div", {
@@ -2590,7 +2620,7 @@ const SkillsManagerModal = ({
                 padding: "12px",
                 background: "var(--background-color-secondary, #f5f5f5)",
               },
-              children: "暂无内置官方 Skills",
+              children: officialPackageEmptyTextByPlatform(n),
             })
           : renderOfficialSkillRows(f, p, b, v, h);
   return be.jsx(xr, {
@@ -2629,7 +2659,7 @@ const SkillsManagerModal = ({
               type: "button",
               onClick: () => C0("market"),
               style: L0(!E0),
-              children: "安装 Skills",
+              children: officialPackageTabTextByPlatform(n),
             }),
           ],
         }),
@@ -2669,7 +2699,7 @@ const SkillsManagerModal = ({
                         color: "var(--text-color-secondary)",
                         fontSize: "12px",
                       },
-                      children: "内置官方 GitHub 快照，可直接安装到用户 Skills 目录",
+                      children: officialPackageInstallHintByPlatform(n),
                     }),
                   ],
                 }),
@@ -2945,7 +2975,8 @@ const ConfigEditorPanel = () => {
         k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
       },
       te = async (W, H) => {
-        if (!O || (O.platform !== "claude" && O.platform !== "codex")) return;
+        if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "gemini")) return;
+        const k0 = officialPackageSingularByPlatform(O.platform);
         setOfficialSkillActionId(W.id), setOfficialSkillActionType(H);
         try {
           const k =
@@ -2956,16 +2987,16 @@ const ConfigEditorPanel = () => {
                 : await uninstallOfficialSkillById(O.platform, W.id);
           await loadSkillsState(O);
           H === "install"
-            ? Kt.success(`已安装 Skill: ${k.skillName || W.name}`)
+            ? Kt.success(`已安装 ${k0}: ${k.skillName || W.name}`)
             : H === "update"
-              ? Kt.success(`已更新 Skill: ${k.skillName || W.name}`)
-              : Kt.success(`已卸载 Skill: ${k.skillName || W.name}`);
+              ? Kt.success(`已更新 ${k0}: ${k.skillName || W.name}`)
+              : Kt.success(`已卸载 ${k0}: ${k.skillName || W.name}`);
         } catch (k) {
           const L = k instanceof Error ? k.message : String(k);
-          console.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} Skill 失败:`, k),
-            H === "install" && (L.includes("Skill 已存在") || L.includes("already exists"))
-              ? Kt.error(`Skill 已存在: ${W.name}`)
-              : Kt.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} Skill 失败: ${L}`);
+          console.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} ${k0} 失败:`, k),
+            H === "install" && (L.includes("Skill 已存在") || L.includes("already exists") || L.includes("Extension already exists"))
+              ? Kt.error(`${k0} 已存在: ${W.name}`)
+              : Kt.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} ${k0} 失败: ${L}`);
         } finally {
           setOfficialSkillActionId(""), setOfficialSkillActionType("");
         }
@@ -3079,13 +3110,13 @@ const ConfigEditorPanel = () => {
         Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
-      q(!0), W.platform !== "gemini" ? setOfficialSkillsLoading(!0) : setOfficialSkillsLoading(!1);
+      q(!0), setOfficialSkillsLoading(!0);
       const k = W.platform === "claude"
           ? fetchClaudeSkillsList()
           : W.platform === "gemini"
             ? fetchGeminiSkillsList()
             : fetchCodexSkillsList(),
-        L = W.platform === "gemini" ? Promise.resolve([]) : fetchOfficialSkillsCatalog(W.platform),
+        L = fetchOfficialSkillsCatalog(W.platform),
         [U, T] = await Promise.allSettled([k, L]);
       if (H()) return;
       if (U.status === "fulfilled") {
@@ -3109,14 +3140,10 @@ const ConfigEditorPanel = () => {
               : "获取 Codex Skills 失败";
         console.error(F + ":", U.reason), Kt.error(F), Z([]);
       }
-      if (W.platform !== "gemini") {
-        if (T.status === "fulfilled") {
-          setOfficialSkills(Array.isArray(T.value) ? T.value : []);
-        } else {
-          console.error("获取官方 Skills 失败:", T.reason), Kt.error("获取官方 Skills 失败"), setOfficialSkills([]);
-        }
+      if (T.status === "fulfilled") {
+        setOfficialSkills(Array.isArray(T.value) ? T.value : []);
       } else {
-        setOfficialSkills([]);
+        console.error("获取官方 Skills 失败:", T.reason), Kt.error("获取官方 Skills 失败"), setOfficialSkills([]);
       }
       q(!1), setOfficialSkillsLoading(!1);
     }, [G, tt, nt]);

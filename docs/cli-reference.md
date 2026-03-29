@@ -150,6 +150,11 @@
 - 技能列表按优先级扫描：工作区及父目录 `.gemini/skills` → `~/.gemini/skills` → `/etc/gemini/skills`。
 - 勾选默认即启用；取消勾选时，才会在 `~/.gemini/settings.json` 的 `skills.disabled` 写入禁用列表（并确保 `skills.enabled=true`）。
 
+插件内 Gemini 官方 Extensions（配置中心）：
+- Skills 弹窗的“安装 Extensions”标签内置 `gemini-cli-extensions` 官方 GitHub 快照，可直接安装官方扩展。
+- ZIP 资源随插件静态资源分发，安装时会解压到 `~/.gemini/extensions/<extension-name>`；目录名取扩展 `gemini-extension.json` 中的 `name`。
+- 对于通过插件安装/更新的官方 Extension，会记录元数据并判断版本状态；可在“安装 Extensions”标签页中直接安装、更新、卸载，并展示“最新 / 可更新 / 版本未知”状态。
+
 思考模式（非交互）：
 - 使用 `codex exec` 时，可通过 `-c model_reasoning_effort="<level>"` 调整思考强度（`low` / `medium` / `high`）。
 - Codex CLI 没有明确的“关闭”参数，可将 `model_reasoning_effort` 设为 `low` 以尽量降低推理。

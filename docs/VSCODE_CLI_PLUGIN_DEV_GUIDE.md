@@ -169,6 +169,13 @@ export function getCliArgs(cli: CliName): string[] {
 - 保存时会将禁用状态写入 `~/.gemini/settings.json` 的 `skills.disabled`；默认保持 `skills.enabled = true`。
 - 仅管理当前面板可见技能名对应的禁用项，不会覆盖用户手动维护的其它 `skills.disabled` 规则。
 
+### Gemini 官方 Extensions
+
+- Gemini 平台的 Skills 弹窗额外提供“安装 Extensions”标签，用于安装官方 `gemini-cli-extensions` 快照资源。
+- 插件内置的官方扩展 ZIP 会安装到 `~/.gemini/extensions/<extension-name>`；其中 `<extension-name>` 取自扩展根目录 `gemini-extension.json` 的 `name`。
+- 插件会为通过内置资源安装的官方 Extension 写入元数据，用于判断“最新 / 可更新 / 版本未知”状态，并支持后续更新、卸载。
+- Gemini 本地 Skills 与官方 Extensions 分开管理：前者控制 `skills.disabled`，后者只负责扩展目录安装、更新与卸载。
+
 ### 多 Tab 并发执行
 
 - Interactive 模式下，运行态、停止控制、消息流、任务列表都会按 Tab 隔离。

@@ -17,3 +17,6 @@
 
 # 本工具功能清单
 - docs/插件功能清单.md 你在新增修改功能后要同步修改这个文件
+
+# 其它
+如果有改动，确保 media/official_skills_catalog.json 文件里的 description 翻译成中文

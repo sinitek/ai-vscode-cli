@@ -48,7 +48,7 @@ export type GeminiSkillToggle = GeminiSkillItem & {
   enabled: boolean;
 };
 
-export type OfficialSkillPlatform = "claude" | "codex";
+export type OfficialSkillPlatform = "claude" | "codex" | "gemini";
 
 export type OfficialSkillCatalogPlatformMeta = {
   repo: string;

@@ -54,6 +54,7 @@ const OFFICIAL_SKILL_CATALOG_PATH = path.join(__dirname, "..", "..", "media", "o
 const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
 const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
 const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
+const OFFICIAL_GEMINI_EXTENSIONS_DIR = path.join(os.homedir(), ".gemini", "extensions");
 const OFFICIAL_SKILL_METADATA_FILE = ".sinitek-official-skill.json";
 const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
 
@@ -678,7 +679,7 @@ async function pathExists(targetPath: string): Promise<boolean> {
 }
 
 function isOfficialSkillPlatform(value: string): value is OfficialSkillPlatform {
-  return value === "claude" || value === "codex";
+  return value === "claude" || value === "codex" || value === "gemini";
 }
 
 async function readOfficialSkillsCatalogFile(): Promise<OfficialSkillCatalog> {
@@ -695,7 +696,13 @@ async function readOfficialSkillsCatalogFile(): Promise<OfficialSkillCatalog> {
 }
 
 function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform): string {
-  return platform === "claude" ? OFFICIAL_CLAUDE_SKILLS_DIR : OFFICIAL_CODEX_SKILLS_DIR;
+  if (platform === "claude") {
+    return OFFICIAL_CLAUDE_SKILLS_DIR;
+  }
+  if (platform === "gemini") {
+    return OFFICIAL_GEMINI_EXTENSIONS_DIR;
+  }
+  return OFFICIAL_CODEX_SKILLS_DIR;
 }
 
 type OfficialSkillMetadata = {
@@ -940,6 +947,21 @@ async function moveDirectory(sourceDir: string, targetDir: string): Promise<void
   }
 }
 
+async function findExtractedArchiveDir(tempRoot: string): Promise<string | null> {
+  const entries = await fs.readdir(tempRoot, { withFileTypes: true });
+  const dirs = entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map((entry) => path.join(tempRoot, entry.name));
+  if (dirs.length !== 1) {
+    return null;
+  }
+  return dirs[0];
+}
+
+function getOfficialArchiveValidationFile(item: OfficialSkillCatalogItem): string {
+  return item.platform === "gemini" ? "gemini-extension.json" : "SKILL.md";
+}
+
 async function installBundledOfficialSkill(
   item: OfficialSkillCatalogItem,
   options?: { overwrite?: boolean },
@@ -963,9 +985,12 @@ async function installBundledOfficialSkill(
   const backupDir = path.join(tempRoot, `${item.installFolderName}-backup`);
   try {
     await extractZipArchive(archivePath, tempRoot);
-    const extractedDir = path.join(tempRoot, item.installFolderName);
-    const skillFile = path.join(extractedDir, "SKILL.md");
-    if (!(await pathExists(skillFile))) {
+    const extractedDir = await findExtractedArchiveDir(tempRoot);
+    if (!extractedDir) {
+      throw new Error(t("skill.installArchiveInvalid"));
+    }
+    const validationFile = path.join(extractedDir, getOfficialArchiveValidationFile(item));
+    if (!(await pathExists(validationFile))) {
       throw new Error(t("skill.installArchiveInvalid"));
     }
     await writeOfficialSkillMetadata(extractedDir, item);
