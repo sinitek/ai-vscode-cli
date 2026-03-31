@@ -3725,7 +3725,7 @@ async function runContextCompactionCommand(): Promise<void> {
       sessionId,
       error: error instanceof Error ? error.message : String(error),
     });
-    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
+    cleanupAfterRun("error");
   } finally {
     if (activeInteractiveStop === stopFn) {
       activeInteractiveStop = null;

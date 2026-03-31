@@ -3955,6 +3955,71 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function createMessageElement(message, index) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "message " + message.role;
+        if (message && message.id) {
+          wrapper.dataset.messageId = message.id;
+        }
+        const tracePresentation = getTracePresentation(message.content || "");
+        const shouldUseTraceWrapper = message.role === "trace" || tracePresentation.type === "tool-result";
+        if (shouldUseTraceWrapper) {
+          wrapper.classList.add("trace");
+          const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
+          wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
+          if (tracePresentation.type) {
+            wrapper.classList.add("trace-type-" + tracePresentation.type);
+          }
+          if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
+            wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
+          }
+        }
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = safelyRenderMessageContent(message, index);
+
+        if (message.role === "user" && message.createdAt) {
+          const time = document.createElement("div");
+          time.className = "message-time";
+          time.textContent = formatDateTime(message.createdAt);
+          wrapper.appendChild(time);
+        }
+        wrapper.appendChild(bubble);
+        return wrapper;
+      }
+
+      function findRenderedMessageElement(messageId) {
+        if (!messageId || !elements.messages) {
+          return null;
+        }
+        const children = Array.from(elements.messages.children);
+        for (let index = 0; index < children.length; index += 1) {
+          const child = children[index];
+          if (child && child.dataset && child.dataset.messageId === messageId) {
+            return child;
+          }
+        }
+        return null;
+      }
+
+      function updateRenderedAssistantMessage(message, index) {
+        if (!message || message.role !== "assistant" || !message.id) {
+          return false;
+        }
+        const wrapper = findRenderedMessageElement(message.id);
+        if (!wrapper) {
+          return false;
+        }
+        wrapper.className = "message assistant";
+        const bubble = wrapper.querySelector(".bubble");
+        if (!bubble) {
+          return false;
+        }
+        bubble.innerHTML = safelyRenderMessageContent(message, index);
+        return true;
+      }
+
       function renderMessages() {
         try {
           const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
@@ -3962,34 +4027,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.messages.innerHTML = "";
           const visibleMessages = getVisibleMessages();
           visibleMessages.forEach(({ message, index }) => {
-            const wrapper = document.createElement("div");
-            wrapper.className = "message " + message.role;
-            const tracePresentation = getTracePresentation(message.content || "");
-            const shouldUseTraceWrapper = message.role === "trace" || tracePresentation.type === "tool-result";
-            if (shouldUseTraceWrapper) {
-              wrapper.classList.add("trace");
-              const isThinkingTrace = message.kind === "thinking" || tracePresentation.type === "thinking";
-              wrapper.classList.add(isThinkingTrace ? "trace-thinking" : "trace-nonthinking");
-              if (tracePresentation.type) {
-                wrapper.classList.add("trace-type-" + tracePresentation.type);
-              }
-              if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
-                wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
-              }
-            }
-
-            const bubble = document.createElement("div");
-            bubble.className = "bubble";
-            bubble.innerHTML = safelyRenderMessageContent(message, index);
-
-            if (message.role === "user" && message.createdAt) {
-              const time = document.createElement("div");
-              time.className = "message-time";
-              time.textContent = formatDateTime(message.createdAt);
-              wrapper.appendChild(time);
-            }
-            wrapper.appendChild(bubble);
-            elements.messages.appendChild(wrapper);
+            elements.messages.appendChild(createMessageElement(message, index));
           });
 
           forceCollapseToolResultBubbles();
@@ -4498,6 +4536,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function appendAssistantDelta(id, content, kind) {
+        const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
@@ -4505,6 +4544,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           && last.role === "assistant"
           && last.id === resolvedId
           && isSameAssistantKind(last, kind);
+        let requiresFullRender = false;
         if (targetIndex === -1 || !isLastAssistant) {
           const newId = createMessageId();
           assistantRedirects[id] = newId;
@@ -4515,13 +4555,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             ...(kind === "thinking" ? { kind: "thinking" } : {}),
           });
           targetIndex = state.messages.length - 1;
+          requiresFullRender = true;
         }
         const target = state.messages[targetIndex];
         if (kind === "thinking") {
           target.kind = "thinking";
         }
         target.content += content;
-        renderMessages();
+        if (requiresFullRender || !updateRenderedAssistantMessage(target, targetIndex)) {
+          renderMessages();
+          return;
+        }
+        elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
+        updateRunWait();
+        if (shouldAutoScroll) {
+          stickChatToBottom("auto");
+        } else {
+          updateScrollToBottomButton();
+        }
       }
 
       function renderUserMessageContent(message) {
