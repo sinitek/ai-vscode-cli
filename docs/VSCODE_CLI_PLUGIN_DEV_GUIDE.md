@@ -307,7 +307,7 @@ export function activate(context: vscode.ExtensionContext) {
 ### 行为概述
 
 - 固定开启（Beta）：`codex/claude` 分组保持交互式会话续接。
-- Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，并用 `thread/start` / `thread/resume` + `turn/start` 延续 threadId；不会使用 `@openai/codex-sdk` 自带 vendored binary。
+- Codex 交互路径直接调用用户本机安装的官方 `codex` CLI，通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，并用 `initialize` + `initialized` 完成握手；握手中的 `clientInfo` 统一声明为 `codex` 并优先探测本机已安装 Codex 版本，再通过 `thread/start` / `thread/resume` + `turn/start` 延续 threadId；不会使用 `@openai/codex-sdk` 自带 vendored binary。
 - Codex 分组会把 prompt 中可解析到的本地图片 `@path` 自动转成 app-server 的 `localImage` 输入；若当前 Codex 版本低于支持基线或帮助输出未暴露 `--image`，切换到 Codex 分组时会弹窗提示升级到最新版本，并继续保留 `@path` 兼容回退。
 - Claude 交互路径继续复用 SDK Runner，避免“一问一进程”的冷启动。
 - 交互会话模式：支持 `coding / plan`，默认 `coding`（按 CLI 维度记住最后选择）。

@@ -1,5 +1,7 @@
 import type { ChildProcess } from "child_process";
 import { spawn } from "cross-spawn";
+import * as fs from "fs";
+import * as path from "path";
 import * as readline from "readline";
 import { getMacTaskShell } from "../cli/config";
 import { resolveCliCommand } from "../cli/commandRunner";
@@ -53,6 +55,12 @@ type AppServerResponse = {
   signal: NodeJS.Signals | null;
 };
 
+const CODEX_APP_SERVER_CLIENT_NAME = "codex";
+const CODEX_APP_SERVER_CLIENT_TITLE = "Codex";
+const CODEX_APP_SERVER_CLIENT_VERSION_FALLBACK = "0.0.0";
+const CODEX_PACKAGE_NAME_PREFIX = "@openai/codex";
+const CODEX_PACKAGE_VERSION_SEARCH_DEPTH = 8;
+
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -76,6 +84,67 @@ function collectArgValues(args: string[], keys: string[]): string[] {
     }
   }
   return values;
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveCodexPackageVersionFromCommand(commandPath: string): string | null {
+  const normalizedCommandPath = String(commandPath || "").trim();
+  if (!normalizedCommandPath) {
+    return null;
+  }
+
+  const candidatePaths = new Set<string>([normalizedCommandPath]);
+  try {
+    candidatePaths.add(fs.realpathSync(normalizedCommandPath));
+  } catch {
+    // ignore realpath failures and continue with the original path
+  }
+
+  for (const candidatePath of candidatePaths) {
+    let currentDir = path.dirname(candidatePath);
+    for (let depth = 0; depth < CODEX_PACKAGE_VERSION_SEARCH_DEPTH; depth += 1) {
+      const packageJsonPath = path.join(currentDir, "package.json");
+      const packageJson = readJsonObject(packageJsonPath);
+      const packageName = typeof packageJson?.name === "string" ? packageJson.name.trim() : "";
+      const packageVersion = typeof packageJson?.version === "string" ? packageJson.version.trim() : "";
+      if (packageName.startsWith(CODEX_PACKAGE_NAME_PREFIX) && packageVersion) {
+        return packageVersion;
+      }
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        break;
+      }
+      currentDir = parentDir;
+    }
+  }
+
+  return null;
+}
+
+function buildCodexAppServerClientInfo(commandPath: string): {
+  name: string;
+  title: string;
+  version: string;
+} {
+  return {
+    name: CODEX_APP_SERVER_CLIENT_NAME,
+    title: CODEX_APP_SERVER_CLIENT_TITLE,
+    version: resolveCodexPackageVersionFromCommand(commandPath) ?? CODEX_APP_SERVER_CLIENT_VERSION_FALLBACK,
+  };
 }
 
 function mapCodexReasoningEffort(mode: ThinkingMode): string {
@@ -767,6 +836,17 @@ export class CodexInteractiveRunner {
       });
     };
 
+    const notify = (method: string, params?: Record<string, unknown>): void => {
+      const message: Record<string, unknown> = {
+        jsonrpc: "2.0",
+        method,
+      };
+      if (params && Object.keys(params).length > 0) {
+        message.params = params;
+      }
+      sendJsonRpcMessage(message);
+    };
+
     const handleTodoListUpdate = (items: unknown[]): void => {
       const normalizedItems = normalizeTodoListItems(items);
       if (normalizedItems.length) {
@@ -1060,17 +1140,14 @@ export class CodexInteractiveRunner {
 
     try {
       const initializeParams: Record<string, unknown> = {
-        clientInfo: {
-          name: "sinitek-cli-tools",
-          title: "Sinitek CLI Tools",
-          version: "1.0.0",
-        },
+        clientInfo: buildCodexAppServerClientInfo(this.options.command),
         capabilities: {
           experimentalApi: false,
           optOutNotificationMethods: [],
         },
       };
       await request("initialize", initializeParams);
+      notify("initialized");
 
       const threadConfig = buildCodexAppServerConfig(threadOptions);
       const threadParams: Record<string, unknown> = {
