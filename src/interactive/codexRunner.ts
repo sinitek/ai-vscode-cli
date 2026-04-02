@@ -60,6 +60,7 @@ const CODEX_APP_SERVER_CLIENT_TITLE = "Codex";
 const CODEX_APP_SERVER_CLIENT_VERSION_FALLBACK = "0.0.0";
 const CODEX_PACKAGE_NAME_PREFIX = "@openai/codex";
 const CODEX_PACKAGE_VERSION_SEARCH_DEPTH = 8;
+const CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS = 24 * 60 * 60;
 
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let index = 0; index < args.length; index += 1) {
@@ -237,7 +238,11 @@ function buildCodexTurnInput(prompt: string, imagePaths: string[]): unknown[] {
 }
 
 function buildCodexAppServerConfig(options: CodexThreadOptions): Record<string, unknown> {
-  const config: Record<string, unknown> = {};
+  const config: Record<string, unknown> = {
+    agents: {
+      job_max_runtime_seconds: CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS,
+    },
+  };
   if (typeof options.webSearchMode === "string" && options.webSearchMode) {
     config.web_search = options.webSearchMode;
   } else if (options.webSearchEnabled === true) {
