@@ -33,6 +33,7 @@ export type PanelMessage =
       tabId?: string;
       cli?: CliName;
       model?: string;
+      preserveActiveTab?: boolean;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
@@ -134,6 +135,7 @@ export type PanelState = {
   currentCli: CliName;
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
+  autoAddEditorContextTags: boolean;
   debug: boolean;
   locale: string;
   isMac: boolean;

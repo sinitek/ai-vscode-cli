@@ -28,7 +28,7 @@
 | 执行模式 | Codex / Claude 交互式续接 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/interactive/*`, `src/extension.ts` | manual | 维护底层 thread/session 映射 |
 | 执行模式 | Gemini 一次性流式执行 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/cli/commandRunner.ts`, `src/extension.ts` | manual | 当前未接入交互 Runner |
 | 会话管理 | 多标签并行会话与历史记录 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 含 session、tab、prompt history |
-| Prompt 增强 | 当前文件/选区上下文注入 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/types.ts` | manual | 由编辑器上下文生成标签 |
+| Prompt 增强 | 当前文件/选区上下文注入 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/types.ts` | manual | 由编辑器上下文生成标签，可在工具设置开启，默认关闭 |
 | Prompt 增强 | 路径选择器与 `@` 路径插入 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 依赖工作区文件搜索 |
 | 附件能力 | 上传附件与 Codex 图片桥接 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/cli/commandRunner.ts` | manual | 临时文件落盘到 `~/.sinitek_cli/temp/` |
 | 输出渲染 | Markdown / trace / task list 展示 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/webview/viewContent.ts`, `src/trace/*` | manual | 区分 thinking、tool-use、普通输出 |

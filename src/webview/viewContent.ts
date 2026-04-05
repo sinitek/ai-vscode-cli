@@ -30,7 +30,7 @@ const WEBVIEW_I18N = {
     interactiveModeCoding: "Coding",
     interactiveModePlan: "Plan",
     openConfigButton: "Config",
-    promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, supports pasting attachments...",
+    promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
     commonCommandButton: "Common Commands",
     pathPickerButton: "Insert Path",
     attachmentButton: "Upload Attachment",
@@ -70,6 +70,9 @@ const WEBVIEW_I18N = {
     toolSettingsDebugLabel: "Debug",
     toolSettingsDebugTitle: "Debug Logs",
     toolSettingsDebugToggle: "On",
+    toolSettingsAutoContextLabel: "Auto File Tags",
+    toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
+    toolSettingsAutoContextToggle: "On",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -261,7 +264,7 @@ const WEBVIEW_I18N = {
     interactiveModeCoding: "编码",
     interactiveModePlan: "规划",
     openConfigButton: "配置",
-    promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，支持附件黏贴...",
+    promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
@@ -301,6 +304,9 @@ const WEBVIEW_I18N = {
     toolSettingsDebugLabel: "调试",
     toolSettingsDebugTitle: "调试日志",
     toolSettingsDebugToggle: "开启",
+    toolSettingsAutoContextLabel: "自动文件标签",
+    toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
+    toolSettingsAutoContextToggle: "开启",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -2539,6 +2545,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </label>
             </div>
             <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsAutoContextLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsAutoContextTitle}">
+                <input type="checkbox" id="autoAddEditorContextTags" />
+                <span>${i18n.toolSettingsAutoContextToggle}</span>
+              </label>
+            </div>
+            <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
               <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
                 <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
@@ -2901,6 +2914,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         },
         selectedConfigId: "",
         selectedModel: "",
+        selectedModelsByCli: {
+          codex: "",
+          claude: "",
+          gemini: "",
+        },
         modelsByCli: {
           codex: [],
           claude: [],
@@ -2922,6 +2940,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         },
         promptHistory: [],
         debug: false,
+        autoAddEditorContextTags: false,
         locale: "auto",
         isMac: false,
         macTaskShell: "zsh",
@@ -2977,6 +2996,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         thinkingMode: document.getElementById("thinkingMode"),
         modelSelect: document.getElementById("modelSelect"),
         debugMode: document.getElementById("debugMode"),
+        autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -3399,6 +3419,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           state.promptContext.dismissedSelectionKey = "";
         }
 
+        if (!state.autoAddEditorContextTags) {
+          state.promptContext.includeCurrentFile = false;
+          state.promptContext.includeSelection = false;
+          state.promptContext.dismissedFileKey = "";
+          state.promptContext.dismissedSelectionKey = "";
+          return;
+        }
+
         if (!state.promptContext.autoIncludeArmed) {
           return;
         }
@@ -3447,6 +3475,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function renderPromptContextTags() {
         if (!elements.promptContextTags) {
+          return;
+        }
+        if (!state.autoAddEditorContextTags) {
+          elements.promptContextTags.innerHTML = "";
+          elements.promptContextTags.style.display = "none";
           return;
         }
         elements.promptContextTags.innerHTML = "";
@@ -3532,8 +3565,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function buildPromptPayload(prompt) {
-        const includeCurrentFile = Boolean(state.promptContext.includeCurrentFile && getCurrentFileTagKey());
-        const includeSelection = Boolean(state.promptContext.includeSelection && state.editorContext.hasSelection);
+        const autoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
+        const includeCurrentFile = Boolean(autoAddEditorContextTags && state.promptContext.includeCurrentFile && getCurrentFileTagKey());
+        const includeSelection = Boolean(autoAddEditorContextTags && state.promptContext.includeSelection && state.editorContext.hasSelection);
         return {
           prompt,
           contextOptions: {
@@ -3639,7 +3673,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
         state.interactiveMode = panelState.interactiveMode === "plan" ? "plan" : "coding";
+        const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
+        state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
+        if (!state.autoAddEditorContextTags) {
+          state.promptContext.autoIncludeArmed = true;
+          state.promptContext.includeCurrentFile = false;
+          state.promptContext.includeSelection = false;
+          state.promptContext.dismissedFileKey = "";
+          state.promptContext.dismissedSelectionKey = "";
+        } else if (!previousAutoAddEditorContextTags) {
+          state.promptContext.autoIncludeArmed = true;
+          state.promptContext.dismissedFileKey = "";
+          state.promptContext.dismissedSelectionKey = "";
+        }
         state.locale = typeof panelState.locale === "string" ? panelState.locale : "auto";
         state.isMac = Boolean(panelState.isMac);
         state.macTaskShell = panelState.macTaskShell === "bash" ? "bash" : "zsh";
@@ -3657,7 +3704,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             claude: panelState.modelState.managedByCli?.claude || [],
             gemini: panelState.modelState.managedByCli?.gemini || [],
           };
-          state.selectedModel = panelState.modelState.selectedByCli?.[panelState.currentCli] || "";
+          state.selectedModelsByCli = {
+            codex: panelState.modelState.selectedByCli?.codex || "",
+            claude: panelState.modelState.selectedByCli?.claude || "",
+            gemini: panelState.modelState.selectedByCli?.gemini || "",
+          };
+          state.selectedModel = state.selectedModelsByCli[panelState.currentCli] || "";
         }
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {
@@ -3675,6 +3727,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.debugMode) {
           elements.debugMode.checked = state.debug;
+        }
+        if (elements.autoAddEditorContextTags) {
+          elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
@@ -4066,6 +4121,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function getActiveConversationTabId() {
         return state.conversationTabs ? state.conversationTabs.activeTabId : null;
+      }
+
+      function getConversationTabSummary(tabId) {
+        if (!tabId || !state.conversationTabs || !Array.isArray(state.conversationTabs.tabs)) {
+          return null;
+        }
+        return state.conversationTabs.tabs.find((tab) => tab && tab.id === tabId) || null;
       }
 
       function isTabRunning(tabId) {
@@ -5571,15 +5633,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function dispatchPrompt(payload) {
+      function dispatchPrompt(payload, options = {}) {
         const normalizedPayload = normalizePromptPayload(payload);
         if (!normalizedPayload) {
           return false;
         }
         const prompt = normalizedPayload.prompt;
-        const shouldSuppressFlush = state.isRunning;
-        // ?????????????????????? activeConfigId
-        const hasConfig = state.selectedConfigId || state.configState.activeConfigId;
+        const targetTabId = typeof options.tabId === "string" && options.tabId
+          ? options.tabId
+          : getActiveConversationTabId();
+        const activeTabId = getActiveConversationTabId();
+        const targetTab = getConversationTabSummary(targetTabId);
+        const targetCli = targetTab && targetTab.cli ? targetTab.cli : state.currentCli;
+        const isBackgroundDispatch = Boolean(targetTabId && activeTabId && targetTabId !== activeTabId);
+        const targetRuntimeState = getConversationRuntimeState(targetTabId, { create: false });
+        const shouldSuppressFlush = isTabRunning(targetTabId);
+        const hasConfig = isBackgroundDispatch ? true : state.selectedConfigId || state.configState.activeConfigId;
         if (!hasConfig) {
           appendMessage({
             id: createMessageId(),
@@ -5589,25 +5658,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
           return false;
         }
-        if (shouldSuppressFlush) {
-          const runtimeState = getActiveConversationRuntimeState();
-          if (runtimeState) {
-            runtimeState.suppressQueueFlushOnce = true;
-          }
+        if (shouldSuppressFlush && targetRuntimeState) {
+          targetRuntimeState.suppressQueueFlushOnce = true;
         }
-        resetTaskListForRunStart();
-        const activeTabId = getActiveConversationTabId();
-        const activeTab = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
-          ? state.conversationTabs.tabs.find((tab) => tab && tab.id === activeTabId)
-          : null;
+        resetTaskListForRunStart(targetTabId);
+        const targetModel = targetCli && state.selectedModelsByCli
+          ? state.selectedModelsByCli[targetCli] || ""
+          : state.selectedModel;
         vscode.postMessage({
           type: "sendPrompt",
           prompt,
-          interactiveMode: state.interactiveMode,
+          interactiveMode: isBackgroundDispatch ? undefined : state.interactiveMode,
           contextOptions: normalizedPayload.contextOptions,
-          tabId: activeTabId || undefined,
-          cli: activeTab && activeTab.cli ? activeTab.cli : state.currentCli,
-          model: state.selectedModel || undefined,
+          tabId: targetTabId || undefined,
+          cli: targetCli,
+          model: targetModel || undefined,
+          preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
         });
         return true;
       }
@@ -6513,11 +6579,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         updateQueueIndicator();
       }
 
-      function flushPendingPromptQueue() {
-        if (state.isRunning) {
+      function flushPendingPromptQueue(tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        if (isTabRunning(targetTabId)) {
           return;
         }
-        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
         if (!runtimeState || !runtimeState.pendingPromptQueue.length) {
           return;
         }
@@ -6528,9 +6595,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         } else if (runtimeState.queueEditingIndex > 0) {
           runtimeState.queueEditingIndex -= 1;
         }
-        updateQueueIndicator();
-        const sent = dispatchPrompt(nextPromptPayload);
-        if (!sent) {
+        if (isRuntimeStateForActiveTab(targetTabId)) {
+          updateQueueIndicator();
+        }
+        const sent = dispatchPrompt(nextPromptPayload, {
+          tabId: targetTabId,
+          preserveActiveTab: !isRuntimeStateForActiveTab(targetTabId),
+        });
+        if (!sent && isRuntimeStateForActiveTab(targetTabId)) {
           showToast(t("toastQueueSendFailed"));
         }
       }
@@ -6679,6 +6751,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       elements.configSelect.addEventListener("change", (event) => {
         state.selectedConfigId = event.target.value || "";
         state.selectedModel = "";
+        if (state.selectedModelsByCli) {
+          state.selectedModelsByCli[state.currentCli] = "";
+        }
         if (state.modelsByCli) {
           state.modelsByCli[state.currentCli] = [];
         }
@@ -7030,6 +7105,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             return;
           }
           state.selectedModel = value;
+          if (state.selectedModelsByCli) {
+            state.selectedModelsByCli[state.currentCli] = value;
+          }
           vscode.postMessage({
             type: "selectCliModel",
             cli: state.currentCli,
@@ -7057,6 +7135,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({
             type: "updateSetting",
             key: "debug",
+            value: enabled,
+          });
+        });
+      }
+      if (elements.autoAddEditorContextTags) {
+        elements.autoAddEditorContextTags.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.autoAddEditorContextTags = enabled;
+          state.promptContext.autoIncludeArmed = true;
+          state.promptContext.dismissedFileKey = "";
+          state.promptContext.dismissedSelectionKey = "";
+          syncPromptContextWithEditorContext({ resetDismissed: true });
+          renderPromptContextTags();
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "autoAddEditorContextTags",
             value: enabled,
           });
         });
@@ -7631,8 +7725,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             }
 
             if (!shouldHandleTabScopedEvent(data)) {
-              if (data.status !== "start" && runtimeState && runtimeState.suppressQueueFlushOnce) {
-                runtimeState.suppressQueueFlushOnce = false;
+              if (data.status !== "start") {
+                if (runtimeState && runtimeState.suppressQueueFlushOnce) {
+                  runtimeState.suppressQueueFlushOnce = false;
+                } else {
+                  flushPendingPromptQueue(targetTabId);
+                }
               }
               return;
             }
@@ -7655,7 +7753,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               if (runtimeState && runtimeState.suppressQueueFlushOnce) {
                 runtimeState.suppressQueueFlushOnce = false;
               } else {
-                flushPendingPromptQueue();
+                flushPendingPromptQueue(targetTabId);
               }
             }
             syncConversationControlsForActiveTab();

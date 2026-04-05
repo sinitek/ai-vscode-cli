@@ -7,6 +7,7 @@ import {
   getAutoOpenPanel,
   getDefaultCli,
   getRememberSelectedCli,
+  getAutoAddEditorContextTags,
   getDebugLogging,
   getMacTaskShell,
   getCliCommand,
@@ -1143,25 +1144,25 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const requestedTabId = typeof message.tabId === "string" && message.tabId
       ? message.tabId
       : null;
-    if (requestedTabId) {
-      const requestedTab = getConversationTabById(requestedTabId);
-      if (requestedTab) {
-        const switched = setActiveConversationTab(requestedTabId);
-        if (switched && currentCli !== switched.cli) {
-          currentCli = switched.cli;
-          updateStatusBar();
-          workspaceSettings.currentCli = currentCli;
-          saveWorkspaceSettings(workspaceSettings);
-        }
+    const preserveActiveTab = Boolean(message.preserveActiveTab && requestedTabId);
+    const requestedTab = requestedTabId ? getConversationTabById(requestedTabId) : null;
+
+    if (requestedTabId && requestedTab && !preserveActiveTab) {
+      const switched = setActiveConversationTab(requestedTabId);
+      if (switched && currentCli !== switched.cli) {
+        currentCli = switched.cli;
+        updateStatusBar();
+        workspaceSettings.currentCli = currentCli;
+        saveWorkspaceSettings(workspaceSettings);
       }
     }
 
-    const activeTab = getActiveConversationTab();
-    const targetCli = activeTab?.cli
+    const targetTab = requestedTab ?? getActiveConversationTab();
+    const targetCli = targetTab?.cli
       ?? (isCliName(message.cli ?? "") ? message.cli : currentCli)
       ?? currentCli;
 
-    if (currentCli !== targetCli) {
+    if (!preserveActiveTab && currentCli !== targetCli) {
       currentCli = targetCli;
       updateStatusBar();
       workspaceSettings.currentCli = currentCli;
@@ -1186,9 +1187,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       model: typeof message.model === "string" && message.model ? message.model : undefined,
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
+    const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
-    await runPrompt(promptInput);
+    await runPrompt(promptInput, { targetTabId: promptTargetTabId });
     return;
   }
 
@@ -1211,6 +1213,7 @@ async function buildPanelState(): Promise<PanelState> {
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
+    autoAddEditorContextTags: getAutoAddEditorContextTags(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -1249,6 +1252,7 @@ async function buildPanelStateWithConfigState(
     currentCli,
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
+    autoAddEditorContextTags: getAutoAddEditorContextTags(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -2924,13 +2928,16 @@ ${rawStderr}`);
   });
 }
 
-async function runPrompt(input: PromptRunInput): Promise<void> {
+async function runPrompt(
+  input: PromptRunInput,
+  options: { targetTabId?: string | null } = {}
+): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
 
-  const target = resolvePromptRunTarget(getActiveConversationTabId());
+  const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
   if (!target) {
     return;
   }
@@ -6977,6 +6984,9 @@ function buildPromptWithAutoContext(
   options?: PromptContextOptions
 ): PromptContextBuildResult {
   if (!prompt) {
+    return { modelPrompt: prompt, contextTags: [] };
+  }
+  if (!getAutoAddEditorContextTags()) {
     return { modelPrompt: prompt, contextTags: [] };
   }
   const normalized = normalizePromptContextOptions(options);

@@ -90,5 +90,6 @@
   "config.workspaceFile.path.description": "工作区相对路径或绝对路径。",
   "config.workspaceFile.content.description": "要写入的文件内容。",
   "view.container.title": "携宁 CLI 助手",
-  "view.panel.name": "携宁 CLI 助手"
+  "view.panel.name": "携宁 CLI 助手",
+  "config.autoAddEditorContextTags.description": "控制是否在 AI 对话中自动将当前文件/选区加入输入框上下文标签。"
 }

@@ -47,6 +47,11 @@ export function getRememberSelectedCli(): boolean {
   return config.get<boolean>("rememberSelectedCli", true);
 }
 
+export function getAutoAddEditorContextTags(): boolean {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  return config.get<boolean>("autoAddEditorContextTags", false);
+}
+
 export function getDebugLogging(): boolean {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<boolean>("debug", false);
