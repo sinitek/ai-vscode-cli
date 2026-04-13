@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA_DIR = ROOT / "media"
@@ -36,7 +35,6 @@ PLATFORM_DEFAULTS: Dict[str, Dict[str, str]] = {
         "groupDescription": "Google Gemini CLI 官方 Extensions，可直接安装到 `~/.gemini/extensions`。",
     },
 }
-
 MANUAL_ITEM_OVERRIDES: Dict[Tuple[str, str], Dict[str, str]] = {
     (
         "codex",
@@ -51,43 +49,69 @@ MANUAL_ITEM_OVERRIDES: Dict[Tuple[str, str], Dict[str, str]] = {
         "sourcePath": "skills/.curated/cli-creator",
     },
 }
-
 PLATFORM_NOTES_SUFFIX = "sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
 VALIDATION_FILE_BY_PLATFORM = {
     "claude": "SKILL.md",
     "codex": "SKILL.md",
     "gemini": "gemini-extension.json",
 }
-
-
-@dataclass
-class PlatformBundle:
-    platform: str
-    repo: str
-    branch: str
-    ref: str
-    extracted_root: Path
-
-
-@dataclass
-class GeminiBundle:
-    repo: str
-    branch: str
-    ref: str
-    extracted_root: Path
+DOWNLOAD_HEAD_TIMEOUT_SECONDS = 30
+DOWNLOAD_MAX_TIME_SECONDS = 90
+DOWNLOAD_ATTEMPTS = 4
+GIT_CLONE_TIMEOUT_SECONDS = 300
 
 
 class SyncError(RuntimeError):
     pass
 
 
-def run_command(args: List[str], *, cwd: Optional[Path] = None) -> str:
-    result = subprocess.run(
-        args,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
+class SeedLookup:
+    def __init__(
+        self,
+        *,
+        by_platform_name: Dict[Tuple[str, str], Dict[str, Any]],
+        by_platform_repo_path: Dict[Tuple[str, str, str], Dict[str, Any]],
+        by_platform_install_dir: Dict[Tuple[str, str], Dict[str, Any]],
+        platform_meta: Dict[str, Dict[str, Any]],
+    ) -> None:
+        self.by_platform_name = by_platform_name
+        self.by_platform_repo_path = by_platform_repo_path
+        self.by_platform_install_dir = by_platform_install_dir
+        self.platform_meta = platform_meta
+
+
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Sync bundled official skills/extensions snapshots.")
+    parser.add_argument(
+        "--refresh-gemini",
+        action="store_true",
+        help="强制尝试重新抓取 Gemini 官方 extensions；失败时会尽量回退到仓库内现有快照。",
     )
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        choices=PLATFORMS,
+        help="只刷新指定平台；未指定的平台沿用当前 catalog 快照。",
+    )
+    return parser.parse_args(list(argv))
+
+
+def run_command(
+    args: List[str],
+    *,
+    cwd: Optional[Path] = None,
+    timeout_seconds: Optional[int] = None,
+) -> str:
+    try:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise SyncError(f"Command timed out after {timeout_seconds}s: {' '.join(args)}") from error
     if result.returncode != 0:
         raise SyncError(
             f"Command failed ({result.returncode}): {' '.join(args)}\n{result.stdout}\n{result.stderr}".strip()
@@ -95,9 +119,27 @@ def run_command(args: List[str], *, cwd: Optional[Path] = None) -> str:
     return result.stdout
 
 
+def run_command_result(
+    args: List[str],
+    *,
+    cwd: Optional[Path] = None,
+    timeout_seconds: Optional[int] = None,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            args,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise SyncError(f"Command timed out after {timeout_seconds}s: {' '.join(args)}") from error
+
+
 def http_head(url: str) -> Optional[Dict[str, str]]:
     result = subprocess.run(
-        ["curl", "-sSIL", "--max-time", "30", url],
+        ["curl", "-sSIL", "--max-time", str(DOWNLOAD_HEAD_TIMEOUT_SECONDS), url],
         capture_output=True,
         text=True,
     )
@@ -123,9 +165,46 @@ def http_head(url: str) -> Optional[Dict[str, str]]:
     return headers
 
 
+def format_command_error(args: List[str], result: subprocess.CompletedProcess[str]) -> str:
+    return f"Command failed ({result.returncode}): {' '.join(args)}\n{result.stdout}\n{result.stderr}".strip()
+
+
 def download_file(url: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    run_command(["curl", "-sSL", "--fail", "--max-time", "180", "-o", str(destination), url])
+    if destination.exists() and destination.stat().st_size == 0:
+        destination.unlink()
+
+    last_error: Optional[str] = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        args = [
+            "curl",
+            "-sSL",
+            "--fail",
+            "--show-error",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "2",
+            "--retry-all-errors",
+            "--max-time",
+            str(DOWNLOAD_MAX_TIME_SECONDS),
+        ]
+        if destination.exists() and destination.stat().st_size > 0:
+            args.extend(["-C", "-"])
+        args.extend(["-o", str(destination), url])
+        result = run_command_result(args)
+        if result.returncode == 0:
+            return
+        size = destination.stat().st_size if destination.exists() else 0
+        last_error = format_command_error(args, result)
+        if attempt < DOWNLOAD_ATTEMPTS:
+            print(
+                f"[warn] Download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed for {url}; partial_size={size} bytes. Retrying...",
+                file=sys.stderr,
+                flush=True,
+            )
+            continue
+    raise SyncError(last_error or f"Failed to download {url}")
 
 
 def normalize_ref(value: str) -> str:
@@ -139,9 +218,7 @@ def resolve_repo_tarball(repo: str) -> Tuple[str, str, str]:
     for branch in ("main", "master"):
         url = f"https://codeload.github.com/{repo}/tar.gz/refs/heads/{branch}"
         headers = http_head(url)
-        if not headers:
-            continue
-        if headers.get(":status") != "200":
+        if not headers or headers.get(":status") != "200":
             continue
         etag = headers.get("etag")
         if not etag:
@@ -160,6 +237,38 @@ def extract_tarball(tarball_path: Path, destination: Path) -> Path:
     return entries[0]
 
 
+def clone_repo_snapshot(repo: str, branch: str, destination: Path) -> Path:
+    parent = destination.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    clone_url = f"https://github.com/{repo}.git"
+    run_command(
+        ["git", "clone", "--depth", "1", "--single-branch", "--branch", branch, clone_url, str(destination)],
+        timeout_seconds=GIT_CLONE_TIMEOUT_SECONDS,
+    )
+    git_dir = destination / ".git"
+    if git_dir.exists():
+        shutil.rmtree(git_dir)
+    return destination
+
+
+def fetch_repo_snapshot(repo: str, branch: str, archive_url: str, temp_path: Path, *, allow_git_fallback: bool) -> Tuple[Path, str]:
+    try:
+        tarball_path = temp_path / "repo.tar.gz"
+        extracted_dir = temp_path / "extract"
+        download_file(archive_url, tarball_path)
+        return extract_tarball(tarball_path, extracted_dir), "tarball"
+    except SyncError as archive_error:
+        if not allow_git_fallback:
+            raise
+        print(
+            f"[warn] Tarball download failed for {repo}, falling back to shallow git clone: {archive_error}",
+            file=sys.stderr,
+            flush=True,
+        )
+        clone_root = temp_path / "clone"
+        return clone_repo_snapshot(repo, branch, clone_root), "git"
+
+
 def zip_directory(source_dir: Path, zip_path: Path) -> None:
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -169,21 +278,12 @@ def zip_directory(source_dir: Path, zip_path: Path) -> None:
             file_names.sort()
             relative_root = current_path.relative_to(source_dir.parent)
             if not file_names and not dir_names:
-                directory_name = str(relative_root).replace(os.sep, "/") + "/"
-                info = zipfile.ZipInfo(directory_name)
-                st = current_path.stat()
-                info.external_attr = (st.st_mode & 0xFFFF) << 16
-                archive.writestr(info, "")
+                archive.writestr(str(relative_root).replace(os.sep, "/") + "/", "")
                 continue
             for file_name in file_names:
                 file_path = current_path / file_name
                 arc_name = str(relative_root / file_name).replace(os.sep, "/")
-                info = zipfile.ZipInfo.from_file(file_path, arc_name)
-                st = file_path.stat()
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = (st.st_mode & 0xFFFF) << 16
-                with file_path.open("rb") as handle:
-                    archive.writestr(info, handle.read())
+                archive.write(file_path, arc_name)
 
 
 def ensure_validation_file(platform: str, skill_root: Path) -> None:
@@ -196,14 +296,6 @@ def load_existing_catalog() -> Dict[str, Any]:
     if not CATALOG_PATH.exists():
         raise SyncError(f"Missing current catalog: {CATALOG_PATH}")
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-
-
-@dataclass
-class SeedLookup:
-    by_platform_name: Dict[Tuple[str, str], Dict[str, Any]]
-    by_platform_repo_path: Dict[Tuple[str, str, str], Dict[str, Any]]
-    by_platform_install_dir: Dict[Tuple[str, str], Dict[str, Any]]
-    platform_meta: Dict[str, Dict[str, Any]]
 
 
 def build_seed_lookup(catalog: Dict[str, Any]) -> SeedLookup:
@@ -298,13 +390,25 @@ def sha256_of_refs(pairs: Iterable[Tuple[str, str]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def clone_seed_platform_items(seed_catalog: Dict[str, Any], platform: str) -> Tuple[List[Dict[str, Any]], str]:
+    items = [dict(item) for item in seed_catalog.get("skills", []) if item.get("platform") == platform]
+    if not items:
+        raise SyncError(f"Seed catalog does not contain {platform} items to reuse.")
+    for item in items:
+        archive_path = MEDIA_DIR / str(item["archivePath"])
+        if not archive_path.exists():
+            raise SyncError(f"Missing seeded archive: {archive_path}")
+    platform_meta = seed_catalog.get("platforms", {}).get(platform) or {}
+    fallback_ref = f"snapshot:{sha256_of_refs((str(item['sourceRepo']), str(item['sourceRef'])) for item in items)}"
+    return sorted(items, key=lambda item: str(item["name"]).lower()), str(platform_meta.get("ref") or fallback_ref)
+
+
 def sync_codex_or_claude(platform: str, repo: str, source_root: str, lookup: SeedLookup, output_root: Path) -> Tuple[List[Dict[str, Any]], str]:
-    branch, url, ref = resolve_repo_tarball(repo)
+    branch, archive_url, ref = resolve_repo_tarball(repo)
     with tempfile.TemporaryDirectory(prefix=f"sinitek-{platform}-") as temp_dir:
         temp_path = Path(temp_dir)
-        tarball_path = temp_path / f"{platform}.tar.gz"
-        download_file(url, tarball_path)
-        extracted_root = extract_tarball(tarball_path, temp_path / "extract")
+        extracted_root, fetch_method = fetch_repo_snapshot(repo, branch, archive_url, temp_path, allow_git_fallback=False)
+        print(f"[{platform}] source snapshot fetched via {fetch_method}", flush=True)
         entry_root = extracted_root / source_root
         if not entry_root.exists():
             raise SyncError(f"Missing upstream source directory: {entry_root}")
@@ -314,14 +418,13 @@ def sync_codex_or_claude(platform: str, repo: str, source_root: str, lookup: See
         platform_output.mkdir(parents=True, exist_ok=True)
         for entry in sorted(path for path in entry_root.iterdir() if path.is_dir()):
             item_name = entry.name
-            install_folder_name = item_name
             source_path = f"{source_root}/{item_name}"
             metadata = get_item_metadata(
                 lookup,
                 platform=platform,
                 source_repo=repo,
                 source_path=source_path,
-                install_folder_name=install_folder_name,
+                install_folder_name=item_name,
                 item_name=item_name,
             )
             ensure_validation_file(platform, entry)
@@ -358,34 +461,22 @@ def collect_gemini_repos(catalog: Dict[str, Any]) -> List[str]:
     return sorted(repos | override_repos)
 
 
-def clone_seed_gemini_items(seed_catalog: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], str]:
-    items = [dict(item) for item in seed_catalog.get("skills", []) if item.get("platform") == "gemini"]
-    if not items:
-        raise SyncError("Seed catalog does not contain Gemini items to reuse.")
-    for item in items:
-        archive_path = MEDIA_DIR / str(item["archivePath"])
-        if not archive_path.exists():
-            raise SyncError(f"Missing seeded Gemini archive: {archive_path}")
-    platform_meta = seed_catalog.get("platforms", {}).get("gemini") or {}
-    snapshot_ref = str(platform_meta.get("ref") or f"snapshot:{sha256_of_refs((str(item['sourceRepo']), str(item['sourceRef'])) for item in items)}")
-    return sorted(items, key=lambda item: str(item["name"]).lower()), snapshot_ref
-
-
 def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: Path) -> Tuple[List[Dict[str, Any]], str]:
     items: List[Dict[str, Any]] = []
     written_archives: List[Path] = []
     resolved_refs: List[Tuple[str, str]] = []
     platform_output = output_root / "gemini"
     platform_output.mkdir(parents=True, exist_ok=True)
-    for repo in collect_gemini_repos(seed_catalog):
-        branch, url, latest_ref = resolve_repo_tarball(repo)
+    repos = collect_gemini_repos(seed_catalog)
+    stats = {"tarball": 0, "git": 0, "reused": 0}
+
+    for index, repo in enumerate(repos, start=1):
+        print(f"[gemini {index}/{len(repos)}] refreshing {repo}...", flush=True)
+        branch, archive_url, latest_ref = resolve_repo_tarball(repo)
         repo_name = repo.split("/", 1)[1]
         seed = seed_for_item(lookup, "gemini", repo, ".", repo_name, repo_name)
-        display_name = repo_name
-        install_folder_name = repo_name
-        if seed:
-            display_name = str(seed.get("name") or repo_name)
-            install_folder_name = str(seed.get("installFolderName") or repo_name)
+        display_name = str(seed.get("name") if seed else repo_name)
+        install_folder_name = str(seed.get("installFolderName") if seed else repo_name)
         metadata = get_item_metadata(
             lookup,
             platform="gemini",
@@ -395,31 +486,40 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
             item_name=display_name,
         )
         archive_path = platform_output / f"{metadata['installFolderName']}.zip"
-        existing_archive = MEDIA_DIR / (str(seed.get("archivePath")) if seed and seed.get("archivePath") else f"official-skills/gemini/{archive_path.name}")
+        existing_archive = MEDIA_DIR / (
+            str(seed.get("archivePath")) if seed and seed.get("archivePath") else f"official-skills/gemini/{archive_path.name}"
+        )
         item_ref = latest_ref
         item_source_url = f"https://github.com/{repo}/tree/{branch}"
-        if seed and str(seed.get("sourceRef") or "") == latest_ref and existing_archive.exists():
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="sinitek-gemini-") as temp_dir:
+                temp_path = Path(temp_dir)
+                extracted_root, fetch_method = fetch_repo_snapshot(
+                    repo,
+                    branch,
+                    archive_url,
+                    temp_path,
+                    allow_git_fallback=True,
+                )
+                ensure_validation_file("gemini", extracted_root)
+                renamed_root = temp_path / metadata["installFolderName"]
+                if renamed_root.exists():
+                    shutil.rmtree(renamed_root)
+                shutil.copytree(extracted_root, renamed_root)
+                zip_directory(renamed_root, archive_path)
+                stats[fetch_method] += 1
+                print(f"[gemini {index}/{len(repos)}] {repo} refreshed via {fetch_method}", flush=True)
+        except SyncError as error:
+            if not seed or not existing_archive.exists():
+                raise
             if existing_archive.resolve() != archive_path.resolve():
                 shutil.copy2(existing_archive, archive_path)
-        else:
-            try:
-                with tempfile.TemporaryDirectory(prefix="sinitek-gemini-") as temp_dir:
-                    temp_path = Path(temp_dir)
-                    tarball_path = temp_path / "repo.tar.gz"
-                    download_file(url, tarball_path)
-                    extracted_root = extract_tarball(tarball_path, temp_path / "extract")
-                    ensure_validation_file("gemini", extracted_root)
-                    renamed_root = temp_path / metadata["installFolderName"]
-                    shutil.copytree(extracted_root, renamed_root)
-                    zip_directory(renamed_root, archive_path)
-            except SyncError as error:
-                if not seed or not existing_archive.exists():
-                    raise
-                print(f"[warn] Reusing existing Gemini archive for {repo}: {error}", file=sys.stderr, flush=True)
-                if existing_archive.resolve() != archive_path.resolve():
-                    shutil.copy2(existing_archive, archive_path)
-                item_ref = str(seed.get("sourceRef") or latest_ref)
-                item_source_url = str(seed.get("sourceUrl") or item_source_url)
+            item_ref = str(seed.get("sourceRef") or latest_ref)
+            item_source_url = str(seed.get("sourceUrl") or item_source_url)
+            stats["reused"] += 1
+            print(f"[warn] Reusing existing Gemini archive for {repo}: {error}", file=sys.stderr, flush=True)
+
         resolved_refs.append((repo, item_ref))
         written_archives.append(archive_path)
         items.append(
@@ -438,8 +538,10 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
                 "sourceUrl": item_source_url,
             }
         )
+
     remove_stale_archives(OFFICIAL_SKILLS_DIR / "gemini", written_archives)
     snapshot_ref = f"snapshot:{sha256_of_refs(resolved_refs)}"
+    print(f"[gemini] refresh summary: tarball={stats['tarball']}, git={stats['git']}, reused={stats['reused']}", flush=True)
     return sorted(items, key=lambda item: str(item["name"]).lower()), snapshot_ref
 
 
@@ -463,53 +565,66 @@ def validate_catalog(catalog: Dict[str, Any]) -> None:
                 raise SyncError(f"Archive missing validation entry */{validation_name}: {archive_path}")
 
 
-def main() -> int:
-    refresh_gemini = "--refresh-gemini" in sys.argv[1:]
+def main(argv: Sequence[str]) -> int:
+    args = parse_args(argv)
+    selected_platforms = tuple(args.only) if args.only else PLATFORMS
     seed_catalog = load_existing_catalog()
     lookup = build_seed_lookup(seed_catalog)
     output_root = OFFICIAL_SKILLS_DIR
     output_root.mkdir(parents=True, exist_ok=True)
 
-    print("[1/4] Syncing Claude official skills...", flush=True)
-    claude_items, claude_ref = sync_codex_or_claude("claude", "anthropics/skills", "skills", lookup, output_root)
+    platform_results: Dict[str, Tuple[List[Dict[str, Any]], str]] = {}
 
-    print("[2/4] Syncing Codex official skills...", flush=True)
-    codex_items, codex_ref = sync_codex_or_claude("codex", "openai/skills", "skills/.curated", lookup, output_root)
-
-    print("[3/4] Syncing Gemini official extensions...", flush=True)
-    if refresh_gemini:
-        gemini_items, gemini_ref = sync_gemini(lookup, seed_catalog, output_root)
-    else:
-        gemini_items, gemini_ref = clone_seed_gemini_items(seed_catalog)
+    for platform in PLATFORMS:
+        if platform not in selected_platforms:
+            platform_results[platform] = clone_seed_platform_items(seed_catalog, platform)
+            continue
+        if platform == "claude":
+            print("[1/4] Syncing Claude official skills...", flush=True)
+            platform_results[platform] = sync_codex_or_claude("claude", "anthropics/skills", "skills", lookup, output_root)
+            continue
+        if platform == "codex":
+            print("[2/4] Syncing Codex official skills...", flush=True)
+            platform_results[platform] = sync_codex_or_claude("codex", "openai/skills", "skills/.curated", lookup, output_root)
+            continue
+        print("[3/4] Syncing Gemini official extensions...", flush=True)
+        if args.refresh_gemini:
+            platform_results[platform] = sync_gemini(lookup, seed_catalog, output_root)
+        else:
+            platform_results[platform] = clone_seed_platform_items(seed_catalog, platform)
 
     generated_at = run_command(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]).strip()
     catalog = {
         "generatedAt": generated_at,
         "platforms": {
-            "claude": build_platform_meta(lookup.platform_meta.get("claude", {}), claude_ref),
-            "codex": build_platform_meta(lookup.platform_meta.get("codex", {}), codex_ref),
-            "gemini": build_platform_meta(
-                lookup.platform_meta.get("gemini", {}),
-                gemini_ref,
-                notes_suffix="每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。",
-            ),
+            platform: build_platform_meta(
+                lookup.platform_meta.get(platform, {}),
+                platform_results[platform][1],
+                notes_suffix=(
+                    "每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。"
+                    if platform == "gemini"
+                    else PLATFORM_NOTES_SUFFIX
+                ),
+            )
+            for platform in PLATFORMS
         },
-        "skills": sorted(claude_items + codex_items + gemini_items, key=lambda item: (item["platform"], item["name"].lower())),
+        "skills": sorted(
+            [item for platform in PLATFORMS for item in platform_results[platform][0]],
+            key=lambda item: (item["platform"], item["name"].lower()),
+        ),
     }
     validate_catalog(catalog)
     CATALOG_PATH.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    counts = {platform: 0 for platform in PLATFORMS}
-    for item in catalog["skills"]:
-        counts[str(item["platform"])] += 1
+    counts = {platform: len(platform_results[platform][0]) for platform in PLATFORMS}
     print("[4/4] Done", flush=True)
-    print(json.dumps({"generatedAt": generated_at, "counts": counts}, ensure_ascii=False))
+    print(json.dumps({"generatedAt": generated_at, "counts": counts, "selected": list(selected_platforms)}, ensure_ascii=False))
     return 0
 
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        raise SystemExit(main(sys.argv[1:]))
     except SyncError as error:
         print(f"sync_official_skills.py failed: {error}", file=sys.stderr)
         raise SystemExit(1)

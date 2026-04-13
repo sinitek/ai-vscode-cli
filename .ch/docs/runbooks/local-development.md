@@ -35,13 +35,21 @@ npm run sync:official-skills
 ```
 
 默认会刷新 Claude / Codex 的内置官方 Skills 归档与 catalog，并保留当前 Gemini 快照。
-如需尝试重新抓取 Gemini 官方 extensions，可执行：
+如需强制重抓 Gemini 官方 extensions，优先执行：
 
 ```bash
-python3 scripts/sync_official_skills.py --refresh-gemini
+npm run sync:official-skills:gemini-refresh
 ```
 
-> 说明：Gemini 官方 extension 仓库较多，部分仓库 tarball 下载较慢；默认模式优先保证仓库内置 catalog 与配置页可稳定使用。
+等价命令：
+
+```bash
+python3 scripts/sync_official_skills.py --only gemini --refresh-gemini
+```
+
+脚本已针对 Gemini 强刷补充：repo 级进度日志、断点续传/重试，以及 tarball 失败时回退 shallow git clone。
+
+> 说明：默认模式优先保证仓库内置 catalog 与配置页可稳定使用；只有显式传入 `--refresh-gemini` 时才执行 Gemini 全量重抓。
 
 ### 5. 一键启动开发主机（macOS）
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-13T02:41:23Z",
+  "generatedAt": "2026-04-13T03:30:00Z",
   "platforms": {
     "claude": {
       "repo": "anthropics/skills",
@@ -17,7 +17,7 @@
     },
     "gemini": {
       "repo": "gemini-cli-extensions",
-      "ref": "organization-snapshot-2026-03-28",
+      "ref": "snapshot:51b9501ebedd98da",
       "sourceUrl": "https://github.com/gemini-cli-extensions",
       "installRootHint": "~/.gemini/extensions",
       "notes": "Google Gemini CLI 官方 Extensions 仓库快照，按单个 extension 打包为 zip，可直接安装到 Gemini 用户 extensions 目录。 每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。"
@@ -874,9 +874,9 @@
       "archivePath": "official-skills/gemini/alloydb.zip",
       "installFolderName": "alloydb",
       "sourceRepo": "gemini-cli-extensions/alloydb",
-      "sourceRef": "a8055b30ad88d326c1546de90eac42ff5e03b2fd",
+      "sourceRef": "etag:5a5f83c5532c3070dc0d56b1cd0557adcd8f447c1f3cf5b22d4802fa51478978",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb/tree/a8055b30ad88d326c1546de90eac42ff5e03b2fd"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb/tree/main"
     },
     {
       "id": "gemini:alloydb-observability",
@@ -888,9 +888,9 @@
       "archivePath": "official-skills/gemini/alloydb-observability.zip",
       "installFolderName": "alloydb-observability",
       "sourceRepo": "gemini-cli-extensions/alloydb-observability",
-      "sourceRef": "169b76eb34de2dc1207acbb87865c4ba40f6d7db",
+      "sourceRef": "etag:f2684ca6a42d66420ceba5339c07e4eea4910496fe618ae21881a8f5dce9aced",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-observability/tree/169b76eb34de2dc1207acbb87865c4ba40f6d7db"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-observability/tree/main"
     },
     {
       "id": "gemini:alloydb-omni",
@@ -902,9 +902,9 @@
       "archivePath": "official-skills/gemini/alloydb-omni.zip",
       "installFolderName": "alloydb-omni",
       "sourceRepo": "gemini-cli-extensions/alloydb-omni",
-      "sourceRef": "79ab9f5eeca045e6f34fc2cd724d074ec7bff072",
+      "sourceRef": "etag:3beb7438dc98b362ef5baa3e6fbebb4cf4ffef84ad422ccf1d9875329bf5952a",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-omni/tree/79ab9f5eeca045e6f34fc2cd724d074ec7bff072"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-omni/tree/main"
     },
     {
       "id": "gemini:angular",
@@ -916,9 +916,9 @@
       "archivePath": "official-skills/gemini/angular.zip",
       "installFolderName": "angular",
       "sourceRepo": "gemini-cli-extensions/angular",
-      "sourceRef": "6be2eeba3f14ab664b2aa81f935b65a72857225a",
+      "sourceRef": "etag:88ac2788cea4c31074a7a418bcb84e2384b683dbdf2099dea553fe98b917e25f",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/angular/tree/6be2eeba3f14ab664b2aa81f935b65a72857225a"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/angular/tree/main"
     },
     {
       "id": "gemini:bigquery-conversational-analytics",
@@ -930,9 +930,9 @@
       "archivePath": "official-skills/gemini/bigquery-conversational-analytics.zip",
       "installFolderName": "bigquery-conversational-analytics",
       "sourceRepo": "gemini-cli-extensions/bigquery-conversational-analytics",
-      "sourceRef": "ce50a4da29eb62274bc4a533befe9db0927e32a2",
+      "sourceRef": "etag:454c096f5074b7cbae8bb6c597b1aee814e9d87acd762c237b053ac6bedce707",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-conversational-analytics/tree/ce50a4da29eb62274bc4a533befe9db0927e32a2"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-conversational-analytics/tree/main"
     },
     {
       "id": "gemini:bigquery-data-analytics",
@@ -944,9 +944,9 @@
       "archivePath": "official-skills/gemini/bigquery-data-analytics.zip",
       "installFolderName": "bigquery-data-analytics",
       "sourceRepo": "gemini-cli-extensions/bigquery-data-analytics",
-      "sourceRef": "134031f6206e705674a2e34dd9c7bc7e8aee2310",
+      "sourceRef": "etag:53de2f70ba405b258f57070c999d02906234be52cae1dc68ca763e32f128d749",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-data-analytics/tree/134031f6206e705674a2e34dd9c7bc7e8aee2310"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-data-analytics/tree/main"
     },
     {
       "id": "gemini:cicd",
@@ -958,9 +958,9 @@
       "archivePath": "official-skills/gemini/cicd.zip",
       "installFolderName": "cicd",
       "sourceRepo": "gemini-cli-extensions/cicd",
-      "sourceRef": "0fb0f659f41cbc0b5e3df6b855fd62f21420f788",
+      "sourceRef": "etag:52b5ebd260f14b69aeeb4fc432a706f8bd8836e2ca103a60be228a35f350efbe",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cicd/tree/0fb0f659f41cbc0b5e3df6b855fd62f21420f788"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cicd/tree/main"
     },
     {
       "id": "gemini:cloud-sql-mysql",
@@ -972,9 +972,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-mysql.zip",
       "installFolderName": "cloud-sql-mysql",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-mysql",
-      "sourceRef": "c9ad7e3cab57ce3697697abd152369e7b97a0253",
+      "sourceRef": "etag:85314dd4def69aa9adb004c4d4578f8be2a620aa5a25cdad4411c883f25a9efc",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql/tree/c9ad7e3cab57ce3697697abd152369e7b97a0253"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql/tree/main"
     },
     {
       "id": "gemini:cloud-sql-mysql-observability",
@@ -986,9 +986,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-mysql-observability.zip",
       "installFolderName": "cloud-sql-mysql-observability",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-mysql-observability",
-      "sourceRef": "eee2a7c5e8560097d8f654703a6d2cb2a14659e8",
+      "sourceRef": "etag:1b37fc721f9290c62b4e4999a38aa35e0415c08e13a32f6beb8abd4c2b089594",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql-observability/tree/eee2a7c5e8560097d8f654703a6d2cb2a14659e8"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql-observability/tree/main"
     },
     {
       "id": "gemini:cloud-sql-postgresql",
@@ -1000,9 +1000,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-postgresql.zip",
       "installFolderName": "cloud-sql-postgresql",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-postgresql",
-      "sourceRef": "8bd5ca22265981426e85597679e526d337b95c15",
+      "sourceRef": "etag:3fb494b58a04b0ec69376946d5cf2b9057116123ba605370ec25d70509371e63",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql/tree/8bd5ca22265981426e85597679e526d337b95c15"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql/tree/main"
     },
     {
       "id": "gemini:cloud-sql-postgresql-observability",
@@ -1014,9 +1014,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-postgresql-observability.zip",
       "installFolderName": "cloud-sql-postgresql-observability",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-postgresql-observability",
-      "sourceRef": "04561e95149402f1274ed5fb947616a671cc71ea",
+      "sourceRef": "etag:021af0d38a1047c1c9486f179780b8bb5061816d6e8f98d695e8d6eaac3d99f7",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql-observability/tree/04561e95149402f1274ed5fb947616a671cc71ea"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql-observability/tree/main"
     },
     {
       "id": "gemini:cloud-sql-sqlserver",
@@ -1028,9 +1028,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-sqlserver.zip",
       "installFolderName": "cloud-sql-sqlserver",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-sqlserver",
-      "sourceRef": "ed9abb769f2fb17fb9473e294607f0a8890de1f2",
+      "sourceRef": "etag:5d544ecd6afc5f9ae26096385e507b401081edec6ed69eb158e1f703a7f59b93",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver/tree/ed9abb769f2fb17fb9473e294607f0a8890de1f2"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver/tree/main"
     },
     {
       "id": "gemini:cloud-sql-sqlserver-observability",
@@ -1042,9 +1042,9 @@
       "archivePath": "official-skills/gemini/cloud-sql-sqlserver-observability.zip",
       "installFolderName": "cloud-sql-sqlserver-observability",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-sqlserver-observability",
-      "sourceRef": "8c8962757c96eaf6a93bfd76b5a59aa1eb406d35",
+      "sourceRef": "etag:5aabe97d975b00032c42b76205cd57f43d51132acc05df456e2306440fc9dd4e",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver-observability/tree/8c8962757c96eaf6a93bfd76b5a59aa1eb406d35"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver-observability/tree/main"
     },
     {
       "id": "gemini:code-review",
@@ -1056,9 +1056,9 @@
       "archivePath": "official-skills/gemini/code-review.zip",
       "installFolderName": "code-review",
       "sourceRepo": "gemini-cli-extensions/code-review",
-      "sourceRef": "dd1a10d2c9d07b2ebade866590fdfa59cd8f9d04",
+      "sourceRef": "etag:7360525d028130b4fda67a3417e983eac659602e320ffdaf62ed0cafec23f2ef",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/code-review/tree/dd1a10d2c9d07b2ebade866590fdfa59cd8f9d04"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/code-review/tree/main"
     },
     {
       "id": "gemini:conductor",
@@ -1070,9 +1070,9 @@
       "archivePath": "official-skills/gemini/conductor.zip",
       "installFolderName": "conductor",
       "sourceRepo": "gemini-cli-extensions/conductor",
-      "sourceRef": "080a3697da33bf2bd17a868889653a3aa05b5e02",
+      "sourceRef": "etag:1a5db2ec0030a4b32b4cd4294ca7a7ac61c5f538db5439ec7debd6ae56c3ea34",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/conductor/tree/080a3697da33bf2bd17a868889653a3aa05b5e02"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/conductor/tree/main"
     },
     {
       "id": "gemini:datacommons",
@@ -1084,9 +1084,9 @@
       "archivePath": "official-skills/gemini/datacommons.zip",
       "installFolderName": "datacommons",
       "sourceRepo": "gemini-cli-extensions/datacommons",
-      "sourceRef": "fa5f699883a0d9ec183fb2e139f7ac19d6e1a988",
+      "sourceRef": "etag:2c8a9e5c3909556ec25d3e4d8ac73792dc72dd726edce4b8aad08d01f4a0ce61",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/datacommons/tree/fa5f699883a0d9ec183fb2e139f7ac19d6e1a988"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/datacommons/tree/main"
     },
     {
       "id": "gemini:dataplex",
@@ -1098,9 +1098,9 @@
       "archivePath": "official-skills/gemini/dataplex.zip",
       "installFolderName": "dataplex",
       "sourceRepo": "gemini-cli-extensions/dataplex",
-      "sourceRef": "c37176b3724479baa2463ac9ac67d38e93a2cea2",
+      "sourceRef": "etag:953ac44add2b2d7ef0e51bce7a92ccadce5b723ee1d7dfb2fad7114e60d12e31",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/dataplex/tree/c37176b3724479baa2463ac9ac67d38e93a2cea2"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/dataplex/tree/main"
     },
     {
       "id": "gemini:developer-knowledge",
@@ -1112,9 +1112,9 @@
       "archivePath": "official-skills/gemini/developer-knowledge.zip",
       "installFolderName": "developer-knowledge",
       "sourceRepo": "gemini-cli-extensions/developer-knowledge",
-      "sourceRef": "646880aacf3a27957caac6c8a9572dd4ebc0bdec",
+      "sourceRef": "etag:a827def3cfc55e1de831e31adc94861f8179a1a13dacd0656c509c1b92eee8cc",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/developer-knowledge/tree/646880aacf3a27957caac6c8a9572dd4ebc0bdec"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/developer-knowledge/tree/main"
     },
     {
       "id": "gemini:firebase",
@@ -1126,9 +1126,9 @@
       "archivePath": "official-skills/gemini/firebase.zip",
       "installFolderName": "firebase",
       "sourceRepo": "gemini-cli-extensions/firebase",
-      "sourceRef": "9a1f637989ede5d0ea1f453e0a44ea7f95a42234",
+      "sourceRef": "etag:83d44b243d47797e2c2d8217d80b9ac4ea4d8135b57478b06eb3fc0337661d6b",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/firebase/tree/9a1f637989ede5d0ea1f453e0a44ea7f95a42234"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/firebase/tree/main"
     },
     {
       "id": "gemini:firestore-native",
@@ -1140,9 +1140,9 @@
       "archivePath": "official-skills/gemini/firestore-native.zip",
       "installFolderName": "firestore-native",
       "sourceRepo": "gemini-cli-extensions/firestore-native",
-      "sourceRef": "e7cf5a88e4059e72aedf73e480e6c403ad678972",
+      "sourceRef": "etag:73e7e350b96a6bc190f09922496fcafc9499de99568f623db9fdd936b5f31543",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/firestore-native/tree/e7cf5a88e4059e72aedf73e480e6c403ad678972"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/firestore-native/tree/main"
     },
     {
       "id": "gemini:flutter",
@@ -1154,9 +1154,9 @@
       "archivePath": "official-skills/gemini/flutter.zip",
       "installFolderName": "flutter",
       "sourceRepo": "gemini-cli-extensions/flutter",
-      "sourceRef": "c7a84f28e2570a27f22aaf817d3406ae26178822",
+      "sourceRef": "etag:9654da1d12de0ba2b67ccc3483b1affca4f085a6887da8a42ed613053fafcec3",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/flutter/tree/c7a84f28e2570a27f22aaf817d3406ae26178822"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/flutter/tree/main"
     },
     {
       "id": "gemini:gcloud",
@@ -1168,9 +1168,9 @@
       "archivePath": "official-skills/gemini/gcloud.zip",
       "installFolderName": "gcloud",
       "sourceRepo": "gemini-cli-extensions/gcloud",
-      "sourceRef": "ec545cd8252d33c83f02b97939690b8ae16888ef",
+      "sourceRef": "etag:85b04692504238bee60ab8b44acf95e7eeab2b10c260dfcb786a1f60e64ece48",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/gcloud/tree/ec545cd8252d33c83f02b97939690b8ae16888ef"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/gcloud/tree/main"
     },
     {
       "id": "gemini:gemini-cli-jules",
@@ -1182,9 +1182,9 @@
       "archivePath": "official-skills/gemini/gemini-cli-jules.zip",
       "installFolderName": "gemini-cli-jules",
       "sourceRepo": "gemini-cli-extensions/jules",
-      "sourceRef": "9f2fc14a41e8b604bdaf2d50ae6041cdc5507175",
+      "sourceRef": "etag:c2cc650a39cc325b6a56b4fe46862228ea8a5f253fce39e127652b0dda32ac64",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/jules/tree/9f2fc14a41e8b604bdaf2d50ae6041cdc5507175"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/jules/tree/main"
     },
     {
       "id": "gemini:gemini-cli-security",
@@ -1196,9 +1196,9 @@
       "archivePath": "official-skills/gemini/gemini-cli-security.zip",
       "installFolderName": "gemini-cli-security",
       "sourceRepo": "gemini-cli-extensions/security",
-      "sourceRef": "e8153d5e2d052c2a728c952d7e8e7ad12e7b7953",
+      "sourceRef": "etag:209e805c420650c5990d420f9c199f0897be22cee721eaf0c4cce726c3e62f45",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/security/tree/e8153d5e2d052c2a728c952d7e8e7ad12e7b7953"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/security/tree/main"
     },
     {
       "id": "gemini:genkit",
@@ -1210,9 +1210,9 @@
       "archivePath": "official-skills/gemini/genkit.zip",
       "installFolderName": "genkit",
       "sourceRepo": "gemini-cli-extensions/genkit",
-      "sourceRef": "052c587c539dc81f71f9388d085988256344a800",
+      "sourceRef": "etag:aba402c2ca1620890090931d5cc3c3e5fb09e72af68249b7010d8a428d427db4",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/genkit/tree/052c587c539dc81f71f9388d085988256344a800"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/genkit/tree/main"
     },
     {
       "id": "gemini:google-workspace",
@@ -1224,9 +1224,9 @@
       "archivePath": "official-skills/gemini/google-workspace.zip",
       "installFolderName": "google-workspace",
       "sourceRepo": "gemini-cli-extensions/workspace",
-      "sourceRef": "13b9cc4b4224ffd47f55e5dd442b0b4a15cbb374",
+      "sourceRef": "etag:1c9ba46226d78a12cb138e50ad227937613701fa6135ed375356ad4b72c1eba6",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/workspace/tree/13b9cc4b4224ffd47f55e5dd442b0b4a15cbb374"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/workspace/tree/main"
     },
     {
       "id": "gemini:looker",
@@ -1238,9 +1238,9 @@
       "archivePath": "official-skills/gemini/looker.zip",
       "installFolderName": "looker",
       "sourceRepo": "gemini-cli-extensions/looker",
-      "sourceRef": "ac2a9c0a2405cc8aa9cb417882bec2741bcd81be",
+      "sourceRef": "etag:e9f0534caa94e29c62931b128db86487250382536b9dcfc128f0ca626d7c207b",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/looker/tree/ac2a9c0a2405cc8aa9cb417882bec2741bcd81be"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/looker/tree/main"
     },
     {
       "id": "gemini:looker-conversational-analytics",
@@ -1252,9 +1252,9 @@
       "archivePath": "official-skills/gemini/looker-conversational-analytics.zip",
       "installFolderName": "looker-conversational-analytics",
       "sourceRepo": "gemini-cli-extensions/looker-conversational-analytics",
-      "sourceRef": "7e7ff6dba210cf48472b0f4110ec40b07281a409",
+      "sourceRef": "etag:289f6f34859e06a3e0f84aa056fb7a2c222d55b352039b963b60b6c58f59be6f",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/looker-conversational-analytics/tree/7e7ff6dba210cf48472b0f4110ec40b07281a409"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/looker-conversational-analytics/tree/main"
     },
     {
       "id": "gemini:mcp-toolbox",
@@ -1266,9 +1266,9 @@
       "archivePath": "official-skills/gemini/mcp-toolbox.zip",
       "installFolderName": "mcp-toolbox",
       "sourceRepo": "gemini-cli-extensions/mcp-toolbox",
-      "sourceRef": "b70da69c556a91b3255fdcdddc9d3babfcd815d2",
+      "sourceRef": "etag:d5087661b495d4de80506824753bab8cf6a60343a29f3cffbe8617c36143af4c",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/mcp-toolbox/tree/b70da69c556a91b3255fdcdddc9d3babfcd815d2"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/mcp-toolbox/tree/main"
     },
     {
       "id": "gemini:mysql",
@@ -1280,9 +1280,9 @@
       "archivePath": "official-skills/gemini/mysql.zip",
       "installFolderName": "mysql",
       "sourceRepo": "gemini-cli-extensions/mysql",
-      "sourceRef": "ed5ed96fb489ec3786c8d6a8053dc1a1e6cbe548",
+      "sourceRef": "etag:e572af052a3abad12b02782237c5c3ca6896b93a548088895732a9b18a4f1348",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/mysql/tree/ed5ed96fb489ec3786c8d6a8053dc1a1e6cbe548"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/mysql/tree/main"
     },
     {
       "id": "gemini:nanobanana",
@@ -1294,9 +1294,9 @@
       "archivePath": "official-skills/gemini/nanobanana.zip",
       "installFolderName": "nanobanana",
       "sourceRepo": "gemini-cli-extensions/nanobanana",
-      "sourceRef": "5badc5aafea8751fe059a054b629cf2d989bceb1",
+      "sourceRef": "etag:6e5b865be5dbfcffcbedbf68028d1e7dc2cddec29b797df66851ef5568bd49b5",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/nanobanana/tree/5badc5aafea8751fe059a054b629cf2d989bceb1"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/nanobanana/tree/main"
     },
     {
       "id": "gemini:observability",
@@ -1308,9 +1308,9 @@
       "archivePath": "official-skills/gemini/observability.zip",
       "installFolderName": "observability",
       "sourceRepo": "gemini-cli-extensions/observability",
-      "sourceRef": "1718a1ac20c507e871be9a8d01141ac596e7cc65",
+      "sourceRef": "etag:0a5abced535237fd934bf595b7560c5e565cdd406bc9929cfa5b58423cb28b35",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/observability/tree/1718a1ac20c507e871be9a8d01141ac596e7cc65"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/observability/tree/main"
     },
     {
       "id": "gemini:oracledb",
@@ -1322,9 +1322,9 @@
       "archivePath": "official-skills/gemini/oracledb.zip",
       "installFolderName": "oracledb",
       "sourceRepo": "gemini-cli-extensions/oracledb",
-      "sourceRef": "935db7610abb3fbfd6263c59c3906f8b2513bffc",
+      "sourceRef": "etag:b555af3a88cb46879423083607342cf9446bb5c4e98f0500ec8fbc4c1e5c32ce",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/oracledb/tree/935db7610abb3fbfd6263c59c3906f8b2513bffc"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/oracledb/tree/main"
     },
     {
       "id": "gemini:postgres",
@@ -1336,9 +1336,9 @@
       "archivePath": "official-skills/gemini/postgres.zip",
       "installFolderName": "postgres",
       "sourceRepo": "gemini-cli-extensions/postgres",
-      "sourceRef": "3072fa2227a1371bc844d4d231d0e6460279a258",
+      "sourceRef": "etag:8bbaecf669564ac6256f1a809dfc65b33d2458884c92bf5a5bae39d4eb563013",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/postgres/tree/3072fa2227a1371bc844d4d231d0e6460279a258"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/postgres/tree/main"
     },
     {
       "id": "gemini:ralph",
@@ -1350,9 +1350,9 @@
       "archivePath": "official-skills/gemini/ralph.zip",
       "installFolderName": "ralph",
       "sourceRepo": "gemini-cli-extensions/ralph",
-      "sourceRef": "5d0247dc7809a053c5ef48d6caa114f6bdca6821",
+      "sourceRef": "etag:e8374283ea418c4f71daf926128723c223ed23ea11c57f0b337621eb954e3772",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/ralph/tree/5d0247dc7809a053c5ef48d6caa114f6bdca6821"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/ralph/tree/main"
     },
     {
       "id": "gemini:spanner",
@@ -1364,9 +1364,9 @@
       "archivePath": "official-skills/gemini/spanner.zip",
       "installFolderName": "spanner",
       "sourceRepo": "gemini-cli-extensions/spanner",
-      "sourceRef": "1db41d9ac84195641a25f7367914ecc17ad1a8e3",
+      "sourceRef": "etag:73884ec4270c4d6a8ffda155ead3bf67bec5f488613a0ad86201af3196132d3c",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/spanner/tree/1db41d9ac84195641a25f7367914ecc17ad1a8e3"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/spanner/tree/main"
     },
     {
       "id": "gemini:sql-server",
@@ -1378,9 +1378,9 @@
       "archivePath": "official-skills/gemini/sql-server.zip",
       "installFolderName": "sql-server",
       "sourceRepo": "gemini-cli-extensions/sql-server",
-      "sourceRef": "d121cc49b957492ba6ed3841a5ddfcabdacc7f24",
+      "sourceRef": "etag:1e53693f148adae48a04be208c681b20847627087c997d26b4ae8ebb2ba060b3",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/sql-server/tree/d121cc49b957492ba6ed3841a5ddfcabdacc7f24"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/sql-server/tree/main"
     },
     {
       "id": "gemini:Stitch",
@@ -1392,9 +1392,9 @@
       "archivePath": "official-skills/gemini/Stitch.zip",
       "installFolderName": "Stitch",
       "sourceRepo": "gemini-cli-extensions/stitch",
-      "sourceRef": "e22b3aac9a43bce2d740c5172844e9a2eebba37f",
+      "sourceRef": "etag:8d1d07ea0c4855da665a1c3c90474e8939b244982db121a4268d809f60a2139c",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/stitch/tree/e22b3aac9a43bce2d740c5172844e9a2eebba37f"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/stitch/tree/main"
     },
     {
       "id": "gemini:vertex",
@@ -1406,9 +1406,9 @@
       "archivePath": "official-skills/gemini/vertex.zip",
       "installFolderName": "vertex",
       "sourceRepo": "gemini-cli-extensions/vertex",
-      "sourceRef": "b2333fc8e2069ed40c4286c97cfe51ecd879137a",
+      "sourceRef": "etag:580e8e353627a41d4a4824813ca9e51e6318f106d881f6020e3665d04293fbb2",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/vertex/tree/b2333fc8e2069ed40c4286c97cfe51ecd879137a"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/vertex/tree/main"
     },
     {
       "id": "gemini:web-accessibility",
@@ -1420,9 +1420,9 @@
       "archivePath": "official-skills/gemini/web-accessibility.zip",
       "installFolderName": "web-accessibility",
       "sourceRepo": "gemini-cli-extensions/web-accessibility",
-      "sourceRef": "8cee3ad544dcc5014fd2d5a525597a5a05216cb9",
+      "sourceRef": "etag:d9cc0cb3fa43f23615637d4bebdc0f8eb34a4920556b2b94fb262ccda1a88c44",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/web-accessibility/tree/8cee3ad544dcc5014fd2d5a525597a5a05216cb9"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/web-accessibility/tree/main"
     }
   ]
 }

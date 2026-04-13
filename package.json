@@ -862,7 +862,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
-    "sync:official-skills": "python3 scripts/sync_official_skills.py"
+    "sync:official-skills": "python3 scripts/sync_official_skills.py",
+    "sync:official-skills:gemini-refresh": "python3 scripts/sync_official_skills.py --only gemini --refresh-gemini"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
