@@ -1,99 +1,29 @@
 {
-  "generatedAt": "2026-03-28T17:35:44.206Z",
+  "generatedAt": "2026-04-13T02:41:23Z",
   "platforms": {
     "claude": {
       "repo": "anthropics/skills",
-      "ref": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "ref": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourceUrl": "https://github.com/anthropics/skills",
       "installRootHint": "~/.claude/skills",
-      "notes": "Anthropic 官方 skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Claude 用户 skills 目录。"
+      "notes": "Anthropic 官方 skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Claude 用户 skills 目录。 sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
     },
     "codex": {
       "repo": "openai/skills",
-      "ref": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "ref": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourceUrl": "https://github.com/openai/skills",
       "installRootHint": "~/.codex/skills",
-      "notes": "OpenAI 官方 curated skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Codex 用户 skills 目录。"
+      "notes": "OpenAI 官方 curated skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Codex 用户 skills 目录。 sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
     },
     "gemini": {
       "repo": "gemini-cli-extensions",
       "ref": "organization-snapshot-2026-03-28",
       "sourceUrl": "https://github.com/gemini-cli-extensions",
       "installRootHint": "~/.gemini/extensions",
-      "notes": "Google Gemini CLI 官方 Extensions 仓库快照，按单个 extension 打包为 zip，可直接安装到 Gemini 用户 extensions 目录。"
+      "notes": "Google Gemini CLI 官方 Extensions 仓库快照，按单个 extension 打包为 zip，可直接安装到 Gemini 用户 extensions 目录。 每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。"
     }
   },
   "skills": [
-    {
-      "id": "claude:claude-api",
-      "platform": "claude",
-      "group": "claude-api",
-      "groupDescription": "面向构建 LLM 应用的 Claude API 与 SDK 文档技能",
-      "name": "claude-api",
-      "description": "使用 Claude API 或 Anthropic SDK 构建应用。以下情况触发：代码导入 `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`，或用户要求使用 Claude API、Anthropic SDK 或 Agent SDK。以下情况不要触发：代码导入 `openai`/其他 AI SDK，或只是一般编程、机器学习/数据科学任务。",
-      "archivePath": "official-skills/claude/claude-api.zip",
-      "installFolderName": "claude-api",
-      "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
-      "sourcePath": "skills/claude-api",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/claude-api"
-    },
-    {
-      "id": "claude:docx",
-      "platform": "claude",
-      "group": "document-skills",
-      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
-      "name": "docx",
-      "description": "当用户想创建、读取、编辑或处理 Word 文档（`.docx` 文件）时使用此技能。触发场景包括：提到 “Word doc”“word document”“.docx”，或要求生成带目录、标题、页码、信头等格式的专业文档。处理 `.docx` 内容抽取或重组、在文档中插入或替换图片、在 Word 文件中查找替换、处理修订/批注，或把内容整理成精美 Word 文档时，也应使用。若用户要求交付 “report”“memo”“letter”“template” 等 Word 或 `.docx` 文件，也应使用。不要用于 PDF、电子表格、Google Docs，或与文档生成无关的一般编码任务。",
-      "archivePath": "official-skills/claude/docx.zip",
-      "installFolderName": "docx",
-      "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
-      "sourcePath": "skills/docx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/docx"
-    },
-    {
-      "id": "claude:pdf",
-      "platform": "claude",
-      "group": "document-skills",
-      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
-      "name": "pdf",
-      "description": "当用户想对 PDF 文件做任何操作时使用此技能。这包括读取或提取 PDF 中的文本/表格、将多个 PDF 合并成一个、拆分 PDF、旋转页面、添加水印、创建新 PDF、填写 PDF 表单、加密/解密 PDF、提取图片，以及对扫描版 PDF 做 OCR 使其可搜索。如果用户提到 `.pdf` 文件，或要求产出 PDF，就使用此技能。",
-      "archivePath": "official-skills/claude/pdf.zip",
-      "installFolderName": "pdf",
-      "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
-      "sourcePath": "skills/pdf",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/pdf"
-    },
-    {
-      "id": "claude:pptx",
-      "platform": "claude",
-      "group": "document-skills",
-      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
-      "name": "pptx",
-      "description": "只要任务以任何方式涉及 `.pptx` 文件——无论作为输入、输出，还是两者兼有——都使用此技能。这包括：创建幻灯片、提案 deck 或演示文稿；读取、解析或提取任意 `.pptx` 文件中的文本（即使提取后的内容会被用于邮件或摘要等别处）；编辑、修改或更新现有演示文稿；合并或拆分幻灯片文件；处理模板、布局、演讲者备注或批注。只要用户提到 “deck”“slides”“presentation”，或引用某个 `.pptx` 文件名，就应触发，不论后续想怎样使用内容。只要需要打开、创建或修改 `.pptx` 文件，就使用此技能。",
-      "archivePath": "official-skills/claude/pptx.zip",
-      "installFolderName": "pptx",
-      "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
-      "sourcePath": "skills/pptx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/pptx"
-    },
-    {
-      "id": "claude:xlsx",
-      "platform": "claude",
-      "group": "document-skills",
-      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
-      "name": "xlsx",
-      "description": "当电子表格文件是主要输入或输出时使用此技能。这包括用户想要：打开、读取、编辑或修复现有 `.xlsx`、`.xlsm`、`.csv` 或 `.tsv` 文件（如新增列、计算公式、格式化、制图、清洗脏数据）；从零开始或基于其他数据源创建新表格；或在多种表格文件格式之间转换。尤其当用户按名称或路径提到某个表格文件——哪怕只是随口一提（例如“我下载目录里的那个 xlsx”）——并希望对其进行处理或基于它产出内容时，应触发。对于把混乱的表格数据文件（坏行、错位表头、垃圾数据）清洗或重组为规范电子表格，也应触发。最终交付物必须是电子表格文件。即使涉及表格数据，如果主要交付物是 Word 文档、HTML 报告、独立 Python 脚本、数据库流水线或 Google Sheets API 集成，则不要触发。",
-      "archivePath": "official-skills/claude/xlsx.zip",
-      "installFolderName": "xlsx",
-      "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
-      "sourcePath": "skills/xlsx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/xlsx"
-    },
     {
       "id": "claude:algorithmic-art",
       "platform": "claude",
@@ -104,9 +34,9 @@
       "archivePath": "official-skills/claude/algorithmic-art.zip",
       "installFolderName": "algorithmic-art",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/algorithmic-art",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/algorithmic-art"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art"
     },
     {
       "id": "claude:brand-guidelines",
@@ -118,9 +48,9 @@
       "archivePath": "official-skills/claude/brand-guidelines.zip",
       "installFolderName": "brand-guidelines",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/brand-guidelines",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/brand-guidelines"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/brand-guidelines"
     },
     {
       "id": "claude:canvas-design",
@@ -132,9 +62,23 @@
       "archivePath": "official-skills/claude/canvas-design.zip",
       "installFolderName": "canvas-design",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/canvas-design",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/canvas-design"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/canvas-design"
+    },
+    {
+      "id": "claude:claude-api",
+      "platform": "claude",
+      "group": "claude-api",
+      "groupDescription": "面向构建 LLM 应用的 Claude API 与 SDK 文档技能",
+      "name": "claude-api",
+      "description": "使用 Claude API 或 Anthropic SDK 构建应用。以下情况触发：代码导入 `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`，或用户要求使用 Claude API、Anthropic SDK 或 Agent SDK。以下情况不要触发：代码导入 `openai`/其他 AI SDK，或只是一般编程、机器学习/数据科学任务。",
+      "archivePath": "official-skills/claude/claude-api.zip",
+      "installFolderName": "claude-api",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
+      "sourcePath": "skills/claude-api",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/claude-api"
     },
     {
       "id": "claude:doc-coauthoring",
@@ -146,9 +90,23 @@
       "archivePath": "official-skills/claude/doc-coauthoring.zip",
       "installFolderName": "doc-coauthoring",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/doc-coauthoring",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/doc-coauthoring"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/doc-coauthoring"
+    },
+    {
+      "id": "claude:docx",
+      "platform": "claude",
+      "group": "document-skills",
+      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
+      "name": "docx",
+      "description": "当用户想创建、读取、编辑或处理 Word 文档（`.docx` 文件）时使用此技能。触发场景包括：提到 “Word doc”“word document”“.docx”，或要求生成带目录、标题、页码、信头等格式的专业文档。处理 `.docx` 内容抽取或重组、在文档中插入或替换图片、在 Word 文件中查找替换、处理修订/批注，或把内容整理成精美 Word 文档时，也应使用。若用户要求交付 “report”“memo”“letter”“template” 等 Word 或 `.docx` 文件，也应使用。不要用于 PDF、电子表格、Google Docs，或与文档生成无关的一般编码任务。",
+      "archivePath": "official-skills/claude/docx.zip",
+      "installFolderName": "docx",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
+      "sourcePath": "skills/docx",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/docx"
     },
     {
       "id": "claude:frontend-design",
@@ -160,9 +118,9 @@
       "archivePath": "official-skills/claude/frontend-design.zip",
       "installFolderName": "frontend-design",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/frontend-design",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/frontend-design"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/frontend-design"
     },
     {
       "id": "claude:internal-comms",
@@ -174,9 +132,9 @@
       "archivePath": "official-skills/claude/internal-comms.zip",
       "installFolderName": "internal-comms",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/internal-comms",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/internal-comms"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/internal-comms"
     },
     {
       "id": "claude:mcp-builder",
@@ -188,9 +146,37 @@
       "archivePath": "official-skills/claude/mcp-builder.zip",
       "installFolderName": "mcp-builder",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/mcp-builder",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/mcp-builder"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder"
+    },
+    {
+      "id": "claude:pdf",
+      "platform": "claude",
+      "group": "document-skills",
+      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
+      "name": "pdf",
+      "description": "当用户想对 PDF 文件做任何操作时使用此技能。这包括读取或提取 PDF 中的文本/表格、将多个 PDF 合并成一个、拆分 PDF、旋转页面、添加水印、创建新 PDF、填写 PDF 表单、加密/解密 PDF、提取图片，以及对扫描版 PDF 做 OCR 使其可搜索。如果用户提到 `.pdf` 文件，或要求产出 PDF，就使用此技能。",
+      "archivePath": "official-skills/claude/pdf.zip",
+      "installFolderName": "pdf",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
+      "sourcePath": "skills/pdf",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf"
+    },
+    {
+      "id": "claude:pptx",
+      "platform": "claude",
+      "group": "document-skills",
+      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
+      "name": "pptx",
+      "description": "只要任务以任何方式涉及 `.pptx` 文件——无论作为输入、输出，还是两者兼有——都使用此技能。这包括：创建幻灯片、提案 deck 或演示文稿；读取、解析或提取任意 `.pptx` 文件中的文本（即使提取后的内容会被用于邮件或摘要等别处）；编辑、修改或更新现有演示文稿；合并或拆分幻灯片文件；处理模板、布局、演讲者备注或批注。只要用户提到 “deck”“slides”“presentation”，或引用某个 `.pptx` 文件名，就应触发，不论后续想怎样使用内容。只要需要打开、创建或修改 `.pptx` 文件，就使用此技能。",
+      "archivePath": "official-skills/claude/pptx.zip",
+      "installFolderName": "pptx",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
+      "sourcePath": "skills/pptx",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pptx"
     },
     {
       "id": "claude:skill-creator",
@@ -202,9 +188,9 @@
       "archivePath": "official-skills/claude/skill-creator.zip",
       "installFolderName": "skill-creator",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/skill-creator",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/skill-creator"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/skill-creator"
     },
     {
       "id": "claude:slack-gif-creator",
@@ -216,9 +202,9 @@
       "archivePath": "official-skills/claude/slack-gif-creator.zip",
       "installFolderName": "slack-gif-creator",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/slack-gif-creator",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/slack-gif-creator"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator"
     },
     {
       "id": "claude:theme-factory",
@@ -230,9 +216,9 @@
       "archivePath": "official-skills/claude/theme-factory.zip",
       "installFolderName": "theme-factory",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/theme-factory",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/theme-factory"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/theme-factory"
     },
     {
       "id": "claude:web-artifacts-builder",
@@ -244,9 +230,9 @@
       "archivePath": "official-skills/claude/web-artifacts-builder.zip",
       "installFolderName": "web-artifacts-builder",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/web-artifacts-builder",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/web-artifacts-builder"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder"
     },
     {
       "id": "claude:webapp-testing",
@@ -258,9 +244,23 @@
       "archivePath": "official-skills/claude/webapp-testing.zip",
       "installFolderName": "webapp-testing",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "98669c11ca63e9c81c11501e1437e5c47b556621",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
       "sourcePath": "skills/webapp-testing",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/98669c11ca63e9c81c11501e1437e5c47b556621/skills/webapp-testing"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+    },
+    {
+      "id": "claude:xlsx",
+      "platform": "claude",
+      "group": "document-skills",
+      "groupDescription": "包含 Excel、Word、PowerPoint 和 PDF 能力的文档处理技能集合",
+      "name": "xlsx",
+      "description": "当电子表格文件是主要输入或输出时使用此技能。这包括用户想要：打开、读取、编辑或修复现有 `.xlsx`、`.xlsm`、`.csv` 或 `.tsv` 文件（如新增列、计算公式、格式化、制图、清洗脏数据）；从零开始或基于其他数据源创建新表格；或在多种表格文件格式之间转换。尤其当用户按名称或路径提到某个表格文件——哪怕只是随口一提（例如“我下载目录里的那个 xlsx”）——并希望对其进行处理或基于它产出内容时，应触发。对于把混乱的表格数据文件（坏行、错位表头、垃圾数据）清洗或重组为规范电子表格，也应触发。最终交付物必须是电子表格文件。即使涉及表格数据，如果主要交付物是 Word 文档、HTML 报告、独立 Python 脚本、数据库流水线或 Google Sheets API 集成，则不要触发。",
+      "archivePath": "official-skills/claude/xlsx.zip",
+      "installFolderName": "xlsx",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:178b8c0911091d7d56176fc070a0baf15758e4e00787f24fdf13b5a5f3fdb2c0",
+      "sourcePath": "skills/xlsx",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/xlsx"
     },
     {
       "id": "codex:aspnet-core",
@@ -272,9 +272,9 @@
       "archivePath": "official-skills/codex/aspnet-core.zip",
       "installFolderName": "aspnet-core",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/aspnet-core",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/aspnet-core"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/aspnet-core"
     },
     {
       "id": "codex:chatgpt-apps",
@@ -286,9 +286,23 @@
       "archivePath": "official-skills/codex/chatgpt-apps.zip",
       "installFolderName": "chatgpt-apps",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/chatgpt-apps",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/chatgpt-apps"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/chatgpt-apps"
+    },
+    {
+      "id": "codex:cli-creator",
+      "platform": "codex",
+      "group": "curated",
+      "groupDescription": "可通过官方 `$skill-installer` 工作流安装的 OpenAI curated skills。",
+      "name": "cli-creator",
+      "description": "基于 API 文档、OpenAPI 规范、现有 curl 示例、SDK、Web 应用、管理工具或本地脚本，为 Codex 构建可组合的 CLI。适用于希望 Codex 创建可在任意仓库通过命令名运行、提供可组合读写命令、返回稳定 JSON、管理鉴权，并可配套 companion skill 的命令行工具场景。",
+      "archivePath": "official-skills/codex/cli-creator.zip",
+      "installFolderName": "cli-creator",
+      "sourceRepo": "openai/skills",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
+      "sourcePath": "skills/.curated/cli-creator",
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cli-creator"
     },
     {
       "id": "codex:cloudflare-deploy",
@@ -300,9 +314,9 @@
       "archivePath": "official-skills/codex/cloudflare-deploy.zip",
       "installFolderName": "cloudflare-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/cloudflare-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/cloudflare-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cloudflare-deploy"
     },
     {
       "id": "codex:develop-web-game",
@@ -314,9 +328,9 @@
       "archivePath": "official-skills/codex/develop-web-game.zip",
       "installFolderName": "develop-web-game",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/develop-web-game",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/develop-web-game"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/develop-web-game"
     },
     {
       "id": "codex:doc",
@@ -328,9 +342,9 @@
       "archivePath": "official-skills/codex/doc.zip",
       "installFolderName": "doc",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/doc",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/doc"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/doc"
     },
     {
       "id": "codex:figma",
@@ -342,9 +356,9 @@
       "archivePath": "official-skills/codex/figma.zip",
       "installFolderName": "figma",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma"
     },
     {
       "id": "codex:figma-code-connect-components",
@@ -356,9 +370,9 @@
       "archivePath": "official-skills/codex/figma-code-connect-components.zip",
       "installFolderName": "figma-code-connect-components",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-code-connect-components",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-code-connect-components"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-code-connect-components"
     },
     {
       "id": "codex:figma-create-design-system-rules",
@@ -370,9 +384,9 @@
       "archivePath": "official-skills/codex/figma-create-design-system-rules.zip",
       "installFolderName": "figma-create-design-system-rules",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-create-design-system-rules",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-create-design-system-rules"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-design-system-rules"
     },
     {
       "id": "codex:figma-create-new-file",
@@ -384,9 +398,9 @@
       "archivePath": "official-skills/codex/figma-create-new-file.zip",
       "installFolderName": "figma-create-new-file",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-create-new-file",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-create-new-file"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-new-file"
     },
     {
       "id": "codex:figma-generate-design",
@@ -398,9 +412,9 @@
       "archivePath": "official-skills/codex/figma-generate-design.zip",
       "installFolderName": "figma-generate-design",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-generate-design",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-generate-design"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-design"
     },
     {
       "id": "codex:figma-generate-library",
@@ -412,9 +426,9 @@
       "archivePath": "official-skills/codex/figma-generate-library.zip",
       "installFolderName": "figma-generate-library",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-generate-library",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-generate-library"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-library"
     },
     {
       "id": "codex:figma-implement-design",
@@ -426,9 +440,9 @@
       "archivePath": "official-skills/codex/figma-implement-design.zip",
       "installFolderName": "figma-implement-design",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-implement-design",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-implement-design"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-implement-design"
     },
     {
       "id": "codex:figma-use",
@@ -440,9 +454,9 @@
       "archivePath": "official-skills/codex/figma-use.zip",
       "installFolderName": "figma-use",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/figma-use",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/figma-use"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-use"
     },
     {
       "id": "codex:frontend-skill",
@@ -454,9 +468,9 @@
       "archivePath": "official-skills/codex/frontend-skill.zip",
       "installFolderName": "frontend-skill",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/frontend-skill",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/frontend-skill"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/frontend-skill"
     },
     {
       "id": "codex:gh-address-comments",
@@ -468,9 +482,9 @@
       "archivePath": "official-skills/codex/gh-address-comments.zip",
       "installFolderName": "gh-address-comments",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/gh-address-comments",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/gh-address-comments"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-address-comments"
     },
     {
       "id": "codex:gh-fix-ci",
@@ -482,9 +496,9 @@
       "archivePath": "official-skills/codex/gh-fix-ci.zip",
       "installFolderName": "gh-fix-ci",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/gh-fix-ci",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/gh-fix-ci"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-fix-ci"
     },
     {
       "id": "codex:imagegen",
@@ -496,9 +510,9 @@
       "archivePath": "official-skills/codex/imagegen.zip",
       "installFolderName": "imagegen",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/imagegen",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/imagegen"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/imagegen"
     },
     {
       "id": "codex:jupyter-notebook",
@@ -510,9 +524,9 @@
       "archivePath": "official-skills/codex/jupyter-notebook.zip",
       "installFolderName": "jupyter-notebook",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/jupyter-notebook",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/jupyter-notebook"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/jupyter-notebook"
     },
     {
       "id": "codex:linear",
@@ -524,9 +538,9 @@
       "archivePath": "official-skills/codex/linear.zip",
       "installFolderName": "linear",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/linear",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/linear"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/linear"
     },
     {
       "id": "codex:netlify-deploy",
@@ -538,9 +552,9 @@
       "archivePath": "official-skills/codex/netlify-deploy.zip",
       "installFolderName": "netlify-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/netlify-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/netlify-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/netlify-deploy"
     },
     {
       "id": "codex:notion-knowledge-capture",
@@ -552,9 +566,9 @@
       "archivePath": "official-skills/codex/notion-knowledge-capture.zip",
       "installFolderName": "notion-knowledge-capture",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/notion-knowledge-capture",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/notion-knowledge-capture"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-knowledge-capture"
     },
     {
       "id": "codex:notion-meeting-intelligence",
@@ -566,9 +580,9 @@
       "archivePath": "official-skills/codex/notion-meeting-intelligence.zip",
       "installFolderName": "notion-meeting-intelligence",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/notion-meeting-intelligence",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/notion-meeting-intelligence"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-meeting-intelligence"
     },
     {
       "id": "codex:notion-research-documentation",
@@ -580,9 +594,9 @@
       "archivePath": "official-skills/codex/notion-research-documentation.zip",
       "installFolderName": "notion-research-documentation",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/notion-research-documentation",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/notion-research-documentation"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-research-documentation"
     },
     {
       "id": "codex:notion-spec-to-implementation",
@@ -594,9 +608,9 @@
       "archivePath": "official-skills/codex/notion-spec-to-implementation.zip",
       "installFolderName": "notion-spec-to-implementation",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/notion-spec-to-implementation",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/notion-spec-to-implementation"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-spec-to-implementation"
     },
     {
       "id": "codex:openai-docs",
@@ -608,9 +622,9 @@
       "archivePath": "official-skills/codex/openai-docs.zip",
       "installFolderName": "openai-docs",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/openai-docs",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/openai-docs"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/openai-docs"
     },
     {
       "id": "codex:pdf",
@@ -622,9 +636,9 @@
       "archivePath": "official-skills/codex/pdf.zip",
       "installFolderName": "pdf",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/pdf",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/pdf"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/pdf"
     },
     {
       "id": "codex:playwright",
@@ -636,9 +650,9 @@
       "archivePath": "official-skills/codex/playwright.zip",
       "installFolderName": "playwright",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/playwright",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/playwright"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright"
     },
     {
       "id": "codex:playwright-interactive",
@@ -650,9 +664,9 @@
       "archivePath": "official-skills/codex/playwright-interactive.zip",
       "installFolderName": "playwright-interactive",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/playwright-interactive",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/playwright-interactive"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright-interactive"
     },
     {
       "id": "codex:render-deploy",
@@ -664,9 +678,9 @@
       "archivePath": "official-skills/codex/render-deploy.zip",
       "installFolderName": "render-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/render-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/render-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/render-deploy"
     },
     {
       "id": "codex:screenshot",
@@ -678,9 +692,9 @@
       "archivePath": "official-skills/codex/screenshot.zip",
       "installFolderName": "screenshot",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/screenshot",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/screenshot"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/screenshot"
     },
     {
       "id": "codex:security-best-practices",
@@ -692,9 +706,9 @@
       "archivePath": "official-skills/codex/security-best-practices.zip",
       "installFolderName": "security-best-practices",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/security-best-practices",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/security-best-practices"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-best-practices"
     },
     {
       "id": "codex:security-ownership-map",
@@ -706,9 +720,9 @@
       "archivePath": "official-skills/codex/security-ownership-map.zip",
       "installFolderName": "security-ownership-map",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/security-ownership-map",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/security-ownership-map"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-ownership-map"
     },
     {
       "id": "codex:security-threat-model",
@@ -720,9 +734,9 @@
       "archivePath": "official-skills/codex/security-threat-model.zip",
       "installFolderName": "security-threat-model",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/security-threat-model",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/security-threat-model"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-threat-model"
     },
     {
       "id": "codex:sentry",
@@ -734,9 +748,9 @@
       "archivePath": "official-skills/codex/sentry.zip",
       "installFolderName": "sentry",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/sentry",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/sentry"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/sentry"
     },
     {
       "id": "codex:slides",
@@ -748,9 +762,9 @@
       "archivePath": "official-skills/codex/slides.zip",
       "installFolderName": "slides",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/slides",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/slides"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/slides"
     },
     {
       "id": "codex:sora",
@@ -762,9 +776,9 @@
       "archivePath": "official-skills/codex/sora.zip",
       "installFolderName": "sora",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/sora",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/sora"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/sora"
     },
     {
       "id": "codex:speech",
@@ -776,9 +790,9 @@
       "archivePath": "official-skills/codex/speech.zip",
       "installFolderName": "speech",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/speech",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/speech"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/speech"
     },
     {
       "id": "codex:spreadsheet",
@@ -790,9 +804,9 @@
       "archivePath": "official-skills/codex/spreadsheet.zip",
       "installFolderName": "spreadsheet",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/spreadsheet",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/spreadsheet"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/spreadsheet"
     },
     {
       "id": "codex:transcribe",
@@ -804,9 +818,9 @@
       "archivePath": "official-skills/codex/transcribe.zip",
       "installFolderName": "transcribe",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/transcribe",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/transcribe"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/transcribe"
     },
     {
       "id": "codex:vercel-deploy",
@@ -818,9 +832,9 @@
       "archivePath": "official-skills/codex/vercel-deploy.zip",
       "installFolderName": "vercel-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/vercel-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/vercel-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/vercel-deploy"
     },
     {
       "id": "codex:winui-app",
@@ -832,9 +846,9 @@
       "archivePath": "official-skills/codex/winui-app.zip",
       "installFolderName": "winui-app",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/winui-app",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/winui-app"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/winui-app"
     },
     {
       "id": "codex:yeet",
@@ -846,9 +860,9 @@
       "archivePath": "official-skills/codex/yeet.zip",
       "installFolderName": "yeet",
       "sourceRepo": "openai/skills",
-      "sourceRef": "736f600bf6ecbc000c04f1d2710b990899f28903",
+      "sourceRef": "etag:b8a5150f7ae74327613490a8540e3b06019f0e715140ebe29bf82cb431196e67",
       "sourcePath": "skills/.curated/yeet",
-      "sourceUrl": "https://github.com/openai/skills/tree/736f600bf6ecbc000c04f1d2710b990899f28903/skills/.curated/yeet"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/yeet"
     },
     {
       "id": "gemini:alloydb",

@@ -1,8 +1,16 @@
 # 权威技能目录（少而硬）
 
-- 核验日期：2026-03-28
+- 核验日期：2026-04-13
 - 目标：只记录**值得长期保留关注**、且来源足够权威的外部技能。
 - 适用对象：复杂、长周期、百万行级别前后端全栈 ToB 系统的 Codex harness。
+
+## 仓库内置快照同步说明
+
+- 当前仓库内置官方归档快照：Claude 17 项、Codex 43 项、Gemini 40 项。
+- 2026-04-13 已补齐 OpenAI 官方 curated skill `cli-creator`，并刷新 Claude / Codex 内置 zip。
+- 仓库同步脚本：`scripts/sync_official_skills.py`。
+- 默认同步策略：刷新 Claude / Codex，Gemini 默认沿用仓库中已验证的 40 项快照；如需强制重抓 Gemini，可使用 `--refresh-gemini`。
+- `media/official_skills_catalog.json` 中的 `sourceRef` 现在使用上游 codeload tarball 的 ETag，供配置页判断内置官方包是否可更新。
 
 ## 选型原则
 

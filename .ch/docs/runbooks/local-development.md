@@ -28,7 +28,22 @@ npm run build
 npm run watch
 ```
 
-### 4. 一键启动开发主机（macOS）
+### 4. 同步内置官方 Skills 快照
+
+```bash
+npm run sync:official-skills
+```
+
+默认会刷新 Claude / Codex 的内置官方 Skills 归档与 catalog，并保留当前 Gemini 快照。
+如需尝试重新抓取 Gemini 官方 extensions，可执行：
+
+```bash
+python3 scripts/sync_official_skills.py --refresh-gemini
+```
+
+> 说明：Gemini 官方 extension 仓库较多，部分仓库 tarball 下载较慢；默认模式优先保证仓库内置 catalog 与配置页可稳定使用。
+
+### 5. 一键启动开发主机（macOS）
 
 ```bash
 ./run_dev.sh

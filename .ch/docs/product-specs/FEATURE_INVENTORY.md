@@ -36,6 +36,6 @@
 | 交互控制 | Thinking mode / interactive mode / 模型管理 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/cli/config.ts`, `src/cli/modelArgs.ts`, `src/webview/viewContent.ts` | manual | 模型数据保存在 `~/.sinitek_cli/models.json` |
 | 规则管理 | Global / Project 规则读写 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 覆盖 Codex / Claude / Gemini |
 | 配置中心 | 配置档案、应用、备份、导出 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/webview/configPanel.ts`, `src/config/configService.ts` | manual | 独立 WebviewPanel |
-| 平台集成 | Skills 管理（Codex / Claude / Gemini） | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/config/*Skills.ts`, `src/config/configService.ts` | manual | 支持本地扫描与内置官方目录 |
+| 平台集成 | Skills 管理（Codex / Claude / Gemini） | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/config/*Skills.ts`, `src/config/configService.ts` | manual | 支持本地扫描、内置官方目录与官方快照同步（含 OpenAI `cli-creator`） |
 | 平台集成 | MCP 市场、安装、卸载、健康检查 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/config/configService.ts`, `media/mcp_marketplace.json` | manual | 多平台真实命令安装 |
 | 稳定性 | 国际化、日志、错误诊断与清理 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/i18n.ts`, `src/logger.ts`, `src/errorDisplay.ts` | manual | 包含 Webview 回退页与日志保留 |

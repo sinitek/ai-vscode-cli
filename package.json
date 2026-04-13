@@ -861,7 +861,8 @@
     "build": "tsc -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run build"
+    "vscode:prepublish": "npm run build",
+    "sync:official-skills": "python3 scripts/sync_official_skills.py"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
