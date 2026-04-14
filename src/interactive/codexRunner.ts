@@ -365,6 +365,13 @@ function createAbortError(): Error {
   return error;
 }
 
+function createRunnerDisposedError(): Error {
+  const error = new Error(t("run.disposedExternally")) as Error & { code?: string };
+  error.name = "RunnerDisposedError";
+  error.code = "RUNNER_DISPOSED";
+  return error;
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -673,6 +680,7 @@ export class CodexInteractiveRunner {
   public readonly cli: CliName = "codex";
   private activeChild: ChildProcess | null = null;
   private abortGeneration = 0;
+  private disposeGeneration = 0;
   private disposed = false;
 
   public constructor(
@@ -693,7 +701,7 @@ export class CodexInteractiveRunner {
 
   public async ensureReady(): Promise<void> {
     if (this.disposed) {
-      throw new Error("runner-disposed");
+      throw createRunnerDisposedError();
     }
   }
 
@@ -711,6 +719,7 @@ export class CodexInteractiveRunner {
 
   public dispose(): void {
     this.disposed = true;
+    this.disposeGeneration += 1;
     this.stopAndRebuild();
   }
 
@@ -730,6 +739,7 @@ export class CodexInteractiveRunner {
     await this.ensureReady();
 
     const runGeneration = this.abortGeneration;
+    const runDisposeGeneration = this.disposeGeneration;
     const threadOptions = buildCodexThreadOptions(
       this.options.args,
       this.options.cwd,
@@ -771,6 +781,19 @@ export class CodexInteractiveRunner {
     const exitPromise = new Promise<AppServerResponse>((resolve) => {
       child.once("close", (code, signal) => {
         resolve({ code, signal });
+        if (!turnSettled) {
+          const error = this.disposeGeneration !== runDisposeGeneration
+            ? createRunnerDisposedError()
+            : this.abortGeneration !== runGeneration
+              ? createAbortError()
+              : new Error(
+                t("codex.appServerExited", {
+                  detail: signal ? `signal ${signal}` : `code ${code ?? 1}`,
+                  stderr: Buffer.concat(stderrChunks).toString("utf8") || "-",
+                })
+              );
+          failRun(error);
+        }
       });
     });
 
@@ -1211,6 +1234,9 @@ export class CodexInteractiveRunner {
       if (streamError) {
         throw streamError;
       }
+      if (this.disposeGeneration !== runDisposeGeneration) {
+        throw createRunnerDisposedError();
+      }
       if (this.abortGeneration !== runGeneration) {
         throw createAbortError();
       }
@@ -1225,6 +1251,9 @@ export class CodexInteractiveRunner {
       }
       terminateChild();
       await Promise.allSettled([exitPromise, outputLoopPromise]);
+      if (this.disposeGeneration !== runDisposeGeneration) {
+        throw createRunnerDisposedError();
+      }
       if (this.abortGeneration !== runGeneration) {
         throw createAbortError();
       }

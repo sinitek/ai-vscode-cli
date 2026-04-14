@@ -27,7 +27,7 @@
 | CLI 统一接入 | Codex / Claude / Gemini 多 CLI 切换 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/cli/*`, `src/extension.ts` | manual | 命令与参数可分别配置 |
 | 执行模式 | Codex / Claude 交互式续接 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/interactive/*`, `src/extension.ts` | manual | 维护底层 thread/session 映射 |
 | 执行模式 | Gemini 一次性流式执行 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/cli/commandRunner.ts`, `src/extension.ts` | manual | 当前未接入交互 Runner |
-| 会话管理 | 多标签并行会话与历史记录 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 含 session、tab、prompt history |
+| 会话管理 | 多标签并行会话与历史记录 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 含 session、tab、prompt history，默认仅保留最近 30 天，并覆盖旧工作区清理 |
 | Prompt 增强 | 当前文件/选区上下文注入 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/types.ts` | manual | 由编辑器上下文生成标签，可在工具设置开启，默认关闭 |
 | Prompt 增强 | 路径选择器与 `@` 路径插入 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/webview/viewContent.ts` | manual | 依赖工作区文件搜索 |
 | 附件能力 | 上传附件与 Codex 图片桥接 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`, `src/cli/commandRunner.ts` | manual | 临时文件落盘到 `~/.sinitek_cli/temp/` |
@@ -38,4 +38,4 @@
 | 配置中心 | 配置档案、应用、备份、导出 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/webview/configPanel.ts`, `src/config/configService.ts` | manual | 独立 WebviewPanel |
 | 平台集成 | Skills 管理（Codex / Claude / Gemini） | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/config/*Skills.ts`, `src/config/configService.ts` | manual | 支持本地扫描、内置官方目录与官方快照同步（含 OpenAI `cli-creator`） |
 | 平台集成 | MCP 市场、安装、卸载、健康检查 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/config/configService.ts`, `media/mcp_marketplace.json` | manual | 多平台真实命令安装 |
-| 稳定性 | 国际化、日志、错误诊断与清理 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/i18n.ts`, `src/logger.ts`, `src/errorDisplay.ts` | manual | 包含 Webview 回退页与日志保留 |
+| 稳定性 | 国际化、日志、错误诊断与清理 | active | 开发者 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/i18n.ts`, `src/logger.ts`, `src/errorDisplay.ts` | manual | 包含 Webview 回退页与日志保留，插件管理的历史痕迹默认仅保留最近 30 天 |

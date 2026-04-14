@@ -2,6 +2,7 @@ import * as os from "os";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
@@ -237,6 +238,13 @@ function extractBlocksFromStreamEvent(event: any): Record<string, unknown>[] {
   return blocks;
 }
 
+function createRunnerDisposedError(): Error {
+  const error = new Error(t("run.disposedExternally")) as Error & { code?: string };
+  error.name = "RunnerDisposedError";
+  error.code = "RUNNER_DISPOSED";
+  return error;
+}
+
 async function loadClaudeSettings(): Promise<Record<string, string>> {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
   try {
@@ -267,6 +275,7 @@ export class ClaudeInteractiveRunner {
   public readonly cli: CliName = "claude";
   private disposed = false;
   private abortController: AbortController | null = null;
+  private disposeGeneration = 0;
 
   public constructor(
     private readonly options: {
@@ -291,6 +300,7 @@ export class ClaudeInteractiveRunner {
 
   public dispose(): void {
     this.disposed = true;
+    this.disposeGeneration += 1;
     this.abortController?.abort();
     this.abortController = null;
   }
@@ -314,8 +324,10 @@ export class ClaudeInteractiveRunner {
 
   public async runStreamed(prompt: string, handlers: ClaudeStreamHandlers): Promise<void> {
     if (this.disposed) {
-      throw new Error("runner-disposed");
+      throw createRunnerDisposedError();
     }
+
+    const runDisposeGeneration = this.disposeGeneration;
 
     const mod = await dynamicImport<any>("@anthropic-ai/claude-agent-sdk");
     const queryFn = mod?.query;
@@ -464,12 +476,13 @@ export class ClaudeInteractiveRunner {
       });
     };
 
+    let runError: unknown = null;
     try {
       const queryResult = queryFn({ prompt, options: queryOptions });
 
       for await (const msg of queryResult as AsyncGenerator<any>) {
-        if (this.disposed) {
-          break;
+        if (this.disposeGeneration !== runDisposeGeneration) {
+          throw createRunnerDisposedError();
         }
         handlers.onEvent?.(msg);
 
@@ -575,8 +588,17 @@ export class ClaudeInteractiveRunner {
           break;
         }
       }
+    } catch (error) {
+      runError = error;
     } finally {
       this.abortController = null;
+    }
+
+    if (this.disposeGeneration !== runDisposeGeneration) {
+      throw createRunnerDisposedError();
+    }
+    if (runError) {
+      throw runError;
     }
   }
 }

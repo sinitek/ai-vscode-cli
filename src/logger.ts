@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { getHistoryRetentionCutoff, HISTORY_RETENTION_DAYS } from "./historyRetention";
 
 let logsDirPath: string | undefined;
 let debugLoggingEnabled = false;
@@ -8,8 +9,6 @@ let logRetentionCleanupPromise: Promise<void> | null = null;
 const logWriteQueues = new Map<string, Promise<void>>();
 
 const ENV_REDACT_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD|PASS|AUTH)/i;
-const LOG_RETENTION_DAYS = 7;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export async function initLogger(): Promise<void> {
@@ -268,7 +267,7 @@ async function appendLog(
 
 async function pruneExpiredLogs(dirPath: string): Promise<void> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
-  const cutoffMs = Date.now() - LOG_RETENTION_DAYS * ONE_DAY_MS;
+  const cutoffMs = getHistoryRetentionCutoff();
   let removed = 0;
 
   await Promise.all(entries.map(async (entry) => {
@@ -290,7 +289,7 @@ async function pruneExpiredLogs(dirPath: string): Promise<void> {
   if (removed > 0) {
     await appendLog("DEBUG", "logs-retention-pruned", {
       removed,
-      retentionDays: LOG_RETENTION_DAYS,
+      retentionDays: HISTORY_RETENTION_DAYS,
     });
   }
 }

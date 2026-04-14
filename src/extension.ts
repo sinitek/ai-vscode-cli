@@ -74,6 +74,7 @@ import {
   upsertMapping,
   writeSessionMeta,
 } from "./interactive/metaStore";
+import { HISTORY_RETENTION_DAYS, isTimestampWithinHistoryRetention } from "./historyRetention";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -143,6 +144,7 @@ const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
+const HISTORY_RETENTION_CLEAN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const CODEX_IMAGE_MIN_VERSION = "0.2.0";
 const CODEX_IMAGE_SUPPORT_CACHE_MS = 5 * 60 * 1000;
 const CODEX_IMAGE_SUPPORT_TIMEOUT_MS = 5000;
@@ -351,6 +353,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
 };
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
+let historyArtifactRetentionCleanupPromise: Promise<void> | null = null;
 
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -367,7 +370,9 @@ export function activate(context: vscode.ExtensionContext): void {
   modelStore = loadModelStore();
   initializeConversationTabsFromWorkspaceSettings();
   syncCurrentSessionWithActiveTab();
-  void initLogger();
+  void initLogger().then(() => {
+    scheduleLogRetentionCleanup();
+  });
   setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
     onConfigChanged: () => {
@@ -375,6 +380,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
   startTempCleanup(context);
+  startHistoryArtifactRetentionCleanup(context);
   startConfigHeartbeat(context);
   void refreshCliInstallStatuses();
 
@@ -1785,6 +1791,35 @@ function startTempCleanup(context: vscode.ExtensionContext): void {
     cleanupTempDir();
   }, TEMP_CLEAN_INTERVAL_MS);
   context.subscriptions.push(new vscode.Disposable(() => clearInterval(timer)));
+}
+
+function startHistoryArtifactRetentionCleanup(context: vscode.ExtensionContext): void {
+  scheduleHistoryArtifactRetentionCleanup();
+  const timer = setInterval(() => {
+    scheduleHistoryArtifactRetentionCleanup();
+  }, HISTORY_RETENTION_CLEAN_INTERVAL_MS);
+  context.subscriptions.push(new vscode.Disposable(() => clearInterval(timer)));
+}
+
+function scheduleHistoryArtifactRetentionCleanup(): void {
+  if (historyArtifactRetentionCleanupPromise) {
+    return;
+  }
+  historyArtifactRetentionCleanupPromise = Promise.resolve()
+    .then(async () => {
+      scheduleLogRetentionCleanup();
+      cleanupTaskStoreRetention();
+      cleanupPromptHistoryRetentionAcrossWorkspaces();
+      await cleanupSessionRetentionAcrossWorkspaces();
+    })
+    .catch((error) => {
+      void logError("history-artifact-retention-cleanup-failed", {
+        error: String(error),
+      });
+    })
+    .finally(() => {
+      historyArtifactRetentionCleanupPromise = null;
+    });
 }
 
 function ensureTempDir(): void {
@@ -4382,7 +4417,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       return;
     }
     const info = getErrorInfo(error);
-    if (isAbortErrorInfo(info) || entry.stopped) {
+    if (entry.stopped) {
       void logInfo("runPrompt-interactive-aborted", {
         cli,
         tabId,
@@ -4993,6 +5028,47 @@ function appendTaskRun(record: TaskRunRecord): void {
   writeTaskStore(store);
 }
 
+function normalizeTaskRunRecord(record: unknown): TaskRunRecord | null {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const raw = record as Partial<TaskRunRecord>;
+  const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
+  if (typeof raw.id !== "string" || !raw.id.trim() || !cli) {
+    return null;
+  }
+  if (typeof raw.prompt !== "string" || typeof raw.startedAt !== "number") {
+    return null;
+  }
+  if (typeof raw.endedAt !== "number" || typeof raw.durationMs !== "number") {
+    return null;
+  }
+  if (raw.status !== "end" && raw.status !== "error" && raw.status !== "stopped") {
+    return null;
+  }
+  return {
+    id: raw.id,
+    cli,
+    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : null,
+    prompt: raw.prompt,
+    startedAt: raw.startedAt,
+    endedAt: raw.endedAt,
+    durationMs: raw.durationMs,
+    status: raw.status,
+  };
+}
+
+function ensureTaskStore(store?: TaskStore): TaskStore {
+  const now = Date.now();
+  const runs = Array.isArray(store?.runs)
+    ? store.runs
+        .map((record) => normalizeTaskRunRecord(record))
+        .filter((record): record is TaskRunRecord => Boolean(record))
+        .filter((record) => isTimestampWithinHistoryRetention(record.endedAt, now))
+    : [];
+  return { runs };
+}
+
 function readTaskStore(): TaskStore {
   try {
     if (!fs.existsSync(TASK_STORE_FILE)) {
@@ -5003,7 +5079,7 @@ function readTaskStore(): TaskStore {
     if (!parsed || !Array.isArray(parsed.runs)) {
       return { runs: [] };
     }
-    return { runs: parsed.runs as TaskRunRecord[] };
+    return ensureTaskStore({ runs: parsed.runs as TaskRunRecord[] });
   } catch (error) {
     void logError("task-store-read-error", { error: String(error) });
     return { runs: [] };
@@ -5019,6 +5095,22 @@ function writeTaskStore(store: TaskStore): void {
     fs.writeFileSync(TASK_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
   } catch (error) {
     void logError("task-store-write-error", { error: String(error) });
+  }
+}
+
+function cleanupTaskStoreRetention(): void {
+  try {
+    if (!fs.existsSync(TASK_STORE_FILE)) {
+      return;
+    }
+    const normalized = readTaskStore();
+    if (normalized.runs.length > 0) {
+      writeTaskStore(normalized);
+      return;
+    }
+    fs.unlinkSync(TASK_STORE_FILE);
+  } catch (error) {
+    void logError("task-store-retention-cleanup-error", { error: String(error) });
   }
 }
 
@@ -5491,10 +5583,12 @@ function loadPromptHistoryStore(): PromptHistoryStore {
 }
 
 function ensurePromptHistoryStore(store?: PromptHistoryStore): PromptHistoryStore {
+  const now = Date.now();
   const items = Array.isArray(store?.items) ? store?.items : [];
   const normalized = items
     .map((item) => normalizePromptHistoryItem(item))
-    .filter((item): item is PromptHistoryItem => Boolean(item));
+    .filter((item): item is PromptHistoryItem => Boolean(item))
+    .filter((item) => isTimestampWithinHistoryRetention(item.createdAt, now));
   normalized.sort((a, b) => b.createdAt - a.createdAt);
   if (normalized.length > PROMPT_HISTORY_LIMIT) {
     normalized.length = PROMPT_HISTORY_LIMIT;
@@ -5540,6 +5634,8 @@ function recordPromptHistory(prompt: string, cli: CliName): void {
   }
   if (!promptHistoryStore) {
     promptHistoryStore = loadPromptHistoryStore();
+  } else {
+    promptHistoryStore = ensurePromptHistoryStore(promptHistoryStore);
   }
   promptHistoryStore.items.unshift({
     id: createPromptHistoryId(),
@@ -5562,16 +5658,16 @@ function clearPromptHistory(): void {
   void logInfo("prompt-history-cleared", { workspace: activeWorkspaceKey });
 }
 
-function getPromptHistoryFilePath(): string {
-  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+function getPromptHistoryFilePath(workspaceKey: string = activeWorkspaceKey): string {
+  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
     return LEGACY_PROMPT_HISTORY_FILE;
   }
-  return path.join(PROMPT_HISTORY_DIR, `${activeWorkspaceKey}.json`);
+  return path.join(PROMPT_HISTORY_DIR, `${workspaceKey}.json`);
 }
 
-function readPromptHistoryFile(): PromptHistoryStore | undefined {
+function readPromptHistoryFile(workspaceKey: string = activeWorkspaceKey): PromptHistoryStore | undefined {
   try {
-    const filePath = getPromptHistoryFilePath();
+    const filePath = getPromptHistoryFilePath(workspaceKey);
     if (!fs.existsSync(filePath)) {
       return undefined;
     }
@@ -5583,9 +5679,9 @@ function readPromptHistoryFile(): PromptHistoryStore | undefined {
   }
 }
 
-function writePromptHistoryFile(store: PromptHistoryStore): void {
+function writePromptHistoryFile(store: PromptHistoryStore, workspaceKey: string = activeWorkspaceKey): void {
   try {
-    const filePath = getPromptHistoryFilePath();
+    const filePath = getPromptHistoryFilePath(workspaceKey);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf8");
   } catch (error) {
@@ -5593,14 +5689,58 @@ function writePromptHistoryFile(store: PromptHistoryStore): void {
   }
 }
 
+function deletePromptHistoryFile(workspaceKey: string): void {
+  try {
+    const filePath = getPromptHistoryFilePath(workspaceKey);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    void logError("prompt-history-delete-error", {
+      workspace: workspaceKey,
+      error: String(error),
+    });
+  }
+}
+
+function cleanupPromptHistoryRetentionAcrossWorkspaces(): void {
+  const workspaceKeys = collectWorkspaceKeysForPromptHistoryCleanup();
+  workspaceKeys.forEach((workspaceKey) => {
+    const normalized = ensurePromptHistoryStore(readPromptHistoryFile(workspaceKey));
+    if (normalized.items.length > 0) {
+      writePromptHistoryFile(normalized, workspaceKey);
+      return;
+    }
+    deletePromptHistoryFile(workspaceKey);
+  });
+}
+
+function collectWorkspaceKeysForPromptHistoryCleanup(): string[] {
+  const workspaceKeys = new Set<string>();
+  if (fs.existsSync(LEGACY_PROMPT_HISTORY_FILE)) {
+    workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
+  }
+  if (fs.existsSync(PROMPT_HISTORY_DIR)) {
+    for (const entry of fs.readdirSync(PROMPT_HISTORY_DIR, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      workspaceKeys.add(entry.name.slice(0, -".json".length));
+    }
+  }
+  return Array.from(workspaceKeys);
+}
+
 function loadSessionStore(): SessionStore {
   const stored = readSessionFile() ?? extensionContext.globalState.get<SessionStore>(getSessionStoreKey());
   const normalized = ensureSessionStore(stored);
+  cleanupStaleSessionArtifacts(stored, normalized);
   void persistSessionStore(normalized);
   return normalized;
 }
 
 function ensureSessionStore(store?: SessionStore): SessionStore {
+  const now = Date.now();
   const result = {
     codex: { currentId: null, sessions: [] },
     claude: { currentId: null, sessions: [] },
@@ -5614,10 +5754,9 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
   for (const cli of CLI_LIST) {
     const current = store[cli];
     if (current) {
-      result[cli] = {
-        currentId: current.currentId ?? null,
-        sessions: Array.isArray(current.sessions)
-          ? current.sessions.map((session) => {
+      const sessions = Array.isArray(current.sessions)
+        ? current.sessions
+            .map((session) => {
               const firstPrompt = typeof session.firstPrompt === "string" && session.firstPrompt.trim()
                 ? session.firstPrompt
                 : undefined;
@@ -5634,11 +5773,274 @@ function ensureSessionStore(store?: SessionStore): SessionStore {
                 firstPrompt,
               };
             })
-          : [],
+            .filter((session) => isSessionRecordWithinRetention(session, now))
+        : [];
+      result[cli] = {
+        currentId: current.currentId ?? null,
+        sessions,
       };
+      if (
+        result[cli].currentId
+        && !sessions.some((session) => session.id === result[cli].currentId)
+      ) {
+        result[cli].currentId = getLatestSessionIdFromRecords(sessions);
+      }
     }
   }
   return result;
+}
+
+function isSessionRecordWithinRetention(session: SessionRecord, now: number = Date.now()): boolean {
+  const referenceTime = Number.isFinite(session.lastUsedAt) ? session.lastUsedAt : session.createdAt;
+  return isTimestampWithinHistoryRetention(referenceTime, now);
+}
+
+function getLatestSessionIdFromRecords(sessions: SessionRecord[]): string | null {
+  if (sessions.length === 0) {
+    return null;
+  }
+  const latest = sessions.reduce((prev, current) =>
+    current.lastUsedAt > prev.lastUsedAt ? current : prev
+  );
+  return latest.id;
+}
+
+function cleanupStaleSessionArtifacts(
+  sourceStore: SessionStore | undefined,
+  retainedStore: SessionStore,
+  workspaceKey: string = activeWorkspaceKey
+): void {
+  const staleSessionIds = collectStaleSessionIds(sourceStore, retainedStore);
+
+  for (const cli of CLI_LIST) {
+    for (const sessionId of staleSessionIds[cli]) {
+      const key = getSessionKey(cli, sessionId, workspaceKey);
+      sessionMessageCache.delete(key);
+      sessionMessageLoadErrors.delete(key);
+      try {
+        const filePath = getMessageFile(cli, sessionId, workspaceKey);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (error) {
+        void logError("session-messages-retention-delete-error", {
+          cli,
+          sessionId,
+          error: String(error),
+        });
+      }
+    }
+  }
+
+  const meta = readSessionMetaStore(workspaceKey);
+  if (pruneStaleSessionMetaMappings(meta, retainedStore)) {
+    if (isSessionMetaStoreEmpty(meta)) {
+      deleteSessionMetaStoreFile(workspaceKey);
+    } else {
+      writeSessionMetaStore(meta, workspaceKey);
+    }
+  }
+
+  const removedCount = CLI_LIST.reduce((total, cli) => total + staleSessionIds[cli].length, 0);
+  if (removedCount > 0) {
+    void logInfo("session-history-retention-pruned", {
+      workspace: workspaceKey,
+      retentionDays: HISTORY_RETENTION_DAYS,
+      removedCount,
+      removedByCli: staleSessionIds,
+    });
+  }
+}
+
+function isSessionMetaStoreEmpty(meta: ReturnType<typeof readSessionMeta>): boolean {
+  return !meta.byCli || Object.keys(meta.byCli).length === 0;
+}
+
+function deleteSessionMetaStoreFile(workspaceKey: string): void {
+  try {
+    const filePath = getSessionMetaFilePath(workspaceKey);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    void logError("session-meta-delete-error", {
+      workspace: workspaceKey,
+      error: String(error),
+    });
+  }
+}
+
+function isSessionStoreEmpty(store: SessionStore): boolean {
+  return CLI_LIST.every((cli) => {
+    const bucket = store[cli];
+    return !bucket?.currentId && (!bucket?.sessions || bucket.sessions.length === 0);
+  });
+}
+
+function cleanupWorkspaceMessageFiles(workspaceKey: string, retainedStore: SessionStore): void {
+  const messageDir = getMessageDir(workspaceKey);
+  if (!fs.existsSync(messageDir)) {
+    return;
+  }
+  for (const cli of CLI_LIST) {
+    const cliDir = path.join(messageDir, cli);
+    if (!fs.existsSync(cliDir)) {
+      continue;
+    }
+    const retainedIds = new Set((retainedStore[cli]?.sessions ?? []).map((session) => session.id));
+    for (const entry of fs.readdirSync(cliDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      const sessionId = entry.name.slice(0, -".json".length);
+      if (retainedIds.has(sessionId)) {
+        continue;
+      }
+      try {
+        fs.unlinkSync(path.join(cliDir, entry.name));
+      } catch (error) {
+        void logError("session-message-orphan-delete-error", {
+          workspace: workspaceKey,
+          cli,
+          sessionId,
+          error: String(error),
+        });
+      }
+    }
+    if (fs.existsSync(cliDir) && fs.readdirSync(cliDir).length === 0) {
+      fs.rmSync(cliDir, { recursive: true, force: true });
+    }
+  }
+  if (workspaceKey !== WORKSPACE_KEY_FALLBACK && fs.existsSync(messageDir) && fs.readdirSync(messageDir).length === 0) {
+    fs.rmSync(messageDir, { recursive: true, force: true });
+  }
+}
+
+async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
+  const workspaceKeys = collectWorkspaceKeysForSessionCleanup();
+  for (const workspaceKey of workspaceKeys) {
+    const sourceStore = readSessionFile(workspaceKey)
+      ?? extensionContext.globalState.get<SessionStore>(getSessionStoreKey(workspaceKey));
+    const normalized = ensureSessionStore(sourceStore);
+    cleanupStaleSessionArtifacts(sourceStore, normalized, workspaceKey);
+    cleanupWorkspaceMessageFiles(workspaceKey, normalized);
+    if (isSessionStoreEmpty(normalized)) {
+      deleteSessionFile(workspaceKey);
+      await extensionContext.globalState.update(getSessionStoreKey(workspaceKey), undefined);
+    } else {
+      writeSessionFile(normalized, workspaceKey);
+      await extensionContext.globalState.update(getSessionStoreKey(workspaceKey), normalized);
+    }
+  }
+}
+
+function collectWorkspaceKeysForSessionCleanup(): string[] {
+  const workspaceKeys = new Set<string>();
+  if (fs.existsSync(LEGACY_SESSION_FILE)) {
+    workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
+  }
+  if (fs.existsSync(SESSION_DIR)) {
+    for (const entry of fs.readdirSync(SESSION_DIR, { withFileTypes: true })) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (entry.name.endsWith(".meta.json")) {
+        workspaceKeys.add(entry.name.slice(0, -".meta.json".length));
+        continue;
+      }
+      if (entry.name.endsWith(".json")) {
+        workspaceKeys.add(entry.name.slice(0, -".json".length));
+      }
+    }
+  }
+  if (fs.existsSync(MESSAGE_DIR_ROOT)) {
+    for (const entry of fs.readdirSync(MESSAGE_DIR_ROOT, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      if (CLI_LIST.includes(entry.name as CliName)) {
+        workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
+        continue;
+      }
+      workspaceKeys.add(entry.name);
+    }
+  }
+  const prefix = `${SESSION_STORE_KEY}:`;
+  for (const key of extensionContext.globalState.keys()) {
+    if (key.startsWith(prefix)) {
+      workspaceKeys.add(key.slice(prefix.length));
+    }
+  }
+  return Array.from(workspaceKeys);
+}
+
+function collectStaleSessionIds(
+  sourceStore: SessionStore | undefined,
+  retainedStore: SessionStore
+): Record<CliName, string[]> {
+  const removed: Record<CliName, string[]> = {
+    codex: [],
+    claude: [],
+    gemini: [],
+  };
+
+  if (!sourceStore) {
+    return removed;
+  }
+
+  for (const cli of CLI_LIST) {
+    const retainedIds = new Set((retainedStore[cli]?.sessions ?? []).map((session) => session.id));
+    const sourceIds = Array.isArray(sourceStore[cli]?.sessions)
+      ? sourceStore[cli].sessions.map((session) => session.id)
+      : [];
+    removed[cli] = sourceIds.filter((sessionId) => !retainedIds.has(sessionId));
+  }
+
+  return removed;
+}
+
+function pruneStaleSessionMetaMappings(
+  meta: ReturnType<typeof readSessionMeta>,
+  retainedStore: SessionStore
+): boolean {
+  let changed = false;
+  const retainedIds = {
+    codex: new Set((retainedStore.codex?.sessions ?? []).map((session) => session.id)),
+    claude: new Set((retainedStore.claude?.sessions ?? []).map((session) => session.id)),
+  };
+
+  if (meta.byCli?.codex) {
+    Object.keys(meta.byCli.codex).forEach((sessionId) => {
+      if (!retainedIds.codex.has(sessionId)) {
+        delete meta.byCli?.codex?.[sessionId];
+        changed = true;
+      }
+    });
+    if (Object.keys(meta.byCli.codex).length === 0) {
+      delete meta.byCli.codex;
+      changed = true;
+    }
+  }
+
+  if (meta.byCli?.claude) {
+    Object.keys(meta.byCli.claude).forEach((sessionId) => {
+      if (!retainedIds.claude.has(sessionId)) {
+        delete meta.byCli?.claude?.[sessionId];
+        changed = true;
+      }
+    });
+    if (Object.keys(meta.byCli.claude).length === 0) {
+      delete meta.byCli.claude;
+      changed = true;
+    }
+  }
+
+  if (meta.byCli && Object.keys(meta.byCli).length === 0) {
+    delete meta.byCli;
+    changed = true;
+  }
+
+  return changed;
 }
 
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
@@ -5699,14 +6101,7 @@ function ensureLatestSessionForCli(cli: CliName): void {
 }
 
 function getLatestSessionId(cli: CliName): string | null {
-  const sessions = sessionStore[cli]?.sessions ?? [];
-  if (sessions.length === 0) {
-    return null;
-  }
-  const latest = sessions.reduce((prev, current) =>
-    current.lastUsedAt > prev.lastUsedAt ? current : prev
-  );
-  return latest.id;
+  return getLatestSessionIdFromRecords(sessionStore[cli]?.sessions ?? []);
 }
 
 function getCurrentSessionId(cli: CliName): string | null {
@@ -5761,13 +6156,18 @@ function normalizeConversationTabsState(
     : tabs[tabs.length - 1].id;
   return {
     activeTabId,
-    tabs: tabs.map((tab) => ({
-      id: tab.id,
-      cli: tab.cli,
-      sessionId: tab.sessionId,
-      sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
-      createdAt: tab.createdAt,
-    })),
+    tabs: tabs.map((tab) => {
+      const sessionIdByCli = retainExistingConversationTabSessionIdMap(
+        sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId)
+      );
+      return {
+        id: tab.id,
+        cli: tab.cli,
+        sessionId: sessionIdByCli[tab.cli] ?? null,
+        sessionIdByCli,
+        createdAt: tab.createdAt,
+      };
+    }),
   };
 }
 
@@ -5787,18 +6187,33 @@ function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | 
   const sessionId = typeof record.sessionId === "string" && record.sessionId.trim()
     ? record.sessionId
     : null;
-  const sessionIdByCli = sanitizeConversationTabSessionIdMap(
-    (record as { sessionIdByCli?: unknown }).sessionIdByCli,
-    cli,
-    sessionId,
+  const sessionIdByCli = retainExistingConversationTabSessionIdMap(
+    sanitizeConversationTabSessionIdMap(
+      (record as { sessionIdByCli?: unknown }).sessionIdByCli,
+      cli,
+      sessionId,
+    )
   );
   return {
     id,
     cli,
-    sessionId,
+    sessionId: sessionIdByCli[cli] ?? null,
     sessionIdByCli,
     createdAt,
   };
+}
+
+function retainExistingConversationTabSessionIdMap(
+  value: Partial<Record<CliName, string>>,
+): Partial<Record<CliName, string>> {
+  const retained: Partial<Record<CliName, string>> = {};
+  for (const cli of CLI_LIST) {
+    const sessionId = value[cli];
+    if (typeof sessionId === "string" && hasSessionRecord(cli, sessionId)) {
+      retained[cli] = sessionId;
+    }
+  }
+  return retained;
 }
 
 function sanitizeConversationTabSessionIdMap(
@@ -5826,6 +6241,10 @@ function sanitizeConversationTabSessionIdMap(
 function getConversationTabSessionIdForCli(tab: ConversationTabRecord, cli: CliName): string | null {
   const sessionId = tab.sessionIdByCli?.[cli];
   return typeof sessionId === "string" && sessionId.trim() ? sessionId : null;
+}
+
+function hasSessionRecord(cli: CliName, sessionId: string): boolean {
+  return sessionStore[cli]?.sessions.some((session) => session.id === sessionId) ?? false;
 }
 
 function setConversationTabSessionIdForCli(
@@ -6332,30 +6751,33 @@ function attachPendingMessages(cli: CliName, tabId: string, sessionId: string): 
   }
 }
 
-function getSessionStoreKey(): string {
-  return `${SESSION_STORE_KEY}:${activeWorkspaceKey}`;
+function getSessionStoreKey(workspaceKey: string = activeWorkspaceKey): string {
+  return `${SESSION_STORE_KEY}:${workspaceKey}`;
 }
 
-function getSessionFilePath(): string {
-  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+function getSessionFilePath(workspaceKey: string = activeWorkspaceKey): string {
+  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
     return LEGACY_SESSION_FILE;
   }
-  return path.join(SESSION_DIR, `${activeWorkspaceKey}.json`);
+  return path.join(SESSION_DIR, `${workspaceKey}.json`);
 }
 
-function getSessionMetaFilePath(): string {
-  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+function getSessionMetaFilePath(workspaceKey: string = activeWorkspaceKey): string {
+  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
     return path.join(DATA_DIR, "sessions.meta.json");
   }
-  return path.join(SESSION_DIR, `${activeWorkspaceKey}.meta.json`);
+  return path.join(SESSION_DIR, `${workspaceKey}.meta.json`);
 }
 
-function readSessionMetaStore(): ReturnType<typeof readSessionMeta> {
-  return readSessionMeta(getSessionMetaFilePath());
+function readSessionMetaStore(workspaceKey: string = activeWorkspaceKey): ReturnType<typeof readSessionMeta> {
+  return readSessionMeta(getSessionMetaFilePath(workspaceKey));
 }
 
-function writeSessionMetaStore(meta: ReturnType<typeof readSessionMeta>): void {
-  writeSessionMeta(getSessionMetaFilePath(), meta);
+function writeSessionMetaStore(
+  meta: ReturnType<typeof readSessionMeta>,
+  workspaceKey: string = activeWorkspaceKey
+): void {
+  writeSessionMeta(getSessionMetaFilePath(workspaceKey), meta);
 }
 
 function resolveInteractiveMappedId(cli: CliName, sessionId: string): string {
@@ -6395,11 +6817,11 @@ function deleteInteractiveMapping(cli: CliName, sessionId: string): void {
   }
 }
 
-function getMessageDir(): string {
-  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
+function getMessageDir(workspaceKey: string = activeWorkspaceKey): string {
+  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
     return LEGACY_MESSAGE_DIR;
   }
-  return path.join(MESSAGE_DIR_ROOT, activeWorkspaceKey);
+  return path.join(MESSAGE_DIR_ROOT, workspaceKey);
 }
 
 function clearMessageStorage(): void {
@@ -6418,12 +6840,12 @@ function clearMessageStorage(): void {
   }
 }
 
-function getSessionKey(cli: CliName, sessionId: string): string {
-  return `${activeWorkspaceKey}:${cli}:${sessionId}`;
+function getSessionKey(cli: CliName, sessionId: string, workspaceKey: string = activeWorkspaceKey): string {
+  return `${workspaceKey}:${cli}:${sessionId}`;
 }
 
-function getMessageFile(cli: CliName, sessionId: string): string {
-  return path.join(getMessageDir(), cli, `${sessionId}.json`);
+function getMessageFile(cli: CliName, sessionId: string, workspaceKey: string = activeWorkspaceKey): string {
+  return path.join(getMessageDir(workspaceKey), cli, `${sessionId}.json`);
 }
 
 function loadSessionMessages(cli: CliName, sessionId: string): ChatMessage[] {
@@ -6725,9 +7147,9 @@ function clearAllSessions(): void {
   void logInfo("session-clear-all", {});
 }
 
-function readSessionFile(): SessionStore | undefined {
+function readSessionFile(workspaceKey: string = activeWorkspaceKey): SessionStore | undefined {
   try {
-    const sessionFile = getSessionFilePath();
+    const sessionFile = getSessionFilePath(workspaceKey);
     if (!fs.existsSync(sessionFile)) {
       return undefined;
     }
@@ -6739,9 +7161,9 @@ function readSessionFile(): SessionStore | undefined {
   }
 }
 
-function writeSessionFile(store: SessionStore): void {
+function writeSessionFile(store: SessionStore, workspaceKey: string = activeWorkspaceKey): void {
   try {
-    const sessionFile = getSessionFilePath();
+    const sessionFile = getSessionFilePath(workspaceKey);
     const dirPath = path.dirname(sessionFile);
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
@@ -6749,6 +7171,20 @@ function writeSessionFile(store: SessionStore): void {
     fs.writeFileSync(sessionFile, JSON.stringify(store, null, 2), "utf8");
   } catch (error) {
     void logError("session-file-write-error", { error: String(error) });
+  }
+}
+
+function deleteSessionFile(workspaceKey: string): void {
+  try {
+    const sessionFile = getSessionFilePath(workspaceKey);
+    if (fs.existsSync(sessionFile)) {
+      fs.unlinkSync(sessionFile);
+    }
+  } catch (error) {
+    void logError("session-file-delete-error", {
+      workspace: workspaceKey,
+      error: String(error),
+    });
   }
 }
 
