@@ -75,6 +75,12 @@ import {
   writeSessionMeta,
 } from "./interactive/metaStore";
 import { HISTORY_RETENTION_DAYS, isTimestampWithinHistoryRetention } from "./historyRetention";
+import {
+  findSupersedingSessionId,
+  isLocalSessionId,
+  mergeSessionMessages,
+  mergeSessionRecords,
+} from "./interactive/sessionHistoryRepair";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -369,6 +375,7 @@ export function activate(context: vscode.ExtensionContext): void {
   promptHistoryStore = loadPromptHistoryStore();
   modelStore = loadModelStore();
   initializeConversationTabsFromWorkspaceSettings();
+  repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
   void initLogger().then(() => {
     scheduleLogRetentionCleanup();
@@ -716,8 +723,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   if (message.type === "selectSession") {
     await setCurrentCli(message.cli, { syncActiveTab: false });
     interactiveRunnerManager?.disposeAll();
-    if (message.sessionId) {
-      const existingTabId = findConversationTabIdBySession(message.cli, message.sessionId);
+    const selectedSessionId = message.sessionId
+      ? repairSupersededLocalSession(message.cli, message.sessionId)
+      : null;
+    if (selectedSessionId) {
+      const existingTabId = findConversationTabIdBySession(message.cli, selectedSessionId);
       if (existingTabId) {
         const switched = setActiveConversationTab(existingTabId);
         if (switched && currentCli !== switched.cli) {
@@ -730,7 +740,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
         const activeTab = getActiveConversationTab();
         if (activeTab && activeTab.cli !== message.cli) {
           switchConversationTabCli(activeTab, message.cli);
-          setConversationTabSessionIdForCli(activeTab, message.cli, message.sessionId);
+          setConversationTabSessionIdForCli(activeTab, message.cli, selectedSessionId);
           clearPendingSessionDraft(activeTab.id, message.cli);
           persistConversationTabsToWorkspaceSettings();
         } else {
@@ -738,16 +748,16 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
           if (activeTabId) {
             clearPendingSessionDraft(activeTabId, message.cli);
           }
-          updateActiveConversationTabSession(message.cli, message.sessionId);
+          updateActiveConversationTabSession(message.cli, selectedSessionId);
         }
-        setCurrentSession(message.cli, message.sessionId);
+        setCurrentSession(message.cli, selectedSessionId);
       }
     } else {
       startNewSession(message.cli);
     }
-    const selectedSessionId = syncCurrentSessionWithActiveTab();
+    const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
-    sendSessionMessagesToPanel(currentCli, selectedSessionId);
+    sendSessionMessagesToPanel(currentCli, activeSessionId);
     return;
   }
 
@@ -1456,6 +1466,7 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   conversationTabStore.activeTabId = null;
   conversationTabStore.tabs = [];
   initializeConversationTabsFromWorkspaceSettings();
+  repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
 }
 
@@ -3506,6 +3517,33 @@ function appendUserMessageForCli(
   sendPanelMessage({ type: "appendMessage", message });
 }
 
+async function resolveInteractiveSessionForResume(
+  cli: CliName,
+  sessionId: string | null,
+  tabId: string | null,
+): Promise<string | null | undefined> {
+  if (!sessionId) {
+    return sessionId;
+  }
+  const repairedSessionId = repairSupersededLocalSession(cli, sessionId);
+  if (repairedSessionId !== sessionId) {
+    return repairedSessionId;
+  }
+  const mappedId = resolveInteractiveMappedId(cli, repairedSessionId);
+  if (isLocalSessionId(repairedSessionId) && !mappedId) {
+    const detail = t("session.resumeUnavailableNoRemote");
+    await showErrorWithActions(t("session.resumeUnavailableTitle"), detail);
+    void logInfo("interactive-session-resume-blocked", {
+      cli,
+      sessionId: repairedSessionId,
+      tabId,
+      reason: "missing-remote-id",
+    });
+    return undefined;
+  }
+  return repairedSessionId;
+}
+
 async function runContextCompactionCommand(): Promise<void> {
   const cli = currentCli;
   if (!isInteractiveSupported(cli)) {
@@ -3524,11 +3562,20 @@ async function runContextCompactionCommand(): Promise<void> {
     );
     return;
   }
-  const sessionId = getCurrentSessionId(cli);
-  if (!sessionId) {
-    appendSystemMessageForCli(cli, sessionId, t("rules.compactNoSession"));
+  const currentSessionId = getCurrentSessionId(cli);
+  if (!currentSessionId) {
+    appendSystemMessageForCli(cli, currentSessionId, t("rules.compactNoSession"));
     return;
   }
+  const resolvedSessionId = await resolveInteractiveSessionForResume(
+    cli,
+    currentSessionId,
+    getActiveConversationTabId(),
+  );
+  if (resolvedSessionId === undefined || !resolvedSessionId) {
+    return;
+  }
+  const sessionId = resolvedSessionId;
 
   const cwd = resolveWorkspaceCwd();
   const selectedModel = getSelectedCliModel(cli);
@@ -3807,9 +3854,13 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
   const tabId = target.tabId;
+  const resolvedSessionId = await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
+  if (resolvedSessionId === undefined) {
+    return;
+  }
   preparePendingLabel(cli, tabId, prompt);
 
-  let uiSessionId = target.sessionId;
+  let uiSessionId = resolvedSessionId;
   let messageTarget = uiSessionId
     ? loadSessionMessages(cli, uiSessionId)
     : getPendingSessionDraft(tabId, cli).messages;
@@ -4173,9 +4224,16 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   };
 
   const updateSessionForNewRun = (newId: string): void => {
-    if (!uiSessionId) {
+    const localSessionIdToPromote = !uiSessionId
+      ? (getConversationTabById(tabId)?.sessionId ?? null)
+      : (isLocalSessionId(uiSessionId) ? uiSessionId : null);
+
+    if (!uiSessionId || localSessionIdToPromote) {
       adoptSessionId(cli, newId, tabId);
       upsertInteractiveMapping(cli, newId, newId);
+      if (localSessionIdToPromote && localSessionIdToPromote !== newId) {
+        migrateLocalSessionToTargetSession(cli, localSessionIdToPromote, newId);
+      }
       uiSessionId = newId;
       refreshMessageTargetFromSession();
       return;
@@ -6780,10 +6838,164 @@ function writeSessionMetaStore(
   writeSessionMeta(getSessionMetaFilePath(workspaceKey), meta);
 }
 
-function resolveInteractiveMappedId(cli: CliName, sessionId: string): string {
+function getSessionRecord(cli: CliName, sessionId: string): SessionRecord | null {
+  const sessions = sessionStore[cli]?.sessions ?? [];
+  return sessions.find((session) => session.id === sessionId) ?? null;
+}
+
+function replaceConversationTabSessionReferences(
+  cli: CliName,
+  fromSessionId: string,
+  toSessionId: string,
+): void {
+  const state = ensureConversationTabs();
+  let changed = false;
+  state.tabs.forEach((tab) => {
+    if (getConversationTabSessionIdForCli(tab, cli) === fromSessionId) {
+      changed = setConversationTabSessionIdForCli(tab, cli, toSessionId) || changed;
+    }
+  });
+  if (changed) {
+    persistConversationTabsToWorkspaceSettings();
+  }
+}
+
+function replaceRuntimeSessionReferences(cli: CliName, fromSessionId: string, toSessionId: string): void {
+  if (activeCliForRun === cli && activeSessionId === fromSessionId) {
+    activeSessionId = toSessionId;
+    activeMessageTarget = loadSessionMessages(cli, toSessionId);
+    activeMessageIndex = activeMessageTarget.length > 0 ? activeMessageTarget.length - 1 : null;
+  }
+  parallelRunsByTabId.forEach((run) => {
+    if (run.cli === cli && run.sessionId === fromSessionId) {
+      run.sessionId = toSessionId;
+      run.messageTarget = loadSessionMessages(cli, toSessionId);
+    }
+  });
+  interactiveRunsByTabId.forEach((run) => {
+    if (run.cli === cli && run.sessionId === fromSessionId) {
+      run.sessionId = toSessionId;
+      run.messageTarget = loadSessionMessages(cli, toSessionId);
+    }
+  });
+}
+
+function deleteSessionMessageArtifacts(cli: CliName, sessionId: string): void {
+  sessionMessageCache.delete(getSessionKey(cli, sessionId));
+  const filePath = getMessageFile(cli, sessionId);
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    void logError("session-messages-delete-error", {
+      cli,
+      sessionId,
+      filePath,
+      error: String(error),
+    });
+  }
+  deleteInteractiveMapping(cli, sessionId);
+}
+
+function migrateLocalSessionToTargetSession(
+  cli: CliName,
+  localSessionId: string,
+  targetSessionId: string,
+  options: { notifyPanel?: boolean } = {}
+): void {
+  if (!localSessionId || !targetSessionId || localSessionId === targetSessionId) {
+    return;
+  }
+  const localRecord = getSessionRecord(cli, localSessionId);
+  const targetRecord = getSessionRecord(cli, targetSessionId);
+  if (!localRecord && !targetRecord) {
+    return;
+  }
+
+  const localMessages = loadSessionMessages(cli, localSessionId);
+  const targetMessages = loadSessionMessages(cli, targetSessionId);
+  const mergedMessages = mergeSessionMessages(targetMessages, localMessages);
+  saveSessionMessages(cli, targetSessionId, mergedMessages);
+
+  const sessions = sessionStore[cli]?.sessions ?? [];
+  const targetIndex = sessions.findIndex((session) => session.id === targetSessionId);
+
+  if (localRecord && targetIndex >= 0 && targetRecord) {
+    sessions[targetIndex] = mergeSessionRecords(targetRecord, localRecord);
+  } else if (localRecord && targetIndex < 0) {
+    sessions.push({ ...localRecord, id: targetSessionId });
+  }
+
+  const removableLocalIndex = sessions.findIndex((session) => session.id === localSessionId);
+  if (removableLocalIndex >= 0) {
+    sessions.splice(removableLocalIndex, 1);
+  }
+
+  if (getCurrentSessionId(cli) === localSessionId) {
+    setCurrentSession(cli, targetSessionId, { syncConversationTab: false });
+  }
+
+  replaceConversationTabSessionReferences(cli, localSessionId, targetSessionId);
+  replaceRuntimeSessionReferences(cli, localSessionId, targetSessionId);
+  deleteSessionMessageArtifacts(cli, localSessionId);
+  void persistSessionStore(sessionStore);
+  if (options.notifyPanel !== false) {
+    void postPanelState();
+  }
+  void logInfo("session-local-promoted", {
+    cli,
+    localSessionId,
+    targetSessionId,
+    mergedMessageCount: mergedMessages.length,
+  });
+}
+
+function findSupersedingLocalSessionTarget(cli: CliName, sessionId: string): string | null {
+  if (!isLocalSessionId(sessionId)) {
+    return null;
+  }
+  const meta = readSessionMetaStore();
+  const mappedId = getMappedThreadId(meta, cli, sessionId);
+  if (mappedId && mappedId !== sessionId) {
+    return mappedId;
+  }
+  const localRecord = getSessionRecord(cli, sessionId);
+  if (!localRecord) {
+    return null;
+  }
+  return findSupersedingSessionId(localRecord, sessionStore[cli]?.sessions ?? [], {
+    getMessages: (candidateSessionId) => loadSessionMessages(cli, candidateSessionId),
+  });
+}
+
+function repairSupersededLocalSession(cli: CliName, sessionId: string, options: { notifyPanel?: boolean } = {}): string {
+  const targetSessionId = findSupersedingLocalSessionTarget(cli, sessionId);
+  if (!targetSessionId || targetSessionId === sessionId) {
+    return sessionId;
+  }
+  migrateLocalSessionToTargetSession(cli, sessionId, targetSessionId, options);
+  return targetSessionId;
+}
+
+function repairSupersededLocalSessions(options: { notifyPanel?: boolean } = {}): void {
+  CLI_LIST.forEach((cli) => {
+    const localSessionIds = (sessionStore[cli]?.sessions ?? [])
+      .map((session) => session.id)
+      .filter((sessionId) => isLocalSessionId(sessionId));
+    localSessionIds.forEach((sessionId) => {
+      repairSupersededLocalSession(cli, sessionId, options);
+    });
+  });
+}
+
+function resolveInteractiveMappedId(cli: CliName, sessionId: string): string | null {
   const meta = readSessionMetaStore();
   const mapped = getMappedThreadId(meta, cli, sessionId);
-  return mapped ?? sessionId;
+  if (mapped) {
+    return mapped;
+  }
+  return isLocalSessionId(sessionId) ? null : sessionId;
 }
 
 function upsertInteractiveMapping(

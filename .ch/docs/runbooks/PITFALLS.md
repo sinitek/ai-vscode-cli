@@ -46,3 +46,37 @@
 ## 当前状态
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
+
+## Interactive 历史会话被 local 临时 ID 污染，恢复后出现 invalid thread id
+
+- 状态：已修复
+- 首次发现：2026-04-15
+- 适用范围：`src/extension.ts` 的 Codex / Claude 交互式会话历史恢复链路
+
+### 现象
+- 历史会话列表里会出现 `local_*` 临时会话。
+- 恢复这类历史会话后，可能看不到完整历史消息。
+- 在该会话继续发送消息时，Codex 报错：`invalid thread id ... found 'l' at 1`。
+
+### 触发条件
+- 交互式会话开始后，真实 thread/session id 尚未返回前，扩展先创建了 `local_*` 临时会话并落盘。
+- 真实 id 返回后，没有把 local 会话稳定迁移/合并到真实会话。
+
+### 根因
+- local 临时会话用于承接首条消息的落盘，但真实 id 到达时只更新了当前运行态，没有清理历史里的 local 会话副本。
+- 历史恢复时如果继续选中了 local 会话，后续续接会把 `local_*` 误当成真实 Codex thread id。
+
+### 临时绕过
+- 修复前可手动删除 `local_*` 历史项，改选对应的真实 UUID 会话；若没有真实会话，只能查看历史，不能继续回复。
+
+### 长期规避
+- 真实 thread/session id 到达时，立即把 local 会话消息迁移/合并到真实会话并移除 local 历史项。
+- 恢复历史会话前，先尝试把 local 会话修复到真实会话；如果确实没有真实远端 id，则直接阻止继续回复并提示原因。
+
+### 验证方式
+- 构造 local 会话 + 真实 UUID 会话同时存在的样本，验证会命中真实会话并合并完整消息。
+- 在仓库执行：`npm run build` 与 `node scripts/validate_history_session_fix.js`。
+
+### 关联资料
+- 代码：`src/extension.ts`、`src/interactive/sessionHistoryRepair.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-15-history-session-local-thread-merge.md`
