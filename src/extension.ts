@@ -2926,7 +2926,7 @@ ${rawStderr}`);
         const completionMessage: ChatMessage = {
           id: createMessageId(),
           role: "system",
-          content: t("run.completedWithDuration", { duration: formatDuration(taskRecord.durationMs) }),
+          content: buildTaskRunCompletionText(status, taskRecord.durationMs),
           createdAt: Date.now(),
         };
         appendMessageToStore(messageTarget, completionMessage);
@@ -4200,7 +4200,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       status,
     });
     appendSystemMessageForTab(
-      t("run.completedWithDuration", { duration: formatDuration(Math.max(0, endedAt - startedAt)) })
+      buildTaskRunCompletionText(status, Math.max(0, endedAt - startedAt))
     );
   };
 
@@ -4979,13 +4979,10 @@ function appendCompletionMessage(status: TaskRunStatus): void {
     return;
   }
   const taskRecord = finalizeTaskRun(activeRunId, status);
-  const durationText = taskRecord ? formatDuration(taskRecord.durationMs) : null;
   const message = {
     id: createMessageId(),
     role: "system" as const,
-    content: durationText
-      ? t("run.completedWithDuration", { duration: durationText })
-      : t("run.completed"),
+    content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null),
     createdAt: Date.now(),
   };
   activeCompletionSent = true;
@@ -5004,6 +5001,18 @@ function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: 
     prompt: status === "start" ? activeTaskRun?.prompt : undefined,
     startedAt: status === "start" ? activeTaskRun?.startedAt : undefined,
   });
+}
+
+function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null): string {
+  const hasDuration = typeof durationMs === "number" && Number.isFinite(durationMs);
+  const durationText = hasDuration ? formatDuration(Math.max(0, durationMs)) : null;
+  if (status === "error") {
+    return durationText ? t("run.failedWithDuration", { duration: durationText }) : t("run.failed");
+  }
+  if (status === "stopped") {
+    return durationText ? t("run.stoppedWithDuration", { duration: durationText }) : t("run.stopped");
+  }
+  return durationText ? t("run.completedWithDuration", { duration: durationText }) : t("run.completed");
 }
 
 function normalizeRawStreamContent(content: unknown): string {

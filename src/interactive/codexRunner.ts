@@ -7,6 +7,12 @@ import { getMacTaskShell } from "../cli/config";
 import { resolveCliCommand } from "../cli/commandRunner";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
+import {
+  extractCodexCollabToolFailure,
+  extractCodexRawResponseToolCall,
+  extractCodexWaitTimeoutPayload,
+  normalizeCodexExecItemType,
+} from "./codexAppServerEvents";
 
 export type CodexTraceKind = "thinking" | "normal";
 
@@ -490,15 +496,7 @@ function toExecLikeWebSearchAction(action: unknown): unknown {
 }
 
 function toExecLikeItemType(type: unknown): string {
-  const normalized = String(type || "").trim();
-  return ({
-    agentMessage: "agent_message",
-    commandExecution: "command_execution",
-    fileChange: "file_change",
-    mcpToolCall: "mcp_tool_call",
-    todoList: "todo_list",
-    webSearch: "web_search",
-  } as Record<string, string>)[normalized] || normalized;
+  return normalizeCodexExecItemType(type);
 }
 
 function toExecLikeItem(item: unknown): Record<string, unknown> {
@@ -602,6 +600,16 @@ function buildForwardedRawEvent(message: Record<string, unknown>): Record<string
     return { type: "error", message: msg };
   }
 
+  if (method === "rawResponseItem/completed") {
+    const rawItem = params.item && typeof params.item === "object"
+      ? params.item as Record<string, unknown>
+      : {};
+    return {
+      type: "raw_response_item.completed",
+      item: rawItem,
+    };
+  }
+
   if (method !== "item/started" && method !== "item/completed") {
     return null;
   }
@@ -616,7 +624,8 @@ function buildForwardedRawEvent(message: Record<string, unknown>): Record<string
     || itemType === "mcp_tool_call"
     || itemType === "web_search"
     || itemType === "file_change"
-    || itemType === "todo_list";
+    || itemType === "todo_list"
+    || itemType === "collab_agent_tool_call";
   const allowCompleted = itemType === "reasoning"
     || itemType === "agent_message"
     || itemType === "command_execution"
@@ -624,7 +633,9 @@ function buildForwardedRawEvent(message: Record<string, unknown>): Record<string
     || itemType === "web_search"
     || itemType === "file_change"
     || itemType === "todo_list"
-    || itemType === "error";
+    || itemType === "error"
+    || itemType === "collab_agent_tool_call"
+    || itemType === "dynamic_tool_call";
 
   if (method === "item/started" && !allowStarted) {
     return null;
@@ -882,6 +893,18 @@ export class CodexInteractiveRunner {
       }
     };
 
+    const failRunWithVisibleMessage = (message: string): void => {
+      const normalized = message.trim();
+      if (!normalized) {
+        return;
+      }
+      handlers.onTrace(`error ${normalized}`);
+      failRun(new Error(normalized));
+      setTimeout(() => terminateChild(), 0);
+    };
+
+    const rawResponseToolNames = new Map<string, string>();
+
     const handleItemEvent = (eventType: "item.started" | "item.completed", rawItem: unknown): void => {
       const item = toExecLikeItem(rawItem);
       const itemType = String(item.type || "").trim();
@@ -989,6 +1012,33 @@ export class CodexInteractiveRunner {
             : "";
         if (query) {
           handlers.onTrace(`web search ${query}`);
+        }
+        return;
+      }
+
+      if (itemType === "dynamic_tool_call") {
+        if (eventType !== "item.completed") {
+          return;
+        }
+        const tool = typeof item.tool === "string" ? item.tool.trim() : "";
+        const status = typeof item.status === "string" ? item.status.trim() : "";
+        handlers.onTrace(["tool", tool, status ? `status: ${status}` : ""].filter(Boolean).join("\n"));
+        return;
+      }
+
+      if (itemType === "collab_agent_tool_call") {
+        if (eventType !== "item.completed") {
+          return;
+        }
+        const tool = typeof item.tool === "string" ? item.tool.trim() : "subtask";
+        const status = typeof item.status === "string" ? item.status.trim() : "";
+        handlers.onTrace(["subtask", tool, status ? `status: ${status}` : ""].filter(Boolean).join("\n"));
+        const failure = extractCodexCollabToolFailure(item);
+        if (failure) {
+          failRunWithVisibleMessage(t("codex.collabToolFailed", {
+            tool: failure.tool,
+            detail: failure.detail,
+          }));
         }
         return;
       }
@@ -1120,6 +1170,35 @@ export class CodexInteractiveRunner {
             continue;
           }
 
+          if (method === "rawResponseItem/completed") {
+            const params = message.params && typeof message.params === "object"
+              ? message.params as Record<string, unknown>
+              : {};
+            const rawItem = params.item;
+            const toolCall = extractCodexRawResponseToolCall(rawItem);
+            if (toolCall) {
+              rawResponseToolNames.set(toolCall.callId, toolCall.toolName);
+              continue;
+            }
+            const outputRecord = rawItem && typeof rawItem === "object"
+              ? rawItem as Record<string, unknown>
+              : {};
+            const callId = String(outputRecord.call_id || "").trim();
+            const toolName = callId ? (rawResponseToolNames.get(callId) ?? "") : "";
+            const waitTimeout = extractCodexWaitTimeoutPayload(rawItem, toolName);
+            if (waitTimeout) {
+              if (callId) {
+                rawResponseToolNames.delete(callId);
+              }
+              failRunWithVisibleMessage(t("codex.collabWaitTimedOut", { detail: waitTimeout.detail }));
+              continue;
+            }
+            if (callId) {
+              rawResponseToolNames.delete(callId);
+            }
+            continue;
+          }
+
           if (method === "turn/completed") {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
@@ -1148,6 +1227,10 @@ export class CodexInteractiveRunner {
                 : "error ";
               handlers.onTrace(`${prefix}${warning}`);
             }
+            continue;
+          }
+
+          if (method === "account/rateLimits/updated" || method === "account/updated") {
             continue;
           }
 

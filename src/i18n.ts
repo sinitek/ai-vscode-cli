@@ -117,6 +117,9 @@ const MESSAGES = {
     "run.disposedExternally": "Current interactive run was disposed externally. Please retry.",
     "run.stoppedByUser": "Stopped by user",
     "run.stopped": "Run stopped",
+    "run.stoppedWithDuration": "Run stopped after {duration}",
+    "run.failed": "Task failed",
+    "run.failedWithDuration": "Task failed in {duration}",
     "run.completed": "Task completed",
     "run.completedWithDuration": "Task completed in {duration}",
     "cli.notFound.win.title": "CLI executable not found: {command}",
@@ -174,6 +177,8 @@ const MESSAGES = {
     "codex.appServerParseFailed": "Failed to parse Codex app-server message: {error}",
     "codex.appServerRequestFailed": "Codex app-server request failed.",
     "codex.appServerExited": "Codex app-server exited with {detail}: {stderr}",
+    "codex.collabWaitTimedOut": "Codex subtask wait timed out: {detail}",
+    "codex.collabToolFailed": "Codex subtask tool {tool} failed: {detail}",
   },
   "zh-CN": {
     "common.compactContext": "压缩上下文",
@@ -247,6 +252,9 @@ const MESSAGES = {
     "run.disposedExternally": "当前交互任务已被外部释放，请重试。",
     "run.stoppedByUser": "用户已终止",
     "run.stopped": "运行已终止",
+    "run.stoppedWithDuration": "运行已终止，执行 {duration}",
+    "run.failed": "任务失败",
+    "run.failedWithDuration": "任务失败，执行 {duration}",
     "run.completed": "任务已完成",
     "run.completedWithDuration": "任务已完成,执行 {duration}",
     "cli.notFound.win.title": "找不到 CLI 可执行文件：{command}",
@@ -304,6 +312,8 @@ const MESSAGES = {
     "codex.appServerParseFailed": "解析 Codex app-server 消息失败：{error}",
     "codex.appServerRequestFailed": "Codex app-server 请求失败。",
     "codex.appServerExited": "Codex app-server 异常退出（{detail}）：{stderr}",
+    "codex.collabWaitTimedOut": "Codex 子任务等待超时：{detail}",
+    "codex.collabToolFailed": "Codex 子任务工具 {tool} 失败：{detail}",
   },
 } as const;
 

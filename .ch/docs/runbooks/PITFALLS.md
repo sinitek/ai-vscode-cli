@@ -80,3 +80,40 @@
 ### 关联资料
 - 代码：`src/extension.ts`、`src/interactive/sessionHistoryRepair.ts`
 - 执行计划：`.ch/docs/exec-plans/completed/2026-04-15-history-session-local-thread-merge.md`
+
+## Codex 协作子任务 wait 超时只回传 timed_out，AI 对话里没有明确错误
+
+- 状态：已修复
+- 首次发现：2026-04-21
+- 适用范围：`src/interactive/codexRunner.ts` 的 Codex app-server 流式事件解析链路
+
+### 现象
+- Codex 在开启 explorer / worker 子任务后，主任务执行到 `wait` 时可能中途结束或停住。
+- 日志里可能只能看到回合结束，AI 对话气泡里没有明确错误。
+- 真实超时结果可能只是工具输出 `{"status":{},"timed_out":true}`，不是顶层业务异常。
+
+### 触发条件
+- Codex 使用协作子任务工具（例如 `spawn_agent` / `wait`）。
+- `wait` 返回的是超时结果而不是抛错。
+- 插件只解析传统 `item/started` / `item/completed` 条目，没有消费 `rawResponseItem/completed` 中的工具原始输出。
+
+### 根因
+- Codex app-server 新增了 `rawResponseItem/completed`、`collabAgentToolCall` 等协作相关事件。
+- 插件旧逻辑没有识别这些新事件，因此 `wait` 的超时结果不会被转成用户可见错误。
+- `account/rateLimits/updated` 这类账号配额通知只是普通 notification，不会直接导致中断；真正的问题是协作工具超时结果没有上屏。
+
+### 临时绕过
+- 修复前只能从 debug/流式日志里人工寻找 `timed_out`、`collab`、`turn.completed` 等线索。
+
+### 长期规避
+- 解析 `rawResponseItem/completed`，记录 function/custom tool 的 `call_id -> toolName` 映射。
+- 当 `wait` 的原始工具输出包含 `timed_out: true` 时，立即转成 AI 对话中的明确错误。
+- 同时解析 `collabAgentToolCall`，把明确的子任务失败状态也映射为对话内错误。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node scripts/validate_codex_collab_timeout.js`。
+- 如需手工验证，可构造一次使用 explorer 子任务并等待超时的 Codex 回合，确认 AI 对话出现错误提示。
+
+### 关联资料
+- 代码：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerEvents.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-21-codex-collab-wait-timeout-surface.md`
