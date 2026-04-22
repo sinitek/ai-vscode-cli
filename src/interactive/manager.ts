@@ -12,6 +12,7 @@ type RunnerEntry =
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
       model: string | null;
+      multiAgentEnabled: boolean;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     }
@@ -60,7 +61,8 @@ export class InteractiveRunnerManager {
     runner: CodexInteractiveRunner | ClaudeInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
-    model: string | null
+    model: string | null,
+    options: { multiAgentEnabled?: boolean } = {}
   ): void {
     const key = this.buildKey(cli, sessionId);
     const existing = this.entries.get(key);
@@ -69,6 +71,9 @@ export class InteractiveRunnerManager {
       existing.thinkingMode = thinkingMode;
       existing.interactiveMode = interactiveMode;
       existing.model = model;
+      if (existing.cli === "codex") {
+        existing.multiAgentEnabled = options.multiAgentEnabled === true;
+      }
       this.currentKey = key;
       this.touch(existing);
       return;
@@ -78,7 +83,17 @@ export class InteractiveRunnerManager {
     }
     const entry: RunnerEntry =
       cli === "codex"
-        ? { cli, sessionId, runner: runner as CodexInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() }
+        ? {
+            cli,
+            sessionId,
+            runner: runner as CodexInteractiveRunner,
+            thinkingMode,
+            interactiveMode,
+            model,
+            multiAgentEnabled: options.multiAgentEnabled === true,
+            idleTimer: null,
+            lastUsedAt: Date.now(),
+          }
         : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() };
     this.entries.set(key, entry);
     this.currentKey = key;
@@ -101,6 +116,7 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
     model: string | null;
+    multiAgentEnabled: boolean;
   }): CodexInteractiveRunner {
     const key = this.buildKey("codex", options.sessionId);
     const existing = this.entries.get(key);
@@ -109,6 +125,7 @@ export class InteractiveRunnerManager {
         existing.thinkingMode === options.thinkingMode
         && existing.interactiveMode === options.interactiveMode
         && existing.model === options.model
+        && existing.multiAgentEnabled === options.multiAgentEnabled
       ) {
         this.currentKey = key;
         this.touch(existing);
@@ -124,6 +141,7 @@ export class InteractiveRunnerManager {
       interactiveMode: options.interactiveMode,
       model: options.model,
       threadId: options.threadId,
+      multiAgentEnabled: options.multiAgentEnabled,
     });
     const entry: RunnerEntry = {
       cli: "codex",
@@ -132,6 +150,7 @@ export class InteractiveRunnerManager {
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
       model: options.model,
+      multiAgentEnabled: options.multiAgentEnabled,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };

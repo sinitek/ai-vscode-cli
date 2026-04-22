@@ -39,6 +39,7 @@ type CodexThreadOptions = {
   webSearchEnabled?: boolean;
   webSearchMode?: string;
   networkAccessEnabled?: boolean;
+  multiAgentEnabled?: boolean;
 };
 
 type JsonRpcPendingRequest = {
@@ -175,12 +176,14 @@ function buildCodexThreadOptions(
   cwd: string | undefined,
   thinkingMode: ThinkingMode,
   interactiveMode: InteractiveMode,
-  modelOverride?: string | null
+  modelOverride?: string | null,
+  multiAgentEnabled = true
 ): CodexThreadOptions {
   const options: CodexThreadOptions = {
     workingDirectory: cwd,
     skipGitRepoCheck: true,
     modelReasoningEffort: mapCodexReasoningEffort(thinkingMode),
+    multiAgentEnabled,
   };
 
   const model = typeof modelOverride === "string" && modelOverride.trim()
@@ -229,8 +232,12 @@ function buildCodexThreadOptions(
   return options;
 }
 
-function buildCodexAppServerArgs(): string[] {
-  return ["app-server", "--listen", "stdio://"];
+function buildCodexAppServerArgs(multiAgentEnabled: boolean): string[] {
+  const args = ["app-server", "--listen", "stdio://"];
+  if (!multiAgentEnabled) {
+    args.push("--disable", "multi_agent");
+  }
+  return args;
 }
 
 function buildCodexTurnInput(prompt: string, imagePaths: string[]): unknown[] {
@@ -249,6 +256,11 @@ function buildCodexAppServerConfig(options: CodexThreadOptions): Record<string, 
       job_max_runtime_seconds: CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS,
     },
   };
+  if (options.multiAgentEnabled === false) {
+    config.features = {
+      multi_agent: false,
+    };
+  }
   if (typeof options.webSearchMode === "string" && options.webSearchMode) {
     config.web_search = options.webSearchMode;
   } else if (options.webSearchEnabled === true) {
@@ -703,6 +715,7 @@ export class CodexInteractiveRunner {
       interactiveMode: InteractiveMode;
       model?: string | null;
       threadId: string | null;
+      multiAgentEnabled: boolean;
     }
   ) {}
 
@@ -756,12 +769,13 @@ export class CodexInteractiveRunner {
       this.options.cwd,
       this.options.thinkingMode,
       this.options.interactiveMode,
-      this.options.model
+      this.options.model,
+      this.options.multiAgentEnabled
     );
     const imagePaths = collectArgValues(this.options.args, ["--image", "-i"])
       .map((item) => item.trim())
       .filter(Boolean);
-    const spawnCommand = resolveSpawnCommand(this.options.command, buildCodexAppServerArgs());
+    const spawnCommand = resolveSpawnCommand(this.options.command, buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false));
     const child = spawn(spawnCommand.command, spawnCommand.args, {
       cwd: this.options.cwd,
       env: process.env,

@@ -136,6 +136,7 @@ export type PanelState = {
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
   autoAddEditorContextTags: boolean;
+  codexMultiAgentEnabled: boolean;
   debug: boolean;
   locale: string;
   isMac: boolean;

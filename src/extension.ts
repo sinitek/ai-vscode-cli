@@ -307,6 +307,7 @@ type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  codexMultiAgentEnabled?: boolean;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsState;
 };
@@ -1117,6 +1118,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "codexMultiAgentEnabled") {
+      workspaceSettings.codexMultiAgentEnabled = Boolean(message.value);
+      saveWorkspaceSettings(workspaceSettings);
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
       const nextValue = typeof message.value === "string" ? message.value : "auto";
@@ -1232,6 +1239,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -1271,6 +1279,7 @@ async function buildPanelStateWithConfigState(
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -2630,7 +2639,14 @@ function isAbortErrorInfo(info: ErrorInfo): boolean {
 }
 
 function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
-  return info.name !== "AbortError" && info.code !== "RUNNER_DISPOSED" && !isAbortErrorInfo(info);
+  if (info.name === "AbortError" || info.code === "RUNNER_DISPOSED" || !info.message || isAbortErrorInfo(info)) {
+    return false;
+  }
+  const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message}`.toLowerCase();
+  if ((info.code ?? "").toUpperCase() === "ENOENT" || combined.includes("enoent")) {
+    return false;
+  }
+  return true;
 }
 
 async function waitForHiddenRetryDelay(isRunActive: () => boolean): Promise<boolean> {
@@ -3399,6 +3415,306 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   }
 }
 
+function extractRecentTurns(messages: ChatMessage[], maxTurns: number): ChatMessage[] {
+  // Keep the last N user turns (+ following assistant if present).
+  const result: ChatMessage[] = [];
+  let collected = 0;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg) {
+      continue;
+    }
+    if (msg.role === "user") {
+      // include assistant after this user message if it exists
+      const assistant = messages[i + 1];
+      if (assistant && assistant.role === "assistant") {
+        result.push(assistant);
+      }
+      result.push(msg);
+      collected += 1;
+      if (collected >= maxTurns) {
+        break;
+      }
+    }
+  }
+  return result.reverse();
+}
+
+function formatTurnsForBootstrap(messages: ChatMessage[]): string {
+  const lines: string[] = [];
+  for (const message of messages) {
+    const content = (message.content ?? "").trimEnd();
+    if (!content) {
+      continue;
+    }
+    if (message.role === "user") {
+      lines.push("USER:");
+      lines.push(content);
+      lines.push("");
+    } else if (message.role === "assistant") {
+      lines.push("ASSISTANT:");
+      lines.push(content);
+      lines.push("");
+    }
+  }
+  return lines.join("\n").trim() + "\n";
+}
+
+function buildCompactionPrompt(): string {
+  return [
+    t("compact.systemPrompt"),
+    t("compact.systemPrompt.reqTitle"),
+    t("compact.systemPrompt.req1"),
+    t("compact.systemPrompt.req2"),
+    t("compact.systemPrompt.req3"),
+    "",
+    t("compact.systemPrompt.summaryTitle"),
+    "FACTS:",
+    "- ...",
+    "TODOS:",
+    "- [ ] ...",
+    "DECISIONS:",
+    "- ...",
+    "CONSTRAINTS:",
+    "- ...",
+    "INDEX:",
+    "- file: <path> - <note>",
+    "- cmd: <command> - <note>",
+    "- conclusion: <text> - <note>",
+  ].join("\n");
+}
+
+type TraceMessageOptions = {
+  merge?: boolean;
+  persist?: boolean;
+  forceTraceBubble?: boolean;
+};
+
+type TraceDisplayResult = {
+  content: string;
+  shouldPersist: boolean;
+};
+
+type TraceMessageKind = "thinking" | "normal" | "tool-use";
+
+function isCommandExecutionTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  const trimmed = firstLine.trim();
+  return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
+}
+
+function isFileUpdateTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return firstLine.trim().startsWith("file update");
+}
+
+function isToolUseTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:tool|调用工具)[:：]?\s*(.+)?$/i.test(firstLine.trim());
+}
+
+function isToolResultTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:tool\s*result|工具结果)\b/i.test(firstLine.trim());
+}
+
+function isWarningOrErrorTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
+}
+
+function isWebSearchTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:web\s*search\b|【网络查询】)/i.test(firstLine.trim());
+}
+
+function isThinkingTrace(content: string): boolean {
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  const trimmed = firstLine.trim();
+  return trimmed.startsWith("thinking") || trimmed.startsWith("思考");
+}
+
+function resolveTraceKind(content: string, kind: TraceMessageKind): TraceMessageKind {
+  if (kind === "thinking" || isThinkingTrace(content)) {
+    return "thinking";
+  }
+  if (isToolUseTrace(content)) {
+    return "tool-use";
+  }
+  return "normal";
+}
+
+function normalizeTraceContentForDisplay(content: string, cli: CliName | null = activeCliForRun): TraceDisplayResult {
+  const { content: execContent, shouldPersist: execShouldPersist } =
+    formatCodexExecSegmentForDisplay(content, cli);
+  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(execContent, cli);
+  return { content: displayContent, shouldPersist: shouldPersist && execShouldPersist };
+}
+
+function resolveTraceMerge(content: string, merge?: boolean): boolean {
+  if (merge !== undefined) {
+    return merge;
+  }
+  // Structured trace events keep an independent bubble so tags, style and collapse state stay stable.
+  return !(
+    isCommandExecutionTrace(content)
+    || isFileUpdateTrace(content)
+    || isToolUseTrace(content)
+    || isToolResultTrace(content)
+    || isWarningOrErrorTrace(content)
+    || isWebSearchTrace(content)
+  );
+}
+
+function appendTraceMessage(
+  content: string,
+  kind: TraceMessageKind = "normal",
+  options: TraceMessageOptions = {}
+): void {
+  if (!activeMessageTarget) {
+    return;
+  }
+  if (!content.trim()) {
+    return;
+  }
+  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content);
+  if (!displayContent.trim()) {
+    return;
+  }
+  const resolvedKind = resolveTraceKind(displayContent, kind);
+  if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
+    appendAssistantChunk(`${displayContent}\n`, "thinking");
+    return;
+  }
+  const shouldMerge = resolveTraceMerge(displayContent, options.merge);
+  const mergePayload = shouldMerge ? {} : { merge: false };
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "trace",
+    content: displayContent,
+    createdAt: Date.now(),
+    kind: resolvedKind,
+    ...mergePayload,
+  };
+  if (shouldPersist && options.persist !== false) {
+    appendMessageToStore(activeMessageTarget, message);
+  }
+  sendPanelMessage({ type: "traceSegment", content: displayContent, kind: resolvedKind, ...mergePayload });
+}
+
+function appendSystemMessage(content: string): void {
+  if (!activeMessageTarget) {
+    return;
+  }
+  if (!content.trim()) {
+    return;
+  }
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content,
+    createdAt: Date.now(),
+  };
+  appendMessageToStore(activeMessageTarget, message);
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+function appendSystemMessageForCli(cli: CliName, sessionId: string | null, content: string): void {
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content,
+    createdAt: Date.now(),
+  };
+  if (sessionId) {
+    const target = loadSessionMessages(cli, sessionId);
+    appendMessageToStore(target, message);
+    saveSessionMessages(cli, sessionId, target);
+  } else {
+    const tabId = getActiveConversationTabId();
+    if (!tabId) {
+      return;
+    }
+    getPendingSessionDraft(tabId, cli).messages.push(message);
+  }
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+function appendUserMessageForCli(
+  cli: CliName,
+  sessionId: string | null,
+  content: string,
+  options: { merge?: boolean } = {}
+): void {
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "user",
+    content,
+    createdAt: Date.now(),
+    ...(options.merge === false ? { merge: false } : {}),
+  };
+  if (sessionId) {
+    const target = loadSessionMessages(cli, sessionId);
+    appendMessageToStore(target, message);
+    saveSessionMessages(cli, sessionId, target);
+  } else {
+    const tabId = getActiveConversationTabId();
+    if (!tabId) {
+      return;
+    }
+    getPendingSessionDraft(tabId, cli).messages.push(message);
+  }
+  sendPanelMessage({ type: "appendMessage", message });
+}
+
+async function resolveInteractiveSessionForResume(
+  cli: CliName,
+  sessionId: string | null,
+  tabId: string | null,
+): Promise<string | null | undefined> {
+  if (!sessionId) {
+    return sessionId;
+  }
+  const repairedSessionId = repairSupersededLocalSession(cli, sessionId);
+  if (repairedSessionId !== sessionId) {
+    return repairedSessionId;
+  }
+  const mappedId = resolveInteractiveMappedId(cli, repairedSessionId);
+  if (isLocalSessionId(repairedSessionId) && !mappedId) {
+    const detail = t("session.resumeUnavailableNoRemote");
+    await showErrorWithActions(t("session.resumeUnavailableTitle"), detail);
+    void logInfo("interactive-session-resume-blocked", {
+      cli,
+      sessionId: repairedSessionId,
+      tabId,
+      reason: "missing-remote-id",
+    });
+    return undefined;
+  }
+  return repairedSessionId;
+}
+
 async function runContextCompactionCommand(): Promise<void> {
   const cli = currentCli;
   if (!isInteractiveSupported(cli)) {
@@ -3501,6 +3817,7 @@ async function runContextCompactionCommand(): Promise<void> {
         thinkingMode,
         interactiveMode,
         model: selectedModel,
+        multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
 
@@ -3538,6 +3855,7 @@ async function runContextCompactionCommand(): Promise<void> {
         interactiveMode,
         model: selectedModel,
         threadId: null,
+        multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
@@ -3565,7 +3883,9 @@ async function runContextCompactionCommand(): Promise<void> {
               threadId,
               previousThreadId: mappedThreadId,
             });
-            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
+            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+            });
           },
         });
       } finally {
@@ -3661,34 +3981,33 @@ async function runContextCompactionCommand(): Promise<void> {
       return;
     }
 
-    throw new Error(`interactive-runner-unsupported:${cli}`);
+    cleanupAfterRun("end");
   } catch (error) {
-    const entry = interactiveRunsByTabId.get(tabId);
-    if (!entry || entry.runId !== runId) {
-      return;
-    }
-    const info = getErrorInfo(error);
-    if (entry.stopped) {
-      void logInfo("runPrompt-interactive-aborted", {
-        cli,
-        tabId,
-        error: info.message,
-        errorName: info.name,
-        errorCode: info.code,
-        errorStack: info.stack,
-      });
-      return;
-    }
-    void logError("runPrompt-interactive-error", {
+    appendSystemMessage(t("compact.failException"));
+    void logError("context-compact-command-failed", {
       cli,
-      tabId,
-      error: info.message,
-      errorName: info.name,
-      errorCode: info.code,
-      errorStack: info.stack,
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
     });
-    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
-    throw error;
+    cleanupAfterRun("error");
+  } finally {
+    if (activeInteractiveStop === stopFn) {
+      activeInteractiveStop = null;
+    }
+  }
+
+  function cleanupAfterRun(status: TaskRunStatus, userMessage?: string): void {
+    void logInfo("context-compact-command-end", {
+      cli,
+      sessionId,
+      runId,
+      status,
+      message: userMessage ?? null,
+    });
+    sendRunStatus(status === "end" ? "end" : status, userMessage);
+    appendCompletionMessage(status);
+    persistActiveMessages();
+    clearActiveRun();
   }
 }
 
@@ -3722,6 +4041,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     : getPendingSessionDraft(tabId, cli).messages;
 
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode);
   const debugLogging = getDebugLogging();
   const args = cli === "codex"
     ? buildCliArgs(cli, {
@@ -3776,6 +4096,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   let didLogInteractiveIo = false;
   let didLogInteractiveStart = false;
   let stopCurrentTurn: (() => void) | null = null;
+  let hiddenRetryCount = 0;
 
   const syncInteractiveRunEntry = (stop?: () => void): void => {
     const entry = interactiveRunsByTabId.get(tabId);
@@ -3870,6 +4191,15 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       raw: rawStdout,
       stderr: rawStderr,
     });
+  };
+
+  const beginInteractiveAttempt = (input: string): void => {
+    didLogInteractiveStart = false;
+    didLogInteractiveIo = false;
+    interactiveInput = input;
+    rawStdout = "";
+    rawStderr = "";
+    startInteractiveLog(input);
   };
 
   const appendMessageForTab = (message: ChatMessage): void => {
@@ -4143,196 +4473,256 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     stopped: false,
   });
 
-  try {
-    if (cli === "codex") {
-      const mappedThreadId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
-      const runner = uiSessionId
-        ? interactiveRunnerManager.getOrCreateCodexRunner({
-            sessionId: uiSessionId,
-            threadId: mappedThreadId,
-            command,
-            args,
-            cwd: cwd ?? undefined,
-            thinkingMode,
-            interactiveMode,
-            model: selectedModel,
-          })
-        : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
-            command,
-            args,
-            cwd: cwd ?? undefined,
-            thinkingMode,
-            interactiveMode,
-            model: selectedModel,
-            threadId: null,
-          });
+  while (true) {
+    const attemptNumber = hiddenRetryCount + 1;
+    const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
 
-      stopCurrentTurn = () => runner.stopAndRebuild();
-      syncInteractiveRunEntry(stopFn);
-      startInteractiveLog(thinkingPrompt);
-      await runner.runStreamed(thinkingPrompt, {
-        onAssistantDelta: (chunk) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          appendAssistantChunkForTab(chunk);
-          appendDebugStdout(chunk);
-        },
-        onTrace: (content, kind, meta) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal", meta);
-          appendTraceLog(content);
-        },
-        onEvent: (event) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
-          appendDebugEvent(event);
-        },
-        onTaskListUpdate: (items) => {
-          sendPanelMessage({ type: "taskListUpdate", items, tabId });
-        },
-        onThreadId: (threadId) => {
-          updateProcessTitle(cli, threadId);
-          updateSessionForNewRun(threadId);
-          void logInfo("runPrompt-interactive-codex-thread", {
-            cli,
-            sessionId: uiSessionId,
-            threadId,
-            originalSessionId: target.sessionId,
-            tabId,
-          });
-          if (uiSessionId) {
-            interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
-          }
-          syncInteractiveRunEntry();
-        },
-      });
-      cleanupAfterRun("end");
-      return;
-    }
-
-    if (cli === "claude") {
-      const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
-      let runner = uiSessionId
-        ? interactiveRunnerManager.getOrCreateClaudeRunner({
-            sessionId: uiSessionId,
-            mappedSessionId,
-            command: commandForRunner,
-            args,
-            cwd: cwd ?? undefined,
-            thinkingMode,
-            interactiveMode,
-            model: selectedModel,
-            entrypoint: claudeEntrypoint,
-          })
-        : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-            command: commandForRunner,
-            args,
-            cwd: cwd ?? undefined,
-            thinkingMode,
-            interactiveMode,
-            model: selectedModel,
-            entrypoint: claudeEntrypoint,
-            sessionId: null,
-          });
-
-      const runStreamHandlers = {
-        onAssistantDelta: (chunk: string) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          appendAssistantChunkForTab(chunk);
-          appendDebugStdout(chunk);
-        },
-        onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          appendTraceMessageForTab(content, kind ?? "normal", {
-            ...meta,
-            forceTraceBubble: kind === "thinking",
-          });
-          appendTraceLog(content);
-        },
-        onEvent: (event: unknown) => {
-          if (!isCurrentRunActive()) {
-            return;
-          }
-          sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
-          appendDebugEvent(event);
-        },
-        onTaskListUpdate: (items: { text: string; done: boolean }[]) => {
-          sendPanelMessage({ type: "taskListUpdate", items, tabId });
-        },
-        onSessionId: (newSessionId: string) => {
-          updateProcessTitle(cli, newSessionId);
-          updateSessionForNewRun(newSessionId);
-          void logInfo("runPrompt-interactive-claude-session", {
-            cli,
-            sessionId: uiSessionId,
-            newSessionId,
-            originalSessionId: target.sessionId,
-            tabId,
-          });
-          if (uiSessionId) {
-            interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
-          }
-          syncInteractiveRunEntry();
-        },
-      };
-
-      stopCurrentTurn = () => runner.stopAndRebuild();
-      syncInteractiveRunEntry(stopFn);
-      startInteractiveLog(thinkingPrompt);
-      try {
-        await runner.runStreamed(thinkingPrompt, runStreamHandlers);
-      } catch (error) {
-        const info = getErrorInfo(error);
-        if (uiSessionId && isClaudeSessionNotFoundErrorInfo(info)) {
-          appendSystemMessageForTab(t("claude.sessionResetRetry"));
-          void logInfo("runPrompt-interactive-claude-session-reset-retry", {
-            cli,
-            sessionId: uiSessionId,
-            mappedSessionId,
-            error: info.message,
-            errorCode: info.code,
-            tabId,
-          });
-          runner.dispose();
-          runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-            command: commandForRunner,
-            args,
-            cwd: cwd ?? undefined,
-            thinkingMode,
-            interactiveMode,
-            model: selectedModel,
-            entrypoint: claudeEntrypoint,
-            sessionId: null,
-          });
-          stopCurrentTurn = () => runner.stopAndRebuild();
-          syncInteractiveRunEntry(stopFn);
-          await runner.runStreamed(thinkingPrompt, runStreamHandlers);
-        } else {
-          throw error;
-        }
+    if (hiddenRetryCount > 0) {
+      const shouldContinue = await waitForHiddenRetryDelay(isCurrentRunActive);
+      if (!shouldContinue) {
+        return;
       }
-      cleanupAfterRun("end");
-      return;
+      void logInfo("runPrompt-interactive-hidden-retry", {
+        cli,
+        tabId,
+        runId,
+        sessionId: uiSessionId,
+        attempt: attemptNumber,
+        retryCount: hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+      });
     }
 
-    throw new Error(`interactive-runner-unsupported:${cli}`);
-  } catch (error) {
-    const entry = interactiveRunsByTabId.get(tabId);
-    if (!entry || entry.runId !== runId) {
-      return;
-    }
-    const info = getErrorInfo(error);
-    if (entry.stopped) {
-      void logInfo("runPrompt-interactive-aborted", {
+    beginInteractiveAttempt(attemptPrompt);
+
+    try {
+      if (cli === "codex") {
+        const mappedThreadId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
+        const runner = uiSessionId
+          ? interactiveRunnerManager.getOrCreateCodexRunner({
+              sessionId: uiSessionId,
+              threadId: mappedThreadId,
+              command,
+              args,
+              cwd: cwd ?? undefined,
+              thinkingMode,
+              interactiveMode,
+              model: selectedModel,
+              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+            })
+          : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
+              command,
+              args,
+              cwd: cwd ?? undefined,
+              thinkingMode,
+              interactiveMode,
+              model: selectedModel,
+              threadId: null,
+              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+            });
+
+        stopCurrentTurn = () => runner.stopAndRebuild();
+        syncInteractiveRunEntry(stopFn);
+        await runner.runStreamed(attemptPrompt, {
+          onAssistantDelta: (chunk) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            appendAssistantChunkForTab(chunk);
+            appendDebugStdout(chunk);
+          },
+          onTrace: (content, kind, meta) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal", meta);
+            appendTraceLog(content);
+          },
+          onEvent: (event) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+            appendDebugEvent(event);
+          },
+          onTaskListUpdate: (items) => {
+            sendPanelMessage({ type: "taskListUpdate", items, tabId });
+          },
+          onThreadId: (threadId) => {
+            updateProcessTitle(cli, threadId);
+            updateSessionForNewRun(threadId);
+            void logInfo("runPrompt-interactive-codex-thread", {
+              cli,
+              sessionId: uiSessionId,
+              threadId,
+              originalSessionId: target.sessionId,
+              tabId,
+            });
+            if (uiSessionId) {
+              interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+            });
+            }
+            syncInteractiveRunEntry();
+          },
+        });
+        cleanupAfterRun("end");
+        return;
+      }
+
+      if (cli === "claude") {
+        const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
+        let runner = uiSessionId
+          ? interactiveRunnerManager.getOrCreateClaudeRunner({
+              sessionId: uiSessionId,
+              mappedSessionId,
+              command: commandForRunner,
+              args,
+              cwd: cwd ?? undefined,
+              thinkingMode,
+              interactiveMode,
+              model: selectedModel,
+              entrypoint: claudeEntrypoint,
+            })
+          : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+              command: commandForRunner,
+              args,
+              cwd: cwd ?? undefined,
+              thinkingMode,
+              interactiveMode,
+              model: selectedModel,
+              entrypoint: claudeEntrypoint,
+              sessionId: null,
+            });
+
+        const runStreamHandlers = {
+          onAssistantDelta: (chunk: string) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            appendAssistantChunkForTab(chunk);
+            appendDebugStdout(chunk);
+          },
+          onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            appendTraceMessageForTab(content, kind ?? "normal", {
+              ...meta,
+              forceTraceBubble: kind === "thinking",
+            });
+            appendTraceLog(content);
+          },
+          onEvent: (event: unknown) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+            appendDebugEvent(event);
+          },
+          onTaskListUpdate: (items: { text: string; done: boolean }[]) => {
+            sendPanelMessage({ type: "taskListUpdate", items, tabId });
+          },
+          onSessionId: (newSessionId: string) => {
+            updateProcessTitle(cli, newSessionId);
+            updateSessionForNewRun(newSessionId);
+            void logInfo("runPrompt-interactive-claude-session", {
+              cli,
+              sessionId: uiSessionId,
+              newSessionId,
+              originalSessionId: target.sessionId,
+              tabId,
+            });
+            if (uiSessionId) {
+              interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
+            }
+            syncInteractiveRunEntry();
+          },
+        };
+
+        stopCurrentTurn = () => runner.stopAndRebuild();
+        syncInteractiveRunEntry(stopFn);
+        try {
+          await runner.runStreamed(attemptPrompt, runStreamHandlers);
+        } catch (error) {
+          const info = getErrorInfo(error);
+          if (uiSessionId && isClaudeSessionNotFoundErrorInfo(info)) {
+            appendSystemMessageForTab(t("claude.sessionResetRetry"));
+            void logInfo("runPrompt-interactive-claude-session-reset-retry", {
+              cli,
+              sessionId: uiSessionId,
+              mappedSessionId,
+              error: info.message,
+              errorCode: info.code,
+              tabId,
+            });
+            runner.dispose();
+            runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+              command: commandForRunner,
+              args,
+              cwd: cwd ?? undefined,
+              thinkingMode,
+              interactiveMode,
+              model: selectedModel,
+              entrypoint: claudeEntrypoint,
+              sessionId: null,
+            });
+            stopCurrentTurn = () => runner.stopAndRebuild();
+            syncInteractiveRunEntry(stopFn);
+            await runner.runStreamed(attemptPrompt, runStreamHandlers);
+          } else {
+            throw error;
+          }
+        }
+        cleanupAfterRun("end");
+        return;
+      }
+
+      throw new Error(`interactive-runner-unsupported:${cli}`);
+    } catch (error) {
+      const entry = interactiveRunsByTabId.get(tabId);
+      if (!entry || entry.runId !== runId) {
+        return;
+      }
+      const info = getErrorInfo(error);
+      if (entry.stopped) {
+        void logInfo("runPrompt-interactive-aborted", {
+          cli,
+          tabId,
+          error: info.message,
+          errorName: info.name,
+          errorCode: info.code,
+          errorStack: info.stack,
+        });
+        return;
+      }
+
+      const canContinueCurrentConversation = Boolean(uiSessionId);
+      const shouldRetry = canContinueCurrentConversation
+        && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+        && isHiddenRetryEligibleErrorInfo(info);
+      if (shouldRetry) {
+        hiddenRetryCount += 1;
+        void logInfo("runPrompt-interactive-hidden-retry-queued", {
+          cli,
+          tabId,
+          runId,
+          sessionId: uiSessionId,
+          failedAttempt: attemptNumber,
+          nextAttempt: attemptNumber + 1,
+          retryCount: hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+          error: info.message,
+          errorName: info.name,
+          errorCode: info.code,
+          errorStack: info.stack,
+        });
+        continue;
+      }
+
+      void logError("runPrompt-interactive-error", {
         cli,
         tabId,
         error: info.message,
@@ -4340,18 +4730,12 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         errorCode: info.code,
         errorStack: info.stack,
       });
-      return;
+      const userMessage = hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
+        ? buildHiddenRetryLimitMessage()
+        : (error instanceof Error ? error.message : String(error));
+      cleanupAfterRun("error", userMessage);
+      throw error;
     }
-    void logError("runPrompt-interactive-error", {
-      cli,
-      tabId,
-      error: info.message,
-      errorName: info.name,
-      errorCode: info.code,
-      errorStack: info.stack,
-    });
-    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
-    throw error;
   }
 }
 
@@ -5126,6 +5510,10 @@ function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
   return "coding";
 }
 
+function getWorkspaceCodexMultiAgentEnabled(): boolean {
+  return workspaceSettings.codexMultiAgentEnabled === true;
+}
+
 function normalizeCliModelName(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -5439,6 +5827,10 @@ function loadWorkspaceSettings(): WorkspaceSettings {
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
       }
+    }
+    const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
+    if (typeof codexMultiAgentEnabled === "boolean") {
+      result.codexMultiAgentEnabled = codexMultiAgentEnabled;
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {

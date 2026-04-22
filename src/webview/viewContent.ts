@@ -73,6 +73,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "Auto File Tags",
     toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
+    toolSettingsCodexSubagentsLabel: "Codex Subagents",
+    toolSettingsCodexSubagentsTitle: "Allow Codex app-server to use official multi-agent subagents (spawnAgent / wait / closeAgent)",
+    toolSettingsCodexSubagentsToggle: "On",
+    toolSettingsCodexSubagentsHint: "Warning: in the current Codex version, enabling this has a bug and tasks may be interrupted more easily.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -307,6 +311,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
+    toolSettingsCodexSubagentsLabel: "Codex 子智能体",
+    toolSettingsCodexSubagentsTitle: "是否允许 Codex app-server 使用官方多智能体子任务能力（spawnAgent / wait / closeAgent）",
+    toolSettingsCodexSubagentsToggle: "开启",
+    toolSettingsCodexSubagentsHint: "提示：当前版本 Codex 开启后有 bug，任务容易中断。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -2206,6 +2214,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         font-size: 12px;
         color: var(--vscode-foreground);
       }
+      .tool-settings-note {
+        margin-top: -6px;
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--vscode-descriptionForeground);
+      }
 
       .common-commands-modal {
         width: 360px;
@@ -2551,6 +2565,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <span>${i18n.toolSettingsAutoContextToggle}</span>
               </label>
             </div>
+            <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsCodexSubagentsLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsCodexSubagentsTitle}">
+                <input type="checkbox" id="codexMultiAgentEnabled" />
+                <span>${i18n.toolSettingsCodexSubagentsToggle}</span>
+              </label>
+            </div>
+            <div class="tool-settings-note">${i18n.toolSettingsCodexSubagentsHint}</div>
             <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
               <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
@@ -2941,6 +2963,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
+        codexMultiAgentEnabled: false,
         locale: "auto",
         isMac: false,
         macTaskShell: "zsh",
@@ -2997,6 +3020,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         modelSelect: document.getElementById("modelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
+        codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -3676,6 +3700,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
+        state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -3730,6 +3755,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.autoAddEditorContextTags) {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
+        }
+        if (elements.codexMultiAgentEnabled) {
+          elements.codexMultiAgentEnabled.checked = state.codexMultiAgentEnabled;
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
@@ -7151,6 +7179,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({
             type: "updateSetting",
             key: "autoAddEditorContextTags",
+            value: enabled,
+          });
+        });
+      }
+      if (elements.codexMultiAgentEnabled) {
+        elements.codexMultiAgentEnabled.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.codexMultiAgentEnabled = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "codexMultiAgentEnabled",
             value: enabled,
           });
         });

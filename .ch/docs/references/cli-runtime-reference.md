@@ -45,6 +45,7 @@
   - add-dir
   - web search
   - thinking / reasoning effort
+- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会在 app-server 启动参数中附加 `--disable multi_agent`，并在 thread config 中显式写入 `features.multi_agent=false`
 
 ### Claude
 

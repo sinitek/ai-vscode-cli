@@ -1,7 +1,7 @@
 # 全 CLI 非主动中断隐式重试
 
 - 日期：2026-04-22
-- 状态：in-progress
+- 状态：validated
 - 负责人：Codex
 
 ## 背景
@@ -34,10 +34,10 @@
 
 ## 验收标准
 
-- [ ] Codex / Claude / Gemini 均具备非主动中断自动隐式重试。
-- [ ] 自动重试 5 次，每次间隔 30 秒。
-- [ ] 重试消息不追加到对话气泡。
-- [ ] `npm run build` 通过。
+- [x] Codex / Claude / Gemini 均具备非主动中断自动隐式重试。
+- [x] 自动重试 5 次，每次间隔 30 秒。
+- [x] 重试消息不追加到对话气泡。
+- [x] `npm run build` 通过。
 
 ## 风险与缓解
 
@@ -53,10 +53,15 @@
 
 ## 任务列表
 
-- [ ] 梳理 Codex / Claude / Gemini 失败收口点
-- [ ] 扩展全 CLI 隐式重试
-- [ ] 构建验证并同步文档
+- [x] 梳理 Codex / Claude / Gemini 失败收口点
+- [x] 扩展全 CLI 隐式重试
+- [x] 构建验证并同步文档
 
 ## 当前结论
 
-- 待实现。
+- 已恢复 `src/extension.ts` 中缺失的 trace / compaction / interactive helper，重新建立可编译结构。
+- Gemini 一次性/并行执行继续沿用统一隐式重试辅助函数。
+- Codex / Claude 交互式执行已补齐统一隐式重试：仅在非主动中断且已有可续接会话时触发，最多 5 次、每次等待 30 秒，隐式发送“继续/continue”且不写入对话。
+- Claude 既有 `sessionResetRetry` 会话失效重建逻辑保留，并放在统一隐式重试循环内。
+- 为避免把“命令不存在”误判为任务中断，统一隐式重试资格已排除 `ENOENT`。
+- 已完成最小验证：`npm run build` 通过。
