@@ -120,6 +120,8 @@ const MESSAGES = {
     "run.stoppedWithDuration": "Run stopped after {duration}",
     "run.failed": "Task failed",
     "run.failedWithDuration": "Task failed in {duration}",
+    "run.hiddenContinuePrompt": "continue",
+    "run.hiddenRetryLimitReached": "Task remained interrupted after {attempts} hidden retries with 30-second delays. Please review logs or continue manually.",
     "run.completed": "Task completed",
     "run.completedWithDuration": "Task completed in {duration}",
     "cli.notFound.win.title": "CLI executable not found: {command}",
@@ -179,6 +181,8 @@ const MESSAGES = {
     "codex.appServerExited": "Codex app-server exited with {detail}: {stderr}",
     "codex.collabWaitTimedOut": "Codex subtask wait timed out: {detail}",
     "codex.collabToolFailed": "Codex subtask tool {tool} failed: {detail}",
+    "codex.hiddenContinuePrompt": "continue",
+    "codex.interruptedRetryLimitReached": "Codex task remained interrupted after {attempts} hidden retries with 30-second delays. Please review logs or continue manually.",
   },
   "zh-CN": {
     "common.compactContext": "压缩上下文",
@@ -255,6 +259,8 @@ const MESSAGES = {
     "run.stoppedWithDuration": "运行已终止，执行 {duration}",
     "run.failed": "任务失败",
     "run.failedWithDuration": "任务失败，执行 {duration}",
+    "run.hiddenContinuePrompt": "继续",
+    "run.hiddenRetryLimitReached": "任务已按 30 秒间隔自动隐式重试 {attempts} 次后仍被中断，请检查日志或手动继续。",
     "run.completed": "任务已完成",
     "run.completedWithDuration": "任务已完成,执行 {duration}",
     "cli.notFound.win.title": "找不到 CLI 可执行文件：{command}",
@@ -314,6 +320,8 @@ const MESSAGES = {
     "codex.appServerExited": "Codex app-server 异常退出（{detail}）：{stderr}",
     "codex.collabWaitTimedOut": "Codex 子任务等待超时：{detail}",
     "codex.collabToolFailed": "Codex 子任务工具 {tool} 失败：{detail}",
+    "codex.hiddenContinuePrompt": "继续",
+    "codex.interruptedRetryLimitReached": "Codex 任务已按 30 秒间隔自动隐式重试 {attempts} 次后仍被中断，请检查日志或手动继续。",
   },
 } as const;
 

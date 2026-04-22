@@ -223,6 +223,8 @@ const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
 const KEEP_RECENT_TURNS = 3;
 const suppressCompactPrompt = new Set<string>();
+const HIDDEN_RETRY_MAX_RETRIES = 5;
+const HIDDEN_RETRY_DELAY_MS = 30 * 1000;
 
 type SessionRecord = {
   id: string;
@@ -2627,6 +2629,29 @@ function isAbortErrorInfo(info: ErrorInfo): boolean {
   return combined.includes("abort");
 }
 
+function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
+  return info.name !== "AbortError" && info.code !== "RUNNER_DISPOSED" && !isAbortErrorInfo(info);
+}
+
+async function waitForHiddenRetryDelay(isRunActive: () => boolean): Promise<boolean> {
+  const deadline = Date.now() + HIDDEN_RETRY_DELAY_MS;
+  while (Date.now() < deadline) {
+    if (!isRunActive()) {
+      return false;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))));
+  }
+  return isRunActive();
+}
+
+function buildHiddenRetryPrompt(cli: CliName, thinkingMode: ThinkingMode): string {
+  return buildThinkingPrompt(cli, thinkingMode, t("run.hiddenContinuePrompt"), { includeSuffix: false });
+}
+
+function buildHiddenRetryLimitMessage(): string {
+  return t("run.hiddenRetryLimitReached", { attempts: HIDDEN_RETRY_MAX_RETRIES });
+}
+
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
   return combined.includes("claude_session_not_found")
@@ -2850,6 +2875,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   preparePendingLabel(runCli, target.tabId, prompt);
   let sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
   const messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(target.tabId, runCli).messages;
@@ -2867,111 +2893,209 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
   const runId = createMessageId();
   const startedAt = Date.now();
+  let hiddenRetryCount = 0;
   sendRunStatusForTab(target.tabId, "start", { prompt, startedAt });
 
-  let rawStdout = "";
-  let rawStderr = "";
+  const isParallelRunActive = (): boolean => {
+    const current = parallelRunsByTabId.get(target.tabId);
+    return Boolean(current && current.runId === runId && !current.stopped);
+  };
 
-  const process = runCliStream(
-    runCli,
-    thinkingPrompt,
-    {
-      onStdout: (chunk: string) => {
-        rawStdout += chunk;
-        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
-      },
-      onStderr: (chunk: string) => {
-        rawStderr += chunk;
-        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
-      },
-      onExit: (code: number | null) => {
-        const current = parallelRunsByTabId.get(target.tabId);
-        if (!current || current.runId !== runId) {
-          return;
-        }
-        parallelRunsByTabId.delete(target.tabId);
-        const detectedSessionId = extractSessionId(runCli, `${rawStdout}
-${rawStderr}`);
-        if (!sessionId && detectedSessionId) {
-          sessionId = detectedSessionId;
-          adoptSessionId(runCli, detectedSessionId, target.tabId);
-        }
-        const finalText = String(rawStdout || "").trim();
-        if (finalText) {
-          const assistantMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "assistant",
-            content: finalText,
-            createdAt: Date.now(),
-          };
-          appendMessageToStore(messageTarget, assistantMessage);
-          sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
-        }
-        const status: TaskRunStatus = code === 0 ? "end" : "error";
-        const message = code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" });
-        sendRunStatusForTab(target.tabId, status === "end" ? "end" : "error", { message });
-
-        const taskRecord: TaskRunRecord = {
-          id: runId,
-          cli: runCli,
-          sessionId,
-          prompt,
-          startedAt,
-          endedAt: Date.now(),
-          durationMs: Math.max(0, Date.now() - startedAt),
-          status,
-        };
-        appendTaskRun(taskRecord);
-
-        const completionMessage: ChatMessage = {
-          id: createMessageId(),
-          role: "system",
-          content: buildTaskRunCompletionText(status, taskRecord.durationMs),
-          createdAt: Date.now(),
-        };
-        appendMessageToStore(messageTarget, completionMessage);
-        sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-        persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
-      },
-      onError: (error: Error) => {
-        const current = parallelRunsByTabId.get(target.tabId);
-        if (!current || current.runId !== runId) {
-          return;
-        }
-        parallelRunsByTabId.delete(target.tabId);
-        const userMessage = error instanceof Error ? error.message : String(error);
-        const systemMessage: ChatMessage = {
-          id: createMessageId(),
-          role: "system",
-          content: userMessage,
-          createdAt: Date.now(),
-        };
-        appendMessageToStore(messageTarget, systemMessage);
-        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-        sendRunStatusForTab(target.tabId, "error", { message: userMessage });
-        persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
-      },
-    },
-    {
-      cwd,
+  const syncParallelRun = (process: RunProcess): void => {
+    parallelRunsByTabId.set(target.tabId, {
+      runId,
+      tabId: target.tabId,
+      cli: runCli,
       sessionId,
-      thinkingMode,
-      model: selectedModel,
-      processLabel: buildProcessLabel(runCli, sessionId ?? runId),
-    }
-  );
+      prompt,
+      startedAt,
+      process,
+      messageTarget,
+      stopped: false,
+    });
+  };
 
-  parallelRunsByTabId.set(target.tabId, {
-    runId,
-    tabId: target.tabId,
-    cli: runCli,
-    sessionId,
-    prompt,
-    startedAt,
-    process,
-    messageTarget,
-    stopped: false,
-  });
+  while (true) {
+    const attemptNumber = hiddenRetryCount + 1;
+    const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+
+    if (hiddenRetryCount > 0) {
+      const shouldContinue = await waitForHiddenRetryDelay(isParallelRunActive);
+      if (!shouldContinue) {
+        return;
+      }
+      void logInfo("runPrompt-parallel-hidden-retry", {
+        cli: runCli,
+        tabId: target.tabId,
+        runId,
+        sessionId,
+        attempt: attemptNumber,
+        retryCount: hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+      });
+    }
+
+    let rawStdout = "";
+    let rawStderr = "";
+    const attemptResult = await new Promise<
+      { type: "exit"; code: number | null }
+      | { type: "error"; error: Error }
+    >((resolve) => {
+      let settled = false;
+      const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(result);
+      };
+      const process = runCliStream(
+        runCli,
+        attemptPrompt,
+        {
+          onStdout: (chunk: string) => {
+            if (!isParallelRunActive()) {
+              return;
+            }
+            rawStdout += chunk;
+            sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
+          },
+          onStderr: (chunk: string) => {
+            if (!isParallelRunActive()) {
+              return;
+            }
+            rawStderr += chunk;
+            sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
+          },
+          onExit: (code: number | null) => {
+            settle({ type: "exit", code });
+          },
+          onError: (error: Error) => {
+            settle({ type: "error", error });
+          },
+        },
+        {
+          cwd,
+          sessionId,
+          thinkingMode,
+          model: selectedModel,
+          processLabel: buildProcessLabel(runCli, sessionId ?? runId),
+        }
+      );
+      syncParallelRun(process);
+    });
+
+    if (!isParallelRunActive()) {
+      return;
+    }
+
+    const detectedSessionId = extractSessionId(runCli, `${rawStdout}
+${rawStderr}`);
+    if (!sessionId && detectedSessionId) {
+      sessionId = detectedSessionId;
+      adoptSessionId(runCli, detectedSessionId, target.tabId);
+    }
+
+    if (attemptResult.type === "exit" && attemptResult.code === 0) {
+      parallelRunsByTabId.delete(target.tabId);
+      const finalText = String(rawStdout || "").trim();
+      if (finalText) {
+        const assistantMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "assistant",
+          content: finalText,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(messageTarget, assistantMessage);
+        sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
+      }
+      const taskRecord: TaskRunRecord = {
+        id: runId,
+        cli: runCli,
+        sessionId,
+        prompt,
+        startedAt,
+        endedAt: Date.now(),
+        durationMs: Math.max(0, Date.now() - startedAt),
+        status: "end",
+      };
+      appendTaskRun(taskRecord);
+      sendRunStatusForTab(target.tabId, "end");
+      const completionMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "system",
+        content: buildTaskRunCompletionText("end", taskRecord.durationMs),
+        createdAt: Date.now(),
+      };
+      appendMessageToStore(messageTarget, completionMessage);
+      sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+      persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+      return;
+    }
+
+    const retryableErrorInfo = attemptResult.type === "error"
+      ? getErrorInfo(attemptResult.error)
+      : null;
+    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
+      attemptResult.type === "exit"
+        || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
+    );
+    if (shouldRetry) {
+      hiddenRetryCount += 1;
+      continue;
+    }
+
+    parallelRunsByTabId.delete(target.tabId);
+    const finalText = String(rawStdout || "").trim();
+    if (finalText) {
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        content: finalText,
+        createdAt: Date.now(),
+      };
+      appendMessageToStore(messageTarget, assistantMessage);
+      sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
+    }
+
+    const taskRecord: TaskRunRecord = {
+      id: runId,
+      cli: runCli,
+      sessionId,
+      prompt,
+      startedAt,
+      endedAt: Date.now(),
+      durationMs: Math.max(0, Date.now() - startedAt),
+      status: "error",
+    };
+    appendTaskRun(taskRecord);
+
+    const userMessageText = attemptResult.type === "error"
+      ? (attemptResult.error instanceof Error ? attemptResult.error.message : String(attemptResult.error))
+      : hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
+        ? buildHiddenRetryLimitMessage()
+        : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+    const systemMessage: ChatMessage = {
+      id: createMessageId(),
+      role: "system",
+      content: userMessageText,
+      createdAt: Date.now(),
+    };
+    appendMessageToStore(messageTarget, systemMessage);
+    sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+    sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
+    const completionMessage: ChatMessage = {
+      id: createMessageId(),
+      role: "system",
+      content: buildTaskRunCompletionText("error", taskRecord.durationMs),
+      createdAt: Date.now(),
+    };
+    appendMessageToStore(messageTarget, completionMessage);
+    sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+    persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+    return;
+  }
 }
 
 async function runPrompt(
@@ -3053,13 +3177,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const activeTabId = target.tabId;
   preparePendingLabel(runCli, activeTabId, prompt);
-  const sessionId = target.sessionId;
+  const initialSessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
   const debugLogging = getDebugLogging();
-  const messageTarget = sessionId
-    ? loadSessionMessages(runCli, sessionId)
+  const messageTarget = initialSessionId
+    ? loadSessionMessages(runCli, initialSessionId)
     : getPendingSessionDraft(activeTabId, runCli).messages;
-  const args = buildCliArgs(runCli, { sessionId, thinkingMode, model: selectedModel }, thinkingPrompt);
+  const args = buildCliArgs(runCli, { sessionId: initialSessionId, thinkingMode, model: selectedModel }, thinkingPrompt);
   const command = getCliCommand(runCli);
   logCliStartup({
     cli: runCli,
@@ -3074,7 +3199,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     command: getCliCommand(runCli),
     args,
     cwd,
-    sessionId,
+    sessionId: initialSessionId,
     thinkingMode,
     model: selectedModel,
   });
@@ -3083,11 +3208,10 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
-  const processLabel = buildProcessLabel(runCli, sessionId ?? runId);
-  applyProcessTitle(runId, runCli, sessionId);
-  startTaskRun(runId, runCli, sessionId, prompt);
+  applyProcessTitle(runId, runCli, initialSessionId);
+  startTaskRun(runId, runCli, initialSessionId, prompt);
   activeMessageTarget = messageTarget;
-  activeSessionId = sessionId;
+  activeSessionId = initialSessionId;
   activeCliForRun = runCli;
   activeTabIdForRun = activeTabId;
   appendMessageToStore(messageTarget, {
@@ -3119,429 +3243,160 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   skipCodexBlock = false;
   activeCompletionSent = false;
 
-  let sessionBuffer = "";
-  let rawStdout = "";
-  let rawStderr = "";
-
   sendRunStatus("start");
+  let hiddenRetryCount = 0;
 
-  activeProcess = runCliStream(
-    runCli,
-    thinkingPrompt,
-    {
-      onStdout: (chunk: string) => {
-        if (activeRunId !== runId) {
+  const isCurrentOneShotRunActive = (): boolean => activeRunId === runId;
+
+  while (true) {
+    const attemptNumber = hiddenRetryCount + 1;
+    const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+
+    if (hiddenRetryCount > 0) {
+      const shouldContinue = await waitForHiddenRetryDelay(isCurrentOneShotRunActive);
+      if (!shouldContinue) {
+        return;
+      }
+      void logInfo("runPrompt-one-shot-hidden-retry", {
+        cli: runCli,
+        runId,
+        tabId: activeTabId,
+        sessionId: activeSessionId,
+        attempt: attemptNumber,
+        retryCount: hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+      });
+    }
+
+    let sessionBuffer = "";
+    let rawStdout = "";
+    let rawStderr = "";
+    const runtimeSessionId = activeSessionId;
+    const attemptResult = await new Promise<
+      { type: "exit"; code: number | null }
+      | { type: "error"; error: Error }
+    >((resolve) => {
+      let settled = false;
+      const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
+        if (settled) {
           return;
         }
-        rawStdout += chunk;
-        sendRawStreamDelta(chunk, { stream: "stdout" });
-        sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-        captureSessionFromBuffer(runCli, sessionBuffer);
-        appendAssistantChunk(chunk);
-        if (debugLogging) {
-          void logCliStream(runCli, activeSessionId, "stdout", chunk);
-        }
-      },
-      onStderr: (chunk: string) => {
-        if (activeRunId !== runId) {
-          return;
-        }
-        rawStderr += chunk;
-        sendRawStreamDelta(chunk, { stream: "stderr" });
-        sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-        captureSessionFromBuffer(runCli, sessionBuffer);
-        appendTraceLines(chunk);
-        if (debugLogging) {
-          void logCliStream(runCli, activeSessionId, "stderr", chunk);
-        }
-      },
-      onExit: (code: number | null) => {
-        if (activeRunId !== runId) {
-          return;
-        }
-        void logInfo("runPrompt-exit", { cli: runCli, code });
-        if (debugLogging) {
-          void logCliRaw(runCli, activeSessionId, {
-            command,
-            args,
-            cwd,
-            exitCode: code,
-            stdin: thinkingPrompt,
-            stdout: rawStdout,
-            raw: rawStdout,
-            stderr: rawStderr,
-          });
-        }
-        const status = code === 0 ? "end" : "error";
-        sendRunStatus(
-          status,
-          code === 0 ? undefined : t("run.exitCode", { code: code ?? "unknown" })
-        );
-        flushTraceBuffer();
-        appendCompletionMessage(status);
-        persistActiveMessages();
-        clearActiveRun();
-      },
-      onError: (error: Error) => {
-        if (activeRunId !== runId) {
-          return;
-        }
-        const errnoError = error as NodeJS.ErrnoException;
-        const isNotFound = errnoError?.code === "ENOENT";
-        const userMessage = isNotFound
-          ? buildCliCommandNotFoundMessage(runCli, command)
-          : error.message;
-        if (isNotFound) {
-          const openSettingsLabel = t("common.openSettings");
-          void vscode.window.showErrorMessage(userMessage, openSettingsLabel).then((selection) => {
-            if (selection === openSettingsLabel) {
-              void vscode.commands.executeCommand(
-                "workbench.action.openSettings",
-                `sinitek-cli-tools.commands.${runCli}`
-              );
+        settled = true;
+        resolve(result);
+      };
+      activeProcess = runCliStream(
+        runCli,
+        attemptPrompt,
+        {
+          onStdout: (chunk: string) => {
+            if (!isCurrentOneShotRunActive()) {
+              return;
             }
-          });
-        }
-        void logError("runPrompt-error", {
-          cli: runCli,
-          error: isNotFound ? `${error.message} (ENOENT)` : error.message,
-        });
-        if (debugLogging) {
-          void logCliRaw(runCli, activeSessionId, {
-            command,
-            args,
-            cwd,
-            error: error.message,
-            stdin: thinkingPrompt,
-            stdout: rawStdout,
-            raw: rawStdout,
-            stderr: rawStderr,
-          });
-        }
-        sendRunStatus("error", userMessage);
-        flushTraceBuffer();
-        appendCompletionMessage("error");
-        persistActiveMessages();
-        clearActiveRun();
-      },
-    },
-    { cwd, sessionId, thinkingMode, model: selectedModel, processLabel }
-  );
-
-  void logInfo("runPrompt-spawned", {
-    cli: runCli,
-    pid: activeProcess?.pid ?? null,
-  });
-}
-
-function getCompactPromptKey(cli: CliName, sessionId: string): string {
-  return `${activeWorkspaceKey}:${cli}:${sessionId}`;
-}
-
-function estimateSessionSize(messages: ChatMessage[]): { turns: number; chars: number } {
-  const turns = messages.filter((message) => message.role === "user" && message.content.trim()).length;
-  const chars = messages.reduce((sum, message) => sum + (message.content?.length ?? 0), 0);
-  return { turns, chars };
-}
-
-function extractRecentTurns(messages: ChatMessage[], maxTurns: number): ChatMessage[] {
-  // Keep the last N user turns (+ following assistant if present).
-  const result: ChatMessage[] = [];
-  let collected = 0;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (!msg) {
-      continue;
-    }
-    if (msg.role === "user") {
-      // include assistant after this user message if it exists
-      const assistant = messages[i + 1];
-      if (assistant && assistant.role === "assistant") {
-        result.push(assistant);
-      }
-      result.push(msg);
-      collected += 1;
-      if (collected >= maxTurns) {
-        break;
-      }
-    }
-  }
-  return result.reverse();
-}
-
-function formatTurnsForBootstrap(messages: ChatMessage[]): string {
-  const lines: string[] = [];
-  for (const message of messages) {
-    const content = (message.content ?? "").trimEnd();
-    if (!content) {
-      continue;
-    }
-    if (message.role === "user") {
-      lines.push("USER:");
-      lines.push(content);
-      lines.push("");
-    } else if (message.role === "assistant") {
-      lines.push("ASSISTANT:");
-      lines.push(content);
-      lines.push("");
-    }
-  }
-  return lines.join("\n").trim() + "\n";
-}
-
-function buildCompactionPrompt(): string {
-  return [
-    t("compact.systemPrompt"),
-    t("compact.systemPrompt.reqTitle"),
-    t("compact.systemPrompt.req1"),
-    t("compact.systemPrompt.req2"),
-    t("compact.systemPrompt.req3"),
-    "",
-    t("compact.systemPrompt.summaryTitle"),
-    "FACTS:",
-    "- ...",
-    "TODOS:",
-    "- [ ] ...",
-    "DECISIONS:",
-    "- ...",
-    "CONSTRAINTS:",
-    "- ...",
-    "INDEX:",
-    "- file: <path> - <note>",
-    "- cmd: <command> - <note>",
-    "- conclusion: <text> - <note>",
-  ].join("\n");
-}
-
-type TraceMessageOptions = {
-  merge?: boolean;
-  persist?: boolean;
-  forceTraceBubble?: boolean;
-};
-
-type TraceDisplayResult = {
-  content: string;
-  shouldPersist: boolean;
-};
-
-type TraceMessageKind = "thinking" | "normal" | "tool-use";
-
-function isCommandExecutionTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  const trimmed = firstLine.trim();
-  return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
-}
-
-function isFileUpdateTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return firstLine.trim().startsWith("file update");
-}
-
-function isToolUseTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:tool|调用工具)[:：]?\s*(.+)?$/i.test(firstLine.trim());
-}
-
-function isToolResultTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:tool\s*result|工具结果)\b/i.test(firstLine.trim());
-}
-
-function isWarningOrErrorTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
-}
-
-function isWebSearchTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:web\s*search\b|【网络查询】)/i.test(firstLine.trim());
-}
-
-function isThinkingTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  const trimmed = firstLine.trim();
-  return trimmed.startsWith("thinking") || trimmed.startsWith("思考");
-}
-
-function resolveTraceKind(content: string, kind: TraceMessageKind): TraceMessageKind {
-  if (kind === "thinking" || isThinkingTrace(content)) {
-    return "thinking";
-  }
-  if (isToolUseTrace(content)) {
-    return "tool-use";
-  }
-  return "normal";
-}
-
-function normalizeTraceContentForDisplay(content: string, cli: CliName | null = activeCliForRun): TraceDisplayResult {
-  const { content: execContent, shouldPersist: execShouldPersist } =
-    formatCodexExecSegmentForDisplay(content, cli);
-  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(execContent, cli);
-  return { content: displayContent, shouldPersist: shouldPersist && execShouldPersist };
-}
-
-function resolveTraceMerge(content: string, merge?: boolean): boolean {
-  if (merge !== undefined) {
-    return merge;
-  }
-  // Structured trace events keep an independent bubble so tags, style and collapse state stay stable.
-  return !(
-    isCommandExecutionTrace(content)
-    || isFileUpdateTrace(content)
-    || isToolUseTrace(content)
-    || isToolResultTrace(content)
-    || isWarningOrErrorTrace(content)
-    || isWebSearchTrace(content)
-  );
-}
-
-function appendTraceMessage(
-  content: string,
-  kind: TraceMessageKind = "normal",
-  options: TraceMessageOptions = {}
-): void {
-  if (!activeMessageTarget) {
-    return;
-  }
-  if (!content.trim()) {
-    return;
-  }
-  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content);
-  if (!displayContent.trim()) {
-    return;
-  }
-  const resolvedKind = resolveTraceKind(displayContent, kind);
-  if (resolvedKind === "thinking" && options.forceTraceBubble !== true) {
-    appendAssistantChunk(`${displayContent}\n`, "thinking");
-    return;
-  }
-  const shouldMerge = resolveTraceMerge(displayContent, options.merge);
-  const mergePayload = shouldMerge ? {} : { merge: false };
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "trace",
-    content: displayContent,
-    createdAt: Date.now(),
-    kind: resolvedKind,
-    ...mergePayload,
-  };
-  if (shouldPersist && options.persist !== false) {
-    appendMessageToStore(activeMessageTarget, message);
-  }
-  sendPanelMessage({ type: "traceSegment", content: displayContent, kind: resolvedKind, ...mergePayload });
-}
-
-function appendSystemMessage(content: string): void {
-  if (!activeMessageTarget) {
-    return;
-  }
-  if (!content.trim()) {
-    return;
-  }
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "system",
-    content,
-    createdAt: Date.now(),
-  };
-  appendMessageToStore(activeMessageTarget, message);
-  sendPanelMessage({ type: "appendMessage", message });
-}
-
-function appendSystemMessageForCli(cli: CliName, sessionId: string | null, content: string): void {
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "system",
-    content,
-    createdAt: Date.now(),
-  };
-  if (sessionId) {
-    const target = loadSessionMessages(cli, sessionId);
-    appendMessageToStore(target, message);
-    saveSessionMessages(cli, sessionId, target);
-  } else {
-    const tabId = getActiveConversationTabId();
-    if (!tabId) {
-      return;
-    }
-    getPendingSessionDraft(tabId, cli).messages.push(message);
-  }
-  sendPanelMessage({ type: "appendMessage", message });
-}
-
-function appendUserMessageForCli(
-  cli: CliName,
-  sessionId: string | null,
-  content: string,
-  options: { merge?: boolean } = {}
-): void {
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "user",
-    content,
-    createdAt: Date.now(),
-    ...(options.merge === false ? { merge: false } : {}),
-  };
-  if (sessionId) {
-    const target = loadSessionMessages(cli, sessionId);
-    appendMessageToStore(target, message);
-    saveSessionMessages(cli, sessionId, target);
-  } else {
-    const tabId = getActiveConversationTabId();
-    if (!tabId) {
-      return;
-    }
-    getPendingSessionDraft(tabId, cli).messages.push(message);
-  }
-  sendPanelMessage({ type: "appendMessage", message });
-}
-
-async function resolveInteractiveSessionForResume(
-  cli: CliName,
-  sessionId: string | null,
-  tabId: string | null,
-): Promise<string | null | undefined> {
-  if (!sessionId) {
-    return sessionId;
-  }
-  const repairedSessionId = repairSupersededLocalSession(cli, sessionId);
-  if (repairedSessionId !== sessionId) {
-    return repairedSessionId;
-  }
-  const mappedId = resolveInteractiveMappedId(cli, repairedSessionId);
-  if (isLocalSessionId(repairedSessionId) && !mappedId) {
-    const detail = t("session.resumeUnavailableNoRemote");
-    await showErrorWithActions(t("session.resumeUnavailableTitle"), detail);
-    void logInfo("interactive-session-resume-blocked", {
-      cli,
-      sessionId: repairedSessionId,
-      tabId,
-      reason: "missing-remote-id",
+            rawStdout += chunk;
+            sendRawStreamDelta(chunk, { stream: "stdout" });
+            sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
+            captureSessionFromBuffer(runCli, sessionBuffer);
+            appendAssistantChunk(chunk);
+            if (debugLogging) {
+              void logCliStream(runCli, activeSessionId, "stdout", chunk);
+            }
+          },
+          onStderr: (chunk: string) => {
+            if (!isCurrentOneShotRunActive()) {
+              return;
+            }
+            rawStderr += chunk;
+            sendRawStreamDelta(chunk, { stream: "stderr" });
+            sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
+            captureSessionFromBuffer(runCli, sessionBuffer);
+            appendTraceLines(chunk);
+            if (debugLogging) {
+              void logCliStream(runCli, activeSessionId, "stderr", chunk);
+            }
+          },
+          onExit: (code: number | null) => {
+            settle({ type: "exit", code });
+          },
+          onError: (error: Error) => {
+            settle({ type: "error", error });
+          },
+        },
+        { cwd, sessionId: runtimeSessionId, thinkingMode, model: selectedModel, processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId) }
+      );
     });
-    return undefined;
+
+    if (activeRunId !== runId) {
+      return;
+    }
+
+    if (debugLogging) {
+      void logCliRaw(runCli, activeSessionId, {
+        command,
+        args,
+        cwd,
+        exitCode: attemptResult.type === "exit" ? attemptResult.code : null,
+        error: attemptResult.type === "error" ? attemptResult.error.message : undefined,
+        stdin: attemptPrompt,
+        stdout: rawStdout,
+        raw: rawStdout,
+        stderr: rawStderr,
+      });
+    }
+
+    if (attemptResult.type === "exit" && attemptResult.code === 0) {
+      void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
+      sendRunStatus("end");
+      flushTraceBuffer();
+      appendCompletionMessage("end");
+      persistActiveMessages();
+      clearActiveRun();
+      return;
+    }
+
+    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
+      attemptResult.type === "exit"
+        || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
+    );
+    if (shouldRetry) {
+      hiddenRetryCount += 1;
+      continue;
+    }
+
+    if (attemptResult.type === "error") {
+      const error = attemptResult.error;
+      const errnoError = error as NodeJS.ErrnoException;
+      const isNotFound = errnoError?.code === "ENOENT";
+      const userMessage = isNotFound
+        ? buildCliCommandNotFoundMessage(runCli, command)
+        : error.message;
+      if (isNotFound) {
+        const openSettingsLabel = t("common.openSettings");
+        void vscode.window.showErrorMessage(userMessage, openSettingsLabel).then((selection) => {
+          if (selection === openSettingsLabel) {
+            void vscode.commands.executeCommand(
+              "workbench.action.openSettings",
+              `sinitek-cli-tools.commands.${runCli}`
+            );
+          }
+        });
+      }
+      void logError("runPrompt-error", {
+        cli: runCli,
+        error: isNotFound ? `${error.message} (ENOENT)` : error.message,
+      });
+      sendRunStatus("error", userMessage);
+    } else {
+      void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
+      sendRunStatus("error", hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES ? buildHiddenRetryLimitMessage() : t("run.exitCode", { code: attemptResult.code ?? "unknown" }));
+    }
+
+    flushTraceBuffer();
+    appendCompletionMessage("error");
+    persistActiveMessages();
+    clearActiveRun();
+    return;
   }
-  return repairedSessionId;
 }
 
 async function runContextCompactionCommand(): Promise<void> {
@@ -3806,33 +3661,34 @@ async function runContextCompactionCommand(): Promise<void> {
       return;
     }
 
-    cleanupAfterRun("end");
+    throw new Error(`interactive-runner-unsupported:${cli}`);
   } catch (error) {
-    appendSystemMessage(t("compact.failException"));
-    void logError("context-compact-command-failed", {
-      cli,
-      sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    cleanupAfterRun("error");
-  } finally {
-    if (activeInteractiveStop === stopFn) {
-      activeInteractiveStop = null;
+    const entry = interactiveRunsByTabId.get(tabId);
+    if (!entry || entry.runId !== runId) {
+      return;
     }
-  }
-
-  function cleanupAfterRun(status: TaskRunStatus, userMessage?: string): void {
-    void logInfo("context-compact-command-end", {
+    const info = getErrorInfo(error);
+    if (entry.stopped) {
+      void logInfo("runPrompt-interactive-aborted", {
+        cli,
+        tabId,
+        error: info.message,
+        errorName: info.name,
+        errorCode: info.code,
+        errorStack: info.stack,
+      });
+      return;
+    }
+    void logError("runPrompt-interactive-error", {
       cli,
-      sessionId,
-      runId,
-      status,
-      message: userMessage ?? null,
+      tabId,
+      error: info.message,
+      errorName: info.name,
+      errorCode: info.code,
+      errorStack: info.stack,
     });
-    sendRunStatus(status === "end" ? "end" : status, userMessage);
-    appendCompletionMessage(status);
-    persistActiveMessages();
-    clearActiveRun();
+    cleanupAfterRun("error", error instanceof Error ? error.message : String(error));
+    throw error;
   }
 }
 
