@@ -788,6 +788,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       /* Assistant Message - Clean, width-filling */
       .message.assistant {
         align-items: flex-start;
+        --assistant-final-accent: var(
+          --vscode-focusBorder,
+          var(--vscode-textLink-foreground, var(--vscode-charts-blue))
+        );
       }
       .message.assistant .bubble {
         background: transparent;
@@ -797,6 +801,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         max-width: 100%;
         width: 100%;
         box-sizing: border-box;
+      }
+      .message.assistant.message-final-summary .bubble {
+        background: var(--vscode-editorWidget-background, transparent);
+      }
+      .message.assistant .assistant-message-content-final {
+        border: 1px solid var(--assistant-final-accent);
+        border-left-width: 4px;
+        border-radius: var(--radius-md);
+        padding: 12px 14px;
+        background: var(
+          --vscode-editorHoverWidget-background,
+          var(--vscode-editorWidget-background, transparent)
+        );
+        box-sizing: border-box;
+      }
+      .message.assistant .assistant-message-content-final > :first-child {
+        margin-top: 0;
+      }
+      .message.assistant .assistant-message-content-final > :last-child {
+        margin-bottom: 0;
       }
       
       /* Markdown Styles */
@@ -4038,12 +4062,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
-      function createMessageElement(message, index) {
-        const wrapper = document.createElement("div");
+      function applyMessageElementClasses(wrapper, message, index) {
         wrapper.className = "message " + message.role;
-        if (message && message.id) {
-          wrapper.dataset.messageId = message.id;
-        }
         const tracePresentation = getTracePresentation(message.content || "");
         const shouldUseTraceWrapper = message.role === "trace" || tracePresentation.type === "tool-result";
         if (shouldUseTraceWrapper) {
@@ -4056,6 +4076,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (tracePresentation.commandTag && tracePresentation.commandTag.type) {
             wrapper.classList.add("trace-command-purpose-" + tracePresentation.commandTag.type);
           }
+        }
+        if (message.role === "assistant" && isFinalAssistantSummaryMessage(index)) {
+          wrapper.classList.add("message-final-summary");
+        }
+      }
+
+      function createMessageElement(message, index) {
+        const wrapper = document.createElement("div");
+        applyMessageElementClasses(wrapper, message, index);
+        if (message && message.id) {
+          wrapper.dataset.messageId = message.id;
         }
 
         const bubble = document.createElement("div");
@@ -4094,7 +4125,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!wrapper) {
           return false;
         }
-        wrapper.className = "message assistant";
+        applyMessageElementClasses(wrapper, message, index);
         const bubble = wrapper.querySelector(".bubble");
         if (!bubble) {
           return false;
@@ -4700,11 +4731,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function renderAssistantMessageContent(message, messageIndex) {
         const content = String(message && message.content ? message.content : "");
         const presentation = getTracePresentation(content);
+        if (isFinalAssistantSummaryMessage(messageIndex)) {
+          return '<div class="assistant-message-content assistant-message-content-final">' + renderMarkdown(content) + '</div>';
+        }
         if (
           isTransparentBubbleMessage(message, presentation, messageIndex)
           || isThinkingLikeMessage(message, presentation)
           || isCodexReasoningStyleMessage(message)
-          || isFinalAssistantSummaryMessage(messageIndex)
         ) {
           return renderMarkdown(content);
         }

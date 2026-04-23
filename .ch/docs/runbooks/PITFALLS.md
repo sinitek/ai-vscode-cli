@@ -117,3 +117,46 @@
 ### 关联资料
 - 代码：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerEvents.ts`
 - 执行计划：`.ch/docs/exec-plans/completed/2026-04-21-codex-collab-wait-timeout-surface.md`
+
+## VS Code 插件用 shell + detached 启动 Codex app-server，长任务更容易表现为“莫名中断”
+
+- 状态：已缓解
+- 首次发现：2026-04-23
+- 适用范围：`src/interactive/codexRunner.ts`、`src/interactive/manager.ts`、`src/extension.ts` 的 Codex 交互式运行链路（尤其是 macOS）
+
+### 现象
+- 用户在 VS Code 插件里执行较长的 Codex 任务时，会感觉任务“突然中断”或“莫名结束”。
+- 对比目标系统 `/Users/fangjiawei/work/cli_mcp/apps`，同机环境下其 Codex 任务稳定性明显更高。
+- 当前插件侧通常拿不到像目标系统那样清晰的原始流与生命周期日志，因此现象容易被感知为“无原因中断”。
+
+### 触发条件
+- 在当前插件中执行 Codex 交互式任务。
+- 运行环境为 macOS，且 `src/interactive/codexRunner.ts` 通过 `zsh -lc` 启动 `codex app-server`。
+- 任务较长、需要继续续接、涉及更多工具/网络搜索，或运行中碰到 runner rebuild / dispose / stop 相关边界事件。
+
+### 根因
+- 已确认的代码差异：
+  - 当前插件在 macOS 上通过 shell 包一层启动，并设置 `detached: true`。
+  - 当前插件直接继承 `process.env`，没有显式固定 `CODEX_HOME` / `CODEX_HOME_DIR`，也没有清理 `npm_config_prefix`。
+  - 当前插件没有像目标系统那样在启动前确保 project trust，也没有注入 `projects.<path>.trust_level="trusted"` override。
+  - 当前插件收尾时更依赖 `killProcessTree()` 粗暴结束进程组；目标系统则是“先关 stdin，等待 close，再升级信号”的优雅关闭。
+- 推断的主因：以上差异叠加后，当前插件的运行链路比目标系统多了 shell 副作用、环境污染、进程组信号复杂度和粗暴销毁四类不稳定因素，因此更容易把真实退出表现成“莫名中断”。
+
+### 临时绕过
+- 优先把 `sinitek-cli-tools.commands.codex` 配成绝对可执行路径，减少 shell 解析的不确定性。
+- 稳定性优先时，先关闭不必要的高风险能力，例如默认 web search；避免在任务运行中切换 CLI、切会话、清会话或触发会导致 runner dispose 的操作。
+- 如需继续排查，优先和目标系统使用相同的 `CODEX_HOME`、相同的 Codex 可执行路径与相同的 run mode 做对比。
+
+### 长期规避
+- 2026-04-23 已完成第一轮缓解：当前插件已改为优先直接 `spawn` 已解析的 Codex 可执行文件，不再默认启用 `detached`，并补齐 `CODEX_HOME` / project trust / 渐进式关闭。
+- 如后续仍有零星中断，优先继续补 raw stream / lifecycle 日志，确认是否仍有 shell fallback、外部 CLI 自身退出或 UI 侧误触发 dispose。
+
+### 验证方式
+- 对当前插件完成最小改造后，执行一次长时 Codex 交互任务，确认不中途退出。
+- 在同一工作区下对比改造前后：子进程启动参数、关闭方式、`CODEX_HOME`、project trust 配置和日志是否与目标系统对齐。
+- 最小交付前执行：`npm run build`。
+
+### 关联资料
+- 当前系统代码：`src/interactive/codexRunner.ts`、`src/interactive/manager.ts`、`src/extension.ts`
+- 对标系统代码：`/Users/fangjiawei/work/cli_mcp/apps/backend/src/infra/codex/CodexAppServerClient.ts`、`/Users/fangjiawei/work/cli_mcp/apps/backend/src/infra/codex/CodexExecClient.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-23-codex-launch-compare.md`

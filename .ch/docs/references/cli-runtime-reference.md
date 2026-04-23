@@ -36,8 +36,12 @@
 
 - 使用当前用户安装的官方 `codex` CLI
 - 通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话
+- 优先直接 `spawn` 已解析的 Codex 可执行路径；macOS 仅在命令无法直接解析时回退到用户配置的 shell 包装
+- 会为 Codex 子进程显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，并移除 `npm_config_prefix` / `NPM_CONFIG_PREFIX`
+- 启动前会确保当前工作区在 Codex 配置中被标记为 trusted，并通过 `-c projects.<workspace>.trust_level="trusted"` 追加运行时 override
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
+- 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
   - approval policy

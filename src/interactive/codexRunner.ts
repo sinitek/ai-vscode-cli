@@ -7,12 +7,19 @@ import { getMacTaskShell } from "../cli/config";
 import { resolveCliCommand } from "../cli/commandRunner";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
+import { logInfo } from "../logger";
 import {
   extractCodexCollabToolFailure,
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
   normalizeCodexExecItemType,
 } from "./codexAppServerEvents";
+import {
+  buildCodexChildEnv,
+  buildCodexWorkspaceTrustConfigOverride,
+  ensureCodexProjectTrusted,
+  resolveCodexProjectPath,
+} from "./codexRuntimeConfig";
 
 export type CodexTraceKind = "thinking" | "normal";
 
@@ -68,6 +75,7 @@ const CODEX_APP_SERVER_CLIENT_VERSION_FALLBACK = "0.0.0";
 const CODEX_PACKAGE_NAME_PREFIX = "@openai/codex";
 const CODEX_PACKAGE_VERSION_SEARCH_DEPTH = 8;
 const CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS = 24 * 60 * 60;
+const CODEX_CHILD_SHUTDOWN_GRACE_MS = 300;
 
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let index = 0; index < args.length; index += 1) {
@@ -232,8 +240,13 @@ function buildCodexThreadOptions(
   return options;
 }
 
-function buildCodexAppServerArgs(multiAgentEnabled: boolean): string[] {
-  const args = ["app-server", "--listen", "stdio://"];
+function buildCodexAppServerArgs(multiAgentEnabled: boolean, configOverrides: string[] = []): string[] {
+  const args = [
+    "app-server",
+    ...configOverrides.flatMap((override) => ["-c", override]),
+    "--listen",
+    "stdio://",
+  ];
   if (!multiAgentEnabled) {
     args.push("--disable", "multi_agent");
   }
@@ -328,25 +341,35 @@ function resolveMacTaskShellExecutable(): string {
   return getMacTaskShell() === "bash" ? "/bin/bash" : "/bin/zsh";
 }
 
-function resolveSpawnCommand(command: string, args: string[]): { command: string; args: string[] } {
+type ResolvedSpawnCommand = {
+  command: string;
+  args: string[];
+  usesShell: boolean;
+  resolvedFrom: string;
+};
+
+function resolveSpawnCommand(command: string, args: string[]): ResolvedSpawnCommand {
+  const resolved = resolveCliCommand(command);
+  if (resolved) {
+    return {
+      command: resolved.command,
+      args,
+      usesShell: false,
+      resolvedFrom: resolved.resolvedFrom,
+    };
+  }
+
   if (process.platform === "darwin") {
     return {
       command: resolveMacTaskShellExecutable(),
       args: ["-lc", buildShellCommandLine(command, args)],
+      usesShell: true,
+      resolvedFrom: "mac-shell-fallback",
     };
   }
-
-  const resolved = resolveCliCommand(command);
-  if (!resolved) {
-    const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
-    error.code = "ENOENT";
-    throw error;
-  }
-
-  return {
-    command: resolved.command,
-    args,
-  };
+  const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
+  error.code = "ENOENT";
+  throw error;
 }
 
 function killProcessTree(
@@ -375,6 +398,62 @@ function killProcessTree(
     }
   }
   return true;
+}
+
+function requestChildShutdown(child: ChildProcess, mode: "graceful" | "terminate"): void {
+  const isSettled = (): boolean => child.exitCode !== null || child.signalCode !== null;
+
+  const sendTerminate = (): void => {
+    if (isSettled()) {
+      return;
+    }
+    if (process.platform === "win32") {
+      killProcessTree(child, "SIGTERM");
+      return;
+    }
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      killProcessTree(child, "SIGTERM");
+    }
+  };
+
+  const sendForceKill = (): void => {
+    if (isSettled()) {
+      return;
+    }
+    if (process.platform === "win32") {
+      killProcessTree(child, "SIGKILL");
+      return;
+    }
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      killProcessTree(child, "SIGKILL");
+    }
+  };
+
+  if (mode === "graceful") {
+    try {
+      if (child.stdin && !child.stdin.destroyed && !child.stdin.writableEnded) {
+        child.stdin.end();
+      }
+    } catch {
+      // ignore stdin shutdown errors and continue with signal escalation
+    }
+    setTimeout(() => {
+      sendTerminate();
+      setTimeout(() => {
+        sendForceKill();
+      }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
+    }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
+    return;
+  }
+
+  sendTerminate();
+  setTimeout(() => {
+    sendForceKill();
+  }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
 }
 
 function createAbortError(): Error {
@@ -735,7 +814,7 @@ export class CodexInteractiveRunner {
   public stopAndRebuild(): void {
     this.abortGeneration += 1;
     if (this.activeChild) {
-      killProcessTree(this.activeChild);
+      requestChildShutdown(this.activeChild, "terminate");
       this.activeChild = null;
     }
     this.rebuild();
@@ -775,11 +854,66 @@ export class CodexInteractiveRunner {
     const imagePaths = collectArgValues(this.options.args, ["--image", "-i"])
       .map((item) => item.trim())
       .filter(Boolean);
-    const spawnCommand = resolveSpawnCommand(this.options.command, buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false));
+    let resolvedWorkspaceDir = threadOptions.workingDirectory;
+    const configOverrides: string[] = [];
+    const childEnvResult = buildCodexChildEnv(process.env);
+
+    if (resolvedWorkspaceDir) {
+      resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
+      threadOptions.workingDirectory = resolvedWorkspaceDir;
+      configOverrides.push(buildCodexWorkspaceTrustConfigOverride(resolvedWorkspaceDir));
+      try {
+        const trustResult = await ensureCodexProjectTrusted({
+          projectRoot: resolvedWorkspaceDir,
+          codexHomeDir: childEnvResult.codexHomeDir,
+        });
+        handlers.onEvent?.({
+          type: "codex.lifecycle",
+          event: "project_trust_ready",
+          status: trustResult.status,
+          projectRoot: trustResult.projectRoot,
+          configPath: trustResult.configPath,
+        });
+      } catch (error) {
+        handlers.onEvent?.({
+          type: "codex.lifecycle",
+          event: "project_trust_failed",
+          projectRoot: resolvedWorkspaceDir,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const spawnCommand = resolveSpawnCommand(
+      this.options.command,
+      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides)
+    );
+    void logInfo("codex-app-server-spawn", {
+      command: spawnCommand.command,
+      args: spawnCommand.args,
+      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
+      usesShell: spawnCommand.usesShell,
+      resolvedFrom: spawnCommand.resolvedFrom,
+      codexHomeDir: childEnvResult.codexHomeDir,
+      removedEnvKeys: childEnvResult.removedEnvKeys,
+      threadId: this.options.threadId,
+      interactiveMode: this.options.interactiveMode,
+    });
+    handlers.onEvent?.({
+      type: "codex.lifecycle",
+      event: "spawn_prepare",
+      command: spawnCommand.command,
+      args: spawnCommand.args,
+      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
+      usesShell: spawnCommand.usesShell,
+      resolvedFrom: spawnCommand.resolvedFrom,
+      codexHomeDir: childEnvResult.codexHomeDir,
+      removedEnvKeys: childEnvResult.removedEnvKeys,
+    });
     const child = spawn(spawnCommand.command, spawnCommand.args, {
-      cwd: this.options.cwd,
-      env: process.env,
-      detached: process.platform !== "win32",
+      cwd: resolvedWorkspaceDir ?? this.options.cwd,
+      env: childEnvResult.env,
+      detached: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -791,6 +925,7 @@ export class CodexInteractiveRunner {
     const stderrChunks: Buffer[] = [];
     let nextRequestId = 1;
     let turnSettled = false;
+    let childClosed = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
     const assistantBuffers = new Map<string, string>();
     const seenCommandExecutions = new Set<string>();
@@ -805,6 +940,7 @@ export class CodexInteractiveRunner {
     });
     const exitPromise = new Promise<AppServerResponse>((resolve) => {
       child.once("close", (code, signal) => {
+        childClosed = true;
         resolve({ code, signal });
         if (!turnSettled) {
           const error = this.disposeGeneration !== runDisposeGeneration
@@ -849,11 +985,11 @@ export class CodexInteractiveRunner {
       settleTurnCompletion(error);
     };
 
-    const terminateChild = (): void => {
-      if (child.killed) {
+    const shutdownChild = (mode: "graceful" | "terminate"): void => {
+      if (childClosed) {
         return;
       }
-      killProcessTree(child);
+      requestChildShutdown(child, mode);
     };
 
     const updateThreadId = (threadId: unknown): void => {
@@ -914,7 +1050,7 @@ export class CodexInteractiveRunner {
       }
       handlers.onTrace(`error ${normalized}`);
       failRun(new Error(normalized));
-      setTimeout(() => terminateChild(), 0);
+      setTimeout(() => shutdownChild("terminate"), 0);
     };
 
     const rawResponseToolNames = new Map<string, string>();
@@ -1101,7 +1237,7 @@ export class CodexInteractiveRunner {
             const detail = error instanceof Error ? error.message : String(error);
             stdoutParseError = new Error(t("codex.appServerParseFailed", { error: detail }));
             failRun(stdoutParseError);
-            terminateChild();
+            shutdownChild("terminate");
             break;
           }
 
@@ -1140,7 +1276,7 @@ export class CodexInteractiveRunner {
                 : { jsonrpc: "2.0", id: message.id, result: resolution.result ?? {} });
             } catch (error) {
               failRun(error instanceof Error ? error : new Error(String(error)));
-              terminateChild();
+              shutdownChild("terminate");
               break;
             }
             continue;
@@ -1225,7 +1361,7 @@ export class CodexInteractiveRunner {
             } else {
               settleTurnCompletion();
             }
-            setTimeout(() => terminateChild(), 0);
+            setTimeout(() => shutdownChild("graceful"), 0);
             continue;
           }
 
@@ -1265,7 +1401,7 @@ export class CodexInteractiveRunner {
 
     try {
       const initializeParams: Record<string, unknown> = {
-        clientInfo: buildCodexAppServerClientInfo(this.options.command),
+        clientInfo: buildCodexAppServerClientInfo(spawnCommand.command),
         capabilities: {
           experimentalApi: false,
           optOutNotificationMethods: [],
@@ -1346,7 +1482,7 @@ export class CodexInteractiveRunner {
       if (!turnSettled && error instanceof Error) {
         failRun(error);
       }
-      terminateChild();
+      shutdownChild("terminate");
       await Promise.allSettled([exitPromise, outputLoopPromise]);
       if (this.disposeGeneration !== runDisposeGeneration) {
         throw createRunnerDisposedError();
