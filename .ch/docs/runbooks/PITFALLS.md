@@ -118,6 +118,44 @@
 - 代码：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerEvents.ts`
 - 执行计划：`.ch/docs/exec-plans/completed/2026-04-21-codex-collab-wait-timeout-surface.md`
 
+## Codex item.started / item.completed 的 trace 内容不稳定，不能只按 id 抢占去重位
+
+- 状态：已修复
+- 首次发现：2026-04-23
+- 适用范围：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerEvents.ts` 的 Codex app-server trace 事件解析链路
+
+### 现象
+- 原始流式日志里能看到多条 `item.started` / `item.completed` 事件。
+- 聊天区可能缺少关键 trace，或者先显示一个空洞/弱信息 trace，后续更完整的 completed trace 又没有出现。
+- 首个真实暴露案例是 `web_search`：明明发生了网络查询，聊天区却没有对应过程气泡。
+
+### 触发条件
+- Codex app-server 对同一个条目会分 started / completed 两阶段发送事件，但两阶段内容不保证同样完整。
+- 某些类型在 started 阶段可能只有 `id` 或弱信息，completed 阶段才补足真实内容；首个明确案例是 `web_search` 的 `query` 只在 completed 才完整。
+- 旧逻辑只要看到 started 就可能先按 `id` 去重，导致 completed 即使内容更完整也被视为“已经上过屏”。
+
+### 根因
+- started/completed 的职责更接近“生命周期阶段”，不是“内容稳定快照”。
+- 旧逻辑把多个 trace 类型的去重都建立在“同类型同 id 只上屏一次”的假设上，但这个假设并不稳。
+- 一旦 started 阶段内容为空、过弱，或者 completed 阶段才补足重要字段，就会出现“started 抢占 completed 上屏机会”的误判。
+
+### 临时绕过
+- 修复前只能打开“流式消息”或导出 run stream，手工对照 started/completed 事件找丢失的 trace 细节。
+
+### 长期规避
+- 不再只按 `id` 抢占 trace 去重位，而是改成“事件阶段 + 有效内容 + 已上屏内容签名”的组合判定。
+- `web_search` 继续只在 completed 且有有效查询内容时才产出 trace，并兼容 `item.query`、`action.query`、`action.url`。
+- 对 `command_execution`、`mcp_tool_call` 等 started/completed 类型，也要求 started 至少要有足够识别内容才允许上屏；同内容不重复上屏，completed 内容更完整时不能被吞掉。
+- 对这条通用规则补最小回归脚本，防止后续协议调整时再次静默回归。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node scripts/validate_codex_item_trace_candidates.js`。
+- 如需手工验证，可触发一次带联网检索、命令执行或 MCP 调用的 Codex 回合，确认 started 空内容不会吞掉 completed 的真实 trace。
+
+### 关联资料
+- 代码：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerEvents.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-23-codex-web-search-trace-gap.md`、`.ch/docs/exec-plans/completed/2026-04-23-codex-trace-type-hardening.md`
+
 ## VS Code 插件用 shell + detached 启动 Codex app-server，长任务更容易表现为“莫名中断”
 
 - 状态：已缓解

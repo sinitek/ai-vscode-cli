@@ -20,6 +20,19 @@ export type CodexCollabToolFailure = {
   detail: string;
 };
 
+export type CodexWebSearchTraceCandidate = {
+  itemId: string;
+  query: string;
+};
+
+export type CodexItemTraceEventType = "item.started" | "item.completed";
+
+export type CodexItemTraceCandidate = {
+  itemType: string;
+  itemId: string;
+  content: string;
+};
+
 function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -104,6 +117,137 @@ export function normalizeCodexExecItemType(type: unknown): string {
     dynamicToolCall: "dynamic_tool_call",
     collabAgentToolCall: "collab_agent_tool_call",
   } as Record<string, string>)[normalized] || normalized;
+}
+
+function joinTraceLines(lines: Array<string | null | undefined>): string {
+  return lines
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function stringifyTraceArguments(value: unknown): string {
+  if (typeof value === "undefined") {
+    return "";
+  }
+  const text = safeStringify(value).trim();
+  return text === "undefined" ? "" : text;
+}
+
+function extractCodexCommandExecutionTraceCandidate(
+  rawItem: unknown,
+  eventType: CodexItemTraceEventType
+): CodexItemTraceCandidate | null {
+  const item = toRecord(rawItem);
+  if (!item || normalizeCodexExecItemType(item.type) !== "command_execution") {
+    return null;
+  }
+  const command = typeof item.command === "string" ? item.command.trim() : "";
+  if (eventType === "item.started" && !command) {
+    return null;
+  }
+  return {
+    itemType: "command_execution",
+    itemId: String(item.id || "").trim(),
+    content: command ? `exec ${command}` : "exec",
+  };
+}
+
+function extractCodexMcpToolCallTraceCandidate(
+  rawItem: unknown,
+  eventType: CodexItemTraceEventType
+): CodexItemTraceCandidate | null {
+  const item = toRecord(rawItem);
+  if (!item || normalizeCodexExecItemType(item.type) !== "mcp_tool_call") {
+    return null;
+  }
+  const server = typeof item.server === "string" ? item.server.trim() : "";
+  const tool = typeof item.tool === "string" ? item.tool.trim() : "";
+  const status = typeof item.status === "string" ? item.status.trim() : "";
+  const identity = [server, tool].filter(Boolean).join(" :: ").trim();
+  const paramsText = stringifyTraceArguments(item.arguments);
+  const shouldSurfaceStatus = eventType === "item.completed"
+    && Boolean(status)
+    && status !== "completed"
+    && status !== "succeeded";
+  if (eventType === "item.started" && !identity && !paramsText) {
+    return null;
+  }
+  const content = joinTraceLines([
+    "mcp",
+    identity,
+    shouldSurfaceStatus ? `status: ${status}` : "",
+    paramsText ? `params: ${paramsText}` : "",
+  ]);
+  if (!content || content === "mcp") {
+    return null;
+  }
+  return {
+    itemType: "mcp_tool_call",
+    itemId: String(item.id || "").trim(),
+    content,
+  };
+}
+
+function extractCodexWebSearchQuery(rawItem: unknown, eventType: CodexItemTraceEventType): string {
+  if (eventType !== "item.completed") {
+    return "";
+  }
+  const item = toRecord(rawItem);
+  if (!item || normalizeCodexExecItemType(item.type) !== "web_search") {
+    return "";
+  }
+  const action = toRecord(item.action);
+  return [
+    typeof item.query === "string" ? item.query.trim() : "",
+    typeof action?.query === "string" ? action.query.trim() : "",
+    typeof action?.url === "string" ? action.url.trim() : "",
+  ].find((value) => value.length > 0) ?? "";
+}
+
+export function extractCodexItemTraceCandidate(
+  rawItem: unknown,
+  eventType: CodexItemTraceEventType
+): CodexItemTraceCandidate | null {
+  const item = toRecord(rawItem);
+  if (!item) {
+    return null;
+  }
+  const itemType = normalizeCodexExecItemType(item.type);
+  if (itemType === "command_execution") {
+    return extractCodexCommandExecutionTraceCandidate(item, eventType);
+  }
+  if (itemType === "mcp_tool_call") {
+    return extractCodexMcpToolCallTraceCandidate(item, eventType);
+  }
+  if (itemType === "web_search") {
+    const query = extractCodexWebSearchQuery(item, eventType);
+    if (!query) {
+      return null;
+    }
+    return {
+      itemType: "web_search",
+      itemId: String(item.id || "").trim(),
+      content: `web search ${query}`,
+    };
+  }
+  return null;
+}
+
+export function extractCodexWebSearchTraceCandidate(
+  rawItem: unknown,
+  eventType: CodexItemTraceEventType
+): CodexWebSearchTraceCandidate | null {
+  const query = extractCodexWebSearchQuery(rawItem, eventType);
+  const item = toRecord(rawItem);
+  if (!query) {
+    return null;
+  }
+  return {
+    itemId: String(item?.id || "").trim(),
+    query,
+  };
 }
 
 export function extractCodexRawResponseToolCall(rawItem: unknown): CodexRawResponseToolCall | null {

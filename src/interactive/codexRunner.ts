@@ -10,6 +10,7 @@ import { t } from "../i18n";
 import { logInfo } from "../logger";
 import {
   extractCodexCollabToolFailure,
+  extractCodexItemTraceCandidate,
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
   normalizeCodexExecItemType,
@@ -928,9 +929,7 @@ export class CodexInteractiveRunner {
     let childClosed = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
     const assistantBuffers = new Map<string, string>();
-    const seenCommandExecutions = new Set<string>();
-    const seenWebSearches = new Set<string>();
-    const seenMcpToolCalls = new Set<string>();
+    const emittedTraceContents = new Map<string, string>();
     let turnCompletionResolve: (() => void) | null = null;
     let turnCompletionReject: ((error: Error) => void) | null = null;
 
@@ -1043,6 +1042,29 @@ export class CodexInteractiveRunner {
       }
     };
 
+    const shouldEmitItemTraceCandidate = (
+      itemType: string,
+      itemId: string,
+      content: string
+    ): boolean => {
+      const normalizedType = itemType.trim();
+      const normalizedId = itemId.trim();
+      const normalizedContent = content.trim();
+      if (!normalizedContent) {
+        return false;
+      }
+      if (!normalizedType || !normalizedId) {
+        return true;
+      }
+      const dedupKey = `${normalizedType}:${normalizedId}`;
+      const previousContent = emittedTraceContents.get(dedupKey);
+      if (previousContent === normalizedContent) {
+        return false;
+      }
+      emittedTraceContents.set(dedupKey, normalizedContent);
+      return true;
+    };
+
     const failRunWithVisibleMessage = (message: string): void => {
       const normalized = message.trim();
       if (!normalized) {
@@ -1089,18 +1111,14 @@ export class CodexInteractiveRunner {
       }
 
       if (itemType === "command_execution") {
-        const command = typeof item.command === "string" ? item.command.trim() : "";
-        const commandLine = command ? `exec ${command}` : "exec";
-        const commandId = String(item.id || "").trim();
-        if (commandId) {
-          if (seenCommandExecutions.has(commandId)) {
-            return;
-          }
-          seenCommandExecutions.add(commandId);
-        } else if (eventType !== "item.completed") {
+        const traceCandidate = extractCodexItemTraceCandidate(item, eventType);
+        if (!traceCandidate || traceCandidate.itemType !== "command_execution") {
           return;
         }
-        handlers.onTrace(commandLine, "normal", { merge: false });
+        if (!shouldEmitItemTraceCandidate(traceCandidate.itemType, traceCandidate.itemId, traceCandidate.content)) {
+          return;
+        }
+        handlers.onTrace(traceCandidate.content, "normal", { merge: false });
         return;
       }
 
@@ -1125,44 +1143,26 @@ export class CodexInteractiveRunner {
       }
 
       if (itemType === "mcp_tool_call") {
-        const itemId = String(item.id || "").trim();
-        if (itemId) {
-          if (seenMcpToolCalls.has(itemId)) {
-            return;
-          }
-          seenMcpToolCalls.add(itemId);
-        } else if (eventType !== "item.completed") {
+        const traceCandidate = extractCodexItemTraceCandidate(item, eventType);
+        if (!traceCandidate || traceCandidate.itemType !== "mcp_tool_call") {
           return;
         }
-        const server = typeof item.server === "string" ? item.server : "";
-        const tool = typeof item.tool === "string" ? item.tool : "";
-        const status = typeof item.status === "string" ? item.status : "";
-        handlers.onTrace(
-          ["mcp", `${server} :: ${tool}`.trim(), status ? `status: ${status}` : "", `params: ${safeStringify(item.arguments)}`]
-            .filter(Boolean)
-            .join("\n")
-        );
+        if (!shouldEmitItemTraceCandidate(traceCandidate.itemType, traceCandidate.itemId, traceCandidate.content)) {
+          return;
+        }
+        handlers.onTrace(traceCandidate.content, "normal", { merge: false });
         return;
       }
 
       if (itemType === "web_search") {
-        const itemId = String(item.id || "").trim();
-        if (itemId) {
-          if (seenWebSearches.has(itemId)) {
-            return;
-          }
-          seenWebSearches.add(itemId);
-        } else if (eventType !== "item.completed") {
+        const traceCandidate = extractCodexItemTraceCandidate(item, eventType);
+        if (!traceCandidate || traceCandidate.itemType !== "web_search") {
           return;
         }
-        const query = typeof item.query === "string"
-          ? item.query
-          : typeof item.action === "object" && item.action && typeof (item.action as Record<string, unknown>).query === "string"
-            ? String((item.action as Record<string, unknown>).query)
-            : "";
-        if (query) {
-          handlers.onTrace(`web search ${query}`);
+        if (!shouldEmitItemTraceCandidate(traceCandidate.itemType, traceCandidate.itemId, traceCandidate.content)) {
+          return;
         }
+        handlers.onTrace(traceCandidate.content, "normal", { merge: false });
         return;
       }
 
