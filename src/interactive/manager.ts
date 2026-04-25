@@ -27,9 +27,10 @@ type RunnerEntry =
       lastUsedAt: number;
     };
 
+type InteractiveRunnerCli = "codex" | "claude";
+
 export class InteractiveRunnerManager {
   private readonly entries = new Map<string, RunnerEntry>();
-  private currentKey: string | null = null;
 
   public disposeAll(): void {
     for (const entry of this.entries.values()) {
@@ -37,14 +38,17 @@ export class InteractiveRunnerManager {
       entry.runner.dispose();
     }
     this.entries.clear();
-    this.currentKey = null;
   }
 
   public disposeIfMatches(cli: CliName, sessionId: string | null): void {
     if (!sessionId) {
       return;
     }
-    this.disposeEntry(this.buildKey(cli as "codex" | "claude", sessionId));
+    const key = this.buildKeyForCli(cli, sessionId);
+    if (!key) {
+      return;
+    }
+    this.disposeEntry(key);
   }
 
   public disposeForCli(cli: CliName): void {
@@ -55,8 +59,8 @@ export class InteractiveRunnerManager {
     }
   }
 
-  public setCurrentRunner(
-    cli: "codex" | "claude",
+  public setRunner(
+    cli: InteractiveRunnerCli,
     sessionId: string,
     runner: CodexInteractiveRunner | ClaudeInteractiveRunner,
     thinkingMode: ThinkingMode,
@@ -74,7 +78,6 @@ export class InteractiveRunnerManager {
       if (existing.cli === "codex") {
         existing.multiAgentEnabled = options.multiAgentEnabled === true;
       }
-      this.currentKey = key;
       this.touch(existing);
       return;
     }
@@ -96,15 +99,7 @@ export class InteractiveRunnerManager {
           }
         : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() };
     this.entries.set(key, entry);
-    this.currentKey = key;
     this.touch(entry);
-  }
-
-  public getCurrent(): RunnerEntry | null {
-    if (!this.currentKey) {
-      return null;
-    }
-    return this.entries.get(this.currentKey) ?? null;
   }
 
   public getOrCreateCodexRunner(options: {
@@ -127,7 +122,6 @@ export class InteractiveRunnerManager {
         && existing.model === options.model
         && existing.multiAgentEnabled === options.multiAgentEnabled
       ) {
-        this.currentKey = key;
         this.touch(existing);
         return existing.runner;
       }
@@ -155,7 +149,6 @@ export class InteractiveRunnerManager {
       lastUsedAt: Date.now(),
     };
     this.entries.set(key, entry);
-    this.currentKey = key;
     this.touch(entry);
     return runner;
   }
@@ -184,7 +177,6 @@ export class InteractiveRunnerManager {
         if (expectedSessionId && runnerSessionId !== expectedSessionId) {
           existing.runner.updateSessionId(expectedSessionId);
         }
-        this.currentKey = key;
         this.touch(existing);
         return existing.runner;
       }
@@ -211,13 +203,12 @@ export class InteractiveRunnerManager {
       lastUsedAt: Date.now(),
     };
     this.entries.set(key, entry);
-    this.currentKey = key;
     this.touch(entry);
     return runner;
   }
 
-  public stopCurrentTurnAndRebuild(): void {
-    const entry = this.getCurrent();
+  public stopTurnAndRebuild(cli: CliName, sessionId: string | null): void {
+    const entry = this.getEntry(cli, sessionId);
     if (!entry) {
       return;
     }
@@ -225,8 +216,8 @@ export class InteractiveRunnerManager {
     this.touch(entry);
   }
 
-  public beginActiveRun(): void {
-    const entry = this.getCurrent();
+  public beginActiveRun(cli: CliName, sessionId: string | null): void {
+    const entry = this.getEntry(cli, sessionId);
     if (!entry) {
       return;
     }
@@ -234,16 +225,35 @@ export class InteractiveRunnerManager {
     this.clearIdleTimer(entry);
   }
 
-  public endActiveRun(): void {
-    const entry = this.getCurrent();
+  public endActiveRun(cli: CliName, sessionId: string | null): void {
+    const entry = this.getEntry(cli, sessionId);
     if (!entry) {
       return;
     }
     this.touch(entry);
   }
 
-  private buildKey(cli: "codex" | "claude", sessionId: string): string {
+  private buildKey(cli: InteractiveRunnerCli, sessionId: string): string {
     return `${cli}:${sessionId}`;
+  }
+
+  private buildKeyForCli(cli: CliName, sessionId: string | null): string | null {
+    if (!sessionId || !this.isInteractiveRunnerCli(cli)) {
+      return null;
+    }
+    return this.buildKey(cli, sessionId);
+  }
+
+  private getEntry(cli: CliName, sessionId: string | null): RunnerEntry | null {
+    const key = this.buildKeyForCli(cli, sessionId);
+    if (!key) {
+      return null;
+    }
+    return this.entries.get(key) ?? null;
+  }
+
+  private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
+    return cli === "codex" || cli === "claude";
   }
 
   private disposeEntry(key: string): void {
@@ -254,9 +264,6 @@ export class InteractiveRunnerManager {
     this.clearIdleTimer(entry);
     entry.runner.dispose();
     this.entries.delete(key);
-    if (this.currentKey === key) {
-      this.currentKey = null;
-    }
   }
 
   private touch(entry: RunnerEntry): void {

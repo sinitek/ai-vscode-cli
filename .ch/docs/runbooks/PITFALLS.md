@@ -47,6 +47,38 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## Interactive Runner 不能依赖全局 currentKey 表示当前运行会话
+
+- 状态：已修复
+- 首次发现：2026-04-24
+- 适用范围：`src/interactive/manager.ts`、`src/extension.ts` 的 Codex / Claude 多 Tab 交互式运行链路
+
+### 现象
+- 多 Tab 并发运行时，某个 Tab 的 Runner 生命周期操作可能落到另一个最近触碰过的 Tab / session 上。
+- 当前主要表现为 idle timer / lastUsedAt 状态串扰风险；如果后续在 begin/end 中加入 stop、dispose 或资源释放逻辑，会升级为跨 Tab 中断风险。
+
+### 触发条件
+- 同时存在多个 Codex / Claude 交互式会话运行或快速切换。
+- `InteractiveRunnerManager` 使用全局 `currentKey`，而 `beginActiveRun()` / `endActiveRun()` 通过 `getCurrent()` 查找目标 Runner。
+
+### 根因
+- 多 Tab 并发没有唯一“当前 Runner”。
+- `getOrCreate*Runner()` 和 `setCurrentRunner()` 会覆盖同一个全局 `currentKey`，导致较早启动的任务在收尾时可能操作较晚启动的 Runner entry。
+
+### 临时绕过
+- 修复前避免在多个 Tab 中同时触发 Codex / Claude 长任务，尤其避免运行中频繁切换会话或执行上下文压缩。
+
+### 长期规避
+- Runner 生命周期操作必须显式携带 `cli + sessionId`，不要依赖全局 current 状态。
+- 新增 RunnerManager API 时，优先设计成显式 key / token；除非 UI 单例态非常明确，否则不要引入“当前运行中 Runner”的全局缓存。
+
+### 验证方式
+- 全局搜索确认不再存在 `InteractiveRunnerManager.currentKey`、`getCurrent()`、`setCurrentRunner()`。
+- 在仓库执行：`npm run build`。
+
+### 关联资料
+- 代码：`src/interactive/manager.ts`、`src/extension.ts`
+
 ## Interactive 历史会话被 local 临时 ID 污染，恢复后出现 invalid thread id
 
 - 状态：已修复

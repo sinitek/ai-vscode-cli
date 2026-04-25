@@ -3822,11 +3822,11 @@ async function runContextCompactionCommand(): Promise<void> {
       stopCurrentTurn = () => runner.stopAndRebuild();
 
       const summaryResult = await (async () => {
-        interactiveRunnerManager?.beginActiveRun();
+        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
         try {
           return await runner.runForText(buildCompactionPrompt());
         } finally {
-          interactiveRunnerManager?.endActiveRun();
+          interactiveRunnerManager?.endActiveRun(cli, sessionId);
         }
       })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
@@ -3859,7 +3859,7 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      interactiveRunnerManager?.beginActiveRun();
+      interactiveRunnerManager?.beginActiveRun(cli, sessionId);
       try {
         await runner.runStreamed(bootstrap, {
           onAssistantDelta: () => {},
@@ -3883,13 +3883,13 @@ async function runContextCompactionCommand(): Promise<void> {
               threadId,
               previousThreadId: mappedThreadId,
             });
-            interactiveRunnerManager.setCurrentRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+            interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
               multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
             });
           },
         });
       } finally {
-        interactiveRunnerManager?.endActiveRun();
+        interactiveRunnerManager?.endActiveRun(cli, sessionId);
       }
       cleanupAfterRun("end");
       return;
@@ -3911,11 +3911,11 @@ async function runContextCompactionCommand(): Promise<void> {
 
       stopCurrentTurn = () => runner.stopAndRebuild();
       const summaryResult = await (async () => {
-        interactiveRunnerManager?.beginActiveRun();
+        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
         try {
           return await runner.runForText(buildCompactionPrompt());
         } finally {
-          interactiveRunnerManager?.endActiveRun();
+          interactiveRunnerManager?.endActiveRun(cli, sessionId);
         }
       })();
       const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
@@ -3947,7 +3947,7 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      interactiveRunnerManager?.beginActiveRun();
+      interactiveRunnerManager?.beginActiveRun(cli, sessionId);
       try {
         await runner.runStreamed(bootstrap, {
           onAssistantDelta: () => {},
@@ -3971,11 +3971,11 @@ async function runContextCompactionCommand(): Promise<void> {
               newSessionId,
               previousSessionId: mappedSessionId,
             });
-            interactiveRunnerManager.setCurrentRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
+            interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
           },
         });
       } finally {
-        interactiveRunnerManager?.endActiveRun();
+        interactiveRunnerManager?.endActiveRun(cli, sessionId);
       }
       cleanupAfterRun("end");
       return;
@@ -4560,9 +4560,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               tabId,
             });
             if (uiSessionId) {
-              interactiveRunnerManager.setCurrentRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-            });
+              interactiveRunnerManager.setRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+                multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+              });
             }
             syncInteractiveRunEntry();
           },
@@ -4635,7 +4635,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               tabId,
             });
             if (uiSessionId) {
-              interactiveRunnerManager.setCurrentRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
+              interactiveRunnerManager.setRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
             }
             syncInteractiveRunEntry();
           },
