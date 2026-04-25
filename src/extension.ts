@@ -29,6 +29,12 @@ import {
   type RunProcess,
 } from "./cli/commandRunner";
 import { applyModelArg, readModelArg } from "./cli/modelArgs";
+import {
+  finalizeGeminiStreamJsonRemainder,
+  getGeminiEventDisplay,
+  parseGeminiStreamJsonChunk,
+  type GeminiStreamJsonEvent,
+} from "./cli/geminiStreamJson";
 import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
@@ -2954,6 +2960,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     let rawStdout = "";
     let rawStderr = "";
+    const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
@@ -2976,6 +2983,15 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
             }
             rawStdout += chunk;
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
+            processGeminiStreamJsonChunk(geminiStreamState, chunk, {
+              onSessionId: (nextSessionId) => {
+                if (!sessionId) {
+                  sessionId = nextSessionId;
+                  adoptSessionId(runCli, nextSessionId, target.tabId);
+                  syncParallelRun(process);
+                }
+              },
+            });
           },
           onStderr: (chunk: string) => {
             if (!isParallelRunActive()) {
@@ -3006,6 +3022,14 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       return;
     }
 
+    finalizeGeminiStreamJsonState(geminiStreamState, {
+      onSessionId: (nextSessionId) => {
+        if (!sessionId) {
+          sessionId = nextSessionId;
+          adoptSessionId(runCli, nextSessionId, target.tabId);
+        }
+      },
+    });
     const detectedSessionId = extractSessionId(runCli, `${rawStdout}
 ${rawStderr}`);
     if (!sessionId && detectedSessionId) {
@@ -3015,7 +3039,7 @@ ${rawStderr}`);
 
     if (attemptResult.type === "exit" && attemptResult.code === 0) {
       parallelRunsByTabId.delete(target.tabId);
-      const finalText = String(rawStdout || "").trim();
+      const finalText = String(geminiStreamState.assistantText || rawStdout || "").trim();
       if (finalText) {
         const assistantMessage: ChatMessage = {
           id: createMessageId(),
@@ -3053,8 +3077,13 @@ ${rawStderr}`);
     const retryableErrorInfo = attemptResult.type === "error"
       ? getErrorInfo(attemptResult.error)
       : null;
+    const geminiResultFailed = attemptResult.type === "exit"
+      && attemptResult.code === 0
+      && geminiStreamState.resultStatus !== null
+      && geminiStreamState.resultStatus !== "success";
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      attemptResult.type === "exit"
+      geminiResultFailed
+        || attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
     );
     if (shouldRetry) {
@@ -3063,7 +3092,7 @@ ${rawStderr}`);
     }
 
     parallelRunsByTabId.delete(target.tabId);
-    const finalText = String(rawStdout || "").trim();
+    const finalText = String(geminiStreamState.assistantText || rawStdout || "").trim();
     if (finalText) {
       const assistantMessage: ChatMessage = {
         id: createMessageId(),
@@ -3091,7 +3120,9 @@ ${rawStderr}`);
       ? (attemptResult.error instanceof Error ? attemptResult.error.message : String(attemptResult.error))
       : hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
         ? buildHiddenRetryLimitMessage()
-        : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+        : geminiStreamState.errorText
+          ? geminiStreamState.errorText
+          : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
     const systemMessage: ChatMessage = {
       id: createMessageId(),
       role: "system",
@@ -3288,6 +3319,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let sessionBuffer = "";
     let rawStdout = "";
     let rawStderr = "";
+    const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
     const runtimeSessionId = activeSessionId;
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
@@ -3313,7 +3345,12 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             sendRawStreamDelta(chunk, { stream: "stdout" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
-            appendAssistantChunk(chunk);
+            processGeminiStreamJsonChunk(geminiStreamState, chunk, {
+              onAssistantText: (text) => appendAssistantChunk(text),
+              onTraceText: (text) => appendTraceLines(`${text}\n`),
+              onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
+              onPlainText: (text) => appendAssistantChunk(text),
+            });
             if (debugLogging) {
               void logCliStream(runCli, activeSessionId, "stdout", chunk);
             }
@@ -3360,7 +3397,19 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       });
     }
 
-    if (attemptResult.type === "exit" && attemptResult.code === 0) {
+    finalizeGeminiStreamJsonState(geminiStreamState, {
+      onAssistantText: (text) => appendAssistantChunk(text),
+      onTraceText: (text) => appendTraceLines(`${text}\n`),
+      onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
+      onPlainText: (text) => appendAssistantChunk(text),
+    });
+
+    const geminiResultFailed = attemptResult.type === "exit"
+      && attemptResult.code === 0
+      && geminiStreamState.resultStatus !== null
+      && geminiStreamState.resultStatus !== "success";
+
+    if (attemptResult.type === "exit" && attemptResult.code === 0 && !geminiResultFailed) {
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
       sendRunStatus("end");
       flushTraceBuffer();
@@ -3371,7 +3420,8 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     }
 
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      attemptResult.type === "exit"
+      geminiResultFailed
+        || attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
     );
     if (shouldRetry) {
@@ -3404,7 +3454,11 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       sendRunStatus("error", userMessage);
     } else {
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
-      sendRunStatus("error", hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES ? buildHiddenRetryLimitMessage() : t("run.exitCode", { code: attemptResult.code ?? "unknown" }));
+      sendRunStatus("error", hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
+        ? buildHiddenRetryLimitMessage()
+        : geminiStreamState.errorText
+          ? geminiStreamState.errorText
+          : t("run.exitCode", { code: attemptResult.code ?? "unknown" }));
     }
 
     flushTraceBuffer();
@@ -7654,6 +7708,96 @@ function deleteSessionFile(workspaceKey: string): void {
       workspace: workspaceKey,
       error: String(error),
     });
+  }
+}
+
+function formatGeminiPlainTextLines(lines: string[]): string {
+  return lines.join("\n").trimEnd();
+}
+
+function collectGeminiEventDisplay(
+  event: GeminiStreamJsonEvent,
+  handlers: {
+    onAssistantText?: (text: string) => void;
+    onTraceText?: (text: string) => void;
+    onSessionId?: (sessionId: string) => void;
+  } = {}
+): { assistantText: string; traceText: string; sessionId: string | null; resultStatus: string | null; errorText: string | null } {
+  const display = getGeminiEventDisplay(event);
+  if (display.sessionId) {
+    handlers.onSessionId?.(display.sessionId);
+  }
+  if (display.assistantText) {
+    handlers.onAssistantText?.(display.assistantText);
+  }
+  if (display.traceText) {
+    handlers.onTraceText?.(display.traceText);
+  }
+  return display;
+}
+
+function processGeminiStreamJsonChunk(
+  state: { remainder: string; assistantText: string; resultStatus: string | null; errorText: string | null },
+  chunk: string,
+  handlers: {
+    onAssistantText?: (text: string) => void;
+    onTraceText?: (text: string) => void;
+    onSessionId?: (sessionId: string) => void;
+    onPlainText?: (text: string) => void;
+  } = {}
+): void {
+  const parsed = parseGeminiStreamJsonChunk(state.remainder, chunk);
+  state.remainder = parsed.remainder;
+  parsed.events.forEach((event) => {
+    const display = collectGeminiEventDisplay(event, handlers);
+    if (display.assistantText) {
+      state.assistantText += display.assistantText;
+    }
+    if (display.resultStatus) {
+      state.resultStatus = display.resultStatus;
+    }
+    if (display.errorText) {
+      state.errorText = display.errorText;
+    }
+  });
+  const plainText = formatGeminiPlainTextLines(parsed.textLines);
+  if (plainText) {
+    state.assistantText += plainText;
+    handlers.onPlainText?.(plainText);
+  }
+}
+
+function finalizeGeminiStreamJsonState(
+  state: { remainder: string; assistantText: string; resultStatus: string | null; errorText: string | null },
+  handlers: {
+    onAssistantText?: (text: string) => void;
+    onTraceText?: (text: string) => void;
+    onSessionId?: (sessionId: string) => void;
+    onPlainText?: (text: string) => void;
+  } = {}
+): void {
+  const parsed = finalizeGeminiStreamJsonRemainder(state.remainder);
+  state.remainder = "";
+  if (!parsed) {
+    return;
+  }
+  if (parsed.kind === "event") {
+    const display = collectGeminiEventDisplay(parsed.event, handlers);
+    if (display.assistantText) {
+      state.assistantText += display.assistantText;
+    }
+    if (display.resultStatus) {
+      state.resultStatus = display.resultStatus;
+    }
+    if (display.errorText) {
+      state.errorText = display.errorText;
+    }
+    return;
+  }
+  const text = parsed.text.trimEnd();
+  if (text) {
+    state.assistantText += text;
+    handlers.onPlainText?.(text);
   }
 }
 

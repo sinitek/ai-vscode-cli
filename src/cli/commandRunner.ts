@@ -6,6 +6,7 @@ import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
+import { ensureGeminiHeadlessArgs } from "./geminiStreamJson";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
@@ -256,6 +257,13 @@ export function buildCliArgs(
         ...normalizedImagePaths.flatMap((imagePath) => ["--image", imagePath]),
       ];
     }
+  }
+
+  if (cli === "gemini") {
+    const sessionArgs = sessionId && !sessionId.startsWith(LOCAL_SESSION_PREFIX)
+      ? [...sharedArgs, "--resume", sessionId]
+      : sharedArgs;
+    return ensureGeminiHeadlessArgs(sessionArgs, prompt);
   }
 
   if (prompt === undefined || prompt === "") {

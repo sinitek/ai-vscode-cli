@@ -5,7 +5,7 @@ const GH = (e, t) => c.createElement(Qr, ip({}, e, { ref: t, icon: UH })),
 const DEFAULT_RUN_COMMANDS = {
     claude: "claude --dangerously-skip-permissions",
     codex: "codex --dangerously-bypass-approvals-and-sandbox",
-    gemini: "gemini -y",
+    gemini: "gemini --approval-mode auto_edit",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {

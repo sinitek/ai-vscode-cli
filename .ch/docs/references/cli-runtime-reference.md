@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Codex | 交互式 + 一次性 | 支持 | `src/interactive/codexRunner.ts`、`src/cli/commandRunner.ts` |
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
-| Gemini | 一次性 | 仅复用 CLI resume 参数，不维护交互 Runner | `src/cli/commandRunner.ts` |
+| Gemini | 一次性 headless stream-json | 复用 CLI `--resume` 参数，不维护交互 Runner | `src/cli/commandRunner.ts`、`src/cli/geminiStreamJson.ts` |
 
 ## 2. 命令来源
 
@@ -61,7 +61,10 @@
 ### Gemini
 
 - 当前不维护交互 Runner
-- 仍走 one-shot / stream 方式
+- 插件侧 one-shot / parallel 调用会自动补齐 Gemini headless 参数：`-p <prompt>`
+- 若用户未显式配置 `--output-format`，插件会追加 `--output-format stream-json`，并按 JSONL 事件解析 assistant delta、`init.session_id`、`result.status` 与错误事件
+- 若用户已在参数中显式配置 `-p` / `--prompt` 或 `--output-format`，插件不会重复插入对应参数，保持用户配置优先
+- session 续接仍复用 Gemini CLI 的 `--resume <sessionId>` 参数；扩展侧不维护类似 Codex app-server 的 Gemini 交互 Runner
 - 会参与统一 UI、统一会话存档和统一配置读取
 
 ## 4. 模式与参数映射
@@ -72,7 +75,7 @@
 
 - Codex：映射到 reasoning effort / 相关参数
 - Claude：映射到 `maxThinkingTokens` 和 SDK 选项
-- Gemini：继续走 CLI 参数拼装
+- Gemini：继续走 CLI 参数拼装；one-shot 场景默认使用 `-p` 与 `--output-format stream-json`
 
 ### interactive mode
 

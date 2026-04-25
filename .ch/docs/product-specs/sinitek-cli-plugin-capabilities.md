@@ -56,7 +56,7 @@
 ### 3.3 执行模式
 
 - Codex / Claude：支持交互式会话续接
-- Gemini：支持一次性执行和流式展示
+- Gemini：支持一次性 headless 执行和流式展示；默认使用 Gemini CLI `-p` 与 `--output-format stream-json` 并解析结构化事件
 - 支持 `coding / plan` 两种交互模式
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
 - Codex 在工具设置中提供项目级“子智能体（multi_agent）”开关，默认关闭；关闭时继续走 app-server 主链路，但会显式禁用官方多智能体子任务能力
