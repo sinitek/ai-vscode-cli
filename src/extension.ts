@@ -73,6 +73,12 @@ import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
+import {
+  collectInteractiveSessionKeys,
+  collectReferencedInteractiveSessionKeys,
+  shouldDisposeInteractiveSession,
+  type InteractiveSessionBinding,
+} from "./interactive/runnerRetention";
 import { recoverClaudeMessagesFromTranscript } from "./interactive/claudeTranscript";
 import {
   getMappedThreadId,
@@ -671,8 +677,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "selectCli" && message.cli) {
+    const previousBinding = getActiveConversationTabBinding();
     await setCurrentCli(message.cli);
-    interactiveRunnerManager?.disposeAll();
+    disposeInteractiveRunnerIfUnused(previousBinding);
     const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, activeSessionId);
@@ -730,8 +737,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "selectSession") {
+    const previousBinding = getActiveConversationTabBinding(message.cli);
     await setCurrentCli(message.cli, { syncActiveTab: false });
-    interactiveRunnerManager?.disposeAll();
     const selectedSessionId = message.sessionId
       ? repairSupersededLocalSession(message.cli, message.sessionId)
       : null;
@@ -764,6 +771,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     } else {
       startNewSession(message.cli);
     }
+    disposeInteractiveRunnerIfUnused(previousBinding);
     const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, activeSessionId);
@@ -805,10 +813,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       return;
     }
     const previousCli = currentCli;
+    const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
     const next = closeConversationTab(message.tabId);
-    if (closingTab.sessionId && !findConversationTabIdBySession(closingTab.cli, closingTab.sessionId)) {
-      interactiveRunnerManager?.disposeIfMatches(closingTab.cli, closingTab.sessionId);
-    }
+    closingBindings.forEach((binding) => {
+      disposeInteractiveRunnerIfUnused(binding);
+    });
     if (next && currentCli !== next.cli) {
       currentCli = next.cli;
       updateStatusBar();
@@ -897,9 +906,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const previousSessionId = activeTab.sessionId;
     const targetCli = activeTab.cli;
     startNewSession(targetCli);
-    if (previousSessionId && !findConversationTabIdBySession(targetCli, previousSessionId)) {
-      interactiveRunnerManager?.disposeIfMatches(targetCli, previousSessionId);
-    }
+    disposeInteractiveRunnerIfUnused({ cli: targetCli, sessionId: previousSessionId });
     const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, activeSessionId);
@@ -2750,6 +2757,60 @@ function hasOtherTabRun(activeTabId: string | null): boolean {
   }
   const primaryTabId = getPrimaryRunTabId();
   return Boolean(primaryTabId && primaryTabId !== activeTabId);
+}
+
+function getActiveConversationTabBinding(cli?: CliName): InteractiveSessionBinding | null {
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    return null;
+  }
+  const targetCli = cli ?? activeTab.cli;
+  return {
+    cli: targetCli,
+    sessionId: getConversationTabSessionIdForCli(activeTab, targetCli),
+  };
+}
+
+function getInteractiveSessionBindingsForTab(tab: ConversationTabRecord): InteractiveSessionBinding[] {
+  return (["codex", "claude"] as const).map((cli) => ({
+    cli,
+    sessionId: getConversationTabSessionIdForCli(tab, cli),
+  }));
+}
+
+function buildActiveInteractiveSessionKeys(): Set<string> {
+  const bindings: InteractiveSessionBinding[] = [];
+  interactiveRunsByTabId.forEach((run) => {
+    bindings.push({
+      cli: run.cli,
+      sessionId: run.sessionId,
+    });
+  });
+  if (activeInteractiveStop && activeCliForRun && activeSessionId) {
+    bindings.push({
+      cli: activeCliForRun,
+      sessionId: activeSessionId,
+    });
+  }
+  return collectInteractiveSessionKeys(bindings);
+}
+
+function buildReferencedInteractiveSessionKeys(): Set<string> {
+  const state = ensureConversationTabs();
+  return collectReferencedInteractiveSessionKeys(state.tabs.map((tab) => tab.sessionIdByCli));
+}
+
+function disposeInteractiveRunnerIfUnused(binding: InteractiveSessionBinding | null): void {
+  if (!binding || !interactiveRunnerManager) {
+    return;
+  }
+  if (!shouldDisposeInteractiveSession(binding, {
+    referencedSessionKeys: buildReferencedInteractiveSessionKeys(),
+    activeSessionKeys: buildActiveInteractiveSessionKeys(),
+  })) {
+    return;
+  }
+  interactiveRunnerManager.disposeIfMatches(binding.cli, binding.sessionId ?? null);
 }
 
 function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {

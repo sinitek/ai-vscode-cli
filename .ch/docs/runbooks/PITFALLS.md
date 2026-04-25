@@ -47,6 +47,40 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## CLI 分组切换不能全局 dispose interactive runner
+
+- 状态：已修复
+- 首次发现：2026-04-25
+- 适用范围：`src/extension.ts` 的 conversation tab 分组切换、历史会话切换链路
+
+### 现象
+- 多个 conversation tab 并发任务时，在某个 tab 切换 CLI 分组（例如切到 Gemini）或切换历史会话，会把其他 tab 中仍在执行的 Codex / Claude 任务直接打断。
+- 用户侧通常表现为 Codex / Claude 任务突然断流，随后出现 `run.disposedExternally` 一类外部释放错误。
+
+### 触发条件
+- 至少有一个 Codex / Claude interactive 任务正在运行。
+- 另一个 tab 触发 `selectCli` 或 `selectSession` 消息。
+- 扩展在这些 UI 事件里无条件执行 `interactiveRunnerManager.disposeAll()`。
+
+### 根因
+- 分组切换和历史会话切换属于单 tab 的状态切换，但旧逻辑把 runner 清理做成了全局释放。
+- 交互式 runner 由 `InteractiveRunnerManager` 统一托管；一旦全局 `disposeAll()`，其他 tab 中正在执行的 runner 也会被一并销毁。
+
+### 临时绕过
+- 修复前只能避免在其他 tab 仍有 Codex / Claude 长任务运行时切换 CLI 分组或切换历史会话。
+
+### 长期规避
+- runner 回收必须按 `cli + sessionId` 精确判断，只能释放既不被任何 tab 的 `sessionIdByCli` 引用、也不在当前运行态中的 interactive session。
+- 对会话切换、多 tab 并发隔离这类场景补最小回归测试，避免以后再次回到全局 `disposeAll()`。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node --test dist/test/runnerRetention.test.js`。
+- 手工复现：Tab A 运行 Codex / Claude，Tab B 切到 Gemini 或切换历史会话，确认 Tab A 持续输出且不会收到外部释放错误。
+
+### 关联资料
+- 代码：`src/extension.ts`、`src/interactive/runnerRetention.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-25-multi-tab-run-isolation.md`
+
 ## Interactive Runner 不能依赖全局 currentKey 表示当前运行会话
 
 - 状态：已修复
