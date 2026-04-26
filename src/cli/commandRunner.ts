@@ -12,6 +12,7 @@ type RunCliOptions = {
   thinkingMode?: ThinkingMode;
   model?: string | null;
   imagePaths?: string[];
+  envOverrides?: Record<string, string>;
 };
 
 const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
@@ -190,16 +191,14 @@ export async function isCliCommandAvailable(command: string): Promise<boolean> {
 
 export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise<void> {
   const command = getCliCommand(cli);
-  const baseArgs = getCliArgs(cli);
-  const thinkingArgs = options.thinkingMode
-    ? getThinkingArgs(cli, options.thinkingMode)
-    : [];
+  const fullArgs = buildCliArgs(cli, options);
+  const terminalEnv = options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env;
 
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
+    env: terminalEnv,
   });
 
-  const fullArgs = [...baseArgs, ...thinkingArgs];
   const joinedArgs = fullArgs.map((arg) => escapeShellArg(arg)).join(" ");
   const commandLine = `${command} ${joinedArgs}`.trim();
 
@@ -345,7 +344,7 @@ export function runCliStream(
 
   const child = spawn(commandToSpawn, argsToSpawn, {
     cwd: options.cwd,
-    env: process.env,
+    env: options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env,
     argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,

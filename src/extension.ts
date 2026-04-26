@@ -35,6 +35,10 @@ import {
   parseGeminiStreamJsonChunk,
   type GeminiStreamJsonEvent,
 } from "./cli/geminiStreamJson";
+import {
+  buildGeminiThinkingRuntimeProfile,
+  GEMINI_SYSTEM_SETTINGS_ENV_KEY,
+} from "./cli/geminiThinking";
 import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
@@ -66,6 +70,10 @@ import {
   setDebugLogging,
 } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
+import {
+  buildHiddenRetryFailureMessage,
+  buildHiddenRetryProgressInfo,
+} from "./hiddenRetry";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
@@ -209,15 +217,7 @@ function shouldUseFallbackSessionLabel(label: string | null | undefined): boolea
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
 const TEMP_FILE_RANDOM_LENGTH = 8;
-const GEMINI_THINKING_SETTINGS_PATH = ".gemini/settings.json";
-const GEMINI_THINKING_LEVELS: Record<ThinkingMode, string | null> = {
-  off: null,
-  on: "high",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "high",
-};
+const LEGACY_GEMINI_THINKING_SETTINGS_PATH = ".gemini/settings.json";
 const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
   claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
@@ -1633,9 +1633,6 @@ function applyThinkingWorkspaceFiles(
   }
   const files = normalizeThinkingWorkspaceFiles(getThinkingWorkspaceFiles(cli, mode));
   if (files.length === 0) {
-    if (cli === "gemini") {
-      applyGeminiThinkingSettings(mode, cwd);
-    }
     return;
   }
   files.forEach((file) => {
@@ -1661,79 +1658,6 @@ function applyThinkingWorkspaceFiles(
   });
 }
 
-function applyGeminiThinkingSettings(mode: ThinkingMode, cwd: string): void {
-  const targetPath = resolveWorkspaceFilePath(cwd, GEMINI_THINKING_SETTINGS_PATH);
-  const level = GEMINI_THINKING_LEVELS[mode];
-  if (level === null) {
-    if (fs.existsSync(targetPath)) {
-      try {
-        fs.unlinkSync(targetPath);
-        void logInfo("gemini-thinking-settings-removed", { mode, targetPath });
-      } catch (error) {
-        void logError("thinking-workspace-file-remove-failed", {
-          cli: "gemini",
-          targetPath,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-    return;
-  }
-  const next = buildGeminiThinkingSettings(mode, targetPath);
-  if (!next) {
-    void logInfo("gemini-thinking-settings-skip", { mode, targetPath });
-    return;
-  }
-  try {
-    const content = JSON.stringify(next, null, 2);
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, content, "utf8");
-    void logInfo("gemini-thinking-settings-written", { mode, targetPath });
-  } catch (error) {
-    void logError("thinking-workspace-file-write-failed", {
-      cli: "gemini",
-      targetPath,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-function buildGeminiThinkingSettings(
-  mode: ThinkingMode,
-  targetPath: string
-): Record<string, unknown> | null {
-  const level = GEMINI_THINKING_LEVELS[mode];
-  if (level === null) {
-    return null;
-  }
-  const base = readGeminiSettingsFile(targetPath) ?? {};
-  const modelConfigs = isPlainObject(base.modelConfigs) ? { ...base.modelConfigs } : {};
-  const normalizedLevel = mode === "medium" ? "low" : level;
-  const levelConfig = {
-    generateContentConfig: { thinkingConfig: { thinkingLevel: normalizedLevel } },
-  };
-  modelConfigs["chat-base-3"] = {
-    modelConfig: levelConfig,
-  };
-  modelConfigs["gemini-3-pro-preview"] = {
-    extends: "chat-base-3",
-    modelConfig: {
-      model: "gemini-3-pro-preview",
-    },
-  };
-  modelConfigs["gemini-3-flash-preview"] = {
-    extends: "chat-base-3",
-    modelConfig: {
-      model: "gemini-3-flash-preview",
-    },
-  };
-  const next = { ...base, modelConfigs } as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(next, "model")) {
-    delete next.model;
-  }
-  return next;
-}
-
 function readGeminiSettingsFile(filePath: string): Record<string, unknown> | null {
   if (!fs.existsSync(filePath)) {
     return null;
@@ -1749,8 +1673,59 @@ function readGeminiSettingsFile(filePath: string): Record<string, unknown> | nul
   return null;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function buildLegacyManagedGeminiThinkingSettings(mode: "low" | "medium" | "high"): Record<string, unknown> {
+  return {
+    modelConfigs: {
+      "chat-base-3": {
+        modelConfig: {
+          generateContentConfig: {
+            thinkingConfig: {
+              thinkingLevel: mode,
+            },
+          },
+        },
+      },
+      "gemini-3-pro-preview": {
+        extends: "chat-base-3",
+        modelConfig: {
+          model: "gemini-3-pro-preview",
+        },
+      },
+      "gemini-3-flash-preview": {
+        extends: "chat-base-3",
+        modelConfig: {
+          model: "gemini-3-flash-preview",
+        },
+      },
+    },
+  };
+}
+
+function isLegacyManagedGeminiThinkingSettings(settings: Record<string, unknown>): boolean {
+  const normalized = stableStringify(settings);
+  return (["low", "medium", "high"] as const).some((mode) => (
+    normalized === stableStringify(buildLegacyManagedGeminiThinkingSettings(mode))
+  ));
+}
+
+function cleanupLegacyGeminiThinkingSettings(cwd: string | undefined): void {
+  if (!cwd) {
+    return;
+  }
+  const targetPath = resolveWorkspaceFilePath(cwd, LEGACY_GEMINI_THINKING_SETTINGS_PATH);
+  const parsed = readGeminiSettingsFile(targetPath);
+  if (!parsed || !isLegacyManagedGeminiThinkingSettings(parsed)) {
+    return;
+  }
+  try {
+    fs.rmSync(targetPath, { force: true });
+    void logInfo("gemini-legacy-thinking-settings-removed", { targetPath });
+  } catch (error) {
+    void logError("gemini-legacy-thinking-settings-remove-failed", {
+      targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function stableStringify(value: unknown): string {
@@ -2681,6 +2656,19 @@ function buildHiddenRetryLimitMessage(): string {
   return t("run.hiddenRetryLimitReached", { attempts: HIDDEN_RETRY_MAX_RETRIES });
 }
 
+function buildHiddenRetryQueuedMessage(hiddenRetryCount: number): string {
+  const progress = buildHiddenRetryProgressInfo(
+    hiddenRetryCount,
+    HIDDEN_RETRY_MAX_RETRIES,
+    HIDDEN_RETRY_DELAY_MS,
+  );
+  return t("run.hiddenRetryQueued", {
+    attempt: progress.retryNumber,
+    attempts: progress.maxRetries,
+    seconds: progress.retryDelaySeconds,
+  });
+}
+
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
   return combined.includes("claude_session_not_found")
@@ -2954,6 +2942,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const selectedModel = input.model || getSelectedCliModel(runCli);
   const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
+  const geminiRunProfile = prepareGeminiRunProfile(selectedModel, thinkingMode, cwd);
+  const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
+  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
 
   preparePendingLabel(runCli, target.tabId, prompt);
   let sessionId = target.sessionId;
@@ -3072,7 +3063,8 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           cwd,
           sessionId,
           thinkingMode,
-          model: selectedModel,
+          model: runtimeModel,
+          envOverrides: runtimeEnvOverrides,
           processLabel: buildProcessLabel(runCli, sessionId ?? runId),
         }
       );
@@ -3148,6 +3140,15 @@ ${rawStderr}`);
         || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
     );
     if (shouldRetry) {
+      const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
+      const systemMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "system",
+        content: retryMessage,
+        createdAt: Date.now(),
+      };
+      appendMessageToStore(messageTarget, systemMessage);
+      sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
       hiddenRetryCount += 1;
       continue;
     }
@@ -3177,13 +3178,19 @@ ${rawStderr}`);
     };
     appendTaskRun(taskRecord);
 
-    const userMessageText = attemptResult.type === "error"
+    const lastFailureMessage = attemptResult.type === "error"
       ? (attemptResult.error instanceof Error ? attemptResult.error.message : String(attemptResult.error))
-      : hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
-        ? buildHiddenRetryLimitMessage()
-        : geminiStreamState.errorText
-          ? geminiStreamState.errorText
-          : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+      : geminiStreamState.errorText
+        ? geminiStreamState.errorText
+        : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+    const userMessageText = buildHiddenRetryFailureMessage({
+      hiddenRetryCount,
+      maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+      retryLimitMessage: buildHiddenRetryLimitMessage(),
+      fallbackMessage: lastFailureMessage,
+      lastFailureMessage,
+      lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+    });
     const systemMessage: ChatMessage = {
       id: createMessageId(),
       role: "system",
@@ -3283,6 +3290,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const selectedModel = input.model || getSelectedCliModel(runCli);
   const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
+  const geminiRunProfile = prepareGeminiRunProfile(selectedModel, thinkingMode, cwd);
+  const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
+  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
   const activeTabId = target.tabId;
   preparePendingLabel(runCli, activeTabId, prompt);
   const initialSessionId = target.sessionId;
@@ -3292,14 +3302,18 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const messageTarget = initialSessionId
     ? loadSessionMessages(runCli, initialSessionId)
     : getPendingSessionDraft(activeTabId, runCli).messages;
-  const args = buildCliArgs(runCli, { sessionId: initialSessionId, thinkingMode, model: selectedModel }, thinkingPrompt);
+  const args = buildCliArgs(
+    runCli,
+    { sessionId: initialSessionId, thinkingMode, model: runtimeModel, envOverrides: runtimeEnvOverrides },
+    thinkingPrompt,
+  );
   const command = getCliCommand(runCli);
   logCliStartup({
     cli: runCli,
     cwd,
     command,
     args: redactPromptArg(args, thinkingPrompt),
-    env: sanitizeEnv(process.env),
+    env: sanitizeEnv({ ...process.env, ...(runtimeEnvOverrides ?? {}) }),
     mode: "one-shot",
   });
   void logInfo("runPrompt-start", {
@@ -3309,7 +3323,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     cwd,
     sessionId: initialSessionId,
     thinkingMode,
-    model: selectedModel,
+    model: runtimeModel,
   });
 
   const userMessageId = createMessageId();
@@ -3436,7 +3450,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             settle({ type: "error", error });
           },
         },
-        { cwd, sessionId: runtimeSessionId, thinkingMode, model: selectedModel, processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId) }
+        {
+          cwd,
+          sessionId: runtimeSessionId,
+          thinkingMode,
+          model: runtimeModel,
+          envOverrides: runtimeEnvOverrides,
+          processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
+        }
       );
     });
 
@@ -3486,6 +3507,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
     );
     if (shouldRetry) {
+      appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
       continue;
     }
@@ -3494,9 +3516,17 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       const error = attemptResult.error;
       const errnoError = error as NodeJS.ErrnoException;
       const isNotFound = errnoError?.code === "ENOENT";
-      const userMessage = isNotFound
+      const rawUserMessage = isNotFound
         ? buildCliCommandNotFoundMessage(runCli, command)
         : error.message;
+      const userMessage = buildHiddenRetryFailureMessage({
+        hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryLimitMessage: buildHiddenRetryLimitMessage(),
+        fallbackMessage: rawUserMessage,
+        lastFailureMessage: rawUserMessage,
+        lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+      });
       if (isNotFound) {
         const openSettingsLabel = t("common.openSettings");
         void vscode.window.showErrorMessage(userMessage, openSettingsLabel).then((selection) => {
@@ -3515,11 +3545,17 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       sendRunStatus("error", userMessage);
     } else {
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
-      sendRunStatus("error", hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
-        ? buildHiddenRetryLimitMessage()
-        : geminiStreamState.errorText
-          ? geminiStreamState.errorText
-          : t("run.exitCode", { code: attemptResult.code ?? "unknown" }));
+      const lastFailureMessage = geminiStreamState.errorText
+        ? geminiStreamState.errorText
+        : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+      sendRunStatus("error", buildHiddenRetryFailureMessage({
+        hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryLimitMessage: buildHiddenRetryLimitMessage(),
+        fallbackMessage: lastFailureMessage,
+        lastFailureMessage,
+        lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+      }));
     }
 
     flushTraceBuffer();
@@ -4818,6 +4854,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
         && isHiddenRetryEligibleErrorInfo(info);
       if (shouldRetry) {
+        appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
         hiddenRetryCount += 1;
         void logInfo("runPrompt-interactive-hidden-retry-queued", {
           cli,
@@ -4845,9 +4882,15 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         errorCode: info.code,
         errorStack: info.stack,
       });
-      const userMessage = hiddenRetryCount >= HIDDEN_RETRY_MAX_RETRIES
-        ? buildHiddenRetryLimitMessage()
-        : (error instanceof Error ? error.message : String(error));
+      const rawUserMessage = error instanceof Error ? error.message : String(error);
+      const userMessage = buildHiddenRetryFailureMessage({
+        hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryLimitMessage: buildHiddenRetryLimitMessage(),
+        fallbackMessage: rawUserMessage,
+        lastFailureMessage: rawUserMessage,
+        lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+      });
       cleanupAfterRun("error", userMessage);
       throw error;
     }
@@ -5611,6 +5654,54 @@ function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMod
 
 function getEffectiveThinkingMode(cli: CliName, model: string | null = getSelectedCliModel(cli)): ThinkingMode {
   return getStoredCliModelThinkingMode(cli, model) ?? getWorkspaceThinkingMode(cli);
+}
+
+type PreparedGeminiRunProfile = {
+  sourceModel: string | null;
+  runtimeModel: string | null;
+  envOverrides?: Record<string, string>;
+};
+
+function prepareGeminiRunProfile(
+  selectedModel: string | null,
+  thinkingMode: ThinkingMode,
+  cwd?: string,
+): PreparedGeminiRunProfile {
+  cleanupLegacyGeminiThinkingSettings(cwd);
+  const baseModel = normalizeCliModelName(selectedModel)
+    ?? readModelArg("gemini", getCliArgs("gemini"));
+  const runtimeProfile = buildGeminiThinkingRuntimeProfile(baseModel, thinkingMode);
+  if (!runtimeProfile.systemSettings || !runtimeProfile.runtimeModel) {
+    void logInfo("gemini-thinking-runtime-passthrough", {
+      selectedModel: runtimeProfile.baseModel,
+      requestedMode: runtimeProfile.requestedMode,
+      effectiveMode: runtimeProfile.effectiveMode,
+      strategy: runtimeProfile.strategy,
+    });
+    return {
+      sourceModel: runtimeProfile.baseModel,
+      runtimeModel: runtimeProfile.runtimeModel ?? runtimeProfile.baseModel,
+    };
+  }
+  ensureTempDir();
+  cleanupTempDir();
+  const settingsPath = buildTempFilePath("gemini-system-settings.json");
+  fs.writeFileSync(settingsPath, JSON.stringify(runtimeProfile.systemSettings, null, 2), "utf8");
+  void logInfo("gemini-thinking-runtime-prepared", {
+    selectedModel: runtimeProfile.baseModel,
+    runtimeModel: runtimeProfile.runtimeModel,
+    requestedMode: runtimeProfile.requestedMode,
+    effectiveMode: runtimeProfile.effectiveMode,
+    strategy: runtimeProfile.strategy,
+    settingsPath,
+  });
+  return {
+    sourceModel: runtimeProfile.baseModel,
+    runtimeModel: runtimeProfile.runtimeModel,
+    envOverrides: {
+      [GEMINI_SYSTEM_SETTINGS_ENV_KEY]: settingsPath,
+    },
+  };
 }
 
 function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {

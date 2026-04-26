@@ -15,7 +15,7 @@
 ## 范围
 
 - 排查 `src/extension.ts` 中 tab、CLI 分组、会话切换的编排逻辑。
-- 修复 `src/interactive/manager.ts` 与扩展编排层之间的 runner 释放策略。
+- 修复 `src/extension.ts` 与 `src/interactive/runnerRetention.ts` 的 runner 释放策略。
 - 补充最小回归测试或可执行验证，覆盖“其他 tab 正在运行时切换分组”的场景。
 - 同步事实来源文档中的能力/限制说明。
 
@@ -33,7 +33,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/interactive/manager.ts`
+- 代码目录：`src/extension.ts`、`src/interactive/runnerRetention.ts`、`src/test/runnerRetention.test.ts`
 - 文档目录：`.ch/docs/product-specs/FEATURE_INVENTORY.md`、`.ch/docs/runbooks/PITFALLS.md`
 - 配置与脚本：无新增配置；沿用现有 `npm run build`
 

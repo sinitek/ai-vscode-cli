@@ -47,6 +47,41 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## Gemini thinking 不能继续依赖运行时改写工作区 `.gemini/settings.json`
+
+- 状态：已修复
+- 首次发现：2026-04-26
+- 适用范围：`src/extension.ts`、`src/cli/geminiThinking.ts` 的 Gemini headless 运行链路
+
+### 现象
+- 插件每次运行 Gemini 前都会改写工作区 `.gemini/settings.json`，把 thinking 设置塞进 `modelConfigs`。
+- 运行结束后该文件会残留在项目里，污染用户工作区；切换分支、在终端直接运行 Gemini CLI，或者团队共享仓库时都容易出现“配置来源不明”的问题。
+- 对 Gemini 3 Pro 这类不能真正关闭 thinking 的模型，旧链路还会把 `off` 误退化成“删掉文件”，实际效果并不可靠。
+
+### 触发条件
+- 使用插件运行 Gemini，且选择任意 thinking mode。
+- 旧逻辑命中 `applyGeminiThinkingSettings()`，直接写工作区 `.gemini/settings.json`。
+
+### 根因
+- Gemini CLI 当前公开文档没有独立 `--thinking-level` / `--thinking-budget` 命令行参数。
+- 旧实现为了模拟“请求级 thinking 参数”，错误地把工作区 settings 文件当成运行时临时参数通道。
+
+### 临时绕过
+- 修复前只能手动删除项目里的 `.gemini/settings.json`，并避免让插件继续以旧链路写入。
+
+### 长期规避
+- 不再运行时改写工作区 `.gemini/settings.json`。
+- 通过 `GEMINI_CLI_SYSTEM_SETTINGS_PATH` 注入临时 system settings 覆盖层，在里面声明一次性的 `modelConfigs.customAliases`，再用 `-m/--model` 选择 alias。
+- 对 Gemini 2.5 / 3 系列的 thinking 差异做显式映射；对不支持的模型（例如 `flash-lite`）直接 passthrough，不伪造参数。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node --test dist/test/geminiThinking.test.js`。
+- 手工验证：运行 Gemini 前后检查工作区不再生成或更新 `.gemini/settings.json`；命令实际使用 `-m sinitek-*` alias。
+
+### 关联资料
+- 代码：`src/cli/geminiThinking.ts`、`src/extension.ts`、`src/cli/commandRunner.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-04-26-gemini-thinking-alias-migration.md`
+
 ## CLI 分组切换不能全局 dispose interactive runner
 
 - 状态：已修复

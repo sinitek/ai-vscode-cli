@@ -93,10 +93,12 @@ const WEBVIEW_I18N = {
     runConflictTitle: "Task Running",
     runConflictClose: "Close",
     runConflictBody: "A task is still running. How should this message be handled?",
-    runConflictDesc: "Choose “Pause and Send” to stop the current task and send immediately.",
+    runConflictDesc: "Choose “Add to Queue” to wait for the current task to finish successfully. If the current task fails or is stopped, queued prompts stay in the queue.",
     runConflictQueueButton: "Add to Queue",
     runConflictPauseButton: "Pause and Send",
     queueTitle: "Queued Prompts",
+    queueDesc: "Queued prompts run only after the previous task finishes successfully. If a task fails or is stopped, remaining queued prompts stay in the queue.",
+    queueContinueLabel: "Continue Queue",
     queueCloseLabel: "Close",
     queueEmpty: "No queued prompts.",
     queueEditLabel: "Edit",
@@ -204,6 +206,7 @@ const WEBVIEW_I18N = {
     toastQueueUpdated: "Queued prompt updated",
     toastQueueEmptyPrompt: "Prompt cannot be empty",
     toastQueueSendFailed: "Failed to send queued prompt. Activate a config first.",
+    toastQueuePaused: "Queue paused because the previous task did not finish successfully. {count} prompt(s) remain queued.",
     toastNoActiveConfig: "No active config for the current CLI. Activate one in the config page first.",
     toastFileReadFailed: "Failed to read file content.",
     toastReadFileFailed: "Failed to read file. Please try again.",
@@ -331,10 +334,12 @@ const WEBVIEW_I18N = {
     runConflictTitle: "任务执行中",
     runConflictClose: "关闭",
     runConflictBody: "检测到当前任务仍在执行，要如何处理这条消息？",
-    runConflictDesc: "选择“暂停并发送”将终止当前任务并立即发送。",
+    runConflictDesc: "选择“加入队列”后，只有当前任务成功结束才会继续发送；如果当前任务失败或被停止，后续提示词会继续留在队列中。",
     runConflictQueueButton: "加入队列",
     runConflictPauseButton: "暂停并发送",
     queueTitle: "队列提示词",
+    queueDesc: "队列中的提示词只有在上一个任务成功结束后才会继续执行；如果任务失败或被停止，后续提示词会继续保留在队列中。",
+    queueContinueLabel: "继续执行队列",
     queueCloseLabel: "关闭",
     queueEmpty: "当前没有待发送的提示词。",
     queueEditLabel: "编辑",
@@ -442,6 +447,7 @@ const WEBVIEW_I18N = {
     toastQueueUpdated: "队列提示词已更新",
     toastQueueEmptyPrompt: "提示词不能为空",
     toastQueueSendFailed: "队列发送失败，请先激活配置",
+    toastQueuePaused: "由于上一个任务未成功结束，队列已暂停。还有 {count} 条提示词留在队列中。",
     toastNoActiveConfig: "当前 CLI 未激活配置，请先在配置页激活后再发送。",
     toastFileReadFailed: "无法读取文件内容",
     toastReadFileFailed: "文件读取失败，请重试。",
@@ -1786,6 +1792,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-direction: column;
         gap: 8px;
       }
+      .queue-footer {
+        padding: 0 16px 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
       .queue-empty {
         font-size: 12px;
         color: var(--vscode-descriptionForeground);
@@ -2700,7 +2712,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </svg>
             </button>
           </div>
+          <div class="run-conflict-desc">${i18n.queueDesc}</div>
           <div id="queueBody" class="queue-body"></div>
+          <div class="queue-footer">
+            <button id="continueQueue" class="action-button">${i18n.queueContinueLabel}</button>
+          </div>
         </div>
       </div>
 
@@ -3094,6 +3110,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         queueOverlay: document.getElementById("queueOverlay"),
         closeQueue: document.getElementById("closeQueue"),
         queueBody: document.getElementById("queueBody"),
+        continueQueue: document.getElementById("continueQueue"),
         runPromptOverlay: document.getElementById("runPromptOverlay"),
         closeRunPrompt: document.getElementById("closeRunPrompt"),
         runPromptContent: document.getElementById("runPromptContent"),
@@ -3308,6 +3325,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return false;
         }
         return /^(?:任务已完成|运行已终止|用户已终止|CLI\s*退出码[:：]\s*\S+|Task completed|Run stopped|Stopped by user|CLI exit code:\s*\S+)/i.test(normalized);
+      }
+
+      function buildQueuePausedStatusText(summary, remainingCount) {
+        const count = Number.isFinite(remainingCount) ? Math.max(0, Number(remainingCount)) : 0;
+        const baseSummary = String(summary || "").trim();
+        const pauseNotice = t("toastQueuePaused", { count: String(count) });
+        if (!baseSummary) {
+          return pauseNotice;
+        }
+        return baseSummary + " " + pauseNotice;
       }
 
       function shouldHideSystemRunStatusMessage(message) {
@@ -6398,6 +6425,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const activeTabId = getActiveConversationTabId();
+        if (elements.continueQueue) {
+          const hasQueue = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
+          elements.continueQueue.disabled = !hasQueue || isTabRunning(activeTabId);
+        }
         if (!runtimeState) {
           elements.queueBody.innerHTML = "";
           const empty = document.createElement("div");
@@ -6643,11 +6675,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function flushPendingPromptQueue(tabId) {
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         if (isTabRunning(targetTabId)) {
-          return;
+          return false;
         }
         const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
         if (!runtimeState || !runtimeState.pendingPromptQueue.length) {
-          return;
+          return false;
         }
         const nextPromptPayload = runtimeState.pendingPromptQueue.shift();
         if (runtimeState.queueEditingIndex === 0) {
@@ -6665,6 +6697,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
         if (!sent && isRuntimeStateForActiveTab(targetTabId)) {
           showToast(t("toastQueueSendFailed"));
+        }
+        return sent;
+      }
+
+      function continueQueuedPrompts(tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        const sent = flushPendingPromptQueue(targetTabId);
+        if (sent) {
+          closeQueueOverlay();
+        } else {
+          syncQueueOverlay();
         }
       }
 
@@ -7515,6 +7558,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         openQueueOverlay();
       });
 
+      elements.continueQueue.addEventListener("click", () => {
+        continueQueuedPrompts();
+      });
+
       elements.runPromptButton.addEventListener("click", () => {
         openRunPromptOverlay();
       });
@@ -7773,6 +7820,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
             const runtimeState = getConversationRuntimeState(targetTabId);
+            let queuePausedNotice = "";
             if (data.status === "start") {
               runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
               resetRunRawStream(targetTabId, { syncOverlay: false });
@@ -7793,6 +7841,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                   delete runningTabStartedAtById[fallbackTabId];
                 }
               }
+              const hasPendingQueue = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
+              const shouldPauseQueueNotice = data.status !== "end"
+                && hasPendingQueue
+                && !(runtimeState && runtimeState.suppressQueueFlushOnce);
+              if (shouldPauseQueueNotice && runtimeState) {
+                queuePausedNotice = t("toastQueuePaused", { count: String(runtimeState.pendingPromptQueue.length) });
+                runtimeState.lastRunStatusMessage = buildQueuePausedStatusText(
+                  runtimeState.lastRunStatusMessage || data.message || "",
+                  runtimeState.pendingPromptQueue.length,
+                );
+              }
               closeTaskListForRunCompletion(targetTabId);
             }
 
@@ -7800,7 +7859,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               if (data.status !== "start") {
                 if (runtimeState && runtimeState.suppressQueueFlushOnce) {
                   runtimeState.suppressQueueFlushOnce = false;
-                } else {
+                } else if (data.status === "end") {
                   flushPendingPromptQueue(targetTabId);
                 }
               }
@@ -7821,10 +7880,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (data.message) {
               appendMessage({ id: createMessageId(), role: "system", content: data.message });
             }
+            if (queuePausedNotice) {
+              showToast(queuePausedNotice);
+            }
             if (data.status !== "start") {
               if (runtimeState && runtimeState.suppressQueueFlushOnce) {
                 runtimeState.suppressQueueFlushOnce = false;
-              } else {
+              } else if (data.status === "end") {
                 flushPendingPromptQueue(targetTabId);
               }
             }
