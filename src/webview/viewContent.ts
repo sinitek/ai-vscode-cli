@@ -97,7 +97,6 @@ const WEBVIEW_I18N = {
     runConflictQueueButton: "Add to Queue",
     runConflictPauseButton: "Pause and Send",
     queueTitle: "Queued Prompts",
-    queueDesc: "Queued prompts run only after the previous task finishes successfully. If a task fails or is stopped, remaining queued prompts stay in the queue.",
     queueContinueLabel: "Continue Queue",
     queueCloseLabel: "Close",
     queueEmpty: "No queued prompts.",
@@ -338,7 +337,6 @@ const WEBVIEW_I18N = {
     runConflictQueueButton: "加入队列",
     runConflictPauseButton: "暂停并发送",
     queueTitle: "队列提示词",
-    queueDesc: "队列中的提示词只有在上一个任务成功结束后才会继续执行；如果任务失败或被停止，后续提示词会继续保留在队列中。",
     queueContinueLabel: "继续执行队列",
     queueCloseLabel: "关闭",
     queueEmpty: "当前没有待发送的提示词。",
@@ -2712,7 +2710,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </svg>
             </button>
           </div>
-          <div class="run-conflict-desc">${i18n.queueDesc}</div>
           <div id="queueBody" class="queue-body"></div>
           <div class="queue-footer">
             <button id="continueQueue" class="action-button">${i18n.queueContinueLabel}</button>
