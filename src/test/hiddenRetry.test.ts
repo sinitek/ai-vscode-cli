@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import {
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
+  resetHiddenRetryCountOnRecoveredReply,
 } from "../hiddenRetry";
 
 test("returns the latest real error directly before hidden retries reach the limit", () => {
@@ -53,4 +54,12 @@ test("builds hidden retry progress info for the next queued retry", () => {
     maxRetries: 5,
     retryDelaySeconds: 30,
   });
+});
+
+test("resets hidden retry count after a recovered normal reply", () => {
+  assert.equal(resetHiddenRetryCountOnRecoveredReply(4, true), 0);
+});
+
+test("keeps hidden retry count when no recovered reply was observed", () => {
+  assert.equal(resetHiddenRetryCountOnRecoveredReply(4, false), 4);
 });

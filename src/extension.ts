@@ -73,6 +73,7 @@ import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import {
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
+  resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
@@ -2992,6 +2993,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+    let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
       const shouldContinue = await waitForHiddenRetryDelay(isParallelRunActive);
@@ -3036,6 +3038,16 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
             rawStdout += chunk;
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
             processGeminiStreamJsonChunk(geminiStreamState, chunk, {
+              onAssistantText: (text) => {
+                if (text.trim().length > 0) {
+                  attemptHadNormalReply = true;
+                }
+              },
+              onPlainText: (text) => {
+                if (text.trim().length > 0) {
+                  attemptHadNormalReply = true;
+                }
+              },
               onSessionId: (nextSessionId) => {
                 if (!sessionId) {
                   sessionId = nextSessionId;
@@ -3076,6 +3088,16 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     }
 
     finalizeGeminiStreamJsonState(geminiStreamState, {
+      onAssistantText: (text) => {
+        if (text.trim().length > 0) {
+          attemptHadNormalReply = true;
+        }
+      },
+      onPlainText: (text) => {
+        if (text.trim().length > 0) {
+          attemptHadNormalReply = true;
+        }
+      },
       onSessionId: (nextSessionId) => {
         if (!sessionId) {
           sessionId = nextSessionId;
@@ -3134,6 +3156,7 @@ ${rawStderr}`);
       && attemptResult.code === 0
       && geminiStreamState.resultStatus !== null
       && geminiStreamState.resultStatus !== "success";
+    hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
       geminiResultFailed
         || attemptResult.type === "exit"
@@ -3373,6 +3396,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+    let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
       const shouldContinue = await waitForHiddenRetryDelay(isCurrentOneShotRunActive);
@@ -3421,10 +3445,20 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
             processGeminiStreamJsonChunk(geminiStreamState, chunk, {
-              onAssistantText: (text) => appendAssistantChunk(text),
+              onAssistantText: (text) => {
+                if (text.trim().length > 0) {
+                  attemptHadNormalReply = true;
+                }
+                appendAssistantChunk(text);
+              },
               onTraceText: (text) => appendTraceLines(`${text}\n`),
               onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
-              onPlainText: (text) => appendAssistantChunk(text),
+              onPlainText: (text) => {
+                if (text.trim().length > 0) {
+                  attemptHadNormalReply = true;
+                }
+                appendAssistantChunk(text);
+              },
             });
             if (debugLogging) {
               void logCliStream(runCli, activeSessionId, "stdout", chunk);
@@ -3480,10 +3514,20 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     }
 
     finalizeGeminiStreamJsonState(geminiStreamState, {
-      onAssistantText: (text) => appendAssistantChunk(text),
+      onAssistantText: (text) => {
+        if (text.trim().length > 0) {
+          attemptHadNormalReply = true;
+        }
+        appendAssistantChunk(text);
+      },
       onTraceText: (text) => appendTraceLines(`${text}\n`),
       onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
-      onPlainText: (text) => appendAssistantChunk(text),
+      onPlainText: (text) => {
+        if (text.trim().length > 0) {
+          attemptHadNormalReply = true;
+        }
+        appendAssistantChunk(text);
+      },
     });
 
     const geminiResultFailed = attemptResult.type === "exit"
@@ -3501,6 +3545,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       return;
     }
 
+    hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
       geminiResultFailed
         || attemptResult.type === "exit"
@@ -4627,6 +4672,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+    let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
       const shouldContinue = await waitForHiddenRetryDelay(isCurrentRunActive);
@@ -4679,6 +4725,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           onAssistantDelta: (chunk) => {
             if (!isCurrentRunActive()) {
               return;
+            }
+            if (chunk.trim().length > 0) {
+              attemptHadNormalReply = true;
             }
             appendAssistantChunkForTab(chunk);
             appendDebugStdout(chunk);
@@ -4751,6 +4800,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           onAssistantDelta: (chunk: string) => {
             if (!isCurrentRunActive()) {
               return;
+            }
+            if (chunk.trim().length > 0) {
+              attemptHadNormalReply = true;
             }
             appendAssistantChunkForTab(chunk);
             appendDebugStdout(chunk);
@@ -4850,6 +4902,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       }
 
       const canContinueCurrentConversation = Boolean(uiSessionId);
+      hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
       const shouldRetry = canContinueCurrentConversation
         && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
         && isHiddenRetryEligibleErrorInfo(info);

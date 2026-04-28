@@ -46,3 +46,13 @@ export function buildHiddenRetryProgressInfo(
     retryDelaySeconds: Math.max(0, Math.ceil(retryDelayMs / 1000)),
   };
 }
+
+export function resetHiddenRetryCountOnRecoveredReply(
+  hiddenRetryCount: number,
+  hasRecoveredReply: boolean,
+): number {
+  if (!hasRecoveredReply || hiddenRetryCount <= 0) {
+    return hiddenRetryCount;
+  }
+  return 0;
+}
