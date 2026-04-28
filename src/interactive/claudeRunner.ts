@@ -138,10 +138,28 @@ function clampThinkingTokens(mode: ThinkingMode): number | null {
   if (mode === "medium") {
     return 2048;
   }
-  if (mode === "high" || mode === "xhigh" || mode === "on") {
+  if (mode === "high" || mode === "xhigh" || mode === "max" || mode === "on") {
     return 8192;
   }
   return null;
+}
+
+function mapClaudeThinkingEffort(mode: ThinkingMode): "low" | "medium" | "high" | "xhigh" | "max" | null {
+  if (mode === "off") {
+    return null;
+  }
+  if (mode === "low" || mode === "medium" || mode === "high" || mode === "xhigh" || mode === "max") {
+    return mode;
+  }
+  if (mode === "on") {
+    return "high";
+  }
+  return null;
+}
+
+function isUnsupportedEffortError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:unknown|unsupported|unexpected|invalid).*(?:--effort|effort)|(?:--effort|effort).*(?:unknown|unsupported|unexpected|invalid)/i.test(message);
 }
 
 function getMessageContentBlocks(message: unknown): Record<string, unknown>[] {
@@ -359,6 +377,7 @@ export class ClaudeInteractiveRunner {
     // 创建新的 AbortController
     this.abortController = new AbortController();
 
+    const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
     const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
     const model = typeof this.options.model === "string" && this.options.model.trim()
       ? this.options.model.trim()
@@ -371,6 +390,7 @@ export class ClaudeInteractiveRunner {
     void logInfo("claude-v1-query-start", {
       model,
       cwd,
+      thinkingEffort,
       maxThinkingTokens,
       interactiveMode: this.options.interactiveMode,
       sessionId: this.options.sessionId,
@@ -399,7 +419,12 @@ export class ClaudeInteractiveRunner {
       queryOptions.allowDangerouslySkipPermissions = true;
     }
 
-    if (typeof maxThinkingTokens === "number") {
+    if (thinkingEffort) {
+      queryOptions.extraArgs = {
+        ...queryOptions.extraArgs,
+        effort: thinkingEffort,
+      };
+    } else if (typeof maxThinkingTokens === "number") {
       queryOptions.maxThinkingTokens = maxThinkingTokens;
     }
 
@@ -519,9 +544,23 @@ export class ClaudeInteractiveRunner {
       });
     };
 
-    let runError: unknown = null;
-    try {
-      const queryResult = queryFn({ prompt, options: queryOptions });
+    const buildLegacyThinkingOptions = (): any => {
+      const legacyOptions = {
+        ...queryOptions,
+        extraArgs: { ...(queryOptions.extraArgs ?? {}) },
+      };
+      delete legacyOptions.extraArgs.effort;
+      if (!Object.keys(legacyOptions.extraArgs).length) {
+        delete legacyOptions.extraArgs;
+      }
+      if (typeof maxThinkingTokens === "number") {
+        legacyOptions.maxThinkingTokens = maxThinkingTokens;
+      }
+      return legacyOptions;
+    };
+
+    const executeQuery = async (options: any): Promise<void> => {
+      const queryResult = queryFn({ prompt, options });
 
       for await (const msg of queryResult as AsyncGenerator<any>) {
         if (this.disposeGeneration !== runDisposeGeneration) {
@@ -639,6 +678,23 @@ export class ClaudeInteractiveRunner {
           }
           break;
         }
+      }
+    };
+
+    let runError: unknown = null;
+    try {
+      try {
+        await executeQuery(queryOptions);
+      } catch (error) {
+        if (!thinkingEffort || !isUnsupportedEffortError(error)) {
+          throw error;
+        }
+        void logInfo("claude-effort-fallback-max-thinking-tokens", {
+          thinkingEffort,
+          maxThinkingTokens,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await executeQuery(buildLegacyThinkingOptions());
       }
     } catch (error) {
       runError = error;

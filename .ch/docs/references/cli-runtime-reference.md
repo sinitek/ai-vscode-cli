@@ -57,6 +57,9 @@
 - 优先尝试复用用户设置的 Claude 可执行入口
 - 同步传入当前模型、工作目录和 `user/project/local` settings
 - 通过 SDK session 做会话续接
+- Claude Code 2.1.118 的官方 CLI 帮助已提供 `--effort <level>`，取值为 `low`、`medium`、`high`、`xhigh`、`max`
+- 插件交互 Runner 优先通过 SDK `extraArgs.effort` 传递新版思考力度；若旧 Claude Code/SDK 不支持该参数，则回退到 `maxThinkingTokens`
+- 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
 
 ### Gemini
 
@@ -74,7 +77,7 @@
 插件对外暴露统一的 thinking mode，但实际映射按 CLI 各自处理：
 
 - Codex：映射到 reasoning effort / 相关参数
-- Claude：映射到 `maxThinkingTokens` 和 SDK 选项
+- Claude：优先映射到 Claude Code `--effort`；旧版本兼容回退到 `maxThinkingTokens` 和 SDK 选项
 - Gemini：继续走 CLI 参数拼装；one-shot 场景默认使用 `-p` 与 `--output-format stream-json`
 
 ### interactive mode

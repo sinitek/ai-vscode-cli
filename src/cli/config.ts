@@ -87,7 +87,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "codex" && globalMode === "xhigh") {
+    if (cli !== "claude" && globalMode === "max") {
+      return cli === "codex" ? "xhigh" : "high";
+    }
+    if (cli !== "codex" && cli !== "claude" && globalMode === "xhigh") {
       return "high";
     }
     if (cli === "codex" && globalMode === "off") {
@@ -98,7 +101,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "codex" && mode === "xhigh") {
+  if (cli !== "claude" && mode === "max") {
+    return cli === "codex" ? "xhigh" : "high";
+  }
+  if (cli !== "codex" && cli !== "claude" && mode === "xhigh") {
     return "high";
   }
   if (cli === "codex" && mode === "off") {

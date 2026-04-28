@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -160,7 +160,9 @@
             "off",
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh",
+            "max"
           ],
           "default": "medium",
           "description": "%config.thinkingMode.description%"
@@ -184,7 +186,9 @@
             "on",
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh",
+            "max"
           ],
           "default": "medium",
           "description": "%config.thinkingModeClaude.description%"
@@ -246,7 +250,10 @@
           "items": {
             "type": "string"
           },
-          "default": [],
+          "default": [
+            "--effort",
+            "high"
+          ],
           "description": "%config.thinkingArgs.claude.on.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.off": {
@@ -254,10 +261,7 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "--max-thinking-tokens",
-            "0"
-          ],
+          "default": [],
           "description": "%config.thinkingArgs.claude.off.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.low": {
@@ -265,7 +269,10 @@
           "items": {
             "type": "string"
           },
-          "default": [],
+          "default": [
+            "--effort",
+            "low"
+          ],
           "description": "%config.thinkingArgs.claude.low.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.medium": {
@@ -273,7 +280,10 @@
           "items": {
             "type": "string"
           },
-          "default": [],
+          "default": [
+            "--effort",
+            "medium"
+          ],
           "description": "%config.thinkingArgs.claude.medium.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.high": {
@@ -281,8 +291,33 @@
           "items": {
             "type": "string"
           },
-          "default": [],
+          "default": [
+            "--effort",
+            "high"
+          ],
           "description": "%config.thinkingArgs.claude.high.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.xhigh": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--effort",
+            "xhigh"
+          ],
+          "description": "%config.thinkingArgs.claude.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.claude.max": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--effort",
+            "max"
+          ],
+          "description": "%config.thinkingArgs.claude.max.description%"
         },
         "sinitek-cli-tools.thinkingArgs.gemini.on": {
           "type": "array",

@@ -5593,7 +5593,8 @@ function isThinkingMode(value: unknown): value is ThinkingMode {
     || value === "low"
     || value === "medium"
     || value === "high"
-    || value === "xhigh";
+    || value === "xhigh"
+    || value === "max";
 }
 
 function isInteractiveMode(value: unknown): value is InteractiveMode {
@@ -5605,7 +5606,10 @@ function isMacTaskShell(value: unknown): value is MacTaskShell {
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
-  if (cli !== "codex" && mode === "xhigh") {
+  if (cli !== "claude" && mode === "max") {
+    return cli === "codex" ? "xhigh" : "high";
+  }
+  if (cli !== "codex" && cli !== "claude" && mode === "xhigh") {
     return "high";
   }
   if (cli === "codex" && mode === "off") {

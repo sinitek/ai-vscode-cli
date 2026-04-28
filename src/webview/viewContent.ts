@@ -44,6 +44,7 @@ const WEBVIEW_I18N = {
     thinkingOptionMedium: "Medium",
     thinkingOptionHigh: "High",
     thinkingOptionXHigh: "X-High",
+    thinkingOptionMax: "Max",
     historyButton: "History",
     sendButton: "Send",
     stopButton: "Stop",
@@ -225,6 +226,7 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMedium: "Medium",
     thinkingOptionLabelHigh: "High",
     thinkingOptionLabelXHigh: "X-High",
+    thinkingOptionLabelMax: "Max",
     modelSelectAria: "Model selection",
     modelOptionDefault: "Model: Follow Config",
     modelOptionManage: "Manage",
@@ -284,6 +286,7 @@ const WEBVIEW_I18N = {
     thinkingOptionMedium: "中",
     thinkingOptionHigh: "高",
     thinkingOptionXHigh: "超高",
+    thinkingOptionMax: "最大",
     historyButton: "历史会话",
     sendButton: "发送",
     stopButton: "停止",
@@ -465,6 +468,7 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMedium: "中",
     thinkingOptionLabelHigh: "高",
     thinkingOptionLabelXHigh: "超高",
+    thinkingOptionLabelMax: "最大",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
     modelOptionManage: "管理",
@@ -3856,8 +3860,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function syncThinkingOptions() {
         const isGemini = state.currentCli === "gemini";
         const isCodex = state.currentCli === "codex";
+        const isClaude = state.currentCli === "claude";
         const mediumOption = elements.thinkingMode.querySelector('option[value="medium"]');
         const xhighOption = elements.thinkingMode.querySelector('option[value="xhigh"]');
+        const maxOption = elements.thinkingMode.querySelector('option[value="max"]');
         if (isGemini && mediumOption) {
           mediumOption.remove();
         }
@@ -3887,13 +3893,22 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             elements.thinkingMode.appendChild(option);
           }
         }
-        if (!isCodex && xhighOption) {
+        if (!isCodex && !isClaude && xhighOption) {
           xhighOption.remove();
         }
-        if (isCodex && !xhighOption) {
+        if ((isCodex || isClaude) && !xhighOption) {
           const option = document.createElement("option");
           option.value = "xhigh";
           option.textContent = t("thinkingOptionLabelXHigh");
+          elements.thinkingMode.appendChild(option);
+        }
+        if (!isClaude && maxOption) {
+          maxOption.remove();
+        }
+        if (isClaude && !maxOption) {
+          const option = document.createElement("option");
+          option.value = "max";
+          option.textContent = t("thinkingOptionLabelMax");
           elements.thinkingMode.appendChild(option);
         }
         if (isGemini && state.thinkingMode === "medium") {
@@ -3902,8 +3917,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (isCodex && state.thinkingMode === "off") {
           updateThinkingMode("low");
         }
-        if (!isCodex && state.thinkingMode === "xhigh") {
+        if (!isCodex && !isClaude && state.thinkingMode === "xhigh") {
           updateThinkingMode("high");
+        }
+        if (!isClaude && state.thinkingMode === "max") {
+          updateThinkingMode(isCodex ? "xhigh" : "high");
         }
       }
 
