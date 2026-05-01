@@ -3446,8 +3446,9 @@ async function runLobsterPrompt(
   while (round <= task.maxRounds) {
     const latest = readLobsterTaskRecord(task.id) ?? task;
     if (isLobsterTaskCompleted(latest)) {
+      removeLobsterMainDecisionMessage(target, latest.id, latest.currentRound);
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(latest));
-      appendSystemMessageForLobster(target, buildLobsterFinalSummaryMarkdown(latest));
+      appendLobsterFinalSummaryMessage(target, latest);
       return;
     }
 
@@ -3479,8 +3480,9 @@ async function runLobsterPrompt(
 
     const decisionResult = applyLobsterMainDecision(task.id, decision);
     if (decisionResult.status === "completed") {
+      removeLobsterMainDecisionMessage(target, task.id, round);
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionResult.task));
-      appendSystemMessageForLobster(target, buildLobsterFinalSummaryMarkdown(decisionResult.task, decision));
+      appendLobsterFinalSummaryMessage(target, decisionResult.task, decision);
       return;
     }
     if (decisionResult.status === "blocked" || !decisionResult.subtask) {
@@ -4173,6 +4175,59 @@ function markLobsterTaskInterrupted(taskId: string, status: "error" | "stopped",
   if (record) {
     appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(record));
   }
+}
+
+function getLobsterTargetSessionId(target: PromptRunTarget): string | null {
+  const tab = getConversationTabById(target.tabId);
+  return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
+}
+
+function persistLobsterMessagesForTarget(target: PromptRunTarget, messages: ChatMessage[]): void {
+  const sessionId = getLobsterTargetSessionId(target);
+  persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
+}
+
+function removeLobsterMainDecisionMessage(
+  target: PromptRunTarget,
+  taskId: string,
+  round: number,
+): void {
+  const messages = getLobsterMessagesForTarget(target);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message.role === "assistant"
+      && message.taskRole === "main"
+      && message.lobsterTaskId === taskId
+      && message.lobsterRound === round
+    ) {
+      messages.splice(index, 1);
+      persistLobsterMessagesForTarget(target, messages);
+      sendPanelMessage({ type: "removeMessage", id: message.id, tabId: target.tabId });
+      return;
+    }
+  }
+}
+
+function appendLobsterFinalSummaryMessage(
+  target: PromptRunTarget,
+  task: LobsterTaskRecord,
+  decision?: LobsterMainDecision | null,
+): void {
+  const messages = getLobsterMessagesForTarget(target);
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content: buildLobsterFinalSummaryMarkdown(task, decision),
+    createdAt: Date.now(),
+    merge: false,
+    taskRole: "main",
+    lobsterTaskId: task.id,
+    lobsterFinalSummary: true,
+  };
+  appendMessageToStore(messages, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistLobsterMessagesForTarget(target, messages);
 }
 
 function appendSystemMessageForLobster(target: PromptRunTarget, content: string): void {

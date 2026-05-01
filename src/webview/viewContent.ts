@@ -3483,6 +3483,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!current || current.role !== "assistant") {
           return false;
         }
+        if (current.lobsterFinalSummary === true) {
+          return true;
+        }
         for (let i = messageIndex + 1; i < state.messages.length; i += 1) {
           const next = state.messages[i];
           if (!next) {
@@ -4868,6 +4871,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (message.role === "assistant") {
           const canMergeAssistant = last
             && last.role === "assistant"
+            && message.merge !== false
+            && last.merge !== false
+            && message.lobsterFinalSummary !== true
+            && last.lobsterFinalSummary !== true
             && isSameAssistantKind(last, message)
             && last.taskRole === message.taskRole
             && !isFileUpdate

@@ -86,7 +86,7 @@
 
 - Codex `plan`：收敛到更保守的只读/低信任执行策略
 - Claude `plan`：使用 `permissionMode=plan`
-- `lobster`：扩展侧编排的多轮主子任务模式；底层 CLI 权限按 coding 模式执行，并按会话隔离写入 `~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json` 记录任务概要（首次主任务尚未拿到真实会话 ID 时先写入 pending 路径，拿到会话 ID 后自动迁移），同时通过 `~/.sinitek_cli/lobster-communications/<taskId>/` 组织沟通文件、activeSubtaskId、主任务 JSON 决策、acceptance 验收结果和轮次状态，供扩展解析并以独立新会话启动子任务；启动子任务时 UI 自动切换到子任务标签展示气泡和流式消息，子任务结束后切回主任务标签；轮次按主任务复核轮计数，同一轮可包含一个对应子任务；第 1 轮要求主任务先做总体阶段规划再派发首个子任务；龙虾模式下底部模型选择支持分别指定主任务模型与子任务模型，并可在“管理模型”里按模型配置“主任务/子任务”角色开关来限定候选模型；主任务必须读取沟通文件并把 subtask.prompt 写成自包含详细指令，且在完成时返回整体总结、各轮子任务摘要与用户需求覆盖清单（全部 passed=true），扩展会写入 `main-task.md` 和任务记录，并在对话中追加 Markdown 最终总结；只有主任务显式返回 `status=completed`（且 `acceptance.passed=true`）才结束；子任务完成前必须写入自己的沟通文件；子任务执行出错会等待 1 分钟后重试，最多重试 5 次，主动停止不重试；`lobster-tasks` 与 `lobster-communications` 产物同样按 30 天保留策略清理
+- `lobster`：扩展侧编排的多轮主子任务模式；底层 CLI 权限按 coding 模式执行，并按会话隔离写入 `~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json` 记录任务概要（首次主任务尚未拿到真实会话 ID 时先写入 pending 路径，拿到会话 ID 后自动迁移），同时通过 `~/.sinitek_cli/lobster-communications/<taskId>/` 组织沟通文件、activeSubtaskId、主任务 JSON 决策、acceptance 验收结果和轮次状态，供扩展解析并以独立新会话启动子任务；启动子任务时 UI 自动切换到子任务标签展示气泡和流式消息，子任务结束后切回主任务标签；轮次按主任务复核轮计数，同一轮可包含一个对应子任务；第 1 轮要求主任务先做总体阶段规划再派发首个子任务；龙虾模式下底部模型选择支持分别指定主任务模型与子任务模型，并可在“管理模型”里按模型配置“主任务/子任务”角色开关来限定候选模型；主任务必须读取沟通文件并把 subtask.prompt 写成自包含详细指令，且在完成时返回整体总结、各轮子任务摘要与用户需求覆盖清单（全部 passed=true），扩展会写入 `main-task.md` 和任务记录，并移除最终主任务 JSON 协议气泡，在对话中追加 assistant Markdown 最终总结气泡；只有主任务显式返回 `status=completed`（且 `acceptance.passed=true`）才结束；子任务完成前必须写入自己的沟通文件；子任务执行出错会等待 1 分钟后重试，最多重试 5 次，主动停止不重试；`lobster-tasks` 与 `lobster-communications` 产物同样按 30 天保留策略清理
 
 ## 5. 图片与附件
 
