@@ -11,6 +11,8 @@ export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
+  | { type: "selectCliLobsterModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
+  | { type: "setCliModelLobsterRole"; cli: CliName; model: string; role: "main" | "subtask"; enabled: boolean; configId?: string | null }
   | { type: "addCliModel"; cli: CliName; model: string; configId?: string | null }
   | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string; configId?: string | null }
   | { type: "deleteCliModel"; cli: CliName; model: string; configId?: string | null }
@@ -33,6 +35,8 @@ export type PanelMessage =
       tabId?: string;
       cli?: CliName;
       model?: string;
+      lobsterMainModel?: string;
+      lobsterSubtaskModel?: string;
       preserveActiveTab?: boolean;
     }
   | { type: "stopRun" }
@@ -172,6 +176,9 @@ export type PanelState = {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
     managedByCli: Record<CliName, string[]>;
+    selectedLobsterByCli?: Record<CliName, { main: string | null; subtask: string | null }>;
+    lobsterOptionsByCli?: Record<CliName, { main: string[]; subtask: string[] }>;
+    managedLobsterRolesByCli?: Record<CliName, Record<string, { main: boolean; subtask: boolean }>>;
   };
   editorContext: EditorContextState;
 };

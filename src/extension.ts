@@ -148,6 +148,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const lobsterTaskStoreFileCache = new Map<string, string>();
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
 const SESSION_LABEL_LIMIT = 16;
@@ -167,7 +168,9 @@ const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
-const LOBSTER_TASK_STORE_FILE = path.join(DATA_DIR, "lobster-tasks.json");
+const LOBSTER_TASK_STORE_DIR = path.join(DATA_DIR, "lobster-tasks");
+const LOBSTER_TASK_STORE_FILENAME = "lobster-tasks.json";
+const LOBSTER_TASK_STORE_LEGACY_FILE = path.join(DATA_DIR, LOBSTER_TASK_STORE_FILENAME);
 const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
 const LOBSTER_MAX_ROUNDS = 6;
 const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
@@ -318,6 +321,7 @@ type LobsterMainDecision = {
   status: "completed" | "continue" | "blocked";
   finalSummary?: string;
   roundSummaries?: LobsterRoundSummary[];
+  requirementCoverage?: LobsterAcceptanceCheck[];
   acceptance?: LobsterAcceptance;
   subtask?: {
     id?: string;
@@ -339,6 +343,7 @@ type LobsterTaskRecord = {
   id: string;
   cli: CliName;
   workspaceKey: string;
+  taskStoreFile: string;
   rootPrompt: string;
   status: LobsterTaskStatus;
   createdAt: number;
@@ -353,6 +358,7 @@ type LobsterTaskRecord = {
   rounds: LobsterRoundRecord[];
   finalSummary?: string;
   completionRoundSummaries: LobsterRoundSummary[];
+  completionRequirementCoverage: LobsterAcceptanceCheck[];
 };
 
 type LobsterTaskStore = {
@@ -415,6 +421,8 @@ type CliModelStore = {
   selectedByConfigId: Record<string, string>;
   optionsByConfigId: Record<string, string[]>;
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
+  selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRole, string>>>;
+  lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
 };
 
 type ConfigHeartbeatSnapshot = {
@@ -423,6 +431,9 @@ type ConfigHeartbeatSnapshot = {
   configIds: string[];
   modelSelected: string | null;
   managedModelOptions: string[];
+  lobsterMainModelSelected: string | null;
+  lobsterSubtaskModelSelected: string | null;
+  lobsterRoleSignature: string;
 };
 
 type CliInstallStatus = {
@@ -776,6 +787,33 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   if (message.type === "selectCliModel" && message.cli) {
     const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
     selectCliModel(message.cli, message.model ?? null, configId);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "selectCliLobsterModel" && message.cli && isLobsterTaskRoleValue(message.role)) {
+    const configId = typeof message.configId === "string" && message.configId
+      ? message.configId
+      : getActiveConfigIdForCli(message.cli);
+    selectCliLobsterModel(message.cli, message.role, message.model ?? null, configId);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "setCliModelLobsterRole" && message.cli && isLobsterTaskRoleValue(message.role)) {
+    const configId = typeof message.configId === "string" && message.configId
+      ? message.configId
+      : getActiveConfigIdForCli(message.cli);
+    const updated = setCliModelLobsterRole(
+      message.cli,
+      message.model,
+      message.role,
+      message.enabled,
+      configId
+    );
+    if (!updated) {
+      return;
+    }
     await postPanelState();
     return;
   }
@@ -1305,11 +1343,20 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const imagePaths = targetCli === "codex"
       ? await resolveCodexImagePathsForPrompt(trimmed)
       : [];
+    const activeConfigId = getActiveConfigIdForCli(targetCli);
+    const lobsterMainModel = typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
+      ? message.lobsterMainModel.trim()
+      : (getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined);
+    const lobsterSubtaskModel = typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
+      ? message.lobsterSubtaskModel.trim()
+      : (getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined);
     const promptInput: PromptRunInput = {
       displayPrompt: trimmed,
       modelPrompt: contextBuild.modelPrompt,
       contextTags: contextBuild.contextTags,
       model: typeof message.model === "string" && message.model ? message.model : undefined,
+      lobsterMainModel,
+      lobsterSubtaskModel,
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
     const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
@@ -1450,12 +1497,32 @@ function getConfigHeartbeatPayload(
   const managedModelOptions = activeConfigId
     ? mergeUniqueModelNames(normalizedStore.optionsByConfigId[activeConfigId] ?? [])
     : [];
+  const lobsterMainModelSelected = activeConfigId
+    ? getSelectedLobsterCliModel(cli, "main", activeConfigId)
+    : null;
+  const lobsterSubtaskModelSelected = activeConfigId
+    ? getSelectedLobsterCliModel(cli, "subtask", activeConfigId)
+    : null;
+  const lobsterRolesForConfig = activeConfigId
+    ? (normalizedStore.lobsterRolesByConfigId[activeConfigId] ?? {})
+    : {};
+  const lobsterRoleSignature = JSON.stringify(
+    Object.keys(lobsterRolesForConfig)
+      .sort((left, right) => left.localeCompare(right))
+      .map((modelName) => {
+        const flags = normalizeLobsterModelRoleFlags(lobsterRolesForConfig[modelName]);
+        return `${modelName}:${flags.main ? "1" : "0"}${flags.subtask ? "1" : "0"}`;
+      })
+  );
   return {
     cli,
     activeConfigId,
     configIds: configState.configs.map((config) => config.id),
     modelSelected,
     managedModelOptions,
+    lobsterMainModelSelected,
+    lobsterSubtaskModelSelected,
+    lobsterRoleSignature,
   };
 }
 
@@ -1478,6 +1545,15 @@ function shouldRefreshConfigState(
     return true;
   }
   if (!areStringListsEqual(configHeartbeatSnapshot.managedModelOptions, nextPayload.managedModelOptions)) {
+    return true;
+  }
+  if (configHeartbeatSnapshot.lobsterMainModelSelected !== nextPayload.lobsterMainModelSelected) {
+    return true;
+  }
+  if (configHeartbeatSnapshot.lobsterSubtaskModelSelected !== nextPayload.lobsterSubtaskModelSelected) {
+    return true;
+  }
+  if (configHeartbeatSnapshot.lobsterRoleSignature !== nextPayload.lobsterRoleSignature) {
     return true;
   }
   return false;
@@ -2667,6 +2743,8 @@ type PromptRunInput = {
   modelPrompt: string;
   contextTags: string[];
   model?: string;
+  lobsterMainModel?: string;
+  lobsterSubtaskModel?: string;
   imagePaths?: string[];
   taskRole?: LobsterTaskRole;
   lobsterTaskId?: string;
@@ -3357,7 +3435,10 @@ async function runLobsterPrompt(
     return;
   }
 
-  const task = createLobsterTaskRecord(target.cli, input.displayPrompt);
+  const initialSessionId = resolveLobsterTaskSessionId(target);
+  const task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
+    sessionId: initialSessionId,
+  });
   appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task));
 
   let round = 1;
@@ -3371,11 +3452,11 @@ async function runLobsterPrompt(
     const mainStatus = await runLobsterRound({
       input,
       target,
-      task,
+      task: latest,
       round,
       role: "main",
       displayPrompt: buildLobsterMainDisplayPrompt(input.displayPrompt, round),
-      modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || input.displayPrompt, task.id, round),
+      modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || input.displayPrompt, latest, round),
     });
     if (mainStatus === "error" || mainStatus === "stopped") {
       markLobsterTaskInterrupted(task.id, mainStatus, target);
@@ -3389,7 +3470,7 @@ async function runLobsterPrompt(
         status: "needs-review",
         updatedAt: Date.now(),
         finalSummary: "Main task did not return a valid lobster decision JSON.",
-      }) ?? task;
+      }) ?? latest;
       appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(failedRecord));
       return;
     }
@@ -3408,7 +3489,7 @@ async function runLobsterPrompt(
     const subtaskStatus = await runLobsterSubtaskWithRetry({
       input,
       target,
-      task,
+      task: decisionResult.task,
       round,
       subtask,
     });
@@ -3470,7 +3551,14 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
         role: "subtask",
         subtaskId: subtask.id,
         displayPrompt: buildLobsterSubtaskDisplayPrompt(round, subtask, retryCount),
-        modelPrompt: buildLobsterSubtaskModelPrompt(input.modelPrompt || input.displayPrompt, task.id, round, subtask, retryCount, communicationFile),
+        modelPrompt: buildLobsterSubtaskModelPrompt(
+          input.modelPrompt || input.displayPrompt,
+          task,
+          round,
+          subtask,
+          retryCount,
+          communicationFile
+        ),
       });
     } finally {
       await switchVisibleConversationTabForLobster(mainTabId);
@@ -3510,6 +3598,9 @@ type LobsterRoundRunOptions = {
 async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, role, displayPrompt, modelPrompt, subtaskId } = options;
   const roundStartedAt = Date.now();
+  const runModel = role === "main"
+    ? (input.lobsterMainModel ?? input.model)
+    : (input.lobsterSubtaskModel ?? input.model);
   updateLobsterTaskRecord(task.id, {
     status: "running",
     currentRound: round,
@@ -3521,11 +3612,19 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
     ...input,
     displayPrompt,
     modelPrompt,
+    model: runModel,
     taskRole: role,
     lobsterTaskId: task.id,
     lobsterRound: round,
     lobsterSubtaskId: subtaskId,
   }, { targetTabId: target.tabId });
+
+  if (role === "main") {
+    const mainSessionId = resolveLobsterTaskSessionId(target);
+    if (mainSessionId) {
+      bindLobsterTaskToSession(task.id, mainSessionId);
+    }
+  }
 
   const roundEndedAt = Date.now();
   const roundStatus = getLobsterRoundRunStatus(task.id, round, role) ?? "end";
@@ -3565,8 +3664,9 @@ function buildLobsterSubtaskDisplayPrompt(round: number, subtask: LobsterSubtask
   ].filter(Boolean).join("\n");
 }
 
-function buildLobsterMainModelPrompt(rootPrompt: string, taskId: string, round: number): string {
-  const taskFile = LOBSTER_TASK_STORE_FILE;
+function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord, round: number): string {
+  const taskId = task.id;
+  const taskFile = task.taskStoreFile;
   const communication = getLobsterCommunicationPaths(taskId);
   return [
     "你正在执行 VS Code 插件的龙虾模式主任务。",
@@ -3577,23 +3677,33 @@ function buildLobsterMainModelPrompt(rootPrompt: string, taskId: string, round: 
     `主任务沟通文件：${communication.mainFile}`,
     `子任务沟通目录：${communication.subtasksDir}`,
     "",
+    "龙虾模式原理（必须遵守）：",
+    "1. 主任务每轮只输出一个 JSON 决策，不直接做具体实现。",
+    "2. 当你返回 status=continue 时，程序会按 subtask.prompt 启动 1 个子任务新会话。",
+    "3. 子任务结束后，程序会回到当前主任务会话并唤醒你继续复核。",
+    "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
+    "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束。",
+    "",
     "主任务职责：",
     "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、subTasks 和 rounds 概要。",
     "2. 必须读取主任务沟通文件和子任务沟通目录中的最新执行报告，再做审核验收和下一步决策。",
-    "3. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
-    "4. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一个修复/补齐子任务。",
-    "5. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一个最小子任务。",
-    "6. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
-    "7. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
+    "3. 第 1 轮先给出整体阶段计划（建议 3~6 个阶段）并写入主任务沟通文件，然后再派发第一个最小可执行子任务。",
+    "4. 后续轮次按计划滚动更新：完成一个子任务就复核一次，不满足就派发下一个子任务。",
+    "5. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
+    "6. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一个修复/补齐子任务。",
+    "7. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一个最小子任务。",
+    "8. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+    "9. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
-    '{"status":"completed","finalSummary":"整体完成说明","roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"completed","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     '{"status":"continue","acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"subtask":{"id":"stable-id","title":"子任务标题","prompt":"给子任务执行的完整指令"}}',
     '{"status":"blocked","finalSummary":"阻塞原因"}',
     "",
     "字段要求：",
     "- status 只能是 completed、continue、blocked。",
-    "- status=completed 时必须提供 acceptance.passed=true、finalSummary 和 roundSummaries。",
+    "- status=completed 时必须提供 acceptance.passed=true、finalSummary、requirementCoverage 和 roundSummaries。",
+    "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
     "- status=continue 时必须提供 acceptance.passed=false、subtask.title 和 subtask.prompt。",
@@ -3608,8 +3718,16 @@ function buildLobsterMainModelPrompt(rootPrompt: string, taskId: string, round: 
   ].join("\n");
 }
 
-function buildLobsterSubtaskModelPrompt(rootPrompt: string, taskId: string, round: number, subtask: LobsterSubtaskRecord, retryCount = 0, communicationFile?: string): string {
-  const taskFile = LOBSTER_TASK_STORE_FILE;
+function buildLobsterSubtaskModelPrompt(
+  rootPrompt: string,
+  task: LobsterTaskRecord,
+  round: number,
+  subtask: LobsterSubtaskRecord,
+  retryCount = 0,
+  communicationFile?: string
+): string {
+  const taskId = task.id;
+  const taskFile = task.taskStoreFile;
   const communication = getLobsterCommunicationPaths(taskId);
   const reportFile = communicationFile ?? buildLobsterSubtaskCommunicationFile(taskId, subtask.id, round, retryCount);
   return [
@@ -3738,6 +3856,7 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
   const raw = value as Partial<LobsterMainDecision>;
   if (raw.status === "completed") {
     const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
+    const requirementCoverage = normalizeLobsterAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
     const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
       ? raw.finalSummary.trim()
       : "";
@@ -3745,6 +3864,8 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
     if (
       !acceptance?.passed
       || !acceptance.checks.every((check) => check.passed)
+      || requirementCoverage.length === 0
+      || !requirementCoverage.every((item) => item.passed)
       || !finalSummary
       || !roundSummaries
     ) {
@@ -3753,6 +3874,7 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
     return {
       status: "completed",
       finalSummary,
+      requirementCoverage,
       roundSummaries,
       acceptance,
     };
@@ -3826,27 +3948,32 @@ function normalizeLobsterAcceptance(value: unknown): LobsterAcceptance | null {
     return null;
   }
   const raw = value as { passed?: unknown; summary?: unknown; checks?: unknown };
-  const checks = Array.isArray(raw.checks)
-    ? raw.checks
-      .map((item): LobsterAcceptanceCheck | null => {
-        if (!item || typeof item !== "object") {
-          return null;
-        }
-        const check = item as { name?: unknown; passed?: unknown; detail?: unknown };
-        const name = typeof check.name === "string" && check.name.trim() ? check.name.trim() : "acceptance";
-        return {
-          name,
-          passed: check.passed === true,
-          detail: typeof check.detail === "string" ? check.detail : undefined,
-        };
-      })
-      .filter((item): item is LobsterAcceptanceCheck => Boolean(item))
-    : [];
+  const checks = normalizeLobsterAcceptanceChecks(raw.checks);
   return {
     passed: raw.passed === true,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     checks,
   };
+}
+
+function normalizeLobsterAcceptanceChecks(value: unknown): LobsterAcceptanceCheck[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item): LobsterAcceptanceCheck | null => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const check = item as { name?: unknown; passed?: unknown; detail?: unknown };
+      const name = typeof check.name === "string" && check.name.trim() ? check.name.trim() : "acceptance";
+      return {
+        name,
+        passed: check.passed === true,
+        detail: typeof check.detail === "string" ? check.detail : undefined,
+      };
+    })
+    .filter((item): item is LobsterAcceptanceCheck => Boolean(item));
 }
 
 function buildLobsterSubtaskId(title: string): string {
@@ -3867,9 +3994,11 @@ function applyLobsterMainDecision(
       activeSubtaskId: null,
       finalSummary: decision.finalSummary,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
+      completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
       updatedAt: Date.now(),
     }) ?? existing;
     appendLobsterMainDecisionSummary(task, decision);
+    writeLobsterFinalSummaryMarkdown(task, decision);
     return { status: "completed", task };
   }
   if (decision.status === "blocked") {
@@ -3928,11 +4057,93 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
           lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
         });
     }
+    if (Array.isArray(decision.requirementCoverage) && decision.requirementCoverage.length > 0) {
+      lines.push("");
+      lines.push("### 用户需求覆盖清单");
+      decision.requirementCoverage.forEach((item) => {
+        const detail = item.detail ? `（${item.detail}）` : "";
+        lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
+      });
+    }
     fs.appendFileSync(task.mainCommunicationFile, `\n\n${lines.join("\n")}\n`, "utf8");
   } catch (error) {
     void logError("lobster-main-summary-write-error", {
       taskId: task.id,
       filePath: task.mainCommunicationFile,
+      error: String(error),
+    });
+  }
+}
+
+function getLobsterFinalSummaryFile(task: LobsterTaskRecord): string {
+  return path.join(task.communicationDir, "final-summary.md");
+}
+
+function writeLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision: LobsterMainDecision): void {
+  if (decision.status !== "completed") {
+    return;
+  }
+  const filePath = getLobsterFinalSummaryFile(task);
+  const roundSummaries = Array.isArray(decision.roundSummaries)
+    ? decision.roundSummaries.slice().sort((left, right) => left.round - right.round)
+    : [];
+  const requirementCoverage = Array.isArray(decision.requirementCoverage) ? decision.requirementCoverage : [];
+  const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
+  const lines: string[] = [
+    "# 龙虾任务最终总结",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- 会话 ID：${task.sessionId ?? "unknown"}`,
+    `- 生成时间：${new Date().toISOString()}`,
+    `- 验收状态：${decision.acceptance?.passed ? "通过" : "未通过"}`,
+  ];
+
+  lines.push("");
+  lines.push("## 子任务完成摘要");
+  if (roundSummaries.length === 0) {
+    lines.push("- 无可用的子任务摘要。");
+  } else {
+    roundSummaries.forEach((item) => {
+      const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
+      lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
+    });
+  }
+
+  lines.push("");
+  lines.push("## 验收结果");
+  if (decision.acceptance?.summary) {
+    lines.push(decision.acceptance.summary);
+  }
+  if (acceptanceChecks.length > 0) {
+    lines.push("");
+    acceptanceChecks.forEach((check) => {
+      const detail = check.detail ? `（${check.detail}）` : "";
+      lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
+    });
+  }
+
+  lines.push("");
+  lines.push("## 用户需求覆盖");
+  if (requirementCoverage.length === 0) {
+    lines.push("- 无可用的需求覆盖项。");
+  } else {
+    requirementCoverage.forEach((item) => {
+      const detail = item.detail ? `（${item.detail}）` : "";
+      lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
+    });
+  }
+
+  lines.push("");
+  lines.push("## 最终修复说明");
+  lines.push(decision.finalSummary ?? task.finalSummary ?? "无");
+
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    void logError("lobster-final-summary-write-error", {
+      taskId: task.id,
+      filePath,
       error: String(error),
     });
   }
@@ -3989,7 +4200,13 @@ function appendSystemMessageForLobster(target: PromptRunTarget, content: string)
   };
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
+  if (sessionId) {
+    persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
+    return;
+  }
+  // Keep lobster pre-run system messages in draft only, so the first real turn can
+  // start a fresh remote session instead of being blocked by a local-only session id.
+  updatePendingSessionDraft(target.tabId, { messages }, target.cli);
 }
 
 function getLobsterRoundRunStatus(
@@ -4012,16 +4229,20 @@ function getLobsterRoundRunStatus(
 }
 
 function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
-  return `🦞 龙虾任务已启动：${task.id}\n记录文件：${LOBSTER_TASK_STORE_FILE}`;
+  return `🦞 龙虾任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
 function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
   const summary = task.finalSummary ? `\n${task.finalSummary}` : "";
-  return `🦞 龙虾任务已完成：${task.id}${summary}`;
+  return [
+    `🦞 龙虾任务已完成：${task.id}${summary}`,
+    `记录文件：${task.taskStoreFile}`,
+    `总结文件：${getLobsterFinalSummaryFile(task)}`,
+  ].join("\n");
 }
 
 function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
-  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${LOBSTER_TASK_STORE_FILE}`;
+  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
 function buildLobsterMainResumeText(
@@ -6500,6 +6721,102 @@ function cleanupTaskStoreRetention(): void {
   }
 }
 
+function sanitizeLobsterPathSegment(value: string, fallback: string): string {
+  const normalized = String(value ?? "").trim().replace(/[^a-zA-Z0-9_.-]/g, "_");
+  return normalized || fallback;
+}
+
+function getLobsterTaskStoreSessionFile(workspaceKey: string, cli: CliName, sessionId: string): string {
+  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
+  const sessionSegment = sanitizeLobsterPathSegment(sessionId, "session");
+  return path.join(LOBSTER_TASK_STORE_DIR, workspaceSegment, cli, sessionSegment, LOBSTER_TASK_STORE_FILENAME);
+}
+
+function getLobsterTaskStorePendingFile(workspaceKey: string, cli: CliName, taskId: string): string {
+  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
+  const taskSegment = sanitizeLobsterPathSegment(taskId, "task");
+  return path.join(
+    LOBSTER_TASK_STORE_DIR,
+    workspaceSegment,
+    cli,
+    "__pending__",
+    taskSegment,
+    LOBSTER_TASK_STORE_FILENAME
+  );
+}
+
+function buildLobsterTaskStoreFile(cli: CliName, workspaceKey: string, sessionId: string | null, taskId: string): string {
+  if (sessionId && sessionId.trim()) {
+    return getLobsterTaskStoreSessionFile(workspaceKey, cli, sessionId);
+  }
+  return getLobsterTaskStorePendingFile(workspaceKey, cli, taskId);
+}
+
+function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+  const collected: string[] = [];
+  const stack = [dirPath];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch (error) {
+      void logError("lobster-task-store-readdir-error", { dirPath: current, error: String(error) });
+      continue;
+    }
+    entries.forEach((entry) => {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        return;
+      }
+      if (entry.isFile() && entry.name === LOBSTER_TASK_STORE_FILENAME) {
+        collected.push(fullPath);
+      }
+    });
+  }
+  return collected;
+}
+
+function listLobsterTaskStoreFiles(): string[] {
+  const files = collectLobsterTaskStoreFilesFromDir(LOBSTER_TASK_STORE_DIR);
+  if (fs.existsSync(LOBSTER_TASK_STORE_LEGACY_FILE)) {
+    files.push(LOBSTER_TASK_STORE_LEGACY_FILE);
+  }
+  return Array.from(new Set(files));
+}
+
+function resolveLobsterTaskStoreFileForTask(taskId: string): string | null {
+  const cached = lobsterTaskStoreFileCache.get(taskId);
+  if (cached && fs.existsSync(cached)) {
+    const cachedStore = readLobsterTaskStore(cached);
+    if (cachedStore.tasks.some((task) => task.id === taskId)) {
+      return cached;
+    }
+    lobsterTaskStoreFileCache.delete(taskId);
+  }
+  const candidateFiles = listLobsterTaskStoreFiles();
+  for (const filePath of candidateFiles) {
+    const store = readLobsterTaskStore(filePath);
+    if (store.tasks.some((task) => task.id === taskId)) {
+      lobsterTaskStoreFileCache.set(taskId, filePath);
+      return filePath;
+    }
+  }
+  return null;
+}
+
+function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
+  const tab = getConversationTabById(target.tabId);
+  return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
+}
+
 type LobsterCommunicationPaths = {
   dir: string;
   mainFile: string;
@@ -6584,15 +6901,24 @@ function updateLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string
   updateLobsterTaskRecord(taskId, { subTasks, updatedAt: Date.now() });
 }
 
-function createLobsterTaskRecord(cli: CliName, rootPrompt: string): LobsterTaskRecord {
+function createLobsterTaskRecord(
+  cli: CliName,
+  rootPrompt: string,
+  options: { sessionId?: string | null } = {}
+): LobsterTaskRecord {
   const now = Date.now();
   const id = createMessageId();
   const communication = getLobsterCommunicationPaths(id);
+  const sessionId = typeof options.sessionId === "string" && options.sessionId.trim()
+    ? options.sessionId
+    : null;
+  const taskStoreFile = buildLobsterTaskStoreFile(cli, activeWorkspaceKey, sessionId, id);
   ensureLobsterCommunicationFiles(id, rootPrompt);
   const record: LobsterTaskRecord = {
     id,
     cli,
     workspaceKey: activeWorkspaceKey,
+    taskStoreFile,
     rootPrompt,
     status: "running",
     createdAt: now,
@@ -6601,23 +6927,40 @@ function createLobsterTaskRecord(cli: CliName, rootPrompt: string): LobsterTaskR
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
-    sessionId: getActiveConversationSessionId(cli),
+    sessionId,
     subTasks: [],
     rounds: [],
     completionRoundSummaries: [],
+    completionRequirementCoverage: [],
   };
-  const store = readLobsterTaskStore();
+  const store = readLobsterTaskStore(taskStoreFile);
   store.tasks.push(record);
-  writeLobsterTaskStore(store);
+  writeLobsterTaskStore(taskStoreFile, store);
+  lobsterTaskStoreFileCache.set(id, taskStoreFile);
   return record;
 }
 
 function readLobsterTaskRecord(taskId: string): LobsterTaskRecord | null {
-  return readLobsterTaskStore().tasks.find((task) => task.id === taskId) ?? null;
+  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+  if (!storeFile) {
+    return null;
+  }
+  const task = readLobsterTaskStore(storeFile).tasks.find((item) => item.id === taskId) ?? null;
+  if (!task) {
+    return null;
+  }
+  if (task.taskStoreFile !== storeFile) {
+    return { ...task, taskStoreFile: storeFile };
+  }
+  return task;
 }
 
 function updateLobsterTaskRecord(taskId: string, patch: Partial<LobsterTaskRecord>): LobsterTaskRecord | null {
-  const store = readLobsterTaskStore();
+  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+  if (!storeFile) {
+    return null;
+  }
+  const store = readLobsterTaskStore(storeFile);
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return null;
@@ -6629,21 +6972,55 @@ function updateLobsterTaskRecord(taskId: string, patch: Partial<LobsterTaskRecor
   const next: LobsterTaskRecord = {
     ...existing,
     ...patch,
+    taskStoreFile: typeof patch.taskStoreFile === "string" && patch.taskStoreFile.trim()
+      ? patch.taskStoreFile
+      : existing.taskStoreFile,
     status: nextStatus,
     subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
     rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
     completionRoundSummaries: Array.isArray(patch.completionRoundSummaries)
       ? patch.completionRoundSummaries
       : existing.completionRoundSummaries,
+    completionRequirementCoverage: Array.isArray(patch.completionRequirementCoverage)
+      ? patch.completionRequirementCoverage
+      : existing.completionRequirementCoverage,
     updatedAt: patch.updatedAt ?? Date.now(),
   };
+  const targetStoreFile = next.taskStoreFile;
+  if (targetStoreFile !== storeFile) {
+    store.tasks.splice(index, 1);
+    if (store.tasks.length > 0) {
+      writeLobsterTaskStore(storeFile, store);
+    } else if (fs.existsSync(storeFile)) {
+      try {
+        fs.unlinkSync(storeFile);
+      } catch (error) {
+        void logError("lobster-task-store-delete-error", { filePath: storeFile, error: String(error) });
+      }
+    }
+    const targetStore = readLobsterTaskStore(targetStoreFile);
+    const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
+    if (targetIndex >= 0) {
+      targetStore.tasks[targetIndex] = next;
+    } else {
+      targetStore.tasks.push(next);
+    }
+    writeLobsterTaskStore(targetStoreFile, targetStore);
+    lobsterTaskStoreFileCache.set(taskId, targetStoreFile);
+    return next;
+  }
   store.tasks[index] = next;
-  writeLobsterTaskStore(store);
+  writeLobsterTaskStore(storeFile, store);
+  lobsterTaskStoreFileCache.set(taskId, storeFile);
   return next;
 }
 
 function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
-  const store = readLobsterTaskStore();
+  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+  if (!storeFile) {
+    return;
+  }
+  const store = readLobsterTaskStore(storeFile);
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return;
@@ -6664,20 +7041,34 @@ function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
     currentRound: Math.max(task.currentRound, round.round),
     updatedAt: Date.now(),
   };
-  writeLobsterTaskStore(store);
+  writeLobsterTaskStore(storeFile, store);
+}
+
+function bindLobsterTaskToSession(taskId: string, sessionId: string): LobsterTaskRecord | null {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    return null;
+  }
+  const task = readLobsterTaskRecord(taskId);
+  if (!task) {
+    return null;
+  }
+  const targetStoreFile = getLobsterTaskStoreSessionFile(task.workspaceKey, task.cli, normalizedSessionId);
+  if (task.sessionId === normalizedSessionId && task.taskStoreFile === targetStoreFile) {
+    return task;
+  }
+  return updateLobsterTaskRecord(taskId, {
+    sessionId: normalizedSessionId,
+    taskStoreFile: targetStoreFile,
+    updatedAt: Date.now(),
+  });
 }
 
 function isLobsterTaskCompleted(task: LobsterTaskRecord): boolean {
-  if (task.status === "completed") {
-    return true;
-  }
-  if (!Array.isArray(task.subTasks) || task.subTasks.length === 0) {
-    return false;
-  }
-  return task.subTasks.every((subtask) => subtask.status === "completed" || subtask.status === "skipped");
+  return task.status === "completed";
 }
 
-function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
+function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): LobsterTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
@@ -6689,6 +7080,11 @@ function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
   const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Date.now();
   const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : createdAt;
   const status = isLobsterTaskStatus(raw.status) ? raw.status : "running";
+  const workspaceKey = typeof raw.workspaceKey === "string" ? raw.workspaceKey : WORKSPACE_KEY_FALLBACK;
+  const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : null;
+  const taskStoreFile = typeof raw.taskStoreFile === "string" && raw.taskStoreFile.trim()
+    ? raw.taskStoreFile
+    : (sourceFile ?? buildLobsterTaskStoreFile(cli, workspaceKey, sessionId, raw.id));
   const subTasks = Array.isArray(raw.subTasks)
     ? raw.subTasks.map(normalizeLobsterSubtaskRecord).filter((item): item is LobsterSubtaskRecord => Boolean(item))
     : [];
@@ -6698,10 +7094,14 @@ function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
   const completionRoundSummaries = Array.isArray(raw.completionRoundSummaries)
     ? raw.completionRoundSummaries.map(normalizeSingleLobsterRoundSummary).filter((item): item is LobsterRoundSummary => Boolean(item))
     : [];
+  const completionRequirementCoverage = normalizeLobsterAcceptanceChecks(
+    (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
+  );
   return {
     id: raw.id,
     cli,
-    workspaceKey: typeof raw.workspaceKey === "string" ? raw.workspaceKey : WORKSPACE_KEY_FALLBACK,
+    workspaceKey,
+    taskStoreFile,
     rootPrompt: raw.rootPrompt,
     status,
     createdAt,
@@ -6710,12 +7110,13 @@ function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
     currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
     communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLobsterCommunicationPaths(raw.id).dir,
     mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLobsterCommunicationPaths(raw.id).mainFile,
-    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : null,
+    sessionId,
     activeSubtaskId: typeof raw.activeSubtaskId === "string" ? raw.activeSubtaskId : null,
     subTasks,
     rounds,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
     completionRoundSummaries,
+    completionRequirementCoverage,
   };
 }
 
@@ -6766,54 +7167,66 @@ function isLobsterTaskStatus(value: unknown): value is LobsterTaskStatus {
   return value === "running" || value === "completed" || value === "needs-review" || value === "error" || value === "stopped";
 }
 
-function ensureLobsterTaskStore(store?: LobsterTaskStore): LobsterTaskStore {
+function ensureLobsterTaskStore(
+  store?: LobsterTaskStore,
+  options: { sourceFile?: string } = {}
+): LobsterTaskStore {
   const now = Date.now();
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
-      .map((record) => normalizeLobsterTaskRecord(record))
+      .map((record) => normalizeLobsterTaskRecord(record, options.sourceFile))
       .filter((record): record is LobsterTaskRecord => Boolean(record))
       .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
     : [];
   return { tasks };
 }
 
-function readLobsterTaskStore(): LobsterTaskStore {
+function readLobsterTaskStore(filePath: string): LobsterTaskStore {
   try {
-    if (!fs.existsSync(LOBSTER_TASK_STORE_FILE)) {
+    if (!fs.existsSync(filePath)) {
       return { tasks: [] };
     }
-    const raw = fs.readFileSync(LOBSTER_TASK_STORE_FILE, "utf8");
+    const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.tasks)) {
       return { tasks: [] };
     }
-    return ensureLobsterTaskStore({ tasks: parsed.tasks as LobsterTaskRecord[] });
+    return ensureLobsterTaskStore({ tasks: parsed.tasks as LobsterTaskRecord[] }, { sourceFile: filePath });
   } catch (error) {
-    void logError("lobster-task-store-read-error", { error: String(error) });
+    void logError("lobster-task-store-read-error", { filePath, error: String(error) });
     return { tasks: [] };
   }
 }
 
-function writeLobsterTaskStore(store: LobsterTaskStore): void {
+function writeLobsterTaskStore(filePath: string, store: LobsterTaskStore): void {
   try {
-    fs.mkdirSync(path.dirname(LOBSTER_TASK_STORE_FILE), { recursive: true });
-    fs.writeFileSync(LOBSTER_TASK_STORE_FILE, JSON.stringify(ensureLobsterTaskStore(store), null, 2), "utf8");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(ensureLobsterTaskStore(store, { sourceFile: filePath }), null, 2),
+      "utf8"
+    );
   } catch (error) {
-    void logError("lobster-task-store-write-error", { error: String(error) });
+    void logError("lobster-task-store-write-error", { filePath, error: String(error) });
   }
 }
 
 function cleanupLobsterTaskStoreRetention(): void {
   try {
-    if (!fs.existsSync(LOBSTER_TASK_STORE_FILE)) {
-      return;
-    }
-    const normalized = readLobsterTaskStore();
-    if (normalized.tasks.length > 0) {
-      writeLobsterTaskStore(normalized);
-      return;
-    }
-    fs.unlinkSync(LOBSTER_TASK_STORE_FILE);
+    const filePaths = listLobsterTaskStoreFiles();
+    filePaths.forEach((filePath) => {
+      const normalized = readLobsterTaskStore(filePath);
+      if (normalized.tasks.length > 0) {
+        writeLobsterTaskStore(filePath, normalized);
+        normalized.tasks.forEach((task) => {
+          lobsterTaskStoreFileCache.set(task.id, filePath);
+        });
+        return;
+      }
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    });
   } catch (error) {
     void logError("lobster-task-store-retention-cleanup-error", { error: String(error) });
   }
@@ -6996,11 +7409,30 @@ function mergeUniqueModelNames(...groups: Array<readonly string[]>): string[] {
   return result;
 }
 
+function normalizeLobsterModelRoleFlags(value: unknown): { main: boolean; subtask: boolean } {
+  if (!value || typeof value !== "object") {
+    return { main: true, subtask: true };
+  }
+  const raw = value as { main?: unknown; subtask?: unknown };
+  const main = raw.main !== false;
+  const subtask = raw.subtask !== false;
+  if (!main && !subtask) {
+    return { main: true, subtask: true };
+  }
+  return { main, subtask };
+}
+
+function isLobsterTaskRoleValue(value: unknown): value is LobsterTaskRole {
+  return value === "main" || value === "subtask";
+}
+
 function ensureCliModelStore(store?: CliModelStore): CliModelStore {
   const normalized: CliModelStore = {
     selectedByConfigId: {},
     optionsByConfigId: {},
     thinkingByCliAndModel: {},
+    selectedLobsterByConfigId: {},
+    lobsterRolesByConfigId: {},
   };
   const storedOptionsByConfigId = store?.optionsByConfigId;
   if (storedOptionsByConfigId && typeof storedOptionsByConfigId === "object") {
@@ -7011,17 +7443,57 @@ function ensureCliModelStore(store?: CliModelStore): CliModelStore {
       normalized.optionsByConfigId[configId] = mergeUniqueModelNames(rawOptions);
     }
   }
-  for (const cli of CLI_LIST) {
-    const storedSelectedByConfigId = store?.selectedByConfigId;
-    if (storedSelectedByConfigId && typeof storedSelectedByConfigId === "object") {
-      for (const [configId, rawModel] of Object.entries(storedSelectedByConfigId)) {
-        const normalizedModel = normalizeCliModelName(rawModel);
-        if (configId && normalizedModel) {
-          normalized.selectedByConfigId[configId] = normalizedModel;
-        }
+  const storedSelectedByConfigId = store?.selectedByConfigId;
+  if (storedSelectedByConfigId && typeof storedSelectedByConfigId === "object") {
+    for (const [configId, rawModel] of Object.entries(storedSelectedByConfigId)) {
+      const normalizedModel = normalizeCliModelName(rawModel);
+      if (configId && normalizedModel) {
+        normalized.selectedByConfigId[configId] = normalizedModel;
       }
     }
-
+  }
+  const storedSelectedLobsterByConfigId = store?.selectedLobsterByConfigId;
+  if (storedSelectedLobsterByConfigId && typeof storedSelectedLobsterByConfigId === "object") {
+    for (const [configId, rawSelection] of Object.entries(storedSelectedLobsterByConfigId)) {
+      if (!configId || !rawSelection || typeof rawSelection !== "object") {
+        continue;
+      }
+      const nextSelection: Partial<Record<LobsterTaskRole, string>> = {};
+      for (const [rawRole, rawModel] of Object.entries(rawSelection)) {
+        if (!isLobsterTaskRoleValue(rawRole)) {
+          continue;
+        }
+        const normalizedModel = normalizeCliModelName(rawModel);
+        if (!normalizedModel) {
+          continue;
+        }
+        nextSelection[rawRole] = normalizedModel;
+      }
+      if (Object.keys(nextSelection).length > 0) {
+        normalized.selectedLobsterByConfigId[configId] = nextSelection;
+      }
+    }
+  }
+  const storedLobsterRolesByConfigId = store?.lobsterRolesByConfigId;
+  if (storedLobsterRolesByConfigId && typeof storedLobsterRolesByConfigId === "object") {
+    for (const [configId, rawRolesByModel] of Object.entries(storedLobsterRolesByConfigId)) {
+      if (!configId || !rawRolesByModel || typeof rawRolesByModel !== "object") {
+        continue;
+      }
+      const nextRolesByModel: Record<string, { main: boolean; subtask: boolean }> = {};
+      for (const [rawModel, rawRoleFlags] of Object.entries(rawRolesByModel)) {
+        const normalizedModel = normalizeCliModelName(rawModel);
+        if (!normalizedModel) {
+          continue;
+        }
+        nextRolesByModel[normalizedModel] = normalizeLobsterModelRoleFlags(rawRoleFlags);
+      }
+      if (Object.keys(nextRolesByModel).length > 0) {
+        normalized.lobsterRolesByConfigId[configId] = nextRolesByModel;
+      }
+    }
+  }
+  for (const cli of CLI_LIST) {
     const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
     if (storedThinkingByModel && typeof storedThinkingByModel === "object") {
       const normalizedThinkingByModel: Record<string, ThinkingMode> = {};
@@ -7095,6 +7567,71 @@ function getManagedModelOptionsForCli(cli: CliName, configId: string | null = ge
   return mergeUniqueModelNames(storedOptions);
 }
 
+function getCliModelLobsterRoleFlags(
+  cli: CliName,
+  model: string,
+  configId: string | null = getActiveConfigIdForCli(cli)
+): { main: boolean; subtask: boolean } {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return { main: true, subtask: true };
+  }
+  const rolesByModel = modelStore?.lobsterRolesByConfigId?.[configId];
+  if (!rolesByModel || typeof rolesByModel !== "object") {
+    return { main: true, subtask: true };
+  }
+  const matchedKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === normalizedModel.toLowerCase());
+  if (!matchedKey) {
+    return { main: true, subtask: true };
+  }
+  return normalizeLobsterModelRoleFlags(rolesByModel[matchedKey]);
+}
+
+function getLobsterModelOptionsForCli(
+  cli: CliName,
+  role: LobsterTaskRole,
+  configId: string | null = getActiveConfigIdForCli(cli)
+): string[] {
+  if (!configId) {
+    return [];
+  }
+  const options = getModelOptionsForCli(cli, configId);
+  return options.filter((modelName) => {
+    const roleFlags = getCliModelLobsterRoleFlags(cli, modelName, configId);
+    return role === "main" ? roleFlags.main : roleFlags.subtask;
+  });
+}
+
+function getSelectedLobsterCliModel(
+  cli: CliName,
+  role: LobsterTaskRole,
+  configId: string | null = getActiveConfigIdForCli(cli)
+): string | null {
+  if (!configId) {
+    return null;
+  }
+  const optionsForRole = getLobsterModelOptionsForCli(cli, role, configId);
+  if (optionsForRole.length === 0) {
+    return null;
+  }
+  const selectedByRole = modelStore?.selectedLobsterByConfigId?.[configId]?.[role];
+  const normalizedSelectedByRole = normalizeCliModelName(selectedByRole);
+  if (
+    normalizedSelectedByRole
+    && optionsForRole.some((modelName) => modelName.toLowerCase() === normalizedSelectedByRole.toLowerCase())
+  ) {
+    return normalizedSelectedByRole;
+  }
+  const selectedModel = getSelectedCliModel(cli, configId);
+  if (
+    selectedModel
+    && optionsForRole.some((modelName) => modelName.toLowerCase() === selectedModel.toLowerCase())
+  ) {
+    return selectedModel;
+  }
+  return optionsForRole[0] ?? null;
+}
+
 function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
   if (!configId) {
     return [];
@@ -7123,6 +7660,93 @@ function selectCliModel(cli: CliName, model: string | null, configId: string | n
   }
   modelStore = ensureCliModelStore(nextStore);
   writeModelStore(modelStore);
+}
+
+function selectCliLobsterModel(
+  cli: CliName,
+  role: LobsterTaskRole,
+  model: string | null,
+  configId: string | null = getActiveConfigIdForCli(cli)
+): void {
+  if (!configId) {
+    return;
+  }
+  const nextStore = ensureCliModelStore(modelStore);
+  const existingSelection = nextStore.selectedLobsterByConfigId[configId] ?? {};
+  const nextSelection: Partial<Record<LobsterTaskRole, string>> = { ...existingSelection };
+  const normalizedModel = normalizeCliModelName(model);
+  if (!normalizedModel) {
+    delete nextSelection[role];
+    if (Object.keys(nextSelection).length === 0) {
+      delete nextStore.selectedLobsterByConfigId[configId];
+    } else {
+      nextStore.selectedLobsterByConfigId[configId] = nextSelection;
+    }
+    modelStore = ensureCliModelStore(nextStore);
+    writeModelStore(modelStore);
+    return;
+  }
+  const roleOptions = getLobsterModelOptionsForCli(cli, role, configId);
+  const existsInRoleOptions = roleOptions.some((option) => option.toLowerCase() === normalizedModel.toLowerCase());
+  if (!existsInRoleOptions) {
+    return;
+  }
+  nextSelection[role] = normalizedModel;
+  nextStore.selectedLobsterByConfigId[configId] = nextSelection;
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+}
+
+function setCliModelLobsterRole(
+  cli: CliName,
+  model: string,
+  role: LobsterTaskRole,
+  enabled: boolean,
+  configId: string | null = getActiveConfigIdForCli(cli)
+): boolean {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return false;
+  }
+  const managedModels = getManagedModelOptionsForCli(cli, configId);
+  const exists = managedModels.some((item) => item.toLowerCase() === normalizedModel.toLowerCase());
+  if (!exists) {
+    return false;
+  }
+  const nextStore = ensureCliModelStore(modelStore);
+  const existingFlags = getCliModelLobsterRoleFlags(cli, normalizedModel, configId);
+  const nextFlags = {
+    main: existingFlags.main,
+    subtask: existingFlags.subtask,
+  };
+  if (role === "main") {
+    nextFlags.main = enabled;
+  } else {
+    nextFlags.subtask = enabled;
+  }
+  if (!nextFlags.main && !nextFlags.subtask) {
+    return false;
+  }
+  const rolesByModel = {
+    ...(nextStore.lobsterRolesByConfigId[configId] ?? {}),
+  };
+  rolesByModel[normalizedModel] = nextFlags;
+  nextStore.lobsterRolesByConfigId[configId] = rolesByModel;
+
+  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  if (selectedByRole) {
+    const selectedModel = selectedByRole[role];
+    if (selectedModel && selectedModel.toLowerCase() === normalizedModel.toLowerCase() && !enabled) {
+      delete selectedByRole[role];
+      if (Object.keys(selectedByRole).length === 0) {
+        delete nextStore.selectedLobsterByConfigId[configId];
+      }
+    }
+  }
+
+  modelStore = ensureCliModelStore(nextStore);
+  writeModelStore(modelStore);
+  return true;
 }
 
 function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
@@ -7176,6 +7800,32 @@ function renameCliModel(cli: CliName, previousModel: string, nextModel: string, 
     }
   }
 
+  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
+  if (rolesByModel) {
+    const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
+    if (matchedRoleKey) {
+      const nextRolesByModel = { ...rolesByModel };
+      nextRolesByModel[nextNormalized] = normalizeLobsterModelRoleFlags(nextRolesByModel[matchedRoleKey]);
+      delete nextRolesByModel[matchedRoleKey];
+      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
+    }
+  }
+  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  if (selectedByRole) {
+    const nextSelectedByRole: Partial<Record<LobsterTaskRole, string>> = { ...selectedByRole };
+    let changed = false;
+    (["main", "subtask"] as LobsterTaskRole[]).forEach((role) => {
+      const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
+      if (roleModel && roleModel.toLowerCase() === previousKey) {
+        nextSelectedByRole[role] = nextNormalized;
+        changed = true;
+      }
+    });
+    if (changed) {
+      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
+    }
+  }
+
   modelStore = ensureCliModelStore(nextStore);
   writeModelStore(modelStore);
   return nextNormalized;
@@ -7196,6 +7846,36 @@ function deleteCliModel(cli: CliName, model: string, configId: string | null = g
 
   if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === targetKey) {
     delete nextStore.selectedByConfigId[configId];
+  }
+
+  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
+  if (rolesByModel) {
+    const nextRolesByModel = { ...rolesByModel };
+    Object.keys(nextRolesByModel).forEach((key) => {
+      if (key.toLowerCase() === targetKey) {
+        delete nextRolesByModel[key];
+      }
+    });
+    if (Object.keys(nextRolesByModel).length > 0) {
+      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
+    } else {
+      delete nextStore.lobsterRolesByConfigId[configId];
+    }
+  }
+  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  if (selectedByRole) {
+    const nextSelectedByRole: Partial<Record<LobsterTaskRole, string>> = { ...selectedByRole };
+    (["main", "subtask"] as LobsterTaskRole[]).forEach((role) => {
+      const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
+      if (roleModel && roleModel.toLowerCase() === targetKey) {
+        delete nextSelectedByRole[role];
+      }
+    });
+    if (Object.keys(nextSelectedByRole).length > 0) {
+      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
+    } else {
+      delete nextStore.selectedLobsterByConfigId[configId];
+    }
   }
 
   modelStore = ensureCliModelStore(nextStore);
@@ -7240,13 +7920,36 @@ function buildModelState(
   const selectedByCli = {} as Record<CliName, string | null>;
   const optionsByCli = {} as Record<CliName, string[]>;
   const managedByCli = {} as Record<CliName, string[]>;
+  const selectedLobsterByCli = {} as Record<CliName, { main: string | null; subtask: string | null }>;
+  const lobsterOptionsByCli = {} as Record<CliName, { main: string[]; subtask: string[] }>;
+  const managedLobsterRolesByCli = {} as Record<CliName, Record<string, { main: boolean; subtask: boolean }>>;
   for (const cli of CLI_LIST) {
     const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
+    const managedModels = getManagedModelOptionsForCli(cli, activeConfigId);
     selectedByCli[cli] = getSelectedCliModel(cli, activeConfigId);
     optionsByCli[cli] = getModelOptionsForCli(cli, activeConfigId);
-    managedByCli[cli] = getManagedModelOptionsForCli(cli, activeConfigId);
+    managedByCli[cli] = managedModels;
+    lobsterOptionsByCli[cli] = {
+      main: getLobsterModelOptionsForCli(cli, "main", activeConfigId),
+      subtask: getLobsterModelOptionsForCli(cli, "subtask", activeConfigId),
+    };
+    selectedLobsterByCli[cli] = {
+      main: getSelectedLobsterCliModel(cli, "main", activeConfigId),
+      subtask: getSelectedLobsterCliModel(cli, "subtask", activeConfigId),
+    };
+    managedLobsterRolesByCli[cli] = {};
+    managedModels.forEach((modelName) => {
+      managedLobsterRolesByCli[cli][modelName] = getCliModelLobsterRoleFlags(cli, modelName, activeConfigId);
+    });
   }
-  return { selectedByCli, optionsByCli, managedByCli };
+  return {
+    selectedByCli,
+    optionsByCli,
+    managedByCli,
+    selectedLobsterByCli,
+    lobsterOptionsByCli,
+    managedLobsterRolesByCli,
+  };
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {

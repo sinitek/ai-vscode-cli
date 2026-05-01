@@ -32,6 +32,7 @@ const WEBVIEW_I18N = {
     interactiveModeLobster: "Lobster",
     taskRoleMain: "🦞",
     taskRoleSubtask: "Subtask",
+    taskRoleSubtaskWithRound: "Subtask · Round {round}",
     openConfigButton: "Config",
     promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
     commonCommandButton: "Common Commands",
@@ -232,6 +233,10 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMax: "Max",
     modelSelectAria: "Model selection",
     modelOptionDefault: "Model: Follow Config",
+    modelMainSelectAria: "Lobster main-task model selection",
+    modelSubtaskSelectAria: "Lobster subtask model selection",
+    modelOptionMainDefault: "Main model: Follow Config",
+    modelOptionSubtaskDefault: "Subtask model: Follow Config",
     modelOptionManage: "Manage",
     modelAddPrompt: "Enter model name:",
     modelAddTitle: "Manage Models",
@@ -244,6 +249,8 @@ const WEBVIEW_I18N = {
     modelManageEmpty: "No models yet. Add one below.",
     modelManageCancelEdit: "Cancel Edit",
     modelManageEditing: "Editing: {model}",
+    modelManageRoleMain: "Main",
+    modelManageRoleSubtask: "Subtask",
     modelEditLabel: "Edit",
     modelMoveUpLabel: "Move Up",
     modelMoveDownLabel: "Move Down",
@@ -277,6 +284,7 @@ const WEBVIEW_I18N = {
     interactiveModeLobster: "龙虾",
     taskRoleMain: "🦞",
     taskRoleSubtask: "子任务",
+    taskRoleSubtaskWithRound: "子任务·第{round}轮",
     openConfigButton: "配置",
     promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
     commonCommandButton: "常用指令",
@@ -477,6 +485,10 @@ const WEBVIEW_I18N = {
     thinkingOptionLabelMax: "最大",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
+    modelMainSelectAria: "龙虾主任务模型选择",
+    modelSubtaskSelectAria: "龙虾子任务模型选择",
+    modelOptionMainDefault: "主任务模型：默认",
+    modelOptionSubtaskDefault: "子任务模型：默认",
     modelOptionManage: "管理",
     modelAddPrompt: "输入模型名称：",
     modelAddTitle: "管理模型",
@@ -489,6 +501,8 @@ const WEBVIEW_I18N = {
     modelManageEmpty: "暂无模型，请在下方添加。",
     modelManageCancelEdit: "取消编辑",
     modelManageEditing: "正在编辑：{model}",
+    modelManageRoleMain: "主任务",
+    modelManageRoleSubtask: "子任务",
     modelEditLabel: "编辑",
     modelMoveUpLabel: "上移",
     modelMoveDownLabel: "下移",
@@ -1757,7 +1771,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .model-manager-item {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 8px;
         padding: 8px 10px;
@@ -1765,12 +1779,35 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 8px;
         background: var(--vscode-editor-background);
       }
-      .model-manager-name {
+      .model-manager-meta {
         min-width: 0;
         flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .model-manager-name {
+        min-width: 0;
         color: var(--vscode-foreground);
         font-size: 12px;
         word-break: break-all;
+      }
+      .model-manager-role-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .model-manager-role-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        user-select: none;
+      }
+      .model-manager-role-toggle input {
+        margin: 0;
       }
       .model-manager-actions {
         display: inline-flex;
@@ -1786,6 +1823,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .model-edit-hint {
         color: var(--vscode-descriptionForeground);
         font-size: 12px;
+      }
+      .lobster-model-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
       }
 
       .run-queue-indicator {
@@ -2498,17 +2540,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
-             <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
-               <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                 <path d="M5 6v4h4" />
-                 <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
-                 <path d="M12 8.2v4.2l2.8 1.9" />
-               </svg>
-             </button>
-             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
-               <option value="">${i18n.modelOptionDefault}</option>
-               <option value="__manage__">${i18n.modelOptionManage}</option>
-             </select>
+	             <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
+	               <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+	                 <path d="M5 6v4h4" />
+	                 <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
+	                 <path d="M12 8.2v4.2l2.8 1.9" />
+	               </svg>
+	             </button>
+	             <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
+	               <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
+	                 <option value="">${i18n.modelOptionMainDefault}</option>
+	                 <option value="__manage__">${i18n.modelOptionManage}</option>
+	               </select>
+	               <select id="lobsterSubtaskModelSelect" class="model-select" aria-label="${i18n.modelSubtaskSelectAria}">
+	                 <option value="">${i18n.modelOptionSubtaskDefault}</option>
+	                 <option value="__manage__">${i18n.modelOptionManage}</option>
+	               </select>
+	             </div>
+	             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
+	               <option value="">${i18n.modelOptionDefault}</option>
+	               <option value="__manage__">${i18n.modelOptionManage}</option>
+	             </select>
              <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
                <option value="off">${i18n.thinkingOptionOff}</option>
                <option value="low">${i18n.thinkingOptionLow}</option>
@@ -3004,7 +3056,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           claude: "",
           gemini: "",
         },
+        selectedLobsterMainModelsByCli: {
+          codex: "",
+          claude: "",
+          gemini: "",
+        },
+        selectedLobsterSubtaskModelsByCli: {
+          codex: "",
+          claude: "",
+          gemini: "",
+        },
         modelsByCli: {
+          codex: [],
+          claude: [],
+          gemini: [],
+        },
+        lobsterMainModelsByCli: {
+          codex: [],
+          claude: [],
+          gemini: [],
+        },
+        lobsterSubtaskModelsByCli: {
           codex: [],
           claude: [],
           gemini: [],
@@ -3013,6 +3085,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           codex: [],
           claude: [],
           gemini: [],
+        },
+        managedModelRolesByCli: {
+          codex: {},
+          claude: {},
+          gemini: {},
         },
         autoAppliedConfig: false,
         sessionState: {
@@ -3080,7 +3157,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptInput: document.getElementById("promptInput"),
         promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
+        lobsterModelGroup: document.getElementById("lobsterModelGroup"),
         modelSelect: document.getElementById("modelSelect"),
+        lobsterMainModelSelect: document.getElementById("lobsterMainModelSelect"),
+        lobsterSubtaskModelSelect: document.getElementById("lobsterSubtaskModelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
@@ -3808,6 +3888,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             claude: panelState.modelState.selectedByCli?.claude || "",
             gemini: panelState.modelState.selectedByCli?.gemini || "",
           };
+          state.lobsterMainModelsByCli = {
+            codex: panelState.modelState.lobsterOptionsByCli?.codex?.main || [],
+            claude: panelState.modelState.lobsterOptionsByCli?.claude?.main || [],
+            gemini: panelState.modelState.lobsterOptionsByCli?.gemini?.main || [],
+          };
+          state.lobsterSubtaskModelsByCli = {
+            codex: panelState.modelState.lobsterOptionsByCli?.codex?.subtask || [],
+            claude: panelState.modelState.lobsterOptionsByCli?.claude?.subtask || [],
+            gemini: panelState.modelState.lobsterOptionsByCli?.gemini?.subtask || [],
+          };
+          state.selectedLobsterMainModelsByCli = {
+            codex: panelState.modelState.selectedLobsterByCli?.codex?.main || "",
+            claude: panelState.modelState.selectedLobsterByCli?.claude?.main || "",
+            gemini: panelState.modelState.selectedLobsterByCli?.gemini?.main || "",
+          };
+          state.selectedLobsterSubtaskModelsByCli = {
+            codex: panelState.modelState.selectedLobsterByCli?.codex?.subtask || "",
+            claude: panelState.modelState.selectedLobsterByCli?.claude?.subtask || "",
+            gemini: panelState.modelState.selectedLobsterByCli?.gemini?.subtask || "",
+          };
+          state.managedModelRolesByCli = {
+            codex: panelState.modelState.managedLobsterRolesByCli?.codex || {},
+            claude: panelState.modelState.managedLobsterRolesByCli?.claude || {},
+            gemini: panelState.modelState.managedLobsterRolesByCli?.gemini || {},
+          };
           state.selectedModel = state.selectedModelsByCli[panelState.currentCli] || "";
         }
         elements.currentCli.value = panelState.currentCli;
@@ -3820,6 +3925,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
+        updateLobsterModelSelectOptions();
+        syncModelSelectorByInteractiveMode();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();
           syncModelManageForm();
@@ -3961,6 +4068,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
         elements.interactiveModeSelect.disabled = !visible;
         elements.interactiveModeSelect.value = normalizeInteractiveMode(state.interactiveMode);
+        syncModelSelectorByInteractiveMode();
       }
 
       function syncCommonCommandOptions() {
@@ -4137,7 +4245,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!message || message.taskRole !== "main" && message.taskRole !== "subtask") {
           return "";
         }
-        return message.taskRole === "main" ? t("taskRoleMain") : t("taskRoleSubtask");
+        if (message.taskRole === "main") {
+          return t("taskRoleMain");
+        }
+        const round = typeof message.lobsterRound === "number" && Number.isFinite(message.lobsterRound)
+          ? Math.floor(message.lobsterRound)
+          : 0;
+        if (round > 0) {
+          return t("taskRoleSubtaskWithRound", { round });
+        }
+        return t("taskRoleSubtask");
       }
 
       function createMessageTaskRoleElement(message) {
@@ -5828,6 +5945,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const targetModel = targetCli && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : state.selectedModel;
+        const targetLobsterMainModel = targetCli && state.selectedLobsterMainModelsByCli
+          ? state.selectedLobsterMainModelsByCli[targetCli] || ""
+          : "";
+        const targetLobsterSubtaskModel = targetCli && state.selectedLobsterSubtaskModelsByCli
+          ? state.selectedLobsterSubtaskModelsByCli[targetCli] || ""
+          : "";
         vscode.postMessage({
           type: "sendPrompt",
           prompt,
@@ -5836,6 +5959,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           tabId: targetTabId || undefined,
           cli: targetCli,
           model: targetModel || undefined,
+          lobsterMainModel: targetLobsterMainModel || undefined,
+          lobsterSubtaskModel: targetLobsterSubtaskModel || undefined,
           preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
         });
         return true;
@@ -6933,15 +7058,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (state.selectedModelsByCli) {
           state.selectedModelsByCli[state.currentCli] = "";
         }
+        if (state.selectedLobsterMainModelsByCli) {
+          state.selectedLobsterMainModelsByCli[state.currentCli] = "";
+        }
+        if (state.selectedLobsterSubtaskModelsByCli) {
+          state.selectedLobsterSubtaskModelsByCli[state.currentCli] = "";
+        }
         if (state.modelsByCli) {
           state.modelsByCli[state.currentCli] = [];
+        }
+        if (state.lobsterMainModelsByCli) {
+          state.lobsterMainModelsByCli[state.currentCli] = [];
+        }
+        if (state.lobsterSubtaskModelsByCli) {
+          state.lobsterSubtaskModelsByCli[state.currentCli] = [];
         }
         if (state.managedModelsByCli) {
           state.managedModelsByCli[state.currentCli] = [];
         }
+        if (state.managedModelRolesByCli) {
+          state.managedModelRolesByCli[state.currentCli] = {};
+        }
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
+        updateLobsterModelSelectOptions();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();
         }
@@ -7030,6 +7171,41 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return models;
       }
 
+      function getLobsterMainModelsForCurrentCli() {
+        const cli = state.currentCli;
+        const models = state.lobsterMainModelsByCli && Array.isArray(state.lobsterMainModelsByCli[cli])
+          ? state.lobsterMainModelsByCli[cli]
+          : [];
+        return models;
+      }
+
+      function getLobsterSubtaskModelsForCurrentCli() {
+        const cli = state.currentCli;
+        const models = state.lobsterSubtaskModelsByCli && Array.isArray(state.lobsterSubtaskModelsByCli[cli])
+          ? state.lobsterSubtaskModelsByCli[cli]
+          : [];
+        return models;
+      }
+
+      function getManagedModelLobsterRolesForCurrentCli(modelName) {
+        const cli = state.currentCli;
+        const roleMap = state.managedModelRolesByCli && state.managedModelRolesByCli[cli]
+          ? state.managedModelRolesByCli[cli]
+          : {};
+        const roleEntry = roleMap && typeof roleMap === "object"
+          ? roleMap[modelName]
+          : null;
+        if (!roleEntry || typeof roleEntry !== "object") {
+          return { main: true, subtask: true };
+        }
+        const main = roleEntry.main !== false;
+        const subtask = roleEntry.subtask !== false;
+        if (!main && !subtask) {
+          return { main: true, subtask: true };
+        }
+        return { main, subtask };
+      }
+
       function getCurrentModelConfigId() {
         return state.selectedConfigId || state.configState.activeConfigId || null;
       }
@@ -7091,10 +7267,57 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const item = document.createElement("div");
           item.className = "model-manager-item";
 
+          const meta = document.createElement("div");
+          meta.className = "model-manager-meta";
+
           const name = document.createElement("div");
           name.className = "model-manager-name";
           name.textContent = modelName;
-          item.appendChild(name);
+          meta.appendChild(name);
+
+          const roleFlags = getManagedModelLobsterRolesForCurrentCli(modelName);
+          const roleRow = document.createElement("div");
+          roleRow.className = "model-manager-role-row";
+          const mainRoleLabel = document.createElement("label");
+          mainRoleLabel.className = "model-manager-role-toggle";
+          const mainRoleInput = document.createElement("input");
+          mainRoleInput.type = "checkbox";
+          mainRoleInput.checked = roleFlags.main;
+          mainRoleLabel.appendChild(mainRoleInput);
+          mainRoleLabel.appendChild(document.createTextNode(t("modelManageRoleMain")));
+          roleRow.appendChild(mainRoleLabel);
+
+          const subtaskRoleLabel = document.createElement("label");
+          subtaskRoleLabel.className = "model-manager-role-toggle";
+          const subtaskRoleInput = document.createElement("input");
+          subtaskRoleInput.type = "checkbox";
+          subtaskRoleInput.checked = roleFlags.subtask;
+          subtaskRoleLabel.appendChild(subtaskRoleInput);
+          subtaskRoleLabel.appendChild(document.createTextNode(t("modelManageRoleSubtask")));
+          roleRow.appendChild(subtaskRoleLabel);
+
+          const handleRoleChange = (role, input, otherInput) => {
+            if (!input.checked && !otherInput.checked) {
+              input.checked = true;
+              return;
+            }
+            vscode.postMessage({
+              type: "setCliModelLobsterRole",
+              cli: state.currentCli,
+              model: modelName,
+              role,
+              enabled: Boolean(input.checked),
+              configId: getCurrentModelConfigId(),
+            });
+          };
+          mainRoleInput.addEventListener("change", () => {
+            handleRoleChange("main", mainRoleInput, subtaskRoleInput);
+          });
+          subtaskRoleInput.addEventListener("change", () => {
+            handleRoleChange("subtask", subtaskRoleInput, mainRoleInput);
+          });
+          meta.appendChild(roleRow);
+          item.appendChild(meta);
 
           const actions = document.createElement("div");
           actions.className = "model-manager-actions";
@@ -7194,12 +7417,83 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.modelSelect.value = "";
       }
 
+      function fillModelSelectWithOptions(selectElement, options, defaultLabel, selectedValue) {
+        if (!selectElement) {
+          return;
+        }
+        const normalizedOptions = Array.isArray(options) ? options : [];
+        selectElement.innerHTML = "";
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = defaultLabel;
+        selectElement.appendChild(defaultOption);
+        normalizedOptions.forEach((modelName) => {
+          const option = document.createElement("option");
+          option.value = modelName;
+          option.textContent = modelName;
+          selectElement.appendChild(option);
+        });
+        const manageOption = document.createElement("option");
+        manageOption.value = MODEL_MANAGE_OPTION_VALUE;
+        manageOption.textContent = t("modelOptionManage");
+        selectElement.appendChild(manageOption);
+        if (selectedValue && normalizedOptions.includes(selectedValue)) {
+          selectElement.value = selectedValue;
+          return;
+        }
+        selectElement.value = "";
+      }
+
+      function updateLobsterModelSelectOptions() {
+        fillModelSelectWithOptions(
+          elements.lobsterMainModelSelect,
+          getLobsterMainModelsForCurrentCli(),
+          t("modelOptionMainDefault"),
+          state.selectedLobsterMainModelsByCli ? state.selectedLobsterMainModelsByCli[state.currentCli] : ""
+        );
+        fillModelSelectWithOptions(
+          elements.lobsterSubtaskModelSelect,
+          getLobsterSubtaskModelsForCurrentCli(),
+          t("modelOptionSubtaskDefault"),
+          state.selectedLobsterSubtaskModelsByCli ? state.selectedLobsterSubtaskModelsByCli[state.currentCli] : ""
+        );
+      }
+
+      function syncModelSelectorByInteractiveMode() {
+        const isLobster = normalizeInteractiveMode(state.interactiveMode) === "lobster";
+        if (elements.modelSelect) {
+          elements.modelSelect.style.display = isLobster ? "none" : "";
+          elements.modelSelect.disabled = isLobster;
+        }
+        if (elements.lobsterModelGroup) {
+          elements.lobsterModelGroup.style.display = isLobster ? "inline-flex" : "none";
+        }
+        if (elements.lobsterMainModelSelect) {
+          elements.lobsterMainModelSelect.disabled = !isLobster;
+        }
+        if (elements.lobsterSubtaskModelSelect) {
+          elements.lobsterSubtaskModelSelect.disabled = !isLobster;
+        }
+      }
+
       function showAddModelDialog() {
         if (!elements.addModelOverlay) {
           return;
         }
         if (elements.modelSelect) {
           elements.modelSelect.value = state.selectedModel || "";
+        }
+        if (elements.lobsterMainModelSelect) {
+          const selectedMain = state.selectedLobsterMainModelsByCli
+            ? state.selectedLobsterMainModelsByCli[state.currentCli]
+            : "";
+          elements.lobsterMainModelSelect.value = selectedMain || "";
+        }
+        if (elements.lobsterSubtaskModelSelect) {
+          const selectedSubtask = state.selectedLobsterSubtaskModelsByCli
+            ? state.selectedLobsterSubtaskModelsByCli[state.currentCli]
+            : "";
+          elements.lobsterSubtaskModelSelect.value = selectedSubtask || "";
         }
         resetModelManageForm();
         renderModelManagerList();
@@ -7215,6 +7509,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         resetModelManageForm();
         if (elements.modelSelect) {
           elements.modelSelect.value = state.selectedModel || "";
+        }
+        if (elements.lobsterMainModelSelect) {
+          const selectedMain = state.selectedLobsterMainModelsByCli
+            ? state.selectedLobsterMainModelsByCli[state.currentCli]
+            : "";
+          elements.lobsterMainModelSelect.value = selectedMain || "";
+        }
+        if (elements.lobsterSubtaskModelSelect) {
+          const selectedSubtask = state.selectedLobsterSubtaskModelsByCli
+            ? state.selectedLobsterSubtaskModelsByCli[state.currentCli]
+            : "";
+          elements.lobsterSubtaskModelSelect.value = selectedSubtask || "";
         }
       }
 
@@ -7295,11 +7601,54 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
         });
       }
+      updateLobsterModelSelectOptions();
+      syncModelSelectorByInteractiveMode();
+
+      if (elements.lobsterMainModelSelect) {
+        elements.lobsterMainModelSelect.addEventListener("change", (event) => {
+          const value = event.target.value || "";
+          if (value === MODEL_MANAGE_OPTION_VALUE) {
+            showAddModelDialog();
+            return;
+          }
+          if (state.selectedLobsterMainModelsByCli) {
+            state.selectedLobsterMainModelsByCli[state.currentCli] = value;
+          }
+          vscode.postMessage({
+            type: "selectCliLobsterModel",
+            cli: state.currentCli,
+            role: "main",
+            model: value || null,
+            configId: getCurrentModelConfigId(),
+          });
+        });
+      }
+
+      if (elements.lobsterSubtaskModelSelect) {
+        elements.lobsterSubtaskModelSelect.addEventListener("change", (event) => {
+          const value = event.target.value || "";
+          if (value === MODEL_MANAGE_OPTION_VALUE) {
+            showAddModelDialog();
+            return;
+          }
+          if (state.selectedLobsterSubtaskModelsByCli) {
+            state.selectedLobsterSubtaskModelsByCli[state.currentCli] = value;
+          }
+          vscode.postMessage({
+            type: "selectCliLobsterModel",
+            cli: state.currentCli,
+            role: "subtask",
+            model: value || null,
+            configId: getCurrentModelConfigId(),
+          });
+        });
+      }
 
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = normalizeInteractiveMode(event.target.value);
           state.interactiveMode = nextMode;
+          syncModelSelectorByInteractiveMode();
           vscode.postMessage({
             type: "updateSetting",
             key: "interactiveMode." + state.currentCli,
