@@ -307,9 +307,17 @@ type LobsterAcceptance = {
   checks: LobsterAcceptanceCheck[];
 };
 
+type LobsterRoundSummary = {
+  round: number;
+  subtaskId?: string;
+  title: string;
+  summary: string;
+};
+
 type LobsterMainDecision = {
   status: "completed" | "continue" | "blocked";
   finalSummary?: string;
+  roundSummaries?: LobsterRoundSummary[];
   acceptance?: LobsterAcceptance;
   subtask?: {
     id?: string;
@@ -344,6 +352,7 @@ type LobsterTaskRecord = {
   subTasks: LobsterSubtaskRecord[];
   rounds: LobsterRoundRecord[];
   finalSummary?: string;
+  completionRoundSummaries: LobsterRoundSummary[];
 };
 
 type LobsterTaskStore = {
@@ -3395,11 +3404,6 @@ async function runLobsterPrompt(
       return;
     }
 
-    round += 1;
-    if (round > task.maxRounds) {
-      break;
-    }
-
     const subtask = decisionResult.subtask;
     const subtaskStatus = await runLobsterSubtaskWithRetry({
       input,
@@ -3413,7 +3417,14 @@ async function runLobsterPrompt(
       return;
     }
 
-    round += 1;
+    const nextMainRound = round + 1;
+    if (nextMainRound <= task.maxRounds) {
+      appendSystemMessageForLobster(
+        target,
+        buildLobsterMainResumeText(task.id, nextMainRound, subtask)
+      );
+    }
+    round = nextMainRound;
   }
 
   const finalRecord = updateLobsterTaskRecord(task.id, {
@@ -3517,7 +3528,7 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
   }, { targetTabId: target.tabId });
 
   const roundEndedAt = Date.now();
-  const roundStatus = getLobsterRoundRunStatus(task.id, round) ?? "end";
+  const roundStatus = getLobsterRoundRunStatus(task.id, round, role) ?? "end";
   appendLobsterRound(task.id, {
     round,
     role,
@@ -3576,19 +3587,21 @@ function buildLobsterMainModelPrompt(rootPrompt: string, taskId: string, round: 
     "7. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
-    '{"status":"completed","finalSummary":"整体完成说明","acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"completed","finalSummary":"整体完成说明","roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     '{"status":"continue","acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"subtask":{"id":"stable-id","title":"子任务标题","prompt":"给子任务执行的完整指令"}}',
     '{"status":"blocked","finalSummary":"阻塞原因"}',
     "",
     "字段要求：",
     "- status 只能是 completed、continue、blocked。",
-    "- status=completed 时必须提供 acceptance.passed=true 和 finalSummary。",
+    "- status=completed 时必须提供 acceptance.passed=true、finalSummary 和 roundSummaries。",
+    "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
+    "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
     "- status=continue 时必须提供 acceptance.passed=false、subtask.title 和 subtask.prompt。",
     "- subtask.prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
     "- subtask.prompt 至少包含：背景目标、具体范围、相关文件/模块、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
     "- subtask.id 应稳定可读；如果复用已有子任务，请使用已有 id。",
     "- 返回 continue 前，同时更新任务记录文件中的 subTasks 和 activeSubtaskId。",
-    "- 返回 completed 前，同时更新任务记录文件 status=completed、finalSummary，并保证 acceptance.checks 全部 passed=true。",
+    "- 返回 completed 前，同时更新任务记录文件 status=completed、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     "",
     "原始目标：",
     rootPrompt,
@@ -3725,12 +3738,22 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
   const raw = value as Partial<LobsterMainDecision>;
   if (raw.status === "completed") {
     const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
-    if (!acceptance?.passed || !acceptance.checks.every((check) => check.passed)) {
+    const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
+      ? raw.finalSummary.trim()
+      : "";
+    const roundSummaries = normalizeLobsterRoundSummaries((raw as { roundSummaries?: unknown }).roundSummaries);
+    if (
+      !acceptance?.passed
+      || !acceptance.checks.every((check) => check.passed)
+      || !finalSummary
+      || !roundSummaries
+    ) {
       return null;
     }
     return {
       status: "completed",
-      finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
+      finalSummary,
+      roundSummaries,
       acceptance,
     };
   }
@@ -3758,6 +3781,43 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
       title,
       prompt,
     },
+  };
+}
+
+function normalizeLobsterRoundSummaries(value: unknown): LobsterRoundSummary[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value
+    .map((item): LobsterRoundSummary | null => normalizeSingleLobsterRoundSummary(item))
+    .filter((item): item is LobsterRoundSummary => Boolean(item));
+}
+
+function normalizeSingleLobsterRoundSummary(value: unknown): LobsterRoundSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const summary = value as {
+    round?: unknown;
+    subtaskId?: unknown;
+    title?: unknown;
+    summary?: unknown;
+  };
+  const round = typeof summary.round === "number" && summary.round > 0
+    ? Math.floor(summary.round)
+    : null;
+  const title = typeof summary.title === "string" ? summary.title.trim() : "";
+  const content = typeof summary.summary === "string" ? summary.summary.trim() : "";
+  if (!round || !title || !content) {
+    return null;
+  }
+  return {
+    round,
+    subtaskId: typeof summary.subtaskId === "string" && summary.subtaskId.trim()
+      ? summary.subtaskId.trim()
+      : undefined,
+    title,
+    summary: content,
   };
 }
 
@@ -3806,8 +3866,10 @@ function applyLobsterMainDecision(
       status: "completed",
       activeSubtaskId: null,
       finalSummary: decision.finalSummary,
+      completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       updatedAt: Date.now(),
     }) ?? existing;
+    appendLobsterMainDecisionSummary(task, decision);
     return { status: "completed", task };
   }
   if (decision.status === "blocked") {
@@ -3816,6 +3878,7 @@ function applyLobsterMainDecision(
       finalSummary: decision.finalSummary ?? "Main task reported blocked.",
       updatedAt: Date.now(),
     }) ?? existing;
+    appendLobsterMainDecisionSummary(task, decision);
     return { status: "blocked", task };
   }
 
@@ -3836,6 +3899,43 @@ function applyLobsterMainDecision(
     updatedAt: Date.now(),
   }) ?? existing;
   return { status: "continue", task, subtask: subtask.record };
+}
+
+function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: LobsterMainDecision): void {
+  try {
+    fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
+    const lines: string[] = [
+      `## 主任务${decision.status === "completed" ? "最终验收" : "复核结论"}`,
+      `- 时间：${new Date().toISOString()}`,
+      `- 状态：${decision.status}`,
+    ];
+    if (decision.acceptance?.summary) {
+      lines.push(`- 验收摘要：${decision.acceptance.summary}`);
+    }
+    if (decision.finalSummary) {
+      lines.push("");
+      lines.push("### 整体总结");
+      lines.push(decision.finalSummary);
+    }
+    if (Array.isArray(decision.roundSummaries) && decision.roundSummaries.length > 0) {
+      lines.push("");
+      lines.push("### 各轮子任务摘要");
+      decision.roundSummaries
+        .slice()
+        .sort((left, right) => left.round - right.round)
+        .forEach((item) => {
+          const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
+          lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
+        });
+    }
+    fs.appendFileSync(task.mainCommunicationFile, `\n\n${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    void logError("lobster-main-summary-write-error", {
+      taskId: task.id,
+      filePath: task.mainCommunicationFile,
+      error: String(error),
+    });
+  }
 }
 
 function upsertLobsterSubtask(
@@ -3892,11 +3992,19 @@ function appendSystemMessageForLobster(target: PromptRunTarget, content: string)
   persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
 }
 
-function getLobsterRoundRunStatus(taskId: string, round: number): TaskRunStatus | null {
+function getLobsterRoundRunStatus(
+  taskId: string,
+  round: number,
+  role: LobsterTaskRole,
+): TaskRunStatus | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
     const run = runs[index];
-    if (run.lobsterTaskId === taskId && run.lobsterRound === round) {
+    if (
+      run.lobsterTaskId === taskId
+      && run.lobsterRound === round
+      && run.taskRole === role
+    ) {
       return run.status;
     }
   }
@@ -3914,6 +4022,18 @@ function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
 
 function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
   return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${LOBSTER_TASK_STORE_FILE}`;
+}
+
+function buildLobsterMainResumeText(
+  taskId: string,
+  round: number,
+  subtask: LobsterSubtaskRecord,
+): string {
+  return [
+    `🦞 正在唤醒主任务复核：第 ${round} 轮`,
+    `龙虾任务：${taskId}`,
+    `已完成子任务：${subtask.title}`,
+  ].join("\n");
 }
 
 function buildLobsterSubtaskRetryText(taskId: string, subtaskId: string, retryCount: number): string {
@@ -6484,6 +6604,7 @@ function createLobsterTaskRecord(cli: CliName, rootPrompt: string): LobsterTaskR
     sessionId: getActiveConversationSessionId(cli),
     subTasks: [],
     rounds: [],
+    completionRoundSummaries: [],
   };
   const store = readLobsterTaskStore();
   store.tasks.push(record);
@@ -6511,6 +6632,9 @@ function updateLobsterTaskRecord(taskId: string, patch: Partial<LobsterTaskRecor
     status: nextStatus,
     subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
     rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
+    completionRoundSummaries: Array.isArray(patch.completionRoundSummaries)
+      ? patch.completionRoundSummaries
+      : existing.completionRoundSummaries,
     updatedAt: patch.updatedAt ?? Date.now(),
   };
   store.tasks[index] = next;
@@ -6525,7 +6649,9 @@ function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
     return;
   }
   const task = store.tasks[index];
-  const existingRoundIndex = task.rounds.findIndex((item) => item.round === round.round);
+  const existingRoundIndex = task.rounds.findIndex((item) => (
+    item.round === round.round && item.role === round.role
+  ));
   const rounds = [...task.rounds];
   if (existingRoundIndex >= 0) {
     rounds[existingRoundIndex] = { ...rounds[existingRoundIndex], ...round };
@@ -6569,6 +6695,9 @@ function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
   const rounds = Array.isArray(raw.rounds)
     ? raw.rounds.map(normalizeLobsterRoundRecord).filter((item): item is LobsterRoundRecord => Boolean(item))
     : [];
+  const completionRoundSummaries = Array.isArray(raw.completionRoundSummaries)
+    ? raw.completionRoundSummaries.map(normalizeSingleLobsterRoundSummary).filter((item): item is LobsterRoundSummary => Boolean(item))
+    : [];
   return {
     id: raw.id,
     cli,
@@ -6586,6 +6715,7 @@ function normalizeLobsterTaskRecord(record: unknown): LobsterTaskRecord | null {
     subTasks,
     rounds,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
+    completionRoundSummaries,
   };
 }
 
