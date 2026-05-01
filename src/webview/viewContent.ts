@@ -1501,8 +1501,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       
       .input-footer {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
         margin-top: 6px;
       }
 
@@ -1551,6 +1552,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         gap: 4px;
         width: 100%;
         justify-content: flex-end;
+      }
+      .input-model-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+      .input-model-row .model-select {
+        flex: 0 1 118px;
+        min-width: 92px;
+        max-width: 180px;
+      }
+      .input-model-row .thinking-select {
+        flex: 0 0 70px;
+        width: 70px;
+        min-width: 70px;
+      }
+      .input-model-row .lobster-model-group {
+        flex: 0 1 auto;
+        min-width: 0;
+      }
+      .input-model-row .lobster-model-group .model-select {
+        min-width: 92px;
       }
       .debug-toggle {
         display: inline-flex;
@@ -2528,6 +2554,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
+          <div class="input-model-row">
+            <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
+              <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
+                <option value="">${i18n.modelOptionMainDefault}</option>
+                <option value="__manage__">${i18n.modelOptionManage}</option>
+              </select>
+              <select id="lobsterSubtaskModelSelect" class="model-select" aria-label="${i18n.modelSubtaskSelectAria}">
+                <option value="">${i18n.modelOptionSubtaskDefault}</option>
+                <option value="__manage__">${i18n.modelOptionManage}</option>
+              </select>
+            </div>
+            <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
+              <option value="">${i18n.modelOptionDefault}</option>
+              <option value="__manage__">${i18n.modelOptionManage}</option>
+            </select>
+            <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
+              <option value="off">${i18n.thinkingOptionOff}</option>
+              <option value="low">${i18n.thinkingOptionLow}</option>
+              <option value="medium">${i18n.thinkingOptionMedium}</option>
+              <option value="high">${i18n.thinkingOptionHigh}</option>
+            </select>
+          </div>
           <div class="input-actions">
             <button id="commonCommandButton" class="secondary icon-button" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}">
               <span>&gt;_</span>
@@ -2540,46 +2588,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
               </svg>
             </button>
-	             <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
-	               <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-	                 <path d="M5 6v4h4" />
-	                 <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
-	                 <path d="M12 8.2v4.2l2.8 1.9" />
-	               </svg>
-	             </button>
-	             <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
-	               <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
-	                 <option value="">${i18n.modelOptionMainDefault}</option>
-	                 <option value="__manage__">${i18n.modelOptionManage}</option>
-	               </select>
-	               <select id="lobsterSubtaskModelSelect" class="model-select" aria-label="${i18n.modelSubtaskSelectAria}">
-	                 <option value="">${i18n.modelOptionSubtaskDefault}</option>
-	                 <option value="__manage__">${i18n.modelOptionManage}</option>
-	               </select>
-	             </div>
-	             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
-	               <option value="">${i18n.modelOptionDefault}</option>
-	               <option value="__manage__">${i18n.modelOptionManage}</option>
-	             </select>
-             <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
-               <option value="off">${i18n.thinkingOptionOff}</option>
-               <option value="low">${i18n.thinkingOptionLow}</option>
-               <option value="medium">${i18n.thinkingOptionMedium}</option>
-               <option value="high">${i18n.thinkingOptionHigh}</option>
-             </select>
-             <button id="sendPrompt" class="icon-button send-icon-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
-               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                 <path d="M22 2L11 13" />
-                 <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-               </svg>
-             </button>
-             <button id="stopRun" class="icon-button stop-button" title="${i18n.stopButton}" aria-label="${i18n.stopButton}" disabled style="display: none;">
-               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-                 <rect x="5" y="5" width="14" height="14" rx="2" />
-               </svg>
-             </button>
-           </div>
-         </div>
+            <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
+              <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 6v4h4" />
+                <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
+                <path d="M12 8.2v4.2l2.8 1.9" />
+              </svg>
+            </button>
+            <button id="sendPrompt" class="icon-button send-icon-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13" />
+                <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+              </svg>
+            </button>
+            <button id="stopRun" class="icon-button stop-button" title="${i18n.stopButton}" aria-label="${i18n.stopButton}" disabled style="display: none;">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div id="historyOverlay" class="overlay">

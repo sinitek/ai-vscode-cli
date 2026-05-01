@@ -1988,6 +1988,7 @@ function scheduleHistoryArtifactRetentionCleanup(): void {
       scheduleLogRetentionCleanup();
       cleanupTaskStoreRetention();
       cleanupLobsterTaskStoreRetention();
+      cleanupLobsterCommunicationRetention();
       cleanupPromptHistoryRetentionAcrossWorkspaces();
       await cleanupSessionRetentionAcrossWorkspaces();
     })
@@ -3446,6 +3447,7 @@ async function runLobsterPrompt(
     const latest = readLobsterTaskRecord(task.id) ?? task;
     if (isLobsterTaskCompleted(latest)) {
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(latest));
+      appendSystemMessageForLobster(target, buildLobsterFinalSummaryMarkdown(latest));
       return;
     }
 
@@ -3478,6 +3480,7 @@ async function runLobsterPrompt(
     const decisionResult = applyLobsterMainDecision(task.id, decision);
     if (decisionResult.status === "completed") {
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionResult.task));
+      appendSystemMessageForLobster(target, buildLobsterFinalSummaryMarkdown(decisionResult.task, decision));
       return;
     }
     if (decisionResult.status === "blocked" || !decisionResult.subtask) {
@@ -3998,7 +4001,6 @@ function applyLobsterMainDecision(
       updatedAt: Date.now(),
     }) ?? existing;
     appendLobsterMainDecisionSummary(task, decision);
-    writeLobsterFinalSummaryMarkdown(task, decision);
     return { status: "completed", task };
   }
   if (decision.status === "blocked") {
@@ -4075,27 +4077,24 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
   }
 }
 
-function getLobsterFinalSummaryFile(task: LobsterTaskRecord): string {
-  return path.join(task.communicationDir, "final-summary.md");
-}
-
-function writeLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision: LobsterMainDecision): void {
-  if (decision.status !== "completed") {
-    return;
-  }
-  const filePath = getLobsterFinalSummaryFile(task);
-  const roundSummaries = Array.isArray(decision.roundSummaries)
+function buildLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision?: LobsterMainDecision | null): string {
+  const roundSummaries = Array.isArray(decision?.roundSummaries)
     ? decision.roundSummaries.slice().sort((left, right) => left.round - right.round)
-    : [];
-  const requirementCoverage = Array.isArray(decision.requirementCoverage) ? decision.requirementCoverage : [];
-  const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
+    : (Array.isArray(task.completionRoundSummaries)
+      ? task.completionRoundSummaries.slice().sort((left, right) => left.round - right.round)
+      : []);
+  const requirementCoverage = Array.isArray(decision?.requirementCoverage)
+    ? decision.requirementCoverage
+    : (Array.isArray(task.completionRequirementCoverage) ? task.completionRequirementCoverage : []);
+  const acceptanceChecks = Array.isArray(decision?.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
+  const finalSummary = decision?.finalSummary ?? task.finalSummary ?? "无";
   const lines: string[] = [
     "# 龙虾任务最终总结",
     "",
     `- 任务 ID：${task.id}`,
     `- 会话 ID：${task.sessionId ?? "unknown"}`,
     `- 生成时间：${new Date().toISOString()}`,
-    `- 验收状态：${decision.acceptance?.passed ? "通过" : "未通过"}`,
+    `- 验收状态：${decision?.acceptance?.passed === false ? "未通过" : "通过"}`,
   ];
 
   lines.push("");
@@ -4111,7 +4110,7 @@ function writeLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision: Lob
 
   lines.push("");
   lines.push("## 验收结果");
-  if (decision.acceptance?.summary) {
+  if (decision?.acceptance?.summary) {
     lines.push(decision.acceptance.summary);
   }
   if (acceptanceChecks.length > 0) {
@@ -4135,18 +4134,8 @@ function writeLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision: Lob
 
   lines.push("");
   lines.push("## 最终修复说明");
-  lines.push(decision.finalSummary ?? task.finalSummary ?? "无");
-
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
-  } catch (error) {
-    void logError("lobster-final-summary-write-error", {
-      taskId: task.id,
-      filePath,
-      error: String(error),
-    });
-  }
+  lines.push(finalSummary);
+  return `${lines.join("\n")}\n`;
 }
 
 function upsertLobsterSubtask(
@@ -4233,11 +4222,9 @@ function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
 }
 
 function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
-  const summary = task.finalSummary ? `\n${task.finalSummary}` : "";
   return [
-    `🦞 龙虾任务已完成：${task.id}${summary}`,
+    `🦞 龙虾任务已完成：${task.id}`,
     `记录文件：${task.taskStoreFile}`,
-    `总结文件：${getLobsterFinalSummaryFile(task)}`,
   ].join("\n");
 }
 
@@ -7229,6 +7216,90 @@ function cleanupLobsterTaskStoreRetention(): void {
     });
   } catch (error) {
     void logError("lobster-task-store-retention-cleanup-error", { error: String(error) });
+  }
+}
+
+function collectRetainedLobsterTaskIds(): Set<string> {
+  const retainedTaskIds = new Set<string>();
+  const filePaths = listLobsterTaskStoreFiles();
+  filePaths.forEach((filePath) => {
+    const store = readLobsterTaskStore(filePath);
+    store.tasks.forEach((task) => {
+      retainedTaskIds.add(task.id);
+    });
+  });
+  return retainedTaskIds;
+}
+
+function getLatestMtimeMsInTree(rootPath: string): number {
+  let latestMtimeMs = 0;
+  const stack = [rootPath];
+  while (stack.length > 0) {
+    const currentPath = stack.pop();
+    if (!currentPath) {
+      continue;
+    }
+    let stats: fs.Stats;
+    try {
+      stats = fs.statSync(currentPath);
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(stats.mtimeMs)) {
+      latestMtimeMs = Math.max(latestMtimeMs, stats.mtimeMs);
+    }
+    if (!stats.isDirectory()) {
+      continue;
+    }
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(currentPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    entries.forEach((entry) => {
+      stack.push(path.join(currentPath, entry.name));
+    });
+  }
+  return latestMtimeMs;
+}
+
+function cleanupLobsterCommunicationRetention(): void {
+  try {
+    if (!fs.existsSync(LOBSTER_COMMUNICATION_DIR)) {
+      return;
+    }
+    const now = Date.now();
+    const retainedTaskIds = collectRetainedLobsterTaskIds();
+    const entries = fs.readdirSync(LOBSTER_COMMUNICATION_DIR, { withFileTypes: true });
+    entries.forEach((entry) => {
+      if (!entry.isDirectory()) {
+        return;
+      }
+      const taskId = entry.name;
+      if (retainedTaskIds.has(taskId)) {
+        return;
+      }
+      const dirPath = path.join(LOBSTER_COMMUNICATION_DIR, taskId);
+      const latestTouchedAt = getLatestMtimeMsInTree(dirPath);
+      if (isTimestampWithinHistoryRetention(latestTouchedAt, now)) {
+        return;
+      }
+      try {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+      } catch (error) {
+        void logError("lobster-communication-retention-delete-error", {
+          taskId,
+          dirPath,
+          error: String(error),
+        });
+      }
+    });
+    if (fs.existsSync(LOBSTER_COMMUNICATION_DIR) && fs.readdirSync(LOBSTER_COMMUNICATION_DIR).length === 0) {
+      fs.rmSync(LOBSTER_COMMUNICATION_DIR, { recursive: true, force: true });
+    }
+  } catch (error) {
+    void logError("lobster-communication-retention-cleanup-error", { error: String(error) });
   }
 }
 
