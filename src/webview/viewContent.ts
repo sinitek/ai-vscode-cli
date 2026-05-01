@@ -29,6 +29,9 @@ const WEBVIEW_I18N = {
     interactiveModeSelectAria: "Interactive response mode",
     interactiveModeCoding: "Coding",
     interactiveModePlan: "Plan",
+    interactiveModeLobster: "Lobster",
+    taskRoleMain: "🦞",
+    taskRoleSubtask: "Subtask",
     openConfigButton: "Config",
     promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
     commonCommandButton: "Common Commands",
@@ -271,6 +274,9 @@ const WEBVIEW_I18N = {
     interactiveModeSelectAria: "交互回复模式",
     interactiveModeCoding: "编码",
     interactiveModePlan: "规划",
+    interactiveModeLobster: "龙虾",
+    taskRoleMain: "🦞",
+    taskRoleSubtask: "子任务",
     openConfigButton: "配置",
     promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
     commonCommandButton: "常用指令",
@@ -750,6 +756,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         min-width: 0;
         overflow-wrap: anywhere;
         word-break: break-word;
+      }
+      .message-task-role {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--vscode-badge-background, var(--vscode-widget-border));
+        background: var(--vscode-badge-background, var(--vscode-editorWidget-background));
+        color: var(--vscode-badge-foreground, var(--vscode-foreground));
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 11px;
+        line-height: 18px;
+      }
+      .message.user .message-task-role {
+        align-self: flex-end;
       }
       /* User Message - Distinct Bubble */
       .message.user {
@@ -2456,6 +2477,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="plan">${i18n.interactiveModePlan}</option>
+            <option value="lobster">${i18n.interactiveModeLobster}</option>
           </select>
         </div>
         <div class="input-box">
@@ -3748,7 +3770,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
-        state.interactiveMode = panelState.interactiveMode === "plan" ? "plan" : "coding";
+        state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
@@ -3938,7 +3960,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const visible = supported;
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
         elements.interactiveModeSelect.disabled = !visible;
-        elements.interactiveModeSelect.value = state.interactiveMode === "plan" ? "plan" : "coding";
+        elements.interactiveModeSelect.value = normalizeInteractiveMode(state.interactiveMode);
       }
 
       function syncCommonCommandOptions() {
@@ -4104,6 +4126,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function normalizeInteractiveMode(value) {
+        if (value === "plan" || value === "lobster") {
+          return value;
+        }
+        return "coding";
+      }
+
+      function getMessageTaskRoleLabel(message) {
+        if (!message || message.taskRole !== "main" && message.taskRole !== "subtask") {
+          return "";
+        }
+        return message.taskRole === "main" ? t("taskRoleMain") : t("taskRoleSubtask");
+      }
+
+      function createMessageTaskRoleElement(message) {
+        const label = getMessageTaskRoleLabel(message);
+        if (!label) {
+          return null;
+        }
+        const badge = document.createElement("div");
+        badge.className = "message-task-role message-task-role-" + message.taskRole;
+        badge.textContent = label;
+        return badge;
+      }
+
       function applyMessageElementClasses(wrapper, message, index) {
         wrapper.className = "message " + message.role;
         const tracePresentation = getTracePresentation(message.content || "");
@@ -4141,6 +4188,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           time.textContent = formatDateTime(message.createdAt);
           wrapper.appendChild(time);
         }
+        const taskRoleBadge = createMessageTaskRoleElement(message);
+        if (taskRoleBadge) {
+          wrapper.appendChild(taskRoleBadge);
+        }
         wrapper.appendChild(bubble);
         return wrapper;
       }
@@ -4168,9 +4219,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return false;
         }
         applyMessageElementClasses(wrapper, message, index);
+        const oldBadge = wrapper.querySelector(".message-task-role");
+        if (oldBadge) {
+          oldBadge.remove();
+        }
         const bubble = wrapper.querySelector(".bubble");
         if (!bubble) {
           return false;
+        }
+        const nextBadge = createMessageTaskRoleElement(message);
+        if (nextBadge) {
+          wrapper.insertBefore(nextBadge, bubble);
         }
         bubble.innerHTML = safelyRenderMessageContent(message, index);
         return true;
@@ -4665,6 +4724,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const canMergeAssistant = last
             && last.role === "assistant"
             && isSameAssistantKind(last, message)
+            && last.taskRole === message.taskRole
             && !isFileUpdate
             && !lastIsFileUpdate;
           if (canMergeAssistant) {
@@ -7238,7 +7298,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
-          const nextMode = event.target.value === "plan" ? "plan" : "coding";
+          const nextMode = normalizeInteractiveMode(event.target.value);
           state.interactiveMode = nextMode;
           vscode.postMessage({
             type: "updateSetting",

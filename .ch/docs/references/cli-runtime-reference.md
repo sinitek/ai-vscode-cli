@@ -82,10 +82,11 @@
 
 ### interactive mode
 
-当前 UI 暴露 `coding / plan` 两种模式：
+当前 UI 暴露 `coding / plan / lobster` 三种模式：
 
 - Codex `plan`：收敛到更保守的只读/低信任执行策略
 - Claude `plan`：使用 `permissionMode=plan`
+- `lobster`：扩展侧编排的多轮主子任务模式；底层 CLI 权限按 coding 模式执行，并通过 `~/.sinitek_cli/lobster-tasks.json` 记录任务概要，通过 `~/.sinitek_cli/lobster-communications/<taskId>/` 组织沟通文件、activeSubtaskId、主任务 JSON 决策、acceptance 验收结果和轮次状态，供扩展解析并以独立新会话启动子任务；启动子任务时 UI 自动切换到子任务标签展示气泡和流式消息，子任务结束后切回主任务标签；主任务必须读取沟通文件并把 subtask.prompt 写成自包含详细指令；子任务完成前必须写入自己的沟通文件；只有 acceptance.passed=true 才结束；子任务执行出错会等待 1 分钟后重试，最多重试 5 次，主动停止不重试
 
 ## 5. 图片与附件
 

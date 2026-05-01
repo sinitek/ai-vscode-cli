@@ -129,6 +129,10 @@ export type ChatMessage = {
   kind?: "thinking" | "normal" | "tool-use";
   merge?: boolean;
   contextTags?: string[];
+  taskRole?: "main" | "subtask";
+  lobsterTaskId?: string;
+  lobsterRound?: number;
+  lobsterSubtaskId?: string;
 };
 
 export type PanelState = {
