@@ -6,14 +6,14 @@ const {
   getGeminiEventDisplay,
 } = require('../dist/cli/geminiStreamJson');
 
-const args = ensureGeminiHeadlessArgs(['-y'], 'Say OK');
-assert.deepStrictEqual(args, ['-y', '-p', 'Say OK', '--output-format', 'stream-json']);
+const args = ensureGeminiHeadlessArgs(['--approval-mode', 'auto_edit'], 'Say OK');
+assert.deepStrictEqual(args, ['--approval-mode', 'auto_edit', '-p', 'Say OK', '--output-format', 'stream-json']);
 
-const argsWithPrompt = ensureGeminiHeadlessArgs(['-y', '--prompt', 'custom'], 'ignored');
-assert.deepStrictEqual(argsWithPrompt, ['-y', '--prompt', 'custom', '--output-format', 'stream-json']);
+const argsWithPrompt = ensureGeminiHeadlessArgs(['--approval-mode', 'auto_edit', '--prompt', 'custom'], 'ignored');
+assert.deepStrictEqual(argsWithPrompt, ['--approval-mode', 'auto_edit', '--prompt', 'custom', '--output-format', 'stream-json']);
 
-const argsWithFormat = ensureGeminiHeadlessArgs(['-y', '--output-format', 'json'], 'Say OK');
-assert.deepStrictEqual(argsWithFormat, ['-y', '--output-format', 'json', '-p', 'Say OK']);
+const argsWithFormat = ensureGeminiHeadlessArgs(['--approval-mode', 'auto_edit', '--output-format', 'json'], 'Say OK');
+assert.deepStrictEqual(argsWithFormat, ['--approval-mode', 'auto_edit', '--output-format', 'json', '-p', 'Say OK']);
 
 const chunk = [
   JSON.stringify({ type: 'init', session_id: 'abc-123' }),

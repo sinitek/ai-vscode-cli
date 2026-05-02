@@ -2781,16 +2781,17 @@ requires_openai_auth = true`,
   },
   "context": {
     "fileName": [
-      "AGENT.md"
+      "AGENTS.md",
+      "GEMINI.md"
     ]
   },
   "general": {
-    "previewFeatures": true
+    "defaultApprovalMode": "auto_edit"
   }
 }`,
-      env: `GOOGLE_GEMINI_BASE_URL=<供应商 url>
+      env: `GOOGLE_GEMINI_BASE_URL=<你的 url>
 GEMINI_API_KEY=<你的 api key>
-GEMINI_MODEL=gemini-3-pro-preview`,
+GEMINI_MODEL=gemini-2.5-pro`,
     },
   };
 

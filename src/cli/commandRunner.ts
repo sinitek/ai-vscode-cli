@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
 import { type ChildProcess } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
 import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import { ensureGeminiHeadlessArgs } from "./geminiStreamJson";
+import { normalizeCommandInput, resolveCliCommand } from "./commandResolution";
+
+export { resolveCliCommand } from "./commandResolution";
+export type { ResolvedCliCommand } from "./commandResolution";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
@@ -25,129 +27,6 @@ function escapeShellArg(value: string): string {
   }
 
   return `'${value.replace(/'/g, "'\"'\"'")}'`;
-}
-
-export type ResolvedCliCommand = {
-  command: string;
-  resolvedFrom: "config" | "path" | "windows-npm-bin";
-};
-
-function isPathLikeCommand(command: string): boolean {
-  return command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
-}
-
-function fileExists(targetPath: string): boolean {
-  try {
-    fs.accessSync(targetPath, fs.constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function resolveExistingCommandPath(command: string): string | null {
-  if (process.platform === "win32" && !path.extname(command)) {
-    const exts = getWindowsPathExts();
-    for (const ext of exts) {
-      const candidate = `${command}${ext}`;
-      if (fileExists(candidate)) {
-        return candidate;
-      }
-    }
-    return fileExists(command) ? command : null;
-  }
-  return fileExists(command) ? command : null;
-}
-
-function getWindowsPathExts(): string[] {
-  const pathext = process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
-  return pathext
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
-}
-
-function resolveCommandOnPath(command: string, extraDirs: string[] = []): string | null {
-  const envPath = process.env.PATH ?? process.env.Path ?? "";
-  const pathDirs = envPath
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  const dirs = [...extraDirs, ...pathDirs];
-
-  if (process.platform === "win32") {
-    const hasExt = Boolean(path.extname(command));
-    const exts = hasExt ? [""] : getWindowsPathExts();
-    for (const dir of dirs) {
-      for (const ext of exts) {
-        const candidate = path.join(dir, hasExt ? command : `${command}${ext}`);
-        if (fileExists(candidate)) {
-          return candidate;
-        }
-      }
-    }
-    return null;
-  }
-
-  for (const dir of dirs) {
-    const candidate = path.join(dir, command);
-    if (fileExists(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function getWindowsNpmBinDirs(): string[] {
-  const dirs = new Set<string>();
-  if (process.env.APPDATA) {
-    dirs.add(path.join(process.env.APPDATA, "npm"));
-  }
-  if (process.env.USERPROFILE) {
-    dirs.add(path.join(process.env.USERPROFILE, "AppData", "Roaming", "npm"));
-  }
-  if (process.env.PNPM_HOME) {
-    dirs.add(process.env.PNPM_HOME);
-  }
-  return Array.from(dirs);
-}
-
-function normalizeCommandInput(command: string): string {
-  const trimmed = command.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-  if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\""))
-    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
-
-export function resolveCliCommand(command: string): ResolvedCliCommand | null {
-  const normalized = normalizeCommandInput(command);
-  const looksLikePath = isPathLikeCommand(normalized);
-  if (path.isAbsolute(normalized) || looksLikePath) {
-    const resolved = resolveExistingCommandPath(normalized);
-    return resolved ? { command: resolved, resolvedFrom: "config" } : null;
-  }
-
-  if (process.platform === "win32") {
-    const resolvedFromNpmBin = resolveCommandOnPath(normalized, getWindowsNpmBinDirs());
-    if (resolvedFromNpmBin) {
-      return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
-    }
-  }
-
-  const resolvedFromPath = resolveCommandOnPath(normalized);
-  if (resolvedFromPath) {
-    return { command: resolvedFromPath, resolvedFrom: "path" };
-  }
-
-  return null;
 }
 
 function checkCommandAvailableOnMacShell(command: string, shell: MacTaskShell): Promise<boolean> {
@@ -182,10 +61,6 @@ export async function isCliCommandAvailable(command: string): Promise<boolean> {
     return false;
   }
 
-  if (path.isAbsolute(normalized) || isPathLikeCommand(normalized)) {
-    return false;
-  }
-
   return checkCommandAvailableOnMacShell(normalized, getMacTaskShell());
 }
 
@@ -193,6 +68,7 @@ export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise
   const command = getCliCommand(cli);
   const fullArgs = buildCliArgs(cli, options);
   const terminalEnv = options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env;
+  const resolved = resolveCliCommand(command);
 
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
@@ -200,7 +76,7 @@ export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise
   });
 
   const joinedArgs = fullArgs.map((arg) => escapeShellArg(arg)).join(" ");
-  const commandLine = `${command} ${joinedArgs}`.trim();
+  const commandLine = `${resolved?.command ?? command} ${joinedArgs}`.trim();
 
   terminal.sendText(commandLine);
 }
@@ -305,6 +181,32 @@ function resolveMacTaskShellExecutable(shell: MacTaskShell): string {
   return shell === "bash" ? "/bin/bash" : "/bin/zsh";
 }
 
+function resolveSpawnCommand(command: string, args: string[]): {
+  commandToSpawn: string;
+  argsToSpawn: string[];
+  resolvedCommand: string;
+} | null {
+  const resolved = resolveCliCommand(command);
+  if (resolved) {
+    return {
+      commandToSpawn: resolved.command,
+      argsToSpawn: args,
+      resolvedCommand: resolved.command,
+    };
+  }
+
+  if (process.platform !== "darwin") {
+    return null;
+  }
+
+  const macTaskShell = getMacTaskShell();
+  return {
+    commandToSpawn: resolveMacTaskShellExecutable(macTaskShell),
+    argsToSpawn: ["-lc", buildShellCommandLine(command, args)],
+    resolvedCommand: command,
+  };
+}
+
 export function runCliStream(
   cli: CliName,
   prompt: string,
@@ -314,35 +216,20 @@ export function runCliStream(
   const configuredCommand = getCliCommand(cli);
   const fullArgs = buildCliArgs(cli, options, prompt);
   const processLabel = options.processLabel;
-
-  let commandToSpawn: string;
-  let argsToSpawn: string[];
-  let resolvedCommand: string | undefined;
-
-  if (process.platform === "darwin") {
-    const macTaskShell = getMacTaskShell();
-    commandToSpawn = resolveMacTaskShellExecutable(macTaskShell);
-    argsToSpawn = ["-lc", buildShellCommandLine(configuredCommand, fullArgs)];
-    resolvedCommand = configuredCommand;
-  } else {
-    const resolved = resolveCliCommand(configuredCommand);
-    if (!resolved) {
-      const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
-      error.code = "ENOENT";
-      handlers.onError(error);
-      handlers.onExit(127);
-      return {
-        pid: undefined,
-        resolvedCommand: undefined,
-        kill: () => false,
-      };
-    }
-    commandToSpawn = resolved.command;
-    argsToSpawn = fullArgs;
-    resolvedCommand = resolved.command;
+  const spawnCommand = resolveSpawnCommand(configuredCommand, fullArgs);
+  if (!spawnCommand) {
+    const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    handlers.onError(error);
+    handlers.onExit(127);
+    return {
+      pid: undefined,
+      resolvedCommand: undefined,
+      kill: () => false,
+    };
   }
 
-  const child = spawn(commandToSpawn, argsToSpawn, {
+  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
     cwd: options.cwd,
     env: options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env,
     argv0: processLabel,
@@ -372,7 +259,7 @@ export function runCliStream(
 
   return {
     pid: child.pid,
-    resolvedCommand,
+    resolvedCommand: spawnCommand.resolvedCommand,
     kill: (signal) => killProcessTree(child, signal),
   };
 }
@@ -383,29 +270,15 @@ export function captureCliOutput(
   options: { cwd?: string; timeoutMs?: number } = {}
 ): Promise<CapturedCliOutput> {
   return new Promise((resolve, reject) => {
-    let commandToSpawn: string;
-    let argsToSpawn: string[];
-    let resolvedCommand: string | undefined;
-
-    if (process.platform === "darwin") {
-      const macTaskShell = getMacTaskShell();
-      commandToSpawn = resolveMacTaskShellExecutable(macTaskShell);
-      argsToSpawn = ["-lc", buildShellCommandLine(command, args)];
-      resolvedCommand = command;
-    } else {
-      const resolvedCli = resolveCliCommand(command);
-      if (!resolvedCli) {
-        const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
-        error.code = "ENOENT";
-        reject(error);
-        return;
-      }
-      commandToSpawn = resolvedCli.command;
-      argsToSpawn = args;
-      resolvedCommand = resolvedCli.command;
+    const spawnCommand = resolveSpawnCommand(command, args);
+    if (!spawnCommand) {
+      const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
+      error.code = "ENOENT";
+      reject(error);
+      return;
     }
 
-    const child = spawn(commandToSpawn, argsToSpawn, {
+    const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
       cwd: options.cwd,
       env: process.env,
       detached: process.platform !== "win32",
@@ -456,12 +329,12 @@ export function captureCliOutput(
 
     child.on("close", (code) => {
       finishResolve({
-        stdout,
-        stderr,
-        exitCode: code,
-        resolvedCommand,
+          stdout,
+          stderr,
+          exitCode: code,
+          resolvedCommand: spawnCommand.resolvedCommand,
+        });
       });
-    });
 
     const timeoutMs = typeof options.timeoutMs === "number" && options.timeoutMs > 0
       ? options.timeoutMs

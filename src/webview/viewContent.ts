@@ -14,6 +14,8 @@ const WEBVIEW_I18N = {
     headerNewSession: "New Session",
     headerResetSession: "Reset Current Tab",
     conversationTabsAria: "Parallel conversations",
+    conversationTabsPrevPage: "Previous tab page",
+    conversationTabsNextPage: "Next tab page",
     conversationTabLabel: "Session {index}",
     conversationTabCloseAria: "Close {label}",
     emptyState: "Type your request to start chatting.",
@@ -266,6 +268,8 @@ const WEBVIEW_I18N = {
     headerNewSession: "新建会话",
     headerResetSession: "重置当前会话",
     conversationTabsAria: "并行会话",
+    conversationTabsPrevPage: "上一页会话",
+    conversationTabsNextPage: "下一页会话",
     conversationTabLabel: "会话{index}",
     conversationTabCloseAria: "关闭{label}",
     emptyState: "输入需求，开始对话。",
@@ -612,10 +616,32 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         align-items: center;
         gap: 6px;
         padding: 8px 16px 0;
-        overflow-x: auto;
+        overflow: hidden;
       }
       .conversation-tabs.visible {
         display: flex;
+      }
+      .conversation-tabs-track {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+      }
+      .conversation-tabs-nav {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        background: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+        line-height: 1;
+        font-size: 12px;
+      }
+      .conversation-tabs-nav:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
       .conversation-tab {
         display: inline-flex;
@@ -2902,16 +2928,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               <h4>${i18n.helpInstallWindows}</h4>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
-                <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
-                <li>Gemini：<code>npm -i -g @google/gemini-cli</code></li>
+                <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
+                <li>Gemini：<code>npm install -g @google/gemini-cli</code></li>
               </ul>
             </div>
             <div class="help-section">
               <h4>${i18n.helpInstallMac}</h4>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
-                <li>Claude：<code>npm -i -g @anthropic-ai/claude-code</code></li>
-                <li>Gemini：<code>npm -i -g @google/gemini-cli</code></li>
+                <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
+                <li>Gemini：<code>npm install -g @google/gemini-cli</code></li>
               </ul>
             </div>
             <div class="help-section">
@@ -3299,7 +3325,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const RUN_STREAM_STALE_WARNING_MS = RUN_STREAM_STALE_WARNING_BASE_MS * RUN_STREAM_STALE_THRESHOLD_MULTIPLIER;
       const RUN_STREAM_STALE_CRITICAL_MS = RUN_STREAM_STALE_CRITICAL_BASE_MS * RUN_STREAM_STALE_THRESHOLD_MULTIPLIER;
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
+      const CONVERSATION_TAB_PAGE_SIZE = 5;
       const runningTabStartedAtById = Object.create(null);
+      let conversationTabPageIndex = 0;
+      let conversationTabPageAnchorTabId = null;
 
       function createTaskListState() {
         return {
@@ -4482,6 +4511,56 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         syncConversationControlsForActiveTab();
       }
 
+      function getConversationTabPageCount(totalCount) {
+        const normalizedCount = Number.isFinite(totalCount) ? Math.max(0, Math.floor(totalCount)) : 0;
+        return Math.max(1, Math.ceil(normalizedCount / CONVERSATION_TAB_PAGE_SIZE));
+      }
+
+      function clampConversationTabPageIndex(nextPageIndex, totalCount) {
+        const pageCount = getConversationTabPageCount(totalCount);
+        const normalized = Number.isFinite(nextPageIndex) ? Math.floor(nextPageIndex) : 0;
+        if (normalized < 0) {
+          return 0;
+        }
+        if (normalized >= pageCount) {
+          return pageCount - 1;
+        }
+        return normalized;
+      }
+
+      function getConversationTabPageForTabIndex(tabIndex) {
+        if (!Number.isFinite(tabIndex) || tabIndex < 0) {
+          return 0;
+        }
+        return Math.floor(tabIndex / CONVERSATION_TAB_PAGE_SIZE);
+      }
+
+      function setConversationTabPageIndex(nextPageIndex, totalCount) {
+        conversationTabPageIndex = clampConversationTabPageIndex(nextPageIndex, totalCount);
+        return conversationTabPageIndex;
+      }
+
+      function createConversationTabPagerButton(direction, disabled, onClick) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "icon-button conversation-tabs-nav conversation-tabs-nav-" + direction;
+        button.textContent = direction === "prev" ? "<" : ">";
+        button.disabled = Boolean(disabled);
+        const ariaKey = direction === "prev" ? "conversationTabsPrevPage" : "conversationTabsNextPage";
+        const ariaLabel = t(ariaKey);
+        button.title = ariaLabel;
+        button.setAttribute("aria-label", ariaLabel);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (button.disabled) {
+            return;
+          }
+          onClick();
+        });
+        return button;
+      }
+
       function renderConversationTabs() {
         if (!elements.conversationTabs) {
           return;
@@ -4494,11 +4573,47 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const showTabs = tabs.length > 1;
         elements.conversationTabs.classList.toggle("visible", showTabs);
         if (!showTabs) {
+          conversationTabPageIndex = 0;
+          conversationTabPageAnchorTabId = activeTabId;
           return;
         }
+        const activeTabIndex = tabs.findIndex((tab) => tab && tab.id === activeTabId);
+        const activeTabChanged = activeTabId !== conversationTabPageAnchorTabId;
+        if (activeTabChanged) {
+          const activePageIndex = getConversationTabPageForTabIndex(activeTabIndex);
+          setConversationTabPageIndex(activePageIndex, tabs.length);
+        } else {
+          setConversationTabPageIndex(conversationTabPageIndex, tabs.length);
+        }
+        conversationTabPageAnchorTabId = activeTabId;
+        const showPager = tabs.length > CONVERSATION_TAB_PAGE_SIZE;
+        const pageCount = getConversationTabPageCount(tabs.length);
+        const pageStartIndex = conversationTabPageIndex * CONVERSATION_TAB_PAGE_SIZE;
+        const pageEndIndex = pageStartIndex + CONVERSATION_TAB_PAGE_SIZE;
+
+        if (showPager) {
+          const prevButton = createConversationTabPagerButton(
+            "prev",
+            conversationTabPageIndex <= 0,
+            () => {
+              setConversationTabPageIndex(conversationTabPageIndex - 1, tabs.length);
+              renderConversationTabs();
+            },
+          );
+          elements.conversationTabs.appendChild(prevButton);
+        }
+
+        const tabTrack = document.createElement("div");
+        tabTrack.className = "conversation-tabs-track";
         const groupIndexes = Object.create(null);
 
-        tabs.forEach((tab) => {
+        tabs.forEach((tab, index) => {
+          const cliLabel = typeof tab.cli === "string" && tab.cli ? tab.cli : "session";
+          const groupIndex = (groupIndexes[cliLabel] || 0) + 1;
+          groupIndexes[cliLabel] = groupIndex;
+          if (index < pageStartIndex || index >= pageEndIndex) {
+            return;
+          }
           const tabItem = document.createElement("div");
           tabItem.className = "conversation-tab";
           const isActive = tab.id === activeTabId;
@@ -4510,9 +4625,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
           tabItem.setAttribute("aria-disabled", "false");
 
-          const cliLabel = typeof tab.cli === "string" && tab.cli ? tab.cli : "session";
-          const groupIndex = (groupIndexes[cliLabel] || 0) + 1;
-          groupIndexes[cliLabel] = groupIndex;
           const labelText = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
           const label = document.createElement("span");
           label.className = "conversation-tab-label";
@@ -4556,8 +4668,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             }
           });
 
-          elements.conversationTabs.appendChild(tabItem);
+          tabTrack.appendChild(tabItem);
         });
+        elements.conversationTabs.appendChild(tabTrack);
+        if (showPager) {
+          const nextButton = createConversationTabPagerButton(
+            "next",
+            conversationTabPageIndex >= pageCount - 1,
+            () => {
+              setConversationTabPageIndex(conversationTabPageIndex + 1, tabs.length);
+              renderConversationTabs();
+            },
+          );
+          elements.conversationTabs.appendChild(nextButton);
+        }
       }
 
       function renderSessionList() {

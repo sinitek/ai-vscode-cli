@@ -106,7 +106,8 @@
             "type": "string"
           },
           "default": [
-            "-y"
+            "--approval-mode",
+            "auto_edit"
           ],
           "description": "%config.args.gemini.description%"
         },

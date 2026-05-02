@@ -27,8 +27,9 @@
 命令解析逻辑集中在 `src/cli/commandRunner.ts`：
 
 - 支持绝对路径、PATH 查找
+- Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低旧 Homebrew CLI 抢占 `gemini` 命令的概率
 - Windows 下额外尝试 npm 全局安装目录
-- macOS 下可借助 `sinitek-cli-tools.macTaskShell` 选择 `zsh` / `bash`
+- macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
 
 ## 3. 交互模式真实行为
 
@@ -64,6 +65,7 @@
 ### Gemini
 
 - 当前不维护交互 Runner
+- 插件默认参数推荐使用 `--approval-mode auto_edit`；若用户显式改写 `sinitek-cli-tools.args.gemini`，则以用户配置为准
 - 插件侧 one-shot / parallel 调用会自动补齐 Gemini headless 参数：`-p <prompt>`
 - 若用户未显式配置 `--output-format`，插件会追加 `--output-format stream-json`，并按 JSONL 事件解析 assistant delta、`init.session_id`、`result.status` 与错误事件
 - 若用户已在参数中显式配置 `-p` / `--prompt` 或 `--output-format`，插件不会重复插入对应参数，保持用户配置优先

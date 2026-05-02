@@ -56,7 +56,7 @@
 ### 3.3 执行模式
 
 - Codex / Claude：支持交互式会话续接
-- Gemini：支持一次性 headless 执行和流式展示；默认使用 Gemini CLI `-p` 与 `--output-format stream-json` 并解析结构化事件；thinking 通过临时 system settings 覆盖层 + `-m/--model` alias 选择注入，不再运行时改写工作区 `.gemini/settings.json`
+- Gemini：支持一次性 headless 执行和流式展示；默认参数推荐 `--approval-mode auto_edit`，并自动补齐 Gemini CLI `-p` 与 `--output-format stream-json` 解析结构化事件；thinking 通过临时 system settings 覆盖层 + `-m/--model` alias 选择注入，不再运行时改写工作区 `.gemini/settings.json`
 - 支持 `coding / plan / lobster` 三种交互模式
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
 - 对非主动中断/异常会隐式发送“继续/continue”自动重试 5 次，每次间隔 30 秒；不会展示这条隐式用户消息，但会追加系统提示说明当前是第几次自动重试；达到上限后会展示最近一次真实错误，避免只剩泛化提示
@@ -67,7 +67,7 @@
 ### 3.4 会话与并发
 
 - 会话列表与当前会话切换
-- 多个 conversation tab
+- 多个 conversation tab（超过 5 个时启用左右翻页按钮，每页最多显示 5 个）
 - 单个 tab 切换 CLI 分组或切换历史会话时，不应中断其他 tab 中正在执行的任务
 - 历史会话删除、清空、重置当前 Tab
 - Prompt 历史记录
