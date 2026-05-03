@@ -172,7 +172,7 @@ const LOBSTER_TASK_STORE_DIR = path.join(DATA_DIR, "lobster-tasks");
 const LOBSTER_TASK_STORE_FILENAME = "lobster-tasks.json";
 const LOBSTER_TASK_STORE_LEGACY_FILE = path.join(DATA_DIR, LOBSTER_TASK_STORE_FILENAME);
 const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
-const LOBSTER_MAX_ROUNDS = 6;
+const LOBSTER_MAX_ROUNDS = 20;
 const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
 const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
@@ -7254,7 +7254,7 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     status,
     createdAt,
     updatedAt,
-    maxRounds: typeof raw.maxRounds === "number" ? raw.maxRounds : LOBSTER_MAX_ROUNDS,
+    maxRounds: typeof raw.maxRounds === "number" ? Math.max(raw.maxRounds, LOBSTER_MAX_ROUNDS) : LOBSTER_MAX_ROUNDS,
     currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
     communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLobsterCommunicationPaths(raw.id).dir,
     mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLobsterCommunicationPaths(raw.id).mainFile,
