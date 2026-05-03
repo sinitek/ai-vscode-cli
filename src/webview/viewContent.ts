@@ -724,6 +724,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         cursor: default;
       }
       @keyframes conversationTabRunningFlow {
+        /* Layer order: top, bottom, left, right. Clockwise flow: top →, bottom ←, left ↑, right ↓. */
         from {
           background-position: 0 0, 0 100%, 0 0, 100% 0;
         }
