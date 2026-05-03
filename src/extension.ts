@@ -3491,6 +3491,7 @@ async function runLobsterPrompt(
     }
 
     const subtask = decisionResult.subtask;
+    showLobsterSubtaskDecisionMarkdown(target, decisionResult.task, round, subtask, decision);
     const subtaskStatus = await runLobsterSubtaskWithRetry({
       input,
       target,
@@ -4031,6 +4032,7 @@ function applyLobsterMainDecision(
     subTasks: subtask.nextSubtasks,
     updatedAt: Date.now(),
   }) ?? existing;
+  appendLobsterMainDecisionSummary(task, decision);
   return { status: "continue", task, subtask: subtask.record };
 }
 
@@ -4049,6 +4051,15 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
       lines.push("");
       lines.push("### 整体总结");
       lines.push(decision.finalSummary);
+    }
+    if (decision.subtask) {
+      lines.push("");
+      lines.push("### 下一步子任务");
+      lines.push(`- 子任务 ID：${decision.subtask.id ?? buildLobsterSubtaskId(decision.subtask.title)}`);
+      lines.push(`- 标题：${decision.subtask.title}`);
+      lines.push("");
+      lines.push("#### 子任务指令");
+      lines.push(decision.subtask.prompt);
     }
     if (Array.isArray(decision.roundSummaries) && decision.roundSummaries.length > 0) {
       lines.push("");
@@ -4140,6 +4151,43 @@ function buildLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision?: Lo
   return `${lines.join("\n")}\n`;
 }
 
+function buildLobsterSubtaskDecisionMarkdown(
+  task: LobsterTaskRecord,
+  round: number,
+  subtask: LobsterSubtaskRecord,
+  decision: LobsterMainDecision,
+): string {
+  const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
+  const lines: string[] = [
+    "## 龙虾子任务派发",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- 轮次：${round}`,
+    `- 子任务 ID：${subtask.id}`,
+    `- 子任务标题：${subtask.title}`,
+    `- 决策状态：${decision.status}`,
+  ];
+
+  if (decision.acceptance?.summary) {
+    lines.push(`- 本轮复核：${decision.acceptance.summary}`);
+  }
+
+  if (acceptanceChecks.length > 0) {
+    lines.push("");
+    lines.push("### 复核检查");
+    acceptanceChecks.forEach((check) => {
+      const detail = check.detail ? `（${check.detail}）` : "";
+      lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
+    });
+  }
+
+  lines.push("");
+  lines.push("### 子任务指令");
+  lines.push(subtask.prompt ?? subtask.title);
+
+  return `${lines.join("\n")}\n`;
+}
+
 function upsertLobsterSubtask(
   task: LobsterTaskRecord,
   subtask: NonNullable<LobsterMainDecision["subtask"]>
@@ -4207,6 +4255,63 @@ function removeLobsterMainDecisionMessage(
       return;
     }
   }
+}
+
+function replaceLobsterMainDecisionMessageWithMarkdown(
+  target: PromptRunTarget,
+  taskId: string,
+  round: number,
+  content: string,
+): boolean {
+  const messages = getLobsterMessagesForTarget(target);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message.role === "assistant"
+      && message.taskRole === "main"
+      && message.lobsterTaskId === taskId
+      && message.lobsterRound === round
+    ) {
+      const nextMessage: ChatMessage = {
+        ...message,
+        content,
+        merge: false,
+      };
+      messages[index] = nextMessage;
+      persistLobsterMessagesForTarget(target, messages);
+      sendPanelMessage({ type: "replaceMessage", message: nextMessage, tabId: target.tabId });
+      return true;
+    }
+  }
+  return false;
+}
+
+function showLobsterSubtaskDecisionMarkdown(
+  target: PromptRunTarget,
+  task: LobsterTaskRecord,
+  round: number,
+  subtask: LobsterSubtaskRecord,
+  decision: LobsterMainDecision,
+): void {
+  const content = buildLobsterSubtaskDecisionMarkdown(task, round, subtask, decision);
+  if (replaceLobsterMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
+    return;
+  }
+
+  const messages = getLobsterMessagesForTarget(target);
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content,
+    createdAt: Date.now(),
+    merge: false,
+    taskRole: "main",
+    lobsterTaskId: task.id,
+    lobsterRound: round,
+  };
+  appendMessageToStore(messages, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistLobsterMessagesForTarget(target, messages);
 }
 
 function appendLobsterFinalSummaryMessage(
@@ -6635,6 +6740,7 @@ function sendPanelMessage(payload: Record<string, unknown>): void {
       || type === "traceSegment"
       || type === "rawStreamDelta"
       || type === "removeMessage"
+      || type === "replaceMessage"
       || type === "runStatus"
       || type === "taskListUpdate"
     )

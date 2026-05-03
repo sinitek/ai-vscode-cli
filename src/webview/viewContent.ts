@@ -613,24 +613,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .conversation-tabs {
         display: none;
-        align-items: center;
-        gap: 6px;
+        align-items: flex-end;
+        gap: 0;
         padding: 8px 16px 0;
         overflow: hidden;
+        border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
       }
       .conversation-tabs.visible {
         display: flex;
       }
       .conversation-tabs-track {
         display: flex;
-        align-items: center;
-        gap: 6px;
+        align-items: flex-end;
+        gap: 0;
         flex: 1;
         min-width: 0;
       }
       .conversation-tabs-nav {
         width: 22px;
         height: 22px;
+        margin-bottom: 4px;
         padding: 0;
         border-radius: 999px;
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
@@ -647,25 +649,62 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 4px 8px;
-        border-radius: 999px;
+        min-height: 22px;
+        margin-bottom: -1px;
+        margin-left: -1px;
+        padding: 2.5px 10px;
+        border-radius: 0;
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
-        background: var(--vscode-editor-background);
+        background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background));
         color: var(--vscode-editor-foreground);
         cursor: pointer;
+        position: relative;
         white-space: nowrap;
         min-width: 0;
+        z-index: 0;
+      }
+      .conversation-tab:first-child {
+        margin-left: 0;
+        border-top-left-radius: 6px;
+      }
+      .conversation-tab:last-child {
+        border-top-right-radius: 6px;
       }
       .conversation-tab:hover {
-        background: var(--vscode-toolbar-hoverBackground);
+        background: var(--vscode-tab-hoverBackground, var(--vscode-toolbar-hoverBackground));
       }
       .conversation-tab.active {
-        background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-secondaryBackground));
-        color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-secondaryForeground));
+        background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+        color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+        border-radius: 6px 6px 0 0;
+        border-bottom-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+        z-index: 2;
       }
       .conversation-tab.disabled {
         cursor: default;
         opacity: 0.6;
+      }
+      .conversation-tab.running {
+        border-color: transparent;
+        z-index: 3;
+      }
+      .conversation-tab.running::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+          repeating-linear-gradient(90deg, var(--vscode-focusBorder, var(--vscode-textLink-foreground)) 0 8px, transparent 8px 14px) top left / 200% 2px repeat-x,
+          repeating-linear-gradient(90deg, var(--vscode-focusBorder, var(--vscode-textLink-foreground)) 0 8px, transparent 8px 14px) bottom left / 200% 2px repeat-x,
+          repeating-linear-gradient(0deg, var(--vscode-focusBorder, var(--vscode-textLink-foreground)) 0 8px, transparent 8px 14px) left top / 2px 200% repeat-y,
+          repeating-linear-gradient(0deg, var(--vscode-focusBorder, var(--vscode-textLink-foreground)) 0 8px, transparent 8px 14px) right top / 2px 200% repeat-y;
+        animation: conversationTabRunningFlow 900ms linear infinite;
+      }
+      .conversation-tab.errored {
+        border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+        box-shadow: 0 0 0 1px var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+        z-index: 3;
       }
       .conversation-tab-label {
         font-size: 12px;
@@ -683,6 +722,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .conversation-tab-close:disabled {
         cursor: default;
+      }
+      @keyframes conversationTabRunningFlow {
+        from {
+          background-position: 0 0, 0 100%, 0 0, 100% 0;
+        }
+        to {
+          background-position: 28px 0, -28px 100%, 0 28px, 100% -28px;
+        }
       }
       .icon {
         width: 16px;
@@ -3327,6 +3374,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
       const runningTabStartedAtById = Object.create(null);
+      const erroredTabIds = new Set();
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
 
@@ -3392,6 +3440,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         Object.keys(conversationRuntimeByTabId).forEach((key) => {
           if (!validKeys.has(key)) {
             delete conversationRuntimeByTabId[key];
+          }
+        });
+        Object.keys(runningTabStartedAtById).forEach((key) => {
+          if (!validKeys.has(key)) {
+            delete runningTabStartedAtById[key];
+          }
+        });
+        Array.from(erroredTabIds).forEach((tabId) => {
+          if (!validKeys.has(tabId)) {
+            erroredTabIds.delete(tabId);
           }
         });
       }
@@ -4474,6 +4532,40 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return typeof runningTabStartedAtById[tabId] === "number";
       }
 
+      function isTabErrored(tabId) {
+        return Boolean(tabId && typeof tabId === "string" && erroredTabIds.has(tabId));
+      }
+
+      function setTabErrored(tabId, errored) {
+        if (!tabId || typeof tabId !== "string") {
+          return;
+        }
+        const wasErrored = erroredTabIds.has(tabId);
+        if (wasErrored === Boolean(errored)) {
+          return;
+        }
+        if (errored) {
+          erroredTabIds.add(tabId);
+        } else {
+          erroredTabIds.delete(tabId);
+        }
+        renderConversationTabs();
+      }
+
+      function isHiddenRetryQueuedMessage(content) {
+        const normalized = String(content || "").trim();
+        if (!normalized) {
+          return false;
+        }
+        const lower = normalized.toLowerCase();
+        return normalized.startsWith("任务已中断，将在")
+          && normalized.includes("秒后开始第")
+          && normalized.includes("次自动重试")
+          || lower.startsWith("task interrupted. automatic retry")
+          && lower.includes(" will start in ")
+          && lower.endsWith(" seconds.");
+      }
+
       function getTabRunStartedAt(tabId) {
         if (!tabId || typeof tabId !== "string") {
           return 0;
@@ -4570,7 +4662,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           : [];
         const activeTabId = state.conversationTabs ? state.conversationTabs.activeTabId : null;
         elements.conversationTabs.innerHTML = "";
-        const showTabs = tabs.length > 1;
+        const showTabs = tabs.length > 0;
         elements.conversationTabs.classList.toggle("visible", showTabs);
         if (!showTabs) {
           conversationTabPageIndex = 0;
@@ -4620,6 +4712,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           if (isActive) {
             tabItem.classList.add("active");
           }
+          if (isTabErrored(tab.id)) {
+            tabItem.classList.add("errored");
+          } else if (isTabRunning(tab.id)) {
+            tabItem.classList.add("running");
+          }
           tabItem.setAttribute("role", "tab");
           tabItem.setAttribute("aria-selected", String(isActive));
           tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
@@ -4631,19 +4728,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           label.textContent = labelText;
           tabItem.appendChild(label);
 
-          const closeButton = document.createElement("button");
-          closeButton.type = "button";
-          closeButton.className = "conversation-tab-close";
-          closeButton.textContent = "×";
-          closeButton.title = t("conversationTabCloseAria", { label: labelText });
-          closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-          closeButton.disabled = isTabRunning(tab.id);
-          closeButton.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            vscode.postMessage({ type: "closeConversationTab", tabId: tab.id, cli: tab.cli });
-          });
-          tabItem.appendChild(closeButton);
+          if (tabs.length > 1) {
+            const closeButton = document.createElement("button");
+            closeButton.type = "button";
+            closeButton.className = "conversation-tab-close";
+            closeButton.textContent = "×";
+            closeButton.title = t("conversationTabCloseAria", { label: labelText });
+            closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
+            closeButton.disabled = isTabRunning(tab.id);
+            closeButton.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              vscode.postMessage({ type: "closeConversationTab", tabId: tab.id, cli: tab.cli });
+            });
+            tabItem.appendChild(closeButton);
+          }
 
           const selectTab = () => {
             if (tab.id === activeTabId) {
@@ -8361,10 +8460,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             let statusSummaryUpdated = false;
             if (runtimeState && data.message && data.message.role === "system") {
               const content = String(data.message.content || "").trim();
+              if (isHiddenRetryQueuedMessage(content)) {
+                setTabErrored(eventTabId, true);
+              }
               if (isRunStatusSummaryText(content)) {
                 runtimeState.lastRunStatusMessage = content;
                 statusSummaryUpdated = true;
               }
+            }
+            if (data.message && data.message.role === "assistant" && String(data.message.content || "").trim()) {
+              setTabErrored(eventTabId, false);
             }
             if (!shouldHandleTabScopedEvent(data)) {
               return;
@@ -8374,7 +8479,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               syncConversationControlsForActiveTab();
             }
           }
+          if (data.type === "replaceMessage") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            const replacement = data.message;
+            if (replacement && typeof replacement.id === "string") {
+              let replaced = false;
+              const nextMessages = state.messages.map((message) => {
+                if (message.id !== replacement.id) {
+                  return message;
+                }
+                replaced = true;
+                return replacement;
+              });
+              if (replaced) {
+                setMessagesForTab(getActiveConversationTabId(), nextMessages);
+              }
+            }
+          }
           if (data.type === "assistantDelta") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            if (String(data.content || "").trim()) {
+              setTabErrored(eventTabId, false);
+            }
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }
@@ -8406,6 +8534,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             let queuePausedNotice = "";
             if (data.status === "start") {
               runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
+              erroredTabIds.delete(targetTabId);
               resetRunRawStream(targetTabId, { syncOverlay: false });
               updateCurrentRunPrompt(data.prompt, targetTabId);
               if (runtimeState) {
@@ -8413,6 +8542,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               }
               resetTaskListForRunStart(targetTabId);
             } else {
+              if (data.status === "error") {
+                erroredTabIds.add(targetTabId);
+              } else {
+                erroredTabIds.delete(targetTabId);
+              }
               if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
                 runtimeState.lastRunStatusMessage = data.message.trim();
               }
