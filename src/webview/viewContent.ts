@@ -728,7 +728,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           background-position: 0 0, 0 100%, 0 0, 100% 0;
         }
         to {
-          background-position: 28px 0, -28px 100%, 0 28px, 100% -28px;
+          background-position: 28px 0, -28px 100%, 0 -28px, 100% 28px;
         }
       }
       .icon {
