@@ -675,7 +675,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .conversation-tab.active {
         background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
-        color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+        color: var(
+          --vscode-textLink-foreground,
+          var(--vscode-charts-blue, var(--vscode-tab-activeForeground, var(--vscode-editor-foreground)))
+        );
+        font-weight: 700;
         border-radius: 6px 6px 0 0;
         border-bottom-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
         z-index: 2;
@@ -8532,6 +8536,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
             const runtimeState = getConversationRuntimeState(targetTabId);
+            const shouldHandleActiveTabEvent = shouldHandleTabScopedEvent(data);
             let queuePausedNotice = "";
             if (data.status === "start") {
               runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
@@ -8573,7 +8578,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               closeTaskListForRunCompletion(targetTabId);
             }
 
-            if (!shouldHandleTabScopedEvent(data)) {
+            if (!shouldHandleActiveTabEvent) {
+              renderConversationTabs();
               if (data.status !== "start") {
                 if (runtimeState && runtimeState.suppressQueueFlushOnce) {
                   runtimeState.suppressQueueFlushOnce = false;
