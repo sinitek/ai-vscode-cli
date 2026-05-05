@@ -345,6 +345,7 @@ type LobsterMainDecision = {
   subtask?: LobsterSubtaskDecision;
   subtasks?: LobsterSubtaskDecision[];
   parallelReason?: string;
+  estimatedRemainingRounds?: number;
 };
 
 type LobsterRoundRecord = {
@@ -376,6 +377,7 @@ type LobsterTaskRecord = {
   subTasks: LobsterSubtaskRecord[];
   rounds: LobsterRoundRecord[];
   finalSummary?: string;
+  estimatedRemainingRounds?: number;
   completionRoundSummaries: LobsterRoundSummary[];
   completionRequirementCoverage: LobsterAcceptanceCheck[];
 };
@@ -3818,6 +3820,7 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
   return [
     `🦞 龙虾主任务第 ${round} 轮复核。`,
     "上一批子任务已完成，请读取任务记录判断整体是否完成；未完成则返回下一批子任务 JSON。",
+    "本轮必须预判 estimatedRemainingRounds，说明当前决策之后预计还剩多少轮。",
   ].join("\n");
 }
 
@@ -3861,20 +3864,22 @@ function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord
     "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
     `7. 每批最多 ${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
     "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
-    "9. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
-    "10. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
-    "11. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
-    "12. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
+    "9. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
+    "10. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
+    "11. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
+    "12. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+    "13. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
-    '{"status":"completed","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-    '{"status":"continue","acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
-    '{"status":"continue","acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
-    '{"status":"blocked","finalSummary":"阻塞原因"}',
+    '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
+    '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
+    '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
     "",
     "字段要求：",
     "- status 只能是 completed、continue、blocked。",
-    "- status=completed 时必须提供 acceptance.passed=true、finalSummary、requirementCoverage 和 roundSummaries。",
+    "- 每次返回都必须提供 estimatedRemainingRounds；含义是从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed，必须是非负整数。",
+    "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、finalSummary、requirementCoverage 和 roundSummaries。",
     "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
@@ -3885,8 +3890,8 @@ function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord
     "- subtasks[*].writeFiles 可选；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突；纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
     "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
     "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
-    "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId 和 activeSubtaskIds。",
-    "- 返回 completed 前，同时更新任务记录文件 status=completed、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
+    "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
+    "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     "",
     "原始目标：",
     rootPrompt,
@@ -4035,6 +4040,9 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
     return null;
   }
   const raw = value as Partial<LobsterMainDecision>;
+  const estimatedRemainingRounds = normalizeLobsterEstimatedRemainingRounds(
+    (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
+  );
   if (raw.status === "completed") {
     const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
     const requirementCoverage = normalizeLobsterAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
@@ -4058,12 +4066,14 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
       requirementCoverage,
       roundSummaries,
       acceptance,
+      estimatedRemainingRounds: 0,
     };
   }
   if (raw.status === "blocked") {
     return {
       status: "blocked",
       finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
+      estimatedRemainingRounds,
     };
   }
   if (raw.status !== "continue") {
@@ -4082,7 +4092,18 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
     parallelReason: typeof (raw as { parallelReason?: unknown }).parallelReason === "string"
       ? (raw as { parallelReason: string }).parallelReason.trim()
       : undefined,
+    estimatedRemainingRounds,
   };
+}
+
+function normalizeLobsterEstimatedRemainingRounds(value: unknown): number | undefined {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return undefined;
+  }
+  return Math.min(Math.max(Math.floor(numeric), 0), LOBSTER_MAX_MAX_ROUNDS);
 }
 
 function normalizeLobsterSubtaskDecisions(raw: Partial<LobsterMainDecision>): LobsterSubtaskDecision[] | null {
@@ -4229,6 +4250,7 @@ function applyLobsterMainDecision(
       activeSubtaskId: null,
       activeSubtaskIds: [],
       finalSummary: decision.finalSummary,
+      estimatedRemainingRounds: 0,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
       updatedAt: Date.now(),
@@ -4242,6 +4264,7 @@ function applyLobsterMainDecision(
       activeSubtaskId: null,
       activeSubtaskIds: [],
       finalSummary: decision.finalSummary ?? "Main task reported blocked.",
+      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
       updatedAt: Date.now(),
     }) ?? existing;
     appendLobsterMainDecisionSummary(task, decision);
@@ -4267,6 +4290,7 @@ function applyLobsterMainDecision(
     activeSubtaskId: activeSubtaskIds[0] ?? null,
     activeSubtaskIds,
     subTasks: subtaskBatch.nextSubtasks,
+    ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
     updatedAt: Date.now(),
   }) ?? existing;
   appendLobsterMainDecisionSummary(task, decision);
@@ -4290,6 +4314,10 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
     ];
     if (decision.acceptance?.summary) {
       lines.push(`- 验收摘要：${decision.acceptance.summary}`);
+    }
+    const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+    if (remainingRounds) {
+      lines.push(`- 预计剩余轮次：${remainingRounds}`);
     }
     if (decision.finalSummary) {
       lines.push("");
@@ -4428,6 +4456,10 @@ function buildLobsterSubtaskDecisionMarkdown(
   if (decision.acceptance?.summary) {
     lines.push(`- 本轮复核：${decision.acceptance.summary}`);
   }
+  const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+  if (remainingRounds) {
+    lines.push(`- 预计剩余轮次：${remainingRounds}`);
+  }
   if (decision.parallelReason) {
     lines.push(`- 并发判断：${decision.parallelReason}`);
   }
@@ -4478,6 +4510,13 @@ function formatLobsterWriteFiles(writeFiles?: string[]): string | null {
     return null;
   }
   return writeFiles.join("、");
+}
+
+function formatLobsterEstimatedRemainingRounds(value?: number): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return `${Math.max(0, Math.floor(value))} 轮`;
 }
 
 function upsertLobsterSubtask(
@@ -7689,6 +7728,9 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     subTasks,
     rounds,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
+    estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
+      (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
+    ),
     completionRoundSummaries,
     completionRequirementCoverage,
   };
