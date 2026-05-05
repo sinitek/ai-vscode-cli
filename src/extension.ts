@@ -1360,11 +1360,18 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       saveWorkspaceSettings(workspaceSettings);
     }
 
-    if (isInteractiveMode(message.interactiveMode)) {
+    const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
+    const isLobsterSubtaskContinuation = isLobsterSubtaskConversationTarget(targetCli, promptTargetTabId);
+    const requestedInteractiveMode = isInteractiveMode(message.interactiveMode) ? message.interactiveMode : undefined;
+    const effectiveInteractiveMode = isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster"
+      ? "coding"
+      : requestedInteractiveMode;
+
+    if (isInteractiveMode(effectiveInteractiveMode)) {
       if (!workspaceSettings.interactiveModeByCli) {
         workspaceSettings.interactiveModeByCli = {};
       }
-      workspaceSettings.interactiveModeByCli[targetCli] = message.interactiveMode;
+      workspaceSettings.interactiveModeByCli[targetCli] = effectiveInteractiveMode;
       saveWorkspaceSettings(workspaceSettings);
     }
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
@@ -1387,8 +1394,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       lobsterSubtaskModel,
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
-    const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
-    const shouldRunLobster = message.interactiveMode === "lobster";
+    const shouldRunLobster = effectiveInteractiveMode === "lobster";
+    if (isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster") {
+      void logInfo("lobster-subtask-manual-continue-forced-coding", {
+        cli: targetCli,
+        tabId: promptTargetTabId,
+      });
+    }
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
     if (shouldRunLobster) {
@@ -3954,6 +3966,27 @@ function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
   return sessionId
     ? loadSessionMessages(target.cli, sessionId)
     : getPendingSessionDraft(target.tabId, target.cli).messages;
+}
+
+function isLobsterSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
+  if (!tabId) {
+    return false;
+  }
+  const tab = getConversationTabById(tabId);
+  if (!tab || tab.cli !== cli) {
+    return false;
+  }
+  const sessionId = getConversationTabSessionIdForCli(tab, cli);
+  const messages = sessionId
+    ? loadSessionMessages(cli, sessionId)
+    : getPendingSessionDraft(tabId, cli).messages;
+  return messages.some((message) => (
+    message.taskRole === "subtask"
+    && typeof message.lobsterTaskId === "string"
+    && Boolean(message.lobsterTaskId)
+    && typeof message.lobsterSubtaskId === "string"
+    && Boolean(message.lobsterSubtaskId)
+  ));
 }
 
 function getLastLobsterAssistantContent(
