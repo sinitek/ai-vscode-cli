@@ -102,6 +102,12 @@ import {
   mergeSessionMessages,
   mergeSessionRecords,
 } from "./interactive/sessionHistoryRepair";
+import {
+  buildLobsterSubtaskExecutionPlan,
+  describeLobsterExecutionPlan,
+  normalizeLobsterWriteFiles,
+  type LobsterSubtaskExecutionPlan,
+} from "./lobsterParallel";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -172,7 +178,10 @@ const LOBSTER_TASK_STORE_DIR = path.join(DATA_DIR, "lobster-tasks");
 const LOBSTER_TASK_STORE_FILENAME = "lobster-tasks.json";
 const LOBSTER_TASK_STORE_LEGACY_FILE = path.join(DATA_DIR, LOBSTER_TASK_STORE_FILENAME);
 const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
-const LOBSTER_MAX_ROUNDS = 20;
+const LOBSTER_DEFAULT_MAX_ROUNDS = 20;
+const LOBSTER_MIN_MAX_ROUNDS = 1;
+const LOBSTER_MAX_MAX_ROUNDS = 100;
+const LOBSTER_PARALLEL_SUBTASK_MAX = 6;
 const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
 const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
@@ -292,6 +301,8 @@ type LobsterSubtaskRecord = {
   id: string;
   title: string;
   prompt?: string;
+  conflictGroup?: string;
+  writeFiles?: string[];
   status: "pending" | "running" | "completed" | "skipped" | "blocked";
   summary?: string;
   communicationFile?: string;
@@ -317,22 +328,29 @@ type LobsterRoundSummary = {
   summary: string;
 };
 
+type LobsterSubtaskDecision = {
+  id?: string;
+  title: string;
+  prompt: string;
+  conflictGroup?: string;
+  writeFiles?: string[];
+};
+
 type LobsterMainDecision = {
   status: "completed" | "continue" | "blocked";
   finalSummary?: string;
   roundSummaries?: LobsterRoundSummary[];
   requirementCoverage?: LobsterAcceptanceCheck[];
   acceptance?: LobsterAcceptance;
-  subtask?: {
-    id?: string;
-    title: string;
-    prompt: string;
-  };
+  subtask?: LobsterSubtaskDecision;
+  subtasks?: LobsterSubtaskDecision[];
+  parallelReason?: string;
 };
 
 type LobsterRoundRecord = {
   round: number;
   role: LobsterTaskRole;
+  subtaskId?: string;
   status: TaskRunStatus;
   startedAt: number;
   endedAt: number;
@@ -354,6 +372,7 @@ type LobsterTaskRecord = {
   mainCommunicationFile: string;
   sessionId?: string | null;
   activeSubtaskId?: string | null;
+  activeSubtaskIds?: string[];
   subTasks: LobsterSubtaskRecord[];
   rounds: LobsterRoundRecord[];
   finalSummary?: string;
@@ -413,6 +432,7 @@ type WorkspaceSettings = {
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
   codexMultiAgentEnabled?: boolean;
+  lobsterMaxRounds?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsState;
 };
@@ -1262,6 +1282,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "lobsterMaxRounds") {
+      workspaceSettings.lobsterMaxRounds = normalizeLobsterMaxRounds(message.value);
+      saveWorkspaceSettings(workspaceSettings);
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
       const nextValue = typeof message.value === "string" ? message.value : "auto";
@@ -1392,6 +1418,7 @@ async function buildPanelState(): Promise<PanelState> {
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+    lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -1432,6 +1459,7 @@ async function buildPanelStateWithConfigState(
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+    lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -3485,22 +3513,24 @@ async function runLobsterPrompt(
       appendLobsterFinalSummaryMessage(target, decisionResult.task, decision);
       return;
     }
-    if (decisionResult.status === "blocked" || !decisionResult.subtask) {
+    if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
       appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(decisionResult.task));
       return;
     }
 
-    const subtask = decisionResult.subtask;
-    showLobsterSubtaskDecisionMarkdown(target, decisionResult.task, round, subtask, decision);
-    const subtaskStatus = await runLobsterSubtaskWithRetry({
+    const subtasks = decisionResult.subtasks;
+    showLobsterSubtaskDecisionMarkdown(target, decisionResult.task, round, subtasks, decision);
+    const subtaskResults = await runLobsterSubtasksBatchWithRetry({
       input,
       target,
       task: decisionResult.task,
       round,
-      subtask,
+      subtasks,
     });
-    if (subtaskStatus === "error" || subtaskStatus === "stopped") {
-      markLobsterTaskInterrupted(task.id, subtaskStatus, target);
+    const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
+    if (interrupted) {
+      const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
+      markLobsterTaskInterrupted(task.id, interruptedStatus, target);
       return;
     }
 
@@ -3508,7 +3538,7 @@ async function runLobsterPrompt(
     if (nextMainRound <= task.maxRounds) {
       appendSystemMessageForLobster(
         target,
-        buildLobsterMainResumeText(task.id, nextMainRound, subtask)
+        buildLobsterMainResumeText(task.id, nextMainRound, subtasks)
       );
     }
     round = nextMainRound;
@@ -3528,10 +3558,103 @@ type LobsterSubtaskRetryOptions = {
   task: LobsterTaskRecord;
   round: number;
   subtask: LobsterSubtaskRecord;
+  switchVisible?: boolean;
 };
+
+type LobsterSubtaskBatchOptions = {
+  input: PromptRunInput;
+  target: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  subtasks: LobsterSubtaskRecord[];
+};
+
+type LobsterSubtaskRunResult = {
+  subtask: LobsterSubtaskRecord;
+  status: TaskRunStatus;
+};
+
+async function runLobsterSubtasksBatchWithRetry(
+  options: LobsterSubtaskBatchOptions
+): Promise<LobsterSubtaskRunResult[]> {
+  const { input, target, task, round, subtasks } = options;
+  if (subtasks.length <= 1) {
+    const subtask = subtasks[0];
+    if (!subtask) {
+      return [];
+    }
+    const status = await runLobsterSubtaskWithRetry({
+      input,
+      target,
+      task,
+      round,
+      subtask,
+      switchVisible: true,
+    });
+    return [{ subtask, status }];
+  }
+
+  const executionPlan = buildLobsterSubtaskExecutionPlan(subtasks);
+  appendSystemMessageForLobster(target, buildLobsterSubtaskBatchStartedText(task.id, round, subtasks, executionPlan));
+  const results: LobsterSubtaskRunResult[] = [];
+
+  for (let groupIndex = 0; groupIndex < executionPlan.groups.length; groupIndex += 1) {
+    const group = executionPlan.groups[groupIndex] ?? [];
+    if (group.length === 0) {
+      continue;
+    }
+    if (executionPlan.groups.length > 1) {
+      appendSystemMessageForLobster(
+        target,
+        buildLobsterSubtaskExecutionGroupStartedText(task.id, round, groupIndex, executionPlan.groups.length, group)
+      );
+    }
+
+    const groupResults = await Promise.all(group.map(async (subtask): Promise<LobsterSubtaskRunResult> => {
+      try {
+        const status = await runLobsterSubtaskWithRetry({
+          input,
+          target,
+          task,
+          round,
+          subtask,
+          switchVisible: false,
+        });
+        return { subtask, status };
+      } catch (error) {
+        void logError("lobster-subtask-batch-run-error", {
+          taskId: task.id,
+          round,
+          subtaskId: subtask.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        markLobsterSubtaskRunFinished(task.id, subtask.id, "error", null);
+        return { subtask, status: "error" };
+      }
+    }));
+
+    results.push(...groupResults);
+    if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
+      await switchVisibleConversationTabForLobster(target.tabId);
+      return results;
+    }
+  }
+
+  await switchVisibleConversationTabForLobster(target.tabId);
+  if (results.every((result) => result.status === "end")) {
+    updateLobsterTaskRecord(task.id, {
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      updatedAt: Date.now(),
+    });
+    appendSystemMessageForLobster(target, buildLobsterSubtaskBatchCompletedText(task.id, round, subtasks));
+  }
+  return results;
+}
 
 async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, subtask } = options;
+  const shouldSwitchVisible = options.switchVisible !== false;
   const mainTabId = target.tabId;
   let retryCount = 0;
   while (true) {
@@ -3545,7 +3668,9 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
       subtaskTarget,
       buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
     );
-    await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
+    if (shouldSwitchVisible) {
+      await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
+    }
 
     let status: TaskRunStatus = "error";
     try {
@@ -3566,14 +3691,29 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
           communicationFile
         ),
       });
+    } catch (error) {
+      status = "error";
+      void logError("lobster-subtask-run-error", {
+        taskId: task.id,
+        round,
+        subtaskId: subtask.id,
+        retryCount,
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
-      await switchVisibleConversationTabForLobster(mainTabId);
+      if (shouldSwitchVisible) {
+        await switchVisibleConversationTabForLobster(mainTabId);
+      }
     }
 
     if (status !== "error") {
+      const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
+      markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
       return status;
     }
     if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
+      const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
+      markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
       return status;
     }
 
@@ -3607,10 +3747,13 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
   const runModel = role === "main"
     ? (input.lobsterMainModel ?? input.model)
     : (input.lobsterSubtaskModel ?? input.model);
+  const activeSubtaskPatch = role === "main"
+    ? { activeSubtaskId: null, activeSubtaskIds: [] }
+    : buildLobsterActiveSubtaskPatch(task.id, subtaskId);
   updateLobsterTaskRecord(task.id, {
     status: "running",
     currentRound: round,
-    activeSubtaskId: subtaskId ?? (role === "main" ? null : undefined),
+    ...activeSubtaskPatch,
     updatedAt: roundStartedAt,
   });
 
@@ -3633,16 +3776,35 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
   }
 
   const roundEndedAt = Date.now();
-  const roundStatus = getLobsterRoundRunStatus(task.id, round, role) ?? "end";
+  const roundStatus = getLobsterRoundRunStatus(task.id, round, role, subtaskId) ?? "end";
   appendLobsterRound(task.id, {
     round,
     role,
+    subtaskId,
     status: roundStatus,
     startedAt: roundStartedAt,
     endedAt: roundEndedAt,
-    summary: buildLobsterRoundSummary(round, role),
+    summary: buildLobsterRoundSummary(round, role, subtaskId),
   });
   return roundStatus;
+}
+
+function buildLobsterActiveSubtaskPatch(
+  taskId: string,
+  subtaskId?: string,
+): { activeSubtaskId?: string | null; activeSubtaskIds?: string[] } {
+  if (!subtaskId) {
+    return {};
+  }
+  const latest = readLobsterTaskRecord(taskId);
+  const activeSubtaskIds = latest ? getActiveLobsterSubtaskIds(latest) : [];
+  if (!activeSubtaskIds.includes(subtaskId)) {
+    activeSubtaskIds.push(subtaskId);
+  }
+  return {
+    activeSubtaskId: activeSubtaskIds[0] ?? subtaskId,
+    activeSubtaskIds,
+  };
 }
 
 function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): string {
@@ -3650,12 +3812,12 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
     return [
       rootPrompt,
       "",
-      "🦞 龙虾主任务：请拆分目标，返回 JSON 决策，由程序启动子任务。",
+      "🦞 龙虾主任务：请拆分目标，优先并发派发互不冲突的子任务，返回 JSON 决策，由程序启动子任务。",
     ].join("\n");
   }
   return [
     `🦞 龙虾主任务第 ${round} 轮复核。`,
-    "子任务已完成，请读取任务记录判断整体是否完成；未完成则返回下一个子任务 JSON。",
+    "上一批子任务已完成，请读取任务记录判断整体是否完成；未完成则返回下一批子任务 JSON。",
   ].join("\n");
 }
 
@@ -3685,25 +3847,29 @@ function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord
     "",
     "龙虾模式原理（必须遵守）：",
     "1. 主任务每轮只输出一个 JSON 决策，不直接做具体实现。",
-    "2. 当你返回 status=continue 时，程序会按 subtask.prompt 启动 1 个子任务新会话。",
-    "3. 子任务结束后，程序会回到当前主任务会话并唤醒你继续复核。",
+    `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
+    "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
     "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
     "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束。",
     "",
     "主任务职责：",
-    "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、subTasks 和 rounds 概要。",
+    "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、activeSubtaskIds、subTasks 和 rounds 概要。",
     "2. 必须读取主任务沟通文件和子任务沟通目录中的最新执行报告，再做审核验收和下一步决策。",
-    "3. 第 1 轮先给出整体阶段计划（建议 3~6 个阶段）并写入主任务沟通文件，然后再派发第一个最小可执行子任务。",
-    "4. 后续轮次按计划滚动更新：完成一个子任务就复核一次，不满足就派发下一个子任务。",
-    "5. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
-    "6. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一个修复/补齐子任务。",
-    "7. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一个最小子任务。",
-    "8. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
-    "9. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
+    "3. 第 1 轮先给出整体阶段计划（建议 3~6 个阶段）并写入主任务沟通文件，然后优先派发首批互不冲突的最小可执行子任务；不要默认只派发 1 个。",
+    "4. 后续轮次按计划滚动更新：完成一个子任务或一批子任务后复核一次，不满足就继续派发下一批尽可能并发的子任务。",
+    "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
+    "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
+    `7. 每批最多 ${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
+    "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
+    "9. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
+    "10. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
+    "11. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+    "12. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
     '{"status":"completed","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-    '{"status":"continue","acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"subtask":{"id":"stable-id","title":"子任务标题","prompt":"给子任务执行的完整指令"}}',
+    '{"status":"continue","acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
+    '{"status":"continue","acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
     '{"status":"blocked","finalSummary":"阻塞原因"}',
     "",
     "字段要求：",
@@ -3712,11 +3878,14 @@ function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord
     "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
-    "- status=continue 时必须提供 acceptance.passed=false、subtask.title 和 subtask.prompt。",
-    "- subtask.prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
-    "- subtask.prompt 至少包含：背景目标、具体范围、相关文件/模块、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
-    "- subtask.id 应稳定可读；如果复用已有子任务，请使用已有 id。",
-    "- 返回 continue 前，同时更新任务记录文件中的 subTasks 和 activeSubtaskId。",
+    `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOBSTER_PARALLEL_SUBTASK_MAX}。`,
+    "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
+    "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
+    "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
+    "- subtasks[*].writeFiles 可选；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突；纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
+    "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
+    "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
+    "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId 和 activeSubtaskIds。",
     "- 返回 completed 前，同时更新任务记录文件 status=completed、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     "",
     "原始目标：",
@@ -3736,9 +3905,13 @@ function buildLobsterSubtaskModelPrompt(
   const taskFile = task.taskStoreFile;
   const communication = getLobsterCommunicationPaths(taskId);
   const reportFile = communicationFile ?? buildLobsterSubtaskCommunicationFile(taskId, subtask.id, round, retryCount);
+  const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
+    ? subtask.writeFiles.join("、")
+    : "未声明；以当前子任务指令明确授权的文件/范围为准";
   return [
     "你正在执行 VS Code 插件的龙虾模式子任务。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词和任务记录文件。",
+    "注意：同一轮可能存在其他子任务并发执行；必须严格限定在当前子任务授权范围内，发现写入范围冲突时先停止并在沟通文件中报告。",
     `龙虾任务 ID：${taskId}`,
     `当前轮次：${round}`,
     `当前子任务 ID：${subtask.id}`,
@@ -3749,7 +3922,7 @@ function buildLobsterSubtaskModelPrompt(
     "",
     "子任务职责：",
     "1. 只执行当前子任务，不重新拆分主目标。",
-    "2. 可以进行必要代码/文件修改和验证。",
+    "2. 可以进行当前子任务范围内必要代码/文件修改和验证，不要修改未在指令或 writeFiles 中授权的范围。",
     "3. 完成后更新任务记录文件中对应 subTasks 项的 status、summary 和 communicationFile。",
     "4. 子任务结束前必须把执行情况写入本子任务沟通文件，主任务唤醒后一定会读取该文件。",
     "5. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
@@ -3757,6 +3930,7 @@ function buildLobsterSubtaskModelPrompt(
     "",
     "当前子任务：",
     `标题：${subtask.title}`,
+    `授权写入文件/范围：${writeFiles}`,
     `指令：${subtask.prompt ?? subtask.title}`,
     "",
     "原始目标：",
@@ -3764,8 +3938,9 @@ function buildLobsterSubtaskModelPrompt(
   ].join("\n");
 }
 
-function buildLobsterRoundSummary(round: number, role: LobsterTaskRole): string {
-  return `${role === "main" ? "Main task" : "Subtask"} round ${round} finished from extension observation.`;
+function buildLobsterRoundSummary(round: number, role: LobsterTaskRole, subtaskId?: string): string {
+  const subtaskSuffix = role === "subtask" && subtaskId ? ` (${subtaskId})` : "";
+  return `${role === "main" ? "Main task" : "Subtask"}${subtaskSuffix} round ${round} finished from extension observation.`;
 }
 
 function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
@@ -3891,24 +4066,78 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
       finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
     };
   }
-  if (raw.status !== "continue" || !raw.subtask || typeof raw.subtask !== "object") {
+  if (raw.status !== "continue") {
     return null;
   }
-  const subtask = raw.subtask as { id?: unknown; title?: unknown; prompt?: unknown };
-  const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
-  const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
-  if (!title || !prompt || prompt.length < LOBSTER_SUBTASK_PROMPT_MIN_LENGTH) {
+  const subtasks = normalizeLobsterSubtaskDecisions(raw);
+  if (!subtasks || subtasks.length === 0) {
     return null;
   }
   const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
   return {
     status: "continue",
     acceptance: acceptance ?? { passed: false, checks: [] },
-    subtask: {
-      id: typeof subtask.id === "string" && subtask.id.trim() ? subtask.id.trim() : buildLobsterSubtaskId(title),
-      title,
-      prompt,
-    },
+    subtask: subtasks[0],
+    subtasks,
+    parallelReason: typeof (raw as { parallelReason?: unknown }).parallelReason === "string"
+      ? (raw as { parallelReason: string }).parallelReason.trim()
+      : undefined,
+  };
+}
+
+function normalizeLobsterSubtaskDecisions(raw: Partial<LobsterMainDecision>): LobsterSubtaskDecision[] | null {
+  const rawSubtasks = Array.isArray((raw as { subtasks?: unknown }).subtasks)
+    ? (raw as { subtasks: unknown[] }).subtasks
+    : (raw.subtask ? [raw.subtask] : []);
+  if (rawSubtasks.length === 0 || rawSubtasks.length > LOBSTER_PARALLEL_SUBTASK_MAX) {
+    return null;
+  }
+  const normalized = rawSubtasks
+    .map((item): LobsterSubtaskDecision | null => normalizeSingleLobsterSubtaskDecision(item))
+    .filter((item): item is LobsterSubtaskDecision => Boolean(item));
+  if (normalized.length !== rawSubtasks.length) {
+    return null;
+  }
+  const seenIds = new Set<string>();
+  for (const subtask of normalized) {
+    const id = subtask.id ?? buildLobsterSubtaskId(subtask.title);
+    if (seenIds.has(id)) {
+      return null;
+    }
+    seenIds.add(id);
+  }
+  return normalized;
+}
+
+function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDecision | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const subtask = value as {
+    id?: unknown;
+    title?: unknown;
+    prompt?: unknown;
+    conflictGroup?: unknown;
+    writeFiles?: unknown;
+  };
+  const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
+  const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
+  if (!title || !prompt || prompt.length < LOBSTER_SUBTASK_PROMPT_MIN_LENGTH) {
+    return null;
+  }
+  const id = typeof subtask.id === "string" && subtask.id.trim()
+    ? subtask.id.trim()
+    : buildLobsterSubtaskId(title);
+  const conflictGroup = typeof subtask.conflictGroup === "string" && subtask.conflictGroup.trim()
+    ? subtask.conflictGroup.trim()
+    : undefined;
+  const writeFiles = normalizeLobsterWriteFiles(subtask.writeFiles);
+  return {
+    id,
+    title,
+    prompt,
+    conflictGroup,
+    writeFiles: writeFiles.length > 0 ? writeFiles : undefined,
   };
 }
 
@@ -3989,7 +4218,7 @@ function buildLobsterSubtaskId(title: string): string {
 function applyLobsterMainDecision(
   taskId: string,
   decision: LobsterMainDecision
-): { status: "completed" | "continue" | "blocked"; task: LobsterTaskRecord; subtask?: LobsterSubtaskRecord } {
+): { status: "completed" | "continue" | "blocked"; task: LobsterTaskRecord; subtasks?: LobsterSubtaskRecord[] } {
   const existing = readLobsterTaskRecord(taskId);
   if (!existing) {
     throw new Error(`lobster-task-missing:${taskId}`);
@@ -3998,6 +4227,7 @@ function applyLobsterMainDecision(
     const task = updateLobsterTaskRecord(taskId, {
       status: "completed",
       activeSubtaskId: null,
+      activeSubtaskIds: [],
       finalSummary: decision.finalSummary,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
@@ -4009,6 +4239,8 @@ function applyLobsterMainDecision(
   if (decision.status === "blocked") {
     const task = updateLobsterTaskRecord(taskId, {
       status: "needs-review",
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
       finalSummary: decision.finalSummary ?? "Main task reported blocked.",
       updatedAt: Date.now(),
     }) ?? existing;
@@ -4016,24 +4248,36 @@ function applyLobsterMainDecision(
     return { status: "blocked", task };
   }
 
-  if (!decision.subtask) {
+  const decisionSubtasks = getLobsterDecisionSubtasks(decision);
+  if (decisionSubtasks.length === 0) {
     const task = updateLobsterTaskRecord(taskId, {
       status: "needs-review",
-      finalSummary: "Main task returned continue without subtask.",
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      finalSummary: "Main task returned continue without subtasks.",
       updatedAt: Date.now(),
     }) ?? existing;
     return { status: "blocked", task };
   }
 
-  const subtask = upsertLobsterSubtask(existing, decision.subtask);
+  const subtaskBatch = upsertLobsterSubtasks(existing, decisionSubtasks);
+  const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
   const task = updateLobsterTaskRecord(taskId, {
     status: "running",
-    activeSubtaskId: subtask.record.id,
-    subTasks: subtask.nextSubtasks,
+    activeSubtaskId: activeSubtaskIds[0] ?? null,
+    activeSubtaskIds,
+    subTasks: subtaskBatch.nextSubtasks,
     updatedAt: Date.now(),
   }) ?? existing;
   appendLobsterMainDecisionSummary(task, decision);
-  return { status: "continue", task, subtask: subtask.record };
+  return { status: "continue", task, subtasks: subtaskBatch.records };
+}
+
+function getLobsterDecisionSubtasks(decision: LobsterMainDecision): LobsterSubtaskDecision[] {
+  if (Array.isArray(decision.subtasks) && decision.subtasks.length > 0) {
+    return decision.subtasks;
+  }
+  return decision.subtask ? [decision.subtask] : [];
 }
 
 function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: LobsterMainDecision): void {
@@ -4052,14 +4296,28 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
       lines.push("### 整体总结");
       lines.push(decision.finalSummary);
     }
-    if (decision.subtask) {
+    const decisionSubtasks = getLobsterDecisionSubtasks(decision);
+    if (decisionSubtasks.length > 0) {
       lines.push("");
-      lines.push("### 下一步子任务");
-      lines.push(`- 子任务 ID：${decision.subtask.id ?? buildLobsterSubtaskId(decision.subtask.title)}`);
-      lines.push(`- 标题：${decision.subtask.title}`);
-      lines.push("");
-      lines.push("#### 子任务指令");
-      lines.push(decision.subtask.prompt);
+      lines.push(decisionSubtasks.length === 1 ? "### 下一步子任务" : "### 下一步并发子任务批次");
+      if (decision.parallelReason) {
+        lines.push(`- 并发判断：${decision.parallelReason}`);
+      }
+      decisionSubtasks.forEach((subtask, index) => {
+        const prefix = decisionSubtasks.length === 1 ? "" : `${index + 1}. `;
+        lines.push(`- ${prefix}子任务 ID：${subtask.id ?? buildLobsterSubtaskId(subtask.title)}`);
+        lines.push(`- ${prefix}标题：${subtask.title}`);
+        if (subtask.conflictGroup) {
+          lines.push(`- ${prefix}冲突组：${subtask.conflictGroup}`);
+        }
+        const writeFiles = formatLobsterWriteFiles(subtask.writeFiles);
+        if (writeFiles) {
+          lines.push(`- ${prefix}预计写入：${writeFiles}`);
+        }
+        lines.push("");
+        lines.push(`#### ${prefix}子任务指令`);
+        lines.push(subtask.prompt);
+      });
     }
     if (Array.isArray(decision.roundSummaries) && decision.roundSummaries.length > 0) {
       lines.push("");
@@ -4154,22 +4412,35 @@ function buildLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision?: Lo
 function buildLobsterSubtaskDecisionMarkdown(
   task: LobsterTaskRecord,
   round: number,
-  subtask: LobsterSubtaskRecord,
+  subtasks: LobsterSubtaskRecord[],
   decision: LobsterMainDecision,
 ): string {
   const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
   const lines: string[] = [
-    "## 龙虾子任务派发",
+    subtasks.length === 1 ? "## 龙虾子任务派发" : "## 龙虾并发子任务派发",
     "",
     `- 任务 ID：${task.id}`,
     `- 轮次：${round}`,
-    `- 子任务 ID：${subtask.id}`,
-    `- 子任务标题：${subtask.title}`,
+    `- 子任务数量：${subtasks.length}`,
     `- 决策状态：${decision.status}`,
   ];
 
   if (decision.acceptance?.summary) {
     lines.push(`- 本轮复核：${decision.acceptance.summary}`);
+  }
+  if (decision.parallelReason) {
+    lines.push(`- 并发判断：${decision.parallelReason}`);
+  }
+  if (subtasks.length === 1 && subtasks[0]) {
+    lines.push(`- 子任务 ID：${subtasks[0].id}`);
+    lines.push(`- 子任务标题：${subtasks[0].title}`);
+    if (subtasks[0].conflictGroup) {
+      lines.push(`- 冲突组：${subtasks[0].conflictGroup}`);
+    }
+    const writeFiles = formatLobsterWriteFiles(subtasks[0].writeFiles);
+    if (writeFiles) {
+      lines.push(`- 预计写入：${writeFiles}`);
+    }
   }
 
   if (acceptanceChecks.length > 0) {
@@ -4182,10 +4453,31 @@ function buildLobsterSubtaskDecisionMarkdown(
   }
 
   lines.push("");
-  lines.push("### 子任务指令");
-  lines.push(subtask.prompt ?? subtask.title);
+  lines.push(subtasks.length === 1 ? "### 子任务指令" : "### 子任务指令批次");
+  subtasks.forEach((subtask, index) => {
+    if (subtasks.length > 1) {
+      lines.push("");
+      lines.push(`#### ${index + 1}. ${subtask.title}`);
+      lines.push(`- 子任务 ID：${subtask.id}`);
+      if (subtask.conflictGroup) {
+        lines.push(`- 冲突组：${subtask.conflictGroup}`);
+      }
+      const writeFiles = formatLobsterWriteFiles(subtask.writeFiles);
+      if (writeFiles) {
+        lines.push(`- 预计写入：${writeFiles}`);
+      }
+    }
+    lines.push(subtask.prompt ?? subtask.title);
+  });
 
   return `${lines.join("\n")}\n`;
+}
+
+function formatLobsterWriteFiles(writeFiles?: string[]): string | null {
+  if (!Array.isArray(writeFiles) || writeFiles.length === 0) {
+    return null;
+  }
+  return writeFiles.join("、");
 }
 
 function upsertLobsterSubtask(
@@ -4200,6 +4492,8 @@ function upsertLobsterSubtask(
     id,
     title: subtask.title,
     prompt: subtask.prompt,
+    conflictGroup: subtask.conflictGroup,
+    writeFiles: subtask.writeFiles,
     status: "running",
     updatedAt: now,
   };
@@ -4213,6 +4507,70 @@ function upsertLobsterSubtask(
   }
   nextSubtasks.push(record);
   return { record, nextSubtasks };
+}
+
+function upsertLobsterSubtasks(
+  task: LobsterTaskRecord,
+  subtasks: LobsterSubtaskDecision[],
+): { records: LobsterSubtaskRecord[]; nextSubtasks: LobsterSubtaskRecord[] } {
+  let nextSubtasks = [...task.subTasks];
+  const records: LobsterSubtaskRecord[] = [];
+  subtasks.forEach((subtask) => {
+    const result = upsertLobsterSubtask({ ...task, subTasks: nextSubtasks }, subtask);
+    nextSubtasks = result.nextSubtasks;
+    records.push(result.record);
+  });
+  return { records, nextSubtasks };
+}
+
+function getActiveLobsterSubtaskIds(task: LobsterTaskRecord): string[] {
+  const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
+  const normalized = ids.filter((id) => typeof id === "string" && id.trim());
+  if (task.activeSubtaskId && !normalized.includes(task.activeSubtaskId)) {
+    normalized.unshift(task.activeSubtaskId);
+  }
+  return Array.from(new Set(normalized));
+}
+
+function markLobsterSubtaskRunFinished(
+  taskId: string,
+  subtaskId: string,
+  runStatus: TaskRunStatus,
+  assistantContent: string | null,
+): void {
+  const task = readLobsterTaskRecord(taskId);
+  if (!task) {
+    return;
+  }
+  const now = Date.now();
+  const summary = buildLobsterSubtaskCompletionSummary(assistantContent);
+  const nextStatus: LobsterSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
+  const subTasks = task.subTasks.map((item) => {
+    if (item.id !== subtaskId) {
+      return item;
+    }
+    return {
+      ...item,
+      status: nextStatus,
+      summary: summary ?? item.summary,
+      updatedAt: now,
+    };
+  });
+  const activeSubtaskIds = getActiveLobsterSubtaskIds(task).filter((id) => id !== subtaskId);
+  updateLobsterTaskRecord(taskId, {
+    subTasks,
+    activeSubtaskId: activeSubtaskIds[0] ?? null,
+    activeSubtaskIds,
+    updatedAt: now,
+  });
+}
+
+function buildLobsterSubtaskCompletionSummary(content: string | null): string | undefined {
+  const normalized = String(content ?? "").trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized;
 }
 
 function markLobsterTaskInterrupted(taskId: string, status: "error" | "stopped", target: PromptRunTarget): void {
@@ -4290,10 +4648,10 @@ function showLobsterSubtaskDecisionMarkdown(
   target: PromptRunTarget,
   task: LobsterTaskRecord,
   round: number,
-  subtask: LobsterSubtaskRecord,
+  subtasks: LobsterSubtaskRecord[],
   decision: LobsterMainDecision,
 ): void {
-  const content = buildLobsterSubtaskDecisionMarkdown(task, round, subtask, decision);
+  const content = buildLobsterSubtaskDecisionMarkdown(task, round, subtasks, decision);
   if (replaceLobsterMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
     return;
   }
@@ -4362,6 +4720,7 @@ function getLobsterRoundRunStatus(
   taskId: string,
   round: number,
   role: LobsterTaskRole,
+  subtaskId?: string,
 ): TaskRunStatus | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
@@ -4370,6 +4729,7 @@ function getLobsterRoundRunStatus(
       run.lobsterTaskId === taskId
       && run.lobsterRound === round
       && run.taskRole === role
+      && (role !== "subtask" || run.lobsterSubtaskId === subtaskId)
     ) {
       return run.status;
     }
@@ -4395,12 +4755,69 @@ function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
 function buildLobsterMainResumeText(
   taskId: string,
   round: number,
-  subtask: LobsterSubtaskRecord,
+  subtasks: LobsterSubtaskRecord[],
 ): string {
+  const subtaskTitles = subtasks.map((subtask) => subtask.title).join("、");
   return [
     `🦞 正在唤醒主任务复核：第 ${round} 轮`,
     `龙虾任务：${taskId}`,
-    `已完成子任务：${subtask.title}`,
+    `已完成子任务：${subtaskTitles || "无"}`,
+  ].join("\n");
+}
+
+function buildLobsterSubtaskBatchStartedText(
+  taskId: string,
+  round: number,
+  subtasks: LobsterSubtaskRecord[],
+  executionPlan: LobsterSubtaskExecutionPlan<LobsterSubtaskRecord>,
+): string {
+  const isSingleParallelGroup = executionPlan.groups.length <= 1;
+  const lines = [
+    isSingleParallelGroup
+      ? `🦞 并发子任务批次已启动：${subtasks.length} 个`
+      : `🦞 子任务批次已规划：${subtasks.length} 个，将按 ${executionPlan.groups.length} 组执行（组内并发、组间串行）`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
+  ];
+  if (!isSingleParallelGroup) {
+    lines.push(`执行计划：${describeLobsterExecutionPlan(executionPlan).join("；")}`);
+  }
+  if (executionPlan.conflicts.length > 0) {
+    const conflictSummaries = executionPlan.conflicts.slice(0, 3).map((conflict) => {
+      const reason = conflict.reason === "writeFiles" ? "写入文件" : "冲突组";
+      return `${conflict.leftId} ↔ ${conflict.rightId}（${reason}: ${conflict.value}）`;
+    });
+    lines.push(`串行兜底：检测到 ${executionPlan.conflicts.length} 个声明冲突，${conflictSummaries.join("；")}`);
+  }
+  return lines.join("\n");
+}
+
+function buildLobsterSubtaskExecutionGroupStartedText(
+  taskId: string,
+  round: number,
+  groupIndex: number,
+  groupCount: number,
+  subtasks: LobsterSubtaskRecord[],
+): string {
+  return [
+    `🦞 子任务执行组已启动：第 ${groupIndex + 1}/${groupCount} 组，${subtasks.length} 个`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `组内子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
+  ].join("\n");
+}
+
+function buildLobsterSubtaskBatchCompletedText(
+  taskId: string,
+  round: number,
+  subtasks: LobsterSubtaskRecord[],
+): string {
+  return [
+    `🦞 子任务批次已全部完成：${subtasks.length} 个`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
   ].join("\n");
 }
 
@@ -7025,6 +7442,7 @@ function prepareLobsterSubtaskCommunicationFile(
         `- 龙虾任务 ID：${task.id}`,
         `- 子任务 ID：${subtask.id}`,
         `- 子任务标题：${subtask.title}`,
+        `- 授权写入文件/范围：${formatLobsterWriteFiles(subtask.writeFiles) ?? "未声明；以子任务指令为准"}`,
         `- 轮次：${round}`,
         `- 重试次数：${retryCount}`,
         `- 创建时间：${new Date().toISOString()}`,
@@ -7071,11 +7489,13 @@ function createLobsterTaskRecord(
     status: "running",
     createdAt: now,
     updatedAt: now,
-    maxRounds: LOBSTER_MAX_ROUNDS,
+    maxRounds: getWorkspaceLobsterMaxRounds(),
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
     sessionId,
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
     subTasks: [],
     rounds: [],
     completionRoundSummaries: [],
@@ -7175,7 +7595,9 @@ function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
   }
   const task = store.tasks[index];
   const existingRoundIndex = task.rounds.findIndex((item) => (
-    item.round === round.round && item.role === round.role
+    item.round === round.round
+    && item.role === round.role
+    && (item.subtaskId ?? null) === (round.subtaskId ?? null)
   ));
   const rounds = [...task.rounds];
   if (existingRoundIndex >= 0) {
@@ -7254,12 +7676,16 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     status,
     createdAt,
     updatedAt,
-    maxRounds: typeof raw.maxRounds === "number" ? Math.max(raw.maxRounds, LOBSTER_MAX_ROUNDS) : LOBSTER_MAX_ROUNDS,
+    maxRounds: normalizeStoredLobsterMaxRounds(raw.maxRounds),
     currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
     communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLobsterCommunicationPaths(raw.id).dir,
     mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLobsterCommunicationPaths(raw.id).mainFile,
     sessionId,
     activeSubtaskId: typeof raw.activeSubtaskId === "string" ? raw.activeSubtaskId : null,
+    activeSubtaskIds: Array.isArray((raw as { activeSubtaskIds?: unknown }).activeSubtaskIds)
+      ? (raw as { activeSubtaskIds: unknown[] }).activeSubtaskIds
+        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      : (typeof raw.activeSubtaskId === "string" && raw.activeSubtaskId.trim() ? [raw.activeSubtaskId] : []),
     subTasks,
     rounds,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
@@ -7283,6 +7709,8 @@ function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | 
     id: raw.id,
     title: raw.title,
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
+    conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
+    writeFiles: normalizeLobsterWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
@@ -7304,6 +7732,7 @@ function normalizeLobsterRoundRecord(record: unknown): LobsterRoundRecord | null
   return {
     round: raw.round,
     role: raw.role,
+    subtaskId: typeof raw.subtaskId === "string" ? raw.subtaskId : undefined,
     status: raw.status,
     startedAt: typeof raw.startedAt === "number" ? raw.startedAt : Date.now(),
     endedAt: typeof raw.endedAt === "number" ? raw.endedAt : Date.now(),
@@ -7611,6 +8040,34 @@ function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
 
 function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
+}
+
+function normalizeLobsterMaxRounds(value: unknown): number {
+  const rawValue = parseLobsterMaxRoundsValue(value);
+  if (!Number.isFinite(rawValue)) {
+    return LOBSTER_DEFAULT_MAX_ROUNDS;
+  }
+  const integerValue = Math.floor(rawValue);
+  return Math.min(Math.max(integerValue, LOBSTER_MIN_MAX_ROUNDS), LOBSTER_MAX_MAX_ROUNDS);
+}
+
+function normalizeStoredLobsterMaxRounds(value: unknown): number {
+  const rawValue = parseLobsterMaxRoundsValue(value);
+  if (!Number.isFinite(rawValue)) {
+    return LOBSTER_DEFAULT_MAX_ROUNDS;
+  }
+  return Math.max(Math.floor(rawValue), LOBSTER_MIN_MAX_ROUNDS);
+}
+
+function parseLobsterMaxRoundsValue(value: unknown): number {
+  const rawValue = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  return rawValue;
+}
+
+function getWorkspaceLobsterMaxRounds(): number {
+  return normalizeLobsterMaxRounds(workspaceSettings.lobsterMaxRounds);
 }
 
 function normalizeCliModelName(value: unknown): string | null {
@@ -8220,6 +8677,10 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
     if (typeof codexMultiAgentEnabled === "boolean") {
       result.codexMultiAgentEnabled = codexMultiAgentEnabled;
+    }
+    const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
+    if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
+      result.lobsterMaxRounds = normalizeLobsterMaxRounds(lobsterMaxRounds);
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {
@@ -9125,6 +9586,7 @@ function createLobsterSubtaskRunTarget(cli: CliName): PromptRunTarget {
   state.tabs.push(tab);
   persistConversationTabsToWorkspaceSettings();
   void logInfo("lobster-subtask-session-created", { cli, tabId: tab.id });
+  void postPanelState();
   return {
     tabId: tab.id,
     cli,

@@ -146,6 +146,7 @@ export type PanelState = {
   rememberSelectedCli: boolean;
   autoAddEditorContextTags: boolean;
   codexMultiAgentEnabled: boolean;
+  lobsterMaxRounds: number;
   debug: boolean;
   locale: string;
   isMac: boolean;

@@ -4,6 +4,10 @@ import { AppLocale, resolveLocale } from "../i18n";
 import { readFileSync } from "fs";
 import * as path from "path";
 
+const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
+const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
+const LOBSTER_MAX_ROUNDS_SETTING_MAX = 100;
+
 const WEBVIEW_I18N = {
   en: {
     appTitle: "Sinitek CLI Assistant",
@@ -84,6 +88,9 @@ const WEBVIEW_I18N = {
     toolSettingsCodexSubagentsTitle: "Allow Codex app-server to use official multi-agent subagents (spawnAgent / wait / closeAgent)",
     toolSettingsCodexSubagentsToggle: "On",
     toolSettingsCodexSubagentsHint: "Warning: in the current Codex version, enabling this has a bug and tasks may be interrupted more easily.",
+    toolSettingsLobsterMaxRoundsLabel: "Lobster Max Rounds",
+    toolSettingsLobsterMaxRoundsAria: "Lobster maximum rounds",
+    toolSettingsLobsterMaxRoundsHint: `Project setting. New lobster tasks use this limit; existing tasks keep their recorded limit. Range: ${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}, default: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}.`,
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -338,6 +345,9 @@ const WEBVIEW_I18N = {
     toolSettingsCodexSubagentsTitle: "是否允许 Codex app-server 使用官方多智能体子任务能力（spawnAgent / wait / closeAgent）",
     toolSettingsCodexSubagentsToggle: "开启",
     toolSettingsCodexSubagentsHint: "提示：当前版本 Codex 开启后有 bug，任务容易中断。",
+    toolSettingsLobsterMaxRoundsLabel: "龙虾最大轮次",
+    toolSettingsLobsterMaxRoundsAria: "龙虾最大轮次",
+    toolSettingsLobsterMaxRoundsHint: `项目级设置。新建龙虾任务使用该上限；已有任务保持记录中的上限。范围：${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}，默认：${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}。`,
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -2425,6 +2435,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         line-height: 1.4;
         color: var(--vscode-descriptionForeground);
       }
+      .tool-settings-number {
+        width: 92px;
+        padding: 4px 6px;
+        border: 1px solid var(--vscode-input-border);
+        border-radius: 4px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font: inherit;
+        font-size: 12px;
+      }
+      .tool-settings-number:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+      }
 
       .common-commands-modal {
         width: 360px;
@@ -2791,6 +2815,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </label>
             </div>
             <div class="tool-settings-note">${i18n.toolSettingsCodexSubagentsHint}</div>
+            <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
+              <input
+                type="number"
+                id="lobsterMaxRounds"
+                class="tool-settings-number"
+                min="${LOBSTER_MAX_ROUNDS_SETTING_MIN}"
+                max="${LOBSTER_MAX_ROUNDS_SETTING_MAX}"
+                step="1"
+                aria-label="${i18n.toolSettingsLobsterMaxRoundsAria}"
+              />
+            </div>
+            <div class="tool-settings-note">${i18n.toolSettingsLobsterMaxRoundsHint}</div>
             <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
               <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
@@ -3210,6 +3247,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debug: false,
         autoAddEditorContextTags: false,
         codexMultiAgentEnabled: false,
+        lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
         locale: "auto",
         isMac: false,
         macTaskShell: "zsh",
@@ -3270,6 +3308,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
+        lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -3382,6 +3421,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const erroredTabIds = new Set();
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
+
+      function normalizeLobsterMaxRounds(value) {
+        const numeric = typeof value === "number"
+          ? value
+          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
+        if (!Number.isFinite(numeric)) {
+          return ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT};
+        }
+        return Math.min(
+          Math.max(Math.floor(numeric), ${LOBSTER_MAX_ROUNDS_SETTING_MIN}),
+          ${LOBSTER_MAX_ROUNDS_SETTING_MAX}
+        );
+      }
 
       function createTaskListState() {
         return {
@@ -3978,6 +4030,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
+        state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -4062,6 +4115,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.codexMultiAgentEnabled) {
           elements.codexMultiAgentEnabled.checked = state.codexMultiAgentEnabled;
+        }
+        if (elements.lobsterMaxRounds) {
+          elements.lobsterMaxRounds.value = String(state.lobsterMaxRounds);
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
@@ -7956,6 +8012,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             value: enabled,
           });
         });
+      }
+      if (elements.lobsterMaxRounds) {
+        const commitLobsterMaxRounds = () => {
+          const nextValue = normalizeLobsterMaxRounds(elements.lobsterMaxRounds.value);
+          state.lobsterMaxRounds = nextValue;
+          elements.lobsterMaxRounds.value = String(nextValue);
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "lobsterMaxRounds",
+            value: nextValue,
+          });
+        };
+        elements.lobsterMaxRounds.addEventListener("change", commitLobsterMaxRounds);
+        elements.lobsterMaxRounds.addEventListener("blur", commitLobsterMaxRounds);
       }
       if (elements.languageSelect) {
         elements.languageSelect.addEventListener("change", (event) => {
