@@ -185,6 +185,18 @@ const LOBSTER_PARALLEL_SUBTASK_MAX = 6;
 const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
 const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
+const LOBSTER_RESUME_PROMPT_MAX_LENGTH = 48;
+const LOBSTER_RESUME_PROMPT_PATTERNS: RegExp[] = [
+  /^继续(?:执行|进行|下去|一下|一下子|任务|主任务|这个任务|当前任务|上一轮|上轮|吧)?$/u,
+  /^接着(?:执行|做|继续|下去|往下)?$/u,
+  /^续上$/u,
+  /^continue(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
+  /^resume(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
+  /^go\s*on$/i,
+  /^carry\s*on$/i,
+  /^keep\s*going$/i,
+  /^proceed$/i,
+];
 const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
@@ -1395,6 +1407,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
     const shouldRunLobster = effectiveInteractiveMode === "lobster";
+    const lobsterResumeTask = shouldRunLobster
+      ? resolveLobsterResumeTaskFromPrompt(trimmed, promptTargetTabId)
+      : null;
+    const lobsterResumeRequested = shouldRunLobster && isLobsterResumePrompt(trimmed);
     if (isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster") {
       void logInfo("lobster-subtask-manual-continue-forced-coding", {
         cli: targetCli,
@@ -1404,7 +1420,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
     if (shouldRunLobster) {
-      await runLobsterPrompt(promptInput, { targetTabId: promptTargetTabId });
+      await runLobsterPrompt(promptInput, {
+        targetTabId: promptTargetTabId,
+        resumeTaskId: lobsterResumeTask?.id ?? null,
+        resumeRequested: lobsterResumeRequested,
+      });
     } else {
       await runPrompt(promptInput, { targetTabId: promptTargetTabId });
     }
@@ -3034,6 +3054,134 @@ function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {
   };
 }
 
+function normalizeLobsterResumePrompt(prompt: string): string {
+  const trimmed = prompt.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed
+    .replace(/[，,。.!！?？;；:：~～]+$/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLobsterResumePrompt(prompt: string): boolean {
+  const normalized = normalizeLobsterResumePrompt(prompt);
+  if (!normalized || normalized.length > LOBSTER_RESUME_PROMPT_MAX_LENGTH) {
+    return false;
+  }
+  return LOBSTER_RESUME_PROMPT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isLobsterTaskResumable(task: LobsterTaskRecord): boolean {
+  return task.status === "error" || task.status === "stopped" || task.status === "running";
+}
+
+function collectRecentLobsterTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
+  const messages = getLobsterMessagesForTarget(target);
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const taskId = typeof messages[index]?.lobsterTaskId === "string"
+      ? messages[index]?.lobsterTaskId?.trim()
+      : "";
+    if (!taskId || seen.has(taskId)) {
+      continue;
+    }
+    seen.add(taskId);
+    ids.push(taskId);
+    if (ids.length >= limit) {
+      break;
+    }
+  }
+  return ids;
+}
+
+function isLobsterTaskSessionCompatible(
+  task: LobsterTaskRecord,
+  targetSessionId: string | null,
+  options: { allowMissingTaskSessionId?: boolean } = {}
+): boolean {
+  if (!targetSessionId) {
+    return !task.sessionId;
+  }
+  if (task.sessionId === targetSessionId) {
+    return true;
+  }
+  return options.allowMissingTaskSessionId === true && !task.sessionId;
+}
+
+function isLobsterTaskCompatibleWithTarget(
+  task: LobsterTaskRecord,
+  target: PromptRunTarget,
+  options: { allowMissingTaskSessionId?: boolean } = {}
+): boolean {
+  if (task.cli !== target.cli || task.workspaceKey !== activeWorkspaceKey) {
+    return false;
+  }
+  const targetSessionId = resolveLobsterTaskSessionId(target);
+  return isLobsterTaskSessionCompatible(task, targetSessionId, options);
+}
+
+function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTaskRecord | null {
+  const candidates: LobsterTaskRecord[] = [];
+  const seenTaskIds = new Set<string>();
+
+  const appendCandidate = (
+    task: LobsterTaskRecord | null | undefined,
+    options: { allowMissingTaskSessionId?: boolean } = {}
+  ): void => {
+    if (
+      !task
+      || seenTaskIds.has(task.id)
+      || !isLobsterTaskCompatibleWithTarget(task, target, {
+        allowMissingTaskSessionId: options.allowMissingTaskSessionId,
+      })
+    ) {
+      return;
+    }
+    seenTaskIds.add(task.id);
+    candidates.push(task);
+  };
+
+  const recentTaskIds = collectRecentLobsterTaskIdsForTarget(target);
+  recentTaskIds.forEach((taskId) => {
+    appendCandidate(readLobsterTaskRecord(taskId), { allowMissingTaskSessionId: true });
+  });
+
+  const targetSessionId = resolveLobsterTaskSessionId(target);
+  if (targetSessionId) {
+    const sessionStoreFile = getLobsterTaskStoreSessionFile(activeWorkspaceKey, target.cli, targetSessionId);
+    const sessionStore = readLobsterTaskStore(sessionStoreFile);
+    sessionStore.tasks
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .forEach((task) => {
+        appendCandidate(
+          task.taskStoreFile === sessionStoreFile ? task : { ...task, taskStoreFile: sessionStoreFile }
+        );
+      });
+  }
+
+  const resumable = candidates
+    .filter((task) => isLobsterTaskResumable(task))
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  return resumable[0] ?? null;
+}
+
+function resolveLobsterResumeTaskFromPrompt(
+  prompt: string,
+  targetTabId: string | null | undefined
+): LobsterTaskRecord | null {
+  if (!isLobsterResumePrompt(prompt)) {
+    return null;
+  }
+  const target = resolvePromptRunTarget(targetTabId ?? null);
+  if (!target) {
+    return null;
+  }
+  return findResumableLobsterTaskForTarget(target);
+}
+
 function sendRunStatusForTab(
   tabId: string,
   status: "start" | "end" | "error" | "stopped",
@@ -3471,22 +3619,63 @@ ${rawStderr}`);
 
 async function runLobsterPrompt(
   input: PromptRunInput,
-  options: { targetTabId?: string | null } = {}
+  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
 ): Promise<void> {
   const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
   if (!target || !input.displayPrompt.trim()) {
     return;
   }
 
-  const initialSessionId = resolveLobsterTaskSessionId(target);
-  const task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
-    sessionId: initialSessionId,
-  });
-  appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task));
+  const resumeTaskId = typeof options.resumeTaskId === "string" && options.resumeTaskId.trim()
+    ? options.resumeTaskId.trim()
+    : null;
+  const resumeRequested = options.resumeRequested === true;
 
+  let task: LobsterTaskRecord | null = null;
   let round = 1;
-  while (round <= task.maxRounds) {
-    const latest = readLobsterTaskRecord(task.id) ?? task;
+
+  if (resumeTaskId) {
+    const existingTask = readLobsterTaskRecord(resumeTaskId);
+    if (
+      existingTask
+      && isLobsterTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
+      && !isLobsterTaskCompleted(existingTask)
+    ) {
+      task = updateLobsterTaskRecord(existingTask.id, {
+        status: "running",
+        activeSubtaskId: null,
+        activeSubtaskIds: [],
+        updatedAt: Date.now(),
+      }) ?? existingTask;
+      round = resolveLobsterResumeRound(task);
+      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round));
+      void logInfo("lobster-task-resumed", {
+        taskId: task.id,
+        round,
+        tabId: target.tabId,
+        cli: target.cli,
+      });
+    }
+  }
+
+  if (!task) {
+    if (resumeRequested) {
+      appendSystemMessageForLobster(target, t("run.lobsterResumeUnavailableStartNew"));
+      void logInfo("lobster-task-resume-not-found", {
+        tabId: target.tabId,
+        cli: target.cli,
+      });
+    }
+    const initialSessionId = resolveLobsterTaskSessionId(target);
+    task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
+      sessionId: initialSessionId,
+    });
+    appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task));
+  }
+
+  while (task && round <= task.maxRounds) {
+    const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
+    task = latest;
     if (isLobsterTaskCompleted(latest)) {
       removeLobsterMainDecisionMessage(target, latest.id, latest.currentRound);
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(latest));
@@ -3500,18 +3689,18 @@ async function runLobsterPrompt(
       task: latest,
       round,
       role: "main",
-      displayPrompt: buildLobsterMainDisplayPrompt(input.displayPrompt, round),
-      modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || input.displayPrompt, latest, round),
+      displayPrompt: buildLobsterMainDisplayPrompt(latest.rootPrompt, round),
+      modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || latest.rootPrompt, latest, round),
     });
     if (mainStatus === "error" || mainStatus === "stopped") {
-      markLobsterTaskInterrupted(task.id, mainStatus, target);
+      markLobsterTaskInterrupted(latest.id, mainStatus, target);
       return;
     }
 
-    const mainContent = getLastLobsterAssistantContent(target, task.id, round, "main");
+    const mainContent = getLastLobsterAssistantContent(target, latest.id, round, "main");
     const decision = parseLobsterMainDecision(mainContent);
     if (!decision) {
-      const failedRecord = updateLobsterTaskRecord(task.id, {
+      const failedRecord = updateLobsterTaskRecord(latest.id, {
         status: "needs-review",
         updatedAt: Date.now(),
         finalSummary: "Main task did not return a valid lobster decision JSON.",
@@ -3520,9 +3709,9 @@ async function runLobsterPrompt(
       return;
     }
 
-    const decisionResult = applyLobsterMainDecision(task.id, decision);
+    const decisionResult = applyLobsterMainDecision(latest.id, decision);
     if (decisionResult.status === "completed") {
-      removeLobsterMainDecisionMessage(target, task.id, round);
+      removeLobsterMainDecisionMessage(target, latest.id, round);
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionResult.task));
       appendLobsterFinalSummaryMessage(target, decisionResult.task, decision);
       return;
@@ -3544,26 +3733,43 @@ async function runLobsterPrompt(
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
     if (interrupted) {
       const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
-      markLobsterTaskInterrupted(task.id, interruptedStatus, target);
+      markLobsterTaskInterrupted(latest.id, interruptedStatus, target);
       return;
     }
 
     const nextMainRound = round + 1;
-    if (nextMainRound <= task.maxRounds) {
+    if (nextMainRound <= latest.maxRounds) {
       appendSystemMessageForLobster(
         target,
-        buildLobsterMainResumeText(task.id, nextMainRound, subtasks)
+        buildLobsterMainResumeText(latest.id, nextMainRound, subtasks)
       );
     }
     round = nextMainRound;
   }
 
+  if (!task) {
+    return;
+  }
   const finalRecord = updateLobsterTaskRecord(task.id, {
     status: "needs-review",
     updatedAt: Date.now(),
     finalSummary: "Reached the maximum automatic lobster rounds. Manual review is required.",
   });
   appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(finalRecord ?? task));
+}
+
+function resolveLobsterResumeRound(task: LobsterTaskRecord): number {
+  const recordedRound = typeof task.currentRound === "number" && Number.isFinite(task.currentRound)
+    ? Math.floor(task.currentRound)
+    : 0;
+  const latestRoundFromHistory = task.rounds.reduce((maxValue, current) => {
+    const round = typeof current.round === "number" && Number.isFinite(current.round)
+      ? Math.floor(current.round)
+      : 0;
+    return Math.max(maxValue, round);
+  }, 0);
+  const resolved = Math.max(recordedRound, latestRoundFromHistory, 1);
+  return Math.min(resolved, task.maxRounds);
 }
 
 type LobsterSubtaskRetryOptions = {
@@ -3831,7 +4037,7 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
   }
   return [
     `🦞 龙虾主任务第 ${round} 轮复核。`,
-    "上一批子任务已完成，请读取任务记录判断整体是否完成；未完成则返回下一批子任务 JSON。",
+    "上一批子任务已结束（可能成功或中断），请读取任务记录判断整体是否完成；未完成则返回下一批子任务 JSON。",
     "本轮必须预判 estimatedRemainingRounds，说明当前决策之后预计还剩多少轮。",
   ].join("\n");
 }
@@ -4811,6 +5017,10 @@ function getLobsterRoundRunStatus(
 
 function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
   return `🦞 龙虾任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
+}
+
+function buildLobsterTaskResumedText(task: LobsterTaskRecord, round: number): string {
+  return t("run.lobsterResumed", { taskId: task.id, round, file: task.taskStoreFile });
 }
 
 function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {

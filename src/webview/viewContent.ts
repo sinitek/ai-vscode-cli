@@ -8585,6 +8585,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           if (data.type === "rawStreamDelta") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            if (eventTabId && String(data.content || "").trim()) {
+              // Hidden-retry may set a tab to errored; once fresh stream output arrives, recover to running/normal state.
+              setTabErrored(eventTabId, false);
+            }
             appendRunRawStream(data.content, data.stream, eventTabId || getActiveConversationTabId());
             if (!shouldHandleTabScopedEvent(data)) {
               return;
@@ -8610,7 +8614,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             let queuePausedNotice = "";
             if (data.status === "start") {
               runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
-              erroredTabIds.delete(targetTabId);
+              setTabErrored(targetTabId, false);
               resetRunRawStream(targetTabId, { syncOverlay: false });
               updateCurrentRunPrompt(data.prompt, targetTabId);
               if (runtimeState) {
@@ -8619,9 +8623,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               resetTaskListForRunStart(targetTabId);
             } else {
               if (data.status === "error") {
-                erroredTabIds.add(targetTabId);
+                setTabErrored(targetTabId, true);
               } else {
-                erroredTabIds.delete(targetTabId);
+                setTabErrored(targetTabId, false);
               }
               if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
                 runtimeState.lastRunStatusMessage = data.message.trim();
