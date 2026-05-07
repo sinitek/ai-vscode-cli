@@ -15,6 +15,7 @@ import {
   extractCodexWaitTimeoutPayload,
   normalizeCodexExecItemType,
 } from "./codexAppServerEvents";
+import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 import {
   buildCodexChildEnv,
   buildCodexWorkspaceTrustConfigOverride,
@@ -1197,6 +1198,11 @@ export class CodexInteractiveRunner {
         const message = typeof item.message === "string"
           ? item.message.trim()
           : extractItemErrorMessage(item);
+        const rateLimitMessage = detectCodexRateLimitErrorMessage(item) ?? detectCodexRateLimitErrorMessage(message);
+        if (rateLimitMessage) {
+          failRunWithVisibleMessage(rateLimitMessage);
+          return;
+        }
         if (message) {
           handlers.onTrace(`error ${message}`);
         }
@@ -1369,6 +1375,11 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
+            const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
+            if (rateLimitMessage) {
+              failRunWithVisibleMessage(rateLimitMessage);
+              continue;
+            }
             const warning = String(params.message || "").trim();
             if (warning) {
               const lower = warning.toLowerCase();

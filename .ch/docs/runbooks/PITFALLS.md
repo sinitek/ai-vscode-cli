@@ -47,6 +47,40 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## Codex 上游返回 HTTP 200 但 SSE `event:error` 为限流时，不能按成功回合处理
+
+- 状态：已修复
+- 首次发现：2026-05-07
+- 适用范围：`src/interactive/codexRunner.ts` 的 Codex app-server `method=error` / `item.type=error` 事件处理
+
+### 现象
+- Codex 回合最终显示为正常完成，没有进入 hidden retry。
+- 但上游 request log 明确出现 `text/event-stream` 的 `event:error`，内容是 `rate_limit_error`（例如 `Concurrency limit exceeded for user, please retry later`），随后又跟了 `response.completed`。
+- 结果是“HTTP 200 + completed”掩盖了真实失败，用户只能看到任务中断或无结果。
+
+### 触发条件
+- 上游 Responses SSE 在同一回合中先返回限流错误事件，再返回 completed 事件。
+- Codex app-server 把该事件透传为普通 `error` notification，且回合状态仍可能是 completed。
+
+### 根因
+- 旧逻辑仅在 `turn/completed.status === failed`、进程退出异常、或显式抛错时才 failRun。
+- 对 `method=error` / `item.type=error` 只写 trace，不会把“限流类错误”提升为失败。
+
+### 临时绕过
+- 修复前只能手动重试，或从 request-log / stream-log 人工确认是否是限流伪成功。
+
+### 长期规避
+- 在 Codex interactive runner 中增加限流错误分类：识别 `rate_limit_error`、`concurrency limit exceeded`、`too many pending requests`、`HTTP 429` 等信号。
+- 命中后立即 `failRun` 并终止当前回合，让现有 hidden retry 逻辑接管。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node --test dist/test/codexErrorClassifier.test.js`。
+- 手工验证：构造含 `event:error(rate_limit_error)` + `response.completed` 的上游包，确认插件把该轮标记为失败并触发自动重试提示。
+
+### 关联资料
+- 代码：`src/interactive/codexRunner.ts`、`src/interactive/codexErrorClassifier.ts`
+- 样例包：`~/.sinitek_cli/temp/1778131225923_7640e3f1_request-log-2026-05-07T13-13-49-08-00-c2e331cb-7b63-4b32-9b67-ef7d824ce819.json`
+
 ## Gemini thinking 不能继续依赖运行时改写工作区 `.gemini/settings.json`
 
 - 状态：已修复
