@@ -4774,6 +4774,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return Boolean(meta && meta.taskRole === "main");
       }
 
+      function resolveAutoInteractiveModeForTab(tab) {
+        const meta = getLobsterMetaForTabSummary(tab);
+        if (meta && (meta.taskRole === "main" || meta.taskRole === "subtask")) {
+          return "lobster";
+        }
+        return "coding";
+      }
+
+      function applyAutoInteractiveModeForTab(tab) {
+        const nextMode = resolveAutoInteractiveModeForTab(tab);
+        if (state.interactiveMode === nextMode) {
+          return false;
+        }
+        state.interactiveMode = nextMode;
+        if (elements.interactiveModeSelect) {
+          elements.interactiveModeSelect.value = nextMode;
+        }
+        syncModelSelectorByInteractiveMode();
+        return true;
+      }
+
       function isTabRunning(tabId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
@@ -4998,6 +5019,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (tab.id === activeTabId) {
               return;
             }
+            applyAutoInteractiveModeForTab(tab);
             if (state.conversationTabs) {
               state.conversationTabs.activeTabId = tab.id;
             }
@@ -7611,6 +7633,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       elements.newSession.addEventListener("click", () => {
+        applyAutoInteractiveModeForTab(null);
         resetActiveViewForNewConversation();
         armPromptContextForConversationStart();
         vscode.postMessage({ type: "newSession" });

@@ -1031,6 +1031,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
   if (message.type === "newSession") {
     const sessionId = addConversationTab(currentCli, null);
+    setWorkspaceInteractiveModeForCli(currentCli, "coding");
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, sessionId);
     return;
@@ -1253,11 +1254,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (message.key.startsWith("interactiveMode.")) {
       const cliValue = message.key.slice("interactiveMode.".length);
       if (isCliName(cliValue) && isInteractiveMode(message.value)) {
-        if (!workspaceSettings.interactiveModeByCli) {
-          workspaceSettings.interactiveModeByCli = {};
-        }
-        workspaceSettings.interactiveModeByCli[cliValue] = message.value;
-        saveWorkspaceSettings(workspaceSettings);
+        setWorkspaceInteractiveModeForCli(cliValue, message.value);
       }
       await postPanelState();
       return;
@@ -1368,11 +1365,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       : requestedInteractiveMode;
 
     if (isInteractiveMode(effectiveInteractiveMode)) {
-      if (!workspaceSettings.interactiveModeByCli) {
-        workspaceSettings.interactiveModeByCli = {};
-      }
-      workspaceSettings.interactiveModeByCli[targetCli] = effectiveInteractiveMode;
-      saveWorkspaceSettings(workspaceSettings);
+      setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
     }
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
     const imagePaths = targetCli === "codex"
@@ -3092,6 +3085,18 @@ function collectRunningLobsterTaskIds(): Set<string> {
   });
 
   return runningTaskIds;
+}
+
+function resolveAutoInteractiveModeForConversationTab(
+  tab: ConversationTabRecord | null
+): InteractiveMode {
+  if (!tab) {
+    return "coding";
+  }
+  const context = resolveConversationTabLobsterContext(tab);
+  return context.taskRole === "main" || context.taskRole === "subtask"
+    ? "lobster"
+    : "coding";
 }
 
 function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
@@ -8491,6 +8496,18 @@ function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
   return "coding";
 }
 
+function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode): boolean {
+  if (!workspaceSettings.interactiveModeByCli) {
+    workspaceSettings.interactiveModeByCli = {};
+  }
+  if (workspaceSettings.interactiveModeByCli[cli] === mode) {
+    return false;
+  }
+  workspaceSettings.interactiveModeByCli[cli] = mode;
+  saveWorkspaceSettings(workspaceSettings);
+  return true;
+}
+
 function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
 }
@@ -10019,6 +10036,7 @@ function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: str
     state.activeTabId = tabId;
     persistConversationTabsToWorkspaceSettings();
   }
+  setWorkspaceInteractiveModeForCli(tab.cli, resolveAutoInteractiveModeForConversationTab(tab));
   setCurrentSession(tab.cli, tabSessionId, { syncConversationTab: false });
   return {
     cli: tab.cli,
