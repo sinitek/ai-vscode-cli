@@ -4297,11 +4297,12 @@ function buildLobsterMainModelPrompt(rootPrompt: string, task: LobsterTaskRecord
     "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
     `7. 每批最多 ${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
     "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
-    "9. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
-    "10. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
-    "11. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
-    "12. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
-    "13. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
+    "9. 若子任务沟通文件已提供可核验的单测/编译命令与结果，主任务无需重复执行这些验证；优先复核逻辑正确性、改动范围和结果一致性，仅在证据缺失或结果可疑时补充验证。",
+    "10. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
+    "11. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
+    "12. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
+    "13. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+    "14. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
     '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
@@ -4363,8 +4364,9 @@ function buildLobsterSubtaskModelPrompt(
     "2. 可以进行当前子任务范围内必要代码/文件修改和验证，不要修改未在指令或 writeFiles 中授权的范围。",
     "3. 完成后更新任务记录文件中对应 subTasks 项的 status、summary 和 communicationFile。",
     "4. 子任务结束前必须把执行情况写入本子任务沟通文件，主任务唤醒后一定会读取该文件。",
-    "5. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
-    "6. 子任务结束后不要继续生成下一个子任务；程序会自动唤醒主任务复核。",
+    "5. 涉及代码改动时，优先在子任务内完成必要单测/编译，并把命令与结果写入沟通文件，供主任务直接复核，不要留给主任务重复执行。",
+    "6. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
+    "7. 子任务结束后不要继续生成下一个子任务；程序会自动唤醒主任务复核。",
     "",
     "当前子任务：",
     `标题：${subtask.title}`,
@@ -5058,6 +5060,7 @@ function markLobsterSubtaskRunFinished(
   if (!task) {
     return;
   }
+  const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
   const now = Date.now();
   const summary = buildLobsterSubtaskCompletionSummary(assistantContent);
   const nextStatus: LobsterSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
@@ -5079,6 +5082,7 @@ function markLobsterSubtaskRunFinished(
     activeSubtaskIds,
     updatedAt: now,
   });
+  appendLobsterSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
 }
 
 function buildLobsterSubtaskCompletionSummary(content: string | null): string | undefined {
@@ -5087,6 +5091,159 @@ function buildLobsterSubtaskCompletionSummary(content: string | null): string | 
     return undefined;
   }
   return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized;
+}
+
+type LobsterVerificationState = "yes" | "no" | "unknown";
+
+type LobsterVerificationSignals = {
+  unitTest: LobsterVerificationState;
+  build: LobsterVerificationState;
+  unitTestEvidence?: string;
+  buildEvidence?: string;
+};
+
+function appendLobsterSubtaskCompletionAutoLog(
+  task: LobsterTaskRecord,
+  subtask: LobsterSubtaskRecord | undefined,
+  runStatus: TaskRunStatus,
+  summary?: string,
+  assistantContent?: string | null,
+): void {
+  const filePath = typeof subtask?.communicationFile === "string" && subtask.communicationFile.trim()
+    ? subtask.communicationFile
+    : null;
+  if (!filePath || !subtask) {
+    return;
+  }
+
+  let existingContent = "";
+  try {
+    if (fs.existsSync(filePath)) {
+      existingContent = fs.readFileSync(filePath, "utf8");
+    }
+  } catch (error) {
+    void logError("lobster-subtask-communication-read-error", {
+      taskId: task.id,
+      subtaskId: subtask.id,
+      filePath,
+      error: String(error),
+    });
+  }
+
+  const verification = detectLobsterVerificationSignals(`${existingContent}\n${assistantContent ?? ""}`);
+  const lines = [
+    "",
+    `## 扩展自动记录（${new Date().toISOString()}）`,
+    `- 子任务 ID：${subtask.id}`,
+    `- 子任务标题：${subtask.title}`,
+    `- 运行状态：${runStatus === "end" ? "completed" : runStatus}`,
+    `- 单测状态：${formatLobsterVerificationState(verification.unitTest)}`,
+    `- 编译状态：${formatLobsterVerificationState(verification.build)}`,
+  ];
+  if (verification.unitTestEvidence) {
+    lines.push(`- 单测依据：${verification.unitTestEvidence}`);
+  }
+  if (verification.buildEvidence) {
+    lines.push(`- 编译依据：${verification.buildEvidence}`);
+  }
+  if (summary) {
+    lines.push(`- 输出摘要：${summary}`);
+  }
+  if (verification.unitTest === "unknown" || verification.build === "unknown") {
+    lines.push("- 备注：当前记录未明确声明全部验证结果，主任务复核时需重点确认。");
+  }
+
+  try {
+    fs.appendFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    void logError("lobster-subtask-communication-append-error", {
+      taskId: task.id,
+      subtaskId: subtask.id,
+      filePath,
+      error: String(error),
+    });
+  }
+}
+
+function formatLobsterVerificationState(state: LobsterVerificationState): string {
+  if (state === "yes") {
+    return "已完成";
+  }
+  if (state === "no") {
+    return "未完成";
+  }
+  return "未明确";
+}
+
+function detectLobsterVerificationSignals(content: string): LobsterVerificationSignals {
+  const unitTest = detectLobsterVerificationState(content, "unitTest");
+  const build = detectLobsterVerificationState(content, "build");
+  return {
+    unitTest: unitTest.state,
+    build: build.state,
+    unitTestEvidence: unitTest.evidence,
+    buildEvidence: build.evidence,
+  };
+}
+
+function detectLobsterVerificationState(
+  content: string,
+  kind: "unitTest" | "build"
+): { state: LobsterVerificationState; evidence?: string } {
+  const normalized = String(content || "").trim();
+  if (!normalized) {
+    return { state: "unknown" };
+  }
+
+  const lineCandidates = normalized
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const negativePatterns = kind === "unitTest"
+    ? [
+        /(?:未|没有|暂未|未能)\S{0,10}(?:单测|单元测试|测试)/i,
+        /(?:单测|单元测试|测试)\S{0,10}(?:未执行|未跑|未做|失败|fail)/i,
+        /\b(skip|skipped)\b.{0,16}\btest/i,
+      ]
+    : [
+        /(?:未|没有|暂未|未能)\S{0,10}(?:编译|构建|build)/i,
+        /(?:编译|构建|build)\S{0,10}(?:未执行|失败|fail)/i,
+      ];
+  const positivePatterns = kind === "unitTest"
+    ? [
+        /(?:已|完成|执行|运行|跑)\S{0,10}(?:单测|单元测试)/i,
+        /(?:单测|单元测试)\S{0,12}(?:通过|成功|pass|passed|ok)/i,
+        /\b(?:npm|pnpm|yarn)\s+test\b/i,
+        /\b(?:jest|vitest|mocha|pytest|go test)\b/i,
+      ]
+    : [
+        /(?:已|完成|执行|运行|跑)\S{0,10}(?:编译|构建|build)/i,
+        /(?:编译|构建|build)\S{0,12}(?:通过|成功|pass|passed|ok)/i,
+        /\b(?:npm|pnpm|yarn)\s+run\s+build\b/i,
+        /\btsc\b/i,
+      ];
+
+  const negativeEvidence = findFirstEvidenceLine(lineCandidates, negativePatterns);
+  if (negativeEvidence) {
+    return { state: "no", evidence: negativeEvidence };
+  }
+  const positiveEvidence = findFirstEvidenceLine(lineCandidates, positivePatterns);
+  if (positiveEvidence) {
+    return { state: "yes", evidence: positiveEvidence };
+  }
+  return { state: "unknown" };
+}
+
+function findFirstEvidenceLine(lines: string[], patterns: RegExp[]): string | undefined {
+  for (const line of lines) {
+    for (const pattern of patterns) {
+      if (pattern.test(line)) {
+        return line.length > 180 ? `${line.slice(0, 180)}...` : line;
+      }
+    }
+  }
+  return undefined;
 }
 
 function markLobsterTaskInterrupted(taskId: string, status: "error" | "stopped", target: PromptRunTarget): void {
