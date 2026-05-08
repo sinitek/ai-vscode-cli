@@ -115,6 +115,9 @@ export type ConversationTabSummary = {
   cli: CliName;
   sessionId: string | null;
   createdAt: number;
+  lobsterTaskRole?: "main" | "subtask";
+  lobsterTaskId?: string;
+  lobsterMainTabCloseLocked?: boolean;
 };
 
 export type PromptHistoryItem = {

@@ -427,6 +427,10 @@ type ParallelTabRun = {
   process: RunProcess;
   messageTarget: ChatMessage[];
   stopped: boolean;
+  taskRole?: LobsterTaskRole;
+  lobsterTaskId?: string;
+  lobsterRound?: number;
+  lobsterSubtaskId?: string;
 };
 
 type InteractiveTabRun = {
@@ -439,6 +443,10 @@ type InteractiveTabRun = {
   stop: () => void;
   messageTarget: ChatMessage[];
   stopped: boolean;
+  taskRole?: LobsterTaskRole;
+  lobsterTaskId?: string;
+  lobsterRound?: number;
+  lobsterSubtaskId?: string;
 };
 
 type WorkspaceSettings = {
@@ -2945,6 +2953,163 @@ function isTabRunActive(tabId: string | null): boolean {
   return getPrimaryRunTabId() === tabId;
 }
 
+type LobsterConversationTabContext = {
+  taskRole: LobsterTaskRole | null;
+  lobsterTaskId: string | null;
+};
+
+function normalizeLobsterTaskId(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function resolveLobsterConversationTabContextFromMessages(messages: ChatMessage[]): LobsterConversationTabContext {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const taskRole = message?.taskRole;
+    const lobsterTaskId = normalizeLobsterTaskId(message?.lobsterTaskId);
+    if (!lobsterTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
+      if (message?.role === "user" && String(message.content || "").trim()) {
+        // A newer non-lobster user turn means this tab switched back to normal mode.
+        return {
+          taskRole: null,
+          lobsterTaskId: null,
+        };
+      }
+      continue;
+    }
+    return {
+      taskRole,
+      lobsterTaskId,
+    };
+  }
+  return {
+    taskRole: null,
+    lobsterTaskId: null,
+  };
+}
+
+function resolveLobsterConversationTabContextFromParallelRun(
+  run?: ParallelTabRun
+): LobsterConversationTabContext {
+  if (!run) {
+    return { taskRole: null, lobsterTaskId: null };
+  }
+  const taskRole = run.taskRole === "main" || run.taskRole === "subtask"
+    ? run.taskRole
+    : null;
+  const lobsterTaskId = normalizeLobsterTaskId(run.lobsterTaskId);
+  if (taskRole && lobsterTaskId) {
+    return { taskRole, lobsterTaskId };
+  }
+  return resolveLobsterConversationTabContextFromMessages(run.messageTarget);
+}
+
+function resolveLobsterConversationTabContextFromInteractiveRun(
+  run?: InteractiveTabRun
+): LobsterConversationTabContext {
+  if (!run) {
+    return { taskRole: null, lobsterTaskId: null };
+  }
+  const taskRole = run.taskRole === "main" || run.taskRole === "subtask"
+    ? run.taskRole
+    : null;
+  const lobsterTaskId = normalizeLobsterTaskId(run.lobsterTaskId);
+  if (taskRole && lobsterTaskId) {
+    return { taskRole, lobsterTaskId };
+  }
+  return resolveLobsterConversationTabContextFromMessages(run.messageTarget);
+}
+
+function resolveConversationTabLobsterContext(tab: ConversationTabRecord): LobsterConversationTabContext {
+  const primaryTabId = getPrimaryRunTabId();
+  if (primaryTabId === tab.id) {
+    const taskRole = activeTaskRun?.taskRole;
+    const lobsterTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId);
+    if ((taskRole === "main" || taskRole === "subtask") && lobsterTaskId) {
+      return {
+        taskRole,
+        lobsterTaskId,
+      };
+    }
+  }
+
+  const parallelContext = resolveLobsterConversationTabContextFromParallelRun(parallelRunsByTabId.get(tab.id));
+  if (parallelContext.taskRole && parallelContext.lobsterTaskId) {
+    return parallelContext;
+  }
+
+  const interactiveContext = resolveLobsterConversationTabContextFromInteractiveRun(interactiveRunsByTabId.get(tab.id));
+  if (interactiveContext.taskRole && interactiveContext.lobsterTaskId) {
+    return interactiveContext;
+  }
+
+  const liveMessages = getLiveMessagesForTab(tab.id);
+  if (liveMessages) {
+    const liveContext = resolveLobsterConversationTabContextFromMessages(liveMessages);
+    if (liveContext.taskRole && liveContext.lobsterTaskId) {
+      return liveContext;
+    }
+  }
+
+  const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+  const messages = sessionId
+    ? loadSessionMessages(tab.cli, sessionId)
+    : getPendingSessionDraft(tab.id, tab.cli).messages;
+  return resolveLobsterConversationTabContextFromMessages(messages);
+}
+
+function collectRunningLobsterTaskIds(): Set<string> {
+  const runningTaskIds = new Set<string>();
+  const addTaskId = (value: unknown): void => {
+    const taskId = normalizeLobsterTaskId(value);
+    if (taskId) {
+      runningTaskIds.add(taskId);
+    }
+  };
+
+  if (isPrimaryRunActive()) {
+    const primaryTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
+      ?? (Array.isArray(activeMessageTarget)
+        ? resolveLobsterConversationTabContextFromMessages(activeMessageTarget).lobsterTaskId
+        : null);
+    addTaskId(primaryTaskId);
+  }
+
+  parallelRunsByTabId.forEach((run) => {
+    const taskId = normalizeLobsterTaskId(run.lobsterTaskId)
+      ?? resolveLobsterConversationTabContextFromMessages(run.messageTarget).lobsterTaskId;
+    addTaskId(taskId);
+  });
+
+  interactiveRunsByTabId.forEach((run) => {
+    const taskId = normalizeLobsterTaskId(run.lobsterTaskId)
+      ?? resolveLobsterConversationTabContextFromMessages(run.messageTarget).lobsterTaskId;
+    addTaskId(taskId);
+  });
+
+  return runningTaskIds;
+}
+
+function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
+  if (!tabId) {
+    return false;
+  }
+  const tab = getConversationTabById(tabId);
+  if (!tab) {
+    return false;
+  }
+  const context = resolveConversationTabLobsterContext(tab);
+  if (context.taskRole !== "main" || !context.lobsterTaskId) {
+    return false;
+  }
+  const runningTaskIds = collectRunningLobsterTaskIds();
+  return runningTaskIds.has(context.lobsterTaskId);
+}
+
 function hasOtherTabRun(activeTabId: string | null): boolean {
   if (!activeTabId) {
     return hasAnyTaskRunning();
@@ -3228,6 +3393,10 @@ function stopParallelRunForTab(tabId: string, message?: string): boolean {
     endedAt: Date.now(),
     durationMs: Math.max(0, Date.now() - run.startedAt),
     status: "stopped",
+    taskRole: run.taskRole,
+    lobsterTaskId: run.lobsterTaskId,
+    lobsterRound: run.lobsterRound,
+    lobsterSubtaskId: run.lobsterSubtaskId,
   };
   appendTaskRun(taskRecord);
   sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
@@ -3338,6 +3507,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       process,
       messageTarget,
       stopped: false,
+      taskRole: input.taskRole,
+      lobsterTaskId: input.lobsterTaskId,
+      lobsterRound: input.lobsterRound,
+      lobsterSubtaskId: input.lobsterSubtaskId,
     });
   };
 
@@ -6575,6 +6748,10 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     stop: stopFn,
     messageTarget,
     stopped: false,
+    taskRole: input.taskRole,
+    lobsterTaskId: input.lobsterTaskId,
+    lobsterRound: input.lobsterRound,
+    lobsterSubtaskId: input.lobsterSubtaskId,
   });
 
   while (true) {
@@ -9562,14 +9739,27 @@ function buildConversationTabsState(): {
   tabs: ConversationTabSummary[];
 } {
   const state = ensureConversationTabs();
+  const runningLobsterTaskIds = collectRunningLobsterTaskIds();
   return {
     activeTabId: state.activeTabId,
-    tabs: state.tabs.map((tab) => ({
-      id: tab.id,
-      cli: tab.cli,
-      sessionId: tab.sessionId,
-      createdAt: tab.createdAt,
-    })),
+    tabs: state.tabs.map((tab) => {
+      const lobsterContext = resolveConversationTabLobsterContext(tab);
+      const lobsterTaskId = lobsterContext.lobsterTaskId;
+      const lobsterMainTabCloseLocked = (
+        lobsterContext.taskRole === "main"
+        && typeof lobsterTaskId === "string"
+        && runningLobsterTaskIds.has(lobsterTaskId)
+      );
+      return {
+        id: tab.id,
+        cli: tab.cli,
+        sessionId: tab.sessionId,
+        createdAt: tab.createdAt,
+        lobsterTaskRole: lobsterContext.taskRole ?? undefined,
+        lobsterTaskId: lobsterTaskId ?? undefined,
+        lobsterMainTabCloseLocked,
+      };
+    }),
   };
 }
 
@@ -9930,7 +10120,7 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 }
 
 async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
-  if (isTabRunActive(tabId)) {
+  if (isTabRunActive(tabId) || isLobsterMainTabCloseLocked(tabId)) {
     return;
   }
   const closingTab = getConversationTabById(tabId);

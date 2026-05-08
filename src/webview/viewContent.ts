@@ -3431,6 +3431,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const CONVERSATION_TAB_PAGE_SIZE = 5;
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
+      const lobsterMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
 
@@ -3521,6 +3522,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             erroredTabIds.delete(tabId);
           }
         });
+        Object.keys(lobsterMetaByTabId).forEach((key) => {
+          if (!validKeys.has(key)) {
+            delete lobsterMetaByTabId[key];
+          }
+        });
       }
 
       function isRuntimeStateForActiveTab(tabId) {
@@ -3589,6 +3595,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         try {
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
+          const lobsterMetaChanged = updateLobsterMetaForTabFromMessages(tabId, runtimeState.messages);
           resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
           hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
           if (isRuntimeStateForActiveTab(tabId)) {
@@ -3596,6 +3603,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (options.render !== false) {
               renderMessages();
             }
+          }
+          if (lobsterMetaChanged) {
+            renderConversationTabs();
           }
         } catch (error) {
           reportWebviewFailure("setMessagesForTab-failed", error, {
@@ -4008,6 +4018,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           ? state.conversationTabs.tabs.map((tab) => tab.id)
           : [];
         pruneConversationRuntimeStates(tabIds);
+        if (Array.isArray(state.conversationTabs.tabs)) {
+          state.conversationTabs.tabs.forEach((tab) => {
+            updateLobsterMetaForTabFromSummary(tab);
+          });
+        }
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
@@ -4602,6 +4617,163 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return state.conversationTabs.tabs.find((tab) => tab && tab.id === tabId) || null;
       }
 
+      function normalizeLobsterTaskRole(value) {
+        return value === "main" || value === "subtask" ? value : "";
+      }
+
+      function normalizeLobsterTaskId(value) {
+        if (typeof value !== "string") {
+          return "";
+        }
+        return value.trim();
+      }
+
+      function setLobsterMetaForTab(tabId, role, taskId) {
+        if (!tabId || typeof tabId !== "string") {
+          return false;
+        }
+        const normalizedRole = normalizeLobsterTaskRole(role);
+        const normalizedTaskId = normalizeLobsterTaskId(taskId);
+        const hadMeta = Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId);
+        const previous = hadMeta ? lobsterMetaByTabId[tabId] : undefined;
+        if (!normalizedRole || !normalizedTaskId) {
+          if (!hadMeta) {
+            return false;
+          }
+          delete lobsterMetaByTabId[tabId];
+          return true;
+        }
+        if (
+          previous
+          && previous !== null
+          && previous.taskRole === normalizedRole
+          && previous.lobsterTaskId === normalizedTaskId
+        ) {
+          return false;
+        }
+        lobsterMetaByTabId[tabId] = {
+          taskRole: normalizedRole,
+          lobsterTaskId: normalizedTaskId,
+        };
+        return true;
+      }
+
+      function overrideLobsterMetaAsCleared(tabId) {
+        if (!tabId || typeof tabId !== "string") {
+          return false;
+        }
+        if (Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId) && lobsterMetaByTabId[tabId] === null) {
+          return false;
+        }
+        lobsterMetaByTabId[tabId] = null;
+        return true;
+      }
+
+      function updateLobsterMetaForTabFromSummary(tab) {
+        if (!tab || !tab.id) {
+          return false;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tab.id)
+          && lobsterMetaByTabId[tab.id] === null
+        ) {
+          // Keep local explicit clear marker to avoid stale backend state re-adding prefix.
+          return false;
+        }
+        const taskRole = normalizeLobsterTaskRole(tab.lobsterTaskRole);
+        const lobsterTaskId = normalizeLobsterTaskId(tab.lobsterTaskId);
+        if (!taskRole || !lobsterTaskId) {
+          return false;
+        }
+        return setLobsterMetaForTab(tab.id, taskRole, lobsterTaskId);
+      }
+
+      function updateLobsterMetaForTabFromMessage(tabId, message) {
+        if (!tabId || !message || typeof message !== "object") {
+          return false;
+        }
+        const taskRole = normalizeLobsterTaskRole(message.taskRole);
+        const lobsterTaskId = normalizeLobsterTaskId(message.lobsterTaskId);
+        if (!taskRole || !lobsterTaskId) {
+          if (message.role === "user" && String(message.content || "").trim()) {
+            return overrideLobsterMetaAsCleared(tabId);
+          }
+          return false;
+        }
+        return setLobsterMetaForTab(tabId, taskRole, lobsterTaskId);
+      }
+
+      function updateLobsterMetaForTabFromMessages(tabId, messages) {
+        if (!tabId || !Array.isArray(messages)) {
+          return false;
+        }
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+          const message = messages[index];
+          const role = normalizeLobsterTaskRole(message && message.taskRole);
+          const taskId = normalizeLobsterTaskId(message && message.lobsterTaskId);
+          if (!role || !taskId) {
+            if (message && message.role === "user" && String(message.content || "").trim()) {
+              return overrideLobsterMetaAsCleared(tabId);
+            }
+            continue;
+          }
+          return setLobsterMetaForTab(tabId, role, taskId);
+        }
+        if (!Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId)) {
+          return false;
+        }
+        delete lobsterMetaByTabId[tabId];
+        return true;
+      }
+
+      function getLobsterMetaForTabSummary(tab) {
+        const tabId = tab && typeof tab.id === "string" ? tab.id : "";
+        if (tabId && Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId)) {
+          const fromRuntime = lobsterMetaByTabId[tabId];
+          if (fromRuntime === null) {
+            return null;
+          }
+          if (fromRuntime && fromRuntime.taskRole && fromRuntime.lobsterTaskId) {
+            return fromRuntime;
+          }
+        }
+        const taskRole = normalizeLobsterTaskRole(tab && tab.lobsterTaskRole);
+        const lobsterTaskId = normalizeLobsterTaskId(tab && tab.lobsterTaskId);
+        if (!taskRole || !lobsterTaskId) {
+          return null;
+        }
+        return {
+          taskRole,
+          lobsterTaskId,
+        };
+      }
+
+      function isLobsterMainTabCloseLocked(tab) {
+        const meta = getLobsterMetaForTabSummary(tab);
+        if (!meta || meta.taskRole !== "main" || !meta.lobsterTaskId) {
+          return false;
+        }
+        const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs
+          : [];
+        for (let index = 0; index < tabs.length; index += 1) {
+          const candidate = tabs[index];
+          if (!candidate || !isTabRunning(candidate.id)) {
+            continue;
+          }
+          const candidateMeta = getLobsterMetaForTabSummary(candidate);
+          if (candidateMeta && candidateMeta.lobsterTaskId === meta.lobsterTaskId) {
+            return true;
+          }
+        }
+        return Boolean(tab && tab.lobsterMainTabCloseLocked);
+      }
+
+      function isLobsterMainTab(tab) {
+        const meta = getLobsterMetaForTabSummary(tab);
+        return Boolean(meta && meta.taskRole === "main");
+      }
+
       function isTabRunning(tabId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
@@ -4799,7 +4971,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
           tabItem.setAttribute("aria-disabled", "false");
 
-          const labelText = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
+          const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
+          const labelText = isLobsterMainTab(tab) ? ("🦞 " + tabBaseLabel) : tabBaseLabel;
           const label = document.createElement("span");
           label.className = "conversation-tab-label";
           label.textContent = labelText;
@@ -4812,7 +4985,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             closeButton.textContent = "×";
             closeButton.title = t("conversationTabCloseAria", { label: labelText });
             closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-            closeButton.disabled = isTabRunning(tab.id);
+            closeButton.disabled = isTabRunning(tab.id) || isLobsterMainTabCloseLocked(tab);
             closeButton.addEventListener("click", (event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -8558,6 +8731,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           if (data.type === "appendMessage") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            const lobsterMetaChanged = updateLobsterMetaForTabFromMessage(eventTabId, data.message);
+            if (lobsterMetaChanged) {
+              renderConversationTabs();
+            }
             const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
             let statusSummaryUpdated = false;
             if (runtimeState && data.message && data.message.role === "system") {
