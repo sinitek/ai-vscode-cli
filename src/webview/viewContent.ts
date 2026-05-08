@@ -87,10 +87,12 @@ const WEBVIEW_I18N = {
     toolSettingsCodexSubagentsLabel: "Codex Subagents",
     toolSettingsCodexSubagentsTitle: "Allow Codex app-server to use official multi-agent subagents (spawnAgent / wait / closeAgent)",
     toolSettingsCodexSubagentsToggle: "On",
-    toolSettingsCodexSubagentsHint: "Warning: in the current Codex version, enabling this has a bug and tasks may be interrupted more easily.",
     toolSettingsLobsterMaxRoundsLabel: "Lobster Max Rounds",
     toolSettingsLobsterMaxRoundsAria: "Lobster maximum rounds",
     toolSettingsLobsterMaxRoundsHint: `Project setting. New lobster tasks use this limit; existing tasks keep their recorded limit. Range: ${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}, default: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}.`,
+    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Lobster Auto-Close Subtask Tabs",
+    toolSettingsLobsterAutoCloseSubtaskTabsTitle: "Automatically close the AI conversation tab after a lobster subtask completes successfully",
+    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "On",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -344,10 +346,12 @@ const WEBVIEW_I18N = {
     toolSettingsCodexSubagentsLabel: "Codex 子智能体",
     toolSettingsCodexSubagentsTitle: "是否允许 Codex app-server 使用官方多智能体子任务能力（spawnAgent / wait / closeAgent）",
     toolSettingsCodexSubagentsToggle: "开启",
-    toolSettingsCodexSubagentsHint: "提示：当前版本 Codex 开启后有 bug，任务容易中断。",
     toolSettingsLobsterMaxRoundsLabel: "龙虾最大轮次",
     toolSettingsLobsterMaxRoundsAria: "龙虾最大轮次",
     toolSettingsLobsterMaxRoundsHint: `项目级设置。新建龙虾任务使用该上限；已有任务保持记录中的上限。范围：${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}，默认：${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}。`,
+    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "龙虾子任务自动关标签",
+    toolSettingsLobsterAutoCloseSubtaskTabsTitle: "龙虾子任务成功完成后，自动关闭其 AI 对话标签页",
+    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "开启",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -2814,7 +2818,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 <span>${i18n.toolSettingsCodexSubagentsToggle}</span>
               </label>
             </div>
-            <div class="tool-settings-note">${i18n.toolSettingsCodexSubagentsHint}</div>
             <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
               <input
@@ -2828,6 +2831,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               />
             </div>
             <div class="tool-settings-note">${i18n.toolSettingsLobsterMaxRoundsHint}</div>
+            <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
+                <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
+                <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
+              </label>
+            </div>
             <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
               <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
@@ -3248,6 +3258,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         autoAddEditorContextTags: false,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
+        lobsterAutoCloseSubtaskTabs: true,
         locale: "auto",
         isMac: false,
         macTaskShell: "zsh",
@@ -3309,6 +3320,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
         lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
+        lobsterAutoCloseSubtaskTabs: document.getElementById("lobsterAutoCloseSubtaskTabs"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -4031,6 +4043,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
+        state.lobsterAutoCloseSubtaskTabs = Boolean(panelState.lobsterAutoCloseSubtaskTabs);
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -4118,6 +4131,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.lobsterMaxRounds) {
           elements.lobsterMaxRounds.value = String(state.lobsterMaxRounds);
+        }
+        if (elements.lobsterAutoCloseSubtaskTabs) {
+          elements.lobsterAutoCloseSubtaskTabs.checked = state.lobsterAutoCloseSubtaskTabs;
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
@@ -8026,6 +8042,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         };
         elements.lobsterMaxRounds.addEventListener("change", commitLobsterMaxRounds);
         elements.lobsterMaxRounds.addEventListener("blur", commitLobsterMaxRounds);
+      }
+      if (elements.lobsterAutoCloseSubtaskTabs) {
+        elements.lobsterAutoCloseSubtaskTabs.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.lobsterAutoCloseSubtaskTabs = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "lobsterAutoCloseSubtaskTabs",
+            value: enabled,
+          });
+        });
       }
       if (elements.languageSelect) {
         elements.languageSelect.addEventListener("change", (event) => {

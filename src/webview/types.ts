@@ -147,6 +147,7 @@ export type PanelState = {
   autoAddEditorContextTags: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;
+  lobsterAutoCloseSubtaskTabs: boolean;
   debug: boolean;
   locale: string;
   isMac: boolean;

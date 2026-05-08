@@ -447,6 +447,7 @@ type WorkspaceSettings = {
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
   codexMultiAgentEnabled?: boolean;
   lobsterMaxRounds?: number;
+  lobsterAutoCloseSubtaskTabs?: boolean;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsState;
 };
@@ -964,34 +965,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "closeConversationTab") {
-    if (isTabRunActive(message.tabId)) {
-      return;
-    }
-    const closingTab = getConversationTabById(message.tabId);
-    if (!closingTab) {
-      return;
-    }
-    const previousCli = currentCli;
-    const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
-    const next = closeConversationTab(message.tabId);
-    closingBindings.forEach((binding) => {
-      disposeInteractiveRunnerIfUnused(binding);
-    });
-    if (next && currentCli !== next.cli) {
-      currentCli = next.cli;
-      updateStatusBar();
-      workspaceSettings.currentCli = currentCli;
-      saveWorkspaceSettings(workspaceSettings);
-    }
-    if (next && previousCli !== next.cli) {
-      await maybePromptInstallOnCliGroupSwitch(next.cli);
-    }
-    await postPanelState();
-    if (next) {
-      sendSessionMessagesToPanel(next.cli, next.sessionId);
-    } else {
-      sendSessionMessagesToPanel(currentCli, null);
-    }
+    await closeConversationTabAndRefreshPanel(message.tabId);
     return;
   }
 
@@ -1302,6 +1276,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "lobsterAutoCloseSubtaskTabs") {
+      workspaceSettings.lobsterAutoCloseSubtaskTabs = Boolean(message.value);
+      saveWorkspaceSettings(workspaceSettings);
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
       const nextValue = typeof message.value === "string" ? message.value : "auto";
@@ -1453,6 +1433,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
+    lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -1494,6 +1475,7 @@ async function buildPanelStateWithConfigState(
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
+    lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -3929,6 +3911,15 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
     if (status !== "error") {
       const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
       markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
+      if (status === "end" && getWorkspaceLobsterAutoCloseSubtaskTabs()) {
+        await closeConversationTabAndRefreshPanel(subtaskTarget.tabId);
+        void logInfo("lobster-subtask-tab-auto-closed", {
+          taskId: task.id,
+          round,
+          subtaskId: subtask.id,
+          tabId: subtaskTarget.tabId,
+        });
+      }
       return status;
     }
     if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
@@ -8355,6 +8346,10 @@ function getWorkspaceLobsterMaxRounds(): number {
   return normalizeLobsterMaxRounds(workspaceSettings.lobsterMaxRounds);
 }
 
+function getWorkspaceLobsterAutoCloseSubtaskTabs(): boolean {
+  return workspaceSettings.lobsterAutoCloseSubtaskTabs !== false;
+}
+
 function normalizeCliModelName(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -8966,6 +8961,10 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
     if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
       result.lobsterMaxRounds = normalizeLobsterMaxRounds(lobsterMaxRounds);
+    }
+    const lobsterAutoCloseSubtaskTabs = (parsed as WorkspaceSettings).lobsterAutoCloseSubtaskTabs;
+    if (typeof lobsterAutoCloseSubtaskTabs === "boolean") {
+      result.lobsterAutoCloseSubtaskTabs = lobsterAutoCloseSubtaskTabs;
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {
@@ -9928,6 +9927,37 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
     cli: activeTab.cli,
     sessionId: activeTab.sessionId,
   };
+}
+
+async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
+  if (isTabRunActive(tabId)) {
+    return;
+  }
+  const closingTab = getConversationTabById(tabId);
+  if (!closingTab) {
+    return;
+  }
+  const previousCli = currentCli;
+  const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
+  const next = closeConversationTab(tabId);
+  closingBindings.forEach((binding) => {
+    disposeInteractiveRunnerIfUnused(binding);
+  });
+  if (next && currentCli !== next.cli) {
+    currentCli = next.cli;
+    updateStatusBar();
+    workspaceSettings.currentCli = currentCli;
+    saveWorkspaceSettings(workspaceSettings);
+  }
+  if (next && previousCli !== next.cli) {
+    await maybePromptInstallOnCliGroupSwitch(next.cli);
+  }
+  await postPanelState();
+  if (next) {
+    sendSessionMessagesToPanel(next.cli, next.sessionId);
+    return;
+  }
+  sendSessionMessagesToPanel(currentCli, null);
 }
 
 function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {
