@@ -1358,7 +1358,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     }
 
     const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
-    const isLobsterSubtaskContinuation = isLobsterSubtaskConversationTarget(targetCli, promptTargetTabId);
+    const lobsterSubtaskContext = resolveLobsterSubtaskConversationContext(targetCli, promptTargetTabId);
+    const isLobsterSubtaskContinuation = Boolean(lobsterSubtaskContext);
     const requestedInteractiveMode = isInteractiveMode(message.interactiveMode) ? message.interactiveMode : undefined;
     const effectiveInteractiveMode = isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster"
       ? "coding"
@@ -1387,11 +1388,25 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       lobsterSubtaskModel,
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
+    if (lobsterSubtaskContext) {
+      promptInput.taskRole = "subtask";
+      promptInput.lobsterTaskId = lobsterSubtaskContext.taskId;
+      promptInput.lobsterRound = lobsterSubtaskContext.round;
+      promptInput.lobsterSubtaskId = lobsterSubtaskContext.subtaskId;
+    }
     const shouldRunLobster = effectiveInteractiveMode === "lobster";
     const lobsterResumeTask = shouldRunLobster
       ? resolveLobsterResumeTaskFromPrompt(trimmed, promptTargetTabId)
       : null;
     const lobsterResumeRequested = shouldRunLobster && isLobsterResumePrompt(trimmed);
+    const previousSubtaskRunEndedAt = lobsterSubtaskContext
+      ? (getLatestLobsterRoundRunRecord(
+          lobsterSubtaskContext.taskId,
+          lobsterSubtaskContext.round,
+          "subtask",
+          lobsterSubtaskContext.subtaskId
+        )?.endedAt ?? 0)
+      : 0;
     if (isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster") {
       void logInfo("lobster-subtask-manual-continue-forced-coding", {
         cli: targetCli,
@@ -1408,6 +1423,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       });
     } else {
       await runPrompt(promptInput, { targetTabId: promptTargetTabId });
+      if (lobsterSubtaskContext && promptTargetTabId) {
+        await maybeWakeLobsterMainAfterSubtaskContinuation(lobsterSubtaskContext, {
+          tabId: promptTargetTabId,
+          previousRunEndedAt: previousSubtaskRunEndedAt,
+          model: promptInput.model,
+          lobsterMainModel: promptInput.lobsterMainModel,
+          lobsterSubtaskModel: promptInput.lobsterSubtaskModel,
+        });
+      }
     }
     return;
   }
@@ -2804,6 +2828,12 @@ type PromptRunTarget = {
   sessionId: string | null;
 };
 
+type LobsterSubtaskConversationContext = {
+  taskId: string;
+  subtaskId: string;
+  round: number;
+};
+
 type PromptContextBuildResult = {
   modelPrompt: string;
   contextTags: string[];
@@ -2957,6 +2987,22 @@ function normalizeLobsterTaskId(value: unknown): string | null {
   }
   const normalized = value.trim();
   return normalized || null;
+}
+
+function normalizeLobsterSubtaskId(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function normalizeLobsterRound(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const round = Math.floor(value);
+  return round > 0 ? round : null;
 }
 
 function resolveLobsterConversationTabContextFromMessages(messages: ChatMessage[]): LobsterConversationTabContext {
@@ -4343,25 +4389,48 @@ function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
     : getPendingSessionDraft(target.tabId, target.cli).messages;
 }
 
-function isLobsterSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
+function resolveLobsterSubtaskConversationContextFromMessages(
+  messages: ChatMessage[],
+): LobsterSubtaskConversationContext | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const taskId = normalizeLobsterTaskId(message?.lobsterTaskId);
+    const subtaskId = normalizeLobsterSubtaskId(message?.lobsterSubtaskId);
+    const round = normalizeLobsterRound(message?.lobsterRound);
+    if (message?.taskRole === "subtask" && taskId && subtaskId && round) {
+      return {
+        taskId,
+        subtaskId,
+        round,
+      };
+    }
+    if (message?.role === "user" && String(message.content || "").trim()) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function resolveLobsterSubtaskConversationContext(
+  cli: CliName,
+  tabId: string | null | undefined
+): LobsterSubtaskConversationContext | null {
   if (!tabId) {
-    return false;
+    return null;
   }
   const tab = getConversationTabById(tabId);
   if (!tab || tab.cli !== cli) {
-    return false;
+    return null;
   }
   const sessionId = getConversationTabSessionIdForCli(tab, cli);
   const messages = sessionId
     ? loadSessionMessages(cli, sessionId)
     : getPendingSessionDraft(tabId, cli).messages;
-  return messages.some((message) => (
-    message.taskRole === "subtask"
-    && typeof message.lobsterTaskId === "string"
-    && Boolean(message.lobsterTaskId)
-    && typeof message.lobsterSubtaskId === "string"
-    && Boolean(message.lobsterSubtaskId)
-  ));
+  return resolveLobsterSubtaskConversationContextFromMessages(messages);
+}
+
+function isLobsterSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
+  return Boolean(resolveLobsterSubtaskConversationContext(cli, tabId));
 }
 
 function getLastLobsterAssistantContent(
@@ -5030,6 +5099,110 @@ function markLobsterTaskInterrupted(taskId: string, status: "error" | "stopped",
   }
 }
 
+function resolvePromptRunTargetFromConversationTab(tab: ConversationTabRecord): PromptRunTarget {
+  return {
+    tabId: tab.id,
+    cli: tab.cli,
+    sessionId: getConversationTabSessionIdForCli(tab, tab.cli),
+  };
+}
+
+function resolveLobsterMainPromptTarget(task: LobsterTaskRecord): PromptRunTarget | null {
+  const state = ensureConversationTabs();
+  let sessionFallback: ConversationTabRecord | null = null;
+  for (const tab of state.tabs) {
+    if (tab.cli !== task.cli) {
+      continue;
+    }
+    const context = resolveConversationTabLobsterContext(tab);
+    if (context.taskRole === "main" && context.lobsterTaskId === task.id) {
+      return resolvePromptRunTargetFromConversationTab(tab);
+    }
+    if (
+      !sessionFallback
+      && task.sessionId
+      && getConversationTabSessionIdForCli(tab, tab.cli) === task.sessionId
+    ) {
+      sessionFallback = tab;
+    }
+  }
+  if (sessionFallback) {
+    return resolvePromptRunTargetFromConversationTab(sessionFallback);
+  }
+  if (!task.sessionId) {
+    return null;
+  }
+
+  const newTab: ConversationTabRecord = {
+    id: createConversationTabId(),
+    cli: task.cli,
+    sessionId: task.sessionId,
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, task.cli, task.sessionId),
+    createdAt: Date.now(),
+  };
+  state.tabs.push(newTab);
+  persistConversationTabsToWorkspaceSettings();
+  void postPanelState();
+  return resolvePromptRunTargetFromConversationTab(newTab);
+}
+
+async function maybeWakeLobsterMainAfterSubtaskContinuation(
+  context: LobsterSubtaskConversationContext,
+  options: {
+    tabId: string;
+    previousRunEndedAt: number;
+    model?: string;
+    lobsterMainModel?: string;
+    lobsterSubtaskModel?: string;
+  }
+): Promise<void> {
+  const latestRun = getLatestLobsterRoundRunRecord(
+    context.taskId,
+    context.round,
+    "subtask",
+    context.subtaskId
+  );
+  if (!latestRun || latestRun.endedAt <= options.previousRunEndedAt || latestRun.status !== "end") {
+    return;
+  }
+
+  const subtaskTarget = resolvePromptRunTarget(options.tabId);
+  const summary = subtaskTarget
+    ? getLastLobsterAssistantContent(subtaskTarget, context.taskId, context.round, "subtask")
+    : null;
+  markLobsterSubtaskRunFinished(context.taskId, context.subtaskId, "end", summary);
+
+  const latestTask = readLobsterTaskRecord(context.taskId);
+  if (!latestTask || (latestTask.status !== "error" && latestTask.status !== "stopped")) {
+    return;
+  }
+
+  const mainTarget = resolveLobsterMainPromptTarget(latestTask);
+  if (!mainTarget || isTabRunActive(mainTarget.tabId)) {
+    return;
+  }
+
+  const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
+  appendSystemMessageForLobster(
+    mainTarget,
+    buildLobsterMainResumeText(latestTask.id, resolveLobsterResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
+  );
+
+  const resumePrompt = t("run.hiddenContinuePrompt");
+  await runLobsterPrompt({
+    displayPrompt: resumePrompt,
+    modelPrompt: resumePrompt,
+    contextTags: [],
+    model: options.model,
+    lobsterMainModel: options.lobsterMainModel,
+    lobsterSubtaskModel: options.lobsterSubtaskModel,
+  }, {
+    targetTabId: mainTarget.tabId,
+    resumeTaskId: latestTask.id,
+    resumeRequested: true,
+  });
+}
+
 function getLobsterTargetSessionId(target: PromptRunTarget): string | null {
   const tab = getConversationTabById(target.tabId);
   return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
@@ -5169,6 +5342,16 @@ function getLobsterRoundRunStatus(
   role: LobsterTaskRole,
   subtaskId?: string,
 ): TaskRunStatus | null {
+  const record = getLatestLobsterRoundRunRecord(taskId, round, role, subtaskId);
+  return record ? record.status : null;
+}
+
+function getLatestLobsterRoundRunRecord(
+  taskId: string,
+  round: number,
+  role: LobsterTaskRole,
+  subtaskId?: string,
+): TaskRunRecord | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
     const run = runs[index];
@@ -5178,7 +5361,7 @@ function getLobsterRoundRunStatus(
       && run.taskRole === role
       && (role !== "subtask" || run.lobsterSubtaskId === subtaskId)
     ) {
-      return run.status;
+      return run;
     }
   }
   return null;
@@ -6826,6 +7009,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             if (!isCurrentRunActive()) {
               return;
             }
+            if (content.trim().length > 0 && kind !== "thinking") {
+              attemptHadNormalReply = true;
+            }
             appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal", meta);
             appendTraceLog(content);
           },
@@ -6900,6 +7086,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
             if (!isCurrentRunActive()) {
               return;
+            }
+            if (content.trim().length > 0 && kind !== "thinking") {
+              attemptHadNormalReply = true;
             }
             appendTraceMessageForTab(content, kind ?? "normal", {
               ...meta,
