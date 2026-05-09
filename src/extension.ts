@@ -921,20 +921,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
           saveWorkspaceSettings(workspaceSettings);
         }
       } else {
-        const activeTab = getActiveConversationTab();
-        if (activeTab && activeTab.cli !== message.cli) {
-          switchConversationTabCli(activeTab, message.cli);
-          setConversationTabSessionIdForCli(activeTab, message.cli, selectedSessionId);
-          clearPendingSessionDraft(activeTab.id, message.cli);
-          persistConversationTabsToWorkspaceSettings();
-        } else {
-          const activeTabId = getActiveConversationTabId();
-          if (activeTabId) {
-            clearPendingSessionDraft(activeTabId, message.cli);
-          }
-          updateActiveConversationTabSession(message.cli, selectedSessionId);
-        }
-        setCurrentSession(message.cli, selectedSessionId);
+        addConversationTab(message.cli, selectedSessionId);
       }
     } else {
       startNewSession(message.cli);
@@ -10034,7 +10021,7 @@ function pruneStaleSessionMetaMappings(
 
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
-  const openConversationTabSessionKeys = buildOpenConversationTabSessionKeys();
+  const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
@@ -10053,15 +10040,17 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         record.label = fallbackLabel;
         shouldPersist = true;
       }
+      const openConversationTabId = openConversationTabSessionMap.get(
+        buildConversationTabSessionLookupKey(item, record.id)
+      ) ?? null;
       allSessions.push({
         id: record.id,
         label: record.label,
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
-        isOpenInConversationTabs: openConversationTabSessionKeys.has(
-          buildConversationTabSessionLookupKey(item, record.id)
-        ),
+        isOpenInConversationTabs: Boolean(openConversationTabId),
+        openConversationTabId,
         firstPrompt,
       });
     });
@@ -10105,17 +10094,17 @@ function buildConversationTabSessionLookupKey(cli: CliName, sessionId: string): 
   return `${cli}:${sessionId}`;
 }
 
-function buildOpenConversationTabSessionKeys(): Set<string> {
+function buildOpenConversationTabSessionMap(): Map<string, string> {
   const state = ensureConversationTabs();
-  const keys = new Set<string>();
+  const sessionMap = new Map<string, string>();
   state.tabs.forEach((tab) => {
     const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
     if (!sessionId) {
       return;
     }
-    keys.add(buildConversationTabSessionLookupKey(tab.cli, sessionId));
+    sessionMap.set(buildConversationTabSessionLookupKey(tab.cli, sessionId), tab.id);
   });
-  return keys;
+  return sessionMap;
 }
 
 function buildConversationTabsState(): {

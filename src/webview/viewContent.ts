@@ -5124,9 +5124,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           loadButton.className = "secondary";
           loadButton.textContent = t("sessionLoadLabel");
           loadButton.addEventListener("click", () => {
-            setMessagesForTab(getActiveConversationTabId(), []);
             closeHistory();
             armPromptContextForConversationStart();
+            if (session.openConversationTabId) {
+              vscode.postMessage({
+                type: "selectConversationTab",
+                tabId: session.openConversationTabId,
+                cli: session.cli,
+              });
+              return;
+            }
             vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
           });
 
