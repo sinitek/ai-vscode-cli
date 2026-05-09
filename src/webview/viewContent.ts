@@ -177,9 +177,9 @@ const WEBVIEW_I18N = {
     historyEmptySessions: "No session history",
     historyEmptyPrompts: "No prompt history",
     sessionDefaultLabel: "Untitled Session",
+    sessionOpenInTabsLabel: "Open",
     sessionLoadLabel: "Load",
     sessionDeleteLabel: "Delete",
-    sessionCopyIdLabel: "Copy ID",
     promptViewLabel: "View",
     promptCollapseLabel: "Collapse",
     promptReuseLabel: "Reuse",
@@ -436,9 +436,9 @@ const WEBVIEW_I18N = {
     historyEmptySessions: "暂无会话历史",
     historyEmptyPrompts: "暂无历史提示词",
     sessionDefaultLabel: "未命名会话",
+    sessionOpenInTabsLabel: "已激活",
     sessionLoadLabel: "加载",
     sessionDeleteLabel: "删除",
-    sessionCopyIdLabel: "复制ID",
     promptViewLabel: "查看",
     promptCollapseLabel: "收起",
     promptReuseLabel: "复用",
@@ -2276,9 +2276,27 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .session-label {
         font-weight: 600;
+        flex: 1;
+        min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .session-title-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .session-status-badge {
+        flex: 0 0 auto;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--vscode-widget-border);
+        background: var(--vscode-badge-background, var(--vscode-editorWidget-background));
+        color: var(--vscode-badge-foreground, var(--vscode-foreground));
+        font-size: 11px;
+        line-height: 1.2;
       }
       .session-subtitle {
         font-size: 12px;
@@ -5071,6 +5089,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const info = document.createElement("div");
           info.className = "session-info";
 
+          const titleRow = document.createElement("div");
+          titleRow.className = "session-title-row";
+
           const label = document.createElement("div");
           label.className = "session-label";
           const cliLabel = session.cli ? "[" + session.cli + "] " : "";
@@ -5081,11 +5102,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             label.title = session.label || t("sessionDefaultLabel");
           }
 
+          titleRow.appendChild(label);
+          if (session.isOpenInConversationTabs) {
+            const badge = document.createElement("span");
+            badge.className = "session-status-badge";
+            badge.textContent = t("sessionOpenInTabsLabel");
+            titleRow.appendChild(badge);
+          }
+
           const subtitle = document.createElement("div");
           subtitle.className = "session-subtitle";
           subtitle.textContent = session.createdAt ? formatDateTime(session.createdAt) : "";
 
-          info.appendChild(label);
+          info.appendChild(titleRow);
           info.appendChild(subtitle);
 
           const actions = document.createElement("div");
@@ -5108,15 +5137,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             vscode.postMessage({ type: "deleteSession", sessionId: session.id, cli: session.cli });
           });
 
-          const copyButton = document.createElement("button");
-          copyButton.className = "ghost";
-          copyButton.textContent = t("sessionCopyIdLabel");
-          copyButton.addEventListener("click", () => {
-            copySessionId(session.id);
-          });
-
           actions.appendChild(loadButton);
-          actions.appendChild(copyButton);
           actions.appendChild(deleteButton);
           item.appendChild(info);
           item.appendChild(actions);
@@ -6281,13 +6302,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           return;
         }
         fallbackCopyText(value, successMessage);
-      }
-
-      function copySessionId(sessionId) {
-        if (!sessionId) {
-          return;
-        }
-        copyTextToClipboard(String(sessionId));
       }
 
       function fallbackCopyText(value, successMessage = t("toastCopied")) {

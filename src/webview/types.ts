@@ -107,6 +107,7 @@ export type SessionSummary = {
   createdAt: number;
   lastUsedAt: number;
   cli: CliName;
+  isOpenInConversationTabs: boolean;
   firstPrompt?: string;
 };
 

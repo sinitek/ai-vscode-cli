@@ -10034,6 +10034,7 @@ function pruneStaleSessionMetaMappings(
 
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
+  const openConversationTabSessionKeys = buildOpenConversationTabSessionKeys();
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
@@ -10058,6 +10059,9 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
+        isOpenInConversationTabs: openConversationTabSessionKeys.has(
+          buildConversationTabSessionLookupKey(item, record.id)
+        ),
         firstPrompt,
       });
     });
@@ -10095,6 +10099,23 @@ function getLatestSessionId(cli: CliName): string | null {
 
 function getCurrentSessionId(cli: CliName): string | null {
   return sessionStore[cli]?.currentId ?? null;
+}
+
+function buildConversationTabSessionLookupKey(cli: CliName, sessionId: string): string {
+  return `${cli}:${sessionId}`;
+}
+
+function buildOpenConversationTabSessionKeys(): Set<string> {
+  const state = ensureConversationTabs();
+  const keys = new Set<string>();
+  state.tabs.forEach((tab) => {
+    const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+    if (!sessionId) {
+      return;
+    }
+    keys.add(buildConversationTabSessionLookupKey(tab.cli, sessionId));
+  });
+  return keys;
 }
 
 function buildConversationTabsState(): {
