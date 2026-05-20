@@ -13,6 +13,7 @@ import {
   extractCodexItemTraceCandidate,
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
+  isCodexContextCompactionCompletedNotification,
   normalizeCodexExecItemType,
 } from "./codexAppServerEvents";
 import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
@@ -69,6 +70,11 @@ type JsonRpcResolution = {
 type AppServerResponse = {
   code: number | null;
   signal: NodeJS.Signals | null;
+};
+
+type CodexCompactionResult = {
+  compacted: boolean;
+  threadId: string;
 };
 
 const CODEX_APP_SERVER_CLIENT_NAME = "codex";
@@ -838,6 +844,373 @@ export class CodexInteractiveRunner {
     };
     await this.runStreamed(prompt, handlers);
     return { threadId: this.getThreadId(), text: chunks.join("") };
+  }
+
+  public async compactThread(): Promise<CodexCompactionResult> {
+    await this.ensureReady();
+    const existingThreadId = String(this.options.threadId || "").trim();
+    if (!existingThreadId) {
+      throw new Error("Codex thread not established");
+    }
+
+    const runGeneration = this.abortGeneration;
+    const runDisposeGeneration = this.disposeGeneration;
+    const threadOptions = buildCodexThreadOptions(
+      this.options.args,
+      this.options.cwd,
+      this.options.thinkingMode,
+      this.options.interactiveMode,
+      this.options.model,
+      this.options.multiAgentEnabled
+    );
+    let resolvedWorkspaceDir = threadOptions.workingDirectory;
+    const configOverrides: string[] = [];
+    const childEnvResult = buildCodexChildEnv(process.env);
+
+    if (resolvedWorkspaceDir) {
+      resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
+      threadOptions.workingDirectory = resolvedWorkspaceDir;
+      configOverrides.push(buildCodexWorkspaceTrustConfigOverride(resolvedWorkspaceDir));
+      try {
+        await ensureCodexProjectTrusted({
+          projectRoot: resolvedWorkspaceDir,
+          codexHomeDir: childEnvResult.codexHomeDir,
+        });
+      } catch {
+        // compact should still attempt to proceed; trust failure will surface from app-server if required
+      }
+    }
+
+    const spawnCommand = resolveSpawnCommand(
+      this.options.command,
+      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides)
+    );
+    void logInfo("codex-app-server-compact-spawn", {
+      command: spawnCommand.command,
+      args: spawnCommand.args,
+      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
+      usesShell: spawnCommand.usesShell,
+      resolvedFrom: spawnCommand.resolvedFrom,
+      codexHomeDir: childEnvResult.codexHomeDir,
+      removedEnvKeys: childEnvResult.removedEnvKeys,
+      threadId: existingThreadId,
+      interactiveMode: this.options.interactiveMode,
+    });
+
+    const child = spawn(spawnCommand.command, spawnCommand.args, {
+      cwd: resolvedWorkspaceDir ?? this.options.cwd,
+      env: childEnvResult.env,
+      detached: false,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.activeChild = child;
+
+    let spawnError: Error | null = null;
+    let streamError: Error | null = null;
+    let stdoutParseError: Error | null = null;
+    const stderrChunks: Buffer[] = [];
+    let nextRequestId = 1;
+    let settled = false;
+    let childClosed = false;
+    let threadCompacted = false;
+    const pendingRequests = new Map<number, JsonRpcPendingRequest>();
+    let completionResolve: ((value: CodexCompactionResult) => void) | null = null;
+    let completionReject: ((error: Error) => void) | null = null;
+
+    const completionPromise = new Promise<CodexCompactionResult>((resolve, reject) => {
+      completionResolve = resolve;
+      completionReject = reject;
+    });
+    const exitPromise = new Promise<AppServerResponse>((resolve) => {
+      child.once("close", (code, signal) => {
+        childClosed = true;
+        resolve({ code, signal });
+        if (!settled) {
+          const error = this.disposeGeneration !== runDisposeGeneration
+            ? createRunnerDisposedError()
+            : this.abortGeneration !== runGeneration
+              ? createAbortError()
+              : new Error(
+                t("codex.appServerExited", {
+                  detail: signal ? `signal ${signal}` : `code ${code ?? 1}`,
+                  stderr: Buffer.concat(stderrChunks).toString("utf8") || "-",
+                })
+              );
+          settleFailure(error);
+        }
+      });
+    });
+
+    const settleSuccess = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      completionResolve?.({
+        compacted: threadCompacted,
+        threadId: existingThreadId,
+      });
+    };
+
+    const settleFailure = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      completionReject?.(error);
+    };
+
+    const rejectPendingRequests = (error: Error): void => {
+      for (const pending of pendingRequests.values()) {
+        pending.reject(error);
+      }
+      pendingRequests.clear();
+    };
+
+    const failRun = (error: Error): void => {
+      if (!streamError) {
+        streamError = error;
+      }
+      rejectPendingRequests(error);
+      settleFailure(error);
+    };
+
+    const shutdownChild = (mode: "graceful" | "terminate"): void => {
+      if (childClosed) {
+        return;
+      }
+      requestChildShutdown(child, mode);
+    };
+
+    const sendJsonRpcMessage = (message: Record<string, unknown>): void => {
+      if (!child.stdin || !child.stdin.writable) {
+        throw new Error(t("codex.appServerStdinUnavailable"));
+      }
+      child.stdin.write(`${JSON.stringify(message)}\n`);
+    };
+
+    const request = <T = unknown>(method: string, params: Record<string, unknown>): Promise<T> => {
+      return new Promise<T>((resolve, reject) => {
+        const id = nextRequestId;
+        nextRequestId += 1;
+        pendingRequests.set(id, {
+          resolve: (value) => resolve(value as T),
+          reject,
+        });
+        try {
+          sendJsonRpcMessage({ jsonrpc: "2.0", id, method, params });
+        } catch (error) {
+          pendingRequests.delete(id);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    };
+
+    const notify = (method: string, params?: Record<string, unknown>): void => {
+      const message: Record<string, unknown> = {
+        jsonrpc: "2.0",
+        method,
+      };
+      if (params && Object.keys(params).length > 0) {
+        message.params = params;
+      }
+      sendJsonRpcMessage(message);
+    };
+
+    child.once("error", (error) => {
+      spawnError = error;
+      failRun(error);
+    });
+
+    child.stderr?.on("data", (chunk: string | Buffer) => {
+      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+
+    if (!child.stdout) {
+      child.kill();
+      throw new Error(t("codex.appServerNoStdout"));
+    }
+
+    const rl = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    });
+
+    const outputLoopPromise = (async (): Promise<void> => {
+      try {
+        for await (const line of rl) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            continue;
+          }
+
+          let message: Record<string, unknown>;
+          try {
+            message = JSON.parse(trimmed) as Record<string, unknown>;
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            stdoutParseError = new Error(t("codex.appServerParseFailed", { error: detail }));
+            failRun(stdoutParseError);
+            shutdownChild("terminate");
+            break;
+          }
+
+          const hasId = Object.prototype.hasOwnProperty.call(message, "id");
+          const hasResult = Object.prototype.hasOwnProperty.call(message, "result");
+          const hasError = Object.prototype.hasOwnProperty.call(message, "error");
+          const method = String(message.method || "").trim();
+
+          if (hasId && (hasResult || hasError) && !method) {
+            const id = Number(message.id);
+            const pending = pendingRequests.get(id);
+            if (!pending) {
+              continue;
+            }
+            pendingRequests.delete(id);
+            if (hasError) {
+              const errorRecord = message.error && typeof message.error === "object"
+                ? message.error as Record<string, unknown>
+                : {};
+              pending.reject(new Error(String(errorRecord.message || t("codex.appServerRequestFailed"))));
+            } else {
+              pending.resolve(message.result);
+            }
+            continue;
+          }
+
+          if (hasId && method) {
+            const resolution = buildAppServerRequestResolution(method);
+            try {
+              sendJsonRpcMessage(resolution.error
+                ? { jsonrpc: "2.0", id: message.id, error: resolution.error }
+                : { jsonrpc: "2.0", id: message.id, result: resolution.result ?? {} });
+            } catch (error) {
+              failRun(error instanceof Error ? error : new Error(String(error)));
+              shutdownChild("terminate");
+              break;
+            }
+            continue;
+          }
+
+          if (isCodexContextCompactionCompletedNotification(message, existingThreadId)) {
+            threadCompacted = true;
+            settleSuccess();
+            setTimeout(() => shutdownChild("graceful"), 0);
+            continue;
+          }
+
+          if (!method) {
+            continue;
+          }
+
+          if (method === "error") {
+            const params = message.params && typeof message.params === "object"
+              ? message.params as Record<string, unknown>
+              : {};
+            const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
+            if (rateLimitMessage) {
+              failRun(new Error(rateLimitMessage));
+              setTimeout(() => shutdownChild("terminate"), 0);
+              continue;
+            }
+            const errorMessage = String(params.message || "").trim();
+            if (errorMessage) {
+              failRun(new Error(errorMessage));
+              setTimeout(() => shutdownChild("terminate"), 0);
+            }
+            continue;
+          }
+        }
+      } catch (error) {
+        const nextError = error instanceof Error ? error : new Error(String(error));
+        failRun(nextError);
+        throw nextError;
+      }
+    })();
+
+    try {
+      const initializeParams: Record<string, unknown> = {
+        clientInfo: buildCodexAppServerClientInfo(spawnCommand.command),
+        capabilities: {
+          experimentalApi: false,
+          optOutNotificationMethods: [],
+        },
+      };
+      await request("initialize", initializeParams);
+      notify("initialized");
+
+      const threadConfig = buildCodexAppServerConfig(threadOptions);
+      const threadParams: Record<string, unknown> = {
+        cwd: threadOptions.workingDirectory,
+        sandbox: buildCodexAppServerSandboxMode(threadOptions.sandboxMode),
+        config: threadConfig,
+        experimentalRawEvents: false,
+        persistExtendedHistory: false,
+      };
+      if (threadOptions.model) {
+        threadParams.model = threadOptions.model;
+      }
+      if (threadOptions.approvalPolicy) {
+        threadParams.approvalPolicy = threadOptions.approvalPolicy;
+      }
+
+      await request<Record<string, unknown>>("thread/resume", {
+        threadId: existingThreadId,
+        ...threadParams,
+      });
+      await request("thread/compact/start", {
+        threadId: existingThreadId,
+      });
+
+      const result = await completionPromise;
+      const { code, signal } = await exitPromise;
+      await outputLoopPromise;
+
+      if (spawnError) {
+        throw spawnError;
+      }
+      if (stdoutParseError) {
+        throw stdoutParseError;
+      }
+      if (streamError) {
+        throw streamError;
+      }
+      if (this.disposeGeneration !== runDisposeGeneration) {
+        throw createRunnerDisposedError();
+      }
+      if (this.abortGeneration !== runGeneration) {
+        throw createAbortError();
+      }
+      if (code !== 0 || signal) {
+        const stderr = Buffer.concat(stderrChunks).toString("utf8");
+        const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
+        throw new Error(t("codex.appServerExited", { detail, stderr: stderr || "-" }));
+      }
+      return result;
+    } catch (error) {
+      if (!settled && error instanceof Error) {
+        failRun(error);
+      }
+      shutdownChild("terminate");
+      await Promise.allSettled([exitPromise, outputLoopPromise]);
+      if (this.disposeGeneration !== runDisposeGeneration) {
+        throw createRunnerDisposedError();
+      }
+      if (this.abortGeneration !== runGeneration) {
+        throw createAbortError();
+      }
+      throw error;
+    } finally {
+      rl.close();
+      child.removeAllListeners();
+      child.stderr?.removeAllListeners();
+      child.stdout?.removeAllListeners();
+      child.stdin?.removeAllListeners();
+      if (this.activeChild === child) {
+        this.activeChild = null;
+      }
+    }
   }
 
   public async runStreamed(prompt: string, handlers: CodexStreamHandlers): Promise<void> {

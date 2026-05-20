@@ -6405,7 +6405,13 @@ async function runContextCompactionCommand(): Promise<void> {
   try {
     if (cli === "codex") {
       const mappedThreadId = resolveInteractiveMappedId(cli, sessionId);
-      let runner = interactiveRunnerManager.getOrCreateCodexRunner({
+      if (!mappedThreadId) {
+        appendSystemMessage(t("rules.compactNoSession"));
+        cleanupAfterRun("end");
+        return;
+      }
+
+      const runner = interactiveRunnerManager.getOrCreateCodexRunner({
         sessionId,
         threadId: mappedThreadId,
         command,
@@ -6417,73 +6423,21 @@ async function runContextCompactionCommand(): Promise<void> {
         multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
-
-      const summaryResult = await (async () => {
-        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
-        try {
-          return await runner.runForText(buildCompactionPrompt());
-        } finally {
-          interactiveRunnerManager?.endActiveRun(cli, sessionId);
-        }
-      })();
-      const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
-      if (!compactionSummary || !mappedThreadId) {
-        appendSystemMessage(t("compact.failEmpty"));
-        cleanupAfterRun("end");
-        return;
-      }
-
-      const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
-      const bootstrap = [
-        t("compact.resumeNotice"),
-        "",
-        compactionSummary,
-        "",
-        t("compact.systemPrompt.recentTitle"),
-        formatTurnsForBootstrap(recent),
-      ].join("\n");
-
-      runner.dispose();
-      runner = new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
-        command,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: selectedModel,
-        threadId: null,
-        multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-      });
-
-      stopCurrentTurn = () => runner.stopAndRebuild();
       interactiveRunnerManager?.beginActiveRun(cli, sessionId);
       try {
-        await runner.runStreamed(bootstrap, {
-          onAssistantDelta: () => {},
-          onTrace: () => {},
-          onEvent: (event) => {
-            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
-          },
-          onTaskListUpdate: (items) => {
-            sendPanelMessage({ type: "taskListUpdate", items });
-          },
-          onThreadId: (threadId) => {
-            updateProcessTitle(cli, threadId);
-            upsertInteractiveMapping(cli, sessionId, threadId, { freezePrevious: mappedThreadId });
-            appendSystemMessage(
-              t("compact.summaryCompressed", { from: mappedThreadId, to: threadId })
-            );
-            appendTraceMessage(compactionSummary);
-            void logInfo("context-compact-codex-complete", {
-              cli,
-              sessionId,
-              threadId,
-              previousThreadId: mappedThreadId,
-            });
-            interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-            });
-          },
+        const result = await runner.compactThread();
+        upsertInteractiveMapping(cli, sessionId, result.threadId, { freezePrevious: mappedThreadId });
+        appendSystemMessage(
+          t("compact.codexNativeCompressed", { threadId: result.threadId })
+        );
+        void logInfo("context-compact-codex-complete", {
+          cli,
+          sessionId,
+          threadId: result.threadId,
+          compacted: result.compacted,
+        });
+        interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+          multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
         });
       } finally {
         interactiveRunnerManager?.endActiveRun(cli, sessionId);

@@ -94,7 +94,7 @@ media/
 当前只有 Codex 和 Claude 进入交互 Runner：
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
-- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown
+- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`
 - `claudeRunner.ts`：通过 `@anthropic-ai/claude-agent-sdk` 建立交互会话，维护 Claude session
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复

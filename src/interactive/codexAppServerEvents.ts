@@ -33,6 +33,10 @@ export type CodexItemTraceCandidate = {
   content: string;
 };
 
+function normalizeCodexCompactionItemType(type: unknown): string {
+  return String(type || "").trim().replace(/[_-]/g, "").toLowerCase();
+}
+
 function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -233,6 +237,36 @@ export function extractCodexItemTraceCandidate(
     };
   }
   return null;
+}
+
+export function isCodexContextCompactionCompletedNotification(
+  rawMessage: unknown,
+  expectedThreadId = ""
+): boolean {
+  const message = toRecord(rawMessage);
+  if (!message) {
+    return false;
+  }
+
+  const method = String(message.method || "").trim();
+  const normalizedExpectedThreadId = String(expectedThreadId || "").trim();
+  const params = toRecord(message.params);
+
+  if (method === "thread/compacted") {
+    const compactedThreadId = String(params?.threadId || "").trim();
+    return !compactedThreadId || !normalizedExpectedThreadId || compactedThreadId === normalizedExpectedThreadId;
+  }
+
+  if (method !== "item/completed") {
+    return false;
+  }
+
+  const itemThreadId = String(params?.threadId || "").trim();
+  if (normalizedExpectedThreadId && itemThreadId !== normalizedExpectedThreadId) {
+    return false;
+  }
+
+  return normalizeCodexCompactionItemType(params?.item && toRecord(params.item)?.type) === "contextcompaction";
 }
 
 export function extractCodexWebSearchTraceCandidate(
