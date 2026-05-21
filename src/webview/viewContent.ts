@@ -84,9 +84,9 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "Auto File Tags",
     toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
-    toolSettingsAutoCompactBeforeRunLabel: "Auto Compact Before Run",
-    toolSettingsAutoCompactBeforeRunTitle: "For existing codex/claude/gemini sessions, compact context before each task starts",
-    toolSettingsAutoCompactBeforeRunToggle: "On",
+    toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
+    toolSettingsAutoCompactAfterRunTitle: "For existing codex/claude/gemini sessions, compact context after each task finishes successfully",
+    toolSettingsAutoCompactAfterRunToggle: "On",
     toolSettingsCodexSubagentsLabel: "Codex Subagents",
     toolSettingsCodexSubagentsTitle: "Allow Codex app-server to use official multi-agent subagents (spawnAgent / wait / closeAgent)",
     toolSettingsCodexSubagentsToggle: "On",
@@ -346,9 +346,9 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
-    toolSettingsAutoCompactBeforeRunLabel: "执行前自动压缩",
-    toolSettingsAutoCompactBeforeRunTitle: "在已有 codex/claude/gemini 会话中，每次任务开始前先压缩上下文",
-    toolSettingsAutoCompactBeforeRunToggle: "开启",
+    toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩",
+    toolSettingsAutoCompactAfterRunTitle: "在已有 codex/claude/gemini 会话中，每次任务成功结束后再压缩上下文",
+    toolSettingsAutoCompactAfterRunToggle: "开启",
     toolSettingsCodexSubagentsLabel: "Codex 子智能体",
     toolSettingsCodexSubagentsTitle: "是否允许 Codex app-server 使用官方多智能体子任务能力（spawnAgent / wait / closeAgent）",
     toolSettingsCodexSubagentsToggle: "开启",
@@ -2836,10 +2836,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </label>
             </div>
             <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsAutoCompactBeforeRunLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactBeforeRunTitle}">
-                <input type="checkbox" id="autoCompactContextBeforeRun" />
-                <span>${i18n.toolSettingsAutoCompactBeforeRunToggle}</span>
+              <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
+                <input type="checkbox" id="autoCompactContextAfterRun" />
+                <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
               </label>
             </div>
             <div class="tool-settings-row">
@@ -3287,7 +3287,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
-        autoCompactContextBeforeRun: true,
+        autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
         lobsterAutoCloseSubtaskTabs: true,
@@ -3350,7 +3350,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         lobsterSubtaskModelSelect: document.getElementById("lobsterSubtaskModelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
-        autoCompactContextBeforeRun: document.getElementById("autoCompactContextBeforeRun"),
+        autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
         lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
         lobsterAutoCloseSubtaskTabs: document.getElementById("lobsterAutoCloseSubtaskTabs"),
@@ -4089,7 +4089,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
-        state.autoCompactContextBeforeRun = Boolean(panelState.autoCompactContextBeforeRun);
+        state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
         state.lobsterAutoCloseSubtaskTabs = Boolean(panelState.lobsterAutoCloseSubtaskTabs);
@@ -4175,8 +4175,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.autoAddEditorContextTags) {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
-        if (elements.autoCompactContextBeforeRun) {
-          elements.autoCompactContextBeforeRun.checked = state.autoCompactContextBeforeRun;
+        if (elements.autoCompactContextAfterRun) {
+          elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
         }
         if (elements.codexMultiAgentEnabled) {
           elements.codexMultiAgentEnabled.checked = state.codexMultiAgentEnabled;
@@ -8253,13 +8253,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           });
         });
       }
-      if (elements.autoCompactContextBeforeRun) {
-        elements.autoCompactContextBeforeRun.addEventListener("change", (event) => {
+      if (elements.autoCompactContextAfterRun) {
+        elements.autoCompactContextAfterRun.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
-          state.autoCompactContextBeforeRun = enabled;
+          state.autoCompactContextAfterRun = enabled;
           vscode.postMessage({
             type: "updateSetting",
-            key: "autoCompactContextBeforeRun",
+            key: "autoCompactContextAfterRun",
             value: enabled,
           });
         });

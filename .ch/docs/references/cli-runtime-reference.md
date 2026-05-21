@@ -43,7 +43,7 @@
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持项目级“执行前自动压缩上下文”开关（默认开启）；开启后，在非新会话执行任务前会先压缩上下文，再继续原任务。该自动行为当前对 Codex / Claude / Gemini 生效
+- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束后会自动压缩上下文；任务中断或报错不触发。该自动行为当前对 Codex / Claude / Gemini 生效
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
@@ -61,7 +61,7 @@
 - 同步传入当前模型、工作目录和 `user/project/local` settings
 - 通过 SDK session 做会话续接
 - 面板“常用命令 -> 压缩上下文”在 Claude 下优先直接发送官方 `/compact` slash command，并通过 SDK `status=compacting` / `compact_boundary` 事件判定原生压缩完成；若当前 Claude 环境明确不支持原生 compact，则回退到旧的“生成摘要后切新会话”兼容方案
-- 面板“工具设置”开启“执行前自动压缩上下文”后，Claude 的非新会话任务会在执行前先走一次压缩（含 `/compact` 原生能力与兼容回退路径），压缩完成后自动开始原任务
+- 面板“工具设置”开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断或报错不触发
 - Claude Code 2.1.118 的官方 CLI 帮助已提供 `--effort <level>`，取值为 `low`、`medium`、`high`、`xhigh`、`max`
 - 插件交互 Runner 优先通过 SDK `extraArgs.effort` 传递新版思考力度；若旧 Claude Code/SDK 不支持该参数，则回退到 `maxThinkingTokens`
 - 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
@@ -74,7 +74,7 @@
 - 若用户未显式配置 `--output-format`，插件会追加 `--output-format stream-json`，并按 JSONL 事件解析 assistant delta、`init.session_id`、`result.status` 与错误事件
 - 若用户已在参数中显式配置 `-p` / `--prompt` 或 `--output-format`，插件不会重复插入对应参数，保持用户配置优先
 - session 续接仍复用 Gemini CLI 的 `--resume <sessionId>` 参数；扩展侧不维护类似 Codex app-server 的 Gemini 交互 Runner
-- 面板“常用命令 -> 压缩上下文”在 Gemini 下会直接复用当前 `sessionId` 调用官方 `/compress` 命令，继续走现有 headless `stream-json` 链路；“执行前自动压缩上下文”开启后，Gemini 也会在已有会话任务开始前先执行一次 `/compress`
+- 面板“常用命令 -> 压缩上下文”在 Gemini 下会直接复用当前 `sessionId` 调用官方 `/compress` 命令，继续走现有 headless `stream-json` 链路；“执行后自动压缩上下文”开启后，Gemini 也会在已有会话任务成功结束后自动执行一次 `/compress`
 - 会参与统一 UI、统一会话存档和统一配置读取
 
 ## 4. 模式与参数映射

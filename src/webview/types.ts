@@ -150,7 +150,7 @@ export type PanelState = {
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
   autoAddEditorContextTags: boolean;
-  autoCompactContextBeforeRun: boolean;
+  autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;
   lobsterAutoCloseSubtaskTabs: boolean;

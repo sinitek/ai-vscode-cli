@@ -458,6 +458,7 @@ type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  autoCompactContextAfterRun?: boolean;
   autoCompactContextBeforeRun?: boolean;
   codexMultiAgentEnabled?: boolean;
   lobsterMaxRounds?: number;
@@ -1268,8 +1269,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
-    if (message.key === "autoCompactContextBeforeRun") {
-      workspaceSettings.autoCompactContextBeforeRun = Boolean(message.value);
+    if (message.key === "autoCompactContextAfterRun" || message.key === "autoCompactContextBeforeRun") {
+      workspaceSettings.autoCompactContextAfterRun = Boolean(message.value);
+      delete workspaceSettings.autoCompactContextBeforeRun;
       saveWorkspaceSettings(workspaceSettings);
       await postPanelState();
       return;
@@ -1418,9 +1420,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const preparedPromptInput = promptRunTarget
       ? preloadUserMessageForPrompt(promptInput, promptRunTarget)
       : promptInput;
-    if (promptRunTarget) {
-      await maybeAutoCompactContextBeforePrompt(promptRunTarget);
-    }
     if (shouldRunLobster) {
       await runLobsterPrompt(preparedPromptInput, {
         targetTabId: promptTargetTabId,
@@ -1462,7 +1461,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
-    autoCompactContextBeforeRun: getWorkspaceAutoCompactContextBeforeRun(),
+    autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
@@ -1505,7 +1504,7 @@ async function buildPanelStateWithConfigState(
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
-    autoCompactContextBeforeRun: getWorkspaceAutoCompactContextBeforeRun(),
+    autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
@@ -3522,6 +3521,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const geminiRunProfile = prepareGeminiRunProfile(selectedModel, thinkingMode, cwd);
   const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
   const runtimeEnvOverrides = geminiRunProfile.envOverrides;
+  const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
 
   preparePendingLabel(runCli, target.tabId, prompt);
   let sessionId = target.sessionId;
@@ -3729,6 +3729,9 @@ ${rawStderr}`);
       appendMessageToStore(messageTarget, completionMessage);
       sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
       persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+      if (shouldAutoCompactAfterRun) {
+        await maybeAutoCompactContextAfterPromptSuccess(target, sessionId);
+      }
       return;
     }
 
@@ -5758,6 +5761,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
   const runtimeEnvOverrides = geminiRunProfile.envOverrides;
   const activeTabId = target.tabId;
+  const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
   preparePendingLabel(runCli, activeTabId, prompt);
   const initialSessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
@@ -5971,12 +5975,16 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       && geminiStreamState.resultStatus !== "success";
 
     if (attemptResult.type === "exit" && attemptResult.code === 0 && !geminiResultFailed) {
+      const finalSessionId = activeSessionId;
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
       sendRunStatus("end");
       flushTraceBuffer();
       appendCompletionMessage("end");
       persistActiveMessages();
       clearActiveRun();
+      if (shouldAutoCompactAfterRun) {
+        await maybeAutoCompactContextAfterPromptSuccess(target, finalSessionId);
+      }
       return;
     }
 
@@ -6811,26 +6819,36 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   }
 }
 
-async function maybeAutoCompactContextBeforePrompt(target: PromptRunTarget): Promise<void> {
-  if (!getWorkspaceAutoCompactContextBeforeRun()) {
-    return;
+function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boolean {
+  if (!getWorkspaceAutoCompactContextAfterRun()) {
+    return false;
   }
   if (!isAutoContextCompactionCli(target.cli)) {
-    return;
+    return false;
   }
   if (!target.sessionId) {
+    return false;
+  }
+  return true;
+}
+
+async function maybeAutoCompactContextAfterPromptSuccess(
+  target: PromptRunTarget,
+  sessionId: string | null,
+): Promise<void> {
+  if (!shouldAutoCompactContextAfterRunForTarget(target) || !sessionId) {
     return;
   }
   const compacted = await runContextCompaction({
     silent: true,
     cli: target.cli,
     tabId: target.tabId,
-    sessionId: target.sessionId,
+    sessionId,
   });
-  void logInfo("auto-context-compact-before-run-finished", {
+  void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
     tabId: target.tabId,
-    sessionId: target.sessionId,
+    sessionId,
     compacted,
   });
 }
@@ -6857,6 +6875,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
   const tabId = target.tabId;
+  const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
   const resolvedSessionId = await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
   if (resolvedSessionId === undefined) {
     return;
@@ -7226,7 +7245,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     );
   };
 
-  const cleanupAfterRun = (status: TaskRunStatus, userMessage?: string): void => {
+  const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
     void logInfo("runPrompt-interactive-end", {
       cli,
       sessionId: uiSessionId,
@@ -7243,6 +7262,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     appendCompletionMessageForTab(status);
     flushPersistForInteractiveRun();
     interactiveRunsByTabId.delete(tabId);
+    if (status === "end" && shouldAutoCompactAfterRun) {
+      await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId);
+    }
   };
 
   const updateSessionForNewRun = (newId: string): void => {
@@ -7409,7 +7431,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             syncInteractiveRunEntry();
           },
         });
-        cleanupAfterRun("end");
+        await cleanupAfterRun("end");
         return;
       }
 
@@ -7523,7 +7545,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             throw error;
           }
         }
-        cleanupAfterRun("end");
+        await cleanupAfterRun("end");
         return;
       }
 
@@ -7589,7 +7611,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         lastFailureMessage: rawUserMessage,
         lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
       });
-      cleanupAfterRun("error", userMessage);
+      await cleanupAfterRun("error", userMessage);
       throw error;
     }
   }
@@ -9067,8 +9089,14 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
 }
 
-function getWorkspaceAutoCompactContextBeforeRun(): boolean {
-  return workspaceSettings.autoCompactContextBeforeRun !== false;
+function getWorkspaceAutoCompactContextAfterRun(): boolean {
+  if (typeof workspaceSettings.autoCompactContextAfterRun === "boolean") {
+    return workspaceSettings.autoCompactContextAfterRun;
+  }
+  if (typeof workspaceSettings.autoCompactContextBeforeRun === "boolean") {
+    return workspaceSettings.autoCompactContextBeforeRun;
+  }
+  return true;
 }
 
 function normalizeLobsterMaxRounds(value: unknown): number {
@@ -9711,9 +9739,14 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     if (typeof codexMultiAgentEnabled === "boolean") {
       result.codexMultiAgentEnabled = codexMultiAgentEnabled;
     }
-    const autoCompactContextBeforeRun = (parsed as WorkspaceSettings).autoCompactContextBeforeRun;
-    if (typeof autoCompactContextBeforeRun === "boolean") {
-      result.autoCompactContextBeforeRun = autoCompactContextBeforeRun;
+    const autoCompactContextAfterRun = (parsed as WorkspaceSettings).autoCompactContextAfterRun;
+    if (typeof autoCompactContextAfterRun === "boolean") {
+      result.autoCompactContextAfterRun = autoCompactContextAfterRun;
+    } else {
+      const autoCompactContextBeforeRun = (parsed as WorkspaceSettings).autoCompactContextBeforeRun;
+      if (typeof autoCompactContextBeforeRun === "boolean") {
+        result.autoCompactContextAfterRun = autoCompactContextBeforeRun;
+      }
     }
     const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
     if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
