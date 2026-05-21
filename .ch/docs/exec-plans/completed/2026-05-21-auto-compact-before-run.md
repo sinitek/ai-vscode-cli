@@ -10,7 +10,7 @@
 
 ## 目标
 
-1. 在聊天面板工具设置中新增“执行前自动压缩上下文”开关，默认关闭。
+1. 在聊天面板工具设置中新增“执行前自动压缩上下文”开关，默认开启。
 2. 该开关按项目级（workspace settings）持久化。
 3. 开关开启时，任务执行前仅对 codex / claude / gemini 的非新会话自动触发上下文压缩；压缩结束后继续自动执行原任务。
 4. 同步更新能力规格与功能清单，并完成构建验证。
@@ -28,7 +28,7 @@
 
 ## 验收标准
 
-- [x] 工具设置出现新开关，默认关闭，支持中英文。
+- [x] 工具设置出现新开关，默认开启，支持中英文。
 - [x] 设置持久化到 workspace settings，重开面板后保持。
 - [x] 开关开启时，非新会话任务会先压缩再执行；新会话不触发压缩。
 - [x] 仅 codex / claude / gemini 生效，其他 CLI 不触发。
@@ -66,13 +66,13 @@
 
 ## 决策记录
 
-- 2026-05-21：自动压缩默认关闭；最终覆盖 codex / claude / gemini。
+- 2026-05-21：自动压缩默认开启；最终覆盖 codex / claude / gemini。
 
 ## 当前结论
 
 已完成。实现要点：
 
-- 在 `workspaceSettings` 新增 `autoCompactContextBeforeRun`（默认 `false`）并接入工具设置 UI。
+- 在 `workspaceSettings` 新增 `autoCompactContextBeforeRun`（默认 `true`）并接入工具设置 UI。
 - 在 `sendPrompt` 编排链路中，任务实际启动前新增串行前置步骤：当开关开启且目标为 Codex/Claude/Gemini 的非新会话时，先执行上下文压缩，再继续原任务。
 - 自动压缩失败时不阻断原任务，会记录日志并继续执行。
 - 已执行 `npm run build`，通过。

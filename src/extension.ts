@@ -9068,7 +9068,7 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
 }
 
 function getWorkspaceAutoCompactContextBeforeRun(): boolean {
-  return workspaceSettings.autoCompactContextBeforeRun === true;
+  return workspaceSettings.autoCompactContextBeforeRun !== false;
 }
 
 function normalizeLobsterMaxRounds(value: unknown): number {

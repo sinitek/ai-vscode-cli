@@ -59,7 +59,7 @@
 - Gemini：支持一次性 headless 执行和流式展示；默认参数推荐 `--approval-mode auto_edit`，并自动补齐 Gemini CLI `-p` 与 `--output-format stream-json` 解析结构化事件；thinking 通过临时 system settings 覆盖层 + `-m/--model` alias 选择注入，不再运行时改写工作区 `.gemini/settings.json`
 - 支持 `coding / plan / lobster` 三种交互模式
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
-- 工具设置新增项目级“执行前自动压缩上下文”开关（默认关闭）；开启后，若当前任务目标为非新会话且 CLI 为 Codex/Claude/Gemini，会在任务开始前先执行上下文压缩，再自动继续执行原任务
+- 工具设置新增项目级“执行前自动压缩上下文”开关（默认开启）；开启后，若当前任务目标为非新会话且 CLI 为 Codex/Claude/Gemini，会在任务开始前先执行上下文压缩，再自动继续执行原任务
 - 对非主动中断/异常会隐式发送“继续/continue”自动重试 5 次，每次间隔 30 秒；不会展示这条隐式用户消息，但会追加系统提示说明当前是第几次自动重试；达到上限后会展示最近一次真实错误，避免只剩泛化提示
 - Codex 在工具设置中提供项目级“子智能体（multi_agent）”开关，默认关闭；关闭时继续走 app-server 主链路，但会显式禁用官方多智能体子任务能力
 - Codex 交互式运行会优先直接启动已解析的 CLI，可显式固定 `CODEX_HOME` / 工作区 trust，并在回合完成时优先采用渐进式关闭，降低长任务被异常打断的概率
