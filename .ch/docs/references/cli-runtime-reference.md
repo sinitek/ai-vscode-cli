@@ -43,7 +43,7 @@
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束后会自动压缩上下文；任务中断或报错不触发。该自动行为当前对 Codex / Claude / Gemini 生效
+- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认关闭）；开启后，在已有会话任务成功结束后会自动压缩上下文；任务中断或报错不触发。该自动行为当前对 Codex / Claude / Gemini 生效
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model

@@ -9096,7 +9096,7 @@ function getWorkspaceAutoCompactContextAfterRun(): boolean {
   if (typeof workspaceSettings.autoCompactContextBeforeRun === "boolean") {
     return workspaceSettings.autoCompactContextBeforeRun;
   }
-  return true;
+  return false;
 }
 
 function normalizeLobsterMaxRounds(value: unknown): number {

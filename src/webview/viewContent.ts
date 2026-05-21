@@ -3287,7 +3287,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
-        autoCompactContextAfterRun: true,
+        autoCompactContextAfterRun: false,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
         lobsterAutoCloseSubtaskTabs: true,

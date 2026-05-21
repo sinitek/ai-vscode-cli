@@ -63,7 +63,7 @@
 
 ## 决策记录
 
-- 2026-05-21：为兼容已有用户配置，暂保留旧存储字段 `autoCompactContextBeforeRun` 作为读取兼容；新保存语义切换为 `autoCompactContextAfterRun`
+- 2026-05-21：为兼容已有用户配置，暂保留旧存储字段 `autoCompactContextBeforeRun` 作为读取兼容；新保存语义切换为 `autoCompactContextAfterRun`，默认值改为关闭
 
 ## 当前结论
 
