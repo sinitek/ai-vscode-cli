@@ -6528,6 +6528,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   activeMessageTarget = messageTarget;
   activeSessionId = sessionId;
   activeCliForRun = cli;
+  activeTabIdForRun = tabId;
 
   sendRunStatus("start");
 
@@ -6542,6 +6543,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     }
     appendStopMessageToStore();
     try {
+      activeProcess?.kill();
       stopCurrentTurn?.();
     } catch {
       // ignore
@@ -6805,6 +6807,15 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   }
 
   function cleanupAfterRun(status: TaskRunStatus, userMessage?: string): void {
+    if (activeRunId !== runId) {
+      void logInfo("context-compact-command-stale-end-ignored", {
+        cli,
+        sessionId,
+        runId,
+        status,
+      });
+      return;
+    }
     void logInfo("context-compact-command-end", {
       cli,
       sessionId,

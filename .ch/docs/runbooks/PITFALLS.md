@@ -47,6 +47,42 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## 后台压缩任务必须绑定原始 conversation tab
+
+- 状态：已修复
+- 首次发现：2026-05-21
+- 适用范围：`src/extension.ts` 的自动/手动上下文压缩运行态
+
+### 现象
+- 任务成功结束后触发自动压缩，界面已经显示上下文压缩完成，但对应 tab 仍然显示“执行中”。
+- 此时点击终止任务没有效果，看起来像任务卡死。
+
+### 触发条件
+- 开启“执行后自动压缩上下文”。
+- 在已有 Codex / Claude / Gemini 会话中运行任务，任务成功结束后进入自动压缩。
+- 压缩期间或压缩结束时，前端运行态事件没有稳定携带原始 `tabId`。
+
+### 根因
+- 压缩逻辑复用全局 `runContextCompaction()` 运行态，但启动压缩任务时没有设置 `activeTabIdForRun`。
+- `runStatus` 消息因此会落到前端当前激活 tab，而后端 `stopRunForTab()` 又依赖 `activeTabIdForRun` 反查可停止的全局运行，导致 UI 状态和后端运行态脱节。
+- Gemini 压缩还会设置 `activeProcess`，如果停止入口先命中 `activeInteractiveStop`，旧逻辑不会杀掉底层进程。
+
+### 临时绕过
+- 修复前可以关闭“执行后自动压缩上下文”，或者切换会话/重新加载窗口清理错误的前端运行态。
+
+### 长期规避
+- 所有会发出 `runStatus` 的后台任务都必须在启动时绑定原始 `tabId`，确保前后端对同一个 tab 开始、结束、停止。
+- 可停止的后台任务在 stop 回调里必须同时处理交互 runner 和底层 `activeProcess`。
+- 异步任务被停止后，后续返回的旧 cleanup 必须校验 `runId`，避免覆盖新运行态或错误 tab。
+
+### 验证方式
+- 在仓库执行：`npm run build`。
+- 手工验证：开启执行后自动压缩，运行已有会话任务，确认压缩完成后 tab 不再显示运行中；压缩期间点击终止，状态能结束且不会继续卡住。
+
+### 关联资料
+- 代码：`src/extension.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-05-21-auto-compact-after-run.md`
+
 ## Codex 上游返回 HTTP 200 但 SSE `event:error` 为限流时，不能按成功回合处理
 
 - 状态：已修复
