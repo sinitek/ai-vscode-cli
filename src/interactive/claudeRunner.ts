@@ -4,6 +4,7 @@ import * as path from "path";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
+import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 
@@ -19,6 +20,12 @@ export type ClaudeStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
   onEvent?: (event: unknown) => void;
+};
+
+export type ClaudeCompactionResult = {
+  compacted: boolean;
+  previousSessionId: string | null;
+  sessionId: string | null;
 };
 
 type ClaudeToolUseEvent = {
@@ -240,6 +247,13 @@ function extractSessionNotFoundErrorMessage(msg: any): string | null {
   return matched ?? null;
 }
 
+function buildClaudeCompactPrompt(customInstructions?: string): string {
+  const normalizedInstructions = typeof customInstructions === "string"
+    ? customInstructions.trim()
+    : "";
+  return normalizedInstructions ? `/compact ${normalizedInstructions}` : "/compact";
+}
+
 function extractDeltaTextFromStreamEvent(event: any): string {
   if (typeof event?.delta?.text === "string") {
     return event.delta.text;
@@ -359,6 +373,39 @@ export class ClaudeInteractiveRunner {
     };
     await this.runStreamed(prompt, handlers);
     return { sessionId: this.getSessionId(), text: chunks.join("") };
+  }
+
+  public async compactSession(customInstructions?: string): Promise<ClaudeCompactionResult> {
+    const previousSessionId = this.getSessionId();
+    if (!previousSessionId) {
+      throw new Error("Claude session not established");
+    }
+
+    let sawCompactingStatus = false;
+    let sawCompactBoundary = false;
+    const handlers: ClaudeStreamHandlers = {
+      onAssistantDelta: () => {},
+      onTrace: () => {},
+      onTaskListUpdate: () => {},
+      onSessionId: () => {},
+      onEvent: (event) => {
+        if (isClaudeCompactingStatusMessage(event)) {
+          sawCompactingStatus = true;
+        }
+        if (isClaudeCompactBoundaryMessage(event)) {
+          sawCompactBoundary = true;
+        }
+      },
+    };
+
+    await this.runStreamed(buildClaudeCompactPrompt(customInstructions), handlers);
+
+    const sessionId = this.getSessionId();
+    return {
+      compacted: sawCompactingStatus || sawCompactBoundary || sessionId !== previousSessionId,
+      previousSessionId,
+      sessionId,
+    };
   }
 
   public async runStreamed(prompt: string, handlers: ClaudeStreamHandlers): Promise<void> {

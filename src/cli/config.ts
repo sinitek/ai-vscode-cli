@@ -75,7 +75,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude";
+  return cli === "codex" || cli === "claude" || cli === "gemini";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {

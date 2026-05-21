@@ -39,6 +39,10 @@ import {
   buildGeminiThinkingRuntimeProfile,
   GEMINI_SYSTEM_SETTINGS_ENV_KEY,
 } from "./cli/geminiThinking";
+import {
+  GEMINI_NATIVE_COMPACT_PROMPT,
+  isGeminiNativeCompactUnsupportedErrorText,
+} from "./cli/geminiCompaction";
 import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
@@ -82,6 +86,7 @@ import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
+import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
 import {
   collectInteractiveSessionKeys,
   collectReferencedInteractiveSessionKeys,
@@ -453,6 +458,7 @@ type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  autoCompactContextBeforeRun?: boolean;
   codexMultiAgentEnabled?: boolean;
   lobsterMaxRounds?: number;
   lobsterAutoCloseSubtaskTabs?: boolean;
@@ -1262,6 +1268,12 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "autoCompactContextBeforeRun") {
+      workspaceSettings.autoCompactContextBeforeRun = Boolean(message.value);
+      saveWorkspaceSettings(workspaceSettings);
+      await postPanelState();
+      return;
+    }
     if (message.key === "lobsterMaxRounds") {
       workspaceSettings.lobsterMaxRounds = normalizeLobsterMaxRounds(message.value);
       saveWorkspaceSettings(workspaceSettings);
@@ -1402,21 +1414,28 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     }
     recordPromptHistory(trimmed, targetCli);
     await postPanelState();
+    const promptRunTarget = resolvePromptRunTarget(promptTargetTabId);
+    const preparedPromptInput = promptRunTarget
+      ? preloadUserMessageForPrompt(promptInput, promptRunTarget)
+      : promptInput;
+    if (promptRunTarget) {
+      await maybeAutoCompactContextBeforePrompt(promptRunTarget);
+    }
     if (shouldRunLobster) {
-      await runLobsterPrompt(promptInput, {
+      await runLobsterPrompt(preparedPromptInput, {
         targetTabId: promptTargetTabId,
         resumeTaskId: lobsterResumeTask?.id ?? null,
         resumeRequested: lobsterResumeRequested,
       });
     } else {
-      await runPrompt(promptInput, { targetTabId: promptTargetTabId });
+      await runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
       if (lobsterSubtaskContext && promptTargetTabId) {
         await maybeWakeLobsterMainAfterSubtaskContinuation(lobsterSubtaskContext, {
           tabId: promptTargetTabId,
           previousRunEndedAt: previousSubtaskRunEndedAt,
-          model: promptInput.model,
-          lobsterMainModel: promptInput.lobsterMainModel,
-          lobsterSubtaskModel: promptInput.lobsterSubtaskModel,
+          model: preparedPromptInput.model,
+          lobsterMainModel: preparedPromptInput.lobsterMainModel,
+          lobsterSubtaskModel: preparedPromptInput.lobsterSubtaskModel,
         });
       }
     }
@@ -1443,6 +1462,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    autoCompactContextBeforeRun: getWorkspaceAutoCompactContextBeforeRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
@@ -1485,6 +1505,7 @@ async function buildPanelStateWithConfigState(
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    autoCompactContextBeforeRun: getWorkspaceAutoCompactContextBeforeRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
@@ -2799,6 +2820,7 @@ type PromptRunInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
+  preloadedUserMessageId?: string;
   model?: string;
   lobsterMainModel?: string;
   lobsterSubtaskModel?: string;
@@ -3509,20 +3531,11 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(target.tabId, runCli).messages;
 
-  const userMessage: ChatMessage = {
-    id: createMessageId(),
-    role: "user",
-    content: prompt,
-    createdAt: Date.now(),
-    merge: false,
-    contextTags,
-    taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
-  };
-  appendMessageToStore(messageTarget, userMessage);
-  sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
+  if (!input.preloadedUserMessageId) {
+    const userMessage = buildUserChatMessage(input, Date.now(), createMessageId());
+    appendMessageToStore(messageTarget, userMessage);
+    sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
+  }
 
   const runId = createMessageId();
   const startedAt = Date.now();
@@ -5623,6 +5636,46 @@ function buildLobsterSubtaskStartedText(
   ].join("\n");
 }
 
+function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "gemini" {
+  return cli === "codex" || cli === "claude" || cli === "gemini";
+}
+
+function buildUserChatMessage(input: PromptRunInput, createdAt: number, messageId: string): ChatMessage {
+  return {
+    id: messageId,
+    role: "user",
+    content: input.displayPrompt,
+    createdAt,
+    merge: false,
+    contextTags: input.contextTags,
+    taskRole: input.taskRole,
+    lobsterTaskId: input.lobsterTaskId,
+    lobsterRound: input.lobsterRound,
+    lobsterSubtaskId: input.lobsterSubtaskId,
+  };
+}
+
+function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
+  if (input.preloadedUserMessageId) {
+    return input;
+  }
+  const createdAt = Date.now();
+  const messageId = createMessageId();
+  const message = buildUserChatMessage(input, createdAt, messageId);
+  const messageTarget = target.sessionId
+    ? loadSessionMessages(target.cli, target.sessionId)
+    : getPendingSessionDraft(target.tabId, target.cli).messages;
+  appendMessageToStore(messageTarget, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  if (!target.sessionId) {
+    updatePendingSessionDraft(target.tabId, { messages: messageTarget }, target.cli);
+  }
+  return {
+    ...input,
+    preloadedUserMessageId: messageId,
+  };
+}
+
 
 async function runPrompt(
   input: PromptRunInput,
@@ -5737,7 +5790,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     model: runtimeModel,
   });
 
-  const userMessageId = createMessageId();
+  const userMessageId = input.preloadedUserMessageId ?? createMessageId();
   const userCreatedAt = Date.now();
   const runId = createMessageId();
   activeRunId = runId;
@@ -5752,33 +5805,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   activeSessionId = initialSessionId;
   activeCliForRun = runCli;
   activeTabIdForRun = activeTabId;
-  appendMessageToStore(messageTarget, {
-    id: userMessageId,
-    role: "user",
-    content: prompt,
-    createdAt: userCreatedAt,
-    merge: false,
-    contextTags,
-    taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
-  });
-  sendPanelMessage({
-    type: "appendMessage",
-    message: {
-      id: userMessageId,
-      role: "user",
-      content: prompt,
-      createdAt: userCreatedAt,
-      merge: false,
-      contextTags,
-      taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
-    },
-  });
+  if (!input.preloadedUserMessageId) {
+    const userMessage = buildUserChatMessage(input, userCreatedAt, userMessageId);
+    appendMessageToStore(messageTarget, userMessage);
+    sendPanelMessage({
+      type: "appendMessage",
+      message: userMessage,
+    });
+  }
 
   activeAssistantMessageId = undefined;
   activeMessageIndex = null;
@@ -6312,36 +6346,145 @@ async function resolveInteractiveSessionForResume(
   return repairedSessionId;
 }
 
-async function runContextCompactionCommand(): Promise<void> {
-  const cli = currentCli;
-  if (!isInteractiveSupported(cli)) {
-    appendSystemMessageForCli(
-      cli,
-      getCurrentSessionId(cli),
-      t("rules.compactUnsupported")
+async function runGeminiNativeContextCompaction(options: {
+  sessionId: string;
+  tabId?: string | null;
+  selectedModel: string | null;
+  cwd: string | null;
+  thinkingMode: ThinkingMode;
+  onTraceText?: (text: string) => void;
+  onAssistantText?: (text: string) => void;
+  onRawStream?: (chunk: string, stream: "stdout" | "stderr") => void;
+}): Promise<{ compacted: boolean; sessionId: string; resultStatus: string | null; errorText: string | null }> {
+  const runCli: CliName = "gemini";
+  const geminiRunProfile = prepareGeminiRunProfile(options.selectedModel, options.thinkingMode, options.cwd ?? undefined);
+  const runtimeModel = geminiRunProfile.runtimeModel ?? options.selectedModel;
+  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
+  const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
+  let adoptedSessionId = options.sessionId;
+
+  const attemptResult = await new Promise<
+    { type: "exit"; code: number | null }
+    | { type: "error"; error: Error }
+  >((resolve) => {
+    let settled = false;
+    const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
+
+    const process = runCliStream(
+      runCli,
+      GEMINI_NATIVE_COMPACT_PROMPT,
+      {
+        onStdout: (chunk: string) => {
+          options.onRawStream?.(chunk, "stdout");
+          processGeminiStreamJsonChunk(geminiStreamState, chunk, {
+            onAssistantText: (text) => {
+              options.onAssistantText?.(text);
+            },
+            onTraceText: (text) => options.onTraceText?.(text),
+            onSessionId: (nextSessionId) => {
+              adoptedSessionId = nextSessionId;
+            },
+            onPlainText: (text) => {
+              options.onAssistantText?.(text);
+            },
+          });
+        },
+        onStderr: (chunk: string) => {
+          options.onRawStream?.(chunk, "stderr");
+          if (chunk.trim()) {
+            options.onTraceText?.(chunk.trimEnd());
+          }
+        },
+        onExit: (code: number | null) => settle({ type: "exit", code }),
+        onError: (error: Error) => settle({ type: "error", error }),
+      },
+      {
+        cwd: options.cwd ?? undefined,
+        sessionId: options.sessionId,
+        thinkingMode: options.thinkingMode,
+        model: runtimeModel,
+        envOverrides: runtimeEnvOverrides,
+        processLabel: buildProcessLabel(runCli, options.sessionId),
+      }
     );
-    return;
+
+    activeProcess = process;
+  });
+
+  finalizeGeminiStreamJsonState(geminiStreamState, {
+    onAssistantText: (text) => {
+      options.onAssistantText?.(text);
+    },
+    onTraceText: (text) => options.onTraceText?.(text),
+    onSessionId: (nextSessionId) => {
+      adoptedSessionId = nextSessionId;
+    },
+    onPlainText: (text) => {
+      options.onAssistantText?.(text);
+    },
+  });
+
+  activeProcess = undefined;
+
+  if (attemptResult.type === "error") {
+    throw attemptResult.error;
+  }
+
+  if (attemptResult.code !== 0) {
+    throw new Error(geminiStreamState.errorText || `Gemini compaction exited with code ${attemptResult.code ?? 1}`);
+  }
+
+  if (geminiStreamState.resultStatus && geminiStreamState.resultStatus !== "success") {
+    throw new Error(geminiStreamState.errorText || `Gemini compaction result status: ${geminiStreamState.resultStatus}`);
+  }
+
+  return {
+    compacted: true,
+    sessionId: adoptedSessionId,
+    resultStatus: geminiStreamState.resultStatus,
+    errorText: geminiStreamState.errorText,
+  };
+}
+
+type ContextCompactionOptions = {
+  silent?: boolean;
+  cli?: CliName;
+  tabId?: string | null;
+  sessionId?: string | null;
+};
+
+async function runContextCompaction(options: ContextCompactionOptions = {}): Promise<boolean> {
+  const cli = options.cli ?? currentCli;
+  const tabId = typeof options.tabId === "string" ? options.tabId : getActiveConversationTabId();
+  const silent = options.silent === true;
+  if (!isInteractiveSupported(cli)) {
+    if (!silent) {
+      appendSystemMessageForCli(cli, getCurrentSessionId(cli), t("rules.compactUnsupported"));
+    }
+    return false;
   }
   if (activeProcess || activeInteractiveStop) {
-    appendSystemMessageForCli(
-      cli,
-      getCurrentSessionId(cli),
-      t("rules.compactRunning")
-    );
-    return;
+    if (!silent) {
+      appendSystemMessageForCli(cli, getCurrentSessionId(cli), t("rules.compactRunning"));
+    }
+    return false;
   }
-  const currentSessionId = getCurrentSessionId(cli);
+  const currentSessionId = options.sessionId ?? getCurrentSessionId(cli);
   if (!currentSessionId) {
-    appendSystemMessageForCli(cli, currentSessionId, t("rules.compactNoSession"));
-    return;
+    if (!silent) {
+      appendSystemMessageForCli(cli, currentSessionId, t("rules.compactNoSession"));
+    }
+    return false;
   }
-  const resolvedSessionId = await resolveInteractiveSessionForResume(
-    cli,
-    currentSessionId,
-    getActiveConversationTabId(),
-  );
+  const resolvedSessionId = await resolveInteractiveSessionForResume(cli, currentSessionId, tabId);
   if (resolvedSessionId === undefined || !resolvedSessionId) {
-    return;
+    return false;
   }
   const sessionId = resolvedSessionId;
 
@@ -6408,7 +6551,7 @@ async function runContextCompactionCommand(): Promise<void> {
       if (!mappedThreadId) {
         appendSystemMessage(t("rules.compactNoSession"));
         cleanupAfterRun("end");
-        return;
+        return false;
       }
 
       const runner = interactiveRunnerManager.getOrCreateCodexRunner({
@@ -6443,7 +6586,7 @@ async function runContextCompactionCommand(): Promise<void> {
         interactiveRunnerManager?.endActiveRun(cli, sessionId);
       }
       cleanupAfterRun("end");
-      return;
+      return true;
     }
 
     if (cli === "claude") {
@@ -6461,86 +6604,192 @@ async function runContextCompactionCommand(): Promise<void> {
       });
 
       stopCurrentTurn = () => runner.stopAndRebuild();
-      const summaryResult = await (async () => {
+
+      const runClaudeSummaryCompactionFallback = async (): Promise<void> => {
+        const summaryResult = await (async () => {
+          interactiveRunnerManager?.beginActiveRun(cli, sessionId);
+          try {
+            return await runner.runForText(buildCompactionPrompt());
+          } finally {
+            interactiveRunnerManager?.endActiveRun(cli, sessionId);
+          }
+        })();
+        const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+        const previousSessionId = summaryResult.sessionId ?? runner.getSessionId() ?? mappedSessionId;
+        if (!compactionSummary || !previousSessionId) {
+          appendSystemMessage(t("compact.failEmpty"));
+          return;
+        }
+
+        const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
+        const bootstrap = [
+          t("compact.resumeNotice"),
+          "",
+          compactionSummary,
+          "",
+          t("compact.systemPrompt.recentTitle"),
+          formatTurnsForBootstrap(recent),
+        ].join("\n");
+
+        runner.dispose();
+        runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
+          command: commandForRunner,
+          args,
+          cwd: cwd ?? undefined,
+          thinkingMode,
+          interactiveMode,
+          model: selectedModel,
+          entrypoint: claudeEntrypoint,
+          sessionId: null,
+        });
+
+        stopCurrentTurn = () => runner.stopAndRebuild();
         interactiveRunnerManager?.beginActiveRun(cli, sessionId);
         try {
-          return await runner.runForText(buildCompactionPrompt());
+          await runner.runStreamed(bootstrap, {
+            onAssistantDelta: () => {},
+            onTrace: () => {},
+            onEvent: (event) => {
+              sendRawStreamDelta(event, { stream: "event", appendNewline: true });
+            },
+            onTaskListUpdate: (items) => {
+              sendPanelMessage({ type: "taskListUpdate", items });
+            },
+            onSessionId: (newSessionId) => {
+              updateProcessTitle(cli, newSessionId);
+              upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: previousSessionId });
+              appendSystemMessage(
+                t("compact.summaryCompressed", { from: previousSessionId, to: newSessionId })
+              );
+              appendTraceMessage(compactionSummary);
+              void logInfo("context-compact-claude-complete", {
+                cli,
+                sessionId,
+                newSessionId,
+                previousSessionId,
+                mode: "summary-fallback",
+              });
+              interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
+            },
+          });
         } finally {
           interactiveRunnerManager?.endActiveRun(cli, sessionId);
         }
-      })();
-      const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
-      if (!compactionSummary || !mappedSessionId) {
-        appendSystemMessage(t("compact.failEmpty"));
-        cleanupAfterRun("end");
-        return;
-      }
+      };
 
-      const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
-      const bootstrap = [
-        t("compact.resumeNotice"),
-        "",
-        compactionSummary,
-        "",
-        t("compact.systemPrompt.recentTitle"),
-        formatTurnsForBootstrap(recent),
-      ].join("\n");
-
-      runner.dispose();
-      runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-        command: commandForRunner,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: selectedModel,
-        sessionId: null,
-      });
-
-      stopCurrentTurn = () => runner.stopAndRebuild();
-      interactiveRunnerManager?.beginActiveRun(cli, sessionId);
+      let nativeResult: Awaited<ReturnType<typeof runner.compactSession>> | null = null;
       try {
-        await runner.runStreamed(bootstrap, {
-          onAssistantDelta: () => {},
-          onTrace: () => {},
-          onEvent: (event) => {
-            sendRawStreamDelta(event, { stream: "event", appendNewline: true });
-          },
-          onTaskListUpdate: (items) => {
-            sendPanelMessage({ type: "taskListUpdate", items });
-          },
-          onSessionId: (newSessionId) => {
-            updateProcessTitle(cli, newSessionId);
-            upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: mappedSessionId });
-            appendSystemMessage(
-              t("compact.summaryCompressed", { from: mappedSessionId, to: newSessionId })
-            );
-            appendTraceMessage(compactionSummary);
-            void logInfo("context-compact-claude-complete", {
-              cli,
-              sessionId,
-              newSessionId,
-              previousSessionId: mappedSessionId,
-            });
-            interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
-          },
+        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
+        try {
+          nativeResult = await runner.compactSession();
+        } finally {
+          interactiveRunnerManager?.endActiveRun(cli, sessionId);
+        }
+      } catch (error) {
+        if (!isClaudeNativeCompactUnsupportedError(error)) {
+          throw error;
+        }
+        void logInfo("context-compact-claude-native-fallback", {
+          cli,
+          sessionId,
+          previousSessionId: mappedSessionId,
+          reason: "unsupported-native-compact",
+          error: error instanceof Error ? error.message : String(error),
         });
-      } finally {
-        interactiveRunnerManager?.endActiveRun(cli, sessionId);
+        await runClaudeSummaryCompactionFallback();
+        cleanupAfterRun("end");
+        return true;
       }
+
+      if (!nativeResult) {
+        await runClaudeSummaryCompactionFallback();
+        cleanupAfterRun("end");
+        return true;
+      }
+
+      const previousSessionId = nativeResult.previousSessionId ?? mappedSessionId;
+      const resolvedSessionId = nativeResult.sessionId ?? previousSessionId;
+      if (!nativeResult.compacted || !resolvedSessionId) {
+        void logInfo("context-compact-claude-native-fallback", {
+          cli,
+          sessionId,
+          previousSessionId,
+          nextSessionId: nativeResult.sessionId,
+          reason: "missing-native-compact-signal",
+        });
+        await runClaudeSummaryCompactionFallback();
+        cleanupAfterRun("end");
+        return true;
+      }
+
+      updateProcessTitle(cli, resolvedSessionId);
+      upsertInteractiveMapping(
+        cli,
+        sessionId,
+        resolvedSessionId,
+        previousSessionId && previousSessionId !== resolvedSessionId
+          ? { freezePrevious: previousSessionId }
+          : {}
+      );
+      appendSystemMessage(
+        previousSessionId && previousSessionId !== resolvedSessionId
+          ? t("compact.claudeNativeCompressedForked", { from: previousSessionId, to: resolvedSessionId })
+          : t("compact.claudeNativeCompressed", { sessionId: resolvedSessionId })
+      );
+      void logInfo("context-compact-claude-native-complete", {
+        cli,
+        sessionId,
+        previousSessionId,
+        resolvedSessionId,
+        compacted: nativeResult.compacted,
+      });
+      interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
       cleanupAfterRun("end");
-      return;
+      return true;
+    }
+
+    if (cli === "gemini") {
+      const result = await runGeminiNativeContextCompaction({
+        sessionId,
+        selectedModel,
+        cwd: cwd ?? null,
+        thinkingMode,
+        onTraceText: (text) => appendTraceMessage(`${text}\n`),
+        onAssistantText: (text) => {
+          if (text.trim()) {
+            appendAssistantChunk(text);
+          }
+        },
+        onRawStream: (chunk, stream) => {
+          sendRawStreamDelta(chunk, { stream });
+        },
+      });
+      adoptSessionId(cli, result.sessionId, getActiveConversationTabId());
+      appendSystemMessage(t("compact.geminiNativeCompressed", { sessionId: result.sessionId }));
+      void logInfo("context-compact-gemini-native-complete", {
+        cli,
+        sessionId,
+        resolvedSessionId: result.sessionId,
+        resultStatus: result.resultStatus,
+      });
+      cleanupAfterRun("end");
+      return true;
     }
 
     cleanupAfterRun("end");
+    return true;
   } catch (error) {
-    appendSystemMessage(t("compact.failException"));
+    if (!silent) {
+      appendSystemMessage(t("compact.failException"));
+    }
     void logError("context-compact-command-failed", {
       cli,
       sessionId,
       error: error instanceof Error ? error.message : String(error),
+      silent,
     });
-    cleanupAfterRun("error");
+    cleanupAfterRun(silent ? "end" : "error");
+    return false;
   } finally {
     if (activeInteractiveStop === stopFn) {
       activeInteractiveStop = null;
@@ -6560,6 +6809,34 @@ async function runContextCompactionCommand(): Promise<void> {
     persistActiveMessages();
     clearActiveRun();
   }
+}
+
+async function maybeAutoCompactContextBeforePrompt(target: PromptRunTarget): Promise<void> {
+  if (!getWorkspaceAutoCompactContextBeforeRun()) {
+    return;
+  }
+  if (!isAutoContextCompactionCli(target.cli)) {
+    return;
+  }
+  if (!target.sessionId) {
+    return;
+  }
+  const compacted = await runContextCompaction({
+    silent: true,
+    cli: target.cli,
+    tabId: target.tabId,
+    sessionId: target.sessionId,
+  });
+  void logInfo("auto-context-compact-before-run-finished", {
+    cli: target.cli,
+    tabId: target.tabId,
+    sessionId: target.sessionId,
+    compacted,
+  });
+}
+
+async function runContextCompactionCommand(): Promise<void> {
+  await runContextCompaction();
 }
 
 async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
@@ -6631,7 +6908,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     tabId,
   });
 
-  const userMessageId = createMessageId();
+  const userMessageId = input.preloadedUserMessageId ?? createMessageId();
   const userCreatedAt = Date.now();
   const runId = createMessageId();
   const startedAt = Date.now();
@@ -7010,18 +7287,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     interactiveRunsByTabId.delete(tabId);
   };
 
-  appendMessageForTab({
-    id: userMessageId,
-    role: "user",
-    content: prompt,
-    createdAt: userCreatedAt,
-    merge: false,
-    contextTags,
-    taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
-  });
+  if (!input.preloadedUserMessageId) {
+    appendMessageForTab(buildUserChatMessage(input, userCreatedAt, userMessageId));
+  }
   sendRunStatusForTab(tabId, "start", { prompt, startedAt });
 
   interactiveRunsByTabId.set(tabId, {
@@ -8799,6 +9067,10 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
 }
 
+function getWorkspaceAutoCompactContextBeforeRun(): boolean {
+  return workspaceSettings.autoCompactContextBeforeRun === true;
+}
+
 function normalizeLobsterMaxRounds(value: unknown): number {
   const rawValue = parseLobsterMaxRoundsValue(value);
   if (!Number.isFinite(rawValue)) {
@@ -9438,6 +9710,10 @@ function loadWorkspaceSettings(): WorkspaceSettings {
     const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
     if (typeof codexMultiAgentEnabled === "boolean") {
       result.codexMultiAgentEnabled = codexMultiAgentEnabled;
+    }
+    const autoCompactContextBeforeRun = (parsed as WorkspaceSettings).autoCompactContextBeforeRun;
+    if (typeof autoCompactContextBeforeRun === "boolean") {
+      result.autoCompactContextBeforeRun = autoCompactContextBeforeRun;
     }
     const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
     if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
