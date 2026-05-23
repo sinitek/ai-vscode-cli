@@ -175,6 +175,7 @@ const DEFAULT_MODEL_STORE_KEY = "__default__";
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
+const AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS = 5 * 60 * 1000;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
@@ -3730,7 +3731,7 @@ ${rawStderr}`);
       sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
       persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
       if (shouldAutoCompactAfterRun) {
-        await maybeAutoCompactContextAfterPromptSuccess(target, sessionId);
+        await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
       }
       return;
     }
@@ -5976,6 +5977,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
 
     if (attemptResult.type === "exit" && attemptResult.code === 0 && !geminiResultFailed) {
       const finalSessionId = activeSessionId;
+      const durationMs = activeTaskRun?.id === runId
+        ? Math.max(0, Date.now() - activeTaskRun.startedAt)
+        : null;
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
       sendRunStatus("end");
       flushTraceBuffer();
@@ -5983,7 +5987,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       persistActiveMessages();
       clearActiveRun();
       if (shouldAutoCompactAfterRun) {
-        await maybeAutoCompactContextAfterPromptSuccess(target, finalSessionId);
+        await maybeAutoCompactContextAfterPromptSuccess(target, finalSessionId, durationMs);
       }
       return;
     }
@@ -6846,8 +6850,19 @@ function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boo
 async function maybeAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string | null,
+  durationMs: number | null | undefined,
 ): Promise<void> {
   if (!shouldAutoCompactContextAfterRunForTarget(target) || !sessionId) {
+    return;
+  }
+  if (typeof durationMs !== "number" || durationMs <= AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS) {
+    void logInfo("auto-context-compact-after-run-skipped-short-task", {
+      cli: target.cli,
+      tabId: target.tabId,
+      sessionId,
+      durationMs: typeof durationMs === "number" ? durationMs : null,
+      minDurationMs: AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS,
+    });
     return;
   }
   const compacted = await runContextCompaction({
@@ -7231,13 +7246,13 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     syncInteractiveRunEntry();
   };
 
-  const appendCompletionMessageForTab = (status: TaskRunStatus): void => {
+  const appendCompletionMessageForTab = (status: TaskRunStatus): TaskRunRecord | null => {
     if (completionSent) {
-      return;
+      return null;
     }
     completionSent = true;
     const endedAt = Date.now();
-    appendTaskRun({
+    const taskRecord: TaskRunRecord = {
       id: runId,
       cli,
       sessionId: uiSessionId,
@@ -7250,10 +7265,12 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       lobsterTaskId: input.lobsterTaskId,
       lobsterRound: input.lobsterRound,
       lobsterSubtaskId: input.lobsterSubtaskId,
-    });
+    };
+    appendTaskRun(taskRecord);
     appendSystemMessageForTab(
-      buildTaskRunCompletionText(status, Math.max(0, endedAt - startedAt))
+      buildTaskRunCompletionText(status, taskRecord.durationMs)
     );
+    return taskRecord;
   };
 
   const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
@@ -7270,11 +7287,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       appendSystemMessageForTab(userMessage);
     }
     sendRunStatusForTab(tabId, status === "end" ? "end" : status);
-    appendCompletionMessageForTab(status);
+    const taskRecord = appendCompletionMessageForTab(status);
     flushPersistForInteractiveRun();
     interactiveRunsByTabId.delete(tabId);
     if (status === "end" && shouldAutoCompactAfterRun) {
-      await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId);
+      await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId, taskRecord?.durationMs ?? null);
     }
   };
 
