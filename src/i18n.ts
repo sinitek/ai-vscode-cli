@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { readToolSettings } from "./toolSettings";
 
 export type AppLocale = "zh-CN" | "en";
 export type LocaleSetting = "auto" | AppLocale;
@@ -8,6 +9,10 @@ const CONFIG_NAMESPACE = "sinitek-cli-tools";
 const LOCALE_SETTING_KEY = "locale";
 
 function getRawLocaleSetting(): string {
+  const stored = readToolSettings().locale;
+  if (stored === "zh-CN" || stored === "en" || stored === "auto") {
+    return stored;
+  }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<string>(LOCALE_SETTING_KEY, "auto") ?? "auto";
 }

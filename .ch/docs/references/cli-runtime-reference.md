@@ -43,7 +43,7 @@
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认关闭）；开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前对 Codex / Claude / Gemini 生效
+- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前对 Codex / Claude / Gemini 生效
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
@@ -76,6 +76,12 @@
 - session 续接仍复用 Gemini CLI 的 `--resume <sessionId>` 参数；扩展侧不维护类似 Codex app-server 的 Gemini 交互 Runner
 - 面板“常用命令 -> 压缩上下文”在 Gemini 下会直接复用当前 `sessionId` 调用官方 `/compress` 命令，继续走现有 headless `stream-json` 链路；“执行后自动压缩上下文”开启后，Gemini 也会在已有会话任务成功结束且执行超过 5 分钟后自动执行一次 `/compress`
 - 会参与统一 UI、统一会话存档和统一配置读取
+
+## 3.5 工具设置存储
+
+- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`）写入 `~/.sinitek_cli/settings.json`
+- 工具设置中的项目级项（如 `autoCompactContextAfterRun`、`codexMultiAgentEnabled`、`lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
+- 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主
 
 ## 4. 模式与参数映射
 

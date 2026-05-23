@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { CliName, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
+import { readToolSettings } from "../toolSettings";
 
 export const CONFIG_NAMESPACE = "sinitek-cli-tools";
 const MAC_TASK_SHELL_KEY = "macTaskShell";
@@ -48,11 +49,19 @@ export function getRememberSelectedCli(): boolean {
 }
 
 export function getAutoAddEditorContextTags(): boolean {
+  const stored = readToolSettings().autoAddEditorContextTags;
+  if (typeof stored === "boolean") {
+    return stored;
+  }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<boolean>("autoAddEditorContextTags", false);
 }
 
 export function getDebugLogging(): boolean {
+  const stored = readToolSettings().debug;
+  if (typeof stored === "boolean") {
+    return stored;
+  }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<boolean>("debug", false);
 }
@@ -60,6 +69,10 @@ export function getDebugLogging(): boolean {
 export function getMacTaskShell(): MacTaskShell {
   if (process.platform !== "darwin") {
     return DEFAULT_MAC_TASK_SHELL;
+  }
+  const stored = normalizeMacTaskShell(readToolSettings().macTaskShell);
+  if (stored) {
+    return stored;
   }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   const inspected = config.inspect<unknown>(MAC_TASK_SHELL_KEY);

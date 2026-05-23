@@ -113,6 +113,7 @@ import {
   normalizeLobsterWriteFiles,
   type LobsterSubtaskExecutionPlan,
 } from "./lobsterParallel";
+import { readToolSettings, type ToolSettingsLocale, type ToolSettingsState, writeToolSettings } from "./toolSettings";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -532,11 +533,12 @@ export function activate(context: vscode.ExtensionContext): void {
   interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
+  migrateLegacyToolSettingsFromVsCodeConfig();
+  sessionStore = loadSessionStore();
+  promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
   // Restore currentCli from workspace settings, or use default
   currentCli = workspaceSettings.currentCli || getDefaultCli();
-  sessionStore = loadSessionStore();
-  promptHistoryStore = loadPromptHistoryStore();
   modelStore = loadModelStore();
   initializeConversationTabsFromWorkspaceSettings();
   repairSupersededLocalSessions({ notifyPanel: false });
@@ -1289,12 +1291,20 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "debug") {
+      updateStoredToolSettings({ debug: Boolean(message.value) });
+      setDebugLogging(getDebugLogging());
+      await postPanelState();
+      return;
+    }
+    if (message.key === "autoAddEditorContextTags") {
+      updateStoredToolSettings({ autoAddEditorContextTags: Boolean(message.value) });
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
-      const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-      const nextValue = typeof message.value === "string" ? message.value : "auto";
-      const resolved =
-        nextValue === "zh-CN" || nextValue === "en" || nextValue === "auto" ? nextValue : "auto";
-      await config.update("locale", resolved, vscode.ConfigurationTarget.Global);
+      const resolved = normalizeToolSettingsLocale(message.value) ?? "auto";
+      updateStoredToolSettings({ locale: resolved });
       updateStatusBar();
       viewProvider?.reload();
       configManagerPanel?.reload();
@@ -1302,15 +1312,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     }
     if (message.key === "macTaskShell") {
       if (process.platform === "darwin" && isMacTaskShell(message.value)) {
-        const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-        await config.update("macTaskShell", message.value, vscode.ConfigurationTarget.Global);
+        updateStoredToolSettings({ macTaskShell: message.value });
       }
       await postPanelState();
       return;
     }
-    await updatePanelSetting(message.key, message.value);
-    await postPanelState();
-    return;
   }
 
   if (message.type === "runCommonCommand" && message.command === "compactContext") {
@@ -1739,9 +1745,66 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   syncCurrentSessionWithActiveTab();
 }
 
-async function updatePanelSetting(key: string, value: unknown): Promise<void> {
+function normalizeToolSettingsLocale(value: unknown): ToolSettingsLocale | null {
+  return value === "zh-CN" || value === "en" || value === "auto" ? value : null;
+}
+
+function getExplicitGlobalConfigValue<T>(key: string): T | undefined {
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-  await config.update(key, value, vscode.ConfigurationTarget.Global);
+  const inspected = config.inspect<T>(key);
+  return inspected?.globalValue;
+}
+
+function saveStoredToolSettings(next: ToolSettingsState): void {
+  try {
+    writeToolSettings(next);
+  } catch (error) {
+    void logError("tool-settings-write-error", { error: String(error) });
+  }
+}
+
+function updateStoredToolSettings(patch: Partial<ToolSettingsState>): void {
+  saveStoredToolSettings({
+    ...readToolSettings(),
+    ...patch,
+  });
+}
+
+function migrateLegacyToolSettingsFromVsCodeConfig(): void {
+  const current = readToolSettings();
+  const next: ToolSettingsState = { ...current };
+  let changed = false;
+
+  const debug = getExplicitGlobalConfigValue<unknown>("debug");
+  if (typeof current.debug !== "boolean" && typeof debug === "boolean") {
+    next.debug = debug;
+    changed = true;
+  }
+
+  const autoAddEditorContextTags = getExplicitGlobalConfigValue<unknown>("autoAddEditorContextTags");
+  if (
+    typeof current.autoAddEditorContextTags !== "boolean"
+    && typeof autoAddEditorContextTags === "boolean"
+  ) {
+    next.autoAddEditorContextTags = autoAddEditorContextTags;
+    changed = true;
+  }
+
+  const locale = normalizeToolSettingsLocale(getExplicitGlobalConfigValue<unknown>("locale"));
+  if (!current.locale && locale) {
+    next.locale = locale;
+    changed = true;
+  }
+
+  const macTaskShell = getExplicitGlobalConfigValue<unknown>("macTaskShell");
+  if (!current.macTaskShell && isMacTaskShell(macTaskShell)) {
+    next.macTaskShell = macTaskShell;
+    changed = true;
+  }
+
+  if (changed) {
+    saveStoredToolSettings(next);
+  }
 }
 
 function buildWorkspaceKey(root: string | undefined): string {
@@ -9124,7 +9187,7 @@ function getWorkspaceAutoCompactContextAfterRun(): boolean {
   if (typeof workspaceSettings.autoCompactContextBeforeRun === "boolean") {
     return workspaceSettings.autoCompactContextBeforeRun;
   }
-  return false;
+  return true;
 }
 
 function normalizeLobsterMaxRounds(value: unknown): number {
@@ -10509,6 +10572,9 @@ function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | 
 function retainExistingConversationTabSessionIdMap(
   value: Partial<Record<CliName, string>>,
 ): Partial<Record<CliName, string>> {
+  if (!sessionStore) {
+    return { ...value };
+  }
   const retained: Partial<Record<CliName, string>> = {};
   for (const cli of CLI_LIST) {
     const sessionId = value[cli];
@@ -10547,6 +10613,9 @@ function getConversationTabSessionIdForCli(tab: ConversationTabRecord, cli: CliN
 }
 
 function hasSessionRecord(cli: CliName, sessionId: string): boolean {
+  if (!sessionStore) {
+    return false;
+  }
   return sessionStore[cli]?.sessions.some((session) => session.id === sessionId) ?? false;
 }
 

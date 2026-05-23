@@ -94,7 +94,7 @@ media/
 当前只有 Codex 和 Claude 进入交互 Runner：
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
-- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认关闭）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
+- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
 - `claudeRunner.ts`：通过 `@anthropic-ai/claude-agent-sdk` 建立交互会话，维护 Claude session；“常用命令 -> 压缩上下文”优先直接发送官方 `/compact`，并根据 SDK `status=compacting` / `compact_boundary` 信号判定完成；仅在旧环境明确不支持原生 compact 时回退到摘要模拟
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
@@ -124,10 +124,11 @@ Gemini 当前仍走 one-shot 路径，不进入 `interactive/`。
 
 当前主要包括：
 
+- `settings.json`：工具设置中的全局项（如 debug、自动文件标签、语言、macOS task shell）
 - `sessions/`：按工作区维护会话元信息
 - `messages/`：会话消息内容
 - `prompt-history/`：历史提示词
-- `workspace-settings/`：工作区级 UI/CLI 偏好
+- `workspace-settings/`：工作区级 UI/CLI 偏好与项目级工具设置
 - `models.json`：各 CLI 的模型列表与选择
 - `tasks.json`：任务相关状态
 - `temp/`：临时附件文件
