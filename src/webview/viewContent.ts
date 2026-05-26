@@ -7780,6 +7780,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return state.selectedConfigId || state.configState.activeConfigId || null;
       }
 
+      function reportModelManagerInspection() {
+        vscode.postMessage({
+          type: "inspectModelManager",
+          cli: state.currentCli,
+          configId: getCurrentModelConfigId(),
+          visibleModelCount: getModelsForCurrentCli().length,
+          visibleManagedModelCount: getManagedModelsForCurrentCli().length,
+          selectedModel: state.selectedModel || null,
+        });
+      }
+
       function showModelManageError(message) {
         elements.modelAddError.textContent = message;
         elements.modelAddError.style.display = "block";
@@ -8067,6 +8078,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         resetModelManageForm();
         renderModelManagerList();
+        reportModelManagerInspection();
         elements.addModelOverlay.classList.add("visible");
         elements.modelInput.focus();
       }

@@ -86,12 +86,13 @@ async function openDetailDocument(title: string, message: string, detail: string
 export async function showErrorWithActions(
   title: string,
   error: unknown,
-  options: { detailTitle?: string } = {}
+  options: { detailTitle?: string; detail?: string; summary?: string } = {}
 ): Promise<void> {
-  const detail = buildErrorDetail(error);
+  const detail = options.detail ?? buildErrorDetail(error);
+  const summary = options.summary ?? buildErrorSummary(error);
   const detailTitle = options.detailTitle || title;
   const selection = await vscode.window.showErrorMessage(
-    `${title} ${buildErrorSummary(error)}`,
+    `${title} ${summary}`,
     t("common.viewDetails"),
     t("common.copyDetails")
   );

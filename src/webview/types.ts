@@ -17,6 +17,7 @@ export type PanelMessage =
   | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string; configId?: string | null }
   | { type: "deleteCliModel"; cli: CliName; model: string; configId?: string | null }
   | { type: "moveCliModel"; cli: CliName; model: string; direction: "up" | "down"; configId?: string | null }
+  | { type: "inspectModelManager"; cli: CliName; configId?: string | null; visibleModelCount?: number; visibleManagedModelCount?: number; selectedModel?: string | null }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }

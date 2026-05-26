@@ -77,6 +77,8 @@ import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import {
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
+  getHiddenRetryDelayMs,
+  HIDDEN_RETRY_DELAY_SEQUENCE_MS,
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { ConfigManagerPanel } from "./webview/configPanel";
@@ -151,6 +153,9 @@ let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | 
 let configHeartbeatTimer: NodeJS.Timeout | null = null;
 let configHeartbeatRunning = false;
 let configHeartbeatSnapshot: ConfigHeartbeatSnapshot | null = null;
+let lastModelStoreReadError: string | null = null;
+let lastModelStoreWriteError: string | null = null;
+const lastConfigStateLoadErrorByCli: Partial<Record<CliName, string>> = {};
 const conversationTabStore: ConversationTabsState = {
   activeTabId: null,
   tabs: [],
@@ -273,8 +278,7 @@ const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
 const KEEP_RECENT_TURNS = 3;
 const suppressCompactPrompt = new Set<string>();
-const HIDDEN_RETRY_MAX_RETRIES = 5;
-const HIDDEN_RETRY_DELAY_MS = 30 * 1000;
+const HIDDEN_RETRY_MAX_RETRIES = HIDDEN_RETRY_DELAY_SEQUENCE_MS.length;
 
 type SessionRecord = {
   id: string;
@@ -487,6 +491,8 @@ type ConfigHeartbeatSnapshot = {
   lobsterSubtaskModelSelected: string | null;
   lobsterRoleSignature: string;
 };
+
+type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
 
 type CliInstallStatus = {
   command: string;
@@ -812,6 +818,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       event: message.event,
       payload: message.payload ?? null,
     });
+    return;
+  }
+
+  if (message.type === "inspectModelManager") {
+    await inspectModelManagerState(message);
     return;
   }
 
@@ -1564,7 +1575,208 @@ function areStringListsEqual(previous: readonly string[], next: readonly string[
 }
 
 function readNormalizedModelStoreFromDisk(): CliModelStore {
-  return ensureCliModelStore(readModelStore());
+  const diskStore = readModelStore();
+  if (lastModelStoreReadError) {
+    void logError("model-store-read-fallback-memory", {
+      path: MODEL_STORE_FILE,
+      error: lastModelStoreReadError,
+    });
+    return ensureCliModelStore(modelStore);
+  }
+  return ensureCliModelStore(diskStore);
+}
+
+function getModelOptionsForConfigFromStore(store: CliModelStore, configId: string | null): string[] {
+  if (!configId) {
+    return [];
+  }
+  const normalizedStore = ensureCliModelStore(store);
+  const storedOptions = normalizedStore.optionsByConfigId[configId] ?? [];
+  const selectedModel = normalizeCliModelName(normalizedStore.selectedByConfigId[configId]);
+  return mergeUniqueModelNames(
+    storedOptions,
+    selectedModel ? [selectedModel] : []
+  );
+}
+
+function getManagedModelOptionsForConfigFromStore(store: CliModelStore, configId: string | null): string[] {
+  if (!configId) {
+    return [];
+  }
+  const normalizedStore = ensureCliModelStore(store);
+  return mergeUniqueModelNames(normalizedStore.optionsByConfigId[configId] ?? []);
+}
+
+function summarizeModelStoreByConfigId(store: CliModelStore): Record<string, number> {
+  const normalizedStore = ensureCliModelStore(store);
+  const configIds = new Set<string>([
+    ...Object.keys(normalizedStore.optionsByConfigId),
+    ...Object.keys(normalizedStore.selectedByConfigId),
+  ]);
+  const summary: Record<string, number> = {};
+  Array.from(configIds)
+    .sort((left, right) => left.localeCompare(right))
+    .forEach((configId) => {
+      summary[configId] = getModelOptionsForConfigFromStore(normalizedStore, configId).length;
+    });
+  return summary;
+}
+
+function countStoreModels(summary: Record<string, number>): number {
+  return Object.values(summary).reduce((total, count) => total + count, 0);
+}
+
+function normalizeCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0;
+}
+
+function buildModelManagerDiagnosticsDetail(payload: {
+  cli: CliName;
+  configId: string | null;
+  webviewConfigId: string | null;
+  activeConfigId: string | null;
+  workspacePreferredConfigId: string | null;
+  visibleModelCount: number;
+  visibleManagedModelCount: number;
+  selectedModel: string | null;
+  memoryModels: string[];
+  memoryManagedModels: string[];
+  diskModels: string[];
+  diskManagedModels: string[];
+  diskModelCountsByConfigId: Record<string, number>;
+  memoryModelCountsByConfigId: Record<string, number>;
+  configIds: string[];
+  modelStoreReadError: string | null;
+  modelStoreWriteError: string | null;
+  configStateLoadError: string | null;
+  reasons: string[];
+}): string {
+  return [
+    t("model.diagnostics.message"),
+    "",
+    `reasons: ${payload.reasons.join("; ")}`,
+    `cli: ${payload.cli}`,
+    `storagePath: ${MODEL_STORE_FILE}`,
+    `logsDir: ${path.join(DATA_DIR, "logs")}`,
+    `workspaceKey: ${activeWorkspaceKey}`,
+    `configIdUsedForModels: ${payload.configId ?? "(none)"}`,
+    `webviewConfigId: ${payload.webviewConfigId ?? "(none)"}`,
+    `activeConfigId: ${payload.activeConfigId ?? "(none)"}`,
+    `workspacePreferredConfigId: ${payload.workspacePreferredConfigId ?? "(none)"}`,
+    `knownConfigIds: ${JSON.stringify(payload.configIds)}`,
+    `selectedModel: ${payload.selectedModel ?? "(none)"}`,
+    `visibleModelCount: ${payload.visibleModelCount}`,
+    `visibleManagedModelCount: ${payload.visibleManagedModelCount}`,
+    `memoryModelsForConfig: ${JSON.stringify(payload.memoryModels)}`,
+    `memoryManagedModelsForConfig: ${JSON.stringify(payload.memoryManagedModels)}`,
+    `diskModelsForConfig: ${JSON.stringify(payload.diskModels)}`,
+    `diskManagedModelsForConfig: ${JSON.stringify(payload.diskManagedModels)}`,
+    `memoryModelCountsByConfigId: ${JSON.stringify(payload.memoryModelCountsByConfigId)}`,
+    `diskModelCountsByConfigId: ${JSON.stringify(payload.diskModelCountsByConfigId)}`,
+    `lastModelStoreReadError: ${payload.modelStoreReadError ?? "(none)"}`,
+    `lastModelStoreWriteError: ${payload.modelStoreWriteError ?? "(none)"}`,
+    `lastConfigStateLoadError: ${payload.configStateLoadError ?? "(none)"}`,
+  ].join("\n");
+}
+
+async function inspectModelManagerState(message: InspectModelManagerMessage): Promise<void> {
+  try {
+    const cli = message.cli;
+    const webviewConfigId = typeof message.configId === "string" && message.configId.trim()
+      ? message.configId.trim()
+      : null;
+    const activeConfigId = getActiveConfigIdForCli(cli);
+    const workspacePreferredConfigId = workspaceSettings.activeConfigIdByCli?.[cli] ?? null;
+    const configId = webviewConfigId || activeConfigId || workspacePreferredConfigId;
+    const visibleModelCount = normalizeCount(message.visibleModelCount);
+    const visibleManagedModelCount = normalizeCount(message.visibleManagedModelCount);
+    const selectedModel = normalizeCliModelName(message.selectedModel);
+    const previousModelStoreReadError = lastModelStoreReadError;
+    const diskStore = ensureCliModelStore(readModelStore());
+    const modelStoreReadError = lastModelStoreReadError ?? previousModelStoreReadError;
+    const memoryStore = ensureCliModelStore(modelStore);
+    let configIds: string[] = [];
+    try {
+      configIds = (await configService.getConfigList(cli)).map((config) => config.id);
+    } catch (error) {
+      lastConfigStateLoadErrorByCli[cli] = errorToMessage(error);
+    }
+
+    const memoryModels = getModelOptionsForConfigFromStore(memoryStore, configId);
+    const memoryManagedModels = getManagedModelOptionsForConfigFromStore(memoryStore, configId);
+    const diskModels = getModelOptionsForConfigFromStore(diskStore, configId);
+    const diskManagedModels = getManagedModelOptionsForConfigFromStore(diskStore, configId);
+    const memoryModelCountsByConfigId = summarizeModelStoreByConfigId(memoryStore);
+    const diskModelCountsByConfigId = summarizeModelStoreByConfigId(diskStore);
+    const reasons: string[] = [];
+    const configStateLoadError = lastConfigStateLoadErrorByCli[cli] ?? null;
+
+    if (modelStoreReadError) {
+      reasons.push("model-store-read-error");
+    }
+    if (lastModelStoreWriteError) {
+      reasons.push("model-store-write-error");
+    }
+    if (configStateLoadError) {
+      reasons.push("config-state-load-error");
+    }
+    if (!configId && (countStoreModels(memoryModelCountsByConfigId) > 0 || countStoreModels(diskModelCountsByConfigId) > 0)) {
+      reasons.push("missing-active-config-id");
+    }
+    if (configId && visibleModelCount === 0 && (memoryModels.length > 0 || diskModels.length > 0)) {
+      reasons.push("webview-model-options-empty-but-store-has-models");
+    }
+    if (configId && visibleManagedModelCount === 0 && (memoryManagedModels.length > 0 || diskManagedModels.length > 0)) {
+      reasons.push("webview-managed-models-empty-but-store-has-models");
+    }
+    if (webviewConfigId && activeConfigId && webviewConfigId !== activeConfigId && visibleManagedModelCount === 0) {
+      reasons.push("webview-active-config-mismatch");
+    }
+
+    const payload = {
+      cli,
+      configId,
+      webviewConfigId,
+      activeConfigId,
+      workspacePreferredConfigId,
+      visibleModelCount,
+      visibleManagedModelCount,
+      selectedModel,
+      memoryModels,
+      memoryManagedModels,
+      diskModels,
+      diskManagedModels,
+      diskModelCountsByConfigId,
+      memoryModelCountsByConfigId,
+      configIds,
+      modelStoreReadError,
+      modelStoreWriteError: lastModelStoreWriteError,
+      configStateLoadError,
+      reasons,
+    };
+
+    if (reasons.length === 0) {
+      void logDebug("model-manager-state-ok", payload);
+      return;
+    }
+
+    void logEssential("model-manager-state-inconsistent", payload);
+    await showErrorWithActions(
+      t("model.diagnostics.title"),
+      t("model.diagnostics.message"),
+      {
+        detailTitle: t("model.diagnostics.title"),
+        detail: buildModelManagerDiagnosticsDetail(payload),
+      }
+    );
+  } catch (error) {
+    void logError("model-manager-inspection-failed", {
+      error: errorToMessage(error),
+    });
+    await showErrorWithActions(t("model.diagnostics.title"), error);
+  }
 }
 
 function getConfigHeartbeatPayload(
@@ -1659,6 +1871,15 @@ async function pollConfigHeartbeat(): Promise<void> {
   const workspaceKey = activeWorkspaceKey;
   try {
     const configState = await loadConfigState(targetCli);
+    const configStateLoadError = lastConfigStateLoadErrorByCli[targetCli];
+    if (configStateLoadError && configHeartbeatSnapshot?.cli === targetCli) {
+      void logError("config-heartbeat-skip-after-config-state-error", {
+        workspaceKey,
+        cli: targetCli,
+        error: configStateLoadError,
+      });
+      return;
+    }
     const latestModelStore = readNormalizedModelStoreFromDisk();
     modelStore = latestModelStore;
     if (targetCli !== currentCli) {
@@ -2678,6 +2899,7 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     const configs = await configService.getConfigList(cli);
     if (configs.length === 0) {
       setWorkspaceActiveConfigId(cli, null);
+      delete lastConfigStateLoadErrorByCli[cli];
       void logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
       return { configs: [], activeConfigId: null };
     }
@@ -2704,6 +2926,7 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     if (preferredActiveConfigId !== activeConfigId) {
       setWorkspaceActiveConfigId(cli, activeConfigId);
     }
+    delete lastConfigStateLoadErrorByCli[cli];
     return {
       configs: orderedConfigs.map((config) => ({
         id: config.id,
@@ -2713,9 +2936,10 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
       activeConfigId,
     };
   } catch (error) {
+    lastConfigStateLoadErrorByCli[cli] = errorToMessage(error);
     void logError("panel-config-state", {
       cli,
-      error: error instanceof Error ? error.message : String(error),
+      error: lastConfigStateLoadErrorByCli[cli],
     });
     return { configs: [], activeConfigId: null };
   }
@@ -2960,8 +3184,12 @@ function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
   return true;
 }
 
-async function waitForHiddenRetryDelay(isRunActive: () => boolean): Promise<boolean> {
-  const deadline = Date.now() + HIDDEN_RETRY_DELAY_MS;
+async function waitForHiddenRetryDelay(
+  retryNumber: number,
+  isRunActive: () => boolean
+): Promise<boolean> {
+  const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
+  const deadline = Date.now() + retryDelayMs;
   while (Date.now() < deadline) {
     if (!isRunActive()) {
       return false;
@@ -2976,20 +3204,33 @@ function buildHiddenRetryPrompt(cli: CliName, thinkingMode: ThinkingMode): strin
 }
 
 function buildHiddenRetryLimitMessage(): string {
-  return t("run.hiddenRetryLimitReached", { attempts: HIDDEN_RETRY_MAX_RETRIES });
+  return t("run.hiddenRetryLimitReached", {
+    attempts: HIDDEN_RETRY_MAX_RETRIES,
+    delays: HIDDEN_RETRY_DELAY_SEQUENCE_MS.map(formatHiddenRetryDelay).join(" / "),
+  });
 }
 
 function buildHiddenRetryQueuedMessage(hiddenRetryCount: number): string {
+  const retryNumber = hiddenRetryCount + 1;
+  const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
   const progress = buildHiddenRetryProgressInfo(
     hiddenRetryCount,
     HIDDEN_RETRY_MAX_RETRIES,
-    HIDDEN_RETRY_DELAY_MS,
+    retryDelayMs,
   );
   return t("run.hiddenRetryQueued", {
     attempt: progress.retryNumber,
     attempts: progress.maxRetries,
     seconds: progress.retryDelaySeconds,
+    delay: formatHiddenRetryDelay(retryDelayMs),
   });
+}
+
+function formatHiddenRetryDelay(retryDelayMs: number): string {
+  if (retryDelayMs >= 60 * 1000 && retryDelayMs % (60 * 1000) === 0) {
+    return `${retryDelayMs / (60 * 1000)} ${t("duration.minutes")}`;
+  }
+  return `${Math.max(0, Math.ceil(retryDelayMs / 1000))} ${t("duration.seconds")}`;
 }
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
@@ -3635,7 +3876,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
-      const shouldContinue = await waitForHiddenRetryDelay(isParallelRunActive);
+      const retryNumber = hiddenRetryCount;
+      const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
+      const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isParallelRunActive);
       if (!shouldContinue) {
         return;
       }
@@ -3647,7 +3890,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         attempt: attemptNumber,
         retryCount: hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+        retryDelayMs,
       });
     }
 
@@ -5902,7 +6145,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
-      const shouldContinue = await waitForHiddenRetryDelay(isCurrentOneShotRunActive);
+      const retryNumber = hiddenRetryCount;
+      const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
+      const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isCurrentOneShotRunActive);
       if (!shouldContinue) {
         return;
       }
@@ -5914,7 +6159,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         attempt: attemptNumber,
         retryCount: hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+        retryDelayMs,
       });
     }
 
@@ -7427,7 +7672,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
-      const shouldContinue = await waitForHiddenRetryDelay(isCurrentRunActive);
+      const retryNumber = hiddenRetryCount;
+      const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
+      const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isCurrentRunActive);
       if (!shouldContinue) {
         return;
       }
@@ -7439,7 +7686,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         attempt: attemptNumber,
         retryCount: hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-        retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+        retryDelayMs,
       });
     }
 
@@ -7665,6 +7912,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
         && isHiddenRetryEligibleErrorInfo(info);
       if (shouldRetry) {
+        const retryDelayMs = getHiddenRetryDelayMs(hiddenRetryCount + 1);
         appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
         hiddenRetryCount += 1;
         void logInfo("runPrompt-interactive-hidden-retry-queued", {
@@ -7676,7 +7924,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           nextAttempt: attemptNumber + 1,
           retryCount: hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          retryDelayMs: HIDDEN_RETRY_DELAY_MS,
+          retryDelayMs,
           error: info.message,
           errorName: info.name,
           errorCode: info.code,
@@ -9250,6 +9498,10 @@ function mergeUniqueModelNames(...groups: Array<readonly string[]>): string[] {
   return result;
 }
 
+function errorToMessage(error: unknown): string {
+  return error instanceof Error ? (error.message || String(error)) : String(error);
+}
+
 function normalizeLobsterModelRoleFlags(value: unknown): { main: boolean; subtask: boolean } {
   if (!value || typeof value !== "object") {
     return { main: true, subtask: true };
@@ -9358,12 +9610,19 @@ function ensureCliModelStore(store?: CliModelStore): CliModelStore {
 function readModelStore(): CliModelStore | undefined {
   try {
     if (!fs.existsSync(MODEL_STORE_FILE)) {
+      lastModelStoreReadError = null;
       return undefined;
     }
     const raw = fs.readFileSync(MODEL_STORE_FILE, "utf8");
-    return JSON.parse(raw) as CliModelStore;
+    const parsed = JSON.parse(raw) as CliModelStore;
+    lastModelStoreReadError = null;
+    return parsed;
   } catch (error) {
-    void logError("model-store-read-error", { error: String(error) });
+    lastModelStoreReadError = errorToMessage(error);
+    void logError("model-store-read-error", {
+      path: MODEL_STORE_FILE,
+      error: lastModelStoreReadError,
+    });
     return undefined;
   }
 }
@@ -9372,13 +9631,22 @@ function writeModelStore(store: CliModelStore): void {
   try {
     fs.mkdirSync(path.dirname(MODEL_STORE_FILE), { recursive: true });
     fs.writeFileSync(MODEL_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
+    lastModelStoreWriteError = null;
   } catch (error) {
-    void logError("model-store-write-error", { error: String(error) });
+    lastModelStoreWriteError = errorToMessage(error);
+    void logError("model-store-write-error", {
+      path: MODEL_STORE_FILE,
+      error: lastModelStoreWriteError,
+    });
   }
 }
 
 function loadModelStore(): CliModelStore {
-  const normalized = ensureCliModelStore(readModelStore());
+  const stored = readModelStore();
+  if (lastModelStoreReadError) {
+    return ensureCliModelStore();
+  }
+  const normalized = ensureCliModelStore(stored);
   writeModelStore(normalized);
   return normalized;
 }

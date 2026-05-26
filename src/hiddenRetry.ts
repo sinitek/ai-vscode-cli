@@ -13,6 +13,14 @@ export type HiddenRetryProgressInfo = {
   retryDelaySeconds: number;
 };
 
+export const HIDDEN_RETRY_DELAY_SEQUENCE_MS = [
+  5 * 1000,
+  15 * 1000,
+  30 * 1000,
+  2 * 60 * 1000,
+  5 * 60 * 1000,
+] as const;
+
 function normalizeMessage(message?: string | null): string | null {
   if (typeof message !== "string") {
     return null;
@@ -33,6 +41,20 @@ export function buildHiddenRetryFailureMessage(options: HiddenRetryFailureMessag
     return lastFailureMessage;
   }
   return `${options.retryLimitMessage}\n${options.lastFailurePrefix ?? ""}${lastFailureMessage}`;
+}
+
+export function getHiddenRetryDelayMs(
+  retryNumber: number,
+  retryDelaysMs: readonly number[] = HIDDEN_RETRY_DELAY_SEQUENCE_MS,
+): number {
+  if (retryDelaysMs.length === 0) {
+    return 0;
+  }
+  const normalizedRetryNumber = Number.isFinite(retryNumber)
+    ? Math.max(1, Math.floor(retryNumber))
+    : 1;
+  const index = Math.min(normalizedRetryNumber - 1, retryDelaysMs.length - 1);
+  return Math.max(0, Math.floor(retryDelaysMs[index] ?? 0));
 }
 
 export function buildHiddenRetryProgressInfo(
