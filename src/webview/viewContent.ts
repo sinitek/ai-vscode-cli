@@ -2278,19 +2278,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        flex: 1;
         min-width: 0;
       }
       .session-label {
         font-weight: 600;
         flex: 1;
         min-width: 0;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.35;
       }
       .session-title-row {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
         min-width: 0;
       }
@@ -2313,6 +2318,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .session-item:hover {
         border-color: var(--vscode-focusBorder);
+      }
+      .session-actions {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
       }
 
       .prompt-list {
@@ -2342,13 +2352,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        flex: 1;
         min-width: 0;
       }
       .prompt-preview {
         font-weight: 600;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.35;
         cursor: pointer;
       }
       .prompt-meta {
@@ -5113,7 +5128,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const label = document.createElement("div");
           label.className = "session-label";
           const cliLabel = session.cli ? "[" + session.cli + "] " : "";
-          label.textContent = cliLabel + (session.label || t("sessionDefaultLabel"));
+          const sessionPromptPreview = buildPromptPreview(session.firstPrompt || session.label || t("sessionDefaultLabel"));
+          label.textContent = cliLabel + sessionPromptPreview;
           if (session.firstPrompt) {
             label.title = session.firstPrompt;
           } else {
@@ -5261,11 +5277,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!normalized) {
           return t("promptEmptyLabel");
         }
-        const limit = 60;
-        if (normalized.length <= limit) {
-          return normalized;
-        }
-        return normalized.slice(0, limit) + "…";
+        return normalized;
       }
 
       function togglePromptHistoryExpanded(id) {
