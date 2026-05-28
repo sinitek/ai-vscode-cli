@@ -4056,12 +4056,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function applyState(panelState) {
         const previousCli = state.currentCli;
+        const previousActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
+          ? state.conversationTabs.activeTabId
+          : null;
         state.currentCli = panelState.currentCli;
-        if (previousCli !== state.currentCli) {
-          state.autoAppliedConfig = false;
-        }
         state.sessionState = panelState.sessionState;
         state.conversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const nextActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
+          ? state.conversationTabs.activeTabId
+          : null;
+        if (previousCli !== state.currentCli || previousActiveTabId !== nextActiveTabId) {
+          state.autoAppliedConfig = false;
+        }
         const tabIds = Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs.map((tab) => tab.id)
           : [];
@@ -4078,25 +4084,28 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           ? state.configState.configs
           : [];
         let nextSelected = state.configState.activeConfigId || "";
+        let shouldAutoApplyConfig = false;
 
         // 如果后端返回的 activeConfigId 为 null，但前端已有有效选择，且该选择仍然在配置列表中，则保持前端选择
         if (!nextSelected && state.selectedConfigId) {
           const configExists = configs.some(c => c.id === state.selectedConfigId);
           if (configExists) {
             nextSelected = state.selectedConfigId;
+            shouldAutoApplyConfig = true;
           }
         }
 
         if (!nextSelected && configs.length > 0) {
           nextSelected = configs[0].id;
-          if (!state.autoAppliedConfig) {
-            state.autoAppliedConfig = true;
-            vscode.postMessage({
-              type: "applyConfig",
-              cli: state.currentCli,
-              configId: nextSelected,
-            });
-          }
+          shouldAutoApplyConfig = true;
+        }
+        if (shouldAutoApplyConfig && !state.autoAppliedConfig) {
+          state.autoAppliedConfig = true;
+          vscode.postMessage({
+            type: "applyConfig",
+            cli: state.currentCli,
+            configId: nextSelected,
+          });
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
