@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  buildHiddenRetryErrorTraceContent,
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
   getHiddenRetryDelayMs,
@@ -46,6 +47,18 @@ test("falls back to the retry-limit message when no concrete final error is avai
   });
 
   assert.equal(result, "retried too many times");
+});
+
+test("builds error trace content for a hidden retry failure", () => {
+  const result = buildHiddenRetryErrorTraceContent("socket hang up");
+
+  assert.equal(result, "error\nsocket hang up");
+});
+
+test("builds error trace content with fallback when the failure message is blank", () => {
+  const result = buildHiddenRetryErrorTraceContent("   ", "fallback error");
+
+  assert.equal(result, "error\nfallback error");
 });
 
 test("builds hidden retry progress info for the next queued retry", () => {

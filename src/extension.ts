@@ -75,6 +75,7 @@ import {
 } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import {
+  buildHiddenRetryErrorTraceContent,
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
   getHiddenRetryDelayMs,
@@ -3142,6 +3143,18 @@ type ErrorInfo = {
   stack?: string;
 };
 
+type CliAttemptResult =
+  | { type: "exit"; code: number | null }
+  | { type: "error"; error: Error };
+
+type RetryErrorTraceMessageOptions = {
+  tabId?: string;
+  taskRole?: LobsterTaskRole;
+  lobsterTaskId?: string;
+  lobsterRound?: number;
+  lobsterSubtaskId?: string;
+};
+
 function getErrorInfo(error: unknown): ErrorInfo {
   if (error instanceof Error) {
     const code = typeof (error as { code?: unknown }).code === "string"
@@ -3166,6 +3179,53 @@ function getErrorInfo(error: unknown): ErrorInfo {
     return { message, name, code, stack };
   }
   return { message: String(error) };
+}
+
+function getAttemptFailureMessage(attemptResult: CliAttemptResult, resultErrorText?: string | null): string {
+  if (attemptResult.type === "error") {
+    const info = getErrorInfo(attemptResult.error);
+    return info.message || t("common.unknownError");
+  }
+  const normalizedResultError = typeof resultErrorText === "string" && resultErrorText.trim()
+    ? resultErrorText.trim()
+    : null;
+  return normalizedResultError ?? t("run.exitCode", { code: attemptResult.code ?? "unknown" });
+}
+
+function createHiddenRetryErrorTraceMessage(
+  lastFailureMessage: string,
+  options: RetryErrorTraceMessageOptions = {},
+): ChatMessage {
+  const content = buildHiddenRetryErrorTraceContent(lastFailureMessage, t("common.unknownError"));
+  return {
+    id: createMessageId(),
+    role: "trace",
+    content,
+    createdAt: Date.now(),
+    kind: "normal",
+    merge: false,
+    taskRole: options.taskRole,
+    lobsterTaskId: options.lobsterTaskId,
+    lobsterRound: options.lobsterRound,
+    lobsterSubtaskId: options.lobsterSubtaskId,
+  };
+}
+
+function appendHiddenRetryErrorTraceMessage(
+  target: ChatMessage[] | null | undefined,
+  lastFailureMessage: string,
+  options: RetryErrorTraceMessageOptions = {},
+): void {
+  if (!target) {
+    return;
+  }
+  const message = createHiddenRetryErrorTraceMessage(lastFailureMessage, options);
+  appendMessageToStore(target, message);
+  sendPanelMessage({
+    type: "appendMessage",
+    message,
+    ...(options.tabId ? { tabId: options.tabId } : {}),
+  });
 }
 
 function isAbortErrorInfo(info: ErrorInfo): boolean {
@@ -4049,6 +4109,7 @@ ${rawStderr}`);
       && attemptResult.code === 0
       && geminiStreamState.resultStatus !== null
       && geminiStreamState.resultStatus !== "success";
+    const lastFailureMessage = getAttemptFailureMessage(attemptResult, geminiStreamState.errorText);
     hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
       geminiResultFailed
@@ -4056,6 +4117,13 @@ ${rawStderr}`);
         || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
     );
     if (shouldRetry) {
+      appendHiddenRetryErrorTraceMessage(messageTarget, lastFailureMessage, {
+        tabId: target.tabId,
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      });
       const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
       const systemMessage: ChatMessage = {
         id: createMessageId(),
@@ -4098,11 +4166,6 @@ ${rawStderr}`);
     };
     appendTaskRun(taskRecord);
 
-    const lastFailureMessage = attemptResult.type === "error"
-      ? (attemptResult.error instanceof Error ? attemptResult.error.message : String(attemptResult.error))
-      : geminiStreamState.errorText
-        ? geminiStreamState.errorText
-        : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
     const userMessageText = buildHiddenRetryFailureMessage({
       hiddenRetryCount,
       maxRetries: HIDDEN_RETRY_MAX_RETRIES,
@@ -6301,12 +6364,19 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     }
 
     hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
+    const retryFailureMessage = getAttemptFailureMessage(attemptResult, geminiStreamState.errorText);
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
       geminiResultFailed
         || attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
     );
     if (shouldRetry) {
+      appendHiddenRetryErrorTraceMessage(activeMessageTarget, retryFailureMessage, {
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      });
       appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
       continue;
@@ -7913,6 +7983,12 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         && isHiddenRetryEligibleErrorInfo(info);
       if (shouldRetry) {
         const retryDelayMs = getHiddenRetryDelayMs(hiddenRetryCount + 1);
+        appendMessageForTab(createHiddenRetryErrorTraceMessage(info.message, {
+          taskRole: input.taskRole,
+          lobsterTaskId: input.lobsterTaskId,
+          lobsterRound: input.lobsterRound,
+          lobsterSubtaskId: input.lobsterSubtaskId,
+        }));
         appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
         hiddenRetryCount += 1;
         void logInfo("runPrompt-interactive-hidden-retry-queued", {

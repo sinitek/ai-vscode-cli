@@ -13,6 +13,9 @@ export type HiddenRetryProgressInfo = {
   retryDelaySeconds: number;
 };
 
+const ERROR_TRACE_MARKER = "error";
+const DEFAULT_ERROR_TRACE_FALLBACK = "Unknown error";
+
 export const HIDDEN_RETRY_DELAY_SEQUENCE_MS = [
   5 * 1000,
   15 * 1000,
@@ -41,6 +44,16 @@ export function buildHiddenRetryFailureMessage(options: HiddenRetryFailureMessag
     return lastFailureMessage;
   }
   return `${options.retryLimitMessage}\n${options.lastFailurePrefix ?? ""}${lastFailureMessage}`;
+}
+
+export function buildHiddenRetryErrorTraceContent(
+  lastFailureMessage?: string | null,
+  fallbackMessage = DEFAULT_ERROR_TRACE_FALLBACK,
+): string {
+  const message = normalizeMessage(lastFailureMessage)
+    ?? normalizeMessage(fallbackMessage)
+    ?? DEFAULT_ERROR_TRACE_FALLBACK;
+  return `${ERROR_TRACE_MARKER}\n${message}`;
 }
 
 export function getHiddenRetryDelayMs(
