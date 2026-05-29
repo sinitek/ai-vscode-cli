@@ -296,6 +296,7 @@ type PromptHistoryStore = {
 };
 
 type TaskRunStatus = "end" | "error" | "stopped";
+type RunActivity = "contextCompaction";
 type LobsterTaskRole = "main" | "subtask";
 type LobsterTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
 
@@ -6912,7 +6913,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   activeCliForRun = cli;
   activeTabIdForRun = tabId;
 
-  sendRunStatus("start");
+  sendRunStatus("start", undefined, { activity: "contextCompaction" });
 
   let stopCurrentTurn: (() => void) | null = null;
   const stopFn = (): void => {
@@ -8540,13 +8541,18 @@ function appendCompletionMessage(status: TaskRunStatus): void {
   sendPanelMessage({ type: "appendMessage", message });
 }
 
-function sendRunStatus(status: "start" | "end" | "error" | "stopped", message?: string): void {
+function sendRunStatus(
+  status: "start" | "end" | "error" | "stopped",
+  message?: string,
+  options: { activity?: RunActivity } = {}
+): void {
   sendPanelMessage({
     type: "runStatus",
     status,
     message,
     prompt: status === "start" ? activeTaskRun?.prompt : undefined,
     startedAt: status === "start" ? activeTaskRun?.startedAt : undefined,
+    activity: status === "start" ? options.activity : undefined,
   });
 }
 

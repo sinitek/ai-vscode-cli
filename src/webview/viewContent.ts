@@ -149,6 +149,7 @@ const WEBVIEW_I18N = {
     runStreamSourceEvent: "event",
     runStreamSlowLabel: "Slow",
     runStreamVerySlowLabel: "Very Slow",
+    runStatusCompacting: "Compacting context",
     helpTitle: "Help",
     helpClose: "Close",
     helpTabsLabel: "Help",
@@ -411,6 +412,7 @@ const WEBVIEW_I18N = {
     runStreamSourceEvent: "事件",
     runStreamSlowLabel: "慢",
     runStreamVerySlowLabel: "极慢",
+    runStatusCompacting: "压缩上下文中",
     helpTitle: "使用说明",
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
@@ -1405,6 +1407,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         color: var(--vscode-descriptionForeground);
         white-space: nowrap;
       }
+      .run-status-text.compacting {
+        display: inline-flex;
+        align-items: center;
+        min-width: 0;
+        padding: 2px 9px;
+        border: 1px solid var(--vscode-focusBorder);
+        border-radius: 999px;
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-foreground);
+        animation: compactStatusPulse 1.6s ease-in-out infinite;
+      }
+      .run-status-text.compacting::after {
+        content: "...";
+        display: inline-block;
+        width: 0;
+        overflow: hidden;
+        animation: compactStatusDots 1.2s steps(4, end) infinite;
+      }
       .run-prompt-button {
         display: inline-flex;
         align-items: center;
@@ -1459,6 +1479,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       @keyframes typingPulse {
         0%, 80%, 100% { transform: scale(0); }
         40% { transform: scale(1); }
+      }
+      @keyframes compactStatusPulse {
+        0%, 100% {
+          border-color: var(--vscode-widget-border);
+          box-shadow: 0 0 0 0 transparent;
+        }
+        50% {
+          border-color: var(--vscode-focusBorder);
+          box-shadow: 0 0 0 2px var(--vscode-editor-inactiveSelectionBackground);
+        }
+      }
+      @keyframes compactStatusDots {
+        0% { width: 0; }
+        100% { width: 1.5em; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .run-status-text.compacting {
+          animation: none;
+        }
+        .run-status-text.compacting::after {
+          width: 1.5em;
+          animation: none;
+        }
       }
 
       /* Empty State */
@@ -3515,6 +3558,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           suppressQueueFlushOnce: false,
           currentRunPrompt: "",
           lastRunStatusMessage: "",
+          activeRunActivity: "",
           runStreamRecordCounter: 0,
           runStreamRecords: [],
           runStreamOpenRecordIds: new Set(),
@@ -3672,6 +3716,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return /^(?:任务已完成|运行已终止|用户已终止|CLI\s*退出码[:：]\s*\S+|Task completed|Run stopped|Stopped by user|CLI exit code:\s*\S+)/i.test(normalized);
       }
 
+      function normalizeRunActivity(activity) {
+        return activity === "contextCompaction" ? "contextCompaction" : "";
+      }
+
       function buildQueuePausedStatusText(summary, remainingCount) {
         const count = Number.isFinite(remainingCount) ? Math.max(0, Number(remainingCount)) : 0;
         const baseSummary = String(summary || "").trim();
@@ -3780,6 +3828,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         runtimeState.suppressQueueFlushOnce = false;
         runtimeState.currentRunPrompt = "";
         runtimeState.lastRunStatusMessage = "";
+        runtimeState.activeRunActivity = "";
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamOpenRecordIds.clear();
@@ -6430,11 +6479,24 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.runWaitTime.style.display = state.isRunning ? "inline" : "none";
         }
         if (elements.runStatusText) {
-          const summary = !state.isRunning && runtimeState
+          const isCompacting = Boolean(
+            state.isRunning
+            && runtimeState
+            && runtimeState.activeRunActivity === "contextCompaction"
+          );
+          const summary = isCompacting
+            ? t("runStatusCompacting")
+            : !state.isRunning && runtimeState
             ? String(runtimeState.lastRunStatusMessage || "").trim()
             : "";
           elements.runStatusText.textContent = summary;
-          elements.runStatusText.style.display = summary ? "inline" : "none";
+          elements.runStatusText.classList.toggle("compacting", isCompacting);
+          if (summary) {
+            elements.runStatusText.setAttribute("aria-label", summary);
+          } else {
+            elements.runStatusText.removeAttribute("aria-label");
+          }
+          elements.runStatusText.style.display = summary ? (isCompacting ? "inline-flex" : "inline") : "none";
         }
       }
 
@@ -8929,6 +8991,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               updateCurrentRunPrompt(data.prompt, targetTabId);
               if (runtimeState) {
                 runtimeState.lastRunStatusMessage = "";
+                runtimeState.activeRunActivity = normalizeRunActivity(data.activity);
               }
               resetTaskListForRunStart(targetTabId);
             } else {
@@ -8939,6 +9002,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               }
               if (runtimeState && typeof data.message === "string" && isRunStatusSummaryText(data.message)) {
                 runtimeState.lastRunStatusMessage = data.message.trim();
+              }
+              if (runtimeState) {
+                runtimeState.activeRunActivity = "";
               }
               if (eventTabId) {
                 delete runningTabStartedAtById[eventTabId];
