@@ -48,6 +48,42 @@ MANUAL_ITEM_OVERRIDES: Dict[Tuple[str, str], Dict[str, str]] = {
         "sourceRepo": "openai/skills",
         "sourcePath": "skills/.curated/cli-creator",
     },
+    (
+        "codex",
+        "define-goal",
+    ): {
+        "name": "define-goal",
+        "description": "帮助用户在开始工作前定义具体、可衡量的目标，尤其适用于请求使用 goal 工具、创建或设置 objective、澄清成功标准，或把模糊意图收敛成可量化结果的场景。仅用于目标创建和目标细化，不负责持久快照、决策日志或长期执行产物。",
+        "group": "curated",
+        "groupDescription": "可通过官方 `$skill-installer` 工作流安装的 OpenAI curated skills。",
+        "installFolderName": "define-goal",
+        "sourceRepo": "openai/skills",
+        "sourcePath": "skills/.curated/define-goal",
+    },
+    (
+        "codex",
+        "hatch-pet",
+    ): {
+        "name": "hatch-pet",
+        "description": "基于角色设定、生成图、公司或潜客品牌线索、视觉参考，创建、修复、校验、视觉 QA 并打包 Codex 兼容的动态宠物和 spritesheet。适用于轻量 worker 宠物流程、非像素风自定义宠物、公司或潜客吉祥物，以及带透明空白单元、QA 联系表和 pet.json 的完整 8x9 动画图集。",
+        "group": "curated",
+        "groupDescription": "可通过官方 `$skill-installer` 工作流安装的 OpenAI curated skills。",
+        "installFolderName": "hatch-pet",
+        "sourceRepo": "openai/skills",
+        "sourcePath": "skills/.curated/hatch-pet",
+    },
+    (
+        "codex",
+        "migrate-to-codex",
+    ): {
+        "name": "migrate-to-codex",
+        "description": "将支持的指令文件、skills、agents 和 MCP 配置迁移到 Codex 的项目级或全局文件中。",
+        "group": "curated",
+        "groupDescription": "可通过官方 `$skill-installer` 工作流安装的 OpenAI curated skills。",
+        "installFolderName": "migrate-to-codex",
+        "sourceRepo": "openai/skills",
+        "sourcePath": "skills/.curated/migrate-to-codex",
+    },
 }
 PLATFORM_NOTES_SUFFIX = "sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
 VALIDATION_FILE_BY_PLATFORM = {
