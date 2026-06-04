@@ -7,6 +7,7 @@ import {
   buildHiddenRetryProgressInfo,
   getHiddenRetryDelayMs,
   HIDDEN_RETRY_DELAY_SEQUENCE_MS,
+  isSameHiddenRetryErrorTraceContent,
   resetHiddenRetryCountOnRecoveredReply,
 } from "../hiddenRetry";
 
@@ -59,6 +60,20 @@ test("builds error trace content with fallback when the failure message is blank
   const result = buildHiddenRetryErrorTraceContent("   ", "fallback error");
 
   assert.equal(result, "error\nfallback error");
+});
+
+test("matches an existing hidden retry error trace bubble with the same error text", () => {
+  assert.equal(
+    isSameHiddenRetryErrorTraceContent("error\nsocket hang up", "socket hang up"),
+    true,
+  );
+});
+
+test("does not match a different hidden retry error trace bubble", () => {
+  assert.equal(
+    isSameHiddenRetryErrorTraceContent("error\nupstream timeout", "socket hang up"),
+    false,
+  );
 });
 
 test("builds hidden retry progress info for the next queued retry", () => {

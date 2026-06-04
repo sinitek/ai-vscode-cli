@@ -56,6 +56,14 @@ export function buildHiddenRetryErrorTraceContent(
   return `${ERROR_TRACE_MARKER}\n${message}`;
 }
 
+export function isSameHiddenRetryErrorTraceContent(
+  existingContent: string | null | undefined,
+  lastFailureMessage?: string | null,
+  fallbackMessage = DEFAULT_ERROR_TRACE_FALLBACK,
+): boolean {
+  return normalizeMessage(existingContent) === buildHiddenRetryErrorTraceContent(lastFailureMessage, fallbackMessage);
+}
+
 export function getHiddenRetryDelayMs(
   retryNumber: number,
   retryDelaysMs: readonly number[] = HIDDEN_RETRY_DELAY_SEQUENCE_MS,

@@ -80,6 +80,7 @@ import {
   buildHiddenRetryProgressInfo,
   getHiddenRetryDelayMs,
   HIDDEN_RETRY_DELAY_SEQUENCE_MS,
+  isSameHiddenRetryErrorTraceContent,
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { ConfigManagerPanel } from "./webview/configPanel";
@@ -3218,6 +3219,10 @@ function appendHiddenRetryErrorTraceMessage(
   options: RetryErrorTraceMessageOptions = {},
 ): void {
   if (!target) {
+    return;
+  }
+  const last = target[target.length - 1];
+  if (last?.role === "trace" && isSameHiddenRetryErrorTraceContent(last.content, lastFailureMessage, t("common.unknownError"))) {
     return;
   }
   const message = createHiddenRetryErrorTraceMessage(lastFailureMessage, options);

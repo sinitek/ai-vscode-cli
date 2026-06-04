@@ -5521,6 +5521,20 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderMessages();
       }
 
+      function isDuplicateSystemStatusMessage(content) {
+        const normalized = typeof content === "string" ? content.trim() : "";
+        if (!normalized) {
+          return false;
+        }
+        const last = state.messages[state.messages.length - 1];
+        return Boolean(
+          last
+          && last.role === "system"
+          && typeof last.content === "string"
+          && last.content.trim() === normalized
+        );
+      }
+
       function appendAssistantDelta(id, content, kind) {
         const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
         const resolvedId = assistantRedirects[id] || id;
@@ -9052,7 +9066,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               });
             }
             if (data.message) {
-              appendMessage({ id: createMessageId(), role: "system", content: data.message });
+              if (!isDuplicateSystemStatusMessage(data.message)) {
+                appendMessage({ id: createMessageId(), role: "system", content: data.message });
+              }
             }
             if (queuePausedNotice) {
               showToast(queuePausedNotice);
