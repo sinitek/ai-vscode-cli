@@ -3194,6 +3194,35 @@ function getAttemptFailureMessage(attemptResult: CliAttemptResult, resultErrorTe
   return normalizedResultError ?? t("run.exitCode", { code: attemptResult.code ?? "unknown" });
 }
 
+function isAssistantFinalConclusionMessage(message: ChatMessage | undefined): boolean {
+  return Boolean(
+    message
+    && message.role === "assistant"
+    && message.kind !== "thinking"
+    && typeof message.content === "string"
+    && message.content.trim().length > 0
+  );
+}
+
+function findLastUserMessageIndex(messages: ChatMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user" && message.content.trim()) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function hasAssistantFinalConclusionAfterMessage(messages: ChatMessage[], messageId: string): boolean {
+  const messageIndex = messages.findIndex((message) => message.id === messageId);
+  const anchorIndex = messageIndex >= 0 ? messageIndex : findLastUserMessageIndex(messages);
+  if (anchorIndex < 0) {
+    return false;
+  }
+  return messages.slice(anchorIndex + 1).some(isAssistantFinalConclusionMessage);
+}
+
 function createHiddenRetryErrorTraceMessage(
   lastFailureMessage: string,
   options: RetryErrorTraceMessageOptions = {},
@@ -3740,7 +3769,9 @@ function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTask
   }
 
   const resumable = candidates
-    .filter((task) => isLobsterTaskResumable(task))
+    .filter((task) => isLobsterTaskResumable(task) || (
+      task.status === "completed" && !hasLobsterFinalSummaryMessageForTask(target, task.id)
+    ))
     .sort((left, right) => right.updatedAt - left.updatedAt);
   return resumable[0] ?? null;
 }
@@ -3898,12 +3929,13 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   let sessionId = target.sessionId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
-  const messageTarget = sessionId
+  let messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(target.tabId, runCli).messages;
+  const userMessageId = input.preloadedUserMessageId ?? createMessageId();
 
   if (!input.preloadedUserMessageId) {
-    const userMessage = buildUserChatMessage(input, Date.now(), createMessageId());
+    const userMessage = buildUserChatMessage(input, Date.now(), userMessageId);
     appendMessageToStore(messageTarget, userMessage);
     sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
   }
@@ -3918,7 +3950,25 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     return Boolean(current && current.runId === runId && !current.stopped);
   };
 
+  const resolveParallelMessageTarget = (): ChatMessage[] => {
+    const current = parallelRunsByTabId.get(target.tabId);
+    if (sessionId) {
+      messageTarget = loadSessionMessages(runCli, sessionId);
+      if (current && current.runId === runId) {
+        current.sessionId = sessionId;
+        current.messageTarget = messageTarget;
+      }
+      return messageTarget;
+    }
+    if (current && current.runId === runId && current.messageTarget) {
+      messageTarget = current.messageTarget;
+      return messageTarget;
+    }
+    return messageTarget;
+  };
+
   const syncParallelRun = (process: RunProcess): void => {
+    const currentMessageTarget = resolveParallelMessageTarget();
     parallelRunsByTabId.set(target.tabId, {
       runId,
       tabId: target.tabId,
@@ -3927,7 +3977,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       prompt,
       startedAt,
       process,
-      messageTarget,
+      messageTarget: currentMessageTarget,
       stopped: false,
       taskRole: input.taskRole,
       lobsterTaskId: input.lobsterTaskId,
@@ -4000,6 +4050,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
                 if (!sessionId) {
                   sessionId = nextSessionId;
                   adoptSessionId(runCli, nextSessionId, target.tabId);
+                  messageTarget = loadSessionMessages(runCli, nextSessionId);
                   syncParallelRun(process);
                 }
               },
@@ -4050,6 +4101,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         if (!sessionId) {
           sessionId = nextSessionId;
           adoptSessionId(runCli, nextSessionId, target.tabId);
+          messageTarget = loadSessionMessages(runCli, nextSessionId);
         }
       },
     });
@@ -4058,11 +4110,12 @@ ${rawStderr}`);
     if (!sessionId && detectedSessionId) {
       sessionId = detectedSessionId;
       adoptSessionId(runCli, detectedSessionId, target.tabId);
+      messageTarget = loadSessionMessages(runCli, detectedSessionId);
     }
 
     if (attemptResult.type === "exit" && attemptResult.code === 0) {
-      parallelRunsByTabId.delete(target.tabId);
-      const finalText = String(geminiStreamState.assistantText || rawStdout || "").trim();
+      const currentMessageTarget = resolveParallelMessageTarget();
+      const finalText = String(geminiStreamState.assistantText || "").trim();
       if (finalText) {
         const assistantMessage: ChatMessage = {
           id: createMessageId(),
@@ -4074,9 +4127,84 @@ ${rawStderr}`);
           lobsterRound: input.lobsterRound,
           lobsterSubtaskId: input.lobsterSubtaskId,
         };
-        appendMessageToStore(messageTarget, assistantMessage);
+        appendMessageToStore(currentMessageTarget, assistantMessage);
         sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
       }
+      if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId)) {
+        const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
+        if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
+          appendHiddenRetryErrorTraceMessage(currentMessageTarget, missingConclusionMessage, {
+            tabId: target.tabId,
+            taskRole: input.taskRole,
+            lobsterTaskId: input.lobsterTaskId,
+            lobsterRound: input.lobsterRound,
+            lobsterSubtaskId: input.lobsterSubtaskId,
+          });
+          const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
+          const systemMessage: ChatMessage = {
+            id: createMessageId(),
+            role: "system",
+            content: retryMessage,
+            createdAt: Date.now(),
+          };
+          appendMessageToStore(currentMessageTarget, systemMessage);
+          sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+          hiddenRetryCount += 1;
+          void logInfo("runPrompt-parallel-missing-final-conclusion-retry", {
+            cli: runCli,
+            tabId: target.tabId,
+            runId,
+            sessionId,
+            retryCount: hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          });
+          continue;
+        }
+        parallelRunsByTabId.delete(target.tabId);
+        const taskRecord: TaskRunRecord = {
+          id: runId,
+          cli: runCli,
+          sessionId,
+          prompt,
+          startedAt,
+          endedAt: Date.now(),
+          durationMs: Math.max(0, Date.now() - startedAt),
+          status: "error",
+          taskRole: input.taskRole,
+          lobsterTaskId: input.lobsterTaskId,
+          lobsterRound: input.lobsterRound,
+          lobsterSubtaskId: input.lobsterSubtaskId,
+        };
+        appendTaskRun(taskRecord);
+        const userMessageText = buildHiddenRetryFailureMessage({
+          hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryLimitMessage: buildHiddenRetryLimitMessage(),
+          fallbackMessage: missingConclusionMessage,
+          lastFailureMessage: missingConclusionMessage,
+          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+        });
+        const systemMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: userMessageText,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(currentMessageTarget, systemMessage);
+        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+        sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
+        const completionMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: buildTaskRunCompletionText("error", taskRecord.durationMs),
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(currentMessageTarget, completionMessage);
+        sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+        persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
+        return;
+      }
+      parallelRunsByTabId.delete(target.tabId);
       const taskRecord: TaskRunRecord = {
         id: runId,
         cli: runCli,
@@ -4099,9 +4227,9 @@ ${rawStderr}`);
         content: buildTaskRunCompletionText("end", taskRecord.durationMs),
         createdAt: Date.now(),
       };
-      appendMessageToStore(messageTarget, completionMessage);
+      appendMessageToStore(currentMessageTarget, completionMessage);
       sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-      persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+      persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
       if (shouldAutoCompactAfterRun) {
         await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
       }
@@ -4122,8 +4250,9 @@ ${rawStderr}`);
         || attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
     );
+    const failureMessageTarget = resolveParallelMessageTarget();
     if (shouldRetry) {
-      appendHiddenRetryErrorTraceMessage(messageTarget, lastFailureMessage, {
+      appendHiddenRetryErrorTraceMessage(failureMessageTarget, lastFailureMessage, {
         tabId: target.tabId,
         taskRole: input.taskRole,
         lobsterTaskId: input.lobsterTaskId,
@@ -4137,7 +4266,7 @@ ${rawStderr}`);
         content: retryMessage,
         createdAt: Date.now(),
       };
-      appendMessageToStore(messageTarget, systemMessage);
+      appendMessageToStore(failureMessageTarget, systemMessage);
       sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
       hiddenRetryCount += 1;
       continue;
@@ -4152,7 +4281,7 @@ ${rawStderr}`);
         content: finalText,
         createdAt: Date.now(),
       };
-      appendMessageToStore(messageTarget, assistantMessage);
+      appendMessageToStore(failureMessageTarget, assistantMessage);
       sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
     }
 
@@ -4186,7 +4315,7 @@ ${rawStderr}`);
       content: userMessageText,
       createdAt: Date.now(),
     };
-    appendMessageToStore(messageTarget, systemMessage);
+    appendMessageToStore(failureMessageTarget, systemMessage);
     sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
     sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
     const completionMessage: ChatMessage = {
@@ -4195,9 +4324,9 @@ ${rawStderr}`);
       content: buildTaskRunCompletionText("error", taskRecord.durationMs),
       createdAt: Date.now(),
     };
-    appendMessageToStore(messageTarget, completionMessage);
+    appendMessageToStore(failureMessageTarget, completionMessage);
     sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-    persistMessagesForTab(runCli, sessionId, target.tabId, messageTarget);
+    persistMessagesForTab(runCli, sessionId, target.tabId, failureMessageTarget);
     return;
   }
 }
@@ -4221,17 +4350,22 @@ async function runLobsterPrompt(
 
   if (resumeTaskId) {
     const existingTask = readLobsterTaskRecord(resumeTaskId);
+    const shouldResumeCompletedWithoutFinalSummary = Boolean(
+      existingTask
+      && existingTask.status === "completed"
+      && !hasLobsterFinalSummaryMessageForTask(target, existingTask.id)
+    );
     if (
       existingTask
       && isLobsterTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
-      && !isLobsterTaskCompleted(existingTask)
+      && (!isLobsterTaskCompleted(existingTask) || shouldResumeCompletedWithoutFinalSummary)
     ) {
       task = updateLobsterTaskRecord(existingTask.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
         updatedAt: Date.now(),
-      }) ?? existingTask;
+      }, { allowCompletedToRunning: shouldResumeCompletedWithoutFinalSummary }) ?? existingTask;
       round = resolveLobsterResumeRound(task);
       appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round));
       void logInfo("lobster-task-resumed", {
@@ -4239,6 +4373,7 @@ async function runLobsterPrompt(
         round,
         tabId: target.tabId,
         cli: target.cli,
+        completedWithoutFinalSummary: shouldResumeCompletedWithoutFinalSummary,
       });
     }
   }
@@ -4262,10 +4397,25 @@ async function runLobsterPrompt(
     const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
     task = latest;
     if (isLobsterTaskCompleted(latest)) {
-      removeLobsterMainDecisionMessage(target, latest.id, latest.currentRound);
-      appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(latest));
-      appendLobsterFinalSummaryMessage(target, latest);
-      return;
+      if (hasLobsterFinalSummaryMessageForTask(target, latest.id)) {
+        return;
+      }
+      const resumed = updateLobsterTaskRecord(latest.id, {
+        status: "running",
+        activeSubtaskId: null,
+        activeSubtaskIds: [],
+        updatedAt: Date.now(),
+      }, { allowCompletedToRunning: true }) ?? latest;
+      task = resumed;
+      round = resolveLobsterResumeRound(resumed);
+      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(resumed, round));
+      void logInfo("lobster-task-completed-without-final-summary-resumed", {
+        taskId: resumed.id,
+        round,
+        tabId: target.tabId,
+        cli: target.cli,
+      });
+      continue;
     }
 
     const mainStatus = await runLobsterRound({
@@ -5828,12 +5978,27 @@ function showLobsterSubtaskDecisionMarkdown(
   persistLobsterMessagesForTarget(target, messages);
 }
 
+function hasLobsterFinalSummaryMessageForTask(target: PromptRunTarget, taskId: string): boolean {
+  const messages = getLobsterMessagesForTarget(target);
+  return messages.some((message) => (
+    message.role === "assistant"
+    && message.taskRole === "main"
+    && message.lobsterTaskId === taskId
+    && message.lobsterFinalSummary === true
+    && typeof message.content === "string"
+    && message.content.trim().length > 0
+  ));
+}
+
 function appendLobsterFinalSummaryMessage(
   target: PromptRunTarget,
   task: LobsterTaskRecord,
   decision?: LobsterMainDecision | null,
 ): void {
   const messages = getLobsterMessagesForTarget(target);
+  if (hasLobsterFinalSummaryMessageForTask(target, task.id)) {
+    return;
+  }
   const message: ChatMessage = {
     id: createMessageId(),
     role: "assistant",
@@ -6358,8 +6523,45 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         ? Math.max(0, Date.now() - activeTaskRun.startedAt)
         : null;
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
-      sendRunStatus("end");
       flushTraceBuffer();
+      const finalMessageTarget = activeMessageTarget ?? messageTarget;
+      if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId)) {
+        const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
+        if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
+          appendHiddenRetryErrorTraceMessage(activeMessageTarget, missingConclusionMessage, {
+            taskRole: input.taskRole,
+            lobsterTaskId: input.lobsterTaskId,
+            lobsterRound: input.lobsterRound,
+            lobsterSubtaskId: input.lobsterSubtaskId,
+          });
+          appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
+          hiddenRetryCount += 1;
+          void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", {
+            cli: runCli,
+            runId,
+            tabId: activeTabId,
+            sessionId: activeSessionId,
+            retryCount: hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          });
+          continue;
+        }
+        const userMessageText = buildHiddenRetryFailureMessage({
+          hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryLimitMessage: buildHiddenRetryLimitMessage(),
+          fallbackMessage: missingConclusionMessage,
+          lastFailureMessage: missingConclusionMessage,
+          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+        });
+        sendRunStatus("error", userMessageText);
+        appendSystemMessage(userMessageText);
+        appendCompletionMessage("error");
+        persistActiveMessages();
+        clearActiveRun();
+        return;
+      }
+      sendRunStatus("end");
       appendCompletionMessage("end");
       persistActiveMessages();
       clearActiveRun();
@@ -6647,7 +6849,15 @@ function appendTraceMessage(
   if (shouldPersist && options.persist !== false) {
     appendMessageToStore(activeMessageTarget, message);
   }
-  sendPanelMessage({ type: "traceSegment", content: displayContent, kind: resolvedKind, ...mergePayload });
+  sendPanelMessage({
+    type: "traceSegment",
+    id: message.id,
+    createdAt: message.createdAt,
+    sequence: message.sequence,
+    content: message.content,
+    kind: resolvedKind,
+    ...mergePayload,
+  });
 }
 
 function appendSystemMessage(content: string): void {
@@ -7622,7 +7832,10 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     }
     sendPanelMessage({
       type: "traceSegment",
-      content: displayContent,
+      id: message.id,
+      createdAt: message.createdAt,
+      sequence: message.sequence,
+      content: message.content,
       kind: resolvedKind,
       tabId,
       ...mergePayload,
@@ -7719,6 +7932,56 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     }
     flushPersistForInteractiveRun();
     interactiveRunsByTabId.delete(tabId);
+  };
+
+  const handleMissingFinalConclusionForTab = (
+    source: string
+  ): { action: "ok" | "retry" | "error" | "stopped"; message?: string } => {
+    if (!isCurrentRunActive()) {
+      void logInfo("runPrompt-interactive-missing-final-conclusion-skip-inactive", {
+        cli,
+        tabId,
+        runId,
+        sessionId: uiSessionId,
+        source,
+      });
+      return { action: "stopped" };
+    }
+    if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId)) {
+      return { action: "ok" };
+    }
+    const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
+    if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
+      appendMessageForTab(createHiddenRetryErrorTraceMessage(missingConclusionMessage, {
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      }));
+      appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
+      hiddenRetryCount += 1;
+      void logInfo("runPrompt-interactive-missing-final-conclusion-retry", {
+        cli,
+        tabId,
+        runId,
+        sessionId: uiSessionId,
+        source,
+        retryCount: hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+      });
+      return { action: "retry" };
+    }
+    return {
+      action: "error",
+      message: buildHiddenRetryFailureMessage({
+        hiddenRetryCount,
+        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+        retryLimitMessage: buildHiddenRetryLimitMessage(),
+        fallbackMessage: missingConclusionMessage,
+        lastFailureMessage: missingConclusionMessage,
+        lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+      }),
+    };
   };
 
   if (!input.preloadedUserMessageId) {
@@ -7845,6 +8108,17 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             syncInteractiveRunEntry();
           },
         });
+        const finalConclusionState = handleMissingFinalConclusionForTab("codex");
+        if (finalConclusionState.action === "stopped") {
+          return;
+        }
+        if (finalConclusionState.action === "retry") {
+          continue;
+        }
+        if (finalConclusionState.action === "error") {
+          await cleanupAfterRun("error", finalConclusionState.message);
+          return;
+        }
         await cleanupAfterRun("end");
         return;
       }
@@ -7958,6 +8232,17 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           } else {
             throw error;
           }
+        }
+        const finalConclusionState = handleMissingFinalConclusionForTab("claude");
+        if (finalConclusionState.action === "stopped") {
+          return;
+        }
+        if (finalConclusionState.action === "retry") {
+          continue;
+        }
+        if (finalConclusionState.action === "error") {
+          await cleanupAfterRun("error", finalConclusionState.message);
+          return;
         }
         await cleanupAfterRun("end");
         return;
@@ -8292,19 +8577,24 @@ function flushTraceSegment(): void {
   }
   const shouldMerge = resolveTraceMerge(displayContent);
   const mergePayload = shouldMerge ? {} : { merge: false };
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "trace",
+    content: displayContent,
+    createdAt: Date.now(),
+    kind,
+    ...mergePayload,
+  };
   activeTraceSegmentLines = [];
   if (activeMessageTarget && shouldPersist && execShouldPersist) {
-    appendMessageToStore(activeMessageTarget, {
-      id: createMessageId(),
-      role: "trace",
-      content: displayContent,
-      createdAt: Date.now(),
-      ...mergePayload,
-    });
+    appendMessageToStore(activeMessageTarget, message);
   }
   sendPanelMessage({
     type: "traceSegment",
-    content: displayContent,
+    id: message.id,
+    createdAt: message.createdAt,
+    sequence: message.sequence,
+    content: message.content,
     kind,
     ...mergePayload,
   });
@@ -8981,7 +9271,11 @@ function readLobsterTaskRecord(taskId: string): LobsterTaskRecord | null {
   return task;
 }
 
-function updateLobsterTaskRecord(taskId: string, patch: Partial<LobsterTaskRecord>): LobsterTaskRecord | null {
+function updateLobsterTaskRecord(
+  taskId: string,
+  patch: Partial<LobsterTaskRecord>,
+  options: { allowCompletedToRunning?: boolean } = {}
+): LobsterTaskRecord | null {
   const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
   if (!storeFile) {
     return null;
@@ -8992,7 +9286,7 @@ function updateLobsterTaskRecord(taskId: string, patch: Partial<LobsterTaskRecor
     return null;
   }
   const existing = store.tasks[index];
-  const nextStatus = existing.status === "completed" && patch.status === "running"
+  const nextStatus = existing.status === "completed" && patch.status === "running" && options.allowCompletedToRunning !== true
     ? existing.status
     : patch.status ?? existing.status;
   const next: LobsterTaskRecord = {

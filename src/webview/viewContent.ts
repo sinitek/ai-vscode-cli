@@ -3375,6 +3375,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         },
       };
       const traceCollapsibleOpenKeys = new Set();
+      const DUPLICATE_STATUS_TRACE_WINDOW_MS = 3000;
 
       const elements = {
         currentCli: document.getElementById("currentCli"),
@@ -4513,6 +4514,44 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         );
       }
 
+      function normalizeDuplicateMessageContent(content) {
+        return typeof content === "string"
+          ? content.replace(/\\r\\n/g, "\\n").trim()
+          : "";
+      }
+
+      function hasExistingMessageId(message) {
+        const id = message && typeof message.id === "string" ? message.id : "";
+        return Boolean(
+          id
+          && Array.isArray(state.messages)
+          && state.messages.some((existing) => existing && existing.id === id)
+        );
+      }
+
+      function isNearDuplicateWarningOrErrorMessage(message, last) {
+        if (!message || !last) {
+          return false;
+        }
+        if (message.role !== last.role || (message.role !== "trace" && message.role !== "system")) {
+          return false;
+        }
+        if (message.role === "trace" && (message.kind || "normal") !== (last.kind || "normal")) {
+          return false;
+        }
+        if (!isWarningOrErrorMessage(message) || !isWarningOrErrorMessage(last)) {
+          return false;
+        }
+        const content = normalizeDuplicateMessageContent(message.content);
+        const lastContent = normalizeDuplicateMessageContent(last.content);
+        if (!content || content !== lastContent) {
+          return false;
+        }
+        const createdAt = typeof message.createdAt === "number" ? message.createdAt : Date.now();
+        const lastCreatedAt = typeof last.createdAt === "number" ? last.createdAt : 0;
+        return lastCreatedAt > 0 && Math.abs(createdAt - lastCreatedAt) <= DUPLICATE_STATUS_TRACE_WINDOW_MS;
+      }
+
       function shouldShowMessageInResultOnlyMode(message, messageIndex) {
         if (!message) {
           return false;
@@ -5476,7 +5515,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if ((message.role === "user" || message.role === "system" || message.role === "trace") && !message.createdAt) {
           message.createdAt = Date.now();
         }
+        if (hasExistingMessageId(message)) {
+          return;
+        }
         const last = state.messages[state.messages.length - 1];
+        if (isNearDuplicateWarningOrErrorMessage(message, last)) {
+          return;
+        }
         const isFileUpdate = isFileUpdateMessage(message);
         const lastIsFileUpdate = last && isFileUpdateMessage(last);
         if (message.role === "assistant") {
@@ -8985,9 +9030,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               return;
             }
             appendMessage({
-              id: createMessageId(),
+              id: typeof data.id === "string" && data.id ? data.id : createMessageId(),
               role: "trace",
               content: data.content,
+              ...(typeof data.createdAt === "number" ? { createdAt: data.createdAt } : {}),
+              ...(typeof data.sequence === "number" ? { sequence: data.sequence } : {}),
               kind: data.kind,
               merge: data.merge,
             });
