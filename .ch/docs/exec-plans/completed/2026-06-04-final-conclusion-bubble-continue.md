@@ -54,6 +54,8 @@ AI 对话任务结束时应产生最终结论气泡。用户反馈：如果任�
 - 缓解：普通任务复用统一 hidden retry 上限；龙虾任务在成功写入 `lobsterFinalSummary=true` 后立即结束，异常则回到 needs-review/error 路径。
 - 风险：Gemini 新 session 识别后继续检查旧 draft 消息数组。
 - 缓解：并行 Gemini 路径在 session adoption 后刷新并使用当前 run 的实际 messageTarget。
+- 风险：本轮用户消息锚点缺失时回退到历史最后一条用户消息，导致把上一轮 assistant 误判成本轮最终结论。
+- 缓解：最终结论判定必须找到本轮用户消息 ID；找不到时直接视为缺少最终结论并触发继续。
 
 ## 验证计划
 
@@ -81,12 +83,14 @@ AI 对话任务结束时应产生最终结论气泡。用户反馈：如果任�
 - 2026-06-04：Gemini 并行成功路径只把解析出的 assistant/plain text 内容当作最终 assistant 气泡，不再把原始 stream-json stdout 当作结论兜底。
 - 2026-06-04：自动续跑复用现有 hidden retry 次数和延迟，不新增单独配置。
 - 2026-06-04：手动停止会让运行态失效；Codex / Claude 交互式最终结论检查在 run inactive 时直接跳过，避免主动停止后自动继续。
+- 2026-06-06：最终结论判定不再回退历史最后一条用户消息，避免任务显示完成但本轮没有最终结论气泡。
 
 ## 验证结果
 
 - 2026-06-04：`npm run build` 通过。
 - 2026-06-04：`node --test dist/test/hiddenRetry.test.js` 通过，11/11。
 - 2026-06-04：补充手动停止保护后，`npm run build` 再次通过；`node --test dist/test/hiddenRetry.test.js` 再次通过，11/11。
+- 2026-06-06：收紧本轮用户消息锚点后，`npm run build` 通过；`node --test dist/test/hiddenRetry.test.js` 通过，11/11。
 
 ## 当前结论
 

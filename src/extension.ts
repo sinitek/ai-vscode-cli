@@ -3204,23 +3204,12 @@ function isAssistantFinalConclusionMessage(message: ChatMessage | undefined): bo
   );
 }
 
-function findLastUserMessageIndex(messages: ChatMessage[]): number {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role === "user" && message.content.trim()) {
-      return index;
-    }
-  }
-  return -1;
-}
-
 function hasAssistantFinalConclusionAfterMessage(messages: ChatMessage[], messageId: string): boolean {
   const messageIndex = messages.findIndex((message) => message.id === messageId);
-  const anchorIndex = messageIndex >= 0 ? messageIndex : findLastUserMessageIndex(messages);
-  if (anchorIndex < 0) {
+  if (messageIndex < 0) {
     return false;
   }
-  return messages.slice(anchorIndex + 1).some(isAssistantFinalConclusionMessage);
+  return messages.slice(messageIndex + 1).some(isAssistantFinalConclusionMessage);
 }
 
 function createHiddenRetryErrorTraceMessage(
