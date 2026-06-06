@@ -3193,6 +3193,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       })();
       const i18n = ${JSON.stringify(i18n)};
+      const CLI_NAMES = ${JSON.stringify(CLI_LIST)};
       const traceMarkers = {
         input: ["Input", "输入"],
         output: ["Output", "输出"],
@@ -3496,6 +3497,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       let isComposing = false;
       let lastCompositionEndAt = 0;
       const compositionEnterGuardMs = 150;
+      const autoApplyConfigRetryMs = 30000;
+      let lastAutoApplyConfigKey = "";
+      let lastAutoApplyConfigAt = 0;
       const assistantRedirects = {};
       let toastTimer = null;
       let runStreamExportPending = false;
@@ -4107,6 +4111,107 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function normalizeModelNameList(value) {
+        if (!Array.isArray(value)) {
+          return [];
+        }
+        const seen = new Set();
+        const result = [];
+        value.forEach((item) => {
+          const modelName = typeof item === "string" ? item.trim() : "";
+          const key = modelName.toLowerCase();
+          if (!modelName || seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          result.push(modelName);
+        });
+        return result;
+      }
+
+      function normalizeModelSelection(value) {
+        return typeof value === "string" ? value.trim() : "";
+      }
+
+      function shouldPreserveCurrentCliModelsOnEmptySnapshot(cli, nextModels, nextManagedModels, previousModels, previousManagedModels) {
+        if (cli !== state.currentCli) {
+          return false;
+        }
+        if (nextModels.length > 0 || nextManagedModels.length > 0) {
+          return false;
+        }
+        if (previousModels.length === 0 && previousManagedModels.length === 0) {
+          return false;
+        }
+        const activeConfigId = state.configState && typeof state.configState.activeConfigId === "string"
+          ? state.configState.activeConfigId
+          : "";
+        const selectedConfigId = typeof state.selectedConfigId === "string" ? state.selectedConfigId : "";
+        if (!selectedConfigId) {
+          return false;
+        }
+        return !activeConfigId || activeConfigId !== selectedConfigId;
+      }
+
+      function applyModelState(modelState, panelCurrentCli) {
+        if (!modelState) {
+          return;
+        }
+        const nextModelsByCli = {};
+        const nextManagedModelsByCli = {};
+        const nextSelectedModelsByCli = {};
+        const nextLobsterMainModelsByCli = {};
+        const nextLobsterSubtaskModelsByCli = {};
+        const nextSelectedLobsterMainModelsByCli = {};
+        const nextSelectedLobsterSubtaskModelsByCli = {};
+        const nextManagedModelRolesByCli = {};
+
+        CLI_NAMES.forEach((cli) => {
+          const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli]);
+          const incomingManagedModels = normalizeModelNameList(modelState.managedByCli && modelState.managedByCli[cli]);
+          const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli]);
+          const previousManagedModels = normalizeModelNameList(state.managedModelsByCli && state.managedModelsByCli[cli]);
+          const preservePrevious = shouldPreserveCurrentCliModelsOnEmptySnapshot(
+            cli,
+            incomingModels,
+            incomingManagedModels,
+            previousModels,
+            previousManagedModels
+          );
+
+          nextModelsByCli[cli] = preservePrevious ? previousModels : incomingModels;
+          nextManagedModelsByCli[cli] = preservePrevious ? previousManagedModels : incomingManagedModels;
+          nextSelectedModelsByCli[cli] = preservePrevious
+            ? normalizeModelSelection(state.selectedModelsByCli && state.selectedModelsByCli[cli])
+            : normalizeModelSelection(modelState.selectedByCli && modelState.selectedByCli[cli]);
+          nextLobsterMainModelsByCli[cli] = preservePrevious
+            ? normalizeModelNameList(state.lobsterMainModelsByCli && state.lobsterMainModelsByCli[cli])
+            : normalizeModelNameList(modelState.lobsterOptionsByCli && modelState.lobsterOptionsByCli[cli] && modelState.lobsterOptionsByCli[cli].main);
+          nextLobsterSubtaskModelsByCli[cli] = preservePrevious
+            ? normalizeModelNameList(state.lobsterSubtaskModelsByCli && state.lobsterSubtaskModelsByCli[cli])
+            : normalizeModelNameList(modelState.lobsterOptionsByCli && modelState.lobsterOptionsByCli[cli] && modelState.lobsterOptionsByCli[cli].subtask);
+          nextSelectedLobsterMainModelsByCli[cli] = preservePrevious
+            ? normalizeModelSelection(state.selectedLobsterMainModelsByCli && state.selectedLobsterMainModelsByCli[cli])
+            : normalizeModelSelection(modelState.selectedLobsterByCli && modelState.selectedLobsterByCli[cli] && modelState.selectedLobsterByCli[cli].main);
+          nextSelectedLobsterSubtaskModelsByCli[cli] = preservePrevious
+            ? normalizeModelSelection(state.selectedLobsterSubtaskModelsByCli && state.selectedLobsterSubtaskModelsByCli[cli])
+            : normalizeModelSelection(modelState.selectedLobsterByCli && modelState.selectedLobsterByCli[cli] && modelState.selectedLobsterByCli[cli].subtask);
+          nextManagedModelRolesByCli[cli] = preservePrevious
+            ? ((state.managedModelRolesByCli && state.managedModelRolesByCli[cli]) || {})
+            : ((modelState.managedLobsterRolesByCli && modelState.managedLobsterRolesByCli[cli]) || {});
+        });
+
+        state.modelsByCli = nextModelsByCli;
+        state.managedModelsByCli = nextManagedModelsByCli;
+        state.selectedModelsByCli = nextSelectedModelsByCli;
+        state.lobsterMainModelsByCli = nextLobsterMainModelsByCli;
+        state.lobsterSubtaskModelsByCli = nextLobsterSubtaskModelsByCli;
+        state.selectedLobsterMainModelsByCli = nextSelectedLobsterMainModelsByCli;
+        state.selectedLobsterSubtaskModelsByCli = nextSelectedLobsterSubtaskModelsByCli;
+        state.managedModelRolesByCli = nextManagedModelRolesByCli;
+        state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
+      }
+
       function applyState(panelState) {
         const previousCli = state.currentCli;
         const previousActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
@@ -4152,8 +4257,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           nextSelected = configs[0].id;
           shouldAutoApplyConfig = true;
         }
-        if (shouldAutoApplyConfig && !state.autoAppliedConfig) {
+        const autoApplyConfigKey = state.currentCli + ":" + nextSelected;
+        const canAutoApplyConfig = shouldAutoApplyConfig && (
+          !state.autoAppliedConfig
+          || lastAutoApplyConfigKey !== autoApplyConfigKey
+          || Date.now() - lastAutoApplyConfigAt > autoApplyConfigRetryMs
+        );
+        if (canAutoApplyConfig) {
           state.autoAppliedConfig = true;
+          lastAutoApplyConfigKey = autoApplyConfigKey;
+          lastAutoApplyConfigAt = Date.now();
           vscode.postMessage({
             type: "applyConfig",
             cli: state.currentCli,
@@ -4188,47 +4301,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         // Handle modelState
         if (panelState.modelState) {
-          state.modelsByCli = {
-            codex: panelState.modelState.optionsByCli?.codex || [],
-            claude: panelState.modelState.optionsByCli?.claude || [],
-            gemini: panelState.modelState.optionsByCli?.gemini || [],
-          };
-          state.managedModelsByCli = {
-            codex: panelState.modelState.managedByCli?.codex || [],
-            claude: panelState.modelState.managedByCli?.claude || [],
-            gemini: panelState.modelState.managedByCli?.gemini || [],
-          };
-          state.selectedModelsByCli = {
-            codex: panelState.modelState.selectedByCli?.codex || "",
-            claude: panelState.modelState.selectedByCli?.claude || "",
-            gemini: panelState.modelState.selectedByCli?.gemini || "",
-          };
-          state.lobsterMainModelsByCli = {
-            codex: panelState.modelState.lobsterOptionsByCli?.codex?.main || [],
-            claude: panelState.modelState.lobsterOptionsByCli?.claude?.main || [],
-            gemini: panelState.modelState.lobsterOptionsByCli?.gemini?.main || [],
-          };
-          state.lobsterSubtaskModelsByCli = {
-            codex: panelState.modelState.lobsterOptionsByCli?.codex?.subtask || [],
-            claude: panelState.modelState.lobsterOptionsByCli?.claude?.subtask || [],
-            gemini: panelState.modelState.lobsterOptionsByCli?.gemini?.subtask || [],
-          };
-          state.selectedLobsterMainModelsByCli = {
-            codex: panelState.modelState.selectedLobsterByCli?.codex?.main || "",
-            claude: panelState.modelState.selectedLobsterByCli?.claude?.main || "",
-            gemini: panelState.modelState.selectedLobsterByCli?.gemini?.main || "",
-          };
-          state.selectedLobsterSubtaskModelsByCli = {
-            codex: panelState.modelState.selectedLobsterByCli?.codex?.subtask || "",
-            claude: panelState.modelState.selectedLobsterByCli?.claude?.subtask || "",
-            gemini: panelState.modelState.selectedLobsterByCli?.gemini?.subtask || "",
-          };
-          state.managedModelRolesByCli = {
-            codex: panelState.modelState.managedLobsterRolesByCli?.codex || {},
-            claude: panelState.modelState.managedLobsterRolesByCli?.claude || {},
-            gemini: panelState.modelState.managedLobsterRolesByCli?.gemini || {},
-          };
-          state.selectedModel = state.selectedModelsByCli[panelState.currentCli] || "";
+          applyModelState(panelState.modelState, panelState.currentCli);
         }
         elements.currentCli.value = panelState.currentCli;
         if (elements.rulesLoadCli) {

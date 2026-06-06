@@ -1472,11 +1472,12 @@ async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
   const configState = await loadConfigState(currentCli);
+  const modelConfigId = resolveModelConfigIdForCli(currentCli, configState);
 
   const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
-    [currentCli]: configState.activeConfigId,
+    [currentCli]: modelConfigId,
   };
-  const selectedModel = getSelectedCliModel(currentCli, configState.activeConfigId);
+  const selectedModel = getSelectedCliModel(currentCli, modelConfigId);
 
   return {
     currentCli,
@@ -1515,11 +1516,12 @@ async function buildPanelStateWithConfigState(
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
+  const modelConfigId = resolveModelConfigIdForCli(currentCli, configState);
 
   const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
-    [currentCli]: configState.activeConfigId,
+    [currentCli]: modelConfigId,
   };
-  const selectedModel = getSelectedCliModel(currentCli, configState.activeConfigId);
+  const selectedModel = getSelectedCliModel(currentCli, modelConfigId);
 
   return {
     currentCli,
@@ -1789,21 +1791,22 @@ function getConfigHeartbeatPayload(
   store: CliModelStore = modelStore
 ): ConfigHeartbeatSnapshot {
   const activeConfigId = configState.activeConfigId;
+  const modelConfigId = resolveModelConfigIdForCli(cli, configState);
   const normalizedStore = ensureCliModelStore(store);
-  const modelSelected = activeConfigId
-    ? normalizeCliModelName(normalizedStore.selectedByConfigId[activeConfigId])
+  const modelSelected = modelConfigId
+    ? normalizeCliModelName(normalizedStore.selectedByConfigId[modelConfigId])
     : null;
-  const managedModelOptions = activeConfigId
-    ? mergeUniqueModelNames(normalizedStore.optionsByConfigId[activeConfigId] ?? [])
+  const managedModelOptions = modelConfigId
+    ? mergeUniqueModelNames(normalizedStore.optionsByConfigId[modelConfigId] ?? [])
     : [];
-  const lobsterMainModelSelected = activeConfigId
-    ? getSelectedLobsterCliModel(cli, "main", activeConfigId)
+  const lobsterMainModelSelected = modelConfigId
+    ? getSelectedLobsterCliModel(cli, "main", modelConfigId)
     : null;
-  const lobsterSubtaskModelSelected = activeConfigId
-    ? getSelectedLobsterCliModel(cli, "subtask", activeConfigId)
+  const lobsterSubtaskModelSelected = modelConfigId
+    ? getSelectedLobsterCliModel(cli, "subtask", modelConfigId)
     : null;
-  const lobsterRolesForConfig = activeConfigId
-    ? (normalizedStore.lobsterRolesByConfigId[activeConfigId] ?? {})
+  const lobsterRolesForConfig = modelConfigId
+    ? (normalizedStore.lobsterRolesByConfigId[modelConfigId] ?? {})
     : {};
   const lobsterRoleSignature = JSON.stringify(
     Object.keys(lobsterRolesForConfig)
@@ -2855,6 +2858,31 @@ function setWorkspaceActiveConfigId(cli: CliName, configId: string | null): void
   saveWorkspaceSettings(workspaceSettings);
 }
 
+function getWorkspacePreferredConfigIdForCli(cli: CliName): string | null {
+  const configId = workspaceSettings.activeConfigIdByCli?.[cli];
+  return typeof configId === "string" && configId ? configId : null;
+}
+
+function resolveModelConfigIdForCli(
+  cli: CliName,
+  configState?: PanelState["configState"]
+): string | null {
+  const activeConfigId = configState ? configState.activeConfigId : getActiveConfigIdForCli(cli);
+  if (activeConfigId) {
+    return activeConfigId;
+  }
+  const preferredConfigId = getWorkspacePreferredConfigIdForCli(cli);
+  if (!preferredConfigId) {
+    return null;
+  }
+  if (configState && Array.isArray(configState.configs) && configState.configs.length > 0) {
+    return configState.configs.some((config) => config.id === preferredConfigId)
+      ? preferredConfigId
+      : null;
+  }
+  return preferredConfigId;
+}
+
 function applyConfigOrder(configs: ConfigItem[], orderIds: string[]): ConfigItem[] {
   if (!orderIds || orderIds.length === 0) {
     return configs;
@@ -2923,12 +2951,21 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     const preferredActive = preferredActiveConfigId
       ? orderedConfigs.find((config) => config.id === preferredActiveConfigId) ?? null
       : null;
-    const active = preferredActive && matchesActiveConfig(cli, preferredActive, current)
+    const matchedActive = preferredActive && matchesActiveConfig(cli, preferredActive, current)
       ? preferredActive
       : orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
+    const active = matchedActive ?? preferredActive;
     const activeConfigId = active ? active.id : null;
-    if (preferredActiveConfigId !== activeConfigId) {
+    if (matchedActive && preferredActiveConfigId !== activeConfigId) {
       setWorkspaceActiveConfigId(cli, activeConfigId);
+    } else if (!preferredActive && preferredActiveConfigId) {
+      setWorkspaceActiveConfigId(cli, null);
+    } else if (!matchedActive && preferredActive) {
+      void logInfo("loadConfigState-preferred-fallback", {
+        cli,
+        configId: preferredActive.id,
+        reason: "current-config-did-not-match-known-profile",
+      });
     }
     delete lastConfigStateLoadErrorByCli[cli];
     return {
@@ -10060,7 +10097,7 @@ function getActiveConfigIdForCli(cli: CliName): string | null {
   if (snapshot && snapshot.cli === cli && snapshot.activeConfigId) {
     return snapshot.activeConfigId;
   }
-  return null;
+  return getWorkspacePreferredConfigIdForCli(cli);
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
