@@ -7710,10 +7710,14 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     return normalizeAssistantKindForTab(message?.kind) === normalizeAssistantKindForTab(kind);
   };
 
-  const ensureAssistantMessage = (kind?: ChatMessage["kind"]): void => {
+  const ensureAssistantMessage = (
+    kind?: ChatMessage["kind"],
+    options: { forceNew?: boolean; codexFinalAnswer?: boolean } = {}
+  ): void => {
     const last = messageTarget[messageTarget.length - 1];
     if (
-      assistantMessageId
+      options.forceNew !== true
+      && assistantMessageId
       && last
       && last.role === "assistant"
       && last.id === assistantMessageId
@@ -7728,6 +7732,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       content: "",
       createdAt: Date.now(),
       ...(kind === "thinking" ? { kind: "thinking" } : {}),
+      ...(options.codexFinalAnswer === true ? { codexFinalAnswer: true } : {}),
       taskRole: input.taskRole,
       lobsterTaskId: input.lobsterTaskId,
       lobsterRound: input.lobsterRound,
@@ -7739,11 +7744,31 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     syncInteractiveRunEntry();
   };
 
-  const appendAssistantChunkForTab = (chunk: string, kind?: ChatMessage["kind"]): void => {
-    if (!chunk) {
+  const appendAssistantChunkForTab = (
+    chunk: string,
+    kind?: ChatMessage["kind"],
+    options: { codexFinalAnswer?: boolean } = {}
+  ): void => {
+    const marksCodexFinalAnswer = options.codexFinalAnswer === true;
+    if (!chunk && !marksCodexFinalAnswer) {
       return;
     }
-    ensureAssistantMessage(kind);
+    const last = messageTarget[messageTarget.length - 1];
+    const forceNewFinalAnswer = Boolean(
+      marksCodexFinalAnswer
+      && chunk
+      && last
+      && last.role === "assistant"
+      && last.id === assistantMessageId
+      && last.codexFinalAnswer !== true
+      && String(last.content || "").trim()
+    );
+    if (chunk) {
+      ensureAssistantMessage(kind, {
+        forceNew: forceNewFinalAnswer,
+        codexFinalAnswer: marksCodexFinalAnswer,
+      });
+    }
     if (!assistantMessageId || assistantMessageIndex === null) {
       return;
     }
@@ -7751,11 +7776,23 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     if (!message || message.role !== "assistant") {
       return;
     }
+    if (marksCodexFinalAnswer) {
+      message.codexFinalAnswer = true;
+    }
     if (kind === "thinking") {
       message.kind = "thinking";
     }
-    message.content += chunk;
-    sendPanelMessage({ type: "assistantDelta", id: assistantMessageId, content: chunk, kind, tabId });
+    if (chunk) {
+      message.content += chunk;
+    }
+    sendPanelMessage({
+      type: "assistantDelta",
+      id: assistantMessageId,
+      content: chunk,
+      kind,
+      tabId,
+      ...(marksCodexFinalAnswer ? { codexFinalAnswer: true } : {}),
+    });
     syncInteractiveRunEntry();
     schedulePersistForInteractiveRun();
   };
@@ -8049,14 +8086,16 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         stopCurrentTurn = () => runner.stopAndRebuild();
         syncInteractiveRunEntry(stopFn);
         await runner.runStreamed(attemptPrompt, {
-          onAssistantDelta: (chunk) => {
+          onAssistantDelta: (chunk, meta) => {
             if (!isCurrentRunActive()) {
               return;
             }
             if (chunk.trim().length > 0) {
               attemptHadNormalReply = true;
             }
-            appendAssistantChunkForTab(chunk);
+            appendAssistantChunkForTab(chunk, undefined, {
+              codexFinalAnswer: meta?.codexFinalAnswer === true,
+            });
             appendDebugStdout(chunk);
           },
           onTrace: (content, kind, meta) => {

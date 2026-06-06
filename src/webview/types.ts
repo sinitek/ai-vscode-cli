@@ -144,6 +144,7 @@ export type ChatMessage = {
   lobsterRound?: number;
   lobsterSubtaskId?: string;
   lobsterFinalSummary?: boolean;
+  codexFinalAnswer?: boolean;
 };
 
 export type PanelState = {

@@ -1,7 +1,11 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { isCodexContextCompactionCompletedNotification } from "../interactive/codexAppServerEvents";
+import {
+  isCodexContextCompactionCompletedNotification,
+  isCodexFinalAnswerAgentMessage,
+  isCodexFinalAnswerPhase,
+} from "../interactive/codexAppServerEvents";
 
 test("detects thread/compacted notification for the expected thread", () => {
   assert.equal(
@@ -32,6 +36,38 @@ test("ignores compaction notifications for a different thread", () => {
       method: "thread/compacted",
       params: { threadId: "thread-2" },
     }, "thread-1"),
+    false
+  );
+});
+
+test("detects Codex final answer phase", () => {
+  assert.equal(isCodexFinalAnswerPhase("final_answer"), true);
+  assert.equal(isCodexFinalAnswerPhase("commentary"), false);
+});
+
+test("detects Codex final answer agent messages", () => {
+  assert.equal(
+    isCodexFinalAnswerAgentMessage({
+      type: "agent_message",
+      phase: "final_answer",
+      text: "Done",
+    }),
+    true
+  );
+  assert.equal(
+    isCodexFinalAnswerAgentMessage({
+      type: "agentMessage",
+      phase: "final_answer",
+      text: "Done",
+    }),
+    true
+  );
+  assert.equal(
+    isCodexFinalAnswerAgentMessage({
+      type: "agent_message",
+      phase: "commentary",
+      text: "Working",
+    }),
     false
   );
 });

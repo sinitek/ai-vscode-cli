@@ -3749,6 +3749,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (current.lobsterFinalSummary === true) {
           return true;
         }
+        if (current.codexFinalAnswer === true) {
+          return true;
+        }
         for (let i = messageIndex + 1; i < state.messages.length; i += 1) {
           const next = state.messages[i];
           if (!next) {
@@ -5531,6 +5534,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             && last.merge !== false
             && message.lobsterFinalSummary !== true
             && last.lobsterFinalSummary !== true
+            && message.codexFinalAnswer !== true
+            && last.codexFinalAnswer !== true
             && isSameAssistantKind(last, message)
             && last.taskRole === message.taskRole
             && !isFileUpdate
@@ -5580,16 +5585,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         );
       }
 
-      function appendAssistantDelta(id, content, kind) {
+      function appendAssistantDelta(id, content, kind, options) {
         const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
+        const marksCodexFinalAnswer = Boolean(options && options.codexFinalAnswer === true);
+        const hasContent = Boolean(content);
         const isLastAssistant = last
           && last.role === "assistant"
           && last.id === resolvedId
           && isSameAssistantKind(last, kind);
         let requiresFullRender = false;
+        if (targetIndex !== -1 && !hasContent && marksCodexFinalAnswer) {
+          const target = state.messages[targetIndex];
+          target.codexFinalAnswer = true;
+          if (!updateRenderedAssistantMessage(target, targetIndex)) {
+            renderMessages();
+          }
+          return;
+        }
+        if (targetIndex === -1 && !hasContent && marksCodexFinalAnswer) {
+          return;
+        }
         if (targetIndex === -1 || !isLastAssistant) {
           const newId = createMessageId();
           assistantRedirects[id] = newId;
@@ -5598,15 +5616,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             role: "assistant",
             content: "",
             ...(kind === "thinking" ? { kind: "thinking" } : {}),
+            ...(marksCodexFinalAnswer ? { codexFinalAnswer: true } : {}),
           });
           targetIndex = state.messages.length - 1;
           requiresFullRender = true;
         }
         const target = state.messages[targetIndex];
+        if (marksCodexFinalAnswer) {
+          target.codexFinalAnswer = true;
+        }
         if (kind === "thinking") {
           target.kind = "thinking";
         }
-        target.content += content;
+        target.content += content || "";
         if (requiresFullRender || !updateRenderedAssistantMessage(target, targetIndex)) {
           renderMessages();
           return;
@@ -9012,7 +9034,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }
-            appendAssistantDelta(data.id, data.content, data.kind);
+            appendAssistantDelta(data.id, data.content, data.kind, {
+              codexFinalAnswer: data.codexFinalAnswer === true,
+            });
           }
           if (data.type === "rawStreamDelta") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;

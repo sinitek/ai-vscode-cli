@@ -13,6 +13,8 @@ import {
   extractCodexItemTraceCandidate,
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
+  isCodexFinalAnswerAgentMessage,
+  isCodexFinalAnswerPhase,
   isCodexContextCompactionCompletedNotification,
   normalizeCodexExecItemType,
 } from "./codexAppServerEvents";
@@ -30,8 +32,12 @@ export type CodexTraceMeta = {
   merge?: boolean;
 };
 
+export type CodexAssistantDeltaMeta = {
+  codexFinalAnswer?: boolean;
+};
+
 export type CodexStreamHandlers = {
-  onAssistantDelta: (chunk: string) => void;
+  onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
   onTrace: (content: string, kind?: CodexTraceKind, meta?: CodexTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
@@ -1461,8 +1467,9 @@ export class CodexInteractiveRunner {
           const nextText = typeof item.text === "string" ? item.text : "";
           const previousText = itemId ? (assistantBuffers.get(itemId) ?? "") : "";
           const delta = extractDelta(previousText, nextText);
-          if (delta) {
-            handlers.onAssistantDelta(delta);
+          const codexFinalAnswer = isCodexFinalAnswerAgentMessage(item);
+          if (delta || codexFinalAnswer) {
+            handlers.onAssistantDelta(delta, codexFinalAnswer ? { codexFinalAnswer: true } : undefined);
           }
           if (itemId) {
             assistantBuffers.delete(itemId);
@@ -1682,7 +1689,7 @@ export class CodexInteractiveRunner {
               assistantBuffers.set(itemId, `${assistantBuffers.get(itemId) ?? ""}${delta}`);
             }
             if (delta) {
-              handlers.onAssistantDelta(delta);
+              handlers.onAssistantDelta(delta, isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined);
             }
             continue;
           }

@@ -123,6 +123,19 @@ export function normalizeCodexExecItemType(type: unknown): string {
   } as Record<string, string>)[normalized] || normalized;
 }
 
+export function isCodexFinalAnswerPhase(phase: unknown): boolean {
+  return String(phase || "").trim() === "final_answer";
+}
+
+export function isCodexFinalAnswerAgentMessage(rawItem: unknown): boolean {
+  const item = toRecord(rawItem);
+  return Boolean(
+    item
+    && normalizeCodexExecItemType(item.type) === "agent_message"
+    && isCodexFinalAnswerPhase(item.phase)
+  );
+}
+
 function joinTraceLines(lines: Array<string | null | undefined>): string {
   return lines
     .map((line) => String(line || "").trim())
