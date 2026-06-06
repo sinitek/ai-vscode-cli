@@ -280,7 +280,7 @@ const MESSAGES = {
     "run.failed": "任务失败",
     "run.failedWithDuration": "任务失败，执行 {duration}",
     "run.hiddenContinuePrompt": "继续",
-    "run.missingFinalConclusionRetryReason": "任务已退出，但没有产生最终结论气泡。",
+    "run.missingFinalConclusionRetryReason": "任务已退出，但没有产生最终结论气泡，自动继续。",
     "run.hiddenRetryQueued": "任务已中断，将在 {delay} 后开始第 {attempt}/{attempts} 次自动重试。",
     "run.hiddenRetryLimitReached": "任务已按 {delays} 的阶梯间隔自动隐式重试 {attempts} 次后仍被中断，请检查日志或手动继续。",
     "run.hiddenRetryLastErrorPrefix": "最近一次错误：",
