@@ -83,6 +83,7 @@ import {
   isSameHiddenRetryErrorTraceContent,
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
+import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
@@ -3194,24 +3195,6 @@ function getAttemptFailureMessage(attemptResult: CliAttemptResult, resultErrorTe
   return normalizedResultError ?? t("run.exitCode", { code: attemptResult.code ?? "unknown" });
 }
 
-function isAssistantFinalConclusionMessage(message: ChatMessage | undefined): boolean {
-  return Boolean(
-    message
-    && message.role === "assistant"
-    && message.kind !== "thinking"
-    && typeof message.content === "string"
-    && message.content.trim().length > 0
-  );
-}
-
-function hasAssistantFinalConclusionAfterMessage(messages: ChatMessage[], messageId: string): boolean {
-  const messageIndex = messages.findIndex((message) => message.id === messageId);
-  if (messageIndex < 0) {
-    return false;
-  }
-  return messages.slice(messageIndex + 1).some(isAssistantFinalConclusionMessage);
-}
-
 function createHiddenRetryErrorTraceMessage(
   lastFailureMessage: string,
   options: RetryErrorTraceMessageOptions = {},
@@ -3922,9 +3905,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(target.tabId, runCli).messages;
   const userMessageId = input.preloadedUserMessageId ?? createMessageId();
+  const userCreatedAt = Date.now();
 
   if (!input.preloadedUserMessageId) {
-    const userMessage = buildUserChatMessage(input, Date.now(), userMessageId);
+    const userMessage = buildUserChatMessage(input, userCreatedAt, userMessageId);
     appendMessageToStore(messageTarget, userMessage);
     sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
   }
@@ -4119,7 +4103,9 @@ ${rawStderr}`);
         appendMessageToStore(currentMessageTarget, assistantMessage);
         sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
       }
-      if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId)) {
+      if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
+        fallbackCreatedAt: userCreatedAt,
+      })) {
         const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
         if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
           appendHiddenRetryErrorTraceMessage(currentMessageTarget, missingConclusionMessage, {
@@ -6514,7 +6500,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
       flushTraceBuffer();
       const finalMessageTarget = activeMessageTarget ?? messageTarget;
-      if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId)) {
+      if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
+        fallbackCreatedAt: userCreatedAt,
+      })) {
         const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
         if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
           appendHiddenRetryErrorTraceMessage(activeMessageTarget, missingConclusionMessage, {
@@ -7553,6 +7541,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   let didLogInteractiveStart = false;
   let stopCurrentTurn: (() => void) | null = null;
   let hiddenRetryCount = 0;
+  let observedCodexFinalAnswer = false;
 
   const syncInteractiveRunEntry = (stop?: () => void): void => {
     const entry = interactiveRunsByTabId.get(tabId);
@@ -7973,7 +7962,10 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       });
       return { action: "stopped" };
     }
-    if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId)) {
+    if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
+      observedCodexFinalAnswer: source === "codex" && observedCodexFinalAnswer,
+      fallbackCreatedAt: userCreatedAt,
+    })) {
       return { action: "ok" };
     }
     const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
@@ -8089,6 +8081,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           onAssistantDelta: (chunk, meta) => {
             if (!isCurrentRunActive()) {
               return;
+            }
+            if (meta?.codexFinalAnswer === true) {
+              observedCodexFinalAnswer = true;
             }
             if (chunk.trim().length > 0) {
               attemptHadNormalReply = true;
