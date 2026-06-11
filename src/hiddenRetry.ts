@@ -13,6 +13,11 @@ export type HiddenRetryProgressInfo = {
   retryDelaySeconds: number;
 };
 
+export type HiddenRetryAttemptInfo = {
+  retryNumber: number;
+  maxRetries: number;
+};
+
 const ERROR_TRACE_MARKER = "error";
 const DEFAULT_ERROR_TRACE_FALLBACK = "Unknown error";
 
@@ -78,14 +83,31 @@ export function getHiddenRetryDelayMs(
   return Math.max(0, Math.floor(retryDelaysMs[index] ?? 0));
 }
 
+export function buildHiddenRetryAttemptInfo(
+  retryNumber: number,
+  maxRetries: number,
+): HiddenRetryAttemptInfo {
+  const normalizedMaxRetries = Number.isFinite(maxRetries)
+    ? Math.max(1, Math.floor(maxRetries))
+    : 1;
+  const normalizedRetryNumber = Number.isFinite(retryNumber)
+    ? Math.max(1, Math.floor(retryNumber))
+    : 1;
+  return {
+    retryNumber: Math.min(normalizedMaxRetries, normalizedRetryNumber),
+    maxRetries: normalizedMaxRetries,
+  };
+}
+
 export function buildHiddenRetryProgressInfo(
   hiddenRetryCount: number,
   maxRetries: number,
   retryDelayMs: number,
 ): HiddenRetryProgressInfo {
+  const attemptInfo = buildHiddenRetryAttemptInfo(hiddenRetryCount + 1, maxRetries);
   return {
-    retryNumber: Math.max(1, Math.min(maxRetries, hiddenRetryCount + 1)),
-    maxRetries,
+    retryNumber: attemptInfo.retryNumber,
+    maxRetries: attemptInfo.maxRetries,
     retryDelaySeconds: Math.max(0, Math.ceil(retryDelayMs / 1000)),
   };
 }

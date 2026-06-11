@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  buildHiddenRetryAttemptInfo,
   buildHiddenRetryErrorTraceContent,
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
@@ -83,6 +84,15 @@ test("builds hidden retry progress info for the next queued retry", () => {
     retryNumber: 1,
     maxRetries: 5,
     retryDelaySeconds: 5,
+  });
+});
+
+test("clamps hidden retry attempt info for a started retry", () => {
+  const result = buildHiddenRetryAttemptInfo(7, 5);
+
+  assert.deepEqual(result, {
+    retryNumber: 5,
+    maxRetries: 5,
   });
 });
 

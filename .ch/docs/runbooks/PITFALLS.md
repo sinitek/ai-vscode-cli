@@ -47,6 +47,42 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## Webview HTML 模板字符串里写正则时，反斜杠必须双重转义
+
+- 状态：已修复
+- 首次发现：2026-06-11
+- 适用范围：`src/webview/viewContent.ts` 这类通过模板字符串直接生成 HTML/JS 的 Webview 页面
+
+### 现象
+- 插件面板启动即报错：
+  `Uncaught SyntaxError: Failed to execute 'write' on 'Document': Invalid or unexpected token`
+- `npm run build` 可以通过，但 Webview 仍然白屏或无法启动。
+
+### 触发条件
+- 在 `getWebviewHtml()` 的模板字符串里直接写浏览器侧正则字面量。
+- 正则包含 `\s`、`\d`、`\/` 这类需要反斜杠的片段，但在 TypeScript 模板字符串里只写了一层转义。
+
+### 根因
+- Webview 页面不是单独的 `.js` 文件，而是先由 TypeScript 模板字符串生成 HTML，再由浏览器解析其中的内联脚本。
+- 如果在模板字符串里写 `/^\s*...\/...$/`，第一层字符串解析会先吃掉反斜杠，最终浏览器拿到的是损坏的正则源码，例如 `\s` 变成 `s`，`\/` 变成 `/`，导致脚本语法错误。
+
+### 临时绕过
+- 把可疑正则改回 `startsWith/includes` 一类纯字符串判断，先确认是否由模板转义导致。
+- 也可以先导出生成后的 HTML，用脚本单独解析内联 `<script>` 复现真正的语法错误位置。
+
+### 长期规避
+- 在 Webview HTML 模板字符串里写正则时，统一使用双重转义：`\\s`、`\\d`、`\\/`。
+- 对复杂浏览器侧脚本，优先考虑下沉到独立 `.js` 文件，而不是继续堆在超长 HTML 模板字符串里。
+- 修改后除了 `npm run build`，再对生成后的内联脚本做一次语法解析验证。
+
+### 验证方式
+- 在仓库执行：`npm run build`。
+- 然后基于 `dist/webview/viewContent.js` 生成 HTML，抽取每个 `<script>`，用 `vm.Script` 或浏览器 DevTools 再做一次语法解析，确认所有内联脚本都能 parse。
+
+### 关联资料
+- 代码：`src/webview/viewContent.ts`
+- 本次修复点：隐藏重试消息匹配正则的模板转义
+
 ## 模型下拉偶发只剩“默认/管理”时不要静默吞掉状态错误
 
 - 状态：已修复

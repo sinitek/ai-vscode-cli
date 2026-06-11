@@ -4841,6 +4841,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         return state.conversationTabs.tabs.find((tab) => tab && tab.id === tabId) || null;
       }
 
+      function isActiveConversationTabResetLocked() {
+        const activeTabId = getActiveConversationTabId();
+        if (isTabRunning(activeTabId)) {
+          return true;
+        }
+        return isLobsterMainTabCloseLocked(getConversationTabSummary(activeTabId));
+      }
+
       function normalizeLobsterTaskRole(value) {
         return value === "main" || value === "subtask" ? value : "";
       }
@@ -5051,13 +5059,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!normalized) {
           return false;
         }
-        const lower = normalized.toLowerCase();
-        return normalized.startsWith("任务已中断，将在")
-          && normalized.includes("秒后开始第")
-          && normalized.includes("次自动重试")
-          || lower.startsWith("task interrupted. automatic retry")
-          && lower.includes(" will start in ")
-          && lower.endsWith(" seconds.");
+        return /^任务已中断，将在\\s*.+\\s*后开始第\\s*\\d+\\s*\\/\\s*\\d+\\s*次自动重试。?$/.test(normalized)
+          || /^task interrupted\\. automatic retry\\s+\\d+\\s*\\/\\s*\\d+\\s+will start in\\s+.+\\.$/i.test(normalized);
+      }
+
+      function isHiddenRetryStartedMessage(content) {
+        const normalized = String(content || "").trim();
+        if (!normalized) {
+          return false;
+        }
+        return /^第\\s*\\d+\\s*\\/\\s*\\d+\\s*次自动重试已开始。?$/.test(normalized)
+          || /^automatic retry\\s+\\d+\\s*\\/\\s*\\d+\\s+started\\.$/i.test(normalized);
       }
 
       function getTabRunStartedAt(tabId) {
@@ -5085,6 +5097,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         syncQueueOverlay();
         syncRunPromptOverlay();
         syncRunStreamOverlay();
+        syncResetSessionAvailability();
       }
 
       function syncRunningStateForActiveTab() {
@@ -6580,9 +6593,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.sendPrompt.disabled = false;
         elements.promptInput.disabled = false;
         elements.newSession.disabled = false;
-        if (elements.resetSession) {
-          elements.resetSession.disabled = isTabRunning(getActiveConversationTabId());
-        }
+        syncResetSessionAvailability();
         renderConversationTabs();
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = false;
@@ -7908,6 +7919,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderTaskList();
       }
 
+      function syncResetSessionAvailability() {
+        const resetLocked = isActiveConversationTabResetLocked();
+        if (elements.resetSession) {
+          elements.resetSession.disabled = resetLocked;
+        }
+        if (elements.clearAllHistory) {
+          elements.clearAllHistory.disabled = state.historyTab === "sessions" && resetLocked;
+        }
+      }
+
+      function requestResetConversationTabSession() {
+        if (isActiveConversationTabResetLocked()) {
+          return;
+        }
+        applyAutoInteractiveModeForTab(null);
+        const activeTabId = getActiveConversationTabId();
+        if (activeTabId) {
+          resetConversationRuntimeState(activeTabId);
+        }
+        resetActiveViewForNewConversation();
+        armPromptContextForConversationStart();
+        vscode.postMessage({ type: "resetConversationTabSession" });
+      }
+
       elements.newSession.addEventListener("click", () => {
         applyAutoInteractiveModeForTab(null);
         resetActiveViewForNewConversation();
@@ -7917,16 +7952,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       if (elements.resetSession) {
         elements.resetSession.addEventListener("click", () => {
-          if (isTabRunning(getActiveConversationTabId())) {
-            return;
-          }
-          const activeTabId = getActiveConversationTabId();
-          if (activeTabId) {
-            resetConversationRuntimeState(activeTabId);
-          }
-          resetActiveViewForNewConversation();
-          armPromptContextForConversationStart();
-          vscode.postMessage({ type: "resetConversationTabSession" });
+          requestResetConversationTabSession();
         });
       }
 
@@ -8646,6 +8672,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             ? t("historyClearPrompts")
             : t("historyClearSessions");
         }
+        syncResetSessionAvailability();
       }
 
       function setHelpTab(tab) {
@@ -8713,7 +8740,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             vscode.postMessage({ type: "clearPromptHistory" });
             return;
           }
-          vscode.postMessage({ type: "resetConversationTabSession" });
+          requestResetConversationTabSession();
         });
       }
 
@@ -9063,6 +9090,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               const content = String(data.message.content || "").trim();
               if (isHiddenRetryQueuedMessage(content)) {
                 setTabErrored(eventTabId, true);
+              }
+              if (isHiddenRetryStartedMessage(content)) {
+                setTabErrored(eventTabId, false);
               }
               if (isRunStatusSummaryText(content)) {
                 runtimeState.lastRunStatusMessage = content;

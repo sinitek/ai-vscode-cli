@@ -75,6 +75,7 @@ import {
 } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import {
+  buildHiddenRetryAttemptInfo,
   buildHiddenRetryErrorTraceContent,
   buildHiddenRetryFailureMessage,
   buildHiddenRetryProgressInfo,
@@ -1050,20 +1051,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   }
 
   if (message.type === "resetConversationTabSession") {
-    const activeTab = getActiveConversationTab();
-    if (activeTab && isTabRunActive(activeTab.id)) {
-      return;
-    }
-    if (!activeTab) {
-      return;
-    }
-    const previousSessionId = activeTab.sessionId;
-    const targetCli = activeTab.cli;
-    startNewSession(targetCli);
-    disposeInteractiveRunnerIfUnused({ cli: targetCli, sessionId: previousSessionId });
-    const activeSessionId = syncCurrentSessionWithActiveTab();
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, activeSessionId);
+    await resetConversationTabSession();
     return;
   }
 
@@ -3330,6 +3318,14 @@ function buildHiddenRetryQueuedMessage(hiddenRetryCount: number): string {
   });
 }
 
+function buildHiddenRetryStartedMessage(retryNumber: number): string {
+  const attemptInfo = buildHiddenRetryAttemptInfo(retryNumber, HIDDEN_RETRY_MAX_RETRIES);
+  return t("run.hiddenRetryStarted", {
+    attempt: attemptInfo.retryNumber,
+    attempts: attemptInfo.maxRetries,
+  });
+}
+
 function formatHiddenRetryDelay(retryDelayMs: number): string {
   if (retryDelayMs >= 60 * 1000 && retryDelayMs % (60 * 1000) === 0) {
     return `${retryDelayMs / (60 * 1000)} ${t("duration.minutes")}`;
@@ -4008,6 +4004,15 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       if (!shouldContinue) {
         return;
       }
+      const retryStartedMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "system",
+        content: buildHiddenRetryStartedMessage(retryNumber),
+        createdAt: Date.now(),
+      };
+      const retryMessageTarget = resolveParallelMessageTarget();
+      appendMessageToStore(retryMessageTarget, retryStartedMessage);
+      sendPanelMessage({ type: "appendMessage", message: retryStartedMessage, tabId: target.tabId });
       void logInfo("runPrompt-parallel-hidden-retry", {
         cli: runCli,
         tabId: target.tabId,
@@ -6397,6 +6402,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       if (!shouldContinue) {
         return;
       }
+      appendSystemMessage(buildHiddenRetryStartedMessage(retryNumber));
       void logInfo("runPrompt-one-shot-hidden-retry", {
         cli: runCli,
         runId,
@@ -8072,6 +8078,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       if (!shouldContinue) {
         return;
       }
+      appendSystemMessageForTab(buildHiddenRetryStartedMessage(retryNumber));
       void logInfo("runPrompt-interactive-hidden-retry", {
         cli,
         tabId,
@@ -11664,6 +11671,26 @@ function startNewSession(cli: CliName): void {
   updatePendingSessionDraft(activeTab.id, { messages: [] }, cli);
   setCurrentSession(cli, null);
   void logInfo("session-new", { cli, tabId: activeTab.id });
+}
+
+async function resetConversationTabSession(): Promise<void> {
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    return;
+  }
+  if (isTabRunActive(activeTab.id) || isLobsterMainTabCloseLocked(activeTab.id)) {
+    return;
+  }
+  const previousTabId = activeTab.id;
+  const targetCli = activeTab.cli;
+  addConversationTab(targetCli, null);
+  setWorkspaceInteractiveModeForCli(targetCli, "coding");
+  await closeConversationTabAndRefreshPanel(previousTabId);
+  void logInfo("session-reset-to-new-tab", {
+    cli: targetCli,
+    previousTabId,
+    activeTabId: getActiveConversationTabId(),
+  });
 }
 
 function captureSessionFromBuffer(cli: CliName, buffer: string): void {
