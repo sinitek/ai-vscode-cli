@@ -6759,13 +6759,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           targetRuntimeState.suppressQueueFlushOnce = true;
         }
         resetTaskListForRunStart(targetTabId);
-        const targetModel = targetCli && state.selectedModelsByCli
+        const targetModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
-          : state.selectedModel;
-        const targetLobsterMainModel = targetCli && state.selectedLobsterMainModelsByCli
+          : "";
+        const targetLobsterMainModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterMainModelsByCli
           ? state.selectedLobsterMainModelsByCli[targetCli] || ""
           : "";
-        const targetLobsterSubtaskModel = targetCli && state.selectedLobsterSubtaskModelsByCli
+        const targetLobsterSubtaskModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterSubtaskModelsByCli
           ? state.selectedLobsterSubtaskModelsByCli[targetCli] || ""
           : "";
         vscode.postMessage({
@@ -7988,6 +7988,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const MODEL_MANAGE_OPTION_VALUE = "__manage__";
       let editingModelName = "";
 
+      function cliSupportsManagedModelSelection(cli = state.currentCli) {
+        return cli === "codex" || cli === "gemini";
+      }
+
       function getModelsForCurrentCli() {
         const cli = state.currentCli;
         const models = state.modelsByCli && Array.isArray(state.modelsByCli[cli])
@@ -8044,6 +8048,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function reportModelManagerInspection() {
+        if (!cliSupportsManagedModelSelection()) {
+          return;
+        }
         vscode.postMessage({
           type: "inspectModelManager",
           cli: state.currentCli,
@@ -8304,24 +8311,30 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function syncModelSelectorByInteractiveMode() {
+        const supportsModelSelection = cliSupportsManagedModelSelection();
         const isLobster = normalizeInteractiveMode(state.interactiveMode) === "lobster";
+        const showSingleModelSelect = supportsModelSelection && !isLobster;
+        const showLobsterModelGroup = supportsModelSelection && isLobster;
         if (elements.modelSelect) {
-          elements.modelSelect.style.display = isLobster ? "none" : "";
-          elements.modelSelect.disabled = isLobster;
+          elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
+          elements.modelSelect.disabled = !showSingleModelSelect;
         }
         if (elements.lobsterModelGroup) {
-          elements.lobsterModelGroup.style.display = isLobster ? "inline-flex" : "none";
+          elements.lobsterModelGroup.style.display = showLobsterModelGroup ? "inline-flex" : "none";
         }
         if (elements.lobsterMainModelSelect) {
-          elements.lobsterMainModelSelect.disabled = !isLobster;
+          elements.lobsterMainModelSelect.disabled = !showLobsterModelGroup;
         }
         if (elements.lobsterSubtaskModelSelect) {
-          elements.lobsterSubtaskModelSelect.disabled = !isLobster;
+          elements.lobsterSubtaskModelSelect.disabled = !showLobsterModelGroup;
+        }
+        if (!supportsModelSelection) {
+          hideAddModelDialog();
         }
       }
 
       function showAddModelDialog() {
-        if (!elements.addModelOverlay) {
+        if (!elements.addModelOverlay || !cliSupportsManagedModelSelection()) {
           return;
         }
         if (elements.modelSelect) {
@@ -8370,6 +8383,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function confirmAddModel() {
+        if (!cliSupportsManagedModelSelection()) {
+          return;
+        }
         const modelName = elements.modelInput.value.trim();
         if (!modelName) {
           showModelManageError(t("modelAddEmptyError"));

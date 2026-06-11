@@ -1,5 +1,7 @@
 import { CliName } from "./types";
 
+const CLI_WITH_MANAGED_MODEL_SELECTION: readonly CliName[] = ["codex", "gemini"];
+
 const MODEL_ARG_KEYS: Record<CliName, string[]> = {
   codex: ["--model", "-m"],
   claude: ["--model"],
@@ -11,6 +13,10 @@ const PREFERRED_MODEL_ARG: Record<CliName, string> = {
   claude: "--model",
   gemini: "-m",
 };
+
+export function supportsCliManagedModelSelection(cli: CliName): boolean {
+  return CLI_WITH_MANAGED_MODEL_SELECTION.includes(cli);
+}
 
 function isModelArgKey(cli: CliName, value: string): boolean {
   return MODEL_ARG_KEYS[cli].includes(value);
@@ -59,11 +65,10 @@ export function stripModelArgs(cli: CliName, args: string[]): string[] {
 
 export function applyModelArg(cli: CliName, args: string[], model: string | null | undefined): string[] {
   const normalizedModel = typeof model === "string" ? model.trim() : "";
-  if (!normalizedModel) {
+  if (!normalizedModel || !supportsCliManagedModelSelection(cli)) {
     return [...args];
   }
   const nextArgs = stripModelArgs(cli, args);
   nextArgs.push(PREFERRED_MODEL_ARG[cli], normalizedModel);
   return nextArgs;
 }
-

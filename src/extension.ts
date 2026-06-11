@@ -28,7 +28,7 @@ import {
   isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
-import { applyModelArg, readModelArg } from "./cli/modelArgs";
+import { applyModelArg, readModelArg, supportsCliManagedModelSelection } from "./cli/modelArgs";
 import {
   finalizeGeminiStreamJsonRemainder,
   getGeminiEventDisplay,
@@ -1384,17 +1384,23 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       ? await resolveCodexImagePathsForPrompt(trimmed)
       : [];
     const activeConfigId = getActiveConfigIdForCli(targetCli);
-    const lobsterMainModel = typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
-      ? message.lobsterMainModel.trim()
-      : (getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined);
-    const lobsterSubtaskModel = typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
-      ? message.lobsterSubtaskModel.trim()
-      : (getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined);
+    const lobsterMainModel = supportsCliManagedModelSelection(targetCli)
+      ? (typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
+          ? message.lobsterMainModel.trim()
+          : (getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined))
+      : undefined;
+    const lobsterSubtaskModel = supportsCliManagedModelSelection(targetCli)
+      ? (typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
+          ? message.lobsterSubtaskModel.trim()
+          : (getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined))
+      : undefined;
     const promptInput: PromptRunInput = {
       displayPrompt: trimmed,
       modelPrompt: contextBuild.modelPrompt,
       contextTags: contextBuild.contextTags,
-      model: typeof message.model === "string" && message.model ? message.model : undefined,
+      model: supportsCliManagedModelSelection(targetCli) && typeof message.model === "string" && message.model
+        ? message.model
+        : undefined,
       lobsterMainModel,
       lobsterSubtaskModel,
       imagePaths: imagePaths.length ? imagePaths : undefined,
@@ -10108,14 +10114,14 @@ function getActiveConfigIdForCli(cli: CliName): string | null {
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return null;
   }
   return normalizeCliModelName(modelStore?.selectedByConfigId?.[configId]);
 }
 
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return [];
   }
   const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
@@ -10130,7 +10136,7 @@ function getCliModelLobsterRoleFlags(
   configId: string | null = getActiveConfigIdForCli(cli)
 ): { main: boolean; subtask: boolean } {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel) {
+  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
     return { main: true, subtask: true };
   }
   const rolesByModel = modelStore?.lobsterRolesByConfigId?.[configId];
@@ -10149,7 +10155,7 @@ function getLobsterModelOptionsForCli(
   role: LobsterTaskRole,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): string[] {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return [];
   }
   const options = getModelOptionsForCli(cli, configId);
@@ -10164,7 +10170,7 @@ function getSelectedLobsterCliModel(
   role: LobsterTaskRole,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): string | null {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return null;
   }
   const optionsForRole = getLobsterModelOptionsForCli(cli, role, configId);
@@ -10190,7 +10196,7 @@ function getSelectedLobsterCliModel(
 }
 
 function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return [];
   }
   const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
@@ -10204,7 +10210,7 @@ function getModelOptionsForCli(cli: CliName, configId: string | null = getActive
 }
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return;
   }
   const normalized = normalizeCliModelName(model);
@@ -10225,7 +10231,7 @@ function selectCliLobsterModel(
   model: string | null,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): void {
-  if (!configId) {
+  if (!configId || !supportsCliManagedModelSelection(cli)) {
     return;
   }
   const nextStore = ensureCliModelStore(modelStore);
@@ -10262,7 +10268,7 @@ function setCliModelLobsterRole(
   configId: string | null = getActiveConfigIdForCli(cli)
 ): boolean {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel) {
+  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
     return false;
   }
   const managedModels = getManagedModelOptionsForCli(cli, configId);
@@ -10308,7 +10314,7 @@ function setCliModelLobsterRole(
 
 function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId) {
+  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
     return null;
   }
   selectCliModel(cli, normalized, configId);
@@ -10318,7 +10324,7 @@ function addCliModel(cli: CliName, model: string, configId: string | null = getA
 function renameCliModel(cli: CliName, previousModel: string, nextModel: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const previousNormalized = normalizeCliModelName(previousModel);
   const nextNormalized = normalizeCliModelName(nextModel);
-  if (!previousNormalized || !nextNormalized || !configId) {
+  if (!previousNormalized || !nextNormalized || !configId || !supportsCliManagedModelSelection(cli)) {
     return null;
   }
   const previousKey = previousNormalized.toLowerCase();
@@ -10390,7 +10396,7 @@ function renameCliModel(cli: CliName, previousModel: string, nextModel: string, 
 
 function deleteCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): void {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId) {
+  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
     return;
   }
   const targetKey = normalized.toLowerCase();
@@ -10441,7 +10447,7 @@ function deleteCliModel(cli: CliName, model: string, configId: string | null = g
 
 function moveCliModel(cli: CliName, model: string, direction: "up" | "down", configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId) {
+  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
     return null;
   }
   const targetKey = normalized.toLowerCase();
