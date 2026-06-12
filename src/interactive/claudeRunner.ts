@@ -7,6 +7,11 @@ import { dynamicImport } from "./dynamicImport";
 import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
+import {
+  ClaudeTaskListTracker,
+  extractClaudeTodoWriteItems,
+  hasClaudeTodoWriteResultShape,
+} from "./claudeTaskList";
 
 export type ClaudeTraceKind = "thinking" | "normal" | "tool-use";
 
@@ -69,70 +74,6 @@ function extractTextFromMessage(message: any): string {
       return "";
     })
     .join("");
-}
-
-function normalizeTodoItems(todos: unknown[]): { text: string; done: boolean }[] {
-  return todos
-    .map((todo) => {
-      if (!todo || typeof todo !== "object") {
-        return null;
-      }
-      const todoRecord = todo as Record<string, unknown>;
-      const text =
-        typeof todoRecord.content === "string"
-          ? todoRecord.content
-          : typeof todoRecord.text === "string"
-            ? todoRecord.text
-            : "";
-      if (!text.trim()) {
-        return null;
-      }
-      const status = typeof todoRecord.status === "string" ? todoRecord.status.toLowerCase() : "";
-      const done =
-        typeof todoRecord.done === "boolean"
-          ? todoRecord.done
-          : typeof todoRecord.completed === "boolean"
-            ? todoRecord.completed
-            : status === "completed" || status === "done";
-      return { text: text.trim(), done: Boolean(done) };
-    })
-    .filter((item): item is { text: string; done: boolean } => Boolean(item));
-}
-
-function extractTodoWriteItems(input: unknown): { text: string; done: boolean }[] {
-  if (typeof input === "string") {
-    try {
-      return extractTodoWriteItems(JSON.parse(input));
-    } catch {
-      return [];
-    }
-  }
-  if (!input || typeof input !== "object") {
-    return [];
-  }
-  const record = input as Record<string, unknown>;
-  const todos =
-    Array.isArray(record.newTodos)
-      ? record.newTodos
-      : Array.isArray(record.todos)
-        ? record.todos
-        : Array.isArray(record.items)
-          ? record.items
-          : Array.isArray(record.oldTodos)
-            ? record.oldTodos
-            : null;
-  if (!todos) {
-    return [];
-  }
-  return normalizeTodoItems(todos);
-}
-
-function hasTodoWriteResultShape(input: unknown): boolean {
-  if (!input || typeof input !== "object") {
-    return false;
-  }
-  const record = input as Record<string, unknown>;
-  return Array.isArray(record.newTodos) || Array.isArray(record.todos) || Array.isArray(record.oldTodos);
 }
 
 function clampThinkingTokens(mode: ThinkingMode): number | null {
@@ -229,6 +170,21 @@ function extractToolResultEvent(block: Record<string, unknown>): ClaudeToolResul
     toolName,
     content: Object.prototype.hasOwnProperty.call(block, "content") ? block.content : block,
   };
+}
+
+function extractFirstToolResultUseId(blocks: Record<string, unknown>[]): string | undefined {
+  for (const block of blocks) {
+    if (block.type !== "tool_result") {
+      continue;
+    }
+    if (typeof block.tool_use_id === "string") {
+      return block.tool_use_id;
+    }
+    if (typeof block.toolUseId === "string") {
+      return block.toolUseId;
+    }
+  }
+  return undefined;
 }
 
 function extractSessionNotFoundErrorMessage(msg: any): string | null {
@@ -486,6 +442,13 @@ export class ClaudeInteractiveRunner {
     const seenTodoToolResultIds = new Set<string>();
     const toolUseNames = new Map<string, string>();
     const seenThinkingKeys = new Set<string>();
+    const taskListTracker = new ClaudeTaskListTracker();
+
+    const emitTaskListUpdate = (items: { text: string; done: boolean }[] | null): void => {
+      if (items) {
+        handlers.onTaskListUpdate(items);
+      }
+    };
 
     const emitThinkingTrace = (
       source: string,
@@ -514,8 +477,9 @@ export class ClaudeInteractiveRunner {
       if (toolUse.id && toolUse.name) {
         toolUseNames.set(toolUse.id, toolUse.name);
       }
+      emitTaskListUpdate(taskListTracker.recordToolUse(toolUse));
       if (toolUse.name === "TodoWrite") {
-        const items = extractTodoWriteItems(toolUse.input);
+        const items = extractClaudeTodoWriteItems(toolUse.input);
         if (items.length) {
           if (toolUse.id) {
             if (!seenTodoToolUseIds.has(toolUse.id)) {
@@ -544,8 +508,13 @@ export class ClaudeInteractiveRunner {
       const resolvedToolName =
         toolResult.toolName
         ?? (toolResult.toolUseId ? toolUseNames.get(toolResult.toolUseId) : undefined);
+      emitTaskListUpdate(taskListTracker.recordToolResult({
+        toolUseId: toolResult.toolUseId,
+        toolName: resolvedToolName,
+        content: toolResult.content,
+      }));
       if (resolvedToolName === "TodoWrite") {
-        const items = extractTodoWriteItems(toolResult.content);
+        const items = extractClaudeTodoWriteItems(toolResult.content);
         if (items.length) {
           if (toolResult.toolUseId) {
             if (!seenTodoToolResultIds.has(toolResult.toolUseId)) {
@@ -671,8 +640,15 @@ export class ClaudeInteractiveRunner {
           }
           if (Object.prototype.hasOwnProperty.call(msg, "tool_use_result")) {
             const toolUseResult = (msg as Record<string, unknown>).tool_use_result;
-            if (hasTodoWriteResultShape(toolUseResult)) {
-              const items = extractTodoWriteItems(toolUseResult);
+            const toolUseId = extractFirstToolResultUseId(blocks);
+            const toolName = toolUseId ? toolUseNames.get(toolUseId) : undefined;
+            emitTaskListUpdate(taskListTracker.recordToolResult({
+              toolUseId,
+              toolName,
+              content: toolUseResult,
+            }));
+            if (hasClaudeTodoWriteResultShape(toolUseResult)) {
+              const items = extractClaudeTodoWriteItems(toolUseResult);
               if (items.length) {
                 handlers.onTaskListUpdate(items);
               }

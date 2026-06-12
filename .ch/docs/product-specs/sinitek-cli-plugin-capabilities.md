@@ -95,7 +95,7 @@
 - 最终成功回复使用强调卡片样式，Markdown 外层带主题强调边框
 - trace 分段展示
 - thinking 与 tool-use 事件区分渲染
-- 任务列表提取与展示
+- 任务列表提取与展示；Claude 交互式运行除兼容 `TodoWrite` 外，也会根据 `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskStop` 工具事件实时刷新任务列表
 - 原始流消息导出
 - 错误详情查看 / 复制
 

@@ -47,6 +47,40 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## Claude 新版任务工具不会自动落到 AI 对话面板任务列表
+
+- 状态：已修复
+- 首次发现：2026-06-12
+- 适用范围：`src/interactive/claudeRunner.ts`、AI 对话面板任务列表展示链路
+
+### 现象
+- Claude 分组执行任务时，面板右侧“任务列表 / Task List”一直为空。
+- 同一轮 Claude 实际已经创建了 `TaskCreate` / `TaskUpdate` 工具任务，导出的流式日志能看到任务创建和状态更新。
+
+### 触发条件
+- 使用较新的 Claude Code / SDK 工具集，任务管理不再只走 `TodoWrite`。
+- Claude 流里出现 `TaskCreate`、`TaskUpdate`、`TaskList`、`TaskGet`、`TaskStop` 等工具事件。
+
+### 根因
+- 旧实现只识别 `TodoWrite` 的 `todos/newTodos/oldTodos` 结构，并直接映射到面板的 `{ text, done }`。
+- 新版 Claude 任务工具改成了 `Task*` 系列，输入和结果里使用 `taskId`、`subject`、`statusChange`、`tasks[]` 等不同字段，导致扩展完全跳过了这些事件。
+
+### 临时绕过
+- 修复前只能依赖 assistant 文本里的 `tasklist:` 段落回退提取；如果 Claude 没输出该文本段落，面板就不会显示任务列表。
+- 也可以手工导出 run stream，从日志中查看 `TaskCreate` / `TaskUpdate` 事件确认真实执行情况。
+
+### 长期规避
+- Claude 交互 Runner 需要把 `TodoWrite` 和 `Task*` 工具事件统一归一化到同一份任务列表协议。
+- 任务列表解析应独立成纯函数/状态跟踪模块，避免把 Claude 协议分支散落在 webview 层。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `node --test dist/test/claudeTaskList.test.js`。
+- 使用 Claude 分组复现一次包含 `TaskCreate` / `TaskUpdate` 的任务，确认 AI 对话面板任务列表会实时出现并在完成后勾选。
+
+### 关联资料
+- 日志样例：`~/.sinitek_cli/temp/1781243579877_86147ad9_sinitek-run-stream-2026-06-12T05-51-47-606Z.txt`
+- 代码：`src/interactive/claudeRunner.ts`、`src/interactive/claudeTaskList.ts`
+
 ## Webview HTML 模板字符串里写正则时，反斜杠必须双重转义
 
 - 状态：已修复
