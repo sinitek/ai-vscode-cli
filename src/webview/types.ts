@@ -24,6 +24,8 @@ export type PanelMessage =
   | { type: "newSession" }
   | { type: "resetConversationTabSession" }
   | { type: "deleteSession"; sessionId: string; cli: CliName }
+  | { type: "loadHistorySessionMessages"; sessionId: string; cli: CliName }
+  | { type: "exportHistorySessionMessages"; sessionId: string; cli: CliName }
   | { type: "applyConfig"; cli: CliName; configId: string }
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }

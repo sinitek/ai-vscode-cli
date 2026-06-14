@@ -236,6 +236,7 @@ const CODEX_IMAGE_EXTENSIONS = new Set([
   ".avif",
 ]);
 const RUN_STREAM_EXPORT_FILENAME_PREFIX = "sinitek-run-stream";
+const SESSION_HISTORY_EXPORT_FILENAME_PREFIX = "sinitek-session-history";
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
@@ -526,6 +527,14 @@ type RunStreamExportRecord = {
 type RunStreamExportResult = {
   path: string;
   fileName: string;
+};
+
+type SessionHistoryExportMessage = {
+  index: number;
+  role: ChatMessage["role"];
+  kind: ChatMessage["kind"] | null;
+  createdAt: number;
+  content: string;
 };
 
 const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
@@ -1006,6 +1015,82 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const activeSessionId = syncCurrentSessionWithActiveTab();
     await postPanelState();
     sendSessionMessagesToPanel(currentCli, activeSessionId);
+    return;
+  }
+
+  if (message.type === "loadHistorySessionMessages") {
+    const requestedSessionId = message.sessionId;
+    const resolvedSessionId = repairSupersededLocalSession(message.cli, requestedSessionId);
+    try {
+      const messages = loadSessionMessages(message.cli, resolvedSessionId);
+      const loadError = sessionMessageLoadErrors.get(getSessionKey(message.cli, resolvedSessionId));
+      viewProvider?.postMessage({
+        type: "historySessionMessages",
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        messages,
+        error: loadError ?? undefined,
+      });
+      if (loadError) {
+        void logError("history-session-message-load-error", {
+          cli: message.cli,
+          sessionId: requestedSessionId,
+          resolvedSessionId,
+          detail: loadError,
+        });
+      }
+    } catch (error) {
+      const detail = buildErrorDetail(error);
+      viewProvider?.postMessage({
+        type: "historySessionMessages",
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        messages: [],
+        error: detail,
+      });
+      void logError("history-session-message-load-failed", {
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        error: detail,
+      });
+    }
+    return;
+  }
+
+  if (message.type === "exportHistorySessionMessages") {
+    const requestedSessionId = message.sessionId;
+    const resolvedSessionId = repairSupersededLocalSession(message.cli, requestedSessionId);
+    try {
+      const exportResult = await exportSessionHistoryMessagesToTxt(message.cli, resolvedSessionId);
+      viewProvider?.postMessage({
+        type: "historySessionExportResult",
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        path: exportResult.path,
+        fileName: exportResult.fileName,
+      });
+    } catch (error) {
+      const messageText = error instanceof Error && error.message
+        ? error.message
+        : t("historySession.exportFailed");
+      viewProvider?.postMessage({
+        type: "historySessionExportResult",
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        error: messageText,
+      });
+      void logError("export history session messages failed", {
+        cli: message.cli,
+        sessionId: requestedSessionId,
+        resolvedSessionId,
+        error: buildErrorDetail(error),
+      });
+    }
     return;
   }
 
@@ -2718,6 +2803,103 @@ async function exportRunStreamRecordsToTxt(
     recordCount: normalizedRecords.length,
     cli: options.cli,
     tabId: options.tabId ?? null,
+  });
+  return {
+    path: targetPath,
+    fileName,
+  };
+}
+
+function sanitizeExportNameSegment(value: string | null | undefined, fallback: string, maxLength: number = 48): string {
+  const normalized = String(value ?? "")
+    .replace(/[^a-zA-Z0-9-_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, maxLength);
+  return normalized || fallback;
+}
+
+function normalizeSessionHistoryExportMessages(messages: ChatMessage[]): SessionHistoryExportMessage[] {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+  const normalized: SessionHistoryExportMessage[] = [];
+  for (const message of messages) {
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const content = typeof message.content === "string" ? message.content : "";
+    if (!content.trim()) {
+      continue;
+    }
+    const createdAt = typeof message.createdAt === "number" && Number.isFinite(message.createdAt)
+      ? message.createdAt
+      : Date.now();
+    normalized.push({
+      index: normalized.length + 1,
+      role: message.role,
+      kind: message.kind ?? null,
+      createdAt,
+      content,
+    });
+  }
+  return normalized;
+}
+
+function buildSessionHistoryExportFileName(cli: CliName, sessionId: string, timestamp: number): string {
+  const iso = new Date(timestamp).toISOString().replace(/[:.]/g, "-");
+  const sessionSegment = sanitizeExportNameSegment(sessionId, "session", 40);
+  return `${SESSION_HISTORY_EXPORT_FILENAME_PREFIX}-${cli}-${sessionSegment}-${iso}.txt`;
+}
+
+function formatSessionHistoryExportContent(
+  messages: SessionHistoryExportMessage[],
+  options: { cli: CliName; sessionId: string; exportedAt: number }
+): string {
+  const lines: string[] = [
+    "# Sinitek CLI Session History Export",
+    `Exported At: ${new Date(options.exportedAt).toISOString()}`,
+    `CLI: ${options.cli}`,
+    `Session ID: ${options.sessionId}`,
+    `Message Count: ${messages.length}`,
+    "",
+  ];
+  for (const message of messages) {
+    const kindLabel = message.kind ? ` | ${message.kind}` : "";
+    lines.push(
+      `## Message ${message.index} | ${message.role}${kindLabel} | ${new Date(message.createdAt).toISOString()}`
+    );
+    lines.push(message.content);
+    lines.push("");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function exportSessionHistoryMessagesToTxt(
+  cli: CliName,
+  sessionId: string
+): Promise<RunStreamExportResult> {
+  const messages = loadSessionMessages(cli, sessionId);
+  const normalizedMessages = normalizeSessionHistoryExportMessages(messages);
+  if (!normalizedMessages.length) {
+    throw new Error(t("historySession.exportEmpty"));
+  }
+  const exportedAt = Date.now();
+  const fileName = buildSessionHistoryExportFileName(cli, sessionId, exportedAt);
+  const targetDir = await resolveRunStreamExportDirectory();
+  const targetPath = path.join(targetDir, fileName);
+  const content = formatSessionHistoryExportContent(normalizedMessages, {
+    cli,
+    sessionId,
+    exportedAt,
+  });
+  await fs.promises.writeFile(targetPath, content, "utf8");
+  void logEssential("session-history-export", {
+    path: targetPath,
+    fileName,
+    messageCount: normalizedMessages.length,
+    cli,
+    sessionId,
   });
   return {
     path: targetPath,

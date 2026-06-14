@@ -65,6 +65,21 @@ const WEBVIEW_I18N = {
     historyTabsLabel: "History",
     historyTabPrompts: "Prompt History",
     historyTabSessions: "Sessions",
+    historySessionViewLabel: "Messages",
+    historySessionExportLabel: "Export TXT",
+    historySessionExporting: "Exporting...",
+    historySessionMessagesTitle: "History Messages",
+    historySessionMessagesClose: "Close",
+    historySessionMessagesLoading: "Loading messages...",
+    historySessionMessagesEmpty: "No saved messages.",
+    historySessionMessagesUnknown: "Unknown Session",
+    historySessionMessagesMeta: "{cli} · {time}",
+    historySessionMessageUser: "User",
+    historySessionMessageAssistant: "Assistant",
+    historySessionMessageSystem: "System",
+    historySessionMessageTrace: "Trace",
+    historySessionMessageThinking: "Thinking",
+    historySessionMessageToolUse: "Tool Use",
     rulesTitle: "Rules",
     rulesClose: "Close",
     rulesScopeLabel: "Scope",
@@ -232,6 +247,10 @@ const WEBVIEW_I18N = {
     toastRunStreamExportEmpty: "No stream messages to export.",
     toastRunStreamExportSuccess: "Exported to: {path}",
     toastRunStreamExportFailed: "Failed to export stream messages: {error}",
+    toastHistorySessionLoadFailed: "Failed to load history messages: {error}",
+    toastHistorySessionExportEmpty: "No history messages to export.",
+    toastHistorySessionExportSuccess: "Exported to: {path}",
+    toastHistorySessionExportFailed: "Failed to export history messages: {error}",
     toastConfigApplyErrorCopied: "Config error details copied",
     rulesPathNoWorkspace: "Path: No workspace detected",
     rulesPathPrefix: "Path: ",
@@ -328,6 +347,21 @@ const WEBVIEW_I18N = {
     historyTabsLabel: "历史记录",
     historyTabPrompts: "历史提示词",
     historyTabSessions: "历史会话",
+    historySessionViewLabel: "查看消息",
+    historySessionExportLabel: "导出 TXT",
+    historySessionExporting: "导出中...",
+    historySessionMessagesTitle: "历史消息",
+    historySessionMessagesClose: "关闭",
+    historySessionMessagesLoading: "正在加载消息...",
+    historySessionMessagesEmpty: "暂无保存的消息。",
+    historySessionMessagesUnknown: "未知会话",
+    historySessionMessagesMeta: "{cli} · {time}",
+    historySessionMessageUser: "用户",
+    historySessionMessageAssistant: "助手",
+    historySessionMessageSystem: "系统",
+    historySessionMessageTrace: "追踪",
+    historySessionMessageThinking: "思考",
+    historySessionMessageToolUse: "工具使用",
     rulesTitle: "规则",
     rulesClose: "关闭",
     rulesScopeLabel: "规则范围",
@@ -495,6 +529,10 @@ const WEBVIEW_I18N = {
     toastRunStreamExportEmpty: "暂无可导出的流式消息。",
     toastRunStreamExportSuccess: "已导出到：{path}",
     toastRunStreamExportFailed: "导出流式消息失败：{error}",
+    toastHistorySessionLoadFailed: "加载历史消息失败：{error}",
+    toastHistorySessionExportEmpty: "暂无可导出的历史消息。",
+    toastHistorySessionExportSuccess: "已导出到：{path}",
+    toastHistorySessionExportFailed: "导出历史消息失败：{error}",
     toastConfigApplyErrorCopied: "已复制配置错误详情",
     rulesPathNoWorkspace: "路径：未检测到工作区",
     rulesPathPrefix: "路径：",
@@ -1776,6 +1814,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         padding: 0 12px;
         font-weight: 500;
       }
+      .action-button,
+      button.secondary:not(.icon-button),
+      button.ghost {
+        min-height: 26px;
+        height: auto;
+        line-height: 1.3;
+        white-space: normal;
+        text-align: center;
+        padding-top: 4px;
+        padding-bottom: 4px;
+      }
       .action-button:hover {
         background: var(--vscode-button-hoverBackground);
       }
@@ -1877,6 +1926,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+        flex-wrap: wrap;
       }
 
       .add-model-modal {
@@ -1921,6 +1971,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+        flex-wrap: wrap;
       }
       .model-manager-list {
         display: flex;
@@ -1979,8 +2030,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .model-manager-actions {
         display: inline-flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 6px;
         flex: 0 0 auto;
+        flex-wrap: wrap;
+        max-width: 180px;
       }
       .model-manager-button {
         height: 24px;
@@ -2074,6 +2128,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         align-items: center;
         justify-content: flex-end;
         gap: 8px;
+        flex-wrap: wrap;
       }
       .queue-edit-button {
         padding: 0 10px;
@@ -2228,6 +2283,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+        flex-wrap: wrap;
       }
       
       .modal-header {
@@ -2273,6 +2329,93 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .history-panel.sessions {
         overflow: hidden;
       }
+      .history-modal {
+        width: 620px;
+      }
+      .history-messages-modal {
+        width: 760px;
+      }
+      .history-messages-title {
+        min-width: 0;
+      }
+      .history-messages-subtitle {
+        margin-top: 4px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        font-weight: 400;
+        overflow-wrap: anywhere;
+      }
+      .history-messages-body {
+        padding: 12px 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+      }
+      .history-messages-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .history-messages-status {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .history-messages-content {
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        color: var(--vscode-foreground);
+        height: min(56vh, 520px);
+        overflow: auto;
+        padding: 8px;
+      }
+      .history-messages-content.history-messages-empty {
+        color: var(--vscode-descriptionForeground);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .history-message-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .history-message-item {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        background: var(--vscode-editorWidget-background);
+        overflow: hidden;
+      }
+      .history-message-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+        flex-wrap: wrap;
+      }
+      .history-message-role {
+        font-weight: 600;
+      }
+      .history-message-kind,
+      .history-message-time {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .history-message-content {
+        margin: 0;
+        padding: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+        font-size: 12px;
+        line-height: 1.5;
+      }
 
       .rules-modal {
         padding: 0 0 16px;
@@ -2313,8 +2456,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 8px;
         margin-bottom: 8px;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
+        gap: 8px;
         background: var(--vscode-editor-background);
       }
       .session-info {
@@ -2366,6 +2510,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         gap: 6px;
         flex-shrink: 0;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 180px;
       }
 
       .prompt-list {
@@ -2420,6 +2567,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         gap: 6px;
         flex-shrink: 0;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 180px;
       }
       .prompt-full {
         display: none;
@@ -2820,6 +2970,29 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
             <div id="sessionList" class="session-list"></div>
+          </div>
+        </div>
+      </div>
+      <div id="historyMessagesOverlay" class="overlay">
+        <div class="modal history-messages-modal">
+          <div class="modal-header">
+            <div class="history-messages-title">
+              <div class="title" id="historyMessagesTitle">${i18n.historySessionMessagesTitle}</div>
+              <div id="historyMessagesSubtitle" class="history-messages-subtitle"></div>
+            </div>
+            <button id="closeHistoryMessages" class="secondary icon-button" title="${i18n.historySessionMessagesClose}" aria-label="${i18n.historySessionMessagesClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="history-messages-body">
+            <div class="history-messages-toolbar">
+              <div id="historyMessagesStatus" class="history-messages-status"></div>
+              <button id="exportHistoryMessages" class="secondary action-button">${i18n.historySessionExportLabel}</button>
+            </div>
+            <div id="historyMessagesContent" class="history-messages-content history-messages-empty">${i18n.historySessionMessagesEmpty}</div>
           </div>
         </div>
       </div>
@@ -3360,6 +3533,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         ruleScope: "global",
         historyTab: "sessions",
         promptHistoryExpandedId: null,
+        historySessionMessages: {
+          cli: "",
+          sessionId: "",
+          resolvedSessionId: "",
+          label: "",
+          createdAt: 0,
+          messages: [],
+          loading: false,
+          error: "",
+        },
         onlyShowFinalResults: Boolean(persistedWebviewState.onlyShowFinalResults),
         editorContext: {
           filePath: null,
@@ -3432,6 +3615,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         historyPanelSessions: document.getElementById("historyPanelSessions"),
         promptHistoryList: document.getElementById("promptHistoryList"),
         sessionList: document.getElementById("sessionList"),
+        historyMessagesOverlay: document.getElementById("historyMessagesOverlay"),
+        closeHistoryMessages: document.getElementById("closeHistoryMessages"),
+        historyMessagesTitle: document.getElementById("historyMessagesTitle"),
+        historyMessagesSubtitle: document.getElementById("historyMessagesSubtitle"),
+        historyMessagesStatus: document.getElementById("historyMessagesStatus"),
+        exportHistoryMessages: document.getElementById("exportHistoryMessages"),
+        historyMessagesContent: document.getElementById("historyMessagesContent"),
         rulesButton: document.getElementById("rulesButton"),
         rulesOverlay: document.getElementById("rulesOverlay"),
         closeRules: document.getElementById("closeRules"),
@@ -3503,6 +3693,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const assistantRedirects = {};
       let toastTimer = null;
       let runStreamExportPending = false;
+      let historySessionExportPendingKey = "";
       let resizeFrame = 0;
       const TAB_RUNTIME_DEFAULT_KEY = "__default__";
       const conversationRuntimeByTabId = Object.create(null);
@@ -5292,6 +5483,258 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function buildHistorySessionKey(cli, sessionId) {
+        return String(cli || "") + ":" + String(sessionId || "");
+      }
+
+      function isHistorySessionExportPending(session) {
+        return Boolean(
+          session
+          && historySessionExportPendingKey
+          && historySessionExportPendingKey === buildHistorySessionKey(session.cli, session.id)
+        );
+      }
+
+      function resetHistorySessionMessagesState() {
+        state.historySessionMessages = {
+          cli: "",
+          sessionId: "",
+          resolvedSessionId: "",
+          label: "",
+          createdAt: 0,
+          messages: [],
+          loading: false,
+          error: "",
+        };
+      }
+
+      function normalizeHistorySessionMessages(messages) {
+        const ordered = normalizeMessageOrder(Array.isArray(messages) ? messages : []);
+        return ordered.filter((message) => {
+          return message
+            && typeof message === "object"
+            && typeof message.content === "string"
+            && message.content.trim();
+        });
+      }
+
+      function resolveHistoryMessageRoleLabel(role) {
+        if (role === "user") {
+          return t("historySessionMessageUser");
+        }
+        if (role === "assistant") {
+          return t("historySessionMessageAssistant");
+        }
+        if (role === "trace") {
+          return t("historySessionMessageTrace");
+        }
+        return t("historySessionMessageSystem");
+      }
+
+      function resolveHistoryMessageKindLabel(kind) {
+        if (kind === "thinking") {
+          return t("historySessionMessageThinking");
+        }
+        if (kind === "tool-use") {
+          return t("historySessionMessageToolUse");
+        }
+        return "";
+      }
+
+      function renderHistoryMessage(message, index) {
+        const item = document.createElement("div");
+        item.className = "history-message-item";
+
+        const header = document.createElement("div");
+        header.className = "history-message-header";
+
+        const role = document.createElement("span");
+        role.className = "history-message-role";
+        role.textContent = (index + 1) + ". " + resolveHistoryMessageRoleLabel(message.role);
+        header.appendChild(role);
+
+        const kindLabel = resolveHistoryMessageKindLabel(message.kind);
+        if (kindLabel) {
+          const kind = document.createElement("span");
+          kind.className = "history-message-kind";
+          kind.textContent = kindLabel;
+          header.appendChild(kind);
+        }
+
+        if (typeof message.createdAt === "number") {
+          const time = document.createElement("span");
+          time.className = "history-message-time";
+          time.textContent = formatDateTimeWithMs(message.createdAt);
+          header.appendChild(time);
+        }
+
+        const content = document.createElement("pre");
+        content.className = "history-message-content";
+        content.textContent = message.content || "";
+
+        item.appendChild(header);
+        item.appendChild(content);
+        return item;
+      }
+
+      function updateHistoryMessagesExportButton() {
+        if (!elements.exportHistoryMessages) {
+          return;
+        }
+        const active = state.historySessionMessages || {};
+        const key = buildHistorySessionKey(active.cli, active.sessionId);
+        const isPending = Boolean(historySessionExportPendingKey && historySessionExportPendingKey === key);
+        const hasPendingExport = Boolean(historySessionExportPendingKey);
+        const hasMessages = Array.isArray(active.messages) && active.messages.length > 0;
+        elements.exportHistoryMessages.disabled = Boolean(active.loading || hasPendingExport || !active.sessionId || !hasMessages);
+        elements.exportHistoryMessages.textContent = isPending
+          ? t("historySessionExporting")
+          : t("historySessionExportLabel");
+      }
+
+      function renderHistorySessionMessages() {
+        if (!elements.historyMessagesContent) {
+          return;
+        }
+        const active = state.historySessionMessages || {};
+        const label = active.label || t("historySessionMessagesUnknown");
+        if (elements.historyMessagesTitle) {
+          elements.historyMessagesTitle.textContent = t("historySessionMessagesTitle");
+        }
+        if (elements.historyMessagesSubtitle) {
+          const timeLabel = active.createdAt ? formatDateTime(active.createdAt) : "";
+          elements.historyMessagesSubtitle.textContent = active.cli
+            ? t("historySessionMessagesMeta", { cli: active.cli, time: timeLabel || "-" }) + " · " + label
+            : label;
+        }
+        if (elements.historyMessagesStatus) {
+          elements.historyMessagesStatus.textContent = active.error
+            ? active.error
+            : active.loading
+              ? t("historySessionMessagesLoading")
+              : "";
+        }
+
+        elements.historyMessagesContent.innerHTML = "";
+        const messages = Array.isArray(active.messages) ? active.messages : [];
+        if (active.loading || !messages.length) {
+          elements.historyMessagesContent.classList.add("history-messages-empty");
+          elements.historyMessagesContent.textContent = active.loading
+            ? t("historySessionMessagesLoading")
+            : t("historySessionMessagesEmpty");
+          updateHistoryMessagesExportButton();
+          return;
+        }
+
+        elements.historyMessagesContent.classList.remove("history-messages-empty");
+        const list = document.createElement("div");
+        list.className = "history-message-list";
+        messages.forEach((message, index) => {
+          list.appendChild(renderHistoryMessage(message, index));
+        });
+        elements.historyMessagesContent.appendChild(list);
+        updateHistoryMessagesExportButton();
+      }
+
+      function openHistorySessionMessages(session) {
+        if (!session || !session.id || !session.cli) {
+          return;
+        }
+        const label = session.firstPrompt || session.label || t("sessionDefaultLabel");
+        state.historySessionMessages = {
+          cli: session.cli,
+          sessionId: session.id,
+          resolvedSessionId: "",
+          label,
+          createdAt: session.createdAt || 0,
+          messages: [],
+          loading: true,
+          error: "",
+        };
+        if (elements.historyMessagesOverlay) {
+          elements.historyMessagesOverlay.classList.add("visible");
+        }
+        renderHistorySessionMessages();
+        vscode.postMessage({
+          type: "loadHistorySessionMessages",
+          cli: session.cli,
+          sessionId: session.id,
+        });
+      }
+
+      function closeHistorySessionMessages() {
+        if (elements.historyMessagesOverlay) {
+          elements.historyMessagesOverlay.classList.remove("visible");
+        }
+        resetHistorySessionMessagesState();
+        updateHistoryMessagesExportButton();
+      }
+
+      function requestHistorySessionExport(session) {
+        const target = session || state.historySessionMessages;
+        if (!target || !target.cli || !target.sessionId && !target.id) {
+          return;
+        }
+        const sessionId = target.sessionId || target.id;
+        const cli = target.cli;
+        const key = buildHistorySessionKey(cli, sessionId);
+        if (historySessionExportPendingKey) {
+          return;
+        }
+        historySessionExportPendingKey = key;
+        renderSessionList();
+        updateHistoryMessagesExportButton();
+        vscode.postMessage({
+          type: "exportHistorySessionMessages",
+          cli,
+          sessionId,
+        });
+      }
+
+      function handleHistorySessionMessages(data) {
+        const active = state.historySessionMessages || {};
+        const incomingKey = buildHistorySessionKey(data.cli, data.sessionId);
+        const activeKey = buildHistorySessionKey(active.cli, active.sessionId);
+        if (incomingKey !== activeKey) {
+          return;
+        }
+        const error = typeof data.error === "string" ? data.error.trim() : "";
+        state.historySessionMessages = Object.assign({}, active, {
+          resolvedSessionId: typeof data.resolvedSessionId === "string" ? data.resolvedSessionId : "",
+          messages: normalizeHistorySessionMessages(data.messages),
+          loading: false,
+          error,
+        });
+        if (error) {
+          showToast(t("toastHistorySessionLoadFailed", { error }));
+        }
+        renderHistorySessionMessages();
+      }
+
+      function handleHistorySessionExportResult(data) {
+        const resultKey = buildHistorySessionKey(data.cli, data.sessionId);
+        if (historySessionExportPendingKey && historySessionExportPendingKey !== resultKey) {
+          return;
+        }
+        historySessionExportPendingKey = "";
+        renderSessionList();
+        updateHistoryMessagesExportButton();
+        const error = typeof data.error === "string" ? data.error.trim() : "";
+        if (error) {
+          const isEmpty = error === t("toastHistorySessionExportEmpty");
+          showToast(isEmpty
+            ? t("toastHistorySessionExportEmpty")
+            : t("toastHistorySessionExportFailed", { error }));
+          return;
+        }
+        const exportPath = typeof data.path === "string" && data.path
+          ? data.path
+          : typeof data.fileName === "string"
+            ? data.fileName
+            : "";
+        showToast(t("toastHistorySessionExportSuccess", { path: exportPath }));
+      }
+
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
         if (!state.sessionState.sessions.length) {
@@ -5340,6 +5783,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const actions = document.createElement("div");
           actions.className = "session-actions";
 
+          const messagesButton = document.createElement("button");
+          messagesButton.className = "secondary";
+          messagesButton.textContent = t("historySessionViewLabel");
+          messagesButton.addEventListener("click", () => {
+            openHistorySessionMessages(session);
+          });
+
           const loadButton = document.createElement("button");
           loadButton.className = "secondary";
           loadButton.textContent = t("sessionLoadLabel");
@@ -5357,6 +5807,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             vscode.postMessage({ type: "selectSession", sessionId: session.id, cli: session.cli });
           });
 
+          const exportButton = document.createElement("button");
+          exportButton.className = "secondary";
+          exportButton.textContent = isHistorySessionExportPending(session)
+            ? t("historySessionExporting")
+            : t("historySessionExportLabel");
+          exportButton.disabled = Boolean(historySessionExportPendingKey);
+          exportButton.addEventListener("click", () => {
+            requestHistorySessionExport(session);
+          });
+
           const deleteButton = document.createElement("button");
           deleteButton.className = "ghost";
           deleteButton.textContent = t("sessionDeleteLabel");
@@ -5364,7 +5824,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             vscode.postMessage({ type: "deleteSession", sessionId: session.id, cli: session.cli });
           });
 
+          actions.appendChild(messagesButton);
           actions.appendChild(loadButton);
+          actions.appendChild(exportButton);
           actions.appendChild(deleteButton);
           item.appendChild(info);
           item.appendChild(actions);
@@ -8750,6 +9212,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         closeHistory();
       });
 
+      elements.closeHistoryMessages.addEventListener("click", () => {
+        closeHistorySessionMessages();
+      });
+
+      elements.exportHistoryMessages.addEventListener("click", () => {
+        requestHistorySessionExport(null);
+      });
+
       if (elements.clearAllHistory) {
         elements.clearAllHistory.addEventListener("click", () => {
           if (state.historyTab === "prompts") {
@@ -8771,6 +9241,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       elements.historyOverlay.addEventListener("click", (event) => {
         if (event.target === elements.historyOverlay) {
           closeHistory();
+        }
+      });
+
+      elements.historyMessagesOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.historyMessagesOverlay) {
+          closeHistorySessionMessages();
         }
       });
 
@@ -9312,6 +9788,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           }
           if (data.type === "runStreamExportResult") {
             handleRunStreamExportResult(data);
+          }
+          if (data.type === "historySessionMessages") {
+            handleHistorySessionMessages(data);
+          }
+          if (data.type === "historySessionExportResult") {
+            handleHistorySessionExportResult(data);
           }
           if (data.type === "configApplyError") {
             openConfigApplyErrorOverlay(data.error);
