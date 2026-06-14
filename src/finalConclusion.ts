@@ -3,6 +3,7 @@ import type { ChatMessage } from "./webview/types";
 export type FinalConclusionCheckOptions = {
   observedCodexFinalAnswer?: boolean;
   fallbackCreatedAt?: number | null;
+  requireExplicitCodexFinalAnswer?: boolean;
 };
 
 export function isAssistantFinalConclusionMessage(message: ChatMessage | undefined): boolean {
@@ -15,6 +16,10 @@ export function isAssistantFinalConclusionMessage(message: ChatMessage | undefin
   );
 }
 
+function isCodexFinalConclusionMessage(message: ChatMessage | undefined): boolean {
+  return isAssistantFinalConclusionMessage(message) && message?.codexFinalAnswer === true;
+}
+
 export function hasAssistantFinalConclusionAfterMessage(
   messages: ChatMessage[],
   messageId: string,
@@ -24,9 +29,13 @@ export function hasAssistantFinalConclusionAfterMessage(
     return true;
   }
 
+  const isConclusionMessage = options.requireExplicitCodexFinalAnswer === true
+    ? isCodexFinalConclusionMessage
+    : isAssistantFinalConclusionMessage;
+
   const messageIndex = messages.findIndex((message) => message.id === messageId);
   if (messageIndex >= 0) {
-    return messages.slice(messageIndex + 1).some(isAssistantFinalConclusionMessage);
+    return messages.slice(messageIndex + 1).some(isConclusionMessage);
   }
 
   const fallbackCreatedAt = typeof options.fallbackCreatedAt === "number"
@@ -40,6 +49,6 @@ export function hasAssistantFinalConclusionAfterMessage(
   return messages.some((message) => (
     typeof message.createdAt === "number"
     && message.createdAt >= fallbackCreatedAt
-    && isAssistantFinalConclusionMessage(message)
+    && isConclusionMessage(message)
   ));
 }

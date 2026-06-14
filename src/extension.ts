@@ -8196,6 +8196,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
       observedCodexFinalAnswer: source === "codex" && observedCodexFinalAnswer,
       fallbackCreatedAt: userCreatedAt,
+      requireExplicitCodexFinalAnswer: source === "codex",
     })) {
       return { action: "ok" };
     }

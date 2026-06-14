@@ -36,6 +36,41 @@ test("accepts an observed Codex final answer when the user anchor is missing", (
   assert.equal(
     hasAssistantFinalConclusionAfterMessage([], "missing-user", {
       observedCodexFinalAnswer: true,
+      requireExplicitCodexFinalAnswer: true,
+    }),
+    true,
+  );
+});
+
+test("does not treat Codex commentary as a final conclusion when an explicit marker is required", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({ id: "assistant-1", role: "assistant", content: "I will keep working.", createdAt: 20 }),
+  ];
+
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      requireExplicitCodexFinalAnswer: true,
+    }),
+    false,
+  );
+});
+
+test("accepts a marked Codex final answer when an explicit marker is required", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-1",
+      role: "assistant",
+      content: "done",
+      createdAt: 20,
+      codexFinalAnswer: true,
+    }),
+  ];
+
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      requireExplicitCodexFinalAnswer: true,
     }),
     true,
   );
