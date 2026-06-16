@@ -7,6 +7,7 @@ import * as path from "path";
 const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
 const LOBSTER_MAX_ROUNDS_SETTING_MAX = 100;
+const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
 
 const WEBVIEW_I18N = {
   en: {
@@ -269,6 +270,8 @@ const WEBVIEW_I18N = {
     modelOptionDefault: "Model: Follow Config",
     modelMainSelectAria: "Lobster main-task model selection",
     modelSubtaskSelectAria: "Lobster subtask model selection",
+    lobsterExecutionModeSelectAria: "Lobster execution mode",
+    lobsterExecutionModeOptionMainSubMultiAgent: "Main/Sub Multi-Agent",
     modelOptionMainDefault: "Main model: Follow Config",
     modelOptionSubtaskDefault: "Subtask model: Follow Config",
     modelOptionManage: "Manage",
@@ -551,6 +554,8 @@ const WEBVIEW_I18N = {
     modelOptionDefault: "默认",
     modelMainSelectAria: "龙虾主任务模型选择",
     modelSubtaskSelectAria: "龙虾子任务模型选择",
+    lobsterExecutionModeSelectAria: "龙虾执行模式",
+    lobsterExecutionModeOptionMainSubMultiAgent: "主从多智能体",
     modelOptionMainDefault: "主任务模型：默认",
     modelOptionSubtaskDefault: "子任务模型：默认",
     modelOptionManage: "管理",
@@ -1601,6 +1606,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex: 0 1 118px;
         min-width: 92px;
       }
+      .lobster-execution-mode-select {
+        flex: 0 1 142px;
+        min-width: 122px;
+        max-width: 190px;
+      }
       .thinking-select {
         flex: 0 0 70px;
         width: 70px;
@@ -1756,6 +1766,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .input-model-row .lobster-model-group .model-select {
         min-width: 92px;
+      }
+      .input-model-row .lobster-model-group .lobster-execution-mode-select {
+        min-width: 122px;
       }
       .debug-toggle {
         display: inline-flex;
@@ -2894,6 +2907,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         <div class="input-footer">
           <div class="input-model-row">
             <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
+              <select
+                id="lobsterExecutionModeSelect"
+                class="lobster-execution-mode-select"
+                aria-label="${i18n.lobsterExecutionModeSelectAria}"
+                title="${i18n.lobsterExecutionModeOptionMainSubMultiAgent}"
+              >
+                <option value="${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.lobsterExecutionModeOptionMainSubMultiAgent}</option>
+              </select>
               <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
                 <option value="">${i18n.modelOptionMainDefault}</option>
                 <option value="__manage__">${i18n.modelOptionManage}</option>
@@ -3588,6 +3609,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
         lobsterModelGroup: document.getElementById("lobsterModelGroup"),
+        lobsterExecutionModeSelect: document.getElementById("lobsterExecutionModeSelect"),
         modelSelect: document.getElementById("modelSelect"),
         lobsterMainModelSelect: document.getElementById("lobsterMainModelSelect"),
         lobsterSubtaskModelSelect: document.getElementById("lobsterSubtaskModelSelect"),
@@ -3716,6 +3738,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const RUN_STREAM_STALE_CRITICAL_MS = RUN_STREAM_STALE_CRITICAL_BASE_MS * RUN_STREAM_STALE_THRESHOLD_MULTIPLIER;
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
+      const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}";
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const lobsterMetaByTabId = Object.create(null);
@@ -8783,6 +8806,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.lobsterModelGroup) {
           elements.lobsterModelGroup.style.display = showLobsterModelGroup ? "inline-flex" : "none";
+        }
+        if (elements.lobsterExecutionModeSelect) {
+          elements.lobsterExecutionModeSelect.disabled = !showLobsterModelGroup;
+          elements.lobsterExecutionModeSelect.value = LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
         }
         if (elements.lobsterMainModelSelect) {
           elements.lobsterMainModelSelect.disabled = !showLobsterModelGroup;
