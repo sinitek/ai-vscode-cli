@@ -8,6 +8,7 @@ const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
 const LOBSTER_MAX_ROUNDS_SETTING_MAX = 100;
 const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
+const LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 const WEBVIEW_I18N = {
   en: {
@@ -35,11 +36,12 @@ const WEBVIEW_I18N = {
     commonUnknownError: "Unknown error",
     interactiveModeSelectAria: "Interactive response mode",
     interactiveModeCoding: "Coding",
-    interactiveModePlan: "Plan",
     interactiveModeLobster: "Lobster",
     taskRoleMain: "🦞",
     taskRoleSubtask: "Subtask",
     taskRoleSubtaskWithRound: "Subtask · Round {round}",
+    openLobsterDebateChatAction: "Open Lobster group chat",
+    openLobsterDebateChatActionTitle: "Open the Lobster group chat for this task",
     openConfigButton: "Config",
     promptPlaceholder: "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
     commonCommandButton: "Common Commands",
@@ -272,6 +274,7 @@ const WEBVIEW_I18N = {
     modelSubtaskSelectAria: "Lobster subtask model selection",
     lobsterExecutionModeSelectAria: "Lobster execution mode",
     lobsterExecutionModeOptionMainSubMultiAgent: "Main/Sub Multi-Agent",
+    lobsterExecutionModeOptionDebateMultiAgent: "Debate Multi-Agent",
     modelOptionMainDefault: "Main model: Follow Config",
     modelOptionSubtaskDefault: "Subtask model: Follow Config",
     modelOptionManage: "Manage",
@@ -319,11 +322,12 @@ const WEBVIEW_I18N = {
     commonUnknownError: "未知错误",
     interactiveModeSelectAria: "交互回复模式",
     interactiveModeCoding: "编码",
-    interactiveModePlan: "规划",
     interactiveModeLobster: "龙虾",
     taskRoleMain: "🦞",
     taskRoleSubtask: "子任务",
     taskRoleSubtaskWithRound: "子任务·第{round}轮",
+    openLobsterDebateChatAction: "打开龙虾群聊",
+    openLobsterDebateChatActionTitle: "打开当前龙虾任务的群聊页面",
     openConfigButton: "配置",
     promptPlaceholder: "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
     commonCommandButton: "常用指令",
@@ -556,6 +560,7 @@ const WEBVIEW_I18N = {
     modelSubtaskSelectAria: "龙虾子任务模型选择",
     lobsterExecutionModeSelectAria: "龙虾执行模式",
     lobsterExecutionModeOptionMainSubMultiAgent: "主从多智能体",
+    lobsterExecutionModeOptionDebateMultiAgent: "辩论多智能体",
     modelOptionMainDefault: "主任务模型：默认",
     modelOptionSubtaskDefault: "子任务模型：默认",
     modelOptionManage: "管理",
@@ -913,6 +918,31 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         min-width: 0;
         overflow-wrap: anywhere;
         word-break: break-word;
+      }
+      .message-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .message-action-link {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: var(--vscode-textLink-foreground);
+        cursor: pointer;
+        font: inherit;
+        line-height: 1.4;
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .message-action-link:hover {
+        color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+      }
+      .message-action-link:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
       }
       .message-task-role {
         align-self: flex-start;
@@ -2895,7 +2925,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
           <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
-            <option value="plan">${i18n.interactiveModePlan}</option>
             <option value="lobster">${i18n.interactiveModeLobster}</option>
           </select>
         </div>
@@ -2911,9 +2940,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                 id="lobsterExecutionModeSelect"
                 class="lobster-execution-mode-select"
                 aria-label="${i18n.lobsterExecutionModeSelectAria}"
-                title="${i18n.lobsterExecutionModeOptionMainSubMultiAgent}"
+                title="${i18n.lobsterExecutionModeSelectAria}"
               >
                 <option value="${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.lobsterExecutionModeOptionMainSubMultiAgent}</option>
+                <option value="${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.lobsterExecutionModeOptionDebateMultiAgent}</option>
               </select>
               <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
                 <option value="">${i18n.modelOptionMainDefault}</option>
@@ -3544,6 +3574,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
         lobsterAutoCloseSubtaskTabs: true,
+        lobsterExecutionModeByCli: {
+          codex: "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+          claude: "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+          gemini: "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+        },
         locale: "auto",
         isMac: false,
         macTaskShell: "zsh",
@@ -3739,11 +3774,48 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
       const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}";
+      const LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT = "${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}";
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const lobsterMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
+
+      function normalizeLobsterExecutionMode(value) {
+        return value === LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT
+          ? LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT
+          : LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
+      }
+
+      function normalizeLobsterExecutionModeByCli(value, fallbackByCli) {
+        const nextByCli = {};
+        const hasIncomingByCli = Boolean(value && typeof value === "object");
+        CLI_NAMES.forEach((cli) => {
+          const hasIncomingCli = hasIncomingByCli && Object.prototype.hasOwnProperty.call(value, cli);
+          const candidate = hasIncomingCli ? value[cli] : undefined;
+          const fallback = !hasIncomingByCli && fallbackByCli && typeof fallbackByCli === "object"
+            ? fallbackByCli[cli]
+            : undefined;
+          nextByCli[cli] = normalizeLobsterExecutionMode(hasIncomingCli ? candidate : fallback);
+        });
+        return nextByCli;
+      }
+
+      function getLobsterExecutionModeForCli(cli = state.currentCli) {
+        return normalizeLobsterExecutionMode(
+          state.lobsterExecutionModeByCli && state.lobsterExecutionModeByCli[cli]
+        );
+      }
+
+      function setLobsterExecutionModeForCli(cli, value) {
+        const normalized = normalizeLobsterExecutionMode(value);
+        state.lobsterExecutionModeByCli = normalizeLobsterExecutionModeByCli(
+          state.lobsterExecutionModeByCli,
+          state.lobsterExecutionModeByCli
+        );
+        state.lobsterExecutionModeByCli[cli] = normalized;
+        return normalized;
+      }
 
       function normalizeLobsterMaxRounds(value) {
         const numeric = typeof value === "number"
@@ -4497,6 +4569,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
         state.lobsterAutoCloseSubtaskTabs = Boolean(panelState.lobsterAutoCloseSubtaskTabs);
+        state.lobsterExecutionModeByCli = normalizeLobsterExecutionModeByCli(
+          panelState.lobsterExecutionModeByCli,
+          state.lobsterExecutionModeByCli
+        );
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -4883,7 +4959,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function normalizeInteractiveMode(value) {
-        if (value === "plan" || value === "lobster") {
+        if (value === "lobster") {
           return value;
         }
         return "coding";
@@ -4936,6 +5012,72 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function normalizeMessageAction(action) {
+        if (!action || typeof action !== "object") {
+          return null;
+        }
+        if (action.type === "openLobsterDebateChat") {
+          const taskId = normalizeLobsterTaskId(action.taskId);
+          if (!taskId) {
+            return null;
+          }
+          const roundKey = typeof action.roundKey === "string" && action.roundKey.trim()
+            ? action.roundKey.trim()
+            : "";
+          const label = typeof action.label === "string" && action.label.trim()
+            ? action.label.trim()
+            : t("openLobsterDebateChatAction");
+          return {
+            type: "openLobsterDebateChat",
+            taskId,
+            roundKey,
+            label,
+          };
+        }
+        return null;
+      }
+
+      function normalizeMessageActions(message) {
+        const actions = Array.isArray(message && message.actions) ? message.actions : [];
+        return actions
+          .map((action) => normalizeMessageAction(action))
+          .filter(Boolean);
+      }
+
+      function handleMessageAction(action) {
+        if (!action || action.type !== "openLobsterDebateChat" || !action.taskId) {
+          return;
+        }
+        vscode.postMessage({
+          type: "openLobsterDebateChat",
+          taskId: action.taskId,
+          roundKey: action.roundKey || undefined,
+        });
+      }
+
+      function createMessageActionsElement(message) {
+        const actions = normalizeMessageActions(message);
+        if (!actions.length) {
+          return null;
+        }
+        const wrapper = document.createElement("div");
+        wrapper.className = "message-actions";
+        actions.forEach((action) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "message-action-link";
+          button.textContent = action.label;
+          button.title = action.type === "openLobsterDebateChat"
+            ? t("openLobsterDebateChatActionTitle")
+            : action.label;
+          button.addEventListener("click", () => {
+            handleMessageAction(action);
+          });
+          wrapper.appendChild(button);
+        });
+        return wrapper;
+      }
+
       function createMessageElement(message, index) {
         const wrapper = document.createElement("div");
         applyMessageElementClasses(wrapper, message, index);
@@ -4946,6 +5088,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const bubble = document.createElement("div");
         bubble.className = "bubble";
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        const actions = createMessageActionsElement(message);
+        if (actions) {
+          bubble.appendChild(actions);
+        }
 
         if (message.role === "user" && message.createdAt) {
           const time = document.createElement("div");
@@ -7253,10 +7399,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const targetLobsterSubtaskModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterSubtaskModelsByCli
           ? state.selectedLobsterSubtaskModelsByCli[targetCli] || ""
           : "";
-        vscode.postMessage({
+        const targetInteractiveMode = isBackgroundDispatch ? undefined : state.interactiveMode;
+        const targetLobsterExecutionMode = targetInteractiveMode === "lobster"
+          ? getLobsterExecutionModeForCli(targetCli)
+          : undefined;
+        const sendPromptMessage = {
           type: "sendPrompt",
           prompt,
-          interactiveMode: isBackgroundDispatch ? undefined : state.interactiveMode,
+          interactiveMode: targetInteractiveMode,
           contextOptions: normalizedPayload.contextOptions,
           tabId: targetTabId || undefined,
           cli: targetCli,
@@ -7264,7 +7414,11 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           lobsterMainModel: targetLobsterMainModel || undefined,
           lobsterSubtaskModel: targetLobsterSubtaskModel || undefined,
           preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
-        });
+        };
+        if (targetLobsterExecutionMode) {
+          sendPromptMessage.lobsterExecutionMode = targetLobsterExecutionMode;
+        }
+        vscode.postMessage(sendPromptMessage);
         return true;
       }
 
@@ -8799,23 +8953,26 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const supportsModelSelection = cliSupportsManagedModelSelection();
         const isLobster = normalizeInteractiveMode(state.interactiveMode) === "lobster";
         const showSingleModelSelect = supportsModelSelection && !isLobster;
-        const showLobsterModelGroup = supportsModelSelection && isLobster;
+        const showLobsterExecutionModeSelect = isLobster;
+        const showLobsterModelSelect = supportsModelSelection && isLobster;
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
           elements.modelSelect.disabled = !showSingleModelSelect;
         }
         if (elements.lobsterModelGroup) {
-          elements.lobsterModelGroup.style.display = showLobsterModelGroup ? "inline-flex" : "none";
+          elements.lobsterModelGroup.style.display = showLobsterExecutionModeSelect ? "inline-flex" : "none";
         }
         if (elements.lobsterExecutionModeSelect) {
-          elements.lobsterExecutionModeSelect.disabled = !showLobsterModelGroup;
-          elements.lobsterExecutionModeSelect.value = LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
+          elements.lobsterExecutionModeSelect.disabled = !showLobsterExecutionModeSelect;
+          elements.lobsterExecutionModeSelect.value = getLobsterExecutionModeForCli();
         }
         if (elements.lobsterMainModelSelect) {
-          elements.lobsterMainModelSelect.disabled = !showLobsterModelGroup;
+          elements.lobsterMainModelSelect.style.display = showLobsterModelSelect ? "" : "none";
+          elements.lobsterMainModelSelect.disabled = !showLobsterModelSelect;
         }
         if (elements.lobsterSubtaskModelSelect) {
-          elements.lobsterSubtaskModelSelect.disabled = !showLobsterModelGroup;
+          elements.lobsterSubtaskModelSelect.style.display = showLobsterModelSelect ? "" : "none";
+          elements.lobsterSubtaskModelSelect.disabled = !showLobsterModelSelect;
         }
         if (!supportsModelSelection) {
           hideAddModelDialog();
@@ -8990,6 +9147,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             role: "subtask",
             model: value || null,
             configId: getCurrentModelConfigId(),
+          });
+        });
+      }
+
+      if (elements.lobsterExecutionModeSelect) {
+        elements.lobsterExecutionModeSelect.addEventListener("change", (event) => {
+          const nextMode = setLobsterExecutionModeForCli(state.currentCli, event.target.value);
+          elements.lobsterExecutionModeSelect.value = nextMode;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "lobsterExecutionMode." + state.currentCli,
+            value: nextMode,
           });
         });
       }

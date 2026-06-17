@@ -6,6 +6,7 @@
   "command.runCliThinkingOn": "CLI Bridge: Run Current CLI (Thinking On)",
   "command.runCliThinkingOff": "CLI Bridge: Run Current CLI (Thinking Off)",
   "command.openPanel": "CLI Bridge: Open Panel",
+  "command.openLobsterDebateChat": "CLI Bridge: Open Lobster Group Chat",
   "config.title": "CLI Bridge",
   "config.defaultCli.description": "Default CLI to run when the extension activates.",
   "config.commands.codex.description": "Command used to run Codex CLI.",

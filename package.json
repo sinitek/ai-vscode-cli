@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -21,6 +21,7 @@
     "onCommand:sinitek-cli-tools.runCliThinkingOn",
     "onCommand:sinitek-cli-tools.runCliThinkingOff",
     "onCommand:sinitek-cli-tools.openPanel",
+    "onCommand:sinitek-cli-tools.openLobsterDebateChat",
     "onView:sinitek-cli-tools.panelView",
     "onStartupFinished"
   ],
@@ -46,6 +47,10 @@
       {
         "command": "sinitek-cli-tools.openPanel",
         "title": "%command.openPanel%"
+      },
+      {
+        "command": "sinitek-cli-tools.openLobsterDebateChat",
+        "title": "%command.openLobsterDebateChat%"
       }
     ],
     "configuration": {

@@ -1,4 +1,4 @@
-import { CliName, InteractiveMode, MacTaskShell, ThinkingMode } from "../cli/types";
+import { CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell, ThinkingMode } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 
 export type ConfigSummary = {
@@ -38,12 +38,14 @@ export type PanelMessage =
       tabId?: string;
       cli?: CliName;
       model?: string;
+      lobsterExecutionMode?: LobsterExecutionMode;
       lobsterMainModel?: string;
       lobsterSubtaskModel?: string;
       preserveActiveTab?: boolean;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
+  | { type: "openLobsterDebateChat"; taskId?: string | null; roundKey?: string | null }
   | { type: "openConfig" }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
@@ -132,6 +134,14 @@ export type PromptHistoryItem = {
   cli: CliName;
 };
 
+export type ChatMessageAction =
+  | {
+      type: "openLobsterDebateChat";
+      taskId: string;
+      roundKey?: string | null;
+      label?: string;
+    };
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system" | "trace";
@@ -147,6 +157,7 @@ export type ChatMessage = {
   lobsterSubtaskId?: string;
   lobsterFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
+  actions?: ChatMessageAction[];
 };
 
 export type PanelState = {
@@ -158,6 +169,7 @@ export type PanelState = {
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;
   lobsterAutoCloseSubtaskTabs: boolean;
+  lobsterExecutionModeByCli?: Record<CliName, LobsterExecutionMode>;
   debug: boolean;
   locale: string;
   isMac: boolean;

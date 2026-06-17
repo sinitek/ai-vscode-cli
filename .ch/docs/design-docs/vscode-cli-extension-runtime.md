@@ -28,6 +28,7 @@ src/
 ├── webview/                  # 侧边栏聊天面板、配置中心面板、前后端协议
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
 ├── trace/                    # trace/tool 事件格式化
+├── lobsterDebate.ts          # 龙虾辩论记录、路径、群聊解析和共识校验纯函数
 ├── logger.ts                 # 本地日志与脱敏
 ├── i18n.ts                   # 扩展侧国际化
 └── errorDisplay.ts           # 统一错误展示
@@ -101,6 +102,15 @@ media/
 
 Gemini 当前仍走 one-shot 路径，不进入 `interactive/`。
 
+### 4.3 扩展侧龙虾编排
+
+龙虾模式仍由 `src/extension.ts` 统一编排，不新增独立后端服务或新的顶层 `InteractiveMode`。当前内部执行方式有两种：
+
+- `main_sub_multi_agent`：经典主从多智能体，主任务直接返回 `LobsterMainDecision`，再复用现有子任务批次、冲突规划、重试、沟通文件和最终总结链路。运行时在 `~/.sinitek_cli/lobster-communications/<taskId>/group-chat.md` 维护主从群聊 transcript，任务开始/恢复气泡会显示“打开龙虾群聊”动作；内容区群聊面板把“主任务”和动态加入的“子任务 1~N”作为成员展示，子任务成功完成后的发言气泡展示该子任务最终回复，运行状态与验证依据继续写入任务记录和子任务沟通文件，并在主任务或当前子任务运行时显示“思考中”气泡。
+- `debate_multi_agent`：只替代主任务规划/复核阶段。每个主任务复核轮先通过临时普通对话 tab 启动主持人选角，主持人写入 `moderator-participants.md` 并动态设计 2-6 个参与者；扩展校验后把这些成员作为 `## 参与者加入：...` 写入 `chat.md`。每个发言批次内参与者并行运行，各自只写独立的 `participants/<participantId>-turn-<n>.md`，扩展等待本批次全部 artifact 完成后按主持人清单顺序追加到 `chat.md`，再启动主持人写 `participants/moderator-turn-<n>.md` 并输出 `continue / finalize / block`；`continue` 追加下一个发言批次，`finalize` 并行收集最终 `participants/<participantId>.md` 和 `## 立场` 后交给共识汇总器生成 `decision.json`，`block` 进入人工复核。参与者和主持人的临时 tab 在回答完成后可按“龙虾子任务自动关标签”设置关闭，后续同一角色优先用 `debateRounds` 中记录的 sessionId 新建临时 tab 续接。最大发言批次数只作为防无限循环安全上限，达到上限后运行时强制收束。辩论任务也复用“打开龙虾群聊”动作；通用面板把 `debates/round-*/chat.md` 与根部 `group-chat.md` 合并为单条时间线，主任务轮次、发言批次和执行阶段以系统消息呈现，不再提供轮次切换，并根据 `debateRounds.activeSpeaker` 显示当前主持人/参与者/共识汇总器的“思考中”等待气泡。共识通过后仍交给现有 `applyLobsterMainDecision`，子任务执行链路不分叉，但主任务决策、子任务加入、子任务完成和批次完成会继续写入根部 `group-chat.md`，同一个群聊面板继续在同一时间线展示后续“任务执行群聊”消息，并根据 activeSubtaskId / activeSubtaskIds 显示当前主任务或子任务“思考中”。两种模式的群聊面板都会在状态落盘后主动刷新，5 秒自动刷新仅作兜底；若刷新前群聊滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时保留手动刷新和打开原始文件。
+
+`src/lobsterDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、主持人决策类型、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被主持人追问或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
+
 ## 5. 配置与本地集成层
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
@@ -131,6 +141,8 @@ Gemini 当前仍走 one-shot 路径，不进入 `interactive/`。
 - `workspace-settings/`：工作区级 UI/CLI 偏好与项目级工具设置
 - `models.json`：各 CLI 的模型列表与选择
 - `tasks.json`：任务相关状态
+- `lobster-tasks/`：按工作区、CLI 和会话隔离的龙虾任务记录；新任务写入 `executionMode`，老任务缺字段时按 `main_sub_multi_agent` 兼容，辩论模式额外保留 `debateRounds`
+- `lobster-communications/`：龙虾主任务、子任务和辩论沟通文件；`debate_multi_agent` 在 `<taskId>/debates/round-<n>/` 下生成 `brief.md`、`chat.md`、`moderator-participants.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/*.md`、`cross-review.md`、`consensus.md`、`decision.json`
 - `temp/`：临时附件文件
 - `logs/`：运行日志
 

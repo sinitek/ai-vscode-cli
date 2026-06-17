@@ -43,12 +43,23 @@ import {
   GEMINI_NATIVE_COMPACT_PROMPT,
   isGeminiNativeCompactUnsupportedErrorText,
 } from "./cli/geminiCompaction";
-import { CliName, CLI_LIST, InteractiveMode, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import {
+  CliName,
+  CLI_LIST,
+  DEFAULT_LOBSTER_EXECUTION_MODE,
+  InteractiveMode,
+  LobsterExecutionMode,
+  MacTaskShell,
+  ThinkingMode,
+  ThinkingWorkspaceFile,
+  normalizeLobsterExecutionMode,
+} from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
+  ChatMessageAction,
   EditorContextState,
   PanelMessage,
   PanelState,
@@ -86,6 +97,12 @@ import {
 } from "./hiddenRetry";
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
 import { ConfigManagerPanel } from "./webview/configPanel";
+import {
+  LobsterDebateChatPanel,
+  type LobsterDebateChatPanelMessage,
+  type LobsterDebateChatPanelRound,
+  type LobsterDebateChatPanelState,
+} from "./webview/lobsterDebatePanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
@@ -119,6 +136,36 @@ import {
   normalizeLobsterWriteFiles,
   type LobsterSubtaskExecutionPlan,
 } from "./lobsterParallel";
+import {
+  buildLobsterDebateModeratorArtifactFile,
+  buildLobsterMainSubChatTranscriptFile,
+  buildLobsterMainSubSubtaskTurnBody,
+  buildLobsterDebateParticipantArtifactFile,
+  buildLobsterDebateParticipantTurnArtifactFile,
+  buildLobsterDebatePaths,
+  findLatestLobsterDebateModeratorSessionId,
+  findLatestLobsterDebateParticipantSessionId,
+  LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
+  LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+  LOBSTER_DEBATE_MODERATOR_ID,
+  LOBSTER_DEBATE_MODERATOR_TITLE,
+  LOBSTER_DEBATE_PARTICIPANT_ROLES,
+  normalizeLobsterDebateSessionId,
+  normalizeLobsterDebateModeratorAction,
+  normalizeLobsterDebateParticipantStance,
+  parseLobsterDebateChatTranscript,
+  validateLobsterDebateConsensus,
+  type LobsterDebateActiveSpeakerRecord,
+  type LobsterDebateConsensusRecord,
+  type LobsterDebateDisagreementRecord,
+  type LobsterDebateModeratorDecisionRecord,
+  type LobsterDebateParticipantRecord,
+  type LobsterDebateParticipantRole,
+  type LobsterDebateParticipantStance,
+  type LobsterDebatePaths,
+  type LobsterDebateRoundRecord,
+  type LobsterDebateRoundStatus,
+} from "./lobsterDebate";
 import { readToolSettings, type ToolSettingsLocale, type ToolSettingsState, writeToolSettings } from "./toolSettings";
 
 let currentCli: CliName;
@@ -150,6 +197,8 @@ let promptHistoryStore: PromptHistoryStore;
 let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
+let lobsterDebateChatPanel: LobsterDebateChatPanel | undefined;
+let lobsterDebateChatPanelTaskId: string | null = null;
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
 let lastResolvedWorkspaceCwd: string | undefined;
@@ -202,6 +251,36 @@ const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
 const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
 const LOBSTER_RESUME_PROMPT_MAX_LENGTH = 48;
+const LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND = 1;
+const LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
+const LOBSTER_DEBATE_MIN_PARTICIPANTS = 2;
+const LOBSTER_DEBATE_MAX_PARTICIPANTS = 6;
+const LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS: ReadonlyArray<LobsterDebateParticipantDefinition> = [
+  {
+    id: "architecture",
+    role: "architecture",
+    title: "架构规划",
+    focus: "审查整体结构、边界、复用现有抽象和恢复/记录一致性。",
+  },
+  {
+    id: "implementation",
+    role: "implementation",
+    title: "实现拆分",
+    focus: "把目标拆成最小可执行子任务，关注授权写入范围、依赖顺序和并发可行性。",
+  },
+  {
+    id: "testing",
+    role: "testing",
+    title: "测试验收",
+    focus: "定义必要验证、构建/单测范围、完成判据和证据要求。",
+  },
+  {
+    id: "risk",
+    role: "risk",
+    title: "风险审查",
+    focus: "寻找阻塞性风险、并发冲突、越权写入、恢复失败和不可验收缺口。",
+  },
+];
 const LOBSTER_RESUME_PROMPT_PATTERNS: RegExp[] = [
   /^继续(?:执行|进行|下去|一下|一下子|任务|主任务|这个任务|当前任务|上一轮|上轮|吧)?$/u,
   /^接着(?:执行|做|继续|下去|往下)?$/u,
@@ -393,6 +472,7 @@ type LobsterTaskRecord = {
   workspaceKey: string;
   taskStoreFile: string;
   rootPrompt: string;
+  executionMode?: LobsterExecutionMode;
   status: LobsterTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -407,6 +487,7 @@ type LobsterTaskRecord = {
   rounds: LobsterRoundRecord[];
   finalSummary?: string;
   estimatedRemainingRounds?: number;
+  debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
   completionRoundSummaries: LobsterRoundSummary[];
   completionRequirementCoverage: LobsterAcceptanceCheck[];
 };
@@ -470,6 +551,7 @@ type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
+  lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
   autoCompactContextAfterRun?: boolean;
   autoCompactContextBeforeRun?: boolean;
   codexMultiAgentEnabled?: boolean;
@@ -639,6 +721,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("sinitek-cli-tools.openPanel", async () => {
       await revealPanelView();
       await postPanelState();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("sinitek-cli-tools.openLobsterDebateChat", async (arg?: unknown) => {
+      await openLobsterDebateChatPanel(arg);
     })
   );
 
@@ -1344,6 +1432,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key.startsWith("lobsterExecutionMode.")) {
+      const cliValue = message.key.slice("lobsterExecutionMode.".length);
+      if (isCliName(cliValue)) {
+        setWorkspaceLobsterExecutionModeForCli(cliValue, normalizeLobsterExecutionMode(message.value));
+      }
+      await postPanelState();
+      return;
+    }
     if (message.key.startsWith("selectedModel.")) {
       const cliValue = message.key.slice("selectedModel.".length);
       if (isCliName(cliValue)) {
@@ -1419,6 +1515,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     return;
   }
 
+  if (message.type === "openLobsterDebateChat") {
+    await openLobsterDebateChatPanel({
+      taskId: typeof message.taskId === "string" ? message.taskId : undefined,
+      roundKey: typeof message.roundKey === "string" ? message.roundKey : undefined,
+    });
+    return;
+  }
+
   if (message.type === "sendPrompt" && typeof message.prompt === "string") {
     const trimmed = message.prompt.trim();
     if (!trimmed) {
@@ -1456,7 +1560,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
     const lobsterSubtaskContext = resolveLobsterSubtaskConversationContext(targetCli, promptTargetTabId);
     const isLobsterSubtaskContinuation = Boolean(lobsterSubtaskContext);
-    const requestedInteractiveMode = isInteractiveMode(message.interactiveMode) ? message.interactiveMode : undefined;
+    const requestedInteractiveMode = isInteractiveMode(message.interactiveMode)
+      ? normalizeVisibleInteractiveMode(message.interactiveMode)
+      : undefined;
     const effectiveInteractiveMode = isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster"
       ? "coding"
       : requestedInteractiveMode;
@@ -1464,6 +1570,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     if (isInteractiveMode(effectiveInteractiveMode)) {
       setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
     }
+    const lobsterExecutionMode = effectiveInteractiveMode === "lobster"
+      ? normalizeLobsterExecutionMode(
+          Object.prototype.hasOwnProperty.call(message, "lobsterExecutionMode")
+            ? message.lobsterExecutionMode
+            : getWorkspaceLobsterExecutionMode(targetCli)
+        )
+      : undefined;
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
     const imagePaths = targetCli === "codex"
       ? await resolveCodexImagePathsForPrompt(trimmed)
@@ -1490,6 +1603,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       lobsterSubtaskModel,
       imagePaths: imagePaths.length ? imagePaths : undefined,
     };
+    if (lobsterExecutionMode) {
+      promptInput.lobsterExecutionMode = lobsterExecutionMode;
+    }
     if (lobsterSubtaskContext) {
       promptInput.taskRole = "subtask";
       promptInput.lobsterTaskId = lobsterSubtaskContext.taskId;
@@ -1567,6 +1683,7 @@ async function buildPanelState(): Promise<PanelState> {
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
+    lobsterExecutionModeByCli: buildWorkspaceLobsterExecutionModeByCli(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -1611,6 +1728,7 @@ async function buildPanelStateWithConfigState(
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
+    lobsterExecutionModeByCli: buildWorkspaceLobsterExecutionModeByCli(),
     debug: getDebugLogging(),
     locale: getLocaleSetting(),
     isMac: process.platform === "darwin",
@@ -3316,6 +3434,525 @@ async function revealPanelView(): Promise<void> {
   viewProvider?.reveal();
 }
 
+async function openLobsterDebateChatPanel(arg?: unknown): Promise<void> {
+  const task = await resolveLobsterDebateChatPanelTask(arg);
+  if (!task) {
+    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
+    return;
+  }
+  const state = buildLobsterDebateChatPanelState(task);
+  lobsterDebateChatPanelTaskId = task.id;
+  if (!lobsterDebateChatPanel) {
+    lobsterDebateChatPanel = new LobsterDebateChatPanel(extensionUri, {
+      onMessage: (message) => {
+        void handleLobsterDebateChatPanelMessage(message);
+      },
+    });
+  }
+  lobsterDebateChatPanel.show(state);
+}
+
+async function handleLobsterDebateChatPanelMessage(message: LobsterDebateChatPanelMessage): Promise<void> {
+  if (!message || typeof message.type !== "string") {
+    return;
+  }
+  if (message.type === "lobsterDebateChat:refresh") {
+    await refreshLobsterDebateChatPanel();
+    return;
+  }
+  if (message.type === "lobsterDebateChat:openChatFile") {
+    await openLobsterDebateChatTranscriptFromPanel();
+    return;
+  }
+  if (message.type === "lobsterDebateChat:openTaskFile") {
+    const taskFile = lobsterDebateChatPanel?.getState()?.task.taskStoreFile;
+    await openReadableFileInEditor(taskFile, t("lobsterDebateChat.noTaskRecord"));
+  }
+}
+
+async function refreshLobsterDebateChatPanel(): Promise<void> {
+  if (!lobsterDebateChatPanelTaskId || !lobsterDebateChatPanel) {
+    return;
+  }
+  const task = readLobsterTaskRecord(lobsterDebateChatPanelTaskId);
+  if (!task) {
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: lobsterDebateChatPanelTaskId }));
+    return;
+  }
+  const state = buildLobsterDebateChatPanelState(task);
+  lobsterDebateChatPanel.update(state);
+}
+
+function refreshOpenLobsterDebateChatPanelForTask(taskId: string): void {
+  if (lobsterDebateChatPanelTaskId !== taskId || !lobsterDebateChatPanel) {
+    return;
+  }
+  void refreshLobsterDebateChatPanel();
+}
+
+async function openLobsterDebateChatTranscriptFromPanel(): Promise<void> {
+  const state = lobsterDebateChatPanel?.getState();
+  const files = (state?.rounds ?? [])
+    .map((round) => ({
+      label: round.label || (round.kind === "debate" ? `辩论：第 ${round.lobsterRound} 轮` : "任务执行群聊"),
+      description: round.status,
+      detail: round.chatFile,
+      filePath: round.chatFile,
+    }))
+    .filter((item): item is { label: string; description: string; detail: string; filePath: string } => (
+      typeof item.filePath === "string" && item.filePath.trim().length > 0
+    ));
+  if (files.length === 0) {
+    await openReadableFileInEditor(undefined, t("lobsterDebateChat.noTranscript"));
+    return;
+  }
+  if (files.length === 1) {
+    await openReadableFileInEditor(files[0]?.filePath, t("lobsterDebateChat.noTranscript"));
+    return;
+  }
+  const selection = await vscode.window.showQuickPick(files, {
+    placeHolder: t("lobsterDebateChat.openTranscript"),
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+  if (selection) {
+    await openReadableFileInEditor(selection.filePath, t("lobsterDebateChat.noTranscript"));
+  }
+}
+
+async function openReadableFileInEditor(filePath: string | null | undefined, missingMessage: string): Promise<void> {
+  if (!filePath || !fs.existsSync(filePath)) {
+    void vscode.window.showInformationMessage(missingMessage);
+    return;
+  }
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+  await vscode.window.showTextDocument(document, { preview: false });
+}
+
+async function resolveLobsterDebateChatPanelTask(arg?: unknown): Promise<LobsterTaskRecord | null> {
+  const explicitTaskId = extractLobsterDebateChatPanelTaskId(arg);
+  if (explicitTaskId) {
+    const task = readLobsterTaskRecord(explicitTaskId);
+    if (task) {
+      return task;
+    }
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: explicitTaskId }));
+  }
+
+  const activeTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
+    ?? resolveActiveConversationLobsterTaskId();
+  if (activeTaskId) {
+    const activeTask = readLobsterTaskRecord(activeTaskId);
+    if (activeTask) {
+      return activeTask;
+    }
+  }
+
+  const recentTasks = listRecentLobsterGroupChatTasks(24);
+  if (recentTasks.length === 0) {
+    return null;
+  }
+  if (recentTasks.length === 1) {
+    return recentTasks[0] ?? null;
+  }
+  return pickLobsterDebateTask(recentTasks);
+}
+
+function resolveActiveConversationLobsterTaskId(): string | null {
+  const activeTab = getActiveConversationTab();
+  if (!activeTab) {
+    return null;
+  }
+  return resolveConversationTabLobsterContext(activeTab).lobsterTaskId;
+}
+
+function extractLobsterDebateChatPanelTaskId(arg?: unknown): string | null {
+  if (typeof arg === "string") {
+    return normalizeLobsterTaskId(arg);
+  }
+  if (arg && typeof arg === "object" && !Array.isArray(arg)) {
+    return normalizeLobsterTaskId((arg as { taskId?: unknown }).taskId);
+  }
+  return null;
+}
+
+async function pickLobsterDebateTask(tasks: LobsterTaskRecord[]): Promise<LobsterTaskRecord | null> {
+  const items = tasks.map((task) => ({
+    label: task.rootPrompt.split(/\r?\n/g)[0]?.slice(0, 80) || task.id,
+    description: `${task.status} · ${task.cli} · ${task.id}`,
+    detail: task.taskStoreFile,
+    task,
+  }));
+  const selection = await vscode.window.showQuickPick(items, {
+    placeHolder: t("lobsterDebateChat.selectTask"),
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+  return selection?.task ?? null;
+}
+
+function listRecentLobsterGroupChatTasks(limit: number): LobsterTaskRecord[] {
+  const tasksById = new Map<string, LobsterTaskRecord>();
+  listLobsterTaskStoreFiles().forEach((filePath) => {
+    readLobsterTaskStore(filePath).tasks.forEach((task) => {
+      const existing = tasksById.get(task.id);
+      if (!existing || task.updatedAt > existing.updatedAt) {
+        tasksById.set(task.id, task.taskStoreFile === filePath ? task : { ...task, taskStoreFile: filePath });
+      }
+    });
+  });
+  return Array.from(tasksById.values())
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, Math.max(1, limit));
+}
+
+function buildLobsterDebateChatPanelState(task: LobsterTaskRecord): LobsterDebateChatPanelState {
+  const mode = isLobsterDebateGroupChatTask(task) ? "debate" : "main_sub";
+  const rounds = mode === "debate"
+    ? buildLobsterDebateWithExecutionChatPanelRounds(task)
+    : buildLobsterMainSubChatPanelRounds(task);
+  const chatMarkdown = buildLobsterCombinedGroupChatMarkdown(task, rounds, mode);
+  const missingChatFiles = rounds
+    .map((round) => round.chatFile)
+    .filter((filePath): filePath is string => Boolean(filePath && !readTextFileIfNonEmpty(filePath)));
+  const error = missingChatFiles.length > 0 && !chatMarkdown.trim()
+    ? t("lobsterDebateChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
+    : null;
+  return {
+    mode,
+    task: {
+      id: task.id,
+      cli: task.cli,
+      status: task.status,
+      rootPrompt: task.rootPrompt,
+      taskStoreFile: task.taskStoreFile,
+      mainCommunicationFile: task.mainCommunicationFile,
+      currentRound: task.currentRound,
+      updatedAt: task.updatedAt,
+    },
+    rounds,
+    chatMarkdown,
+    error,
+  };
+}
+
+function buildLobsterCombinedGroupChatMarkdown(
+  task: LobsterTaskRecord,
+  rounds: LobsterDebateChatPanelRound[],
+  mode: "main_sub" | "debate",
+): string {
+  const sources = rounds
+    .map((round) => {
+      const content = round.chatFile ? readTextFileIfNonEmpty(round.chatFile) : null;
+      return content ? { round, content } : null;
+    })
+    .filter((source): source is { round: LobsterDebateChatPanelRound; content: string } => Boolean(source));
+  if (sources.length === 0) {
+    return "";
+  }
+  if (mode === "main_sub" && sources.length === 1) {
+    return sources[0]?.content ?? "";
+  }
+
+  const lines: string[] = [
+    "# 龙虾群聊记录",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- CLI：${task.cli}`,
+    `- 任务状态：${task.status}`,
+    `- 当前主任务轮次：${task.currentRound || 0}`,
+    `- 更新时间：${new Date(task.updatedAt).toISOString()}`,
+    "",
+    "## 群聊规则",
+    "- 本页面按群聊消息追加顺序连续展示辩论和后续任务执行消息。",
+    "- 辩论不按 UI 轮次分区；主任务轮次、发言批次和执行阶段以系统消息说明。",
+    "- 最大发言批次数只作为防无限循环安全上限，是否追加发言批次由主持人控场决定。",
+  ];
+
+  sources.forEach(({ round, content }) => {
+    lines.push("", "## 任务事件", buildLobsterCombinedChatSourceEvent(round));
+    const transcript = parseLobsterDebateChatTranscript(content);
+    transcript.segments.forEach((segment) => {
+      if (segment.kind === "preamble") {
+        const preamble = stripLobsterChatPreambleTitle(segment.body);
+        if (preamble) {
+          lines.push("", "## 任务事件", preamble);
+        }
+        return;
+      }
+      lines.push("", `## ${segment.heading}`, segment.body.trim());
+    });
+  });
+
+  return `${lines.join("\n")}\n`;
+}
+
+function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound): string {
+  const lines = [
+    `- 来源：${round.label || (round.kind === "debate" ? "辩论群聊" : "任务执行群聊")}`,
+    `- 状态：${round.status}`,
+    round.chatFile ? `- transcript：${round.chatFile}` : null,
+  ];
+  if (round.kind === "debate") {
+    lines.push(
+      `- 主任务复核轮次：${round.lobsterRound}`,
+      `- 已完成发言批次数：${round.dialogueTurns ?? 0}`,
+      `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+      "- 主持人会在每轮发言后决定 continue / finalize / block。",
+    );
+  }
+  if (round.kind === "execution") {
+    lines.push(`- 当前主任务轮次：${round.lobsterRound}`);
+  }
+  return lines.filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function stripLobsterChatPreambleTitle(body: string): string {
+  return body
+    .split(/\r?\n/g)
+    .filter((line, index) => !(index === 0 && /^#\s+/u.test(line.trim())))
+    .join("\n")
+    .trim();
+}
+
+function isLobsterDebateGroupChatTask(task: LobsterTaskRecord): boolean {
+  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+    || Boolean(task.debateRounds?.length);
+}
+
+function buildLobsterDebateChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
+  const debateRounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
+  return debateRounds
+    .map((round): LobsterDebateChatPanelRound => ({
+      key: buildLobsterDebateChatRoundKey(round.lobsterRound, round.debateRound),
+      kind: "debate",
+      lobsterRound: round.lobsterRound,
+      debateRound: round.debateRound,
+	      status: round.status,
+	      chatFile: round.chatFile,
+	      participantRosterSessionId: round.participantRosterSessionId,
+	      dialogueTurns: round.dialogueTurns,
+	      activeSpeaker: round.activeSpeaker ? {
+	        kind: round.activeSpeaker.kind,
+	        id: round.activeSpeaker.id,
+	        title: round.activeSpeaker.title,
+	        dialogueTurn: round.activeSpeaker.dialogueTurn,
+	        finalPass: round.activeSpeaker.finalPass,
+	        updatedAt: round.activeSpeaker.updatedAt,
+	      } : undefined,
+	      startedAt: round.startedAt,
+      completedAt: round.completedAt,
+      participants: round.participants.map((participant) => ({
+        id: participant.id,
+        title: participant.title,
+        role: participant.role,
+        status: participant.status,
+        stance: participant.stance,
+        sessionId: participant.sessionId,
+        summary: participant.summary,
+        updatedAt: participant.updatedAt,
+      })),
+      moderatorDecisions: (round.moderatorDecisions ?? []).map((decision) => ({
+        dialogueTurn: decision.dialogueTurn,
+        action: decision.action,
+        reason: decision.reason,
+        sessionId: decision.sessionId,
+        updatedAt: decision.updatedAt,
+      })),
+      consensusSummary: round.consensus?.summary,
+      consensusReached: round.consensus?.reached,
+      openDisagreementCount: round.consensus?.openDisagreements?.length,
+    }))
+    .sort((left, right) => (
+      (left.startedAt || 0) - (right.startedAt || 0)
+      || left.lobsterRound - right.lobsterRound
+      || left.debateRound - right.debateRound
+    ));
+}
+
+function buildLobsterDebateWithExecutionChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
+  const debateRounds = buildLobsterDebateChatPanelRounds(task);
+  const executionChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
+  const shouldIncludeExecution = fs.existsSync(executionChatFile)
+    || shouldPrioritizeLobsterExecutionChatRound(task);
+  if (!shouldIncludeExecution) {
+    return debateRounds;
+  }
+  return [...debateRounds, buildLobsterMainSubChatPanelRound(task, "任务执行群聊")];
+}
+
+function shouldPrioritizeLobsterExecutionChatRound(task: LobsterTaskRecord): boolean {
+  return task.subTasks.length > 0
+    || getActiveLobsterSubtaskIds(task).length > 0
+    || task.rounds.some((round) => round.role === "subtask");
+}
+
+function buildLobsterMainSubChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
+  return [buildLobsterMainSubChatPanelRound(task, "主从群聊")];
+}
+
+function buildLobsterMainSubChatPanelRound(
+  task: LobsterTaskRecord,
+  label: string,
+): LobsterDebateChatPanelRound {
+  const chatFile = ensureLobsterMainSubChatTranscript(task);
+  const activeSubtaskIds = getActiveLobsterSubtaskIds(task);
+  const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
+  const mainParticipant: LobsterDebateChatPanelRound["participants"][number] = {
+    id: "main",
+    title: "主任务",
+    role: "main",
+    status: mainRunning ? "running" : task.status,
+    sessionId: task.sessionId ?? null,
+    summary: task.finalSummary,
+    updatedAt: task.updatedAt,
+  };
+  const subtaskParticipants = task.subTasks.map((subtask, index) => ({
+    id: subtask.id,
+    title: getLobsterSubtaskDisplayTitle(index, subtask),
+    role: "subtask",
+    status: subtask.status,
+    sessionId: null,
+    summary: subtask.summary,
+    updatedAt: subtask.updatedAt,
+  }));
+  return {
+    key: LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
+    kind: "execution",
+    label,
+    lobsterRound: Math.max(1, task.currentRound || 1),
+    debateRound: 0,
+    status: task.status,
+    chatFile,
+    activeSpeaker: buildLobsterMainSubChatActiveSpeaker(task),
+    startedAt: task.createdAt,
+    completedAt: task.status === "completed" ? task.updatedAt : undefined,
+    participants: [mainParticipant, ...subtaskParticipants],
+    moderatorDecisions: [],
+  };
+}
+
+function buildLobsterMainSubChatActiveSpeaker(
+  task: LobsterTaskRecord,
+): LobsterDebateChatPanelRound["activeSpeaker"] {
+  if (task.status !== "running") {
+    return undefined;
+  }
+  const activeSubtaskIds = getActiveLobsterSubtaskIds(task);
+  const activeSubtask = task.subTasks.find((subtask) => (
+    activeSubtaskIds.includes(subtask.id)
+    && subtask.status === "running"
+  ));
+  if (activeSubtask) {
+    const index = task.subTasks.findIndex((subtask) => subtask.id === activeSubtask.id);
+    return {
+      kind: "subtask",
+      id: activeSubtask.id,
+      title: getLobsterSubtaskDisplayTitle(index, activeSubtask),
+      dialogueTurn: Math.max(1, task.currentRound || 1),
+      updatedAt: activeSubtask.updatedAt ?? task.updatedAt,
+    };
+  }
+  if (activeSubtaskIds.length === 0) {
+    return {
+      kind: "main",
+      id: "main",
+      title: "主任务",
+      dialogueTurn: Math.max(1, task.currentRound || 1),
+      updatedAt: task.updatedAt,
+    };
+  }
+  return undefined;
+}
+
+function ensureLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
+  const chatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
+  if (fs.existsSync(chatFile)) {
+    return chatFile;
+  }
+  writeTextFileEnsuringDir(chatFile, buildInitialLobsterMainSubChatTranscript(task));
+  return chatFile;
+}
+
+function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
+  const lines: string[] = [
+    "# 龙虾主从群聊记录",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- CLI：${task.cli}`,
+    `- 任务状态：${task.status}`,
+    `- 创建时间：${new Date(task.createdAt).toISOString()}`,
+    `- 任务记录：${task.taskStoreFile}`,
+    `- 主任务沟通文件：${task.mainCommunicationFile}`,
+    "",
+    "## 群聊规则",
+    "- 主任务负责拆分、派发、复核和最终验收。",
+    "- 子任务会在派发和执行时动态加入群聊，并以“子任务 1~N”标记。",
+    "- 本页面只读，真实执行仍以任务记录、主任务沟通文件和子任务沟通文件为准。",
+    "",
+    "## 任务事件",
+    `龙虾主从任务已创建。当前轮次：${task.currentRound || 0}。`,
+  ];
+
+  task.rounds
+    .slice()
+    .sort((left, right) => left.startedAt - right.startedAt)
+    .forEach((round) => {
+      if (round.role === "main") {
+        lines.push("", `## 主任务发言：第 ${round.round} 轮（main）`, formatLobsterRoundRecordForChat(round));
+        return;
+      }
+      const subtask = task.subTasks.find((item) => item.id === round.subtaskId);
+      const index = subtask ? task.subTasks.findIndex((item) => item.id === subtask.id) : -1;
+      const title = subtask ? getLobsterSubtaskDisplayTitle(index, subtask) : `子任务（${round.subtaskId ?? "unknown"}）`;
+      lines.push(
+        "",
+        `## 子任务发言：${title}（${round.subtaskId ?? "unknown"}）`,
+        buildLobsterMainSubSubtaskTurnBody({
+          runStatus: round.status,
+          assistantContent: subtask?.summary,
+          communicationFile: subtask?.communicationFile,
+        }),
+      );
+    });
+
+  if (task.status === "completed") {
+    lines.push("", "## 群聊收束", task.finalSummary ?? "主任务已完成。");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function formatLobsterRoundRecordForChat(round: LobsterRoundRecord): string {
+  return [
+    `- 状态：${round.status}`,
+    `- 开始：${new Date(round.startedAt).toISOString()}`,
+    `- 结束：${new Date(round.endedAt).toISOString()}`,
+    round.summary ? `- 摘要：${round.summary}` : null,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function buildLobsterDebateChatRoundKey(lobsterRound: number, debateRound: number): string {
+  return `${lobsterRound}:${debateRound}`;
+}
+
+function buildLobsterDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
+  const action: ChatMessageAction = {
+    type: "openLobsterDebateChat",
+    taskId,
+    label: "打开龙虾群聊",
+  };
+  if (typeof round === "number" && Number.isFinite(round)) {
+    action.roundKey = buildLobsterDebateChatRoundKey(round, LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND);
+  }
+  return action;
+}
+
+function getLobsterSubtaskDisplayTitle(index: number, subtask: Pick<LobsterSubtaskRecord, "title">): string {
+  const displayIndex = Number.isFinite(index) && index >= 0 ? index + 1 : 0;
+  const prefix = displayIndex > 0 ? `子任务 ${displayIndex}` : "子任务";
+  return subtask.title ? `${prefix}：${subtask.title}` : prefix;
+}
+
 function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
@@ -3326,6 +3963,7 @@ type PromptRunInput = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   model?: string;
+  lobsterExecutionMode?: LobsterExecutionMode;
   lobsterMainModel?: string;
   lobsterSubtaskModel?: string;
   imagePaths?: string[];
@@ -4572,7 +5210,15 @@ async function runLobsterPrompt(
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: shouldResumeCompletedWithoutFinalSummary }) ?? existingTask;
       round = resolveLobsterResumeRound(task);
-      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round));
+      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round), (
+        {
+          taskRole: "main",
+          lobsterTaskId: task.id,
+          lobsterRound: round,
+          merge: false,
+          actions: [buildLobsterDebateChatMessageAction(task.id, round)],
+        }
+      ));
       void logInfo("lobster-task-resumed", {
         taskId: task.id,
         round,
@@ -4594,8 +5240,19 @@ async function runLobsterPrompt(
     const initialSessionId = resolveLobsterTaskSessionId(target);
     task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
       sessionId: initialSessionId,
+      executionMode: input.lobsterExecutionMode,
     });
-    appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task));
+    if (!isLobsterDebateGroupChatTask(task)) {
+      ensureLobsterMainSubChatTranscript(task);
+    }
+    appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task), (
+      {
+        taskRole: "main",
+        lobsterTaskId: task.id,
+        merge: false,
+        actions: [buildLobsterDebateChatMessageAction(task.id)],
+      }
+    ));
   }
 
   while (task && round <= task.maxRounds) {
@@ -4613,7 +5270,15 @@ async function runLobsterPrompt(
       }, { allowCompletedToRunning: true }) ?? latest;
       task = resumed;
       round = resolveLobsterResumeRound(resumed);
-      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(resumed, round));
+      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(resumed, round), (
+        {
+          taskRole: "main",
+          lobsterTaskId: resumed.id,
+          lobsterRound: round,
+          merge: false,
+          actions: [buildLobsterDebateChatMessageAction(resumed.id, round)],
+        }
+      ));
       void logInfo("lobster-task-completed-without-final-summary-resumed", {
         taskId: resumed.id,
         round,
@@ -4623,65 +5288,47 @@ async function runLobsterPrompt(
       continue;
     }
 
-    const mainStatus = await runLobsterRound({
-      input,
-      target,
-      task: latest,
-      round,
-      role: "main",
-      displayPrompt: buildLobsterMainDisplayPrompt(latest.rootPrompt, round),
-      modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || latest.rootPrompt, latest, round),
-    });
-    if (mainStatus === "error" || mainStatus === "stopped") {
-      markLobsterTaskInterrupted(latest.id, mainStatus, target);
+    const executionMode = normalizeLobsterExecutionMode(latest.executionMode);
+    const decisionRunResult = executionMode === "debate_multi_agent"
+      ? await runLobsterDebateRound({ input, target, task: latest, round })
+      : await runClassicLobsterMainDecision({ input, target, task: latest, round });
+
+    if (decisionRunResult.status === "interrupted") {
+      markLobsterTaskInterrupted(decisionRunResult.task.id, decisionRunResult.runStatus, target);
+      return;
+    }
+    if (decisionRunResult.status === "completed") {
+      removeLobsterMainDecisionMessage(target, decisionRunResult.task.id, round);
+      appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionRunResult.task));
+      appendLobsterFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
+      return;
+    }
+    if (decisionRunResult.status === "needs-review") {
+      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(decisionRunResult.task));
       return;
     }
 
-    const mainContent = getLastLobsterAssistantContent(target, latest.id, round, "main");
-    const decision = parseLobsterMainDecision(mainContent);
-    if (!decision) {
-      const failedRecord = updateLobsterTaskRecord(latest.id, {
-        status: "needs-review",
-        updatedAt: Date.now(),
-        finalSummary: "Main task did not return a valid lobster decision JSON.",
-      }) ?? latest;
-      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(failedRecord));
-      return;
-    }
-
-    const decisionResult = applyLobsterMainDecision(latest.id, decision);
-    if (decisionResult.status === "completed") {
-      removeLobsterMainDecisionMessage(target, latest.id, round);
-      appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionResult.task));
-      appendLobsterFinalSummaryMessage(target, decisionResult.task, decision);
-      return;
-    }
-    if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
-      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(decisionResult.task));
-      return;
-    }
-
-    const subtasks = decisionResult.subtasks;
-    showLobsterSubtaskDecisionMarkdown(target, decisionResult.task, round, subtasks, decision);
+    const subtasks = decisionRunResult.subtasks;
+    showLobsterSubtaskDecisionMarkdown(target, decisionRunResult.task, round, subtasks, decisionRunResult.decision);
     const subtaskResults = await runLobsterSubtasksBatchWithRetry({
       input,
       target,
-      task: decisionResult.task,
+      task: decisionRunResult.task,
       round,
       subtasks,
     });
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
     if (interrupted) {
       const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
-      markLobsterTaskInterrupted(latest.id, interruptedStatus, target);
+      markLobsterTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target);
       return;
     }
 
     const nextMainRound = round + 1;
-    if (nextMainRound <= latest.maxRounds) {
+    if (nextMainRound <= decisionRunResult.task.maxRounds) {
       appendSystemMessageForLobster(
         target,
-        buildLobsterMainResumeText(latest.id, nextMainRound, subtasks)
+        buildLobsterMainResumeText(decisionRunResult.task.id, nextMainRound, subtasks)
       );
     }
     round = nextMainRound;
@@ -4696,6 +5343,2884 @@ async function runLobsterPrompt(
     finalSummary: "Reached the maximum automatic lobster rounds. Manual review is required.",
   });
   appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(finalRecord ?? task));
+}
+
+async function runClassicLobsterMainDecision(options: {
+  input: PromptRunInput;
+  target: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+}): Promise<LobsterMainDecisionRunResult> {
+  const { input, target, task, round } = options;
+  const mainStatus = await runLobsterRound({
+    input,
+    target,
+    task,
+    round,
+    role: "main",
+    displayPrompt: buildLobsterMainDisplayPrompt(task.rootPrompt, round),
+    modelPrompt: buildLobsterMainModelPrompt(input.modelPrompt || task.rootPrompt, task, round),
+  });
+  if (mainStatus === "error" || mainStatus === "stopped") {
+    return { status: "interrupted", task, runStatus: mainStatus };
+  }
+
+  const mainContent = getLastLobsterAssistantContent(target, task.id, round, "main");
+  const decision = parseLobsterMainDecision(mainContent);
+  if (!decision) {
+    const failedRecord = updateLobsterTaskRecord(task.id, {
+      status: "needs-review",
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      updatedAt: Date.now(),
+      finalSummary: "Main task did not return a valid lobster decision JSON.",
+    }) ?? task;
+    return { status: "needs-review", task: failedRecord };
+  }
+
+  return applyLobsterMainDecisionForRun(task.id, decision);
+}
+
+function applyLobsterMainDecisionForRun(
+  taskId: string,
+  decision: LobsterMainDecision,
+): LobsterMainDecisionRunResult {
+  const decisionResult = applyLobsterMainDecision(taskId, decision);
+  if (decisionResult.status === "completed") {
+    return { status: "completed", task: decisionResult.task, decision };
+  }
+  if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
+    return { status: "needs-review", task: decisionResult.task, decision };
+  }
+  return {
+    status: "continue",
+    task: decisionResult.task,
+    decision,
+    subtasks: decisionResult.subtasks,
+  };
+}
+
+type LobsterDebateParticipantArtifactValidation = {
+  valid: boolean;
+  participants: LobsterDebateParticipantRecord[];
+  reasons: string[];
+};
+
+type LobsterDebateParticipantDefinition = {
+  id: string;
+  role: LobsterDebateParticipantRole;
+  title: string;
+  focus: string;
+};
+
+type LobsterDebateParticipantRosterResult = {
+  participants: LobsterDebateParticipantDefinition[];
+  summary: string;
+  tabId: string;
+  sessionId: string | null;
+};
+
+type LobsterDebateReusableDecisionResult =
+  | {
+      status: "reusable";
+      decision: LobsterMainDecision;
+      consensus: LobsterDebateConsensusRecord<LobsterMainDecision>;
+      participants: LobsterDebateParticipantRecord[];
+    }
+  | {
+      status: "needs-review";
+      reasons: string[];
+      consensus?: LobsterDebateConsensusRecord<LobsterMainDecision>;
+      participants: LobsterDebateParticipantRecord[];
+    }
+  | { status: "rerun"; reasons: string[] };
+
+type LobsterDebateParticipantRunResult = {
+  participant: LobsterDebateParticipantRecord;
+  tabId: string;
+  sessionId: string | null;
+};
+
+type LobsterDebateParticipantBatchRunItem = {
+  participant: LobsterDebateParticipantDefinition;
+  artifactFile: string;
+  artifactText: string | null;
+  result: LobsterDebateParticipantRunResult;
+};
+
+type LobsterDebateModeratorRunResult = {
+  decision: LobsterDebateModeratorDecisionRecord | null;
+  tabId: string;
+  sessionId: string | null;
+};
+
+type LobsterDebateConsensusRunResult = {
+  tabId: string;
+  sessionId: string | null;
+};
+
+type LobsterDebateSessionState = {
+  participants: Partial<Record<string, string>>;
+  moderator: string | null;
+};
+
+async function runLobsterDebateRound(options: {
+  input: PromptRunInput;
+  target: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+}): Promise<LobsterMainDecisionRunResult> {
+  const { input, target, task, round } = options;
+  const debateRound = LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND;
+  const paths = buildLobsterDebatePaths(task.communicationDir, round, debateRound);
+  const model = resolveLobsterDebateModel(input);
+  const debateSessions = buildLobsterDebateSessionState(task, round, debateRound);
+  const reusableParticipants = resolveExistingLobsterDebateParticipantRecords(
+    task,
+    round,
+    debateRound,
+    paths,
+    model,
+    debateSessions
+  );
+  const reusable = evaluateReusableLobsterDebateDecision(task, round, debateRound, paths, reusableParticipants);
+  if (reusable.status === "reusable") {
+    upsertLobsterDebateRoundRecord(task.id, {
+      lobsterRound: round,
+      debateRound,
+      status: "consensus",
+      startedAt: getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
+      completedAt: Date.now(),
+      briefFile: paths.briefFile,
+      chatFile: paths.chatFile,
+      participantRosterFile: paths.participantRosterFile,
+      participants: reusable.participants,
+      consensus: reusable.consensus,
+    });
+    refreshOpenLobsterDebateChatPanelForTask(task.id);
+    appendSystemMessageForLobster(target, buildLobsterDebateReuseText(task.id, round, paths));
+    appendLobsterDebateMainCommunicationLog(task, round, paths, "复用辩论共识", [
+      `decision.json：${paths.decisionFile}`,
+      `consensus.md：${paths.consensusFile}`,
+    ]);
+    return applyLobsterMainDecisionForRun(task.id, reusable.decision);
+  }
+  if (reusable.status === "needs-review") {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: reusable.participants,
+      consensus: reusable.consensus,
+      reasons: reusable.reasons,
+      status: "blocked",
+    });
+  }
+  if (reusable.reasons.length > 0) {
+    appendSystemMessageForLobster(target, buildLobsterDebateRerunText(task.id, round, reusable.reasons));
+  }
+
+  const startedAt = Date.now();
+  const briefWritten = writeTextFileEnsuringDir(paths.briefFile, buildLobsterDebateBriefMarkdown(task, target, round, paths));
+  if (!briefWritten) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: [],
+      reasons: [`无法写入辩论 brief：${paths.briefFile}`],
+      status: "error",
+    });
+  }
+  const chatWritten = writeTextFileEnsuringDir(paths.chatFile, buildLobsterDebateInitialChatMarkdown(task, target, round, paths));
+  if (!chatWritten) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: [],
+      reasons: [`无法写入辩论群聊记录：${paths.chatFile}`],
+      status: "error",
+    });
+  }
+
+  updateLobsterTaskRecord(task.id, {
+    status: "running",
+    currentRound: round,
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+    updatedAt: startedAt,
+  });
+  upsertLobsterDebateRoundRecord(task.id, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    dialogueTurns: 0,
+    participants: [],
+    moderatorDecisions: [],
+  });
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
+
+  const debateTabIds: string[] = [];
+  const rosterResult = await runLobsterDebateParticipantRoster({
+    input,
+    mainTarget: target,
+    task,
+    round,
+    debateRound,
+    paths,
+    sessionId: debateSessions.moderator,
+    startedAt,
+  });
+  debateTabIds.push(rosterResult.tabId);
+  if (rosterResult.sessionId) {
+    debateSessions.moderator = rosterResult.sessionId;
+  }
+  await closeCompletedLobsterDebateTabs([rosterResult.tabId]);
+  if (!rosterResult.valid) {
+    await closeCompletedLobsterDebateTabs(debateTabIds);
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: [],
+      reasons: rosterResult.reasons,
+      status: "error",
+    });
+  }
+
+  const participantDefinitions = rosterResult.participants;
+  const participantRecords = buildLobsterDebateParticipantRecords(
+    paths,
+    model,
+    "pending",
+    participantDefinitions
+  ).map((participant) => ({
+    ...participant,
+    sessionId: debateSessions.participants[participant.id] ?? null,
+  }));
+  const rosterAppended = appendTextFileEnsuringDir(
+    paths.chatFile,
+    buildLobsterDebateParticipantRosterChatMarkdown(participantDefinitions, rosterResult.summary)
+  );
+  if (!rosterAppended) {
+    await closeCompletedLobsterDebateTabs(debateTabIds);
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantRecords,
+      reasons: [`无法追加主持人选定的辩论参与者到群聊记录：${paths.chatFile}`],
+      status: "error",
+    });
+  }
+
+  upsertLobsterDebateRoundRecord(task.id, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    dialogueTurns: 0,
+    participants: participantRecords,
+    moderatorDecisions: [],
+  });
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  appendSystemMessageForLobster(target, buildLobsterDebateStartedText(task.id, round, participantRecords, paths));
+
+  let finalModeratorDecision: LobsterDebateModeratorDecisionRecord | null = null;
+  let completedDialogueTurns = 0;
+  for (let dialogueTurn = 1; dialogueTurn <= LOBSTER_DEBATE_MAX_DIALOGUE_TURNS; dialogueTurn += 1) {
+    completedDialogueTurns = dialogueTurn;
+    appendSystemMessageForLobster(
+      target,
+      buildLobsterDebateDialogueTurnStartedText(task.id, round, dialogueTurn, LOBSTER_DEBATE_MAX_DIALOGUE_TURNS, paths)
+    );
+    const dialogueTurnEventAppended = appendTextFileEnsuringDir(
+      paths.chatFile,
+      buildLobsterDebateDialogueTurnChatEventMarkdown(
+        round,
+        dialogueTurn,
+        LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+        finalModeratorDecision,
+      )
+    );
+    if (!dialogueTurnEventAppended) {
+      await closeCompletedLobsterDebateTabs(debateTabIds);
+      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`无法追加辩论发言批次系统消息：${paths.chatFile}`],
+        status: "error",
+      });
+    }
+    refreshOpenLobsterDebateChatPanelForTask(task.id);
+    const participantBatch = await runLobsterDebateParticipantBatch({
+      input,
+      mainTarget: target,
+      task,
+      round,
+      debateRound,
+      dialogueTurn,
+      maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      finalPass: false,
+      paths,
+      participants: participantDefinitions,
+      debateSessions,
+      moderatorDecision: finalModeratorDecision,
+      startedAt,
+    });
+    debateTabIds.push(...participantBatch.map((item) => item.result.tabId));
+    participantBatch.forEach((item) => {
+      if (item.result.sessionId) {
+        debateSessions.participants[item.participant.id] = item.result.sessionId;
+      }
+    });
+    await closeCompletedLobsterDebateTabs(participantBatch.map((item) => item.result.tabId));
+    const missingArtifacts = participantBatch.filter((item) => !item.artifactText);
+    if (missingArtifacts.length > 0) {
+      await closeCompletedLobsterDebateTabs(debateTabIds);
+      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: missingArtifacts.map((item) => (
+          `辩论群聊发言批次 ${dialogueTurn} 参与者 ${item.participant.id} 未写入发言 artifact：${item.artifactFile}`
+        )),
+        status: "error",
+      });
+    }
+    for (const item of participantBatch) {
+      const appended = appendTextFileEnsuringDir(
+        paths.chatFile,
+        buildLobsterDebateChatTurnMarkdown(
+          dialogueTurn,
+          item.participant.id,
+          item.participant.title,
+          item.artifactText ?? "",
+        )
+      );
+	      if (!appended) {
+	        await closeCompletedLobsterDebateTabs(debateTabIds);
+	        return markLobsterDebateNeedsReview({
+          task,
+          target,
+          round,
+          debateRound,
+          paths,
+          participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+          reasons: [`无法追加辩论群聊记录：${paths.chatFile}`],
+          status: "error",
+        });
+      }
+      refreshOpenLobsterDebateChatPanelForTask(task.id);
+    }
+
+    const moderatorResult = await runLobsterDebateModerator({
+      input,
+      mainTarget: target,
+      task,
+      round,
+      debateRound,
+      dialogueTurn,
+      maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      paths,
+      sessionId: debateSessions.moderator,
+      startedAt,
+    });
+    debateTabIds.push(moderatorResult.tabId);
+    if (moderatorResult.sessionId) {
+      debateSessions.moderator = moderatorResult.sessionId;
+    }
+    await closeCompletedLobsterDebateTabs([moderatorResult.tabId]);
+    const moderatorArtifactFile = buildLobsterDebateModeratorArtifactFile(paths, dialogueTurn);
+    const moderatorText = readTextFileIfNonEmpty(moderatorArtifactFile);
+    if (!moderatorText || !moderatorResult.decision) {
+      await closeCompletedLobsterDebateTabs(debateTabIds);
+      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`主持人第 ${dialogueTurn} 轮控场 artifact 缺失、为空或无法解析：${moderatorArtifactFile}`],
+        status: "error",
+      });
+    }
+    finalModeratorDecision = moderatorResult.decision;
+    const moderatorAppended = appendTextFileEnsuringDir(
+      paths.chatFile,
+      buildLobsterDebateModeratorTurnMarkdown(dialogueTurn, moderatorText)
+    );
+	    if (!moderatorAppended) {
+	      await closeCompletedLobsterDebateTabs(debateTabIds);
+	      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`无法追加主持人控场记录：${paths.chatFile}`],
+        status: "error",
+      });
+    }
+    refreshOpenLobsterDebateChatPanelForTask(task.id);
+    if (moderatorResult.decision.action !== "continue") {
+      break;
+    }
+    if (dialogueTurn === LOBSTER_DEBATE_MAX_DIALOGUE_TURNS) {
+      finalModeratorDecision = {
+        ...moderatorResult.decision,
+        action: "finalize",
+        reason: `已达到运行时最大安全上限 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。主持人原始理由：${moderatorResult.decision.reason}`,
+        updatedAt: Date.now(),
+      };
+      const capAppended = appendTextFileEnsuringDir(
+        paths.chatFile,
+        buildLobsterDebateRuntimeForcedFinalizeMarkdown(finalModeratorDecision)
+      );
+	      if (!capAppended) {
+	        await closeCompletedLobsterDebateTabs(debateTabIds);
+	        return markLobsterDebateNeedsReview({
+          task,
+          target,
+          round,
+          debateRound,
+          paths,
+          participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+          reasons: [`无法追加最大安全发言批次数收束记录：${paths.chatFile}`],
+          status: "error",
+        });
+      }
+      refreshOpenLobsterDebateChatPanelForTask(task.id);
+      break;
+    }
+  }
+
+  if (!finalModeratorDecision) {
+    await closeCompletedLobsterDebateTabs(debateTabIds);
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      reasons: ["主持人未输出任何控场决策。"],
+      status: "error",
+    });
+  }
+
+  appendSystemMessageForLobster(
+    target,
+    buildLobsterDebateFinalStanceStartedText(task.id, round, finalModeratorDecision, paths)
+  );
+  const finalStanceBatch = await runLobsterDebateParticipantBatch({
+    input,
+    mainTarget: target,
+    task,
+    round,
+    debateRound,
+    dialogueTurn: completedDialogueTurns,
+    maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+    finalPass: true,
+    paths,
+    participants: participantDefinitions,
+    debateSessions,
+    moderatorDecision: finalModeratorDecision,
+    startedAt,
+  });
+  debateTabIds.push(...finalStanceBatch.map((item) => item.result.tabId));
+  finalStanceBatch.forEach((item) => {
+    if (item.result.sessionId) {
+      debateSessions.participants[item.participant.id] = item.result.sessionId;
+    }
+  });
+  await closeCompletedLobsterDebateTabs(finalStanceBatch.map((item) => item.result.tabId));
+  const missingFinalArtifacts = finalStanceBatch.filter((item) => !item.artifactText);
+  if (missingFinalArtifacts.length > 0) {
+    await closeCompletedLobsterDebateTabs(debateTabIds);
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      reasons: missingFinalArtifacts.map((item) => (
+        `参与者 ${item.participant.id} 未写入最终立场 artifact：${item.artifactFile}`
+      )),
+      status: "error",
+    });
+  }
+  for (const item of finalStanceBatch) {
+    const appended = appendTextFileEnsuringDir(
+      paths.chatFile,
+      buildLobsterDebateFinalParticipantMarkdown(
+        item.participant.id,
+        item.participant.title,
+        item.artifactText ?? "",
+      )
+    );
+	    if (!appended) {
+	      await closeCompletedLobsterDebateTabs(debateTabIds);
+	      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`无法追加最终立场到辩论群聊记录：${paths.chatFile}`],
+        status: "error",
+      });
+    }
+    refreshOpenLobsterDebateChatPanelForTask(task.id);
+  }
+  const chatClosed = appendTextFileEnsuringDir(
+    paths.chatFile,
+    buildLobsterDebateDialogueClosedMarkdown(
+      completedDialogueTurns,
+      LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      finalModeratorDecision
+    )
+  );
+	  if (!chatClosed) {
+	    await closeCompletedLobsterDebateTabs(debateTabIds);
+	    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      reasons: [`无法写入辩论群聊收束标记：${paths.chatFile}`],
+      status: "error",
+    });
+  }
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  await closeCompletedLobsterDebateTabs(debateTabIds);
+  await switchVisibleConversationTabForLobster(target.tabId);
+
+  const participantValidation = validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions);
+  upsertLobsterDebateRoundRecord(task.id, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    dialogueTurns: completedDialogueTurns,
+    participants: participantValidation.participants,
+  });
+
+  if (!participantValidation.valid) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      reasons: participantValidation.reasons,
+      status: "blocked",
+    });
+  }
+
+  appendSystemMessageForLobster(target, buildLobsterDebateParticipantsCollectedText(task.id, round, participantValidation.participants));
+
+  if (finalModeratorDecision.action === "block") {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      reasons: [`主持人决定阻塞：${finalModeratorDecision.reason}`],
+      status: "blocked",
+    });
+  }
+
+  const consensusRun = await runLobsterDebateConsensusSummary({
+    input,
+    target,
+    task,
+    round,
+    debateRound,
+    paths,
+    participants: participantValidation.participants,
+  });
+  await closeCompletedLobsterDebateTabs([consensusRun.tabId]);
+  await switchVisibleConversationTabForLobster(target.tabId);
+
+  const crossReviewText = readTextFileIfNonEmpty(paths.crossReviewFile);
+  if (!crossReviewText) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      reasons: [`cross-review.md 缺失或为空：${paths.crossReviewFile}`],
+      status: "error",
+    });
+  }
+
+  const decisionText = readTextFileIfNonEmpty(paths.decisionFile);
+  const decision = parseLobsterMainDecision(decisionText);
+  if (!decision) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      reasons: [`decision.json 缺失或不是合法 LobsterMainDecision JSON：${paths.decisionFile}`],
+      status: "error",
+    });
+  }
+
+  const consensus = readLobsterDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
+  if (!consensus) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      reasons: [`consensus.md 缺失或不含合法共识 JSON：${paths.consensusFile}`],
+      status: "error",
+    });
+  }
+  const mergedConsensus = mergeLobsterDebateConsensusWithParticipantArtifacts(consensus, participantValidation.participants, decision);
+  const consensusValidation = validateLobsterDebateConsensus(mergedConsensus);
+  if (!consensusValidation.canProceed) {
+    return markLobsterDebateNeedsReview({
+      task,
+      target,
+      round,
+      debateRound,
+      paths,
+      participants: participantValidation.participants,
+      consensus: mergedConsensus,
+      reasons: consensusValidation.reasons,
+      status: "blocked",
+    });
+  }
+
+  upsertLobsterDebateRoundRecord(task.id, {
+    lobsterRound: round,
+    debateRound,
+    status: "consensus",
+    startedAt,
+    completedAt: Date.now(),
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    participants: participantValidation.participants,
+    consensus: mergedConsensus,
+  });
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  appendSystemMessageForLobster(target, buildLobsterDebateConsensusReachedText(task.id, round, decision, paths));
+  appendLobsterDebateMainCommunicationLog(task, round, paths, "辩论共识已形成", [
+    `共识摘要：${mergedConsensus.summary}`,
+    `决策状态：${decision.status}`,
+    `decision.json：${paths.decisionFile}`,
+  ]);
+  return applyLobsterMainDecisionForRun(task.id, decision);
+}
+
+function resolveLobsterDebateModel(input: PromptRunInput): string | undefined {
+  return input.lobsterMainModel ?? input.model;
+}
+
+function buildLobsterDebateParticipantRecords(
+  paths: LobsterDebatePaths,
+  model: string | undefined,
+  status: LobsterDebateParticipantRecord["status"],
+  participants: readonly LobsterDebateParticipantDefinition[],
+): LobsterDebateParticipantRecord[] {
+  const now = Date.now();
+  return participants.map((participant) => ({
+    id: participant.id,
+    role: participant.role,
+    title: participant.title,
+    model: model ?? null,
+    status,
+    artifactFile: buildLobsterDebateParticipantArtifactFile(paths, participant.id),
+    updatedAt: now,
+  }));
+}
+
+function buildLobsterDebateSessionState(
+  task: LobsterTaskRecord,
+  round: number,
+  debateRound: number,
+): LobsterDebateSessionState {
+  const existingRound = task.debateRounds?.find((item) => (
+    item.lobsterRound === round
+    && item.debateRound === debateRound
+  ));
+  const participants: Partial<Record<string, string>> = {};
+  (existingRound?.participants ?? []).forEach((participant) => {
+    const sessionId = findLatestLobsterDebateParticipantSessionId(existingRound?.participants, participant.id);
+    if (sessionId) {
+      participants[participant.id] = sessionId;
+    }
+  });
+  return {
+    participants,
+    moderator: findLatestLobsterDebateModeratorSessionId(existingRound?.moderatorDecisions)
+      ?? normalizeLobsterDebateSessionId(existingRound?.participantRosterSessionId),
+  };
+}
+
+function resolveExistingLobsterDebateParticipantRecords(
+  task: LobsterTaskRecord,
+  round: number,
+  debateRound: number,
+  paths: LobsterDebatePaths,
+  model: string | undefined,
+  sessionState?: LobsterDebateSessionState,
+): LobsterDebateParticipantRecord[] {
+  const existingRound = task.debateRounds?.find((item) => (
+    item.lobsterRound === round
+    && item.debateRound === debateRound
+  ));
+  const existingParticipants = existingRound?.participants?.filter((participant) => (
+    typeof participant.id === "string"
+    && Boolean(participant.id.trim())
+    && typeof participant.title === "string"
+    && Boolean(participant.title.trim())
+  )) ?? [];
+  if (existingParticipants.length === 0) {
+    return [];
+  }
+  return existingParticipants.map((participant) => ({
+    ...participant,
+    model: participant.model ?? model ?? null,
+    artifactFile: participant.artifactFile || buildLobsterDebateParticipantArtifactFile(paths, participant.id),
+    sessionId: sessionState?.participants[participant.id] ?? participant.sessionId ?? null,
+    updatedAt: typeof participant.updatedAt === "number" ? participant.updatedAt : Date.now(),
+  }));
+}
+
+function evaluateReusableLobsterDebateDecision(
+  task: LobsterTaskRecord,
+  round: number,
+  debateRound: number,
+  paths: LobsterDebatePaths,
+  participantRecords: LobsterDebateParticipantRecord[],
+): LobsterDebateReusableDecisionResult {
+  const decisionText = readTextFileIfNonEmpty(paths.decisionFile);
+  if (!decisionText) {
+    return { status: "rerun", reasons: [] };
+  }
+  const chatText = readTextFileIfNonEmpty(paths.chatFile);
+  if (!chatText || !isCompleteLobsterDebateChatTranscript(chatText)) {
+    return { status: "rerun", reasons: [`已有 decision.json，但缺少完整群聊记录 chat.md，将重跑辩论：${paths.chatFile}`] };
+  }
+  const crossReviewText = readTextFileIfNonEmpty(paths.crossReviewFile);
+  if (!crossReviewText) {
+    return { status: "rerun", reasons: [`已有 decision.json，但缺少 cross-review.md 或文件为空：${paths.crossReviewFile}`] };
+  }
+  const consensusText = readTextFileIfNonEmpty(paths.consensusFile);
+  if (!consensusText) {
+    return { status: "rerun", reasons: [`已有 decision.json，但缺少 consensus.md：${paths.consensusFile}`] };
+  }
+  if (participantRecords.length === 0) {
+    return { status: "rerun", reasons: [`已有 decision.json，但缺少主持人动态参与者清单：${paths.participantRosterFile}`] };
+  }
+  const participantValidation = validateLobsterDebateParticipantArtifacts(
+    paths,
+    participantRecords,
+    participantRecords[0]?.model ?? undefined
+  );
+  if (!participantValidation.valid) {
+    return { status: "rerun", reasons: participantValidation.reasons };
+  }
+  const decision = parseLobsterMainDecision(decisionText);
+  if (!decision) {
+    return { status: "rerun", reasons: [`已有 decision.json 非法，将重跑辩论：${paths.decisionFile}`] };
+  }
+
+  const fileConsensus = readLobsterDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
+  if (!fileConsensus) {
+    return { status: "rerun", reasons: [`已有 decision.json，但 consensus.md 不含合法共识 JSON：${paths.consensusFile}`] };
+  }
+  const consensus = mergeLobsterDebateConsensusWithParticipantArtifacts(fileConsensus, participantValidation.participants, decision);
+  const consensusValidation = validateLobsterDebateConsensus(consensus);
+  if (!consensusValidation.canProceed) {
+    return {
+      status: "needs-review",
+      reasons: consensusValidation.reasons,
+      consensus,
+      participants: participantValidation.participants,
+    };
+  }
+  return {
+    status: "reusable",
+    decision,
+    consensus,
+    participants: participantValidation.participants,
+  };
+}
+
+async function runLobsterDebateParticipantRoster(options: {
+  input: PromptRunInput;
+  mainTarget: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  debateRound: number;
+  paths: LobsterDebatePaths;
+  sessionId: string | null;
+  startedAt: number;
+}): Promise<(LobsterDebateParticipantRosterResult & { valid: true }) | {
+  valid: false;
+  reasons: string[];
+  tabId: string;
+  sessionId: string | null;
+}> {
+  const { input, mainTarget, task, round, debateRound, paths, sessionId, startedAt } = options;
+  const moderatorTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
+  updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
+    kind: "moderator",
+    id: LOBSTER_DEBATE_MODERATOR_ID,
+    title: "主持人选角",
+    updatedAt: Date.now(),
+  });
+  appendSystemMessageForLobster(
+    moderatorTarget,
+    buildLobsterDebateParticipantRosterStartedText(task.id, round, paths)
+  );
+
+  try {
+    await runPrompt({
+      displayPrompt: `🦞 龙虾辩论第 ${round} 轮主持人设计参与者`,
+      modelPrompt: buildLobsterDebateParticipantRosterModelPrompt(task, round, paths),
+      contextTags: [],
+      model: resolveLobsterDebateModel(input),
+    }, { targetTabId: moderatorTarget.tabId });
+  } catch (error) {
+    void logError("lobster-debate-participant-roster-run-error", {
+      taskId: task.id,
+      round,
+      error: errorToMessage(error),
+    });
+  }
+
+  const completedSessionId = resolvePromptRunTargetSessionId(moderatorTarget);
+  const parsed = readLobsterDebateParticipantRosterArtifact(paths.participantRosterFile);
+  updateLobsterDebateParticipantRosterSessionRecord(
+    task.id,
+    round,
+    debateRound,
+    completedSessionId,
+    startedAt,
+    paths
+  );
+  if (!parsed.valid) {
+    appendSystemMessageForLobster(mainTarget, buildLobsterDebateParticipantRosterFailedText(task.id, round, parsed.reasons, paths));
+    return {
+      valid: false,
+      reasons: parsed.reasons,
+      tabId: moderatorTarget.tabId,
+      sessionId: completedSessionId,
+    };
+  }
+  appendSystemMessageForLobster(
+    mainTarget,
+    buildLobsterDebateParticipantRosterFinishedText(task.id, round, parsed.participants, paths)
+  );
+  return {
+    valid: true,
+    participants: parsed.participants,
+    summary: parsed.summary,
+    tabId: moderatorTarget.tabId,
+    sessionId: completedSessionId,
+  };
+}
+
+async function runLobsterDebateParticipant(options: {
+  input: PromptRunInput;
+  mainTarget: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  debateRound: number;
+  dialogueTurn: number;
+  maxDialogueTurns: number;
+  finalPass: boolean;
+  paths: LobsterDebatePaths;
+  participant: LobsterDebateParticipantDefinition;
+  artifactFile: string;
+  sessionId: string | null;
+  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
+  startedAt: number;
+}): Promise<LobsterDebateParticipantRunResult> {
+	  const {
+	    input,
+	    mainTarget,
+	    task,
+    round,
+    debateRound,
+    dialogueTurn,
+    maxDialogueTurns,
+    finalPass,
+    paths,
+    participant,
+    artifactFile,
+    sessionId,
+    moderatorDecision,
+    startedAt,
+  } = options;
+  const participantTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
+  const runningRecord: LobsterDebateParticipantRecord = {
+    id: participant.id,
+    role: participant.role,
+    title: participant.title,
+    model: resolveLobsterDebateModel(input) ?? null,
+    status: "running",
+    artifactFile,
+    sessionId,
+    updatedAt: Date.now(),
+  };
+  updateLobsterDebateParticipantRecord(
+    task.id,
+    round,
+    debateRound,
+    runningRecord,
+    startedAt,
+    paths.briefFile,
+    paths.chatFile,
+    {
+      kind: "participant",
+      id: participant.id,
+      title: participant.title,
+      dialogueTurn,
+      finalPass,
+      updatedAt: Date.now(),
+    }
+  );
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  appendSystemMessageForLobster(
+    participantTarget,
+    buildLobsterDebateParticipantStartedText(task.id, round, dialogueTurn, participant.title, artifactFile, finalPass)
+  );
+
+  try {
+    await runPrompt({
+      displayPrompt: buildLobsterDebateParticipantDisplayPrompt(round, dialogueTurn, participant.title, finalPass),
+      modelPrompt: buildLobsterDebateParticipantModelPrompt(
+        task,
+        round,
+        dialogueTurn,
+        maxDialogueTurns,
+        finalPass,
+        paths,
+        participant,
+        artifactFile,
+        moderatorDecision
+      ),
+      contextTags: [],
+      model: resolveLobsterDebateModel(input),
+    }, { targetTabId: participantTarget.tabId });
+  } catch (error) {
+    void logError("lobster-debate-participant-run-error", {
+      taskId: task.id,
+      round,
+      participantId: participant.id,
+      dialogueTurn,
+      error: errorToMessage(error),
+    });
+  }
+
+  const completedSessionId = resolvePromptRunTargetSessionId(participantTarget);
+  const completedRecord = finalPass
+    ? {
+        ...readLobsterDebateParticipantArtifact(paths, participant, resolveLobsterDebateModel(input)),
+        sessionId: completedSessionId,
+      }
+    : {
+        ...readLobsterDebateParticipantTurnArtifact(participant, artifactFile, resolveLobsterDebateModel(input)),
+        sessionId: completedSessionId,
+      };
+	  updateLobsterDebateParticipantRecord(task.id, round, debateRound, completedRecord, startedAt, paths.briefFile, paths.chatFile);
+  appendSystemMessageForLobster(
+    mainTarget,
+    buildLobsterDebateParticipantFinishedText(task.id, round, dialogueTurn, completedRecord, finalPass)
+  );
+  return { participant: completedRecord, tabId: participantTarget.tabId, sessionId: completedSessionId };
+}
+
+async function runLobsterDebateParticipantBatch(options: {
+  input: PromptRunInput;
+  mainTarget: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  debateRound: number;
+  dialogueTurn: number;
+  maxDialogueTurns: number;
+  finalPass: boolean;
+  paths: LobsterDebatePaths;
+  participants: readonly LobsterDebateParticipantDefinition[];
+  debateSessions: LobsterDebateSessionState;
+  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
+  startedAt: number;
+}): Promise<LobsterDebateParticipantBatchRunItem[]> {
+  const {
+    input,
+    mainTarget,
+    task,
+    round,
+    debateRound,
+    dialogueTurn,
+    maxDialogueTurns,
+    finalPass,
+    paths,
+    participants,
+    debateSessions,
+    moderatorDecision,
+    startedAt,
+  } = options;
+  const batchResults = await Promise.all(participants.map(async (participant): Promise<LobsterDebateParticipantBatchRunItem> => {
+    const artifactFile = finalPass
+      ? buildLobsterDebateParticipantArtifactFile(paths, participant.id)
+      : buildLobsterDebateParticipantTurnArtifactFile(paths, participant.id, dialogueTurn);
+    const result = await runLobsterDebateParticipant({
+      input,
+      mainTarget,
+      task,
+      round,
+      debateRound,
+      dialogueTurn,
+      maxDialogueTurns,
+      finalPass,
+      paths,
+      participant,
+      artifactFile,
+      sessionId: debateSessions.participants[participant.id] ?? null,
+      moderatorDecision,
+      startedAt,
+    });
+    return {
+      participant,
+      artifactFile,
+      artifactText: readTextFileIfNonEmpty(artifactFile),
+      result,
+    };
+  }));
+  return batchResults;
+}
+
+async function runLobsterDebateModerator(options: {
+  input: PromptRunInput;
+  mainTarget: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  debateRound: number;
+  dialogueTurn: number;
+  maxDialogueTurns: number;
+  paths: LobsterDebatePaths;
+  sessionId: string | null;
+  startedAt: number;
+}): Promise<LobsterDebateModeratorRunResult> {
+	  const {
+	    input,
+	    mainTarget,
+	    task,
+	    round,
+	    debateRound,
+	    dialogueTurn,
+	    maxDialogueTurns,
+	    paths,
+	    sessionId,
+	    startedAt,
+	  } = options;
+	  const moderatorTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
+	  const artifactFile = buildLobsterDebateModeratorArtifactFile(paths, dialogueTurn);
+	  updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
+	    kind: "moderator",
+	    id: LOBSTER_DEBATE_MODERATOR_ID,
+	    title: LOBSTER_DEBATE_MODERATOR_TITLE,
+	    dialogueTurn,
+	    updatedAt: Date.now(),
+	  });
+	  appendSystemMessageForLobster(
+	    moderatorTarget,
+	    buildLobsterDebateModeratorStartedText(task.id, round, dialogueTurn, artifactFile)
+	  );
+
+  try {
+    await runPrompt({
+      displayPrompt: buildLobsterDebateModeratorDisplayPrompt(round, dialogueTurn, maxDialogueTurns),
+      modelPrompt: buildLobsterDebateModeratorModelPrompt(
+        task,
+        round,
+        dialogueTurn,
+        maxDialogueTurns,
+        paths,
+        artifactFile
+      ),
+      contextTags: [],
+      model: resolveLobsterDebateModel(input),
+    }, { targetTabId: moderatorTarget.tabId });
+  } catch (error) {
+    void logError("lobster-debate-moderator-run-error", {
+      taskId: task.id,
+      round,
+      dialogueTurn,
+      error: errorToMessage(error),
+    });
+  }
+
+  const completedSessionId = resolvePromptRunTargetSessionId(moderatorTarget);
+  const parsedDecision = readLobsterDebateModeratorDecisionArtifact(artifactFile, dialogueTurn);
+  const decision = parsedDecision
+    ? { ...parsedDecision, sessionId: completedSessionId }
+    : null;
+  if (decision) {
+    updateLobsterDebateModeratorDecisionRecord(task.id, round, debateRound, decision, startedAt, paths);
+    appendSystemMessageForLobster(
+      mainTarget,
+      buildLobsterDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns)
+    );
+  }
+  return { decision, tabId: moderatorTarget.tabId, sessionId: completedSessionId };
+}
+
+async function runLobsterDebateConsensusSummary(options: {
+  input: PromptRunInput;
+  target: PromptRunTarget;
+  task: LobsterTaskRecord;
+  round: number;
+  debateRound: number;
+  paths: LobsterDebatePaths;
+  participants: LobsterDebateParticipantRecord[];
+}): Promise<LobsterDebateConsensusRunResult> {
+  const { input, task, round, debateRound, paths, participants } = options;
+  const consensusTarget = createLobsterSubtaskRunTarget(task.cli);
+  updateLobsterDebateActiveSpeakerRecord(
+    task.id,
+    round,
+    debateRound,
+    getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
+    paths,
+    {
+      kind: "consensus",
+      id: "consensus",
+      title: "共识汇总器",
+      updatedAt: Date.now(),
+    }
+  );
+  appendSystemMessageForLobster(consensusTarget, buildLobsterDebateConsensusStartedText(task.id, round, paths));
+  try {
+    await runPrompt({
+      displayPrompt: `🦞 龙虾辩论共识汇总：第 ${round} 轮`,
+      modelPrompt: buildLobsterDebateConsensusModelPrompt(task, round, paths, participants),
+      contextTags: [],
+      model: resolveLobsterDebateModel(input),
+    }, { targetTabId: consensusTarget.tabId });
+  } catch (error) {
+    void logError("lobster-debate-consensus-run-error", {
+      taskId: task.id,
+      round,
+      error: errorToMessage(error),
+    });
+  }
+  return { tabId: consensusTarget.tabId, sessionId: resolvePromptRunTargetSessionId(consensusTarget) };
+}
+
+function validateLobsterDebateParticipantArtifacts(
+  paths: LobsterDebatePaths,
+  participantRecords: readonly LobsterDebateParticipantRecord[],
+  model: string | null | undefined,
+  sessionState?: LobsterDebateSessionState,
+): LobsterDebateParticipantArtifactValidation {
+  const participants = participantRecords.map((participant) => (
+    {
+      ...readLobsterDebateParticipantArtifact(paths, {
+        id: participant.id,
+        role: participant.role,
+        title: participant.title,
+        focus: participant.summary ?? participant.title,
+      }, model ?? undefined),
+      sessionId: sessionState?.participants[participant.id] ?? participant.sessionId ?? null,
+    }
+  ));
+  const reasons: string[] = [];
+  participants.forEach((participant) => {
+    if (participant.status !== "completed") {
+      reasons.push(`参与者 ${participant.id} artifact 缺失或为空：${participant.artifactFile}`);
+    }
+    if (!participant.stance) {
+      reasons.push(`参与者 ${participant.id} 未提供可解析立场（agree / agree_with_reservations / block）。`);
+    }
+  });
+  return {
+    valid: reasons.length === 0,
+    participants,
+    reasons,
+  };
+}
+
+function readLobsterDebateParticipantArtifact(
+  paths: LobsterDebatePaths,
+  participant: LobsterDebateParticipantDefinition,
+  model: string | undefined,
+): LobsterDebateParticipantRecord {
+  const artifactFile = buildLobsterDebateParticipantArtifactFile(paths, participant.id);
+  const content = readTextFileIfNonEmpty(artifactFile);
+  const stance = content ? extractLobsterDebateParticipantStance(content) : null;
+  const status: LobsterDebateParticipantRecord["status"] = content && stance ? "completed" : "error";
+  return {
+    id: participant.id,
+    role: participant.role,
+    title: participant.title,
+    model: model ?? null,
+    status,
+    artifactFile,
+    summary: content ? summarizeLobsterDebateArtifact(content) : undefined,
+    stance: stance ?? undefined,
+    blockingIssues: content ? extractLobsterDebateBlockingIssues(content, stance ?? undefined) : undefined,
+    updatedAt: Date.now(),
+  };
+}
+
+function readLobsterDebateParticipantTurnArtifact(
+  participant: LobsterDebateParticipantDefinition,
+  artifactFile: string,
+  model: string | undefined,
+): LobsterDebateParticipantRecord {
+  const content = readTextFileIfNonEmpty(artifactFile);
+  return {
+    id: participant.id,
+    role: participant.role,
+    title: participant.title,
+    model: model ?? null,
+    status: content ? "completed" : "error",
+    artifactFile,
+    summary: content ? summarizeLobsterDebateArtifact(content) : undefined,
+    updatedAt: Date.now(),
+  };
+}
+
+function readLobsterDebateParticipantRosterArtifact(
+  artifactFile: string,
+): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
+  const content = readTextFileIfNonEmpty(artifactFile);
+  if (!content) {
+    return { valid: false, reasons: [`主持人动态参与者清单 artifact 缺失或为空：${artifactFile}`] };
+  }
+  const jsonText = extractJsonObjectText(content);
+  if (!jsonText) {
+    return { valid: false, reasons: [`主持人动态参与者清单缺少 JSON 对象：${artifactFile}`] };
+  }
+  try {
+    const parsed = JSON.parse(jsonText);
+    return normalizeLobsterDebateParticipantRosterObject(parsed, artifactFile);
+  } catch (error) {
+    return { valid: false, reasons: [`主持人动态参与者清单 JSON 无法解析：${errorToMessage(error)}`] };
+  }
+}
+
+function normalizeLobsterDebateParticipantRosterObject(
+  value: unknown,
+  artifactFile: string,
+): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { valid: false, reasons: ["主持人动态参与者清单必须是 JSON 对象。"] };
+  }
+  const raw = value as {
+    artifactFile?: unknown;
+    summary?: unknown;
+    participants?: unknown;
+  };
+  if (typeof raw.artifactFile !== "string" || !raw.artifactFile.trim()) {
+    reasons.push("主持人动态参与者清单 JSON 必须包含 artifactFile。");
+  }
+  if (typeof raw.artifactFile === "string" && raw.artifactFile.trim() && raw.artifactFile.trim() !== artifactFile) {
+    reasons.push(`主持人动态参与者清单 artifactFile 与实际文件不一致：${raw.artifactFile}`);
+  }
+  const summary = typeof raw.summary === "string" && raw.summary.trim()
+    ? raw.summary.trim()
+    : "";
+  if (!summary) {
+    reasons.push("主持人动态参与者清单 JSON 必须包含非空 summary。");
+  }
+  if (!Array.isArray(raw.participants)) {
+    reasons.push("主持人动态参与者清单 JSON 必须包含 participants 数组。");
+    return { valid: false, reasons };
+  }
+  if (raw.participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS || raw.participants.length > LOBSTER_DEBATE_MAX_PARTICIPANTS) {
+    reasons.push(`主持人动态参与者数量必须在 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个之间。`);
+  }
+
+  const ids = new Set<string>();
+  const participants = raw.participants
+    .map((item, index): LobsterDebateParticipantDefinition | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        reasons.push(`第 ${index + 1} 个参与者必须是对象。`);
+        return null;
+      }
+      const participant = item as {
+        id?: unknown;
+        role?: unknown;
+        title?: unknown;
+        focus?: unknown;
+      };
+      const id = typeof participant.id === "string" ? participant.id.trim() : "";
+      const title = typeof participant.title === "string" ? participant.title.trim() : "";
+      const focus = typeof participant.focus === "string" ? participant.focus.trim() : "";
+      const role = normalizeLobsterDebateParticipantRole(participant.role);
+      if (!id || !/^[a-z0-9][a-z0-9_.-]{1,48}$/u.test(id)) {
+        reasons.push(`第 ${index + 1} 个参与者 id 非法：${id || "<empty>"}`);
+      }
+      if (id === LOBSTER_DEBATE_MODERATOR_ID || id === "consensus") {
+        reasons.push(`参与者 id 不能使用保留值：${id}`);
+      }
+      if (id && ids.has(id)) {
+        reasons.push(`参与者 id 重复：${id}`);
+      }
+      if (id) {
+        ids.add(id);
+      }
+      if (!role) {
+        reasons.push(`参与者 ${id || index + 1} role 非法。`);
+      }
+      if (!title) {
+        reasons.push(`参与者 ${id || index + 1} title 不能为空。`);
+      }
+      if (!focus) {
+        reasons.push(`参与者 ${id || index + 1} focus 不能为空。`);
+      }
+      if (!id || !role || !title || !focus) {
+        return null;
+      }
+      return { id, role, title, focus };
+    })
+    .filter((participant): participant is LobsterDebateParticipantDefinition => Boolean(participant));
+
+  if (participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS) {
+    reasons.push(`可用参与者不足 ${LOBSTER_DEBATE_MIN_PARTICIPANTS} 个。`);
+  }
+  if (reasons.length > 0) {
+    return { valid: false, reasons };
+  }
+  return { valid: true, participants, summary };
+}
+
+function normalizeLobsterDebateParticipantRole(value: unknown): LobsterDebateParticipantRole | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return LOBSTER_DEBATE_PARTICIPANT_ROLES.some((role) => role === normalized)
+    ? normalized as LobsterDebateParticipantRole
+    : null;
+}
+
+function readLobsterDebateModeratorDecisionArtifact(
+  artifactFile: string,
+  dialogueTurn: number,
+): LobsterDebateModeratorDecisionRecord | null {
+  const content = readTextFileIfNonEmpty(artifactFile);
+  if (!content) {
+    return null;
+  }
+  const jsonText = extractJsonObjectText(content);
+  if (jsonText) {
+    try {
+      const parsed = JSON.parse(jsonText);
+      const decision = normalizeLobsterDebateModeratorDecisionObject(parsed, artifactFile, dialogueTurn);
+      if (decision) {
+        return decision;
+      }
+    } catch {
+      // Fall back to markdown parsing below.
+    }
+  }
+
+  const decisionSection = extractMarkdownSection(content, "主持人决策") ?? content.slice(0, 1600);
+  const action = extractLobsterDebateModeratorAction(decisionSection);
+  if (!action) {
+    return null;
+  }
+  const reason = extractMarkdownSection(content, "理由")
+    ?? extractMarkdownSection(content, "主持人理由")
+    ?? extractMarkdownSection(content, "收束或继续理由")
+    ?? summarizeLobsterDebateArtifact(content);
+  return {
+    artifactFile,
+    dialogueTurn,
+    action,
+    reason: reason.trim() || "主持人未提供理由。",
+    nextFocus: extractLobsterDebateModeratorNextFocus(content),
+    updatedAt: Date.now(),
+  };
+}
+
+function normalizeLobsterDebateModeratorDecisionObject(
+  value: unknown,
+  artifactFile: string,
+  dialogueTurn: number,
+): LobsterDebateModeratorDecisionRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as {
+    artifactFile?: unknown;
+    dialogueTurn?: unknown;
+    action?: unknown;
+    reason?: unknown;
+    nextFocus?: unknown;
+    nextFocusQuestions?: unknown;
+  };
+  const action = extractLobsterDebateModeratorAction(raw.action);
+  if (!action) {
+    return null;
+  }
+  const reason = typeof raw.reason === "string" && raw.reason.trim()
+    ? raw.reason.trim()
+    : "主持人未提供理由。";
+  const nextFocusValue = Array.isArray(raw.nextFocus) ? raw.nextFocus : raw.nextFocusQuestions;
+  const nextFocus = Array.isArray(nextFocusValue)
+    ? nextFocusValue
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim())
+      .slice(0, 8)
+    : [];
+  return {
+    artifactFile: typeof raw.artifactFile === "string" && raw.artifactFile.trim()
+      ? raw.artifactFile.trim()
+      : artifactFile,
+    dialogueTurn: typeof raw.dialogueTurn === "number" && Number.isFinite(raw.dialogueTurn)
+      ? Math.max(1, Math.trunc(raw.dialogueTurn))
+      : dialogueTurn,
+    action,
+    reason,
+    nextFocus,
+    updatedAt: Date.now(),
+  };
+}
+
+function extractLobsterDebateModeratorAction(value: unknown): LobsterDebateModeratorDecisionRecord["action"] | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const explicit = value.match(/\b(continue|finalize|block)\b/i)?.[1];
+  if (explicit) {
+    return normalizeLobsterDebateModeratorAction(explicit);
+  }
+  if (/阻塞|人工复核|无法继续|不能继续/u.test(value)) {
+    return "block";
+  }
+  if (/收束|最终立场|进入共识|汇总|结束辩论/u.test(value)) {
+    return "finalize";
+  }
+  if (/继续|下一轮|追问|再讨论/u.test(value)) {
+    return "continue";
+  }
+  return null;
+}
+
+function extractLobsterDebateModeratorNextFocus(content: string): string[] {
+  const section = extractMarkdownSection(content, "下一轮关注点")
+    ?? extractMarkdownSection(content, "继续关注点")
+    ?? "";
+  return section
+    .split(/\r?\n/g)
+    .map((line) => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function extractLobsterDebateParticipantStance(content: string): LobsterDebateParticipantStance | null {
+  const stanceSection = extractMarkdownSection(content, "立场") ?? content.slice(0, 1200);
+  const explicit = stanceSection.match(/\b(agree_with_reservations|agree|block)\b/i)?.[1];
+  if (explicit) {
+    return normalizeLobsterDebateParticipantStance(explicit);
+  }
+  if (/阻塞|不同意|不能继续/u.test(stanceSection)) {
+    return "block";
+  }
+  if (/保留|风险|reservation/i.test(stanceSection)) {
+    return "agree_with_reservations";
+  }
+  if (/同意|通过|agree/i.test(stanceSection)) {
+    return "agree";
+  }
+  return null;
+}
+
+function extractLobsterDebateBlockingIssues(
+  content: string,
+  stance: LobsterDebateParticipantStance | undefined,
+): string[] | undefined {
+  const section = extractMarkdownSection(content, "阻塞性异议");
+  if (!section) {
+    return stance === "block" ? ["参与者声明 block，但未写明阻塞性异议。"] : undefined;
+  }
+  const normalized = section.trim();
+  if (!normalized || /^无(?:。|$)/u.test(normalized) || /^none$/i.test(normalized)) {
+    return stance === "block" ? ["参与者声明 block，但阻塞性异议小节为空。"] : undefined;
+  }
+  const issues = normalized
+    .split(/\r?\n/g)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  return issues.length > 0 ? issues : undefined;
+}
+
+function extractMarkdownSection(content: string, title: string): string | null {
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(?:^|\\n)##\\s*${escapedTitle}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "u");
+  const match = content.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+function summarizeLobsterDebateArtifact(content: string): string {
+  const normalized = content.trim().replace(/\s+/g, " ");
+  return normalized.length > LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT
+    ? `${normalized.slice(0, LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT)}...`
+    : normalized;
+}
+
+function isCompleteLobsterDebateChatTranscript(content: string): boolean {
+  return /##\s*群聊收束/u.test(content)
+    && /##\s*参与者加入：/u.test(content)
+    && /主持人最终动作：(?:continue|finalize|block)/u.test(content)
+    && /##\s*第\s+\d+\s+轮主持人控场/u.test(content);
+}
+
+function readLobsterDebateConsensusRecord(
+  consensusFile: string,
+  participants: LobsterDebateParticipantRecord[],
+  decision: LobsterMainDecision,
+): LobsterDebateConsensusRecord<LobsterMainDecision> | null {
+  const content = readTextFileIfNonEmpty(consensusFile);
+  if (!content) {
+    return null;
+  }
+  const jsonText = extractJsonObjectText(content);
+  if (!jsonText) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(jsonText);
+    return normalizeLobsterDebateConsensusRecord(parsed, consensusFile, participants, decision);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLobsterDebateConsensusRecord(
+  value: unknown,
+  artifactFile: string,
+  participants: LobsterDebateParticipantRecord[],
+  decision: LobsterMainDecision,
+): LobsterDebateConsensusRecord<LobsterMainDecision> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as {
+    artifactFile?: unknown;
+    reached?: unknown;
+    summary?: unknown;
+    participantStances?: unknown;
+    resolvedDisagreements?: unknown;
+    openDisagreements?: unknown;
+  };
+  const summary = typeof raw.summary === "string" && raw.summary.trim()
+    ? raw.summary.trim()
+    : "";
+  if (
+    typeof raw.artifactFile !== "string"
+    || !raw.artifactFile.trim()
+    || typeof raw.reached !== "boolean"
+    || !summary
+    || !hasValidLobsterDebateConsensusStanceRecords(raw.participantStances)
+    || !hasValidLobsterDebateDisagreementRecords(raw.resolvedDisagreements)
+    || !hasValidLobsterDebateDisagreementRecords(raw.openDisagreements)
+  ) {
+    return null;
+  }
+  return {
+    artifactFile: raw.artifactFile.trim() || artifactFile,
+    reached: raw.reached === true,
+    summary,
+    participantStances: normalizeLobsterDebateConsensusStances(raw.participantStances, participants),
+    resolvedDisagreements: normalizeLobsterDebateDisagreements(raw.resolvedDisagreements),
+    openDisagreements: normalizeLobsterDebateDisagreements(raw.openDisagreements),
+    decision,
+  };
+}
+
+function hasValidLobsterDebateConsensusStanceRecords(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) {
+    return false;
+  }
+  return value.every((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return false;
+    }
+    const raw = item as { participantId?: unknown; stance?: unknown };
+    return (
+      typeof raw.participantId === "string"
+      && Boolean(raw.participantId.trim())
+      && Boolean(normalizeLobsterDebateParticipantStance(raw.stance))
+    );
+  });
+}
+
+function normalizeLobsterDebateConsensusStances(
+  value: unknown,
+  participants: LobsterDebateParticipantRecord[],
+): LobsterDebateConsensusRecord<LobsterMainDecision>["participantStances"] {
+  const stances = new Map<string, { participantId: string; stance: LobsterDebateParticipantStance; note?: string }>();
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return;
+      }
+      const raw = item as { participantId?: unknown; stance?: unknown; note?: unknown };
+      const participantId = typeof raw.participantId === "string" && raw.participantId.trim()
+        ? raw.participantId.trim()
+        : "";
+      const stance = normalizeLobsterDebateParticipantStance(raw.stance);
+      if (!participantId || !stance) {
+        return;
+      }
+      stances.set(participantId, {
+        participantId,
+        stance,
+        note: typeof raw.note === "string" ? raw.note : undefined,
+      });
+    });
+  }
+  participants.forEach((participant) => {
+    if (!participant.stance || stances.has(participant.id)) {
+      return;
+    }
+    stances.set(participant.id, {
+      participantId: participant.id,
+      stance: participant.stance,
+      note: participant.summary,
+    });
+  });
+  return Array.from(stances.values());
+}
+
+function hasValidLobsterDebateDisagreementRecords(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.every((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return false;
+    }
+    const raw = item as {
+      id?: unknown;
+      title?: unknown;
+      participants?: unknown;
+      severity?: unknown;
+      resolution?: unknown;
+    };
+    return (
+      typeof raw.id === "string"
+      && Boolean(raw.id.trim())
+      && typeof raw.title === "string"
+      && Boolean(raw.title.trim())
+      && Array.isArray(raw.participants)
+      && raw.participants.every((participant) => typeof participant === "string" && Boolean(participant.trim()))
+      && (raw.severity === "blocking" || raw.severity === "non_blocking")
+      && (raw.resolution === undefined || typeof raw.resolution === "string")
+    );
+  });
+}
+
+function normalizeLobsterDebateDisagreements(value: unknown): LobsterDebateDisagreementRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item, index): LobsterDebateDisagreementRecord | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+      const raw = item as {
+        id?: unknown;
+        title?: unknown;
+        participants?: unknown;
+        severity?: unknown;
+        resolution?: unknown;
+      };
+      const id = typeof raw.id === "string" && raw.id.trim()
+        ? raw.id.trim()
+        : `disagreement-${index + 1}`;
+      const title = typeof raw.title === "string" && raw.title.trim()
+        ? raw.title.trim()
+        : id;
+      const participants = Array.isArray(raw.participants)
+        ? raw.participants.filter((participant): participant is string => typeof participant === "string" && Boolean(participant.trim()))
+        : [];
+      return {
+        id,
+        title,
+        participants,
+        severity: raw.severity === "blocking" ? "blocking" : "non_blocking",
+        resolution: typeof raw.resolution === "string" ? raw.resolution : undefined,
+      };
+    })
+    .filter((item): item is LobsterDebateDisagreementRecord => Boolean(item));
+}
+
+function mergeLobsterDebateConsensusWithParticipantArtifacts(
+  consensus: LobsterDebateConsensusRecord<LobsterMainDecision>,
+  participants: LobsterDebateParticipantRecord[],
+  decision: LobsterMainDecision,
+): LobsterDebateConsensusRecord<LobsterMainDecision> {
+  return {
+    ...consensus,
+    participantStances: normalizeLobsterDebateConsensusStances(consensus.participantStances, participants),
+    decision,
+  };
+}
+
+function markLobsterDebateNeedsReview(options: {
+  task: LobsterTaskRecord;
+  target: PromptRunTarget;
+  round: number;
+  debateRound: number;
+  paths: LobsterDebatePaths;
+  participants: LobsterDebateParticipantRecord[];
+  reasons: string[];
+  consensus?: LobsterDebateConsensusRecord<LobsterMainDecision>;
+  status: Exclude<LobsterDebateRoundStatus, "running" | "consensus">;
+}): LobsterMainDecisionRunResult {
+  const { task, target, round, debateRound, paths, participants, reasons, consensus, status } = options;
+  const summary = buildLobsterDebateFailureSummary(reasons);
+  const startedAt = getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now();
+	  upsertLobsterDebateRoundRecord(task.id, {
+	    lobsterRound: round,
+	    debateRound,
+	    status,
+    startedAt,
+	    completedAt: Date.now(),
+	    briefFile: paths.briefFile,
+	    chatFile: paths.chatFile,
+	    participantRosterFile: paths.participantRosterFile,
+	    participants,
+	    consensus,
+	  });
+	  const failedRecord = updateLobsterTaskRecord(task.id, {
+	    status: "needs-review",
+	    activeSubtaskId: null,
+	    activeSubtaskIds: [],
+	    updatedAt: Date.now(),
+	    finalSummary: summary,
+	  }) ?? task;
+	  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  appendSystemMessageForLobster(target, buildLobsterDebateNeedsReviewText(task.id, round, reasons, paths));
+  appendLobsterDebateMainCommunicationLog(failedRecord, round, paths, "辩论未达成一致", reasons);
+  return { status: "needs-review", task: failedRecord };
+}
+
+function buildLobsterDebateFailureSummary(reasons: string[]): string {
+  const normalized = reasons.map((reason) => reason.trim()).filter(Boolean);
+  return `辩论未达成一致，已进入人工复核。原因：${normalized.join("；") || "未提供具体原因。"}`;
+}
+
+function getExistingLobsterDebateRoundStartedAt(
+  task: LobsterTaskRecord,
+  round: number,
+  debateRound: number,
+): number | null {
+  const record = task.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  return typeof record?.startedAt === "number" ? record.startedAt : null;
+}
+
+function upsertLobsterDebateRoundRecord(
+  taskId: string,
+  roundRecord: LobsterDebateRoundRecord<LobsterMainDecision>,
+): void {
+  const latest = readLobsterTaskRecord(taskId);
+  if (!latest) {
+    return;
+  }
+  const debateRounds = Array.isArray(latest.debateRounds) ? [...latest.debateRounds] : [];
+  const existingIndex = debateRounds.findIndex((item) => (
+    item.lobsterRound === roundRecord.lobsterRound
+    && item.debateRound === roundRecord.debateRound
+  ));
+	  if (existingIndex >= 0) {
+	    debateRounds[existingIndex] = {
+	      ...debateRounds[existingIndex],
+	      ...roundRecord,
+	      participants: roundRecord.participants,
+	      participantRosterFile: roundRecord.participantRosterFile ?? debateRounds[existingIndex].participantRosterFile,
+	      participantRosterSessionId: roundRecord.participantRosterSessionId ?? debateRounds[existingIndex].participantRosterSessionId,
+	      activeSpeaker: roundRecord.activeSpeaker,
+	      consensus: roundRecord.consensus,
+	    };
+  } else {
+    debateRounds.push(roundRecord);
+  }
+  updateLobsterTaskRecord(taskId, {
+    debateRounds,
+    updatedAt: Date.now(),
+  });
+}
+
+function updateLobsterDebateParticipantRecord(
+  taskId: string,
+  round: number,
+  debateRound: number,
+  participant: LobsterDebateParticipantRecord,
+  startedAt: number,
+  briefFile: string,
+  chatFile: string,
+  activeSpeaker?: LobsterDebateActiveSpeakerRecord,
+): void {
+  const latest = readLobsterTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const participants = existingRound?.participants?.length
+    ? [...existingRound.participants]
+    : [];
+  const index = participants.findIndex((item) => item.id === participant.id);
+  if (index >= 0) {
+    participants[index] = { ...participants[index], ...participant };
+  } else {
+    participants.push(participant);
+  }
+	  upsertLobsterDebateRoundRecord(taskId, {
+	    lobsterRound: round,
+	    debateRound,
+	    status: "running",
+    startedAt,
+    briefFile,
+    chatFile,
+    participantRosterFile: existingRound?.participantRosterFile,
+    participants,
+    activeSpeaker,
+  });
+}
+
+function updateLobsterDebateActiveSpeakerRecord(
+  taskId: string,
+  round: number,
+  debateRound: number,
+  startedAt: number,
+  paths: LobsterDebatePaths,
+  activeSpeaker: LobsterDebateActiveSpeakerRecord,
+): void {
+  const latest = readLobsterTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const participants = existingRound?.participants?.length
+    ? [...existingRound.participants]
+    : [];
+  upsertLobsterDebateRoundRecord(taskId, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    dialogueTurns: existingRound?.dialogueTurns,
+    participants,
+    moderatorDecisions: existingRound?.moderatorDecisions,
+    activeSpeaker,
+  });
+  refreshOpenLobsterDebateChatPanelForTask(taskId);
+}
+
+function updateLobsterDebateParticipantRosterSessionRecord(
+  taskId: string,
+  round: number,
+  debateRound: number,
+  sessionId: string | null,
+  startedAt: number,
+  paths: LobsterDebatePaths,
+): void {
+  const latest = readLobsterTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  upsertLobsterDebateRoundRecord(taskId, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    participantRosterSessionId: sessionId,
+    dialogueTurns: existingRound?.dialogueTurns,
+    participants: existingRound?.participants ?? [],
+    moderatorDecisions: existingRound?.moderatorDecisions,
+    activeSpeaker: existingRound?.activeSpeaker,
+  });
+}
+
+function updateLobsterDebateModeratorDecisionRecord(
+  taskId: string,
+  round: number,
+  debateRound: number,
+  decision: LobsterDebateModeratorDecisionRecord,
+  startedAt: number,
+  paths: LobsterDebatePaths,
+): void {
+  const latest = readLobsterTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const participants = existingRound?.participants?.length
+    ? [...existingRound.participants]
+    : [];
+  const moderatorDecisions = existingRound?.moderatorDecisions?.length
+    ? [...existingRound.moderatorDecisions]
+    : [];
+  const index = moderatorDecisions.findIndex((item) => item.dialogueTurn === decision.dialogueTurn);
+  if (index >= 0) {
+    moderatorDecisions[index] = decision;
+  } else {
+    moderatorDecisions.push(decision);
+  }
+  upsertLobsterDebateRoundRecord(taskId, {
+    lobsterRound: round,
+    debateRound,
+    status: "running",
+    startedAt,
+    briefFile: paths.briefFile,
+    chatFile: paths.chatFile,
+    participantRosterFile: paths.participantRosterFile,
+    dialogueTurns: decision.dialogueTurn,
+    participants,
+    moderatorDecisions,
+  });
+}
+
+function buildLobsterDebateBriefMarkdown(
+  task: LobsterTaskRecord,
+  target: PromptRunTarget,
+  round: number,
+  paths: LobsterDebatePaths,
+): string {
+  const communication = getLobsterCommunicationPaths(task.id);
+  const lines: string[] = [
+    "# 龙虾辩论简报",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- 龙虾轮次：${round}`,
+    `- 生成时间：${new Date().toISOString()}`,
+    `- 任务记录文件：${task.taskStoreFile}`,
+    `- 主沟通文件：${task.mainCommunicationFile}`,
+    `- 子任务沟通目录：${communication.subtasksDir}`,
+    `- 当前 CLI：${target.cli}`,
+    `- 执行方式：debate_multi_agent`,
+    `- 上一轮 estimatedRemainingRounds：${formatLobsterEstimatedRemainingRounds(task.estimatedRemainingRounds) ?? "未记录"}`,
+    `- brief 文件：${paths.briefFile}`,
+    `- 群聊记录文件：${paths.chatFile}`,
+    `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+    `- 主持人角色：${LOBSTER_DEBATE_MODERATOR_TITLE}`,
+    "",
+    "## 原始目标",
+    task.rootPrompt,
+    "",
+    "## 子任务概要",
+    ...buildLobsterDebateSubtaskSummaryLines(task),
+    "",
+    "## 参与者约束",
+    "- 参与者只能读取仓库、任务记录、主沟通文件和子任务沟通目录。",
+    "- 参与者只能写入本轮提示词指定的单个 artifact 文件，不得修改仓库代码、任务记录或其他沟通文件。",
+    "- 扩展会把每次角色发言追加到 chat.md，后续角色必须读取并回应该共享群聊记录。",
+    "- 同一发言批次内的参与者可并行执行；扩展会等待本批次全部 artifact 完成后再按清单顺序追加到 chat.md，并启动主持人控场。",
+    "- 每个发言批次后由主持人读取 chat.md 并决定 continue / finalize / block。",
+    "- 参与者不得直接输出最终 LobsterMainDecision。",
+    "- 共识汇总器只能读取 brief、chat.md 和 participant artifacts，负责生成 cross-review.md、consensus.md 和 decision.json。",
+    "",
+    "## 主持人选角",
+    `- 主持人必须先写入动态参与者清单：${paths.participantRosterFile}`,
+    `- 参与者数量范围：${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS}`,
+    "- 后续群聊只按主持人选定的参与者推进，不使用固定 4 人兜底。",
+    "",
+    "## 可参考的参与者原型",
+    ...LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS.map((participant) => (
+      `- ${participant.id}（${participant.title}）：${participant.focus}`
+    )),
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function buildLobsterDebateInitialChatMarkdown(
+  task: LobsterTaskRecord,
+  target: PromptRunTarget,
+  round: number,
+  paths: LobsterDebatePaths,
+): string {
+  const lines: string[] = [
+    "# 龙虾辩论群聊记录",
+    "",
+    `- 任务 ID：${task.id}`,
+    `- 龙虾轮次：${round}`,
+    `- 当前 CLI：${target.cli}`,
+    `- brief 文件：${paths.briefFile}`,
+    `- 参与者清单文件：${paths.participantRosterFile}`,
+    `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+    `- 主持人：${LOBSTER_DEBATE_MODERATOR_TITLE}(${LOBSTER_DEBATE_MODERATOR_ID})`,
+    "",
+    "## 群聊规则",
+    "- 每位角色必须读取本文件中已有发言后再输出自己的下一条发言。",
+    "- 主持人先根据任务目标设计参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
+    "- 每个发言批次内动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由主持人根据完整群聊决定 continue / finalize / block。",
+    "- 主持人可以要求继续讨论，也可以提前收束，不需要等到最大安全发言批次数。",
+    "- 一旦达到最大安全发言批次数，主持人必须收束，运行时不得继续追加讨论。",
+    "- 收束后由共识汇总器读取完整群聊和最终立场，生成 cross-review.md、consensus.md 和 decision.json。",
+    "",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function buildLobsterDebateParticipantRosterChatMarkdown(
+  participants: readonly LobsterDebateParticipantDefinition[],
+  summary: string,
+): string {
+  const lines: string[] = [
+    "",
+    "## 任务事件",
+    "",
+    "主持人已根据任务目标完成动态参与者设计。",
+    summary ? `选角说明：${summary}` : "选角说明：未提供。",
+    "",
+    ...participants.flatMap((participant) => [
+      `## 参与者加入：${participant.title}（${participant.id}）`,
+      "",
+      `角色类型：${participant.role}`,
+      `关注重点：${participant.focus}`,
+      "",
+    ]),
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function buildLobsterDebateChatTurnMarkdown(
+  dialogueTurn: number,
+  participantId: string,
+  participantTitle: string,
+  artifactText: string,
+): string {
+  return [
+    "",
+    `## 发言：${participantTitle}（${participantId}）`,
+    "",
+    `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+    "",
+    artifactText.trim(),
+    "",
+  ].join("\n");
+}
+
+function buildLobsterDebateModeratorTurnMarkdown(
+  dialogueTurn: number,
+  artifactText: string,
+): string {
+  return [
+    "",
+    `## 主持人控场（${LOBSTER_DEBATE_MODERATOR_TITLE}）`,
+    "",
+    `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+    "",
+    artifactText.trim(),
+    "",
+  ].join("\n");
+}
+
+function buildLobsterDebateDialogueTurnChatEventMarkdown(
+  round: number,
+  dialogueTurn: number,
+  maxDialogueTurns: number,
+  previousDecision: LobsterDebateModeratorDecisionRecord | null,
+): string {
+  const lines = [
+    "",
+    "## 任务事件",
+    "",
+    "辩论发言批次开始。",
+    `- 主任务复核轮次：${round}`,
+    `- 当前发言批次：${dialogueTurn}`,
+    `- 最大安全发言批次数：${maxDialogueTurns}`,
+    previousDecision?.nextFocus?.length
+      ? `- 主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
+      : "- 主持人上一批次关注点：无",
+    "- 本批次参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
+    "- 本批次结束后由主持人决定是否继续、收束或阻塞。",
+    "",
+  ];
+  return lines.join("\n");
+}
+
+function buildLobsterDebateRuntimeForcedFinalizeMarkdown(
+  decision: LobsterDebateModeratorDecisionRecord,
+): string {
+  return [
+    "",
+    "## 运行时强制收束",
+    "",
+    `主持人最终动作：${decision.action}`,
+    `主持人理由：${decision.reason}`,
+    "",
+  ].join("\n");
+}
+
+function buildLobsterDebateFinalParticipantMarkdown(
+  participantId: string,
+  participantTitle: string,
+  artifactText: string,
+): string {
+  return [
+    "",
+    `## 最终立场：${participantTitle}（${participantId}）`,
+    "",
+    artifactText.trim(),
+    "",
+  ].join("\n");
+}
+
+function buildLobsterDebateDialogueClosedMarkdown(
+  completedDialogueTurns: number,
+  maxDialogueTurns: number,
+  decision: LobsterDebateModeratorDecisionRecord,
+): string {
+  return [
+    "",
+    "## 群聊收束",
+    "",
+    `主持人最终动作：${decision.action}`,
+    `主持人理由：${decision.reason}`,
+    `实际完成发言批次数：${completedDialogueTurns}/${maxDialogueTurns}`,
+    decision.nextFocus.length > 0
+      ? `下一轮关注点：${decision.nextFocus.join("；")}`
+      : "下一轮关注点：无",
+    "",
+    decision.action === "block"
+      ? "主持人已判定当前讨论无法继续推进到可执行共识，后续只保留人工复核。"
+      : "运行时已停止追加新的发言批次，后续由共识汇总器生成 cross-review.md、consensus.md 和 decision.json。",
+    "",
+  ].join("\n");
+}
+
+function buildLobsterDebateSubtaskSummaryLines(task: LobsterTaskRecord): string[] {
+  if (!task.subTasks.length) {
+    return ["- 尚无子任务记录。"];
+  }
+  const completed = task.subTasks.filter((subtask) => subtask.status === "completed");
+  const running = task.subTasks.filter((subtask) => subtask.status === "running");
+  const failed = task.subTasks.filter((subtask) => subtask.status === "blocked" || subtask.status === "skipped");
+  const pending = task.subTasks.filter((subtask) => subtask.status === "pending");
+  return [
+    `- 已完成：${formatLobsterDebateSubtaskList(completed)}`,
+    `- 运行中：${formatLobsterDebateSubtaskList(running)}`,
+    `- 失败/阻塞：${formatLobsterDebateSubtaskList(failed)}`,
+    `- 待处理：${formatLobsterDebateSubtaskList(pending)}`,
+  ];
+}
+
+function formatLobsterDebateSubtaskList(subtasks: LobsterSubtaskRecord[]): string {
+  if (subtasks.length === 0) {
+    return "无";
+  }
+  return subtasks.map((subtask) => {
+    const summary = subtask.summary ? `（${subtask.summary.slice(0, 120)}）` : "";
+    return `${subtask.id}:${subtask.title}${summary}`;
+  }).join("；");
+}
+
+function buildLobsterDebateParticipantDisplayPrompt(
+  round: number,
+  dialogueTurn: number,
+  title: string,
+  finalPass: boolean,
+): string {
+  return finalPass
+    ? `🦞 龙虾辩论第 ${round} 轮最终立场：${title}`
+    : `🦞 龙虾辩论第 ${round} 轮群聊 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}：${title}`;
+}
+
+function buildLobsterDebateParticipantRosterModelPrompt(
+  task: LobsterTaskRecord,
+  round: number,
+  paths: LobsterDebatePaths,
+): string {
+  const suggestedParticipants = LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS
+    .map((participant) => `- ${participant.id}（${participant.title}，${participant.role}）：${participant.focus}`)
+    .join("\n");
+  return [
+    "你正在执行 VS Code 插件的龙虾模式辩论主持人选角阶段。",
+    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
+    "你的职责是先判断本轮辩论需要哪些参与者，再写出动态参与者清单。后续群聊将只按你的清单推进。",
+    `龙虾任务 ID：${task.id}`,
+    `当前轮次：${round}`,
+    `任务记录文件：${task.taskStoreFile}`,
+    `brief 文件：${paths.briefFile}`,
+    `群聊记录文件：${paths.chatFile}`,
+    `参与者清单 artifact：${paths.participantRosterFile}`,
+    `主沟通文件：${task.mainCommunicationFile}`,
+    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
+    "",
+    "职责和限制：",
+    "1. 只能读取 brief、任务记录、主沟通文件、子任务沟通目录和必要仓库文件；不得修改仓库业务文件或任务记录。",
+    "2. 只能写入参与者清单 artifact；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
+    `3. 必须设计 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个参与者。复杂任务可更多，简单任务可更少。`,
+    "4. 不要机械固定使用架构/实现/测试/风险四人；要基于原始目标选择真正需要的角色。",
+    "5. 参与者 id 必须唯一，只能使用小写字母、数字、下划线、点、短横线，且不能使用 moderator 或 consensus。",
+    `6. role 只能取：${LOBSTER_DEBATE_PARTICIPANT_ROLES.join(" / ")}。不匹配时使用 custom。`,
+    "",
+    "可参考的参与者原型（只是参考，不是固定名单）：",
+    suggestedParticipants,
+    "",
+    "artifact 必须包含以下固定小节，标题必须完全一致：",
+    "## 选角说明",
+    "说明为什么选择这些参与者，以及为什么没有选择其他常见角色。",
+    "",
+    "## JSON",
+    "必须提供一个 JSON 代码块，结构如下。participants 数量必须在允许范围内。",
+    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"选角摘要","participants":[{"id":"architecture","role":"architecture","title":"架构规划","focus":"审查模块边界、依赖顺序和复用策略"}]}`,
+    "",
+    "原始目标：",
+    task.rootPrompt,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantModelPrompt(
+  task: LobsterTaskRecord,
+  round: number,
+  dialogueTurn: number,
+  maxDialogueTurns: number,
+  finalPass: boolean,
+  paths: LobsterDebatePaths,
+  participant: LobsterDebateParticipantDefinition,
+  artifactFile: string,
+  moderatorDecision: LobsterDebateModeratorDecisionRecord | null,
+): string {
+  const turnPurpose = finalPass
+    ? "主持人收束后的最终立场"
+    : `第 ${dialogueTurn} 个发言批次的开场或交叉回应`;
+  const finalTurnSections = [
+    "## 立场",
+    "只能写一个值：agree / agree_with_reservations / block。可以在下一行补充一句理由。",
+    "",
+    "## 建议规划",
+    "给出你认可的阶段规划或修正建议。",
+    "",
+    "## 子任务建议",
+    "列出建议派发的子任务，说明每个子任务的范围、预期写入文件和依赖。",
+    "",
+    "## 并发与冲突判断",
+    "判断哪些子任务可以并发，哪些必须串行，以及原因。",
+    "",
+    "## 验收标准",
+    "列出完成或继续派发前必须满足的验证与证据。",
+    "",
+    "## 阻塞性异议",
+    "没有阻塞性异议时写“无”。有阻塞性异议时逐条列出，并保持立场为 block。",
+  ];
+  const moderatorGuidance = moderatorDecision
+    ? [
+      "",
+      "## 主持人控场摘要",
+      `- 主持人动作：${moderatorDecision.action}`,
+      `- 主持人理由：${moderatorDecision.reason}`,
+      moderatorDecision.nextFocus.length > 0
+        ? `- 下一批次关注点：${moderatorDecision.nextFocus.join("；")}`
+        : "- 下一批次关注点：无",
+    ]
+    : [];
+  return [
+    "你正在执行 VS Code 插件的龙虾模式辩论参与者。",
+    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
+    "注意：这是一个受控模拟群聊。你必须读取 chat.md 中已经出现的发言，然后以自己的角色身份继续发言。",
+    "注意：同一发言批次内的参与者可能并行执行；你只能回应 chat.md 中在本次启动前已经存在的内容，不要假设能读到同批次其他参与者尚未落盘的发言。",
+    `龙虾任务 ID：${task.id}`,
+    `当前轮次：${round}`,
+    finalPass
+      ? "本次阶段：主持人收束后的最终立场收集"
+      : `当前发言批次：${dialogueTurn}，最大安全上限：${maxDialogueTurns}`,
+    `本轮目的：${turnPurpose}`,
+    `参与者 ID：${participant.id}`,
+    `参与者角色：${participant.title}`,
+    `关注重点：${participant.focus}`,
+    `任务记录文件：${task.taskStoreFile}`,
+    `brief 文件：${paths.briefFile}`,
+    `群聊记录文件：${paths.chatFile}`,
+    `主沟通文件：${task.mainCommunicationFile}`,
+    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
+    `你的 artifact 文件：${artifactFile}`,
+    ...moderatorGuidance,
+    "",
+    "职责和限制：",
+    "1. 你只做规划/审查/验收判断，不直接修改仓库业务文件，不更新任务记录。",
+    "2. 你必须读取 brief、chat.md，并按需要读取任务记录、主沟通文件、子任务沟通目录和仓库现状。",
+    "3. 你只能写入上面指定的 artifact 文件；不要直接修改 chat.md、cross-review.md、consensus.md 或 decision.json。",
+    "4. 你不能直接输出最终 LobsterMainDecision JSON；最终决策由共识汇总器在读取完整群聊后生成。",
+    "5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；如果当前只有系统消息、参与者加入消息或暂无其他角色发言，则说明你的开场判断。",
+    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。主持人可以在任意批次后要求继续、收束或阻塞；达到安全上限时必须收束，不得继续追加辩论。`,
+    "7. 如果发现会导致越权写入、并发冲突、缺少验收或无法满足原始目标的问题，最终立场必须使用 block。",
+    "",
+    "artifact 必须包含以下固定小节，标题必须完全一致：",
+    "## 群聊发言",
+    "用你的角色身份发言，必须结合 brief 和 chat.md 中已有内容。",
+    "",
+    "## 点名回应",
+    "列出你回应了哪些角色的哪些观点；若暂无其他角色发言，写“暂无，作为首位发言者开场”。",
+    "",
+    "## 追问或修正",
+    "给出你希望其他角色注意的问题、风险或修正建议；没有则写“无”。",
+    "",
+    ...(finalPass ? finalTurnSections : [
+      "## 暂定立场",
+      "只能写一个值：agree / agree_with_reservations / block，并补充一句原因。非最终轮的暂定立场不会直接用于派发子任务。",
+    ]),
+    "",
+    "原始目标：",
+    task.rootPrompt,
+  ].join("\n");
+}
+
+function buildLobsterDebateModeratorDisplayPrompt(
+  round: number,
+  dialogueTurn: number,
+  maxDialogueTurns: number,
+): string {
+  return `🦞 龙虾辩论第 ${round} 轮主持人控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
+}
+
+function buildLobsterDebateModeratorModelPrompt(
+  task: LobsterTaskRecord,
+  round: number,
+  dialogueTurn: number,
+  maxDialogueTurns: number,
+  paths: LobsterDebatePaths,
+  artifactFile: string,
+): string {
+  const atSafetyLimit = dialogueTurn >= maxDialogueTurns;
+  return [
+    "你正在执行 VS Code 插件的龙虾模式辩论主持人。",
+    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
+    "你的职责不是重新规划，而是主持模拟群聊：总结当前分歧，判断是否还需要追加一个发言批次追问，或是否可以收束进入最终立场。",
+    `龙虾任务 ID：${task.id}`,
+    `当前轮次：${round}`,
+    `当前发言批次：${dialogueTurn}`,
+    `最大安全发言批次数：${maxDialogueTurns}`,
+    `是否达到最大安全发言批次数：${atSafetyLimit ? "是" : "否"}`,
+    `任务记录文件：${task.taskStoreFile}`,
+    `brief 文件：${paths.briefFile}`,
+    `群聊记录文件：${paths.chatFile}`,
+    `主沟通文件：${task.mainCommunicationFile}`,
+    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
+    `你的 artifact 文件：${artifactFile}`,
+    "",
+    "职责和限制：",
+    "1. 只能读取 brief、chat.md、任务记录、主沟通文件、子任务沟通目录和必要仓库文件；不得修改仓库业务文件或任务记录。",
+    "2. 只能写入上面指定的主持人 artifact 文件；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
+    "3. 必须基于 chat.md 中已有角色发言做控场，不要脱离已有讨论重写方案。",
+    "4. action=continue 表示仍有明确、可回答、会影响派发决策的分歧，需要再追加一个发言批次。",
+    "5. action=finalize 表示讨论已经足够，下一步应收集最终立场并交给共识汇总器生成 decision.json。",
+    "6. action=block 表示当前讨论无法形成安全、可执行、可验收的自动化决策，必须进入人工复核。",
+    `7. 如果当前发言批次已经达到最大安全上限 ${maxDialogueTurns}/${maxDialogueTurns}，不得输出 action=continue，只能输出 finalize 或 block。`,
+    "8. 有参与者提出 block 时，不要立即阻塞；先判断能否通过下一批次追问澄清，或通过前置子任务/验收标准化解。无法化解时再 block。",
+    "",
+    "artifact 必须包含以下固定小节，标题必须完全一致：",
+    "## 群聊态势",
+    "用简短段落总结本轮已有共识、争议和未回答问题。",
+    "",
+    "## 点名追问",
+    "如果 action=continue，列出下一批次需要哪些角色回答什么问题；如果不继续，写“无”。",
+    "",
+    "## 主持人决策",
+    "只能写一个值：continue / finalize / block。",
+    "",
+    "## 理由",
+    "解释为什么继续、收束或阻塞。",
+    "",
+    "## 下一轮关注点",
+    "action=continue 时列出 1~5 条下一轮要聚焦的问题；否则写“无”。",
+    "",
+    "## JSON",
+    "必须提供一个 JSON 代码块，结构如下。action 只能是 continue / finalize / block。",
+    '{"artifactFile":"<moderator artifact path>","dialogueTurn":1,"action":"continue","reason":"原因","nextFocus":["下一轮关注点"]}',
+    "",
+    "原始目标：",
+    task.rootPrompt,
+  ].join("\n");
+}
+
+function buildLobsterDebateConsensusModelPrompt(
+  task: LobsterTaskRecord,
+  round: number,
+  paths: LobsterDebatePaths,
+  participants: LobsterDebateParticipantRecord[],
+): string {
+  const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
+  return [
+    "你正在执行 VS Code 插件的龙虾模式辩论共识汇总。",
+    "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖参与者 artifact 中的阻塞性异议。",
+    `龙虾任务 ID：${task.id}`,
+    `当前轮次：${round}`,
+    `任务记录文件：${task.taskStoreFile}`,
+    `brief 文件：${paths.briefFile}`,
+    `群聊记录文件：${paths.chatFile}`,
+    `cross-review 输出文件：${paths.crossReviewFile}`,
+    `consensus 输出文件：${paths.consensusFile}`,
+    `decision 输出文件：${paths.decisionFile}`,
+    "",
+    "必须读取的参与者 artifact：",
+    participantFiles,
+    "",
+    "职责和限制：",
+    "1. 只能读取 brief.md、chat.md、所有最终 participants/*.md，以及 brief 中指向的任务记录/沟通文件；不要修改仓库业务文件或任务记录。",
+    "2. 必须生成 cross-review.md、consensus.md 和 decision.json 三个文件。",
+    "3. 如果任一动态参与者 artifact 缺失、存在未解决 blocking disagreement、或你无法生成合法 LobsterMainDecision，则 decision.json 必须走 blocked 路径，不得派发子任务。",
+    "4. 参与者 artifact 的原始立场为 block 时，必须先判断阻塞项能否被本轮计划解决：如果能通过前置子任务、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该参与者最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
+    "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
+    "6. chat.md 已包含主持人控场与收束标记，不允许要求继续追加辩论回合；如果仍无法形成可执行共识，必须输出 blocked。",
+    "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
+    "",
+    "cross-review.md 内容要求：",
+    "- 按群聊时间线总结关键发言和互相回应。",
+    "- 对比所有动态参与者的最终观点。",
+    "- 列出已解决分歧和未解决分歧。",
+    "- 标明是否存在阻塞性异议。",
+    "",
+    "consensus.md 必须包含一个 JSON 代码块，结构如下：",
+    '{"artifactFile":"<consensus.md path>","reached":true,"summary":"共识摘要","participantStances":[{"participantId":"architecture","stance":"agree","note":"理由"}],"resolvedDisagreements":[{"id":"d1","title":"分歧标题","participants":["architecture","risk"],"severity":"non_blocking","resolution":"解决方式"}],"openDisagreements":[{"id":"d2","title":"分歧标题","participants":["risk"],"severity":"blocking","resolution":"未解决原因"}]}',
+    "",
+    "decision.json 必须是纯 JSON 对象，符合现有 LobsterMainDecision 协议：",
+    '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
+    '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
+    "",
+    "原始目标：",
+    task.rootPrompt,
+  ].join("\n");
+}
+
+function readTextFileIfNonEmpty(filePath: string): string | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const content = fs.readFileSync(filePath, "utf8").trim();
+    return content ? content : null;
+  } catch (error) {
+    void logError("read-text-file-error", { filePath, error: String(error) });
+    return null;
+  }
+}
+
+function writeTextFileEnsuringDir(filePath: string, content: string): boolean {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, "utf8");
+    return true;
+  } catch (error) {
+    void logError("write-text-file-error", { filePath, error: String(error) });
+    return false;
+  }
+}
+
+function appendTextFileEnsuringDir(filePath: string, content: string): boolean {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, content, "utf8");
+    return true;
+  } catch (error) {
+    void logError("append-text-file-error", { filePath, error: String(error) });
+    return false;
+  }
+}
+
+async function closeCompletedLobsterDebateTabs(tabIds: string[]): Promise<void> {
+  if (!getWorkspaceLobsterAutoCloseSubtaskTabs()) {
+    return;
+  }
+  for (const tabId of tabIds) {
+    if (tabId) {
+      await closeConversationTabAndRefreshPanel(tabId);
+    }
+  }
+}
+
+function buildLobsterDebateStartedText(
+  taskId: string,
+  round: number,
+  participants: LobsterDebateParticipantRecord[],
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论群聊已启动：主任务第 ${round} 轮，${participants.length} 个参与者，主持人控场，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
+    `龙虾任务：${taskId}`,
+    `brief：${paths.briefFile}`,
+    `chat：${paths.chatFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateDialogueTurnStartedText(
+  taskId: string,
+  round: number,
+  dialogueTurn: number,
+  maxDialogueTurns: number,
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论群聊发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由主持人判断是否继续`,
+    `龙虾任务：${taskId}`,
+    `chat：${paths.chatFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateRerunText(taskId: string, round: number, reasons: string[]): string {
+  return [
+    `🦞 辩论恢复校验未通过，将重跑第 ${round} 轮辩论。`,
+    `龙虾任务：${taskId}`,
+    `原因：${reasons.join("；")}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateReuseText(taskId: string, round: number, paths: LobsterDebatePaths): string {
+  return [
+    `🦞 已复用第 ${round} 轮辩论共识。`,
+    `龙虾任务：${taskId}`,
+    `chat：${paths.chatFile}`,
+    `decision：${paths.decisionFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantRosterStartedText(
+  taskId: string,
+  round: number,
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论主持人正在设计参与者：第 ${round} 轮`,
+    `龙虾任务：${taskId}`,
+    `roster：${paths.participantRosterFile}`,
+    `chat：${paths.chatFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantRosterFinishedText(
+  taskId: string,
+  round: number,
+  participants: readonly LobsterDebateParticipantDefinition[],
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
+    `龙虾任务：${taskId}`,
+    `参与者：${participants.map((participant) => `${participant.title}(${participant.id})`).join("、")}`,
+    `roster：${paths.participantRosterFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantRosterFailedText(
+  taskId: string,
+  round: number,
+  reasons: string[],
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论主持人参与者设计无效：第 ${round} 轮`,
+    `龙虾任务：${taskId}`,
+    `原因：${reasons.join("；") || "未提供具体原因"}`,
+    `roster：${paths.participantRosterFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantStartedText(
+  taskId: string,
+  round: number,
+  dialogueTurn: number,
+  title: string,
+  artifactFile: string,
+  finalPass: boolean,
+): string {
+  return [
+    finalPass
+      ? `🦞 辩论参与者已启动最终立场收集：${title}`
+      : `🦞 辩论参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `artifact：${artifactFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantFinishedText(
+  taskId: string,
+  round: number,
+  dialogueTurn: number,
+  participant: LobsterDebateParticipantRecord,
+  finalPass: boolean,
+): string {
+  return [
+    finalPass
+      ? `🦞 辩论最终立场已收集：${participant.title}`
+      : `🦞 辩论发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `状态：${participant.status}`,
+    `立场：${participant.stance ?? "未解析"}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateParticipantsCollectedText(
+  taskId: string,
+  round: number,
+  participants: LobsterDebateParticipantRecord[],
+): string {
+  const titles = participants.map((participant) => `${participant.title}=${participant.stance ?? "unknown"}`).join("、");
+  return [
+    `🦞 辩论最终立场已收集：${participants.length} 个参与者`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `最终立场：${titles}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateConsensusStartedText(taskId: string, round: number, paths: LobsterDebatePaths): string {
+  return [
+    `🦞 辩论共识汇总已启动：第 ${round} 轮`,
+    `龙虾任务：${taskId}`,
+    `chat：${paths.chatFile}`,
+    `cross-review：${paths.crossReviewFile}`,
+    `consensus：${paths.consensusFile}`,
+    `decision：${paths.decisionFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateModeratorStartedText(
+  taskId: string,
+  round: number,
+  dialogueTurn: number,
+  artifactFile: string,
+): string {
+  return [
+    `🦞 辩论主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
+    `龙虾任务：${taskId}`,
+    `artifact：${artifactFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateModeratorFinishedText(
+  taskId: string,
+  round: number,
+  decision: LobsterDebateModeratorDecisionRecord,
+  maxDialogueTurns: number,
+): string {
+  return [
+    `🦞 辩论主持人控场已收束：${decision.action}`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
+    `理由：${decision.reason}`,
+    decision.nextFocus.length > 0
+      ? `下一轮关注点：${decision.nextFocus.join("；")}`
+      : "下一轮关注点：无",
+  ].join("\n");
+}
+
+function buildLobsterDebateFinalStanceStartedText(
+  taskId: string,
+  round: number,
+  decision: LobsterDebateModeratorDecisionRecord,
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论进入最终立场收集：主持人动作 ${decision.action}`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `chat：${paths.chatFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateConsensusReachedText(
+  taskId: string,
+  round: number,
+  decision: LobsterMainDecision,
+  paths: LobsterDebatePaths,
+): string {
+  const decisionSummary = decision.status === "continue"
+    ? `派发 ${getLobsterDecisionSubtasks(decision).length} 个子任务，预计剩余 ${formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds) ?? "未记录"}`
+    : decision.status;
+  return [
+    `🦞 辩论共识已形成：${decisionSummary}`,
+    `龙虾任务：${taskId}`,
+    `轮次：${round}`,
+    `chat：${paths.chatFile}`,
+    `decision：${paths.decisionFile}`,
+  ].join("\n");
+}
+
+function buildLobsterDebateNeedsReviewText(
+  taskId: string,
+  round: number,
+  reasons: string[],
+  paths: LobsterDebatePaths,
+): string {
+  return [
+    `🦞 辩论未达成一致，已进入人工复核：第 ${round} 轮`,
+    `龙虾任务：${taskId}`,
+    `原因：${reasons.join("；") || "未提供具体原因"}`,
+    `辩论目录：${paths.roundDir}`,
+  ].join("\n");
+}
+
+function appendLobsterDebateMainCommunicationLog(
+  task: LobsterTaskRecord,
+  round: number,
+  paths: LobsterDebatePaths,
+  title: string,
+  details: string[],
+): void {
+  try {
+    fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
+    const lines = [
+      "",
+      `## ${title}`,
+      `- 时间：${new Date().toISOString()}`,
+      `- 轮次：${round}`,
+      `- 辩论目录：${paths.roundDir}`,
+      `- 群聊记录：${paths.chatFile}`,
+      ...details.map((detail) => `- ${detail}`),
+    ];
+    fs.appendFileSync(task.mainCommunicationFile, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    void logError("lobster-debate-main-communication-write-error", {
+      taskId: task.id,
+      filePath: task.mainCommunicationFile,
+      error: String(error),
+    });
+  }
+}
+
+function appendLobsterMainSubChatTaskEvent(task: LobsterTaskRecord, body: string): void {
+  appendLobsterMainSubChatSection(task, "任务事件", body);
+}
+
+function appendLobsterMainSubChatMainDecision(
+  task: LobsterTaskRecord,
+  decision: LobsterMainDecision,
+  subtasks: LobsterSubtaskRecord[] = [],
+): void {
+  const round = Math.max(1, task.currentRound || 1);
+  const bodyLines = [
+    `- 时间：${new Date().toISOString()}`,
+    `- 决策状态：${decision.status}`,
+  ];
+  const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+  if (remainingRounds) {
+    bodyLines.push(`- 预计剩余轮次：${remainingRounds}`);
+  }
+  if (decision.acceptance?.summary) {
+    bodyLines.push(`- 复核摘要：${decision.acceptance.summary}`);
+  }
+  if (decision.parallelReason) {
+    bodyLines.push(`- 并发判断：${decision.parallelReason}`);
+  }
+  if (subtasks.length > 0) {
+    bodyLines.push("");
+    bodyLines.push("### 派发子任务");
+    subtasks.forEach((subtask, index) => {
+      bodyLines.push(`- ${getLobsterSubtaskDisplayTitle(index, subtask)}（${subtask.id}）：${subtask.status}`);
+    });
+  }
+  if (decision.finalSummary) {
+    bodyLines.push("");
+    bodyLines.push("### 总结");
+    bodyLines.push(decision.finalSummary);
+  }
+  appendLobsterMainSubChatSection(task, `主任务发言：第 ${round} 轮（main）`, bodyLines.join("\n"));
+  if (decision.status === "completed") {
+    appendLobsterMainSubChatSection(task, "群聊收束", decision.finalSummary ?? "主任务验收通过。");
+  }
+}
+
+function appendLobsterMainSubChatSubtaskStarted(
+  task: LobsterTaskRecord,
+  subtask: LobsterSubtaskRecord,
+  round: number,
+  communicationFile: string,
+  retryCount: number,
+): void {
+  const latest = readLobsterTaskRecord(task.id) ?? task;
+  const index = latest.subTasks.findIndex((item) => item.id === subtask.id);
+  const title = getLobsterSubtaskDisplayTitle(index, subtask);
+  const retryLine = retryCount > 0 ? `- 重试：第 ${retryCount} 次` : null;
+  appendLobsterMainSubChatSection(latest, `子任务加入：${title}（${subtask.id}）`, [
+    `- 时间：${new Date().toISOString()}`,
+    `- 轮次：${round}`,
+    retryLine,
+    `- 状态：running`,
+    `- 沟通文件：${communicationFile}`,
+  ].filter((line): line is string => Boolean(line)).join("\n"));
+}
+
+function appendLobsterMainSubChatSubtaskFinished(
+  task: LobsterTaskRecord,
+  subtask: LobsterSubtaskRecord,
+  runStatus: TaskRunStatus,
+  assistantContent?: string | null,
+): void {
+  const latest = readLobsterTaskRecord(task.id) ?? task;
+  const index = latest.subTasks.findIndex((item) => item.id === subtask.id);
+  const latestSubtask = latest.subTasks[index] ?? subtask;
+  const title = getLobsterSubtaskDisplayTitle(index, latestSubtask);
+  appendLobsterMainSubChatSection(
+    latest,
+    `子任务发言：${title}（${latestSubtask.id}）`,
+    buildLobsterMainSubSubtaskTurnBody({
+      runStatus,
+      assistantContent,
+      communicationFile: latestSubtask.communicationFile,
+    }),
+  );
+}
+
+function appendLobsterMainSubChatSection(
+  task: LobsterTaskRecord,
+  heading: string,
+  body: string,
+): void {
+  const chatFile = ensureLobsterMainSubChatTranscript(task);
+  appendTextFileEnsuringDir(chatFile, `\n## ${heading}\n${body.trim()}\n`);
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
 }
 
 function resolveLobsterResumeRound(task: LobsterTaskRecord): number {
@@ -4733,6 +8258,12 @@ type LobsterSubtaskRunResult = {
   subtask: LobsterSubtaskRecord;
   status: TaskRunStatus;
 };
+
+type LobsterMainDecisionRunResult =
+  | { status: "interrupted"; task: LobsterTaskRecord; runStatus: "error" | "stopped" }
+  | { status: "needs-review"; task: LobsterTaskRecord; decision?: LobsterMainDecision | null }
+  | { status: "completed"; task: LobsterTaskRecord; decision: LobsterMainDecision }
+  | { status: "continue"; task: LobsterTaskRecord; decision: LobsterMainDecision; subtasks: LobsterSubtaskRecord[] };
 
 async function runLobsterSubtasksBatchWithRetry(
   options: LobsterSubtaskBatchOptions
@@ -4807,7 +8338,18 @@ async function runLobsterSubtasksBatchWithRetry(
       activeSubtaskIds: [],
       updatedAt: Date.now(),
     });
+    refreshOpenLobsterDebateChatPanelForTask(task.id);
     appendSystemMessageForLobster(target, buildLobsterSubtaskBatchCompletedText(task.id, round, subtasks));
+    const latest = readLobsterTaskRecord(task.id) ?? task;
+    appendLobsterMainSubChatTaskEvent(
+      latest,
+      [
+        `- 时间：${new Date().toISOString()}`,
+        `- 轮次：${round}`,
+        `- 子任务批次已全部完成：${subtasks.length} 个`,
+        `- 子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
+      ].join("\n"),
+    );
   }
   return results;
 }
@@ -4828,6 +8370,7 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
       subtaskTarget,
       buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
     );
+    appendLobsterMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
     if (shouldSwitchVisible) {
       await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
     }
@@ -4925,6 +8468,7 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
     ...activeSubtaskPatch,
     updatedAt: roundStartedAt,
   });
+  refreshOpenLobsterDebateChatPanelForTask(task.id);
 
   await runPrompt({
     ...input,
@@ -5469,6 +9013,7 @@ function applyLobsterMainDecision(
       updatedAt: Date.now(),
     }) ?? existing;
     appendLobsterMainDecisionSummary(task, decision);
+    appendLobsterMainSubChatMainDecision(task, decision);
     return { status: "completed", task };
   }
   if (decision.status === "blocked") {
@@ -5481,6 +9026,7 @@ function applyLobsterMainDecision(
       updatedAt: Date.now(),
     }) ?? existing;
     appendLobsterMainDecisionSummary(task, decision);
+    appendLobsterMainSubChatMainDecision(task, decision);
     return { status: "blocked", task };
   }
 
@@ -5507,6 +9053,7 @@ function applyLobsterMainDecision(
     updatedAt: Date.now(),
   }) ?? existing;
   appendLobsterMainDecisionSummary(task, decision);
+  appendLobsterMainSubChatMainDecision(task, decision, subtaskBatch.records);
   return { status: "continue", task, subtasks: subtaskBatch.records };
 }
 
@@ -5817,6 +9364,11 @@ function markLobsterSubtaskRunFinished(
     updatedAt: now,
   });
   appendLobsterSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
+  if (subtaskRecord) {
+    appendLobsterMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, assistantContent);
+  } else {
+    refreshOpenLobsterDebateChatPanelForTask(taskId);
+  }
 }
 
 function buildLobsterSubtaskCompletionSummary(content: string | null): string | undefined {
@@ -6219,7 +9771,18 @@ function appendLobsterFinalSummaryMessage(
   persistLobsterMessagesForTarget(target, messages);
 }
 
-function appendSystemMessageForLobster(target: PromptRunTarget, content: string): void {
+function appendSystemMessageForLobster(
+  target: PromptRunTarget,
+  content: string,
+  options: {
+    taskRole?: LobsterTaskRole;
+    lobsterTaskId?: string;
+    lobsterRound?: number;
+    lobsterSubtaskId?: string;
+    actions?: ChatMessageAction[];
+    merge?: boolean;
+  } = {},
+): void {
   const tab = getConversationTabById(target.tabId);
   const sessionId = tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
   const messages = sessionId
@@ -6230,6 +9793,12 @@ function appendSystemMessageForLobster(target: PromptRunTarget, content: string)
     role: "system",
     content,
     createdAt: Date.now(),
+    ...(options.merge === false ? { merge: false } : {}),
+    ...(options.taskRole ? { taskRole: options.taskRole } : {}),
+    ...(options.lobsterTaskId ? { lobsterTaskId: options.lobsterTaskId } : {}),
+    ...(typeof options.lobsterRound === "number" ? { lobsterRound: options.lobsterRound } : {}),
+    ...(options.lobsterSubtaskId ? { lobsterSubtaskId: options.lobsterSubtaskId } : {}),
+    ...(options.actions?.length ? { actions: options.actions } : {}),
   };
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
@@ -9381,9 +12950,13 @@ function resolveLobsterTaskStoreFileForTask(taskId: string): string | null {
   return null;
 }
 
-function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
+function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null {
   const tab = getConversationTabById(target.tabId);
   return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
+}
+
+function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
+  return resolvePromptRunTargetSessionId(target);
 }
 
 type LobsterCommunicationPaths = {
@@ -9474,7 +13047,7 @@ function updateLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string
 function createLobsterTaskRecord(
   cli: CliName,
   rootPrompt: string,
-  options: { sessionId?: string | null } = {}
+  options: { sessionId?: string | null; executionMode?: LobsterExecutionMode } = {}
 ): LobsterTaskRecord {
   const now = Date.now();
   const id = createMessageId();
@@ -9482,6 +13055,7 @@ function createLobsterTaskRecord(
   const sessionId = typeof options.sessionId === "string" && options.sessionId.trim()
     ? options.sessionId
     : null;
+  const executionMode = normalizeLobsterExecutionMode(options.executionMode);
   const taskStoreFile = buildLobsterTaskStoreFile(cli, activeWorkspaceKey, sessionId, id);
   ensureLobsterCommunicationFiles(id, rootPrompt);
   const record: LobsterTaskRecord = {
@@ -9490,6 +13064,7 @@ function createLobsterTaskRecord(
     workspaceKey: activeWorkspaceKey,
     taskStoreFile,
     rootPrompt,
+    executionMode,
     status: "running",
     createdAt: now,
     updatedAt: now,
@@ -9554,6 +13129,7 @@ function updateLobsterTaskRecord(
     status: nextStatus,
     subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
     rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
+    debateRounds: Array.isArray(patch.debateRounds) ? patch.debateRounds : existing.debateRounds,
     completionRoundSummaries: Array.isArray(patch.completionRoundSummaries)
       ? patch.completionRoundSummaries
       : existing.completionRoundSummaries,
@@ -9675,12 +13251,14 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
   const completionRequirementCoverage = normalizeLobsterAcceptanceChecks(
     (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
   );
+  const debateRounds = normalizeLobsterDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   return {
     id: raw.id,
     cli,
     workspaceKey,
     taskStoreFile,
     rootPrompt: raw.rootPrompt,
+    executionMode: normalizeLobsterExecutionMode((raw as { executionMode?: unknown }).executionMode),
     status,
     createdAt,
     updatedAt,
@@ -9700,9 +13278,19 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
       (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
     ),
+    debateRounds,
     completionRoundSummaries,
     completionRequirementCoverage,
   };
+}
+
+function normalizeLobsterDebateRounds(value: unknown): LobsterDebateRoundRecord<LobsterMainDecision>[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((item): item is LobsterDebateRoundRecord<LobsterMainDecision> => (
+    Boolean(item && typeof item === "object" && !Array.isArray(item))
+  ));
 }
 
 function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | null {
@@ -9926,6 +13514,10 @@ function isInteractiveMode(value: unknown): value is InteractiveMode {
   return value === "coding" || value === "plan" || value === "lobster";
 }
 
+function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
+  return value === "lobster" ? "lobster" : "coding";
+}
+
 function isLobsterTaskRole(value: unknown): value is LobsterTaskRole {
   return value === "main" || value === "subtask";
 }
@@ -10043,22 +13635,49 @@ function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
     return "coding";
   }
   const mode = perCli[cli];
-  if (isInteractiveMode(mode)) {
-    return mode;
-  }
-  return "coding";
+  return normalizeVisibleInteractiveMode(mode);
 }
 
 function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode): boolean {
+  const normalizedMode = normalizeVisibleInteractiveMode(mode);
   if (!workspaceSettings.interactiveModeByCli) {
     workspaceSettings.interactiveModeByCli = {};
   }
-  if (workspaceSettings.interactiveModeByCli[cli] === mode) {
+  if (workspaceSettings.interactiveModeByCli[cli] === normalizedMode) {
     return false;
   }
-  workspaceSettings.interactiveModeByCli[cli] = mode;
+  workspaceSettings.interactiveModeByCli[cli] = normalizedMode;
   saveWorkspaceSettings(workspaceSettings);
   return true;
+}
+
+function getWorkspaceLobsterExecutionMode(cli: CliName): LobsterExecutionMode {
+  const perCli = workspaceSettings.lobsterExecutionModeByCli;
+  if (!perCli) {
+    return DEFAULT_LOBSTER_EXECUTION_MODE;
+  }
+  return normalizeLobsterExecutionMode(perCli[cli]);
+}
+
+function setWorkspaceLobsterExecutionModeForCli(cli: CliName, mode: LobsterExecutionMode): boolean {
+  const normalizedMode = normalizeLobsterExecutionMode(mode);
+  if (!workspaceSettings.lobsterExecutionModeByCli) {
+    workspaceSettings.lobsterExecutionModeByCli = {};
+  }
+  if (workspaceSettings.lobsterExecutionModeByCli[cli] === normalizedMode) {
+    return false;
+  }
+  workspaceSettings.lobsterExecutionModeByCli[cli] = normalizedMode;
+  saveWorkspaceSettings(workspaceSettings);
+  return true;
+}
+
+function buildWorkspaceLobsterExecutionModeByCli(): Record<CliName, LobsterExecutionMode> {
+  const result = {} as Record<CliName, LobsterExecutionMode>;
+  CLI_LIST.forEach((cli) => {
+    result[cli] = getWorkspaceLobsterExecutionMode(cli);
+  });
+  return result;
 }
 
 function getWorkspaceCodexMultiAgentEnabled(): boolean {
@@ -10724,12 +14343,21 @@ function loadWorkspaceSettings(): WorkspaceSettings {
       CLI_LIST.forEach((cli) => {
         const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
         if (isInteractiveMode(mode)) {
-          normalized[cli] = mode;
+          normalized[cli] = normalizeVisibleInteractiveMode(mode);
         }
       });
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
       }
+    }
+    const lobsterExecutionModeByCli = (parsed as WorkspaceSettings).lobsterExecutionModeByCli;
+    if (lobsterExecutionModeByCli && typeof lobsterExecutionModeByCli === "object") {
+      const normalized: Partial<Record<CliName, LobsterExecutionMode>> = {};
+      CLI_LIST.forEach((cli) => {
+        const mode = (lobsterExecutionModeByCli as Record<string, unknown>)[cli];
+        normalized[cli] = normalizeLobsterExecutionMode(mode);
+      });
+      result.lobsterExecutionModeByCli = normalized;
     }
     const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
     if (typeof codexMultiAgentEnabled === "boolean") {
@@ -11687,13 +15315,17 @@ async function switchVisibleConversationTabForLobster(
   return switched;
 }
 
-function createLobsterSubtaskRunTarget(cli: CliName): PromptRunTarget {
+function createLobsterSubtaskRunTarget(
+  cli: CliName,
+  options: { sessionId?: string | null } = {}
+): PromptRunTarget {
+  const sessionId = normalizeLobsterDebateSessionId(options.sessionId);
   const state = ensureConversationTabs();
   const tab: ConversationTabRecord = {
     id: createConversationTabId(),
     cli,
-    sessionId: null,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, null),
+    sessionId,
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
@@ -11703,7 +15335,7 @@ function createLobsterSubtaskRunTarget(cli: CliName): PromptRunTarget {
   return {
     tabId: tab.id,
     cli,
-    sessionId: null,
+    sessionId,
   };
 }
 

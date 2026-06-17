@@ -1,7 +1,7 @@
 # 龙虾辩论多智能体模式详细设计
 
-- 状态：proposed
-- 相关计划：待创建实现计划
+- 状态：active
+- 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-session-tabs.md`
 - 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 - 相关目录：`src/extension.ts`、`src/lobsterParallel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`、`src/cli/types.ts`
 
@@ -41,7 +41,7 @@
 
 成功标准：
 
-- 规划不是由单个主任务直接给出，而是至少 3 个辩论参与者提出观点、质询并达成一致。
+- 规划不是由单个主任务直接给出，而是至少 3 个辩论参与者在共享 `chat.md` 群聊记录里提出观点、点名回应前文并达成一致。
 - 每一轮派发子任务前，都能在沟通目录中找到对应的辩论记录和共识摘要。
 - 只有不存在阻塞性异议时，才允许派发子任务或标记完成。
 - 如果无法达成一致，任务进入 `needs-review`，而不是静默选择某一方观点继续执行。
@@ -50,12 +50,12 @@
 
 第一阶段不处理以下内容：
 
-- 不新增顶层交互模式。`coding / plan / lobster` 仍保持不变。
+- 不新增顶层交互模式。当前 AI 对话面板顶层只暴露 `coding / lobster`，旧 `plan` 配置按 `coding` 兼容归一化。
 - 不重写子任务执行器。`runLobsterSubtasksBatchWithRetry` 和 `lobsterParallel` 规划规则继续复用。
 - 不实现真正跨进程、跨机器或远端服务的多智能体系统。
 - 不要求 Claude 分组接入插件侧模型选择。Claude 仍沿用 CLI 默认模型或用户命令参数。
 - 不让辩论参与者直接修改仓库代码。辩论参与者只允许读上下文并写沟通文件。
-- 不在第一阶段做复杂可视化图谱。主面板先展示辩论启动、共识和派发摘要。
+- 不在第一阶段做复杂可视化图谱。主面板先展示辩论启动、共识和派发摘要；内容区提供只读模拟群聊面板，读取 `chat.md` 和 `debateRounds` 中的角色 sessionId 做可视化与排障。
 
 ## 术语
 
@@ -82,7 +82,7 @@
 
 ### UI 约束
 
-- 顶层模式选择仍是 `编码 / 规划 / 龙虾`。
+- 顶层模式选择为 `编码 / 龙虾`。
 - 龙虾执行方式应出现在龙虾模式底部模型区域中，位置在模型选择左侧。
 - 执行方式选择不应依赖插件侧模型选择是否可见。即使 Claude 不展示模型选择，龙虾执行方式仍应可见。
 - 执行中切换 UI 选择不应改变已创建任务。任务创建时必须把执行方式写入任务记录，恢复时沿用记录值。
@@ -145,7 +145,7 @@
 - 新增龙虾执行方式 `debate_multi_agent`。
 - 每个主任务复核轮开始时，扩展先启动多个辩论参与者。
 - 参与者只读取任务记录、沟通文件和工作区上下文，分别写出观点。
-- 至少经过“独立观点”和“交叉质询”两个阶段。
+- 至少经过“开场发言”和“交叉回应/最终立场”两个群聊阶段。
 - 扩展收集辩论产物，再运行一个“共识汇总”步骤。
 - 共识汇总必须输出现有 `LobsterMainDecision` JSON。
 - 后续 `applyLobsterMainDecision`、子任务批次执行、最终总结全部复用现有链路。
@@ -220,8 +220,11 @@
 主任务标签中展示简明系统消息：
 
 ```text
-🦞 辩论规划已启动：第 1 轮，4 个参与者
-🦞 辩论观点已收集：架构规划、实现拆分、测试验收、风险审查
+🦞 辩论主持人正在设计参与者：第 1 轮
+🦞 辩论参与者已动态加入：第 1 轮，3 个参与者
+🦞 辩论群聊已启动：主任务第 1 轮，3 个参与者，主持人控场，最多 N 个发言批次安全上限
+🦞 辩论群聊发言开始：主任务第 1 轮，发言批次 1/N，本批次结束后由主持人判断是否继续
+🦞 辩论最终立场已收集：主持人动态选定的参与者
 🦞 辩论共识已形成：派发 3 个子任务，预计剩余 2 轮
 ```
 
@@ -231,7 +234,7 @@
 🦞 辩论未达成一致：存在阻塞性异议，已进入人工复核
 ```
 
-第一阶段不要求展示完整辩论全文。完整内容落盘到沟通目录，主面板展示摘要和路径。
+完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划复核阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时提供手动刷新、打开 transcript、打开任务记录操作。
 
 ## 数据模型设计
 
@@ -338,9 +341,20 @@ type LobsterDebateParticipantRecord = {
   model?: string | null;
   status: "pending" | "running" | "completed" | "error" | "stopped";
   artifactFile: string;
+  sessionId?: string | null;
   summary?: string;
   stance?: "agree" | "agree_with_reservations" | "block";
   blockingIssues?: string[];
+  updatedAt: number;
+};
+
+type LobsterDebateModeratorDecisionRecord = {
+  artifactFile: string;
+  dialogueTurn: number;
+  action: "continue" | "finalize" | "block";
+  reason: string;
+  nextFocus: string[];
+  sessionId?: string | null;
   updatedAt: number;
 };
 
@@ -373,7 +387,10 @@ type LobsterDebateRoundRecord = {
   startedAt: number;
   completedAt?: number;
   briefFile: string;
+  chatFile?: string;
+  dialogueTurns?: number;
   participants: LobsterDebateParticipantRecord[];
+  moderatorDecisions?: LobsterDebateModeratorDecisionRecord[];
   consensus?: LobsterDebateConsensusRecord;
 };
 ```
@@ -393,10 +410,17 @@ type LobsterDebateRoundRecord = {
 ```text
 ~/.sinitek_cli/lobster-communications/<taskId>/
 ├── main-task.md
+├── group-chat.md
 ├── debates/
 │   └── round-<lobsterRound>/
 │       ├── brief.md
+│       ├── chat.md
 │       ├── participants/
+│       │   ├── architecture-turn-<n>.md
+│       │   ├── implementation-turn-<n>.md
+│       │   ├── testing-turn-<n>.md
+│       │   ├── risk-turn-<n>.md
+│       │   ├── moderator-turn-<n>.md
 │       │   ├── architecture.md
 │       │   ├── implementation.md
 │       │   ├── testing.md
@@ -410,8 +434,12 @@ type LobsterDebateRoundRecord = {
 文件职责：
 
 - `brief.md`：扩展生成的辩论简报，包含用户目标、任务记录路径、当前轮次、已有子任务结果、约束。
-- `participants/*.md`：每个参与者的独立观点和交叉质询结果。
-- `cross-review.md`：第二阶段质询摘要，可由扩展汇总或由共识步骤写入。
+- `chat.md`：扩展维护的模拟群聊 transcript。参与者和主持人不直接写该文件；每个角色 artifact 完成后由扩展按顺序追加。
+- `group-chat.md`：共识通过后复用主从执行链路维护的任务执行群聊 transcript；主任务决策、子任务加入、子任务完成后的最终回复和批次完成会追加到这里，并在同一龙虾群聊面板中按时间线继续展示；运行状态与验证依据仍保留在任务记录和子任务沟通文件中。
+- `participants/*-turn-<n>.md`：第 n 个发言批次的角色发言，供下一位角色和主持人读取。
+- `participants/moderator-turn-<n>.md`：第 n 个发言批次的主持人控场 artifact，必须输出 `continue / finalize / block`。
+- `participants/<role>.md`：主持人收束后每个参与者写出的最终立场，供共识校验读取。
+- `cross-review.md`：共识汇总器基于完整群聊时间线写出的质询摘要。
 - `consensus.md`：自然语言共识结论，必须列出一致意见、保留意见、已解决分歧、未解决分歧。
 - `decision.json`：最终要交给现有龙虾链路解析的 JSON 决策。
 
@@ -422,7 +450,9 @@ type LobsterDebateRoundRecord = {
 
 ## 辩论参与者设计
 
-第一阶段默认 4 个参与者：
+辩论模式先由主持人根据原始目标、任务记录和沟通文件设计动态参与者清单，再开始群聊发言。运行时要求主持人输出 `moderator-participants.md`，参与者数量为 2-6 个；扩展校验 id 唯一、role 合法、title/focus 非空后，把这些参与者追加为 `## 参与者加入：...` 群聊事件。后续发言、最终立场、共识汇总和恢复校验都以这份动态清单为准，不再使用固定 4 人兜底。
+
+主持人可参考的参与者原型：
 
 | 参与者 | 职责 | 必须回答的问题 |
 | --- | --- | --- |
@@ -431,13 +461,13 @@ type LobsterDebateRoundRecord = {
 | 测试验收者 | 设计验证路径和完成判定 | 如何证明完成？哪些测试、构建、人工检查必需？ |
 | 风险审查者 | 找冲突、遗漏、不可逆风险 | 哪些文件/配置会冲突？哪些假设可能错？是否需要阻塞？ |
 
-可选后续扩展：
+另有一个主持人控场角色：
 
-- 产品体验参与者：用于 UI/流程类任务。
-- 安全参与者：用于权限、凭据、外部调用类任务。
-- 数据参与者：用于数据库、迁移、报表类任务。
+| 角色 | 职责 | 必须回答的问题 |
+| --- | --- | --- |
+| 主持人控场 | 在每个发言批次后总结争议、判断是否继续追问、收束或阻塞 | 是否还存在会影响派发决策的未回答问题？继续讨论能否降低风险？当前是否已经足够进入最终立场？ |
 
-第一阶段不做动态角色选择，避免不可预测。后续可以由任务关键词或用户选项扩展。
+动态 role 支持 `architecture`、`implementation`、`testing`、`risk`、`product`、`security`、`data`、`ux`、`documentation` 和 `custom`。主持人可按任务需要组合，例如 UI 任务加入产品体验/UX，权限任务加入安全，数据库任务加入数据迁移。
 
 ## 辩论流程设计
 
@@ -452,10 +482,14 @@ type LobsterDebateRoundRecord = {
   → 走现有 runLobsterRound 主任务决策
   ↓
 如果 executionMode=debate_multi_agent
-  → 构造辩论 brief
-  → 并发启动辩论参与者
-  → 收集独立观点
-  → 交叉质询
+  → 构造辩论 brief 和 chat.md
+  → 主持人先设计 2-6 个动态参与者并写入 moderator-participants.md
+  → 扩展把动态参与者加入 chat.md
+  → 同批次动态参与者并行发言，各自写独立 artifact
+  → 扩展等待本批次全部 artifact 完成后按清单顺序追加 chat.md
+  → 主持人读取完整群聊并决定 continue / finalize / block
+  → 如 continue 且未达到安全上限，追加下一轮发言
+  → 如 finalize，收集动态参与者最终立场
   → 共识汇总
   → 输出现有 LobsterMainDecision JSON
   → 复用 applyLobsterMainDecision
@@ -476,16 +510,39 @@ type LobsterDebateRoundRecord = {
 - 上一轮 `estimatedRemainingRounds`。
 - 当前 CLI、当前工作区。
 - 当前执行方式：`debate_multi_agent`。
-- 明确约束：参与者只读仓库和任务记录，只写自己的辩论 artifact。
+- 明确约束：主持人先写动态参与者清单；参与者只读仓库和任务记录，只写自己的本轮 artifact；`chat.md` 只由扩展追加，同一发言批次内参与者可并行执行。
+- 明确主持人控场规则：每个发言批次后由主持人输出 `continue / finalize / block`，最大发言批次数只是安全上限。
 
-### 阶段 2：独立观点
+### 阶段 2：受控群聊发言
 
-扩展并发启动 4 个辩论参与者。
+扩展创建 `chat.md`，记录群聊规则、主持人动态选角规则、主持人控场规则和最大安全上限。随后主持人写入 `moderator-participants.md`，扩展把动态参与者作为 `## 参与者加入：<title>（<id>）` 追加到群聊记录。
 
-每个参与者 prompt 必须要求输出结构：
+运行时按主持人决策推进：
+
+- 第 n 个发言批次：扩展先追加 `## 任务事件` 系统消息说明主任务轮次、当前发言批次和最大安全发言批次数；动态参与者按 `moderator-participants.md` 清单确定本批次成员并并行运行；每个参与者读取当前 `chat.md` 后写入独立的 `participants/<id>-turn-<n>.md`，扩展等待全部 artifact 完成后再按清单顺序以 `## 发言：...` 追加到 `chat.md`。
+- 第 n 个发言批次的主持人控场：主持人读取完整 `chat.md`，写入 `participants/moderator-turn-<n>.md`，并输出 `continue / finalize / block`。
+- `continue`：主持人必须列出下一批次关注点；若未达到最大安全发言批次数，扩展追加下一个发言批次。
+- `finalize`：扩展停止追加普通发言批次，改为让动态参与者读取完整 `chat.md` 和主持人控场摘要，写入最终 `participants/<id>.md`。
+- `block`：扩展仍收集最终 `participants/<id>.md` 作为审计材料，然后写入 `## 群聊收束` 并进入 `needs-review`。
+
+达到最大安全发言批次数时，如果主持人仍输出 `continue`，运行时写入“运行时强制收束”记录并进入最终立场收集。模型不得要求超过安全上限继续讨论；如果仍有未解决分歧，后续只能通过 `blocked / needs-review` 暴露给人工。
+
+最终参与者 artifact 必须要求输出结构：
 
 ```md
 # 角色结论
+
+## 群聊发言
+
+...
+
+## 点名回应
+
+...
+
+## 追问或修正
+
+...
 
 ## 立场
 
@@ -519,45 +576,31 @@ agree / agree_with_reservations / block
 - 参与者必须写入自己的 artifact 文件。
 - 如果发现不能继续，必须用 `block` 并列出阻塞性异议。
 
-### 阶段 3：交叉质询
-
-第一阶段观点全部完成后，扩展把所有 artifact 路径提供给参与者或共识步骤。
-
-第一阶段实现建议：
-
-- 不再启动第二轮完整参与者会话，先由共识步骤读取所有观点并生成 `cross-review.md`。
-- `cross-review.md` 必须列出：
-  - 哪些观点一致。
-  - 哪些观点冲突。
-  - 哪些冲突是阻塞性。
-  - 每个阻塞性冲突的处理结论。
-
-后续增强：
-
-- 支持最多 2 轮真实交叉质询，即参与者读取其他观点后再次写 `participants/<role>-review.md`。
-
-### 阶段 4：共识汇总
+### 阶段 3：共识汇总
 
 共识汇总步骤负责把辩论结果转成最终决策。
 
 它不是“主任务单独规划”，而是受约束的汇总器：
 
-- 必须读取 `brief.md` 和所有 `participants/*.md`。
-- 必须在 `consensus.md` 中逐条引用各参与者观点。
-- 必须列出 `participantStances`。
+- 必须读取 `brief.md`、`chat.md` 和所有最终 `participants/<role>.md`。
+- 必须在 `cross-review.md` 中按群聊时间线总结关键发言和互相回应。
+- 必须在 `consensus.md` 中逐条引用各参与者最终观点。
+- 必须列出共识后的最终 `participantStances`。
 - 如果存在任何 `stance=block` 且未解决，不能派发子任务。
+- 如果参与者原始 artifact 为 `block`，但阻塞点可以通过前置子任务、验收标准或风险说明解决，共识汇总器必须把该阻塞点写入 `resolvedDisagreements`，并可把该参与者最终立场标为 `agree_with_reservations` 后继续。
 - 如果所有参与者 `agree` 或 `agree_with_reservations`，且保留意见已进入风险说明或验收标准，可以输出 `status=continue` 或 `status=completed`。
 - 输出的 `decision.json` 必须仍符合现有 `LobsterMainDecision` 协议。
+- 不允许要求继续辩论；`chat.md` 已由主持人收束后仍不确定时，必须走 `blocked`。
 
 共识达成的最低条件：
 
-- 至少所有默认参与者都完成。
+- 至少所有动态参与者都完成。
 - 没有未解决的阻塞性异议。
 - 原始用户需求都能映射到后续子任务或完成验收项。
 - `subtasks[*].prompt` 自包含。
 - 多个子任务并发时，必须声明 `writeFiles` 或 `conflictGroup`，并说明不会冲突。
 
-### 阶段 5：复用现有执行
+### 阶段 4：复用现有执行
 
 共识汇总返回：
 
@@ -611,9 +654,21 @@ agree / agree_with_reservations / block
 你是龙虾模式“辩论多智能体”中的一个规划/审查参与者。
 你不是执行子任务的编码智能体。
 你只能读取仓库、任务记录和沟通文件，不能修改仓库业务文件。
-你必须把自己的结论写入指定辩论文件。
-你的职责是独立提出观点、发现风险、给出是否同意继续的立场。
+你必须读取 chat.md 中已有群聊发言，把自己的下一条发言写入指定辩论文件。
+你的职责是在主持人控场下提出观点、回应其他角色、发现风险，并在主持人收束后给出是否同意继续的最终立场。
 如果存在硬性需求遗漏、不可验证、文件冲突或错误依赖，必须标记为 block。
+```
+
+### 主持人控场约束
+
+```text
+你是龙虾模式“辩论多智能体”的主持人控场。
+你必须读取完整 chat.md，总结当前共识、争议和未回答问题。
+每个发言批次只能输出 continue / finalize / block 之一。
+continue 表示仍有明确、可回答、会影响派发决策的问题，需要追加下一个发言批次。
+finalize 表示讨论已经足够，应收集最终参与者立场并进入共识汇总。
+block 表示当前讨论无法形成安全、可执行、可验收的自动化决策，必须进入人工复核。
+达到最大安全发言批次数时，不得继续要求追加发言，只能 finalize 或 block。
 ```
 
 ### 架构规划者重点
@@ -648,8 +703,10 @@ agree / agree_with_reservations / block
 
 ```text
 你是辩论结果汇总器，不是单独规划者。
-你必须基于所有参与者产物形成共识。
+你必须基于完整 chat.md 和所有最终参与者产物形成共识。
 如果存在未解决的 block，返回 status=blocked。
+如果 block 已被转化为自包含前置子任务、验收标准或风险说明，记录到 resolvedDisagreements 后可以继续。
+chat.md 已包含主持人控场与收束标记，不允许要求继续辩论。
 如果可以继续，返回现有龙虾主任务 JSON 决策。
 输出必须是一个 JSON 对象，不要包裹 markdown。
 ```
@@ -691,19 +748,17 @@ async function runClassicLobsterMainDecision(...): Promise<LobsterDecisionRunRes
 
 ### 辩论参与者运行方式
 
-第一阶段建议复用现有对话 tab 基础设施，但新增角色：
-
-```ts
-type LobsterTaskRole = "main" | "subtask" | "debate";
-```
+运行时复用现有对话 tab 基础设施，不新增 `taskRole=debate`。
 
 运行规则：
 
-- 每个参与者创建临时 debate tab。
-- tab 标题显示 `🦞 辩论·架构`、`🦞 辩论·测试` 等。
-- 成功完成后可自动关闭 debate tab，但必须先持久化 artifact。
+- 每次角色发言创建一个临时普通 tab。
+- 普通发言批次写入 `participants/<role>-turn-<n>.md`；主持人控场写入 `participants/moderator-turn-<n>.md`。
+- 主持人输出 `finalize`、`block` 或运行时达到最大安全发言批次数后，参与者再写入最终 `participants/<role>.md`。
+- 同一批次内参与者 artifact 可并行生成；扩展等待本批次全部完成后统一追加到 `chat.md`，而不是让参与者直接写 transcript。
+- 成功完成后可自动关闭临时 tab，但必须先持久化 artifact。
 - 主任务或任一 debate/subtask 仍运行时，主任务 tab 禁止关闭。
-- debate tab 手动继续时强制按 coding 或 plan-like 普通任务执行，禁止嵌套启动龙虾任务。
+- debate tab 手动继续时强制按 coding 普通任务执行，禁止嵌套启动龙虾任务。
 
 如果后续实现隐藏后台运行目标，也必须保留同等日志、状态和停止能力。
 
@@ -731,8 +786,10 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 - 必须存在当前轮的 `LobsterDebateRoundRecord`。
 - 共识记录 `reached=true`。
+- 当前轮存在完整 `chat.md`，且包含主持人控场与 `## 群聊收束` 标记。
+- 至少存在一个合法 `participants/moderator-turn-<n>.md` 控场 artifact。
 - `openDisagreements` 不存在 `severity=blocking`。
-- `participantStances` 中不能出现未解决的 `block`。
+- 共识后的 `participantStances` 中不能出现未解决的 `block`。
 - 如果 `status=completed`，`acceptance.passed=true` 且 `requirementCoverage` 全部通过。
 - 如果 `status=continue`，`subtasks.length >= 1`。
 
@@ -774,8 +831,9 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 恢复规则：
 
 - 继续使用任务记录里的 `executionMode`。
-- 如果上一轮 debate 已经完成且有 `decision.json`，恢复时优先解析该 decision，避免重复辩论。
-- 如果上一轮 debate 缺少共识或任一参与者 artifact，重新执行该 debate round。
+- 如果上一轮 debate 已经完成，且存在完整 `chat.md`、主持人控场、最终 participant artifacts、`cross-review.md`、`consensus.md` 和 `decision.json`，恢复时优先解析该 decision，避免重复辩论。
+- 如果上一轮 debate 缺少共识、主持人控场或任一参与者 artifact，重新执行该 debate round。
+- 如果旧产物来自非群聊版本或固定两轮版本，缺少 `chat.md`、主持人控场或收束标记，恢复时重跑当前辩论轮。
 - 已完成任务缺失 `lobsterFinalSummary=true` 时，仍沿用现有自动恢复最终总结机制。
 
 ## 与现有链路的关系
@@ -835,7 +893,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 1. 选择龙虾模式和 `辩论多智能体`。
 2. 发送一个可拆分任务。
 3. 观察主 tab 出现辩论启动消息。
-4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 brief、participants、consensus、decision。
+4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
 5. 检查共识后仍按现有 `subtasks` 启动子任务。
 6. 子任务完成后唤醒下一轮辩论复核。
 7. 最终完成时仍出现 `lobsterFinalSummary=true` 的最终总结气泡。
@@ -851,7 +909,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
-| 辩论成本过高 | 用户等待时间变长 | 默认 4 个参与者，第一阶段只做一轮独立观点和一次共识，不做多轮循环 |
+| 辩论成本过高 | 用户等待时间变长 | 主持人按任务动态选择 2-6 个参与者，并决定是否继续；最大安全发言批次数兜底防无限循环 |
 | 辩论无法达成一致 | 自动任务停滞 | 明确进入 `needs-review`，保留完整分歧记录 |
 | 参与者误改代码 | 破坏工作区 | prompt 明确只写 artifact；后续可在 debate run 前后做 git diff 检查 |
 | UI tab 过多 | 面板拥挤 | debate tab 成功后自动关闭，主 tab 保留摘要和文件路径 |
@@ -872,7 +930,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 - 抽出当前主任务决策函数。
 - 实现 `runLobsterDebateRound`。
-- 启动 4 个参与者，落盘 artifact。
+- 主持人先写入动态参与者清单；同一发言批次内参与者并行运行并各自落盘 artifact，扩展按清单顺序追加 `chat.md` 后再启动主持人控场，由主持人决定继续、收束或阻塞。
 - 实现共识汇总，输出 `decision.json`。
 - 成功后复用 `applyLobsterMainDecision`。
 
@@ -885,7 +943,8 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 ### 第四阶段：体验增强
 
-- 支持配置辩论参与者数量。
+- 内容区只读模拟群聊面板：读取 `chat.md` 与 `debateRounds`，按微信群式时间线展示参与者发言、主持人控场、最终立场、收束状态和各角色 sessionId；运行中读取 `activeSpeaker` 显示“思考中”等待气泡，并在角色产物或状态落盘后主动刷新，5 秒自动刷新作为兜底；刷新前距离底部 50px 内自动跟随最新气泡，否则显示置底按钮；不直接写任务记录或追加辩论消息。
+- 支持用户配置辩论参与者数量偏好。
 - 支持选择辩论模型角色。
 - 支持展开查看辩论摘要。
 - 支持任务类型自动选择参与者角色。
@@ -897,7 +956,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 - 龙虾模式中可选择 `主从多智能体` 或 `辩论多智能体`。
 - 新建任务记录能固化 `executionMode`。
 - 选择 `主从多智能体` 时，现有行为不变。
-- 选择 `辩论多智能体` 时，至少 4 个参与者完成规划/审查 artifact。
+- 选择 `辩论多智能体` 时，主持人先设计 2-6 个动态参与者；所有动态参与者完成至少一轮群聊发言，主持人完成控场决策，且 `chat.md` 包含参与者加入、主持人控场与收束标记。
 - 派发子任务前必须存在 `consensus.md` 和 `decision.json`。
 - 存在未解决阻塞性异议时不会派发子任务。
 - 共识通过后，子任务执行仍复用现有批次并发逻辑。
