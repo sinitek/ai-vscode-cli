@@ -11,9 +11,17 @@ export const LOBSTER_MAIN_SUB_CHAT_ROUND_KEY = "main-sub";
 export const DEFAULT_LOBSTER_DEBATE_ROUND = 1;
 export const LOBSTER_DEBATE_MAX_DIALOGUE_TURNS = 6;
 export const LOBSTER_DEBATE_MODERATOR_ID = "moderator";
-export const LOBSTER_DEBATE_MODERATOR_TITLE = "主持人控场";
+export const LOBSTER_DEBATE_MODERATOR_TITLE = "裁判主持人";
+export const LOBSTER_DEBATE_BLUE_TEAM_ROLE = "blue_team";
+export const LOBSTER_DEBATE_RED_TEAM_ROLE = "red_team";
+export const LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES = [
+  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
+  LOBSTER_DEBATE_RED_TEAM_ROLE,
+] as const;
 
 export const LOBSTER_DEBATE_PARTICIPANT_ROLES = [
+  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
+  LOBSTER_DEBATE_RED_TEAM_ROLE,
   "architecture",
   "implementation",
   "testing",
@@ -403,6 +411,16 @@ export function normalizeLobsterDebateParticipantStance(
     : null;
 }
 
+export function isLobsterDebateAdversarialParticipantRole(
+  value: unknown,
+): value is (typeof LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES)[number] {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const normalized = value.trim();
+  return LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES.some((role) => role === normalized);
+}
+
 export function isLobsterDebateBlockingStance(value: unknown): boolean {
   return normalizeLobsterDebateParticipantStance(value) === "block";
 }
@@ -472,7 +490,7 @@ export function buildLobsterDebateNeedsReviewSummary(options: {
   const decision = isObjectRecord(consensus?.decision) ? consensus.decision : null;
   const decisionSummary = typeof decision?.finalSummary === "string" ? decision.finalSummary.trim() : "";
   const estimatedRemainingRounds = normalizeLobsterDebateEstimatedRemainingRounds(decision?.estimatedRemainingRounds);
-  const title = consensus?.reached === true ? "辩论达成阻塞共识" : "辩论未达成一致";
+  const title = consensus?.reached === true ? "红蓝对抗达成阻塞共识" : "红蓝对抗未达成一致";
   const details: string[] = [];
   if (consensusSummary) {
     details.push(`共识摘要：${consensusSummary}`);

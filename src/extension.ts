@@ -152,7 +152,10 @@ import {
   LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
   LOBSTER_DEBATE_MODERATOR_ID,
   LOBSTER_DEBATE_MODERATOR_TITLE,
+  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
   LOBSTER_DEBATE_PARTICIPANT_ROLES,
+  LOBSTER_DEBATE_RED_TEAM_ROLE,
+  isLobsterDebateAdversarialParticipantRole,
   normalizeLobsterDebateSessionId,
   normalizeLobsterDebateModeratorAction,
   normalizeLobsterDebateParticipantStance,
@@ -261,28 +264,28 @@ const LOBSTER_DEBATE_MIN_PARTICIPANTS = 2;
 const LOBSTER_DEBATE_MAX_PARTICIPANTS = 6;
 const LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS: ReadonlyArray<LobsterDebateParticipantDefinition> = [
   {
-    id: "architecture",
-    role: "architecture",
-    title: "架构规划",
-    focus: "审查整体结构、边界、复用现有抽象和恢复/记录一致性。",
+    id: "blue_planner",
+    role: LOBSTER_DEBATE_BLUE_TEAM_ROLE,
+    title: "蓝队方案方",
+    focus: "提出可执行方案，明确目标、约束、成功标准，并主动回应红队质疑。",
   },
   {
-    id: "implementation",
-    role: "implementation",
-    title: "实现拆分",
-    focus: "把目标拆成最小可执行子任务，关注授权写入范围、依赖顺序和并发可行性。",
+    id: "red_attacker",
+    role: LOBSTER_DEBATE_RED_TEAM_ROLE,
+    title: "红队攻击方",
+    focus: "攻击方案假设，寻找目标遗漏、证据不足、边界场景、可行性缺口和不可验证风险。",
   },
   {
-    id: "testing",
-    role: "testing",
-    title: "测试验收",
-    focus: "定义必要验证、构建/单测范围、完成判据和证据要求。",
+    id: "blue_verifier",
+    role: LOBSTER_DEBATE_BLUE_TEAM_ROLE,
+    title: "蓝队验证方",
+    focus: "把蓝队方案补成可验收计划，定义验证方法、证据口径、回退或替代方案。",
   },
   {
-    id: "risk",
-    role: "risk",
-    title: "风险审查",
-    focus: "寻找阻塞性风险、并发冲突、越权写入、恢复失败和不可验收缺口。",
+    id: "red_edge_cases",
+    role: LOBSTER_DEBATE_RED_TEAM_ROLE,
+    title: "红队边界方",
+    focus: "从边界条件、反例、安全/合规/伦理、成本和长期影响角度继续挑战蓝队方案。",
   },
 ];
 const LOBSTER_RESUME_PROMPT_PATTERNS: RegExp[] = [
@@ -3823,9 +3826,9 @@ function buildLobsterCombinedGroupChatMarkdown(
     `- 更新时间：${new Date(task.updatedAt).toISOString()}`,
     "",
     "## 群聊规则",
-    "- 本页面按群聊消息追加顺序连续展示辩论和后续任务执行消息。",
-    "- 辩论不按 UI 轮次分区；主任务轮次、发言批次和执行阶段以系统消息说明。",
-    "- 最大发言批次数只作为防无限循环安全上限，是否追加发言批次由主持人控场决定。",
+    "- 本页面按群聊消息追加顺序连续展示红蓝对抗和后续任务执行消息。",
+    "- 红蓝对抗不按 UI 轮次分区；主任务轮次、发言批次和执行阶段以系统消息说明。",
+    "- 最大发言批次数只作为防无限循环安全上限，是否追加发言批次由裁判主持人控场决定。",
   ];
 
   sources.forEach(({ round, content }) => {
@@ -3879,7 +3882,7 @@ function hasLobsterGroupChatFinalStatusSection(markdown: string, heading: string
 
 function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound): string {
   const lines = [
-    `- 来源：${round.label || (round.kind === "debate" ? "辩论群聊" : "任务执行群聊")}`,
+    `- 来源：${round.label || (round.kind === "debate" ? "红蓝对抗群聊" : "任务执行群聊")}`,
     `- 状态：${round.status}`,
     round.chatFile ? `- transcript：${round.chatFile}` : null,
   ];
@@ -3888,7 +3891,7 @@ function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound)
       `- 主任务复核轮次：${round.lobsterRound}`,
       `- 已完成发言批次数：${round.dialogueTurns ?? 0}`,
       `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-      "- 主持人会在每轮发言后决定 continue / finalize / block。",
+      "- 裁判主持人会在每轮发言后决定 continue / finalize / block。",
     );
   }
   if (round.kind === "execution") {
@@ -5701,7 +5704,7 @@ async function runLobsterDebateRound(options: {
     });
     refreshOpenLobsterDebateChatPanelForTask(task.id);
     appendSystemMessageForLobster(target, buildLobsterDebateReuseText(task.id, round, paths));
-    appendLobsterDebateMainCommunicationLog(task, round, paths, "复用辩论共识", [
+    appendLobsterDebateMainCommunicationLog(task, round, paths, "复用红蓝对抗共识", [
       `decision.json：${paths.decisionFile}`,
       `consensus.md：${paths.consensusFile}`,
     ]);
@@ -5750,7 +5753,7 @@ async function runLobsterDebateRound(options: {
       debateRound,
       paths,
       participants: [],
-      reasons: [`无法写入辩论群聊记录：${paths.chatFile}`],
+      reasons: [`无法写入红蓝对抗群聊记录：${paths.chatFile}`],
       status: "error",
     });
   }
@@ -5829,7 +5832,7 @@ async function runLobsterDebateRound(options: {
       debateRound,
       paths,
       participants: participantRecords,
-      reasons: [`无法追加主持人选定的辩论参与者到群聊记录：${paths.chatFile}`],
+      reasons: [`无法追加裁判主持人选定的红蓝参与者到群聊记录：${paths.chatFile}`],
       status: "error",
     });
   }
@@ -5913,7 +5916,7 @@ async function runLobsterDebateRound(options: {
         paths,
         participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: missingArtifacts.map((item) => (
-          `辩论群聊发言批次 ${dialogueTurn} 参与者 ${item.participant.id} 未写入发言 artifact：${item.artifactFile}`
+          `红蓝对抗发言批次 ${dialogueTurn} 参与者 ${item.participant.id} 未写入发言 artifact：${item.artifactFile}`
         )),
         status: "error",
       });
@@ -5937,7 +5940,7 @@ async function runLobsterDebateRound(options: {
           debateRound,
           paths,
           participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-          reasons: [`无法追加辩论群聊记录：${paths.chatFile}`],
+          reasons: [`无法追加红蓝对抗群聊记录：${paths.chatFile}`],
           status: "error",
         });
       }
@@ -5972,7 +5975,7 @@ async function runLobsterDebateRound(options: {
         debateRound,
         paths,
         participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-        reasons: [`主持人第 ${dialogueTurn} 轮控场 artifact 缺失、为空或无法解析：${moderatorArtifactFile}`],
+        reasons: [`裁判主持人第 ${dialogueTurn} 轮控场 artifact 缺失、为空或无法解析：${moderatorArtifactFile}`],
         status: "error",
       });
     }
@@ -5990,7 +5993,7 @@ async function runLobsterDebateRound(options: {
         debateRound,
         paths,
         participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-        reasons: [`无法追加主持人控场记录：${paths.chatFile}`],
+        reasons: [`无法追加裁判主持人控场记录：${paths.chatFile}`],
         status: "error",
       });
     }
@@ -6002,7 +6005,7 @@ async function runLobsterDebateRound(options: {
       finalModeratorDecision = {
         ...moderatorResult.decision,
         action: "finalize",
-        reason: `已达到运行时最大安全上限 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。主持人原始理由：${moderatorResult.decision.reason}`,
+        reason: `已达到运行时最大安全上限 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。裁判主持人原始理由：${moderatorResult.decision.reason}`,
         updatedAt: Date.now(),
       };
       const capAppended = appendTextFileEnsuringDir(
@@ -6036,7 +6039,7 @@ async function runLobsterDebateRound(options: {
       debateRound,
       paths,
       participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-      reasons: ["主持人未输出任何控场决策。"],
+      reasons: ["裁判主持人未输出任何控场决策。"],
       status: "error",
     });
   }
@@ -6101,7 +6104,7 @@ async function runLobsterDebateRound(options: {
         debateRound,
         paths,
         participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-        reasons: [`无法追加最终立场到辩论群聊记录：${paths.chatFile}`],
+        reasons: [`无法追加最终立场到红蓝对抗群聊记录：${paths.chatFile}`],
         status: "error",
       });
     }
@@ -6124,7 +6127,7 @@ async function runLobsterDebateRound(options: {
       debateRound,
       paths,
       participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
-      reasons: [`无法写入辩论群聊收束标记：${paths.chatFile}`],
+      reasons: [`无法写入红蓝对抗群聊收束标记：${paths.chatFile}`],
       status: "error",
     });
   }
@@ -6168,7 +6171,7 @@ async function runLobsterDebateRound(options: {
       debateRound,
       paths,
       participants: participantValidation.participants,
-      reasons: [`主持人决定阻塞：${finalModeratorDecision.reason}`],
+      reasons: [`裁判主持人决定阻塞：${finalModeratorDecision.reason}`],
       status: "blocked",
     });
   }
@@ -6257,7 +6260,7 @@ async function runLobsterDebateRound(options: {
   });
   refreshOpenLobsterDebateChatPanelForTask(task.id);
   appendSystemMessageForLobster(target, buildLobsterDebateConsensusReachedText(task.id, round, decision, paths));
-  appendLobsterDebateMainCommunicationLog(task, round, paths, "辩论共识已形成", [
+  appendLobsterDebateMainCommunicationLog(task, round, paths, "红蓝对抗共识已形成", [
     `共识摘要：${mergedConsensus.summary}`,
     `决策状态：${decision.status}`,
     `decision.json：${paths.decisionFile}`,
@@ -6364,7 +6367,7 @@ function evaluateReusableLobsterDebateDecision(
     return { status: "rerun", reasons: [`已有 decision.json，但缺少 consensus.md：${paths.consensusFile}`] };
   }
   if (participantRecords.length === 0) {
-    return { status: "rerun", reasons: [`已有 decision.json，但缺少主持人动态参与者清单：${paths.participantRosterFile}`] };
+    return { status: "rerun", reasons: [`已有 decision.json，但缺少裁判主持人红蓝参与者清单：${paths.participantRosterFile}`] };
   }
   const participantValidation = validateLobsterDebateParticipantArtifacts(
     paths,
@@ -6421,7 +6424,7 @@ async function runLobsterDebateParticipantRoster(options: {
   updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
     kind: "moderator",
     id: LOBSTER_DEBATE_MODERATOR_ID,
-    title: "主持人选角",
+    title: "裁判主持人组队",
     updatedAt: Date.now(),
   });
   appendSystemMessageForLobster(
@@ -6431,7 +6434,7 @@ async function runLobsterDebateParticipantRoster(options: {
 
   try {
     await runPrompt({
-      displayPrompt: `🦞 龙虾辩论第 ${round} 轮主持人设计参与者`,
+      displayPrompt: `🦞 龙虾红蓝对抗第 ${round} 轮裁判主持人组队`,
       modelPrompt: buildLobsterDebateParticipantRosterModelPrompt(task, round, paths),
       contextTags: [],
       model: resolveLobsterDebateModel(input),
@@ -6750,7 +6753,7 @@ async function runLobsterDebateConsensusSummary(options: {
   appendSystemMessageForLobster(consensusTarget, buildLobsterDebateConsensusStartedText(task.id, round, paths));
   try {
     await runPrompt({
-      displayPrompt: `🦞 龙虾辩论共识汇总：第 ${round} 轮`,
+      displayPrompt: `🦞 龙虾红蓝对抗共识汇总：第 ${round} 轮`,
       modelPrompt: buildLobsterDebateConsensusModelPrompt(task, round, paths, participants),
       contextTags: [],
       model: resolveLobsterDebateModel(input),
@@ -6844,17 +6847,17 @@ function readLobsterDebateParticipantRosterArtifact(
 ): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
   const content = readTextFileIfNonEmpty(artifactFile);
   if (!content) {
-    return { valid: false, reasons: [`主持人动态参与者清单 artifact 缺失或为空：${artifactFile}`] };
+    return { valid: false, reasons: [`裁判主持人红蓝参与者清单 artifact 缺失或为空：${artifactFile}`] };
   }
   const jsonText = extractJsonObjectText(content);
   if (!jsonText) {
-    return { valid: false, reasons: [`主持人动态参与者清单缺少 JSON 对象：${artifactFile}`] };
+    return { valid: false, reasons: [`裁判主持人红蓝参与者清单缺少 JSON 对象：${artifactFile}`] };
   }
   try {
     const parsed = JSON.parse(jsonText);
     return normalizeLobsterDebateParticipantRosterObject(parsed, artifactFile);
   } catch (error) {
-    return { valid: false, reasons: [`主持人动态参与者清单 JSON 无法解析：${errorToMessage(error)}`] };
+    return { valid: false, reasons: [`裁判主持人红蓝参与者清单 JSON 无法解析：${errorToMessage(error)}`] };
   }
 }
 
@@ -6864,7 +6867,7 @@ function normalizeLobsterDebateParticipantRosterObject(
 ): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
   const reasons: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { valid: false, reasons: ["主持人动态参与者清单必须是 JSON 对象。"] };
+    return { valid: false, reasons: ["裁判主持人红蓝参与者清单必须是 JSON 对象。"] };
   }
   const raw = value as {
     artifactFile?: unknown;
@@ -6872,23 +6875,23 @@ function normalizeLobsterDebateParticipantRosterObject(
     participants?: unknown;
   };
   if (typeof raw.artifactFile !== "string" || !raw.artifactFile.trim()) {
-    reasons.push("主持人动态参与者清单 JSON 必须包含 artifactFile。");
+    reasons.push("裁判主持人红蓝参与者清单 JSON 必须包含 artifactFile。");
   }
   if (typeof raw.artifactFile === "string" && raw.artifactFile.trim() && raw.artifactFile.trim() !== artifactFile) {
-    reasons.push(`主持人动态参与者清单 artifactFile 与实际文件不一致：${raw.artifactFile}`);
+    reasons.push(`裁判主持人红蓝参与者清单 artifactFile 与实际文件不一致：${raw.artifactFile}`);
   }
   const summary = typeof raw.summary === "string" && raw.summary.trim()
     ? raw.summary.trim()
     : "";
   if (!summary) {
-    reasons.push("主持人动态参与者清单 JSON 必须包含非空 summary。");
+    reasons.push("裁判主持人红蓝参与者清单 JSON 必须包含非空 summary。");
   }
   if (!Array.isArray(raw.participants)) {
-    reasons.push("主持人动态参与者清单 JSON 必须包含 participants 数组。");
+    reasons.push("裁判主持人红蓝参与者清单 JSON 必须包含 participants 数组。");
     return { valid: false, reasons };
   }
   if (raw.participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS || raw.participants.length > LOBSTER_DEBATE_MAX_PARTICIPANTS) {
-    reasons.push(`主持人动态参与者数量必须在 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个之间。`);
+    reasons.push(`裁判主持人红蓝参与者数量必须在 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个之间。`);
   }
 
   const ids = new Set<string>();
@@ -6922,6 +6925,8 @@ function normalizeLobsterDebateParticipantRosterObject(
       }
       if (!role) {
         reasons.push(`参与者 ${id || index + 1} role 非法。`);
+      } else if (!isLobsterDebateAdversarialParticipantRole(role)) {
+        reasons.push(`参与者 ${id || index + 1} role 必须是 ${LOBSTER_DEBATE_BLUE_TEAM_ROLE} 或 ${LOBSTER_DEBATE_RED_TEAM_ROLE}；${role} 仅用于兼容旧任务记录，不允许新辩论清单使用。`);
       }
       if (!title) {
         reasons.push(`参与者 ${id || index + 1} title 不能为空。`);
@@ -6938,6 +6943,14 @@ function normalizeLobsterDebateParticipantRosterObject(
 
   if (participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS) {
     reasons.push(`可用参与者不足 ${LOBSTER_DEBATE_MIN_PARTICIPANTS} 个。`);
+  }
+  const hasBlueTeam = participants.some((participant) => participant.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE);
+  const hasRedTeam = participants.some((participant) => participant.role === LOBSTER_DEBATE_RED_TEAM_ROLE);
+  if (!hasBlueTeam) {
+    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个蓝队参与者（role=${LOBSTER_DEBATE_BLUE_TEAM_ROLE}）。`);
+  }
+  if (!hasRedTeam) {
+    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个红队参与者（role=${LOBSTER_DEBATE_RED_TEAM_ROLE}）。`);
   }
   if (reasons.length > 0) {
     return { valid: false, reasons };
@@ -6989,7 +7002,7 @@ function readLobsterDebateModeratorDecisionArtifact(
     artifactFile,
     dialogueTurn,
     action,
-    reason: reason.trim() || "主持人未提供理由。",
+    reason: reason.trim() || "裁判主持人未提供理由。",
     nextFocus: extractLobsterDebateModeratorNextFocus(content),
     updatedAt: Date.now(),
   };
@@ -7017,7 +7030,7 @@ function normalizeLobsterDebateModeratorDecisionObject(
   }
   const reason = typeof raw.reason === "string" && raw.reason.trim()
     ? raw.reason.trim()
-    : "主持人未提供理由。";
+    : "裁判主持人未提供理由。";
   const nextFocusValue = Array.isArray(raw.nextFocus) ? raw.nextFocus : raw.nextFocusQuestions;
   const nextFocus = Array.isArray(nextFocusValue)
     ? nextFocusValue
@@ -7125,7 +7138,7 @@ function summarizeLobsterDebateArtifact(content: string): string {
 function isCompleteLobsterDebateChatTranscript(content: string): boolean {
   return /##\s*群聊收束/u.test(content)
     && /##\s*参与者加入：/u.test(content)
-    && /主持人最终动作：(?:continue|finalize|block)/u.test(content)
+    && /(?:主持人|裁判主持人)最终动作：(?:continue|finalize|block)/u.test(content)
     && /##\s*第\s+\d+\s+轮主持人控场/u.test(content);
 }
 
@@ -7545,7 +7558,7 @@ function buildLobsterDebateBriefMarkdown(
   const communication = getLobsterCommunicationPaths(task.id);
   const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
   const lines: string[] = [
-    "# 龙虾辩论简报",
+    "# 龙虾红蓝对抗简报",
     "",
     `- 任务 ID：${task.id}`,
     `- 龙虾轮次：${round}`,
@@ -7554,12 +7567,12 @@ function buildLobsterDebateBriefMarkdown(
     `- 主沟通文件：${task.mainCommunicationFile}`,
     `- 子任务沟通目录：${communication.subtasksDir}`,
     `- 当前 CLI：${target.cli}`,
-    `- 执行方式：debate_multi_agent`,
+    `- 执行方式：debate_multi_agent（红蓝对抗）`,
     `- 上一轮 estimatedRemainingRounds：${formatLobsterEstimatedRemainingRounds(task.estimatedRemainingRounds) ?? "未记录"}`,
     `- brief 文件：${paths.briefFile}`,
     `- 群聊记录文件：${paths.chatFile}`,
     `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    `- 主持人角色：${LOBSTER_DEBATE_MODERATOR_TITLE}`,
+    `- 裁判主持人角色：${LOBSTER_DEBATE_MODERATOR_TITLE}`,
     "",
     "## 原始目标",
     task.rootPrompt,
@@ -7572,21 +7585,26 @@ function buildLobsterDebateBriefMarkdown(
     "## 子任务概要",
     ...buildLobsterDebateSubtaskSummaryLines(task),
     "",
-    "## 参与者约束",
-    "- 参与者只能读取仓库、任务记录、主沟通文件和子任务沟通目录。",
-    "- 参与者只能写入本轮提示词指定的单个 artifact 文件，不得修改仓库代码、任务记录或其他沟通文件。",
-    "- 扩展会把每次角色发言追加到 chat.md，后续角色必须读取并回应该共享群聊记录。",
-    "- 同一发言批次内的参与者可并行执行；扩展会等待本批次全部 artifact 完成后再按清单顺序追加到 chat.md，并启动主持人控场。",
-    "- 每个发言批次后由主持人读取 chat.md 并决定 continue / finalize / block。",
+    "## 红蓝对抗约束",
+    `- 新辩论参与者只能属于蓝队（role=${LOBSTER_DEBATE_BLUE_TEAM_ROLE}）或红队（role=${LOBSTER_DEBATE_RED_TEAM_ROLE}）。`,
+    "- 蓝队负责提出可执行方案、补足验收口径、回应红队攻击并修正计划。",
+    "- 红队负责攻击蓝队方案，寻找假设漏洞、目标遗漏、证据不足、边界场景、可行性缺口、成本/收益失衡和不可验证风险。",
+    "- 如果任务涉及代码、文件、权限、部署或流程执行，红队还应检查写入范围、并发冲突、越权修改、回滚/恢复失败和不可验收的工程风险；不涉及时不要强行套用代码风险。",
+    "- 裁判主持人每个批次后读取完整群聊，决定继续追问、收束进入最终立场或阻塞人工复核。",
+    "- 参与者只能读取可用上下文、任务记录、主沟通文件和子任务沟通目录。",
+    "- 参与者只能写入本轮提示词指定的单个 artifact 文件，不得修改工作区内容、任务记录或其他沟通文件。",
+    "- 扩展会把每次红蓝发言追加到 chat.md，后续角色必须读取并回应该共享群聊记录。",
+    "- 同一发言批次内的参与者可并行执行；扩展会等待本批次全部 artifact 完成后再按清单顺序追加到 chat.md，并启动裁判主持人控场。",
+    "- 每个发言批次后由裁判主持人读取 chat.md 并决定 continue / finalize / block。",
     "- 参与者不得直接输出最终 LobsterMainDecision。",
     "- 共识汇总器只能读取 brief、chat.md 和 participant artifacts，负责生成 cross-review.md、consensus.md 和 decision.json。",
     "",
-    "## 主持人选角",
-    `- 主持人必须先写入动态参与者清单：${paths.participantRosterFile}`,
+    "## 裁判主持人组队",
+    `- 裁判主持人必须先写入红蓝参与者清单：${paths.participantRosterFile}`,
     `- 参与者数量范围：${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS}`,
-    "- 后续群聊只按主持人选定的参与者推进，不使用固定 4 人兜底。",
+    "- 清单必须至少包含 1 个蓝队和 1 个红队；后续群聊只按裁判主持人选定的参与者推进。",
     "",
-    "## 可参考的参与者原型",
+    "## 可参考的红蓝原型",
     ...LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS.map((participant) => (
       `- ${participant.id}（${participant.title}）：${participant.focus}`
     )),
@@ -7601,22 +7619,23 @@ function buildLobsterDebateInitialChatMarkdown(
   paths: LobsterDebatePaths,
 ): string {
   const lines: string[] = [
-    "# 龙虾辩论群聊记录",
+    "# 龙虾红蓝对抗群聊记录",
     "",
     `- 任务 ID：${task.id}`,
     `- 龙虾轮次：${round}`,
     `- 当前 CLI：${target.cli}`,
     `- brief 文件：${paths.briefFile}`,
-    `- 参与者清单文件：${paths.participantRosterFile}`,
+    `- 红蓝参与者清单文件：${paths.participantRosterFile}`,
     `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    `- 主持人：${LOBSTER_DEBATE_MODERATOR_TITLE}(${LOBSTER_DEBATE_MODERATOR_ID})`,
+    `- 裁判主持人：${LOBSTER_DEBATE_MODERATOR_TITLE}(${LOBSTER_DEBATE_MODERATOR_ID})`,
     "",
     "## 群聊规则",
     "- 每位角色必须读取本文件中已有发言后再输出自己的下一条发言。",
-    "- 主持人先根据任务目标设计参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
-    "- 每个发言批次内动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由主持人根据完整群聊决定 continue / finalize / block。",
-    "- 主持人可以要求继续讨论，也可以提前收束，不需要等到最大安全发言批次数。",
-    "- 一旦达到最大安全发言批次数，主持人必须收束，运行时不得继续追加讨论。",
+    "- 裁判主持人先根据任务目标设计红队和蓝队参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
+    "- 蓝队提出和修正方案；红队攻击假设、证据、边界和可验证性；双方必须点名回应对方观点。",
+    "- 每个发言批次内动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由裁判主持人根据完整群聊决定 continue / finalize / block。",
+    "- 裁判主持人可以要求继续追问，也可以提前收束，不需要等到最大安全发言批次数。",
+    "- 一旦达到最大安全发言批次数，裁判主持人必须收束，运行时不得继续追加讨论。",
     "- 收束后由共识汇总器读取完整群聊和最终立场，生成 cross-review.md、consensus.md 和 decision.json。",
     "",
   ];
@@ -7631,13 +7650,13 @@ function buildLobsterDebateParticipantRosterChatMarkdown(
     "",
     "## 任务事件",
     "",
-    "主持人已根据任务目标完成动态参与者设计。",
-    summary ? `选角说明：${summary}` : "选角说明：未提供。",
+    "裁判主持人已根据任务目标完成红蓝参与者设计。",
+    summary ? `组队说明：${summary}` : "组队说明：未提供。",
     "",
     ...participants.flatMap((participant) => [
       `## 参与者加入：${participant.title}（${participant.id}）`,
       "",
-      `角色类型：${participant.role}`,
+      `阵营角色：${participant.role}`,
       `关注重点：${participant.focus}`,
       "",
     ]),
@@ -7687,15 +7706,15 @@ function buildLobsterDebateDialogueTurnChatEventMarkdown(
     "",
     "## 任务事件",
     "",
-    "辩论发言批次开始。",
+    "红蓝对抗发言批次开始。",
     `- 主任务复核轮次：${round}`,
     `- 当前发言批次：${dialogueTurn}`,
     `- 最大安全发言批次数：${maxDialogueTurns}`,
     previousDecision?.nextFocus?.length
-      ? `- 主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
-      : "- 主持人上一批次关注点：无",
+      ? `- 裁判主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
+      : "- 裁判主持人上一批次关注点：无",
     "- 本批次参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
-    "- 本批次结束后由主持人决定是否继续、收束或阻塞。",
+    "- 本批次结束后由裁判主持人决定是否继续、收束或阻塞。",
     "",
   ];
   return lines.join("\n");
@@ -7708,8 +7727,8 @@ function buildLobsterDebateRuntimeForcedFinalizeMarkdown(
     "",
     "## 运行时强制收束",
     "",
-    `主持人最终动作：${decision.action}`,
-    `主持人理由：${decision.reason}`,
+    `裁判主持人最终动作：${decision.action}`,
+    `裁判主持人理由：${decision.reason}`,
     "",
   ].join("\n");
 }
@@ -7737,15 +7756,15 @@ function buildLobsterDebateDialogueClosedMarkdown(
     "",
     "## 群聊收束",
     "",
-    `主持人最终动作：${decision.action}`,
-    `主持人理由：${decision.reason}`,
+    `裁判主持人最终动作：${decision.action}`,
+    `裁判主持人理由：${decision.reason}`,
     `实际完成发言批次数：${completedDialogueTurns}/${maxDialogueTurns}`,
     decision.nextFocus.length > 0
       ? `下一轮关注点：${decision.nextFocus.join("；")}`
       : "下一轮关注点：无",
     "",
     decision.action === "block"
-      ? "主持人已判定当前讨论无法继续推进到可执行共识，后续只保留人工复核。"
+      ? "裁判主持人已判定当前红蓝攻防无法继续推进到可执行共识，后续只保留人工复核。"
       : "运行时已停止追加新的发言批次，后续由共识汇总器生成 cross-review.md、consensus.md 和 decision.json。",
     "",
   ].join("\n");
@@ -7797,36 +7816,37 @@ function buildLobsterDebateParticipantRosterModelPrompt(
     .map((participant) => `- ${participant.id}（${participant.title}，${participant.role}）：${participant.focus}`)
     .join("\n");
   return [
-    "你正在执行 VS Code 插件的龙虾模式辩论主持人选角阶段。",
+    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人组队阶段。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "你的职责是先判断本轮辩论需要哪些参与者，再写出动态参与者清单。后续群聊将只按你的清单推进。",
+    "你的职责是先判断本轮红蓝对抗需要哪些蓝队和红队参与者，再写出动态参与者清单。后续群聊将只按你的清单推进。",
     `龙虾任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `任务记录文件：${task.taskStoreFile}`,
     `brief 文件：${paths.briefFile}`,
     `群聊记录文件：${paths.chatFile}`,
-    `参与者清单 artifact：${paths.participantRosterFile}`,
+    `红蓝参与者清单 artifact：${paths.participantRosterFile}`,
     `主沟通文件：${task.mainCommunicationFile}`,
     `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
     "",
     "职责和限制：",
-    "1. 只能读取 brief、任务记录、主沟通文件、子任务沟通目录和必要仓库文件；不得修改仓库业务文件或任务记录。",
+    "1. 只能读取 brief、任务记录、主沟通文件、子任务沟通目录和必要上下文；不得修改工作区内容或任务记录。",
     "2. 只能写入参与者清单 artifact；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
     `3. 必须设计 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个参与者。复杂任务可更多，简单任务可更少。`,
-    "4. 不要机械固定使用架构/实现/测试/风险四人；要基于原始目标选择真正需要的角色。",
+    "4. 必须至少包含 1 个蓝队和 1 个红队。蓝队负责提出、捍卫和修正方案；红队负责攻击假设、目标覆盖、证据链、边界和可验证性，暴露阻塞风险。",
     "5. 参与者 id 必须唯一，只能使用小写字母、数字、下划线、点、短横线，且不能使用 moderator 或 consensus。",
-    `6. role 只能取：${LOBSTER_DEBATE_PARTICIPANT_ROLES.join(" / ")}。不匹配时使用 custom。`,
+    `6. 新清单中的 role 只能取：${LOBSTER_DEBATE_BLUE_TEAM_ROLE} / ${LOBSTER_DEBATE_RED_TEAM_ROLE}。${LOBSTER_DEBATE_PARTICIPANT_ROLES.filter((role) => role !== LOBSTER_DEBATE_BLUE_TEAM_ROLE && role !== LOBSTER_DEBATE_RED_TEAM_ROLE).join(" / ")} 仅用于兼容旧任务记录，不要新写。`,
+    "7. 不要机械固定使用通用架构/实现/测试/风险四人；专业维度应写入 title 和 focus，但 role 必须体现红队或蓝队阵营。",
     "",
-    "可参考的参与者原型（只是参考，不是固定名单）：",
+    "可参考的红蓝参与者原型（只是参考，不是固定名单）：",
     suggestedParticipants,
     "",
     "artifact 必须包含以下固定小节，标题必须完全一致：",
-    "## 选角说明",
-    "说明为什么选择这些参与者，以及为什么没有选择其他常见角色。",
+    "## 组队说明",
+    "说明为什么这样配置蓝队和红队，以及每个参与者在攻防中的职责。",
     "",
     "## JSON",
     "必须提供一个 JSON 代码块，结构如下。participants 数量必须在允许范围内。",
-    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"选角摘要","participants":[{"id":"architecture","role":"architecture","title":"架构规划","focus":"审查模块边界、依赖顺序和复用策略"}]}`,
+    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"红蓝组队摘要","participants":[{"id":"blue_planner","role":"${LOBSTER_DEBATE_BLUE_TEAM_ROLE}","title":"蓝队方案方","focus":"提出可执行方案并回应红队攻击"},{"id":"red_attacker","role":"${LOBSTER_DEBATE_RED_TEAM_ROLE}","title":"红队攻击方","focus":"寻找假设漏洞、证据缺口、边界条件和阻塞风险"}]}`,
     "",
     "原始目标：",
     task.rootPrompt,
@@ -7845,8 +7865,16 @@ function buildLobsterDebateParticipantModelPrompt(
   moderatorDecision: LobsterDebateModeratorDecisionRecord | null,
 ): string {
   const turnPurpose = finalPass
-    ? "主持人收束后的最终立场"
-    : `第 ${dialogueTurn} 个发言批次的开场或交叉回应`;
+    ? "裁判主持人收束后的最终立场"
+    : `第 ${dialogueTurn} 个发言批次的开场或交叉攻防`;
+  const teamGuidance = participant.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE
+    ? [
+        "你是蓝队：负责提出、捍卫和修正方案，主动回应红队攻击，并把可执行性、约束、验收口径和证据要求说清楚。",
+      ]
+    : [
+        "你是红队：负责攻击蓝队方案，专门寻找假设漏洞、目标遗漏、证据不足、边界场景、可行性缺口、成本/收益失衡和不可验证风险。",
+        "如果本任务涉及代码、文件、权限、部署或流程执行，再额外检查写入范围、并发冲突、越权修改、回滚/恢复失败和工程验收风险；不涉及时不要强行套用代码风险。",
+      ];
   const finalTurnSections = [
     "## 立场",
     "只能写一个值：agree / agree_with_reservations / block。可以在下一行补充一句理由。",
@@ -7855,10 +7883,10 @@ function buildLobsterDebateParticipantModelPrompt(
     "给出你认可的阶段规划或修正建议。",
     "",
     "## 子任务建议",
-    "列出建议派发的子任务，说明每个子任务的范围、预期写入文件和依赖。",
+    "列出建议派发的子任务，说明每个子任务的目标、范围、依赖和交付证据；只有涉及文件修改时才说明预期写入文件。",
     "",
-    "## 并发与冲突判断",
-    "判断哪些子任务可以并发，哪些必须串行，以及原因。",
+    "## 依赖与冲突判断",
+    "判断哪些子任务可以并行推进，哪些必须串行，以及原因；只有涉及代码、文件、权限或流程执行时才讨论写入冲突、越权修改或恢复风险。",
     "",
     "## 验收标准",
     "列出完成或继续派发前必须满足的验证与证据。",
@@ -7869,23 +7897,23 @@ function buildLobsterDebateParticipantModelPrompt(
   const moderatorGuidance = moderatorDecision
     ? [
       "",
-      "## 主持人控场摘要",
-      `- 主持人动作：${moderatorDecision.action}`,
-      `- 主持人理由：${moderatorDecision.reason}`,
+      "## 裁判主持人控场摘要",
+      `- 裁判主持人动作：${moderatorDecision.action}`,
+      `- 裁判主持人理由：${moderatorDecision.reason}`,
       moderatorDecision.nextFocus.length > 0
         ? `- 下一批次关注点：${moderatorDecision.nextFocus.join("；")}`
         : "- 下一批次关注点：无",
     ]
     : [];
   return [
-    "你正在执行 VS Code 插件的龙虾模式辩论参与者。",
+    "你正在执行 VS Code 插件的龙虾模式红蓝对抗参与者。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "注意：这是一个受控模拟群聊。你必须读取 chat.md 中已经出现的发言，然后以自己的角色身份继续发言。",
+    "注意：这是一个受控模拟群聊。你必须读取 chat.md 中已经出现的发言，然后以自己的蓝队或红队身份继续发言。",
     "注意：同一发言批次内的参与者可能并行执行；你只能回应 chat.md 中在本次启动前已经存在的内容，不要假设能读到同批次其他参与者尚未落盘的发言。",
     `龙虾任务 ID：${task.id}`,
     `当前轮次：${round}`,
     finalPass
-      ? "本次阶段：主持人收束后的最终立场收集"
+      ? "本次阶段：裁判主持人收束后的最终立场收集"
       : `当前发言批次：${dialogueTurn}，最大安全上限：${maxDialogueTurns}`,
     `本轮目的：${turnPurpose}`,
     `参与者 ID：${participant.id}`,
@@ -7900,13 +7928,15 @@ function buildLobsterDebateParticipantModelPrompt(
     ...moderatorGuidance,
     "",
     "职责和限制：",
-    "1. 你只做规划/审查/验收判断，不直接修改仓库业务文件，不更新任务记录。",
+    ...teamGuidance,
+    "1. 你只做攻防/规划/审查/验收判断，不直接修改工作区内容，不更新任务记录。",
     "2. 你必须读取 brief、chat.md，并按需要读取任务记录、主沟通文件、子任务沟通目录和仓库现状。",
     "3. 你只能写入上面指定的 artifact 文件；不要直接修改 chat.md、cross-review.md、consensus.md 或 decision.json。",
     "4. 你不能直接输出最终 LobsterMainDecision JSON；最终决策由共识汇总器在读取完整群聊后生成。",
-    "5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；如果当前只有系统消息、参与者加入消息或暂无其他角色发言，则说明你的开场判断。",
-    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。主持人可以在任意批次后要求继续、收束或阻塞；达到安全上限时必须收束，不得继续追加辩论。`,
-    "7. 如果发现会导致越权写入、并发冲突、缺少验收或无法满足原始目标的问题，最终立场必须使用 block。",
+    "5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；蓝队优先回应红队攻击点，红队优先继续攻击蓝队尚未修正的方案。",
+    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。裁判主持人可以在任意批次后要求继续、收束或阻塞；达到安全上限时必须收束，不得继续追加辩论。`,
+    "7. 如果发现会导致目标无法满足、证据不足、验收不可判定、风险无法接受的问题，红队应明确指出阻塞项；蓝队若能修正则改为 agree_with_reservations，否则最终立场必须使用 block。",
+    "8. 只有在任务确实涉及代码、文件、权限、部署或流程执行时，才把越权写入、并发冲突、恢复失败等工程问题作为阻塞项。",
     "",
     "artifact 必须包含以下固定小节，标题必须完全一致：",
     "## 群聊发言",
@@ -7933,7 +7963,7 @@ function buildLobsterDebateModeratorDisplayPrompt(
   dialogueTurn: number,
   maxDialogueTurns: number,
 ): string {
-  return `🦞 龙虾辩论第 ${round} 轮主持人控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
+  return `🦞 龙虾红蓝对抗第 ${round} 轮裁判控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
 }
 
 function buildLobsterDebateModeratorModelPrompt(
@@ -7946,9 +7976,9 @@ function buildLobsterDebateModeratorModelPrompt(
 ): string {
   const atSafetyLimit = dialogueTurn >= maxDialogueTurns;
   return [
-    "你正在执行 VS Code 插件的龙虾模式辩论主持人。",
+    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "你的职责不是重新规划，而是主持模拟群聊：总结当前分歧，判断是否还需要追加一个发言批次追问，或是否可以收束进入最终立场。",
+    "你的职责不是重新规划，而是主持红蓝攻防：总结蓝队方案、红队攻击点和双方回应，判断是否还需要追加一个发言批次追问，或是否可以收束进入最终立场。",
     `龙虾任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `当前发言批次：${dialogueTurn}`,
@@ -7962,21 +7992,21 @@ function buildLobsterDebateModeratorModelPrompt(
     `你的 artifact 文件：${artifactFile}`,
     "",
     "职责和限制：",
-    "1. 只能读取 brief、chat.md、任务记录、主沟通文件、子任务沟通目录和必要仓库文件；不得修改仓库业务文件或任务记录。",
-    "2. 只能写入上面指定的主持人 artifact 文件；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
-    "3. 必须基于 chat.md 中已有角色发言做控场，不要脱离已有讨论重写方案。",
-    "4. action=continue 表示仍有明确、可回答、会影响派发决策的分歧，需要再追加一个发言批次。",
-    "5. action=finalize 表示讨论已经足够，下一步应收集最终立场并交给共识汇总器生成 decision.json。",
-    "6. action=block 表示当前讨论无法形成安全、可执行、可验收的自动化决策，必须进入人工复核。",
+    "1. 只能读取 brief、chat.md、任务记录、主沟通文件、子任务沟通目录和必要上下文；不得修改工作区内容或任务记录。",
+    "2. 只能写入上面指定的裁判主持人 artifact 文件；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
+    "3. 必须基于 chat.md 中已有红蓝发言做控场，不要脱离已有讨论重写方案。",
+    "4. action=continue 表示红队提出了具体攻击点且蓝队尚未充分回应，或蓝队提出新方案但红队尚未攻击，需要再追加一个发言批次。",
+    "5. action=finalize 表示蓝队方案已经被红队充分攻击且关键攻击点已被回应，下一步应收集最终立场并交给共识汇总器生成 decision.json。",
+    "6. action=block 表示红队指出的阻塞问题无法通过蓝队修正、补充证据、前置步骤或验收标准化解，必须进入人工复核。",
     `7. 如果当前发言批次已经达到最大安全上限 ${maxDialogueTurns}/${maxDialogueTurns}，不得输出 action=continue，只能输出 finalize 或 block。`,
-    "8. 有参与者提出 block 时，不要立即阻塞；先判断能否通过下一批次追问澄清，或通过前置子任务/验收标准化解。无法化解时再 block。",
+    "8. 有红队提出 block 时，不要立即阻塞；先判断蓝队是否有机会通过下一批次回应、补充证据、前置步骤或验收标准化解。无法化解时再 block。",
     "",
     "artifact 必须包含以下固定小节，标题必须完全一致：",
     "## 群聊态势",
-    "用简短段落总结本轮已有共识、争议和未回答问题。",
+    "用简短段落总结蓝队方案、红队攻击点、已化解问题和未回答问题。",
     "",
     "## 点名追问",
-    "如果 action=continue，列出下一批次需要哪些角色回答什么问题；如果不继续，写“无”。",
+    "如果 action=continue，列出下一批次需要蓝队或红队回答什么问题；如果不继续，写“无”。",
     "",
     "## 主持人决策",
     "只能写一个值：continue / finalize / block。",
@@ -8004,8 +8034,8 @@ function buildLobsterDebateConsensusModelPrompt(
 ): string {
   const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
   return [
-    "你正在执行 VS Code 插件的龙虾模式辩论共识汇总。",
-    "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖参与者 artifact 中的阻塞性异议。",
+    "你正在执行 VS Code 插件的龙虾模式红蓝对抗共识汇总。",
+    "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖红队 artifact 中的阻塞性异议，也不得忽略蓝队已给出的修正方案。",
     `龙虾任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `任务记录文件：${task.taskStoreFile}`,
@@ -8019,22 +8049,22 @@ function buildLobsterDebateConsensusModelPrompt(
     participantFiles,
     "",
     "职责和限制：",
-    "1. 只能读取 brief.md、chat.md、所有最终 participants/*.md，以及 brief 中指向的任务记录/沟通文件；不要修改仓库业务文件或任务记录。",
+    "1. 只能读取 brief.md、chat.md、所有最终 participants/*.md，以及 brief 中指向的任务记录/沟通文件；不要修改工作区内容或任务记录。",
     "2. 必须生成 cross-review.md、consensus.md 和 decision.json 三个文件。",
     "3. 如果任一动态参与者 artifact 缺失、存在未解决 blocking disagreement、或你无法生成合法 LobsterMainDecision，则 decision.json 必须走 blocked 路径，不得派发子任务。",
-    "4. 参与者 artifact 的原始立场为 block 时，必须先判断阻塞项能否被本轮计划解决：如果能通过前置子任务、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该参与者最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
+    "4. 红队 artifact 的原始立场为 block 时，必须先判断阻塞项是否已被蓝队回应并能被本轮计划解决：如果能通过补充证据、前置步骤、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该红队最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
     "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
-    "6. chat.md 已包含主持人控场与收束标记，不允许要求继续追加辩论回合；如果仍无法形成可执行共识，必须输出 blocked。",
+    "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
     "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
     "",
     "cross-review.md 内容要求：",
-    "- 按群聊时间线总结关键发言和互相回应。",
-    "- 对比所有动态参与者的最终观点。",
+    "- 按群聊时间线总结蓝队方案、红队攻击和互相回应。",
+    "- 对比所有红蓝参与者的最终观点。",
     "- 列出已解决分歧和未解决分歧。",
     "- 标明是否存在阻塞性异议。",
     "",
     "consensus.md 必须包含一个 JSON 代码块，结构如下：",
-    '{"artifactFile":"<consensus.md path>","reached":true,"summary":"共识摘要","participantStances":[{"participantId":"architecture","stance":"agree","note":"理由"}],"resolvedDisagreements":[{"id":"d1","title":"分歧标题","participants":["architecture","risk"],"severity":"non_blocking","resolution":"解决方式"}],"openDisagreements":[{"id":"d2","title":"分歧标题","participants":["risk"],"severity":"blocking","resolution":"未解决原因"}]}',
+    `{"artifactFile":"<consensus.md path>","reached":true,"summary":"红蓝共识摘要","participantStances":[{"participantId":"blue_planner","stance":"agree","note":"蓝队方案已修正"},{"participantId":"red_attacker","stance":"agree_with_reservations","note":"红队攻击点已转为验收标准"}],"resolvedDisagreements":[{"id":"d1","title":"红队攻击点标题","participants":["blue_planner","red_attacker"],"severity":"non_blocking","resolution":"解决方式"}],"openDisagreements":[{"id":"d2","title":"未解决阻塞点","participants":["red_attacker"],"severity":"blocking","resolution":"未解决原因"}]}`,
     "",
     "decision.json 必须是纯 JSON 对象，符合现有 LobsterMainDecision 协议：",
     '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
@@ -8099,7 +8129,7 @@ function buildLobsterDebateStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论群聊已启动：主任务第 ${round} 轮，${participants.length} 个参与者，主持人控场，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
+    `🦞 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
     `龙虾任务：${taskId}`,
     `brief：${paths.briefFile}`,
     `chat：${paths.chatFile}`,
@@ -8114,7 +8144,7 @@ function buildLobsterDebateDialogueTurnStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论群聊发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由主持人判断是否继续`,
+    `🦞 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
     `龙虾任务：${taskId}`,
     `chat：${paths.chatFile}`,
   ].join("\n");
@@ -8122,7 +8152,7 @@ function buildLobsterDebateDialogueTurnStartedText(
 
 function buildLobsterDebateRerunText(taskId: string, round: number, reasons: string[]): string {
   return [
-    `🦞 辩论恢复校验未通过，将重跑第 ${round} 轮辩论。`,
+    `🦞 红蓝对抗恢复校验未通过，将重跑第 ${round} 轮辩论。`,
     `龙虾任务：${taskId}`,
     `原因：${reasons.join("；")}`,
   ].join("\n");
@@ -8130,7 +8160,7 @@ function buildLobsterDebateRerunText(taskId: string, round: number, reasons: str
 
 function buildLobsterDebateReuseText(taskId: string, round: number, paths: LobsterDebatePaths): string {
   return [
-    `🦞 已复用第 ${round} 轮辩论共识。`,
+    `🦞 已复用第 ${round} 轮红蓝对抗共识。`,
     `龙虾任务：${taskId}`,
     `chat：${paths.chatFile}`,
     `decision：${paths.decisionFile}`,
@@ -8143,7 +8173,7 @@ function buildLobsterDebateParticipantRosterStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论主持人正在设计参与者：第 ${round} 轮`,
+    `🦞 裁判主持人正在设计红蓝参与者：第 ${round} 轮`,
     `龙虾任务：${taskId}`,
     `roster：${paths.participantRosterFile}`,
     `chat：${paths.chatFile}`,
@@ -8157,7 +8187,7 @@ function buildLobsterDebateParticipantRosterFinishedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
+    `🦞 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
     `龙虾任务：${taskId}`,
     `参与者：${participants.map((participant) => `${participant.title}(${participant.id})`).join("、")}`,
     `roster：${paths.participantRosterFile}`,
@@ -8171,7 +8201,7 @@ function buildLobsterDebateParticipantRosterFailedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论主持人参与者设计无效：第 ${round} 轮`,
+    `🦞 裁判主持人红蓝组队无效：第 ${round} 轮`,
     `龙虾任务：${taskId}`,
     `原因：${reasons.join("；") || "未提供具体原因"}`,
     `roster：${paths.participantRosterFile}`,
@@ -8188,8 +8218,8 @@ function buildLobsterDebateParticipantStartedText(
 ): string {
   return [
     finalPass
-      ? `🦞 辩论参与者已启动最终立场收集：${title}`
-      : `🦞 辩论参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+      ? `🦞 红蓝参与者已启动最终立场收集：${title}`
+      : `🦞 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `artifact：${artifactFile}`,
@@ -8205,8 +8235,8 @@ function buildLobsterDebateParticipantFinishedText(
 ): string {
   return [
     finalPass
-      ? `🦞 辩论最终立场已收集：${participant.title}`
-      : `🦞 辩论发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+      ? `🦞 红蓝最终立场已收集：${participant.title}`
+      : `🦞 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `状态：${participant.status}`,
@@ -8221,7 +8251,7 @@ function buildLobsterDebateParticipantsCollectedText(
 ): string {
   const titles = participants.map((participant) => `${participant.title}=${participant.stance ?? "unknown"}`).join("、");
   return [
-    `🦞 辩论最终立场已收集：${participants.length} 个参与者`,
+    `🦞 红蓝最终立场已收集：${participants.length} 个参与者`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `最终立场：${titles}`,
@@ -8230,7 +8260,7 @@ function buildLobsterDebateParticipantsCollectedText(
 
 function buildLobsterDebateConsensusStartedText(taskId: string, round: number, paths: LobsterDebatePaths): string {
   return [
-    `🦞 辩论共识汇总已启动：第 ${round} 轮`,
+    `🦞 红蓝对抗共识汇总已启动：第 ${round} 轮`,
     `龙虾任务：${taskId}`,
     `chat：${paths.chatFile}`,
     `cross-review：${paths.crossReviewFile}`,
@@ -8246,7 +8276,7 @@ function buildLobsterDebateModeratorStartedText(
   artifactFile: string,
 ): string {
   return [
-    `🦞 辩论主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
+    `🦞 裁判主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
     `龙虾任务：${taskId}`,
     `artifact：${artifactFile}`,
   ].join("\n");
@@ -8259,7 +8289,7 @@ function buildLobsterDebateModeratorFinishedText(
   maxDialogueTurns: number,
 ): string {
   return [
-    `🦞 辩论主持人控场已收束：${decision.action}`,
+    `🦞 裁判主持人控场已收束：${decision.action}`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
@@ -8277,7 +8307,7 @@ function buildLobsterDebateFinalStanceStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 辩论进入最终立场收集：主持人动作 ${decision.action}`,
+    `🦞 红蓝对抗进入最终立场收集：裁判动作 ${decision.action}`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `chat：${paths.chatFile}`,
@@ -8294,7 +8324,7 @@ function buildLobsterDebateConsensusReachedText(
     ? `派发 ${getLobsterDecisionSubtasks(decision).length} 个子任务，预计剩余 ${formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds) ?? "未记录"}`
     : decision.status;
   return [
-    `🦞 辩论共识已形成：${decisionSummary}`,
+    `🦞 红蓝对抗共识已形成：${decisionSummary}`,
     `龙虾任务：${taskId}`,
     `轮次：${round}`,
     `chat：${paths.chatFile}`,

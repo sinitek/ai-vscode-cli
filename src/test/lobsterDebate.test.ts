@@ -16,7 +16,13 @@ import {
   canProceedWithLobsterDebateConsensus,
   findLatestLobsterDebateModeratorSessionId,
   findLatestLobsterDebateParticipantSessionId,
+  isLobsterDebateAdversarialParticipantRole,
+  LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES,
+  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
   LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+  LOBSTER_DEBATE_MODERATOR_TITLE,
+  LOBSTER_DEBATE_PARTICIPANT_ROLES,
+  LOBSTER_DEBATE_RED_TEAM_ROLE,
   normalizeLobsterDebateSessionId,
   normalizeLobsterDebateModeratorAction,
   parseLobsterDebateChatTranscript,
@@ -120,6 +126,18 @@ test("builds stable main-sub group chat transcript path", () => {
   );
 });
 
+test("keeps debate mode roles red-blue while preserving legacy role compatibility", () => {
+  assert.deepEqual(
+    Array.from(LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES),
+    [LOBSTER_DEBATE_BLUE_TEAM_ROLE, LOBSTER_DEBATE_RED_TEAM_ROLE],
+  );
+  assert.equal(isLobsterDebateAdversarialParticipantRole("blue_team"), true);
+  assert.equal(isLobsterDebateAdversarialParticipantRole("red_team"), true);
+  assert.equal(isLobsterDebateAdversarialParticipantRole("architecture"), false);
+  assert.equal(LOBSTER_DEBATE_PARTICIPANT_ROLES.includes("architecture"), true);
+  assert.equal(LOBSTER_DEBATE_MODERATOR_TITLE, "裁判主持人");
+});
+
 test("builds nested paths for additional debate rounds within the same lobster round", () => {
   const paths = buildLobsterDebatePaths("/tmp/lobster-communications/task-1", 2, 3);
 
@@ -207,25 +225,25 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
 
 test("parses debate chat transcript into role-oriented segments", () => {
   const transcript = [
-    "# 龙虾辩论群聊记录",
+    "# 龙虾红蓝对抗群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
     "## 群聊规则",
     "- 每位角色读取已有发言。",
     "",
-    "## 参与者加入：产品体验（product-review）",
-    "关注用户流程。",
+    "## 参与者加入：蓝队方案方（blue-planner）",
+    "关注可执行方案。",
     "",
-    "## 第 1 轮发言：架构规划（architecture）",
+    "## 第 1 轮发言：蓝队方案方（blue-planner）",
     "## 群聊发言",
     "建议先拆模块。",
     "",
-    "## 第 1 轮主持人控场（主持人控场）",
+    "## 第 1 轮主持人控场（裁判主持人）",
     "## 主持人决策",
     "continue",
     "",
-    "## 最终立场：风险审查（risk）",
+    "## 最终立场：红队攻击方（red-attacker）",
     "## 立场",
     "agree_with_reservations",
     "",
@@ -239,25 +257,26 @@ test("parses debate chat transcript into role-oriented segments", () => {
 
   const parsed = parseLobsterDebateChatTranscript(transcript);
 
-  assert.equal(parsed.title, "龙虾辩论群聊记录");
+  assert.equal(parsed.title, "龙虾红蓝对抗群聊记录");
   assert.equal(parsed.closed, true);
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
     ["preamble", "rules", "participant-joined", "participant-turn", "moderator-turn", "final-stance", "closed", "error"],
   );
   const joined = parsed.segments.find((segment) => segment.kind === "participant-joined");
-  assert.equal(joined?.actorId, "product-review");
-  assert.equal(joined?.actorTitle, "产品体验");
+  assert.equal(joined?.actorId, "blue-planner");
+  assert.equal(joined?.actorTitle, "蓝队方案方");
   const participant = parsed.segments.find((segment) => segment.kind === "participant-turn");
   const error = parsed.segments.find((segment) => segment.kind === "error");
   assert.equal(error?.actorId, "moderator");
-  assert.equal(error?.actorTitle, "主持人控场");
+  assert.equal(error?.actorTitle, "裁判主持人");
   assert.match(error?.body ?? "", /停止自动执行/u);
   assert.equal(participant?.dialogueTurn, 1);
-  assert.equal(participant?.actorId, "architecture");
-  assert.equal(participant?.actorTitle, "架构规划");
+  assert.equal(participant?.actorId, "blue-planner");
+  assert.equal(participant?.actorTitle, "蓝队方案方");
   const moderator = parsed.segments.find((segment) => segment.kind === "moderator-turn");
   assert.equal(moderator?.actorId, "moderator");
+  assert.equal(moderator?.actorTitle, "裁判主持人");
 });
 
 test("parses terminal lobster group chat status sections as final bubbles", () => {
@@ -284,7 +303,7 @@ test("parses terminal lobster group chat status sections as final bubbles", () =
   assert.equal(completed?.actorTitle, "主任务");
   const interrupted = parsed.segments.find((segment) => segment.heading === "任务中断");
   assert.equal(interrupted?.actorId, "moderator");
-  assert.equal(interrupted?.actorTitle, "主持人控场");
+  assert.equal(interrupted?.actorTitle, "裁判主持人");
 });
 
 test("parses debate chat transcript without UI round section headings", () => {
@@ -437,10 +456,10 @@ test("allows proceeding when consensus is reached and all participants agree", (
     reached: true,
     summary: "All default participants agree to continue.",
     participantStances: [
-      { participantId: "architecture", stance: "agree" },
-      { participantId: "implementation", stance: "agree" },
-      { participantId: "testing", stance: "agree" },
-      { participantId: "risk", stance: "agree" },
+      { participantId: "blue_planner", stance: "agree" },
+      { participantId: "red_attacker", stance: "agree" },
+      { participantId: "blue_verifier", stance: "agree" },
+      { participantId: "red_edge_cases", stance: "agree" },
     ],
     resolvedDisagreements: [],
     openDisagreements: [],
@@ -462,16 +481,16 @@ test("allows proceeding when a prior risk block is resolved into final reservati
     reached: true,
     summary: "Risk concerns were converted into source-scope subtasks and acceptance checks.",
     participantStances: [
-      { participantId: "architecture", stance: "agree" },
-      { participantId: "implementation", stance: "agree" },
-      { participantId: "testing", stance: "agree_with_reservations" },
-      { participantId: "risk", stance: "agree_with_reservations", note: "Original block is resolved by a source-scope subtask." },
+      { participantId: "blue_planner", stance: "agree" },
+      { participantId: "red_attacker", stance: "agree_with_reservations" },
+      { participantId: "blue_verifier", stance: "agree" },
+      { participantId: "red_edge_cases", stance: "agree_with_reservations", note: "Original block is resolved by a source-scope subtask." },
     ],
     resolvedDisagreements: [
       {
         id: "source-scope",
         title: "Source and probability scope",
-        participants: ["risk"],
+        participants: ["red_edge_cases"],
         severity: "blocking",
         resolution: "Add a first subtask that fixes the probability method, data timestamp, and source requirements before evidence collection.",
       },
@@ -502,7 +521,7 @@ test("blocks proceeding when an unresolved blocking disagreement remains open", 
       {
         id: "write-scope-conflict",
         title: "Write scope conflict",
-        participants: ["architecture", "risk"],
+        participants: ["blue_planner", "red_attacker"],
         severity: "blocking",
       },
     ],
@@ -521,8 +540,8 @@ test("blocks proceeding when any participant stance is block", () => {
     reached: true,
     summary: "Risk reviewer blocks the plan.",
     participantStances: [
-      { participantId: "architecture", stance: "agree" },
-      { participantId: "risk", stance: "block", note: "Authorized write scope is inconsistent." },
+      { participantId: "blue_planner", stance: "agree" },
+      { participantId: "red_attacker", stance: "block", note: "The evidence chain is insufficient." },
     ],
     resolvedDisagreements: [],
     openDisagreements: [],
@@ -531,7 +550,7 @@ test("blocks proceeding when any participant stance is block", () => {
   const validation = validateLobsterDebateConsensus(consensus);
 
   assert.equal(validation.canProceed, false);
-  assert.deepEqual(validation.blockingParticipantIds, ["risk"]);
+  assert.deepEqual(validation.blockingParticipantIds, ["red_attacker"]);
   assert.deepEqual(validation.blockingDisagreementIds, []);
 });
 
@@ -565,9 +584,9 @@ test("summarizes a reached but blocked consensus as manual review with decision 
     },
   });
 
-  assert.equal(summary.title, "辩论达成阻塞共识");
+  assert.equal(summary.title, "红蓝对抗达成阻塞共识");
   assert.equal(summary.estimatedRemainingRounds, 0);
-  assert.match(summary.finalSummary, /辩论达成阻塞共识/u);
+  assert.match(summary.finalSummary, /红蓝对抗达成阻塞共识/u);
   assert.match(summary.finalSummary, /默认 runtime 缺少安全凭据闭环/u);
   assert.match(summary.finalSummary, /必须先完成授权的 secret\/ref 配置/u);
   assert.match(summary.finalSummary, /credential-chain/u);
@@ -578,7 +597,7 @@ test("summarizes missing consensus as no consensus reached", () => {
     reasons: ["Consensus has not been reached."],
   });
 
-  assert.equal(summary.title, "辩论未达成一致");
+  assert.equal(summary.title, "红蓝对抗未达成一致");
   assert.equal(summary.estimatedRemainingRounds, undefined);
   assert.match(summary.finalSummary, /Consensus has not been reached/u);
 });
