@@ -58,10 +58,12 @@ export type LobsterDebateChatPanelState = {
     status: string;
     rootPrompt: string;
     taskStoreFile: string;
-    mainCommunicationFile: string;
-    currentRound: number;
-    updatedAt: number;
-  };
+	    mainCommunicationFile: string;
+	    currentRound: number;
+	    updatedAt: number;
+	    canContinue: boolean;
+	    canStop: boolean;
+	  };
   rounds: LobsterDebateChatPanelRound[];
   chatMarkdown: string;
   error?: string | null;
@@ -69,6 +71,8 @@ export type LobsterDebateChatPanelState = {
 
 export type LobsterDebateChatPanelMessage =
   | { type: "lobsterDebateChat:refresh" }
+  | { type: "lobsterDebateChat:continueTask"; prompt?: string }
+  | { type: "lobsterDebateChat:stopTask" }
   | { type: "lobsterDebateChat:openChatFile" }
   | { type: "lobsterDebateChat:openTaskFile" };
 
@@ -83,6 +87,17 @@ const STRINGS = {
     debateSubtitle: "Debate group chat",
     mainSubSubtitle: "Main/subtask group chat",
     executionRound: "Task execution chat",
+    continueTask: "Continue",
+    continueTaskTitle: "Ask the main task or moderator to decide whether to continue",
+    continuePromptDefault: "continue",
+    continueDialogTitle: "Continue Lobster task",
+    continueDialogDescription: "Confirm the message to send to the main task or moderator. You can edit or add context before continuing.",
+    continuePromptLabel: "Message",
+    continuePromptRequired: "Enter a message before continuing.",
+    continueConfirm: "Confirm",
+    continueCancel: "Cancel",
+    stopTask: "Stop",
+    stopTaskTitle: "Stop all running tasks for this Lobster group chat",
     refresh: "Refresh",
     openTranscript: "Open transcript",
     openTask: "Open task record",
@@ -107,9 +122,10 @@ const STRINGS = {
 	    turnLabel: "Turn {turn}",
 	    finalStance: "Final stance",
 	    system: "System",
-	    transcriptClosed: "Closed",
-	    transcriptOpen: "In progress",
-	    startedAt: "Started",
+    transcriptClosed: "Closed",
+    transcriptOpen: "In progress",
+    stopped: "Stopped",
+    startedAt: "Started",
 	    completedAt: "Completed",
 	    thinking: "{speaker} is thinking",
 	    finalStanceThinking: "{speaker} is preparing a final stance",
@@ -123,6 +139,17 @@ const STRINGS = {
     debateSubtitle: "辩论群聊",
     mainSubSubtitle: "主从群聊",
     executionRound: "任务执行群聊",
+    continueTask: "继续执行",
+    continueTaskTitle: "让主任务或主持人判断是否继续执行",
+    continuePromptDefault: "继续",
+    continueDialogTitle: "继续龙虾任务",
+    continueDialogDescription: "确认后会把这段内容发给主任务或主持人继续判断，可先修改或补充说明。",
+    continuePromptLabel: "消息内容",
+    continuePromptRequired: "请输入继续消息。",
+    continueConfirm: "确认",
+    continueCancel: "取消",
+    stopTask: "中止",
+    stopTaskTitle: "中止这个龙虾群聊关联的所有运行任务",
     refresh: "刷新",
     openTranscript: "打开 transcript",
     openTask: "打开任务记录",
@@ -147,9 +174,10 @@ const STRINGS = {
 	    turnLabel: "第 {turn} 轮发言",
 	    finalStance: "最终立场",
 	    system: "系统",
-	    transcriptClosed: "已收束",
-	    transcriptOpen: "进行中",
-	    startedAt: "开始",
+    transcriptClosed: "已收束",
+    transcriptOpen: "进行中",
+    stopped: "已停止",
+    startedAt: "开始",
 	    completedAt: "完成",
 	    thinking: "{speaker} 思考中",
 	    finalStanceThinking: "{speaker} 正在整理最终立场",
@@ -303,6 +331,79 @@ function buildLobsterDebateChatPanelHtml(
       }
       .button.primary:hover {
         background: var(--vscode-button-hoverBackground);
+      }
+      .dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+        z-index: 20;
+      }
+      .dialog-backdrop.visible {
+        display: flex;
+      }
+      .dialog {
+        width: min(560px, 100%);
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--radius);
+        background: var(--vscode-editorWidget-background);
+        box-shadow: 0 12px 30px color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent);
+        overflow: hidden;
+      }
+      .dialog-header {
+        padding: 14px 16px 10px;
+        border-bottom: 1px solid var(--vscode-widget-border);
+      }
+      .dialog-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .dialog-description {
+        margin: 6px 0 0;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .dialog-body {
+        padding: 14px 16px 0;
+      }
+      .dialog-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .dialog-textarea {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 4px;
+        padding: 10px 12px;
+        box-sizing: border-box;
+        color: var(--vscode-input-foreground);
+        background: var(--vscode-input-background);
+        font: inherit;
+        line-height: 1.5;
+      }
+      .dialog-textarea:focus {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 0;
+      }
+      .dialog-error {
+        min-height: 18px;
+        padding-top: 8px;
+        color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+        font-size: 12px;
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 16px 16px;
       }
       .layout {
         width: 100%;
@@ -475,6 +576,13 @@ function buildLobsterDebateChatPanelHtml(
       .message.final-stance .bubble {
         border-color: var(--vscode-charts-green, var(--vscode-focusBorder));
       }
+      .message.error .bubble {
+        border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+        background: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background));
+      }
+      .message.error .bubble-header {
+        color: var(--vscode-errorForeground);
+      }
       .message.system .bubble,
       .message.task-event .bubble,
       .message.rules .bubble {
@@ -577,11 +685,30 @@ function buildLobsterDebateChatPanelHtml(
           <p>${escapeHtml(getPanelSubtitle(state, strings))} · ${escapeHtml(state.task.id)}</p>
         </div>
         <div class="actions">
-          <button class="button primary" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
+          ${state.task.canStop ? `<button class="button primary" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
+          ${!state.task.canStop && state.task.canContinue ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
+          <button class="button${state.task.canStop || state.task.canContinue ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
           <button class="button" type="button" data-action="openChatFile">${escapeHtml(strings.openTranscript)}</button>
           <button class="button" type="button" data-action="openTaskFile">${escapeHtml(strings.openTask)}</button>
         </div>
       </header>
+      <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="continueDialogTitle" aria-describedby="continueDialogDescription">
+          <div class="dialog-header">
+            <h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>
+            <p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>
+          </div>
+          <div class="dialog-body">
+            <label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label>
+            <textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea>
+            <div id="continueDialogError" class="dialog-error" aria-live="polite"></div>
+          </div>
+          <div class="dialog-actions">
+            <button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.continueCancel)}</button>
+            <button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>
+          </div>
+        </div>
+      </div>
       <div class="layout">
 	        <aside class="sidebar">
 	          ${renderTaskPanel(state, strings, locale)}
@@ -605,14 +732,28 @@ function buildLobsterDebateChatPanelHtml(
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
 	      const SCROLL_BUTTON_SUPPRESS_MS = 400;
+	      const sidebarElement = document.querySelector(".sidebar");
 	      const mainElement = document.querySelector(".main");
+	      const continueDialogBackdrop = document.getElementById("continueDialogBackdrop");
+	      const continueDialogInput = document.getElementById("continueDialogInput");
+	      const continueDialogError = document.getElementById("continueDialogError");
+	      const continueDialogConfirm = document.getElementById("continueDialogConfirm");
+	      const continueDialogCancel = document.getElementById("continueDialogCancel");
+	      const continueTaskButton = document.querySelector('[data-action="continueTask"]');
+	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
 	      let autoRefreshTimer = undefined;
 	      let suppressScrollButtonUntil = 0;
+	      let continueDialogOpen = false;
 
 	      function getStoredState() {
 	        return vscode.getState() || {};
+	      }
+
+	      function getStoredScrollState() {
+	        const scroll = getStoredState().scroll;
+	        return scroll && typeof scroll === "object" ? scroll : {};
 	      }
 
 	      function getDistanceToBottom() {
@@ -646,10 +787,13 @@ function buildLobsterDebateChatPanelHtml(
 	        }
 	        suppressScrollButtonUntil = Date.now() + SCROLL_BUTTON_SUPPRESS_MS;
 	        mainElement.scrollTo({ top: mainElement.scrollHeight, behavior });
+	        const existingScroll = getStoredScrollState();
 	        vscode.setState({
 	          ...getStoredState(),
 	          scroll: {
+	            ...existingScroll,
 	            top: mainElement.scrollHeight,
+	            sidebarTop: sidebarElement ? sidebarElement.scrollTop : existingScroll.sidebarTop,
 	            stickToBottom: true,
 	          },
 	        });
@@ -659,14 +803,17 @@ function buildLobsterDebateChatPanelHtml(
 	      }
 
 	      function saveScrollState() {
-	        if (!mainElement) {
+	        if (!mainElement && !sidebarElement) {
 	          return;
 	        }
+	        const existingScroll = getStoredScrollState();
 	        vscode.setState({
 	          ...getStoredState(),
 	          scroll: {
-	            top: mainElement.scrollTop,
-	            stickToBottom: isNearBottom(),
+	            ...existingScroll,
+	            top: mainElement ? mainElement.scrollTop : existingScroll.top,
+	            sidebarTop: sidebarElement ? sidebarElement.scrollTop : existingScroll.sidebarTop,
+	            stickToBottom: mainElement ? isNearBottom() : existingScroll.stickToBottom,
 	          },
 	        });
 	      }
@@ -685,6 +832,9 @@ function buildLobsterDebateChatPanelHtml(
 	        } else if (typeof scroll.top === "number" && Number.isFinite(scroll.top)) {
 	          mainElement.scrollTop = Math.min(scroll.top, mainElement.scrollHeight);
 	        }
+	        if (sidebarElement && typeof scroll.sidebarTop === "number" && Number.isFinite(scroll.sidebarTop)) {
+	          sidebarElement.scrollTop = Math.min(scroll.sidebarTop, sidebarElement.scrollHeight);
+	        }
 	        updateScrollToBottomButton();
 	      }
 
@@ -693,12 +843,61 @@ function buildLobsterDebateChatPanelHtml(
 	        vscode.postMessage({ type: "lobsterDebateChat:refresh" });
 	      }
 
+	      function setContinueDialogError(message) {
+	        if (!continueDialogError) {
+	          return;
+	        }
+	        continueDialogError.textContent = message || "";
+	      }
+
+	      function openContinueDialog() {
+	        if (!continueDialogBackdrop || !continueDialogInput) {
+	          return;
+	        }
+	        setContinueDialogError("");
+	        continueDialogOpen = true;
+	        continueDialogInput.value = "${escapeJsString(strings.continuePromptDefault)}";
+	        continueDialogBackdrop.classList.add("visible");
+	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        window.setTimeout(() => {
+	          continueDialogInput.focus();
+	          continueDialogInput.select();
+	        }, 0);
+	      }
+
+	      function closeContinueDialog() {
+	        if (!continueDialogBackdrop) {
+	          return;
+	        }
+	        continueDialogOpen = false;
+	        continueDialogBackdrop.classList.remove("visible");
+	        continueDialogBackdrop.setAttribute("aria-hidden", "true");
+	        setContinueDialogError("");
+	      }
+
+	      function submitContinueDialog() {
+	        if (!continueDialogInput) {
+	          return;
+	        }
+	        const prompt = continueDialogInput.value.trim();
+	        if (!prompt) {
+	          setContinueDialogError("${escapeJsString(strings.continuePromptRequired)}");
+	          continueDialogInput.focus();
+	          return;
+	        }
+	        closeContinueDialog();
+	        if (continueTaskButton) {
+	          continueTaskButton.disabled = true;
+	        }
+	        vscode.postMessage({ type: "lobsterDebateChat:continueTask", prompt });
+	      }
+
 	      function startAutoRefresh() {
 	        if (autoRefreshTimer !== undefined) {
 	          return;
 	        }
 	        autoRefreshTimer = window.setInterval(() => {
-	          if (document.visibilityState === "visible") {
+	          if (document.visibilityState === "visible" && !continueDialogOpen) {
 	            requestRefresh();
 	          }
 	        }, AUTO_REFRESH_INTERVAL_MS);
@@ -712,6 +911,19 @@ function buildLobsterDebateChatPanelHtml(
 	        const action = target.getAttribute("data-action");
 	        if (action === "refresh") {
 	          requestRefresh();
+	          return;
+	        }
+	        if (action === "continueTask") {
+	          saveScrollState();
+	          openContinueDialog();
+	          return;
+	        }
+	        if (action === "stopTask") {
+	          saveScrollState();
+	          if (stopTaskButton) {
+	            stopTaskButton.disabled = true;
+	          }
+	          vscode.postMessage({ type: "lobsterDebateChat:stopTask" });
 	          return;
 	        }
 	        if (action === "scrollToBottom") {
@@ -733,8 +945,42 @@ function buildLobsterDebateChatPanelHtml(
 	          updateScrollToBottomButton();
 	        }, { passive: true });
 	      }
+	      if (continueDialogBackdrop) {
+	        continueDialogBackdrop.addEventListener("click", (event) => {
+	          if (event.target === continueDialogBackdrop) {
+	            closeContinueDialog();
+	          }
+	        });
+	      }
+	      if (continueDialogCancel) {
+	        continueDialogCancel.addEventListener("click", () => {
+	          closeContinueDialog();
+	        });
+	      }
+	      if (continueDialogConfirm) {
+	        continueDialogConfirm.addEventListener("click", () => {
+	          submitContinueDialog();
+	        });
+	      }
+	      if (continueDialogInput) {
+	        continueDialogInput.addEventListener("keydown", (event) => {
+	          if (event.key === "Escape") {
+	            event.preventDefault();
+	            closeContinueDialog();
+	          }
+	          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+	            event.preventDefault();
+	            submitContinueDialog();
+	          }
+	        });
+	      }
+	      if (sidebarElement) {
+	        sidebarElement.addEventListener("scroll", () => {
+	          saveScrollState();
+	        }, { passive: true });
+	      }
 	      document.addEventListener("visibilitychange", () => {
-	        if (document.visibilityState === "visible") {
+	        if (document.visibilityState === "visible" && !continueDialogOpen) {
 	          requestRefresh();
 	        }
 	      });
@@ -912,6 +1158,9 @@ function renderThinkingBubble(
 }
 
 function getActiveSpeaker(state: LobsterDebateChatPanelState): LobsterDebateChatPanelActiveSpeaker | null {
+  if (state.task.status !== "running") {
+    return null;
+  }
   for (let index = state.rounds.length - 1; index >= 0; index -= 1) {
     const speaker = getActiveSpeakerFromRound(state.rounds[index]);
     if (speaker) {
@@ -990,7 +1239,8 @@ function renderSegment(segment: LobsterDebateChatSegment, strings: LobsterDebate
     || segment.kind === "participant-joined"
     || segment.kind === "participant-turn"
     || segment.kind === "moderator-turn"
-    || segment.kind === "final-stance";
+    || segment.kind === "final-stance"
+    || segment.kind === "error";
   const avatar = hasAvatar
     ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker, segment.actorId ?? ""))}</span>`
     : "";
@@ -1014,7 +1264,7 @@ function getSegmentSpeaker(segment: LobsterDebateChatSegment, strings: LobsterDe
   if (segment.kind === "subtask-joined" || segment.kind === "subtask-turn") {
     return segment.actorTitle ?? segment.actorId ?? strings.subtask;
   }
-  if (segment.kind === "moderator-turn" || segment.kind === "forced-finalize" || segment.kind === "closed") {
+  if (segment.kind === "moderator-turn" || segment.kind === "forced-finalize" || segment.kind === "closed" || segment.kind === "error") {
     return segment.actorTitle ?? strings.moderator;
   }
   if (segment.kind === "participant-joined" || segment.kind === "participant-turn" || segment.kind === "final-stance") {
@@ -1044,6 +1294,9 @@ function getSegmentTag(segment: LobsterDebateChatSegment, strings: LobsterDebate
   }
   if (segment.kind === "participant-turn") {
     return strings.participants;
+  }
+  if (segment.kind === "error") {
+    return strings.stopped;
   }
   if (segment.kind === "moderator-turn" && typeof segment.dialogueTurn === "number") {
     return `${strings.moderator} · ${formatTemplate(strings.turnLabel, { turn: segment.dialogueTurn })}`;
@@ -1111,6 +1364,10 @@ function escapeHtml(value: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function escapeJsString(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
 }
 
 function getNonce(): string {

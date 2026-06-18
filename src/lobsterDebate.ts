@@ -137,6 +137,7 @@ export type LobsterDebateChatSegmentKind =
   | "final-stance"
   | "forced-finalize"
   | "closed"
+  | "error"
   | "section";
 
 export type LobsterDebateChatSegment = {
@@ -153,6 +154,115 @@ export type LobsterDebateChatTranscript = {
   segments: LobsterDebateChatSegment[];
   closed: boolean;
 };
+
+export type LobsterTaskRunControlState = {
+  isRunning: boolean;
+  canContinue: boolean;
+  canStop: boolean;
+};
+
+export function resolveLobsterTaskRunControlState(
+  task: { id: string; status: string },
+  runningTaskIds: ReadonlySet<string>,
+): LobsterTaskRunControlState {
+  const isCompleted = task.status === "completed";
+  const isRunning = !isCompleted && (task.status === "running" || runningTaskIds.has(task.id));
+  return {
+    isRunning,
+    canContinue: !isCompleted && !isRunning,
+    canStop: isRunning,
+  };
+}
+
+export type LobsterGroupChatFinalStatusSection = {
+  heading: "任务成功完成" | "任务中断";
+  body: string;
+  terminalStatus: "completed" | "interrupted";
+};
+
+export function buildLobsterGroupChatFinalStatusSection(task: {
+  id: string;
+  status: string;
+  currentRound?: number | null;
+  updatedAt?: number | null;
+  finalSummary?: string | null;
+  estimatedRemainingRounds?: number | null;
+}): LobsterGroupChatFinalStatusSection | null {
+  const status = String(task.status || "").trim();
+  if (status === "completed") {
+    return {
+      heading: "任务成功完成",
+      terminalStatus: "completed",
+      body: buildLobsterGroupChatFinalStatusBody(
+        task,
+        "任务已成功完成。",
+        "### 完成摘要",
+        normalizeLobsterGroupChatFinalSummary(task.finalSummary, "主任务已完成。"),
+      ),
+    };
+  }
+  if (status === "needs-review" || status === "error" || status === "stopped") {
+    return {
+      heading: "任务中断",
+      terminalStatus: "interrupted",
+      body: buildLobsterGroupChatFinalStatusBody(
+        task,
+        "任务已中断，需要人工复核或继续。",
+        "### 中断说明",
+        normalizeLobsterGroupChatFinalSummary(task.finalSummary, getDefaultLobsterInterruptedSummary(status)),
+      ),
+    };
+  }
+  return null;
+}
+
+function buildLobsterGroupChatFinalStatusBody(
+  task: {
+    id: string;
+    status: string;
+    currentRound?: number | null;
+    updatedAt?: number | null;
+    estimatedRemainingRounds?: number | null;
+  },
+  headline: string,
+  summaryHeading: string,
+  summary: string,
+): string {
+  const lines = [
+    headline,
+    `- 状态：${task.status || "unknown"}`,
+    `- 龙虾任务：${task.id}`,
+  ];
+  if (typeof task.currentRound === "number" && Number.isFinite(task.currentRound)) {
+    lines.push(`- 当前主任务轮次：${Math.max(0, Math.floor(task.currentRound))}`);
+  }
+  if (typeof task.estimatedRemainingRounds === "number" && Number.isFinite(task.estimatedRemainingRounds)) {
+    lines.push(`- 预计剩余轮次：${Math.max(0, Math.floor(task.estimatedRemainingRounds))} 轮`);
+  }
+  if (typeof task.updatedAt === "number" && Number.isFinite(task.updatedAt)) {
+    lines.push(`- 更新时间：${new Date(task.updatedAt).toISOString()}`);
+  }
+  lines.push("", summaryHeading, summary);
+  return lines.join("\n");
+}
+
+function normalizeLobsterGroupChatFinalSummary(value: string | null | undefined, fallback: string): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
+}
+
+function getDefaultLobsterInterruptedSummary(status: string): string {
+  if (status === "needs-review") {
+    return "任务已进入人工复核，自动执行中断。";
+  }
+  if (status === "error") {
+    return "任务执行出错，自动执行中断。";
+  }
+  if (status === "stopped") {
+    return "任务已停止。";
+  }
+  return "任务已中断。";
+}
 
 export type LobsterDebatePaths = {
   communicationDir: string;
@@ -205,6 +315,13 @@ export type LobsterDebateConsensusValidationResult = {
   blockingParticipantIds: string[];
   blockingDisagreementIds: string[];
   reasons: string[];
+};
+
+export type LobsterDebateNeedsReviewSummary = {
+  title: string;
+  finalSummary: string;
+  details: string[];
+  estimatedRemainingRounds?: number;
 };
 
 export function buildLobsterDebatePaths(
@@ -345,6 +462,38 @@ export function canProceedWithLobsterDebateConsensus(consensus: unknown): boolea
   return validateLobsterDebateConsensus(consensus).canProceed;
 }
 
+export function buildLobsterDebateNeedsReviewSummary(options: {
+  reasons?: readonly string[] | null;
+  consensus?: LobsterDebateConsensusRecord | null;
+}): LobsterDebateNeedsReviewSummary {
+  const reasons = normalizeLobsterDebateNeedsReviewReasons(options.reasons);
+  const consensus = options.consensus ?? null;
+  const consensusSummary = typeof consensus?.summary === "string" ? consensus.summary.trim() : "";
+  const decision = isObjectRecord(consensus?.decision) ? consensus.decision : null;
+  const decisionSummary = typeof decision?.finalSummary === "string" ? decision.finalSummary.trim() : "";
+  const estimatedRemainingRounds = normalizeLobsterDebateEstimatedRemainingRounds(decision?.estimatedRemainingRounds);
+  const title = consensus?.reached === true ? "辩论达成阻塞共识" : "辩论未达成一致";
+  const details: string[] = [];
+  if (consensusSummary) {
+    details.push(`共识摘要：${consensusSummary}`);
+  }
+  if (decisionSummary) {
+    details.push(`决策摘要：${decisionSummary}`);
+  }
+  if (reasons.length > 0) {
+    details.push(`原因：${reasons.join("；")}`);
+  }
+  if (details.length === 0) {
+    details.push("原因：未提供具体原因。");
+  }
+  return {
+    title,
+    finalSummary: `${title}，已进入人工复核。${details.join(" ")}`,
+    details,
+    ...(typeof estimatedRemainingRounds === "number" ? { estimatedRemainingRounds } : {}),
+  };
+}
+
 export function normalizeLobsterDebateSessionId(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -465,6 +614,19 @@ function collectOpenBlockingLobsterDebateDisagreementIds(value: unknown): string
     .filter((item): item is Record<string, unknown> => isObjectRecord(item))
     .filter((item) => item.severity === "blocking")
     .map((item) => normalizeLobsterDebateIdentifier(item.id, "unknown-disagreement"));
+}
+
+function normalizeLobsterDebateNeedsReviewReasons(value: readonly string[] | null | undefined): string[] {
+  return Array.isArray(value)
+    ? value.map((reason) => String(reason).trim()).filter(Boolean)
+    : [];
+}
+
+function normalizeLobsterDebateEstimatedRemainingRounds(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 function normalizeLobsterDebateRoundNumber(value: unknown): number {
@@ -605,9 +767,36 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
     };
   }
+  if (heading === "任务成功完成") {
+    return {
+      kind: "closed",
+      heading,
+      body,
+      actorId: "main",
+      actorTitle: "主任务",
+    };
+  }
+  if (heading === "任务中断") {
+    return {
+      kind: "error",
+      heading,
+      body,
+      actorId: LOBSTER_DEBATE_MODERATOR_ID,
+      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+    };
+  }
   if (heading === "群聊收束") {
     return {
       kind: "closed",
+      heading,
+      body,
+      actorId: LOBSTER_DEBATE_MODERATOR_ID,
+      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+    };
+  }
+  if (heading === "主持人停止说明") {
+    return {
+      kind: "error",
       heading,
       body,
       actorId: LOBSTER_DEBATE_MODERATOR_ID,
@@ -621,7 +810,10 @@ function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
   return heading === "群聊规则"
     || heading === "任务事件"
     || heading === "运行时强制收束"
+    || heading === "任务成功完成"
+    || heading === "任务中断"
     || heading === "群聊收束"
+    || heading === "主持人停止说明"
     || /^主任务发言：第\s+\d+\s+轮(?:（.+?）)?$/u.test(heading)
     || /^子任务加入：.+?（.+?）$/u.test(heading)
     || /^子任务发言：.+?（.+?）$/u.test(heading)

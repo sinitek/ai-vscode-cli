@@ -68,6 +68,7 @@ const WEBVIEW_I18N = {
     historyTabsLabel: "History",
     historyTabPrompts: "Prompt History",
     historyTabSessions: "Sessions",
+    historyTabLobsterGroupChats: "Lobster Group Chats",
     historySessionViewLabel: "Messages",
     historySessionExportLabel: "Export TXT",
     historySessionExporting: "Exporting...",
@@ -198,6 +199,10 @@ const WEBVIEW_I18N = {
     noConfigOption: "No configs",
     historyEmptySessions: "No session history",
     historyEmptyPrompts: "No prompt history",
+    historyEmptyLobsterGroupChats: "No lobster group chat history",
+    lobsterHistoryModeMainSub: "Main/Sub",
+    lobsterHistoryModeDebate: "Debate",
+    lobsterHistoryMeta: "{mode} · Round {round} · Updated {time}",
     sessionDefaultLabel: "Untitled Session",
     sessionOpenInTabsLabel: "Open",
     sessionLoadLabel: "Load",
@@ -354,6 +359,7 @@ const WEBVIEW_I18N = {
     historyTabsLabel: "历史记录",
     historyTabPrompts: "历史提示词",
     historyTabSessions: "历史会话",
+    historyTabLobsterGroupChats: "龙虾群聊",
     historySessionViewLabel: "查看消息",
     historySessionExportLabel: "导出 TXT",
     historySessionExporting: "导出中...",
@@ -484,6 +490,10 @@ const WEBVIEW_I18N = {
     noConfigOption: "暂无配置",
     historyEmptySessions: "暂无会话历史",
     historyEmptyPrompts: "暂无历史提示词",
+    historyEmptyLobsterGroupChats: "暂无龙虾群聊历史",
+    lobsterHistoryModeMainSub: "主从",
+    lobsterHistoryModeDebate: "辩论",
+    lobsterHistoryMeta: "{mode} · 第 {round} 轮 · 更新 {time}",
     sessionDefaultLabel: "未命名会话",
     sessionOpenInTabsLabel: "已激活",
     sessionLoadLabel: "加载",
@@ -2372,6 +2382,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .history-panel.sessions {
         overflow: hidden;
       }
+      .history-panel.lobster {
+        overflow: hidden;
+      }
       .history-modal {
         width: 620px;
       }
@@ -3015,12 +3028,16 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           <div class="history-tabs help-tabs" role="tablist" aria-label="${i18n.historyTabsLabel}">
             <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabPrompts}</button>
             <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
+            <button id="historyTabLobsterGroupChats" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabLobsterGroupChats}</button>
           </div>
           <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
             <div id="promptHistoryList" class="prompt-list"></div>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
             <div id="sessionList" class="session-list"></div>
+          </div>
+          <div id="historyPanelLobsterGroupChats" class="history-panel lobster" role="tabpanel">
+            <div id="lobsterGroupChatHistoryList" class="session-list"></div>
           </div>
         </div>
       </div>
@@ -3568,6 +3585,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           tabs: [],
         },
         promptHistory: [],
+        lobsterGroupChatHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
         autoCompactContextAfterRun: true,
@@ -3668,10 +3686,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         clearAllHistory: document.getElementById("clearAllHistory"),
         historyTabPrompts: document.getElementById("historyTabPrompts"),
         historyTabSessions: document.getElementById("historyTabSessions"),
+        historyTabLobsterGroupChats: document.getElementById("historyTabLobsterGroupChats"),
         historyPanelPrompts: document.getElementById("historyPanelPrompts"),
         historyPanelSessions: document.getElementById("historyPanelSessions"),
+        historyPanelLobsterGroupChats: document.getElementById("historyPanelLobsterGroupChats"),
         promptHistoryList: document.getElementById("promptHistoryList"),
         sessionList: document.getElementById("sessionList"),
+        lobsterGroupChatHistoryList: document.getElementById("lobsterGroupChatHistoryList"),
         historyMessagesOverlay: document.getElementById("historyMessagesOverlay"),
         closeHistoryMessages: document.getElementById("closeHistoryMessages"),
         historyMessagesTitle: document.getElementById("historyMessagesTitle"),
@@ -4523,6 +4544,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
+        state.lobsterGroupChatHistory = Array.isArray(panelState.lobsterGroupChatHistory)
+          ? panelState.lobsterGroupChatHistory
+          : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         const configs = Array.isArray(state.configState.configs)
           ? state.configState.configs
@@ -4648,6 +4672,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         renderConversationTabs();
         renderSessionList();
         renderPromptHistoryList();
+        renderLobsterGroupChatHistoryList();
         applyEditorContext(panelState.editorContext);
       }
 
@@ -4815,11 +4840,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!elements.scrollToBottomButton) {
           return;
         }
+        const forceFollowLatest = shouldForceFollowLatestMessagesForActiveTab();
         const hasMessages = state.messages.length > 0;
         const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
         const distanceToBottom = getChatDistanceToBottom();
         const buttonSuppressed = isScrollButtonSuppressed();
-        const shouldShow = !forceHide && !buttonSuppressed && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
+        const shouldShow = !forceHide && !forceFollowLatest && !buttonSuppressed && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
         elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
         elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
         if (elements.scrollToBottomWrap) {
@@ -4829,6 +4855,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           const debugPayload = {
             visible: shouldShow,
             forceHide,
+            forceFollowLatest,
             buttonSuppressed,
             followLatestMessages,
             distanceToBottom,
@@ -5148,7 +5175,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function renderMessages() {
         try {
-          const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
+          const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();
           captureOpenTraceCollapsibleKeys();
           elements.messages.innerHTML = "";
           const visibleMessages = getVisibleMessages();
@@ -5364,6 +5391,15 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function isLobsterMainTab(tab) {
         const meta = getLobsterMetaForTabSummary(tab);
         return Boolean(meta && meta.taskRole === "main");
+      }
+
+      function shouldForceFollowLatestMessagesForActiveTab() {
+        const activeTab = getConversationTabSummary(getActiveConversationTabId());
+        return isLobsterMainTab(activeTab) && isLobsterMainTabCloseLocked(activeTab);
+      }
+
+      function shouldFollowLatestMessagesForActiveTab() {
+        return followLatestMessages || shouldForceFollowLatestMessagesForActiveTab();
       }
 
       function resolveAutoInteractiveModeForTab(tab) {
@@ -6003,6 +6039,80 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         });
       }
 
+      function renderLobsterGroupChatHistoryList() {
+        if (!elements.lobsterGroupChatHistoryList) {
+          return;
+        }
+        elements.lobsterGroupChatHistoryList.innerHTML = "";
+        const items = Array.isArray(state.lobsterGroupChatHistory) ? state.lobsterGroupChatHistory : [];
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = t("historyEmptyLobsterGroupChats");
+          elements.lobsterGroupChatHistoryList.appendChild(empty);
+          return;
+        }
+        items.forEach((item) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "session-item";
+
+          const info = document.createElement("div");
+          info.className = "session-info";
+
+          const titleRow = document.createElement("div");
+          titleRow.className = "session-title-row";
+
+          const label = document.createElement("div");
+          label.className = "session-label";
+          const cliLabel = item.cli ? "[" + item.cli + "] " : "";
+          const promptPreview = buildPromptPreview(item.rootPrompt || item.id || "");
+          label.textContent = cliLabel + promptPreview;
+          label.title = item.rootPrompt || item.id || "";
+          titleRow.appendChild(label);
+
+          const statusBadge = document.createElement("span");
+          statusBadge.className = "session-status-badge";
+          statusBadge.textContent = item.status || "";
+          titleRow.appendChild(statusBadge);
+
+          const subtitle = document.createElement("div");
+          subtitle.className = "session-subtitle";
+          subtitle.textContent = t("lobsterHistoryMeta", {
+            mode: formatLobsterHistoryMode(item),
+            round: item.currentRound || 0,
+            time: item.updatedAt ? formatDateTime(item.updatedAt) : "",
+          });
+
+          info.appendChild(titleRow);
+          info.appendChild(subtitle);
+
+          const actions = document.createElement("div");
+          actions.className = "session-actions";
+
+          const loadButton = document.createElement("button");
+          loadButton.className = "secondary";
+          loadButton.textContent = t("sessionLoadLabel");
+          loadButton.addEventListener("click", () => {
+            closeHistory();
+            vscode.postMessage({
+              type: "openLobsterDebateChat",
+              taskId: item.id,
+            });
+          });
+
+          actions.appendChild(loadButton);
+          wrapper.appendChild(info);
+          wrapper.appendChild(actions);
+          elements.lobsterGroupChatHistoryList.appendChild(wrapper);
+        });
+      }
+
+      function formatLobsterHistoryMode(item) {
+        return item && item.executionMode === "debate_multi_agent"
+          ? t("lobsterHistoryModeDebate")
+          : t("lobsterHistoryModeMainSub");
+      }
+
       function renderPromptHistoryList() {
         if (!elements.promptHistoryList) {
           return;
@@ -6303,7 +6413,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function appendAssistantDelta(id, content, kind, options) {
-        const shouldAutoScroll = !elements.messages.childElementCount || followLatestMessages || isChatNearBottom();
+        const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
@@ -8564,7 +8674,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.resetSession.disabled = resetLocked;
         }
         if (elements.clearAllHistory) {
-          elements.clearAllHistory.disabled = state.historyTab === "sessions" && resetLocked;
+          elements.clearAllHistory.disabled = state.historyTab === "lobster" || (state.historyTab === "sessions" && resetLocked);
         }
       }
 
@@ -9292,6 +9402,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       function openHistory() {
         renderSessionList();
         renderPromptHistoryList();
+        renderLobsterGroupChatHistoryList();
         setHistoryTab(state.historyTab);
         elements.historyOverlay.classList.add("visible");
       }
@@ -9334,13 +9445,18 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       function setHistoryTab(tab) {
         const isPrompts = tab === "prompts";
-        state.historyTab = isPrompts ? "prompts" : "sessions";
+        const isLobster = tab === "lobster";
+        const isSessions = !isPrompts && !isLobster;
+        state.historyTab = isPrompts ? "prompts" : isLobster ? "lobster" : "sessions";
         elements.historyTabPrompts.classList.toggle("active", isPrompts);
-        elements.historyTabSessions.classList.toggle("active", !isPrompts);
+        elements.historyTabSessions.classList.toggle("active", isSessions);
+        elements.historyTabLobsterGroupChats.classList.toggle("active", isLobster);
         elements.historyTabPrompts.setAttribute("aria-selected", String(isPrompts));
-        elements.historyTabSessions.setAttribute("aria-selected", String(!isPrompts));
+        elements.historyTabSessions.setAttribute("aria-selected", String(isSessions));
+        elements.historyTabLobsterGroupChats.setAttribute("aria-selected", String(isLobster));
         elements.historyPanelPrompts.classList.toggle("active", isPrompts);
-        elements.historyPanelSessions.classList.toggle("active", !isPrompts);
+        elements.historyPanelSessions.classList.toggle("active", isSessions);
+        elements.historyPanelLobsterGroupChats.classList.toggle("active", isLobster);
         if (elements.clearAllHistory) {
           elements.clearAllHistory.textContent = isPrompts
             ? t("historyClearPrompts")
@@ -9422,6 +9538,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             vscode.postMessage({ type: "clearPromptHistory" });
             return;
           }
+          if (state.historyTab === "lobster") {
+            return;
+          }
           requestResetConversationTabSession();
         });
       }
@@ -9432,6 +9551,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
 
       elements.historyTabSessions.addEventListener("click", () => {
         setHistoryTab("sessions");
+      });
+
+      elements.historyTabLobsterGroupChats.addEventListener("click", () => {
+        setHistoryTab("lobster");
       });
 
       elements.historyOverlay.addEventListener("click", (event) => {
@@ -9670,7 +9793,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       });
 
       elements.chatArea.addEventListener("scroll", () => {
-        if (!isScrollButtonSuppressed()) {
+        if (shouldForceFollowLatestMessagesForActiveTab()) {
+          followLatestMessages = true;
+        } else if (!isScrollButtonSuppressed()) {
           followLatestMessages = isChatNearBottom();
         }
         updateScrollToBottomButton();

@@ -204,6 +204,7 @@
 - `龙虾执行方式`
 - `辩论规划已启动`
 - `辩论共识已形成`
+- `辩论达成阻塞共识，已进入人工复核`
 - `辩论未达成一致，已进入人工复核`
 
 英文：
@@ -213,6 +214,7 @@
 - `Lobster execution mode`
 - `Debate planning started`
 - `Debate consensus reached`
+- `Debate reached a blocking consensus. Manual review is required.`
 - `Debate did not reach consensus. Manual review is required.`
 
 ### 运行状态消息
@@ -231,10 +233,11 @@
 如果失败：
 
 ```text
+🦞 辩论达成阻塞共识，已进入人工复核：第 5 轮
 🦞 辩论未达成一致：存在阻塞性异议，已进入人工复核
 ```
 
-完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划复核阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时提供手动刷新、打开 transcript、打开任务记录操作。
+完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划复核阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时提供手动刷新、打开 transcript、打开任务记录操作。
 
 ## 数据模型设计
 
@@ -823,8 +826,8 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 处理：
 
 - 任务进入 `needs-review`。
-- `main-task.md` 追加失败原因。
-- 主面板展示“辩论未达成一致”。
+- `main-task.md` 追加失败原因；如果 `consensus.md` 已达成但包含未解决阻塞，还要记录“辩论达成阻塞共识”、共识摘要、`decision.finalSummary` 和 `estimatedRemainingRounds`。
+- 主面板展示“辩论达成阻塞共识”或“辩论未达成一致”。
 
 ### 恢复任务
 

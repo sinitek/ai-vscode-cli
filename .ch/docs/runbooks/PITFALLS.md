@@ -47,6 +47,140 @@
 
 - 当前为模板初始状态，等待目标项目按真实踩坑情况持续补充。
 
+## 龙虾辩论阻塞共识被误读成任务断开
+
+- 状态：已修复
+- 首次发现：2026-06-18
+- 适用范围：`debate_multi_agent` 龙虾任务收尾与排障
+
+### 现象
+- 最新辩论轮已经生成 `consensus.md` 和 `decision.json`，任务记录进入 `needs-review`，但界面或记录看起来像“没完全结束”。
+- `estimatedRemainingRounds` 可能沿用上一轮数值，例如上一轮还有 2 轮，而本轮 `decision.json` 已写 `estimatedRemainingRounds=0`。
+
+### 触发条件
+- `consensus.reached=true`，但最终参与者 stance 仍有 `block` 或 `openDisagreements` 仍有 `severity=blocking`。
+- 共识汇总器输出 `decision.status=blocked`，运行时在共识校验未通过分支进入人工复核。
+
+### 根因
+- 旧收尾逻辑把所有共识校验失败都写成“辩论未达成一致”，没有区分“达成阻塞共识”。
+- 该分支没有从 `consensus.decision` 同步 `finalSummary` 和 `estimatedRemainingRounds`，导致排障时容易误判为任务中途断开。
+
+### 临时绕过
+- 查 `~/.sinitek_cli/lobster-communications/<taskId>/debates/round-*/decision.json` 的 `status`。
+- 如果是 `blocked`，再看 `consensus.md` 的最终 stance 和 open blocking disagreement，而不是继续等待自动派发。
+
+### 长期规避
+- 人工复核摘要必须区分“未达成一致”和“达成阻塞共识”。
+- 阻塞共识进入 `needs-review` 时，任务记录和 `main-task.md` 必须同步 `consensus.summary`、`decision.finalSummary` 和 `decision.estimatedRemainingRounds`。
+- 龙虾群聊面板还必须在时间线末尾展示主持人 `error` 样式停止说明，避免用户误以为只是普通 transcript 收束后断开。
+
+### 验证方式
+- `node --test dist/test/lobsterDebate.test.js`
+- `npm run build`
+- 手工打开对应龙虾群聊，确认末尾存在 `主持人停止说明` 气泡。
+
+### 关联资料
+- 代码：`src/lobsterDebate.ts`、`src/extension.ts`
+- 事实来源：`.ch/docs/references/cli-runtime-reference.md`
+
+## Webview 定时刷新会重置未持久化的独立滚动容器
+
+- 状态：已修复
+- 首次发现：2026-06-18
+- 适用范围：`src/webview/lobsterDebatePanel.ts` 这类通过重建 `webview.html` 刷新的面板
+
+### 现象
+- 龙虾群聊左侧“成员”列表向下滚动阅读时，经常在定时刷新或重新可见后回到顶部。
+- 右侧群聊时间线能保留阅读位置，但左侧成员栏不能。
+
+### 触发条件
+- 面板存在多个独立滚动容器，例如 `.main` 时间线和 `.sidebar` 成员栏。
+- 后端刷新状态时通过重新设置 `panel.webview.html` 重建页面。
+- 只保存了其中一个滚动容器的位置。
+
+### 根因
+- Webview HTML 重建会丢弃 DOM 自身的 `scrollTop`。
+- 旧实现只把 `.main` 的滚动位置写入 `vscode.setState()`，没有监听和恢复 `.sidebar`。
+
+### 临时绕过
+- 修复前只能等待刷新结束后手动把成员列表滚回原位置。
+
+### 长期规避
+- 通过 `panel.webview.html` 重建页面的 Webview，只要有多个独立滚动容器，就必须分别保存和恢复滚动状态。
+- 手动刷新、定时刷新、`visibilitychange` 刷新和置底操作都应保留其它滚动容器的已有状态。
+
+### 验证方式
+- 在仓库执行：`npm run build` 与 `git diff --check`。
+- 手工验证：打开龙虾群聊，把成员列表滚到下方，等待 5 秒自动刷新或点击刷新，确认成员列表不回到顶部。
+
+### 关联资料
+- 代码：`src/webview/lobsterDebatePanel.ts`
+- 设计要求：`.ch/docs/design-docs/vscode-cli-extension-runtime.md` 中关于群聊面板刷新时保留阅读位置的说明。
+
+## 龙虾群聊继续按钮不能走普通发送入口
+
+- 状态：有效
+- 首次发现：2026-06-18
+- 适用范围：`src/webview/lobsterDebatePanel.ts`、`src/extension.ts` 的龙虾任务恢复链路
+
+### 现象
+- 中断未完成的龙虾任务从群聊 UI 点击“继续执行”时，如果只向 AI 对话输入框发送普通“继续”，可能找不到原任务或被当成新龙虾任务。
+- 如果跳过确认框直接恢复，用户无法在恢复前补充“本次继续指令”，主持人/主任务也看不到这次额外说明。
+- 历史任务尤其容易触发，因为当前活跃 tab 不一定就是原主任务 tab。
+
+### 触发条件
+- 入口来自独立内容区 WebviewPanel，而不是 AI 对话主任务 tab。
+- 原任务主 tab 已关闭、不是当前活跃 tab，或任务只剩历史记录可查。
+
+### 根因
+- 普通发送入口依赖当前 tab 上下文推断可恢复的龙虾任务。
+- 群聊面板已经明确持有 `taskId`，但如果不把该 ID 传给 `runLobsterPrompt(..., { resumeTaskId })`，恢复链路会退化为“按当前 tab 猜测任务”。
+
+### 临时绕过
+- 修复前手动打开原主任务 tab，再输入“继续/continue/resume”。
+
+### 长期规避
+- 从群聊 UI、历史列表、命令参数等明确持有 `taskId` 的入口恢复龙虾任务时，必须传 `resumeTaskId`，并复用或创建主任务 tab。
+- 群聊 UI 的继续入口必须先显示可编辑确认框；默认值可以是“继续”，但用户确认前不能发起恢复。确认后的文本要作为“本次继续指令”注入主任务提示或辩论 brief。
+- 历史列表的“加载”只打开群聊 UI，不应自动继续任务；继续任务必须由用户在群聊 UI 再显式点击“继续执行”。
+
+### 验证方式
+- 打开一个 `error` / `stopped` / `needs-review` 的龙虾任务群聊，点击“继续执行”，确认先出现可编辑确认框；修改默认文案并确认后，复用同一任务 ID 且主任务/主持人继续判断下一步。
+- 打开历史记录的“龙虾群聊” tab，点击“加载”，确认只打开群聊 UI，不自动发起恢复。
+
+### 关联资料
+- 代码：`src/extension.ts`、`src/webview/lobsterDebatePanel.ts`、`src/webview/viewContent.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-06-18-lobster-chat-continue-history.md`
+
+## 龙虾群聊中止按钮不能只停当前 tab
+
+- 状态：有效
+- 首次发现：2026-06-18
+- 适用范围：`src/webview/lobsterDebatePanel.ts`、`src/extension.ts` 的龙虾任务停止链路
+
+### 现象
+- 运行中的龙虾任务可能同时有主任务、并发子任务、辩论主持人、参与者或共识汇总器在不同 tab 运行。
+- 如果群聊 UI 的“中止”只调用当前 tab 的普通 `stopRun`，会遗漏同一龙虾任务的其他运行进程，群聊仍会继续刷新出新消息。
+
+### 触发条件
+- 从独立龙虾群聊 WebviewPanel 点击中止。
+- 同一 `lobsterTaskId` 下存在多个 parallel 或 interactive 运行。
+
+### 根因
+- 普通停止入口以 `tabId` 为边界；龙虾群聊 UI 的真实边界是 `lobsterTaskId`。
+
+### 长期规避
+- 群聊中止入口必须按 `lobsterTaskId` 遍历 active / parallel / interactive 运行并逐一停止。
+- 运行中显示“中止”按钮；无运行且未完成时才显示“继续执行”按钮，两者必须互斥出现。
+- 停止后要把任务记录标记为 `stopped`，清空 active 子任务，并刷新已打开的龙虾群聊面板。
+
+### 验证方式
+- 启动一个有多个并发子任务或辩论参与者的龙虾任务，打开群聊面板点击“中止”，确认所有相关 tab 停止，任务记录状态为 `stopped`，群聊面板随后显示“继续执行”而不是“中止”。
+
+### 关联资料
+- 代码：`src/extension.ts`、`src/webview/lobsterDebatePanel.ts`
+- 执行计划：`.ch/docs/exec-plans/completed/2026-06-18-lobster-chat-stop-task.md`
+
 ## Claude 新版任务工具不会自动落到 AI 对话面板任务列表
 
 - 状态：已修复

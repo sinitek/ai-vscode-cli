@@ -134,6 +134,19 @@ export type PromptHistoryItem = {
   cli: CliName;
 };
 
+export type LobsterGroupChatHistoryItem = {
+  id: string;
+  cli: CliName;
+  status: string;
+  executionMode: LobsterExecutionMode;
+  rootPrompt: string;
+  createdAt: number;
+  updatedAt: number;
+  currentRound: number;
+  taskStoreFile: string;
+  canContinue: boolean;
+};
+
 export type ChatMessageAction =
   | {
       type: "openLobsterDebateChat";
@@ -193,6 +206,7 @@ export type PanelState = {
     tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];
+  lobsterGroupChatHistory: LobsterGroupChatHistoryItem[];
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;
