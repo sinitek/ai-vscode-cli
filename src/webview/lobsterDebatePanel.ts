@@ -332,6 +332,18 @@ function buildLobsterDebateChatPanelHtml(
       .button.primary:hover {
         background: var(--vscode-button-hoverBackground);
       }
+      .button.danger {
+        border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+        color: var(--vscode-statusBarItem-errorForeground, var(--vscode-button-foreground));
+        background: var(--vscode-statusBarItem-errorBackground, var(--vscode-errorForeground));
+      }
+      .button.danger:hover {
+        background: color-mix(
+          in srgb,
+          var(--vscode-statusBarItem-errorBackground, var(--vscode-errorForeground)) 88%,
+          var(--vscode-statusBarItem-errorForeground, var(--vscode-button-foreground)) 12%
+        );
+      }
       .dialog-backdrop {
         position: fixed;
         inset: 0;
@@ -685,7 +697,7 @@ function buildLobsterDebateChatPanelHtml(
           <p>${escapeHtml(getPanelSubtitle(state, strings))} · ${escapeHtml(state.task.id)}</p>
         </div>
         <div class="actions">
-          ${state.task.canStop ? `<button class="button primary" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
+          ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
           ${!state.task.canStop && state.task.canContinue ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
           <button class="button${state.task.canStop || state.task.canContinue ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
           <button class="button" type="button" data-action="openChatFile">${escapeHtml(strings.openTranscript)}</button>
