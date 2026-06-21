@@ -78,6 +78,7 @@ export type LobsterDebateChatPanelMessage =
 
 type LobsterDebateChatPanelHandlers = {
   onMessage: (message: LobsterDebateChatPanelMessage) => void;
+  onDispose?: () => void;
 };
 
 const STRINGS = {
@@ -199,10 +200,12 @@ export class LobsterDebateChatPanel {
   ) {}
 
   public show(state: LobsterDebateChatPanelState): void {
+    const locale = resolveLocale();
+    const strings = getStrings(locale);
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "sinitek-cli-tools.lobsterDebateChat",
-        getStrings(resolveLocale()).title,
+        buildLobsterDebateChatPanelTitle(state, strings),
         vscode.ViewColumn.Active,
         {
           enableScripts: true,
@@ -216,6 +219,7 @@ export class LobsterDebateChatPanel {
       this.panel.onDidDispose(() => {
         this.panel = undefined;
         this.state = undefined;
+        this.handlers.onDispose?.();
       });
     } else {
       this.panel.reveal(vscode.ViewColumn.Active, true);
@@ -229,13 +233,25 @@ export class LobsterDebateChatPanel {
       return;
     }
     const locale = resolveLocale();
-    this.panel.title = getStrings(locale).title;
+    this.panel.title = buildLobsterDebateChatPanelTitle(state, getStrings(locale));
     this.panel.webview.html = buildLobsterDebateChatPanelHtml(this.panel.webview, state, locale);
   }
 
   public getState(): LobsterDebateChatPanelState | undefined {
     return this.state;
   }
+}
+
+function buildLobsterDebateChatPanelTitle(
+  state: LobsterDebateChatPanelState,
+  strings: LobsterDebateChatPanelStrings,
+): string {
+  const taskId = state.task.id.trim();
+  if (!taskId) {
+    return strings.title;
+  }
+  const shortTaskId = taskId.length > 12 ? taskId.slice(0, 12) : taskId;
+  return `${strings.title}: ${shortTaskId}`;
 }
 
 function buildLobsterDebateChatPanelHtml(

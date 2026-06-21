@@ -204,8 +204,7 @@ let promptHistoryStore: PromptHistoryStore;
 let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
-let lobsterDebateChatPanel: LobsterDebateChatPanel | undefined;
-let lobsterDebateChatPanelTaskId: string | null = null;
+const lobsterDebateChatPanelsByTaskId = new Map<string, LobsterDebateChatPanel>();
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
 let lastResolvedWorkspaceCwd: string | undefined;
@@ -3450,73 +3449,86 @@ async function openLobsterDebateChatPanel(arg?: unknown): Promise<void> {
     return;
   }
   const state = buildLobsterDebateChatPanelState(task);
-  lobsterDebateChatPanelTaskId = task.id;
-  if (!lobsterDebateChatPanel) {
-    lobsterDebateChatPanel = new LobsterDebateChatPanel(extensionUri, {
+  let panel = lobsterDebateChatPanelsByTaskId.get(task.id);
+  if (!panel) {
+    const taskId = task.id;
+    panel = new LobsterDebateChatPanel(extensionUri, {
       onMessage: (message) => {
-        void handleLobsterDebateChatPanelMessage(message);
+        void handleLobsterDebateChatPanelMessage(taskId, message);
+      },
+      onDispose: () => {
+        const currentPanel = lobsterDebateChatPanelsByTaskId.get(taskId);
+        if (currentPanel === panel) {
+          lobsterDebateChatPanelsByTaskId.delete(taskId);
+        }
       },
     });
+    lobsterDebateChatPanelsByTaskId.set(task.id, panel);
   }
-  lobsterDebateChatPanel.show(state);
+  panel.show(state);
 }
 
-async function handleLobsterDebateChatPanelMessage(message: LobsterDebateChatPanelMessage): Promise<void> {
+async function handleLobsterDebateChatPanelMessage(taskId: string, message: LobsterDebateChatPanelMessage): Promise<void> {
   if (!message || typeof message.type !== "string") {
     return;
   }
   if (message.type === "lobsterDebateChat:refresh") {
-    await refreshLobsterDebateChatPanel();
+    await refreshLobsterDebateChatPanel(taskId);
     return;
   }
   if (message.type === "lobsterDebateChat:continueTask") {
-    await continueLobsterDebateChatTaskFromPanel(message.prompt);
+    await continueLobsterDebateChatTaskFromPanel(taskId, message.prompt);
     return;
   }
   if (message.type === "lobsterDebateChat:stopTask") {
-    await stopLobsterDebateChatTaskFromPanel();
+    await stopLobsterDebateChatTaskFromPanel(taskId);
     return;
   }
   if (message.type === "lobsterDebateChat:openChatFile") {
-    await openLobsterDebateChatTranscriptFromPanel();
+    await openLobsterDebateChatTranscriptFromPanel(taskId);
     return;
   }
   if (message.type === "lobsterDebateChat:openTaskFile") {
-    const taskFile = lobsterDebateChatPanel?.getState()?.task.taskStoreFile;
+    const taskFile = lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.taskStoreFile;
     await openReadableFileInEditor(taskFile, t("lobsterDebateChat.noTaskRecord"));
   }
 }
 
-async function refreshLobsterDebateChatPanel(): Promise<void> {
-  if (!lobsterDebateChatPanelTaskId || !lobsterDebateChatPanel) {
+async function refreshLobsterDebateChatPanel(taskId: string): Promise<void> {
+  const normalizedTaskId = normalizeLobsterTaskId(taskId);
+  if (!normalizedTaskId) {
     return;
   }
-  const task = readLobsterTaskRecord(lobsterDebateChatPanelTaskId);
+  const panel = lobsterDebateChatPanelsByTaskId.get(normalizedTaskId);
+  if (!panel) {
+    return;
+  }
+  const task = readLobsterTaskRecord(normalizedTaskId);
   if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: lobsterDebateChatPanelTaskId }));
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
     return;
   }
   const state = buildLobsterDebateChatPanelState(task);
-  lobsterDebateChatPanel.update(state);
+  panel.update(state);
 }
 
-async function continueLobsterDebateChatTaskFromPanel(prompt?: unknown): Promise<void> {
-  const taskId = normalizeLobsterTaskId(lobsterDebateChatPanel?.getState()?.task.id)
-    ?? normalizeLobsterTaskId(lobsterDebateChatPanelTaskId);
-  if (!taskId) {
+async function continueLobsterDebateChatTaskFromPanel(taskId: string, prompt?: unknown): Promise<void> {
+  const normalizedTaskId = normalizeLobsterTaskId(taskId)
+    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
+  if (!normalizedTaskId) {
     void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
     return;
   }
 
-  const task = readLobsterTaskRecord(taskId);
+  const task = readLobsterTaskRecord(normalizedTaskId);
   if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId }));
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
     return;
   }
   const runningTaskIds = collectRunningLobsterTaskIds();
   const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
   if (!controlState.canContinue) {
-    await refreshLobsterDebateChatPanel();
+    await refreshLobsterDebateChatPanel(normalizedTaskId);
     const message = controlState.isRunning
       ? t("lobsterDebateChat.continueAlreadyRunning")
       : t("lobsterDebateChat.continueUnavailable");
@@ -3553,26 +3565,26 @@ async function continueLobsterDebateChatTaskFromPanel(prompt?: unknown): Promise
     resumeTaskId: task.id,
     resumeRequested: true,
   });
-  await refreshLobsterDebateChatPanel();
+  await refreshLobsterDebateChatPanel(normalizedTaskId);
 }
 
-async function stopLobsterDebateChatTaskFromPanel(): Promise<void> {
-  const taskId = normalizeLobsterTaskId(lobsterDebateChatPanel?.getState()?.task.id)
-    ?? normalizeLobsterTaskId(lobsterDebateChatPanelTaskId);
-  if (!taskId) {
+async function stopLobsterDebateChatTaskFromPanel(taskId: string): Promise<void> {
+  const normalizedTaskId = normalizeLobsterTaskId(taskId)
+    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
+  if (!normalizedTaskId) {
     void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
     return;
   }
 
-  const task = readLobsterTaskRecord(taskId);
+  const task = readLobsterTaskRecord(normalizedTaskId);
   if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId }));
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
     return;
   }
 
   const runningTaskIds = collectRunningLobsterTaskIds();
   if (!canStopLobsterTaskWithRunningTaskIds(task, runningTaskIds)) {
-    await refreshLobsterDebateChatPanel();
+    await refreshLobsterDebateChatPanel(normalizedTaskId);
     void vscode.window.showInformationMessage(t("lobsterDebateChat.stopUnavailable"));
     return;
   }
@@ -3580,7 +3592,7 @@ async function stopLobsterDebateChatTaskFromPanel(): Promise<void> {
   stopLobsterRunsForTask(task.id);
   markLobsterTaskStoppedByUser(task.id);
   await postPanelState();
-  await refreshLobsterDebateChatPanel();
+  await refreshLobsterDebateChatPanel(normalizedTaskId);
 }
 
 function normalizeLobsterContinuePrompt(value: unknown): string {
@@ -3594,14 +3606,14 @@ function normalizeLobsterContinuePromptForPrompt(value: unknown): string | null 
 }
 
 function refreshOpenLobsterDebateChatPanelForTask(taskId: string): void {
-  if (lobsterDebateChatPanelTaskId !== taskId || !lobsterDebateChatPanel) {
+  if (!lobsterDebateChatPanelsByTaskId.has(taskId)) {
     return;
   }
-  void refreshLobsterDebateChatPanel();
+  void refreshLobsterDebateChatPanel(taskId);
 }
 
-async function openLobsterDebateChatTranscriptFromPanel(): Promise<void> {
-  const state = lobsterDebateChatPanel?.getState();
+async function openLobsterDebateChatTranscriptFromPanel(taskId: string): Promise<void> {
+  const state = lobsterDebateChatPanelsByTaskId.get(taskId)?.getState();
   const files = (state?.rounds ?? [])
     .map((round) => ({
       label: round.label || (round.kind === "debate" ? `辩论：第 ${round.lobsterRound} 轮` : "任务执行群聊"),
