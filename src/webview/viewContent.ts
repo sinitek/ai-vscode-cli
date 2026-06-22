@@ -4057,6 +4057,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (!current || current.role !== "assistant") {
           return false;
         }
+        if (current.lobsterAnswerConclusion === true) {
+          return true;
+        }
         if (current.lobsterFinalSummary === true) {
           return true;
         }
@@ -4845,7 +4848,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
         const distanceToBottom = getChatDistanceToBottom();
         const buttonSuppressed = isScrollButtonSuppressed();
-        const shouldShow = !forceHide && !forceFollowLatest && !buttonSuppressed && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
+        const shouldShow = !forceHide && !buttonSuppressed && hasMessages && hasOverflow && distanceToBottom > CHAT_BOTTOM_THRESHOLD_PX;
         elements.scrollToBottomButton.classList.toggle("visible", shouldShow);
         elements.scrollToBottomButton.setAttribute("aria-hidden", String(!shouldShow));
         if (elements.scrollToBottomWrap) {
@@ -6359,6 +6362,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             && last.role === "assistant"
             && message.merge !== false
             && last.merge !== false
+            && message.lobsterAnswerConclusion !== true
+            && last.lobsterAnswerConclusion !== true
             && message.lobsterFinalSummary !== true
             && last.lobsterFinalSummary !== true
             && message.codexFinalAnswer !== true

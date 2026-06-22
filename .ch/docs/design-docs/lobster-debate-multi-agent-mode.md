@@ -15,7 +15,7 @@
 - 扩展把 `subtasks` 批次转成子任务记录，并按 `writeFiles` / `conflictGroup` 规划组内并发、组间串行。
 - 子任务在独立会话执行，写入 `~/.sinitek_cli/lobster-communications/<taskId>/subtasks/` 下的沟通文件。
 - 批次内所有子任务完成后，扩展唤醒主任务复核。
-- 只有主任务最终返回 `status=completed`，且主任务对话存在 `lobsterFinalSummary=true` 的最终总结气泡，任务才真正完成。
+- 只有主任务最终返回 `status=completed`，且 AI 对话主消息流同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，任务才真正完成；最终总结气泡仍需要同时展示 `answerConclusion` 问题回答结论和整体任务总结。
 
 这个模式的问题不在子任务执行，而在规划和复核决策仍由一个主任务单点完成。复杂任务里，单个主任务容易出现三个问题：
 
@@ -841,7 +841,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 - 如果上一轮 debate 已经完成，且存在完整 `chat.md`、主持人控场、最终 participant artifacts、`cross-review.md`、`consensus.md` 和 `decision.json`，恢复时优先解析该 decision，避免重复辩论。
 - 如果上一轮 debate 缺少共识、主持人控场或任一参与者 artifact，重新执行该 debate round。
 - 如果旧产物来自非群聊版本或固定两轮版本，缺少 `chat.md`、主持人控场或收束标记，恢复时重跑当前辩论轮。
-- 已完成任务缺失 `lobsterFinalSummary=true` 时，仍沿用现有自动恢复最终总结机制。
+- 已完成任务缺失 `lobsterAnswerConclusion=true` 问题回答结论气泡、缺失 `lobsterFinalSummary=true` 最终总结气泡，或最终总结气泡缺少问题回答结论展示时，仍沿用现有自动恢复最终消息机制。
 
 ## 与现有链路的关系
 
@@ -854,7 +854,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 | 子任务 JSON 协议 | 现有协议 | 现有协议加可选 `debate` 元数据 |
 | 子任务执行 | 现有批次执行 | 完全复用 |
 | 并发冲突规划 | `lobsterParallel` | 完全复用 |
-| 最终完成判定 | `completed` + final summary 气泡 | 相同，且要求共识无阻塞异议 |
+| 最终完成判定 | `completed` + 独立问题回答结论气泡 + 含问题回答结论和整体总结的 final summary 气泡 | 相同，且要求共识无阻塞异议 |
 | 清理策略 | 30 天 | 相同 |
 
 ## 迁移策略
@@ -903,7 +903,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
 5. 检查共识后仍按现有 `subtasks` 启动子任务。
 6. 子任务完成后唤醒下一轮辩论复核。
-7. 最终完成时仍出现 `lobsterFinalSummary=true` 的最终总结气泡。
+7. 最终完成时 AI 对话主消息流仍出现 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，且最终总结气泡内同时包含问题回答结论和整体任务总结。
 
 ### 回归验证
 
@@ -967,5 +967,5 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 - 派发子任务前必须存在 `consensus.md` 和 `decision.json`。
 - 存在未解决阻塞性异议时不会派发子任务。
 - 共识通过后，子任务执行仍复用现有批次并发逻辑。
-- 最终完成仍要求 `lobsterFinalSummary=true`。
+- 最终完成仍要求 AI 对话主消息流同时存在 `lobsterAnswerConclusion=true` 和 `lobsterFinalSummary=true`。
 - 文档、功能清单、构建验证全部完成。

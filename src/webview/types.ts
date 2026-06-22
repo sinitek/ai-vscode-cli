@@ -168,6 +168,7 @@ export type ChatMessage = {
   lobsterTaskId?: string;
   lobsterRound?: number;
   lobsterSubtaskId?: string;
+  lobsterAnswerConclusion?: boolean;
   lobsterFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
   actions?: ChatMessageAction[];

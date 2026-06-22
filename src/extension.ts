@@ -138,8 +138,10 @@ import {
   type LobsterSubtaskExecutionPlan,
 } from "./lobsterParallel";
 import {
+  buildLobsterAnswerConclusionMarkdown,
   buildLobsterDebateNeedsReviewSummary,
   buildLobsterDebateModeratorArtifactFile,
+  buildLobsterFinalSummaryMarkdown,
   buildLobsterGroupChatFinalStatusSection,
   buildLobsterMainSubChatTranscriptFile,
   buildLobsterMainSubSubtaskTurnBody,
@@ -160,6 +162,7 @@ import {
   normalizeLobsterDebateModeratorAction,
   normalizeLobsterDebateParticipantStance,
   parseLobsterDebateChatTranscript,
+  resolveLobsterAnswerConclusion,
   resolveLobsterTaskRunControlState,
   validateLobsterDebateConsensus,
   type LobsterDebateActiveSpeakerRecord,
@@ -452,6 +455,7 @@ type LobsterSubtaskDecision = {
 
 type LobsterMainDecision = {
   status: "completed" | "continue" | "blocked";
+  answerConclusion?: string;
   finalSummary?: string;
   roundSummaries?: LobsterRoundSummary[];
   requirementCoverage?: LobsterAcceptanceCheck[];
@@ -491,11 +495,17 @@ type LobsterTaskRecord = {
   activeSubtaskIds?: string[];
   subTasks: LobsterSubtaskRecord[];
   rounds: LobsterRoundRecord[];
+  answerConclusion?: string;
   finalSummary?: string;
   estimatedRemainingRounds?: number;
   debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
   completionRoundSummaries: LobsterRoundSummary[];
   completionRequirementCoverage: LobsterAcceptanceCheck[];
+};
+
+type LobsterTaskCompletionMessagesState = {
+  hasAnswerConclusion: boolean;
+  hasFinalSummary: boolean;
 };
 
 type LobsterTaskStore = {
@@ -4122,7 +4132,7 @@ function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): stri
     });
 
   if (task.status === "completed") {
-    lines.push("", "## 群聊收束", task.finalSummary ?? "主任务已完成。");
+    lines.push("", "## 群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task));
   }
   return `${lines.join("\n")}\n`;
 }
@@ -4807,7 +4817,7 @@ function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTask
 
   const resumable = candidates
     .filter((task) => isLobsterTaskResumable(task) || (
-      task.status === "completed" && !hasLobsterFinalSummaryMessageForTask(target, task.id)
+      task.status === "completed" && !hasCompleteLobsterCompletionMessagesForTask(target, task.id)
     ))
     .sort((left, right) => right.updatedAt - left.updatedAt);
   return resumable[0] ?? null;
@@ -5399,22 +5409,22 @@ async function runLobsterPrompt(
 
   if (resumeTaskId) {
     const existingTask = readLobsterTaskRecord(resumeTaskId);
-    const shouldResumeCompletedWithoutFinalSummary = Boolean(
+    const shouldResumeCompletedWithoutCompletionMessages = Boolean(
       existingTask
       && existingTask.status === "completed"
-      && !hasLobsterFinalSummaryMessageForTask(target, existingTask.id)
+      && !hasCompleteLobsterCompletionMessagesForTask(target, existingTask.id)
     );
     if (
       existingTask
       && isLobsterTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
-      && (!isLobsterTaskCompleted(existingTask) || shouldResumeCompletedWithoutFinalSummary)
+      && (!isLobsterTaskCompleted(existingTask) || shouldResumeCompletedWithoutCompletionMessages)
     ) {
       task = updateLobsterTaskRecord(existingTask.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
         updatedAt: Date.now(),
-      }, { allowCompletedToRunning: shouldResumeCompletedWithoutFinalSummary }) ?? existingTask;
+      }, { allowCompletedToRunning: shouldResumeCompletedWithoutCompletionMessages }) ?? existingTask;
       round = resolveLobsterResumeRound(task);
       appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round), (
         {
@@ -5430,7 +5440,7 @@ async function runLobsterPrompt(
         round,
         tabId: target.tabId,
         cli: target.cli,
-        completedWithoutFinalSummary: shouldResumeCompletedWithoutFinalSummary,
+        completedWithoutCompletionMessages: shouldResumeCompletedWithoutCompletionMessages,
       });
       if (!input.lobsterContinuePrompt) {
         input = {
@@ -5471,7 +5481,7 @@ async function runLobsterPrompt(
     const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
     task = latest;
     if (isLobsterTaskCompleted(latest)) {
-      if (hasLobsterFinalSummaryMessageForTask(target, latest.id)) {
+      if (hasCompleteLobsterCompletionMessagesForTask(target, latest.id)) {
         return;
       }
       const resumed = updateLobsterTaskRecord(latest.id, {
@@ -5512,6 +5522,7 @@ async function runLobsterPrompt(
     if (decisionRunResult.status === "completed") {
       removeLobsterMainDecisionMessage(target, decisionRunResult.task.id, round);
       appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionRunResult.task));
+      appendLobsterAnswerConclusionMessage(target, decisionRunResult.task, decisionRunResult.decision);
       appendLobsterFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
       return;
     }
@@ -8079,9 +8090,10 @@ function buildLobsterDebateConsensusModelPrompt(
     `{"artifactFile":"<consensus.md path>","reached":true,"summary":"红蓝共识摘要","participantStances":[{"participantId":"blue_planner","stance":"agree","note":"蓝队方案已修正"},{"participantId":"red_attacker","stance":"agree_with_reservations","note":"红队攻击点已转为验收标准"}],"resolvedDisagreements":[{"id":"d1","title":"红队攻击点标题","participants":["blue_planner","red_attacker"],"severity":"non_blocking","resolution":"解决方式"}],"openDisagreements":[{"id":"d2","title":"未解决阻塞点","participants":["red_attacker"],"severity":"blocking","resolution":"未解决原因"}]}`,
     "",
     "decision.json 必须是纯 JSON 对象，符合现有 LobsterMainDecision 协议：",
-    '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
+    "status=completed 时 answerConclusion 必须直接回答用户原始问题，finalSummary 用于整体任务完成说明。",
     "",
     "原始目标：",
     task.rootPrompt,
@@ -8417,6 +8429,11 @@ function appendLobsterMainSubChatMainDecision(
       bodyLines.push(`- ${getLobsterSubtaskDisplayTitle(index, subtask)}（${subtask.id}）：${subtask.status}`);
     });
   }
+  if (decision.status === "completed") {
+    bodyLines.push("");
+    bodyLines.push("### 问题回答结论");
+    bodyLines.push(resolveLobsterAnswerConclusion(task, decision));
+  }
   if (decision.finalSummary) {
     bodyLines.push("");
     bodyLines.push("### 总结");
@@ -8424,8 +8441,24 @@ function appendLobsterMainSubChatMainDecision(
   }
   appendLobsterMainSubChatSection(task, `主任务发言：第 ${round} 轮（main）`, bodyLines.join("\n"));
   if (decision.status === "completed") {
-    appendLobsterMainSubChatSection(task, "群聊收束", decision.finalSummary ?? "主任务验收通过。");
+    appendLobsterMainSubChatSection(task, "群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task, decision));
   }
+}
+
+function buildLobsterCompletedConclusionAndSummaryMarkdown(
+  task: LobsterTaskRecord,
+  decision?: LobsterMainDecision | null,
+): string {
+  const finalSummary = typeof decision?.finalSummary === "string" && decision.finalSummary.trim()
+    ? decision.finalSummary.trim()
+    : (typeof task.finalSummary === "string" && task.finalSummary.trim() ? task.finalSummary.trim() : "主任务已完成。");
+  return [
+    "### 问题回答结论",
+    resolveLobsterAnswerConclusion(task, decision),
+    "",
+    "### 完成摘要",
+    finalSummary,
+  ].join("\n");
 }
 
 function appendLobsterMainSubChatSubtaskStarted(
@@ -8845,7 +8878,7 @@ function buildLobsterMainModelPrompt(
     "14. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
-    '{"status":"completed","estimatedRemainingRounds":0,"finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
+    '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
     '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
@@ -8853,7 +8886,8 @@ function buildLobsterMainModelPrompt(
     "字段要求：",
     "- status 只能是 completed、continue、blocked。",
     "- 每次返回都必须提供 estimatedRemainingRounds；含义是从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed，必须是非负整数。",
-    "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、finalSummary、requirementCoverage 和 roundSummaries。",
+    "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、answerConclusion、finalSummary、requirementCoverage 和 roundSummaries。",
+    "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
     "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
@@ -8865,7 +8899,7 @@ function buildLobsterMainModelPrompt(
     "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
     "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
     "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
-    "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
+    "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、answerConclusion、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     "",
     ...(normalizedContinuePrompt ? [
       "本次继续指令：",
@@ -9070,6 +9104,9 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
   if (raw.status === "completed") {
     const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
     const requirementCoverage = normalizeLobsterAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
+    const answerConclusion = typeof raw.answerConclusion === "string" && raw.answerConclusion.trim()
+      ? raw.answerConclusion.trim()
+      : undefined;
     const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
       ? raw.finalSummary.trim()
       : "";
@@ -9086,6 +9123,7 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
     }
     return {
       status: "completed",
+      ...(answerConclusion ? { answerConclusion } : {}),
       finalSummary,
       requirementCoverage,
       roundSummaries,
@@ -9273,6 +9311,7 @@ function applyLobsterMainDecision(
       status: "completed",
       activeSubtaskId: null,
       activeSubtaskIds: [],
+      answerConclusion: resolveLobsterAnswerConclusion(existing, decision),
       finalSummary: decision.finalSummary,
       estimatedRemainingRounds: 0,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
@@ -9346,6 +9385,11 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
     if (remainingRounds) {
       lines.push(`- 预计剩余轮次：${remainingRounds}`);
     }
+    if (decision.status === "completed") {
+      lines.push("");
+      lines.push("### 问题回答结论");
+      lines.push(resolveLobsterAnswerConclusion(task, decision));
+    }
     if (decision.finalSummary) {
       lines.push("");
       lines.push("### 整体总结");
@@ -9401,67 +9445,6 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
       error: String(error),
     });
   }
-}
-
-function buildLobsterFinalSummaryMarkdown(task: LobsterTaskRecord, decision?: LobsterMainDecision | null): string {
-  const roundSummaries = Array.isArray(decision?.roundSummaries)
-    ? decision.roundSummaries.slice().sort((left, right) => left.round - right.round)
-    : (Array.isArray(task.completionRoundSummaries)
-      ? task.completionRoundSummaries.slice().sort((left, right) => left.round - right.round)
-      : []);
-  const requirementCoverage = Array.isArray(decision?.requirementCoverage)
-    ? decision.requirementCoverage
-    : (Array.isArray(task.completionRequirementCoverage) ? task.completionRequirementCoverage : []);
-  const acceptanceChecks = Array.isArray(decision?.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
-  const finalSummary = decision?.finalSummary ?? task.finalSummary ?? "无";
-  const lines: string[] = [
-    "# 龙虾任务最终总结",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- 会话 ID：${task.sessionId ?? "unknown"}`,
-    `- 生成时间：${new Date().toISOString()}`,
-    `- 验收状态：${decision?.acceptance?.passed === false ? "未通过" : "通过"}`,
-  ];
-
-  lines.push("");
-  lines.push("## 子任务完成摘要");
-  if (roundSummaries.length === 0) {
-    lines.push("- 无可用的子任务摘要。");
-  } else {
-    roundSummaries.forEach((item) => {
-      const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
-      lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("## 验收结果");
-  if (decision?.acceptance?.summary) {
-    lines.push(decision.acceptance.summary);
-  }
-  if (acceptanceChecks.length > 0) {
-    lines.push("");
-    acceptanceChecks.forEach((check) => {
-      const detail = check.detail ? `（${check.detail}）` : "";
-      lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("## 用户需求覆盖");
-  if (requirementCoverage.length === 0) {
-    lines.push("- 无可用的需求覆盖项。");
-  } else {
-    requirementCoverage.forEach((item) => {
-      const detail = item.detail ? `（${item.detail}）` : "";
-      lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("## 最终修复说明");
-  lines.push(finalSummary);
-  return `${lines.join("\n")}\n`;
 }
 
 function buildLobsterSubtaskDecisionMarkdown(
@@ -10063,16 +10046,91 @@ function showLobsterSubtaskDecisionMarkdown(
   persistLobsterMessagesForTarget(target, messages);
 }
 
-function hasLobsterFinalSummaryMessageForTask(target: PromptRunTarget, taskId: string): boolean {
+function hasCompleteLobsterCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
   const messages = getLobsterMessagesForTarget(target);
-  return messages.some((message) => (
-    message.role === "assistant"
+  const state = getLobsterCompletionMessagesState(messages, taskId);
+  return state.hasAnswerConclusion && state.hasFinalSummary;
+}
+
+function getLobsterCompletionMessagesState(
+  messages: ChatMessage[],
+  taskId: string,
+): LobsterTaskCompletionMessagesState {
+  return messages.reduce<LobsterTaskCompletionMessagesState>((state, message) => {
+    if (isLobsterAnswerConclusionMessageForTask(message, taskId)) {
+      state.hasAnswerConclusion = true;
+    }
+    if (isLobsterFinalSummaryMessageForTask(message, taskId) && isCompleteLobsterFinalSummaryContent(message.content)) {
+      state.hasFinalSummary = true;
+    }
+    return state;
+  }, { hasAnswerConclusion: false, hasFinalSummary: false });
+}
+
+function isLobsterAnswerConclusionMessageForTask(message: ChatMessage, taskId: string): boolean {
+  return message.role === "assistant"
+    && message.taskRole === "main"
+    && message.lobsterTaskId === taskId
+    && message.lobsterAnswerConclusion === true
+    && typeof message.content === "string"
+    && message.content.trim().length > 0;
+}
+
+function isLobsterFinalSummaryMessageForTask(message: ChatMessage, taskId: string): boolean {
+  return message.role === "assistant"
     && message.taskRole === "main"
     && message.lobsterTaskId === taskId
     && message.lobsterFinalSummary === true
     && typeof message.content === "string"
-    && message.content.trim().length > 0
-  ));
+    && message.content.trim().length > 0;
+}
+
+function isCompleteLobsterFinalSummaryContent(content: string): boolean {
+  return /(?:^|\n)##\s+问题回答结论(?:\n|$)/u.test(content)
+    && /(?:^|\n)##\s+整体任务总结(?:\n|$)/u.test(content);
+}
+
+function appendLobsterAnswerConclusionMessage(
+  target: PromptRunTarget,
+  task: LobsterTaskRecord,
+  decision?: LobsterMainDecision | null,
+): void {
+  const messages = getLobsterMessagesForTarget(target);
+  const content = buildLobsterAnswerConclusionMarkdown(task, decision);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const existing = messages[index];
+    if (!existing || !isLobsterAnswerConclusionMessageForTask(existing, task.id)) {
+      continue;
+    }
+    if (existing.content.trim() === content.trim()) {
+      return;
+    }
+    const replacement: ChatMessage = {
+      ...existing,
+      content,
+      merge: false,
+      taskRole: "main",
+      lobsterTaskId: task.id,
+      lobsterAnswerConclusion: true,
+    };
+    messages[index] = replacement;
+    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
+    persistLobsterMessagesForTarget(target, messages);
+    return;
+  }
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content,
+    createdAt: Date.now(),
+    merge: false,
+    taskRole: "main",
+    lobsterTaskId: task.id,
+    lobsterAnswerConclusion: true,
+  };
+  appendMessageToStore(messages, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistLobsterMessagesForTarget(target, messages);
 }
 
 function appendLobsterFinalSummaryMessage(
@@ -10081,13 +10139,32 @@ function appendLobsterFinalSummaryMessage(
   decision?: LobsterMainDecision | null,
 ): void {
   const messages = getLobsterMessagesForTarget(target);
-  if (hasLobsterFinalSummaryMessageForTask(target, task.id)) {
+  const content = buildLobsterFinalSummaryMarkdown(task, decision);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const existing = messages[index];
+    if (!existing || !isLobsterFinalSummaryMessageForTask(existing, task.id)) {
+      continue;
+    }
+    if (isCompleteLobsterFinalSummaryContent(existing.content)) {
+      return;
+    }
+    const replacement: ChatMessage = {
+      ...existing,
+      content,
+      merge: false,
+      taskRole: "main",
+      lobsterTaskId: task.id,
+      lobsterFinalSummary: true,
+    };
+    messages[index] = replacement;
+    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
+    persistLobsterMessagesForTarget(target, messages);
     return;
   }
   const message: ChatMessage = {
     id: createMessageId(),
     role: "assistant",
-    content: buildLobsterFinalSummaryMarkdown(task, decision),
+    content,
     createdAt: Date.now(),
     merge: false,
     taskRole: "main",
@@ -13602,6 +13679,7 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
       : (typeof raw.activeSubtaskId === "string" && raw.activeSubtaskId.trim() ? [raw.activeSubtaskId] : []),
     subTasks,
     rounds,
+    answerConclusion: typeof raw.answerConclusion === "string" ? raw.answerConclusion : undefined,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
     estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
       (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds

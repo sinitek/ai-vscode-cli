@@ -6,9 +6,11 @@ import {
   normalizeLobsterExecutionMode,
 } from "../cli/types";
 import {
+  buildLobsterAnswerConclusionMarkdown,
   buildLobsterMainSubChatTranscriptFile,
   buildLobsterMainSubSubtaskTurnBody,
   buildLobsterDebateNeedsReviewSummary,
+  buildLobsterFinalSummaryMarkdown,
   buildLobsterDebateModeratorArtifactFile,
   buildLobsterDebatePaths,
   buildLobsterDebateParticipantTurnArtifactFile,
@@ -79,12 +81,15 @@ test("builds terminal lobster group chat status sections", () => {
     status: "completed",
     currentRound: 3,
     updatedAt: 0,
+    answerConclusion: "答案是优先修复展示链路。",
     finalSummary: "全部验收通过。",
     estimatedRemainingRounds: 0,
   });
   assert.equal(completed?.heading, "任务成功完成");
   assert.equal(completed?.terminalStatus, "completed");
   assert.match(completed?.body ?? "", /任务已成功完成/u);
+  assert.match(completed?.body ?? "", /问题回答结论/u);
+  assert.match(completed?.body ?? "", /答案是优先修复展示链路/u);
   assert.match(completed?.body ?? "", /全部验收通过/u);
   assert.match(completed?.body ?? "", /预计剩余轮次：0 轮/u);
 
@@ -101,6 +106,79 @@ test("builds terminal lobster group chat status sections", () => {
   assert.match(interrupted?.body ?? "", /用户已中止任务/u);
 
   assert.equal(buildLobsterGroupChatFinalStatusSection({ id: "task-3", status: "running" }), null);
+});
+
+test("builds lobster final summary with question conclusion and overall summary", () => {
+  const markdown = buildLobsterFinalSummaryMarkdown({
+    id: "task-1",
+    sessionId: "session-1",
+    finalSummary: "任务记录中的旧总结。",
+    completionRoundSummaries: [],
+    completionRequirementCoverage: [],
+  }, {
+    answerConclusion: "问题结论：应该同时展示直接答案和龙虾最终总结。",
+    finalSummary: "整体总结：已完成展示链路调整。",
+    roundSummaries: [
+      { round: 1, subtaskId: "subtask-a", title: "定位问题", summary: "确认缺少直接结论展示。" },
+    ],
+    requirementCoverage: [
+      { name: "同时展示两段内容", passed: true, detail: "最终气泡包含两个独立小节。" },
+    ],
+    acceptance: {
+      passed: true,
+      summary: "验收通过。",
+      checks: [
+        { name: "直接结论", passed: true, detail: "已展示。" },
+      ],
+    },
+  });
+
+  assert.match(markdown, /^# 龙虾任务最终总结/mu);
+  assert.match(markdown, /## 问题回答结论\n问题结论：应该同时展示直接答案和龙虾最终总结/u);
+  assert.match(markdown, /## 子任务完成摘要/u);
+  assert.match(markdown, /第 1 轮 定位问题（subtask-a）：确认缺少直接结论展示/u);
+  assert.match(markdown, /## 整体任务总结\n整体总结：已完成展示链路调整/u);
+});
+
+test("builds standalone lobster answer conclusion for AI conversation stream", () => {
+  const markdown = buildLobsterAnswerConclusionMarkdown({
+    finalSummary: "任务已完成整体总结。",
+    answerConclusion: "任务记录中的直接答案。",
+  }, {
+    answerConclusion: "面板里应单独展示这个直接答案。",
+    finalSummary: "整体总结用于最终总结气泡。",
+  });
+
+  assert.equal(markdown, [
+    "## 问题回答结论",
+    "",
+    "面板里应单独展示这个直接答案。",
+  ].join("\n"));
+});
+
+test("falls back to final summary when lobster answer conclusion is missing", () => {
+  const markdown = buildLobsterFinalSummaryMarkdown({
+    id: "task-2",
+    sessionId: null,
+    finalSummary: "最终总结兜底为直接结论。",
+    completionRoundSummaries: [],
+    completionRequirementCoverage: [],
+  });
+
+  assert.match(markdown, /## 问题回答结论\n最终总结兜底为直接结论/u);
+  assert.match(markdown, /## 整体任务总结\n最终总结兜底为直接结论/u);
+});
+
+test("falls back to final summary for standalone lobster answer conclusion", () => {
+  const markdown = buildLobsterAnswerConclusionMarkdown({
+    finalSummary: "最终总结兜底为独立直接结论。",
+  });
+
+  assert.equal(markdown, [
+    "## 问题回答结论",
+    "",
+    "最终总结兜底为独立直接结论。",
+  ].join("\n"));
 });
 
 test("builds stable debate communication paths for the first debate round", () => {
