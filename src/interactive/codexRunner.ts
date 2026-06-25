@@ -8,6 +8,7 @@ import { resolveCliCommand } from "../cli/commandRunner";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { logInfo } from "../logger";
+import { buildHiddenRetryErrorTraceContent } from "../hiddenRetry";
 import {
   extractCodexCollabToolFailure,
   extractCodexItemTraceCandidate,
@@ -90,6 +91,14 @@ const CODEX_PACKAGE_NAME_PREFIX = "@openai/codex";
 const CODEX_PACKAGE_VERSION_SEARCH_DEPTH = 8;
 const CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS = 24 * 60 * 60;
 const CODEX_CHILD_SHUTDOWN_GRACE_MS = 300;
+
+function emitVisibleErrorTrace(handlers: CodexStreamHandlers, message: string): void {
+  const normalized = String(message || "").trim();
+  if (!normalized) {
+    return;
+  }
+  handlers.onTrace(buildHiddenRetryErrorTraceContent(normalized), "normal", { merge: false });
+}
 
 function pickArgValue(args: string[], keys: string[]): string | null {
   for (let index = 0; index < args.length; index += 1) {
@@ -1450,7 +1459,7 @@ export class CodexInteractiveRunner {
       if (!normalized) {
         return;
       }
-      handlers.onTrace(`error ${normalized}`);
+      emitVisibleErrorTrace(handlers, normalized);
       failRun(new Error(normalized));
       setTimeout(() => shutdownChild("terminate"), 0);
     };
@@ -1584,7 +1593,7 @@ export class CodexInteractiveRunner {
           return;
         }
         if (message) {
-          handlers.onTrace(`error ${message}`);
+          emitVisibleErrorTrace(handlers, message);
         }
       }
     };
@@ -1763,10 +1772,11 @@ export class CodexInteractiveRunner {
             const warning = String(params.message || "").trim();
             if (warning) {
               const lower = warning.toLowerCase();
-              const prefix = lower.startsWith("reconnecting") || lower.startsWith("retrying")
-                ? "warning "
-                : "error ";
-              handlers.onTrace(`${prefix}${warning}`);
+              if (lower.startsWith("reconnecting") || lower.startsWith("retrying")) {
+                handlers.onTrace(`warning ${warning}`);
+              } else {
+                emitVisibleErrorTrace(handlers, warning);
+              }
             }
             continue;
           }

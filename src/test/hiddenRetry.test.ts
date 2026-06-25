@@ -70,6 +70,13 @@ test("matches an existing hidden retry error trace bubble with the same error te
   );
 });
 
+test("matches an existing legacy single-line error trace bubble with the same error text", () => {
+  assert.equal(
+    isSameHiddenRetryErrorTraceContent("error Reconnecting... 1/5", "Reconnecting... 1/5"),
+    true,
+  );
+});
+
 test("does not match a different hidden retry error trace bubble", () => {
   assert.equal(
     isSameHiddenRetryErrorTraceContent("error\nupstream timeout", "socket hang up"),

@@ -37,6 +37,28 @@ function normalizeMessage(message?: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeHiddenRetryErrorTraceContent(content?: string | null): string | null {
+  const normalized = normalizeMessage(content);
+  if (!normalized) {
+    return null;
+  }
+  const lines = normalized.split(/\r?\n/);
+  if (lines.length === 1) {
+    const singleLineMatch = lines[0].match(/^error\b[:：]?\s*(.*)$/i);
+    if (singleLineMatch) {
+      const detail = normalizeMessage(singleLineMatch[1]);
+      return detail ? `${ERROR_TRACE_MARKER}\n${detail}` : ERROR_TRACE_MARKER;
+    }
+    return normalized;
+  }
+  const [firstLine, ...rest] = lines;
+  if (/^error\b[:：]?$/i.test(firstLine.trim())) {
+    const detail = normalizeMessage(rest.join("\n"));
+    return detail ? `${ERROR_TRACE_MARKER}\n${detail}` : ERROR_TRACE_MARKER;
+  }
+  return normalized;
+}
+
 export function buildHiddenRetryFailureMessage(options: HiddenRetryFailureMessageOptions): string {
   const lastFailureMessage = normalizeMessage(options.lastFailureMessage);
   if (options.hiddenRetryCount < options.maxRetries) {
@@ -66,7 +88,8 @@ export function isSameHiddenRetryErrorTraceContent(
   lastFailureMessage?: string | null,
   fallbackMessage = DEFAULT_ERROR_TRACE_FALLBACK,
 ): boolean {
-  return normalizeMessage(existingContent) === buildHiddenRetryErrorTraceContent(lastFailureMessage, fallbackMessage);
+  return normalizeHiddenRetryErrorTraceContent(existingContent)
+    === buildHiddenRetryErrorTraceContent(lastFailureMessage, fallbackMessage);
 }
 
 export function getHiddenRetryDelayMs(
