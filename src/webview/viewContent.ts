@@ -2390,6 +2390,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       .history-messages-modal {
         width: 760px;
+        height: min(85vh, 720px);
       }
       .history-messages-title {
         min-width: 0;
@@ -2406,7 +2407,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         display: flex;
         flex-direction: column;
         gap: 10px;
+        flex: 1 1 auto;
         min-height: 0;
+        overflow: hidden;
       }
       .history-messages-toolbar {
         display: flex;
@@ -2425,7 +2428,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border: 1px solid var(--vscode-widget-border);
         border-radius: 8px;
         color: var(--vscode-foreground);
-        height: min(56vh, 520px);
+        flex: 1 1 auto;
+        min-height: 0;
         overflow: auto;
         padding: 8px;
       }
@@ -2446,6 +2450,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         border-radius: 8px;
         background: var(--vscode-editorWidget-background);
         overflow: hidden;
+        min-width: 0;
       }
       .history-message-header {
         display: flex;
@@ -2466,6 +2471,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       .history-message-content {
         margin: 0;
         padding: 8px;
+        max-width: 100%;
+        max-height: 50vh;
+        overflow: auto;
         white-space: pre-wrap;
         word-break: break-word;
         font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
