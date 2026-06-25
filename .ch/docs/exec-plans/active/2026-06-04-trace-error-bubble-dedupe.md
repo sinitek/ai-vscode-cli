@@ -51,8 +51,8 @@ Make trace warning/error message appends idempotent so live trace updates and st
 
 - [x] Locate the `Reconnecting... 1/5` trace path.
 - [x] Identify the double-entry race between persisted messages and `traceSegment`.
-- [ ] Implement backend identity propagation and frontend dedupe.
-- [ ] Run build and relevant tests.
+- [x] Implement backend identity propagation and frontend dedupe.
+- [x] Run build and relevant tests.
 
 ## Decision Record
 
@@ -60,4 +60,4 @@ Make trace warning/error message appends idempotent so live trace updates and st
 
 ## Current Conclusion
 
-Implementation is in progress.
+Frontend now resolves `traceSegment` by existing message id before appending, and backend `appendMessageToStore` suppresses adjacent warning/error duplicates within a short time window. `npm run build` and the hidden-retry / Codex error classifier tests pass.

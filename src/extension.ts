@@ -16104,10 +16104,57 @@ function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): voi
 }
 
 function appendMessageToStore(target: ChatMessage[], message: ChatMessage): void {
+  if (isNearDuplicateWarningOrErrorMessage(target, message)) {
+    return;
+  }
   if (typeof message.sequence !== "number") {
     message.sequence = getNextMessageSequence(target);
   }
   target.push(message);
+}
+
+function normalizeDuplicateMessageContent(content: string): string {
+  return String(content || "").replace(/\r\n/g, "\n").trim();
+}
+
+function isWarningOrErrorChatMessage(message: ChatMessage | undefined): boolean {
+  if (!message || (message.role !== "trace" && message.role !== "system")) {
+    return false;
+  }
+  const content = normalizeDuplicateMessageContent(message.content);
+  if (!content) {
+    return false;
+  }
+  const firstLine = content.split("\n").find((line) => line.trim());
+  if (!firstLine) {
+    return false;
+  }
+  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
+}
+
+function isNearDuplicateWarningOrErrorMessage(
+  target: ChatMessage[],
+  message: ChatMessage,
+  windowMs = 3000,
+): boolean {
+  const last = target[target.length - 1];
+  if (!last) {
+    return false;
+  }
+  if (message.role !== last.role || !isWarningOrErrorChatMessage(message) || !isWarningOrErrorChatMessage(last)) {
+    return false;
+  }
+  if (message.role === "trace" && (message.kind || "normal") !== (last.kind || "normal")) {
+    return false;
+  }
+  const content = normalizeDuplicateMessageContent(message.content);
+  const lastContent = normalizeDuplicateMessageContent(last.content);
+  if (!content || content !== lastContent) {
+    return false;
+  }
+  const createdAt = typeof message.createdAt === "number" ? message.createdAt : Date.now();
+  const lastCreatedAt = typeof last.createdAt === "number" ? last.createdAt : 0;
+  return lastCreatedAt > 0 && Math.abs(createdAt - lastCreatedAt) <= windowMs;
 }
 
 function getNextMessageSequence(messages: ChatMessage[]): number {
