@@ -4925,6 +4925,13 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         );
       }
 
+      function findExistingMessageIndexById(messageId) {
+        if (!messageId || !Array.isArray(state.messages)) {
+          return -1;
+        }
+        return state.messages.findIndex((existing) => existing && existing.id === messageId);
+      }
+
       function isNearDuplicateWarningOrErrorMessage(message, last) {
         if (!message || !last) {
           return false;
@@ -6472,6 +6479,51 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         } else {
           updateScrollToBottomButton();
         }
+      }
+
+      function applyTraceSegment(data) {
+        const messageId = typeof data.id === "string" && data.id ? data.id : "";
+        const existingIndex = findExistingMessageIndexById(messageId);
+        if (existingIndex !== -1) {
+          const existing = state.messages[existingIndex];
+          if (!existing || existing.role !== "trace") {
+            return;
+          }
+          let changed = false;
+          if (typeof data.content === "string" && existing.content !== data.content) {
+            existing.content = data.content;
+            changed = true;
+          }
+          if (typeof data.createdAt === "number" && existing.createdAt !== data.createdAt) {
+            existing.createdAt = data.createdAt;
+            changed = true;
+          }
+          if (typeof data.sequence === "number" && existing.sequence !== data.sequence) {
+            existing.sequence = data.sequence;
+            changed = true;
+          }
+          if (existing.kind !== data.kind) {
+            existing.kind = data.kind;
+            changed = true;
+          }
+          if (existing.merge !== data.merge) {
+            existing.merge = data.merge;
+            changed = true;
+          }
+          if (changed) {
+            renderMessages();
+          }
+          return;
+        }
+        appendMessage({
+          id: messageId || createMessageId(),
+          role: "trace",
+          content: data.content,
+          ...(typeof data.createdAt === "number" ? { createdAt: data.createdAt } : {}),
+          ...(typeof data.sequence === "number" ? { sequence: data.sequence } : {}),
+          kind: data.kind,
+          merge: data.merge,
+        });
       }
 
       function renderUserMessageContent(message) {
@@ -9974,15 +10026,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }
-            appendMessage({
-              id: typeof data.id === "string" && data.id ? data.id : createMessageId(),
-              role: "trace",
-              content: data.content,
-              ...(typeof data.createdAt === "number" ? { createdAt: data.createdAt } : {}),
-              ...(typeof data.sequence === "number" ? { sequence: data.sequence } : {}),
-              kind: data.kind,
-              merge: data.merge,
-            });
+            applyTraceSegment(data);
           }
           if (data.type === "runStatus") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
