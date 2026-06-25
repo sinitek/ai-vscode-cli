@@ -72,9 +72,9 @@ export type LobsterDebateChatPanelState = {
 export type LobsterDebateChatPanelMessage =
   | { type: "lobsterDebateChat:refresh" }
   | { type: "lobsterDebateChat:continueTask"; prompt?: string }
+  | { type: "lobsterDebateChat:supplementTask"; prompt?: string }
   | { type: "lobsterDebateChat:stopTask" }
-  | { type: "lobsterDebateChat:openChatFile" }
-  | { type: "lobsterDebateChat:openTaskFile" };
+  ;
 
 type LobsterDebateChatPanelHandlers = {
   onMessage: (message: LobsterDebateChatPanelMessage) => void;
@@ -90,24 +90,29 @@ const STRINGS = {
     executionRound: "Task execution chat",
     continueTask: "Continue",
     continueTaskTitle: "Ask the main task or judge to decide whether to continue",
+    supplementTask: "Supplement Requirement",
+    supplementTaskTitle: "Add follow-up requirements for the next lobster round",
     continuePromptDefault: "continue",
+    supplementPromptDefault: "",
+    supplementDialogTitle: "Supplement lobster requirements",
+    supplementDialogDescription: "Add follow-up requirements. They will be recorded on this lobster task and shown to the main task or judge in the next round.",
     continueDialogTitle: "Continue Lobster task",
     continueDialogDescription: "Confirm the message to send to the main task or judge. You can edit or add context before continuing.",
     continuePromptLabel: "Message",
     continuePromptRequired: "Enter a message before continuing.",
+    supplementPromptLabel: "Requirement details",
+    supplementPromptRequired: "Enter the supplemental requirements.",
     continueConfirm: "Confirm",
     continueCancel: "Cancel",
     stopTask: "Stop",
     stopTaskTitle: "Stop all running tasks for this Lobster group chat",
     refresh: "Refresh",
-    openTranscript: "Open transcript",
-    openTask: "Open task record",
     task: "Task",
     status: "Status",
     cli: "CLI",
     currentRound: "Current round",
     updatedAt: "Updated",
-    participants: "Red/Blue members",
+    participants: "Members",
     mainTask: "Main task",
     subtask: "Subtask",
     session: "Session",
@@ -142,24 +147,29 @@ const STRINGS = {
     executionRound: "任务执行群聊",
     continueTask: "继续执行",
     continueTaskTitle: "让主任务或裁判主持人判断是否继续执行",
+    supplementTask: "补充需求",
+    supplementTaskTitle: "补充新的后续需求，供下一轮龙虾任务读取",
     continuePromptDefault: "继续",
+    supplementPromptDefault: "",
+    supplementDialogTitle: "补充龙虾需求",
+    supplementDialogDescription: "补充新的后续需求。内容会写入当前龙虾任务，并在下一轮提供给主任务或裁判主持人。",
     continueDialogTitle: "继续龙虾任务",
     continueDialogDescription: "确认后会把这段内容发给主任务或裁判主持人继续判断，可先修改或补充说明。",
     continuePromptLabel: "消息内容",
     continuePromptRequired: "请输入继续消息。",
+    supplementPromptLabel: "需求内容",
+    supplementPromptRequired: "请输入补充需求。",
     continueConfirm: "确认",
     continueCancel: "取消",
     stopTask: "中止",
     stopTaskTitle: "中止这个龙虾群聊关联的所有运行任务",
     refresh: "刷新",
-    openTranscript: "打开 transcript",
-    openTask: "打开任务记录",
     task: "任务",
     status: "状态",
     cli: "CLI",
     currentRound: "当前轮次",
     updatedAt: "更新时间",
-    participants: "红蓝成员",
+    participants: "成员",
     mainTask: "主任务",
     subtask: "子任务",
     session: "会话",
@@ -714,10 +724,9 @@ function buildLobsterDebateChatPanelHtml(
         </div>
         <div class="actions">
           ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
+          ${!state.task.canStop && state.task.canContinue ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
           ${!state.task.canStop && state.task.canContinue ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
           <button class="button${state.task.canStop || state.task.canContinue ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
-          <button class="button" type="button" data-action="openChatFile">${escapeHtml(strings.openTranscript)}</button>
-          <button class="button" type="button" data-action="openTaskFile">${escapeHtml(strings.openTask)}</button>
         </div>
       </header>
       <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
@@ -768,6 +777,7 @@ function buildLobsterDebateChatPanelHtml(
 	      const continueDialogConfirm = document.getElementById("continueDialogConfirm");
 	      const continueDialogCancel = document.getElementById("continueDialogCancel");
 	      const continueTaskButton = document.querySelector('[data-action="continueTask"]');
+	      const supplementTaskButton = document.querySelector('[data-action="supplementTask"]');
 	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
@@ -920,6 +930,51 @@ function buildLobsterDebateChatPanelHtml(
 	        vscode.postMessage({ type: "lobsterDebateChat:continueTask", prompt });
 	      }
 
+	      function submitSupplementDialog() {
+	        if (!continueDialogInput) {
+	          return;
+	        }
+	        const prompt = continueDialogInput.value.trim();
+	        if (!prompt) {
+	          setContinueDialogError("${escapeJsString(strings.supplementPromptRequired)}");
+	          continueDialogInput.focus();
+	          return;
+	        }
+	        closeContinueDialog();
+	        if (supplementTaskButton) {
+	          supplementTaskButton.disabled = true;
+	        }
+	        vscode.postMessage({ type: "lobsterDebateChat:supplementTask", prompt });
+	      }
+
+	      function openSupplementDialog() {
+	        if (!continueDialogBackdrop || !continueDialogInput) {
+	          return;
+	        }
+	        setContinueDialogError("");
+	        continueDialogOpen = true;
+	        const titleElement = document.getElementById("continueDialogTitle");
+	        const descriptionElement = document.getElementById("continueDialogDescription");
+	        const labelElement = document.querySelector('label[for="continueDialogInput"]');
+	        if (titleElement) {
+	          titleElement.textContent = "${escapeJsString(strings.supplementDialogTitle)}";
+	        }
+	        if (descriptionElement) {
+	          descriptionElement.textContent = "${escapeJsString(strings.supplementDialogDescription)}";
+	        }
+	        if (labelElement) {
+	          labelElement.textContent = "${escapeJsString(strings.supplementPromptLabel)}";
+	        }
+	        continueDialogInput.value = "${escapeJsString(strings.supplementPromptDefault)}";
+	        continueDialogBackdrop.classList.add("visible");
+	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
+	        window.setTimeout(() => {
+	          continueDialogInput.focus();
+	          continueDialogInput.select();
+	        }, 0);
+	      }
+
 	      function startAutoRefresh() {
 	        if (autoRefreshTimer !== undefined) {
 	          return;
@@ -943,7 +998,25 @@ function buildLobsterDebateChatPanelHtml(
 	        }
 	        if (action === "continueTask") {
 	          saveScrollState();
+	          const titleElement = document.getElementById("continueDialogTitle");
+	          const descriptionElement = document.getElementById("continueDialogDescription");
+	          const labelElement = document.querySelector('label[for="continueDialogInput"]');
+	          if (titleElement) {
+	            titleElement.textContent = "${escapeJsString(strings.continueDialogTitle)}";
+	          }
+	          if (descriptionElement) {
+	            descriptionElement.textContent = "${escapeJsString(strings.continueDialogDescription)}";
+	          }
+	          if (labelElement) {
+	            labelElement.textContent = "${escapeJsString(strings.continuePromptLabel)}";
+	          }
+	          continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
 	          openContinueDialog();
+	          return;
+	        }
+	        if (action === "supplementTask") {
+	          saveScrollState();
+	          openSupplementDialog();
 	          return;
 	        }
 	        if (action === "stopTask") {
@@ -956,14 +1029,6 @@ function buildLobsterDebateChatPanelHtml(
 	        }
 	        if (action === "scrollToBottom") {
 	          scrollMainToBottom("smooth");
-	          return;
-	        }
-	        if (action === "openChatFile") {
-	          vscode.postMessage({ type: "lobsterDebateChat:openChatFile" });
-	          return;
-	        }
-	        if (action === "openTaskFile") {
-	          vscode.postMessage({ type: "lobsterDebateChat:openTaskFile" });
 	          return;
 	        }
 	      });
@@ -987,6 +1052,10 @@ function buildLobsterDebateChatPanelHtml(
 	      }
 	      if (continueDialogConfirm) {
 	        continueDialogConfirm.addEventListener("click", () => {
+	          if (continueDialogConfirm.dataset.mode === "supplement") {
+	            submitSupplementDialog();
+	            return;
+	          }
 	          submitContinueDialog();
 	        });
 	      }
@@ -998,6 +1067,10 @@ function buildLobsterDebateChatPanelHtml(
 	          }
 	          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
 	            event.preventDefault();
+	            if (continueDialogConfirm && continueDialogConfirm.dataset.mode === "supplement") {
+	              submitSupplementDialog();
+	              return;
+	            }
 	            submitContinueDialog();
 	          }
 	        });

@@ -498,6 +498,7 @@ type LobsterTaskRecord = {
   answerConclusion?: string;
   finalSummary?: string;
   estimatedRemainingRounds?: number;
+  supplementalRequirements?: string[];
   debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
   completionRoundSummaries: LobsterRoundSummary[];
   completionRequirementCoverage: LobsterAcceptanceCheck[];
@@ -3490,17 +3491,12 @@ async function handleLobsterDebateChatPanelMessage(taskId: string, message: Lobs
     await continueLobsterDebateChatTaskFromPanel(taskId, message.prompt);
     return;
   }
+  if (message.type === "lobsterDebateChat:supplementTask") {
+    await supplementLobsterDebateChatTaskFromPanel(taskId, message.prompt);
+    return;
+  }
   if (message.type === "lobsterDebateChat:stopTask") {
     await stopLobsterDebateChatTaskFromPanel(taskId);
-    return;
-  }
-  if (message.type === "lobsterDebateChat:openChatFile") {
-    await openLobsterDebateChatTranscriptFromPanel(taskId);
-    return;
-  }
-  if (message.type === "lobsterDebateChat:openTaskFile") {
-    const taskFile = lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.taskStoreFile;
-    await openReadableFileInEditor(taskFile, t("lobsterDebateChat.noTaskRecord"));
   }
 }
 
@@ -3578,6 +3574,35 @@ async function continueLobsterDebateChatTaskFromPanel(taskId: string, prompt?: u
   await refreshLobsterDebateChatPanel(normalizedTaskId);
 }
 
+async function supplementLobsterDebateChatTaskFromPanel(taskId: string, prompt?: unknown): Promise<void> {
+  const normalizedTaskId = normalizeLobsterTaskId(taskId)
+    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
+  if (!normalizedTaskId) {
+    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
+    return;
+  }
+
+  const task = readLobsterTaskRecord(normalizedTaskId);
+  if (!task) {
+    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
+    return;
+  }
+
+  const supplementalRequirement = normalizeLobsterSupplementalRequirement(prompt);
+  if (!supplementalRequirement) {
+    void vscode.window.showInformationMessage(t("lobsterDebateChat.continueUnavailable"));
+    return;
+  }
+
+  const nextRequirements = appendLobsterSupplementalRequirement(task.supplementalRequirements, supplementalRequirement);
+  updateLobsterTaskRecord(task.id, {
+    supplementalRequirements: nextRequirements,
+    updatedAt: Date.now(),
+  });
+  appendLobsterSupplementalRequirementToCommunication(task, supplementalRequirement);
+  await refreshLobsterDebateChatPanel(normalizedTaskId);
+}
+
 async function stopLobsterDebateChatTaskFromPanel(taskId: string): Promise<void> {
   const normalizedTaskId = normalizeLobsterTaskId(taskId)
     ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
@@ -3620,45 +3645,6 @@ function refreshOpenLobsterDebateChatPanelForTask(taskId: string): void {
     return;
   }
   void refreshLobsterDebateChatPanel(taskId);
-}
-
-async function openLobsterDebateChatTranscriptFromPanel(taskId: string): Promise<void> {
-  const state = lobsterDebateChatPanelsByTaskId.get(taskId)?.getState();
-  const files = (state?.rounds ?? [])
-    .map((round) => ({
-      label: round.label || (round.kind === "debate" ? `辩论：第 ${round.lobsterRound} 轮` : "任务执行群聊"),
-      description: round.status,
-      detail: round.chatFile,
-      filePath: round.chatFile,
-    }))
-    .filter((item): item is { label: string; description: string; detail: string; filePath: string } => (
-      typeof item.filePath === "string" && item.filePath.trim().length > 0
-    ));
-  if (files.length === 0) {
-    await openReadableFileInEditor(undefined, t("lobsterDebateChat.noTranscript"));
-    return;
-  }
-  if (files.length === 1) {
-    await openReadableFileInEditor(files[0]?.filePath, t("lobsterDebateChat.noTranscript"));
-    return;
-  }
-  const selection = await vscode.window.showQuickPick(files, {
-    placeHolder: t("lobsterDebateChat.openTranscript"),
-    matchOnDescription: true,
-    matchOnDetail: true,
-  });
-  if (selection) {
-    await openReadableFileInEditor(selection.filePath, t("lobsterDebateChat.noTranscript"));
-  }
-}
-
-async function openReadableFileInEditor(filePath: string | null | undefined, missingMessage: string): Promise<void> {
-  if (!filePath || !fs.existsSync(filePath)) {
-    void vscode.window.showInformationMessage(missingMessage);
-    return;
-  }
-  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
-  await vscode.window.showTextDocument(document, { preview: false });
 }
 
 async function resolveLobsterDebateChatPanelTask(arg?: unknown): Promise<LobsterTaskRecord | null> {
@@ -7605,6 +7591,11 @@ function buildLobsterDebateBriefMarkdown(
       normalizedContinuePrompt,
       "",
     ] : []),
+    ...(task.supplementalRequirements?.length ? [
+      "## 补充需求",
+      ...task.supplementalRequirements.map((item, index) => `${index + 1}. ${item}`),
+      "",
+    ] : []),
     "## 子任务概要",
     ...buildLobsterDebateSubtaskSummaryLines(task),
     "",
@@ -8398,6 +8389,61 @@ function appendLobsterDebateMainCommunicationLog(
   }
 }
 
+function normalizeLobsterSupplementalRequirement(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function appendLobsterSupplementalRequirement(
+  existing: readonly string[] | undefined,
+  nextItem: string,
+): string[] {
+  const normalizedExisting = Array.isArray(existing)
+    ? existing.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  return [...normalizedExisting, nextItem];
+}
+
+function appendLobsterSupplementalRequirementToCommunication(
+  task: LobsterTaskRecord,
+  requirement: string,
+): void {
+  try {
+    fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
+    const lines = [
+      "",
+      "## 补充需求",
+      `- 时间：${new Date().toISOString()}`,
+      `- 主任务轮次：${Math.max(1, task.currentRound || 1)}`,
+      requirement,
+    ];
+    fs.appendFileSync(task.mainCommunicationFile, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    void logError("lobster-supplemental-requirement-write-error", {
+      taskId: task.id,
+      filePath: task.mainCommunicationFile,
+      error: String(error),
+    });
+  }
+}
+
+function buildLobsterSupplementalRequirementsLines(task: Pick<LobsterTaskRecord, "supplementalRequirements">): string[] {
+  const requirements = Array.isArray(task.supplementalRequirements)
+    ? task.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  if (requirements.length === 0) {
+    return [];
+  }
+  return [
+    "补充需求：",
+    ...requirements.map((item, index) => `${index + 1}. ${item}`),
+    "",
+  ];
+}
+
 function appendLobsterMainSubChatTaskEvent(task: LobsterTaskRecord, body: string): void {
   appendLobsterMainSubChatSection(task, "任务事件", body);
 }
@@ -8901,6 +8947,7 @@ function buildLobsterMainModelPrompt(
     "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
     "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、answerConclusion、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     "",
+    ...buildLobsterSupplementalRequirementsLines(task),
     ...(normalizedContinuePrompt ? [
       "本次继续指令：",
       normalizedContinuePrompt,
@@ -13482,6 +13529,7 @@ function createLobsterTaskRecord(
     activeSubtaskIds: [],
     subTasks: [],
     rounds: [],
+    supplementalRequirements: [],
     completionRoundSummaries: [],
     completionRequirementCoverage: [],
   };
@@ -13535,6 +13583,9 @@ function updateLobsterTaskRecord(
     subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
     rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
     debateRounds: Array.isArray(patch.debateRounds) ? patch.debateRounds : existing.debateRounds,
+    supplementalRequirements: Array.isArray(patch.supplementalRequirements)
+      ? patch.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
+      : existing.supplementalRequirements,
     completionRoundSummaries: Array.isArray(patch.completionRoundSummaries)
       ? patch.completionRoundSummaries
       : existing.completionRoundSummaries,
@@ -13656,6 +13707,11 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
   const completionRequirementCoverage = normalizeLobsterAcceptanceChecks(
     (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
   );
+  const supplementalRequirements = Array.isArray((raw as { supplementalRequirements?: unknown }).supplementalRequirements)
+    ? (raw as { supplementalRequirements: unknown[] }).supplementalRequirements
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+    : [];
   const debateRounds = normalizeLobsterDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   return {
     id: raw.id,
@@ -13684,6 +13740,7 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
       (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
     ),
+    supplementalRequirements,
     debateRounds,
     completionRoundSummaries,
     completionRequirementCoverage,
