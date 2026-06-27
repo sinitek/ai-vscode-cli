@@ -617,3 +617,39 @@
 - 当前系统代码：`src/interactive/codexRunner.ts`、`src/interactive/manager.ts`、`src/extension.ts`
 - 对标系统代码：`/Users/fangjiawei/work/cli_mcp/apps/backend/src/infra/codex/CodexAppServerClient.ts`、`/Users/fangjiawei/work/cli_mcp/apps/backend/src/infra/codex/CodexExecClient.ts`
 - 执行计划：`.ch/docs/exec-plans/completed/2026-04-23-codex-launch-compare.md`
+
+## 龙虾主任务 AI 连续失败后不能继续自动派发子任务
+
+- 状态：已缓解
+- 首次发现：2026-06-27
+- 适用范围：`src/extension.ts` 的龙虾主任务编排、恢复链路与群聊继续入口
+
+### 现象
+- 主任务 AI 调用已经连续失败，子任务也接连失败后，龙虾主任务仍可能在后续恢复里继续派发子任务。
+- 极端情况下会重复复用上一轮主任务决策，累计派发出几十个子任务，看起来像“失败了还在不断拆任务”。
+
+### 触发条件
+- 龙虾主任务或红蓝辩论主决策阶段连续 AI 调用失败。
+- 任务被标成 `error` / `stopped` 后，又被群聊“继续执行”、主任务 tab 的继续提示词，或子任务手动补跑成功后的自动唤醒再次拉起。
+
+### 根因
+- 旧实现只记录了任务瞬时 `error/stopped` 状态，没有持久化“主任务 AI 连续失败次数”。
+- 恢复链路把 `error/stopped/running` 一并视作可恢复，未区分“暂时中断”和“已经达到失败终止上限”。
+- 主任务恢复时如果重新读取到旧轮次消息，存在继续复用旧决策并再次派发子任务的风险。
+
+### 临时绕过
+- 修复前如遇到该问题，只能手动中止龙虾任务并新建任务，避免继续在同一 `taskId` 上恢复。
+
+### 长期规避
+- 主任务 AI 调用连续失败达到 5 次后，任务直接进入 `needs-review`，并写入失败说明。
+- 达到上限后，群聊“继续执行”、主任务 tab 的自动恢复、子任务手动补跑成功后的自动唤醒，都不能再自动恢复该主任务。
+- 子任务自动重试仍保持现有 5 次，但不再把子任务链路的失败当成主任务可以无限继续的依据。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/lobsterDebate.test.js dist/test/lobsterMainFailure.test.js`。
+- 手工构造主任务连续失败场景，确认任务在第 5 次失败后进入 `needs-review`，不再自动派发或自动恢复。
+
+### 关联资料
+- 代码：`src/extension.ts`、`src/lobsterMainFailure.ts`、`src/lobsterDebate.ts`
+- 执行计划：`.ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md`

@@ -97,6 +97,13 @@ import {
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
+import {
+  buildNextLobsterMainAiFailureState,
+  buildResetLobsterMainAiFailureState,
+  isLobsterMainAiFailureLimitReached,
+  LOBSTER_MAIN_AI_FAILURE_LIMIT,
+  normalizeLobsterMainAiFailureCount,
+} from "./lobsterMainFailure";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import {
   LobsterDebateChatPanel,
@@ -498,6 +505,10 @@ type LobsterTaskRecord = {
   answerConclusion?: string;
   finalSummary?: string;
   estimatedRemainingRounds?: number;
+  mainAiFailureCount?: number;
+  mainAiFailureLimitReached?: boolean;
+  mainAiLastFailureAt?: number;
+  mainAiLastFailureMessage?: string;
   supplementalRequirements?: string[];
   debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
   completionRoundSummaries: LobsterRoundSummary[];
@@ -4713,7 +4724,8 @@ function isLobsterResumePrompt(prompt: string): boolean {
 }
 
 function isLobsterTaskResumable(task: LobsterTaskRecord): boolean {
-  return task.status === "error" || task.status === "stopped" || task.status === "running";
+  return !isLobsterTaskBlockedByMainAiFailureLimit(task)
+    && (task.status === "error" || task.status === "stopped" || task.status === "running");
 }
 
 function collectRecentLobsterTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
@@ -5395,6 +5407,10 @@ async function runLobsterPrompt(
 
   if (resumeTaskId) {
     const existingTask = readLobsterTaskRecord(resumeTaskId);
+    if (existingTask && isLobsterTaskBlockedByMainAiFailureLimit(existingTask)) {
+      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(existingTask));
+      return;
+    }
     const shouldResumeCompletedWithoutCompletionMessages = Boolean(
       existingTask
       && existingTask.status === "completed"
@@ -5466,6 +5482,10 @@ async function runLobsterPrompt(
   while (task && round <= task.maxRounds) {
     const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
     task = latest;
+    if (isLobsterTaskBlockedByMainAiFailureLimit(latest)) {
+      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(latest));
+      return;
+    }
     if (isLobsterTaskCompleted(latest)) {
       if (hasCompleteLobsterCompletionMessagesForTask(target, latest.id)) {
         return;
@@ -5497,12 +5517,29 @@ async function runLobsterPrompt(
     }
 
     const executionMode = normalizeLobsterExecutionMode(latest.executionMode);
-    const decisionRunResult = executionMode === "debate_multi_agent"
-      ? await runLobsterDebateRound({ input, target, task: latest, round })
-      : await runClassicLobsterMainDecision({ input, target, task: latest, round });
+    let decisionRunResult: LobsterMainDecisionRunResult;
+    try {
+      decisionRunResult = executionMode === "debate_multi_agent"
+        ? await runLobsterDebateRound({ input, target, task: latest, round })
+        : await runClassicLobsterMainDecision({ input, target, task: latest, round });
+    } catch (error) {
+      void logError("lobster-main-decision-run-error", {
+        taskId: latest.id,
+        round,
+        executionMode,
+        error: errorToMessage(error),
+      });
+      markLobsterTaskInterrupted(latest.id, "error", target, {
+        source: "main",
+        failureMessage: errorToMessage(error),
+      });
+      return;
+    }
 
     if (decisionRunResult.status === "interrupted") {
-      markLobsterTaskInterrupted(decisionRunResult.task.id, decisionRunResult.runStatus, target);
+      markLobsterTaskInterrupted(decisionRunResult.task.id, decisionRunResult.runStatus, target, {
+        source: "main",
+      });
       return;
     }
     if (decisionRunResult.status === "completed") {
@@ -5529,7 +5566,9 @@ async function runLobsterPrompt(
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
     if (interrupted) {
       const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
-      markLobsterTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target);
+      markLobsterTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target, {
+        source: "subtask",
+      });
       return;
     }
 
@@ -5561,20 +5600,34 @@ async function runClassicLobsterMainDecision(options: {
   round: number;
 }): Promise<LobsterMainDecisionRunResult> {
   const { input, target, task, round } = options;
-  const mainStatus = await runLobsterRound({
-    input,
-    target,
-    task,
-    round,
-    role: "main",
-    displayPrompt: buildLobsterMainDisplayPrompt(task.rootPrompt, round),
-    modelPrompt: buildLobsterMainModelPrompt(
-      input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+  let mainStatus: TaskRunStatus;
+  try {
+    mainStatus = await runLobsterRound({
+      input,
+      target,
       task,
       round,
-      input.lobsterContinuePrompt,
-    ),
-  });
+      role: "main",
+      displayPrompt: buildLobsterMainDisplayPrompt(task.rootPrompt, round),
+      modelPrompt: buildLobsterMainModelPrompt(
+        input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+        task,
+        round,
+        input.lobsterContinuePrompt,
+      ),
+    });
+  } catch (error) {
+    void logError("lobster-main-round-run-error", {
+      taskId: task.id,
+      round,
+      error: errorToMessage(error),
+    });
+    markLobsterTaskInterrupted(task.id, "error", target, {
+      source: "main",
+      failureMessage: errorToMessage(error),
+    });
+    return { status: "interrupted", task: readLobsterTaskRecord(task.id) ?? task, runStatus: "error" };
+  }
   if (mainStatus === "error" || mainStatus === "stopped") {
     return { status: "interrupted", task, runStatus: mainStatus };
   }
@@ -5599,6 +5652,10 @@ function applyLobsterMainDecisionForRun(
   taskId: string,
   decision: LobsterMainDecision,
 ): LobsterMainDecisionRunResult {
+  updateLobsterTaskRecord(taskId, {
+    ...buildResetLobsterMainAiFailureState(),
+    updatedAt: Date.now(),
+  });
   const decisionResult = applyLobsterMainDecision(taskId, decision);
   if (decisionResult.status === "completed") {
     return { status: "completed", task: decisionResult.task, decision };
@@ -9829,11 +9886,37 @@ function findFirstEvidenceLine(lines: string[], patterns: RegExp[]): string | un
   return undefined;
 }
 
-function markLobsterTaskInterrupted(taskId: string, status: "error" | "stopped", target: PromptRunTarget): void {
-  const record = updateLobsterTaskRecord(taskId, {
+function markLobsterTaskInterrupted(
+  taskId: string,
+  status: "error" | "stopped",
+  target: PromptRunTarget,
+  options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
+): void {
+  const existing = readLobsterTaskRecord(taskId);
+  const now = Date.now();
+  const patch: Partial<LobsterTaskRecord> = {
     status,
-    updatedAt: Date.now(),
-  }) ?? readLobsterTaskRecord(taskId);
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+    updatedAt: now,
+  };
+  if (options.source === "main" && status === "error") {
+    Object.assign(patch, buildNextLobsterMainAiFailureState(existing ?? {}, {
+      now,
+      failureMessage: options.failureMessage,
+    }));
+    if (isLobsterMainAiFailureLimitReached({
+      mainAiFailureCount: patch.mainAiFailureCount,
+      mainAiFailureLimitReached: patch.mainAiFailureLimitReached,
+    })) {
+      patch.status = "needs-review";
+      patch.finalSummary = [
+        `主任务 AI 调用已连续失败 ${patch.mainAiFailureCount}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`,
+        options.failureMessage ? `最近一次失败：${options.failureMessage}` : "",
+      ].filter(Boolean).join("\n");
+    }
+  }
+  const record = updateLobsterTaskRecord(taskId, patch) ?? existing;
   if (record) {
     appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(record));
   }
@@ -9974,7 +10057,11 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
   markLobsterSubtaskRunFinished(context.taskId, context.subtaskId, "end", summary);
 
   const latestTask = readLobsterTaskRecord(context.taskId);
-  if (!latestTask || (latestTask.status !== "error" && latestTask.status !== "stopped")) {
+  if (
+    !latestTask
+    || isLobsterTaskBlockedByMainAiFailureLimit(latestTask)
+    || (latestTask.status !== "error" && latestTask.status !== "stopped")
+  ) {
     return;
   }
 
@@ -10310,7 +10397,10 @@ function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
 }
 
 function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
-  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}`;
+  const failureSuffix = isLobsterTaskBlockedByMainAiFailureLimit(task)
+    ? `\n主任务 AI 调用已连续失败 ${normalizeLobsterMainAiFailureCount(task.mainAiFailureCount)}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
+    : "";
+  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
 }
 
 function buildLobsterMainResumeText(
@@ -13529,6 +13619,7 @@ function createLobsterTaskRecord(
     activeSubtaskIds: [],
     subTasks: [],
     rounds: [],
+    ...buildResetLobsterMainAiFailureState(),
     supplementalRequirements: [],
     completionRoundSummaries: [],
     completionRequirementCoverage: [],
@@ -13678,6 +13769,10 @@ function isLobsterTaskCompleted(task: LobsterTaskRecord): boolean {
   return task.status === "completed";
 }
 
+function isLobsterTaskBlockedByMainAiFailureLimit(task: Pick<LobsterTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">): boolean {
+  return isLobsterMainAiFailureLimitReached(task);
+}
+
 function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): LobsterTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
@@ -13740,6 +13835,16 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
       (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
     ),
+    mainAiFailureCount: normalizeLobsterMainAiFailureCount(
+      (raw as { mainAiFailureCount?: unknown }).mainAiFailureCount
+    ),
+    mainAiFailureLimitReached: Boolean((raw as { mainAiFailureLimitReached?: unknown }).mainAiFailureLimitReached),
+    mainAiLastFailureAt: typeof (raw as { mainAiLastFailureAt?: unknown }).mainAiLastFailureAt === "number"
+      ? (raw as { mainAiLastFailureAt: number }).mainAiLastFailureAt
+      : undefined,
+    mainAiLastFailureMessage: typeof (raw as { mainAiLastFailureMessage?: unknown }).mainAiLastFailureMessage === "string"
+      ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
+      : undefined,
     supplementalRequirements,
     debateRounds,
     completionRoundSummaries,

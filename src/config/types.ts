@@ -60,7 +60,21 @@ export type OfficialSkillCatalogPlatformMeta = {
 
 export type OfficialSkillInstallState = "not_installed" | "installed" | "update_available" | "unknown_source";
 
-export type OfficialSkillCatalogItem = {
+export type OfficialSkillVersionFields = {
+  version?: string;
+  versionSource?: string;
+  contentHash?: string;
+  sourceCommit?: string;
+};
+
+export type InstalledOfficialSkillVersionFields = {
+  installedVersion?: string;
+  installedVersionSource?: string;
+  installedContentHash?: string;
+  installedSourceCommit?: string;
+};
+
+export type OfficialSkillCatalogItem = OfficialSkillVersionFields & InstalledOfficialSkillVersionFields & {
   id: string;
   platform: OfficialSkillPlatform;
   group: string;

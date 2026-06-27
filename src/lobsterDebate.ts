@@ -170,14 +170,15 @@ export type LobsterTaskRunControlState = {
 };
 
 export function resolveLobsterTaskRunControlState(
-  task: { id: string; status: string },
+  task: { id: string; status: string; mainAiFailureLimitReached?: boolean | null },
   runningTaskIds: ReadonlySet<string>,
 ): LobsterTaskRunControlState {
   const isCompleted = task.status === "completed";
   const isRunning = !isCompleted && (task.status === "running" || runningTaskIds.has(task.id));
+  const blockedByFailureLimit = Boolean(task.mainAiFailureLimitReached);
   return {
     isRunning,
-    canContinue: !isCompleted && !isRunning,
+    canContinue: !isCompleted && !isRunning && !blockedByFailureLimit,
     canStop: isRunning,
   };
 }

@@ -75,6 +75,16 @@ test("keeps lobster continue available only for incomplete non-running tasks", (
   );
 });
 
+test("blocks lobster continue when main AI failure limit has already been reached", () => {
+  assert.deepEqual(
+    resolveLobsterTaskRunControlState(
+      { id: "task-1", status: "needs-review", mainAiFailureLimitReached: true },
+      new Set(),
+    ),
+    { isRunning: false, canContinue: false, canStop: false },
+  );
+});
+
 test("builds terminal lobster group chat status sections", () => {
   const completed = buildLobsterGroupChatFinalStatusSection({
     id: "task-1",

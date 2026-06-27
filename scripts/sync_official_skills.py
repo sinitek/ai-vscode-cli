@@ -12,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,6 +95,15 @@ DOWNLOAD_HEAD_TIMEOUT_SECONDS = 30
 DOWNLOAD_MAX_TIME_SECONDS = 90
 DOWNLOAD_ATTEMPTS = 4
 GIT_CLONE_TIMEOUT_SECONDS = 300
+GIT_LS_REMOTE_TIMEOUT_SECONDS = 60
+CONTENT_HASH_PREFIX = "sha256:"
+CONTENT_HASH_VERSION_SOURCE = "contentHash:sha256"
+SHORT_HASH_VERSION_LENGTH = 12
+GEMINI_MANIFEST_FILE = "gemini-extension.json"
+GEMINI_CANONICAL_REPO_ALIASES: Dict[str, str] = {
+    "gemini-cli-extensions/firebase": "firebase/agent-skills",
+    "firebase/skills": "firebase/agent-skills",
+}
 
 
 class SyncError(RuntimeError):
@@ -228,7 +237,7 @@ def download_file(url: str, destination: Path) -> None:
         if destination.exists() and destination.stat().st_size > 0:
             args.extend(["-C", "-"])
         args.extend(["-o", str(destination), url])
-        result = run_command_result(args)
+        result = run_command_result(args, timeout_seconds=DOWNLOAD_MAX_TIME_SECONDS + 15)
         if result.returncode == 0:
             return
         size = destination.stat().st_size if destination.exists() else 0
@@ -250,7 +259,53 @@ def normalize_ref(value: str) -> str:
     return f"etag:{cleaned}"
 
 
-def resolve_repo_tarball(repo: str) -> Tuple[str, str, str]:
+def normalize_optional_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def canonicalize_gemini_repo(repo: str) -> str:
+    return GEMINI_CANONICAL_REPO_ALIASES.get(repo, repo)
+
+
+def gemini_repo_candidates(repo: str) -> List[str]:
+    canonical_repo = canonicalize_gemini_repo(repo)
+    candidates = [canonical_repo]
+    for alias, canonical in GEMINI_CANONICAL_REPO_ALIASES.items():
+        if canonical == canonical_repo and alias not in candidates:
+            candidates.append(alias)
+    if repo not in candidates:
+        candidates.append(repo)
+    return candidates
+
+
+def resolve_repo_head_commit(repo: str, branch: str) -> Optional[str]:
+    clone_url = f"https://github.com/{repo}.git"
+    try:
+        output = run_command(
+            ["git", "ls-remote", "--heads", clone_url, f"refs/heads/{branch}"],
+            timeout_seconds=GIT_LS_REMOTE_TIMEOUT_SECONDS,
+        ).strip()
+    except SyncError as error:
+        print(f"[warn] Unable to resolve HEAD commit for {repo}@{branch}: {error}", file=sys.stderr, flush=True)
+        return None
+
+    for line in output.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[1] == f"refs/heads/{branch}":
+            return parts[0]
+
+    print(
+        f"[warn] Unable to parse HEAD commit for {repo}@{branch} from git ls-remote output.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return None
+
+
+def resolve_repo_tarball(repo: str) -> Tuple[str, str, str, Optional[str]]:
     for branch in ("main", "master"):
         url = f"https://codeload.github.com/{repo}/tar.gz/refs/heads/{branch}"
         headers = http_head(url)
@@ -259,7 +314,7 @@ def resolve_repo_tarball(repo: str) -> Tuple[str, str, str]:
         etag = headers.get("etag")
         if not etag:
             raise SyncError(f"Upstream archive missing etag header: {url}")
-        return branch, url, normalize_ref(etag)
+        return branch, url, normalize_ref(etag), resolve_repo_head_commit(repo, branch)
     raise SyncError(f"Unable to resolve codeload tarball for {repo} (tried main/master).")
 
 
@@ -426,8 +481,219 @@ def sha256_of_refs(pairs: Iterable[Tuple[str, str]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def format_content_hash(digest: str) -> str:
+    return f"{CONTENT_HASH_PREFIX}{digest}"
+
+
+def short_hash_version(content_hash: str) -> str:
+    digest = content_hash[len(CONTENT_HASH_PREFIX) :] if content_hash.startswith(CONTENT_HASH_PREFIX) else content_hash
+    return f"{CONTENT_HASH_PREFIX}{digest[:SHORT_HASH_VERSION_LENGTH]}"
+
+
+def hash_file_path(file_path: Path) -> str:
+    hasher = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def hash_stream(stream: Any) -> str:
+    hasher = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(65536), b""):
+        hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def collect_directory_manifest(source_dir: Path) -> Tuple[List[str], List[Tuple[str, Path]]]:
+    directories = set()
+    files: List[Tuple[str, Path]] = []
+    for current_root, dir_names, file_names in os.walk(source_dir, topdown=True, followlinks=False):
+        current_path = Path(current_root)
+        dir_names.sort()
+        file_names.sort()
+        for dir_name in dir_names:
+            directories.add((current_path / dir_name).relative_to(source_dir).as_posix())
+        for file_name in file_names:
+            file_path = current_path / file_name
+            files.append((file_path.relative_to(source_dir).as_posix(), file_path))
+    return sorted(directories), sorted(files, key=lambda item: item[0])
+
+
+def compute_directory_content_hash(source_dir: Path) -> str:
+    directories, files = collect_directory_manifest(source_dir)
+    hasher = hashlib.sha256()
+    for relative_dir in directories:
+        hasher.update(f"D\t{relative_dir}\n".encode("utf-8"))
+    for relative_file, file_path in files:
+        file_digest = hash_file_path(file_path)
+        file_size = file_path.stat().st_size
+        hasher.update(f"F\t{relative_file}\t{file_size}\t{file_digest}\n".encode("utf-8"))
+    return format_content_hash(hasher.hexdigest())
+
+
+def detect_archive_root_prefix(names: Iterable[str]) -> Optional[str]:
+    roots = {
+        PurePosixPath(name.strip("/")).parts[0]
+        for name in names
+        if name.strip("/") and PurePosixPath(name.strip("/")).parts
+    }
+    if len(roots) == 1:
+        return next(iter(roots))
+    return None
+
+
+def normalize_archive_member_name(name: str, root_prefix: Optional[str]) -> str:
+    stripped = name.strip("/")
+    if not stripped:
+        return ""
+    parts = list(PurePosixPath(stripped).parts)
+    if root_prefix and parts and parts[0] == root_prefix:
+        parts = parts[1:]
+    if not parts:
+        return ""
+    return "/".join(parts)
+
+
+def collect_archive_manifest(archive: zipfile.ZipFile) -> Tuple[List[str], List[Tuple[str, zipfile.ZipInfo]]]:
+    infos = archive.infolist()
+    root_prefix = detect_archive_root_prefix(info.filename for info in infos)
+    directories = set()
+    files: List[Tuple[str, zipfile.ZipInfo]] = []
+    for info in infos:
+        relative_name = normalize_archive_member_name(info.filename, root_prefix)
+        if not relative_name:
+            continue
+        parts = list(PurePosixPath(relative_name).parts)
+        if info.is_dir():
+            directories.add(relative_name.rstrip("/"))
+            continue
+        for depth in range(1, len(parts)):
+            directories.add("/".join(parts[:depth]))
+        files.append((relative_name, info))
+    return sorted(directories), sorted(files, key=lambda item: item[0])
+
+
+def parse_gemini_manifest_version_text(raw_text: str) -> Optional[str]:
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return normalize_optional_text(payload.get("version"))
+
+
+def read_gemini_manifest_version(skill_root: Path) -> Optional[str]:
+    manifest_path = skill_root / GEMINI_MANIFEST_FILE
+    if not manifest_path.exists():
+        return None
+    try:
+        return parse_gemini_manifest_version_text(manifest_path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        return None
+
+
+def build_snapshot_fields_from_content_hash(content_hash: str) -> Dict[str, str]:
+    return {
+        "version": short_hash_version(content_hash),
+        "versionSource": CONTENT_HASH_VERSION_SOURCE,
+        "contentHash": content_hash,
+    }
+
+
+def build_directory_snapshot_fields(platform: str, skill_root: Path) -> Dict[str, str]:
+    content_hash = compute_directory_content_hash(skill_root)
+    if platform == "gemini":
+        manifest_version = read_gemini_manifest_version(skill_root)
+        if manifest_version:
+            return {
+                "version": manifest_version,
+                "versionSource": f"manifest:{GEMINI_MANIFEST_FILE}#version",
+                "contentHash": content_hash,
+            }
+    return build_snapshot_fields_from_content_hash(content_hash)
+
+
+def build_archive_snapshot_fields(platform: str, archive_path: Path) -> Dict[str, str]:
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        directories, files = collect_archive_manifest(archive)
+        hasher = hashlib.sha256()
+        manifest_version: Optional[str] = None
+        for relative_dir in directories:
+            hasher.update(f"D\t{relative_dir}\n".encode("utf-8"))
+        for relative_file, info in files:
+            if platform == "gemini" and relative_file == GEMINI_MANIFEST_FILE:
+                manifest_bytes = archive.read(info)
+                file_digest = hashlib.sha256(manifest_bytes).hexdigest()
+                try:
+                    manifest_version = parse_gemini_manifest_version_text(manifest_bytes.decode("utf-8"))
+                except UnicodeDecodeError:
+                    manifest_version = None
+            else:
+                with archive.open(info, "r") as stream:
+                    file_digest = hash_stream(stream)
+            hasher.update(f"F\t{relative_file}\t{info.file_size}\t{file_digest}\n".encode("utf-8"))
+
+    content_hash = format_content_hash(hasher.hexdigest())
+    if platform == "gemini" and manifest_version:
+        return {
+            "version": manifest_version,
+            "versionSource": f"manifest:{GEMINI_MANIFEST_FILE}#version",
+            "contentHash": content_hash,
+        }
+    return build_snapshot_fields_from_content_hash(content_hash)
+
+
+def build_catalog_item(
+    *,
+    item_id: str,
+    platform: str,
+    metadata: Dict[str, str],
+    archive_path: Path,
+    source_repo: str,
+    source_ref: str,
+    source_path: str,
+    source_url: str,
+    snapshot_fields: Dict[str, str],
+    source_commit: Optional[str],
+) -> Dict[str, Any]:
+    item = {
+        "id": item_id,
+        "platform": platform,
+        "group": metadata["group"],
+        "groupDescription": metadata["groupDescription"],
+        "name": metadata["name"],
+        "description": metadata["description"],
+        "archivePath": f"official-skills/{platform}/{archive_path.name}",
+        "installFolderName": metadata["installFolderName"],
+        "sourceRepo": source_repo,
+        "sourceRef": source_ref,
+        "sourcePath": source_path,
+        "sourceUrl": source_url,
+        **snapshot_fields,
+    }
+    if source_commit:
+        item["sourceCommit"] = source_commit
+    return item
+
+
+def enrich_seed_item_from_archive(item: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(item)
+    archive_path = MEDIA_DIR / str(enriched["archivePath"])
+    snapshot_fields = build_archive_snapshot_fields(str(enriched["platform"]), archive_path)
+    if not all(normalize_optional_text(enriched.get(key)) for key in ("version", "versionSource", "contentHash")):
+        enriched.update(snapshot_fields)
+    source_commit = normalize_optional_text(enriched.get("sourceCommit"))
+    if source_commit:
+        enriched["sourceCommit"] = source_commit
+    else:
+        enriched.pop("sourceCommit", None)
+    return enriched
+
+
 def clone_seed_platform_items(seed_catalog: Dict[str, Any], platform: str) -> Tuple[List[Dict[str, Any]], str]:
-    items = [dict(item) for item in seed_catalog.get("skills", []) if item.get("platform") == platform]
+    items = [enrich_seed_item_from_archive(item) for item in seed_catalog.get("skills", []) if item.get("platform") == platform]
     if not items:
         raise SyncError(f"Seed catalog does not contain {platform} items to reuse.")
     for item in items:
@@ -440,10 +706,10 @@ def clone_seed_platform_items(seed_catalog: Dict[str, Any], platform: str) -> Tu
 
 
 def sync_codex_or_claude(platform: str, repo: str, source_root: str, lookup: SeedLookup, output_root: Path) -> Tuple[List[Dict[str, Any]], str]:
-    branch, archive_url, ref = resolve_repo_tarball(repo)
+    branch, archive_url, ref, source_commit = resolve_repo_tarball(repo)
     with tempfile.TemporaryDirectory(prefix=f"sinitek-{platform}-") as temp_dir:
         temp_path = Path(temp_dir)
-        extracted_root, fetch_method = fetch_repo_snapshot(repo, branch, archive_url, temp_path, allow_git_fallback=False)
+        extracted_root, fetch_method = fetch_repo_snapshot(repo, branch, archive_url, temp_path, allow_git_fallback=True)
         print(f"[{platform}] source snapshot fetched via {fetch_method}", flush=True)
         entry_root = extracted_root / source_root
         if not entry_root.exists():
@@ -465,32 +731,35 @@ def sync_codex_or_claude(platform: str, repo: str, source_root: str, lookup: See
             )
             ensure_validation_file(platform, entry)
             archive_path = platform_output / f"{metadata['installFolderName']}.zip"
+            snapshot_fields = build_directory_snapshot_fields(platform, entry)
             zip_directory(entry, archive_path)
             written_archives.append(archive_path)
             items.append(
-                {
-                    "id": f"{platform}:{metadata['name']}",
-                    "platform": platform,
-                    "group": metadata["group"],
-                    "groupDescription": metadata["groupDescription"],
-                    "name": metadata["name"],
-                    "description": metadata["description"],
-                    "archivePath": f"official-skills/{platform}/{archive_path.name}",
-                    "installFolderName": metadata["installFolderName"],
-                    "sourceRepo": repo,
-                    "sourceRef": ref,
-                    "sourcePath": source_path,
-                    "sourceUrl": f"https://github.com/{repo}/tree/{branch}/{source_path}",
-                }
+                build_catalog_item(
+                    item_id=f"{platform}:{metadata['name']}",
+                    platform=platform,
+                    metadata=metadata,
+                    archive_path=archive_path,
+                    source_repo=repo,
+                    source_ref=ref,
+                    source_path=source_path,
+                    source_url=f"https://github.com/{repo}/tree/{branch}/{source_path}",
+                    snapshot_fields=snapshot_fields,
+                    source_commit=source_commit,
+                )
             )
         remove_stale_archives(OFFICIAL_SKILLS_DIR / platform, written_archives)
         return items, ref
 
 
 def collect_gemini_repos(catalog: Dict[str, Any]) -> List[str]:
-    repos = {str(item["sourceRepo"]) for item in catalog.get("skills", []) if item.get("platform") == "gemini"}
+    repos = {
+        canonicalize_gemini_repo(str(item["sourceRepo"]))
+        for item in catalog.get("skills", [])
+        if item.get("platform") == "gemini"
+    }
     override_repos = {
-        value["sourceRepo"]
+        canonicalize_gemini_repo(str(value["sourceRepo"]))
         for (platform, _), value in MANUAL_ITEM_OVERRIDES.items()
         if platform == "gemini" and value.get("sourceRepo")
     }
@@ -508,15 +777,21 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
 
     for index, repo in enumerate(repos, start=1):
         print(f"[gemini {index}/{len(repos)}] refreshing {repo}...", flush=True)
-        branch, archive_url, latest_ref = resolve_repo_tarball(repo)
+        branch, archive_url, latest_ref, latest_source_commit = resolve_repo_tarball(repo)
         repo_name = repo.split("/", 1)[1]
-        seed = seed_for_item(lookup, "gemini", repo, ".", repo_name, repo_name)
+        canonical_repo = canonicalize_gemini_repo(repo)
+        seed = None
+        for candidate_repo in gemini_repo_candidates(repo):
+            candidate_name = candidate_repo.split("/", 1)[1]
+            seed = seed_for_item(lookup, "gemini", candidate_repo, ".", candidate_name, candidate_name)
+            if seed:
+                break
         display_name = str(seed.get("name") if seed else repo_name)
         install_folder_name = str(seed.get("installFolderName") if seed else repo_name)
         metadata = get_item_metadata(
             lookup,
             platform="gemini",
-            source_repo=repo,
+            source_repo=canonical_repo,
             source_path=".",
             install_folder_name=install_folder_name,
             item_name=display_name,
@@ -527,6 +802,8 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
         )
         item_ref = latest_ref
         item_source_url = f"https://github.com/{repo}/tree/{branch}"
+        item_source_commit = latest_source_commit
+        snapshot_fields: Dict[str, str]
 
         try:
             with tempfile.TemporaryDirectory(prefix="sinitek-gemini-") as temp_dir:
@@ -543,6 +820,7 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
                 if renamed_root.exists():
                     shutil.rmtree(renamed_root)
                 shutil.copytree(extracted_root, renamed_root)
+                snapshot_fields = build_directory_snapshot_fields("gemini", renamed_root)
                 zip_directory(renamed_root, archive_path)
                 stats[fetch_method] += 1
                 print(f"[gemini {index}/{len(repos)}] {repo} refreshed via {fetch_method}", flush=True)
@@ -551,28 +829,28 @@ def sync_gemini(lookup: SeedLookup, seed_catalog: Dict[str, Any], output_root: P
                 raise
             if existing_archive.resolve() != archive_path.resolve():
                 shutil.copy2(existing_archive, archive_path)
+            snapshot_fields = build_archive_snapshot_fields("gemini", archive_path)
             item_ref = str(seed.get("sourceRef") or latest_ref)
             item_source_url = str(seed.get("sourceUrl") or item_source_url)
+            item_source_commit = normalize_optional_text((seed or {}).get("sourceCommit"))
             stats["reused"] += 1
             print(f"[warn] Reusing existing Gemini archive for {repo}: {error}", file=sys.stderr, flush=True)
 
         resolved_refs.append((repo, item_ref))
         written_archives.append(archive_path)
         items.append(
-            {
-                "id": f"gemini:{metadata['name']}",
-                "platform": "gemini",
-                "group": metadata["group"],
-                "groupDescription": metadata["groupDescription"],
-                "name": metadata["name"],
-                "description": metadata["description"],
-                "archivePath": f"official-skills/gemini/{archive_path.name}",
-                "installFolderName": metadata["installFolderName"],
-                "sourceRepo": repo,
-                "sourceRef": item_ref,
-                "sourcePath": ".",
-                "sourceUrl": item_source_url,
-            }
+            build_catalog_item(
+                item_id=f"gemini:{metadata['name']}",
+                platform="gemini",
+                metadata=metadata,
+                archive_path=archive_path,
+                source_repo=canonical_repo,
+                source_ref=item_ref,
+                source_path=".",
+                source_url=item_source_url.replace(f"https://github.com/{repo}/", f"https://github.com/{canonical_repo}/"),
+                snapshot_fields=snapshot_fields,
+                source_commit=item_source_commit,
+            )
         )
 
     remove_stale_archives(OFFICIAL_SKILLS_DIR / "gemini", written_archives)
@@ -591,6 +869,9 @@ def validate_catalog(catalog: Dict[str, Any]) -> None:
         if item_id in seen_ids:
             raise SyncError(f"Duplicate catalog id: {item_id}")
         seen_ids.add(item_id)
+        for required_key in ("version", "versionSource", "contentHash"):
+            if not normalize_optional_text(item.get(required_key)):
+                raise SyncError(f"Catalog item missing required snapshot field {required_key}: {item_id}")
         archive_path = MEDIA_DIR / str(item["archivePath"])
         if not archive_path.exists():
             raise SyncError(f"Missing generated archive: {archive_path}")

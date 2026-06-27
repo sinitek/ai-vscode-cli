@@ -2297,7 +2297,10 @@ function officialPackageTabTextByPlatform(e) {
 }
 
 function shortOfficialSkillRef(e) {
-  return typeof e == "string" && e.trim() ? e.trim().slice(0, 8) : "未知";
+  if (typeof e != "string" || !e.trim()) return "未知";
+  const t = e.trim(),
+    n = t.includes(":") ? t.split(":").pop() || t : t;
+  return n.slice(0, 8);
 }
 
 function officialSkillStatusText(e) {
@@ -2311,6 +2314,38 @@ function officialSkillStatusText(e) {
     default:
       return "未安装";
   }
+}
+
+function officialSkillVersionValue(e, t, n, r) {
+  return typeof e == "string" && e.trim()
+    ? e.trim()
+    : typeof t == "string" && t.trim()
+      ? shortOfficialSkillRef(t)
+      : typeof n == "string" && n.trim()
+        ? shortOfficialSkillRef(n)
+        : typeof r == "string" && r.trim()
+          ? shortOfficialSkillRef(r)
+          : "版本未知";
+}
+
+function officialSkillVersionLines(e) {
+  const t = officialSkillVersionValue(
+      e.version,
+      e.contentHash,
+      e.sourceCommit,
+      e.sourceRef,
+    ),
+    n = [`最新版本：${t}`];
+  if (e.installed) {
+    const r = officialSkillVersionValue(
+      e.installedVersion,
+      e.installedContentHash,
+      e.installedSourceCommit,
+      e.installedSourceRef,
+    );
+    n.unshift(`当前版本：${r}`);
+  }
+  return n;
 }
 
 const renderSkillRows = (e, t, n, r, o, l) =>
@@ -2425,7 +2460,8 @@ const renderOfficialSkillRows = (e, t, n, r, o) =>
   e.map((l) => {
     const u = n && n.skillId === l.id ? n.action : "",
       f = l.installState || (l.installed ? "unknown_source" : "not_installed"),
-      m = officialSkillStatusText(f);
+      m = officialSkillStatusText(f),
+      v = officialSkillVersionLines(l);
     return be.jsx(
       "div",
       {
@@ -2491,6 +2527,25 @@ const renderOfficialSkillRows = (e, t, n, r, o) =>
                         children: l.description,
                       })
                     : null,
+                  be.jsx("div", {
+                    style: {
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                      color: "var(--text-color-secondary)",
+                      fontSize: "12px",
+                    },
+                    children: v.map((p) =>
+                      be.jsx(
+                        "div",
+                        {
+                          style: { wordBreak: "break-all" },
+                          children: p,
+                        },
+                        p,
+                      ),
+                    ),
+                  }),
                 ],
               }),
               be.jsxs("div", {

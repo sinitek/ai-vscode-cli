@@ -27,6 +27,13 @@ import { listGeminiSkills, mergeGeminiSkillsConfig } from "./geminiSkills";
 import { getCliCommand } from "../cli/config";
 import { CliName } from "../cli/types";
 import { t } from "../i18n";
+import {
+  buildResolvedOfficialSkillCatalogItem,
+  computeOfficialSkillContentHash,
+  readOfficialSkillMetadata,
+  resolveOfficialSkillInstallState,
+  writeOfficialSkillMetadata,
+} from "./officialSkillVersioning";
 
 const CONFIG_DIR_NAME = "__config";
 const CONFIG_ORDER_FILE = "config-order.json";
@@ -55,7 +62,6 @@ const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
 const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
 const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
 const OFFICIAL_GEMINI_EXTENSIONS_DIR = path.join(os.homedir(), ".gemini", "extensions");
-const OFFICIAL_SKILL_METADATA_FILE = ".sinitek-official-skill.json";
 const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
 
 async function ensureDir(dirPath: string): Promise<void> {
@@ -705,75 +711,8 @@ function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform): strin
   return OFFICIAL_CODEX_SKILLS_DIR;
 }
 
-type OfficialSkillMetadata = {
-  schemaVersion: 1;
-  platform: OfficialSkillPlatform;
-  skillId: string;
-  name: string;
-  sourceRepo: string;
-  sourceRef: string;
-  sourcePath: string;
-  archivePath: string;
-  installedAt: string;
-};
-
-function buildOfficialSkillMetadata(item: OfficialSkillCatalogItem): OfficialSkillMetadata {
-  return {
-    schemaVersion: 1,
-    platform: item.platform,
-    skillId: item.id,
-    name: item.name,
-    sourceRepo: item.sourceRepo,
-    sourceRef: item.sourceRef,
-    sourcePath: item.sourcePath,
-    archivePath: item.archivePath,
-    installedAt: new Date().toISOString(),
-  };
-}
-
 function getOfficialSkillTargetDir(item: Pick<OfficialSkillCatalogItem, "platform" | "installFolderName">): string {
   return path.join(resolveOfficialSkillInstallRoot(item.platform), item.installFolderName);
-}
-
-function getOfficialSkillMetadataPath(skillDir: string): string {
-  return path.join(skillDir, OFFICIAL_SKILL_METADATA_FILE);
-}
-
-async function writeOfficialSkillMetadata(
-  skillDir: string,
-  item: OfficialSkillCatalogItem,
-): Promise<void> {
-  const metadataPath = getOfficialSkillMetadataPath(skillDir);
-  const content = JSON.stringify(buildOfficialSkillMetadata(item), null, 2);
-  await fs.writeFile(metadataPath, `${content}
-`, "utf-8");
-}
-
-async function readOfficialSkillMetadata(skillDir: string): Promise<OfficialSkillMetadata | null> {
-  try {
-    const content = await fs.readFile(getOfficialSkillMetadataPath(skillDir), "utf-8");
-    const parsed = JSON.parse(content) as Partial<OfficialSkillMetadata>;
-    if (!parsed || parsed.schemaVersion !== 1) {
-      return null;
-    }
-    if (!isOfficialSkillPlatform(String(parsed.platform ?? ""))) {
-      return null;
-    }
-    if (
-      typeof parsed.skillId !== "string"
-      || typeof parsed.name !== "string"
-      || typeof parsed.sourceRepo !== "string"
-      || typeof parsed.sourceRef !== "string"
-      || typeof parsed.sourcePath !== "string"
-      || typeof parsed.archivePath !== "string"
-      || typeof parsed.installedAt !== "string"
-    ) {
-      return null;
-    }
-    return parsed as OfficialSkillMetadata;
-  } catch {
-    return null;
-  }
 }
 
 async function resolveOfficialSkillCatalogItemState(
@@ -793,22 +732,15 @@ async function resolveOfficialSkillCatalogItemState(
   }
 
   const metadata = await readOfficialSkillMetadata(targetDir);
-  let installState: OfficialSkillInstallState = "unknown_source";
-  if (metadata && metadata.sourceRepo === item.sourceRepo && metadata.sourcePath === item.sourcePath) {
-    installState = metadata.sourceRef === item.sourceRef ? "installed" : "update_available";
-  }
+  const computedInstalledContentHash = metadata ? await computeOfficialSkillContentHash(targetDir) : undefined;
+  const resolvedState = resolveOfficialSkillInstallState({
+    item,
+    targetDir,
+    metadata,
+    computedInstalledContentHash,
+  });
 
-  return {
-    ...item,
-    installed: true,
-    installedPath: targetDir,
-    installedSourceRef: metadata?.sourceRef,
-    installedSourceRepo: metadata?.sourceRepo,
-    installState,
-    canInstall: false,
-    canUpdate: installState === "update_available" || installState === "unknown_source",
-    canUninstall: true,
-  };
+  return buildResolvedOfficialSkillCatalogItem(item, resolvedState);
 }
 
 function quotePowerShellLiteral(value: string): string {

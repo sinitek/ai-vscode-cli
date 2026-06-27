@@ -1,19 +1,23 @@
 # 权威技能目录（少而硬）
 
-- 核验日期：2026-06-01
+- 核验日期：2026-06-27
 - 目标：只记录**值得长期保留关注**、且来源足够权威的外部技能。
 - 适用对象：复杂、长周期、百万行级别前后端全栈 ToB 系统的 Codex harness。
 
 ## 仓库内置快照同步说明
 
 - 当前仓库内置官方归档快照：Claude 17 项、Codex 39 项、Gemini 40 项。
-- 2026-06-01 已刷新 Claude / Codex 内置 zip；Codex 对齐 OpenAI 官方当前 `.curated` 39 项。
+- 2026-06-27 已刷新 Claude / Codex / Gemini 三组内置 zip 与 `media/official_skills_catalog.json`。
+- catalog 现为每个官方条目记录 `version`、`versionSource`、`contentHash`、`sourceCommit`；Claude / Codex 在上游缺少显式版本号时使用稳定短 `contentHash` 版本标识，Gemini 优先使用 `gemini-extension.json.version`。
+- 配置页官方 skills 行现在展示“当前版本 / 最新版本”；最新判断优先比较每个条目的 `contentHash`，缺失时才回退到 `sourceRef`。
+- `gemini:firebase` 官方来源已从废弃的 `gemini-cli-extensions/firebase` 迁移到 canonical 仓库 `firebase/agent-skills`；`firebase/skills` 仅作为 301 别名存在。
+- 本轮 Gemini 刷新结果为 `tarball=38`、`git=1`、`reused=1`；个别仓库在 GitHub `git ls-remote` 超时时会缺少 `sourceCommit`，但不影响 `version` / `contentHash` 落库与最新判断。
 - 本次 Codex 新增官方 curated skills：`define-goal`、`hatch-pet`、`migrate-to-codex`。
 - 本次 Codex 移除上游已不再提供的旧条目：`develop-web-game`、`doc`、`frontend-skill`、`imagegen`、`slides`、`sora`、`spreadsheet`。
 - OpenAI 官方仓库当前只提供 `skills/.system` 与 `skills/.curated` 两个目录；`skills/.experimental` 当前不可用。
 - 仓库同步脚本：`scripts/sync_official_skills.py`。
 - 默认同步策略：刷新 Claude / Codex，Gemini 默认沿用仓库中已验证的 40 项快照；如需强制重抓 Gemini，可使用 `--refresh-gemini`。
-- `media/official_skills_catalog.json` 中的 `sourceRef` 现在使用上游 codeload tarball 的 ETag，供配置页判断内置官方包是否可更新。
+- `media/official_skills_catalog.json` 中的 `sourceRef` 继续记录上游 codeload tarball 的 ETag；对 Claude / Codex 这类整仓来源，它现在只作为 `contentHash` 缺失时的兼容回退字段，不再作为官方最新判断的首选依据。
 
 ## 选型原则
 

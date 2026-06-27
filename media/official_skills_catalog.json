@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-06-01T02:37:03Z",
+  "generatedAt": "2026-06-27T12:34:44Z",
   "platforms": {
     "claude": {
       "repo": "anthropics/skills",
-      "ref": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "ref": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourceUrl": "https://github.com/anthropics/skills",
       "installRootHint": "~/.claude/skills",
       "notes": "Anthropic 官方 skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Claude 用户 skills 目录。 sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
     },
     "codex": {
       "repo": "openai/skills",
-      "ref": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "ref": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourceUrl": "https://github.com/openai/skills",
       "installRootHint": "~/.codex/skills",
       "notes": "OpenAI 官方 curated skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Codex 用户 skills 目录。 sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
     },
     "gemini": {
       "repo": "gemini-cli-extensions",
-      "ref": "snapshot:51b9501ebedd98da",
+      "ref": "snapshot:c8e1ccae52771413",
       "sourceUrl": "https://github.com/gemini-cli-extensions",
       "installRootHint": "~/.gemini/extensions",
       "notes": "Google Gemini CLI 官方 Extensions 仓库快照，按单个 extension 打包为 zip，可直接安装到 Gemini 用户 extensions 目录。 每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。"
@@ -34,9 +34,13 @@
       "archivePath": "official-skills/claude/algorithmic-art.zip",
       "installFolderName": "algorithmic-art",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/algorithmic-art",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art",
+      "version": "sha256:ca5e93040da8",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:ca5e93040da81dcb5d0d4e41e800a4b34f5cc689e87aedd0d4ec0e2a6fed3e3c",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:brand-guidelines",
@@ -48,9 +52,13 @@
       "archivePath": "official-skills/claude/brand-guidelines.zip",
       "installFolderName": "brand-guidelines",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/brand-guidelines",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/brand-guidelines"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/brand-guidelines",
+      "version": "sha256:07f84a31af29",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:07f84a31af2959186d015088069e2312639693507bc7318017b2472a7e0d733b",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:canvas-design",
@@ -62,9 +70,13 @@
       "archivePath": "official-skills/claude/canvas-design.zip",
       "installFolderName": "canvas-design",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/canvas-design",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/canvas-design"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/canvas-design",
+      "version": "sha256:e306d9ac04c1",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:e306d9ac04c1b05cd14993c43cc3a99bdb5397bcb0999c0cb9deb81fa9ec7726",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:claude-api",
@@ -76,9 +88,13 @@
       "archivePath": "official-skills/claude/claude-api.zip",
       "installFolderName": "claude-api",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/claude-api",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/claude-api"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/claude-api",
+      "version": "sha256:7ceb0369c1f1",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:7ceb0369c1f1a177b9b2b316566dd6ca088e40084bc8fa975d42d7adb4120d56",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:doc-coauthoring",
@@ -90,9 +106,13 @@
       "archivePath": "official-skills/claude/doc-coauthoring.zip",
       "installFolderName": "doc-coauthoring",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/doc-coauthoring",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/doc-coauthoring"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/doc-coauthoring",
+      "version": "sha256:2d878680954e",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:2d878680954ea23f13cef6246c16b27e90fd296b3062b517d131de59ff7279a2",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:docx",
@@ -104,9 +124,13 @@
       "archivePath": "official-skills/claude/docx.zip",
       "installFolderName": "docx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/docx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/docx"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/docx",
+      "version": "sha256:ed21fff938f4",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:ed21fff938f40b7626d0507512b0a0c2a76ae5bf867c9f2bfcd0b616788c8414",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:frontend-design",
@@ -118,9 +142,13 @@
       "archivePath": "official-skills/claude/frontend-design.zip",
       "installFolderName": "frontend-design",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/frontend-design",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/frontend-design"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
+      "version": "sha256:93c43e5f441c",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:93c43e5f441c83a4da675cecc8ec098b069c602b2834b0e16330838d00bc65f8",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:internal-comms",
@@ -132,9 +160,13 @@
       "archivePath": "official-skills/claude/internal-comms.zip",
       "installFolderName": "internal-comms",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/internal-comms",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/internal-comms"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/internal-comms",
+      "version": "sha256:5666d32e2b7f",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:5666d32e2b7f7a4c56f5c70213a8ca1e1db19caa9299a31f4b37b2369d314a31",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:mcp-builder",
@@ -146,9 +178,13 @@
       "archivePath": "official-skills/claude/mcp-builder.zip",
       "installFolderName": "mcp-builder",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/mcp-builder",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder",
+      "version": "sha256:2c01c58f3289",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:2c01c58f3289b6921d8adfb77095fdd7d8a9f3469555548dbff4aec79dc171ac",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:pdf",
@@ -160,9 +196,13 @@
       "archivePath": "official-skills/claude/pdf.zip",
       "installFolderName": "pdf",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/pdf",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf",
+      "version": "sha256:266e8ca7d88d",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:266e8ca7d88df639cb34ae8e12c7bfcf45ff7a9705b9459ee4bfbb2c8ea8b816",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:pptx",
@@ -174,9 +214,13 @@
       "archivePath": "official-skills/claude/pptx.zip",
       "installFolderName": "pptx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/pptx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pptx"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pptx",
+      "version": "sha256:6742ce183b7b",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:6742ce183b7bcded9a1303fc2e4f83397e7f6af448e0e75264d9fe53fb146c67",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:skill-creator",
@@ -188,9 +232,13 @@
       "archivePath": "official-skills/claude/skill-creator.zip",
       "installFolderName": "skill-creator",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/skill-creator",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/skill-creator"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/skill-creator",
+      "version": "sha256:ebced4124be4",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:ebced4124be48a6ff7242ccd03febe39adbda3175b566d8126b8d28f4501426f",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:slack-gif-creator",
@@ -202,9 +250,13 @@
       "archivePath": "official-skills/claude/slack-gif-creator.zip",
       "installFolderName": "slack-gif-creator",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/slack-gif-creator",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator",
+      "version": "sha256:2df00e6acdd3",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:2df00e6acdd398152f62117e165304755bc5f59cdf9c68182a64ed6a66dc8271",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:theme-factory",
@@ -216,9 +268,13 @@
       "archivePath": "official-skills/claude/theme-factory.zip",
       "installFolderName": "theme-factory",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/theme-factory",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/theme-factory"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/theme-factory",
+      "version": "sha256:dd77796b2ccb",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:dd77796b2ccbbd079df62f00dc2cad9264c61d1b1497c04b629f4797886c3c60",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:web-artifacts-builder",
@@ -230,9 +286,13 @@
       "archivePath": "official-skills/claude/web-artifacts-builder.zip",
       "installFolderName": "web-artifacts-builder",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/web-artifacts-builder",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder",
+      "version": "sha256:f77c20d08681",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:f77c20d08681e40a0e07a9e0f363ca22c414d5e356d45774f9c8742925bd21de",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:webapp-testing",
@@ -244,9 +304,13 @@
       "archivePath": "official-skills/claude/webapp-testing.zip",
       "installFolderName": "webapp-testing",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/webapp-testing",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing",
+      "version": "sha256:5be8f538c42d",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:5be8f538c42d929f82f137a0b5c3d0ca772d88ca4567b5ad4e1369d2ea6fb85e",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "claude:xlsx",
@@ -258,9 +322,13 @@
       "archivePath": "official-skills/claude/xlsx.zip",
       "installFolderName": "xlsx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4e9c3dc589259b8685f7dc5b4b7a26060883e8040145da6cf7c8746dbbc59331",
+      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
       "sourcePath": "skills/xlsx",
-      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/xlsx"
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/xlsx",
+      "version": "sha256:4dcef9cdfe10",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:4dcef9cdfe105f2f34600c540ef4a3b623ed941ad764d8bc706391776684e468",
+      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
     },
     {
       "id": "codex:aspnet-core",
@@ -272,9 +340,13 @@
       "archivePath": "official-skills/codex/aspnet-core.zip",
       "installFolderName": "aspnet-core",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/aspnet-core",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/aspnet-core"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/aspnet-core",
+      "version": "sha256:262665470f04",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:262665470f04b3046486c158e24a2b6175cdae2d1419a920858b4d789b097d08",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:chatgpt-apps",
@@ -286,9 +358,13 @@
       "archivePath": "official-skills/codex/chatgpt-apps.zip",
       "installFolderName": "chatgpt-apps",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/chatgpt-apps",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/chatgpt-apps"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/chatgpt-apps",
+      "version": "sha256:0df7e2fb4508",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:0df7e2fb45080ad9141142c85e2025487b7b8eb5e6d709fee5610d8b3be34299",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:cli-creator",
@@ -300,9 +376,13 @@
       "archivePath": "official-skills/codex/cli-creator.zip",
       "installFolderName": "cli-creator",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/cli-creator",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cli-creator"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cli-creator",
+      "version": "sha256:35f1af7ff92e",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:35f1af7ff92e86e40df4302166c6fc34355a3899dfe5808c8c86d94c60defad0",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:cloudflare-deploy",
@@ -314,9 +394,13 @@
       "archivePath": "official-skills/codex/cloudflare-deploy.zip",
       "installFolderName": "cloudflare-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/cloudflare-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cloudflare-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/cloudflare-deploy",
+      "version": "sha256:9b44e914c039",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:9b44e914c039ef0efe3518b986c1838ddf280011c45972acaf047738bd75353f",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:define-goal",
@@ -328,9 +412,13 @@
       "archivePath": "official-skills/codex/define-goal.zip",
       "installFolderName": "define-goal",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/define-goal",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/define-goal"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/define-goal",
+      "version": "sha256:37e3aa7a3a13",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:37e3aa7a3a133686341c1b65d14e4b501be049a9a0d5bb663f4c217792463b9c",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma",
@@ -342,9 +430,13 @@
       "archivePath": "official-skills/codex/figma.zip",
       "installFolderName": "figma",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma",
+      "version": "sha256:b3f27d66de3f",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:b3f27d66de3f601a97dab9c14141ed47ca902dc573626b3d804e3a9a15901142",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-code-connect-components",
@@ -356,9 +448,13 @@
       "archivePath": "official-skills/codex/figma-code-connect-components.zip",
       "installFolderName": "figma-code-connect-components",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-code-connect-components",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-code-connect-components"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-code-connect-components",
+      "version": "sha256:8fb9042bb406",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:8fb9042bb406ac9d06661bb08217083514584ea8e28515fc22f67992671e01cd",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-create-design-system-rules",
@@ -370,9 +466,13 @@
       "archivePath": "official-skills/codex/figma-create-design-system-rules.zip",
       "installFolderName": "figma-create-design-system-rules",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-create-design-system-rules",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-design-system-rules"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-design-system-rules",
+      "version": "sha256:6f269fc54dd4",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:6f269fc54dd44084871fc4e5afa9179f1390c063ed4e988866568983a8d3ac3f",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-create-new-file",
@@ -384,9 +484,13 @@
       "archivePath": "official-skills/codex/figma-create-new-file.zip",
       "installFolderName": "figma-create-new-file",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-create-new-file",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-new-file"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-create-new-file",
+      "version": "sha256:f01cd927e47e",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:f01cd927e47ef595e95618dd2a347230c4216025ab2202de3e686a609d2fb2d5",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-generate-design",
@@ -398,9 +502,13 @@
       "archivePath": "official-skills/codex/figma-generate-design.zip",
       "installFolderName": "figma-generate-design",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-generate-design",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-design"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-design",
+      "version": "sha256:dbc033a46810",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:dbc033a468102e144ebaea4f8b3eb538bf69e55ed6df4a70bc54b590782ff887",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-generate-library",
@@ -412,9 +520,13 @@
       "archivePath": "official-skills/codex/figma-generate-library.zip",
       "installFolderName": "figma-generate-library",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-generate-library",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-library"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-generate-library",
+      "version": "sha256:aada223f2ce0",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:aada223f2ce0f36b4620af966920398cd4b1d4116b4ac555eee9b12ad62f51a3",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-implement-design",
@@ -426,9 +538,13 @@
       "archivePath": "official-skills/codex/figma-implement-design.zip",
       "installFolderName": "figma-implement-design",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-implement-design",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-implement-design"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-implement-design",
+      "version": "sha256:abb5a52e1b99",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:abb5a52e1b9964bb76b167ffac57bc75d448000153bcdedc21d1426b3d06f843",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:figma-use",
@@ -440,9 +556,13 @@
       "archivePath": "official-skills/codex/figma-use.zip",
       "installFolderName": "figma-use",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/figma-use",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-use"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/figma-use",
+      "version": "sha256:fae9702bc070",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:fae9702bc070658040ef68ccbb633526c7f08ee2538a617e7e3b31acf3933218",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:gh-address-comments",
@@ -454,9 +574,13 @@
       "archivePath": "official-skills/codex/gh-address-comments.zip",
       "installFolderName": "gh-address-comments",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/gh-address-comments",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-address-comments"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-address-comments",
+      "version": "sha256:da85d2398647",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:da85d2398647a3e1ef5bb00e663ff19ff8ab698ad16105e405a080e3a3a555da",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:gh-fix-ci",
@@ -468,9 +592,13 @@
       "archivePath": "official-skills/codex/gh-fix-ci.zip",
       "installFolderName": "gh-fix-ci",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/gh-fix-ci",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-fix-ci"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/gh-fix-ci",
+      "version": "sha256:d23a24c3e7ae",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:d23a24c3e7ae7af8863b8d6de44cc87ba37f4d04557a5c38f727f3cd035ea22c",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:hatch-pet",
@@ -482,9 +610,13 @@
       "archivePath": "official-skills/codex/hatch-pet.zip",
       "installFolderName": "hatch-pet",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/hatch-pet",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/hatch-pet"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/hatch-pet",
+      "version": "sha256:6db115580c52",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:6db115580c527d8b78e638ba316497cb2e04238fc152721acdd91ea8c2caf784",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:jupyter-notebook",
@@ -496,9 +628,13 @@
       "archivePath": "official-skills/codex/jupyter-notebook.zip",
       "installFolderName": "jupyter-notebook",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/jupyter-notebook",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/jupyter-notebook"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/jupyter-notebook",
+      "version": "sha256:890aaf6b173c",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:890aaf6b173cb4adb8bdfc05a124bace547fcea49453dfde2bac4ae0c4581afb",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:linear",
@@ -510,9 +646,13 @@
       "archivePath": "official-skills/codex/linear.zip",
       "installFolderName": "linear",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/linear",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/linear"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/linear",
+      "version": "sha256:18c262457f48",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:18c262457f48ea9159a6b3b67fcef99d0a989284be9aa127128f983f0fe02c2f",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:migrate-to-codex",
@@ -524,9 +664,13 @@
       "archivePath": "official-skills/codex/migrate-to-codex.zip",
       "installFolderName": "migrate-to-codex",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/migrate-to-codex",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/migrate-to-codex"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/migrate-to-codex",
+      "version": "sha256:768d5099af99",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:768d5099af990fc9d9af5b020a6b35a482f6bac98c22e81b5a39566fc5367f8b",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:netlify-deploy",
@@ -538,9 +682,13 @@
       "archivePath": "official-skills/codex/netlify-deploy.zip",
       "installFolderName": "netlify-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/netlify-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/netlify-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/netlify-deploy",
+      "version": "sha256:c676f7bac1c1",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:c676f7bac1c1a93dac7248bd44f46aa4d7f157ea0fc9b36116db7c62c9647c5a",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:notion-knowledge-capture",
@@ -552,9 +700,13 @@
       "archivePath": "official-skills/codex/notion-knowledge-capture.zip",
       "installFolderName": "notion-knowledge-capture",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/notion-knowledge-capture",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-knowledge-capture"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-knowledge-capture",
+      "version": "sha256:a34171180e67",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:a34171180e67afe7455c649f00374bf6d9e3d1157a07481cb9f7c5b71b95dbaf",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:notion-meeting-intelligence",
@@ -566,9 +718,13 @@
       "archivePath": "official-skills/codex/notion-meeting-intelligence.zip",
       "installFolderName": "notion-meeting-intelligence",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/notion-meeting-intelligence",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-meeting-intelligence"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-meeting-intelligence",
+      "version": "sha256:0fc4f53e6abb",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:0fc4f53e6abb6ac8b11d9900c5d683925a84b45768d0c44b79d6ee6de10b6e6a",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:notion-research-documentation",
@@ -580,9 +736,13 @@
       "archivePath": "official-skills/codex/notion-research-documentation.zip",
       "installFolderName": "notion-research-documentation",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/notion-research-documentation",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-research-documentation"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-research-documentation",
+      "version": "sha256:ff4cd4944fbd",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:ff4cd4944fbd29ab7a64cb12e2b0ec2d58dfcea6e5a621a731878c30be81ff1d",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:notion-spec-to-implementation",
@@ -594,9 +754,13 @@
       "archivePath": "official-skills/codex/notion-spec-to-implementation.zip",
       "installFolderName": "notion-spec-to-implementation",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/notion-spec-to-implementation",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-spec-to-implementation"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/notion-spec-to-implementation",
+      "version": "sha256:e6044e0eeca2",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:e6044e0eeca25fcdf8bca780969104673bd41219c782963d8259117388d30859",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:openai-docs",
@@ -608,9 +772,13 @@
       "archivePath": "official-skills/codex/openai-docs.zip",
       "installFolderName": "openai-docs",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/openai-docs",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/openai-docs"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/openai-docs",
+      "version": "sha256:bf5fdcc2681b",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:bf5fdcc2681b4dfb11e6dd030eaa60404331d5fa828d54eed43757964807beec",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:pdf",
@@ -622,9 +790,13 @@
       "archivePath": "official-skills/codex/pdf.zip",
       "installFolderName": "pdf",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/pdf",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/pdf"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/pdf",
+      "version": "sha256:6f31b3508885",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:6f31b35088854242beb06cf0e3214aa0b392e16aa113feb7f76a5c0715a1441d",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:playwright",
@@ -636,9 +808,13 @@
       "archivePath": "official-skills/codex/playwright.zip",
       "installFolderName": "playwright",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/playwright",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright",
+      "version": "sha256:488a9f80417d",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:488a9f80417dbc6201cf0b5db287febf1c409293fce8b5b3ef3f23b844558eb1",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:playwright-interactive",
@@ -650,9 +826,13 @@
       "archivePath": "official-skills/codex/playwright-interactive.zip",
       "installFolderName": "playwright-interactive",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/playwright-interactive",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright-interactive"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/playwright-interactive",
+      "version": "sha256:d20ff5c8e5ce",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:d20ff5c8e5cea6bc5bafc0b6c3aec37dcd7a52894778f30545206057fe4c4947",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:render-deploy",
@@ -664,9 +844,13 @@
       "archivePath": "official-skills/codex/render-deploy.zip",
       "installFolderName": "render-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/render-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/render-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/render-deploy",
+      "version": "sha256:0058cbb80cd6",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:0058cbb80cd680cfb5503aa9b88225cf3f87b24bf1f6e98317a01b33cbe95f26",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:screenshot",
@@ -678,9 +862,13 @@
       "archivePath": "official-skills/codex/screenshot.zip",
       "installFolderName": "screenshot",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/screenshot",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/screenshot"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/screenshot",
+      "version": "sha256:147bc6799f2f",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:147bc6799f2f3fa2b7c38a5d8c15ab1e943300cf1312aaa18a746dc264be8984",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:security-best-practices",
@@ -692,9 +880,13 @@
       "archivePath": "official-skills/codex/security-best-practices.zip",
       "installFolderName": "security-best-practices",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/security-best-practices",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-best-practices"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-best-practices",
+      "version": "sha256:0133f5ebeada",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:0133f5ebeada4d9e09940d1c6235e334c68eca9c3b64c8810b2defc8e8103a36",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:security-ownership-map",
@@ -706,9 +898,13 @@
       "archivePath": "official-skills/codex/security-ownership-map.zip",
       "installFolderName": "security-ownership-map",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/security-ownership-map",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-ownership-map"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-ownership-map",
+      "version": "sha256:e5a6181eaca9",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:e5a6181eaca9b1f8f0c209bc7a6462d13a8aa1c819c27e9519895b80735c9375",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:security-threat-model",
@@ -720,9 +916,13 @@
       "archivePath": "official-skills/codex/security-threat-model.zip",
       "installFolderName": "security-threat-model",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/security-threat-model",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-threat-model"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/security-threat-model",
+      "version": "sha256:f8648d52854e",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:f8648d52854e98d9aa5b6d19753e7e0eb743e55e28c1a1ed9cf266acf951959b",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:sentry",
@@ -734,9 +934,13 @@
       "archivePath": "official-skills/codex/sentry.zip",
       "installFolderName": "sentry",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/sentry",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/sentry"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/sentry",
+      "version": "sha256:272613bcbb86",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:272613bcbb863a7e6f6e86f3d905c179a3c58e6ac48962b22fbbff771c0ea774",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:speech",
@@ -748,9 +952,13 @@
       "archivePath": "official-skills/codex/speech.zip",
       "installFolderName": "speech",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/speech",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/speech"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/speech",
+      "version": "sha256:3f18751625b3",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:3f18751625b35981479be5ad42062a98cb939fc4fd333ca3d0b3d42bb18bafa5",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:transcribe",
@@ -762,9 +970,13 @@
       "archivePath": "official-skills/codex/transcribe.zip",
       "installFolderName": "transcribe",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/transcribe",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/transcribe"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/transcribe",
+      "version": "sha256:c9dccc550529",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:c9dccc5505292c278cdb836724406dd824975a3be6c18ac42c9b8e73ebcab2bc",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:vercel-deploy",
@@ -776,9 +988,13 @@
       "archivePath": "official-skills/codex/vercel-deploy.zip",
       "installFolderName": "vercel-deploy",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/vercel-deploy",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/vercel-deploy"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/vercel-deploy",
+      "version": "sha256:c7661096b0e1",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:c7661096b0e1ea5d8767576d39fa3b2f7bf4a926d0fd51e551c8d5f85d95e96e",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:winui-app",
@@ -790,9 +1006,13 @@
       "archivePath": "official-skills/codex/winui-app.zip",
       "installFolderName": "winui-app",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/winui-app",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/winui-app"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/winui-app",
+      "version": "sha256:578731015852",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:578731015852c62337191a6ef91f165e70e888ca6116e7f14963ed2c447adc85",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "codex:yeet",
@@ -804,9 +1024,13 @@
       "archivePath": "official-skills/codex/yeet.zip",
       "installFolderName": "yeet",
       "sourceRepo": "openai/skills",
-      "sourceRef": "etag:582c5cd1ca9367e3318d3e1e37ae3af07796133f3f4b0cc85c418735ab424b39",
+      "sourceRef": "etag:d59ba3e0f9a662185aa2f0315ec4878ead929b315a36ea30f284d4dc14a9c183",
       "sourcePath": "skills/.curated/yeet",
-      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/yeet"
+      "sourceUrl": "https://github.com/openai/skills/tree/main/skills/.curated/yeet",
+      "version": "sha256:f19d238d7f3e",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:f19d238d7f3eed622fb79d26bdd009a29624d9e3af7b6d2c9a363bb4cca2515c",
+      "sourceCommit": "49f948faa9258a0c61caceaf225e179651397431"
     },
     {
       "id": "gemini:alloydb",
@@ -818,9 +1042,13 @@
       "archivePath": "official-skills/gemini/alloydb.zip",
       "installFolderName": "alloydb",
       "sourceRepo": "gemini-cli-extensions/alloydb",
-      "sourceRef": "etag:5a5f83c5532c3070dc0d56b1cd0557adcd8f447c1f3cf5b22d4802fa51478978",
+      "sourceRef": "etag:63514f81dc97682b049933fbca2be04d16e6b519b8b260fa7796ee153cf205ef",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb/tree/main",
+      "version": "0.2.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:6a464c8e644e63055c201fa83d16bd2a2742b4b7795c064b82e9bc7554edaac9",
+      "sourceCommit": "2bc309c97558356ca1599c29bef9c17bf10d45e4"
     },
     {
       "id": "gemini:alloydb-observability",
@@ -834,7 +1062,11 @@
       "sourceRepo": "gemini-cli-extensions/alloydb-observability",
       "sourceRef": "etag:f2684ca6a42d66420ceba5339c07e4eea4910496fe618ae21881a8f5dce9aced",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-observability/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-observability/tree/main",
+      "version": "0.1.3",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:50b733aafa4e22310bdb7715f59566a5d61eb77d547cf2428f4a34b19ebb39ff",
+      "sourceCommit": "6ee0cf72a4fdce360f9ace23ebf7395d05b70c45"
     },
     {
       "id": "gemini:alloydb-omni",
@@ -846,9 +1078,13 @@
       "archivePath": "official-skills/gemini/alloydb-omni.zip",
       "installFolderName": "alloydb-omni",
       "sourceRepo": "gemini-cli-extensions/alloydb-omni",
-      "sourceRef": "etag:3beb7438dc98b362ef5baa3e6fbebb4cf4ffef84ad422ccf1d9875329bf5952a",
+      "sourceRef": "etag:5b3492c63a6e8f0403c2747a8e5878d40541b882579fef175fe6123662fd379d",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-omni/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/alloydb-omni/tree/main",
+      "version": "0.2.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:a10279081ba885a4b18aa7e1e738a2c0ea346e55e9f7819a4b9db6dd6000bb4c",
+      "sourceCommit": "da3dd45c7098f7fe11f95c01ae6ce8125459b534"
     },
     {
       "id": "gemini:angular",
@@ -862,7 +1098,11 @@
       "sourceRepo": "gemini-cli-extensions/angular",
       "sourceRef": "etag:88ac2788cea4c31074a7a418bcb84e2384b683dbdf2099dea553fe98b917e25f",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/angular/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/angular/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:f1ce4e1f862cf804bef3ef2335a9c75427eba36c632ce964476cdebb3dfe68c5",
+      "sourceCommit": "6be2eeba3f14ab664b2aa81f935b65a72857225a"
     },
     {
       "id": "gemini:bigquery-conversational-analytics",
@@ -874,9 +1114,13 @@
       "archivePath": "official-skills/gemini/bigquery-conversational-analytics.zip",
       "installFolderName": "bigquery-conversational-analytics",
       "sourceRepo": "gemini-cli-extensions/bigquery-conversational-analytics",
-      "sourceRef": "etag:454c096f5074b7cbae8bb6c597b1aee814e9d87acd762c237b053ac6bedce707",
+      "sourceRef": "etag:a3eac6b099db1fc1b6a53b6bd225d2fff46106390022fabee83c017fd393a990",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-conversational-analytics/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-conversational-analytics/tree/main",
+      "version": "0.1.6",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:47bf693ed8bf4f8a186639d8e1e75bf52d05907e8541d6f5dcfe1e34a629d6cb",
+      "sourceCommit": "b451bc7a2859d51821adb79db139333a2ef82bce"
     },
     {
       "id": "gemini:bigquery-data-analytics",
@@ -888,9 +1132,13 @@
       "archivePath": "official-skills/gemini/bigquery-data-analytics.zip",
       "installFolderName": "bigquery-data-analytics",
       "sourceRepo": "gemini-cli-extensions/bigquery-data-analytics",
-      "sourceRef": "etag:53de2f70ba405b258f57070c999d02906234be52cae1dc68ca763e32f128d749",
+      "sourceRef": "etag:07d8f3c1478ab46e1d791d7ba961216b17c1fa40d2e5cee48c8c1912ea5a798b",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-data-analytics/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/bigquery-data-analytics/tree/main",
+      "version": "0.2.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:74e8e7d11c1d4e60d209c07ea92bb741c59de43a60d3e275410a588fd0be3c9b",
+      "sourceCommit": "89f3048eef8c808d1b3c53c90348b18c9a73055c"
     },
     {
       "id": "gemini:cicd",
@@ -902,9 +1150,13 @@
       "archivePath": "official-skills/gemini/cicd.zip",
       "installFolderName": "cicd",
       "sourceRepo": "gemini-cli-extensions/cicd",
-      "sourceRef": "etag:52b5ebd260f14b69aeeb4fc432a706f8bd8836e2ca103a60be228a35f350efbe",
+      "sourceRef": "etag:c9c60bcfbb0e7ef8787ee3787d788da7865c3d7013aa12a967fab3a7b1d1f641",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cicd/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cicd/tree/main",
+      "version": "0.2.2",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:e0ebd55bc71fbf54459bfd8a06132a795479b405b95adb493c76bc01f3c392cd",
+      "sourceCommit": "85812c656ac5e04349e93958b2f2823e15c5adf5"
     },
     {
       "id": "gemini:cloud-sql-mysql",
@@ -916,9 +1168,13 @@
       "archivePath": "official-skills/gemini/cloud-sql-mysql.zip",
       "installFolderName": "cloud-sql-mysql",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-mysql",
-      "sourceRef": "etag:85314dd4def69aa9adb004c4d4578f8be2a620aa5a25cdad4411c883f25a9efc",
+      "sourceRef": "etag:1d60262a68658659e6cb72c02a4ce11c12ea6c2413ad5d20c0793ad1eef7ecea",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql/tree/main",
+      "version": "0.2.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:717ceb35d1268a4bce2238f574a982fa17ffe25c3f076957d016f4d18d7f526b",
+      "sourceCommit": "fda5aac59a50258d61f115f4962325b7ca8c3b36"
     },
     {
       "id": "gemini:cloud-sql-mysql-observability",
@@ -932,7 +1188,11 @@
       "sourceRepo": "gemini-cli-extensions/cloud-sql-mysql-observability",
       "sourceRef": "etag:1b37fc721f9290c62b4e4999a38aa35e0415c08e13a32f6beb8abd4c2b089594",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql-observability/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-mysql-observability/tree/main",
+      "version": "0.1.3",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:cbff8b21b18d144d7f60c58171b2bf183d0a34a4216763e622227c8bdd15a5d3",
+      "sourceCommit": "bc38e0a5337e044839c6e1be8a0000bdbffaf004"
     },
     {
       "id": "gemini:cloud-sql-postgresql",
@@ -944,9 +1204,13 @@
       "archivePath": "official-skills/gemini/cloud-sql-postgresql.zip",
       "installFolderName": "cloud-sql-postgresql",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-postgresql",
-      "sourceRef": "etag:3fb494b58a04b0ec69376946d5cf2b9057116123ba605370ec25d70509371e63",
+      "sourceRef": "etag:3866cf4522cb26316b901207ac0ba6dedec61f3593f1e7153ed8c3a97b8df1ce",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql/tree/main",
+      "version": "0.4.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:415690d7ac4ce6d6994e070106f4d97c00fe058a2188c317f4a18767ef0fb7f6",
+      "sourceCommit": "38ab73d23d58342ea046d1163ddc9f1a83d13303"
     },
     {
       "id": "gemini:cloud-sql-postgresql-observability",
@@ -960,7 +1224,11 @@
       "sourceRepo": "gemini-cli-extensions/cloud-sql-postgresql-observability",
       "sourceRef": "etag:021af0d38a1047c1c9486f179780b8bb5061816d6e8f98d695e8d6eaac3d99f7",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql-observability/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-postgresql-observability/tree/main",
+      "version": "0.1.3",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:6e3f29751c09bcddbc0147cbee7d52baa383f90d9d0dd958942d9ba30af97aa0",
+      "sourceCommit": "bcccd18ea0fe88b30a8199d4d2af9698bb48f172"
     },
     {
       "id": "gemini:cloud-sql-sqlserver",
@@ -972,9 +1240,13 @@
       "archivePath": "official-skills/gemini/cloud-sql-sqlserver.zip",
       "installFolderName": "cloud-sql-sqlserver",
       "sourceRepo": "gemini-cli-extensions/cloud-sql-sqlserver",
-      "sourceRef": "etag:5d544ecd6afc5f9ae26096385e507b401081edec6ed69eb158e1f703a7f59b93",
+      "sourceRef": "etag:122b391a84dfdb074486ef56532772c516b597d485480b2ca99bbe05981e5b13",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver/tree/main",
+      "version": "0.2.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:4bc8aace5be4f5e48286d36c4ceec7b7b31dde460e9e6e732d50fd38723027cf",
+      "sourceCommit": "5069d84c78ccdc6a0177f2c7a7849b9708bde425"
     },
     {
       "id": "gemini:cloud-sql-sqlserver-observability",
@@ -988,7 +1260,11 @@
       "sourceRepo": "gemini-cli-extensions/cloud-sql-sqlserver-observability",
       "sourceRef": "etag:5aabe97d975b00032c42b76205cd57f43d51132acc05df456e2306440fc9dd4e",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver-observability/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/cloud-sql-sqlserver-observability/tree/main",
+      "version": "0.1.3",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:5749308864010d157413fbd222221a1d5be9ad99722fd173f871e2b965b022fb",
+      "sourceCommit": "335d8689799b7857306de3d5555b1e62fc859155"
     },
     {
       "id": "gemini:code-review",
@@ -1002,7 +1278,11 @@
       "sourceRepo": "gemini-cli-extensions/code-review",
       "sourceRef": "etag:7360525d028130b4fda67a3417e983eac659602e320ffdaf62ed0cafec23f2ef",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/code-review/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/code-review/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:3958540145f0a3b4aeb68d2946656ce7795b426a1e86f199da4cb66270c1713f",
+      "sourceCommit": "dd1a10d2c9d07b2ebade866590fdfa59cd8f9d04"
     },
     {
       "id": "gemini:conductor",
@@ -1014,9 +1294,13 @@
       "archivePath": "official-skills/gemini/conductor.zip",
       "installFolderName": "conductor",
       "sourceRepo": "gemini-cli-extensions/conductor",
-      "sourceRef": "etag:1a5db2ec0030a4b32b4cd4294ca7a7ac61c5f538db5439ec7debd6ae56c3ea34",
+      "sourceRef": "etag:042a7a8aa0b46bc690872ec9b50fcbb22f3ab982088247a26470383fce7b67e9",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/conductor/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/conductor/tree/main",
+      "version": "0.4.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:da8c4bccfca780c3f1c7c01ee645ec8ed849a8d47c19815a2653fe640281626d",
+      "sourceCommit": "c9a6a1873ee22fbebfc2e2274ef2e015a8cbdbc0"
     },
     {
       "id": "gemini:datacommons",
@@ -1030,7 +1314,10 @@
       "sourceRepo": "gemini-cli-extensions/datacommons",
       "sourceRef": "etag:2c8a9e5c3909556ec25d3e4d8ac73792dc72dd726edce4b8aad08d01f4a0ce61",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/datacommons/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/datacommons/tree/main",
+      "version": "1.1.6",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:1c965bbfe968e27a64bcee80c1d3b320be4ef9ddffa0c601e106392e99239c50"
     },
     {
       "id": "gemini:dataplex",
@@ -1042,9 +1329,12 @@
       "archivePath": "official-skills/gemini/dataplex.zip",
       "installFolderName": "dataplex",
       "sourceRepo": "gemini-cli-extensions/dataplex",
-      "sourceRef": "etag:953ac44add2b2d7ef0e51bce7a92ccadce5b723ee1d7dfb2fad7114e60d12e31",
+      "sourceRef": "etag:bd74e4935fcbaa35de9e953a696c64f439ce7b3eace1d12d5a57a267e4020e7e",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/dataplex/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/dataplex/tree/main",
+      "version": "0.5.2",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:7bd1f3caf91c5176fe04f085e6582083dc11eb8bd7ce8ad2885fec1aebad7492"
     },
     {
       "id": "gemini:developer-knowledge",
@@ -1056,9 +1346,12 @@
       "archivePath": "official-skills/gemini/developer-knowledge.zip",
       "installFolderName": "developer-knowledge",
       "sourceRepo": "gemini-cli-extensions/developer-knowledge",
-      "sourceRef": "etag:a827def3cfc55e1de831e31adc94861f8179a1a13dacd0656c509c1b92eee8cc",
+      "sourceRef": "etag:2c7176c7a1962af9c272c024332e54edcb40b16166017d5ba3e4951c9c7e3491",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/developer-knowledge/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/developer-knowledge/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:9c72164218b4642f50006f069f751e3490918b5c629452767335b80efa476452"
     },
     {
       "id": "gemini:firebase",
@@ -1069,10 +1362,14 @@
       "description": "在 Gemini CLI 中辅助 Firebase 开发、配置与问题排查。",
       "archivePath": "official-skills/gemini/firebase.zip",
       "installFolderName": "firebase",
-      "sourceRepo": "gemini-cli-extensions/firebase",
-      "sourceRef": "etag:83d44b243d47797e2c2d8217d80b9ac4ea4d8135b57478b06eb3fc0337661d6b",
+      "sourceRepo": "firebase/agent-skills",
+      "sourceRef": "etag:75ed204a2a222f11d75d0b355b1e89cfaca390fdb76f36b83829c83990d8e961",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/firebase/tree/main"
+      "sourceUrl": "https://github.com/firebase/agent-skills/tree/main",
+      "version": "1.0.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:7d5d36273e31a7bfd136b59e0019d1bdc61bfc44640a396d0c08479e7fbf0204",
+      "sourceCommit": "538130c39402a40d9c2586ede87def5914641a33"
     },
     {
       "id": "gemini:firestore-native",
@@ -1084,9 +1381,12 @@
       "archivePath": "official-skills/gemini/firestore-native.zip",
       "installFolderName": "firestore-native",
       "sourceRepo": "gemini-cli-extensions/firestore-native",
-      "sourceRef": "etag:73e7e350b96a6bc190f09922496fcafc9499de99568f623db9fdd936b5f31543",
+      "sourceRef": "etag:479f22cc7384948080a0ec9af0be86d719b22d78a6afc4adce8bd4a252f17ee2",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/firestore-native/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/firestore-native/tree/main",
+      "version": "0.3.2",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:9c1035c0f5ad6828bef4a897420296b229a06f2dbf7e77c667156cc3949de296"
     },
     {
       "id": "gemini:flutter",
@@ -1100,7 +1400,10 @@
       "sourceRepo": "gemini-cli-extensions/flutter",
       "sourceRef": "etag:9654da1d12de0ba2b67ccc3483b1affca4f085a6887da8a42ed613053fafcec3",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/flutter/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/flutter/tree/main",
+      "version": "0.4.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:e21ea93e8739a8de19abdf5d8e96bb46862542505a3244655506791617582fbf"
     },
     {
       "id": "gemini:gcloud",
@@ -1114,7 +1417,10 @@
       "sourceRepo": "gemini-cli-extensions/gcloud",
       "sourceRef": "etag:85b04692504238bee60ab8b44acf95e7eeab2b10c260dfcb786a1f60e64ece48",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/gcloud/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/gcloud/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:b13cedee9602a81bd7b90dbd38b202ca963d7214ff7ae00e8b624ce658609f5c"
     },
     {
       "id": "gemini:gemini-cli-jules",
@@ -1128,7 +1434,10 @@
       "sourceRepo": "gemini-cli-extensions/jules",
       "sourceRef": "etag:c2cc650a39cc325b6a56b4fe46862228ea8a5f253fce39e127652b0dda32ac64",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/jules/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/jules/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:4244951c23353da6df1640828caf896afcae5133ad494e465466255ab2b58ccd"
     },
     {
       "id": "gemini:gemini-cli-security",
@@ -1142,7 +1451,10 @@
       "sourceRepo": "gemini-cli-extensions/security",
       "sourceRef": "etag:209e805c420650c5990d420f9c199f0897be22cee721eaf0c4cce726c3e62f45",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/security/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/security/tree/main",
+      "version": "0.5.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:a70e15185ad9008e4caf8f5b68b95458ac447070b5f4e7a227740d1edc659a58"
     },
     {
       "id": "gemini:genkit",
@@ -1156,7 +1468,10 @@
       "sourceRepo": "gemini-cli-extensions/genkit",
       "sourceRef": "etag:aba402c2ca1620890090931d5cc3c3e5fb09e72af68249b7010d8a428d427db4",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/genkit/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/genkit/tree/main",
+      "version": "2.0.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:2219f51f1ab06d6fd2004f60634405afeaedf16572321dca96f37370c4221047"
     },
     {
       "id": "gemini:google-workspace",
@@ -1168,9 +1483,13 @@
       "archivePath": "official-skills/gemini/google-workspace.zip",
       "installFolderName": "google-workspace",
       "sourceRepo": "gemini-cli-extensions/workspace",
-      "sourceRef": "etag:1c9ba46226d78a12cb138e50ad227937613701fa6135ed375356ad4b72c1eba6",
+      "sourceRef": "etag:086e4df9e794a6c4f66443cb4fd0157803370b87011e59ec0e91fdba3292ebca",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/workspace/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/workspace/tree/main",
+      "version": "0.0.8",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:fbf2b40d5058bb34709aa3e05ebdaeca6b3000ce3959178d4a0770fdd315fdd1",
+      "sourceCommit": "98a976a338217c4cf6e8c2efb0bc7b6c77e6f731"
     },
     {
       "id": "gemini:looker",
@@ -1182,9 +1501,12 @@
       "archivePath": "official-skills/gemini/looker.zip",
       "installFolderName": "looker",
       "sourceRepo": "gemini-cli-extensions/looker",
-      "sourceRef": "etag:e9f0534caa94e29c62931b128db86487250382536b9dcfc128f0ca626d7c207b",
+      "sourceRef": "etag:6c5a21e3b21d528f4701647582142ca915d2c1d35a3752d07dc61cf71a520542",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/looker/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/looker/tree/main",
+      "version": "0.3.6",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:f62dc4ea0778aa2c71dbe06839d64f0d20ab30aea5bfc4f68d5a9a3070c92244"
     },
     {
       "id": "gemini:looker-conversational-analytics",
@@ -1196,9 +1518,12 @@
       "archivePath": "official-skills/gemini/looker-conversational-analytics.zip",
       "installFolderName": "looker-conversational-analytics",
       "sourceRepo": "gemini-cli-extensions/looker-conversational-analytics",
-      "sourceRef": "etag:289f6f34859e06a3e0f84aa056fb7a2c222d55b352039b963b60b6c58f59be6f",
+      "sourceRef": "etag:7fc55172676b395d2dbc66a38f5d8b4898f4e4e39c729051abc34879e17ee0e4",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/looker-conversational-analytics/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/looker-conversational-analytics/tree/main",
+      "version": "0.3.4",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:8f47ea7351822b02063c551bf799556630248107c4548481ca5c592d43289059"
     },
     {
       "id": "gemini:mcp-toolbox",
@@ -1210,9 +1535,12 @@
       "archivePath": "official-skills/gemini/mcp-toolbox.zip",
       "installFolderName": "mcp-toolbox",
       "sourceRepo": "gemini-cli-extensions/mcp-toolbox",
-      "sourceRef": "etag:d5087661b495d4de80506824753bab8cf6a60343a29f3cffbe8617c36143af4c",
+      "sourceRef": "etag:0b16188ae0fc38810d45c81db9f8b779f1d7087f9b06d6910e342136892c749d",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/mcp-toolbox/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/mcp-toolbox/tree/main",
+      "version": "0.7.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:28b36c6a88c82609edb650084c8095a5e9a75dfd40ba9a164f41b054ff69db6e"
     },
     {
       "id": "gemini:mysql",
@@ -1224,9 +1552,12 @@
       "archivePath": "official-skills/gemini/mysql.zip",
       "installFolderName": "mysql",
       "sourceRepo": "gemini-cli-extensions/mysql",
-      "sourceRef": "etag:e572af052a3abad12b02782237c5c3ca6896b93a548088895732a9b18a4f1348",
+      "sourceRef": "etag:acda6ffcbee1f40565254ae412a1d77c8e11ffb3f1f978ce0200ceb858dbd53b",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/mysql/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/mysql/tree/main",
+      "version": "0.1.5",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:edb22b80ae0156ea4ac2fb17233b3b2b22a8a2031f304d2a180705405b2a8f9b"
     },
     {
       "id": "gemini:nanobanana",
@@ -1240,7 +1571,11 @@
       "sourceRepo": "gemini-cli-extensions/nanobanana",
       "sourceRef": "etag:6e5b865be5dbfcffcbedbf68028d1e7dc2cddec29b797df66851ef5568bd49b5",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/nanobanana/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/nanobanana/tree/main",
+      "version": "1.0.12",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:742f8cf4312a183a3fde32fbb0266642fd097c9a5c4b20cd0887c7eed67dd7a2",
+      "sourceCommit": "5badc5aafea8751fe059a054b629cf2d989bceb1"
     },
     {
       "id": "gemini:observability",
@@ -1254,7 +1589,11 @@
       "sourceRepo": "gemini-cli-extensions/observability",
       "sourceRef": "etag:0a5abced535237fd934bf595b7560c5e565cdd406bc9929cfa5b58423cb28b35",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/observability/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/observability/tree/main",
+      "version": "0.1.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:02552ea908c8c12ed43d15842c7b3eaa4e47a900ff4dcc7c1b2064fc8bd22c9a",
+      "sourceCommit": "1718a1ac20c507e871be9a8d01141ac596e7cc65"
     },
     {
       "id": "gemini:oracledb",
@@ -1266,9 +1605,13 @@
       "archivePath": "official-skills/gemini/oracledb.zip",
       "installFolderName": "oracledb",
       "sourceRepo": "gemini-cli-extensions/oracledb",
-      "sourceRef": "etag:b555af3a88cb46879423083607342cf9446bb5c4e98f0500ec8fbc4c1e5c32ce",
+      "sourceRef": "etag:254bd07ad1a084efa664ea7019bc5390f7ca3a0bbc8b429608fe3477212b80f4",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/oracledb/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/oracledb/tree/main",
+      "version": "0.2.3",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:4d85f54a6a045ba1ec0b0c6ff4ef9d69a023b5bdfd1fbe8269356f463b5a419a",
+      "sourceCommit": "d5a26255c6f2ffb32b5920735512629014622693"
     },
     {
       "id": "gemini:postgres",
@@ -1280,9 +1623,13 @@
       "archivePath": "official-skills/gemini/postgres.zip",
       "installFolderName": "postgres",
       "sourceRepo": "gemini-cli-extensions/postgres",
-      "sourceRef": "etag:8bbaecf669564ac6256f1a809dfc65b33d2458884c92bf5a5bae39d4eb563013",
+      "sourceRef": "etag:2fe4692efa2d242c021b308b86bb605c251a35dac2cf2f11cb30d38594062b67",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/postgres/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/postgres/tree/main",
+      "version": "0.2.2",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:8591709fd132670d7f7f557b4c0b575d51567ef83347fd6cc58212b715631fcc",
+      "sourceCommit": "bfa02e150b3739d1f7031e7cd4fb6540f7fc756c"
     },
     {
       "id": "gemini:ralph",
@@ -1296,7 +1643,11 @@
       "sourceRepo": "gemini-cli-extensions/ralph",
       "sourceRef": "etag:e8374283ea418c4f71daf926128723c223ed23ea11c57f0b337621eb954e3772",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/ralph/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/ralph/tree/main",
+      "version": "1.0.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:e0256bd7ee6ccc733fa7c5d3022cb045210cf564483ff4cec3724597c36629e3",
+      "sourceCommit": "5d0247dc7809a053c5ef48d6caa114f6bdca6821"
     },
     {
       "id": "gemini:spanner",
@@ -1308,9 +1659,12 @@
       "archivePath": "official-skills/gemini/spanner.zip",
       "installFolderName": "spanner",
       "sourceRepo": "gemini-cli-extensions/spanner",
-      "sourceRef": "etag:73884ec4270c4d6a8ffda155ead3bf67bec5f488613a0ad86201af3196132d3c",
+      "sourceRef": "etag:20c7142cb91e0279d3500b76fa8bb38168a8a15d9581fc093533ed3ccf1f01a7",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/spanner/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/spanner/tree/main",
+      "version": "0.3.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:9f42ab6cd6656eacb5f2acd1ec41bcab381f39dbe98d585953fef9ad644422e2"
     },
     {
       "id": "gemini:sql-server",
@@ -1324,7 +1678,10 @@
       "sourceRepo": "gemini-cli-extensions/sql-server",
       "sourceRef": "etag:1e53693f148adae48a04be208c681b20847627087c997d26b4ae8ebb2ba060b3",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/sql-server/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/sql-server/tree/main",
+      "version": "0.1.6",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:2b08c606e803e4b7a6d8150616b654a3c2042eb991988a3c2f72be84bafc14e4"
     },
     {
       "id": "gemini:Stitch",
@@ -1338,7 +1695,10 @@
       "sourceRepo": "gemini-cli-extensions/stitch",
       "sourceRef": "etag:8d1d07ea0c4855da665a1c3c90474e8939b244982db121a4268d809f60a2139c",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/stitch/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/stitch/tree/main",
+      "version": "0.1.4",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:5bf33857ec88d828fbaf03ca3feeb8419a86aea765ec1cfcb0bde97b1a4cc58c"
     },
     {
       "id": "gemini:vertex",
@@ -1352,7 +1712,11 @@
       "sourceRepo": "gemini-cli-extensions/vertex",
       "sourceRef": "etag:580e8e353627a41d4a4824813ca9e51e6318f106d881f6020e3665d04293fbb2",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/vertex/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/vertex/tree/main",
+      "version": "0.2.0",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:e55147d1f241c865250549813e16d331c349c49e7eeac5485bb7cc4c3d7238d5",
+      "sourceCommit": "b2333fc8e2069ed40c4286c97cfe51ecd879137a"
     },
     {
       "id": "gemini:web-accessibility",
@@ -1366,7 +1730,11 @@
       "sourceRepo": "gemini-cli-extensions/web-accessibility",
       "sourceRef": "etag:d9cc0cb3fa43f23615637d4bebdc0f8eb34a4920556b2b94fb262ccda1a88c44",
       "sourcePath": ".",
-      "sourceUrl": "https://github.com/gemini-cli-extensions/web-accessibility/tree/main"
+      "sourceUrl": "https://github.com/gemini-cli-extensions/web-accessibility/tree/main",
+      "version": "0.0.1",
+      "versionSource": "manifest:gemini-extension.json#version",
+      "contentHash": "sha256:b230fa6482d5ab68e6915872457ed5c225190c1c9df79459931968afa3cb53a6",
+      "sourceCommit": "8cee3ad544dcc5014fd2d5a525597a5a05216cb9"
     }
   ]
 }
