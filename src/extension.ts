@@ -4116,20 +4116,28 @@ function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): stri
     .sort((left, right) => left.startedAt - right.startedAt)
     .forEach((round) => {
       if (round.role === "main") {
-        lines.push("", `## 主任务发言：第 ${round.round} 轮（main）`, formatLobsterRoundRecordForChat(round));
+        lines.push(
+          "",
+          `## 主任务发言：第 ${round.round} 轮${formatLobsterGroupChatMemberName("主任务")}`,
+          ["- 成员 ID：main", "", formatLobsterRoundRecordForChat(round)].join("\n"),
+        );
         return;
       }
       const subtask = task.subTasks.find((item) => item.id === round.subtaskId);
       const index = subtask ? task.subTasks.findIndex((item) => item.id === subtask.id) : -1;
-      const title = subtask ? getLobsterSubtaskDisplayTitle(index, subtask) : `子任务（${round.subtaskId ?? "unknown"}）`;
+      const title = subtask ? getLobsterSubtaskDisplayTitle(index, subtask) : `子任务 ${round.subtaskId ?? "unknown"}`;
       lines.push(
         "",
-        `## 子任务发言：${title}（${round.subtaskId ?? "unknown"}）`,
-        buildLobsterMainSubSubtaskTurnBody({
-          runStatus: round.status,
-          assistantContent: subtask?.summary,
-          communicationFile: subtask?.communicationFile,
-        }),
+        `## 子任务发言：${formatLobsterGroupChatMemberName(title)}`,
+        [
+          `- 成员 ID：${round.subtaskId ?? "unknown"}`,
+          "",
+          buildLobsterMainSubSubtaskTurnBody({
+            runStatus: round.status,
+            assistantContent: subtask?.summary,
+            communicationFile: subtask?.communicationFile,
+          }),
+        ].join("\n"),
       );
     });
 
@@ -6853,7 +6861,7 @@ async function runLobsterDebateModerator(options: {
     updateLobsterDebateModeratorDecisionRecord(task.id, round, debateRound, decision, startedAt, paths);
     appendSystemMessageForLobster(
       mainTarget,
-      buildLobsterDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns)
+      buildLobsterDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns, participants)
     );
   }
   return { decision, tabId: moderatorTarget.tabId, sessionId: completedSessionId };
@@ -7317,8 +7325,8 @@ function summarizeLobsterDebateArtifact(content: string): string {
 function isCompleteLobsterDebateChatTranscript(content: string): boolean {
   return /##\s*群聊收束/u.test(content)
     && /##\s*参与者加入：/u.test(content)
-    && /(?:主持人|裁判主持人)最终动作：(?:continue|finalize|block)/u.test(content)
-    && /##\s*第\s+\d+\s+轮主持人控场/u.test(content);
+    && /(?:【裁判主持人】|裁判主持人|主持人)最终动作：(?:continue|finalize|block)/u.test(content)
+    && /##\s*(?:第\s+\d+\s+轮)?主持人控场/u.test(content);
 }
 
 function readLobsterDebateConsensusRecord(
@@ -8383,7 +8391,7 @@ function buildLobsterDebateDialogueTurnStartedText(
   paths: LobsterDebatePaths,
 ): string {
   const speakersLine = speakers.length > 0
-    ? `点名发言者：${speakers.map((speaker) => `${speaker.title}(${speaker.id})`).join("、")}`
+    ? `点名发言者：${speakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
     : "点名发言者：未指定";
   return [
     `🦞 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
@@ -8432,7 +8440,7 @@ function buildLobsterDebateParticipantRosterFinishedText(
   return [
     `🦞 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
     `龙虾任务：${taskId}`,
-    `参与者：${participants.map((participant) => `${participant.title}(${participant.id})`).join("、")}`,
+    `参与者：${participants.map((participant) => formatLobsterGroupChatMemberName(participant.title)).join("、")}`,
     `roster：${paths.participantRosterFile}`,
   ].join("\n");
 }
@@ -8530,7 +8538,12 @@ function buildLobsterDebateModeratorFinishedText(
   round: number,
   decision: LobsterDebateModeratorDecisionRecord,
   maxDialogueTurns: number,
+  participants: readonly LobsterDebateParticipantDefinition[],
 ): string {
+  const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
+  const nextSpeakerNames = decision.nextSpeakerIds
+    .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
+    .map(formatLobsterGroupChatMemberName);
   return [
     `🦞 裁判主持人控场已收束：${decision.action}`,
     `龙虾任务：${taskId}`,
@@ -8538,7 +8551,7 @@ function buildLobsterDebateModeratorFinishedText(
     `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
     `理由：${decision.reason}`,
     decision.nextSpeakerIds.length > 0
-      ? `下一批发言者：${decision.nextSpeakerIds.join("、")}`
+      ? `下一批发言者：${nextSpeakerNames.join("、")}`
       : "下一批发言者：无",
     decision.nextFocus.length > 0
       ? `下一轮关注点：${decision.nextFocus.join("；")}`

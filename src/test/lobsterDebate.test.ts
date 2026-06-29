@@ -16,6 +16,7 @@ import {
   buildLobsterDebateParticipantTurnArtifactFile,
   buildLobsterGroupChatFinalStatusSection,
   canProceedWithLobsterDebateConsensus,
+  formatLobsterGroupChatMemberName,
   findLatestLobsterDebateModeratorSessionId,
   findLatestLobsterDebateParticipantSessionId,
   isLobsterDebateAdversarialParticipantRole,
@@ -336,6 +337,12 @@ test("normalizes moderator-selected speaker ids and chooses a blue opening speak
   );
 });
 
+test("formats lobster group chat member names with bracketed display names", () => {
+  assert.equal(formatLobsterGroupChatMemberName("裁判主持人"), "【裁判主持人】");
+  assert.equal(formatLobsterGroupChatMemberName("【蓝队方案方】"), "【蓝队方案方】");
+  assert.equal(formatLobsterGroupChatMemberName("  红队攻击方  "), "【红队攻击方】");
+});
+
 test("parses debate chat transcript into role-oriented segments", () => {
   const transcript = [
     "# 龙虾红蓝对抗群聊记录",
@@ -392,6 +399,67 @@ test("parses debate chat transcript into role-oriented segments", () => {
   assert.equal(moderator?.actorTitle, "裁判主持人");
 });
 
+test("parses bracketed debate group chat member names with metadata ids", () => {
+  const transcript = [
+    "# 龙虾红蓝对抗群聊记录",
+    "",
+    "- 任务 ID：task-1",
+    "",
+    "## 任务事件",
+    "裁判主持人已根据任务目标完成红蓝参与者设计。",
+    "首批点名发言者：【蓝队方案方】",
+    "首批点名发言者 ID：blue-planner",
+    "",
+    "## 参与者加入：【蓝队方案方】",
+    "- 成员 ID：blue-planner",
+    "阵营角色：blue_team",
+    "",
+    "## 发言：【蓝队方案方】",
+    "- 成员 ID：blue-planner",
+    "- 群聊发言批次：1/6",
+    "",
+    "## 群聊发言",
+    "建议先拆模块。",
+    "",
+    "## 主持人控场：【裁判主持人】",
+    "- 成员 ID：moderator",
+    "- 群聊发言批次：1/6",
+    "",
+    "## 主持人决策",
+    "finalize",
+    "",
+    "## 最终立场：【红队攻击方】",
+    "- 成员 ID：red-attacker",
+    "",
+    "## 立场",
+    "agree_with_reservations",
+    "",
+    "## 群聊收束",
+    "【裁判主持人】最终动作：finalize",
+  ].join("\n");
+
+  const parsed = parseLobsterDebateChatTranscript(transcript);
+
+  assert.deepEqual(
+    parsed.segments.map((segment) => segment.kind),
+    ["preamble", "task-event", "participant-joined", "participant-turn", "moderator-turn", "final-stance", "closed"],
+  );
+  const joined = parsed.segments.find((segment) => segment.kind === "participant-joined");
+  assert.equal(joined?.actorTitle, "蓝队方案方");
+  assert.equal(joined?.actorId, "blue-planner");
+  const participant = parsed.segments.find((segment) => segment.kind === "participant-turn");
+  assert.equal(participant?.actorTitle, "蓝队方案方");
+  assert.equal(participant?.actorId, "blue-planner");
+  assert.equal(participant?.dialogueTurn, 1);
+  const moderator = parsed.segments.find((segment) => segment.kind === "moderator-turn");
+  assert.equal(moderator?.actorTitle, "裁判主持人");
+  assert.equal(moderator?.actorId, "moderator");
+  assert.equal(moderator?.dialogueTurn, 1);
+  const finalStance = parsed.segments.find((segment) => segment.kind === "final-stance");
+  assert.equal(finalStance?.actorTitle, "红队攻击方");
+  assert.equal(finalStance?.actorId, "red-attacker");
+});
+
 test("parses terminal lobster group chat status sections as final bubbles", () => {
   const transcript = [
     "# 龙虾群聊记录",
@@ -417,6 +485,43 @@ test("parses terminal lobster group chat status sections as final bubbles", () =
   const interrupted = parsed.segments.find((segment) => segment.heading === "任务中断");
   assert.equal(interrupted?.actorId, "moderator");
   assert.equal(interrupted?.actorTitle, "裁判主持人");
+});
+
+test("parses bracketed main-sub group chat member names with metadata ids", () => {
+  const transcript = [
+    "# 龙虾主从群聊记录",
+    "",
+    "- 任务 ID：task-1",
+    "",
+    "## 主任务发言：第 1 轮【主任务】",
+    "- 成员 ID：main",
+    "已派发首批子任务。",
+    "",
+    "## 子任务加入：【子任务 1：实现执行群聊】",
+    "- 成员 ID：execution-chat",
+    "子任务开始执行。",
+    "",
+    "## 子任务发言：【子任务 1：实现执行群聊】",
+    "- 成员 ID：execution-chat",
+    "已完成 UI 修改。",
+  ].join("\n");
+
+  const parsed = parseLobsterDebateChatTranscript(transcript);
+
+  assert.deepEqual(
+    parsed.segments.map((segment) => segment.kind),
+    ["preamble", "main-turn", "subtask-joined", "subtask-turn"],
+  );
+  const main = parsed.segments.find((segment) => segment.kind === "main-turn");
+  assert.equal(main?.actorTitle, "主任务");
+  assert.equal(main?.actorId, "main");
+  assert.equal(main?.dialogueTurn, 1);
+  const joined = parsed.segments.find((segment) => segment.kind === "subtask-joined");
+  assert.equal(joined?.actorTitle, "子任务 1：实现执行群聊");
+  assert.equal(joined?.actorId, "execution-chat");
+  const subtask = parsed.segments.find((segment) => segment.kind === "subtask-turn");
+  assert.equal(subtask?.actorTitle, "子任务 1：实现执行群聊");
+  assert.equal(subtask?.actorId, "execution-chat");
 });
 
 test("parses debate chat transcript without UI round section headings", () => {
