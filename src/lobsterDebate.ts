@@ -447,6 +447,15 @@ export function buildLobsterMainSubChatTranscriptFile(communicationDir: string):
   );
 }
 
+export function formatLobsterGroupChatMemberName(value: string | null | undefined): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  const title = normalized || "未知成员";
+  if (/^【.+】$/u.test(title)) {
+    return title;
+  }
+  return `【${title}】`;
+}
+
 export function buildLobsterMainSubSubtaskTurnBody(options: {
   runStatus: string;
   assistantContent?: string | null;
@@ -871,6 +880,8 @@ function sanitizeLobsterDebatePathSegment(value: string, fallback: string): stri
 }
 
 function classifyLobsterDebateChatSection(heading: string, body: string): LobsterDebateChatSegment {
+  const metadataActorId = extractLobsterGroupChatMetadataValue(body, ["成员 ID", "参与者 ID", "子任务 ID"]);
+  const metadataDialogueTurn = extractLobsterGroupChatDialogueTurn(body);
   const mainTurn = heading.match(/^主任务发言：第\s+(\d+)\s+轮(?:（(.+?)）)?$/u);
   if (mainTurn) {
     return {
@@ -880,6 +891,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(mainTurn[1]),
       actorTitle: "主任务",
       actorId: mainTurn[2]?.trim() || "main",
+    };
+  }
+
+  const mainTurnWithDisplayName = heading.match(/^主任务发言：第\s+(\d+)\s+轮【(.+?)】$/u);
+  if (mainTurnWithDisplayName) {
+    return {
+      kind: "main-turn",
+      heading,
+      body,
+      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(mainTurnWithDisplayName[1]),
+      actorTitle: mainTurnWithDisplayName[2]?.trim() || "主任务",
+      actorId: metadataActorId || "main",
     };
   }
 
@@ -894,6 +917,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
     };
   }
 
+  const subtaskJoinedWithDisplayName = heading.match(/^子任务加入：【(.+?)】$/u);
+  if (subtaskJoinedWithDisplayName) {
+    const actorTitle = subtaskJoinedWithDisplayName[1]?.trim();
+    return {
+      kind: "subtask-joined",
+      heading,
+      body,
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
+    };
+  }
+
   const subtaskTurn = heading.match(/^子任务发言：(.+?)（(.+?)）$/u);
   if (subtaskTurn) {
     return {
@@ -905,6 +940,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
     };
   }
 
+  const subtaskTurnWithDisplayName = heading.match(/^子任务发言：【(.+?)】$/u);
+  if (subtaskTurnWithDisplayName) {
+    const actorTitle = subtaskTurnWithDisplayName[1]?.trim();
+    return {
+      kind: "subtask-turn",
+      heading,
+      body,
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
+    };
+  }
+
   const participantJoined = heading.match(/^参与者加入：(.+?)（(.+?)）$/u);
   if (participantJoined) {
     return {
@@ -913,6 +960,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       body,
       actorTitle: participantJoined[1]?.trim(),
       actorId: participantJoined[2]?.trim(),
+    };
+  }
+
+  const participantJoinedWithDisplayName = heading.match(/^参与者加入：【(.+?)】$/u);
+  if (participantJoinedWithDisplayName) {
+    const actorTitle = participantJoinedWithDisplayName[1]?.trim();
+    return {
+      kind: "participant-joined",
+      heading,
+      body,
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
     };
   }
 
@@ -928,6 +987,19 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
     };
   }
 
+  const participantTurnWithRoundAndDisplayName = heading.match(/^第\s+(\d+)\s+轮发言：【(.+?)】$/u);
+  if (participantTurnWithRoundAndDisplayName) {
+    const actorTitle = participantTurnWithRoundAndDisplayName[2]?.trim();
+    return {
+      kind: "participant-turn",
+      heading,
+      body,
+      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(participantTurnWithRoundAndDisplayName[1]),
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
+    };
+  }
+
   const participantTurnWithoutRound = heading.match(/^发言：(.+?)（(.+?)）$/u);
   if (participantTurnWithoutRound) {
     return {
@@ -936,6 +1008,19 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       body,
       actorTitle: participantTurnWithoutRound[1]?.trim(),
       actorId: participantTurnWithoutRound[2]?.trim(),
+    };
+  }
+
+  const participantTurnWithoutRoundWithDisplayName = heading.match(/^发言：【(.+?)】$/u);
+  if (participantTurnWithoutRoundWithDisplayName) {
+    const actorTitle = participantTurnWithoutRoundWithDisplayName[1]?.trim();
+    return {
+      kind: "participant-turn",
+      heading,
+      body,
+      dialogueTurn: metadataDialogueTurn,
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
     };
   }
 
@@ -951,6 +1036,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
     };
   }
 
+  const moderatorTurnWithRoundAndDisplayName = heading.match(/^第\s+(\d+)\s+轮主持人控场：?【(.+?)】$/u);
+  if (moderatorTurnWithRoundAndDisplayName) {
+    return {
+      kind: "moderator-turn",
+      heading,
+      body,
+      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(moderatorTurnWithRoundAndDisplayName[1]),
+      actorTitle: moderatorTurnWithRoundAndDisplayName[2]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: metadataActorId || LOBSTER_DEBATE_MODERATOR_ID,
+    };
+  }
+
   const moderatorTurnWithoutRound = heading.match(/^主持人控场(?:（(.+?)）)?$/u);
   if (moderatorTurnWithoutRound) {
     return {
@@ -962,6 +1059,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
     };
   }
 
+  const moderatorTurnWithoutRoundWithDisplayName = heading.match(/^主持人控场：?【(.+?)】$/u);
+  if (moderatorTurnWithoutRoundWithDisplayName) {
+    return {
+      kind: "moderator-turn",
+      heading,
+      body,
+      dialogueTurn: metadataDialogueTurn,
+      actorTitle: moderatorTurnWithoutRoundWithDisplayName[1]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: metadataActorId || LOBSTER_DEBATE_MODERATOR_ID,
+    };
+  }
+
   const finalStance = heading.match(/^最终立场：(.+?)（(.+?)）$/u);
   if (finalStance) {
     return {
@@ -970,6 +1079,18 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       body,
       actorTitle: finalStance[1]?.trim(),
       actorId: finalStance[2]?.trim(),
+    };
+  }
+
+  const finalStanceWithDisplayName = heading.match(/^最终立场：【(.+?)】$/u);
+  if (finalStanceWithDisplayName) {
+    const actorTitle = finalStanceWithDisplayName[1]?.trim();
+    return {
+      kind: "final-stance",
+      heading,
+      body,
+      actorTitle,
+      actorId: metadataActorId || actorTitle,
     };
   }
 
@@ -1036,14 +1157,23 @@ function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
     || heading === "群聊收束"
     || heading === "主持人停止说明"
     || /^主任务发言：第\s+\d+\s+轮(?:（.+?）)?$/u.test(heading)
+    || /^主任务发言：第\s+\d+\s+轮【.+?】$/u.test(heading)
     || /^子任务加入：.+?（.+?）$/u.test(heading)
+    || /^子任务加入：【.+?】$/u.test(heading)
     || /^子任务发言：.+?（.+?）$/u.test(heading)
+    || /^子任务发言：【.+?】$/u.test(heading)
     || /^参与者加入：.+?（.+?）$/u.test(heading)
+    || /^参与者加入：【.+?】$/u.test(heading)
     || /^第\s+\d+\s+轮发言：.+?（.+?）$/u.test(heading)
+    || /^第\s+\d+\s+轮发言：【.+?】$/u.test(heading)
     || /^发言：.+?（.+?）$/u.test(heading)
+    || /^发言：【.+?】$/u.test(heading)
     || /^第\s+\d+\s+轮主持人控场(?:（.+?）)?$/u.test(heading)
+    || /^第\s+\d+\s+轮主持人控场：?【.+?】$/u.test(heading)
     || /^主持人控场(?:（.+?）)?$/u.test(heading)
-    || /^最终立场：.+?（.+?）$/u.test(heading);
+    || /^主持人控场：?【.+?】$/u.test(heading)
+    || /^最终立场：.+?（.+?）$/u.test(heading)
+    || /^最终立场：【.+?】$/u.test(heading);
 }
 
 function normalizeLobsterDebateChatBody(lines: string[]): string {
@@ -1063,6 +1193,19 @@ function normalizeOptionalLobsterDebateRoundNumber(value: unknown): number | und
     return undefined;
   }
   return Math.trunc(numeric);
+}
+
+function extractLobsterGroupChatMetadataValue(body: string, labels: readonly string[]): string | undefined {
+  const normalizedLabels = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const labelPattern = normalizedLabels.join("|");
+  const pattern = new RegExp(`(?:^|\\n)\\s*-?\\s*(?:${labelPattern})\\s*[：:]\\s*(.+?)\\s*(?:\\n|$)`, "u");
+  const match = body.match(pattern);
+  return match?.[1]?.trim() || undefined;
+}
+
+function extractLobsterGroupChatDialogueTurn(body: string): number | undefined {
+  const match = body.match(/(?:^|\n)\s*-?\s*群聊发言批次\s*[：:]\s*(\d+)(?:\s*\/\s*\d+)?\s*(?:\n|$)/u);
+  return normalizeOptionalLobsterDebateRoundNumber(match?.[1]);
 }
 
 function joinLobsterDebatePath(baseDir: string, ...segments: string[]): string {

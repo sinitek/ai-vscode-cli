@@ -155,6 +155,7 @@ import {
   buildLobsterDebateParticipantArtifactFile,
   buildLobsterDebateParticipantTurnArtifactFile,
   buildLobsterDebatePaths,
+  formatLobsterGroupChatMemberName,
   findLatestLobsterDebateModeratorSessionId,
   findLatestLobsterDebateParticipantSessionId,
   LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
@@ -7811,10 +7812,12 @@ function buildLobsterDebateInitialChatMarkdown(
     `- brief 文件：${paths.briefFile}`,
     `- 红蓝参与者清单文件：${paths.participantRosterFile}`,
     `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    `- 裁判主持人：${LOBSTER_DEBATE_MODERATOR_TITLE}(${LOBSTER_DEBATE_MODERATOR_ID})`,
+    `- 裁判主持人：${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}`,
+    `- 裁判主持人 ID：${LOBSTER_DEBATE_MODERATOR_ID}`,
     "",
     "## 群聊规则",
     "- 每位角色必须读取本文件中已有发言后再输出自己的下一条发言。",
+    `- 群聊称呼必须和成员列表名称一致，发言、点名和互相回应时使用 ${formatLobsterGroupChatMemberName("成员名称")} 格式；成员 ID 只用于 JSON、artifact 文件名和调度字段，不作为群聊称呼。`,
     "- 裁判主持人先根据任务目标设计红队和蓝队参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
     "- 蓝队提出和修正方案；红队攻击假设、证据、边界和可验证性；双方必须点名回应对方观点。",
     "- 每个发言批次必须由裁判主持人明确点名 1-3 位发言者；只有被点名的角色才发言。",
@@ -7832,9 +7835,16 @@ function buildLobsterDebateParticipantRosterChatMarkdown(
   summary: string,
   openingSpeakerIds: readonly string[],
 ): string {
+  const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
+  const openingSpeakerNames = openingSpeakerIds
+    .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
+    .map(formatLobsterGroupChatMemberName);
   const openingLine = openingSpeakerIds.length > 0
-    ? `首批点名发言者：${openingSpeakerIds.join("、")}`
+    ? `首批点名发言者：${openingSpeakerNames.join("、")}`
     : "首批点名发言者：未指定，运行时将默认由首位蓝队开场。";
+  const openingIdLine = openingSpeakerIds.length > 0
+    ? `首批点名发言者 ID：${openingSpeakerIds.join("、")}`
+    : "首批点名发言者 ID：无";
   const lines: string[] = [
     "",
     "## 任务事件",
@@ -7842,10 +7852,12 @@ function buildLobsterDebateParticipantRosterChatMarkdown(
     "裁判主持人已根据任务目标完成红蓝参与者设计。",
     summary ? `组队说明：${summary}` : "组队说明：未提供。",
     openingLine,
+    openingIdLine,
     "",
     ...participants.flatMap((participant) => [
-      `## 参与者加入：${participant.title}（${participant.id}）`,
+      `## 参与者加入：${formatLobsterGroupChatMemberName(participant.title)}`,
       "",
+      `成员 ID：${participant.id}`,
       `阵营角色：${participant.role}`,
       `关注重点：${participant.focus}`,
       "",
@@ -7862,8 +7874,9 @@ function buildLobsterDebateChatTurnMarkdown(
 ): string {
   return [
     "",
-    `## 发言：${participantTitle}（${participantId}）`,
+    `## 发言：${formatLobsterGroupChatMemberName(participantTitle)}`,
     "",
+    `- 成员 ID：${participantId}`,
     `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
     "",
     artifactText.trim(),
@@ -7877,8 +7890,9 @@ function buildLobsterDebateModeratorTurnMarkdown(
 ): string {
   return [
     "",
-    `## 主持人控场（${LOBSTER_DEBATE_MODERATOR_TITLE}）`,
+    `## 主持人控场：${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}`,
     "",
+    `- 成员 ID：${LOBSTER_DEBATE_MODERATOR_ID}`,
     `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
     "",
     artifactText.trim(),
@@ -7908,11 +7922,14 @@ function buildLobsterDebateDialogueTurnChatEventMarkdown(
   dialogueTurn: number,
   maxDialogueTurns: number,
   previousDecision: LobsterDebateModeratorDecisionRecord | null,
-  currentSpeakerIds: readonly string[],
+  currentSpeakers: readonly LobsterDebateParticipantDefinition[],
 ): string {
-  const speakerLine = currentSpeakerIds.length > 0
-    ? `- 本批次点名发言者：${currentSpeakerIds.join("、")}`
+  const speakerLine = currentSpeakers.length > 0
+    ? `- 本批次点名发言者：${currentSpeakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
     : "- 本批次点名发言者：未指定";
+  const speakerIdLine = currentSpeakers.length > 0
+    ? `- 本批次点名发言者 ID：${currentSpeakers.map((speaker) => speaker.id).join("、")}`
+    : "- 本批次点名发言者 ID：无";
   const lines = [
     "",
     "## 任务事件",
@@ -7925,6 +7942,7 @@ function buildLobsterDebateDialogueTurnChatEventMarkdown(
       ? `- 裁判主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
       : "- 裁判主持人上一批次关注点：无",
     speakerLine,
+    speakerIdLine,
     "- 本批次被点名参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
     "- 本批次结束后由裁判主持人决定是否继续、收束或阻塞。",
     "",
@@ -7939,8 +7957,8 @@ function buildLobsterDebateRuntimeForcedFinalizeMarkdown(
     "",
     "## 运行时强制收束",
     "",
-    `裁判主持人最终动作：${decision.action}`,
-    `裁判主持人理由：${decision.reason}`,
+    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}最终动作：${decision.action}`,
+    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}理由：${decision.reason}`,
     "",
   ].join("\n");
 }
@@ -7952,7 +7970,9 @@ function buildLobsterDebateFinalParticipantMarkdown(
 ): string {
   return [
     "",
-    `## 最终立场：${participantTitle}（${participantId}）`,
+    `## 最终立场：${formatLobsterGroupChatMemberName(participantTitle)}`,
+    "",
+    `- 成员 ID：${participantId}`,
     "",
     artifactText.trim(),
     "",
@@ -7968,8 +7988,8 @@ function buildLobsterDebateDialogueClosedMarkdown(
     "",
     "## 群聊收束",
     "",
-    `裁判主持人最终动作：${decision.action}`,
-    `裁判主持人理由：${decision.reason}`,
+    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}最终动作：${decision.action}`,
+    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}理由：${decision.reason}`,
     `实际完成发言批次数：${completedDialogueTurns}/${maxDialogueTurns}`,
     decision.nextFocus.length > 0
       ? `下一轮关注点：${decision.nextFocus.join("；")}`
@@ -8129,7 +8149,8 @@ function buildLobsterDebateParticipantModelPrompt(
       : `当前发言批次：${dialogueTurn}，最大安全上限：${maxDialogueTurns}`,
     `本轮目的：${turnPurpose}`,
     `参与者 ID：${participant.id}`,
-    `参与者角色：${participant.title}`,
+    `参与者名称：${participant.title}`,
+    `群聊称呼：${formatLobsterGroupChatMemberName(participant.title)}`,
     `关注重点：${participant.focus}`,
     `任务记录文件：${task.taskStoreFile}`,
     `brief 文件：${paths.briefFile}`,
@@ -8145,7 +8166,7 @@ function buildLobsterDebateParticipantModelPrompt(
     "2. 你必须读取 brief、chat.md，并按需要读取任务记录、主沟通文件、子任务沟通目录和仓库现状。",
     "3. 你只能写入上面指定的 artifact 文件；不要直接修改 chat.md、cross-review.md、consensus.md 或 decision.json。",
     "4. 你不能直接输出最终 LobsterMainDecision JSON；最终决策由共识汇总器在读取完整群聊后生成。",
-    "5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；蓝队优先回应红队攻击点，红队优先继续攻击蓝队尚未修正的方案。",
+    `5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；点名时使用 ${formatLobsterGroupChatMemberName("成员名称")}，不要用英文成员 ID 作为称呼；蓝队优先回应红队攻击点，红队优先继续攻击蓝队尚未修正的方案。`,
     `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。只有被裁判主持人本批次明确点名的角色才应发言；达到安全上限时必须收束，不得继续追加辩论。`,
     "7. 如果发现会导致目标无法满足、证据不足、验收不可判定、风险无法接受的问题，红队应明确指出阻塞项；蓝队若能修正则改为 agree_with_reservations，否则最终立场必须使用 block。",
     "8. 只有在任务确实涉及代码、文件、权限、部署或流程执行时，才把越权写入、并发冲突、恢复失败等工程问题作为阻塞项。",
@@ -8155,7 +8176,7 @@ function buildLobsterDebateParticipantModelPrompt(
     "用你的角色身份发言，必须结合 brief 和 chat.md 中已有内容。",
     "",
     "## 点名回应",
-    "列出你回应了哪些角色的哪些观点；若暂无其他角色发言，写“暂无，作为首位发言者开场”。",
+    `列出你回应了哪些角色的哪些观点；角色称呼必须使用 ${formatLobsterGroupChatMemberName("成员名称")}；若暂无其他角色发言，写“暂无，作为首位发言者开场”。`,
     "",
     "## 追问或修正",
     "给出你希望其他角色注意的问题、风险或修正建议；没有则写“无”。",
@@ -8212,13 +8233,14 @@ function buildLobsterDebateModeratorModelPrompt(
     "6. action=block 表示红队指出的阻塞问题无法通过蓝队修正、补充证据、前置步骤或验收标准化解，必须进入人工复核。",
     `7. 如果当前发言批次已经达到最大安全上限 ${maxDialogueTurns}/${maxDialogueTurns}，不得输出 action=continue，只能输出 finalize 或 block。`,
     "8. 有红队提出 block 时，不要立即阻塞；先判断蓝队是否有机会通过下一批次回应、补充证据、前置步骤或验收标准化解。无法化解时再 block。",
+    `9. 群聊称呼必须和成员列表名称一致；写点名追问、群聊态势和理由时使用 ${formatLobsterGroupChatMemberName("成员名称")}，不要用英文成员 ID 作为称呼。`,
     "",
     "artifact 必须包含以下固定小节，标题必须完全一致：",
     "## 群聊态势",
     "用简短段落总结蓝队方案、红队攻击点、已化解问题和未回答问题。",
     "",
     "## 点名追问",
-    "如果 action=continue，列出下一批次需要蓝队或红队回答什么问题；如果不继续，写“无”。",
+    `如果 action=continue，列出下一批次需要蓝队或红队回答什么问题；成员称呼使用 ${formatLobsterGroupChatMemberName("成员名称")}；如果不继续，写“无”。`,
     "",
     "## 下一批发言者",
     `如果 action=continue，列出 1-${LOBSTER_DEBATE_MAX_BATCH_SPEAKERS} 个下一批被点名发言的参与者 id，每行一个；如果不继续，写“无”。`,
