@@ -10,6 +10,7 @@ export const LOBSTER_MAIN_SUB_CHAT_TRANSCRIPT_FILENAME = "group-chat.md";
 export const LOBSTER_MAIN_SUB_CHAT_ROUND_KEY = "main-sub";
 export const DEFAULT_LOBSTER_DEBATE_ROUND = 1;
 export const LOBSTER_DEBATE_MAX_DIALOGUE_TURNS = 6;
+export const LOBSTER_DEBATE_MAX_BATCH_SPEAKERS = 3;
 export const LOBSTER_DEBATE_MODERATOR_ID = "moderator";
 export const LOBSTER_DEBATE_MODERATOR_TITLE = "裁判主持人";
 export const LOBSTER_DEBATE_BLUE_TEAM_ROLE = "blue_team";
@@ -59,6 +60,7 @@ export type LobsterDebateModeratorDecisionRecord = {
   dialogueTurn: number;
   action: LobsterDebateModeratorAction;
   reason: string;
+  nextSpeakerIds: string[];
   nextFocus: string[];
   sessionId?: string | null;
   updatedAt: number;
@@ -165,6 +167,7 @@ export type LobsterDebateChatTranscript = {
 
 export type LobsterTaskRunControlState = {
   isRunning: boolean;
+  canSupplement: boolean;
   canContinue: boolean;
   canStop: boolean;
 };
@@ -178,6 +181,7 @@ export function resolveLobsterTaskRunControlState(
   const blockedByFailureLimit = Boolean(task.mainAiFailureLimitReached);
   return {
     isRunning,
+    canSupplement: !isCompleted && !blockedByFailureLimit,
     canContinue: !isCompleted && !isRunning && !blockedByFailureLimit,
     canStop: isRunning,
   };
@@ -589,6 +593,55 @@ export function normalizeLobsterDebateModeratorAction(
   return LOBSTER_DEBATE_MODERATOR_ACTIONS.some((action) => action === normalized)
     ? normalized as LobsterDebateModeratorAction
     : null;
+}
+
+export function normalizeLobsterDebateSpeakerIds(
+  value: unknown,
+  allowedIds: readonly string[],
+  maxItems: number = LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+): string[] {
+  if (!Array.isArray(value) || !Array.isArray(allowedIds) || allowedIds.length === 0) {
+    return [];
+  }
+  const allowed = new Set(
+    allowedIds
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim()),
+  );
+  if (allowed.size === 0) {
+    return [];
+  }
+  const normalizedMaxItems = Number.isFinite(maxItems) && maxItems > 0
+    ? Math.max(1, Math.trunc(maxItems))
+    : LOBSTER_DEBATE_MAX_BATCH_SPEAKERS;
+  const result: string[] = [];
+  value.forEach((item) => {
+    if (typeof item !== "string") {
+      return;
+    }
+    const id = item.trim();
+    if (!id || !allowed.has(id) || result.includes(id)) {
+      return;
+    }
+    if (result.length < normalizedMaxItems) {
+      result.push(id);
+    }
+  });
+  return result;
+}
+
+export function selectDefaultLobsterDebateOpeningSpeakerIds(
+  participants: ReadonlyArray<{ id: string; role?: string | null }>,
+): string[] {
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return [];
+  }
+  const firstBlue = participants.find((participant) => participant?.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE);
+  const fallback = participants.find((participant) => typeof participant?.id === "string" && Boolean(participant.id.trim()));
+  const id = typeof firstBlue?.id === "string" && firstBlue.id.trim()
+    ? firstBlue.id.trim()
+    : (typeof fallback?.id === "string" ? fallback.id.trim() : "");
+  return id ? [id] : [];
 }
 
 export function validateLobsterDebateConsensus(consensus: unknown): LobsterDebateConsensusValidationResult {

@@ -159,6 +159,7 @@ import {
   findLatestLobsterDebateParticipantSessionId,
   LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
   LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+  LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
   LOBSTER_DEBATE_MODERATOR_ID,
   LOBSTER_DEBATE_MODERATOR_TITLE,
   LOBSTER_DEBATE_BLUE_TEAM_ROLE,
@@ -167,10 +168,12 @@ import {
   isLobsterDebateAdversarialParticipantRole,
   normalizeLobsterDebateSessionId,
   normalizeLobsterDebateModeratorAction,
+  normalizeLobsterDebateSpeakerIds,
   normalizeLobsterDebateParticipantStance,
   parseLobsterDebateChatTranscript,
   resolveLobsterAnswerConclusion,
   resolveLobsterTaskRunControlState,
+  selectDefaultLobsterDebateOpeningSpeakerIds,
   validateLobsterDebateConsensus,
   type LobsterDebateActiveSpeakerRecord,
   type LobsterDebateConsensusRecord,
@@ -3808,6 +3811,7 @@ function buildLobsterDebateChatPanelState(task: LobsterTaskRecord): LobsterDebat
       mainCommunicationFile: task.mainCommunicationFile,
       currentRound: task.currentRound,
       updatedAt: task.updatedAt,
+      canSupplement: controlState.canSupplement,
       canContinue: controlState.canContinue,
       canStop: controlState.canStop,
     },
@@ -5687,6 +5691,7 @@ type LobsterDebateParticipantDefinition = {
 type LobsterDebateParticipantRosterResult = {
   participants: LobsterDebateParticipantDefinition[];
   summary: string;
+  openingSpeakerIds: string[];
   tabId: string;
   sessionId: string | null;
 };
@@ -5717,6 +5722,11 @@ type LobsterDebateParticipantBatchRunItem = {
   artifactFile: string;
   artifactText: string | null;
   result: LobsterDebateParticipantRunResult;
+};
+
+type LobsterDebateSpeakerBatch = {
+  speakerIds: string[];
+  speakers: LobsterDebateParticipantDefinition[];
 };
 
 type LobsterDebateModeratorRunResult = {
@@ -5887,7 +5897,11 @@ async function runLobsterDebateRound(options: {
   }));
   const rosterAppended = appendTextFileEnsuringDir(
     paths.chatFile,
-    buildLobsterDebateParticipantRosterChatMarkdown(participantDefinitions, rosterResult.summary)
+    buildLobsterDebateParticipantRosterChatMarkdown(
+      participantDefinitions,
+      rosterResult.summary,
+      rosterResult.openingSpeakerIds,
+    )
   );
   if (!rosterAppended) {
     await closeCompletedLobsterDebateTabs(debateTabIds);
@@ -5920,11 +5934,38 @@ async function runLobsterDebateRound(options: {
 
   let finalModeratorDecision: LobsterDebateModeratorDecisionRecord | null = null;
   let completedDialogueTurns = 0;
+  let currentSpeakerBatch = buildLobsterDebateSpeakerBatch(participantDefinitions, rosterResult.openingSpeakerIds);
+  if (currentSpeakerBatch.speakers.length === 0) {
+    currentSpeakerBatch = buildLobsterDebateSpeakerBatch(
+      participantDefinitions,
+      selectDefaultLobsterDebateOpeningSpeakerIds(participantDefinitions),
+    );
+  }
   for (let dialogueTurn = 1; dialogueTurn <= LOBSTER_DEBATE_MAX_DIALOGUE_TURNS; dialogueTurn += 1) {
     completedDialogueTurns = dialogueTurn;
+    if (currentSpeakerBatch.speakers.length === 0) {
+      await closeCompletedLobsterDebateTabs(debateTabIds);
+      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`裁判主持人未为第 ${dialogueTurn} 个发言批次指定有效发言者。`],
+        status: "error",
+      });
+    }
     appendSystemMessageForLobster(
       target,
-      buildLobsterDebateDialogueTurnStartedText(task.id, round, dialogueTurn, LOBSTER_DEBATE_MAX_DIALOGUE_TURNS, paths)
+      buildLobsterDebateDialogueTurnStartedText(
+        task.id,
+        round,
+        dialogueTurn,
+        LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+        currentSpeakerBatch.speakers,
+        paths,
+      )
     );
     const dialogueTurnEventAppended = appendTextFileEnsuringDir(
       paths.chatFile,
@@ -5933,6 +5974,7 @@ async function runLobsterDebateRound(options: {
         dialogueTurn,
         LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
         finalModeratorDecision,
+        currentSpeakerBatch.speakerIds,
       )
     );
     if (!dialogueTurnEventAppended) {
@@ -5959,7 +6001,7 @@ async function runLobsterDebateRound(options: {
       maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
       finalPass: false,
       paths,
-      participants: participantDefinitions,
+      participants: currentSpeakerBatch.speakers,
       debateSessions,
       moderatorDecision: finalModeratorDecision,
       startedAt,
@@ -6023,6 +6065,7 @@ async function runLobsterDebateRound(options: {
       maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
       paths,
       sessionId: debateSessions.moderator,
+      participants: participantDefinitions,
       startedAt,
     });
     debateTabIds.push(moderatorResult.tabId);
@@ -6046,6 +6089,7 @@ async function runLobsterDebateRound(options: {
       });
     }
     finalModeratorDecision = moderatorResult.decision;
+    const nextSpeakerBatch = buildLobsterDebateSpeakerBatch(participantDefinitions, moderatorResult.decision.nextSpeakerIds);
     const moderatorAppended = appendTextFileEnsuringDir(
       paths.chatFile,
       buildLobsterDebateModeratorTurnMarkdown(dialogueTurn, moderatorText)
@@ -6064,14 +6108,29 @@ async function runLobsterDebateRound(options: {
       });
     }
     refreshOpenLobsterDebateChatPanelForTask(task.id);
+    if (moderatorResult.decision.action === "continue" && nextSpeakerBatch.speakers.length === 0) {
+      await closeCompletedLobsterDebateTabs(debateTabIds);
+      return markLobsterDebateNeedsReview({
+        task,
+        target,
+        round,
+        debateRound,
+        paths,
+        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        reasons: [`裁判主持人第 ${dialogueTurn} 轮选择 continue，但未指定有效的下一批发言者。`],
+        status: "error",
+      });
+    }
     if (moderatorResult.decision.action !== "continue") {
       break;
     }
+    currentSpeakerBatch = nextSpeakerBatch;
     if (dialogueTurn === LOBSTER_DEBATE_MAX_DIALOGUE_TURNS) {
       finalModeratorDecision = {
         ...moderatorResult.decision,
         action: "finalize",
         reason: `已达到运行时最大安全上限 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。裁判主持人原始理由：${moderatorResult.decision.reason}`,
+        nextSpeakerIds: [],
         updatedAt: Date.now(),
       };
       const capAppended = appendTextFileEnsuringDir(
@@ -6540,6 +6599,7 @@ async function runLobsterDebateParticipantRoster(options: {
     valid: true,
     participants: parsed.participants,
     summary: parsed.summary,
+    openingSpeakerIds: parsed.openingSpeakerIds,
     tabId: moderatorTarget.tabId,
     sessionId: completedSessionId,
   };
@@ -6725,6 +6785,7 @@ async function runLobsterDebateModerator(options: {
   dialogueTurn: number;
   maxDialogueTurns: number;
   paths: LobsterDebatePaths;
+  participants: readonly LobsterDebateParticipantDefinition[];
   sessionId: string | null;
   startedAt: number;
 }): Promise<LobsterDebateModeratorRunResult> {
@@ -6737,6 +6798,7 @@ async function runLobsterDebateModerator(options: {
 	    dialogueTurn,
 	    maxDialogueTurns,
 	    paths,
+      participants,
 	    sessionId,
 	    startedAt,
 	  } = options;
@@ -6778,7 +6840,11 @@ async function runLobsterDebateModerator(options: {
   }
 
   const completedSessionId = resolvePromptRunTargetSessionId(moderatorTarget);
-  const parsedDecision = readLobsterDebateModeratorDecisionArtifact(artifactFile, dialogueTurn);
+  const parsedDecision = readLobsterDebateModeratorDecisionArtifact(
+    artifactFile,
+    dialogueTurn,
+    participants.map((participant) => participant.id),
+  );
   const decision = parsedDecision
     ? { ...parsedDecision, sessionId: completedSessionId }
     : null;
@@ -6910,7 +6976,7 @@ function readLobsterDebateParticipantTurnArtifact(
 
 function readLobsterDebateParticipantRosterArtifact(
   artifactFile: string,
-): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
+): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
   const content = readTextFileIfNonEmpty(artifactFile);
   if (!content) {
     return { valid: false, reasons: [`裁判主持人红蓝参与者清单 artifact 缺失或为空：${artifactFile}`] };
@@ -6930,7 +6996,7 @@ function readLobsterDebateParticipantRosterArtifact(
 function normalizeLobsterDebateParticipantRosterObject(
   value: unknown,
   artifactFile: string,
-): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string } | { valid: false; reasons: string[] } {
+): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
   const reasons: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { valid: false, reasons: ["裁判主持人红蓝参与者清单必须是 JSON 对象。"] };
@@ -6939,6 +7005,8 @@ function normalizeLobsterDebateParticipantRosterObject(
     artifactFile?: unknown;
     summary?: unknown;
     participants?: unknown;
+    openingSpeakerIds?: unknown;
+    initialSpeakerIds?: unknown;
   };
   if (typeof raw.artifactFile !== "string" || !raw.artifactFile.trim()) {
     reasons.push("裁判主持人红蓝参与者清单 JSON 必须包含 artifactFile。");
@@ -7021,7 +7089,19 @@ function normalizeLobsterDebateParticipantRosterObject(
   if (reasons.length > 0) {
     return { valid: false, reasons };
   }
-  return { valid: true, participants, summary };
+  const openingSpeakerIds = normalizeLobsterDebateSpeakerIds(
+    Array.isArray(raw.openingSpeakerIds) ? raw.openingSpeakerIds : raw.initialSpeakerIds,
+    participants.map((participant) => participant.id),
+    LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+  );
+  return {
+    valid: true,
+    participants,
+    summary,
+    openingSpeakerIds: openingSpeakerIds.length > 0
+      ? openingSpeakerIds
+      : selectDefaultLobsterDebateOpeningSpeakerIds(participants),
+  };
 }
 
 function normalizeLobsterDebateParticipantRole(value: unknown): LobsterDebateParticipantRole | null {
@@ -7037,6 +7117,7 @@ function normalizeLobsterDebateParticipantRole(value: unknown): LobsterDebatePar
 function readLobsterDebateModeratorDecisionArtifact(
   artifactFile: string,
   dialogueTurn: number,
+  allowedSpeakerIds: readonly string[] = [],
 ): LobsterDebateModeratorDecisionRecord | null {
   const content = readTextFileIfNonEmpty(artifactFile);
   if (!content) {
@@ -7046,8 +7127,11 @@ function readLobsterDebateModeratorDecisionArtifact(
   if (jsonText) {
     try {
       const parsed = JSON.parse(jsonText);
-      const decision = normalizeLobsterDebateModeratorDecisionObject(parsed, artifactFile, dialogueTurn);
+      const decision = normalizeLobsterDebateModeratorDecisionObject(parsed, artifactFile, dialogueTurn, allowedSpeakerIds);
       if (decision) {
+        if (decision.action === "continue" && decision.nextSpeakerIds.length === 0) {
+          return null;
+        }
         return decision;
       }
     } catch {
@@ -7069,6 +7153,7 @@ function readLobsterDebateModeratorDecisionArtifact(
     dialogueTurn,
     action,
     reason: reason.trim() || "裁判主持人未提供理由。",
+    nextSpeakerIds: extractLobsterDebateModeratorNextSpeakerIds(content, allowedSpeakerIds),
     nextFocus: extractLobsterDebateModeratorNextFocus(content),
     updatedAt: Date.now(),
   };
@@ -7078,6 +7163,7 @@ function normalizeLobsterDebateModeratorDecisionObject(
   value: unknown,
   artifactFile: string,
   dialogueTurn: number,
+  allowedSpeakerIds: readonly string[] = [],
 ): LobsterDebateModeratorDecisionRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -7104,6 +7190,13 @@ function normalizeLobsterDebateModeratorDecisionObject(
       .map((item) => item.trim())
       .slice(0, 8)
     : [];
+  const nextSpeakerIds = normalizeLobsterDebateSpeakerIds(
+    (value as { nextSpeakerIds?: unknown; nextSpeakers?: unknown; nextParticipants?: unknown }).nextSpeakerIds
+      ?? (value as { nextSpeakers?: unknown }).nextSpeakers
+      ?? (value as { nextParticipants?: unknown }).nextParticipants,
+    allowedSpeakerIds,
+    LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+  );
   return {
     artifactFile: typeof raw.artifactFile === "string" && raw.artifactFile.trim()
       ? raw.artifactFile.trim()
@@ -7113,6 +7206,7 @@ function normalizeLobsterDebateModeratorDecisionObject(
       : dialogueTurn,
     action,
     reason,
+    nextSpeakerIds,
     nextFocus,
     updatedAt: Date.now(),
   };
@@ -7147,6 +7241,24 @@ function extractLobsterDebateModeratorNextFocus(content: string): string[] {
     .map((line) => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "").trim())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function extractLobsterDebateModeratorNextSpeakerIds(
+  content: string,
+  allowedSpeakerIds: readonly string[],
+): string[] {
+  const section = extractMarkdownSection(content, "下一批发言者")
+    ?? extractMarkdownSection(content, "下一轮发言者")
+    ?? "";
+  if (!section) {
+    return [];
+  }
+  const items = section
+    .split(/\r?\n/g)
+    .map((line) => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean)
+    .flatMap((line) => line.split(/[，,、；;]/g).map((item) => item.trim()).filter(Boolean));
+  return normalizeLobsterDebateSpeakerIds(items, allowedSpeakerIds, LOBSTER_DEBATE_MAX_BATCH_SPEAKERS);
 }
 
 function extractLobsterDebateParticipantStance(content: string): LobsterDebateParticipantStance | null {
@@ -7662,11 +7774,12 @@ function buildLobsterDebateBriefMarkdown(
     "- 红队负责攻击蓝队方案，寻找假设漏洞、目标遗漏、证据不足、边界场景、可行性缺口、成本/收益失衡和不可验证风险。",
     "- 如果任务涉及代码、文件、权限、部署或流程执行，红队还应检查写入范围、并发冲突、越权修改、回滚/恢复失败和不可验收的工程风险；不涉及时不要强行套用代码风险。",
     "- 裁判主持人每个批次后读取完整群聊，决定继续追问、收束进入最终立场或阻塞人工复核。",
+    `- 裁判主持人每次最多点名 ${LOBSTER_DEBATE_MAX_BATCH_SPEAKERS} 位参与者进入下一批发言；未被点名的角色本批次不得发言。`,
     "- 参与者只能读取可用上下文、任务记录、主沟通文件和子任务沟通目录。",
     "- 参与者只能写入本轮提示词指定的单个 artifact 文件，不得修改工作区内容、任务记录或其他沟通文件。",
     "- 扩展会把每次红蓝发言追加到 chat.md，后续角色必须读取并回应该共享群聊记录。",
     "- 同一发言批次内的参与者可并行执行；扩展会等待本批次全部 artifact 完成后再按清单顺序追加到 chat.md，并启动裁判主持人控场。",
-    "- 每个发言批次后由裁判主持人读取 chat.md 并决定 continue / finalize / block。",
+    "- 每个发言批次后由裁判主持人读取 chat.md 并决定 continue / finalize / block；如果继续，必须同时指定下一批发言者。",
     "- 参与者不得直接输出最终 LobsterMainDecision。",
     "- 共识汇总器只能读取 brief、chat.md 和 participant artifacts，负责生成 cross-review.md、consensus.md 和 decision.json。",
     "",
@@ -7704,7 +7817,8 @@ function buildLobsterDebateInitialChatMarkdown(
     "- 每位角色必须读取本文件中已有发言后再输出自己的下一条发言。",
     "- 裁判主持人先根据任务目标设计红队和蓝队参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
     "- 蓝队提出和修正方案；红队攻击假设、证据、边界和可验证性；双方必须点名回应对方观点。",
-    "- 每个发言批次内动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由裁判主持人根据完整群聊决定 continue / finalize / block。",
+    "- 每个发言批次必须由裁判主持人明确点名 1-3 位发言者；只有被点名的角色才发言。",
+    "- 每个发言批次内被点名的动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由裁判主持人根据完整群聊决定 continue / finalize / block。",
     "- 裁判主持人可以要求继续追问，也可以提前收束，不需要等到最大安全发言批次数。",
     "- 一旦达到最大安全发言批次数，裁判主持人必须收束，运行时不得继续追加讨论。",
     "- 收束后由共识汇总器读取完整群聊和最终立场，生成 cross-review.md、consensus.md 和 decision.json。",
@@ -7716,13 +7830,18 @@ function buildLobsterDebateInitialChatMarkdown(
 function buildLobsterDebateParticipantRosterChatMarkdown(
   participants: readonly LobsterDebateParticipantDefinition[],
   summary: string,
+  openingSpeakerIds: readonly string[],
 ): string {
+  const openingLine = openingSpeakerIds.length > 0
+    ? `首批点名发言者：${openingSpeakerIds.join("、")}`
+    : "首批点名发言者：未指定，运行时将默认由首位蓝队开场。";
   const lines: string[] = [
     "",
     "## 任务事件",
     "",
     "裁判主持人已根据任务目标完成红蓝参与者设计。",
     summary ? `组队说明：${summary}` : "组队说明：未提供。",
+    openingLine,
     "",
     ...participants.flatMap((participant) => [
       `## 参与者加入：${participant.title}（${participant.id}）`,
@@ -7767,12 +7886,33 @@ function buildLobsterDebateModeratorTurnMarkdown(
   ].join("\n");
 }
 
+function buildLobsterDebateSpeakerBatch(participants: readonly LobsterDebateParticipantDefinition[], speakerIds: readonly string[]): LobsterDebateSpeakerBatch {
+  const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
+  const normalizedSpeakerIds = speakerIds
+    .filter((speakerId): speakerId is string => typeof speakerId === "string" && Boolean(speakerId.trim()))
+    .map((speakerId) => speakerId.trim())
+    .filter((speakerId, index, list) => list.indexOf(speakerId) === index)
+    .slice(0, LOBSTER_DEBATE_MAX_BATCH_SPEAKERS)
+    .filter((speakerId) => participantById.has(speakerId));
+  const speakers = normalizedSpeakerIds
+    .map((speakerId) => participantById.get(speakerId))
+    .filter((participant): participant is LobsterDebateParticipantDefinition => Boolean(participant));
+  return {
+    speakerIds: normalizedSpeakerIds,
+    speakers,
+  };
+}
+
 function buildLobsterDebateDialogueTurnChatEventMarkdown(
   round: number,
   dialogueTurn: number,
   maxDialogueTurns: number,
   previousDecision: LobsterDebateModeratorDecisionRecord | null,
+  currentSpeakerIds: readonly string[],
 ): string {
+  const speakerLine = currentSpeakerIds.length > 0
+    ? `- 本批次点名发言者：${currentSpeakerIds.join("、")}`
+    : "- 本批次点名发言者：未指定";
   const lines = [
     "",
     "## 任务事件",
@@ -7784,7 +7924,8 @@ function buildLobsterDebateDialogueTurnChatEventMarkdown(
     previousDecision?.nextFocus?.length
       ? `- 裁判主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
       : "- 裁判主持人上一批次关注点：无",
-    "- 本批次参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
+    speakerLine,
+    "- 本批次被点名参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
     "- 本批次结束后由裁判主持人决定是否继续、收束或阻塞。",
     "",
   ];
@@ -7916,8 +8057,8 @@ function buildLobsterDebateParticipantRosterModelPrompt(
     "说明为什么这样配置蓝队和红队，以及每个参与者在攻防中的职责。",
     "",
     "## JSON",
-    "必须提供一个 JSON 代码块，结构如下。participants 数量必须在允许范围内。",
-    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"红蓝组队摘要","participants":[{"id":"blue_planner","role":"${LOBSTER_DEBATE_BLUE_TEAM_ROLE}","title":"蓝队方案方","focus":"提出可执行方案并回应红队攻击"},{"id":"red_attacker","role":"${LOBSTER_DEBATE_RED_TEAM_ROLE}","title":"红队攻击方","focus":"寻找假设漏洞、证据缺口、边界条件和阻塞风险"}]}`,
+    "必须提供一个 JSON 代码块，结构如下。participants 数量必须在允许范围内；openingSpeakerIds 用于指定首批由主持人点名发言的 1-3 位参与者，通常应先由蓝队开场。",
+    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"红蓝组队摘要","openingSpeakerIds":["blue_planner"],"participants":[{"id":"blue_planner","role":"${LOBSTER_DEBATE_BLUE_TEAM_ROLE}","title":"蓝队方案方","focus":"提出可执行方案并回应红队攻击"},{"id":"red_attacker","role":"${LOBSTER_DEBATE_RED_TEAM_ROLE}","title":"红队攻击方","focus":"寻找假设漏洞、证据缺口、边界条件和阻塞风险"}]}`,
     "",
     "原始目标：",
     task.rootPrompt,
@@ -8005,7 +8146,7 @@ function buildLobsterDebateParticipantModelPrompt(
     "3. 你只能写入上面指定的 artifact 文件；不要直接修改 chat.md、cross-review.md、consensus.md 或 decision.json。",
     "4. 你不能直接输出最终 LobsterMainDecision JSON；最终决策由共识汇总器在读取完整群聊后生成。",
     "5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；蓝队优先回应红队攻击点，红队优先继续攻击蓝队尚未修正的方案。",
-    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。裁判主持人可以在任意批次后要求继续、收束或阻塞；达到安全上限时必须收束，不得继续追加辩论。`,
+    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。只有被裁判主持人本批次明确点名的角色才应发言；达到安全上限时必须收束，不得继续追加辩论。`,
     "7. 如果发现会导致目标无法满足、证据不足、验收不可判定、风险无法接受的问题，红队应明确指出阻塞项；蓝队若能修正则改为 agree_with_reservations，否则最终立场必须使用 block。",
     "8. 只有在任务确实涉及代码、文件、权限、部署或流程执行时，才把越权写入、并发冲突、恢复失败等工程问题作为阻塞项。",
     "",
@@ -8066,7 +8207,7 @@ function buildLobsterDebateModeratorModelPrompt(
     "1. 只能读取 brief、chat.md、任务记录、主沟通文件、子任务沟通目录和必要上下文；不得修改工作区内容或任务记录。",
     "2. 只能写入上面指定的裁判主持人 artifact 文件；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
     "3. 必须基于 chat.md 中已有红蓝发言做控场，不要脱离已有讨论重写方案。",
-    "4. action=continue 表示红队提出了具体攻击点且蓝队尚未充分回应，或蓝队提出新方案但红队尚未攻击，需要再追加一个发言批次。",
+    "4. action=continue 表示红队提出了具体攻击点且蓝队尚未充分回应，或蓝队提出新方案但红队尚未攻击，需要再追加一个由你点名的发言批次。",
     "5. action=finalize 表示蓝队方案已经被红队充分攻击且关键攻击点已被回应，下一步应收集最终立场并交给共识汇总器生成 decision.json。",
     "6. action=block 表示红队指出的阻塞问题无法通过蓝队修正、补充证据、前置步骤或验收标准化解，必须进入人工复核。",
     `7. 如果当前发言批次已经达到最大安全上限 ${maxDialogueTurns}/${maxDialogueTurns}，不得输出 action=continue，只能输出 finalize 或 block。`,
@@ -8079,6 +8220,9 @@ function buildLobsterDebateModeratorModelPrompt(
     "## 点名追问",
     "如果 action=continue，列出下一批次需要蓝队或红队回答什么问题；如果不继续，写“无”。",
     "",
+    "## 下一批发言者",
+    `如果 action=continue，列出 1-${LOBSTER_DEBATE_MAX_BATCH_SPEAKERS} 个下一批被点名发言的参与者 id，每行一个；如果不继续，写“无”。`,
+    "",
     "## 主持人决策",
     "只能写一个值：continue / finalize / block。",
     "",
@@ -8089,8 +8233,8 @@ function buildLobsterDebateModeratorModelPrompt(
     "action=continue 时列出 1~5 条下一轮要聚焦的问题；否则写“无”。",
     "",
     "## JSON",
-    "必须提供一个 JSON 代码块，结构如下。action 只能是 continue / finalize / block。",
-    '{"artifactFile":"<moderator artifact path>","dialogueTurn":1,"action":"continue","reason":"原因","nextFocus":["下一轮关注点"]}',
+    "必须提供一个 JSON 代码块，结构如下。action 只能是 continue / finalize / block；action=continue 时 nextSpeakerIds 必须给出 1-3 个下一批发言者 id。",
+    '{"artifactFile":"<moderator artifact path>","dialogueTurn":1,"action":"continue","reason":"原因","nextSpeakerIds":["blue_planner"],"nextFocus":["下一轮关注点"]}',
     "",
     "原始目标：",
     task.rootPrompt,
@@ -8213,11 +8357,16 @@ function buildLobsterDebateDialogueTurnStartedText(
   round: number,
   dialogueTurn: number,
   maxDialogueTurns: number,
+  speakers: readonly LobsterDebateParticipantDefinition[],
   paths: LobsterDebatePaths,
 ): string {
+  const speakersLine = speakers.length > 0
+    ? `点名发言者：${speakers.map((speaker) => `${speaker.title}(${speaker.id})`).join("、")}`
+    : "点名发言者：未指定";
   return [
     `🦞 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
     `龙虾任务：${taskId}`,
+    speakersLine,
     `chat：${paths.chatFile}`,
   ].join("\n");
 }
@@ -8366,6 +8515,9 @@ function buildLobsterDebateModeratorFinishedText(
     `轮次：${round}`,
     `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
     `理由：${decision.reason}`,
+    decision.nextSpeakerIds.length > 0
+      ? `下一批发言者：${decision.nextSpeakerIds.join("、")}`
+      : "下一批发言者：无",
     decision.nextFocus.length > 0
       ? `下一轮关注点：${decision.nextFocus.join("；")}`
       : "下一轮关注点：无",

@@ -61,6 +61,7 @@ export type LobsterDebateChatPanelState = {
 	    mainCommunicationFile: string;
 	    currentRound: number;
 	    updatedAt: number;
+	    canSupplement: boolean;
 	    canContinue: boolean;
 	    canStop: boolean;
 	  };
@@ -724,9 +725,9 @@ function buildLobsterDebateChatPanelHtml(
         </div>
         <div class="actions">
           ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
-          ${!state.task.canStop && state.task.canContinue ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
+          ${state.task.canSupplement ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
           ${!state.task.canStop && state.task.canContinue ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
-          <button class="button${state.task.canStop || state.task.canContinue ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
+          <button class="button${state.task.canStop || state.task.canContinue || state.task.canSupplement ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
         </div>
       </header>
       <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">

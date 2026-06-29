@@ -27,8 +27,10 @@ import {
   LOBSTER_DEBATE_RED_TEAM_ROLE,
   normalizeLobsterDebateSessionId,
   normalizeLobsterDebateModeratorAction,
+  normalizeLobsterDebateSpeakerIds,
   parseLobsterDebateChatTranscript,
   resolveLobsterTaskRunControlState,
+  selectDefaultLobsterDebateOpeningSpeakerIds,
   validateLobsterDebateConsensus,
   type LobsterDebateModeratorDecisionRecord,
   type LobsterDebateParticipantRecord,
@@ -52,6 +54,7 @@ test("resolves lobster task run controls from persisted running status", () => {
   );
 
   assert.equal(controlState.isRunning, true);
+  assert.equal(controlState.canSupplement, true);
   assert.equal(controlState.canStop, true);
   assert.equal(controlState.canContinue, false);
 });
@@ -59,19 +62,19 @@ test("resolves lobster task run controls from persisted running status", () => {
 test("keeps lobster continue available only for incomplete non-running tasks", () => {
   assert.deepEqual(
     resolveLobsterTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set()),
-    { isRunning: false, canContinue: true, canStop: false },
+    { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
   assert.deepEqual(
     resolveLobsterTaskRunControlState({ id: "task-1", status: "stopped" }, new Set()),
-    { isRunning: false, canContinue: true, canStop: false },
+    { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
   assert.deepEqual(
     resolveLobsterTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set(["task-1"])),
-    { isRunning: true, canContinue: false, canStop: true },
+    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
   );
   assert.deepEqual(
     resolveLobsterTaskRunControlState({ id: "task-1", status: "completed" }, new Set(["task-1"])),
-    { isRunning: false, canContinue: false, canStop: false },
+    { isRunning: false, canSupplement: false, canContinue: false, canStop: false },
   );
 });
 
@@ -81,7 +84,7 @@ test("blocks lobster continue when main AI failure limit has already been reache
       { id: "task-1", status: "needs-review", mainAiFailureLimitReached: true },
       new Set(),
     ),
-    { isRunning: false, canContinue: false, canStop: false },
+    { isRunning: false, canSupplement: false, canContinue: false, canStop: false },
   );
 });
 
@@ -288,6 +291,7 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
       dialogueTurn: 1,
       action: "continue",
       reason: "需要追问",
+      nextSpeakerIds: ["risk"],
       nextFocus: [],
       sessionId: "moderator-session-1",
       updatedAt: 1,
@@ -297,6 +301,7 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
       dialogueTurn: 2,
       action: "finalize",
       reason: "可以收束",
+      nextSpeakerIds: [],
       nextFocus: [],
       sessionId: "moderator-session-2",
       updatedAt: 2,
@@ -309,6 +314,26 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
   assert.equal(findLatestLobsterDebateParticipantSessionId(participants, "risk"), "session-risk-1");
   assert.equal(findLatestLobsterDebateParticipantSessionId(participants, "testing"), null);
   assert.equal(findLatestLobsterDebateModeratorSessionId(moderatorDecisions), "moderator-session-2");
+});
+
+test("normalizes moderator-selected speaker ids and chooses a blue opening speaker by default", () => {
+  assert.deepEqual(
+    normalizeLobsterDebateSpeakerIds(
+      ["red-attacker", "blue-planner", "red-attacker", "unknown"],
+      ["blue-planner", "red-attacker"],
+      2,
+    ),
+    ["red-attacker", "blue-planner"],
+  );
+
+  assert.deepEqual(
+    selectDefaultLobsterDebateOpeningSpeakerIds([
+      { id: "red-attacker", role: "red_team" },
+      { id: "blue-planner", role: "blue_team" },
+      { id: "blue-reviewer", role: "blue_team" },
+    ]),
+    ["blue-planner"],
+  );
 });
 
 test("parses debate chat transcript into role-oriented segments", () => {
