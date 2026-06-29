@@ -5975,7 +5975,7 @@ async function runLobsterDebateRound(options: {
         dialogueTurn,
         LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
         finalModeratorDecision,
-        currentSpeakerBatch.speakerIds,
+        currentSpeakerBatch.speakers,
       )
     );
     if (!dialogueTurnEventAppended) {
@@ -8716,7 +8716,12 @@ function appendLobsterMainSubChatMainDecision(
     bodyLines.push("### 总结");
     bodyLines.push(decision.finalSummary);
   }
-  appendLobsterMainSubChatSection(task, `主任务发言：第 ${round} 轮（main）`, bodyLines.join("\n"));
+  bodyLines.unshift(`- 成员 ID：main`);
+  appendLobsterMainSubChatSection(
+    task,
+    `主任务发言：第 ${round} 轮${formatLobsterGroupChatMemberName("主任务")}`,
+    bodyLines.join("\n"),
+  );
   if (decision.status === "completed") {
     appendLobsterMainSubChatSection(task, "群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task, decision));
   }
@@ -8749,7 +8754,8 @@ function appendLobsterMainSubChatSubtaskStarted(
   const index = latest.subTasks.findIndex((item) => item.id === subtask.id);
   const title = getLobsterSubtaskDisplayTitle(index, subtask);
   const retryLine = retryCount > 0 ? `- 重试：第 ${retryCount} 次` : null;
-  appendLobsterMainSubChatSection(latest, `子任务加入：${title}（${subtask.id}）`, [
+  appendLobsterMainSubChatSection(latest, `子任务加入：${formatLobsterGroupChatMemberName(title)}`, [
+    `- 成员 ID：${subtask.id}`,
     `- 时间：${new Date().toISOString()}`,
     `- 轮次：${round}`,
     retryLine,
@@ -8770,12 +8776,16 @@ function appendLobsterMainSubChatSubtaskFinished(
   const title = getLobsterSubtaskDisplayTitle(index, latestSubtask);
   appendLobsterMainSubChatSection(
     latest,
-    `子任务发言：${title}（${latestSubtask.id}）`,
-    buildLobsterMainSubSubtaskTurnBody({
-      runStatus,
-      assistantContent,
-      communicationFile: latestSubtask.communicationFile,
-    }),
+    `子任务发言：${formatLobsterGroupChatMemberName(title)}`,
+    [
+      `- 成员 ID：${latestSubtask.id}`,
+      "",
+      buildLobsterMainSubSubtaskTurnBody({
+        runStatus,
+        assistantContent,
+        communicationFile: latestSubtask.communicationFile,
+      }),
+    ].join("\n"),
   );
 }
 
