@@ -4015,9 +4015,10 @@ function buildLobsterMainSubChatPanelRound(
   const chatFile = ensureLobsterMainSubChatTranscript(task);
   const activeSubtaskIds = getActiveLobsterSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
+  const mainTitle = getLobsterMainSubChatMainTitle(task);
   const mainParticipant: LobsterDebateChatPanelRound["participants"][number] = {
     id: "main",
-    title: "主任务",
+    title: mainTitle,
     role: "main",
     status: mainRunning ? "running" : task.status,
     sessionId: task.sessionId ?? null,
@@ -4074,12 +4075,18 @@ function buildLobsterMainSubChatActiveSpeaker(
     return {
       kind: "main",
       id: "main",
-      title: "主任务",
+      title: getLobsterMainSubChatMainTitle(task),
       dialogueTurn: Math.max(1, task.currentRound || 1),
       updatedAt: task.updatedAt,
     };
   }
   return undefined;
+}
+
+function getLobsterMainSubChatMainTitle(task: Pick<LobsterTaskRecord, "executionMode">): string {
+  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+    ? "主持人主智能体"
+    : "主任务";
 }
 
 function ensureLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
@@ -4092,6 +4099,7 @@ function ensureLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
 }
 
 function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
+  const mainTitle = getLobsterMainSubChatMainTitle(task);
   const lines: string[] = [
     "# 龙虾主从群聊记录",
     "",
@@ -4103,7 +4111,9 @@ function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): stri
     `- 主任务沟通文件：${task.mainCommunicationFile}`,
     "",
     "## 群聊规则",
-    "- 主任务负责拆分、派发、复核和最终验收。",
+    normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+      ? "- 主持人主智能体负责继承红蓝规划共识，拆分、派发、复核和最终验收。"
+      : "- 主任务负责拆分、派发、复核和最终验收。",
     "- 子任务会在派发和执行时动态加入群聊，并以“子任务 1~N”标记。",
     "- 本页面只读，真实执行仍以任务记录、主任务沟通文件和子任务沟通文件为准。",
     "",
@@ -4118,7 +4128,7 @@ function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): stri
       if (round.role === "main") {
         lines.push(
           "",
-          `## 主任务发言：第 ${round.round} 轮${formatLobsterGroupChatMemberName("主任务")}`,
+          `## 主任务发言：第 ${round.round} 轮${formatLobsterGroupChatMemberName(mainTitle)}`,
           ["- 成员 ID：main", "", formatLobsterRoundRecordForChat(round)].join("\n"),
         );
         return;
@@ -5530,16 +5540,25 @@ async function runLobsterPrompt(
     }
 
     const executionMode = normalizeLobsterExecutionMode(latest.executionMode);
+    const shouldRunPlanningDebate = executionMode === "debate_multi_agent"
+      && shouldRunLobsterPlanningDebate(latest, round);
     let decisionRunResult: LobsterMainDecisionRunResult;
     try {
-      decisionRunResult = executionMode === "debate_multi_agent"
+      decisionRunResult = shouldRunPlanningDebate
         ? await runLobsterDebateRound({ input, target, task: latest, round })
-        : await runClassicLobsterMainDecision({ input, target, task: latest, round });
+        : await runClassicLobsterMainDecision({
+            input,
+            target,
+            task: latest,
+            round,
+            moderatorLed: executionMode === "debate_multi_agent",
+          });
     } catch (error) {
       void logError("lobster-main-decision-run-error", {
         taskId: latest.id,
         round,
         executionMode,
+        shouldRunPlanningDebate,
         error: errorToMessage(error),
       });
       markLobsterTaskInterrupted(latest.id, "error", target, {
@@ -5611,8 +5630,10 @@ async function runClassicLobsterMainDecision(options: {
   target: PromptRunTarget;
   task: LobsterTaskRecord;
   round: number;
+  moderatorLed?: boolean;
 }): Promise<LobsterMainDecisionRunResult> {
   const { input, target, task, round } = options;
+  const moderatorLed = options.moderatorLed === true;
   let mainStatus: TaskRunStatus;
   try {
     mainStatus = await runLobsterRound({
@@ -5621,13 +5642,22 @@ async function runClassicLobsterMainDecision(options: {
       task,
       round,
       role: "main",
-      displayPrompt: buildLobsterMainDisplayPrompt(task.rootPrompt, round),
-      modelPrompt: buildLobsterMainModelPrompt(
-        input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
-        task,
-        round,
-        input.lobsterContinuePrompt,
-      ),
+      displayPrompt: moderatorLed
+        ? buildLobsterModeratorMainDisplayPrompt(task.rootPrompt, round)
+        : buildLobsterMainDisplayPrompt(task.rootPrompt, round),
+      modelPrompt: moderatorLed
+        ? buildLobsterModeratorMainModelPrompt(
+            input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+            task,
+            round,
+            input.lobsterContinuePrompt,
+          )
+        : buildLobsterMainModelPrompt(
+            input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+            task,
+            round,
+            input.lobsterContinuePrompt,
+          ),
     });
   } catch (error) {
     void logError("lobster-main-round-run-error", {
@@ -5753,6 +5783,60 @@ type LobsterDebateSessionState = {
   participants: Partial<Record<string, string>>;
   moderator: string | null;
 };
+
+function shouldRunLobsterPlanningDebate(task: LobsterTaskRecord, round: number): boolean {
+  if (normalizeLobsterExecutionMode(task.executionMode) !== "debate_multi_agent") {
+    return false;
+  }
+  void round;
+  return !findReusableLobsterPlanningDebateRound(task);
+}
+
+function findReusableLobsterPlanningDebateRound(
+  task: LobsterTaskRecord,
+): LobsterDebateRoundRecord<LobsterMainDecision> | null {
+  const rounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
+  const sortedRounds = rounds
+    .filter((round) => round.status === "consensus" && Boolean(round.consensus))
+    .slice()
+    .sort((left, right) => (
+      left.lobsterRound - right.lobsterRound
+      || left.debateRound - right.debateRound
+      || left.startedAt - right.startedAt
+    ));
+
+  for (const round of sortedRounds) {
+    const paths = buildLobsterDebatePaths(task.communicationDir, round.lobsterRound, round.debateRound);
+    const participants = resolveExistingLobsterDebateParticipantRecords(
+      task,
+      round.lobsterRound,
+      round.debateRound,
+      paths,
+      undefined,
+      buildLobsterDebateSessionState(task, round.lobsterRound, round.debateRound),
+    );
+    const reusable = evaluateReusableLobsterDebateDecision(
+      task,
+      round.lobsterRound,
+      round.debateRound,
+      paths,
+      participants,
+    );
+    if (reusable.status === "reusable" && reusable.decision.status !== "blocked") {
+      return round;
+    }
+  }
+
+  return null;
+}
+
+function readLobsterPlanningDebateDecision(
+  task: LobsterTaskRecord,
+  round: Pick<LobsterDebateRoundRecord<LobsterMainDecision>, "lobsterRound" | "debateRound">,
+): LobsterMainDecision | null {
+  const paths = buildLobsterDebatePaths(task.communicationDir, round.lobsterRound, round.debateRound);
+  return parseLobsterMainDecision(readTextFileIfNonEmpty(paths.decisionFile));
+}
 
 async function runLobsterDebateRound(options: {
   input: PromptRunInput;
@@ -8730,9 +8814,10 @@ function appendLobsterMainSubChatMainDecision(
     bodyLines.push(decision.finalSummary);
   }
   bodyLines.unshift(`- 成员 ID：main`);
+  const mainTitle = getLobsterMainSubChatMainTitle(task);
   appendLobsterMainSubChatSection(
     task,
-    `主任务发言：第 ${round} 轮${formatLobsterGroupChatMemberName("主任务")}`,
+    `主任务发言：第 ${round} 轮${formatLobsterGroupChatMemberName(mainTitle)}`,
     bodyLines.join("\n"),
   );
   if (decision.status === "completed") {
@@ -9124,6 +9209,21 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
   ].join("\n");
 }
 
+function buildLobsterModeratorMainDisplayPrompt(rootPrompt: string, round: number): string {
+  if (round === 1) {
+    return [
+      rootPrompt,
+      "",
+      "🦞 龙虾主持人主智能体：红蓝规划共识已形成，请基于共识进入主从多智能体执行，不再重复红蓝辩论。",
+    ].join("\n");
+  }
+  return [
+    `🦞 龙虾主持人主智能体第 ${round} 轮复核。`,
+    "上一批子任务已结束，请读取首轮红蓝规划共识、任务记录和主从沟通文件；后续实现阶段使用主从多智能体模式继续派发或验收。",
+    "本轮必须预判 estimatedRemainingRounds，说明当前决策之后预计还剩多少轮。",
+  ].join("\n");
+}
+
 function buildLobsterSubtaskDisplayPrompt(round: number, subtask: LobsterSubtaskRecord, retryCount = 0): string {
   const retryLine = retryCount > 0
     ? `第 ${retryCount} 次重试（最多 ${LOBSTER_SUBTASK_RETRY_MAX_RETRIES} 次）。`
@@ -9209,6 +9309,68 @@ function buildLobsterMainModelPrompt(
     ] : []),
     "原始目标：",
     rootPrompt,
+  ].join("\n");
+}
+
+function buildLobsterModeratorMainModelPrompt(
+  rootPrompt: string,
+  task: LobsterTaskRecord,
+  round: number,
+  continuePrompt?: string,
+): string {
+  const planningDebate = findReusableLobsterPlanningDebateRound(task);
+  const planningPaths = planningDebate
+    ? buildLobsterDebatePaths(task.communicationDir, planningDebate.lobsterRound, planningDebate.debateRound)
+    : null;
+  const planningDecision = planningDebate?.consensus?.decision
+    ?? (planningDebate ? readLobsterPlanningDebateDecision(task, planningDebate) : null);
+  const planningConsensus = planningDebate?.consensus;
+  const mainSubChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
+  const basePrompt = buildLobsterMainModelPrompt(rootPrompt, task, round, continuePrompt);
+  const planningLines = planningDebate && planningPaths
+    ? [
+        `- 红蓝规划轮次：主任务第 ${planningDebate.lobsterRound} 轮 / 辩论第 ${planningDebate.debateRound} 轮`,
+        `- brief 文件：${planningPaths.briefFile}`,
+        `- 红蓝群聊记录：${planningPaths.chatFile}`,
+        `- 参与者清单：${planningPaths.participantRosterFile}`,
+        `- cross-review 文件：${planningPaths.crossReviewFile}`,
+        `- consensus 文件：${planningPaths.consensusFile}`,
+        `- decision 文件：${planningPaths.decisionFile}`,
+        planningConsensus?.summary ? `- 红蓝共识摘要：${planningConsensus.summary}` : "- 红蓝共识摘要：未记录",
+        planningDecision?.status ? `- 红蓝规划初始决策状态：${planningDecision.status}` : "- 红蓝规划初始决策状态：未解析",
+        typeof planningDecision?.estimatedRemainingRounds === "number"
+          ? `- 红蓝规划预计剩余轮次：${planningDecision.estimatedRemainingRounds}`
+          : "- 红蓝规划预计剩余轮次：未记录",
+      ]
+    : [
+        "- 未找到可复用的红蓝规划共识；如果你无法确认规划基线，必须返回 blocked，说明需要先完成规划辩论。",
+      ];
+
+  return [
+    "你正在执行 VS Code 插件的龙虾红蓝辩论模式后续实现阶段。",
+    "",
+    "关键阶段规则（必须优先遵守）：",
+    "1. 红蓝辩论只用于规划阶段；当前阶段不要再启动、要求或模拟新的红蓝辩论。",
+    "2. 你现在是主持人主智能体，负责把首轮红蓝规划共识落到主从多智能体执行链路中。",
+    "3. 后续实现、复核、继续派发和最终验收都由你主持；具体实现仍由程序根据你的 JSON 决策启动子任务。",
+    "4. 你必须把首轮红蓝共识作为规划基线。只有执行反馈证明共识需要调整时，才可通过新的子任务、验收标准或 blocked 决策调整，不得忽略红队已识别的风险。",
+    "5. 你仍然不能直接修改工作区内容；只能输出一个符合 LobsterMainDecision 的 JSON，由程序派发子任务。",
+    "",
+    "必须读取的规划与执行上下文：",
+    ...planningLines,
+    `- 主从执行群聊：${mainSubChatFile}`,
+    `- 主任务沟通文件：${task.mainCommunicationFile}`,
+    `- 任务记录文件：${task.taskStoreFile}`,
+    "",
+    "主持人主智能体职责补充：",
+    "- 第 1 次红蓝共识已经完成了规划审查；你应从主从执行视角拆分或复核子任务，不要重复组织蓝队/红队发言。",
+    "- 派发子任务时，必须把相关红蓝共识、红队风险、蓝队修正方案和验收证据要求写入 subtasks[*].prompt。",
+    "- 子任务完成后，优先依据子任务沟通文件和主从执行群聊做验收；证据不足时继续派发验证或修复子任务。",
+    "- 如果执行阶段发现首轮共识存在无法自动化解决的阻塞问题，返回 status=blocked，并在 finalSummary 说明需要人工复核的原因。",
+    "",
+    "下面是通用主任务协议，除本节新增的红蓝规划阶段规则外，仍需完整遵守：",
+    "",
+    basePrompt,
   ].join("\n");
 }
 

@@ -17,13 +17,13 @@
 - 批次内所有子任务完成后，扩展唤醒主任务复核。
 - 只有主任务最终返回 `status=completed`，且 AI 对话主消息流同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，任务才真正完成；最终总结气泡仍需要同时展示 `answerConclusion` 问题回答结论和整体任务总结。
 
-这个模式的问题不在子任务执行，而在规划和复核决策仍由一个主任务单点完成。复杂任务里，单个主任务容易出现三个问题：
+这个模式的问题不在子任务执行，而在初始规划仍由一个主任务单点完成。复杂任务里，单个主任务容易出现三个问题：
 
 - 规划视角不足：只从一个思路拆任务，容易漏掉架构、测试、风险、用户体验或兼容性维度。
 - 过早收敛：主任务可能直接派发自己认为合理的子任务，缺少异议和交叉质询。
-- 验收偏置：后续复核也可能沿用最初方案的假设，遗漏“这个方案本身是否成立”的审查。
+- 验收偏置：后续复核如果没有明确继承首轮审查结论，可能沿用最初方案的假设，遗漏“这个方案本身是否成立”的审查。
 
-因此新增的“辩论多智能体”不应重写子任务执行系统，而应替换“主任务单独规划/复核”这个决策阶段。当前实现已升级为红蓝对抗语义：蓝队提出、捍卫和修正方案，红队从反方视角攻击假设、覆盖、证据和可验证性，裁判主持人负责控场和收束；红蓝对抗不限于代码任务。
+因此新增的“辩论多智能体”不应重写子任务执行系统，而应替换“主任务单独初始规划”这个决策阶段。当前实现已升级为红蓝对抗语义：蓝队提出、捍卫和修正方案，红队从反方视角攻击假设、覆盖、证据和可验证性，裁判主持人负责控场和收束；红蓝对抗不限于代码任务。红蓝规划共识形成后，后续实现、复核和继续派发由裁判主持人作为主智能体，复用主从多智能体链路推进。
 
 ## 目标
 
@@ -34,15 +34,15 @@
 - 用户仍然选择顶层 `龙虾` 模式。
 - 龙虾模式下的执行方式可选：
   - `主从多智能体`：沿用当前主任务单独规划，再派发子任务。
-  - `红蓝辩论多智能体`：蓝队提出可执行方案，红队攻击方案假设、证据和边界并暴露风险，裁判主持人收束后形成一致结论，再派发子任务。
-- 红蓝辩论只发生在规划和复核决策阶段。
-- 红蓝辩论形成的最终规划仍输出为现有龙虾主任务 JSON 决策。
+  - `红蓝辩论多智能体`：蓝队提出可执行方案，红队攻击方案假设、证据和边界并暴露风险，裁判主持人收束后形成规划共识，再进入主持人主导的主从多智能体实现阶段。
+- 红蓝辩论只发生在规划阶段。
+- 红蓝辩论形成的规划共识仍输出为现有龙虾主任务 JSON 决策；后续复核轮由主持人主智能体读取该共识、主从执行群聊和子任务沟通文件后继续输出同一 JSON 协议。
 - 子任务派发、并发冲突规划、子任务重试、沟通文件、最终总结气泡、任务保留清理，尽量复用现有链路。
 
 成功标准：
 
 - 规划不是由单个主任务直接给出，而是至少 1 个蓝队参与者和 1 个红队参与者在共享 `chat.md` 群聊记录里攻防；蓝队必须回应红队攻击，红队必须攻击蓝队方案。
-- 每一轮派发子任务前，都能在沟通目录中找到对应的辩论记录和共识摘要。
+- 首轮派发子任务前，能在沟通目录中找到对应的辩论记录和共识摘要；后续轮次能在主持人主任务提示和主从执行群聊中追溯首轮红蓝规划共识。
 - 只有不存在阻塞性异议时，才允许派发子任务或标记完成。
 - 如果无法达成一致，任务进入 `needs-review`，而不是静默选择某一方观点继续执行。
 
@@ -146,12 +146,12 @@
 做法：
 
 - 新增龙虾执行方式 `debate_multi_agent`。
-- 每个主任务复核轮开始时，扩展先启动多个辩论参与者。
+- 第一个规划决策轮开始时，扩展先启动多个辩论参与者。
 - 参与者只读取任务记录、沟通文件和工作区上下文，分别写出观点。
 - 至少经过“主持人指定首批发言”和“主持人继续点名/最终立场”两个群聊阶段。
 - 扩展收集辩论产物，再运行一个“共识汇总”步骤。
-- 共识汇总必须输出现有 `LobsterMainDecision` JSON。
-- 后续 `applyLobsterMainDecision`、子任务批次执行、最终总结全部复用现有链路。
+- 共识汇总必须输出现有 `LobsterMainDecision` JSON，作为首批执行决策。
+- 后续 `applyLobsterMainDecision`、子任务批次执行、主持人主智能体复核和最终总结全部复用现有主从链路。
 
 优点：
 
@@ -162,7 +162,7 @@
 
 缺点：
 
-- 每轮主任务决策会变慢，成本增加。
+- 首轮规划决策会变慢，成本增加；后续实现轮次恢复为主从链路，成本可控。
 - 需要新增辩论记录、角色类型和共识校验。
 - UI 需要处理更多临时运行状态。
 
@@ -175,8 +175,9 @@
 核心决策：
 
 - `红蓝辩论多智能体` 是龙虾模式下的执行方式，不是新的顶层 `InteractiveMode`；内部协议值仍是 `debate_multi_agent`。
-- 红蓝辩论只替代主任务规划/复核阶段。
-- 红蓝辩论完成后必须生成现有龙虾主任务 JSON 决策。
+- 红蓝辩论只替代初始规划阶段。
+- 红蓝辩论完成后必须生成现有龙虾主任务 JSON 决策，作为首批执行决策。
+- 后续实现和复核由裁判主持人作为主智能体，使用主从多智能体模式继续输出同一 JSON 协议。
 - 子任务执行链路保持不变。
 - 每个龙虾任务创建时固化执行方式，恢复任务时以任务记录为准。
 
@@ -240,7 +241,7 @@
 🦞 辩论未达成一致：存在阻塞性异议，已进入人工复核
 ```
 
-完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划复核阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
+完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
 
 ## 数据模型设计
 
@@ -488,6 +489,7 @@ type LobsterDebateRoundRecord = {
   → 走现有 runLobsterRound 主任务决策
   ↓
 如果 executionMode=debate_multi_agent
+  → 如果尚无可复用红蓝规划共识
   → 构造辩论 brief 和 chat.md
   → 主持人先设计 2-6 个动态参与者并写入 moderator-participants.md
   → 扩展把动态参与者加入 chat.md
@@ -500,11 +502,12 @@ type LobsterDebateRoundRecord = {
   → 输出现有 LobsterMainDecision JSON
   → 复用 applyLobsterMainDecision
   → 复用子任务批次执行
+  → 后续轮次读取首轮红蓝规划共识，由主持人主智能体走主从多智能体复核
 ```
 
 ### 阶段 1：构造辩论简报
 
-扩展在每个主任务复核轮开始前生成 `brief.md`。
+扩展只在缺少可复用红蓝规划共识时生成 `brief.md`。新建 `debate_multi_agent` 任务通常只在第一个规划决策轮生成；恢复任务时，如果已有完整有效的红蓝规划共识，则不会重复生成新的辩论轮。
 
 必须包含：
 
@@ -741,9 +744,9 @@ async function runLobsterDebateRound(options: {
 `runLobsterPrompt` 中替换点：
 
 ```ts
-const mainResult = task.executionMode === "debate_multi_agent"
+const mainResult = task.executionMode === "debate_multi_agent" && shouldRunLobsterPlanningDebate(task, round)
   ? await runLobsterDebateRound({ input, target, task: latest, round })
-  : await runClassicLobsterMainDecision({ input, target, task: latest, round });
+  : await runClassicLobsterMainDecision({ input, target, task: latest, round, moderatorLed: task.executionMode === "debate_multi_agent" });
 ```
 
 为了降低风险，建议先把当前主任务逻辑抽成：
@@ -839,9 +842,9 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 恢复规则：
 
 - 继续使用任务记录里的 `executionMode`。
-- 如果上一轮 debate 已经完成，且存在完整 `chat.md`、主持人控场、最终 participant artifacts、`cross-review.md`、`consensus.md` 和 `decision.json`，恢复时优先解析该 decision，避免重复辩论。
-- 如果上一轮 debate 缺少共识、主持人控场或任一参与者 artifact，重新执行该 debate round。
-- 如果旧产物来自非群聊版本或固定两轮版本，缺少 `chat.md`、主持人控场或收束标记，恢复时重跑当前辩论轮。
+- 如果规划 debate 已经完成，且存在完整 `chat.md`、主持人控场、最终 participant artifacts、`cross-review.md`、`consensus.md` 和 `decision.json`，恢复和后续轮次优先复用该规划共识，避免重复辩论。
+- 如果规划 debate 缺少共识、主持人控场或任一参与者 artifact，重新执行规划辩论。
+- 如果旧产物来自非群聊版本或固定两轮版本，缺少 `chat.md`、主持人控场或收束标记，恢复时补跑规划辩论。
 - 已完成任务缺失 `lobsterAnswerConclusion=true` 问题回答结论气泡、缺失 `lobsterFinalSummary=true` 最终总结气泡，或最终总结气泡缺少问题回答结论展示时，仍沿用现有自动恢复最终消息机制。
 
 ## 与现有链路的关系
@@ -903,7 +906,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 3. 观察主 tab 出现辩论启动消息。
 4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
 5. 检查共识后仍按现有 `subtasks` 启动子任务。
-6. 子任务完成后唤醒下一轮辩论复核。
+6. 子任务完成后唤醒主持人主智能体复核，并检查没有新增 `debates/round-2/`；后续复核只读取首轮红蓝规划共识和主从执行群聊。
 7. 最终完成时 AI 对话主消息流仍出现 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，且最终总结气泡内同时包含问题回答结论和整体任务总结。
 
 ### 回归验证
