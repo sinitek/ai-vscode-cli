@@ -3,6 +3,10 @@
 - 日期：YYYY-MM-DD
 - 状态：draft / in-progress / blocked / completed
 - 负责人：Codex / 人类 / 协作
+- owner：
+- claimed_at：
+- claim_ttl：
+- handoff_to：
 
 ## 背景
 
@@ -39,11 +43,14 @@
 ## 验证计划
 
 - 最小相关验证：
+- 单元自测命令：
 - 扩展验证：
 
 ## 测试与清单同步
 
-- 单元测试：
+- 单元测试新增/更新：
+- 单元自测结果：
+- 失败处理记录：
 - 功能清单：
 - 相关文档同步：
 

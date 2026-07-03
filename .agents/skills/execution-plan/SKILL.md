@@ -17,7 +17,7 @@ description: Use for non-trivial, multi-step, risky, or cross-cutting changes th
 ## 工作流
 
 1. 使用 `.ch/docs/exec-plans/TEMPLATE.md` 创建或更新 `.ch/docs/exec-plans/active/<YYYY-MM-DD>-<slug>.md`。
-2. 记录目标、背景、范围、非目标、验收标准、影响面、风险、验证计划、未决问题。
+2. 记录目标、背景、范围、非目标、验收标准、影响面、风险、验证计划、单元自测命令、未决问题。
 3. 把任务列表与计划状态保持一致。
 4. 如果实现过程中出现关键决策或偏离，立刻写回计划或相关设计文档。
 5. 收尾前，检查相关文档是否需要同步更新，包括：
@@ -26,13 +26,15 @@ description: Use for non-trivial, multi-step, risky, or cross-cutting changes th
    - `.ch/docs/design-docs/*`
    - `.ch/docs/product-specs/*`
    - `.ch/docs/references/*`
-6. 工作真正完成后，把计划移入 `.ch/docs/exec-plans/completed/`，并留下验证结论。
+6. 对有一定复杂度的功能，按项目现有测试体系执行单元自测；若失败，先按实现缺陷、断言过期、夹具问题、环境问题、历史失败或范围外失败分类，再修复、隔离或记录。
+7. 工作真正完成后，把计划移入 `.ch/docs/exec-plans/completed/`，并留下验证结论。
 
 ## 产出要求
 
 - 给出当前计划文件路径
 - 标记当前阶段
 - 明确已经验证了什么、还缺什么
+- 记录单元自测命令、结果和失败处理结论
 
 ## 不要这样做
 

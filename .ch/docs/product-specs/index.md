@@ -2,9 +2,8 @@
 
 ## 当前文档
 
-- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`：当前插件能力规格与范围说明
-- `.ch/docs/product-specs/FEATURE_INVENTORY.md`：功能总表
 - `.ch/docs/product-specs/TEMPLATE.md`：规格模板
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md`：功能总表
 
 ## 规格文档应该回答的问题
 
@@ -13,3 +12,8 @@
 - 范围与非范围分别是什么
 - 需要兼容哪些角色、流程、权限或集成
 - 如何验收
+
+## 与记忆热区的边界
+
+- 热区记忆只负责优先召回和跨会话入口，不替代规格文档。
+- 只要变化已经影响用户可见行为、权限、流程或验收，就必须进入规格或功能清单，而不是只写在 `memory/` 或计划里。

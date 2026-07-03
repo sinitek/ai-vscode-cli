@@ -1,0 +1,561 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "codex-harness-sync",
+  "templateSource": "codex-harness-template",
+  "mode": "update",
+  "generatedAt": "2026-07-03T06:59:36+00:00",
+  "files": [
+    {
+      "path": ".agents/profiles/README.md",
+      "source": "app/.agents/profiles/README.md",
+      "sha256": "c26781794f33b37975c2d31c2c58a9ac8ec2bf862675b739b510a1cee0d3db67",
+      "bytes": 900
+    },
+    {
+      "path": ".agents/profiles/implementer.md",
+      "source": "app/.agents/profiles/implementer.md",
+      "sha256": "c78819fc645f0acaf51ba26f67ef0bc9dbcb884e2d59de01feb55522a9fa832f",
+      "bytes": 978
+    },
+    {
+      "path": ".agents/profiles/planner.md",
+      "source": "app/.agents/profiles/planner.md",
+      "sha256": "4babe8309feb7c3e1e4ce2f0a15ec23f5caed9ad570705699759a74851fba5bf",
+      "bytes": 955
+    },
+    {
+      "path": ".agents/profiles/reviewer.md",
+      "source": "app/.agents/profiles/reviewer.md",
+      "sha256": "cbffd8e357a24cb41600122da6d4d54e5ba1faaa121d87106cb518a3db082712",
+      "bytes": 1054
+    },
+    {
+      "path": ".agents/skills/AGENTS.md",
+      "source": "app/.agents/skills/AGENTS.md",
+      "sha256": "f6caf7c146d98652c497b7eca200aac3c6354db09d3728149d89c090083f4bb4",
+      "bytes": 944
+    },
+    {
+      "path": ".agents/skills/claim-release-auditor/SKILL.md",
+      "source": "app/.agents/skills/claim-release-auditor/SKILL.md",
+      "sha256": "3e9ac6e44bea79dafb252514916a799bad941f235f4fc1324b99d951f8b06823",
+      "bytes": 1735
+    },
+    {
+      "path": ".agents/skills/claim-release-auditor/scripts/audit_plan_claims.py",
+      "source": "app/.agents/skills/claim-release-auditor/scripts/audit_plan_claims.py",
+      "sha256": "d5460fe08340267a24b37391af17c9be19759be71ea0df8067ab39cba10f1519",
+      "bytes": 11179
+    },
+    {
+      "path": ".agents/skills/codegraph/SKILL.md",
+      "source": "app/.agents/skills/codegraph/SKILL.md",
+      "sha256": "4ddd96e4f0356be750a0f1ff10bbc3086f6c5af493a3d8466d61f3c99aaeb29e",
+      "bytes": 3412
+    },
+    {
+      "path": ".agents/skills/execution-plan/SKILL.md",
+      "source": "app/.agents/skills/execution-plan/SKILL.md",
+      "sha256": "a4295391361922b734f640b70c112131780fe8567f368980657696a1bfa36055",
+      "bytes": 1861
+    },
+    {
+      "path": ".agents/skills/harness-workbench/SKILL.md",
+      "source": "app/.agents/skills/harness-workbench/SKILL.md",
+      "sha256": "9f7d9f2ab86d01966c6958001324155e401ea8ecc61d5a26e785fe9a0f9d453c",
+      "bytes": 1424
+    },
+    {
+      "path": ".agents/skills/harness-workbench/scripts/serve_workbench.py",
+      "source": "app/.agents/skills/harness-workbench/scripts/serve_workbench.py",
+      "sha256": "525e7d33fc78e393b5f377e6d3bb6c86940dfb84086686e83ec5c96e57df8e4c",
+      "bytes": 11293
+    },
+    {
+      "path": ".agents/skills/memory-consolidator/SKILL.md",
+      "source": "app/.agents/skills/memory-consolidator/SKILL.md",
+      "sha256": "f56f93fab85862058371de40653fd80ce56d73c3d0b9a30f37d555464595e169",
+      "bytes": 2955
+    },
+    {
+      "path": ".agents/skills/memory-consolidator/scripts/consolidate_memory.py",
+      "source": "app/.agents/skills/memory-consolidator/scripts/consolidate_memory.py",
+      "sha256": "a4973b44ce6058ce807084bd48f4d33539799d67ac6f5f3afa2fcb378c8caee7",
+      "bytes": 55823
+    },
+    {
+      "path": ".agents/skills/memory-eval/SKILL.md",
+      "source": "app/.agents/skills/memory-eval/SKILL.md",
+      "sha256": "433f551c42652df22d3e6a69113c79ad99d19f04ba074efbf95eb2ef8fc9add0",
+      "bytes": 2976
+    },
+    {
+      "path": ".agents/skills/memory-eval/scripts/evaluate_memory_recall.py",
+      "source": "app/.agents/skills/memory-eval/scripts/evaluate_memory_recall.py",
+      "sha256": "2eea5dff59503d3931919b7b5532493a406d555133f16bd5cd054bb3929e3dca",
+      "bytes": 40429
+    },
+    {
+      "path": ".agents/skills/memory-freshness-auditor/SKILL.md",
+      "source": "app/.agents/skills/memory-freshness-auditor/SKILL.md",
+      "sha256": "5411c290a55397f9594f9fd954fbc8cd7df46e424210c1571583d50bca7932f1",
+      "bytes": 2511
+    },
+    {
+      "path": ".agents/skills/memory-freshness-auditor/scripts/audit_memory_freshness.py",
+      "source": "app/.agents/skills/memory-freshness-auditor/scripts/audit_memory_freshness.py",
+      "sha256": "083d2e57adf2e909994f2b9463a49030da77b1789f51b25684231d9d0665a351",
+      "bytes": 18165
+    },
+    {
+      "path": ".agents/skills/memory-indexer/SKILL.md",
+      "source": "app/.agents/skills/memory-indexer/SKILL.md",
+      "sha256": "e6c3c279ca4b765b338268d6a6e298e85d14a2b5a9bdb76cc1f90eb041ffaf87",
+      "bytes": 3271
+    },
+    {
+      "path": ".agents/skills/memory-indexer/scripts/generate_memory_index.py",
+      "source": "app/.agents/skills/memory-indexer/scripts/generate_memory_index.py",
+      "sha256": "d8c849e0b8b193af2f60865a7a81a5c5dbef3519e9813b528e72f5aa9f0ac34b",
+      "bytes": 64813
+    },
+    {
+      "path": ".agents/skills/memory-recall/SKILL.md",
+      "source": "app/.agents/skills/memory-recall/SKILL.md",
+      "sha256": "7c40a6934b9fc1b56853ce3a119daee6b5d1124739abdd5704ad8893104c93c1",
+      "bytes": 4102
+    },
+    {
+      "path": ".agents/skills/memory-recall/scripts/build_recall_pack.py",
+      "source": "app/.agents/skills/memory-recall/scripts/build_recall_pack.py",
+      "sha256": "a92235b09d6f6cebd7fc43cf6b14ad4d62e66fd1b30d45cc693cd562537a3787",
+      "bytes": 70343
+    },
+    {
+      "path": ".agents/skills/reference-pack-drift-auditor/SKILL.md",
+      "source": "app/.agents/skills/reference-pack-drift-auditor/SKILL.md",
+      "sha256": "16f18277a9e8ea8afd12492f93aadba552599e066d44880f111607f146ba4418",
+      "bytes": 1829
+    },
+    {
+      "path": ".agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
+      "source": "app/.agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
+      "sha256": "f0ada89725d6dd4dd7a25e1bdc565f65e236430b2807790d1f469037f2041372",
+      "bytes": 10736
+    },
+    {
+      "path": ".agents/skills/reference-pack-importer/SKILL.md",
+      "source": "app/.agents/skills/reference-pack-importer/SKILL.md",
+      "sha256": "1170c3f0b6688fc2ef2e2fc49f0620d4aaf5155556ffa9ad75e9f4f92169fd9b",
+      "bytes": 2176
+    },
+    {
+      "path": ".agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
+      "source": "app/.agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
+      "sha256": "64513bad4bc3461b5f9f7340ac185024ef91ee9219147d340b50086ae61411a2",
+      "bytes": 13421
+    },
+    {
+      "path": ".agents/skills/reference-pack/SKILL.md",
+      "source": "app/.agents/skills/reference-pack/SKILL.md",
+      "sha256": "7979a678323114ee8ae1f29bad137ae3f470fd10f3da99c0907d4abe4220e24e",
+      "bytes": 3176
+    },
+    {
+      "path": ".agents/skills/reference-pack/scripts/build_reference_pack.py",
+      "source": "app/.agents/skills/reference-pack/scripts/build_reference_pack.py",
+      "sha256": "52ece81406f136adc4226e11e489492c55d88dff704c9b4ffb21e2fa80952ec4",
+      "bytes": 19875
+    },
+    {
+      "path": ".agents/skills/repo-indexer/SKILL.md",
+      "source": "app/.agents/skills/repo-indexer/SKILL.md",
+      "sha256": "05d1a65bd37e6d845392f15682bc55dfbe73c93e8473f2b55ace06a5a395d400",
+      "bytes": 3955
+    },
+    {
+      "path": ".agents/skills/repo-indexer/scripts/generate_repo_index.py",
+      "source": "app/.agents/skills/repo-indexer/scripts/generate_repo_index.py",
+      "sha256": "7a0c99eef54c180be7bc52bdbdcec49c84fc29bb7653458ed6057d92e17e072a",
+      "bytes": 23603
+    },
+    {
+      "path": ".agents/skills/repo-radar/SKILL.md",
+      "source": "app/.agents/skills/repo-radar/SKILL.md",
+      "sha256": "3a1e8595255b609a855b8cca2f5f37b6e84f5ffdcb67adc33119bb68cbd6e988",
+      "bytes": 1152
+    },
+    {
+      "path": ".agents/skills/session-handoff/SKILL.md",
+      "source": "app/.agents/skills/session-handoff/SKILL.md",
+      "sha256": "d1024cd12208cfb208988acfcdb261828389324c7682a4c56e54fa7ef5ee8267",
+      "bytes": 1959
+    },
+    {
+      "path": ".agents/skills/session-handoff/scripts/create_session_handoff.py",
+      "source": "app/.agents/skills/session-handoff/scripts/create_session_handoff.py",
+      "sha256": "c4645dbaa98189fdd6ab38d84c10561711ced2295b71d05e9b599ff31e529e85",
+      "bytes": 4927
+    },
+    {
+      "path": ".agents/skills/task-board/SKILL.md",
+      "source": "app/.agents/skills/task-board/SKILL.md",
+      "sha256": "8e733786c63aca92eecea69350a68856e929818824115d59859c650560ef4d52",
+      "bytes": 2146
+    },
+    {
+      "path": ".agents/skills/task-board/scripts/build_task_board.py",
+      "source": "app/.agents/skills/task-board/scripts/build_task_board.py",
+      "sha256": "37e04659442392cbe78cf0fe4917368d247af4811c226f02bca87bdf9d08f1a8",
+      "bytes": 14304
+    },
+    {
+      "path": ".agents/skills/work-frontier/SKILL.md",
+      "source": "app/.agents/skills/work-frontier/SKILL.md",
+      "sha256": "d1819a4728774e13ecee14472d04d65d2bc3714964f3737355d07855e1fbc17f",
+      "bytes": 2447
+    },
+    {
+      "path": ".agents/skills/work-frontier/scripts/build_work_frontier.py",
+      "source": "app/.agents/skills/work-frontier/scripts/build_work_frontier.py",
+      "sha256": "2c9a62e2f11c3fd1e424d6e2aa26601290c74121b4b4ff08f9b3300077c2a81a",
+      "bytes": 17374
+    },
+    {
+      "path": ".ch/docs/AGENTS.md",
+      "source": "app/.ch/docs/AGENTS.md",
+      "sha256": "494ac76507f6d888e8e81bba12d7e943296b6e4f7f4fd7077f4a1826ce2c1b64",
+      "bytes": 412
+    },
+    {
+      "path": ".ch/docs/DESIGN.md",
+      "source": "app/.ch/docs/DESIGN.md",
+      "sha256": "94735f4d507fc62807022cbb426de4c146d1dfa08cfe95c5113adf3be46c2739",
+      "bytes": 313
+    },
+    {
+      "path": ".ch/docs/FEATURE_CHECKLISTS.md",
+      "source": "app/.ch/docs/FEATURE_CHECKLISTS.md",
+      "sha256": "ce6accdb028bb93c10ec1a27c8729fcef97cb98b778d55729c5af5a46a34daa6",
+      "bytes": 288
+    },
+    {
+      "path": ".ch/docs/FRONTEND.md",
+      "source": "app/.ch/docs/FRONTEND.md",
+      "sha256": "9118addf92e604dc421d49d12a82dd8692b2fe90e680af9e35960176ebc0dd85",
+      "bytes": 1171
+    },
+    {
+      "path": ".ch/docs/MEMORY.md",
+      "source": "app/.ch/docs/MEMORY.md",
+      "sha256": "57a5ef684381d3caa9b427c0ac14a7677124a19e0bf252a022e427485a2e9636",
+      "bytes": 14991
+    },
+    {
+      "path": ".ch/docs/PLANS.md",
+      "source": "app/.ch/docs/PLANS.md",
+      "sha256": "ffd3c1943b2106d4606549761e07415a5b7ab20c504f962d6e3e5d340aef5097",
+      "bytes": 333
+    },
+    {
+      "path": ".ch/docs/PRODUCT_SENSE.md",
+      "source": "app/.ch/docs/PRODUCT_SENSE.md",
+      "sha256": "f207b1edd320bcc51fdb29faceb10ad02146de83c1e82499ab832a36943c944a",
+      "bytes": 350
+    },
+    {
+      "path": ".ch/docs/README.md",
+      "source": "app/.ch/docs/README.md",
+      "sha256": "c8e2518dd4176e5fcfa97f59dbd2f8fa69d07d12e6a8f8ea8cb8494d2361af59",
+      "bytes": 2856
+    },
+    {
+      "path": ".ch/docs/RELIABILITY.md",
+      "source": "app/.ch/docs/RELIABILITY.md",
+      "sha256": "5430a4843d4bcfadc1bf97e10b2a757441e6d0db7dd234c728b71a398e8ad17f",
+      "bytes": 343
+    },
+    {
+      "path": ".ch/docs/SECURITY.md",
+      "source": "app/.ch/docs/SECURITY.md",
+      "sha256": "cfe54a55b8fe7a1675bc2d037dce5696168c58804b143dc27ddfc95de972066c",
+      "bytes": 1435
+    },
+    {
+      "path": ".ch/docs/TESTING.md",
+      "source": "app/.ch/docs/TESTING.md",
+      "sha256": "4348dcee367735d50477071f980e4d4c954480873de6a1fe911fe18b1bb8c2b4",
+      "bytes": 5176
+    },
+    {
+      "path": ".ch/docs/TOOL_POLICY.md",
+      "source": "app/.ch/docs/TOOL_POLICY.md",
+      "sha256": "b263df60f0b7bd66f95408ec6691eda3e386b7f3494f2c5708ac39d7fecccd6b",
+      "bytes": 1497
+    },
+    {
+      "path": ".ch/docs/design-docs/TEMPLATE.md",
+      "source": "app/.ch/docs/design-docs/TEMPLATE.md",
+      "sha256": "6d73e0eb5c8f9d588588a092b6491efd1ab132c3dfe1944e13bff4e11432a3f6",
+      "bytes": 535
+    },
+    {
+      "path": ".ch/docs/design-docs/core-beliefs.md",
+      "source": "app/.ch/docs/design-docs/core-beliefs.md",
+      "sha256": "5b1b63d0ab3123dfd7ea3f2ff5548d49361596e2cd3619ff5ed1add8480720c8",
+      "bytes": 1626
+    },
+    {
+      "path": ".ch/docs/design-docs/index.md",
+      "source": "app/.ch/docs/design-docs/index.md",
+      "sha256": "30e7866a0f984730d5b262ae88c2315103af64a561a7e6490efe1eb5903a0527",
+      "bytes": 1110
+    },
+    {
+      "path": ".ch/docs/exec-plans/README.md",
+      "source": "app/.ch/docs/exec-plans/README.md",
+      "sha256": "3ae75bddddb8167b412fdf6b03277ec1a4637cfd13aa6c91089255a1e90c7c54",
+      "bytes": 2317
+    },
+    {
+      "path": ".ch/docs/exec-plans/TEMPLATE.md",
+      "source": "app/.ch/docs/exec-plans/TEMPLATE.md",
+      "sha256": "c796ace3ce5645f005cc86e8350e9b52212b5293de884b216d4fee57a5c97ba5",
+      "bytes": 944
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/.gitkeep",
+      "source": "app/.ch/docs/exec-plans/active/.gitkeep",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "bytes": 1
+    },
+    {
+      "path": ".ch/docs/exec-plans/completed/.gitkeep",
+      "source": "app/.ch/docs/exec-plans/completed/.gitkeep",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "bytes": 1
+    },
+    {
+      "path": ".ch/docs/exec-plans/tech-debt-tracker.md",
+      "source": "app/.ch/docs/exec-plans/tech-debt-tracker.md",
+      "sha256": "68b939364d4925f7d255ff9a13909e820e8cc3298bb26db739d93b566251348c",
+      "bytes": 264
+    },
+    {
+      "path": ".ch/docs/generated/README.md",
+      "source": "app/.ch/docs/generated/README.md",
+      "sha256": "889b30976a63c0db396f2f795fcbc7c698b2747a6d1d6542eabaef15367f58b4",
+      "bytes": 1203
+    },
+    {
+      "path": ".ch/docs/generated/memory-index/README.md",
+      "source": "app/.ch/docs/generated/memory-index/README.md",
+      "sha256": "793e5b77a014a8a6dfadfb5a745eea710a01219cb07279427aa8964b6b399d94",
+      "bytes": 4103
+    },
+    {
+      "path": ".ch/docs/generated/reference-pack-drifts/README.md",
+      "source": "app/.ch/docs/generated/reference-pack-drifts/README.md",
+      "sha256": "1b4662280687ab599124db3e69a4c10ee8d9a0f60b69d615310683abfad36c9a",
+      "bytes": 893
+    },
+    {
+      "path": ".ch/docs/generated/reference-pack-imports/README.md",
+      "source": "app/.ch/docs/generated/reference-pack-imports/README.md",
+      "sha256": "00c09df8e2f9f9f21d5a718cbbd869a950a03e539875c2bb470026a174eb5b1f",
+      "bytes": 1165
+    },
+    {
+      "path": ".ch/docs/generated/reference-packs/README.md",
+      "source": "app/.ch/docs/generated/reference-packs/README.md",
+      "sha256": "07486d6a5ee1f09291e4dd453a45f82f93de29d5fb7956f677b5658498fe3331",
+      "bytes": 1147
+    },
+    {
+      "path": ".ch/docs/generated/repo-index/README.md",
+      "source": "app/.ch/docs/generated/repo-index/README.md",
+      "sha256": "dcc4b0a699d4499c03a5a2c8413a8f128a6668cc6e43f205a684e706556aef62",
+      "bytes": 966
+    },
+    {
+      "path": ".ch/docs/generated/task-board/README.md",
+      "source": "app/.ch/docs/generated/task-board/README.md",
+      "sha256": "ceb63ad912d9b8ea7a30852e07acaab513a204e15d119699354f9dd7b1973589",
+      "bytes": 681
+    },
+    {
+      "path": ".ch/docs/handoffs/README.md",
+      "source": "app/.ch/docs/handoffs/README.md",
+      "sha256": "c694c6bb2d289023b3306b24a110bb1446fe2a087d305060c1fb26fb39e6120b",
+      "bytes": 1759
+    },
+    {
+      "path": ".ch/docs/handoffs/TEMPLATE.md",
+      "source": "app/.ch/docs/handoffs/TEMPLATE.md",
+      "sha256": "291e3a50dd3f628324a10527152777c27513c79f6365c0d8fcf6d1c3b763b06f",
+      "bytes": 1247
+    },
+    {
+      "path": ".ch/docs/memory-evals/README.md",
+      "source": "app/.ch/docs/memory-evals/README.md",
+      "sha256": "064052d004cc8b54233033273635c23c9b96a5ce24753d1b80d00eb99bec5e1a",
+      "bytes": 1656
+    },
+    {
+      "path": ".ch/docs/memory-evals/TEMPLATE.md",
+      "source": "app/.ch/docs/memory-evals/TEMPLATE.md",
+      "sha256": "24dbf4ecc065aeb093b45044323aa981572db0f23ff63fc13d849c83e70f3d19",
+      "bytes": 1650
+    },
+    {
+      "path": ".ch/docs/memory/ACTIVE_RISKS.md",
+      "source": "app/.ch/docs/memory/ACTIVE_RISKS.md",
+      "sha256": "ee47d637c4c71153b7d9e0aba70532b9792942db1def6f7a89409f321b3cce7a",
+      "bytes": 1154
+    },
+    {
+      "path": ".ch/docs/memory/EVENT_MEMORY.md",
+      "source": "app/.ch/docs/memory/EVENT_MEMORY.md",
+      "sha256": "334ab10c0cd7662c79cd92bf7123206a90657f5846c8b0fe0eca9562d9842ea4",
+      "bytes": 1471
+    },
+    {
+      "path": ".ch/docs/memory/LESSONS_LEARNED.md",
+      "source": "app/.ch/docs/memory/LESSONS_LEARNED.md",
+      "sha256": "9984033372448bb434d76595edb55b3ffbf985f71b828b061c40dde17c726d8e",
+      "bytes": 1102
+    },
+    {
+      "path": ".ch/docs/memory/PENDING_ITEMS.md",
+      "source": "app/.ch/docs/memory/PENDING_ITEMS.md",
+      "sha256": "16433578795df2184695279320aece91e6b4b6783fccdc803533c6c0a19f0710",
+      "bytes": 1124
+    },
+    {
+      "path": ".ch/docs/memory/PROJECT_CONTEXT.md",
+      "source": "app/.ch/docs/memory/PROJECT_CONTEXT.md",
+      "sha256": "854298c2c7073ec4e09c7a306dbe9f5c6d3cd310954eb2ac7629bd4c489ca4c3",
+      "bytes": 1292
+    },
+    {
+      "path": ".ch/docs/memory/README.md",
+      "source": "app/.ch/docs/memory/README.md",
+      "sha256": "d8efb3f954b9150b31a8ad03218514fb93b0116567e168404370fa8478edf78f",
+      "bytes": 4465
+    },
+    {
+      "path": ".ch/docs/memory/ROLLING_SUMMARY.md",
+      "source": "app/.ch/docs/memory/ROLLING_SUMMARY.md",
+      "sha256": "da09ea96a06638b01d9d6828ecd80ec89bc04ebaf5ee39047aaf28004c71c48f",
+      "bytes": 1603
+    },
+    {
+      "path": ".ch/docs/memory/USER_PREFERENCES.md",
+      "source": "app/.ch/docs/memory/USER_PREFERENCES.md",
+      "sha256": "0078aa7431c0d647ae3ed0390c7bba0ce19f3b018517d22b559fb14427e3bc7f",
+      "bytes": 1257
+    },
+    {
+      "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "source": "app/.ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "sha256": "412c5bb5e74ca62fe87a36ceffc3442d4b8acc5720e652dceaa7d24a20b3278f",
+      "bytes": 1774
+    },
+    {
+      "path": ".ch/docs/product-specs/TEMPLATE.md",
+      "source": "app/.ch/docs/product-specs/TEMPLATE.md",
+      "sha256": "50e2583b2244e088c99a43bf29c9788d00134546daaecdf8b1c4cb78fbf90ab6",
+      "bytes": 742
+    },
+    {
+      "path": ".ch/docs/product-specs/index.md",
+      "source": "app/.ch/docs/product-specs/index.md",
+      "sha256": "8565835afc58bd7c0ef1a9c2ec894316df57d450ed9cb49a676633f462ab2a57",
+      "bytes": 653
+    },
+    {
+      "path": ".ch/docs/references/authoritative-skills.md",
+      "source": "app/.ch/docs/references/authoritative-skills.md",
+      "sha256": "f10691703639cfa7533181a3f07848abbbad9bfa84554d839fadf73495edf170",
+      "bytes": 5318
+    },
+    {
+      "path": ".ch/docs/references/codegraph.md",
+      "source": "app/.ch/docs/references/codegraph.md",
+      "sha256": "769c238d5c766727b2ae8fb578bd53c8671380a3d961984f44ee9c5c1601afa3",
+      "bytes": 2122
+    },
+    {
+      "path": ".ch/docs/references/codex-official-alignment.md",
+      "source": "app/.ch/docs/references/codex-official-alignment.md",
+      "sha256": "0bb7aef15ab431d0e5d8fd9a660c5193d069fd21366c04b7caaa0f0631c5ce9f",
+      "bytes": 2670
+    },
+    {
+      "path": ".ch/docs/references/index.md",
+      "source": "app/.ch/docs/references/index.md",
+      "sha256": "44037b2c0a2bac30d781ffbf511153f5384928813b2ae72115a1b86cf7431d84",
+      "bytes": 714
+    },
+    {
+      "path": ".ch/docs/references/reference-pack-manifests/README.md",
+      "source": "app/.ch/docs/references/reference-pack-manifests/README.md",
+      "sha256": "771bfb87f9c5109f598599a0e51ced8fed239f529c104f9281c7d6a4d2b1d70c",
+      "bytes": 735
+    },
+    {
+      "path": ".ch/docs/references/reference-packs.md",
+      "source": "app/.ch/docs/references/reference-packs.md",
+      "sha256": "04df30196954b956f0f6d2a5a90a8be409ec0dde722be94a57826156ef9cdf13",
+      "bytes": 1285
+    },
+    {
+      "path": ".ch/docs/runbooks/PITFALLS.md",
+      "source": "app/.ch/docs/runbooks/PITFALLS.md",
+      "sha256": "e2aeeb073001e9f72398cc9024ed5df949f46d607a7cf3f4eecf62254c8fb7a4",
+      "bytes": 1733
+    },
+    {
+      "path": ".ch/docs/runbooks/PITFALLS_HISTORY.md",
+      "source": "app/.ch/docs/runbooks/PITFALLS_HISTORY.md",
+      "sha256": "8d6cc31b269f5c6cf2b2f0279565f1fa14cdada164292f3b91b8effc6a73c805",
+      "bytes": 603
+    },
+    {
+      "path": ".ch/docs/runbooks/README.md",
+      "source": "app/.ch/docs/runbooks/README.md",
+      "sha256": "43c2ab5e2ed1c67bfe9efac225dc6faf295f1e647dffda599b562653cc85e38b",
+      "bytes": 1016
+    },
+    {
+      "path": ".ch/docs/runbooks/pitfalls/agent-rules-skills.md",
+      "source": "app/.ch/docs/runbooks/pitfalls/agent-rules-skills.md",
+      "sha256": "cbd5293537d6ed23a5fbd46cb248f88538d7cd10a3ea5effee779ebc1d16d04e",
+      "bytes": 313
+    },
+    {
+      "path": ".ch/docs/runbooks/pitfalls/docs-plans.md",
+      "source": "app/.ch/docs/runbooks/pitfalls/docs-plans.md",
+      "sha256": "86f3b2e0aa1e7eed165997688919f87b9ae0b010f7d3e29ce59f0630c4cb56eb",
+      "bytes": 324
+    },
+    {
+      "path": ".ch/docs/runbooks/pitfalls/engineering-tooling.md",
+      "source": "app/.ch/docs/runbooks/pitfalls/engineering-tooling.md",
+      "sha256": "4a631271e04741852bce6f218fcb3da7e15b8cc398257ad76c56bedb85b210b7",
+      "bytes": 308
+    },
+    {
+      "path": ".ch/docs/runbooks/pitfalls/harness-install-sync.md",
+      "source": "app/.ch/docs/runbooks/pitfalls/harness-install-sync.md",
+      "sha256": "c9774308561c66d4787376c8722f4972e15f838c25d05512f7929f3170093018",
+      "bytes": 323
+    },
+    {
+      "path": "AGENTS.md",
+      "source": "app/AGENTS.md#managed-block",
+      "sha256": "4ae9b32b85595eec85b3309d641cc77d61d6e5ad05696375377388bb7ec4afdc",
+      "bytes": 9108
+    }
+  ]
+}

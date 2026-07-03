@@ -1,34 +1,28 @@
 # 文档系统总览
 
-这个目录不是“补充阅读材料”，而是仓库内的知识系统。
-
-对 Codex 和人类来说，这里都应该是最可靠、最可追踪的事实来源之一。
+这个目录是仓库内的知识系统。它的目标是让接手者先读少量入口，再按任务需要展开细节。
 
 ## 快速入口
 
-- `.ch/docs/DESIGN.md`：设计文档如何写、何时写。
-- `.ch/docs/FRONTEND.md`：前端与体验层约束。
-- `.ch/docs/PLANS.md`：执行计划与任务收尾方式。
-- `.ch/docs/PRODUCT_SENSE.md`：ToB 产品思维与验收视角。
-- `.ch/docs/TESTING.md`：单元测试与验证基线。
-- `.ch/docs/FEATURE_CHECKLISTS.md`：功能清单的事实来源与更新规则。
-- `.ch/docs/QUALITY_SCORE.md`：当前骨架质量评分。
-- `.ch/docs/RELIABILITY.md`：可靠性与验证基线。
-- `.ch/docs/SECURITY.md`：安全基线。
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md`：当前 VS Code 插件实际运行时架构。
-- `.ch/docs/references/cli-runtime-reference.md`：CLI 接入事实参考。
-- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`：当前插件能力规格。
-- `.ch/docs/runbooks/local-development.md`：本地开发、调试与打包手册。
-- `.ch/docs/references/authoritative-skills.md`：权威外部技能清单与更新来源。
-- `.ch/docs/runbooks/PITFALLS.md`：已经踩过的坑、复发条件与规避方式。
+- `.ch/docs/MEMORY.md`：记忆分层、流转、上提与清理规则。
+- `.ch/docs/TESTING.md`：测试与单元自测的唯一规则源。
+- `.ch/docs/TOOL_POLICY.md`：工具风险分级与使用边界。
+- `.ch/docs/exec-plans/README.md`：执行计划目录、模板和收尾规则。
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md`：功能清单唯一事实源。
+- `.ch/docs/design-docs/index.md`：设计文档索引与写作入口。
+- `.ch/docs/runbooks/README.md`：运行、发布、排障和避坑入口。
+- `.ch/docs/handoffs/README.md`：跨会话交接入口。
+- `.ch/docs/memory/README.md`：热区记忆面入口。
+- `.agents/profiles/README.md`：Planner / Implementer / Reviewer 等角色契约。
 
 ## 目录结构
 
 - `.ch/docs/design-docs/`：设计历史、核心信念、设计模板。
 - `.ch/docs/exec-plans/`：活动中的执行计划、已完成归档、技术债跟踪。
-- `.ch/docs/generated/`：可由工具生成的清单、索引、schema 文档。
+- `.ch/docs/generated/`：工具生成产物的占位入口，生成规则以对应 skill 为准。
+- `.ch/docs/handoffs/`：跨会话交接文档及模板。
+- `.ch/docs/memory/`：默认优先召回的热区记忆面，放 L1 滚动摘要、L2 事件记忆、L3 画像和 L4 经验入口。
 - `.ch/docs/product-specs/`：业务规格、用例、范围和验收文档。
-- `.ch/docs/product-specs/FEATURE_INVENTORY.md`：功能总表与当前状态入口。
 - `.ch/docs/references/`：官方规范对齐、外部参考、AI 友好参考资料。
 - `.ch/docs/runbooks/`：运行、发布、排障、值班和环境操作手册。
 
@@ -37,6 +31,19 @@
 - 文档是系统的一部分，不是任务结束后的附属品。
 - 一旦发现真实踩坑，要及时沉淀为避坑指南，而不是留在聊天记录里。
 - 索引优先于大段正文。
+- 热区记忆只保留最该先读的信息，长过程和长历史仍应回到原始文档。
+- 长期记忆文档应带统一 front matter，便于 freshness、superseded 和 source-of-truth 治理。
 - 每个目录至少保留一个清晰入口页。
-- 测试基线和功能清单都应有清晰事实来源，不依赖聊天记忆。
+- 测试规则以 `TESTING.md` 为准；工具风险以 `TOOL_POLICY.md` 为准；执行计划以 `exec-plans/README.md` 为准；功能清单以 `product-specs/FEATURE_INVENTORY.md` 为准。
 - 新增主题前，优先判断是否应该放入已有主题目录，而不是横向再造新目录。
+
+## 轻量使用方式
+
+小型项目或一次性任务不需要把所有机制都打开。默认只维护：
+
+- 根级 `AGENTS.md`
+- `ARCHITECTURE.md`
+- `.ch/docs/MEMORY.md`
+- `.ch/docs/memory/` 中确实有长期价值的条目
+
+只有当任务跨阶段、跨模块、存在明显风险或需要交接时，再创建 `exec-plans/active/`、handoff、generated index 或 reference pack。复杂度应该跟随真实协作成本增长，而不是跟随目录数量增长。

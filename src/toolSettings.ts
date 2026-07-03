@@ -10,13 +10,33 @@ export type ToolSettingsState = {
   autoAddEditorContextTags?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
+  longTermMemoryEnabled?: boolean;
+  memoryEnabled?: boolean;
+  globalMemoryEnabled?: boolean;
+  memoryAutoExtractAfterCompact?: boolean;
+  memoryAutoExtractAfterLobsterTask?: boolean;
 };
 
 const TOOL_SETTINGS_FILE = path.join(os.homedir(), ".sinitek_cli", "settings.json");
 
 let cachedToolSettings: ToolSettingsState | null = null;
 
-function normalizeToolSettings(value: unknown): ToolSettingsState {
+export type LongTermMemorySettingsInput = Pick<
+  ToolSettingsState,
+  | "longTermMemoryEnabled"
+  | "memoryEnabled"
+  | "globalMemoryEnabled"
+  | "memoryAutoExtractAfterCompact"
+  | "memoryAutoExtractAfterLobsterTask"
+> & {
+  workspaceMemoryEnabled?: boolean;
+};
+
+export type ResolveLongTermMemoryEnabledInput = LongTermMemorySettingsInput & {
+  workspaceSettings?: LongTermMemorySettingsInput | null;
+};
+
+export function normalizeToolSettings(value: unknown): ToolSettingsState {
   const normalized: ToolSettingsState = {};
   if (!value || typeof value !== "object") {
     return normalized;
@@ -34,7 +54,42 @@ function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (record.macTaskShell === "zsh" || record.macTaskShell === "bash") {
     normalized.macTaskShell = record.macTaskShell;
   }
+  if (typeof record.longTermMemoryEnabled === "boolean") {
+    normalized.longTermMemoryEnabled = record.longTermMemoryEnabled;
+  }
+  if (typeof record.memoryEnabled === "boolean") {
+    normalized.memoryEnabled = record.memoryEnabled;
+  }
+  if (typeof record.globalMemoryEnabled === "boolean") {
+    normalized.globalMemoryEnabled = record.globalMemoryEnabled;
+  }
+  if (typeof record.memoryAutoExtractAfterCompact === "boolean") {
+    normalized.memoryAutoExtractAfterCompact = record.memoryAutoExtractAfterCompact;
+  }
+  if (typeof record.memoryAutoExtractAfterLobsterTask === "boolean") {
+    normalized.memoryAutoExtractAfterLobsterTask = record.memoryAutoExtractAfterLobsterTask;
+  }
   return normalized;
+}
+
+export function resolveLongTermMemoryEnabled(input?: ResolveLongTermMemoryEnabledInput | null): boolean {
+  const globalSettings = input ?? {};
+  const workspaceSettings = input?.workspaceSettings ?? {};
+  const totalSwitches = [
+    globalSettings.longTermMemoryEnabled,
+    globalSettings.memoryEnabled,
+    globalSettings.globalMemoryEnabled,
+    globalSettings.workspaceMemoryEnabled,
+    workspaceSettings.workspaceMemoryEnabled,
+  ];
+
+  if (totalSwitches.some((value) => value === false)) {
+    return false;
+  }
+  if (totalSwitches.some((value) => value === true)) {
+    return true;
+  }
+  return true;
 }
 
 export function readToolSettings(): ToolSettingsState {
