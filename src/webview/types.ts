@@ -179,6 +179,7 @@ export type PanelState = {
   autoOpenPanel: boolean;
   rememberSelectedCli: boolean;
   autoAddEditorContextTags: boolean;
+  longTermMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;

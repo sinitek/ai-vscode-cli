@@ -94,5 +94,6 @@
   "config.workspaceFile.content.description": "要写入的文件内容。",
   "view.container.title": "携宁 CLI 助手",
   "view.panel.name": "携宁 CLI 助手",
-  "config.autoAddEditorContextTags.description": "控制是否在 AI 对话中自动将当前文件/选区加入输入框上下文标签。"
+  "config.autoAddEditorContextTags.description": "控制是否在 AI 对话中自动将当前文件/选区加入输入框上下文标签。",
+  "config.longTermMemoryEnabled.description": "启用插件侧长期记忆。关闭后，扩展不会在后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。"
 }

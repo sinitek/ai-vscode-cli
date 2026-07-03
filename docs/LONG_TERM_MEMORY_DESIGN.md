@@ -403,6 +403,8 @@ async function buildPromptWithMemory(
 
 后续如果某个 CLI 提供稳定官方记忆 API，可以作为可选同步适配，但不能成为默认依赖。
 
+工具设置中的长期记忆开关仅控制插件侧 `~/.sinitek_cli/memory/` 记忆层；它不会清理、禁用或覆盖 Codex / Claude / Gemini 外部 CLI 自带的历史、记忆、配置、压缩结果或账号侧能力。用户如果需要关闭外部 CLI 自带能力，必须到对应 CLI 官方配置中处理。
+
 ### 9.4 与 AGENTS / 项目文档
 
 AGENTS 和 `.ch/docs/` 是仓库内事实来源。长期记忆可以记录“用户常用方式”和“项目实践经验”，但不能覆盖仓库文档中的明确规则。
@@ -428,7 +430,8 @@ Repository files and current user instructions override long-term memory.
 
 验收：
 
-- 关闭开关时不会写入或注入任何记忆。
+- 关闭开关时不会创建、更新、召回或注入任何记忆；memory 目录不得出现新增或更新时间变化。
+- 关闭开关后 UI/API 只允许查看、导出和删除已有记忆。
 - 手动保存后重启 VS Code 仍可查看。
 - 删除记忆后不会再被召回。
 - `npm run build` 通过。
@@ -483,7 +486,7 @@ Repository files and current user instructions override long-term memory.
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
 | 记忆污染 | 错误事实长期影响回答 | 默认人工确认、保留 evidence、支持禁用和删除 |
-| 隐私泄露 | 敏感内容被反复注入 CLI | 敏感扫描、默认关闭、日志脱敏 |
+| 隐私泄露 | 敏感内容被反复注入 CLI | 敏感扫描、显式关闭优先、日志脱敏 |
 | 上下文膨胀 | 每次 prompt 变长、降低质量 | 限制条数、短句化、相关性排序 |
 | 多事实来源冲突 | 记忆与当前文档或用户指令冲突 | 注入提示明确优先级，当前请求和仓库文件优先 |
 | extension.ts 继续膨胀 | 后续维护困难 | 新增 `src/memory/` 服务层，extension 只接线 |

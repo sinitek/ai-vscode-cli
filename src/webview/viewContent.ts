@@ -103,6 +103,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "Auto File Tags",
     toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
+    toolSettingsLongTermMemoryLabel: "Plugin Long-Term Memory",
+    toolSettingsLongTermMemoryTitle: "When off, this extension will not recall or save plugin long-term memory for later tasks. This does not control native memory in external CLI tools.",
+    toolSettingsLongTermMemoryToggle: "On",
+    toolSettingsLongTermMemoryHint: "Disabling only blocks plugin-side memory recall and saves for future tasks; existing memories can still be viewed, exported, or deleted.",
     toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
     toolSettingsAutoCompactAfterRunTitle: "For existing codex/claude/gemini sessions, compact context after a task finishes successfully and runs longer than 5 minutes",
     toolSettingsAutoCompactAfterRunToggle: "On",
@@ -394,6 +398,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
+    toolSettingsLongTermMemoryLabel: "插件侧长期记忆",
+    toolSettingsLongTermMemoryTitle: "关闭后，扩展不会在后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。",
+    toolSettingsLongTermMemoryToggle: "开启",
+    toolSettingsLongTermMemoryHint: "关闭仅阻止后续任务的插件侧记忆召回和保存；仍可查看、导出或删除已有记忆。",
     toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩",
     toolSettingsAutoCompactAfterRunTitle: "在已有 codex/claude/gemini 会话中，任务成功结束且执行超过 5 分钟后再压缩上下文",
     toolSettingsAutoCompactAfterRunToggle: "开启",
@@ -3143,6 +3151,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </label>
             </div>
             <div class="tool-settings-row">
+              <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
+              <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
+                <input type="checkbox" id="longTermMemoryEnabled" />
+                <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
+              </label>
+            </div>
+            <div class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
+            <div class="tool-settings-row">
               <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
               <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
                 <input type="checkbox" id="autoCompactContextAfterRun" />
@@ -3596,6 +3612,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         lobsterGroupChatHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
+        longTermMemoryEnabled: true,
         autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
@@ -3676,6 +3693,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         lobsterSubtaskModelSelect: document.getElementById("lobsterSubtaskModelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
+        longTermMemoryEnabled: document.getElementById("longTermMemoryEnabled"),
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
         lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
@@ -4600,6 +4618,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
+        state.longTermMemoryEnabled = panelState.longTermMemoryEnabled !== false;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
@@ -4649,6 +4668,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
         if (elements.autoAddEditorContextTags) {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
+        }
+        if (elements.longTermMemoryEnabled) {
+          elements.longTermMemoryEnabled.checked = state.longTermMemoryEnabled;
         }
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
@@ -7406,6 +7428,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.debugMode) {
           elements.debugMode.disabled = isRunning;
         }
+        if (elements.longTermMemoryEnabled) {
+          elements.longTermMemoryEnabled.disabled = isRunning;
+        }
         syncInteractiveOptions();
         elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
@@ -9373,6 +9398,17 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           vscode.postMessage({
             type: "updateSetting",
             key: "autoAddEditorContextTags",
+            value: enabled,
+          });
+        });
+      }
+      if (elements.longTermMemoryEnabled) {
+        elements.longTermMemoryEnabled.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.longTermMemoryEnabled = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "longTermMemoryEnabled",
             value: enabled,
           });
         });

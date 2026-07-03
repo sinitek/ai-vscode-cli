@@ -94,5 +94,6 @@
   "config.workspaceFile.content.description": "File content to write.",
   "view.container.title": "Sinitek CLI Assistant",
   "view.panel.name": "Sinitek CLI Assistant",
-  "config.autoAddEditorContextTags.description": "Toggle whether the current file/selection is automatically added as input context tags in AI chat."
+  "config.autoAddEditorContextTags.description": "Toggle whether the current file/selection is automatically added as input context tags in AI chat.",
+  "config.longTermMemoryEnabled.description": "Enable plugin long-term memory. When off, the extension will not recall or save plugin-side long-term memory for later tasks; this does not control native memory in external CLI tools."
 }

@@ -187,7 +187,13 @@ import {
   type LobsterDebateRoundRecord,
   type LobsterDebateRoundStatus,
 } from "./lobsterDebate";
-import { readToolSettings, type ToolSettingsLocale, type ToolSettingsState, writeToolSettings } from "./toolSettings";
+import {
+  readToolSettings,
+  resolveLongTermMemoryEnabled,
+  type ToolSettingsLocale,
+  type ToolSettingsState,
+  writeToolSettings,
+} from "./toolSettings";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -586,6 +592,7 @@ type WorkspaceSettings = {
   lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
   autoCompactContextAfterRun?: boolean;
   autoCompactContextBeforeRun?: boolean;
+  workspaceMemoryEnabled?: boolean;
   codexMultiAgentEnabled?: boolean;
   lobsterMaxRounds?: number;
   lobsterAutoCloseSubtaskTabs?: boolean;
@@ -1518,6 +1525,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+    if (message.key === "longTermMemoryEnabled") {
+      updateStoredToolSettings({ longTermMemoryEnabled: Boolean(message.value) });
+      await postPanelState();
+      return;
+    }
     if (message.key === "locale") {
       const resolved = normalizeToolSettingsLocale(message.value) ?? "auto";
       updateStoredToolSettings({ locale: resolved });
@@ -1711,6 +1723,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -1757,6 +1770,7 @@ async function buildPanelStateWithConfigState(
     autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
+    longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -14611,6 +14625,15 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
 }
 
+function getEffectiveLongTermMemoryEnabled(): boolean {
+  return resolveLongTermMemoryEnabled({
+    ...readToolSettings(),
+    workspaceSettings: {
+      workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
+    },
+  });
+}
+
 function getWorkspaceAutoCompactContextAfterRun(): boolean {
   if (typeof workspaceSettings.autoCompactContextAfterRun === "boolean") {
     return workspaceSettings.autoCompactContextAfterRun;
@@ -15298,6 +15321,10 @@ function loadWorkspaceSettings(): WorkspaceSettings {
       if (typeof autoCompactContextBeforeRun === "boolean") {
         result.autoCompactContextAfterRun = autoCompactContextBeforeRun;
       }
+    }
+    const workspaceMemoryEnabled = (parsed as WorkspaceSettings).workspaceMemoryEnabled;
+    if (typeof workspaceMemoryEnabled === "boolean") {
+      result.workspaceMemoryEnabled = workspaceMemoryEnabled;
     }
     const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
     if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
