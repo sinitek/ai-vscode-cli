@@ -2,6 +2,7 @@ import {
   MEMORY_HOT_FILES,
   type MemoryHotFileId,
   type MemoryLayer,
+  type MemorySourceFileId,
   writeGeneratedMemoryArtifact,
   writeGeneratedMemoryJson,
 } from "./memoryFiles";
@@ -22,7 +23,7 @@ export type MemoryRecallItem = {
 };
 
 export type MemoryRecallSection = {
-  fileId: MemoryHotFileId;
+  fileId: MemorySourceFileId;
   title: string;
   layer: MemoryLayer;
   items: MemoryRecallItem[];
@@ -43,9 +44,10 @@ export type BuildMemoryRecallPackOptions = {
 
 type ScoredObservation = MemoryObservation & { score: number };
 
-const FILE_PRIORITIES: Record<MemoryHotFileId, number> = {
+const FILE_PRIORITIES: Record<MemorySourceFileId, number> = {
   projectContext: 12,
   userPreferences: 11,
+  pitfalls: 11,
   lessonsLearned: 10,
   activeRisks: 9,
   pendingItems: 8,
@@ -144,14 +146,23 @@ function buildRecallPackMarkdown(pack: MemoryRecallPack): string {
 }
 
 function buildSections(index: WorkspaceMemoryIndex, selected: ScoredObservation[]): MemoryRecallSection[] {
-  const selectedByFile = new Map<MemoryHotFileId, ScoredObservation[]>();
+  const selectedByFile = new Map<MemorySourceFileId, ScoredObservation[]>();
   selected.forEach((item) => {
     const existing = selectedByFile.get(item.fileId) ?? [];
     existing.push(item);
     selectedByFile.set(item.fileId, existing);
   });
 
-  return MEMORY_HOT_FILES
+  const definitions: Array<{ id: MemorySourceFileId; title: string; layer: MemoryLayer }> = [
+    ...MEMORY_HOT_FILES.map((definition) => ({
+      id: definition.id,
+      title: definition.title,
+      layer: definition.layer,
+    })),
+    { id: "pitfalls", title: "Pitfalls", layer: "procedural" },
+  ];
+
+  return definitions
     .map((definition) => {
       const items = (selectedByFile.get(definition.id) ?? []).map((item) => ({
         id: item.id,

@@ -61,7 +61,7 @@
 - AI 对话面板支持 `coding / lobster` 两种顶层交互模式；旧配置中的 `plan` 会按 `coding` 兼容归一化
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
 - 工具设置中的全局项（debug、自动文件标签、语言、macOS task shell）保存在 `~/.sinitek_cli/settings.json`；项目级工具设置保存在 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
-- 工具设置提供“长期记忆”开关，控制当前工作区 `.sinitek_cli/memory/` 的插件侧本地记忆层，默认开启；用户可在工具设置关闭。显式 `false` 优先于默认开启和旧字段兼容，防止误开。若当前项目根目录已存在 `.ch`，则即使工作区开关为开也要自动关闭插件侧长期记忆。关闭后不得创建、更新、召回或注入插件侧长期记忆，只允许查看、导出和删除已有记忆；该开关不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、配置、压缩结果或账号侧能力。
+- 工具设置提供工作区级“Harness 骨架”开关，控制当前工作区基于 harness scaffold 的插件侧本地记忆层，默认关闭。用户开启时，扩展先弹窗确认；确认后才补齐工作区 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的模板追加、只引用 `AGENTS.md` 的 `CLAUDE.md`，并在终端启动 `codegraph install --target codex --location global && codegraph init`。关闭后不得创建、更新、召回或注入插件侧长期记忆，只允许查看、导出和删除已有记忆；该开关不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、配置、压缩结果或账号侧能力。
 - 工具设置提供项目级“执行后自动压缩上下文”开关（默认开启）；开启后，若当前任务目标为已有 Codex/Claude/Gemini 会话，会在任务成功结束且执行超过 5 分钟后自动执行一次上下文压缩；任务中断、报错或执行不超过 5 分钟不触发自动压缩；手动或自动压缩执行期间，聊天面板运行条会显示带动画的“压缩上下文中”状态
 - 对非主动中断/异常，或 CLI 成功退出但本轮没有产生普通 assistant 最终结论气泡的情况，会隐式发送“继续/continue”自动重试最多 5 次，间隔依次为 5 秒、15 秒、30 秒、2 分钟、5 分钟；Codex 交互任务必须看到 `phase:"final_answer"`/`codexFinalAnswer=true` 才视为本轮最终结论，`phase:"commentary"` 只作为过程消息；不会展示这条隐式用户消息；每次失败进入下一次自动重试前会追加错误 trace 气泡展示本次失败信息，并追加系统提示说明当前是第几次自动重试；等待结束真正开始执行该次自动重试时，会再追加“第 X/Y 次自动重试已开始”提示并把标签页恢复到运行态；达到上限后会展示最近一次真实错误，避免只剩泛化提示
 - Codex 在工具设置中提供项目级“子智能体（multi_agent）”开关，默认关闭；关闭时继续走 app-server 主链路，但会显式禁用官方多智能体子任务能力
@@ -99,15 +99,16 @@
 - 附件上传
 - 工作区路径选择器
 - 常用命令，例如压缩上下文
-- 长期记忆启用时，插件可在发送 prompt 前按相关性召回当前工作区 `.sinitek_cli/memory/` 下的插件侧本地记忆，并作为明确边界的参考块注入；关闭时不召回、不注入，也不更新 generated recall 产物或记忆摘要。
+- 长期记忆启用时，插件可在发送 prompt 前按相关性召回当前工作区 `.ch/docs/memory/` 与 `.ch/docs/runbooks/PITFALLS.md` 中的插件侧本地记忆，并作为明确边界的参考块注入；关闭时不召回、不注入，也不更新 generated recall 产物或记忆摘要。
 
 ### 3.5.1 插件侧长期记忆
 
-- 记忆数据属于插件本地状态，目标目录为当前工作区 `.sinitek_cli/memory/`，与 30 天会话历史、prompt history、龙虾任务记录和外部 CLI 配置解耦。
-- 开关默认开启，但只在工具设置的“工作区”页签配置并写入 workspace settings；解析配置时采用“显式 false 防误开优先”，兼容旧 `memoryEnabled`、`globalMemoryEnabled`、`workspaceMemoryEnabled` 字段。
-- 工作区根目录存在 `.ch` 时，认为项目已经有自带记忆体系，插件侧长期记忆运行时自动关闭；UI 需要展示原因，且 recall / inject / 写入都必须被共享 gate 阻止。
+- 记忆数据属于插件本地状态，目标目录为当前工作区 harness scaffold：热区位于 `.ch/docs/memory/`，generated recall 位于 `.ch/docs/generated/memory-index/`，踩坑记录位于 `.ch/docs/runbooks/PITFALLS.md`；与 30 天会话历史、prompt history、龙虾任务记录和外部 CLI 配置解耦。
+- 插件侧长期记忆热区文件包括 `ROLLING_SUMMARY.md`、`EVENT_MEMORY.md`、`PROJECT_CONTEXT.md`、`USER_PREFERENCES.md`、`PENDING_ITEMS.md`、`ACTIVE_RISKS.md`、`LESSONS_LEARNED.md`；`PITFALLS.md` 单独归入 runbook 体系，用于记录仍有复发风险或长期规避价值的真实踩坑，条目结构覆盖现象、触发条件、根因、长期规避、验证方式和关联资料。
+- 开关默认关闭，只在工具设置的“工作区”页签配置并写入 workspace settings；解析配置时采用“显式 false 防误开优先”，兼容旧 `memoryEnabled`、`globalMemoryEnabled`、`workspaceMemoryEnabled` 字段。只有显式开启并确认初始化后，才会安装 scaffold 与触发 CodeGraph 设置。
 - 关闭状态下只允许查看、导出和删除已有记忆；不得新建、编辑、自动提取、召回、注入或更新 memory 目录元数据。
 - 自动提取受二级开关控制：`memoryAutoExtractAfterCompact` 仅控制 compact 后提取，`memoryAutoExtractAfterLobsterTask` 仅控制龙虾任务总结后提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许写入或更新。
+- 任务总结或失败回复中出现明确 `pitfall / gotcha / 踩坑 / 报错 / 失败 / 阻塞 / 回滚` 等信号，并伴随根因、规避或验证线索时，插件可自动写入 `.ch/docs/runbooks/PITFALLS.md` 并刷新 generated recall；普通成功总结仍只写入摘要/事件层，避免把所有错误都固化成长期坑点。
 - 该能力只控制插件侧长期记忆，不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、配置或压缩能力。
 
 ### 3.6 输出渲染与任务观测

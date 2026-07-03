@@ -92,7 +92,7 @@ export function resolveLongTermMemoryEnabled(input?: ResolveLongTermMemoryEnable
   if (totalSwitches.some((value) => value === true)) {
     return true;
   }
-  return true;
+  return false;
 }
 
 export function readToolSettings(): ToolSettingsState {

@@ -23,25 +23,13 @@ const blockedWhenDisabled: MemoryRuntimeOperation[] = [
 ];
 
 test("uses the shared long-term memory helper as the runtime gate", () => {
-  assert.equal(isLongTermMemoryRuntimeEnabled({}), true);
-  assert.equal(isLongTermMemoryRuntimeEnabled({ longTermMemoryEnabled: false }), true);
+  assert.equal(isLongTermMemoryRuntimeEnabled({}), false);
+  assert.equal(isLongTermMemoryRuntimeEnabled({ longTermMemoryEnabled: false }), false);
+  assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { workspaceMemoryEnabled: true } }), true);
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { longTermMemoryEnabled: false } }), false);
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { longTermMemoryEnabled: true }, memoryEnabled: false }), false);
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { workspaceMemoryEnabled: false } }), false);
-  assert.equal(
-    isLongTermMemoryRuntimeEnabled({
-      workspaceSettings: { workspaceMemoryEnabled: true },
-      managedByProjectCh: true,
-    }),
-    false,
-  );
-  assert.equal(
-    getLongTermMemoryRuntimeDisableReason({
-      workspaceSettings: { workspaceMemoryEnabled: true },
-      managedByProjectCh: true,
-    }),
-    "managed-by-project-ch",
-  );
+  assert.equal(getLongTermMemoryRuntimeDisableReason({ workspaceSettings: { workspaceMemoryEnabled: true } }), null);
 });
 
 test("blocks all plugin memory recall injection extraction and writes when disabled", () => {

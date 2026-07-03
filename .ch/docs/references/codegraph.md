@@ -4,14 +4,20 @@ CodeGraph 是可选的语义代码图索引层，用来降低代理在陌生代�
 
 ## 集成定位
 
-- CodeGraph 是可选加速层，不是 harness 的必装前置条件。
+- CodeGraph 是 harness 骨架初始化时会尝试安装/初始化的加速层；如果用户没有开启工具设置里的 harness 骨架开关，它仍不是普通任务的必装前置条件。
 - harness 只提供使用约定与 skill，不把 `.codegraph/` 或用户级 MCP 配置复制进模板。
 - 对 Codex CLI，CodeGraph 当前主要通过用户级 `~/.codex/config.toml` 暴露 MCP server；目标项目只需要自己的 `.codegraph/` 索引。
 - `.codegraph/` 是本地缓存。不要把索引数据库、日志或机器本地状态当作项目事实来源。
 
 ## 推荐启用流程
 
-已有 `codegraph` 命令时：
+工具设置中开启 harness 骨架并确认初始化时，扩展会在当前工作区终端自动执行：
+
+```bash
+codegraph install --target codex --location global && codegraph init
+```
+
+手动启用时，已有 `codegraph` 命令可执行：
 
 ```bash
 codegraph install --target codex --location global

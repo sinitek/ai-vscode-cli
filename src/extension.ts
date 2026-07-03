@@ -194,7 +194,7 @@ import {
   writeToolSettings,
 } from "./toolSettings";
 import { persistPromptRunSummary } from "./memory/memoryConsolidator";
-import { resolveWorkspaceMemoryPaths, workspaceHasProjectChDirectory } from "./memory/memoryPaths";
+import { resolveWorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "./memory/memoryPrompt";
 import { buildWorkspaceMemoryRecallPack } from "./memory/memoryRecall";
 import {
@@ -203,6 +203,7 @@ import {
   isMemoryRuntimeOperationAllowed,
   type MemoryRuntimeGateSettings,
 } from "./memory/runtimeGate";
+import { ensureWorkspaceHarnessScaffold } from "./workspaceScaffold";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -356,6 +357,8 @@ const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
 };
 const CLI_INSTALL_TERMINAL_PREFIX = "CLI Install";
+const WORKSPACE_HARNESS_TERMINAL_NAME = "Workspace Harness Setup";
+const CODEGRAPH_SETUP_COMMAND = "codegraph install --target codex --location global && codegraph init";
 const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
@@ -1535,11 +1538,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       return;
     }
     if (message.key === "workspaceMemoryEnabled" || message.key === "longTermMemoryEnabled") {
-      if (isLongTermMemoryManagedByProjectCh()) {
-        await postPanelState();
-        return;
-      }
-      workspaceSettings.workspaceMemoryEnabled = Boolean(message.value);
+      workspaceSettings.workspaceMemoryEnabled = message.value === true;
       saveWorkspaceSettings(workspaceSettings);
       await postPanelState();
       return;
@@ -1559,6 +1558,20 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
+  }
+
+  if (message.type === "initializeWorkspaceHarness") {
+    if (message.enabled !== true) {
+      workspaceSettings.workspaceMemoryEnabled = false;
+      saveWorkspaceSettings(workspaceSettings);
+      await postPanelState();
+      return;
+    }
+    const initialized = await confirmAndInitializeWorkspaceHarness();
+    workspaceSettings.workspaceMemoryEnabled = initialized;
+    saveWorkspaceSettings(workspaceSettings);
+    await postPanelState();
+    return;
   }
 
   if (message.type === "runCommonCommand" && message.command === "compactContext") {
@@ -1743,8 +1756,7 @@ async function buildPanelState(): Promise<PanelState> {
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
-    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
-    longTermMemoryManagedByProjectCh: isLongTermMemoryManagedByProjectCh(),
+    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled === true,
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -1792,8 +1804,7 @@ async function buildPanelStateWithConfigState(
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
-    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
-    longTermMemoryManagedByProjectCh: isLongTermMemoryManagedByProjectCh(),
+    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled === true,
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -10973,9 +10984,6 @@ function maybePersistLongTermMemoryFromRun(options: {
   lobsterRound?: number;
   lobsterSubtaskId?: string;
 }): void {
-  if (options.status !== "end") {
-    return;
-  }
   const runtimeSettings = buildLongTermMemoryRuntimeSettings();
   if (!isMemoryRuntimeOperationAllowed("update", runtimeSettings)) {
     return;
@@ -10993,6 +11001,7 @@ function maybePersistLongTermMemoryFromRun(options: {
       prompt: options.prompt,
       assistantResponse,
       cli: options.cli,
+      status: options.status,
       taskRole: options.taskRole,
       lobsterTaskId: options.lobsterTaskId,
       lobsterRound: options.lobsterRound,
@@ -14757,7 +14766,6 @@ function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
     globalMemoryEnabled: toolSettings.globalMemoryEnabled,
     memoryAutoExtractAfterCompact: toolSettings.memoryAutoExtractAfterCompact,
     memoryAutoExtractAfterLobsterTask: toolSettings.memoryAutoExtractAfterLobsterTask,
-    managedByProjectCh: workspaceHasProjectChDirectory(resolveWorkspaceCwd() ?? null),
     workspaceSettings: {
       longTermMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
       workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
@@ -14765,7 +14773,7 @@ function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
   };
 }
 
-function getLongTermMemoryDisabledReason(): "managed-by-project-ch" | "disabled-by-setting" | null {
+function getLongTermMemoryDisabledReason(): "disabled-by-setting" | null {
   return getLongTermMemoryRuntimeDisableReason(buildLongTermMemoryRuntimeSettings());
 }
 
@@ -14773,12 +14781,63 @@ function getEffectiveLongTermMemoryEnabled(): boolean {
   return isLongTermMemoryRuntimeEnabled(buildLongTermMemoryRuntimeSettings());
 }
 
-function isLongTermMemoryManagedByProjectCh(): boolean {
-  return getLongTermMemoryDisabledReason() === "managed-by-project-ch";
-}
-
 function getActiveWorkspaceMemoryPaths() {
   return resolveWorkspaceMemoryPaths(resolveWorkspaceCwd() ?? null);
+}
+
+function ensureActiveWorkspaceHarnessScaffold(): boolean {
+  const paths = getActiveWorkspaceMemoryPaths();
+  if (!paths) {
+    return false;
+  }
+  try {
+    ensureWorkspaceHarnessScaffold(extensionUri.fsPath, paths);
+    return true;
+  } catch (error) {
+    void logError("workspace-harness-scaffold-error", {
+      error: String(error),
+      workspace: paths.workspaceRoot,
+    });
+    return false;
+  }
+}
+
+async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
+  const workspaceRoot = resolveWorkspaceCwd();
+  if (!workspaceRoot) {
+    void vscode.window.showWarningMessage(t("workspaceHarness.noWorkspace"));
+    return false;
+  }
+  const confirmLabel = t("workspaceHarness.confirmInitializeAction");
+  const selection = await vscode.window.showWarningMessage(
+    t("workspaceHarness.confirmInitialize", { workspace: workspaceRoot }),
+    { modal: true },
+    confirmLabel,
+  );
+  if (selection !== confirmLabel) {
+    return false;
+  }
+  const scaffoldReady = ensureActiveWorkspaceHarnessScaffold();
+  if (!scaffoldReady) {
+    void vscode.window.showWarningMessage(t("workspaceHarness.initFailed"));
+    return false;
+  }
+  startCodeGraphWorkspaceSetup(workspaceRoot);
+  void vscode.window.showInformationMessage(t("workspaceHarness.initStarted"));
+  return true;
+}
+
+function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
+  const terminal = vscode.window.createTerminal({
+    name: WORKSPACE_HARNESS_TERMINAL_NAME,
+    cwd: workspaceRoot,
+  });
+  terminal.show();
+  terminal.sendText(CODEGRAPH_SETUP_COMMAND);
+  void logInfo("workspace-harness-codegraph-setup-triggered", {
+    workspace: workspaceRoot,
+    command: CODEGRAPH_SETUP_COMMAND,
+  });
 }
 
 function getWorkspaceAutoCompactContextAfterRun(): boolean {

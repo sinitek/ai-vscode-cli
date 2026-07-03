@@ -30,6 +30,7 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
+  | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | {
       type: "sendPrompt";
       prompt: string;
@@ -181,7 +182,6 @@ export type PanelState = {
   autoAddEditorContextTags: boolean;
   longTermMemoryEnabled: boolean;
   workspaceMemoryEnabled: boolean;
-  longTermMemoryManagedByProjectCh: boolean;
   autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;

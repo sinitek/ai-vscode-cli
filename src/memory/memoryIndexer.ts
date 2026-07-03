@@ -2,9 +2,12 @@ import { createHash } from "crypto";
 
 import {
   readMemoryHotFiles,
+  readPitfallsMemoryFile,
   type MemoryHotFileId,
   type MemoryLayer,
   type MemoryHotFileSnapshot,
+  type MemorySourceFileId,
+  type SupplementalMemoryFileSnapshot,
   writeGeneratedMemoryArtifact,
   writeGeneratedMemoryJson,
 } from "./memoryFiles";
@@ -12,7 +15,7 @@ import type { WorkspaceMemoryPaths } from "./memoryPaths";
 
 export type MemoryObservation = {
   id: string;
-  fileId: MemoryHotFileId;
+  fileId: MemorySourceFileId;
   layer: MemoryLayer;
   title: string;
   summary: string;
@@ -26,7 +29,7 @@ export type MemoryObservation = {
 export type WorkspaceMemoryIndex = {
   generatedAt: string;
   sourceFiles: Array<{
-    fileId: MemoryHotFileId;
+    fileId: MemorySourceFileId;
     title: string;
     relativePath: string;
     updatedAt: string | null;
@@ -35,10 +38,20 @@ export type WorkspaceMemoryIndex = {
   observations: MemoryObservation[];
 };
 
+type WorkspaceMemorySourceFile = WorkspaceMemoryIndex["sourceFiles"][number];
+
 type MemorySection = {
   title: string;
   body: string;
 };
+
+type MemorySourceSnapshot = Pick<
+  MemoryHotFileSnapshot,
+  "id" | "title" | "layer" | "relativePath" | "updatedAt" | "sanitizedContent"
+> | Pick<
+  SupplementalMemoryFileSnapshot,
+  "id" | "title" | "layer" | "relativePath" | "updatedAt" | "sanitizedContent"
+>;
 
 function compactWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -55,7 +68,7 @@ function stripPrimaryHeading(content: string): string {
   return content.replace(/^#\s+[^\n]+\n?/u, "").trim();
 }
 
-function parseMemorySections(file: MemoryHotFileSnapshot): MemorySection[] {
+function parseMemorySections(file: MemorySourceSnapshot): MemorySection[] {
   const body = stripPrimaryHeading(file.sanitizedContent);
   if (!body) {
     return [];
@@ -148,16 +161,53 @@ function buildObservation(file: MemoryHotFileSnapshot, section: MemorySection): 
   };
 }
 
+function buildSupplementalObservation(
+  file: SupplementalMemoryFileSnapshot,
+  section: MemorySection,
+): MemoryObservation {
+  const summary = shorten(section.body, 320);
+  const anchor = slugifyAnchor(section.title);
+  const sourcePath = anchor
+    ? `${file.relativePath}#${anchor}`
+    : file.relativePath;
+  const contentHash = buildHash(`${section.title}\n${summary}`);
+  return {
+    id: `mem-${contentHash.slice(0, 12)}`,
+    fileId: file.id,
+    layer: file.layer,
+    title: section.title,
+    summary,
+    sourcePath,
+    contentHash,
+    readCost: estimateReadCost(summary),
+    updatedAt: file.updatedAt,
+    keywords: extractKeywords(`${section.title}\n${summary}`),
+  };
+}
+
 export function buildWorkspaceMemoryIndex(paths: WorkspaceMemoryPaths): WorkspaceMemoryIndex {
   const files = readMemoryHotFiles(paths);
-  const observations = files.flatMap((file) => parseMemorySections(file).map((section) => buildObservation(file, section)));
-  const sourceFiles = files.map((file) => ({
+  const pitfallsFile = readPitfallsMemoryFile(paths);
+  const observations = [
+    ...files.flatMap((file) => parseMemorySections(file).map((section) => buildObservation(file, section))),
+    ...parseMemorySections(pitfallsFile).map((section) =>
+      buildSupplementalObservation(pitfallsFile, section),
+    ),
+  ];
+  const sourceFiles: WorkspaceMemorySourceFile[] = files.map((file) => ({
     fileId: file.id,
     title: file.title,
     relativePath: file.relativePath,
     updatedAt: file.updatedAt,
     observationCount: observations.filter((item) => item.fileId === file.id).length,
   }));
+  sourceFiles.push({
+    fileId: pitfallsFile.id,
+    title: pitfallsFile.title,
+    relativePath: pitfallsFile.relativePath,
+    updatedAt: pitfallsFile.updatedAt,
+    observationCount: observations.filter((item) => item.fileId === pitfallsFile.id).length,
+  });
   return {
     generatedAt: new Date().toISOString(),
     sourceFiles,

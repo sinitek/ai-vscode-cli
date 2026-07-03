@@ -21,11 +21,9 @@ export type MemoryRuntimeOperation =
 export type MemoryRuntimeGateSettings = ResolveLongTermMemoryEnabledInput & {
   memoryAutoExtractAfterCompact?: boolean;
   memoryAutoExtractAfterLobsterTask?: boolean;
-  managedByProjectCh?: boolean;
 };
 
 export type LongTermMemoryRuntimeDisableReason =
-  | "managed-by-project-ch"
   | "disabled-by-setting";
 
 const READ_WRITE_RUNTIME_OPERATIONS: ReadonlySet<MemoryRuntimeOperation> = new Set([
@@ -50,9 +48,6 @@ const MANAGEMENT_OPERATIONS_ALLOWED_WHEN_DISABLED: ReadonlySet<MemoryRuntimeOper
 export function getLongTermMemoryRuntimeDisableReason(
   settings?: MemoryRuntimeGateSettings | null,
 ): LongTermMemoryRuntimeDisableReason | null {
-  if (settings?.managedByProjectCh === true) {
-    return "managed-by-project-ch";
-  }
   return resolveLongTermMemoryEnabled(settings) ? null : "disabled-by-setting";
 }
 

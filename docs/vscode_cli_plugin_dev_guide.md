@@ -7,4 +7,4 @@
 - `.ch/docs/runbooks/local-development.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
-新增或修改用户可见能力时，需要同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。长期记忆能力的设计口径见 `docs/LONG_TERM_MEMORY_DESIGN.md`。
+新增或修改用户可见能力时，需要同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。长期记忆能力的设计口径见 `docs/long_term_memory_design.md`。

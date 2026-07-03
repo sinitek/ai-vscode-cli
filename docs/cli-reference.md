@@ -6,4 +6,4 @@
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - `.ch/docs/runbooks/local-development.md`
 
-长期记忆开关属于插件侧工具设置：默认开启，可关闭，显式 `false` 防误开优先。它只控制当前工作区 `.sinitek_cli/memory/` 下的插件侧长期记忆层；如果目标项目已存在 `.ch` 目录，则该能力会自动关闭以避免与项目自带记忆体系重叠。不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、压缩或配置。
+工具设置“工作区”页中的 harness 骨架开关默认关闭。用户开启时会先弹窗确认；确认后才会安装当前工作区 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 创建或追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，并在终端启动 CodeGraph 设置。该开关同时控制插件侧长期记忆召回/写入：热区写入 `.ch/docs/memory/`，踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、压缩或配置。

@@ -7,7 +7,7 @@
 之前的方案把长期记忆近似成：
 
 - 一组 `MemoryItem`
-- 一个 `~/.sinitek_cli/memory/` 目录
+- 一个 `<workspace>/.ch/docs/memory/` 目录
 - 若干 JSONL / JSON 索引文件
 
 这个方向过于扁平，适合做存储原型，不适合做可长期维护、可压缩、可召回、可治理的记忆系统。
@@ -34,8 +34,7 @@
 
 ### 2.2 不照搬
 
-- 不要求改仓库内规则文件
-- 不要求像目标系统那样把规则长期写入 `.ch/docs/` 或 `AGENTS.md`
+- 不要求改业务规则文件或用户自己的项目规范
 - 不要求首版就实现完整的 claim registry、memory eval、reference pack
 
 原因很简单：本插件在执行任务前可以动态注入补充提示词，因此长期记忆的使用入口应该是：
@@ -44,21 +43,23 @@
 记忆召回 -> 生成本次补充提示词 -> 注入到运行时 prompt
 ```
 
-而不是：
-
-```text
-记忆召回 -> 改写仓库规则文件 -> 再间接影响后续任务
-```
+工作区 scaffold 本身可以直接采用目标系统的 `.ch` / `.agents` 结构，但具体任务使用仍然通过运行时 prompt 注入完成，而不是按每次 recall 动态改写规则文件。
 
 ## 3. 存储范围与位置
 
 长期记忆应该以“当前工作区隔离”为默认模型，而不是先做全局共享。
 
-建议存储在当前工作区隐藏目录：
+建议存储在当前工作区 harness scaffold：
 
 ```text
-<workspace>/.sinitek_cli/
-  memory/
+<workspace>/
+  .ch/docs/memory/
+  .ch/docs/generated/memory-index/
+  .ch/docs/runbooks/PITFALLS.md
+  .agents/
+  ARCHITECTURE.md
+  AGENTS.md
+  CLAUDE.md
 ```
 
 而不是首版就把记忆正文放到用户 home 目录下统一聚合。
@@ -67,13 +68,13 @@
 
 - 不同项目之间天然隔离，减少误召回。
 - 和记忆内容强相关的代码、文档、任务背景都在同一工作区语义下。
-- 用户删除项目目录或单独清理 `.sinitek_cli/` 时，边界清晰。
+- 用户删除项目目录时，记忆与协作 scaffold 可以一起清理，边界清晰。
 - 更接近目标系统“仓库内长期记忆”的治理方式。
 
 注意：
 
 - 当前实现里，工具设置和会话历史仍然大量使用 `~/.sinitek_cli/`。
-- 当前代码已经把插件侧长期记忆正文落到工作区 `.sinitek_cli/memory/`，并在发送 prompt 前生成 recall pack 注入补充提示词；但普通历史、workspace settings 和会话存档仍保留在 `~/.sinitek_cli/`。
+- 当前实现把插件侧长期记忆正文落到工作区 `.ch/docs/memory/`，generated recall 落到 `.ch/docs/generated/memory-index/`，踩坑记录落到 `.ch/docs/runbooks/PITFALLS.md`；普通历史、workspace settings 和会话存档仍保留在 `~/.sinitek_cli/`。
 
 ## 4. 四层记忆模型
 
@@ -106,7 +107,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 建议文件：
 
 ```text
-<workspace>/.sinitek_cli/memory/
+<workspace>/.ch/docs/memory/
   ROLLING_SUMMARY.md
   EVENT_MEMORY.md
   PENDING_ITEMS.md
@@ -135,7 +136,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 建议文件：
 
 ```text
-<workspace>/.sinitek_cli/memory/
+<workspace>/.ch/docs/memory/
   PROJECT_CONTEXT.md
   USER_PREFERENCES.md
 ```
@@ -161,13 +162,16 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 建议文件：
 
 ```text
-<workspace>/.sinitek_cli/memory/
+<workspace>/.ch/docs/memory/
   LESSONS_LEARNED.md
+<workspace>/.ch/docs/runbooks/
+  PITFALLS.md
 ```
 
 建议职责：
 
 - `LESSONS_LEARNED.md`：记录“以后再遇到类似问题应该怎么做”
+- `.ch/docs/runbooks/PITFALLS.md`：记录仍有复发风险或长期规避价值的真实踩坑，结构保持“现象、触发条件、根因、长期规避、验证方式、关联资料”
 
 如果未来某条经验已经足够稳定，也可以进一步沉淀为插件内置操作流、helper 或脚本，但首版长期记忆仍以 Markdown 为主。
 
@@ -176,29 +180,38 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 建议长期记忆目录结构如下：
 
 ```text
-<workspace>/.sinitek_cli/
-  memory/
-    README.md
-    ROLLING_SUMMARY.md
-    EVENT_MEMORY.md
-    PROJECT_CONTEXT.md
-    USER_PREFERENCES.md
-    PENDING_ITEMS.md
-    ACTIVE_RISKS.md
-    LESSONS_LEARNED.md
-    generated/
-      index.md
-      recall-index.md
-      observations.jsonl
-      recall-pack.md
-      consolidation-report.md
-      manifest.json
+<workspace>/
+  .ch/
+    docs/
+      memory/
+        README.md
+        ROLLING_SUMMARY.md
+        EVENT_MEMORY.md
+        PROJECT_CONTEXT.md
+        USER_PREFERENCES.md
+        PENDING_ITEMS.md
+        ACTIVE_RISKS.md
+        LESSONS_LEARNED.md
+      runbooks/
+        PITFALLS.md
+      generated/
+        memory-index/
+          index.md
+          recall-index.md
+          observations.jsonl
+          recall-pack.md
+          consolidation-report.md
+          manifest.json
+  .agents/
+  ARCHITECTURE.md
+  AGENTS.md
+  CLAUDE.md
 ```
 
 说明：
 
-- `memory/*.md` 是长期记忆的原始事实来源
-- `memory/generated/*` 是可重建的召回产物，不是最终事实来源
+- `.ch/docs/memory/*.md` 与 `.ch/docs/runbooks/PITFALLS.md` 是长期记忆的原始事实来源
+- `.ch/docs/generated/memory-index/*` 是可重建的召回产物，不是最终事实来源
 
 不建议首版直接把记忆正文做成主存储 JSONL，原因是：
 
@@ -265,6 +278,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 - 哪些事实应该进入 `PROJECT_CONTEXT.md`
 - 哪些偏好应该进入 `USER_PREFERENCES.md`
 - 哪些经验应该进入 `LESSONS_LEARNED.md`
+- 哪些失败、阻塞、回滚或明确“踩坑”信号应该进入 `.ch/docs/runbooks/PITFALLS.md`
 
 ## 7. 记忆流转规则
 
@@ -279,6 +293,8 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 5. 重新生成 recall/index
 
 不建议把原始消息直接塞进长期记忆。
+
+当前插件的自动踩坑记录属于保守上提：只有任务结果或失败总结中出现明确 `pitfall / gotcha / 踩坑 / 报错 / 失败 / 阻塞 / 回滚` 等信号，并伴随根因、规避或验证线索时，才写入 `.ch/docs/runbooks/PITFALLS.md`。自动条目的根因如果来自模型总结而非人工确认，需要保留“需观察 / 待核验”的状态，不应当作不可变事实。
 
 ### 7.2 上提规则
 
@@ -311,6 +327,10 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 - `LESSONS_LEARNED.md`
   - 反复复用的做法
   - 固定的排障顺序
+- `.ch/docs/runbooks/PITFALLS.md`
+  - 真实失败或阻塞后的规避记录
+  - 已确认会复发的坑点
+  - 需要后续任务优先避开的兼容性、运行时或验证问题
 - `PENDING_ITEMS.md`
   - 跨会话待办
 - `ACTIVE_RISKS.md`
@@ -342,16 +362,18 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 
 1. `PROJECT_CONTEXT.md`
 2. `USER_PREFERENCES.md`
-3. `LESSONS_LEARNED.md`
-4. `ACTIVE_RISKS.md`
-5. `PENDING_ITEMS.md`
-6. `EVENT_MEMORY.md`
-7. `ROLLING_SUMMARY.md`
+3. ``.ch/docs/runbooks/PITFALLS.md``
+4. `LESSONS_LEARNED.md`
+5. `ACTIVE_RISKS.md`
+6. `PENDING_ITEMS.md`
+7. `EVENT_MEMORY.md`
+8. `ROLLING_SUMMARY.md`
 
 理由：
 
 - 先给稳定事实
 - 再给用户偏好
+- 再给真实踩坑和规避方式
 - 再给可复用方法
 - 最后才补近期事件和滚动摘要
 
@@ -381,24 +403,26 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 中文界面下也可输出中文版本，但边界必须明显。
 
-### 8.4 不改规则文件
+### 8.4 Scaffold 与运行时边界
 
-本方案明确不做：
+本方案会自动初始化工作区 scaffold，但不会按每次 recall 结果去改写规则内容：
 
-- 不改 `AGENTS.md`
-- 不改 `.ch/docs/`
-- 不为长期记忆写额外规则文件
-- 不把本次 recall 的结果持久写回仓库规则层
+- 允许复制目标系统同构的 `.ch/`、`.agents/`、`ARCHITECTURE.md` 模板
+- 允许缺失时创建根级 `AGENTS.md`，已存在时按幂等标记 append 模板
+- 允许缺失时创建根级 `CLAUDE.md`，内容只引用 `AGENTS.md`，已有文件不覆盖也不追加
+- 不根据单次 recall 动态重写 `.ch/docs/*`、`AGENTS.md` 或 `.agents/*`
 
 原因：
 
-- 这会放大脏写风险
-- 很难区分“本次 prompt 需要”与“以后全局都需要”
-- 插件已有运行时 prompt 注入能力，没有必要绕远路
+- scaffold 是稳定骨架，适合一次性安装
+- recall 是本次任务语境，适合运行时注入
+- 两者职责分离后，既能共享目标系统结构，又能降低脏写风险
 
 ## 9. 用户可见能力
 
-工具设置中的长期记忆开关应控制“插件侧记忆系统是否参与本次任务”。
+工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。
+
+该开关同时控制“插件侧记忆系统是否参与本次任务”。
 
 开启时允许：
 
@@ -416,8 +440,11 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 兼容规则：
 
-- 如果工作区根目录已存在 `.ch` 目录，则视为项目已有自带记忆体系；插件侧长期记忆即使开关为开启也会自动关闭。
-- 该规则属于 shared runtime gate，而不是只做 UI 提示。
+- 如果工作区已存在 `.ch`、`.agents`、`AGENTS.md`、`CLAUDE.md` 或 `ARCHITECTURE.md`，则按“缺失即补齐、已有不覆盖”的策略继续安装 scaffold。
+- 根级 `AGENTS.md` 若已存在，则只追加一次带标记块的 harness 模板。
+- 根级 `CLAUDE.md` 若已存在，则保持原样；若缺失，则创建一个只指向 `AGENTS.md` 的轻量入口。
+- 扩展激活、工作区切换、首次 recall / inject / 持久化都不再无条件安装 scaffold；只有显式开启并确认初始化后才安装。
+- 确认初始化后会在当前工作区终端执行 `codegraph install --target codex --location global && codegraph init`，让 CodeGraph 安装/索引过程对用户可见。
 
 关闭时仍可允许：
 
@@ -445,7 +472,7 @@ src/memory/
 职责建议：
 
 - `memoryPaths.ts`
-  - 统一解析 `<workspace>/.sinitek_cli/memory/` 路径
+  - 统一解析 `<workspace>/.ch/docs/memory/`、`.ch/docs/generated/memory-index/`、`.ch/docs/runbooks/PITFALLS.md`
 - `memoryFiles.ts`
   - 读写各个 Markdown 记忆文件
 - `memoryIndexer.ts`
@@ -526,7 +553,8 @@ compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 
 目标：
 
-- 在 `<workspace>/.sinitek_cli/memory/` 建立四层文件骨架
+- 在工作区补齐 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md` 和 `CLAUDE.md` scaffold
+- 在 `<workspace>/.ch/docs/memory/` 建立四层文件骨架
 - 接入工具设置开关
 - 接入基础读写
 
@@ -562,10 +590,10 @@ compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 
 更稳妥的目标方案是：
 
-1. 以当前工作区 `.sinitek_cli/memory/` 作为长期记忆正文目录。
+1. 以当前工作区 harness scaffold 作为长期记忆正文目录：热区位于 `.ch/docs/memory/`，踩坑位于 `.ch/docs/runbooks/PITFALLS.md`。
 2. 以目标系统的四层记忆模型组织内容：`Working / Episodic / Semantic / Procedural`。
-3. 以 `ROLLING_SUMMARY / EVENT_MEMORY / PROJECT_CONTEXT / USER_PREFERENCES / LESSONS_LEARNED / PENDING_ITEMS / ACTIVE_RISKS` 作为热区文件。
-4. 以 `generated/*` 作为低成本 recall 层，而不是主事实来源。
-5. 以“运行时补充提示词注入”作为使用入口，不改规则文件。
+3. 以 `ROLLING_SUMMARY / EVENT_MEMORY / PROJECT_CONTEXT / USER_PREFERENCES / LESSONS_LEARNED / PENDING_ITEMS / ACTIVE_RISKS` 作为热区文件，并把 `PITFALLS.md` 归入 runbook。
+4. 以 `.ch/docs/generated/memory-index/*` 作为低成本 recall 层，而不是主事实来源。
+5. 以“工作区 scaffold + 运行时补充提示词注入”作为使用入口，不按单次 recall 动态改写规则文件。
 
 这样既能借用目标系统成熟的长期记忆分层思想，又能贴合 VS Code 插件的实际执行链路和边界。

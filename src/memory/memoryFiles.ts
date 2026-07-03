@@ -12,6 +12,7 @@ export type MemoryHotFileId =
   | "pendingItems"
   | "activeRisks"
   | "lessonsLearned";
+export type MemorySourceFileId = MemoryHotFileId | "pitfalls";
 
 export type MemoryHotFileDefinition = {
   id: MemoryHotFileId;
@@ -30,10 +31,36 @@ export type MemoryHotFileSnapshot = MemoryHotFileDefinition & {
   exists: boolean;
 };
 
+export type SupplementalMemoryFileSnapshot = {
+  id: "pitfalls";
+  title: string;
+  layer: "procedural";
+  memoryType: "pitfall";
+  absolutePath: string;
+  relativePath: string;
+  content: string;
+  sanitizedContent: string;
+  updatedAt: string | null;
+  exists: boolean;
+};
+
 export type MemoryEntryInput = {
   title: string;
   lines: string[];
   occurredAt?: Date;
+};
+
+export type PitfallRecordInput = {
+  title: string;
+  status?: string;
+  firstSeen?: Date;
+  scope?: string;
+  phenomenon: string[];
+  trigger?: string[];
+  rootCause?: string[];
+  avoidance?: string[];
+  verification?: string[];
+  relatedInfo?: string[];
 };
 
 export const MEMORY_HOT_FILES: readonly MemoryHotFileDefinition[] = [
@@ -69,7 +96,7 @@ function buildFrontMatter(definition: MemoryHotFileDefinition): string {
     "scope: project",
     "status: active",
     `last_verified_at: ${lastVerifiedAt}`,
-    `source_of_truth: .sinitek_cli/memory/${definition.fileName}`,
+    `source_of_truth: .ch/docs/memory/${definition.fileName}`,
     "derived_from: []",
     "supersedes: []",
     "related_paths: []",
@@ -85,7 +112,7 @@ function buildReadmeTemplate(): string {
   return [
     "# Workspace Long-Term Memory",
     "",
-    "This directory is the source of truth for plugin-side long-term memory in the current workspace.",
+    "This directory is the hot memory surface for plugin-side long-term memory in the current workspace.",
     "",
     "Hot files:",
     "- `ROLLING_SUMMARY.md`: recent episodic summaries worth carrying across sessions",
@@ -96,7 +123,9 @@ function buildReadmeTemplate(): string {
     "- `ACTIVE_RISKS.md`: currently active risks or caveats",
     "- `LESSONS_LEARNED.md`: repeatable procedures and lessons",
     "",
-    "Generated recall artifacts live under `generated/` and can be rebuilt from the Markdown files above.",
+    "Pitfall records live in `../runbooks/PITFALLS.md` so they stay with the runbook system.",
+    "",
+    "Generated recall artifacts live under `../generated/memory-index/` and can be rebuilt from the Markdown files above.",
     "",
   ].join("\n");
 }
@@ -116,6 +145,7 @@ export function getMemoryHotFilePath(paths: WorkspaceMemoryPaths, id: MemoryHotF
 export function ensureMemoryWorkspaceScaffold(paths: WorkspaceMemoryPaths): void {
   fs.mkdirSync(paths.memoryDir, { recursive: true });
   fs.mkdirSync(paths.generatedDir, { recursive: true });
+  fs.mkdirSync(paths.runbooksDir, { recursive: true });
 
   const readmePath = path.join(paths.memoryDir, "README.md");
   if (!fs.existsSync(readmePath)) {
@@ -170,6 +200,27 @@ export function readMemoryHotFiles(paths: WorkspaceMemoryPaths): MemoryHotFileSn
   });
 }
 
+export function readPitfallsMemoryFile(paths: WorkspaceMemoryPaths): SupplementalMemoryFileSnapshot {
+  const absolutePath = paths.pitfallsFile;
+  const exists = fs.existsSync(absolutePath);
+  const content = exists ? readFileSafe(absolutePath) : "";
+  const updatedAt = exists
+    ? fs.statSync(absolutePath).mtime.toISOString()
+    : null;
+  return {
+    id: "pitfalls",
+    title: "Pitfalls",
+    layer: "procedural",
+    memoryType: "pitfall",
+    absolutePath,
+    relativePath: path.relative(paths.workspaceRoot, absolutePath).replace(/\\/g, "/"),
+    content,
+    sanitizedContent: stripMemoryPrivateBlocks(content),
+    updatedAt,
+    exists,
+  };
+}
+
 function normalizeEntryLine(line: string): string | null {
   const normalized = String(line ?? "").replace(/\s+/g, " ").trim();
   return normalized ? normalized : null;
@@ -198,6 +249,63 @@ export function appendMemoryEntry(
     "",
   ].join("\n");
   fs.writeFileSync(filePath, `${existing}${block}`, "utf8");
+  return filePath;
+}
+
+function normalizeRecordLines(lines?: string[]): string[] {
+  return (lines ?? [])
+    .map((line) => normalizeEntryLine(line))
+    .filter((line): line is string => Boolean(line));
+}
+
+function appendRecordSection(lines: string[], title: string, items?: string[]): void {
+  const normalized = normalizeRecordLines(items);
+  if (!normalized.length) {
+    return;
+  }
+  lines.push(`### ${title}`);
+  normalized.forEach((line) => {
+    lines.push(`- ${line}`);
+  });
+  lines.push("");
+}
+
+export function appendPitfallRecord(
+  paths: WorkspaceMemoryPaths,
+  input: PitfallRecordInput,
+): string {
+  ensureMemoryWorkspaceScaffold(paths);
+  const filePath = paths.pitfallsFile;
+  const existing = readFileSafe(filePath).trimEnd();
+  const title = normalizeEntryLine(input.title) ?? "Pitfall";
+  const firstSeen = input.firstSeen ?? new Date();
+  let nextContent = existing;
+  if (!nextContent) {
+    nextContent = [
+      "# Pitfalls",
+      "",
+      "Auto-captured plugin-side pitfalls are appended here when they have recurring value.",
+      "",
+    ].join("\n");
+  }
+  const lines: string[] = [
+    "",
+    `## ${title}`,
+    "",
+    `- Status: ${normalizeEntryLine(input.status ?? "") ?? "needs-observation"}`,
+    `- First seen: ${currentDateStamp(firstSeen)}`,
+    `- Scope: ${normalizeEntryLine(input.scope ?? "") ?? "workspace"}`,
+    "",
+  ];
+
+  appendRecordSection(lines, "Phenomenon", input.phenomenon);
+  appendRecordSection(lines, "Trigger", input.trigger);
+  appendRecordSection(lines, "Root Cause", input.rootCause);
+  appendRecordSection(lines, "Long-Term Avoidance", input.avoidance);
+  appendRecordSection(lines, "Verification", input.verification);
+  appendRecordSection(lines, "Related Info", input.relatedInfo);
+
+  fs.writeFileSync(filePath, `${nextContent.trimEnd()}${lines.join("\n").trimEnd()}\n`, "utf8");
   return filePath;
 }
 

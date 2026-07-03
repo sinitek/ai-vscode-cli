@@ -1,9 +1,9 @@
-import type { MemoryHotFileId } from "./memoryFiles";
+import type { MemorySourceFileId } from "./memoryFiles";
 import type { MemoryRecallPack } from "./memoryRecall";
 
 export type MemoryPromptLocale = "zh-CN" | "en";
 
-const SECTION_LABELS: Record<MemoryPromptLocale, Record<MemoryHotFileId, string>> = {
+const SECTION_LABELS: Record<MemoryPromptLocale, Record<MemorySourceFileId, string>> = {
   en: {
     rollingSummary: "Recent Summary",
     eventMemory: "Relevant Events",
@@ -12,6 +12,7 @@ const SECTION_LABELS: Record<MemoryPromptLocale, Record<MemoryHotFileId, string>
     pendingItems: "Open Items",
     activeRisks: "Active Risks",
     lessonsLearned: "Lessons Learned",
+    pitfalls: "Pitfalls",
   },
   "zh-CN": {
     rollingSummary: "近期摘要",
@@ -21,6 +22,7 @@ const SECTION_LABELS: Record<MemoryPromptLocale, Record<MemoryHotFileId, string>
     pendingItems: "待办事项",
     activeRisks: "当前风险",
     lessonsLearned: "经验教训",
+    pitfalls: "踩坑记录",
   },
 };
 

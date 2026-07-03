@@ -105,11 +105,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "Auto File Tags",
     toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
-    toolSettingsLongTermMemoryLabel: "Plugin Long-Term Memory",
-    toolSettingsLongTermMemoryTitle: "Workspace setting. When off, this extension will not recall or save plugin long-term memory for later tasks in this workspace. This does not control native memory in external CLI tools.",
+    toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
+    toolSettingsLongTermMemoryTitle: "Workspace setting. When enabled, this extension asks to initialize the workspace harness scaffold, plugin memory files, and CodeGraph.",
     toolSettingsLongTermMemoryToggle: "On",
-    toolSettingsLongTermMemoryHint: "Workspace setting. Disabling only blocks plugin-side memory recall and saves for future tasks in this workspace; existing memories can still be viewed, exported, or deleted.",
-    toolSettingsLongTermMemoryManagedByChHint: "This workspace already has a .ch directory, so plugin-side long-term memory is automatically disabled to avoid overlapping project memory systems.",
+    toolSettingsLongTermMemoryHint: "Off by default. Turning it on asks before installing .ch, .agents, ARCHITECTURE.md, AGENTS.md, CLAUDE.md, and starting CodeGraph setup for this workspace.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -391,11 +390,10 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
-    toolSettingsLongTermMemoryLabel: "插件侧长期记忆",
-    toolSettingsLongTermMemoryTitle: "工作区设置。关闭后，扩展不会在当前工作区的后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。",
+    toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
+    toolSettingsLongTermMemoryTitle: "工作区设置。开启后会询问是否初始化工作区 harness 骨架、插件侧记忆文件和 CodeGraph。",
     toolSettingsLongTermMemoryToggle: "开启",
-    toolSettingsLongTermMemoryHint: "工作区设置。关闭仅阻止当前工作区后续任务的插件侧记忆召回和保存；仍可查看、导出或删除已有记忆。",
-    toolSettingsLongTermMemoryManagedByChHint: "当前工作区已存在 .ch 目录，说明项目已有自己的记忆体系；为避免重叠，插件侧长期记忆已自动关闭。",
+    toolSettingsLongTermMemoryHint: "默认关闭。开启时会先确认，再安装 .ch、.agents、ARCHITECTURE.md、AGENTS.md、CLAUDE.md，并启动当前工作区的 CodeGraph 设置。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -3594,9 +3592,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         lobsterGroupChatHistory: [],
         debug: false,
         autoAddEditorContextTags: false,
-        longTermMemoryEnabled: true,
-        workspaceMemoryEnabled: true,
-        longTermMemoryManagedByProjectCh: false,
+        longTermMemoryEnabled: false,
+        workspaceMemoryEnabled: false,
         autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
@@ -4607,9 +4604,8 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
-        state.longTermMemoryEnabled = panelState.longTermMemoryEnabled !== false;
-        state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled !== false;
-        state.longTermMemoryManagedByProjectCh = Boolean(panelState.longTermMemoryManagedByProjectCh);
+        state.longTermMemoryEnabled = panelState.longTermMemoryEnabled === true;
+        state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
@@ -7402,17 +7398,12 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
 
       function syncLongTermMemoryWorkspaceControl() {
-        const isManagedByProjectCh = Boolean(state.longTermMemoryManagedByProjectCh);
         if (elements.longTermMemoryEnabled) {
-          elements.longTermMemoryEnabled.checked = isManagedByProjectCh
-            ? false
-            : Boolean(state.workspaceMemoryEnabled);
-          elements.longTermMemoryEnabled.disabled = Boolean(state.isRunning || isManagedByProjectCh);
+          elements.longTermMemoryEnabled.checked = Boolean(state.workspaceMemoryEnabled);
+          elements.longTermMemoryEnabled.disabled = Boolean(state.isRunning);
         }
         if (elements.longTermMemoryNote) {
-          elements.longTermMemoryNote.textContent = isManagedByProjectCh
-            ? i18n.toolSettingsLongTermMemoryManagedByChHint
-            : i18n.toolSettingsLongTermMemoryHint;
+          elements.longTermMemoryNote.textContent = i18n.toolSettingsLongTermMemoryHint;
         }
       }
 
@@ -9406,18 +9397,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       if (elements.longTermMemoryEnabled) {
         elements.longTermMemoryEnabled.addEventListener("change", (event) => {
-          if (state.longTermMemoryManagedByProjectCh) {
-            syncLongTermMemoryWorkspaceControl();
-            return;
-          }
           const enabled = Boolean(event.target.checked);
           state.longTermMemoryEnabled = enabled;
           state.workspaceMemoryEnabled = enabled;
           syncLongTermMemoryWorkspaceControl();
+          if (enabled) {
+            vscode.postMessage({
+              type: "initializeWorkspaceHarness",
+              enabled: true,
+            });
+            return;
+          }
           vscode.postMessage({
             type: "updateSetting",
             key: "workspaceMemoryEnabled",
-            value: enabled,
+            value: false,
           });
         });
       }
