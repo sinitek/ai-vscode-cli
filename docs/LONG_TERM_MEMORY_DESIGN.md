@@ -1,501 +1,566 @@
-# 长期记忆能力改造方案
+# 长期记忆四层设计方案
 
-## 1. 背景与目标
+## 1. 背景
 
-Code Buddy 一类 IDE 已经开始提供“长久记忆”能力：用户在连续使用过程中形成的偏好、项目事实、决策记录、常见约束和协作习惯，可以在后续会话中被自动召回，而不是每次都依赖当前聊天上下文。
+当前这份 VS Code 插件已经有会话历史、消息存档、prompt history、龙虾任务记录和工具设置，但这些都不等于“长期记忆”。
 
-当前插件已经具备以下基础：
+之前的方案把长期记忆近似成：
 
-- 本地状态根目录：`~/.sinitek_cli/`
-- 会话元信息：`~/.sinitek_cli/sessions/`
-- 会话消息：`~/.sinitek_cli/messages/`
-- Prompt 历史：`~/.sinitek_cli/prompt-history/`
-- 工作区设置：`~/.sinitek_cli/workspace-settings/`
-- Codex / Claude 底层 thread 或 session 映射
-- 手动与自动“压缩上下文”能力
-- 龙虾任务的结构化沟通文件和任务记录
+- 一组 `MemoryItem`
+- 一个 `~/.sinitek_cli/memory/` 目录
+- 若干 JSONL / JSON 索引文件
 
-因此长期记忆不应改造成一个远程服务，也不应直接依赖某个 CLI 的私有记忆机制。更稳妥的方向是：在插件侧新增一个本地、可控、可清理、可解释的记忆层，并在发送 prompt 前按需召回，再注入给 Codex / Claude / Gemini。
+这个方向过于扁平，适合做存储原型，不适合做可长期维护、可压缩、可召回、可治理的记忆系统。
 
-目标：
+参考目标系统 `/Users/fangjiawei/sinitek/sinitek_codex_harness/app` 的记忆设计后，更合适的方案不是“记更多 JSON”，而是采用四层记忆模型：
 
-- 支持跨会话、跨重启的长期记忆召回。
-- 支持按工作区隔离项目记忆，同时保留少量全局用户偏好记忆。
-- 让用户能查看、编辑、禁用、删除记忆。
-- 与现有 30 天历史保留策略解耦，避免长期记忆被普通历史清理误删。
-- 不破坏现有 CLI 执行链路和会话续接机制。
-- 所有新增文案支持中英文国际化。
+- `Working`
+- `Episodic`
+- `Semantic`
+- `Procedural`
 
-非目标：
+再配合一层 generated recall 产物，用于运行时低成本召回。
 
-- 不接入远程向量数据库作为默认实现。
-- 不把完整聊天记录永久保存为长期记忆。
-- 不替代 Codex / Claude / Gemini 官方上下文压缩能力。
-- 不自动把敏感信息、密钥、客户数据写入记忆。
+## 2. 本插件的适配原则
 
-## 2. 产品形态
+本插件只引入“长期记忆”这一项能力，不照搬目标系统全部机制。
 
-### 2.1 用户可见能力
+### 2.1 保留
 
-建议在 AI 对话面板和工具设置中新增：
+- 四层记忆的分层思路
+- 热区记忆文件作为长期事实来源
+- generated recall/index 作为低成本召回层
+- 记忆压缩、上提、去重、过期和隐私边界
 
-- “长期记忆”总开关，插件侧默认开启；工具设置可关闭。
-- 显式关闭优先：只要全局或项目级设置中出现 `false`，运行时必须按关闭处理，防止兼容旧字段或缺省值把长期记忆误打开。
-- “项目记忆”开关，作用域为当前 workspace。
-- “全局偏好记忆”开关，作用域为用户本机。
-- “查看记忆”入口，列出当前会被召回的记忆。
-- “忘记这条记忆”操作，支持单条删除。
-- “从本次回答生成记忆”操作，支持用户主动保存。
-- “不要记住这个”操作，用于屏蔽某条会话内容。
+### 2.2 不照搬
 
-第一版口径是“默认开启、可随时关闭、关闭优先”。自动提取仍必须受更细粒度开关和触发条件约束，避免把噪音、误解或敏感内容写入长期记忆。
+- 不要求改仓库内规则文件
+- 不要求像目标系统那样把规则长期写入 `.ch/docs/` 或 `AGENTS.md`
+- 不要求首版就实现完整的 claim registry、memory eval、reference pack
 
-### 2.2 记忆类型
-
-长期记忆不建议用一坨纯文本保存，应做成可检索、可解释的结构化条目：
-
-| 类型 | 说明 | 示例 |
-| --- | --- | --- |
-| `preference` | 用户偏好 | “用户偏好中文回答，结论先行。” |
-| `project_fact` | 项目事实 | “本仓库是 VS Code 插件，主入口是 `src/extension.ts`。” |
-| `decision` | 已确认决策 | “长期记忆默认本地保存，不接远程服务。” |
-| `constraint` | 稳定约束 | “新增功能必须支持中英文国际化。” |
-| `workflow` | 常用工作方式 | “非平凡任务需要任务列表并保持状态同步。” |
-| `pitfall` | 反复踩坑 | “不要把 Codex / Claude 协议分支散落到 Webview。” |
-
-## 3. 数据存储设计
-
-### 3.1 存储目录
-
-建议新增：
+原因很简单：本插件在执行任务前可以动态注入补充提示词，因此长期记忆的使用入口应该是：
 
 ```text
-~/.sinitek_cli/
-├── memory/
-│   ├── global/
-│   │   ├── memories.jsonl
-│   │   └── index.json
-│   └── workspaces/
-│       └── <workspaceKey>/
-│           ├── memories.jsonl
-│           ├── index.json
-│           └── deleted.jsonl
+记忆召回 -> 生成本次补充提示词 -> 注入到运行时 prompt
+```
+
+而不是：
+
+```text
+记忆召回 -> 改写仓库规则文件 -> 再间接影响后续任务
+```
+
+## 3. 存储范围与位置
+
+长期记忆应该以“当前工作区隔离”为默认模型，而不是先做全局共享。
+
+建议存储在当前工作区隐藏目录：
+
+```text
+<workspace>/.sinitek_cli/
+  memory/
+```
+
+而不是首版就把记忆正文放到用户 home 目录下统一聚合。
+
+这样做有几个直接好处：
+
+- 不同项目之间天然隔离，减少误召回。
+- 和记忆内容强相关的代码、文档、任务背景都在同一工作区语义下。
+- 用户删除项目目录或单独清理 `.sinitek_cli/` 时，边界清晰。
+- 更接近目标系统“仓库内长期记忆”的治理方式。
+
+注意：
+
+- 当前实现里，工具设置和会话历史仍然大量使用 `~/.sinitek_cli/`。
+- 本文档描述的是“长期记忆能力的目标设计”，不等于当前代码已经完成该迁移。
+
+## 4. 四层记忆模型
+
+### 4.1 Working
+
+含义：当前任务正在使用、但还不应沉淀为长期记忆的上下文。
+
+在本插件里的典型来源：
+
+- 当前 tab 的消息流
+- `pendingSessionDrafts`
+- 当前运行的 trace
+- 当前轮龙虾任务的主/子任务上下文
+- 当前 prompt 的附件、文件标签、临时补充说明
+
+Working 层不是长期记忆正文的最终落盘位置。它的职责是作为记忆提炼的输入层。
+
+### 4.2 Episodic
+
+含义：一次会话、一轮任务、一个阶段发生了什么。
+
+这层适合存：
+
+- 阶段摘要
+- 关键任务结果
+- 某轮龙虾执行的结论
+- 某次 compact 后压缩出的高价值摘要
+- 当前仍未关闭的待办或风险
+
+建议文件：
+
+```text
+<workspace>/.sinitek_cli/memory/
+  ROLLING_SUMMARY.md
+  EVENT_MEMORY.md
+  PENDING_ITEMS.md
+  ACTIVE_RISKS.md
+```
+
+建议职责：
+
+- `ROLLING_SUMMARY.md`：压缩较旧但仍有价值的会话脉络
+- `EVENT_MEMORY.md`：记录关键事件、成功方案、失败原因、重要决策
+- `PENDING_ITEMS.md`：跨会话仍未完成的事项
+- `ACTIVE_RISKS.md`：当前仍有效的风险与注意点
+
+### 4.3 Semantic
+
+含义：稳定、可反复复用的事实。
+
+这层适合存：
+
+- 项目事实
+- 稳定约束
+- 用户偏好
+- 持续有效的结构结论
+- 长期适用的术语约定
+
+建议文件：
+
+```text
+<workspace>/.sinitek_cli/memory/
+  PROJECT_CONTEXT.md
+  USER_PREFERENCES.md
+```
+
+建议职责：
+
+- `PROJECT_CONTEXT.md`：技术栈、目录边界、稳定规则、关键命令、重要集成方式
+- `USER_PREFERENCES.md`：用户明确表达过、希望后续持续生效的协作偏好
+
+这层才是长期记忆召回时最优先读取的内容。
+
+### 4.4 Procedural
+
+含义：重复执行的方法、踩坑规避套路和可程序化经验。
+
+这层适合存：
+
+- 固定操作流
+- 可复用排障步骤
+- 稳定的验证套路
+- 多次复用后证明有效的经验
+
+建议文件：
+
+```text
+<workspace>/.sinitek_cli/memory/
+  LESSONS_LEARNED.md
+```
+
+建议职责：
+
+- `LESSONS_LEARNED.md`：记录“以后再遇到类似问题应该怎么做”
+
+如果未来某条经验已经足够稳定，也可以进一步沉淀为插件内置操作流、helper 或脚本，但首版长期记忆仍以 Markdown 为主。
+
+## 5. 目录设计
+
+建议长期记忆目录结构如下：
+
+```text
+<workspace>/.sinitek_cli/
+  memory/
+    README.md
+    ROLLING_SUMMARY.md
+    EVENT_MEMORY.md
+    PROJECT_CONTEXT.md
+    USER_PREFERENCES.md
+    PENDING_ITEMS.md
+    ACTIVE_RISKS.md
+    LESSONS_LEARNED.md
+    generated/
+      index.md
+      recall-index.md
+      observations.jsonl
+      recall-pack.md
+      consolidation-report.md
+      manifest.json
 ```
 
 说明：
 
-- `global/memories.jsonl` 保存用户级长期偏好。
-- `workspaces/<workspaceKey>/memories.jsonl` 保存项目级长期记忆。
-- `index.json` 保存轻量检索索引，可先用关键词和时间权重实现，后续再升级 embedding。
-- `deleted.jsonl` 记录删除 tombstone，便于后续导入、同步或排障。
+- `memory/*.md` 是长期记忆的原始事实来源
+- `memory/generated/*` 是可重建的召回产物，不是最终事实来源
 
-### 3.2 条目结构
+不建议首版直接把记忆正文做成主存储 JSONL，原因是：
 
-建议定义 `MemoryItem`：
+- Markdown 更适合人工审阅和手工修正
+- 更符合目标系统的 source-first 设计
+- 方便代理在收尾时做压缩、上提和去重
+- generated JSONL 更适合作为索引，而不是唯一真相
 
-```ts
-type MemoryScope = "global" | "workspace";
-type MemoryKind = "preference" | "project_fact" | "decision" | "constraint" | "workflow" | "pitfall";
-type MemorySource = "manual" | "assistant_suggested" | "compaction" | "lobster_task" | "session_summary";
+## 6. generated recall 层
 
-type MemoryItem = {
-  id: string;
-  scope: MemoryScope;
-  workspaceKey?: string;
-  kind: MemoryKind;
-  content: string;
-  evidence?: {
-    cli?: "codex" | "claude" | "gemini";
-    sessionId?: string;
-    messageId?: string;
-    lobsterTaskId?: string;
-    filePath?: string;
-  };
-  tags: string[];
-  confidence: number;
-  createdAt: number;
-  updatedAt: number;
-  lastUsedAt?: number;
-  useCount: number;
-  expiresAt?: number;
-  pinned?: boolean;
-  disabled?: boolean;
-};
-```
+四层记忆如果只有原始 Markdown，召回成本会逐渐变高，所以需要一层 generated recall。
 
-关键点：
+建议生成物：
 
-- `content` 必须是短句事实，不保存整段聊天。
-- `evidence` 只保存引用，不复制敏感原文。
-- `confidence` 用于自动提取后的人工审核或低权重召回。
-- `expiresAt` 支持临时记忆，例如“本周先按 A 方案推进”。
-- `pinned` 的记忆不参与自动过期。
-- `disabled` 用于软删除或用户临时关闭。
+- `generated/index.md`
+- `generated/recall-index.md`
+- `generated/observations.jsonl`
+- `generated/recall-pack.md`
+- `generated/consolidation-report.md`
+- `generated/manifest.json`
 
-## 4. 检索与注入设计
+### 6.1 index.md
 
-### 4.1 注入位置
+记录：
 
-当前 prompt 发送链路大致为：
+- 本次索引生成时间
+- 纳入索引的源文件
+- 文件 hash 或 mtime
+- 生成模式和读取建议
 
-1. Webview 发送用户输入。
-2. `buildPromptWithAutoContext` 追加当前文件或选区引用。
-3. `runPrompt` 根据 CLI 分流。
-4. Codex / Claude 走交互式 runner，Gemini 走 one-shot。
-5. 上下文压缩由现有 compact 逻辑处理。
+### 6.2 recall-index.md
 
-长期记忆建议接在 `buildPromptWithAutoContext` 之后、进入具体 CLI runner 之前：
+用于快速浏览“当前有哪些可召回记忆主题”，适合作为运行时召回的第一层筛选面。
+
+### 6.3 observations.jsonl
+
+这不是主记忆存储，而是 generated observation registry。
+
+每条 observation 至少包含：
+
+- `id`
+- `layer`
+- `title`
+- `summary`
+- `source_path`
+- `content_hash`
+- `read_cost`
+- `updated_at`
+
+### 6.4 recall-pack.md
+
+这是运行时最关键的产物。
+
+它表示：
+
+- 围绕当前 prompt / 当前文件 / 当前任务 focus
+- 预先裁剪出的、适合直接注入本次补充提示词的记忆包
+
+### 6.5 consolidation-report.md
+
+用于提示哪些内容应该从 Working / Episodic 上提到更稳定的层：
+
+- 哪些摘要应该进入 `EVENT_MEMORY.md`
+- 哪些事实应该进入 `PROJECT_CONTEXT.md`
+- 哪些偏好应该进入 `USER_PREFERENCES.md`
+- 哪些经验应该进入 `LESSONS_LEARNED.md`
+
+## 7. 记忆流转规则
+
+### 7.1 入口不是“直接写长期记忆”
+
+默认流程应是：
+
+1. 当前任务执行
+2. 产生会话消息、compact 摘要、龙虾总结、手动“记住这条”
+3. 先形成候选摘要
+4. 再决定进入哪一层长期记忆
+5. 重新生成 recall/index
+
+不建议把原始消息直接塞进长期记忆。
+
+### 7.2 上提规则
+
+建议按下面规则流转：
+
+- Working -> Episodic
+  - 当某轮会话结束，需要保留阶段脉络，但还不够稳定时
+- Episodic -> Semantic
+  - 当某条事实已经稳定到后续多轮任务都应该默认知道
+- Episodic -> Procedural
+  - 当某个做法已经能总结成“以后都这样做”
+
+### 7.3 各层典型来源
+
+- `ROLLING_SUMMARY.md`
+  - 会话压缩摘要
+  - 龙虾任务阶段总结
+  - 多轮任务收口摘要
+- `EVENT_MEMORY.md`
+  - 某次失败根因
+  - 某次成功落地方案
+  - 关键迁移、回滚、验收结论
+- `PROJECT_CONTEXT.md`
+  - 项目结构事实
+  - 稳定边界约束
+  - 常用验证命令
+- `USER_PREFERENCES.md`
+  - 用户偏好中文/英文
+  - 代码风格或交付偏好
+- `LESSONS_LEARNED.md`
+  - 反复复用的做法
+  - 固定的排障顺序
+- `PENDING_ITEMS.md`
+  - 跨会话待办
+- `ACTIVE_RISKS.md`
+  - 仍未关闭的风险
+
+## 8. 运行时召回与注入
+
+这是与目标系统最大的适配差异。
+
+目标系统中，一部分长期记忆会通过规则文件、热区和 recall 工具影响后续任务。
+
+本插件不需要这样做。因为插件掌握任务启动入口，可以直接在执行前注入补充提示词。
+
+### 8.1 注入位置
+
+建议接在当前 prompt 组装链路里：
 
 ```text
-用户原始 prompt
+用户输入
   -> 当前文件/选区自动上下文
-  -> 长期记忆召回块
-  -> thinking / model prompt 包装
-  -> CLI 执行
+  -> 召回长期记忆
+  -> 生成补充提示词块
+  -> 和本次 prompt 一起送给 Codex / Claude / Gemini
 ```
 
-这样可以让 Codex / Claude / Gemini 共享同一套记忆能力，不需要分别改造底层协议。
+### 8.2 注入内容来源
 
-### 4.2 注入格式
+优先级建议如下：
 
-建议统一追加一个明确边界的记忆块：
+1. `PROJECT_CONTEXT.md`
+2. `USER_PREFERENCES.md`
+3. `LESSONS_LEARNED.md`
+4. `ACTIVE_RISKS.md`
+5. `PENDING_ITEMS.md`
+6. `EVENT_MEMORY.md`
+7. `ROLLING_SUMMARY.md`
+
+理由：
+
+- 先给稳定事实
+- 再给用户偏好
+- 再给可复用方法
+- 最后才补近期事件和滚动摘要
+
+### 8.3 注入形式
+
+建议生成一个明确边界的补充提示词块，而不是静默拼接：
 
 ```text
-----
-Long-term Memory References:
-- [preference][global] 用户偏好中文回答，结论先行。
-- [constraint][workspace] 新增功能必须支持中英文国际化。
-- [project_fact][workspace] 本仓库是 VS Code 插件，主入口是 src/extension.ts。
+[Plugin Memory Context]
+Project Context:
+- ...
 
-Use these memories only when relevant. If they conflict with the current user request, follow the current user request.
+User Preferences:
+- ...
+
+Lessons Learned:
+- ...
+
+Open Risks:
+- ...
+
+Recent Relevant Events:
+- ...
+
+Use this memory only when relevant. Current user request overrides stale memory.
 ```
 
-中文界面下可使用中文标题：
+中文界面下也可输出中文版本，但边界必须明显。
 
-```text
-----
-长期记忆参考：
-- [偏好][全局] 用户偏好中文回答，结论先行。
-- [约束][项目] 新增功能必须支持中英文国际化。
+### 8.4 不改规则文件
 
-仅在相关时使用这些记忆；如果与当前用户请求冲突，以当前用户请求为准。
-```
+本方案明确不做：
 
-### 4.3 召回策略
+- 不改 `AGENTS.md`
+- 不改 `.ch/docs/`
+- 不为长期记忆写额外规则文件
+- 不把本次 recall 的结果持久写回仓库规则层
 
-第一阶段建议不用复杂向量库，先做可解释的轻量召回：
+原因：
 
-- 当前 prompt 分词后与 `content`、`tags` 做关键词匹配。
-- 工作区记忆优先于全局记忆。
-- `constraint`、`preference`、`decision` 默认权重更高。
-- 最近使用、用户 pin、命中当前文件路径的记忆加权。
-- 单次注入限制 5-10 条，避免污染上下文。
-- 注入前过滤 `disabled=true` 和已过期记忆。
+- 这会放大脏写风险
+- 很难区分“本次 prompt 需要”与“以后全局都需要”
+- 插件已有运行时 prompt 注入能力，没有必要绕远路
 
-后续增强：
+## 9. 用户可见能力
 
-- 增加本地 embedding 索引，默认仍可关闭。
-- 支持按文件路径、语言、任务类型召回。
-- 支持“解释为什么召回这条记忆”。
+工具设置中的长期记忆开关应控制“插件侧记忆系统是否参与本次任务”。
 
-## 5. 记忆生成设计
+开启时允许：
 
-### 5.1 用户主动保存
+- 召回长期记忆
+- 生成 recall pack
+- 从 compact / 龙虾结果里提炼候选
+- 用户手动记住内容
 
-第一阶段优先做主动保存：
+关闭时应禁止：
 
-- 用户选中 assistant 或 user 消息，点击“记住”。
-- 弹出编辑框，允许用户修改记忆内容、类型和作用域。
-- 保存后立即写入 `memory/global` 或 `memory/workspaces/<workspaceKey>`。
+- 自动召回
+- 自动注入
+- 自动提炼
+- 自动写入或更新长期记忆
 
-优点是低风险、可控、容易验证。
+关闭时仍可允许：
 
-### 5.2 回合后建议保存
+- 查看已有记忆文件
+- 导出
+- 删除
 
-第二阶段可在任务成功结束后，基于本轮消息生成候选记忆：
+## 10. 模块设计建议
 
-- 只生成候选，不自动生效。
-- 展示“建议记住 3 条”。
-- 用户确认后写入。
+当前插件不适合继续沿用“`memoryStore.ts` 做主存储”的想法。
 
-候选规则：
-
-- 用户明确表达偏好：可生成 `preference`。
-- 用户确认架构或方案：可生成 `decision`。
-- 文档或 AGENTS 中的稳定规则：可生成 `constraint`。
-- 任务中反复出现的踩坑：可生成 `pitfall`。
-
-### 5.3 压缩上下文联动
-
-现有 compact prompt 已经要求输出 `FACTS / TODOS / DECISIONS / CONSTRAINTS / INDEX`。长期记忆可以复用 compact 结果作为候选来源：
-
-- `FACTS` -> `project_fact`
-- `DECISIONS` -> `decision`
-- `CONSTRAINTS` -> `constraint`
-- `INDEX` 中的稳定文件说明 -> `project_fact`
-
-但不建议 compact 后自动全部入库，应进入“候选记忆审核”。
-
-### 5.4 龙虾任务联动
-
-龙虾任务已有 `main-task.md`、任务记录、子任务沟通文件和最终总结。任务完成时可以提取候选：
-
-- 用户需求覆盖清单 -> `constraint` 或 `workflow`
-- 最终方案决策 -> `decision`
-- 复发问题和规避方式 -> `pitfall`
-- 项目结构事实 -> `project_fact`
-
-同样建议先走用户确认。
-
-## 6. 模块改造建议
-
-### 6.1 新增服务层
-
-建议新增目录：
+更合适的模块拆分是：
 
 ```text
 src/memory/
-├── types.ts
-├── memoryStore.ts
-├── memorySearch.ts
-├── memoryExtraction.ts
-├── memoryPrompt.ts
-└── memoryRetention.ts
+  memoryPaths.ts
+  memoryFiles.ts
+  memoryIndexer.ts
+  memoryRecall.ts
+  memoryConsolidator.ts
+  memoryPrompt.ts
+  runtimeGate.ts
 ```
 
-职责：
-
-- `types.ts`：稳定类型定义。
-- `memoryStore.ts`：读写 JSONL、去重、软删除、导入导出。
-- `memorySearch.ts`：关键词召回与排序。
-- `memoryExtraction.ts`：从 compact / session / lobster 总结生成候选。
-- `memoryPrompt.ts`：格式化注入块。
-- `memoryRetention.ts`：过期清理、tombstone 清理。
-
-不要把长期记忆逻辑直接塞进 `src/extension.ts`，只在编排层调用。
-
-### 6.2 extension 接线点
-
-建议新增以下编排函数：
-
-```ts
-async function buildPromptWithMemory(
-  prompt: string,
-  options: {
-    cli: CliName;
-    workspaceKey: string;
-    sessionId: string | null;
-    tabId: string;
-  }
-): Promise<{ modelPrompt: string; memoryIds: string[] }>;
-```
+职责建议：
 
-接线位置：
+- `memoryPaths.ts`
+  - 统一解析 `<workspace>/.sinitek_cli/memory/` 路径
+- `memoryFiles.ts`
+  - 读写各个 Markdown 记忆文件
+- `memoryIndexer.ts`
+  - 从 Markdown 热区生成 `generated/*`
+- `memoryRecall.ts`
+  - 按当前 focus 选择相关 observation，构建 recall pack
+- `memoryConsolidator.ts`
+  - 把 compact / lobster / 手动候选上提到正确层级
+- `memoryPrompt.ts`
+  - 把 recall pack 变成最终注入 prompt 的补充块
+- `runtimeGate.ts`
+  - 统一控制开启/关闭和允许矩阵
 
-- `runPromptOneShot` 中构建 `thinkingPrompt` 之前。
-- `runPromptInteractive` 中构建交互 prompt 之前。
-- 并行 run 和龙虾子任务 prompt 也应复用同一函数。
+其中：
 
-### 6.3 Webview 协议
+- Markdown 热区文件是 source of truth
+- `generated/*.jsonl` 只是低成本索引
+- 运行时永远优先读 source 和 generated 组合，而不是只读 JSONL
 
-建议新增消息类型：
+## 11. 和现有插件能力的关系
 
-- `getMemoryState`
-- `createMemory`
-- `updateMemory`
-- `deleteMemory`
-- `toggleMemory`
-- `suggestMemoryFromMessage`
-- `acceptSuggestedMemory`
-- `rejectSuggestedMemory`
+### 11.1 会话历史
 
-对应 UI：
+会话历史仍保存在插件现有历史系统中，职责是：
 
-- 工具设置中的长期记忆开关。
-- 历史记录或独立弹窗中的“记忆” tab。
-- 消息气泡操作菜单中的“记住 / 不要记住”。
+- 恢复消息流
+- 导出历史会话
+- 支持续接
 
-### 6.4 配置项
+它不是长期记忆正文。
 
-建议放入工具设置的“工作区”页签，并落盘到现有 workspace settings 体系。长期记忆开关只控制当前工作区插件侧本地记忆层的查看、写入、召回和 prompt 注入，不控制 Codex / Claude / Gemini 外部 CLI 自带的记忆、历史、压缩、配置或云端能力。
+### 11.2 compact
 
-全局：
+compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 
-```json
-{
-  "memoryEnabled": true,
-  "globalMemoryEnabled": true,
-  "memoryAutoSuggestEnabled": true,
-  "memoryMaxInjectedItems": 8
-}
-```
+它更适合作为：
 
-工作区：
+- `ROLLING_SUMMARY.md` 的候选来源
+- `EVENT_MEMORY.md` 的候选来源
 
-```json
-{
-  "workspaceMemoryEnabled": true,
-  "memoryAutoExtractAfterCompact": false,
-  "memoryAutoExtractAfterLobsterTask": false
-}
-```
+### 11.3 龙虾任务
 
-默认建议：
+龙虾主从执行和红蓝辩论会产生很多高价值结构化结论。
 
-- `workspaceMemoryEnabled=true`，当前工作区插件侧长期记忆默认开启。
-- 工具设置的“工作区”页签可以关闭当前工作区长期记忆；关闭后不得新建、更新、召回或注入记忆，只允许查看、导出和删除已有记忆。
-- 兼容旧字段时采用“显式 false 防误开优先”：`memoryEnabled=false`、`globalMemoryEnabled=false` 或 `workspaceMemoryEnabled=false` 任一命中对应作用域时，都必须关闭对应长期记忆能力。旧全局 `longTermMemoryEnabled` 不再作为全局总开关写入或展示。
-- `memoryAutoSuggestEnabled=true` 只生成候选，不直接写入。
-- 自动提取默认关闭；只有总开关开启，且 `memoryAutoExtractAfterCompact=true` 或 `memoryAutoExtractAfterLobsterTask=true` 命中对应触发源时，才允许从 compact 或龙虾任务总结生成候选/记忆。
+这些结果不应直接原样进长期记忆，而应：
 
-设置解析矩阵：
+- 阶段性总结进入 `ROLLING_SUMMARY.md`
+- 关键决策进入 `EVENT_MEMORY.md`
+- 稳定项目事实进入 `PROJECT_CONTEXT.md`
+- 可复用方法进入 `LESSONS_LEARNED.md`
 
-| legacy `memoryEnabled` / `globalMemoryEnabled` | 工作区 `workspaceMemoryEnabled` | 自动提取开关 | 允许行为 |
-| --- | --- | --- | --- |
-| 缺失或 `true` | 缺失或 `true` | 不适用 | 可查看、创建、更新、删除、召回和注入插件侧长期记忆 |
-| 任一显式 `false` | 任意 | 任意 | 长期记忆关闭；只允许查看、导出和删除，不允许创建、更新、召回或注入 |
-| 缺失或 `true` | 显式 `false` | 任意 | 对应 global/workspace 作用域关闭；只允许查看、导出和删除该作用域记忆 |
-| 缺失或 `true` | 缺失或 `true` | `memoryAutoExtractAfterCompact=false` | compact 后不自动新增或更新 memory 目录 |
-| 缺失或 `true` | 缺失或 `true` | `memoryAutoExtractAfterLobsterTask=false` | 龙虾任务后不自动新增或更新 memory 目录 |
-| 缺失或 `true` | 缺失或 `true` | 对应触发源为 `true` | 仅在任务成功完成、提取内容通过敏感扫描且满足候选/确认策略时，才允许写入或更新 memory 目录 |
+### 11.4 工具设置
 
-## 7. 隐私与安全
+工具设置只负责控制长期记忆能力是否参与任务，以及自动提炼的细分开关。
 
-长期记忆会放大隐私风险，必须从第一版就做约束：
+它不应该承担长期记忆正文本身。
 
-- 默认不保存密钥、token、cookie、证书、生产地址、客户数据。
-- 保存前做敏感模式扫描，例如 `sk-`、`ghp_`、`AKIA`、`BEGIN PRIVATE KEY`、`.env` 常见键名。
-- 对疑似敏感内容弹窗确认，默认拒绝保存。
-- 用户必须能一键关闭长期记忆。
-- 用户必须能按全局、工作区、单条记忆删除。
-- 导出记忆时给出明显提示。
-- 日志中不要记录完整记忆正文，只记录 id、类型、作用域和数量。
-- 记忆注入到 CLI 前应计入 debug 诊断，但默认不展示全文日志。
+## 12. 隐私与边界
 
-## 8. 保留与清理策略
+长期记忆必须默认防止下面内容进入热区或 generated recall：
 
-现有历史默认 30 天清理，长期记忆不应直接套用该策略。
+- 密钥
+- token
+- cookie
+- 客户数据
+- 生产地址
+- 只适用于当前会话的临时敏感说明
 
-建议：
+建议在记忆文件与 generated 索引生成时都支持忽略标记，例如：
 
-- 普通长期记忆默认不过期。
-- 自动候选未确认超过 30 天清理。
-- `expiresAt` 到期的记忆自动禁用或删除。
-- `deleted.jsonl` tombstone 保留 90 天。
-- 工作区被清理时，不自动删除工作区记忆，除非用户显式选择。
-- 提供“清空当前项目记忆”和“清空全部记忆”。
+- `<private>...</private>`
+- `<no-memory>...</no-memory>`
+- `memory_visibility: private`
 
-## 9. 与现有能力的关系
+## 13. 分阶段落地建议
 
-### 9.1 与会话历史
+### Phase 1：工作区记忆热区文件
 
-会话历史是完整聊天记录，适合恢复 UI 和导出。长期记忆是短事实，适合跨会话召回。两者应分开存储。
+目标：
 
-### 9.2 与上下文压缩
+- 在 `<workspace>/.sinitek_cli/memory/` 建立四层文件骨架
+- 接入工具设置开关
+- 接入基础读写
 
-上下文压缩服务于当前 thread / session 的续接，长期记忆服务于未来任务召回。compact 的摘要可以作为候选来源，但不是记忆本身。
+### Phase 2：generated recall
 
-### 9.3 与 CLI 原生记忆
+目标：
 
-不同 CLI 的原生能力不一致。插件侧长期记忆应作为统一能力，注入到 prompt，而不是写入 Codex / Claude / Gemini 的私有配置。
+- 从热区文件生成 `generated/index.md`
+- 生成 `observations.jsonl`
+- 生成 `recall-pack.md`
 
-后续如果某个 CLI 提供稳定官方记忆 API，可以作为可选同步适配，但不能成为默认依赖。
+### Phase 3：运行时注入
 
-工具设置中的长期记忆开关仅控制插件侧 `~/.sinitek_cli/memory/` 记忆层；它不会清理、禁用或覆盖 Codex / Claude / Gemini 外部 CLI 自带的历史、记忆、配置、压缩结果或账号侧能力。用户如果需要关闭外部 CLI 自带能力，必须到对应 CLI 官方配置中处理。
+目标：
 
-### 9.4 与 AGENTS / 项目文档
+- 在任务执行前基于 focus 召回记忆
+- 生成补充提示词块并注入
+- 不改规则文件
 
-AGENTS 和 `.ch/docs/` 是仓库内事实来源。长期记忆可以记录“用户常用方式”和“项目实践经验”，但不能覆盖仓库文档中的明确规则。
+### Phase 4：自动上提
 
-召回提示中必须声明：
+目标：
 
-```text
-Repository files and current user instructions override long-term memory.
-```
+- 从 compact
+- 从龙虾最终总结
+- 从用户手动记住
 
-## 10. 分阶段实施计划
+提炼候选并上提到正确层级
 
-### Phase 1：本地记忆存储与手动保存
+## 14. 推荐结论
 
-范围：
+当前插件的长期记忆设计不应继续沿“扁平 `MemoryItem` + JSONL 主存储”扩展。
 
-- 新增 `src/memory/*`。
-- 新增 `~/.sinitek_cli/memory/` 数据结构。
-- 支持手动创建、查看、删除项目记忆和全局记忆。
-- 工具设置增加长期记忆开关。
-- Webview 增加最小记忆管理入口。
-- 支持中英文文案。
+更稳妥的目标方案是：
 
-验收：
+1. 以当前工作区 `.sinitek_cli/memory/` 作为长期记忆正文目录。
+2. 以目标系统的四层记忆模型组织内容：`Working / Episodic / Semantic / Procedural`。
+3. 以 `ROLLING_SUMMARY / EVENT_MEMORY / PROJECT_CONTEXT / USER_PREFERENCES / LESSONS_LEARNED / PENDING_ITEMS / ACTIVE_RISKS` 作为热区文件。
+4. 以 `generated/*` 作为低成本 recall 层，而不是主事实来源。
+5. 以“运行时补充提示词注入”作为使用入口，不改规则文件。
 
-- 关闭开关时不会创建、更新、召回或注入任何记忆；memory 目录不得出现新增或更新时间变化。
-- 关闭开关后 UI/API 只允许查看、导出和删除已有记忆。
-- 手动保存后重启 VS Code 仍可查看。
-- 删除记忆后不会再被召回。
-- `npm run build` 通过。
-
-### Phase 2：发送前召回与 prompt 注入
-
-范围：
-
-- 在 prompt 执行前召回相关记忆。
-- 对 Codex / Claude / Gemini 统一注入。
-- 消息 trace 或运行详情中显示“本次使用了 N 条记忆”，但不默认暴露全文。
-- 写入 `lastUsedAt` 和 `useCount`。
-
-验收：
-
-- 同一项目新会话可以召回项目记忆。
-- 其他项目不会召回当前项目记忆。
-- 全局偏好可跨项目召回。
-- 单次注入数量受配置限制。
-
-### Phase 3：候选记忆建议
-
-范围：
-
-- 从本轮成功任务、compact 摘要、龙虾最终总结中生成候选记忆。
-- 用户确认后才写入正式记忆。
-- 支持拒绝候选并记录不再重复提示。
-
-验收：
-
-- 候选记忆不会自动进入 prompt。
-- 拒绝后不会立即重复出现同一候选。
-- 敏感内容会被拦截或要求二次确认。
-
-### Phase 4：检索增强与导入导出
-
-范围：
-
-- 引入可选本地 embedding 或更强关键词索引。
-- 支持导出 / 导入记忆。
-- 支持按文件路径、标签、任务类型筛选。
-- 增加记忆使用诊断页面。
-
-验收：
-
-- embedding 不可用时仍能回退关键词检索。
-- 导入重复记忆时能去重。
-- 诊断页面能解释每条记忆的召回原因。
-
-## 11. 主要风险
-
-| 风险 | 影响 | 缓解 |
-| --- | --- | --- |
-| 记忆污染 | 错误事实长期影响回答 | 默认人工确认、保留 evidence、支持禁用和删除 |
-| 隐私泄露 | 敏感内容被反复注入 CLI | 敏感扫描、显式关闭优先、日志脱敏 |
-| 上下文膨胀 | 每次 prompt 变长、降低质量 | 限制条数、短句化、相关性排序 |
-| 多事实来源冲突 | 记忆与当前文档或用户指令冲突 | 注入提示明确优先级，当前请求和仓库文件优先 |
-| extension.ts 继续膨胀 | 后续维护困难 | 新增 `src/memory/` 服务层，extension 只接线 |
-| 国际化遗漏 | 新功能中文或英文缺失 | UI、命令、提示和错误统一走现有 i18n 机制 |
-
-## 12. 推荐结论
-
-如果当前插件要支持类似 Code Buddy 的长期记忆，建议采用“插件侧本地记忆层”方案：
-
-1. 先做手动保存和可视化管理，避免自动记忆带来的污染和隐私风险。
-2. 再做发送前轻量召回，把记忆作为明确边界的参考块注入 prompt。
-3. 最后接入 compact、龙虾任务总结和 embedding 检索，逐步提高自动化程度。
-
-这个方案改造面可控，能复用现有 `~/.sinitek_cli/` 数据目录、会话历史、上下文压缩和 Webview 配置体系，也不会把插件绑定到某一个 CLI 的私有能力上。
+这样既能借用目标系统成熟的长期记忆分层思想，又能贴合 VS Code 插件的实际执行链路和边界。
