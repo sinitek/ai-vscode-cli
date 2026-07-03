@@ -39,4 +39,4 @@ starter 默认不预置功能项。复制模板后，请从第一个真实能力
 
 | 业务域 | 功能名称 | 状态 | 主要角色 | 规格来源 | 实现位置 | 测试状态 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AI 对话 / 记忆 | 插件侧长期记忆开关 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`docs/LONG_TERM_MEMORY_DESIGN.md` | 工具设置、prompt 构建、插件本地 `~/.sinitek_cli/memory/` 记忆层 | `npm run build`；长期记忆字段检索；子任务沟通文件记录最小验收 | 默认开启；工具设置可关闭；显式 `false` 防误开优先；关闭后只允许查看/导出/删除，不控制 Codex / Claude / Gemini 外部 CLI 自带记忆或历史 |
+| AI 对话 / 记忆 | 插件侧长期记忆开关 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`docs/LONG_TERM_MEMORY_DESIGN.md` | 工具设置、prompt 构建、当前工作区 `.sinitek_cli/memory/` 记忆层 | `npm run build`；`node --test dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js dist/test/longTermMemory.test.js` | 默认开启；工具设置可关闭；显式 `false` 防误开优先；若项目存在 `.ch` 则自动关闭；关闭后只允许查看/导出/删除，不控制 Codex / Claude / Gemini 外部 CLI 自带记忆或历史 |

@@ -21,7 +21,12 @@ export type MemoryRuntimeOperation =
 export type MemoryRuntimeGateSettings = ResolveLongTermMemoryEnabledInput & {
   memoryAutoExtractAfterCompact?: boolean;
   memoryAutoExtractAfterLobsterTask?: boolean;
+  managedByProjectCh?: boolean;
 };
+
+export type LongTermMemoryRuntimeDisableReason =
+  | "managed-by-project-ch"
+  | "disabled-by-setting";
 
 const READ_WRITE_RUNTIME_OPERATIONS: ReadonlySet<MemoryRuntimeOperation> = new Set([
   "recall",
@@ -42,8 +47,17 @@ const MANAGEMENT_OPERATIONS_ALLOWED_WHEN_DISABLED: ReadonlySet<MemoryRuntimeOper
   "delete",
 ]);
 
+export function getLongTermMemoryRuntimeDisableReason(
+  settings?: MemoryRuntimeGateSettings | null,
+): LongTermMemoryRuntimeDisableReason | null {
+  if (settings?.managedByProjectCh === true) {
+    return "managed-by-project-ch";
+  }
+  return resolveLongTermMemoryEnabled(settings) ? null : "disabled-by-setting";
+}
+
 export function isLongTermMemoryRuntimeEnabled(settings?: MemoryRuntimeGateSettings | null): boolean {
-  return resolveLongTermMemoryEnabled(settings);
+  return getLongTermMemoryRuntimeDisableReason(settings) === null;
 }
 
 export function isMemoryRuntimeOperationAllowed(

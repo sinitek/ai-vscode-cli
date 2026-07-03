@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 
 import {
   assertMemoryRuntimeOperationAllowed,
+  getLongTermMemoryRuntimeDisableReason,
   isLongTermMemoryRuntimeEnabled,
   isMemoryRuntimeOperationAllowed,
   type MemoryRuntimeOperation,
@@ -27,6 +28,20 @@ test("uses the shared long-term memory helper as the runtime gate", () => {
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { longTermMemoryEnabled: false } }), false);
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { longTermMemoryEnabled: true }, memoryEnabled: false }), false);
   assert.equal(isLongTermMemoryRuntimeEnabled({ workspaceSettings: { workspaceMemoryEnabled: false } }), false);
+  assert.equal(
+    isLongTermMemoryRuntimeEnabled({
+      workspaceSettings: { workspaceMemoryEnabled: true },
+      managedByProjectCh: true,
+    }),
+    false,
+  );
+  assert.equal(
+    getLongTermMemoryRuntimeDisableReason({
+      workspaceSettings: { workspaceMemoryEnabled: true },
+      managedByProjectCh: true,
+    }),
+    "managed-by-project-ch",
+  );
 });
 
 test("blocks all plugin memory recall injection extraction and writes when disabled", () => {

@@ -55,7 +55,7 @@ import {
   normalizeLobsterExecutionMode,
 } from "./cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
-import { getLocaleSetting, t } from "./i18n";
+import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
   ChatMessage,
@@ -189,11 +189,20 @@ import {
 } from "./lobsterDebate";
 import {
   readToolSettings,
-  resolveLongTermMemoryEnabled,
   type ToolSettingsLocale,
   type ToolSettingsState,
   writeToolSettings,
 } from "./toolSettings";
+import { persistPromptRunSummary } from "./memory/memoryConsolidator";
+import { resolveWorkspaceMemoryPaths, workspaceHasProjectChDirectory } from "./memory/memoryPaths";
+import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "./memory/memoryPrompt";
+import { buildWorkspaceMemoryRecallPack } from "./memory/memoryRecall";
+import {
+  getLongTermMemoryRuntimeDisableReason,
+  isLongTermMemoryRuntimeEnabled,
+  isMemoryRuntimeOperationAllowed,
+  type MemoryRuntimeGateSettings,
+} from "./memory/runtimeGate";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -1526,6 +1535,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       return;
     }
     if (message.key === "workspaceMemoryEnabled" || message.key === "longTermMemoryEnabled") {
+      if (isLongTermMemoryManagedByProjectCh()) {
+        await postPanelState();
+        return;
+      }
       workspaceSettings.workspaceMemoryEnabled = Boolean(message.value);
       saveWorkspaceSettings(workspaceSettings);
       await postPanelState();
@@ -1623,6 +1636,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
         )
       : undefined;
     const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
+    const modelPromptWithMemory = maybeInjectLongTermMemoryForPrompt(
+      trimmed,
+      contextBuild.modelPrompt,
+      contextBuild.contextTags,
+    );
     const imagePaths = targetCli === "codex"
       ? await resolveCodexImagePathsForPrompt(trimmed)
       : [];
@@ -1639,7 +1657,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       : undefined;
     const promptInput: PromptRunInput = {
       displayPrompt: trimmed,
-      modelPrompt: contextBuild.modelPrompt,
+      modelPrompt: modelPromptWithMemory,
       contextTags: contextBuild.contextTags,
       model: supportsCliManagedModelSelection(targetCli) && typeof message.model === "string" && message.model
         ? message.model
@@ -1726,6 +1744,7 @@ async function buildPanelState(): Promise<PanelState> {
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
     workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
+    longTermMemoryManagedByProjectCh: isLongTermMemoryManagedByProjectCh(),
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -1774,6 +1793,7 @@ async function buildPanelStateWithConfigState(
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
     workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
+    longTermMemoryManagedByProjectCh: isLongTermMemoryManagedByProjectCh(),
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -5327,6 +5347,16 @@ ${rawStderr}`);
       appendMessageToStore(currentMessageTarget, completionMessage);
       sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
       persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
+      maybePersistLongTermMemoryFromRun({
+        status: "end",
+        cli: runCli,
+        prompt,
+        messages: currentMessageTarget,
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      });
       if (shouldAutoCompactAfterRun) {
         await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
       }
@@ -10912,6 +10942,78 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
   };
 }
 
+function getLatestAssistantResponseForLongTermMemory(messages: readonly ChatMessage[]): string | null {
+  let fallback: string | null = null;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant") {
+      continue;
+    }
+    const content = String(message.content ?? "").trim();
+    if (!content || message.kind === "thinking") {
+      continue;
+    }
+    if (message.codexFinalAnswer === true) {
+      return content;
+    }
+    if (!fallback) {
+      fallback = content;
+    }
+  }
+  return fallback;
+}
+
+function maybePersistLongTermMemoryFromRun(options: {
+  status: TaskRunStatus;
+  cli: CliName;
+  prompt: string;
+  messages: readonly ChatMessage[];
+  taskRole?: LobsterTaskRole;
+  lobsterTaskId?: string;
+  lobsterRound?: number;
+  lobsterSubtaskId?: string;
+}): void {
+  if (options.status !== "end") {
+    return;
+  }
+  const runtimeSettings = buildLongTermMemoryRuntimeSettings();
+  if (!isMemoryRuntimeOperationAllowed("update", runtimeSettings)) {
+    return;
+  }
+  const paths = getActiveWorkspaceMemoryPaths();
+  if (!paths) {
+    return;
+  }
+  const assistantResponse = getLatestAssistantResponseForLongTermMemory(options.messages);
+  if (!assistantResponse) {
+    return;
+  }
+  try {
+    const result = persistPromptRunSummary(paths, {
+      prompt: options.prompt,
+      assistantResponse,
+      cli: options.cli,
+      taskRole: options.taskRole,
+      lobsterTaskId: options.lobsterTaskId,
+      lobsterRound: options.lobsterRound,
+      lobsterSubtaskId: options.lobsterSubtaskId,
+    });
+    if (!result.skipped) {
+      void logInfo("long-term-memory-persisted", {
+        workspace: paths.workspaceRoot,
+        cli: options.cli,
+        updatedFiles: result.updatedFiles,
+      });
+    }
+  } catch (error) {
+    void logError("long-term-memory-persist-error", {
+      error: String(error),
+      workspace: paths.workspaceRoot,
+      cli: options.cli,
+    });
+  }
+}
+
 
 async function runPrompt(
   input: PromptRunInput,
@@ -11259,6 +11361,16 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       sendRunStatus("end");
       appendCompletionMessage("end");
       persistActiveMessages();
+      maybePersistLongTermMemoryFromRun({
+        status: "end",
+        cli: runCli,
+        prompt,
+        messages: activeMessageTarget ?? messageTarget,
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      });
       clearActiveRun();
       if (shouldAutoCompactAfterRun) {
         await maybeAutoCompactContextAfterPromptSuccess(target, finalSessionId, durationMs);
@@ -12619,6 +12731,16 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     sendRunStatusForTab(tabId, status === "end" ? "end" : status);
     const taskRecord = appendCompletionMessageForTab(status);
     flushPersistForInteractiveRun();
+    maybePersistLongTermMemoryFromRun({
+      status,
+      cli,
+      prompt,
+      messages: messageTarget,
+      taskRole: input.taskRole,
+      lobsterTaskId: input.lobsterTaskId,
+      lobsterRound: input.lobsterRound,
+      lobsterSubtaskId: input.lobsterSubtaskId,
+    });
     interactiveRunsByTabId.delete(tabId);
     if (status === "end" && shouldAutoCompactAfterRun) {
       await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId, taskRecord?.durationMs ?? null);
@@ -14628,15 +14750,35 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
 }
 
-function getEffectiveLongTermMemoryEnabled(): boolean {
-  return resolveLongTermMemoryEnabled({
-    memoryEnabled: readToolSettings().memoryEnabled,
-    globalMemoryEnabled: readToolSettings().globalMemoryEnabled,
+function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
+  const toolSettings = readToolSettings();
+  return {
+    memoryEnabled: toolSettings.memoryEnabled,
+    globalMemoryEnabled: toolSettings.globalMemoryEnabled,
+    memoryAutoExtractAfterCompact: toolSettings.memoryAutoExtractAfterCompact,
+    memoryAutoExtractAfterLobsterTask: toolSettings.memoryAutoExtractAfterLobsterTask,
+    managedByProjectCh: workspaceHasProjectChDirectory(resolveWorkspaceCwd() ?? null),
     workspaceSettings: {
       longTermMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
       workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
     },
-  });
+  };
+}
+
+function getLongTermMemoryDisabledReason(): "managed-by-project-ch" | "disabled-by-setting" | null {
+  return getLongTermMemoryRuntimeDisableReason(buildLongTermMemoryRuntimeSettings());
+}
+
+function getEffectiveLongTermMemoryEnabled(): boolean {
+  return isLongTermMemoryRuntimeEnabled(buildLongTermMemoryRuntimeSettings());
+}
+
+function isLongTermMemoryManagedByProjectCh(): boolean {
+  return getLongTermMemoryDisabledReason() === "managed-by-project-ch";
+}
+
+function getActiveWorkspaceMemoryPaths() {
+  return resolveWorkspaceMemoryPaths(resolveWorkspaceCwd() ?? null);
 }
 
 function getWorkspaceAutoCompactContextAfterRun(): boolean {
@@ -17731,6 +17873,53 @@ function buildPromptWithAutoContext(
     modelPrompt: [prompt, "", "----", "Auto Context References:", ...referenceLines].join("\n"),
     contextTags,
   };
+}
+
+function buildLongTermMemoryFocusHints(contextTags: readonly string[]): string[] {
+  const hints = new Set<string>();
+  contextTags.forEach((tag) => {
+    const normalized = String(tag ?? "").trim();
+    if (normalized) {
+      hints.add(normalized);
+    }
+  });
+  const editorContext = getActiveEditorPromptContext();
+  if (editorContext?.fileLabel) {
+    hints.add(editorContext.fileLabel);
+  }
+  if (editorContext?.selectionLabel) {
+    hints.add(editorContext.selectionLabel);
+  }
+  return [...hints];
+}
+
+function maybeInjectLongTermMemoryForPrompt(
+  prompt: string,
+  modelPrompt: string,
+  contextTags: readonly string[],
+): string {
+  const runtimeSettings = buildLongTermMemoryRuntimeSettings();
+  if (!isMemoryRuntimeOperationAllowed("inject", runtimeSettings)) {
+    return modelPrompt;
+  }
+  const paths = getActiveWorkspaceMemoryPaths();
+  if (!paths) {
+    return modelPrompt;
+  }
+  try {
+    const recallPack = buildWorkspaceMemoryRecallPack(paths, {
+      prompt,
+      focusHints: buildLongTermMemoryFocusHints(contextTags),
+    });
+    const memoryBlock = buildLongTermMemoryPromptBlock(recallPack, resolveLocale());
+    return injectLongTermMemoryPrompt(modelPrompt, memoryBlock);
+  } catch (error) {
+    void logError("long-term-memory-inject-error", {
+      error: String(error),
+      workspace: paths.workspaceRoot,
+    });
+    return modelPrompt;
+  }
 }
 
 function isPathWithinWorkspace(targetPath: string, workspacePath: string): boolean {

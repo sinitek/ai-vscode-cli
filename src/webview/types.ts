@@ -181,6 +181,7 @@ export type PanelState = {
   autoAddEditorContextTags: boolean;
   longTermMemoryEnabled: boolean;
   workspaceMemoryEnabled: boolean;
+  longTermMemoryManagedByProjectCh: boolean;
   autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;

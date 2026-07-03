@@ -73,7 +73,7 @@
 注意：
 
 - 当前实现里，工具设置和会话历史仍然大量使用 `~/.sinitek_cli/`。
-- 本文档描述的是“长期记忆能力的目标设计”，不等于当前代码已经完成该迁移。
+- 当前代码已经把插件侧长期记忆正文落到工作区 `.sinitek_cli/memory/`，并在发送 prompt 前生成 recall pack 注入补充提示词；但普通历史、workspace settings 和会话存档仍保留在 `~/.sinitek_cli/`。
 
 ## 4. 四层记忆模型
 
@@ -413,6 +413,11 @@ Use this memory only when relevant. Current user request overrides stale memory.
 - 自动注入
 - 自动提炼
 - 自动写入或更新长期记忆
+
+兼容规则：
+
+- 如果工作区根目录已存在 `.ch` 目录，则视为项目已有自带记忆体系；插件侧长期记忆即使开关为开启也会自动关闭。
+- 该规则属于 shared runtime gate，而不是只做 UI 提示。
 
 关闭时仍可允许：
 

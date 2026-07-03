@@ -109,6 +109,7 @@ const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryTitle: "Workspace setting. When off, this extension will not recall or save plugin long-term memory for later tasks in this workspace. This does not control native memory in external CLI tools.",
     toolSettingsLongTermMemoryToggle: "On",
     toolSettingsLongTermMemoryHint: "Workspace setting. Disabling only blocks plugin-side memory recall and saves for future tasks in this workspace; existing memories can still be viewed, exported, or deleted.",
+    toolSettingsLongTermMemoryManagedByChHint: "This workspace already has a .ch directory, so plugin-side long-term memory is automatically disabled to avoid overlapping project memory systems.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -394,6 +395,7 @@ const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryTitle: "工作区设置。关闭后，扩展不会在当前工作区的后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。",
     toolSettingsLongTermMemoryToggle: "开启",
     toolSettingsLongTermMemoryHint: "工作区设置。关闭仅阻止当前工作区后续任务的插件侧记忆召回和保存；仍可查看、导出或删除已有记忆。",
+    toolSettingsLongTermMemoryManagedByChHint: "当前工作区已存在 .ch 目录，说明项目已有自己的记忆体系；为避免重叠，插件侧长期记忆已自动关闭。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -3185,7 +3187,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
                   <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
                 </label>
               </div>
-              <div class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
+              <div id="longTermMemoryNote" class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
             </div>
           </div>
         </div>
@@ -3594,6 +3596,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         autoAddEditorContextTags: false,
         longTermMemoryEnabled: true,
         workspaceMemoryEnabled: true,
+        longTermMemoryManagedByProjectCh: false,
         autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
@@ -3675,6 +3678,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         longTermMemoryEnabled: document.getElementById("longTermMemoryEnabled"),
+        longTermMemoryNote: document.getElementById("longTermMemoryNote"),
         toolSettingsGlobalTab: document.getElementById("toolSettingsGlobalTab"),
         toolSettingsWorkspaceTab: document.getElementById("toolSettingsWorkspaceTab"),
         toolSettingsGlobalPanel: document.getElementById("toolSettingsGlobalPanel"),
@@ -4605,6 +4609,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
         state.longTermMemoryEnabled = panelState.longTermMemoryEnabled !== false;
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled !== false;
+        state.longTermMemoryManagedByProjectCh = Boolean(panelState.longTermMemoryManagedByProjectCh);
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
@@ -4655,9 +4660,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.autoAddEditorContextTags) {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
-        if (elements.longTermMemoryEnabled) {
-          elements.longTermMemoryEnabled.checked = state.workspaceMemoryEnabled;
-        }
+        syncLongTermMemoryWorkspaceControl();
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
         }
@@ -7398,6 +7401,21 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         }
       }
 
+      function syncLongTermMemoryWorkspaceControl() {
+        const isManagedByProjectCh = Boolean(state.longTermMemoryManagedByProjectCh);
+        if (elements.longTermMemoryEnabled) {
+          elements.longTermMemoryEnabled.checked = isManagedByProjectCh
+            ? false
+            : Boolean(state.workspaceMemoryEnabled);
+          elements.longTermMemoryEnabled.disabled = Boolean(state.isRunning || isManagedByProjectCh);
+        }
+        if (elements.longTermMemoryNote) {
+          elements.longTermMemoryNote.textContent = isManagedByProjectCh
+            ? i18n.toolSettingsLongTermMemoryManagedByChHint
+            : i18n.toolSettingsLongTermMemoryHint;
+        }
+      }
+
       function updateRunningState(isRunning, options = {}) {
         const wasRunning = state.isRunning;
         const preserveRunArtifacts = Boolean(options.preserveRunArtifacts);
@@ -7414,9 +7432,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         if (elements.debugMode) {
           elements.debugMode.disabled = isRunning;
         }
-        if (elements.longTermMemoryEnabled) {
-          elements.longTermMemoryEnabled.disabled = isRunning;
-        }
+        syncLongTermMemoryWorkspaceControl();
         syncInteractiveOptions();
         elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";
@@ -9390,9 +9406,14 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       }
       if (elements.longTermMemoryEnabled) {
         elements.longTermMemoryEnabled.addEventListener("change", (event) => {
+          if (state.longTermMemoryManagedByProjectCh) {
+            syncLongTermMemoryWorkspaceControl();
+            return;
+          }
           const enabled = Boolean(event.target.checked);
           state.longTermMemoryEnabled = enabled;
           state.workspaceMemoryEnabled = enabled;
+          syncLongTermMemoryWorkspaceControl();
           vscode.postMessage({
             type: "updateSetting",
             key: "workspaceMemoryEnabled",
