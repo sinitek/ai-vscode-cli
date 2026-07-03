@@ -317,13 +317,12 @@ async function buildPromptWithMemory(
 
 ### 6.4 配置项
 
-建议放入工具设置，并落盘到现有 settings 体系。长期记忆开关只控制插件侧本地记忆层的查看、写入、召回和 prompt 注入，不控制 Codex / Claude / Gemini 外部 CLI 自带的记忆、历史、压缩、配置或云端能力。
+建议放入工具设置的“工作区”页签，并落盘到现有 workspace settings 体系。长期记忆开关只控制当前工作区插件侧本地记忆层的查看、写入、召回和 prompt 注入，不控制 Codex / Claude / Gemini 外部 CLI 自带的记忆、历史、压缩、配置或云端能力。
 
 全局：
 
 ```json
 {
-  "longTermMemoryEnabled": true,
   "memoryEnabled": true,
   "globalMemoryEnabled": true,
   "memoryAutoSuggestEnabled": true,
@@ -335,7 +334,6 @@ async function buildPromptWithMemory(
 
 ```json
 {
-  "longTermMemoryEnabled": true,
   "workspaceMemoryEnabled": true,
   "memoryAutoExtractAfterCompact": false,
   "memoryAutoExtractAfterLobsterTask": false
@@ -344,15 +342,15 @@ async function buildPromptWithMemory(
 
 默认建议：
 
-- `longTermMemoryEnabled=true`，插件侧长期记忆默认开启。
-- 工具设置可以关闭长期记忆；关闭后不得新建、更新、召回或注入记忆，只允许查看、导出和删除已有记忆。
-- 兼容旧字段时采用“显式 false 防误开优先”：`longTermMemoryEnabled=false`、`memoryEnabled=false`、`globalMemoryEnabled=false` 或 `workspaceMemoryEnabled=false` 任一命中对应作用域时，都必须关闭对应长期记忆能力。
+- `workspaceMemoryEnabled=true`，当前工作区插件侧长期记忆默认开启。
+- 工具设置的“工作区”页签可以关闭当前工作区长期记忆；关闭后不得新建、更新、召回或注入记忆，只允许查看、导出和删除已有记忆。
+- 兼容旧字段时采用“显式 false 防误开优先”：`memoryEnabled=false`、`globalMemoryEnabled=false` 或 `workspaceMemoryEnabled=false` 任一命中对应作用域时，都必须关闭对应长期记忆能力。旧全局 `longTermMemoryEnabled` 不再作为全局总开关写入或展示。
 - `memoryAutoSuggestEnabled=true` 只生成候选，不直接写入。
 - 自动提取默认关闭；只有总开关开启，且 `memoryAutoExtractAfterCompact=true` 或 `memoryAutoExtractAfterLobsterTask=true` 命中对应触发源时，才允许从 compact 或龙虾任务总结生成候选/记忆。
 
 设置解析矩阵：
 
-| 全局 `longTermMemoryEnabled` / legacy `memoryEnabled` | 作用域开关 | 自动提取开关 | 允许行为 |
+| legacy `memoryEnabled` / `globalMemoryEnabled` | 工作区 `workspaceMemoryEnabled` | 自动提取开关 | 允许行为 |
 | --- | --- | --- | --- |
 | 缺失或 `true` | 缺失或 `true` | 不适用 | 可查看、创建、更新、删除、召回和注入插件侧长期记忆 |
 | 任一显式 `false` | 任意 | 任意 | 长期记忆关闭；只允许查看、导出和删除，不允许创建、更新、召回或注入 |

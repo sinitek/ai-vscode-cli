@@ -1525,8 +1525,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await postPanelState();
       return;
     }
-    if (message.key === "longTermMemoryEnabled") {
-      updateStoredToolSettings({ longTermMemoryEnabled: Boolean(message.value) });
+    if (message.key === "workspaceMemoryEnabled" || message.key === "longTermMemoryEnabled") {
+      workspaceSettings.workspaceMemoryEnabled = Boolean(message.value);
+      saveWorkspaceSettings(workspaceSettings);
       await postPanelState();
       return;
     }
@@ -1724,6 +1725,7 @@ async function buildPanelState(): Promise<PanelState> {
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
+    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -1771,6 +1773,7 @@ async function buildPanelStateWithConfigState(
     rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
     autoAddEditorContextTags: getAutoAddEditorContextTags(),
     longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
+    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled !== false,
     autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
     lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
@@ -14627,8 +14630,10 @@ function getWorkspaceCodexMultiAgentEnabled(): boolean {
 
 function getEffectiveLongTermMemoryEnabled(): boolean {
   return resolveLongTermMemoryEnabled({
-    ...readToolSettings(),
+    memoryEnabled: readToolSettings().memoryEnabled,
+    globalMemoryEnabled: readToolSettings().globalMemoryEnabled,
     workspaceSettings: {
+      longTermMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
       workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
     },
   });

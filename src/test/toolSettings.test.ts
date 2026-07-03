@@ -15,23 +15,25 @@ test("keeps any explicit total-switch false as the effective long-term memory st
   assert.equal(resolveLongTermMemoryEnabled({ memoryEnabled: false }), false);
   assert.equal(resolveLongTermMemoryEnabled({ globalMemoryEnabled: false }), false);
   assert.equal(resolveLongTermMemoryEnabled({ workspaceMemoryEnabled: false }), false);
+  assert.equal(resolveLongTermMemoryEnabled({ longTermMemoryEnabled: false }), true);
+  assert.equal(resolveLongTermMemoryEnabled({ workspaceSettings: { longTermMemoryEnabled: false } }), false);
   assert.equal(resolveLongTermMemoryEnabled({ workspaceSettings: { workspaceMemoryEnabled: false } }), false);
 });
 
-test("lets legacy false override canonical true unless the caller explicitly changes persisted state", () => {
+test("ignores legacy global long-term memory field after memory became workspace scoped", () => {
   assert.equal(
     resolveLongTermMemoryEnabled({
-      longTermMemoryEnabled: true,
-      memoryEnabled: false,
+      longTermMemoryEnabled: false,
+      workspaceSettings: { workspaceMemoryEnabled: true },
     }),
-    false,
+    true,
   );
 });
 
 test("treats memory auto-extract settings as secondary switches only", () => {
   assert.equal(
     resolveLongTermMemoryEnabled({
-      longTermMemoryEnabled: false,
+      workspaceSettings: { workspaceMemoryEnabled: false },
       memoryAutoExtractAfterCompact: true,
       memoryAutoExtractAfterLobsterTask: true,
     }),

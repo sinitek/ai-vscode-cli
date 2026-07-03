@@ -10,8 +10,11 @@ export type ToolSettingsState = {
   autoAddEditorContextTags?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
+  /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   longTermMemoryEnabled?: boolean;
+  /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   memoryEnabled?: boolean;
+  /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   globalMemoryEnabled?: boolean;
   memoryAutoExtractAfterCompact?: boolean;
   memoryAutoExtractAfterLobsterTask?: boolean;
@@ -76,10 +79,10 @@ export function resolveLongTermMemoryEnabled(input?: ResolveLongTermMemoryEnable
   const globalSettings = input ?? {};
   const workspaceSettings = input?.workspaceSettings ?? {};
   const totalSwitches = [
-    globalSettings.longTermMemoryEnabled,
     globalSettings.memoryEnabled,
     globalSettings.globalMemoryEnabled,
     globalSettings.workspaceMemoryEnabled,
+    workspaceSettings.longTermMemoryEnabled,
     workspaceSettings.workspaceMemoryEnabled,
   ];
 

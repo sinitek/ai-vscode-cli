@@ -104,7 +104,7 @@
 ### 3.5.1 插件侧长期记忆
 
 - 记忆数据属于插件本地状态，目标目录为 `~/.sinitek_cli/memory/`，与 30 天会话历史、prompt history、龙虾任务记录和外部 CLI 配置解耦。
-- 开关默认开启，但工具设置可关闭；解析配置时采用“显式 false 防误开优先”，兼容旧 `memoryEnabled`、`globalMemoryEnabled`、`workspaceMemoryEnabled` 字段。
+- 开关默认开启，但只在工具设置的“工作区”页签配置并写入 workspace settings；解析配置时采用“显式 false 防误开优先”，兼容旧 `memoryEnabled`、`globalMemoryEnabled`、`workspaceMemoryEnabled` 字段。
 - 关闭状态下只允许查看、导出和删除已有记忆；不得新建、编辑、自动提取、召回、注入或更新 memory 目录元数据。
 - 自动提取受二级开关控制：`memoryAutoExtractAfterCompact` 仅控制 compact 后提取，`memoryAutoExtractAfterLobsterTask` 仅控制龙虾任务总结后提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许写入或更新。
 - 该能力只控制插件侧长期记忆，不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、配置或压缩能力。

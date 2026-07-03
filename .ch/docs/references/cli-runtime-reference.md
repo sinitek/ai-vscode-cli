@@ -82,7 +82,7 @@
 
 - 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`）写入 `~/.sinitek_cli/settings.json`
 - 工具设置中的项目级项（如 `autoCompactContextAfterRun`、`codexMultiAgentEnabled`、`lobsterExecutionModeByCli`、`lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
-- 长期记忆开关控制插件侧 `~/.sinitek_cli/memory/` 记忆层，默认开启；工具设置可关闭。配置解析采用“显式 false 防误开优先”：新字段 `longTermMemoryEnabled=false` 或兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
+- 长期记忆开关控制当前工作区的插件侧 `~/.sinitek_cli/memory/` 记忆层，默认开启；工具设置的“工作区”页签可关闭，并写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json` 的 `workspaceMemoryEnabled`。配置解析采用“显式 false 防误开优先”：兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
 - 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。
 - 自动提取还有二级条件：`memoryAutoExtractAfterCompact` 只允许 compact 成功后的提取，`memoryAutoExtractAfterLobsterTask` 只允许龙虾任务完成后的提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许新增或更新 `~/.sinitek_cli/memory/`。
 - 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主

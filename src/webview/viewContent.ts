@@ -97,6 +97,8 @@ const WEBVIEW_I18N = {
     rulesSaveButton: "Save",
     toolSettingsTitle: "Tool Settings",
     toolSettingsClose: "Close",
+    toolSettingsGlobalTab: "Global",
+    toolSettingsWorkspaceTab: "Workspace",
     toolSettingsDebugLabel: "Debug",
     toolSettingsDebugTitle: "Debug Logs",
     toolSettingsDebugToggle: "On",
@@ -104,21 +106,9 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextTitle: "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
     toolSettingsLongTermMemoryLabel: "Plugin Long-Term Memory",
-    toolSettingsLongTermMemoryTitle: "When off, this extension will not recall or save plugin long-term memory for later tasks. This does not control native memory in external CLI tools.",
+    toolSettingsLongTermMemoryTitle: "Workspace setting. When off, this extension will not recall or save plugin long-term memory for later tasks in this workspace. This does not control native memory in external CLI tools.",
     toolSettingsLongTermMemoryToggle: "On",
-    toolSettingsLongTermMemoryHint: "Disabling only blocks plugin-side memory recall and saves for future tasks; existing memories can still be viewed, exported, or deleted.",
-    toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
-    toolSettingsAutoCompactAfterRunTitle: "For existing codex/claude/gemini sessions, compact context after a task finishes successfully and runs longer than 5 minutes",
-    toolSettingsAutoCompactAfterRunToggle: "On",
-    toolSettingsCodexSubagentsLabel: "Codex Subagents",
-    toolSettingsCodexSubagentsTitle: "Allow Codex app-server to use official multi-agent subagents (spawnAgent / wait / closeAgent)",
-    toolSettingsCodexSubagentsToggle: "On",
-    toolSettingsLobsterMaxRoundsLabel: "Lobster Max Rounds",
-    toolSettingsLobsterMaxRoundsAria: "Lobster maximum rounds",
-    toolSettingsLobsterMaxRoundsHint: `Project setting. New lobster tasks use this limit; existing tasks keep their recorded limit. Range: ${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}, default: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}.`,
-    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Lobster Auto-Close Subtask Tabs",
-    toolSettingsLobsterAutoCloseSubtaskTabsTitle: "Automatically close the AI conversation tab after a lobster subtask completes successfully",
-    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "On",
+    toolSettingsLongTermMemoryHint: "Workspace setting. Disabling only blocks plugin-side memory recall and saves for future tasks in this workspace; existing memories can still be viewed, exported, or deleted.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -392,6 +382,8 @@ const WEBVIEW_I18N = {
     rulesSaveButton: "保存",
     toolSettingsTitle: "工具设置",
     toolSettingsClose: "关闭",
+    toolSettingsGlobalTab: "全局",
+    toolSettingsWorkspaceTab: "工作区",
     toolSettingsDebugLabel: "调试",
     toolSettingsDebugTitle: "调试日志",
     toolSettingsDebugToggle: "开启",
@@ -399,21 +391,9 @@ const WEBVIEW_I18N = {
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
     toolSettingsLongTermMemoryLabel: "插件侧长期记忆",
-    toolSettingsLongTermMemoryTitle: "关闭后，扩展不会在后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。",
+    toolSettingsLongTermMemoryTitle: "工作区设置。关闭后，扩展不会在当前工作区的后续任务中召回或保存插件侧长期记忆；不控制外部 CLI 自带记忆。",
     toolSettingsLongTermMemoryToggle: "开启",
-    toolSettingsLongTermMemoryHint: "关闭仅阻止后续任务的插件侧记忆召回和保存；仍可查看、导出或删除已有记忆。",
-    toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩",
-    toolSettingsAutoCompactAfterRunTitle: "在已有 codex/claude/gemini 会话中，任务成功结束且执行超过 5 分钟后再压缩上下文",
-    toolSettingsAutoCompactAfterRunToggle: "开启",
-    toolSettingsCodexSubagentsLabel: "Codex 子智能体",
-    toolSettingsCodexSubagentsTitle: "是否允许 Codex app-server 使用官方多智能体子任务能力（spawnAgent / wait / closeAgent）",
-    toolSettingsCodexSubagentsToggle: "开启",
-    toolSettingsLobsterMaxRoundsLabel: "龙虾最大轮次",
-    toolSettingsLobsterMaxRoundsAria: "龙虾最大轮次",
-    toolSettingsLobsterMaxRoundsHint: `项目级设置。新建龙虾任务使用该上限；已有任务保持记录中的上限。范围：${LOBSTER_MAX_ROUNDS_SETTING_MIN}-${LOBSTER_MAX_ROUNDS_SETTING_MAX}，默认：${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}。`,
-    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "龙虾子任务自动关标签",
-    toolSettingsLobsterAutoCloseSubtaskTabsTitle: "龙虾子任务成功完成后，自动关闭其 AI 对话标签页",
-    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "开启",
+    toolSettingsLongTermMemoryHint: "工作区设置。关闭仅阻止当前工作区后续任务的插件侧记忆召回和保存；仍可查看、导出或删除已有记忆。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",
@@ -2727,6 +2707,32 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         flex-direction: column;
         gap: 12px;
       }
+      .tool-settings-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--vscode-panel-border);
+      }
+      .tool-settings-tab {
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        color: var(--vscode-foreground);
+        padding: 8px 10px;
+      }
+      .tool-settings-tab.active {
+        border-bottom-color: var(--vscode-focusBorder);
+        color: var(--vscode-foreground);
+      }
+      .tool-settings-panel {
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .tool-settings-panel.active {
+        display: flex;
+      }
       .tool-settings-row {
         display: flex;
         align-items: center;
@@ -3135,77 +3141,51 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
               </svg>
             </button>
           </div>
+          <div class="tool-settings-tabs" role="tablist" aria-label="${i18n.toolSettingsTitle}">
+            <button id="toolSettingsGlobalTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGlobalPanel">${i18n.toolSettingsGlobalTab}</button>
+            <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
+          </div>
           <div class="tool-settings-body">
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
-                <input type="checkbox" id="debugMode" />
-                <span>${i18n.toolSettingsDebugToggle}</span>
-              </label>
+            <div id="toolSettingsGlobalPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGlobalTab">
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
+                  <input type="checkbox" id="debugMode" />
+                  <span>${i18n.toolSettingsDebugToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsAutoContextLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsAutoContextTitle}">
+                  <input type="checkbox" id="autoAddEditorContextTags" />
+                  <span>${i18n.toolSettingsAutoContextToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
+                <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
+                  <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
+                  <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
+                  <option value="en">${i18n.toolSettingsLanguageEn}</option>
+                </select>
+              </div>
+              <div id="macTaskShellRow" class="tool-settings-row" style="display: none;">
+                <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
+                <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
+                  <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
+                  <option value="bash">${i18n.toolSettingsMacShellBash}</option>
+                </select>
+              </div>
             </div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsAutoContextLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsAutoContextTitle}">
-                <input type="checkbox" id="autoAddEditorContextTags" />
-                <span>${i18n.toolSettingsAutoContextToggle}</span>
-              </label>
-            </div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
-                <input type="checkbox" id="longTermMemoryEnabled" />
-                <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
-              </label>
-            </div>
-            <div class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
-                <input type="checkbox" id="autoCompactContextAfterRun" />
-                <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
-              </label>
-            </div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsCodexSubagentsLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsCodexSubagentsTitle}">
-                <input type="checkbox" id="codexMultiAgentEnabled" />
-                <span>${i18n.toolSettingsCodexSubagentsToggle}</span>
-              </label>
-            </div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
-              <input
-                type="number"
-                id="lobsterMaxRounds"
-                class="tool-settings-number"
-                min="${LOBSTER_MAX_ROUNDS_SETTING_MIN}"
-                max="${LOBSTER_MAX_ROUNDS_SETTING_MAX}"
-                step="1"
-                aria-label="${i18n.toolSettingsLobsterMaxRoundsAria}"
-              />
-            </div>
-            <div class="tool-settings-note">${i18n.toolSettingsLobsterMaxRoundsHint}</div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
-              <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
-                <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
-                <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
-              </label>
-            </div>
-            <div class="tool-settings-row">
-              <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
-              <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
-                <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
-                <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
-                <option value="en">${i18n.toolSettingsLanguageEn}</option>
-              </select>
-            </div>
-            <div id="macTaskShellRow" class="tool-settings-row" style="display: none;">
-              <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
-              <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
-                <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
-                <option value="bash">${i18n.toolSettingsMacShellBash}</option>
-              </select>
+            <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
+                  <input type="checkbox" id="longTermMemoryEnabled" />
+                  <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
             </div>
           </div>
         </div>
@@ -3613,6 +3593,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debug: false,
         autoAddEditorContextTags: false,
         longTermMemoryEnabled: true,
+        workspaceMemoryEnabled: true,
         autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
         lobsterMaxRounds: ${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
@@ -3694,6 +3675,10 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         longTermMemoryEnabled: document.getElementById("longTermMemoryEnabled"),
+        toolSettingsGlobalTab: document.getElementById("toolSettingsGlobalTab"),
+        toolSettingsWorkspaceTab: document.getElementById("toolSettingsWorkspaceTab"),
+        toolSettingsGlobalPanel: document.getElementById("toolSettingsGlobalPanel"),
+        toolSettingsWorkspacePanel: document.getElementById("toolSettingsWorkspacePanel"),
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
         lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
@@ -4619,6 +4604,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
         state.longTermMemoryEnabled = panelState.longTermMemoryEnabled !== false;
+        state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled !== false;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
@@ -4670,7 +4656,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
         if (elements.longTermMemoryEnabled) {
-          elements.longTermMemoryEnabled.checked = state.longTermMemoryEnabled;
+          elements.longTermMemoryEnabled.checked = state.workspaceMemoryEnabled;
         }
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
@@ -9406,12 +9392,36 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
         elements.longTermMemoryEnabled.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
           state.longTermMemoryEnabled = enabled;
+          state.workspaceMemoryEnabled = enabled;
           vscode.postMessage({
             type: "updateSetting",
-            key: "longTermMemoryEnabled",
+            key: "workspaceMemoryEnabled",
             value: enabled,
           });
         });
+      }
+      function setToolSettingsTab(scope) {
+        const workspace = scope === "workspace";
+        if (elements.toolSettingsGlobalTab) {
+          elements.toolSettingsGlobalTab.classList.toggle("active", !workspace);
+          elements.toolSettingsGlobalTab.setAttribute("aria-selected", workspace ? "false" : "true");
+        }
+        if (elements.toolSettingsWorkspaceTab) {
+          elements.toolSettingsWorkspaceTab.classList.toggle("active", workspace);
+          elements.toolSettingsWorkspaceTab.setAttribute("aria-selected", workspace ? "true" : "false");
+        }
+        if (elements.toolSettingsGlobalPanel) {
+          elements.toolSettingsGlobalPanel.classList.toggle("active", !workspace);
+        }
+        if (elements.toolSettingsWorkspacePanel) {
+          elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
+        }
+      }
+      if (elements.toolSettingsGlobalTab) {
+        elements.toolSettingsGlobalTab.addEventListener("click", () => setToolSettingsTab("global"));
+      }
+      if (elements.toolSettingsWorkspaceTab) {
+        elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
       }
       if (elements.autoCompactContextAfterRun) {
         elements.autoCompactContextAfterRun.addEventListener("change", (event) => {

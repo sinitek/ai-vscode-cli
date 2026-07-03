@@ -180,6 +180,7 @@ export type PanelState = {
   rememberSelectedCli: boolean;
   autoAddEditorContextTags: boolean;
   longTermMemoryEnabled: boolean;
+  workspaceMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
   lobsterMaxRounds: number;
