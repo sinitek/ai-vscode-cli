@@ -41,7 +41,7 @@ codegraph init
 
 - `codegraph install` 会修改用户级 agent 配置，应只在用户明确同意时执行。
 - `codegraph init` 会在当前项目创建 `.codegraph/` 并构建初始索引。
-- 如果目标仓库不希望提交 `.codegraph/.gitignore`，应在项目根 `.gitignore` 明确加入 `.codegraph/`。
+- Harness 骨架初始化会在项目根 `.gitignore` 幂等加入 `.codegraph/`，避免提交 CodeGraph 本地索引缓存。
 
 ## 使用约定
 

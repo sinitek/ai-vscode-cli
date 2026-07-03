@@ -359,6 +359,7 @@ const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
 const CLI_INSTALL_TERMINAL_PREFIX = "CLI Install";
 const WORKSPACE_HARNESS_TERMINAL_NAME = "Workspace Harness Setup";
 const CODEGRAPH_SETUP_COMMAND = "codegraph install --target codex --location global && codegraph init";
+const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARCHITECTURE.md";
 const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
@@ -14824,6 +14825,7 @@ async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
   }
   startCodeGraphWorkspaceSetup(workspaceRoot);
   void vscode.window.showInformationMessage(t("workspaceHarness.initStarted"));
+  void maybePromptInitializeArchitectureWithAi(workspaceRoot);
   return true;
 }
 
@@ -14838,6 +14840,76 @@ function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
     workspace: workspaceRoot,
     command: CODEGRAPH_SETUP_COMMAND,
   });
+}
+
+function buildArchitectureInitializationModelPrompt(workspaceRoot: string): string {
+  return [
+    "你正在当前 VS Code 工作区执行 Harness 骨架初始化后的 ARCHITECTURE.md 初始化任务。",
+    "",
+    "目标：",
+    "- 阅读当前项目的真实目录、README、package/config、现有文档和关键源码入口。",
+    "- 按当前项目实际架构更新根级 ARCHITECTURE.md。",
+    "- 保留 Harness 模板要求的结构化、可导航、AI 友好风格，但不要写成通用模板或安装说明。",
+    "- 内容应覆盖项目使命、运行边界、主要模块、数据/配置存储、关键流程、扩展点、验证方式和维护注意事项。",
+    "",
+    "范围与约束：",
+    "- 只修改当前工作区根级 ARCHITECTURE.md；除非发现事实来源文档必须同步，否则不要改其他文件。",
+    "- 不要替换技术栈，不要做无关重构，不要提交密钥、账号或机器私有信息。",
+    "- 如果现有 ARCHITECTURE.md 已有项目特有内容，先保留有价值事实，再补齐缺失结构。",
+    "- 如果某些架构事实无法自动确认，在 ARCHITECTURE.md 中明确标为待确认，不要编造。",
+    "",
+    "执行步骤：",
+    "1. 快速读取 README.md、package.json、src/、media/、docs/、.ch/docs/ 中与插件运行相关的事实来源。",
+    "2. 识别这是 VS Code 插件项目，并归纳 UI webview、extension host、CLI 调用、配置/历史/任务数据、Harness/记忆骨架等边界。",
+    "3. 更新 ARCHITECTURE.md，使后续 AI 进入仓库时可以据此理解项目结构和修改边界。",
+    "4. 运行最小相关验证；Node/TypeScript 项目至少执行 npm run build，若失败需说明原因和影响。",
+    "",
+    `工作区：${workspaceRoot}`,
+  ].join("\n");
+}
+
+async function maybePromptInitializeArchitectureWithAi(workspaceRoot: string): Promise<void> {
+  const confirmLabel = t("workspaceHarness.confirmArchitectureInitializeAction");
+  const selection = await vscode.window.showWarningMessage(
+    t("workspaceHarness.confirmArchitectureInitialize"),
+    { modal: true },
+    confirmLabel,
+  );
+  if (selection !== confirmLabel) {
+    return;
+  }
+
+  const targetTab = getActiveConversationTab();
+  const targetCli = targetTab?.cli ?? currentCli;
+  const targetTabId = targetTab?.id ?? getActiveConversationTabId();
+  if (!targetTabId || isTabRunActive(targetTabId)) {
+    void vscode.window.showWarningMessage(t("workspaceHarness.architectureInitBusy"));
+    return;
+  }
+
+  if (currentCli !== targetCli) {
+    currentCli = targetCli;
+    updateStatusBar();
+    workspaceSettings.currentCli = currentCli;
+  }
+  setWorkspaceInteractiveModeForCli(targetCli, "coding");
+  workspaceSettings.currentCli = targetCli;
+  saveWorkspaceSettings(workspaceSettings);
+  await postPanelState();
+
+  const activeConfigId = getActiveConfigIdForCli(targetCli);
+  const selectedModel = getSelectedCliModel(targetCli, activeConfigId) ?? undefined;
+  const promptInput: PromptRunInput = {
+    displayPrompt: ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT,
+    modelPrompt: buildArchitectureInitializationModelPrompt(workspaceRoot),
+    contextTags: [],
+    model: selectedModel,
+  };
+  const target = resolvePromptRunTarget(targetTabId);
+  const preparedInput = target ? preloadUserMessageForPrompt(promptInput, target) : promptInput;
+  recordPromptHistory(ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT, targetCli);
+  void vscode.window.showInformationMessage(t("workspaceHarness.architectureInitStarted"));
+  void runPrompt(preparedInput, { targetTabId });
 }
 
 function getWorkspaceAutoCompactContextAfterRun(): boolean {

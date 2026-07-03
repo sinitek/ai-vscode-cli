@@ -420,7 +420,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 ## 9. 用户可见能力
 
-工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。
+工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到编码模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
 
 该开关同时控制“插件侧记忆系统是否参与本次任务”。
 
@@ -443,6 +443,8 @@ Use this memory only when relevant. Current user request overrides stale memory.
 - 如果工作区已存在 `.ch`、`.agents`、`AGENTS.md`、`CLAUDE.md` 或 `ARCHITECTURE.md`，则按“缺失即补齐、已有不覆盖”的策略继续安装 scaffold。
 - 根级 `AGENTS.md` 若已存在，则只追加一次带标记块的 harness 模板。
 - 根级 `CLAUDE.md` 若已存在，则保持原样；若缺失，则创建一个只指向 `AGENTS.md` 的轻量入口。
+- 根级 `.gitignore` 若缺失则创建；若已存在则只补充一次 `.codegraph/`，避免提交 CodeGraph 本地索引缓存。
+- 骨架初始化收尾时会二次确认是否初始化 `ARCHITECTURE.md`；确认后通过当前 AI 对话发起 coding 任务，让 AI 阅读当前项目并更新 `ARCHITECTURE.md` 的真实架构内容。
 - 扩展激活、工作区切换、首次 recall / inject / 持久化都不再无条件安装 scaffold；只有显式开启并确认初始化后才安装。
 - 确认初始化后会在当前工作区终端执行 `codegraph install --target codex --location global && codegraph init`，让 CodeGraph 安装/索引过程对用户可见。
 
@@ -553,7 +555,7 @@ compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 
 目标：
 
-- 在工作区补齐 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md` 和 `CLAUDE.md` scaffold
+- 在工作区补齐 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md` 和忽略 `.codegraph/` 的 `.gitignore` scaffold；初始化收尾可二次确认并通过当前 AI 对话初始化 `ARCHITECTURE.md`
 - 在 `<workspace>/.ch/docs/memory/` 建立四层文件骨架
 - 接入工具设置开关
 - 接入基础读写

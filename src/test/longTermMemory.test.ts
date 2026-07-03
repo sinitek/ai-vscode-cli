@@ -53,9 +53,11 @@ test("installs workspace harness scaffold and appends AGENTS.md only once", () =
     assert.ok(fs.existsSync(paths.architectureFile));
     assert.ok(fs.existsSync(paths.workspaceAgentsFile));
     assert.ok(fs.existsSync(paths.claudeFile));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, ".gitignore")));
 
     const firstAgents = fs.readFileSync(paths.workspaceAgentsFile, "utf8");
     const firstClaude = fs.readFileSync(paths.claudeFile, "utf8");
+    const firstGitignore = fs.readFileSync(path.join(workspaceRoot, ".gitignore"), "utf8");
     const markers = workspaceAgentsAppendMarker();
     fs.writeFileSync(paths.workspaceAgentsFile, `# Existing\n`, "utf8");
     fs.writeFileSync(paths.claudeFile, `# Existing Claude\n`, "utf8");
@@ -63,13 +65,16 @@ test("installs workspace harness scaffold and appends AGENTS.md only once", () =
     ensureWorkspaceHarnessScaffold(process.cwd(), paths);
     const secondAgents = fs.readFileSync(paths.workspaceAgentsFile, "utf8");
     const secondClaude = fs.readFileSync(paths.claudeFile, "utf8");
+    const secondGitignore = fs.readFileSync(path.join(workspaceRoot, ".gitignore"), "utf8");
 
     assert.ok(firstAgents.includes("仓库工作指南"));
     assert.match(firstClaude, /AGENTS\.md/);
+    assert.match(firstGitignore, /^\.codegraph\/$/m);
     assert.ok(secondAgents.includes("# Existing"));
     assert.equal(secondAgents.includes(markers.start), true);
     assert.equal(secondAgents.split(markers.start).length - 1, 1);
     assert.equal(secondClaude, "# Existing Claude\n");
+    assert.equal(secondGitignore.split(".codegraph/").length - 1, 1);
   });
 });
 

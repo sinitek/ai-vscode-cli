@@ -7,6 +7,7 @@ const WORKSPACE_SCAFFOLD_ROOT = path.join("media", "workspace-scaffold");
 const APPENDED_AGENTS_MARKER_START = "<!-- BEGIN SINITEK WORKSPACE HARNESS -->";
 const APPENDED_AGENTS_MARKER_END = "<!-- END SINITEK WORKSPACE HARNESS -->";
 const CLAUDE_POINTER_CONTENT = "See [AGENTS.md](./AGENTS.md) for workspace instructions.\n";
+const CODEGRAPH_GITIGNORE_ENTRY = ".codegraph/";
 
 function normalizeText(value: string): string {
   return value.replace(/\r\n/g, "\n");
@@ -90,6 +91,22 @@ function ensureClaudePointerFile(targetPath: string): void {
   fs.writeFileSync(targetPath, CLAUDE_POINTER_CONTENT, "utf8");
 }
 
+function ensureCodeGraphGitignoreEntry(workspaceRoot: string): void {
+  const gitignorePath = path.join(workspaceRoot, ".gitignore");
+  const existing = readFileIfExists(gitignorePath);
+  const normalized = normalizeText(existing);
+  const hasEntry = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .some((line) => line === CODEGRAPH_GITIGNORE_ENTRY || line === ".codegraph");
+  if (hasEntry) {
+    return;
+  }
+
+  const prefix = normalized && !normalized.endsWith("\n") ? "\n" : "";
+  fs.writeFileSync(gitignorePath, `${normalized}${prefix}${CODEGRAPH_GITIGNORE_ENTRY}\n`, "utf8");
+}
+
 export function resolveWorkspaceScaffoldRoot(extensionRoot: string): string {
   return path.join(extensionRoot, WORKSPACE_SCAFFOLD_ROOT);
 }
@@ -104,6 +121,7 @@ export function ensureWorkspaceHarnessScaffold(
   ensureTemplateFile(paths.architectureFile, path.join(scaffoldRoot, "ARCHITECTURE.md"));
   ensureWorkspaceAgentsFile(paths.workspaceAgentsFile, path.join(scaffoldRoot, "AGENTS.md"));
   ensureClaudePointerFile(paths.claudeFile);
+  ensureCodeGraphGitignoreEntry(paths.workspaceRoot);
 }
 
 export function workspaceAgentsAppendMarker(): { start: string; end: string } {
