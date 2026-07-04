@@ -14,8 +14,6 @@ import {
   getCliArgs,
   isInteractiveSupported,
   getThinkingMode,
-  getThinkingPromptPrefix,
-  getThinkingPromptSuffix,
   getThinkingWorkspaceFiles,
 } from "./cli/config";
 import {
@@ -28,19 +26,12 @@ import {
   isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
-import { applyModelArg, readModelArg, supportsCliManagedModelSelection } from "./cli/modelArgs";
-import {
-  finalizeGeminiStreamJsonRemainder,
-  getGeminiEventDisplay,
-  parseGeminiStreamJsonChunk,
-  type GeminiStreamJsonEvent,
-} from "./cli/geminiStreamJson";
+import { readModelArg, supportsCliManagedModelSelection } from "./cli/modelArgs";
 import {
   buildGeminiThinkingRuntimeProfile,
   GEMINI_SYSTEM_SETTINGS_ENV_KEY,
 } from "./cli/geminiThinking";
 import {
-  GEMINI_NATIVE_COMPACT_PROMPT,
   isGeminiNativeCompactUnsupportedErrorText,
 } from "./cli/geminiCompaction";
 import {
@@ -58,6 +49,16 @@ import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
+  buildWorkspacePathItems,
+  buildTempFilePath,
+  cleanupTempDir,
+  ensureTempDir,
+  exportRunStreamRecordsToTxt,
+  exportSessionHistoryMessagesToTxt,
+  saveUploadedFiles,
+  startTempCleanup,
+} from "./webview/panelFileActions";
+import {
   ChatMessage,
   ChatMessageAction,
   EditorContextState,
@@ -68,8 +69,6 @@ import {
   LobsterGroupChatHistoryItem,
   PromptHistoryItem,
   SessionSummary,
-  UploadFilePayload,
-  RunStreamExportRecordPayload,
 } from "./webview/types";
 import {
   initLogger,
@@ -87,13 +86,8 @@ import {
 } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
 import {
-  buildHiddenRetryAttemptInfo,
-  buildHiddenRetryErrorTraceContent,
   buildHiddenRetryFailureMessage,
-  buildHiddenRetryProgressInfo,
   getHiddenRetryDelayMs,
-  HIDDEN_RETRY_DELAY_SEQUENCE_MS,
-  isSameHiddenRetryErrorTraceContent,
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
@@ -107,9 +101,7 @@ import {
 import { ConfigManagerPanel } from "./webview/configPanel";
 import {
   LobsterDebateChatPanel,
-  type LobsterDebateChatPanelMessage,
   type LobsterDebateChatPanelRound,
-  type LobsterDebateChatPanelState,
 } from "./webview/lobsterDebatePanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
@@ -126,18 +118,11 @@ import {
 } from "./interactive/runnerRetention";
 import { recoverClaudeMessagesFromTranscript } from "./interactive/claudeTranscript";
 import {
-  getMappedThreadId,
   readSessionMeta,
-  upsertMapping,
   writeSessionMeta,
 } from "./interactive/metaStore";
 import { HISTORY_RETENTION_DAYS, isTimestampWithinHistoryRetention } from "./historyRetention";
-import {
-  findSupersedingSessionId,
-  isLocalSessionId,
-  mergeSessionMessages,
-  mergeSessionRecords,
-} from "./interactive/sessionHistoryRepair";
+import { isLocalSessionId } from "./interactive/sessionHistoryRepair";
 import {
   buildLobsterSubtaskExecutionPlan,
   describeLobsterExecutionPlan,
@@ -188,6 +173,55 @@ import {
   type LobsterDebateRoundStatus,
 } from "./lobsterDebate";
 import {
+  LOBSTER_DEBATE_MAX_PARTICIPANTS,
+  LOBSTER_DEBATE_MIN_PARTICIPANTS,
+  buildLobsterDebateBriefMarkdown,
+  buildLobsterDebateChatTurnMarkdown,
+  buildLobsterDebateDialogueClosedMarkdown,
+  buildLobsterDebateDialogueTurnChatEventMarkdown,
+  buildLobsterDebateFinalParticipantMarkdown,
+  buildLobsterDebateInitialChatMarkdown,
+  buildLobsterDebateModeratorTurnMarkdown,
+  buildLobsterDebateParticipantRosterChatMarkdown,
+  buildLobsterDebateRuntimeForcedFinalizeMarkdown,
+  type LobsterDebateParticipantDefinition,
+} from "./lobsterPromptBuilders";
+import {
+  runLobsterDebateConsensusSummary,
+  runLobsterDebateModerator,
+  runLobsterDebateParticipantBatch,
+  runLobsterDebateParticipantRoster,
+  type LobsterDebateParticipantBatchRunItem,
+  type LobsterDebateRunnerDeps,
+  type LobsterDebateSessionState,
+} from "./lobsterDebateRunner";
+import {
+  appendLobsterRound,
+  bindLobsterTaskToSession,
+  buildLobsterTaskStoreFile,
+  buildLobsterSubtaskCommunicationFile,
+  cleanupLobsterCommunicationRetention,
+  cleanupLobsterTaskStoreRetention,
+  ensureLobsterCommunicationFiles,
+  getLobsterCommunicationPaths,
+  getLobsterTaskStoreSessionFile,
+  listLobsterTaskStoreFiles,
+  prepareLobsterSubtaskCommunicationFile,
+  readLobsterTaskRecord,
+  readLobsterTaskStore,
+  updateLobsterTaskRecord,
+  writeLobsterTaskStore,
+  type LobsterAcceptance,
+  type LobsterAcceptanceCheck,
+  type LobsterMainDecision,
+  type LobsterRoundRecord,
+  type LobsterRoundSummary,
+  type LobsterSubtaskDecision,
+  type LobsterSubtaskRecord,
+  type LobsterTaskRecord,
+  type LobsterTaskStore,
+} from "./lobsterTaskStore";
+import {
   readToolSettings,
   type ToolSettingsLocale,
   type ToolSettingsState,
@@ -195,8 +229,6 @@ import {
 } from "./toolSettings";
 import { persistPromptRunSummary } from "./memory/memoryConsolidator";
 import { resolveWorkspaceMemoryPaths } from "./memory/memoryPaths";
-import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "./memory/memoryPrompt";
-import { buildWorkspaceMemoryRecallPack } from "./memory/memoryRecall";
 import {
   getLongTermMemoryRuntimeDisableReason,
   isLongTermMemoryRuntimeEnabled,
@@ -204,6 +236,236 @@ import {
   type MemoryRuntimeGateSettings,
 } from "./memory/runtimeGate";
 import { ensureWorkspaceHarnessScaffold } from "./workspaceScaffold";
+import {
+  type ContextCompactionOptions,
+  finalizeGeminiStreamJsonState,
+  processGeminiStreamJsonChunk,
+  runContextCompactionWithDeps,
+} from "./contextCompactionRunner";
+import {
+  buildHiddenRetryPrompt,
+  buildRuntimeModelPrompt,
+  buildThinkingPrompt,
+  collectCodexImagePathsFromPrompt,
+  normalizePromptContextTags,
+  redactPromptArg,
+} from "./promptRuntime";
+import {
+  createTraceLineFilterState,
+  formatCodexExecSegmentForDisplay,
+  formatTraceSegmentForDisplay,
+  getTraceSegmentKind,
+  isTraceSegmentStart,
+  normalizeTraceContentForDisplay,
+  resetTraceLineFilterState,
+  resolveTraceKind,
+  resolveTraceMerge,
+  shouldIgnoreTraceLine,
+  type TraceDisplayResult,
+  type TraceMessageKind,
+} from "./traceDisplay";
+import {
+  getLatestSessionIdFromRecords,
+  getSessionKey,
+  writeSessionFile,
+  type SessionStore,
+} from "./sessionStore";
+import {
+  buildConversationTabSessionLookupKey,
+  createSessionTabsController,
+  getConversationTabSessionIdForCli,
+  sanitizeConversationTabRecordForWorkspaceSettings,
+  sanitizeConversationTabSessionIdMap,
+  setConversationTabSessionIdForCli,
+  switchConversationTabCli,
+  type ConversationTabRecord,
+  type ConversationTabsState,
+  type PendingSessionDraft,
+  type SessionTabsController,
+} from "./sessionTabs";
+import {
+  createSessionLifecycleController,
+  extractSessionId,
+  type ProcessTitleState,
+  type SessionLifecycleController,
+} from "./sessionLifecycle";
+import {
+  buildModelState as buildModelSelectionState,
+  countStoreModels,
+  createEmptyModelSelectionStoreState,
+  deleteCliModelFromStore,
+  ensureCliModelStore as ensureCliModelSelectionStore,
+  getCliModelLobsterRoleFlagsFromStore,
+  getEffectiveCliArgs as getEffectiveCliArgsFromStore,
+  getLobsterModelOptionsForCliFromStore,
+  getManagedModelOptionsForCliFromStore,
+  getManagedModelOptionsForConfigFromStore,
+  getModelOptionsForCliFromStore,
+  getModelOptionsForConfigFromStore,
+  getSelectedCliModelFromStore,
+  getSelectedLobsterCliModelFromStore,
+  isLobsterTaskRoleValue,
+  loadModelStore as loadModelSelectionStore,
+  mergeUniqueModelNames,
+  moveCliModelInStore,
+  normalizeCliModelName,
+  normalizeLobsterModelRoleFlags,
+  readModelStore as readModelSelectionStore,
+  renameCliModelInStore,
+  selectCliLobsterModelInStore,
+  selectCliModelInStore,
+  setCliModelLobsterRoleInStore,
+  summarizeModelStoreByConfigId,
+  writeModelStore as writeModelSelectionStore,
+  type CliModelStore,
+  type LobsterTaskRoleForModelSelection,
+} from "./modelSelectionStore";
+import {
+  loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
+  saveWorkspaceSettings as saveWorkspaceSettingsToStore,
+  type ConversationTabRecordForWorkspaceSettings,
+  type WorkspaceSettings,
+} from "./workspaceSettingsStore";
+import { handlePanelMessageWithDeps } from "./sessionMessageHandlers";
+import { registerExtensionCommands } from "./commandRegistry";
+import {
+  buildEditorContextState,
+  buildLobsterMainResumeText,
+  buildLobsterSubtaskBatchCompletedText,
+  buildLobsterSubtaskBatchStartedText,
+  buildLobsterSubtaskExecutionGroupStartedText,
+  buildLobsterSubtaskRetryText as buildLobsterSubtaskRetryTextWithLimit,
+  buildLobsterSubtaskStartedText,
+  buildLobsterTaskCompletedText,
+  buildLobsterTaskNeedsReviewText as buildLobsterTaskNeedsReviewTextWithLimit,
+  buildLobsterTaskResumedText,
+  buildLobsterTaskStartedText,
+  buildPanelStateWithDeps,
+  buildSessionLabelFromPrompt,
+  buildUserChatMessage,
+  ensureLobsterMainSubChatTranscriptWithDeps,
+  formatLobsterEstimatedRemainingRounds,
+  formatLobsterWriteFiles,
+  buildPromptWithAutoContext as buildPromptWithAutoContextFromPanelStateBuilder,
+  getLatestAssistantResponseForLongTermMemory,
+  getLobsterMainSubChatMainTitle,
+  getLobsterSubtaskDisplayTitle,
+  isCliName,
+  isLobsterDebateGroupChatTask,
+  maybeInjectLongTermMemoryForPromptWithEditorContext,
+  normalizeLobsterRound,
+  normalizeLobsterSubtaskId,
+  normalizeLobsterTaskId,
+  resolveLobsterConversationTabContextFromMessages,
+  resolveLobsterRunConversationTabContext,
+  resolveLobsterSubtaskConversationContextFromMessages,
+  shouldUseFallbackSessionLabel as shouldUseFallbackSessionLabelWithSet,
+  type LobsterConversationTabContext,
+  type LobsterSubtaskConversationContext,
+} from "./panelStateBuilder";
+import {
+  appendHiddenRetryErrorTraceMessage,
+  buildHiddenRetryLimitMessage,
+  buildHiddenRetryQueuedMessage,
+  buildHiddenRetryStartedMessage,
+  collectRecentLobsterTaskIdsFromMessages,
+  createHiddenRetryErrorTraceMessage,
+  createLobsterDebateChatPanelCoordinator,
+  createPanelDiagnosticsInspector,
+  detectLobsterVerificationSignals,
+  formatLobsterVerificationState,
+  getAttemptFailureMessage,
+  getErrorInfo,
+  hasCompleteLobsterCompletionMessages,
+  HIDDEN_RETRY_MAX_RETRIES,
+  isAbortErrorInfo,
+  isCompleteLobsterFinalSummaryContent,
+  isHiddenRetryEligibleErrorInfo,
+  isLobsterAnswerConclusionMessageForTask,
+  isLobsterFinalSummaryMessageForTask,
+  isLobsterResumePrompt,
+  isLobsterTaskResumable,
+  isLobsterTaskSessionCompatible,
+  waitForHiddenRetryDelay,
+  type ErrorInfo,
+} from "./panelDiagnostics";
+import {
+  applyConfigOrder,
+  buildCliCommandNotFoundMessage,
+  buildCodexImageSupportWarningKey,
+  buildLobsterCompletedConclusionAndSummaryMarkdown,
+  buildLobsterDebateConsensusReachedText,
+  buildLobsterDebateConsensusStartedText,
+  buildLobsterDebateDialogueTurnStartedText,
+  buildLobsterDebateFinalStanceStartedText,
+  buildLobsterDebateModeratorFinishedText,
+  buildLobsterDebateModeratorStartedText,
+  buildLobsterDebateNeedsReviewText,
+  buildLobsterDebateParticipantFinishedText,
+  buildLobsterDebateParticipantRosterFailedText,
+  buildLobsterDebateParticipantRosterFinishedText,
+  buildLobsterDebateParticipantRosterStartedText,
+  buildLobsterDebateParticipantStartedText,
+  buildLobsterDebateParticipantsCollectedText,
+  buildLobsterDebateRerunText,
+  buildLobsterDebateReuseText,
+  buildLobsterDebateStartedText,
+  buildLobsterRoundSummary,
+  buildLobsterSupplementalRequirementsLines,
+  createConfigHeartbeatCoordinator,
+  getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings,
+  loadConfigStateWithDeps,
+  matchesActiveConfig,
+  normalizeCliInstallStatus,
+  normalizeJson,
+  normalizeLobsterSupplementalRequirement,
+  probeCodexImageSupportStatus,
+  resolveLobsterResumeRound,
+  resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState,
+  type CodexImageSupportStatus,
+  type ConfigHeartbeatSnapshot,
+} from "./webviewCommandCoordinator";
+import {
+  buildPromptHistoryState as buildPromptHistoryStateFromStore,
+  clearPromptHistoryStore,
+  cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces,
+  collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup,
+  deletePromptHistoryFile as deletePromptHistoryStoreFile,
+  ensurePromptHistoryStore as ensurePromptHistoryStoreState,
+  getPromptHistoryFilePath as getPromptHistoryStoreFilePath,
+  loadPromptHistoryStore as loadPromptHistoryStoreFromStore,
+  readPromptHistoryFile as readPromptHistoryStoreFile,
+  recordPromptHistoryInStore,
+  writePromptHistoryFile as writePromptHistoryStoreFile,
+  type PromptHistoryStore,
+} from "./promptHistoryStore";
+import {
+  appendAssistantChunkToStore,
+  appendMessageToStore,
+  buildTaskRunCompletionText as buildTaskRunCompletionTextWithLabels,
+  cleanupTaskStoreRetention as cleanupTaskStoreRetentionWithDeps,
+  getActiveAssistantContent as getActiveAssistantContentFromStore,
+  isInteractiveMode,
+  isLobsterTaskRole,
+  isMacTaskShell,
+  isThinkingMode,
+  isLobsterTaskBlockedByMainAiFailureLimit as isLobsterTaskBlockedByMainAiFailureLimitWithLimit,
+  isLobsterTaskCompleted,
+  normalizeVisibleInteractiveMode,
+  normalizeRawStreamContent,
+  readTaskStore as readTaskStoreWithDeps,
+  resolveLobsterTaskSessionId as resolveLobsterTaskSessionIdWithDeps,
+  resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps,
+  sendPanelMessageWithActiveTab,
+  writeTaskStore as writeTaskStoreWithDeps,
+  type LobsterTaskRole,
+  type LobsterTaskStatus,
+  type RunActivity,
+  type TaskRunDraft,
+  type TaskRunRecord,
+  type TaskRunStatus,
+  type TaskStore,
+} from "./promptRunState";
 
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -216,8 +478,7 @@ let activeAssistantMessageId: string | undefined;
 let activeTraceMessageId: string | undefined;
 let activeTraceBuffer = "";
 let activeTraceSegmentLines: string[] = [];
-let skipUserBlock = false;
-let skipCodexBlock = false;
+const activeTraceLineFilterState = createTraceLineFilterState();
 let activeCompletionSent = false;
 let activeRunId: string | undefined;
 let activeTaskRun: TaskRunDraft | null = null;
@@ -242,8 +503,7 @@ let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | 
 let configHeartbeatTimer: NodeJS.Timeout | null = null;
 let configHeartbeatRunning = false;
 let configHeartbeatSnapshot: ConfigHeartbeatSnapshot | null = null;
-let lastModelStoreReadError: string | null = null;
-let lastModelStoreWriteError: string | null = null;
+const modelSelectionStoreState = createEmptyModelSelectionStoreState();
 const lastConfigStateLoadErrorByCli: Partial<Record<CliName, string>> = {};
 const conversationTabStore: ConversationTabsState = {
   activeTabId: null,
@@ -254,10 +514,10 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
-const lobsterTaskStoreFileCache = new Map<string, string>();
+let sessionTabsController: SessionTabsController;
+let sessionLifecycleController: SessionLifecycleController;
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
-const SESSION_LABEL_LIMIT = 16;
 const LOCAL_SESSION_PREFIX = "local_";
 const CONVERSATION_TAB_PREFIX = "tab_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
@@ -275,10 +535,6 @@ const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
-const LOBSTER_TASK_STORE_DIR = path.join(DATA_DIR, "lobster-tasks");
-const LOBSTER_TASK_STORE_FILENAME = "lobster-tasks.json";
-const LOBSTER_TASK_STORE_LEGACY_FILE = path.join(DATA_DIR, LOBSTER_TASK_STORE_FILENAME);
-const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
 const LOBSTER_DEFAULT_MAX_ROUNDS = 20;
 const LOBSTER_MIN_MAX_ROUNDS = 1;
 const LOBSTER_MAX_MAX_ROUNDS = 100;
@@ -286,72 +542,12 @@ const LOBSTER_PARALLEL_SUBTASK_MAX = 6;
 const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
 const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
-const LOBSTER_RESUME_PROMPT_MAX_LENGTH = 48;
 const LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND = 1;
 const LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
-const LOBSTER_DEBATE_MIN_PARTICIPANTS = 2;
-const LOBSTER_DEBATE_MAX_PARTICIPANTS = 6;
-const LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS: ReadonlyArray<LobsterDebateParticipantDefinition> = [
-  {
-    id: "blue_planner",
-    role: LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-    title: "蓝队方案方",
-    focus: "提出可执行方案，明确目标、约束、成功标准，并主动回应红队质疑。",
-  },
-  {
-    id: "red_attacker",
-    role: LOBSTER_DEBATE_RED_TEAM_ROLE,
-    title: "红队攻击方",
-    focus: "攻击方案假设，寻找目标遗漏、证据不足、边界场景、可行性缺口和不可验证风险。",
-  },
-  {
-    id: "blue_verifier",
-    role: LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-    title: "蓝队验证方",
-    focus: "把蓝队方案补成可验收计划，定义验证方法、证据口径、回退或替代方案。",
-  },
-  {
-    id: "red_edge_cases",
-    role: LOBSTER_DEBATE_RED_TEAM_ROLE,
-    title: "红队边界方",
-    focus: "从边界条件、反例、安全/合规/伦理、成本和长期影响角度继续挑战蓝队方案。",
-  },
-];
-const LOBSTER_RESUME_PROMPT_PATTERNS: RegExp[] = [
-  /^继续(?:执行|进行|下去|一下|一下子|任务|主任务|这个任务|当前任务|上一轮|上轮|吧)?$/u,
-  /^接着(?:执行|做|继续|下去|往下)?$/u,
-  /^续上$/u,
-  /^continue(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
-  /^resume(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
-  /^go\s*on$/i,
-  /^carry\s*on$/i,
-  /^keep\s*going$/i,
-  /^proceed$/i,
-];
-const TEMP_ROOT_DIR = path.join(os.homedir(), ".sinitek_cli");
-const TEMP_DIR = path.join(TEMP_ROOT_DIR, "temp");
-const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
-const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
 const HISTORY_RETENTION_CLEAN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const CODEX_IMAGE_MIN_VERSION = "0.2.0";
 const CODEX_IMAGE_SUPPORT_CACHE_MS = 5 * 60 * 1000;
 const CODEX_IMAGE_SUPPORT_TIMEOUT_MS = 5000;
-const CODEX_IMAGE_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tif",
-  ".tiff",
-  ".svg",
-  ".heic",
-  ".heif",
-  ".avif",
-]);
-const RUN_STREAM_EXPORT_FILENAME_PREFIX = "sinitek-run-stream";
-const SESSION_HISTORY_EXPORT_FILENAME_PREFIX = "sinitek-session-history";
 const CONFIG_HEARTBEAT_INTERVAL_MS = 5000;
 const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
@@ -365,24 +561,9 @@ const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "en"),
 ]);
 
-function buildSessionLabelFromPrompt(prompt: string | null | undefined): string | null {
-  const trimmed = String(prompt ?? "").replace(/\s+/g, " ").trim();
-  if (!trimmed) {
-    return null;
-  }
-  return trimmed.slice(0, SESSION_LABEL_LIMIT);
-}
-
 function shouldUseFallbackSessionLabel(label: string | null | undefined): boolean {
-  if (typeof label !== "string") {
-    return true;
-  }
-  const trimmed = label.trim();
-  return !trimmed || UNNAMED_SESSION_LABELS.has(trimmed);
+  return shouldUseFallbackSessionLabelWithSet(label, UNNAMED_SESSION_LABELS);
 }
-const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
-const PATH_PICKER_MAX_RESULTS = 2000;
-const TEMP_FILE_RANDOM_LENGTH = 8;
 const LEGACY_GEMINI_THINKING_SETTINGS_PATH = ".gemini/settings.json";
 const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
@@ -401,170 +582,6 @@ const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
 const KEEP_RECENT_TURNS = 3;
 const suppressCompactPrompt = new Set<string>();
-const HIDDEN_RETRY_MAX_RETRIES = HIDDEN_RETRY_DELAY_SEQUENCE_MS.length;
-
-type SessionRecord = {
-  id: string;
-  label: string;
-  createdAt: number;
-  lastUsedAt: number;
-  firstPrompt?: string;
-};
-
-type SessionStore = Record<CliName, { currentId: string | null; sessions: SessionRecord[] }>;
-
-type PromptHistoryStore = {
-  items: PromptHistoryItem[];
-};
-
-type TaskRunStatus = "end" | "error" | "stopped";
-type RunActivity = "contextCompaction";
-type LobsterTaskRole = "main" | "subtask";
-type LobsterTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
-
-type TaskRunDraft = {
-  id: string;
-  cli: CliName;
-  sessionId: string | null;
-  prompt: string;
-  startedAt: number;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
-};
-
-type TaskRunRecord = TaskRunDraft & {
-  endedAt: number;
-  durationMs: number;
-  status: TaskRunStatus;
-};
-
-type TaskStore = {
-  runs: TaskRunRecord[];
-};
-
-type LobsterSubtaskRecord = {
-  id: string;
-  title: string;
-  prompt?: string;
-  conflictGroup?: string;
-  writeFiles?: string[];
-  status: "pending" | "running" | "completed" | "skipped" | "blocked";
-  summary?: string;
-  communicationFile?: string;
-  updatedAt?: number;
-};
-
-type LobsterAcceptanceCheck = {
-  name: string;
-  passed: boolean;
-  detail?: string;
-};
-
-type LobsterAcceptance = {
-  passed: boolean;
-  summary?: string;
-  checks: LobsterAcceptanceCheck[];
-};
-
-type LobsterRoundSummary = {
-  round: number;
-  subtaskId?: string;
-  title: string;
-  summary: string;
-};
-
-type LobsterSubtaskDecision = {
-  id?: string;
-  title: string;
-  prompt: string;
-  conflictGroup?: string;
-  writeFiles?: string[];
-};
-
-type LobsterMainDecision = {
-  status: "completed" | "continue" | "blocked";
-  answerConclusion?: string;
-  finalSummary?: string;
-  roundSummaries?: LobsterRoundSummary[];
-  requirementCoverage?: LobsterAcceptanceCheck[];
-  acceptance?: LobsterAcceptance;
-  subtask?: LobsterSubtaskDecision;
-  subtasks?: LobsterSubtaskDecision[];
-  parallelReason?: string;
-  estimatedRemainingRounds?: number;
-};
-
-type LobsterRoundRecord = {
-  round: number;
-  role: LobsterTaskRole;
-  subtaskId?: string;
-  status: TaskRunStatus;
-  startedAt: number;
-  endedAt: number;
-  summary?: string;
-};
-
-type LobsterTaskRecord = {
-  id: string;
-  cli: CliName;
-  workspaceKey: string;
-  taskStoreFile: string;
-  rootPrompt: string;
-  executionMode?: LobsterExecutionMode;
-  status: LobsterTaskStatus;
-  createdAt: number;
-  updatedAt: number;
-  maxRounds: number;
-  currentRound: number;
-  communicationDir: string;
-  mainCommunicationFile: string;
-  sessionId?: string | null;
-  activeSubtaskId?: string | null;
-  activeSubtaskIds?: string[];
-  subTasks: LobsterSubtaskRecord[];
-  rounds: LobsterRoundRecord[];
-  answerConclusion?: string;
-  finalSummary?: string;
-  estimatedRemainingRounds?: number;
-  mainAiFailureCount?: number;
-  mainAiFailureLimitReached?: boolean;
-  mainAiLastFailureAt?: number;
-  mainAiLastFailureMessage?: string;
-  supplementalRequirements?: string[];
-  debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
-  completionRoundSummaries: LobsterRoundSummary[];
-  completionRequirementCoverage: LobsterAcceptanceCheck[];
-};
-
-type LobsterTaskCompletionMessagesState = {
-  hasAnswerConclusion: boolean;
-  hasFinalSummary: boolean;
-};
-
-type LobsterTaskStore = {
-  tasks: LobsterTaskRecord[];
-};
-
-type ConversationTabRecord = {
-  id: string;
-  cli: CliName;
-  sessionId: string | null;
-  sessionIdByCli: Partial<Record<CliName, string>>;
-  createdAt: number;
-};
-
-type ConversationTabsState = {
-  activeTabId: string | null;
-  tabs: ConversationTabRecord[];
-};
-
-type PendingSessionDraft = {
-  label: string | null;
-  firstPrompt: string | null;
-  messages: ChatMessage[];
-};
 
 type ParallelTabRun = {
   runId: string;
@@ -598,77 +615,12 @@ type InteractiveTabRun = {
   lobsterSubtaskId?: string;
 };
 
-type WorkspaceSettings = {
-  currentCli?: CliName;
-  thinkingMode?: ThinkingMode;
-  interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
-  lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
-  autoCompactContextAfterRun?: boolean;
-  autoCompactContextBeforeRun?: boolean;
-  workspaceMemoryEnabled?: boolean;
-  codexMultiAgentEnabled?: boolean;
-  lobsterMaxRounds?: number;
-  lobsterAutoCloseSubtaskTabs?: boolean;
-  activeConfigIdByCli?: Partial<Record<CliName, string>>;
-  conversationTabs?: ConversationTabsState;
-};
-
-type CliModelStore = {
-  selectedByConfigId: Record<string, string>;
-  optionsByConfigId: Record<string, string[]>;
-  thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
-  selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRole, string>>>;
-  lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
-};
-
-type ConfigHeartbeatSnapshot = {
-  cli: CliName;
-  activeConfigId: string | null;
-  configIds: string[];
-  modelSelected: string | null;
-  managedModelOptions: string[];
-  lobsterMainModelSelected: string | null;
-  lobsterSubtaskModelSelected: string | null;
-  lobsterRoleSignature: string;
-};
-
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
 
 type CliInstallStatus = {
   command: string;
   installed: boolean;
   checkedAt: number;
-};
-
-type CodexImageSupportStatus = {
-  command: string;
-  checkedAt: number;
-  version: string | null;
-  versionLabel: string | null;
-  supportsImageFlag: boolean;
-  supported: boolean;
-  reason: "supported" | "version-too-low" | "flag-missing" | "probe-failed";
-  probeError?: string;
-};
-
-type RunStreamExportRecord = {
-  index: number;
-  content: string;
-  source: "stdout" | "stderr" | "event";
-  createdAt: number;
-};
-
-type RunStreamExportResult = {
-  path: string;
-  fileName: string;
-};
-
-type SessionHistoryExportMessage = {
-  index: number;
-  role: ChatMessage["role"];
-  kind: ChatMessage["kind"] | null;
-  createdAt: number;
-  content: string;
 };
 
 const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
@@ -680,6 +632,127 @@ let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
 let historyArtifactRetentionCleanupPromise: Promise<void> | null = null;
 
+function initializeSessionControllers(): void {
+  sessionTabsController = createSessionTabsController({
+    state: conversationTabStore,
+    pendingDrafts: pendingSessionDrafts,
+    conversationTabPrefix: CONVERSATION_TAB_PREFIX,
+    getCurrentCli: () => isCliName(currentCli as string) ? currentCli : getDefaultCli(),
+    setCurrentCli: (cli) => {
+      currentCli = cli;
+      updateStatusBar();
+    },
+    getDefaultCli,
+    isCliName,
+    getLatestSessionId,
+    getSessionStore: () => sessionStore,
+    getWorkspaceSettings: () => workspaceSettings,
+    saveWorkspaceSettings,
+    setCurrentSession,
+    setWorkspaceInteractiveModeForCli,
+    resolveAutoInteractiveModeForConversationTab,
+    collectRunningLobsterTaskIds,
+    resolveConversationTabLobsterContext,
+    buildSessionLabelFromPrompt,
+  });
+  sessionLifecycleController = createSessionLifecycleController({
+    activeWorkspaceKey: () => activeWorkspaceKey,
+    workspaceKeyFallback: WORKSPACE_KEY_FALLBACK,
+    legacyMessageDir: LEGACY_MESSAGE_DIR,
+    messageDirRoot: MESSAGE_DIR_ROOT,
+    frozenThreadLimit: FROZEN_THREAD_LIMIT,
+    historyRetentionDays: HISTORY_RETENTION_DAYS,
+    legacySessionFile: LEGACY_SESSION_FILE,
+    localSessionPrefix: LOCAL_SESSION_PREFIX,
+    sessionDir: SESSION_DIR,
+    sessionStoreKey: SESSION_STORE_KEY,
+    sessionStore: () => sessionStore,
+    globalStateGet: <T>(key: string) => extensionContext.globalState.get<T>(key),
+    globalStateKeys: () => extensionContext.globalState.keys(),
+    globalStateUpdate: (key, value) => extensionContext.globalState.update(key, value),
+    sessionMessageCache,
+    sessionMessageLoadErrors,
+    readSessionMetaStore,
+    writeSessionMetaStore,
+    getSessionMetaFilePath,
+    getSessionStoreKey,
+    getCurrentSessionId,
+    setCurrentSession,
+    persistSessionStore: (store) => void persistSessionStore(store),
+    postPanelState,
+    sendPanelMessage,
+    showSessionLoadError: (detail) => void showErrorWithActions(t("session.loadFailedTitle"), detail),
+    getActiveConversationTabId,
+    getConversationTabById,
+    getConversationTabs: () => ensureConversationTabs().tabs,
+    persistConversationTabsToWorkspaceSettings,
+    getPendingSessionDraft,
+    updatePendingSessionDraft,
+    clearPendingSessionDraft,
+    clearAllPendingSessionDrafts: () => {
+      Object.keys(pendingSessionDrafts).forEach((key) => {
+        delete pendingSessionDrafts[key];
+      });
+    },
+    getLiveMessagesForTab,
+    recoverClaudeMessagesFromTranscript,
+    isTimestampWithinHistoryRetention,
+    buildSessionLabelFromPrompt,
+    shouldUseFallbackSessionLabel,
+    getPrimaryRunTabId,
+    getPrimaryRunSessionState: () => ({
+      cli: activeCliForRun,
+      sessionId: activeSessionId,
+      tabId: activeTabIdForRun,
+      messageTarget: activeMessageTarget,
+    }),
+    setPrimaryRunSessionState: (patch) => {
+      if (patch.sessionId !== undefined) {
+        activeSessionId = patch.sessionId;
+      }
+      if (patch.messageTarget !== undefined) {
+        activeMessageTarget = patch.messageTarget;
+      }
+      if (patch.messageIndex !== undefined) {
+        activeMessageIndex = patch.messageIndex;
+      }
+    },
+    getRuntimeSessionReferences: (tabId) => {
+      const references: Array<{ cli: CliName; sessionId: string | null; messageTarget: ChatMessage[] }> = [];
+      const parallelRun = tabId ? parallelRunsByTabId.get(tabId) : undefined;
+      if (parallelRun) {
+        references.push(parallelRun);
+      } else if (!tabId) {
+        parallelRunsByTabId.forEach((run) => references.push(run));
+      }
+      const interactiveRun = tabId ? interactiveRunsByTabId.get(tabId) : undefined;
+      if (interactiveRun) {
+        references.push(interactiveRun);
+      } else if (!tabId) {
+        interactiveRunsByTabId.forEach((run) => references.push(run));
+      }
+      return references;
+    },
+    getProcessTitleState: (): ProcessTitleState => ({
+      activeRunId,
+      activeCliForRun,
+      activeProcessTitleRunId,
+      activeProcessTitleBase,
+    }),
+    setProcessTitleState: (patch) => {
+      if (patch.activeProcessTitleRunId !== undefined) {
+        activeProcessTitleRunId = patch.activeProcessTitleRunId;
+      }
+      if (patch.activeProcessTitleBase !== undefined) {
+        activeProcessTitleBase = patch.activeProcessTitleBase;
+      }
+    },
+    t,
+    logDebug: (event, payload) => void logDebug(event, payload),
+    logInfo: (event, payload) => void logInfo(event, payload),
+    logError: (event, payload) => void logError(event, payload),
+  });
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -688,6 +761,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
   migrateLegacyToolSettingsFromVsCodeConfig();
+  initializeSessionControllers();
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
@@ -728,59 +802,15 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("sinitek-cli-tools.selectCli", async () => {
-      const selection = await vscode.window.showQuickPick(CLI_LIST, {
-        placeHolder: t("command.selectCliPlaceholder"),
-      });
-
-      if (!selection || !isCliName(selection)) {
-        return;
-      }
-
-      await setCurrentCli(selection);
-      vscode.window.showInformationMessage(
-        t("command.currentCliInfo", { cli: currentCli })
-      );
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("sinitek-cli-tools.runCli", async () => {
-      await runCli(currentCli);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "sinitek-cli-tools.runCliThinkingOn",
-      async () => {
-        await runCli(currentCli, { thinkingMode: "on" });
-      }
-    )
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "sinitek-cli-tools.runCliThinkingOff",
-      async () => {
-        await runCli(currentCli, { thinkingMode: "off" });
-      }
-    )
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("sinitek-cli-tools.openPanel", async () => {
-      await revealPanelView();
-      await postPanelState();
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("sinitek-cli-tools.openLobsterDebateChat", async (arg?: unknown) => {
-      await openLobsterDebateChatPanel(arg);
-    })
-  );
+  registerExtensionCommands(context, {
+    isCliName,
+    getCurrentCli: () => currentCli,
+    setCurrentCli,
+    runCli,
+    revealPanelView,
+    postPanelState,
+    openLobsterDebateChatPanel,
+  });
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -901,938 +931,149 @@ function resolveClaudeInteractiveEntrypoint(command: string | undefined): string
   return command;
 }
 
-function collectDirectoryPaths(filePath: string, dirSet: Set<string>): void {
-  const normalized = normalizeWorkspacePath(filePath);
-  const parts = normalized.split("/");
-  if (parts.length <= 1) {
-    return;
-  }
-  for (let i = 1; i < parts.length; i += 1) {
-    dirSet.add(parts.slice(0, i).join("/"));
-  }
-}
-
-async function buildWorkspacePathItems(): Promise<Array<vscode.QuickPickItem & { value: string }>> {
-  const files = await vscode.workspace.findFiles("**/*", PATH_PICKER_EXCLUDE, PATH_PICKER_MAX_RESULTS);
-  const dirSet = new Set<string>();
-  const fileItems = files
-    .map((uri) => normalizeWorkspacePath(vscode.workspace.asRelativePath(uri, false)))
-    .filter((relativePath) => relativePath)
-    .map((relativePath) => {
-      collectDirectoryPaths(relativePath, dirSet);
-      return {
-        label: relativePath,
-        description: t("pathPicker.file"),
-        value: relativePath,
-      };
-    });
-  const dirItems = Array.from(dirSet)
-    .sort((a, b) => a.localeCompare(b))
-    .map((dirPath) => ({
-      label: dirPath + "/",
-      description: t("pathPicker.folder"),
-      value: dirPath,
-    }));
-  const sortedFileItems = fileItems.sort((a, b) => a.label.localeCompare(b.label));
-  return [...dirItems, ...sortedFileItems];
-}
-
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
-  ensureWorkspaceSessionStore();
-  void logDebug("panel-message", message);
-  if (message.type === "requestState") {
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, getCurrentSessionId(currentCli));
-    return;
-  }
-
-  if (message.type === "webviewError") {
-    void logError("webview-runtime-error", {
-      message: message.message,
-      source: message.source ?? null,
-      line: message.lineno ?? null,
-      column: message.colno ?? null,
-      reason: message.reason ?? null,
-      stack: message.stack ?? null,
-    });
-    const detail = [
-      message.message,
-      message.reason ? `reason: ${message.reason}` : "",
-      message.source ? `source: ${message.source}` : "",
-      typeof message.lineno === "number" ? `line: ${message.lineno}` : "",
-      typeof message.colno === "number" ? `column: ${message.colno}` : "",
-      message.stack ?? "",
-    ].filter(Boolean).join("\n");
-    void showErrorWithActions(t("panel.runtimeError"), detail || message.message);
-    return;
-  }
-
-  if (message.type === "webviewDebug") {
-    void logDebug("webview-debug", {
-      event: message.event,
-      payload: message.payload ?? null,
-    });
-    return;
-  }
-
-  if (message.type === "inspectModelManager") {
-    await inspectModelManagerState(message);
-    return;
-  }
-
-  if (message.type === "sessionLoadError") {
-    void logError("webview-session-load-error", {
-      title: message.title,
-      detail: message.detail,
-      tabId: message.tabId ?? null,
-      sessionId: message.sessionId ?? null,
-      cli: message.cli ?? null,
-    });
-    void showErrorWithActions(message.title, message.detail);
-    return;
-  }
-
-  if (message.type === "selectCli" && message.cli) {
-    const previousBinding = getActiveConversationTabBinding();
-    await setCurrentCli(message.cli);
-    disposeInteractiveRunnerIfUnused(previousBinding);
-    const activeSessionId = syncCurrentSessionWithActiveTab();
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, activeSessionId);
-    return;
-  }
-
-  if (message.type === "selectCliModel" && message.cli) {
-    const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
-    selectCliModel(message.cli, message.model ?? null, configId);
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "selectCliLobsterModel" && message.cli && isLobsterTaskRoleValue(message.role)) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    selectCliLobsterModel(message.cli, message.role, message.model ?? null, configId);
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "setCliModelLobsterRole" && message.cli && isLobsterTaskRoleValue(message.role)) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    const updated = setCliModelLobsterRole(
-      message.cli,
-      message.model,
-      message.role,
-      message.enabled,
-      configId
-    );
-    if (!updated) {
-      return;
-    }
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "addCliModel" && message.cli) {
-    const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
-    const addedModel = addCliModel(message.cli, message.model, configId);
-    if (!addedModel) {
-      return;
-    }
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "renameCliModel" && message.cli) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    const renamedModel = renameCliModel(message.cli, message.previousModel, message.nextModel, configId);
-    if (!renamedModel) {
-      return;
-    }
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "deleteCliModel" && message.cli) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    deleteCliModel(message.cli, message.model, configId);
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "moveCliModel" && message.cli) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    const movedModel = moveCliModel(message.cli, message.model, message.direction, configId);
-    if (!movedModel) {
-      return;
-    }
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "selectSession") {
-    const previousBinding = getActiveConversationTabBinding(message.cli);
-    await setCurrentCli(message.cli, { syncActiveTab: false });
-    const selectedSessionId = message.sessionId
-      ? repairSupersededLocalSession(message.cli, message.sessionId)
-      : null;
-    if (selectedSessionId) {
-      const existingTabId = findConversationTabIdBySession(message.cli, selectedSessionId);
-      if (existingTabId) {
-        const switched = setActiveConversationTab(existingTabId);
-        if (switched && currentCli !== switched.cli) {
-          currentCli = switched.cli;
-          updateStatusBar();
-          workspaceSettings.currentCli = currentCli;
-          saveWorkspaceSettings(workspaceSettings);
-        }
-      } else {
-        addConversationTab(message.cli, selectedSessionId);
-      }
-    } else {
-      startNewSession(message.cli);
-    }
-    disposeInteractiveRunnerIfUnused(previousBinding);
-    const activeSessionId = syncCurrentSessionWithActiveTab();
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, activeSessionId);
-    return;
-  }
-
-  if (message.type === "selectConversationTab") {
-    if (!getConversationTabById(message.tabId)) {
-      return;
-    }
-    const previousCli = currentCli;
-    if (!hasAnyTaskRunning()) {
-      interactiveRunnerManager?.disposeAll();
-    }
-    const switched = setActiveConversationTab(message.tabId);
-    if (!switched) {
-      return;
-    }
-    if (currentCli !== switched.cli) {
-      currentCli = switched.cli;
-      updateStatusBar();
-      workspaceSettings.currentCli = currentCli;
-      saveWorkspaceSettings(workspaceSettings);
-    }
-    if (previousCli !== switched.cli) {
-      await maybePromptInstallOnCliGroupSwitch(switched.cli);
-    }
-    await postPanelState();
-    sendSessionMessagesToPanel(switched.cli, switched.sessionId, message.tabId);
-    return;
-  }
-
-  if (message.type === "closeConversationTab") {
-    await closeConversationTabAndRefreshPanel(message.tabId);
-    return;
-  }
-
-  if (message.type === "deleteSession") {
-    const confirmLabel = t("common.delete");
-    const confirmed = await vscode.window.showWarningMessage(
-      t("session.confirmDelete"),
-      { modal: true },
-      confirmLabel
-    );
-    if (confirmed !== confirmLabel) {
-      return;
-    }
-    interactiveRunnerManager?.disposeIfMatches(message.cli, message.sessionId);
-    deleteSession(message.cli, message.sessionId);
-    detachConversationTabsFromSession(message.cli, message.sessionId);
-    const activeSessionId = syncCurrentSessionWithActiveTab();
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, activeSessionId);
-    return;
-  }
-
-  if (message.type === "loadHistorySessionMessages") {
-    const requestedSessionId = message.sessionId;
-    const resolvedSessionId = repairSupersededLocalSession(message.cli, requestedSessionId);
-    try {
-      const messages = loadSessionMessages(message.cli, resolvedSessionId);
-      const loadError = sessionMessageLoadErrors.get(getSessionKey(message.cli, resolvedSessionId));
-      viewProvider?.postMessage({
-        type: "historySessionMessages",
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        messages,
-        error: loadError ?? undefined,
-      });
-      if (loadError) {
-        void logError("history-session-message-load-error", {
-          cli: message.cli,
-          sessionId: requestedSessionId,
-          resolvedSessionId,
-          detail: loadError,
-        });
-      }
-    } catch (error) {
-      const detail = buildErrorDetail(error);
-      viewProvider?.postMessage({
-        type: "historySessionMessages",
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        messages: [],
-        error: detail,
-      });
-      void logError("history-session-message-load-failed", {
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        error: detail,
-      });
-    }
-    return;
-  }
-
-  if (message.type === "exportHistorySessionMessages") {
-    const requestedSessionId = message.sessionId;
-    const resolvedSessionId = repairSupersededLocalSession(message.cli, requestedSessionId);
-    try {
-      const exportResult = await exportSessionHistoryMessagesToTxt(message.cli, resolvedSessionId);
-      viewProvider?.postMessage({
-        type: "historySessionExportResult",
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        path: exportResult.path,
-        fileName: exportResult.fileName,
-      });
-    } catch (error) {
-      const messageText = error instanceof Error && error.message
-        ? error.message
-        : t("historySession.exportFailed");
-      viewProvider?.postMessage({
-        type: "historySessionExportResult",
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        error: messageText,
-      });
-      void logError("export history session messages failed", {
-        cli: message.cli,
-        sessionId: requestedSessionId,
-        resolvedSessionId,
-        error: buildErrorDetail(error),
-      });
-    }
-    return;
-  }
-
-  if (message.type === "clearAllSessions") {
-    const confirmLabel = t("common.clear");
-    const confirmed = await vscode.window.showWarningMessage(
-      t("session.confirmClearAll"),
-      { modal: true },
-      confirmLabel
-    );
-    if (confirmed !== confirmLabel) {
-      return;
-    }
-    interactiveRunnerManager?.disposeAll();
-    clearAllSessions();
-    const activeSessionId = syncCurrentSessionWithActiveTab();
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, activeSessionId);
-    return;
-  }
-
-  if (message.type === "clearPromptHistory") {
-    const confirmLabel = t("common.clear");
-    const confirmed = await vscode.window.showWarningMessage(
-      t("session.confirmClearPromptHistory"),
-      { modal: true },
-      confirmLabel
-    );
-    if (confirmed !== confirmLabel) {
-      return;
-    }
-    clearPromptHistory();
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "newSession") {
-    const sessionId = addConversationTab(currentCli, null);
-    setWorkspaceInteractiveModeForCli(currentCli, "coding");
-    await postPanelState();
-    sendSessionMessagesToPanel(currentCli, sessionId);
-    return;
-  }
-
-  if (message.type === "resetConversationTabSession") {
-    await resetConversationTabSession();
-    return;
-  }
-
-  if (message.type === "openConfig") {
-    configManagerPanel?.show();
-    configManagerPanel?.syncActiveConfig();
-    return;
-  }
-
-  if (message.type === "applyConfig") {
-    try {
-      await applyConfigById(message.cli, message.configId);
-      await postPanelState();
-      configManagerPanel?.syncActiveConfig();
-    } catch (error) {
-      const detail = buildErrorDetail(error);
-      viewProvider?.postMessage({
-        type: "configApplyError",
-        error: detail,
-        cli: message.cli,
-        configId: message.configId,
-      });
-      void showErrorWithActions(
-        t("config.applyFailedTitle"),
-        error,
-        { detailTitle: t("config.applyFailedTitle") }
-      );
-    }
-    return;
-  }
-
-  if (message.type === "resolveDropPaths") {
-    const uris = Array.isArray(message.uris) ? message.uris : [];
-    if (!uris.length) {
-      return;
-    }
-    try {
-      const paths = uris
-        .map((uri) => vscode.Uri.parse(uri))
-        .map((uri) => vscode.workspace.asRelativePath(uri, false));
-      viewProvider?.postMessage({
-        type: "dropPathsResult",
-        paths,
-      });
-    } catch (error) {
-      viewProvider?.postMessage({
-        type: "dropPathsResult",
-        paths: [],
-        error: t("pathPicker.dropParseError"),
-      });
-      logError("resolve drop paths failed", error);
-    }
-    return;
-  }
-
-  if (message.type === "pickWorkspacePath") {
-    if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-      viewProvider?.postMessage({
-        type: "pickWorkspacePathResult",
-        paths: [],
-        error: t("pathPicker.noWorkspace"),
-        canceled: true,
-      });
-      return;
-    }
-    try {
-      const items = await buildWorkspacePathItems();
-      const selections = await vscode.window.showQuickPick(items, {
-        canPickMany: true,
-        matchOnDescription: true,
-        ignoreFocusOut: true,
-        placeHolder: t("pathPicker.placeholder"),
-      });
-      if (!selections || selections.length === 0) {
-        viewProvider?.postMessage({
-          type: "pickWorkspacePathResult",
-          paths: [],
-          canceled: true,
-        });
-        return;
-      }
-      viewProvider?.postMessage({
-        type: "pickWorkspacePathResult",
-        paths: selections.map((item) => item.value),
-      });
-    } catch (error) {
-      viewProvider?.postMessage({
-        type: "pickWorkspacePathResult",
-        paths: [],
-        error: t("pathPicker.readError"),
-        canceled: true,
-      });
-      logError("pick workspace path failed", error);
-    }
-    return;
-  }
-
-  if (message.type === "uploadFiles") {
-    const result = await saveUploadedFiles(message.files);
-    viewProvider?.postMessage({
-      type: "uploadResult",
-      paths: result.paths,
-      error: result.error,
-    });
-    return;
-  }
-
-  if (message.type === "exportRunStream") {
-    const targetTabId = typeof message.tabId === "string" && message.tabId
-      ? message.tabId
-      : getActiveConversationTabId();
-    const targetCli = message.cli && isCliName(message.cli) ? message.cli : currentCli;
-    try {
-      const exportResult = await exportRunStreamRecordsToTxt(message.records, {
-        cli: targetCli,
-        tabId: targetTabId,
-      });
-      viewProvider?.postMessage({
-        type: "runStreamExportResult",
-        tabId: targetTabId,
-        path: exportResult.path,
-        fileName: exportResult.fileName,
-      });
-    } catch (error) {
-      const messageText = error instanceof Error && error.message
-        ? error.message
-        : t("runStream.exportFailed");
-      viewProvider?.postMessage({
-        type: "runStreamExportResult",
-        tabId: targetTabId,
-        error: messageText,
-      });
-      logError("export run stream failed", error);
-    }
-    return;
-  }
-
-  if (message.type === "loadRules") {
-    try {
-      const content = await readCliRules(message.cli, message.scope);
-      viewProvider?.postMessage({
-        type: "rulesContent",
-        cli: message.cli,
-        content,
-        scope: message.scope,
-      });
-    } catch (error) {
-      const noWorkspace = error instanceof Error && error.message === "no-workspace";
-      viewProvider?.postMessage({
-        type: "rulesContent",
-        cli: message.cli,
-        scope: message.scope,
-        error: noWorkspace ? t("rules.loadNoWorkspace") : t("rules.loadFailed"),
-      });
-      logError("load rules failed", error);
-    }
-    return;
-  }
-
-  if (message.type === "saveRules") {
-    const targets = normalizeRuleTargets(message.targets);
-    if (!targets.length) {
-      viewProvider?.postMessage({
-        type: "rulesSaved",
-        error: t("rules.invalidCli"),
-      });
-      return;
-    }
-    try {
-      await Promise.all(
-        targets.map((cli) => writeCliRules(cli, message.scope, message.content ?? ""))
-      );
-      viewProvider?.postMessage({
-        type: "rulesSaved",
-        targets,
-        scope: message.scope,
-      });
-    } catch (error) {
-      const noWorkspace = error instanceof Error && error.message === "no-workspace";
-      viewProvider?.postMessage({
-        type: "rulesSaved",
-        error: noWorkspace ? t("rules.saveNoWorkspace") : t("rules.saveFailed"),
-      });
-      logError("save rules failed", error);
-    }
-    return;
-  }
-
-  if (message.type === "updateSetting" && message.key) {
-    if (message.key === "thinkingMode") {
-      if (isThinkingMode(message.value)) {
-        const normalizedThinkingMode = normalizeThinkingModeForCli(currentCli, message.value);
-        workspaceSettings.thinkingMode = normalizedThinkingMode;
-        saveWorkspaceSettings(workspaceSettings);
-        setCliModelThinkingMode(currentCli, getSelectedCliModel(currentCli), normalizedThinkingMode);
-      }
-      await postPanelState();
-      return;
-    }
-    if (message.key.startsWith("interactiveMode.")) {
-      const cliValue = message.key.slice("interactiveMode.".length);
-      if (isCliName(cliValue) && isInteractiveMode(message.value)) {
-        setWorkspaceInteractiveModeForCli(cliValue, message.value);
-      }
-      await postPanelState();
-      return;
-    }
-    if (message.key.startsWith("lobsterExecutionMode.")) {
-      const cliValue = message.key.slice("lobsterExecutionMode.".length);
-      if (isCliName(cliValue)) {
-        setWorkspaceLobsterExecutionModeForCli(cliValue, normalizeLobsterExecutionMode(message.value));
-      }
-      await postPanelState();
-      return;
-    }
-    if (message.key.startsWith("selectedModel.")) {
-      const cliValue = message.key.slice("selectedModel.".length);
-      if (isCliName(cliValue)) {
-        const modelValue = typeof message.value === "string" ? message.value : null;
-        selectCliModel(cliValue, modelValue, getActiveConfigIdForCli(cliValue));
-        modelStore = loadModelStore();
-      }
-      await postPanelState();
-      return;
-    }
-    if (message.key === "codexMultiAgentEnabled") {
-      workspaceSettings.codexMultiAgentEnabled = Boolean(message.value);
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    if (message.key === "autoCompactContextAfterRun" || message.key === "autoCompactContextBeforeRun") {
-      workspaceSettings.autoCompactContextAfterRun = Boolean(message.value);
-      delete workspaceSettings.autoCompactContextBeforeRun;
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    if (message.key === "lobsterMaxRounds") {
-      workspaceSettings.lobsterMaxRounds = normalizeLobsterMaxRounds(message.value);
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    if (message.key === "lobsterAutoCloseSubtaskTabs") {
-      workspaceSettings.lobsterAutoCloseSubtaskTabs = Boolean(message.value);
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    if (message.key === "debug") {
-      updateStoredToolSettings({ debug: Boolean(message.value) });
-      setDebugLogging(getDebugLogging());
-      await postPanelState();
-      return;
-    }
-    if (message.key === "autoAddEditorContextTags") {
-      updateStoredToolSettings({ autoAddEditorContextTags: Boolean(message.value) });
-      await postPanelState();
-      return;
-    }
-    if (message.key === "workspaceMemoryEnabled" || message.key === "longTermMemoryEnabled") {
-      workspaceSettings.workspaceMemoryEnabled = message.value === true;
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    if (message.key === "locale") {
-      const resolved = normalizeToolSettingsLocale(message.value) ?? "auto";
-      updateStoredToolSettings({ locale: resolved });
-      updateStatusBar();
-      viewProvider?.reload();
-      configManagerPanel?.reload();
-      return;
-    }
-    if (message.key === "macTaskShell") {
-      if (process.platform === "darwin" && isMacTaskShell(message.value)) {
-        updateStoredToolSettings({ macTaskShell: message.value });
-      }
-      await postPanelState();
-      return;
-    }
-  }
-
-  if (message.type === "initializeWorkspaceHarness") {
-    if (message.enabled !== true) {
-      workspaceSettings.workspaceMemoryEnabled = false;
-      saveWorkspaceSettings(workspaceSettings);
-      await postPanelState();
-      return;
-    }
-    const initialized = await confirmAndInitializeWorkspaceHarness();
-    workspaceSettings.workspaceMemoryEnabled = initialized;
-    saveWorkspaceSettings(workspaceSettings);
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "runCommonCommand" && message.command === "compactContext") {
-    const label = COMMON_COMMAND_LABELS[message.command] ?? message.command;
-    appendUserMessageForCli(
-      currentCli,
-      getCurrentSessionId(currentCli),
-      t("common.commonCommandPrefix", { label }),
-      { merge: false }
-    );
-    await runContextCompactionCommand();
-    return;
-  }
-
-  if (message.type === "openLobsterDebateChat") {
-    await openLobsterDebateChatPanel({
-      taskId: typeof message.taskId === "string" ? message.taskId : undefined,
-      roundKey: typeof message.roundKey === "string" ? message.roundKey : undefined,
-    });
-    return;
-  }
-
-  if (message.type === "sendPrompt" && typeof message.prompt === "string") {
-    const trimmed = message.prompt.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    const requestedTabId = typeof message.tabId === "string" && message.tabId
-      ? message.tabId
-      : null;
-    const preserveActiveTab = Boolean(message.preserveActiveTab && requestedTabId);
-    const requestedTab = requestedTabId ? getConversationTabById(requestedTabId) : null;
-
-    if (requestedTabId && requestedTab && !preserveActiveTab) {
-      const switched = setActiveConversationTab(requestedTabId);
-      if (switched && currentCli !== switched.cli) {
-        currentCli = switched.cli;
-        updateStatusBar();
-        workspaceSettings.currentCli = currentCli;
-        saveWorkspaceSettings(workspaceSettings);
-      }
-    }
-
-    const targetTab = requestedTab ?? getActiveConversationTab();
-    const targetCli = targetTab?.cli
-      ?? (isCliName(message.cli ?? "") ? message.cli : currentCli)
-      ?? currentCli;
-
-    if (!preserveActiveTab && currentCli !== targetCli) {
-      currentCli = targetCli;
-      updateStatusBar();
-      workspaceSettings.currentCli = currentCli;
-      saveWorkspaceSettings(workspaceSettings);
-    }
-
-    const promptTargetTabId = targetTab?.id ?? requestedTabId ?? getActiveConversationTabId();
-    const lobsterSubtaskContext = resolveLobsterSubtaskConversationContext(targetCli, promptTargetTabId);
-    const isLobsterSubtaskContinuation = Boolean(lobsterSubtaskContext);
-    const requestedInteractiveMode = isInteractiveMode(message.interactiveMode)
-      ? normalizeVisibleInteractiveMode(message.interactiveMode)
-      : undefined;
-    const effectiveInteractiveMode = isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster"
-      ? "coding"
-      : requestedInteractiveMode;
-
-    if (isInteractiveMode(effectiveInteractiveMode)) {
-      setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
-    }
-    const lobsterExecutionMode = effectiveInteractiveMode === "lobster"
-      ? normalizeLobsterExecutionMode(
-          Object.prototype.hasOwnProperty.call(message, "lobsterExecutionMode")
-            ? message.lobsterExecutionMode
-            : getWorkspaceLobsterExecutionMode(targetCli)
-        )
-      : undefined;
-    const contextBuild = buildPromptWithAutoContext(trimmed, message.contextOptions);
-    const modelPromptWithMemory = maybeInjectLongTermMemoryForPrompt(
-      trimmed,
-      contextBuild.modelPrompt,
-      contextBuild.contextTags,
-    );
-    const imagePaths = targetCli === "codex"
-      ? await resolveCodexImagePathsForPrompt(trimmed)
-      : [];
-    const activeConfigId = getActiveConfigIdForCli(targetCli);
-    const lobsterMainModel = supportsCliManagedModelSelection(targetCli)
-      ? (typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
-          ? message.lobsterMainModel.trim()
-          : (getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined))
-      : undefined;
-    const lobsterSubtaskModel = supportsCliManagedModelSelection(targetCli)
-      ? (typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
-          ? message.lobsterSubtaskModel.trim()
-          : (getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined))
-      : undefined;
-    const promptInput: PromptRunInput = {
-      displayPrompt: trimmed,
-      modelPrompt: modelPromptWithMemory,
-      contextTags: contextBuild.contextTags,
-      model: supportsCliManagedModelSelection(targetCli) && typeof message.model === "string" && message.model
-        ? message.model
-        : undefined,
-      lobsterMainModel,
-      lobsterSubtaskModel,
-      imagePaths: imagePaths.length ? imagePaths : undefined,
-    };
-    if (lobsterExecutionMode) {
-      promptInput.lobsterExecutionMode = lobsterExecutionMode;
-    }
-    if (lobsterSubtaskContext) {
-      promptInput.taskRole = "subtask";
-      promptInput.lobsterTaskId = lobsterSubtaskContext.taskId;
-      promptInput.lobsterRound = lobsterSubtaskContext.round;
-      promptInput.lobsterSubtaskId = lobsterSubtaskContext.subtaskId;
-    }
-    const shouldRunLobster = effectiveInteractiveMode === "lobster";
-    const lobsterResumeTask = shouldRunLobster
-      ? resolveLobsterResumeTaskFromPrompt(trimmed, promptTargetTabId)
-      : null;
-    const lobsterResumeRequested = shouldRunLobster && isLobsterResumePrompt(trimmed);
-    const previousSubtaskRunEndedAt = lobsterSubtaskContext
-      ? (getLatestLobsterRoundRunRecord(
-          lobsterSubtaskContext.taskId,
-          lobsterSubtaskContext.round,
-          "subtask",
-          lobsterSubtaskContext.subtaskId
-        )?.endedAt ?? 0)
-      : 0;
-    if (isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster") {
-      void logInfo("lobster-subtask-manual-continue-forced-coding", {
-        cli: targetCli,
-        tabId: promptTargetTabId,
-      });
-    }
-    recordPromptHistory(trimmed, targetCli);
-    await postPanelState();
-    const promptRunTarget = resolvePromptRunTarget(promptTargetTabId);
-    const preparedPromptInput = promptRunTarget
-      ? preloadUserMessageForPrompt(promptInput, promptRunTarget)
-      : promptInput;
-    if (shouldRunLobster) {
-      await runLobsterPrompt(preparedPromptInput, {
-        targetTabId: promptTargetTabId,
-        resumeTaskId: lobsterResumeTask?.id ?? null,
-        resumeRequested: lobsterResumeRequested,
-      });
-    } else {
-      await runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
-      if (lobsterSubtaskContext && promptTargetTabId) {
-        await maybeWakeLobsterMainAfterSubtaskContinuation(lobsterSubtaskContext, {
-          tabId: promptTargetTabId,
-          previousRunEndedAt: previousSubtaskRunEndedAt,
-          model: preparedPromptInput.model,
-          lobsterMainModel: preparedPromptInput.lobsterMainModel,
-          lobsterSubtaskModel: preparedPromptInput.lobsterSubtaskModel,
-        });
-      }
-    }
-    return;
-  }
-
-  if (message.type === "stopRun") {
-    stopRunForTab(getActiveConversationTabId());
-  }
+  await handlePanelMessageWithDeps(message, {
+    ensureWorkspaceSessionStore,
+    postPanelState,
+    sendSessionMessagesToPanel,
+    getCurrentCli: () => currentCli,
+    setCurrentCliValue: (cli) => { currentCli = cli; },
+    getCurrentSessionId,
+    showWebviewError: (title, detail, options) => void showErrorWithActions(title, detail, options),
+    inspectModelManagerState,
+    getActiveConversationTabBinding,
+    setCurrentCli,
+    disposeInteractiveRunnerIfUnused,
+    syncCurrentSessionWithActiveTab,
+    getActiveConfigIdForCli,
+    selectCliModel,
+    selectCliLobsterModel,
+    setCliModelLobsterRole,
+    addCliModel,
+    renameCliModel,
+    deleteCliModel,
+    moveCliModel,
+    repairSupersededLocalSession,
+    findConversationTabIdBySession,
+    setActiveConversationTab,
+    updateStatusBar,
+    getWorkspaceSettings: () => workspaceSettings,
+    saveWorkspaceSettings,
+    addConversationTab,
+    startNewSession,
+    getConversationTabById,
+    hasAnyTaskRunning,
+    disposeAllInteractiveRunners: () => interactiveRunnerManager?.disposeAll(),
+    maybePromptInstallOnCliGroupSwitch,
+    closeConversationTabAndRefreshPanel,
+    confirm: async (messageText, confirmLabel) => {
+      const confirmed = await vscode.window.showWarningMessage(messageText, { modal: true }, confirmLabel);
+      return confirmed === confirmLabel;
+    },
+    disposeInteractiveRunnerSession: (cli, sessionId) => interactiveRunnerManager?.disposeIfMatches(cli, sessionId),
+    deleteSession,
+    detachConversationTabsFromSession,
+    loadSessionMessages,
+    getSessionLoadError: (cli, sessionId) => sessionMessageLoadErrors.get(getSessionKey(activeWorkspaceKey, cli, sessionId)),
+    postWebviewMessage: (payload) => viewProvider?.postMessage(payload),
+    clearAllSessions,
+    clearPromptHistory,
+    setWorkspaceInteractiveModeForCli,
+    resetConversationTabSession,
+    getConfigManagerPanel: () => configManagerPanel,
+    applyConfigById,
+    readCliRules,
+    writeCliRules,
+    normalizeRuleTargets,
+    isThinkingMode,
+    normalizeThinkingModeForCli,
+    setCliModelThinkingMode,
+    getSelectedCliModel,
+    isInteractiveMode,
+    normalizeVisibleInteractiveMode,
+    setWorkspaceLobsterExecutionModeForCli,
+    loadModelStore: () => { modelStore = loadModelStore(); },
+    normalizeLobsterMaxRounds,
+    normalizeToolSettingsLocale,
+    isCliName,
+    updateStoredToolSettings,
+    isMacTaskShell,
+    confirmAndInitializeWorkspaceHarness,
+    appendUserMessageForCli,
+    runContextCompactionCommand,
+    openLobsterDebateChatPanel,
+    getActiveConversationTabId,
+    getActiveConversationTab,
+    resolveLobsterSubtaskConversationContext,
+    getWorkspaceLobsterExecutionMode,
+    buildPromptWithAutoContext: buildPromptWithAutoContextFromPanelStateBuilder,
+    maybeInjectLongTermMemoryForPrompt: (displayPrompt, modelPrompt, contextTags) => (
+      maybeInjectLongTermMemoryForPromptWithEditorContext(displayPrompt, modelPrompt, contextTags, {
+        runtimeSettings: buildLongTermMemoryRuntimeSettings(),
+        memoryPaths: getActiveWorkspaceMemoryPaths(),
+        locale: resolveLocale(),
+        logError: (event, payload) => void logError(event, payload),
+      })
+    ),
+    resolveCodexImagePathsForPrompt,
+    getSelectedLobsterCliModel,
+    getLatestLobsterRoundRunRecord,
+    recordPromptHistory,
+    resolvePromptRunTarget,
+    preloadUserMessageForPrompt,
+    runLobsterPrompt,
+    runPrompt,
+    maybeWakeLobsterMainAfterSubtaskContinuation,
+    resolveLobsterResumeTaskFromPrompt,
+    isLobsterResumePrompt,
+    stopRunForTab,
+  });
 }
 
 async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
-  const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
   const configState = await loadConfigState(currentCli);
-  const modelConfigId = resolveModelConfigIdForCli(currentCli, configState);
-
-  const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
-    [currentCli]: modelConfigId,
-  };
-  const selectedModel = getSelectedCliModel(currentCli, modelConfigId);
-
-  return {
-    currentCli,
-    autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
-    rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
-    autoAddEditorContextTags: getAutoAddEditorContextTags(),
-    longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
-    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled === true,
-    autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
-    codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-    lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
-    lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
-    lobsterExecutionModeByCli: buildWorkspaceLobsterExecutionModeByCli(),
-    debug: getDebugLogging(),
-    locale: getLocaleSetting(),
-    isMac: process.platform === "darwin",
-    macTaskShell: getMacTaskShell(),
-    thinkingMode: getEffectiveThinkingMode(currentCli, selectedModel),
-    interactiveMode: getWorkspaceInteractiveMode(currentCli),
-    interactive: {
-      supported: isInteractiveSupported(currentCli),
-      enabled: isInteractiveSupported(currentCli),
-    },
-    rulePaths: {
-      global: CLI_RULE_PATHS_GLOBAL,
-      project: getProjectRulePaths(),
-    },
-    sessionState: buildSessionState(currentCli),
-    conversationTabs: buildConversationTabsState(),
-    promptHistory: buildPromptHistoryState(),
-    lobsterGroupChatHistory: buildLobsterGroupChatHistoryState(),
-    configState,
-    modelState: buildModelState(activeConfigIdByCli),
-    editorContext: buildEditorContextState(),
-  };
+  return buildPanelStateFromConfigState(configState);
 }
 
 async function buildPanelStateWithConfigState(
   configState: PanelState["configState"]
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
-  const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
-  const modelConfigId = resolveModelConfigIdForCli(currentCli, configState);
+  return buildPanelStateFromConfigState(configState);
+}
 
-  const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
-    [currentCli]: modelConfigId,
-  };
-  const selectedModel = getSelectedCliModel(currentCli, modelConfigId);
-
-  return {
+function buildPanelStateFromConfigState(configState: PanelState["configState"]): PanelState {
+  return buildPanelStateWithDeps({
     currentCli,
-    autoOpenPanel: config.get<boolean>("autoOpenPanel", false),
-    rememberSelectedCli: config.get<boolean>("rememberSelectedCli", true),
-    autoAddEditorContextTags: getAutoAddEditorContextTags(),
-    longTermMemoryEnabled: getEffectiveLongTermMemoryEnabled(),
-    workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled === true,
-    autoCompactContextAfterRun: getWorkspaceAutoCompactContextAfterRun(),
-    codexMultiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-    lobsterMaxRounds: getWorkspaceLobsterMaxRounds(),
-    lobsterAutoCloseSubtaskTabs: getWorkspaceLobsterAutoCloseSubtaskTabs(),
-    lobsterExecutionModeByCli: buildWorkspaceLobsterExecutionModeByCli(),
-    debug: getDebugLogging(),
-    locale: getLocaleSetting(),
-    isMac: process.platform === "darwin",
-    macTaskShell: getMacTaskShell(),
-    thinkingMode: getEffectiveThinkingMode(currentCli, selectedModel),
-    interactiveMode: getWorkspaceInteractiveMode(currentCli),
-    interactive: {
-      supported: isInteractiveSupported(currentCli),
-      enabled: isInteractiveSupported(currentCli),
-    },
-    rulePaths: {
-      global: CLI_RULE_PATHS_GLOBAL,
-      project: getProjectRulePaths(),
-    },
-    sessionState: buildSessionState(currentCli),
-    conversationTabs: buildConversationTabsState(),
-    promptHistory: buildPromptHistoryState(),
-    lobsterGroupChatHistory: buildLobsterGroupChatHistoryState(),
     configState,
-    modelState: buildModelState(activeConfigIdByCli),
-    editorContext: buildEditorContextState(),
-  };
+    workspaceSettings,
+    processPlatform: process.platform,
+    cliRulePathsGlobal: CLI_RULE_PATHS_GLOBAL,
+    getWorkspaceConfiguration: () => vscode.workspace.getConfiguration("sinitek-cli-tools"),
+    getAutoAddEditorContextTags,
+    getEffectiveLongTermMemoryEnabled,
+    getWorkspaceAutoCompactContextAfterRun,
+    getWorkspaceCodexMultiAgentEnabled,
+    getWorkspaceLobsterMaxRounds,
+    getWorkspaceLobsterAutoCloseSubtaskTabs,
+    buildWorkspaceLobsterExecutionModeByCli,
+    getDebugLogging,
+    getLocaleSetting,
+    getMacTaskShell,
+    getEffectiveThinkingMode,
+    getWorkspaceInteractiveMode,
+    isInteractiveSupported,
+    getProjectRulePaths,
+    buildSessionState,
+    buildConversationTabsState,
+    buildPromptHistoryState,
+    buildLobsterGroupChatHistoryState,
+    buildModelState,
+    buildEditorContextState,
+    resolveModelConfigIdForCli,
+    getSelectedCliModel,
+  });
 }
 
 async function postPanelState(): Promise<void> {
@@ -1848,297 +1089,74 @@ function postEditorContextState(): void {
   });
 }
 
-function areStringListsEqual(previous: readonly string[], next: readonly string[]): boolean {
-  if (previous.length !== next.length) {
-    return false;
-  }
-  for (let i = 0; i < previous.length; i += 1) {
-    if (previous[i] !== next[i]) {
-      return false;
-    }
-  }
-  return true;
-}
+const inspectModelManagerState = createPanelDiagnosticsInspector({
+  getWorkspaceKey: () => activeWorkspaceKey,
+  getDataDir: () => DATA_DIR,
+  getModelStoreFile: () => MODEL_STORE_FILE,
+  getWorkspaceSettings: () => workspaceSettings,
+  getActiveConfigIdForCli,
+  normalizeCliModelName,
+  ensureCliModelStore,
+  readModelStore,
+  getMemoryModelStore: () => modelStore,
+  getModelSelectionStoreErrors: () => ({
+    lastReadError: modelSelectionStoreState.lastReadError,
+    lastWriteError: modelSelectionStoreState.lastWriteError,
+  }),
+  setLastConfigStateLoadError: (cli, message) => { lastConfigStateLoadErrorByCli[cli] = message; },
+  getLastConfigStateLoadError: (cli) => lastConfigStateLoadErrorByCli[cli] ?? null,
+  getConfigList: (cli) => configService.getConfigList(cli),
+  getModelOptionsForConfigFromStore,
+  getManagedModelOptionsForConfigFromStore,
+  summarizeModelStoreByConfigId,
+  countStoreModels,
+  t,
+  logDebug: (event, payload) => void logDebug(event, payload),
+  logEssential: (event, payload) => void logEssential(event, payload),
+  logError: (event, payload) => void logError(event, payload),
+  showErrorWithActions,
+  errorToMessage,
+});
+
+const configHeartbeatCoordinator = createConfigHeartbeatCoordinator({
+  intervalMs: CONFIG_HEARTBEAT_INTERVAL_MS,
+  getCurrentCli: () => currentCli,
+  getWorkspaceKey: () => activeWorkspaceKey,
+  getSnapshot: () => configHeartbeatSnapshot,
+  setSnapshot: (snapshot) => { configHeartbeatSnapshot = snapshot; },
+  isRunning: () => configHeartbeatRunning,
+  setRunning: (running) => { configHeartbeatRunning = running; },
+  getTimer: () => configHeartbeatTimer,
+  setTimer: (timer) => { configHeartbeatTimer = timer; },
+  loadConfigState,
+  getLastConfigStateLoadError: (cli) => lastConfigStateLoadErrorByCli[cli] ?? null,
+  readNormalizedModelStoreFromDisk,
+  setModelStore: (store) => { modelStore = store; },
+  resolveModelConfigIdForCli,
+  ensureCliModelStore,
+  normalizeCliModelName,
+  mergeUniqueModelNames,
+  getSelectedLobsterCliModel,
+  normalizeLobsterModelRoleFlags,
+  buildPanelStateWithConfigState,
+  postState: (state) => viewProvider?.postState(state),
+  syncConfigManagerPanel: () => configManagerPanel?.syncActiveConfig(),
+  logDebug: (event, payload) => void logDebug(event, payload),
+  logEssential: (event, payload) => void logEssential(event, payload),
+  logError: (event, payload) => void logError(event, payload),
+  createDisposable: (dispose) => new vscode.Disposable(dispose),
+});
 
 function readNormalizedModelStoreFromDisk(): CliModelStore {
   const diskStore = readModelStore();
-  if (lastModelStoreReadError) {
+  if (modelSelectionStoreState.lastReadError) {
     void logError("model-store-read-fallback-memory", {
       path: MODEL_STORE_FILE,
-      error: lastModelStoreReadError,
+      error: modelSelectionStoreState.lastReadError,
     });
     return ensureCliModelStore(modelStore);
   }
   return ensureCliModelStore(diskStore);
-}
-
-function getModelOptionsForConfigFromStore(store: CliModelStore, configId: string | null): string[] {
-  if (!configId) {
-    return [];
-  }
-  const normalizedStore = ensureCliModelStore(store);
-  const storedOptions = normalizedStore.optionsByConfigId[configId] ?? [];
-  const selectedModel = normalizeCliModelName(normalizedStore.selectedByConfigId[configId]);
-  return mergeUniqueModelNames(
-    storedOptions,
-    selectedModel ? [selectedModel] : []
-  );
-}
-
-function getManagedModelOptionsForConfigFromStore(store: CliModelStore, configId: string | null): string[] {
-  if (!configId) {
-    return [];
-  }
-  const normalizedStore = ensureCliModelStore(store);
-  return mergeUniqueModelNames(normalizedStore.optionsByConfigId[configId] ?? []);
-}
-
-function summarizeModelStoreByConfigId(store: CliModelStore): Record<string, number> {
-  const normalizedStore = ensureCliModelStore(store);
-  const configIds = new Set<string>([
-    ...Object.keys(normalizedStore.optionsByConfigId),
-    ...Object.keys(normalizedStore.selectedByConfigId),
-  ]);
-  const summary: Record<string, number> = {};
-  Array.from(configIds)
-    .sort((left, right) => left.localeCompare(right))
-    .forEach((configId) => {
-      summary[configId] = getModelOptionsForConfigFromStore(normalizedStore, configId).length;
-    });
-  return summary;
-}
-
-function countStoreModels(summary: Record<string, number>): number {
-  return Object.values(summary).reduce((total, count) => total + count, 0);
-}
-
-function normalizeCount(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? Math.floor(value)
-    : 0;
-}
-
-function buildModelManagerDiagnosticsDetail(payload: {
-  cli: CliName;
-  configId: string | null;
-  webviewConfigId: string | null;
-  activeConfigId: string | null;
-  workspacePreferredConfigId: string | null;
-  visibleModelCount: number;
-  visibleManagedModelCount: number;
-  selectedModel: string | null;
-  memoryModels: string[];
-  memoryManagedModels: string[];
-  diskModels: string[];
-  diskManagedModels: string[];
-  diskModelCountsByConfigId: Record<string, number>;
-  memoryModelCountsByConfigId: Record<string, number>;
-  configIds: string[];
-  modelStoreReadError: string | null;
-  modelStoreWriteError: string | null;
-  configStateLoadError: string | null;
-  reasons: string[];
-}): string {
-  return [
-    t("model.diagnostics.message"),
-    "",
-    `reasons: ${payload.reasons.join("; ")}`,
-    `cli: ${payload.cli}`,
-    `storagePath: ${MODEL_STORE_FILE}`,
-    `logsDir: ${path.join(DATA_DIR, "logs")}`,
-    `workspaceKey: ${activeWorkspaceKey}`,
-    `configIdUsedForModels: ${payload.configId ?? "(none)"}`,
-    `webviewConfigId: ${payload.webviewConfigId ?? "(none)"}`,
-    `activeConfigId: ${payload.activeConfigId ?? "(none)"}`,
-    `workspacePreferredConfigId: ${payload.workspacePreferredConfigId ?? "(none)"}`,
-    `knownConfigIds: ${JSON.stringify(payload.configIds)}`,
-    `selectedModel: ${payload.selectedModel ?? "(none)"}`,
-    `visibleModelCount: ${payload.visibleModelCount}`,
-    `visibleManagedModelCount: ${payload.visibleManagedModelCount}`,
-    `memoryModelsForConfig: ${JSON.stringify(payload.memoryModels)}`,
-    `memoryManagedModelsForConfig: ${JSON.stringify(payload.memoryManagedModels)}`,
-    `diskModelsForConfig: ${JSON.stringify(payload.diskModels)}`,
-    `diskManagedModelsForConfig: ${JSON.stringify(payload.diskManagedModels)}`,
-    `memoryModelCountsByConfigId: ${JSON.stringify(payload.memoryModelCountsByConfigId)}`,
-    `diskModelCountsByConfigId: ${JSON.stringify(payload.diskModelCountsByConfigId)}`,
-    `lastModelStoreReadError: ${payload.modelStoreReadError ?? "(none)"}`,
-    `lastModelStoreWriteError: ${payload.modelStoreWriteError ?? "(none)"}`,
-    `lastConfigStateLoadError: ${payload.configStateLoadError ?? "(none)"}`,
-  ].join("\n");
-}
-
-async function inspectModelManagerState(message: InspectModelManagerMessage): Promise<void> {
-  try {
-    const cli = message.cli;
-    const webviewConfigId = typeof message.configId === "string" && message.configId.trim()
-      ? message.configId.trim()
-      : null;
-    const activeConfigId = getActiveConfigIdForCli(cli);
-    const workspacePreferredConfigId = workspaceSettings.activeConfigIdByCli?.[cli] ?? null;
-    const configId = webviewConfigId || activeConfigId || workspacePreferredConfigId;
-    const visibleModelCount = normalizeCount(message.visibleModelCount);
-    const visibleManagedModelCount = normalizeCount(message.visibleManagedModelCount);
-    const selectedModel = normalizeCliModelName(message.selectedModel);
-    const previousModelStoreReadError = lastModelStoreReadError;
-    const diskStore = ensureCliModelStore(readModelStore());
-    const modelStoreReadError = lastModelStoreReadError ?? previousModelStoreReadError;
-    const memoryStore = ensureCliModelStore(modelStore);
-    let configIds: string[] = [];
-    try {
-      configIds = (await configService.getConfigList(cli)).map((config) => config.id);
-    } catch (error) {
-      lastConfigStateLoadErrorByCli[cli] = errorToMessage(error);
-    }
-
-    const memoryModels = getModelOptionsForConfigFromStore(memoryStore, configId);
-    const memoryManagedModels = getManagedModelOptionsForConfigFromStore(memoryStore, configId);
-    const diskModels = getModelOptionsForConfigFromStore(diskStore, configId);
-    const diskManagedModels = getManagedModelOptionsForConfigFromStore(diskStore, configId);
-    const memoryModelCountsByConfigId = summarizeModelStoreByConfigId(memoryStore);
-    const diskModelCountsByConfigId = summarizeModelStoreByConfigId(diskStore);
-    const reasons: string[] = [];
-    const configStateLoadError = lastConfigStateLoadErrorByCli[cli] ?? null;
-
-    if (modelStoreReadError) {
-      reasons.push("model-store-read-error");
-    }
-    if (lastModelStoreWriteError) {
-      reasons.push("model-store-write-error");
-    }
-    if (configStateLoadError) {
-      reasons.push("config-state-load-error");
-    }
-    if (!configId && (countStoreModels(memoryModelCountsByConfigId) > 0 || countStoreModels(diskModelCountsByConfigId) > 0)) {
-      reasons.push("missing-active-config-id");
-    }
-    if (configId && visibleModelCount === 0 && (memoryModels.length > 0 || diskModels.length > 0)) {
-      reasons.push("webview-model-options-empty-but-store-has-models");
-    }
-    if (configId && visibleManagedModelCount === 0 && (memoryManagedModels.length > 0 || diskManagedModels.length > 0)) {
-      reasons.push("webview-managed-models-empty-but-store-has-models");
-    }
-    if (webviewConfigId && activeConfigId && webviewConfigId !== activeConfigId && visibleManagedModelCount === 0) {
-      reasons.push("webview-active-config-mismatch");
-    }
-
-    const payload = {
-      cli,
-      configId,
-      webviewConfigId,
-      activeConfigId,
-      workspacePreferredConfigId,
-      visibleModelCount,
-      visibleManagedModelCount,
-      selectedModel,
-      memoryModels,
-      memoryManagedModels,
-      diskModels,
-      diskManagedModels,
-      diskModelCountsByConfigId,
-      memoryModelCountsByConfigId,
-      configIds,
-      modelStoreReadError,
-      modelStoreWriteError: lastModelStoreWriteError,
-      configStateLoadError,
-      reasons,
-    };
-
-    if (reasons.length === 0) {
-      void logDebug("model-manager-state-ok", payload);
-      return;
-    }
-
-    void logEssential("model-manager-state-inconsistent", payload);
-    await showErrorWithActions(
-      t("model.diagnostics.title"),
-      t("model.diagnostics.message"),
-      {
-        detailTitle: t("model.diagnostics.title"),
-        detail: buildModelManagerDiagnosticsDetail(payload),
-      }
-    );
-  } catch (error) {
-    void logError("model-manager-inspection-failed", {
-      error: errorToMessage(error),
-    });
-    await showErrorWithActions(t("model.diagnostics.title"), error);
-  }
-}
-
-function getConfigHeartbeatPayload(
-  cli: CliName,
-  configState: PanelState["configState"],
-  store: CliModelStore = modelStore
-): ConfigHeartbeatSnapshot {
-  const activeConfigId = configState.activeConfigId;
-  const modelConfigId = resolveModelConfigIdForCli(cli, configState);
-  const normalizedStore = ensureCliModelStore(store);
-  const modelSelected = modelConfigId
-    ? normalizeCliModelName(normalizedStore.selectedByConfigId[modelConfigId])
-    : null;
-  const managedModelOptions = modelConfigId
-    ? mergeUniqueModelNames(normalizedStore.optionsByConfigId[modelConfigId] ?? [])
-    : [];
-  const lobsterMainModelSelected = modelConfigId
-    ? getSelectedLobsterCliModel(cli, "main", modelConfigId)
-    : null;
-  const lobsterSubtaskModelSelected = modelConfigId
-    ? getSelectedLobsterCliModel(cli, "subtask", modelConfigId)
-    : null;
-  const lobsterRolesForConfig = modelConfigId
-    ? (normalizedStore.lobsterRolesByConfigId[modelConfigId] ?? {})
-    : {};
-  const lobsterRoleSignature = JSON.stringify(
-    Object.keys(lobsterRolesForConfig)
-      .sort((left, right) => left.localeCompare(right))
-      .map((modelName) => {
-        const flags = normalizeLobsterModelRoleFlags(lobsterRolesForConfig[modelName]);
-        return `${modelName}:${flags.main ? "1" : "0"}${flags.subtask ? "1" : "0"}`;
-      })
-  );
-  return {
-    cli,
-    activeConfigId,
-    configIds: configState.configs.map((config) => config.id),
-    modelSelected,
-    managedModelOptions,
-    lobsterMainModelSelected,
-    lobsterSubtaskModelSelected,
-    lobsterRoleSignature,
-  };
-}
-
-function shouldRefreshConfigState(
-  cli: CliName,
-  configState: PanelState["configState"],
-  store: CliModelStore = modelStore
-): boolean {
-  const nextPayload = getConfigHeartbeatPayload(cli, configState, store);
-  if (!configHeartbeatSnapshot || configHeartbeatSnapshot.cli !== cli) {
-    return true;
-  }
-  if (configHeartbeatSnapshot.activeConfigId !== nextPayload.activeConfigId) {
-    return true;
-  }
-  if (!areStringListsEqual(configHeartbeatSnapshot.configIds, nextPayload.configIds)) {
-    return true;
-  }
-  if (configHeartbeatSnapshot.modelSelected !== nextPayload.modelSelected) {
-    return true;
-  }
-  if (!areStringListsEqual(configHeartbeatSnapshot.managedModelOptions, nextPayload.managedModelOptions)) {
-    return true;
-  }
-  if (configHeartbeatSnapshot.lobsterMainModelSelected !== nextPayload.lobsterMainModelSelected) {
-    return true;
-  }
-  if (configHeartbeatSnapshot.lobsterSubtaskModelSelected !== nextPayload.lobsterSubtaskModelSelected) {
-    return true;
-  }
-  if (configHeartbeatSnapshot.lobsterRoleSignature !== nextPayload.lobsterRoleSignature) {
-    return true;
-  }
-  return false;
 }
 
 function updateConfigHeartbeatSnapshot(
@@ -2146,76 +1164,15 @@ function updateConfigHeartbeatSnapshot(
   configState: PanelState["configState"],
   store: CliModelStore = modelStore
 ): void {
-  configHeartbeatSnapshot = getConfigHeartbeatPayload(cli, configState, store);
+  configHeartbeatCoordinator.updateSnapshot(cli, configState, store);
 }
 
 async function pollConfigHeartbeat(): Promise<void> {
-  if (configHeartbeatRunning) {
-    return;
-  }
-  configHeartbeatRunning = true;
-  const targetCli = currentCli;
-  const workspaceKey = activeWorkspaceKey;
-  try {
-    const configState = await loadConfigState(targetCli);
-    const configStateLoadError = lastConfigStateLoadErrorByCli[targetCli];
-    if (configStateLoadError && configHeartbeatSnapshot?.cli === targetCli) {
-      void logError("config-heartbeat-skip-after-config-state-error", {
-        workspaceKey,
-        cli: targetCli,
-        error: configStateLoadError,
-      });
-      return;
-    }
-    const latestModelStore = readNormalizedModelStoreFromDisk();
-    modelStore = latestModelStore;
-    if (targetCli !== currentCli) {
-      return;
-    }
-    const nextPayload = getConfigHeartbeatPayload(targetCli, configState, latestModelStore);
-    void logDebug("config-heartbeat-tick", {
-      workspaceKey,
-      cli: targetCli,
-      snapshot: configHeartbeatSnapshot,
-      next: nextPayload,
-    });
-    if (!shouldRefreshConfigState(targetCli, configState, latestModelStore)) {
-      return;
-    }
-    updateConfigHeartbeatSnapshot(targetCli, configState, latestModelStore);
-    void logEssential("config-heartbeat-change", {
-      workspaceKey,
-      cli: targetCli,
-      state: nextPayload,
-    });
-    const state = await buildPanelStateWithConfigState(configState);
-    viewProvider?.postState(state);
-    configManagerPanel?.syncActiveConfig();
-  } catch (error) {
-    void logError("config-heartbeat-failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  } finally {
-    configHeartbeatRunning = false;
-  }
+  await configHeartbeatCoordinator.poll();
 }
 
 function startConfigHeartbeat(context: vscode.ExtensionContext): void {
-  if (configHeartbeatTimer) {
-    clearInterval(configHeartbeatTimer);
-    configHeartbeatTimer = null;
-  }
-  configHeartbeatTimer = setInterval(() => {
-    void pollConfigHeartbeat();
-  }, CONFIG_HEARTBEAT_INTERVAL_MS);
-  context.subscriptions.push(
-    new vscode.Disposable(() => {
-      if (configHeartbeatTimer) {
-        clearInterval(configHeartbeatTimer);
-        configHeartbeatTimer = null;
-      }
-    })
-  );
+  configHeartbeatCoordinator.start(context);
 }
 
 
@@ -2392,39 +1349,6 @@ function normalizeLineEndings(value: string | undefined): string {
   return (value ?? "").replace(/\r\n/g, "\n").trim();
 }
 
-function mergePromptSections(prefix: string, prompt: string, suffix: string): string {
-  const sections: string[] = [];
-  if (prefix.trim()) {
-    sections.push(prefix.trimEnd());
-  }
-  sections.push(prompt);
-  if (suffix.trim()) {
-    sections.push(suffix.trimStart());
-  }
-  return sections.join("\n");
-}
-
-type ThinkingPromptOptions = {
-  includePrefix?: boolean;
-  includeSuffix?: boolean;
-};
-
-function buildThinkingPrompt(
-  cli: CliName,
-  mode: ThinkingMode,
-  prompt: string,
-  options: ThinkingPromptOptions = {}
-): string {
-  const includePrefix = options.includePrefix !== false;
-  const includeSuffix = options.includeSuffix !== false;
-  const prefix = includePrefix ? getThinkingPromptPrefix(cli, mode) : "";
-  const suffix = includeSuffix ? getThinkingPromptSuffix(cli, mode) : "";
-  if (!prefix.trim() && !suffix.trim()) {
-    return prompt;
-  }
-  return mergePromptSections(prefix, prompt, suffix);
-}
-
 function normalizeThinkingWorkspaceFiles(files: ThinkingWorkspaceFile[]): ThinkingWorkspaceFile[] {
   if (!Array.isArray(files)) {
     return [];
@@ -2524,6 +1448,19 @@ function isLegacyManagedGeminiThinkingSettings(settings: Record<string, unknown>
   ));
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function cleanupLegacyGeminiThinkingSettings(cwd: string | undefined): void {
   if (!cwd) {
     return;
@@ -2542,81 +1479,6 @@ function cleanupLegacyGeminiThinkingSettings(cwd: string | undefined): void {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`);
-    return `{${entries.join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function normalizeJson(value: string | undefined, fallback: string): string {
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-  if (!value.trim()) {
-    return fallback;
-  }
-  try {
-    return stableStringify(JSON.parse(value));
-  } catch {
-    return normalizeLineEndings(value);
-  }
-}
-
-function parseJsonObject(value: string | undefined): Record<string, unknown> | null {
-  if (!value) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function isDeepEqualSubset(expected: unknown, actual: unknown): boolean {
-  if (expected === actual) {
-    return true;
-  }
-  if (typeof expected !== typeof actual) {
-    return false;
-  }
-  if (Array.isArray(expected)) {
-    if (!Array.isArray(actual) || expected.length !== actual.length) {
-      return false;
-    }
-    return expected.every((item, index) => isDeepEqualSubset(item, actual[index]));
-  }
-  if (expected && typeof expected === "object") {
-    if (!actual || typeof actual !== "object") {
-      return false;
-    }
-    const actualRecord = actual as Record<string, unknown>;
-    return Object.keys(expected as Record<string, unknown>).every((key) =>
-      isDeepEqualSubset((expected as Record<string, unknown>)[key], actualRecord[key])
-    );
-  }
-  return false;
-}
-
-function startTempCleanup(context: vscode.ExtensionContext): void {
-  cleanupTempDir();
-  const timer = setInterval(() => {
-    cleanupTempDir();
-  }, TEMP_CLEAN_INTERVAL_MS);
-  context.subscriptions.push(new vscode.Disposable(() => clearInterval(timer)));
 }
 
 function startHistoryArtifactRetentionCleanup(context: vscode.ExtensionContext): void {
@@ -2650,221 +1512,6 @@ function scheduleHistoryArtifactRetentionCleanup(): void {
     });
 }
 
-function ensureTempDir(): void {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
-}
-
-function cleanupTempDir(): void {
-  try {
-    if (!fs.existsSync(TEMP_DIR)) {
-      return;
-    }
-    const now = Date.now();
-    const entries = fs.readdirSync(TEMP_DIR);
-    entries.forEach((entry) => {
-      const fullPath = path.join(TEMP_DIR, entry);
-      try {
-        const stat = fs.statSync(fullPath);
-        if (now - stat.mtimeMs > TEMP_FILE_MAX_AGE_MS) {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-        }
-      } catch (error) {
-        logError("temp-cleanup-entry-failed", error);
-      }
-    });
-  } catch (error) {
-    logError("temp-cleanup-failed", error);
-  }
-}
-
-function buildTempFilePath(fileName: string): string {
-  const baseName = path.basename(fileName || "file");
-  const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const randomSuffix = Math.random()
-    .toString(16)
-    .slice(2, 2 + TEMP_FILE_RANDOM_LENGTH);
-  const timestamp = Date.now();
-  return path.join(TEMP_DIR, `${timestamp}_${randomSuffix}_${safeName || "file"}`);
-}
-
-function decodeDataUrl(dataUrl: string): Buffer | null {
-  const match = /^data:.*;base64,(.+)$/.exec(dataUrl);
-  if (!match) {
-    return null;
-  }
-  return Buffer.from(match[1], "base64");
-}
-
-async function saveUploadedFiles(
-  files: UploadFilePayload[]
-): Promise<{ paths: string[]; error?: string }> {
-  if (!Array.isArray(files) || files.length === 0) {
-    return { paths: [] };
-  }
-  const savedPaths: string[] = [];
-  try {
-    ensureTempDir();
-    cleanupTempDir();
-    for (const file of files) {
-      const buffer = decodeDataUrl(file.dataUrl);
-      if (!buffer) {
-        return { paths: savedPaths, error: t("upload.parseError") };
-      }
-      const targetPath = buildTempFilePath(file.name);
-      fs.writeFileSync(targetPath, buffer);
-      savedPaths.push(targetPath);
-    }
-    return { paths: savedPaths };
-  } catch (error) {
-    logError("save-uploaded-files-failed", error);
-    return { paths: savedPaths, error: t("upload.saveError") };
-  }
-}
-
-function extractFirstLine(value: string): string | null {
-  const firstLine = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  return firstLine ?? null;
-}
-
-function extractSemverVersion(value: string): string | null {
-  const match = /(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/.exec(value);
-  return match ? match[1] : null;
-}
-
-function parseSemverParts(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
-  if (!match) {
-    return null;
-  }
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareSemver(left: string, right: string): number {
-  const leftParts = parseSemverParts(left);
-  const rightParts = parseSemverParts(right);
-  if (!leftParts || !rightParts) {
-    return left.localeCompare(right);
-  }
-  for (let index = 0; index < leftParts.length; index += 1) {
-    if (leftParts[index] !== rightParts[index]) {
-      return leftParts[index] > rightParts[index] ? 1 : -1;
-    }
-  }
-  const leftStable = !left.includes("-");
-  const rightStable = !right.includes("-");
-  if (leftStable !== rightStable) {
-    return leftStable ? 1 : -1;
-  }
-  return left.localeCompare(right);
-}
-
-function expandUserHomePath(targetPath: string): string {
-  if (targetPath === "~") {
-    return os.homedir();
-  }
-  if (targetPath.startsWith(`~${path.sep}`)) {
-    return path.join(os.homedir(), targetPath.slice(2));
-  }
-  return targetPath;
-}
-
-function resolvePromptReferencedPath(rawPath: string, cwd?: string | null): string | null {
-  const trimmed = rawPath.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const expanded = expandUserHomePath(trimmed);
-  if (path.isAbsolute(expanded)) {
-    return expanded;
-  }
-  if (cwd) {
-    return path.resolve(cwd, expanded);
-  }
-  return path.resolve(expanded);
-}
-
-function isImageAttachmentPath(filePath: string): boolean {
-  const extension = path.extname(filePath).toLowerCase();
-  if (!CODEX_IMAGE_EXTENSIONS.has(extension)) {
-    return false;
-  }
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function collectCodexImagePathsFromPrompt(prompt: string, cwd?: string | null): string[] {
-  if (!prompt.trim()) {
-    return [];
-  }
-  const imagePaths: string[] = [];
-  const seen = new Set<string>();
-  const tokenPattern = /@(?:"([^"]+)"|'([^']+)'|(\S+))/g;
-  for (const match of prompt.matchAll(tokenPattern)) {
-    const rawPath = match[1] ?? match[2] ?? match[3] ?? "";
-    const resolvedPath = resolvePromptReferencedPath(rawPath, cwd);
-    if (!resolvedPath || !isImageAttachmentPath(resolvedPath) || seen.has(resolvedPath)) {
-      continue;
-    }
-    seen.add(resolvedPath);
-    imagePaths.push(resolvedPath);
-  }
-  return imagePaths;
-}
-
-async function probeCodexImageSupportStatus(command: string): Promise<CodexImageSupportStatus> {
-  let version: string | null = null;
-  let versionLabel: string | null = null;
-  let supportsImageFlag = false;
-  const probeErrors: string[] = [];
-
-  try {
-    const versionResult = await captureCliOutput(command, ["--version"], {
-      timeoutMs: CODEX_IMAGE_SUPPORT_TIMEOUT_MS,
-    });
-    const versionOutput = [versionResult.stdout, versionResult.stderr].filter(Boolean).join("\n").trim();
-    versionLabel = extractFirstLine(versionOutput);
-    version = extractSemverVersion(versionOutput);
-  } catch (error) {
-    probeErrors.push(error instanceof Error ? error.message : String(error));
-  }
-
-  try {
-    const helpResult = await captureCliOutput(command, ["exec", "--help"], {
-      timeoutMs: CODEX_IMAGE_SUPPORT_TIMEOUT_MS,
-    });
-    const helpOutput = [helpResult.stdout, helpResult.stderr].filter(Boolean).join("\n");
-    supportsImageFlag = /(?:^|\s)(?:-i,\s*)?--image\b/m.test(helpOutput);
-  } catch (error) {
-    probeErrors.push(error instanceof Error ? error.message : String(error));
-  }
-
-  const versionTooLow = Boolean(version && compareSemver(version, CODEX_IMAGE_MIN_VERSION) < 0);
-  const supported = supportsImageFlag && !versionTooLow;
-  let reason: CodexImageSupportStatus["reason"] = "supported";
-  if (versionTooLow) {
-    reason = "version-too-low";
-  } else if (!supportsImageFlag) {
-    reason = probeErrors.length ? "probe-failed" : "flag-missing";
-  }
-
-  return {
-    command,
-    checkedAt: Date.now(),
-    version,
-    versionLabel,
-    supportsImageFlag,
-    supported,
-    reason,
-    probeError: probeErrors.length ? probeErrors.join("; ") : undefined,
-  };
-}
-
 async function getCodexImageSupportStatus(forceRefresh = false): Promise<CodexImageSupportStatus> {
   const command = getCliCommand("codex");
   const cached = codexImageSupportStatus;
@@ -2876,18 +1523,13 @@ async function getCodexImageSupportStatus(forceRefresh = false): Promise<CodexIm
   ) {
     return cached;
   }
-  const nextStatus = await probeCodexImageSupportStatus(command);
+  const nextStatus = await probeCodexImageSupportStatus(command, {
+    minVersion: CODEX_IMAGE_MIN_VERSION,
+    timeoutMs: CODEX_IMAGE_SUPPORT_TIMEOUT_MS,
+    captureCliOutput: (targetCommand, args, options) => captureCliOutput(targetCommand, args, options),
+  });
   codexImageSupportStatus = nextStatus;
   return nextStatus;
-}
-
-function buildCodexImageSupportWarningKey(status: CodexImageSupportStatus): string {
-  return [
-    status.command,
-    status.version ?? status.versionLabel ?? "unknown",
-    status.supportsImageFlag ? "image" : "no-image",
-    status.reason,
-  ].join("|");
 }
 
 async function resolveCodexImagePathsForPrompt(prompt: string): Promise<string[]> {
@@ -2899,323 +1541,6 @@ async function resolveCodexImagePathsForPrompt(prompt: string): Promise<string[]
     return [];
   }
   return collectCodexImagePathsFromPrompt(prompt, resolveWorkspaceCwd());
-}
-
-function normalizeRunStreamExportSource(
-  source: RunStreamExportRecordPayload["source"]
-): "stdout" | "stderr" | "event" {
-  if (source === "stderr") {
-    return "stderr";
-  }
-  if (source === "event") {
-    return "event";
-  }
-  return "stdout";
-}
-
-function normalizeRunStreamExportRecords(
-  records: RunStreamExportRecordPayload[]
-): RunStreamExportRecord[] {
-  if (!Array.isArray(records) || records.length === 0) {
-    return [];
-  }
-  const normalized: RunStreamExportRecord[] = [];
-  for (const rawRecord of records) {
-    if (!rawRecord || typeof rawRecord !== "object") {
-      continue;
-    }
-    const content = typeof rawRecord.content === "string" ? rawRecord.content : "";
-    if (!content.trim()) {
-      continue;
-    }
-    const createdAt = typeof rawRecord.createdAt === "number" && Number.isFinite(rawRecord.createdAt)
-      ? rawRecord.createdAt
-      : Date.now();
-    normalized.push({
-      index: normalized.length + 1,
-      content,
-      source: normalizeRunStreamExportSource(rawRecord.source),
-      createdAt,
-    });
-  }
-  return normalized;
-}
-
-function buildRunStreamExportFileName(timestamp: number): string {
-  const iso = new Date(timestamp).toISOString().replace(/[:.]/g, "-");
-  return `${RUN_STREAM_EXPORT_FILENAME_PREFIX}-${iso}.txt`;
-}
-
-function formatRunStreamExportContent(
-  records: RunStreamExportRecord[],
-  options: { cli: CliName; tabId: string | null; exportedAt: number }
-): string {
-  const lines: string[] = [
-    "# Sinitek CLI Run Stream Export",
-    `Exported At: ${new Date(options.exportedAt).toISOString()}`,
-    `CLI: ${options.cli}`,
-    `Tab ID: ${options.tabId ?? "-"}`,
-    `Record Count: ${records.length}`,
-    "",
-  ];
-  for (const record of records) {
-    lines.push(
-      `## Line ${record.index} | ${record.source} | ${new Date(record.createdAt).toISOString()}`
-    );
-    lines.push(record.content);
-    lines.push("");
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-async function resolveRunStreamExportDirectory(): Promise<string> {
-  let targetDir = path.join(os.homedir(), "Downloads");
-  try {
-    await fs.promises.mkdir(targetDir, { recursive: true });
-    return targetDir;
-  } catch {
-    targetDir = os.homedir();
-    await fs.promises.mkdir(targetDir, { recursive: true });
-    return targetDir;
-  }
-}
-
-async function exportRunStreamRecordsToTxt(
-  records: RunStreamExportRecordPayload[],
-  options: { cli: CliName; tabId: string | null }
-): Promise<RunStreamExportResult> {
-  const normalizedRecords = normalizeRunStreamExportRecords(records);
-  if (!normalizedRecords.length) {
-    throw new Error(t("runStream.exportEmpty"));
-  }
-  const exportedAt = Date.now();
-  const fileName = buildRunStreamExportFileName(exportedAt);
-  const targetDir = await resolveRunStreamExportDirectory();
-  const targetPath = path.join(targetDir, fileName);
-  const content = formatRunStreamExportContent(normalizedRecords, {
-    cli: options.cli,
-    tabId: options.tabId,
-    exportedAt,
-  });
-  await fs.promises.writeFile(targetPath, content, "utf8");
-  void logEssential("run-stream-export", {
-    path: targetPath,
-    fileName,
-    recordCount: normalizedRecords.length,
-    cli: options.cli,
-    tabId: options.tabId ?? null,
-  });
-  return {
-    path: targetPath,
-    fileName,
-  };
-}
-
-function sanitizeExportNameSegment(value: string | null | undefined, fallback: string, maxLength: number = 48): string {
-  const normalized = String(value ?? "")
-    .replace(/[^a-zA-Z0-9-_]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, maxLength);
-  return normalized || fallback;
-}
-
-function normalizeSessionHistoryExportMessages(messages: ChatMessage[]): SessionHistoryExportMessage[] {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return [];
-  }
-  const normalized: SessionHistoryExportMessage[] = [];
-  for (const message of messages) {
-    if (!message || typeof message !== "object") {
-      continue;
-    }
-    const content = typeof message.content === "string" ? message.content : "";
-    if (!content.trim()) {
-      continue;
-    }
-    const createdAt = typeof message.createdAt === "number" && Number.isFinite(message.createdAt)
-      ? message.createdAt
-      : Date.now();
-    normalized.push({
-      index: normalized.length + 1,
-      role: message.role,
-      kind: message.kind ?? null,
-      createdAt,
-      content,
-    });
-  }
-  return normalized;
-}
-
-function buildSessionHistoryExportFileName(cli: CliName, sessionId: string, timestamp: number): string {
-  const iso = new Date(timestamp).toISOString().replace(/[:.]/g, "-");
-  const sessionSegment = sanitizeExportNameSegment(sessionId, "session", 40);
-  return `${SESSION_HISTORY_EXPORT_FILENAME_PREFIX}-${cli}-${sessionSegment}-${iso}.txt`;
-}
-
-function formatSessionHistoryExportContent(
-  messages: SessionHistoryExportMessage[],
-  options: { cli: CliName; sessionId: string; exportedAt: number }
-): string {
-  const lines: string[] = [
-    "# Sinitek CLI Session History Export",
-    `Exported At: ${new Date(options.exportedAt).toISOString()}`,
-    `CLI: ${options.cli}`,
-    `Session ID: ${options.sessionId}`,
-    `Message Count: ${messages.length}`,
-    "",
-  ];
-  for (const message of messages) {
-    const kindLabel = message.kind ? ` | ${message.kind}` : "";
-    lines.push(
-      `## Message ${message.index} | ${message.role}${kindLabel} | ${new Date(message.createdAt).toISOString()}`
-    );
-    lines.push(message.content);
-    lines.push("");
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-async function exportSessionHistoryMessagesToTxt(
-  cli: CliName,
-  sessionId: string
-): Promise<RunStreamExportResult> {
-  const messages = loadSessionMessages(cli, sessionId);
-  const normalizedMessages = normalizeSessionHistoryExportMessages(messages);
-  if (!normalizedMessages.length) {
-    throw new Error(t("historySession.exportEmpty"));
-  }
-  const exportedAt = Date.now();
-  const fileName = buildSessionHistoryExportFileName(cli, sessionId, exportedAt);
-  const targetDir = await resolveRunStreamExportDirectory();
-  const targetPath = path.join(targetDir, fileName);
-  const content = formatSessionHistoryExportContent(normalizedMessages, {
-    cli,
-    sessionId,
-    exportedAt,
-  });
-  await fs.promises.writeFile(targetPath, content, "utf8");
-  void logEssential("session-history-export", {
-    path: targetPath,
-    fileName,
-    messageCount: normalizedMessages.length,
-    cli,
-    sessionId,
-  });
-  return {
-    path: targetPath,
-    fileName,
-  };
-}
-
-function matchesActiveConfig(
-  platform: ConfigPlatform,
-  config: ConfigItem,
-  current: CurrentConfig
-): boolean {
-  if (platform === "claude") {
-    const normalizedConfigContent = stripManagedClaudeSkillRules(config.content, config.claudeSkills);
-    const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
-    const configContentObj = parseJsonObject(normalizedConfigContent);
-    const currentContentObj = parseJsonObject(normalizedCurrentContent);
-    const contentMatch = configContentObj && currentContentObj
-      ? isDeepEqualSubset(configContentObj, currentContentObj)
-      : normalizeJson(normalizedConfigContent, "{}") === normalizeJson(normalizedCurrentContent, "{}");
-
-    const configMcp = parseJsonObject(config.mcpContent);
-    const currentMcp = parseJsonObject(current.mcpContent);
-    const mcpMatch = configMcp && currentMcp
-      ? isDeepEqualSubset(configMcp, currentMcp)
-      : normalizeJson(config.mcpContent, "{}") === normalizeJson(current.mcpContent, "{}");
-
-    return contentMatch && mcpMatch;
-  }
-  if (platform === "gemini") {
-    const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);
-    const normalizedCurrentContent = stripManagedGeminiSkillRules(current.content, config.geminiSkills);
-    const configContentObj = parseJsonObject(normalizedConfigContent);
-    const currentContentObj = parseJsonObject(normalizedCurrentContent);
-    const contentMatch = configContentObj && currentContentObj
-      ? isDeepEqualSubset(configContentObj, currentContentObj)
-      : normalizeJson(normalizedConfigContent, "{}") === normalizeJson(normalizedCurrentContent, "{}");
-    return (
-      contentMatch &&
-      normalizeLineEndings(config.envContent) === normalizeLineEndings(current.envContent)
-    );
-  }
-  return (
-    areLinesSubset(
-      normalizeConfigLines(config.configContent),
-      normalizeConfigLines(current.configContent)
-    ) &&
-    normalizeJson(config.authContent, "{}") === normalizeJson(current.authContent, "{}")
-  );
-}
-
-function normalizeConfigLines(value: string | undefined): string[] {
-  const normalized = stripCodexSkillsBlock(normalizeLineEndings(value ?? ""));
-  return normalized
-    .split("\n")
-    .map((line) => line.replace(/\s+$/g, ""))
-    .filter((line) => !/^\s*#/.test(line))
-    .map((line) => normalizeTomlLine(line))
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
-function areLinesSubset(required: string[], actual: string[]): boolean {
-  if (required.length === 0) {
-    return true;
-  }
-  if (actual.length < required.length) {
-    return false;
-  }
-  const counts = new Map<string, number>();
-  actual.forEach((line) => {
-    counts.set(line, (counts.get(line) ?? 0) + 1);
-  });
-  for (const line of required) {
-    const count = counts.get(line) ?? 0;
-    if (count <= 0) {
-      return false;
-    }
-    counts.set(line, count - 1);
-  }
-  return true;
-}
-
-function normalizeTomlLine(line: string): string {
-  if (!line) {
-    return "";
-  }
-  let inDouble = false;
-  let inSingle = false;
-  let escaped = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\" && inDouble) {
-      escaped = true;
-      continue;
-    }
-    if (char === "\"" && !inSingle) {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (char === "'" && !inDouble) {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (char === "=" && !inDouble && !inSingle) {
-      const left = line.slice(0, i).trimEnd();
-      const right = line.slice(i + 1).trimStart();
-      return `${left} = ${right}`.trim();
-    }
-  }
-  return line.trim();
 }
 
 function setWorkspaceActiveConfigId(cli: CliName, configId: string | null): void {
@@ -3236,45 +1561,19 @@ function setWorkspaceActiveConfigId(cli: CliName, configId: string | null): void
 }
 
 function getWorkspacePreferredConfigIdForCli(cli: CliName): string | null {
-  const configId = workspaceSettings.activeConfigIdByCli?.[cli];
-  return typeof configId === "string" && configId ? configId : null;
+  return getWorkspacePreferredConfigIdForCliFromSettings(workspaceSettings, cli);
 }
 
 function resolveModelConfigIdForCli(
   cli: CliName,
   configState?: PanelState["configState"]
 ): string | null {
-  const activeConfigId = configState ? configState.activeConfigId : getActiveConfigIdForCli(cli);
-  if (activeConfigId) {
-    return activeConfigId;
-  }
-  const preferredConfigId = getWorkspacePreferredConfigIdForCli(cli);
-  if (!preferredConfigId) {
-    return null;
-  }
-  if (configState && Array.isArray(configState.configs) && configState.configs.length > 0) {
-    return configState.configs.some((config) => config.id === preferredConfigId)
-      ? preferredConfigId
-      : null;
-  }
-  return preferredConfigId;
-}
-
-function applyConfigOrder(configs: ConfigItem[], orderIds: string[]): ConfigItem[] {
-  if (!orderIds || orderIds.length === 0) {
-    return configs;
-  }
-  const used = new Set<string>();
-  const ordered: ConfigItem[] = [];
-  for (const id of orderIds) {
-    const match = configs.find((item) => item.id === id);
-    if (match) {
-      ordered.push(match);
-      used.add(match.id);
-    }
-  }
-  const remaining = configs.filter((item) => !used.has(item.id));
-  return [...ordered, ...remaining];
+  return resolveModelConfigIdForCliFromConfigState(
+    cli,
+    configState,
+    () => getActiveConfigIdForCli(cli),
+    () => getWorkspacePreferredConfigIdForCli(cli)
+  );
 }
 
 async function applyConfigById(cli: CliName, configId: string): Promise<void> {
@@ -3304,65 +1603,24 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
 }
 
 async function loadConfigState(cli: CliName): Promise<PanelState["configState"]> {
-  try {
-    const configs = await configService.getConfigList(cli);
-    if (configs.length === 0) {
-      setWorkspaceActiveConfigId(cli, null);
-      delete lastConfigStateLoadErrorByCli[cli];
-      void logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
-      return { configs: [], activeConfigId: null };
-    }
-    let orderIds: string[] = [];
-    try {
-      const order = await configService.getConfigOrder(cli);
-      orderIds = order[cli] ?? [];
-    } catch (error) {
-      void logInfo("loadConfigState-order-failed", {
-        cli,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    const orderedConfigs = applyConfigOrder(configs, orderIds);
-    const current = await configService.getCurrentConfig(cli);
-    const preferredActiveConfigId = workspaceSettings.activeConfigIdByCli?.[cli] ?? null;
-    const preferredActive = preferredActiveConfigId
-      ? orderedConfigs.find((config) => config.id === preferredActiveConfigId) ?? null
-      : null;
-    const matchedActive = preferredActive && matchesActiveConfig(cli, preferredActive, current)
-      ? preferredActive
-      : orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
-    const active = matchedActive ?? preferredActive;
-    const activeConfigId = active ? active.id : null;
-    if (matchedActive && preferredActiveConfigId !== activeConfigId) {
-      setWorkspaceActiveConfigId(cli, activeConfigId);
-    } else if (!preferredActive && preferredActiveConfigId) {
-      setWorkspaceActiveConfigId(cli, null);
-    } else if (!matchedActive && preferredActive) {
-      void logInfo("loadConfigState-preferred-fallback", {
-        cli,
-        configId: preferredActive.id,
-        reason: "current-config-did-not-match-known-profile",
-      });
-    }
-    delete lastConfigStateLoadErrorByCli[cli];
-    return {
-      configs: orderedConfigs.map((config) => ({
-        id: config.id,
-        name: config.name,
-        platform: config.platform,
-      })),
-      activeConfigId,
-    };
-  } catch (error) {
-    lastConfigStateLoadErrorByCli[cli] = errorToMessage(error);
-    void logError("panel-config-state", {
-      cli,
-      error: lastConfigStateLoadErrorByCli[cli],
-    });
-    return { configs: [], activeConfigId: null };
-  }
+  return loadConfigStateWithDeps(cli, {
+    workspaceSettings,
+    getConfigList: (targetCli) => configService.getConfigList(targetCli),
+    getConfigOrder: (targetCli) => configService.getConfigOrder(targetCli),
+    getCurrentConfig: (targetCli) => configService.getCurrentConfig(targetCli),
+    setWorkspaceActiveConfigId,
+    setLastConfigStateLoadError: (targetCli, message) => {
+      if (message) {
+        lastConfigStateLoadErrorByCli[targetCli] = message;
+      } else {
+        delete lastConfigStateLoadErrorByCli[targetCli];
+      }
+    },
+    logInfo: (event, payload) => void logInfo(event, payload),
+    logError: (event, payload) => void logError(event, payload),
+    errorToMessage,
+  });
 }
-
 async function refreshCliInstallStatuses(): Promise<void> {
   await Promise.all(CLI_LIST.map(async (cli) => {
     await refreshCliInstallStatus(cli);
@@ -3371,23 +1629,10 @@ async function refreshCliInstallStatuses(): Promise<void> {
 
 async function refreshCliInstallStatus(cli: CliName): Promise<CliInstallStatus> {
   const command = getCliCommand(cli);
-  let installed = false;
-  try {
-    installed = await isCliCommandAvailable(command);
-  } catch (error) {
-    installed = false;
-    void logError("cli-install-status-detect-failed", {
-      cli,
-      command,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  const status: CliInstallStatus = {
-    command,
-    installed,
-    checkedAt: Date.now(),
-  };
+  const status = await normalizeCliInstallStatus(cli, command, {
+    isCliCommandAvailable,
+    logError: (event, payload) => void logError(event, payload),
+  });
   cliInstallStatuses[cli] = status;
   return status;
 }
@@ -3467,7 +1712,6 @@ async function maybePromptUpgradeCodexForImageSupport(): Promise<void> {
     );
   }
 }
-
 async function setCurrentCli(
   cli: CliName,
   options: { syncActiveTab?: boolean } = {}
@@ -3517,181 +1761,51 @@ async function revealPanelView(): Promise<void> {
   viewProvider?.reveal();
 }
 
+const lobsterDebateChatPanelCoordinator = createLobsterDebateChatPanelCoordinator({
+  getExtensionUri: () => extensionUri,
+  panelsByTaskId: lobsterDebateChatPanelsByTaskId,
+  defaultDebateRound: LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND,
+  normalizeTaskId: normalizeLobsterTaskId,
+  normalizeSupplementalRequirement: normalizeLobsterSupplementalRequirement,
+  appendSupplementalRequirement: appendLobsterSupplementalRequirement,
+  appendSupplementalRequirementToCommunication: appendLobsterSupplementalRequirementToCommunication,
+  readTaskRecord: readLobsterTaskRecord,
+  updateTaskRecord: updateLobsterTaskRecord,
+  listTaskStoreFiles: listLobsterTaskStoreFiles,
+  readTaskStoreTasks: (filePath) => readLobsterTaskStore(filePath).tasks,
+  collectRunningTaskIds: collectRunningLobsterTaskIds,
+  readTextFileIfNonEmpty,
+  fileExists: (filePath) => fs.existsSync(filePath),
+  writeTextFileEnsuringDir,
+  getActiveSubtaskIds: getActiveLobsterSubtaskIds,
+  buildCompletedConclusionAndSummaryMarkdown: buildLobsterCompletedConclusionAndSummaryMarkdown,
+  resolveMainPromptTarget: resolveLobsterMainPromptTarget,
+  revealPanelView,
+  switchVisibleConversationTabForLobster: async (tabId) => {
+    if (tabId) {
+      await switchVisibleConversationTabForLobster(tabId);
+    }
+  },
+  isTabRunActive,
+  getActiveConfigIdForCli,
+  getSelectedCliModel,
+  getSelectedLobsterCliModel,
+  runLobsterPrompt,
+  stopRunsForTask: stopLobsterRunsForTask,
+  markTaskStoppedByUser: markLobsterTaskStoppedByUser,
+  postPanelState,
+  getActiveConversationTaskId: () => (
+    normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
+      ?? resolveActiveConversationLobsterTaskId()
+  ),
+  showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
+  showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
+  pickTask: pickLobsterDebateTask,
+  t,
+});
+
 async function openLobsterDebateChatPanel(arg?: unknown): Promise<void> {
-  const task = await resolveLobsterDebateChatPanelTask(arg);
-  if (!task) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
-    return;
-  }
-  const state = buildLobsterDebateChatPanelState(task);
-  let panel = lobsterDebateChatPanelsByTaskId.get(task.id);
-  if (!panel) {
-    const taskId = task.id;
-    panel = new LobsterDebateChatPanel(extensionUri, {
-      onMessage: (message) => {
-        void handleLobsterDebateChatPanelMessage(taskId, message);
-      },
-      onDispose: () => {
-        const currentPanel = lobsterDebateChatPanelsByTaskId.get(taskId);
-        if (currentPanel === panel) {
-          lobsterDebateChatPanelsByTaskId.delete(taskId);
-        }
-      },
-    });
-    lobsterDebateChatPanelsByTaskId.set(task.id, panel);
-  }
-  panel.show(state);
-}
-
-async function handleLobsterDebateChatPanelMessage(taskId: string, message: LobsterDebateChatPanelMessage): Promise<void> {
-  if (!message || typeof message.type !== "string") {
-    return;
-  }
-  if (message.type === "lobsterDebateChat:refresh") {
-    await refreshLobsterDebateChatPanel(taskId);
-    return;
-  }
-  if (message.type === "lobsterDebateChat:continueTask") {
-    await continueLobsterDebateChatTaskFromPanel(taskId, message.prompt);
-    return;
-  }
-  if (message.type === "lobsterDebateChat:supplementTask") {
-    await supplementLobsterDebateChatTaskFromPanel(taskId, message.prompt);
-    return;
-  }
-  if (message.type === "lobsterDebateChat:stopTask") {
-    await stopLobsterDebateChatTaskFromPanel(taskId);
-  }
-}
-
-async function refreshLobsterDebateChatPanel(taskId: string): Promise<void> {
-  const normalizedTaskId = normalizeLobsterTaskId(taskId);
-  if (!normalizedTaskId) {
-    return;
-  }
-  const panel = lobsterDebateChatPanelsByTaskId.get(normalizedTaskId);
-  if (!panel) {
-    return;
-  }
-  const task = readLobsterTaskRecord(normalizedTaskId);
-  if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
-    return;
-  }
-  const state = buildLobsterDebateChatPanelState(task);
-  panel.update(state);
-}
-
-async function continueLobsterDebateChatTaskFromPanel(taskId: string, prompt?: unknown): Promise<void> {
-  const normalizedTaskId = normalizeLobsterTaskId(taskId)
-    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
-  if (!normalizedTaskId) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
-    return;
-  }
-
-  const task = readLobsterTaskRecord(normalizedTaskId);
-  if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
-    return;
-  }
-  const runningTaskIds = collectRunningLobsterTaskIds();
-  const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
-  if (!controlState.canContinue) {
-    await refreshLobsterDebateChatPanel(normalizedTaskId);
-    const message = controlState.isRunning
-      ? t("lobsterDebateChat.continueAlreadyRunning")
-      : t("lobsterDebateChat.continueUnavailable");
-    void vscode.window.showInformationMessage(message);
-    return;
-  }
-
-  const target = resolveLobsterMainPromptTarget(task);
-  if (!target) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.continueUnavailable"));
-    return;
-  }
-
-  await revealPanelView();
-  await switchVisibleConversationTabForLobster(target.tabId);
-  if (isTabRunActive(target.tabId)) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.continueAlreadyRunning"));
-    return;
-  }
-
-  const activeConfigId = getActiveConfigIdForCli(task.cli);
-  const resumePrompt = normalizeLobsterContinuePrompt(prompt);
-  await runLobsterPrompt({
-    displayPrompt: resumePrompt,
-    modelPrompt: resumePrompt,
-    contextTags: [],
-    model: getSelectedCliModel(task.cli, activeConfigId) ?? undefined,
-    lobsterExecutionMode: normalizeLobsterExecutionMode(task.executionMode),
-    lobsterMainModel: getSelectedLobsterCliModel(task.cli, "main", activeConfigId) ?? undefined,
-    lobsterSubtaskModel: getSelectedLobsterCliModel(task.cli, "subtask", activeConfigId) ?? undefined,
-    lobsterContinuePrompt: resumePrompt,
-  }, {
-    targetTabId: target.tabId,
-    resumeTaskId: task.id,
-    resumeRequested: true,
-  });
-  await refreshLobsterDebateChatPanel(normalizedTaskId);
-}
-
-async function supplementLobsterDebateChatTaskFromPanel(taskId: string, prompt?: unknown): Promise<void> {
-  const normalizedTaskId = normalizeLobsterTaskId(taskId)
-    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
-  if (!normalizedTaskId) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
-    return;
-  }
-
-  const task = readLobsterTaskRecord(normalizedTaskId);
-  if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
-    return;
-  }
-
-  const supplementalRequirement = normalizeLobsterSupplementalRequirement(prompt);
-  if (!supplementalRequirement) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.continueUnavailable"));
-    return;
-  }
-
-  const nextRequirements = appendLobsterSupplementalRequirement(task.supplementalRequirements, supplementalRequirement);
-  updateLobsterTaskRecord(task.id, {
-    supplementalRequirements: nextRequirements,
-    updatedAt: Date.now(),
-  });
-  appendLobsterSupplementalRequirementToCommunication(task, supplementalRequirement);
-  await refreshLobsterDebateChatPanel(normalizedTaskId);
-}
-
-async function stopLobsterDebateChatTaskFromPanel(taskId: string): Promise<void> {
-  const normalizedTaskId = normalizeLobsterTaskId(taskId)
-    ?? normalizeLobsterTaskId(lobsterDebateChatPanelsByTaskId.get(taskId)?.getState()?.task.id);
-  if (!normalizedTaskId) {
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.noTask"));
-    return;
-  }
-
-  const task = readLobsterTaskRecord(normalizedTaskId);
-  if (!task) {
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
-    return;
-  }
-
-  const runningTaskIds = collectRunningLobsterTaskIds();
-  if (!canStopLobsterTaskWithRunningTaskIds(task, runningTaskIds)) {
-    await refreshLobsterDebateChatPanel(normalizedTaskId);
-    void vscode.window.showInformationMessage(t("lobsterDebateChat.stopUnavailable"));
-    return;
-  }
-
-  stopLobsterRunsForTask(task.id);
-  markLobsterTaskStoppedByUser(task.id);
-  await postPanelState();
-  await refreshLobsterDebateChatPanel(normalizedTaskId);
+  await lobsterDebateChatPanelCoordinator.open(arg);
 }
 
 function normalizeLobsterContinuePrompt(value: unknown): string {
@@ -3705,39 +1819,7 @@ function normalizeLobsterContinuePromptForPrompt(value: unknown): string | null 
 }
 
 function refreshOpenLobsterDebateChatPanelForTask(taskId: string): void {
-  if (!lobsterDebateChatPanelsByTaskId.has(taskId)) {
-    return;
-  }
-  void refreshLobsterDebateChatPanel(taskId);
-}
-
-async function resolveLobsterDebateChatPanelTask(arg?: unknown): Promise<LobsterTaskRecord | null> {
-  const explicitTaskId = extractLobsterDebateChatPanelTaskId(arg);
-  if (explicitTaskId) {
-    const task = readLobsterTaskRecord(explicitTaskId);
-    if (task) {
-      return task;
-    }
-    void vscode.window.showWarningMessage(t("lobsterDebateChat.taskMissing", { taskId: explicitTaskId }));
-  }
-
-  const activeTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
-    ?? resolveActiveConversationLobsterTaskId();
-  if (activeTaskId) {
-    const activeTask = readLobsterTaskRecord(activeTaskId);
-    if (activeTask) {
-      return activeTask;
-    }
-  }
-
-  const recentTasks = listRecentLobsterGroupChatTasks(24);
-  if (recentTasks.length === 0) {
-    return null;
-  }
-  if (recentTasks.length === 1) {
-    return recentTasks[0] ?? null;
-  }
-  return pickLobsterDebateTask(recentTasks);
+  lobsterDebateChatPanelCoordinator.refreshOpenPanelForTask(taskId);
 }
 
 function resolveActiveConversationLobsterTaskId(): string | null {
@@ -3746,16 +1828,6 @@ function resolveActiveConversationLobsterTaskId(): string | null {
     return null;
   }
   return resolveConversationTabLobsterContext(activeTab).lobsterTaskId;
-}
-
-function extractLobsterDebateChatPanelTaskId(arg?: unknown): string | null {
-  if (typeof arg === "string") {
-    return normalizeLobsterTaskId(arg);
-  }
-  if (arg && typeof arg === "object" && !Array.isArray(arg)) {
-    return normalizeLobsterTaskId((arg as { taskId?: unknown }).taskId);
-  }
-  return null;
 }
 
 async function pickLobsterDebateTask(tasks: LobsterTaskRecord[]): Promise<LobsterTaskRecord | null> {
@@ -3773,30 +1845,8 @@ async function pickLobsterDebateTask(tasks: LobsterTaskRecord[]): Promise<Lobste
   return selection?.task ?? null;
 }
 
-function listRecentLobsterGroupChatTasks(limit: number): LobsterTaskRecord[] {
-  return listLobsterGroupChatTasks()
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, Math.max(1, limit));
-}
-
 function listLobsterGroupChatTasks(): LobsterTaskRecord[] {
-  const tasksById = new Map<string, LobsterTaskRecord>();
-  listLobsterTaskStoreFiles().forEach((filePath) => {
-    readLobsterTaskStore(filePath).tasks.forEach((task) => {
-      const existing = tasksById.get(task.id);
-      if (!existing || task.updatedAt > existing.updatedAt) {
-        tasksById.set(task.id, task.taskStoreFile === filePath ? task : { ...task, taskStoreFile: filePath });
-      }
-    });
-  });
-  return Array.from(tasksById.values());
-}
-
-function canStopLobsterTaskWithRunningTaskIds(
-  task: LobsterTaskRecord,
-  runningTaskIds: ReadonlySet<string>
-): boolean {
-  return resolveLobsterTaskRunControlState(task, runningTaskIds).canStop;
+  return lobsterDebateChatPanelCoordinator.listGroupChatTasks();
 }
 
 function stopLobsterRunsForTask(taskId: string): void {
@@ -3836,409 +1886,33 @@ function resolvePrimaryLobsterTaskId(): string | null {
       : null);
 }
 
-function buildLobsterDebateChatPanelState(task: LobsterTaskRecord): LobsterDebateChatPanelState {
-  const runningTaskIds = collectRunningLobsterTaskIds();
-  const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
-  const mode = isLobsterDebateGroupChatTask(task) ? "debate" : "main_sub";
-  const rounds = mode === "debate"
-    ? buildLobsterDebateWithExecutionChatPanelRounds(task)
-    : buildLobsterMainSubChatPanelRounds(task);
-  const chatMarkdown = buildLobsterCombinedGroupChatMarkdown(task, rounds, mode);
-  const missingChatFiles = rounds
-    .map((round) => round.chatFile)
-    .filter((filePath): filePath is string => Boolean(filePath && !readTextFileIfNonEmpty(filePath)));
-  const error = missingChatFiles.length > 0 && !chatMarkdown.trim()
-    ? t("lobsterDebateChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
-    : null;
-  return {
-    mode,
-    task: {
-      id: task.id,
-      cli: task.cli,
-      status: task.status,
-      rootPrompt: task.rootPrompt,
-      taskStoreFile: task.taskStoreFile,
-      mainCommunicationFile: task.mainCommunicationFile,
-      currentRound: task.currentRound,
-      updatedAt: task.updatedAt,
-      canSupplement: controlState.canSupplement,
-      canContinue: controlState.canContinue,
-      canStop: controlState.canStop,
-    },
-    rounds,
-    chatMarkdown,
-    error,
-  };
+function buildLobsterDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
+  return lobsterDebateChatPanelCoordinator.buildMessageAction(taskId, round);
 }
 
-function buildLobsterCombinedGroupChatMarkdown(
-  task: LobsterTaskRecord,
-  rounds: LobsterDebateChatPanelRound[],
-  mode: "main_sub" | "debate",
-): string {
-  const sources = rounds
-    .map((round) => {
-      const content = round.chatFile ? readTextFileIfNonEmpty(round.chatFile) : null;
-      return content ? { round, content } : null;
-    })
-    .filter((source): source is { round: LobsterDebateChatPanelRound; content: string } => Boolean(source));
-  if (sources.length === 0) {
-    return renderLobsterGroupChatFinalStatusMarkdown(task);
-  }
-  if (mode === "main_sub" && sources.length === 1) {
-    return appendLobsterGroupChatFinalStatusMarkdown(sources[0]?.content ?? "", task);
-  }
-
-  const lines: string[] = [
-    "# 龙虾群聊记录",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- CLI：${task.cli}`,
-    `- 任务状态：${task.status}`,
-    `- 当前主任务轮次：${task.currentRound || 0}`,
-    `- 更新时间：${new Date(task.updatedAt).toISOString()}`,
-    "",
-    "## 群聊规则",
-    "- 本页面按群聊消息追加顺序连续展示红蓝对抗和后续任务执行消息。",
-    "- 红蓝对抗不按 UI 轮次分区；主任务轮次、发言批次和执行阶段以系统消息说明。",
-    "- 最大发言批次数只作为防无限循环安全上限，是否追加发言批次由裁判主持人控场决定。",
-  ];
-
-  sources.forEach(({ round, content }) => {
-    lines.push("", "## 任务事件", buildLobsterCombinedChatSourceEvent(round));
-    const transcript = parseLobsterDebateChatTranscript(content);
-    transcript.segments.forEach((segment) => {
-      if (segment.kind === "preamble") {
-        const preamble = stripLobsterChatPreambleTitle(segment.body);
-        if (preamble) {
-          lines.push("", "## 任务事件", preamble);
-        }
-        return;
-      }
-      lines.push("", `## ${segment.heading}`, segment.body.trim());
-    });
-  });
-
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
-  if (finalStatusSection) {
-    lines.push("", `## ${finalStatusSection.heading}`, finalStatusSection.body);
-  }
-
-  return `${lines.join("\n")}\n`;
+function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
+  return buildLobsterTaskNeedsReviewTextWithLimit(task, isLobsterTaskBlockedByMainAiFailureLimit);
 }
 
-function renderLobsterGroupChatFinalStatusMarkdown(task: LobsterTaskRecord): string {
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
-  if (!finalStatusSection) {
-    return "";
-  }
-  return `## ${finalStatusSection.heading}\n${finalStatusSection.body}\n`;
-}
-
-function appendLobsterGroupChatFinalStatusMarkdown(markdown: string, task: LobsterTaskRecord): string {
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
-  if (!finalStatusSection) {
-    return markdown;
-  }
-  if (hasLobsterGroupChatFinalStatusSection(markdown, finalStatusSection.heading)) {
-    return markdown.endsWith("\n") ? markdown : `${markdown}\n`;
-  }
-  const prefix = markdown.trimEnd();
-  const section = `## ${finalStatusSection.heading}\n${finalStatusSection.body}`;
-  return prefix ? `${prefix}\n\n${section}\n` : `${section}\n`;
-}
-
-function hasLobsterGroupChatFinalStatusSection(markdown: string, heading: string): boolean {
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|\\n)##\\s+${escapedHeading}\\s*(?:\\n|$)`, "u").test(markdown);
-}
-
-function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound): string {
-  const lines = [
-    `- 来源：${round.label || (round.kind === "debate" ? "红蓝对抗群聊" : "任务执行群聊")}`,
-    `- 状态：${round.status}`,
-    round.chatFile ? `- transcript：${round.chatFile}` : null,
-  ];
-  if (round.kind === "debate") {
-    lines.push(
-      `- 主任务复核轮次：${round.lobsterRound}`,
-      `- 已完成发言批次数：${round.dialogueTurns ?? 0}`,
-      `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-      "- 裁判主持人会在每轮发言后决定 continue / finalize / block。",
-    );
-  }
-  if (round.kind === "execution") {
-    lines.push(`- 当前主任务轮次：${round.lobsterRound}`);
-  }
-  return lines.filter((line): line is string => Boolean(line)).join("\n");
-}
-
-function stripLobsterChatPreambleTitle(body: string): string {
-  return body
-    .split(/\r?\n/g)
-    .filter((line, index) => !(index === 0 && /^#\s+/u.test(line.trim())))
-    .join("\n")
-    .trim();
-}
-
-function isLobsterDebateGroupChatTask(task: LobsterTaskRecord): boolean {
-  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
-    || Boolean(task.debateRounds?.length);
-}
-
-function buildLobsterDebateChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
-  const debateRounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
-  return debateRounds
-    .map((round): LobsterDebateChatPanelRound => ({
-      key: buildLobsterDebateChatRoundKey(round.lobsterRound, round.debateRound),
-      kind: "debate",
-      lobsterRound: round.lobsterRound,
-      debateRound: round.debateRound,
-	      status: round.status,
-	      chatFile: round.chatFile,
-	      participantRosterSessionId: round.participantRosterSessionId,
-	      dialogueTurns: round.dialogueTurns,
-	      activeSpeaker: round.activeSpeaker ? {
-	        kind: round.activeSpeaker.kind,
-	        id: round.activeSpeaker.id,
-	        title: round.activeSpeaker.title,
-	        dialogueTurn: round.activeSpeaker.dialogueTurn,
-	        finalPass: round.activeSpeaker.finalPass,
-	        updatedAt: round.activeSpeaker.updatedAt,
-	      } : undefined,
-	      startedAt: round.startedAt,
-      completedAt: round.completedAt,
-      participants: round.participants.map((participant) => ({
-        id: participant.id,
-        title: participant.title,
-        role: participant.role,
-        status: participant.status,
-        stance: participant.stance,
-        sessionId: participant.sessionId,
-        summary: participant.summary,
-        updatedAt: participant.updatedAt,
-      })),
-      moderatorDecisions: (round.moderatorDecisions ?? []).map((decision) => ({
-        dialogueTurn: decision.dialogueTurn,
-        action: decision.action,
-        reason: decision.reason,
-        sessionId: decision.sessionId,
-        updatedAt: decision.updatedAt,
-      })),
-      consensusSummary: round.consensus?.summary,
-      consensusReached: round.consensus?.reached,
-      openDisagreementCount: round.consensus?.openDisagreements?.length,
-    }))
-    .sort((left, right) => (
-      (left.startedAt || 0) - (right.startedAt || 0)
-      || left.lobsterRound - right.lobsterRound
-      || left.debateRound - right.debateRound
-    ));
-}
-
-function buildLobsterDebateWithExecutionChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
-  const debateRounds = buildLobsterDebateChatPanelRounds(task);
-  const executionChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
-  const shouldIncludeExecution = fs.existsSync(executionChatFile)
-    || shouldPrioritizeLobsterExecutionChatRound(task);
-  if (!shouldIncludeExecution) {
-    return debateRounds;
-  }
-  return [...debateRounds, buildLobsterMainSubChatPanelRound(task, "任务执行群聊")];
-}
-
-function shouldPrioritizeLobsterExecutionChatRound(task: LobsterTaskRecord): boolean {
-  return task.subTasks.length > 0
-    || getActiveLobsterSubtaskIds(task).length > 0
-    || task.rounds.some((round) => round.role === "subtask");
-}
-
-function buildLobsterMainSubChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
-  return [buildLobsterMainSubChatPanelRound(task, "主从群聊")];
-}
-
-function buildLobsterMainSubChatPanelRound(
-  task: LobsterTaskRecord,
-  label: string,
-): LobsterDebateChatPanelRound {
-  const chatFile = ensureLobsterMainSubChatTranscript(task);
-  const activeSubtaskIds = getActiveLobsterSubtaskIds(task);
-  const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
-  const mainTitle = getLobsterMainSubChatMainTitle(task);
-  const mainParticipant: LobsterDebateChatPanelRound["participants"][number] = {
-    id: "main",
-    title: mainTitle,
-    role: "main",
-    status: mainRunning ? "running" : task.status,
-    sessionId: task.sessionId ?? null,
-    summary: task.finalSummary,
-    updatedAt: task.updatedAt,
-  };
-  const subtaskParticipants = task.subTasks.map((subtask, index) => ({
-    id: subtask.id,
-    title: getLobsterSubtaskDisplayTitle(index, subtask),
-    role: "subtask",
-    status: subtask.status,
-    sessionId: null,
-    summary: subtask.summary,
-    updatedAt: subtask.updatedAt,
-  }));
-  return {
-    key: LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
-    kind: "execution",
-    label,
-    lobsterRound: Math.max(1, task.currentRound || 1),
-    debateRound: 0,
-    status: task.status,
-    chatFile,
-    activeSpeaker: buildLobsterMainSubChatActiveSpeaker(task),
-    startedAt: task.createdAt,
-    completedAt: task.status === "completed" ? task.updatedAt : undefined,
-    participants: [mainParticipant, ...subtaskParticipants],
-    moderatorDecisions: [],
-  };
-}
-
-function buildLobsterMainSubChatActiveSpeaker(
-  task: LobsterTaskRecord,
-): LobsterDebateChatPanelRound["activeSpeaker"] {
-  if (task.status !== "running") {
-    return undefined;
-  }
-  const activeSubtaskIds = getActiveLobsterSubtaskIds(task);
-  const activeSubtask = task.subTasks.find((subtask) => (
-    activeSubtaskIds.includes(subtask.id)
-    && subtask.status === "running"
-  ));
-  if (activeSubtask) {
-    const index = task.subTasks.findIndex((subtask) => subtask.id === activeSubtask.id);
-    return {
-      kind: "subtask",
-      id: activeSubtask.id,
-      title: getLobsterSubtaskDisplayTitle(index, activeSubtask),
-      dialogueTurn: Math.max(1, task.currentRound || 1),
-      updatedAt: activeSubtask.updatedAt ?? task.updatedAt,
-    };
-  }
-  if (activeSubtaskIds.length === 0) {
-    return {
-      kind: "main",
-      id: "main",
-      title: getLobsterMainSubChatMainTitle(task),
-      dialogueTurn: Math.max(1, task.currentRound || 1),
-      updatedAt: task.updatedAt,
-    };
-  }
-  return undefined;
-}
-
-function getLobsterMainSubChatMainTitle(task: Pick<LobsterTaskRecord, "executionMode">): string {
-  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
-    ? "主持人主智能体"
-    : "主任务";
+function buildLobsterSubtaskRetryText(taskId: string, subtaskId: string, retryCount: number): string {
+  return buildLobsterSubtaskRetryTextWithLimit(
+    taskId,
+    subtaskId,
+    retryCount,
+    LOBSTER_SUBTASK_RETRY_MAX_RETRIES,
+  );
 }
 
 function ensureLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
-  const chatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
-  if (fs.existsSync(chatFile)) {
-    return chatFile;
-  }
-  writeTextFileEnsuringDir(chatFile, buildInitialLobsterMainSubChatTranscript(task));
-  return chatFile;
-}
-
-function buildInitialLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
-  const mainTitle = getLobsterMainSubChatMainTitle(task);
-  const lines: string[] = [
-    "# 龙虾主从群聊记录",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- CLI：${task.cli}`,
-    `- 任务状态：${task.status}`,
-    `- 创建时间：${new Date(task.createdAt).toISOString()}`,
-    `- 任务记录：${task.taskStoreFile}`,
-    `- 主任务沟通文件：${task.mainCommunicationFile}`,
-    "",
-    "## 群聊规则",
-    normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
-      ? "- 主持人主智能体负责继承红蓝规划共识，拆分、派发、复核和最终验收。"
-      : "- 主任务负责拆分、派发、复核和最终验收。",
-    "- 子任务会在派发和执行时动态加入群聊，并以“子任务 1~N”标记。",
-    "- 本页面只读，真实执行仍以任务记录、主任务沟通文件和子任务沟通文件为准。",
-    "",
-    "## 任务事件",
-    `龙虾主从任务已创建。当前轮次：${task.currentRound || 0}。`,
-  ];
-
-  task.rounds
-    .slice()
-    .sort((left, right) => left.startedAt - right.startedAt)
-    .forEach((round) => {
-      if (round.role === "main") {
-        lines.push(
-          "",
-          `## 主任务发言：第 ${round.round} 轮${formatLobsterGroupChatMemberName(mainTitle)}`,
-          ["- 成员 ID：main", "", formatLobsterRoundRecordForChat(round)].join("\n"),
-        );
-        return;
-      }
-      const subtask = task.subTasks.find((item) => item.id === round.subtaskId);
-      const index = subtask ? task.subTasks.findIndex((item) => item.id === subtask.id) : -1;
-      const title = subtask ? getLobsterSubtaskDisplayTitle(index, subtask) : `子任务 ${round.subtaskId ?? "unknown"}`;
-      lines.push(
-        "",
-        `## 子任务发言：${formatLobsterGroupChatMemberName(title)}`,
-        [
-          `- 成员 ID：${round.subtaskId ?? "unknown"}`,
-          "",
-          buildLobsterMainSubSubtaskTurnBody({
-            runStatus: round.status,
-            assistantContent: subtask?.summary,
-            communicationFile: subtask?.communicationFile,
-          }),
-        ].join("\n"),
-      );
-    });
-
-  if (task.status === "completed") {
-    lines.push("", "## 群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task));
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-function formatLobsterRoundRecordForChat(round: LobsterRoundRecord): string {
-  return [
-    `- 状态：${round.status}`,
-    `- 开始：${new Date(round.startedAt).toISOString()}`,
-    `- 结束：${new Date(round.endedAt).toISOString()}`,
-    round.summary ? `- 摘要：${round.summary}` : null,
-  ].filter((line): line is string => Boolean(line)).join("\n");
-}
-
-function buildLobsterDebateChatRoundKey(lobsterRound: number, debateRound: number): string {
-  return `${lobsterRound}:${debateRound}`;
-}
-
-function buildLobsterDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
-  const action: ChatMessageAction = {
-    type: "openLobsterDebateChat",
-    taskId,
-    label: "打开龙虾群聊",
-  };
-  if (typeof round === "number" && Number.isFinite(round)) {
-    action.roundKey = buildLobsterDebateChatRoundKey(round, LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND);
-  }
-  return action;
-}
-
-function getLobsterSubtaskDisplayTitle(index: number, subtask: Pick<LobsterSubtaskRecord, "title">): string {
-  const displayIndex = Number.isFinite(index) && index >= 0 ? index + 1 : 0;
-  const prefix = displayIndex > 0 ? `子任务 ${displayIndex}` : "子任务";
-  return subtask.title ? `${prefix}：${subtask.title}` : prefix;
-}
-
-function isCliName(value: string): value is CliName {
-  return (CLI_LIST as readonly string[]).includes(value);
+  return ensureLobsterMainSubChatTranscriptWithDeps(task, {
+    collectRunningLobsterTaskIds,
+    readTextFileIfNonEmpty,
+    fileExists: (filePath) => fs.existsSync(filePath),
+    writeTextFileEnsuringDir,
+    getActiveLobsterSubtaskIds,
+    buildLobsterCompletedConclusionAndSummaryMarkdown,
+    t,
+  });
 }
 
 type PromptRunInput = {
@@ -4264,204 +1938,10 @@ type PromptRunTarget = {
   sessionId: string | null;
 };
 
-type LobsterSubtaskConversationContext = {
-  taskId: string;
-  subtaskId: string;
-  round: number;
-};
-
-type PromptContextBuildResult = {
-  modelPrompt: string;
-  contextTags: string[];
-};
-
-type ErrorInfo = {
-  message: string;
-  name?: string;
-  code?: string;
-  stack?: string;
-};
-
-type CliAttemptResult =
-  | { type: "exit"; code: number | null }
-  | { type: "error"; error: Error };
-
-type RetryErrorTraceMessageOptions = {
-  tabId?: string;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
-};
-
-function getErrorInfo(error: unknown): ErrorInfo {
-  if (error instanceof Error) {
-    const code = typeof (error as { code?: unknown }).code === "string"
-      ? String((error as { code?: unknown }).code)
-      : undefined;
-    return {
-      message: error.message,
-      name: error.name,
-      code,
-      stack: error.stack,
-    };
-  }
-  if (typeof error === "string") {
-    return { message: error };
-  }
-  if (error && typeof error === "object") {
-    const record = error as { message?: unknown; name?: unknown; code?: unknown; stack?: unknown };
-    const message = typeof record.message === "string" ? record.message : String(error);
-    const name = typeof record.name === "string" ? record.name : undefined;
-    const code = typeof record.code === "string" ? record.code : undefined;
-    const stack = typeof record.stack === "string" ? record.stack : undefined;
-    return { message, name, code, stack };
-  }
-  return { message: String(error) };
-}
-
-function getAttemptFailureMessage(attemptResult: CliAttemptResult, resultErrorText?: string | null): string {
-  if (attemptResult.type === "error") {
-    const info = getErrorInfo(attemptResult.error);
-    return info.message || t("common.unknownError");
-  }
-  const normalizedResultError = typeof resultErrorText === "string" && resultErrorText.trim()
-    ? resultErrorText.trim()
-    : null;
-  return normalizedResultError ?? t("run.exitCode", { code: attemptResult.code ?? "unknown" });
-}
-
-function createHiddenRetryErrorTraceMessage(
-  lastFailureMessage: string,
-  options: RetryErrorTraceMessageOptions = {},
-): ChatMessage {
-  const content = buildHiddenRetryErrorTraceContent(lastFailureMessage, t("common.unknownError"));
-  return {
-    id: createMessageId(),
-    role: "trace",
-    content,
-    createdAt: Date.now(),
-    kind: "normal",
-    merge: false,
-    taskRole: options.taskRole,
-    lobsterTaskId: options.lobsterTaskId,
-    lobsterRound: options.lobsterRound,
-    lobsterSubtaskId: options.lobsterSubtaskId,
-  };
-}
-
-function appendHiddenRetryErrorTraceMessage(
-  target: ChatMessage[] | null | undefined,
-  lastFailureMessage: string,
-  options: RetryErrorTraceMessageOptions = {},
-): void {
-  if (!target) {
-    return;
-  }
-  const last = target[target.length - 1];
-  if (last?.role === "trace" && isSameHiddenRetryErrorTraceContent(last.content, lastFailureMessage, t("common.unknownError"))) {
-    return;
-  }
-  const message = createHiddenRetryErrorTraceMessage(lastFailureMessage, options);
-  appendMessageToStore(target, message);
-  sendPanelMessage({
-    type: "appendMessage",
-    message,
-    ...(options.tabId ? { tabId: options.tabId } : {}),
-  });
-}
-
-function isAbortErrorInfo(info: ErrorInfo): boolean {
-  const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
-  return combined.includes("abort");
-}
-
-function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
-  if (info.name === "AbortError" || info.code === "RUNNER_DISPOSED" || !info.message || isAbortErrorInfo(info)) {
-    return false;
-  }
-  const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message}`.toLowerCase();
-  if ((info.code ?? "").toUpperCase() === "ENOENT" || combined.includes("enoent")) {
-    return false;
-  }
-  return true;
-}
-
-async function waitForHiddenRetryDelay(
-  retryNumber: number,
-  isRunActive: () => boolean
-): Promise<boolean> {
-  const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
-  const deadline = Date.now() + retryDelayMs;
-  while (Date.now() < deadline) {
-    if (!isRunActive()) {
-      return false;
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))));
-  }
-  return isRunActive();
-}
-
-function buildHiddenRetryPrompt(cli: CliName, thinkingMode: ThinkingMode): string {
-  return buildThinkingPrompt(cli, thinkingMode, t("run.hiddenContinuePrompt"), { includeSuffix: false });
-}
-
-function buildHiddenRetryLimitMessage(): string {
-  return t("run.hiddenRetryLimitReached", {
-    attempts: HIDDEN_RETRY_MAX_RETRIES,
-    delays: HIDDEN_RETRY_DELAY_SEQUENCE_MS.map(formatHiddenRetryDelay).join(" / "),
-  });
-}
-
-function buildHiddenRetryQueuedMessage(hiddenRetryCount: number): string {
-  const retryNumber = hiddenRetryCount + 1;
-  const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
-  const progress = buildHiddenRetryProgressInfo(
-    hiddenRetryCount,
-    HIDDEN_RETRY_MAX_RETRIES,
-    retryDelayMs,
-  );
-  return t("run.hiddenRetryQueued", {
-    attempt: progress.retryNumber,
-    attempts: progress.maxRetries,
-    seconds: progress.retryDelaySeconds,
-    delay: formatHiddenRetryDelay(retryDelayMs),
-  });
-}
-
-function buildHiddenRetryStartedMessage(retryNumber: number): string {
-  const attemptInfo = buildHiddenRetryAttemptInfo(retryNumber, HIDDEN_RETRY_MAX_RETRIES);
-  return t("run.hiddenRetryStarted", {
-    attempt: attemptInfo.retryNumber,
-    attempts: attemptInfo.maxRetries,
-  });
-}
-
-function formatHiddenRetryDelay(retryDelayMs: number): string {
-  if (retryDelayMs >= 60 * 1000 && retryDelayMs % (60 * 1000) === 0) {
-    return `${retryDelayMs / (60 * 1000)} ${t("duration.minutes")}`;
-  }
-  return `${Math.max(0, Math.ceil(retryDelayMs / 1000))} ${t("duration.seconds")}`;
-}
-
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
   return combined.includes("claude_session_not_found")
     || combined.includes("no conversation found with session id:");
-}
-
-function redactPromptArg(args: string[], prompt?: string): string[] {
-  if (!prompt) {
-    return args;
-  }
-  const redacted = [...args];
-  for (let i = redacted.length - 1; i >= 0; i -= 1) {
-    if (redacted[i] === prompt) {
-      redacted[i] = `<prompt:${prompt.length}>`;
-      break;
-    }
-  }
-  return redacted;
 }
 
 function logCliStartup(payload: {
@@ -4500,91 +1980,16 @@ function isTabRunActive(tabId: string | null): boolean {
   return getPrimaryRunTabId() === tabId;
 }
 
-type LobsterConversationTabContext = {
-  taskRole: LobsterTaskRole | null;
-  lobsterTaskId: string | null;
-};
-
-function normalizeLobsterTaskId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized || null;
-}
-
-function normalizeLobsterSubtaskId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized || null;
-}
-
-function normalizeLobsterRound(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  const round = Math.floor(value);
-  return round > 0 ? round : null;
-}
-
-function resolveLobsterConversationTabContextFromMessages(messages: ChatMessage[]): LobsterConversationTabContext {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const taskRole = message?.taskRole;
-    const lobsterTaskId = normalizeLobsterTaskId(message?.lobsterTaskId);
-    if (!lobsterTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
-      if (message?.role === "user" && String(message.content || "").trim()) {
-        // A newer non-lobster user turn means this tab switched back to normal mode.
-        return {
-          taskRole: null,
-          lobsterTaskId: null,
-        };
-      }
-      continue;
-    }
-    return {
-      taskRole,
-      lobsterTaskId,
-    };
-  }
-  return {
-    taskRole: null,
-    lobsterTaskId: null,
-  };
-}
-
 function resolveLobsterConversationTabContextFromParallelRun(
   run?: ParallelTabRun
 ): LobsterConversationTabContext {
-  if (!run) {
-    return { taskRole: null, lobsterTaskId: null };
-  }
-  const taskRole = run.taskRole === "main" || run.taskRole === "subtask"
-    ? run.taskRole
-    : null;
-  const lobsterTaskId = normalizeLobsterTaskId(run.lobsterTaskId);
-  if (taskRole && lobsterTaskId) {
-    return { taskRole, lobsterTaskId };
-  }
-  return resolveLobsterConversationTabContextFromMessages(run.messageTarget);
+  return resolveLobsterRunConversationTabContext(run);
 }
 
 function resolveLobsterConversationTabContextFromInteractiveRun(
   run?: InteractiveTabRun
 ): LobsterConversationTabContext {
-  if (!run) {
-    return { taskRole: null, lobsterTaskId: null };
-  }
-  const taskRole = run.taskRole === "main" || run.taskRole === "subtask"
-    ? run.taskRole
-    : null;
-  const lobsterTaskId = normalizeLobsterTaskId(run.lobsterTaskId);
-  if (taskRole && lobsterTaskId) {
-    return { taskRole, lobsterTaskId };
-  }
-  return resolveLobsterConversationTabContextFromMessages(run.messageTarget);
+  return resolveLobsterRunConversationTabContext(run);
 }
 
 function resolveConversationTabLobsterContext(tab: ConversationTabRecord): LobsterConversationTabContext {
@@ -4776,62 +2181,8 @@ function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {
   };
 }
 
-function normalizeLobsterResumePrompt(prompt: string): string {
-  const trimmed = prompt.trim();
-  if (!trimmed) {
-    return "";
-  }
-  return trimmed
-    .replace(/[，,。.!！?？;；:：~～]+$/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isLobsterResumePrompt(prompt: string): boolean {
-  const normalized = normalizeLobsterResumePrompt(prompt);
-  if (!normalized || normalized.length > LOBSTER_RESUME_PROMPT_MAX_LENGTH) {
-    return false;
-  }
-  return LOBSTER_RESUME_PROMPT_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
-function isLobsterTaskResumable(task: LobsterTaskRecord): boolean {
-  return !isLobsterTaskBlockedByMainAiFailureLimit(task)
-    && (task.status === "error" || task.status === "stopped" || task.status === "running");
-}
-
 function collectRecentLobsterTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
-  const messages = getLobsterMessagesForTarget(target);
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const taskId = typeof messages[index]?.lobsterTaskId === "string"
-      ? messages[index]?.lobsterTaskId?.trim()
-      : "";
-    if (!taskId || seen.has(taskId)) {
-      continue;
-    }
-    seen.add(taskId);
-    ids.push(taskId);
-    if (ids.length >= limit) {
-      break;
-    }
-  }
-  return ids;
-}
-
-function isLobsterTaskSessionCompatible(
-  task: LobsterTaskRecord,
-  targetSessionId: string | null,
-  options: { allowMissingTaskSessionId?: boolean } = {}
-): boolean {
-  if (!targetSessionId) {
-    return !task.sessionId;
-  }
-  if (task.sessionId === targetSessionId) {
-    return true;
-  }
-  return options.allowMissingTaskSessionId === true && !task.sessionId;
+  return collectRecentLobsterTaskIdsFromMessages(getLobsterMessagesForTarget(target), limit);
 }
 
 function isLobsterTaskCompatibleWithTarget(
@@ -5268,7 +2619,7 @@ ${rawStderr}`);
             lobsterTaskId: input.lobsterTaskId,
             lobsterRound: input.lobsterRound,
             lobsterSubtaskId: input.lobsterSubtaskId,
-          });
+          }, { createMessageId, sendPanelMessage });
           const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
           const systemMessage: ChatMessage = {
             id: createMessageId(),
@@ -5397,7 +2748,7 @@ ${rawStderr}`);
         lobsterTaskId: input.lobsterTaskId,
         lobsterRound: input.lobsterRound,
         lobsterSubtaskId: input.lobsterSubtaskId,
-      });
+      }, { createMessageId, sendPanelMessage });
       const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
       const systemMessage: ChatMessage = {
         id: createMessageId(),
@@ -5779,21 +3130,6 @@ type LobsterDebateParticipantArtifactValidation = {
   reasons: string[];
 };
 
-type LobsterDebateParticipantDefinition = {
-  id: string;
-  role: LobsterDebateParticipantRole;
-  title: string;
-  focus: string;
-};
-
-type LobsterDebateParticipantRosterResult = {
-  participants: LobsterDebateParticipantDefinition[];
-  summary: string;
-  openingSpeakerIds: string[];
-  tabId: string;
-  sessionId: string | null;
-};
-
 type LobsterDebateReusableDecisionResult =
   | {
       status: "reusable";
@@ -5809,38 +3145,9 @@ type LobsterDebateReusableDecisionResult =
     }
   | { status: "rerun"; reasons: string[] };
 
-type LobsterDebateParticipantRunResult = {
-  participant: LobsterDebateParticipantRecord;
-  tabId: string;
-  sessionId: string | null;
-};
-
-type LobsterDebateParticipantBatchRunItem = {
-  participant: LobsterDebateParticipantDefinition;
-  artifactFile: string;
-  artifactText: string | null;
-  result: LobsterDebateParticipantRunResult;
-};
-
 type LobsterDebateSpeakerBatch = {
   speakerIds: string[];
   speakers: LobsterDebateParticipantDefinition[];
-};
-
-type LobsterDebateModeratorRunResult = {
-  decision: LobsterDebateModeratorDecisionRecord | null;
-  tabId: string;
-  sessionId: string | null;
-};
-
-type LobsterDebateConsensusRunResult = {
-  tabId: string;
-  sessionId: string | null;
-};
-
-type LobsterDebateSessionState = {
-  participants: Partial<Record<string, string>>;
-  moderator: string | null;
 };
 
 function shouldRunLobsterPlanningDebate(task: LobsterTaskRecord, round: number): boolean {
@@ -6007,8 +3314,10 @@ async function runLobsterDebateRound(options: {
   });
   refreshOpenLobsterDebateChatPanelForTask(task.id);
 
+  const runnerDeps = getLobsterDebateRunnerDeps();
   const debateTabIds: string[] = [];
   const rosterResult = await runLobsterDebateParticipantRoster({
+    deps: runnerDeps,
     input,
     mainTarget: target,
     task,
@@ -6144,6 +3453,7 @@ async function runLobsterDebateRound(options: {
     }
     refreshOpenLobsterDebateChatPanelForTask(task.id);
     const participantBatch = await runLobsterDebateParticipantBatch({
+      deps: runnerDeps,
       input,
       mainTarget: target,
       task,
@@ -6208,6 +3518,7 @@ async function runLobsterDebateRound(options: {
     }
 
     const moderatorResult = await runLobsterDebateModerator({
+      deps: runnerDeps,
       input,
       mainTarget: target,
       task,
@@ -6326,6 +3637,7 @@ async function runLobsterDebateRound(options: {
     buildLobsterDebateFinalStanceStartedText(task.id, round, finalModeratorDecision, paths)
   );
   const finalStanceBatch = await runLobsterDebateParticipantBatch({
+    deps: runnerDeps,
     input,
     mainTarget: target,
     task,
@@ -6454,6 +3766,7 @@ async function runLobsterDebateRound(options: {
   }
 
   const consensusRun = await runLobsterDebateConsensusSummary({
+    deps: runnerDeps,
     input,
     target,
     task,
@@ -6536,7 +3849,17 @@ async function runLobsterDebateRound(options: {
     consensus: mergedConsensus,
   });
   refreshOpenLobsterDebateChatPanelForTask(task.id);
-  appendSystemMessageForLobster(target, buildLobsterDebateConsensusReachedText(task.id, round, decision, paths));
+  appendSystemMessageForLobster(
+    target,
+    buildLobsterDebateConsensusReachedText(
+      task.id,
+      round,
+      decision,
+      paths,
+      getLobsterDecisionSubtasks,
+      formatLobsterEstimatedRemainingRounds,
+    )
+  );
   appendLobsterDebateMainCommunicationLog(task, round, paths, "红蓝对抗共识已形成", [
     `共识摘要：${mergedConsensus.summary}`,
     `决策状态：${decision.status}`,
@@ -6547,6 +3870,36 @@ async function runLobsterDebateRound(options: {
 
 function resolveLobsterDebateModel(input: PromptRunInput): string | undefined {
   return input.lobsterMainModel ?? input.model;
+}
+
+function getLobsterDebateRunnerDeps(): LobsterDebateRunnerDeps {
+  return {
+    appendSystemMessageForLobster,
+    buildLobsterDebateConsensusStartedText,
+    buildLobsterDebateModeratorFinishedText,
+    buildLobsterDebateModeratorStartedText,
+    buildLobsterDebateParticipantFinishedText,
+    buildLobsterDebateParticipantRosterFailedText,
+    buildLobsterDebateParticipantRosterFinishedText,
+    buildLobsterDebateParticipantRosterStartedText,
+    buildLobsterDebateParticipantStartedText,
+    createLobsterSubtaskRunTarget,
+    errorToMessage,
+    getExistingLobsterDebateRoundStartedAt,
+    logError: (event: string, payload?: unknown) => logError(event, payload),
+    readLobsterDebateModeratorDecisionArtifact,
+    readLobsterDebateParticipantArtifact,
+    readLobsterDebateParticipantRosterArtifact,
+    readLobsterDebateParticipantTurnArtifact,
+    readTextFileIfNonEmpty,
+    refreshOpenLobsterDebateChatPanelForTask,
+    resolvePromptRunTargetSessionId,
+    runPrompt,
+    updateLobsterDebateActiveSpeakerRecord,
+    updateLobsterDebateModeratorDecisionRecord,
+    updateLobsterDebateParticipantRecord,
+    updateLobsterDebateParticipantRosterSessionRecord,
+  };
 }
 
 function buildLobsterDebateParticipantRecords(
@@ -6679,377 +4032,6 @@ function evaluateReusableLobsterDebateDecision(
     consensus,
     participants: participantValidation.participants,
   };
-}
-
-async function runLobsterDebateParticipantRoster(options: {
-  input: PromptRunInput;
-  mainTarget: PromptRunTarget;
-  task: LobsterTaskRecord;
-  round: number;
-  debateRound: number;
-  paths: LobsterDebatePaths;
-  sessionId: string | null;
-  startedAt: number;
-}): Promise<(LobsterDebateParticipantRosterResult & { valid: true }) | {
-  valid: false;
-  reasons: string[];
-  tabId: string;
-  sessionId: string | null;
-}> {
-  const { input, mainTarget, task, round, debateRound, paths, sessionId, startedAt } = options;
-  const moderatorTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
-  updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
-    kind: "moderator",
-    id: LOBSTER_DEBATE_MODERATOR_ID,
-    title: "裁判主持人组队",
-    updatedAt: Date.now(),
-  });
-  appendSystemMessageForLobster(
-    moderatorTarget,
-    buildLobsterDebateParticipantRosterStartedText(task.id, round, paths)
-  );
-
-  try {
-    await runPrompt({
-      displayPrompt: `🦞 龙虾红蓝对抗第 ${round} 轮裁判主持人组队`,
-      modelPrompt: buildLobsterDebateParticipantRosterModelPrompt(task, round, paths),
-      contextTags: [],
-      model: resolveLobsterDebateModel(input),
-    }, { targetTabId: moderatorTarget.tabId });
-  } catch (error) {
-    void logError("lobster-debate-participant-roster-run-error", {
-      taskId: task.id,
-      round,
-      error: errorToMessage(error),
-    });
-  }
-
-  const completedSessionId = resolvePromptRunTargetSessionId(moderatorTarget);
-  const parsed = readLobsterDebateParticipantRosterArtifact(paths.participantRosterFile);
-  updateLobsterDebateParticipantRosterSessionRecord(
-    task.id,
-    round,
-    debateRound,
-    completedSessionId,
-    startedAt,
-    paths
-  );
-  if (!parsed.valid) {
-    appendSystemMessageForLobster(mainTarget, buildLobsterDebateParticipantRosterFailedText(task.id, round, parsed.reasons, paths));
-    return {
-      valid: false,
-      reasons: parsed.reasons,
-      tabId: moderatorTarget.tabId,
-      sessionId: completedSessionId,
-    };
-  }
-  appendSystemMessageForLobster(
-    mainTarget,
-    buildLobsterDebateParticipantRosterFinishedText(task.id, round, parsed.participants, paths)
-  );
-  return {
-    valid: true,
-    participants: parsed.participants,
-    summary: parsed.summary,
-    openingSpeakerIds: parsed.openingSpeakerIds,
-    tabId: moderatorTarget.tabId,
-    sessionId: completedSessionId,
-  };
-}
-
-async function runLobsterDebateParticipant(options: {
-  input: PromptRunInput;
-  mainTarget: PromptRunTarget;
-  task: LobsterTaskRecord;
-  round: number;
-  debateRound: number;
-  dialogueTurn: number;
-  maxDialogueTurns: number;
-  finalPass: boolean;
-  paths: LobsterDebatePaths;
-  participant: LobsterDebateParticipantDefinition;
-  artifactFile: string;
-  sessionId: string | null;
-  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
-  startedAt: number;
-}): Promise<LobsterDebateParticipantRunResult> {
-	  const {
-	    input,
-	    mainTarget,
-	    task,
-    round,
-    debateRound,
-    dialogueTurn,
-    maxDialogueTurns,
-    finalPass,
-    paths,
-    participant,
-    artifactFile,
-    sessionId,
-    moderatorDecision,
-    startedAt,
-  } = options;
-  const participantTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
-  const runningRecord: LobsterDebateParticipantRecord = {
-    id: participant.id,
-    role: participant.role,
-    title: participant.title,
-    model: resolveLobsterDebateModel(input) ?? null,
-    status: "running",
-    artifactFile,
-    sessionId,
-    updatedAt: Date.now(),
-  };
-  updateLobsterDebateParticipantRecord(
-    task.id,
-    round,
-    debateRound,
-    runningRecord,
-    startedAt,
-    paths.briefFile,
-    paths.chatFile,
-    {
-      kind: "participant",
-      id: participant.id,
-      title: participant.title,
-      dialogueTurn,
-      finalPass,
-      updatedAt: Date.now(),
-    }
-  );
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
-  appendSystemMessageForLobster(
-    participantTarget,
-    buildLobsterDebateParticipantStartedText(task.id, round, dialogueTurn, participant.title, artifactFile, finalPass)
-  );
-
-  try {
-    await runPrompt({
-      displayPrompt: buildLobsterDebateParticipantDisplayPrompt(round, dialogueTurn, participant.title, finalPass),
-      modelPrompt: buildLobsterDebateParticipantModelPrompt(
-        task,
-        round,
-        dialogueTurn,
-        maxDialogueTurns,
-        finalPass,
-        paths,
-        participant,
-        artifactFile,
-        moderatorDecision
-      ),
-      contextTags: [],
-      model: resolveLobsterDebateModel(input),
-    }, { targetTabId: participantTarget.tabId });
-  } catch (error) {
-    void logError("lobster-debate-participant-run-error", {
-      taskId: task.id,
-      round,
-      participantId: participant.id,
-      dialogueTurn,
-      error: errorToMessage(error),
-    });
-  }
-
-  const completedSessionId = resolvePromptRunTargetSessionId(participantTarget);
-  const completedRecord = finalPass
-    ? {
-        ...readLobsterDebateParticipantArtifact(paths, participant, resolveLobsterDebateModel(input)),
-        sessionId: completedSessionId,
-      }
-    : {
-        ...readLobsterDebateParticipantTurnArtifact(participant, artifactFile, resolveLobsterDebateModel(input)),
-        sessionId: completedSessionId,
-      };
-	  updateLobsterDebateParticipantRecord(task.id, round, debateRound, completedRecord, startedAt, paths.briefFile, paths.chatFile);
-  appendSystemMessageForLobster(
-    mainTarget,
-    buildLobsterDebateParticipantFinishedText(task.id, round, dialogueTurn, completedRecord, finalPass)
-  );
-  return { participant: completedRecord, tabId: participantTarget.tabId, sessionId: completedSessionId };
-}
-
-async function runLobsterDebateParticipantBatch(options: {
-  input: PromptRunInput;
-  mainTarget: PromptRunTarget;
-  task: LobsterTaskRecord;
-  round: number;
-  debateRound: number;
-  dialogueTurn: number;
-  maxDialogueTurns: number;
-  finalPass: boolean;
-  paths: LobsterDebatePaths;
-  participants: readonly LobsterDebateParticipantDefinition[];
-  debateSessions: LobsterDebateSessionState;
-  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
-  startedAt: number;
-}): Promise<LobsterDebateParticipantBatchRunItem[]> {
-  const {
-    input,
-    mainTarget,
-    task,
-    round,
-    debateRound,
-    dialogueTurn,
-    maxDialogueTurns,
-    finalPass,
-    paths,
-    participants,
-    debateSessions,
-    moderatorDecision,
-    startedAt,
-  } = options;
-  const batchResults = await Promise.all(participants.map(async (participant): Promise<LobsterDebateParticipantBatchRunItem> => {
-    const artifactFile = finalPass
-      ? buildLobsterDebateParticipantArtifactFile(paths, participant.id)
-      : buildLobsterDebateParticipantTurnArtifactFile(paths, participant.id, dialogueTurn);
-    const result = await runLobsterDebateParticipant({
-      input,
-      mainTarget,
-      task,
-      round,
-      debateRound,
-      dialogueTurn,
-      maxDialogueTurns,
-      finalPass,
-      paths,
-      participant,
-      artifactFile,
-      sessionId: debateSessions.participants[participant.id] ?? null,
-      moderatorDecision,
-      startedAt,
-    });
-    return {
-      participant,
-      artifactFile,
-      artifactText: readTextFileIfNonEmpty(artifactFile),
-      result,
-    };
-  }));
-  return batchResults;
-}
-
-async function runLobsterDebateModerator(options: {
-  input: PromptRunInput;
-  mainTarget: PromptRunTarget;
-  task: LobsterTaskRecord;
-  round: number;
-  debateRound: number;
-  dialogueTurn: number;
-  maxDialogueTurns: number;
-  paths: LobsterDebatePaths;
-  participants: readonly LobsterDebateParticipantDefinition[];
-  sessionId: string | null;
-  startedAt: number;
-}): Promise<LobsterDebateModeratorRunResult> {
-	  const {
-	    input,
-	    mainTarget,
-	    task,
-	    round,
-	    debateRound,
-	    dialogueTurn,
-	    maxDialogueTurns,
-	    paths,
-      participants,
-	    sessionId,
-	    startedAt,
-	  } = options;
-	  const moderatorTarget = createLobsterSubtaskRunTarget(task.cli, { sessionId });
-	  const artifactFile = buildLobsterDebateModeratorArtifactFile(paths, dialogueTurn);
-	  updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
-	    kind: "moderator",
-	    id: LOBSTER_DEBATE_MODERATOR_ID,
-	    title: LOBSTER_DEBATE_MODERATOR_TITLE,
-	    dialogueTurn,
-	    updatedAt: Date.now(),
-	  });
-	  appendSystemMessageForLobster(
-	    moderatorTarget,
-	    buildLobsterDebateModeratorStartedText(task.id, round, dialogueTurn, artifactFile)
-	  );
-
-  try {
-    await runPrompt({
-      displayPrompt: buildLobsterDebateModeratorDisplayPrompt(round, dialogueTurn, maxDialogueTurns),
-      modelPrompt: buildLobsterDebateModeratorModelPrompt(
-        task,
-        round,
-        dialogueTurn,
-        maxDialogueTurns,
-        paths,
-        artifactFile
-      ),
-      contextTags: [],
-      model: resolveLobsterDebateModel(input),
-    }, { targetTabId: moderatorTarget.tabId });
-  } catch (error) {
-    void logError("lobster-debate-moderator-run-error", {
-      taskId: task.id,
-      round,
-      dialogueTurn,
-      error: errorToMessage(error),
-    });
-  }
-
-  const completedSessionId = resolvePromptRunTargetSessionId(moderatorTarget);
-  const parsedDecision = readLobsterDebateModeratorDecisionArtifact(
-    artifactFile,
-    dialogueTurn,
-    participants.map((participant) => participant.id),
-  );
-  const decision = parsedDecision
-    ? { ...parsedDecision, sessionId: completedSessionId }
-    : null;
-  if (decision) {
-    updateLobsterDebateModeratorDecisionRecord(task.id, round, debateRound, decision, startedAt, paths);
-    appendSystemMessageForLobster(
-      mainTarget,
-      buildLobsterDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns, participants)
-    );
-  }
-  return { decision, tabId: moderatorTarget.tabId, sessionId: completedSessionId };
-}
-
-async function runLobsterDebateConsensusSummary(options: {
-  input: PromptRunInput;
-  target: PromptRunTarget;
-  task: LobsterTaskRecord;
-  round: number;
-  debateRound: number;
-  paths: LobsterDebatePaths;
-  participants: LobsterDebateParticipantRecord[];
-}): Promise<LobsterDebateConsensusRunResult> {
-  const { input, task, round, debateRound, paths, participants } = options;
-  const consensusTarget = createLobsterSubtaskRunTarget(task.cli);
-  updateLobsterDebateActiveSpeakerRecord(
-    task.id,
-    round,
-    debateRound,
-    getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
-    paths,
-    {
-      kind: "consensus",
-      id: "consensus",
-      title: "共识汇总器",
-      updatedAt: Date.now(),
-    }
-  );
-  appendSystemMessageForLobster(consensusTarget, buildLobsterDebateConsensusStartedText(task.id, round, paths));
-  try {
-    await runPrompt({
-      displayPrompt: `🦞 龙虾红蓝对抗共识汇总：第 ${round} 轮`,
-      modelPrompt: buildLobsterDebateConsensusModelPrompt(task, round, paths, participants),
-      contextTags: [],
-      model: resolveLobsterDebateModel(input),
-    }, { targetTabId: consensusTarget.tabId });
-  } catch (error) {
-    void logError("lobster-debate-consensus-run-error", {
-      taskId: task.id,
-      round,
-      error: errorToMessage(error),
-    });
-  }
-  return { tabId: consensusTarget.tabId, sessionId: resolvePromptRunTargetSessionId(consensusTarget) };
 }
 
 function validateLobsterDebateParticipantArtifacts(
@@ -7878,179 +4860,6 @@ function updateLobsterDebateModeratorDecisionRecord(
   });
 }
 
-function buildLobsterDebateBriefMarkdown(
-  task: LobsterTaskRecord,
-  target: PromptRunTarget,
-  round: number,
-  paths: LobsterDebatePaths,
-  continuePrompt?: string,
-): string {
-  const communication = getLobsterCommunicationPaths(task.id);
-  const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
-  const lines: string[] = [
-    "# 龙虾红蓝对抗简报",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- 龙虾轮次：${round}`,
-    `- 生成时间：${new Date().toISOString()}`,
-    `- 任务记录文件：${task.taskStoreFile}`,
-    `- 主沟通文件：${task.mainCommunicationFile}`,
-    `- 子任务沟通目录：${communication.subtasksDir}`,
-    `- 当前 CLI：${target.cli}`,
-    `- 执行方式：debate_multi_agent（红蓝对抗）`,
-    `- 上一轮 estimatedRemainingRounds：${formatLobsterEstimatedRemainingRounds(task.estimatedRemainingRounds) ?? "未记录"}`,
-    `- brief 文件：${paths.briefFile}`,
-    `- 群聊记录文件：${paths.chatFile}`,
-    `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    `- 裁判主持人角色：${LOBSTER_DEBATE_MODERATOR_TITLE}`,
-    "",
-    "## 原始目标",
-    task.rootPrompt,
-    "",
-    ...(normalizedContinuePrompt ? [
-      "## 本次继续指令",
-      normalizedContinuePrompt,
-      "",
-    ] : []),
-    ...(task.supplementalRequirements?.length ? [
-      "## 补充需求",
-      ...task.supplementalRequirements.map((item, index) => `${index + 1}. ${item}`),
-      "",
-    ] : []),
-    "## 子任务概要",
-    ...buildLobsterDebateSubtaskSummaryLines(task),
-    "",
-    "## 红蓝对抗约束",
-    `- 新辩论参与者只能属于蓝队（role=${LOBSTER_DEBATE_BLUE_TEAM_ROLE}）或红队（role=${LOBSTER_DEBATE_RED_TEAM_ROLE}）。`,
-    "- 蓝队负责提出可执行方案、补足验收口径、回应红队攻击并修正计划。",
-    "- 红队负责攻击蓝队方案，寻找假设漏洞、目标遗漏、证据不足、边界场景、可行性缺口、成本/收益失衡和不可验证风险。",
-    "- 如果任务涉及代码、文件、权限、部署或流程执行，红队还应检查写入范围、并发冲突、越权修改、回滚/恢复失败和不可验收的工程风险；不涉及时不要强行套用代码风险。",
-    "- 裁判主持人每个批次后读取完整群聊，决定继续追问、收束进入最终立场或阻塞人工复核。",
-    `- 裁判主持人每次最多点名 ${LOBSTER_DEBATE_MAX_BATCH_SPEAKERS} 位参与者进入下一批发言；未被点名的角色本批次不得发言。`,
-    "- 参与者只能读取可用上下文、任务记录、主沟通文件和子任务沟通目录。",
-    "- 参与者只能写入本轮提示词指定的单个 artifact 文件，不得修改工作区内容、任务记录或其他沟通文件。",
-    "- 扩展会把每次红蓝发言追加到 chat.md，后续角色必须读取并回应该共享群聊记录。",
-    "- 同一发言批次内的参与者可并行执行；扩展会等待本批次全部 artifact 完成后再按清单顺序追加到 chat.md，并启动裁判主持人控场。",
-    "- 每个发言批次后由裁判主持人读取 chat.md 并决定 continue / finalize / block；如果继续，必须同时指定下一批发言者。",
-    "- 参与者不得直接输出最终 LobsterMainDecision。",
-    "- 共识汇总器只能读取 brief、chat.md 和 participant artifacts，负责生成 cross-review.md、consensus.md 和 decision.json。",
-    "",
-    "## 裁判主持人组队",
-    `- 裁判主持人必须先写入红蓝参与者清单：${paths.participantRosterFile}`,
-    `- 参与者数量范围：${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS}`,
-    "- 清单必须至少包含 1 个蓝队和 1 个红队；后续群聊只按裁判主持人选定的参与者推进。",
-    "",
-    "## 可参考的红蓝原型",
-    ...LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS.map((participant) => (
-      `- ${participant.id}（${participant.title}）：${participant.focus}`
-    )),
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildLobsterDebateInitialChatMarkdown(
-  task: LobsterTaskRecord,
-  target: PromptRunTarget,
-  round: number,
-  paths: LobsterDebatePaths,
-): string {
-  const lines: string[] = [
-    "# 龙虾红蓝对抗群聊记录",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- 龙虾轮次：${round}`,
-    `- 当前 CLI：${target.cli}`,
-    `- brief 文件：${paths.briefFile}`,
-    `- 红蓝参与者清单文件：${paths.participantRosterFile}`,
-    `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    `- 裁判主持人：${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}`,
-    `- 裁判主持人 ID：${LOBSTER_DEBATE_MODERATOR_ID}`,
-    "",
-    "## 群聊规则",
-    "- 每位角色必须读取本文件中已有发言后再输出自己的下一条发言。",
-    `- 群聊称呼必须和成员列表名称一致，发言、点名和互相回应时使用 ${formatLobsterGroupChatMemberName("成员名称")} 格式；成员 ID 只用于 JSON、artifact 文件名和调度字段，不作为群聊称呼。`,
-    "- 裁判主持人先根据任务目标设计红队和蓝队参与者并写入参与者清单；扩展校验后把参与者动态加入本群聊。",
-    "- 蓝队提出和修正方案；红队攻击假设、证据、边界和可验证性；双方必须点名回应对方观点。",
-    "- 每个发言批次必须由裁判主持人明确点名 1-3 位发言者；只有被点名的角色才发言。",
-    "- 每个发言批次内被点名的动态参与者可以并行运行；扩展等待全部 artifact 完成后按清单顺序追加发言，再由裁判主持人根据完整群聊决定 continue / finalize / block。",
-    "- 裁判主持人可以要求继续追问，也可以提前收束，不需要等到最大安全发言批次数。",
-    "- 一旦达到最大安全发言批次数，裁判主持人必须收束，运行时不得继续追加讨论。",
-    "- 收束后由共识汇总器读取完整群聊和最终立场，生成 cross-review.md、consensus.md 和 decision.json。",
-    "",
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildLobsterDebateParticipantRosterChatMarkdown(
-  participants: readonly LobsterDebateParticipantDefinition[],
-  summary: string,
-  openingSpeakerIds: readonly string[],
-): string {
-  const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
-  const openingSpeakerNames = openingSpeakerIds
-    .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
-    .map(formatLobsterGroupChatMemberName);
-  const openingLine = openingSpeakerIds.length > 0
-    ? `首批点名发言者：${openingSpeakerNames.join("、")}`
-    : "首批点名发言者：未指定，运行时将默认由首位蓝队开场。";
-  const openingIdLine = openingSpeakerIds.length > 0
-    ? `首批点名发言者 ID：${openingSpeakerIds.join("、")}`
-    : "首批点名发言者 ID：无";
-  const lines: string[] = [
-    "",
-    "## 任务事件",
-    "",
-    "裁判主持人已根据任务目标完成红蓝参与者设计。",
-    summary ? `组队说明：${summary}` : "组队说明：未提供。",
-    openingLine,
-    openingIdLine,
-    "",
-    ...participants.flatMap((participant) => [
-      `## 参与者加入：${formatLobsterGroupChatMemberName(participant.title)}`,
-      "",
-      `成员 ID：${participant.id}`,
-      `阵营角色：${participant.role}`,
-      `关注重点：${participant.focus}`,
-      "",
-    ]),
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildLobsterDebateChatTurnMarkdown(
-  dialogueTurn: number,
-  participantId: string,
-  participantTitle: string,
-  artifactText: string,
-): string {
-  return [
-    "",
-    `## 发言：${formatLobsterGroupChatMemberName(participantTitle)}`,
-    "",
-    `- 成员 ID：${participantId}`,
-    `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    "",
-    artifactText.trim(),
-    "",
-  ].join("\n");
-}
-
-function buildLobsterDebateModeratorTurnMarkdown(
-  dialogueTurn: number,
-  artifactText: string,
-): string {
-  return [
-    "",
-    `## 主持人控场：${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}`,
-    "",
-    `- 成员 ID：${LOBSTER_DEBATE_MODERATOR_ID}`,
-    `- 群聊发言批次：${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
-    "",
-    artifactText.trim(),
-    "",
-  ].join("\n");
-}
-
 function buildLobsterDebateSpeakerBatch(participants: readonly LobsterDebateParticipantDefinition[], speakerIds: readonly string[]): LobsterDebateSpeakerBatch {
   const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
   const normalizedSpeakerIds = speakerIds
@@ -8066,403 +4875,6 @@ function buildLobsterDebateSpeakerBatch(participants: readonly LobsterDebatePart
     speakerIds: normalizedSpeakerIds,
     speakers,
   };
-}
-
-function buildLobsterDebateDialogueTurnChatEventMarkdown(
-  round: number,
-  dialogueTurn: number,
-  maxDialogueTurns: number,
-  previousDecision: LobsterDebateModeratorDecisionRecord | null,
-  currentSpeakers: readonly LobsterDebateParticipantDefinition[],
-): string {
-  const speakerLine = currentSpeakers.length > 0
-    ? `- 本批次点名发言者：${currentSpeakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
-    : "- 本批次点名发言者：未指定";
-  const speakerIdLine = currentSpeakers.length > 0
-    ? `- 本批次点名发言者 ID：${currentSpeakers.map((speaker) => speaker.id).join("、")}`
-    : "- 本批次点名发言者 ID：无";
-  const lines = [
-    "",
-    "## 任务事件",
-    "",
-    "红蓝对抗发言批次开始。",
-    `- 主任务复核轮次：${round}`,
-    `- 当前发言批次：${dialogueTurn}`,
-    `- 最大安全发言批次数：${maxDialogueTurns}`,
-    previousDecision?.nextFocus?.length
-      ? `- 裁判主持人上一批次关注点：${previousDecision.nextFocus.join("；")}`
-      : "- 裁判主持人上一批次关注点：无",
-    speakerLine,
-    speakerIdLine,
-    "- 本批次被点名参与者可并行执行；同批次成员只应回应本系统消息之前已存在的群聊内容。",
-    "- 本批次结束后由裁判主持人决定是否继续、收束或阻塞。",
-    "",
-  ];
-  return lines.join("\n");
-}
-
-function buildLobsterDebateRuntimeForcedFinalizeMarkdown(
-  decision: LobsterDebateModeratorDecisionRecord,
-): string {
-  return [
-    "",
-    "## 运行时强制收束",
-    "",
-    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}最终动作：${decision.action}`,
-    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}理由：${decision.reason}`,
-    "",
-  ].join("\n");
-}
-
-function buildLobsterDebateFinalParticipantMarkdown(
-  participantId: string,
-  participantTitle: string,
-  artifactText: string,
-): string {
-  return [
-    "",
-    `## 最终立场：${formatLobsterGroupChatMemberName(participantTitle)}`,
-    "",
-    `- 成员 ID：${participantId}`,
-    "",
-    artifactText.trim(),
-    "",
-  ].join("\n");
-}
-
-function buildLobsterDebateDialogueClosedMarkdown(
-  completedDialogueTurns: number,
-  maxDialogueTurns: number,
-  decision: LobsterDebateModeratorDecisionRecord,
-): string {
-  return [
-    "",
-    "## 群聊收束",
-    "",
-    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}最终动作：${decision.action}`,
-    `${formatLobsterGroupChatMemberName(LOBSTER_DEBATE_MODERATOR_TITLE)}理由：${decision.reason}`,
-    `实际完成发言批次数：${completedDialogueTurns}/${maxDialogueTurns}`,
-    decision.nextFocus.length > 0
-      ? `下一轮关注点：${decision.nextFocus.join("；")}`
-      : "下一轮关注点：无",
-    "",
-    decision.action === "block"
-      ? "裁判主持人已判定当前红蓝攻防无法继续推进到可执行共识，后续只保留人工复核。"
-      : "运行时已停止追加新的发言批次，后续由共识汇总器生成 cross-review.md、consensus.md 和 decision.json。",
-    "",
-  ].join("\n");
-}
-
-function buildLobsterDebateSubtaskSummaryLines(task: LobsterTaskRecord): string[] {
-  if (!task.subTasks.length) {
-    return ["- 尚无子任务记录。"];
-  }
-  const completed = task.subTasks.filter((subtask) => subtask.status === "completed");
-  const running = task.subTasks.filter((subtask) => subtask.status === "running");
-  const failed = task.subTasks.filter((subtask) => subtask.status === "blocked" || subtask.status === "skipped");
-  const pending = task.subTasks.filter((subtask) => subtask.status === "pending");
-  return [
-    `- 已完成：${formatLobsterDebateSubtaskList(completed)}`,
-    `- 运行中：${formatLobsterDebateSubtaskList(running)}`,
-    `- 失败/阻塞：${formatLobsterDebateSubtaskList(failed)}`,
-    `- 待处理：${formatLobsterDebateSubtaskList(pending)}`,
-  ];
-}
-
-function formatLobsterDebateSubtaskList(subtasks: LobsterSubtaskRecord[]): string {
-  if (subtasks.length === 0) {
-    return "无";
-  }
-  return subtasks.map((subtask) => {
-    const summary = subtask.summary ? `（${subtask.summary.slice(0, 120)}）` : "";
-    return `${subtask.id}:${subtask.title}${summary}`;
-  }).join("；");
-}
-
-function buildLobsterDebateParticipantDisplayPrompt(
-  round: number,
-  dialogueTurn: number,
-  title: string,
-  finalPass: boolean,
-): string {
-  return finalPass
-    ? `🦞 龙虾辩论第 ${round} 轮最终立场：${title}`
-    : `🦞 龙虾辩论第 ${round} 轮群聊 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}：${title}`;
-}
-
-function buildLobsterDebateParticipantRosterModelPrompt(
-  task: LobsterTaskRecord,
-  round: number,
-  paths: LobsterDebatePaths,
-): string {
-  const suggestedParticipants = LOBSTER_DEBATE_SUGGESTED_PARTICIPANTS
-    .map((participant) => `- ${participant.id}（${participant.title}，${participant.role}）：${participant.focus}`)
-    .join("\n");
-  return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人组队阶段。",
-    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "你的职责是先判断本轮红蓝对抗需要哪些蓝队和红队参与者，再写出动态参与者清单。后续群聊将只按你的清单推进。",
-    `龙虾任务 ID：${task.id}`,
-    `当前轮次：${round}`,
-    `任务记录文件：${task.taskStoreFile}`,
-    `brief 文件：${paths.briefFile}`,
-    `群聊记录文件：${paths.chatFile}`,
-    `红蓝参与者清单 artifact：${paths.participantRosterFile}`,
-    `主沟通文件：${task.mainCommunicationFile}`,
-    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
-    "",
-    "职责和限制：",
-    "1. 只能读取 brief、任务记录、主沟通文件、子任务沟通目录和必要上下文；不得修改工作区内容或任务记录。",
-    "2. 只能写入参与者清单 artifact；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
-    `3. 必须设计 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个参与者。复杂任务可更多，简单任务可更少。`,
-    "4. 必须至少包含 1 个蓝队和 1 个红队。蓝队负责提出、捍卫和修正方案；红队负责攻击假设、目标覆盖、证据链、边界和可验证性，暴露阻塞风险。",
-    "5. 参与者 id 必须唯一，只能使用小写字母、数字、下划线、点、短横线，且不能使用 moderator 或 consensus。",
-    `6. 新清单中的 role 只能取：${LOBSTER_DEBATE_BLUE_TEAM_ROLE} / ${LOBSTER_DEBATE_RED_TEAM_ROLE}。${LOBSTER_DEBATE_PARTICIPANT_ROLES.filter((role) => role !== LOBSTER_DEBATE_BLUE_TEAM_ROLE && role !== LOBSTER_DEBATE_RED_TEAM_ROLE).join(" / ")} 仅用于兼容旧任务记录，不要新写。`,
-    "7. 不要机械固定使用通用架构/实现/测试/风险四人；专业维度应写入 title 和 focus，但 role 必须体现红队或蓝队阵营。",
-    "",
-    "可参考的红蓝参与者原型（只是参考，不是固定名单）：",
-    suggestedParticipants,
-    "",
-    "artifact 必须包含以下固定小节，标题必须完全一致：",
-    "## 组队说明",
-    "说明为什么这样配置蓝队和红队，以及每个参与者在攻防中的职责。",
-    "",
-    "## JSON",
-    "必须提供一个 JSON 代码块，结构如下。participants 数量必须在允许范围内；openingSpeakerIds 用于指定首批由主持人点名发言的 1-3 位参与者，通常应先由蓝队开场。",
-    `{"artifactFile":${JSON.stringify(paths.participantRosterFile)},"summary":"红蓝组队摘要","openingSpeakerIds":["blue_planner"],"participants":[{"id":"blue_planner","role":"${LOBSTER_DEBATE_BLUE_TEAM_ROLE}","title":"蓝队方案方","focus":"提出可执行方案并回应红队攻击"},{"id":"red_attacker","role":"${LOBSTER_DEBATE_RED_TEAM_ROLE}","title":"红队攻击方","focus":"寻找假设漏洞、证据缺口、边界条件和阻塞风险"}]}`,
-    "",
-    "原始目标：",
-    task.rootPrompt,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantModelPrompt(
-  task: LobsterTaskRecord,
-  round: number,
-  dialogueTurn: number,
-  maxDialogueTurns: number,
-  finalPass: boolean,
-  paths: LobsterDebatePaths,
-  participant: LobsterDebateParticipantDefinition,
-  artifactFile: string,
-  moderatorDecision: LobsterDebateModeratorDecisionRecord | null,
-): string {
-  const turnPurpose = finalPass
-    ? "裁判主持人收束后的最终立场"
-    : `第 ${dialogueTurn} 个发言批次的开场或交叉攻防`;
-  const teamGuidance = participant.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE
-    ? [
-        "你是蓝队：负责提出、捍卫和修正方案，主动回应红队攻击，并把可执行性、约束、验收口径和证据要求说清楚。",
-      ]
-    : [
-        "你是红队：负责攻击蓝队方案，专门寻找假设漏洞、目标遗漏、证据不足、边界场景、可行性缺口、成本/收益失衡和不可验证风险。",
-        "如果本任务涉及代码、文件、权限、部署或流程执行，再额外检查写入范围、并发冲突、越权修改、回滚/恢复失败和工程验收风险；不涉及时不要强行套用代码风险。",
-      ];
-  const finalTurnSections = [
-    "## 立场",
-    "只能写一个值：agree / agree_with_reservations / block。可以在下一行补充一句理由。",
-    "",
-    "## 建议规划",
-    "给出你认可的阶段规划或修正建议。",
-    "",
-    "## 子任务建议",
-    "列出建议派发的子任务，说明每个子任务的目标、范围、依赖和交付证据；只有涉及文件修改时才说明预期写入文件。",
-    "",
-    "## 依赖与冲突判断",
-    "判断哪些子任务可以并行推进，哪些必须串行，以及原因；只有涉及代码、文件、权限或流程执行时才讨论写入冲突、越权修改或恢复风险。",
-    "",
-    "## 验收标准",
-    "列出完成或继续派发前必须满足的验证与证据。",
-    "",
-    "## 阻塞性异议",
-    "没有阻塞性异议时写“无”。有阻塞性异议时逐条列出，并保持立场为 block。",
-  ];
-  const moderatorGuidance = moderatorDecision
-    ? [
-      "",
-      "## 裁判主持人控场摘要",
-      `- 裁判主持人动作：${moderatorDecision.action}`,
-      `- 裁判主持人理由：${moderatorDecision.reason}`,
-      moderatorDecision.nextFocus.length > 0
-        ? `- 下一批次关注点：${moderatorDecision.nextFocus.join("；")}`
-        : "- 下一批次关注点：无",
-    ]
-    : [];
-  return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗参与者。",
-    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "注意：这是一个受控模拟群聊。你必须读取 chat.md 中已经出现的发言，然后以自己的蓝队或红队身份继续发言。",
-    "注意：同一发言批次内的参与者可能并行执行；你只能回应 chat.md 中在本次启动前已经存在的内容，不要假设能读到同批次其他参与者尚未落盘的发言。",
-    `龙虾任务 ID：${task.id}`,
-    `当前轮次：${round}`,
-    finalPass
-      ? "本次阶段：裁判主持人收束后的最终立场收集"
-      : `当前发言批次：${dialogueTurn}，最大安全上限：${maxDialogueTurns}`,
-    `本轮目的：${turnPurpose}`,
-    `参与者 ID：${participant.id}`,
-    `参与者名称：${participant.title}`,
-    `群聊称呼：${formatLobsterGroupChatMemberName(participant.title)}`,
-    `关注重点：${participant.focus}`,
-    `任务记录文件：${task.taskStoreFile}`,
-    `brief 文件：${paths.briefFile}`,
-    `群聊记录文件：${paths.chatFile}`,
-    `主沟通文件：${task.mainCommunicationFile}`,
-    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
-    `你的 artifact 文件：${artifactFile}`,
-    ...moderatorGuidance,
-    "",
-    "职责和限制：",
-    ...teamGuidance,
-    "1. 你只做攻防/规划/审查/验收判断，不直接修改工作区内容，不更新任务记录。",
-    "2. 你必须读取 brief、chat.md，并按需要读取任务记录、主沟通文件、子任务沟通目录和仓库现状。",
-    "3. 你只能写入上面指定的 artifact 文件；不要直接修改 chat.md、cross-review.md、consensus.md 或 decision.json。",
-    "4. 你不能直接输出最终 LobsterMainDecision JSON；最终决策由共识汇总器在读取完整群聊后生成。",
-    `5. 你必须点名回应 chat.md 中至少一个已经发言的其他角色；点名时使用 ${formatLobsterGroupChatMemberName("成员名称")}，不要用英文成员 ID 作为称呼；蓝队优先回应红队攻击点，红队优先继续攻击蓝队尚未修正的方案。`,
-    `6. 群聊运行时最大安全上限为 ${maxDialogueTurns} 个发言批次。只有被裁判主持人本批次明确点名的角色才应发言；达到安全上限时必须收束，不得继续追加辩论。`,
-    "7. 如果发现会导致目标无法满足、证据不足、验收不可判定、风险无法接受的问题，红队应明确指出阻塞项；蓝队若能修正则改为 agree_with_reservations，否则最终立场必须使用 block。",
-    "8. 只有在任务确实涉及代码、文件、权限、部署或流程执行时，才把越权写入、并发冲突、恢复失败等工程问题作为阻塞项。",
-    "",
-    "artifact 必须包含以下固定小节，标题必须完全一致：",
-    "## 群聊发言",
-    "用你的角色身份发言，必须结合 brief 和 chat.md 中已有内容。",
-    "",
-    "## 点名回应",
-    `列出你回应了哪些角色的哪些观点；角色称呼必须使用 ${formatLobsterGroupChatMemberName("成员名称")}；若暂无其他角色发言，写“暂无，作为首位发言者开场”。`,
-    "",
-    "## 追问或修正",
-    "给出你希望其他角色注意的问题、风险或修正建议；没有则写“无”。",
-    "",
-    ...(finalPass ? finalTurnSections : [
-      "## 暂定立场",
-      "只能写一个值：agree / agree_with_reservations / block，并补充一句原因。非最终轮的暂定立场不会直接用于派发子任务。",
-    ]),
-    "",
-    "原始目标：",
-    task.rootPrompt,
-  ].join("\n");
-}
-
-function buildLobsterDebateModeratorDisplayPrompt(
-  round: number,
-  dialogueTurn: number,
-  maxDialogueTurns: number,
-): string {
-  return `🦞 龙虾红蓝对抗第 ${round} 轮裁判控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
-}
-
-function buildLobsterDebateModeratorModelPrompt(
-  task: LobsterTaskRecord,
-  round: number,
-  dialogueTurn: number,
-  maxDialogueTurns: number,
-  paths: LobsterDebatePaths,
-  artifactFile: string,
-): string {
-  const atSafetyLimit = dialogueTurn >= maxDialogueTurns;
-  return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人。",
-    "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
-    "你的职责不是重新规划，而是主持红蓝攻防：总结蓝队方案、红队攻击点和双方回应，判断是否还需要追加一个发言批次追问，或是否可以收束进入最终立场。",
-    `龙虾任务 ID：${task.id}`,
-    `当前轮次：${round}`,
-    `当前发言批次：${dialogueTurn}`,
-    `最大安全发言批次数：${maxDialogueTurns}`,
-    `是否达到最大安全发言批次数：${atSafetyLimit ? "是" : "否"}`,
-    `任务记录文件：${task.taskStoreFile}`,
-    `brief 文件：${paths.briefFile}`,
-    `群聊记录文件：${paths.chatFile}`,
-    `主沟通文件：${task.mainCommunicationFile}`,
-    `子任务沟通目录：${getLobsterCommunicationPaths(task.id).subtasksDir}`,
-    `你的 artifact 文件：${artifactFile}`,
-    "",
-    "职责和限制：",
-    "1. 只能读取 brief、chat.md、任务记录、主沟通文件、子任务沟通目录和必要上下文；不得修改工作区内容或任务记录。",
-    "2. 只能写入上面指定的裁判主持人 artifact 文件；不要直接修改 chat.md、participants/*.md、cross-review.md、consensus.md 或 decision.json。",
-    "3. 必须基于 chat.md 中已有红蓝发言做控场，不要脱离已有讨论重写方案。",
-    "4. action=continue 表示红队提出了具体攻击点且蓝队尚未充分回应，或蓝队提出新方案但红队尚未攻击，需要再追加一个由你点名的发言批次。",
-    "5. action=finalize 表示蓝队方案已经被红队充分攻击且关键攻击点已被回应，下一步应收集最终立场并交给共识汇总器生成 decision.json。",
-    "6. action=block 表示红队指出的阻塞问题无法通过蓝队修正、补充证据、前置步骤或验收标准化解，必须进入人工复核。",
-    `7. 如果当前发言批次已经达到最大安全上限 ${maxDialogueTurns}/${maxDialogueTurns}，不得输出 action=continue，只能输出 finalize 或 block。`,
-    "8. 有红队提出 block 时，不要立即阻塞；先判断蓝队是否有机会通过下一批次回应、补充证据、前置步骤或验收标准化解。无法化解时再 block。",
-    `9. 群聊称呼必须和成员列表名称一致；写点名追问、群聊态势和理由时使用 ${formatLobsterGroupChatMemberName("成员名称")}，不要用英文成员 ID 作为称呼。`,
-    "",
-    "artifact 必须包含以下固定小节，标题必须完全一致：",
-    "## 群聊态势",
-    "用简短段落总结蓝队方案、红队攻击点、已化解问题和未回答问题。",
-    "",
-    "## 点名追问",
-    `如果 action=continue，列出下一批次需要蓝队或红队回答什么问题；成员称呼使用 ${formatLobsterGroupChatMemberName("成员名称")}；如果不继续，写“无”。`,
-    "",
-    "## 下一批发言者",
-    `如果 action=continue，列出 1-${LOBSTER_DEBATE_MAX_BATCH_SPEAKERS} 个下一批被点名发言的参与者 id，每行一个；如果不继续，写“无”。`,
-    "",
-    "## 主持人决策",
-    "只能写一个值：continue / finalize / block。",
-    "",
-    "## 理由",
-    "解释为什么继续、收束或阻塞。",
-    "",
-    "## 下一轮关注点",
-    "action=continue 时列出 1~5 条下一轮要聚焦的问题；否则写“无”。",
-    "",
-    "## JSON",
-    "必须提供一个 JSON 代码块，结构如下。action 只能是 continue / finalize / block；action=continue 时 nextSpeakerIds 必须给出 1-3 个下一批发言者 id。",
-    '{"artifactFile":"<moderator artifact path>","dialogueTurn":1,"action":"continue","reason":"原因","nextSpeakerIds":["blue_planner"],"nextFocus":["下一轮关注点"]}',
-    "",
-    "原始目标：",
-    task.rootPrompt,
-  ].join("\n");
-}
-
-function buildLobsterDebateConsensusModelPrompt(
-  task: LobsterTaskRecord,
-  round: number,
-  paths: LobsterDebatePaths,
-  participants: LobsterDebateParticipantRecord[],
-): string {
-  const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
-  return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗共识汇总。",
-    "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖红队 artifact 中的阻塞性异议，也不得忽略蓝队已给出的修正方案。",
-    `龙虾任务 ID：${task.id}`,
-    `当前轮次：${round}`,
-    `任务记录文件：${task.taskStoreFile}`,
-    `brief 文件：${paths.briefFile}`,
-    `群聊记录文件：${paths.chatFile}`,
-    `cross-review 输出文件：${paths.crossReviewFile}`,
-    `consensus 输出文件：${paths.consensusFile}`,
-    `decision 输出文件：${paths.decisionFile}`,
-    "",
-    "必须读取的参与者 artifact：",
-    participantFiles,
-    "",
-    "职责和限制：",
-    "1. 只能读取 brief.md、chat.md、所有最终 participants/*.md，以及 brief 中指向的任务记录/沟通文件；不要修改工作区内容或任务记录。",
-    "2. 必须生成 cross-review.md、consensus.md 和 decision.json 三个文件。",
-    "3. 如果任一动态参与者 artifact 缺失、存在未解决 blocking disagreement、或你无法生成合法 LobsterMainDecision，则 decision.json 必须走 blocked 路径，不得派发子任务。",
-    "4. 红队 artifact 的原始立场为 block 时，必须先判断阻塞项是否已被蓝队回应并能被本轮计划解决：如果能通过补充证据、前置步骤、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该红队最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
-    "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
-    "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
-    "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
-    "",
-    "cross-review.md 内容要求：",
-    "- 按群聊时间线总结蓝队方案、红队攻击和互相回应。",
-    "- 对比所有红蓝参与者的最终观点。",
-    "- 列出已解决分歧和未解决分歧。",
-    "- 标明是否存在阻塞性异议。",
-    "",
-    "consensus.md 必须包含一个 JSON 代码块，结构如下：",
-    `{"artifactFile":"<consensus.md path>","reached":true,"summary":"红蓝共识摘要","participantStances":[{"participantId":"blue_planner","stance":"agree","note":"蓝队方案已修正"},{"participantId":"red_attacker","stance":"agree_with_reservations","note":"红队攻击点已转为验收标准"}],"resolvedDisagreements":[{"id":"d1","title":"红队攻击点标题","participants":["blue_planner","red_attacker"],"severity":"non_blocking","resolution":"解决方式"}],"openDisagreements":[{"id":"d2","title":"未解决阻塞点","participants":["red_attacker"],"severity":"blocking","resolution":"未解决原因"}]}`,
-    "",
-    "decision.json 必须是纯 JSON 对象，符合现有 LobsterMainDecision 协议：",
-    '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-    '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
-    '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
-    "status=completed 时 answerConclusion 必须直接回答用户原始问题，finalSummary 用于整体任务完成说明。",
-    "",
-    "原始目标：",
-    task.rootPrompt,
-  ].join("\n");
 }
 
 function readTextFileIfNonEmpty(filePath: string): string | null {
@@ -8511,243 +4923,6 @@ async function closeCompletedLobsterDebateTabs(tabIds: string[]): Promise<void> 
   }
 }
 
-function buildLobsterDebateStartedText(
-  taskId: string,
-  round: number,
-  participants: LobsterDebateParticipantRecord[],
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
-    `龙虾任务：${taskId}`,
-    `brief：${paths.briefFile}`,
-    `chat：${paths.chatFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateDialogueTurnStartedText(
-  taskId: string,
-  round: number,
-  dialogueTurn: number,
-  maxDialogueTurns: number,
-  speakers: readonly LobsterDebateParticipantDefinition[],
-  paths: LobsterDebatePaths,
-): string {
-  const speakersLine = speakers.length > 0
-    ? `点名发言者：${speakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
-    : "点名发言者：未指定";
-  return [
-    `🦞 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
-    `龙虾任务：${taskId}`,
-    speakersLine,
-    `chat：${paths.chatFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateRerunText(taskId: string, round: number, reasons: string[]): string {
-  return [
-    `🦞 红蓝对抗恢复校验未通过，将重跑第 ${round} 轮辩论。`,
-    `龙虾任务：${taskId}`,
-    `原因：${reasons.join("；")}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateReuseText(taskId: string, round: number, paths: LobsterDebatePaths): string {
-  return [
-    `🦞 已复用第 ${round} 轮红蓝对抗共识。`,
-    `龙虾任务：${taskId}`,
-    `chat：${paths.chatFile}`,
-    `decision：${paths.decisionFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantRosterStartedText(
-  taskId: string,
-  round: number,
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 裁判主持人正在设计红蓝参与者：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
-    `roster：${paths.participantRosterFile}`,
-    `chat：${paths.chatFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantRosterFinishedText(
-  taskId: string,
-  round: number,
-  participants: readonly LobsterDebateParticipantDefinition[],
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
-    `龙虾任务：${taskId}`,
-    `参与者：${participants.map((participant) => formatLobsterGroupChatMemberName(participant.title)).join("、")}`,
-    `roster：${paths.participantRosterFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantRosterFailedText(
-  taskId: string,
-  round: number,
-  reasons: string[],
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 裁判主持人红蓝组队无效：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
-    `原因：${reasons.join("；") || "未提供具体原因"}`,
-    `roster：${paths.participantRosterFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantStartedText(
-  taskId: string,
-  round: number,
-  dialogueTurn: number,
-  title: string,
-  artifactFile: string,
-  finalPass: boolean,
-): string {
-  return [
-    finalPass
-      ? `🦞 红蓝参与者已启动最终立场收集：${title}`
-      : `🦞 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `artifact：${artifactFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantFinishedText(
-  taskId: string,
-  round: number,
-  dialogueTurn: number,
-  participant: LobsterDebateParticipantRecord,
-  finalPass: boolean,
-): string {
-  return [
-    finalPass
-      ? `🦞 红蓝最终立场已收集：${participant.title}`
-      : `🦞 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `状态：${participant.status}`,
-    `立场：${participant.stance ?? "未解析"}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateParticipantsCollectedText(
-  taskId: string,
-  round: number,
-  participants: LobsterDebateParticipantRecord[],
-): string {
-  const titles = participants.map((participant) => `${participant.title}=${participant.stance ?? "unknown"}`).join("、");
-  return [
-    `🦞 红蓝最终立场已收集：${participants.length} 个参与者`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `最终立场：${titles}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateConsensusStartedText(taskId: string, round: number, paths: LobsterDebatePaths): string {
-  return [
-    `🦞 红蓝对抗共识汇总已启动：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
-    `chat：${paths.chatFile}`,
-    `cross-review：${paths.crossReviewFile}`,
-    `consensus：${paths.consensusFile}`,
-    `decision：${paths.decisionFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateModeratorStartedText(
-  taskId: string,
-  round: number,
-  dialogueTurn: number,
-  artifactFile: string,
-): string {
-  return [
-    `🦞 裁判主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
-    `龙虾任务：${taskId}`,
-    `artifact：${artifactFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateModeratorFinishedText(
-  taskId: string,
-  round: number,
-  decision: LobsterDebateModeratorDecisionRecord,
-  maxDialogueTurns: number,
-  participants: readonly LobsterDebateParticipantDefinition[],
-): string {
-  const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
-  const nextSpeakerNames = decision.nextSpeakerIds
-    .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
-    .map(formatLobsterGroupChatMemberName);
-  return [
-    `🦞 裁判主持人控场已收束：${decision.action}`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
-    `理由：${decision.reason}`,
-    decision.nextSpeakerIds.length > 0
-      ? `下一批发言者：${nextSpeakerNames.join("、")}`
-      : "下一批发言者：无",
-    decision.nextFocus.length > 0
-      ? `下一轮关注点：${decision.nextFocus.join("；")}`
-      : "下一轮关注点：无",
-  ].join("\n");
-}
-
-function buildLobsterDebateFinalStanceStartedText(
-  taskId: string,
-  round: number,
-  decision: LobsterDebateModeratorDecisionRecord,
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 红蓝对抗进入最终立场收集：裁判动作 ${decision.action}`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `chat：${paths.chatFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateConsensusReachedText(
-  taskId: string,
-  round: number,
-  decision: LobsterMainDecision,
-  paths: LobsterDebatePaths,
-): string {
-  const decisionSummary = decision.status === "continue"
-    ? `派发 ${getLobsterDecisionSubtasks(decision).length} 个子任务，预计剩余 ${formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds) ?? "未记录"}`
-    : decision.status;
-  return [
-    `🦞 红蓝对抗共识已形成：${decisionSummary}`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `chat：${paths.chatFile}`,
-    `decision：${paths.decisionFile}`,
-  ].join("\n");
-}
-
-function buildLobsterDebateNeedsReviewText(
-  taskId: string,
-  round: number,
-  reviewSummary: ReturnType<typeof buildLobsterDebateNeedsReviewSummary>,
-  paths: LobsterDebatePaths,
-): string {
-  return [
-    `🦞 ${reviewSummary.title}，已进入人工复核：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
-    `摘要：${reviewSummary.details.join("；")}`,
-    `辩论目录：${paths.roundDir}`,
-  ].join("\n");
-}
-
 function appendLobsterDebateMainCommunicationLog(
   task: LobsterTaskRecord,
   round: number,
@@ -8774,14 +4949,6 @@ function appendLobsterDebateMainCommunicationLog(
       error: String(error),
     });
   }
-}
-
-function normalizeLobsterSupplementalRequirement(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized ? normalized : null;
 }
 
 function appendLobsterSupplementalRequirement(
@@ -8815,20 +4982,6 @@ function appendLobsterSupplementalRequirementToCommunication(
       error: String(error),
     });
   }
-}
-
-function buildLobsterSupplementalRequirementsLines(task: Pick<LobsterTaskRecord, "supplementalRequirements">): string[] {
-  const requirements = Array.isArray(task.supplementalRequirements)
-    ? task.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
-    : [];
-  if (requirements.length === 0) {
-    return [];
-  }
-  return [
-    "补充需求：",
-    ...requirements.map((item, index) => `${index + 1}. ${item}`),
-    "",
-  ];
 }
 
 function appendLobsterMainSubChatTaskEvent(task: LobsterTaskRecord, body: string): void {
@@ -8882,22 +5035,6 @@ function appendLobsterMainSubChatMainDecision(
   if (decision.status === "completed") {
     appendLobsterMainSubChatSection(task, "群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task, decision));
   }
-}
-
-function buildLobsterCompletedConclusionAndSummaryMarkdown(
-  task: LobsterTaskRecord,
-  decision?: LobsterMainDecision | null,
-): string {
-  const finalSummary = typeof decision?.finalSummary === "string" && decision.finalSummary.trim()
-    ? decision.finalSummary.trim()
-    : (typeof task.finalSummary === "string" && task.finalSummary.trim() ? task.finalSummary.trim() : "主任务已完成。");
-  return [
-    "### 问题回答结论",
-    resolveLobsterAnswerConclusion(task, decision),
-    "",
-    "### 完成摘要",
-    finalSummary,
-  ].join("\n");
 }
 
 function appendLobsterMainSubChatSubtaskStarted(
@@ -8954,20 +5091,6 @@ function appendLobsterMainSubChatSection(
   const chatFile = ensureLobsterMainSubChatTranscript(task);
   appendTextFileEnsuringDir(chatFile, `\n## ${heading}\n${body.trim()}\n`);
   refreshOpenLobsterDebateChatPanelForTask(task.id);
-}
-
-function resolveLobsterResumeRound(task: LobsterTaskRecord): number {
-  const recordedRound = typeof task.currentRound === "number" && Number.isFinite(task.currentRound)
-    ? Math.floor(task.currentRound)
-    : 0;
-  const latestRoundFromHistory = task.rounds.reduce((maxValue, current) => {
-    const round = typeof current.round === "number" && Number.isFinite(current.round)
-      ? Math.floor(current.round)
-      : 0;
-    return Math.max(maxValue, round);
-  }, 0);
-  const resolved = Math.max(recordedRound, latestRoundFromHistory, 1);
-  return Math.min(resolved, task.maxRounds);
 }
 
 type LobsterSubtaskRetryOptions = {
@@ -9479,39 +5602,12 @@ function buildLobsterSubtaskModelPrompt(
   ].join("\n");
 }
 
-function buildLobsterRoundSummary(round: number, role: LobsterTaskRole, subtaskId?: string): string {
-  const subtaskSuffix = role === "subtask" && subtaskId ? ` (${subtaskId})` : "";
-  return `${role === "main" ? "Main task" : "Subtask"}${subtaskSuffix} round ${round} finished from extension observation.`;
-}
-
 function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
   const tab = getConversationTabById(target.tabId);
   const sessionId = tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
   return sessionId
     ? loadSessionMessages(target.cli, sessionId)
     : getPendingSessionDraft(target.tabId, target.cli).messages;
-}
-
-function resolveLobsterSubtaskConversationContextFromMessages(
-  messages: ChatMessage[],
-): LobsterSubtaskConversationContext | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const taskId = normalizeLobsterTaskId(message?.lobsterTaskId);
-    const subtaskId = normalizeLobsterSubtaskId(message?.lobsterSubtaskId);
-    const round = normalizeLobsterRound(message?.lobsterRound);
-    if (message?.taskRole === "subtask" && taskId && subtaskId && round) {
-      return {
-        taskId,
-        subtaskId,
-        round,
-      };
-    }
-    if (message?.role === "user" && String(message.content || "").trim()) {
-      return null;
-    }
-  }
-  return null;
 }
 
 function resolveLobsterSubtaskConversationContext(
@@ -10037,20 +6133,6 @@ function buildLobsterSubtaskDecisionMarkdown(
   return `${lines.join("\n")}\n`;
 }
 
-function formatLobsterWriteFiles(writeFiles?: string[]): string | null {
-  if (!Array.isArray(writeFiles) || writeFiles.length === 0) {
-    return null;
-  }
-  return writeFiles.join("、");
-}
-
-function formatLobsterEstimatedRemainingRounds(value?: number): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  return `${Math.max(0, Math.floor(value))} 轮`;
-}
-
 function upsertLobsterSubtask(
   task: LobsterTaskRecord,
   subtask: NonNullable<LobsterMainDecision["subtask"]>
@@ -10151,15 +6233,6 @@ function buildLobsterSubtaskCompletionSummary(content: string | null): string | 
   return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized;
 }
 
-type LobsterVerificationState = "yes" | "no" | "unknown";
-
-type LobsterVerificationSignals = {
-  unitTest: LobsterVerificationState;
-  build: LobsterVerificationState;
-  unitTestEvidence?: string;
-  buildEvidence?: string;
-};
-
 function appendLobsterSubtaskCompletionAutoLog(
   task: LobsterTaskRecord,
   subtask: LobsterSubtaskRecord | undefined,
@@ -10221,87 +6294,6 @@ function appendLobsterSubtaskCompletionAutoLog(
       error: String(error),
     });
   }
-}
-
-function formatLobsterVerificationState(state: LobsterVerificationState): string {
-  if (state === "yes") {
-    return "已完成";
-  }
-  if (state === "no") {
-    return "未完成";
-  }
-  return "未明确";
-}
-
-function detectLobsterVerificationSignals(content: string): LobsterVerificationSignals {
-  const unitTest = detectLobsterVerificationState(content, "unitTest");
-  const build = detectLobsterVerificationState(content, "build");
-  return {
-    unitTest: unitTest.state,
-    build: build.state,
-    unitTestEvidence: unitTest.evidence,
-    buildEvidence: build.evidence,
-  };
-}
-
-function detectLobsterVerificationState(
-  content: string,
-  kind: "unitTest" | "build"
-): { state: LobsterVerificationState; evidence?: string } {
-  const normalized = String(content || "").trim();
-  if (!normalized) {
-    return { state: "unknown" };
-  }
-
-  const lineCandidates = normalized
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  const negativePatterns = kind === "unitTest"
-    ? [
-        /(?:未|没有|暂未|未能)\S{0,10}(?:单测|单元测试|测试)/i,
-        /(?:单测|单元测试|测试)\S{0,10}(?:未执行|未跑|未做|失败|fail)/i,
-        /\b(skip|skipped)\b.{0,16}\btest/i,
-      ]
-    : [
-        /(?:未|没有|暂未|未能)\S{0,10}(?:编译|构建|build)/i,
-        /(?:编译|构建|build)\S{0,10}(?:未执行|失败|fail)/i,
-      ];
-  const positivePatterns = kind === "unitTest"
-    ? [
-        /(?:已|完成|执行|运行|跑)\S{0,10}(?:单测|单元测试)/i,
-        /(?:单测|单元测试)\S{0,12}(?:通过|成功|pass|passed|ok)/i,
-        /\b(?:npm|pnpm|yarn)\s+test\b/i,
-        /\b(?:jest|vitest|mocha|pytest|go test)\b/i,
-      ]
-    : [
-        /(?:已|完成|执行|运行|跑)\S{0,10}(?:编译|构建|build)/i,
-        /(?:编译|构建|build)\S{0,12}(?:通过|成功|pass|passed|ok)/i,
-        /\b(?:npm|pnpm|yarn)\s+run\s+build\b/i,
-        /\btsc\b/i,
-      ];
-
-  const negativeEvidence = findFirstEvidenceLine(lineCandidates, negativePatterns);
-  if (negativeEvidence) {
-    return { state: "no", evidence: negativeEvidence };
-  }
-  const positiveEvidence = findFirstEvidenceLine(lineCandidates, positivePatterns);
-  if (positiveEvidence) {
-    return { state: "yes", evidence: positiveEvidence };
-  }
-  return { state: "unknown" };
-}
-
-function findFirstEvidenceLine(lines: string[], patterns: RegExp[]): string | undefined {
-  for (const line of lines) {
-    for (const pattern of patterns) {
-      if (pattern.test(line)) {
-        return line.length > 180 ? `${line.slice(0, 180)}...` : line;
-      }
-    }
-  }
-  return undefined;
 }
 
 function markLobsterTaskInterrupted(
@@ -10599,47 +6591,7 @@ function showLobsterSubtaskDecisionMarkdown(
 }
 
 function hasCompleteLobsterCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
-  const messages = getLobsterMessagesForTarget(target);
-  const state = getLobsterCompletionMessagesState(messages, taskId);
-  return state.hasAnswerConclusion && state.hasFinalSummary;
-}
-
-function getLobsterCompletionMessagesState(
-  messages: ChatMessage[],
-  taskId: string,
-): LobsterTaskCompletionMessagesState {
-  return messages.reduce<LobsterTaskCompletionMessagesState>((state, message) => {
-    if (isLobsterAnswerConclusionMessageForTask(message, taskId)) {
-      state.hasAnswerConclusion = true;
-    }
-    if (isLobsterFinalSummaryMessageForTask(message, taskId) && isCompleteLobsterFinalSummaryContent(message.content)) {
-      state.hasFinalSummary = true;
-    }
-    return state;
-  }, { hasAnswerConclusion: false, hasFinalSummary: false });
-}
-
-function isLobsterAnswerConclusionMessageForTask(message: ChatMessage, taskId: string): boolean {
-  return message.role === "assistant"
-    && message.taskRole === "main"
-    && message.lobsterTaskId === taskId
-    && message.lobsterAnswerConclusion === true
-    && typeof message.content === "string"
-    && message.content.trim().length > 0;
-}
-
-function isLobsterFinalSummaryMessageForTask(message: ChatMessage, taskId: string): boolean {
-  return message.role === "assistant"
-    && message.taskRole === "main"
-    && message.lobsterTaskId === taskId
-    && message.lobsterFinalSummary === true
-    && typeof message.content === "string"
-    && message.content.trim().length > 0;
-}
-
-function isCompleteLobsterFinalSummaryContent(content: string): boolean {
-  return /(?:^|\n)##\s+问题回答结论(?:\n|$)/u.test(content)
-    && /(?:^|\n)##\s+整体任务总结(?:\n|$)/u.test(content);
+  return hasCompleteLobsterCompletionMessages(getLobsterMessagesForTarget(target), taskId);
 }
 
 function appendLobsterAnswerConclusionMessage(
@@ -10799,138 +6751,8 @@ function getLatestLobsterRoundRunRecord(
   return null;
 }
 
-function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
-  return `🦞 龙虾任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
-}
-
-function buildLobsterTaskResumedText(task: LobsterTaskRecord, round: number): string {
-  return t("run.lobsterResumed", { taskId: task.id, round, file: task.taskStoreFile });
-}
-
-function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
-  return [
-    `🦞 龙虾任务已完成：${task.id}`,
-    `记录文件：${task.taskStoreFile}`,
-  ].join("\n");
-}
-
-function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
-  const failureSuffix = isLobsterTaskBlockedByMainAiFailureLimit(task)
-    ? `\n主任务 AI 调用已连续失败 ${normalizeLobsterMainAiFailureCount(task.mainAiFailureCount)}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
-    : "";
-  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
-}
-
-function buildLobsterMainResumeText(
-  taskId: string,
-  round: number,
-  subtasks: LobsterSubtaskRecord[],
-): string {
-  const subtaskTitles = subtasks.map((subtask) => subtask.title).join("、");
-  return [
-    `🦞 正在唤醒主任务复核：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
-    `已完成子任务：${subtaskTitles || "无"}`,
-  ].join("\n");
-}
-
-function buildLobsterSubtaskBatchStartedText(
-  taskId: string,
-  round: number,
-  subtasks: LobsterSubtaskRecord[],
-  executionPlan: LobsterSubtaskExecutionPlan<LobsterSubtaskRecord>,
-): string {
-  const isSingleParallelGroup = executionPlan.groups.length <= 1;
-  const lines = [
-    isSingleParallelGroup
-      ? `🦞 并发子任务批次已启动：${subtasks.length} 个`
-      : `🦞 子任务批次已规划：${subtasks.length} 个，将按 ${executionPlan.groups.length} 组执行（组内并发、组间串行）`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
-  ];
-  if (!isSingleParallelGroup) {
-    lines.push(`执行计划：${describeLobsterExecutionPlan(executionPlan).join("；")}`);
-  }
-  if (executionPlan.conflicts.length > 0) {
-    const conflictSummaries = executionPlan.conflicts.slice(0, 3).map((conflict) => {
-      const reason = conflict.reason === "writeFiles" ? "写入文件" : "冲突组";
-      return `${conflict.leftId} ↔ ${conflict.rightId}（${reason}: ${conflict.value}）`;
-    });
-    lines.push(`串行兜底：检测到 ${executionPlan.conflicts.length} 个声明冲突，${conflictSummaries.join("；")}`);
-  }
-  return lines.join("\n");
-}
-
-function buildLobsterSubtaskExecutionGroupStartedText(
-  taskId: string,
-  round: number,
-  groupIndex: number,
-  groupCount: number,
-  subtasks: LobsterSubtaskRecord[],
-): string {
-  return [
-    `🦞 子任务执行组已启动：第 ${groupIndex + 1}/${groupCount} 组，${subtasks.length} 个`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `组内子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
-  ].join("\n");
-}
-
-function buildLobsterSubtaskBatchCompletedText(
-  taskId: string,
-  round: number,
-  subtasks: LobsterSubtaskRecord[],
-): string {
-  return [
-    `🦞 子任务批次已全部完成：${subtasks.length} 个`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
-  ].join("\n");
-}
-
-function buildLobsterSubtaskRetryText(taskId: string, subtaskId: string, retryCount: number): string {
-  return [
-    `🦞 子任务执行出错，1 分钟后自动重试（${retryCount}/${LOBSTER_SUBTASK_RETRY_MAX_RETRIES}）。`,
-    `龙虾任务：${taskId}`,
-    `子任务：${subtaskId}`,
-  ].join("\n");
-}
-
-function buildLobsterSubtaskStartedText(
-  taskId: string,
-  subtask: LobsterSubtaskRecord,
-  round: number,
-  communicationFile: string,
-  retryCount: number,
-): string {
-  const retryText = retryCount > 0 ? `（第 ${retryCount} 次重试）` : "";
-  return [
-    `🦞 子任务已启动${retryText}：${subtask.title}`,
-    `龙虾任务：${taskId}`,
-    `轮次：${round}`,
-    `沟通文件：${communicationFile}`,
-  ].join("\n");
-}
-
 function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "gemini" {
   return cli === "codex" || cli === "claude" || cli === "gemini";
-}
-
-function buildUserChatMessage(input: PromptRunInput, createdAt: number, messageId: string): ChatMessage {
-  return {
-    id: messageId,
-    role: "user",
-    content: input.displayPrompt,
-    createdAt,
-    merge: false,
-    contextTags: input.contextTags,
-    taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
-  };
 }
 
 function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
@@ -10952,27 +6774,6 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     ...input,
     preloadedUserMessageId: messageId,
   };
-}
-
-function getLatestAssistantResponseForLongTermMemory(messages: readonly ChatMessage[]): string | null {
-  let fallback: string | null = null;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || message.role !== "assistant") {
-      continue;
-    }
-    const content = String(message.content ?? "").trim();
-    if (!content || message.kind === "thinking") {
-      continue;
-    }
-    if (message.codexFinalAnswer === true) {
-      return content;
-    }
-    if (!fallback) {
-      fallback = content;
-    }
-  }
-  return fallback;
 }
 
 function maybePersistLongTermMemoryFromRun(options: {
@@ -11168,8 +6969,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   startTraceMessage(runCli);
   activeTraceBuffer = "";
   activeTraceSegmentLines = [];
-  skipUserBlock = false;
-  skipCodexBlock = false;
+  resetTraceLineFilterState(activeTraceLineFilterState);
   activeCompletionSent = false;
 
   sendRunStatus("start");
@@ -11340,7 +7140,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             lobsterTaskId: input.lobsterTaskId,
             lobsterRound: input.lobsterRound,
             lobsterSubtaskId: input.lobsterSubtaskId,
-          });
+          }, { createMessageId, sendPanelMessage });
           appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
           hiddenRetryCount += 1;
           void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", {
@@ -11401,7 +7201,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         lobsterTaskId: input.lobsterTaskId,
         lobsterRound: input.lobsterRound,
         lobsterSubtaskId: input.lobsterSubtaskId,
-      });
+      }, { createMessageId, sendPanelMessage });
       appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
       continue;
@@ -11412,7 +7212,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       const errnoError = error as NodeJS.ErrnoException;
       const isNotFound = errnoError?.code === "ENOENT";
       const rawUserMessage = isNotFound
-        ? buildCliCommandNotFoundMessage(runCli, command)
+        ? buildCliCommandNotFoundMessage(runCli, command, process.platform, t)
         : error.message;
       const userMessage = buildHiddenRetryFailureMessage({
         hiddenRetryCount,
@@ -11461,177 +7261,11 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   }
 }
 
-function extractRecentTurns(messages: ChatMessage[], maxTurns: number): ChatMessage[] {
-  // Keep the last N user turns (+ following assistant if present).
-  const result: ChatMessage[] = [];
-  let collected = 0;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (!msg) {
-      continue;
-    }
-    if (msg.role === "user") {
-      // include assistant after this user message if it exists
-      const assistant = messages[i + 1];
-      if (assistant && assistant.role === "assistant") {
-        result.push(assistant);
-      }
-      result.push(msg);
-      collected += 1;
-      if (collected >= maxTurns) {
-        break;
-      }
-    }
-  }
-  return result.reverse();
-}
-
-function formatTurnsForBootstrap(messages: ChatMessage[]): string {
-  const lines: string[] = [];
-  for (const message of messages) {
-    const content = (message.content ?? "").trimEnd();
-    if (!content) {
-      continue;
-    }
-    if (message.role === "user") {
-      lines.push("USER:");
-      lines.push(content);
-      lines.push("");
-    } else if (message.role === "assistant") {
-      lines.push("ASSISTANT:");
-      lines.push(content);
-      lines.push("");
-    }
-  }
-  return lines.join("\n").trim() + "\n";
-}
-
-function buildCompactionPrompt(): string {
-  return [
-    t("compact.systemPrompt"),
-    t("compact.systemPrompt.reqTitle"),
-    t("compact.systemPrompt.req1"),
-    t("compact.systemPrompt.req2"),
-    t("compact.systemPrompt.req3"),
-    "",
-    t("compact.systemPrompt.summaryTitle"),
-    "FACTS:",
-    "- ...",
-    "TODOS:",
-    "- [ ] ...",
-    "DECISIONS:",
-    "- ...",
-    "CONSTRAINTS:",
-    "- ...",
-    "INDEX:",
-    "- file: <path> - <note>",
-    "- cmd: <command> - <note>",
-    "- conclusion: <text> - <note>",
-  ].join("\n");
-}
-
 type TraceMessageOptions = {
   merge?: boolean;
   persist?: boolean;
   forceTraceBubble?: boolean;
 };
-
-type TraceDisplayResult = {
-  content: string;
-  shouldPersist: boolean;
-};
-
-type TraceMessageKind = "thinking" | "normal" | "tool-use";
-
-function isCommandExecutionTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  const trimmed = firstLine.trim();
-  return trimmed.startsWith("exec") || trimmed.startsWith("【执行命令】");
-}
-
-function isFileUpdateTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return firstLine.trim().startsWith("file update");
-}
-
-function isToolUseTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:tool|调用工具)[:：]?\s*(.+)?$/i.test(firstLine.trim());
-}
-
-function isToolResultTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:tool\s*result|工具结果)\b/i.test(firstLine.trim());
-}
-
-function isWarningOrErrorTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
-}
-
-function isWebSearchTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:web\s*search\b|【网络查询】)/i.test(firstLine.trim());
-}
-
-function isThinkingTrace(content: string): boolean {
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  const trimmed = firstLine.trim();
-  return trimmed.startsWith("thinking") || trimmed.startsWith("思考");
-}
-
-function resolveTraceKind(content: string, kind: TraceMessageKind): TraceMessageKind {
-  if (kind === "thinking" || isThinkingTrace(content)) {
-    return "thinking";
-  }
-  if (isToolUseTrace(content)) {
-    return "tool-use";
-  }
-  return "normal";
-}
-
-function normalizeTraceContentForDisplay(content: string, cli: CliName | null = activeCliForRun): TraceDisplayResult {
-  const { content: execContent, shouldPersist: execShouldPersist } =
-    formatCodexExecSegmentForDisplay(content, cli);
-  const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(execContent, cli);
-  return { content: displayContent, shouldPersist: shouldPersist && execShouldPersist };
-}
-
-function resolveTraceMerge(content: string, merge?: boolean): boolean {
-  if (merge !== undefined) {
-    return merge;
-  }
-  // Structured trace events keep an independent bubble so tags, style and collapse state stay stable.
-  return !(
-    isCommandExecutionTrace(content)
-    || isFileUpdateTrace(content)
-    || isToolUseTrace(content)
-    || isToolResultTrace(content)
-    || isWarningOrErrorTrace(content)
-    || isWebSearchTrace(content)
-  );
-}
 
 function appendTraceMessage(
   content: string,
@@ -11644,7 +7278,7 @@ function appendTraceMessage(
   if (!content.trim()) {
     return;
   }
-  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content);
+  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content, activeCliForRun);
   if (!displayContent.trim()) {
     return;
   }
@@ -11769,480 +7403,64 @@ async function resolveInteractiveSessionForResume(
   return repairedSessionId;
 }
 
-async function runGeminiNativeContextCompaction(options: {
-  sessionId: string;
-  tabId?: string | null;
-  selectedModel: string | null;
-  cwd: string | null;
-  thinkingMode: ThinkingMode;
-  onTraceText?: (text: string) => void;
-  onAssistantText?: (text: string) => void;
-  onRawStream?: (chunk: string, stream: "stdout" | "stderr") => void;
-}): Promise<{ compacted: boolean; sessionId: string; resultStatus: string | null; errorText: string | null }> {
-  const runCli: CliName = "gemini";
-  const geminiRunProfile = prepareGeminiRunProfile(options.selectedModel, options.thinkingMode, options.cwd ?? undefined);
-  const runtimeModel = geminiRunProfile.runtimeModel ?? options.selectedModel;
-  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
-  const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
-  let adoptedSessionId = options.sessionId;
-
-  const attemptResult = await new Promise<
-    { type: "exit"; code: number | null }
-    | { type: "error"; error: Error }
-  >((resolve) => {
-    let settled = false;
-    const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolve(result);
-    };
-
-    const process = runCliStream(
-      runCli,
-      GEMINI_NATIVE_COMPACT_PROMPT,
-      {
-        onStdout: (chunk: string) => {
-          options.onRawStream?.(chunk, "stdout");
-          processGeminiStreamJsonChunk(geminiStreamState, chunk, {
-            onAssistantText: (text) => {
-              options.onAssistantText?.(text);
-            },
-            onTraceText: (text) => options.onTraceText?.(text),
-            onSessionId: (nextSessionId) => {
-              adoptedSessionId = nextSessionId;
-            },
-            onPlainText: (text) => {
-              options.onAssistantText?.(text);
-            },
-          });
-        },
-        onStderr: (chunk: string) => {
-          options.onRawStream?.(chunk, "stderr");
-          if (chunk.trim()) {
-            options.onTraceText?.(chunk.trimEnd());
-          }
-        },
-        onExit: (code: number | null) => settle({ type: "exit", code }),
-        onError: (error: Error) => settle({ type: "error", error }),
-      },
-      {
-        cwd: options.cwd ?? undefined,
-        sessionId: options.sessionId,
-        thinkingMode: options.thinkingMode,
-        model: runtimeModel,
-        envOverrides: runtimeEnvOverrides,
-        processLabel: buildProcessLabel(runCli, options.sessionId),
-      }
-    );
-
-    activeProcess = process;
-  });
-
-  finalizeGeminiStreamJsonState(geminiStreamState, {
-    onAssistantText: (text) => {
-      options.onAssistantText?.(text);
-    },
-    onTraceText: (text) => options.onTraceText?.(text),
-    onSessionId: (nextSessionId) => {
-      adoptedSessionId = nextSessionId;
-    },
-    onPlainText: (text) => {
-      options.onAssistantText?.(text);
-    },
-  });
-
-  activeProcess = undefined;
-
-  if (attemptResult.type === "error") {
-    throw attemptResult.error;
-  }
-
-  if (attemptResult.code !== 0) {
-    throw new Error(geminiStreamState.errorText || `Gemini compaction exited with code ${attemptResult.code ?? 1}`);
-  }
-
-  if (geminiStreamState.resultStatus && geminiStreamState.resultStatus !== "success") {
-    throw new Error(geminiStreamState.errorText || `Gemini compaction result status: ${geminiStreamState.resultStatus}`);
-  }
-
-  return {
-    compacted: true,
-    sessionId: adoptedSessionId,
-    resultStatus: geminiStreamState.resultStatus,
-    errorText: geminiStreamState.errorText,
-  };
-}
-
-type ContextCompactionOptions = {
-  silent?: boolean;
-  cli?: CliName;
-  tabId?: string | null;
-  sessionId?: string | null;
-};
-
 async function runContextCompaction(options: ContextCompactionOptions = {}): Promise<boolean> {
-  const cli = options.cli ?? currentCli;
-  const tabId = typeof options.tabId === "string" ? options.tabId : getActiveConversationTabId();
-  const silent = options.silent === true;
-  if (!isInteractiveSupported(cli)) {
-    if (!silent) {
-      appendSystemMessageForCli(cli, getCurrentSessionId(cli), t("rules.compactUnsupported"));
-    }
-    return false;
-  }
-  if (activeProcess || activeInteractiveStop) {
-    if (!silent) {
-      appendSystemMessageForCli(cli, getCurrentSessionId(cli), t("rules.compactRunning"));
-    }
-    return false;
-  }
-  const currentSessionId = options.sessionId ?? getCurrentSessionId(cli);
-  if (!currentSessionId) {
-    if (!silent) {
-      appendSystemMessageForCli(cli, currentSessionId, t("rules.compactNoSession"));
-    }
-    return false;
-  }
-  const resolvedSessionId = await resolveInteractiveSessionForResume(cli, currentSessionId, tabId);
-  if (resolvedSessionId === undefined || !resolvedSessionId) {
-    return false;
-  }
-  const sessionId = resolvedSessionId;
-
-  const cwd = resolveWorkspaceCwd();
-  const selectedModel = getSelectedCliModel(cli);
-  const thinkingMode = getEffectiveThinkingMode(cli, selectedModel);
-  const interactiveMode = getWorkspaceInteractiveMode(cli);
-  applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
-
-  const args = getEffectiveCliArgs(cli, selectedModel);
-  const command = getCliCommand(cli);
-  const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
-  const commandForRunner = cli === "claude"
-    ? (resolvedCommand?.command ?? "claude")
-    : command;
-  const claudeEntrypoint = cli === "claude"
-    ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
-    : undefined;
-  logCliStartup({
-    cli,
-    cwd,
-    command: commandForRunner,
-    args,
-    env: sanitizeEnv(process.env),
-    mode: "interactive",
-  });
-
-  const messageTarget = loadSessionMessages(cli, sessionId);
-  const runId = createMessageId();
-  activeRunId = runId;
-  applyProcessTitle(runId, cli, sessionId);
-  startTaskRun(runId, cli, sessionId, t("common.compactContext"));
-  activeMessageTarget = messageTarget;
-  activeSessionId = sessionId;
-  activeCliForRun = cli;
-  activeTabIdForRun = tabId;
-
-  sendRunStatus("start", undefined, { activity: "contextCompaction" });
-
-  let stopCurrentTurn: (() => void) | null = null;
-  const stopFn = (): void => {
-    if (activeRunId !== runId) {
-      return;
-    }
-    void logInfo("context-compact-stop-requested", { cli, sessionId, runId });
-    if (activeInteractiveStop === stopFn) {
-      activeInteractiveStop = null;
-    }
-    appendStopMessageToStore();
-    try {
+  return runContextCompactionWithDeps({
+    getCurrentCli: () => currentCli,
+    getActiveConversationTabId,
+    isInteractiveSupported,
+    appendSystemMessageForCli,
+    getCurrentSessionId,
+    hasActiveProcessOrInteractiveStop: () => Boolean(activeProcess || activeInteractiveStop),
+    resolveInteractiveSessionForResume,
+    resolveWorkspaceCwd,
+    getSelectedCliModel,
+    getEffectiveThinkingMode,
+    getWorkspaceInteractiveMode,
+    applyThinkingWorkspaceFiles,
+    getEffectiveCliArgs,
+    getCliCommand,
+    resolveClaudeInteractiveEntrypoint,
+    logCliStartup,
+    loadSessionMessages,
+    createMessageId,
+    beginActiveRunState: ({ runId, cli, sessionId, tabId, messageTarget }) => {
+      activeRunId = runId;
+      applyProcessTitle(runId, cli, sessionId);
+      startTaskRun(runId, cli, sessionId, t("common.compactContext"));
+      activeMessageTarget = messageTarget;
+      activeSessionId = sessionId;
+      activeCliForRun = cli;
+      activeTabIdForRun = tabId;
+    },
+    getActiveRunId: () => activeRunId,
+    setActiveInteractiveStop: (stop) => {
+      activeInteractiveStop = stop;
+    },
+    isActiveInteractiveStop: (stop) => activeInteractiveStop === stop,
+    appendStopMessageToStore,
+    killActiveProcess: () => {
       activeProcess?.kill();
-      stopCurrentTurn?.();
-    } catch {
-      // ignore
-    }
-    sendRunStatus("stopped", t("run.stoppedByUser"));
-    appendCompletionMessage("stopped");
-    persistActiveMessages();
-    clearActiveRun();
-  };
-  activeInteractiveStop = stopFn;
-
-  try {
-    if (cli === "codex") {
-      const mappedThreadId = resolveInteractiveMappedId(cli, sessionId);
-      if (!mappedThreadId) {
-        appendSystemMessage(t("rules.compactNoSession"));
-        cleanupAfterRun("end");
-        return false;
-      }
-
-      const runner = interactiveRunnerManager.getOrCreateCodexRunner({
-        sessionId,
-        threadId: mappedThreadId,
-        command,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: selectedModel,
-        multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-      });
-      stopCurrentTurn = () => runner.stopAndRebuild();
-      interactiveRunnerManager?.beginActiveRun(cli, sessionId);
-      try {
-        const result = await runner.compactThread();
-        upsertInteractiveMapping(cli, sessionId, result.threadId, { freezePrevious: mappedThreadId });
-        appendSystemMessage(
-          t("compact.codexNativeCompressed", { threadId: result.threadId })
-        );
-        void logInfo("context-compact-codex-complete", {
-          cli,
-          sessionId,
-          threadId: result.threadId,
-          compacted: result.compacted,
-        });
-        interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-          multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
-        });
-      } finally {
-        interactiveRunnerManager?.endActiveRun(cli, sessionId);
-      }
-      cleanupAfterRun("end");
-      return true;
-    }
-
-    if (cli === "claude") {
-      const mappedSessionId = resolveInteractiveMappedId(cli, sessionId);
-      let runner = interactiveRunnerManager.getOrCreateClaudeRunner({
-        sessionId,
-        mappedSessionId,
-        command: commandForRunner,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: selectedModel,
-        entrypoint: claudeEntrypoint,
-      });
-
-      stopCurrentTurn = () => runner.stopAndRebuild();
-
-      const runClaudeSummaryCompactionFallback = async (): Promise<void> => {
-        const summaryResult = await (async () => {
-          interactiveRunnerManager?.beginActiveRun(cli, sessionId);
-          try {
-            return await runner.runForText(buildCompactionPrompt());
-          } finally {
-            interactiveRunnerManager?.endActiveRun(cli, sessionId);
-          }
-        })();
-        const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
-        const previousSessionId = summaryResult.sessionId ?? runner.getSessionId() ?? mappedSessionId;
-        if (!compactionSummary || !previousSessionId) {
-          appendSystemMessage(t("compact.failEmpty"));
-          return;
-        }
-
-        const recent = extractRecentTurns(messageTarget, KEEP_RECENT_TURNS);
-        const bootstrap = [
-          t("compact.resumeNotice"),
-          "",
-          compactionSummary,
-          "",
-          t("compact.systemPrompt.recentTitle"),
-          formatTurnsForBootstrap(recent),
-        ].join("\n");
-
-        runner.dispose();
-        runner = new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
-          command: commandForRunner,
-          args,
-          cwd: cwd ?? undefined,
-          thinkingMode,
-          interactiveMode,
-          model: selectedModel,
-          entrypoint: claudeEntrypoint,
-          sessionId: null,
-        });
-
-        stopCurrentTurn = () => runner.stopAndRebuild();
-        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
-        try {
-          await runner.runStreamed(bootstrap, {
-            onAssistantDelta: () => {},
-            onTrace: () => {},
-            onEvent: (event) => {
-              sendRawStreamDelta(event, { stream: "event", appendNewline: true });
-            },
-            onTaskListUpdate: (items) => {
-              sendPanelMessage({ type: "taskListUpdate", items });
-            },
-            onSessionId: (newSessionId) => {
-              updateProcessTitle(cli, newSessionId);
-              upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: previousSessionId });
-              appendSystemMessage(
-                t("compact.summaryCompressed", { from: previousSessionId, to: newSessionId })
-              );
-              appendTraceMessage(compactionSummary);
-              void logInfo("context-compact-claude-complete", {
-                cli,
-                sessionId,
-                newSessionId,
-                previousSessionId,
-                mode: "summary-fallback",
-              });
-              interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
-            },
-          });
-        } finally {
-          interactiveRunnerManager?.endActiveRun(cli, sessionId);
-        }
-      };
-
-      let nativeResult: Awaited<ReturnType<typeof runner.compactSession>> | null = null;
-      try {
-        interactiveRunnerManager?.beginActiveRun(cli, sessionId);
-        try {
-          nativeResult = await runner.compactSession();
-        } finally {
-          interactiveRunnerManager?.endActiveRun(cli, sessionId);
-        }
-      } catch (error) {
-        if (!isClaudeNativeCompactUnsupportedError(error)) {
-          throw error;
-        }
-        void logInfo("context-compact-claude-native-fallback", {
-          cli,
-          sessionId,
-          previousSessionId: mappedSessionId,
-          reason: "unsupported-native-compact",
-          error: error instanceof Error ? error.message : String(error),
-        });
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      if (!nativeResult) {
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      const previousSessionId = nativeResult.previousSessionId ?? mappedSessionId;
-      const resolvedSessionId = nativeResult.sessionId ?? previousSessionId;
-      if (!nativeResult.compacted || !resolvedSessionId) {
-        void logInfo("context-compact-claude-native-fallback", {
-          cli,
-          sessionId,
-          previousSessionId,
-          nextSessionId: nativeResult.sessionId,
-          reason: "missing-native-compact-signal",
-        });
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      updateProcessTitle(cli, resolvedSessionId);
-      upsertInteractiveMapping(
-        cli,
-        sessionId,
-        resolvedSessionId,
-        previousSessionId && previousSessionId !== resolvedSessionId
-          ? { freezePrevious: previousSessionId }
-          : {}
-      );
-      appendSystemMessage(
-        previousSessionId && previousSessionId !== resolvedSessionId
-          ? t("compact.claudeNativeCompressedForked", { from: previousSessionId, to: resolvedSessionId })
-          : t("compact.claudeNativeCompressed", { sessionId: resolvedSessionId })
-      );
-      void logInfo("context-compact-claude-native-complete", {
-        cli,
-        sessionId,
-        previousSessionId,
-        resolvedSessionId,
-        compacted: nativeResult.compacted,
-      });
-      interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
-      cleanupAfterRun("end");
-      return true;
-    }
-
-    if (cli === "gemini") {
-      const result = await runGeminiNativeContextCompaction({
-        sessionId,
-        selectedModel,
-        cwd: cwd ?? null,
-        thinkingMode,
-        onTraceText: (text) => appendTraceMessage(`${text}\n`),
-        onAssistantText: (text) => {
-          if (text.trim()) {
-            appendAssistantChunk(text);
-          }
-        },
-        onRawStream: (chunk, stream) => {
-          sendRawStreamDelta(chunk, { stream });
-        },
-      });
-      adoptSessionId(cli, result.sessionId, getActiveConversationTabId());
-      appendSystemMessage(t("compact.geminiNativeCompressed", { sessionId: result.sessionId }));
-      void logInfo("context-compact-gemini-native-complete", {
-        cli,
-        sessionId,
-        resolvedSessionId: result.sessionId,
-        resultStatus: result.resultStatus,
-      });
-      cleanupAfterRun("end");
-      return true;
-    }
-
-    cleanupAfterRun("end");
-    return true;
-  } catch (error) {
-    if (!silent) {
-      appendSystemMessage(t("compact.failException"));
-    }
-    void logError("context-compact-command-failed", {
-      cli,
-      sessionId,
-      error: error instanceof Error ? error.message : String(error),
-      silent,
-    });
-    cleanupAfterRun(silent ? "end" : "error");
-    return false;
-  } finally {
-    if (activeInteractiveStop === stopFn) {
-      activeInteractiveStop = null;
-    }
-  }
-
-  function cleanupAfterRun(status: TaskRunStatus, userMessage?: string): void {
-    if (activeRunId !== runId) {
-      void logInfo("context-compact-command-stale-end-ignored", {
-        cli,
-        sessionId,
-        runId,
-        status,
-      });
-      return;
-    }
-    void logInfo("context-compact-command-end", {
-      cli,
-      sessionId,
-      runId,
-      status,
-      message: userMessage ?? null,
-    });
-    sendRunStatus(status === "end" ? "end" : status, userMessage);
-    appendCompletionMessage(status);
-    persistActiveMessages();
-    clearActiveRun();
-  }
+    },
+    sendRunStatus,
+    appendCompletionMessage,
+    persistActiveMessages,
+    clearActiveRun,
+    interactiveRunnerManager,
+    resolveInteractiveMappedId,
+    appendSystemMessage,
+    getWorkspaceCodexMultiAgentEnabled,
+    upsertInteractiveMapping,
+    sendRawStreamDelta,
+    sendPanelMessage: (message) => sendPanelMessage(message),
+    updateProcessTitle,
+    appendTraceMessage,
+    prepareGeminiRunProfile,
+    setActiveProcess: (process) => {
+      activeProcess = process;
+    },
+    appendAssistantChunk,
+    adoptSessionId,
+  }, options);
 }
 
 function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boolean {
@@ -12826,7 +8044,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         lobsterTaskId: input.lobsterTaskId,
         lobsterRound: input.lobsterRound,
         lobsterSubtaskId: input.lobsterSubtaskId,
-      }));
+      }, { createMessageId }));
       appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
       void logInfo("runPrompt-interactive-missing-final-conclusion-retry", {
@@ -13154,7 +8372,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
           lobsterTaskId: input.lobsterTaskId,
           lobsterRound: input.lobsterRound,
           lobsterSubtaskId: input.lobsterSubtaskId,
-        }));
+        }, { createMessageId }));
         appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
         hiddenRetryCount += 1;
         void logInfo("runPrompt-interactive-hidden-retry-queued", {
@@ -13203,7 +8421,7 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
   const openSettingsLabel = t("common.openSettings");
   const message = [
     t("cli.install.prompt", { cli: getCliDisplayName(cli), command }),
-    buildCliCommandNotFoundMessage(cli, command),
+    buildCliCommandNotFoundMessage(cli, command, process.platform, t),
   ].join("\n\n");
   const selection = await vscode.window.showWarningMessage(
     message,
@@ -13230,23 +8448,6 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
       `sinitek-cli-tools.commands.${cli}`
     );
   }
-}
-
-function buildCliCommandNotFoundMessage(cli: CliName, command: string): string {
-  const configKey = `sinitek-cli-tools.commands.${cli}`;
-  if (process.platform === "win32") {
-    return [
-      t("cli.notFound.win.title", { command }),
-      t("cli.notFound.win.hint1", { configKey, command }),
-      t("cli.notFound.win.hint2", { command }),
-      t("cli.notFound.win.hint3"),
-    ].join("\n");
-  }
-  return [
-    t("cli.notFound.unix.title", { command }),
-    t("cli.notFound.unix.hint1", { configKey }),
-    t("cli.notFound.unix.hint2", { command }),
-  ].join("\n");
 }
 
 function stopActiveRun(): void {
@@ -13281,8 +8482,7 @@ function clearActiveRun(): void {
   activeTraceMessageId = undefined;
   activeTraceBuffer = "";
   activeTraceSegmentLines = [];
-  skipUserBlock = false;
-  skipCodexBlock = false;
+  resetTraceLineFilterState(activeTraceLineFilterState);
   activeCompletionSent = false;
   activeRunId = undefined;
   activeTaskRun = null;
@@ -13351,7 +8551,7 @@ function appendAssistantChunk(chunk: string, kind?: ChatMessage["kind"]): void {
     content: chunk,
     kind,
   });
-  appendAssistantChunkToStore(chunk, kind);
+  appendAssistantChunkToStore(activeMessageTarget, activeMessageIndex, chunk, kind);
 }
 
 function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
@@ -13409,7 +8609,7 @@ function appendTraceLines(chunk: string): void {
   const lines = combined.split("\n");
   activeTraceBuffer = lines.pop() ?? "";
   lines.forEach((line) => {
-    if (shouldIgnoreTraceLine(line, activeTraceSegmentLines.length > 0)) {
+    if (shouldIgnoreTraceLine(activeTraceLineFilterState, line, activeTraceSegmentLines.length > 0, activeCliForRun)) {
       return;
     }
     if (isTraceSegmentStart(line) && activeTraceSegmentLines.length) {
@@ -13424,7 +8624,7 @@ function flushTraceBuffer(): void {
     return;
   }
   const line = activeTraceBuffer.trim();
-  if (line && !shouldIgnoreTraceLine(line, activeTraceSegmentLines.length > 0)) {
+  if (line && !shouldIgnoreTraceLine(activeTraceLineFilterState, line, activeTraceSegmentLines.length > 0, activeCliForRun)) {
     activeTraceSegmentLines.push(line);
   }
   flushTraceSegment();
@@ -13440,9 +8640,10 @@ function flushTraceSegment(): void {
   }
   const content = activeTraceSegmentLines.join("\n");
   const { content: execDisplayContent, shouldPersist: execShouldPersist } =
-    formatCodexExecSegmentForDisplay(content);
+    formatCodexExecSegmentForDisplay(content, activeCliForRun);
   const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(
-    execDisplayContent
+    execDisplayContent,
+    activeCliForRun
   );
   const kind = getTraceSegmentKind(displayContent);
   if (kind === "thinking") {
@@ -13473,203 +8674,6 @@ function flushTraceSegment(): void {
     kind,
     ...mergePayload,
   });
-}
-
-function formatCodexExecSegmentForDisplay(
-  content: string,
-  cli: CliName | null = activeCliForRun
-): { content: string; shouldPersist: boolean } {
-  if (cli !== "codex") {
-    return { content, shouldPersist: true };
-  }
-  const lines = content.split("\n");
-  const firstLineIndex = lines.findIndex((line) => line.trim());
-  if (firstLineIndex === -1) {
-    return { content, shouldPersist: true };
-  }
-  const firstLine = lines[firstLineIndex].trim();
-  if (!firstLine.startsWith("exec") && !firstLine.startsWith("【执行命令】")) {
-    return { content, shouldPersist: true };
-  }
-
-  let commandLine = firstLine;
-  let consumedLineIndex = firstLineIndex;
-  if (firstLine === "exec" || firstLine === "exec:" || firstLine === "【执行命令】") {
-    const nextLineIndex = lines.findIndex((line, index) => index > firstLineIndex && line.trim());
-    if (nextLineIndex !== -1) {
-      const normalized = lines[nextLineIndex].trim().replace(/^\$\s*/, "");
-      commandLine = `exec ${normalized}`;
-      consumedLineIndex = nextLineIndex;
-    }
-  } else if (firstLine.startsWith("exec:")) {
-    const normalized = firstLine.slice("exec:".length).trim();
-    if (normalized) {
-      commandLine = `exec ${normalized}`;
-    }
-  } else if (firstLine.startsWith("【执行命令】")) {
-    const normalized = firstLine.slice("【执行命令】".length).trim();
-    if (normalized) {
-      commandLine = `exec ${normalized}`;
-    } else {
-      commandLine = "exec";
-    }
-  }
-
-  const trailingLines = lines.slice(consumedLineIndex + 1);
-  const merged = [commandLine, ...trailingLines].join("\n").trimEnd();
-  return { content: merged || commandLine, shouldPersist: true };
-}
-
-function isGeminiNoiseTraceLine(trimmed: string): boolean {
-  if (!trimmed) {
-    return false;
-  }
-  const normalized = trimmed.toLowerCase();
-  if (normalized.includes(".npmrc") && normalized.includes("globalconfig")) {
-    return true;
-  }
-  if (normalized.includes("yolo mode is enabled")) {
-    return true;
-  }
-  if (normalized.includes("nvm use --delete-prefix") && normalized.includes("--silent")) {
-    return true;
-  }
-  if (normalized.includes("failed to connect to ide companion extension")) {
-    return true;
-  }
-  return false;
-}
-
-function normalizeGeminiTraceLine(line: string): string {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    return line;
-  }
-  if (/^\[(?:error|err)\]\s*/i.test(trimmed)) {
-    return `error ${trimmed.replace(/^\[(?:error|err)\]\s*/i, "").trim()}`;
-  }
-  if (/^\[(?:warn|warning)\]\s*/i.test(trimmed)) {
-    return `warning ${trimmed.replace(/^\[(?:warn|warning)\]\s*/i, "").trim()}`;
-  }
-  if (/^(?:running|executing)\s+command(?:\s*[:：]|\s+)\s*/i.test(trimmed)) {
-    return `exec ${trimmed.replace(/^(?:running|executing)\s+command(?:\s*[:：]|\s+)\s*/i, "").trim()}`;
-  }
-  if (/^(?:tool(?:\s+call)?|调用工具)\s*[:：]\s*/i.test(trimmed)) {
-    return `tool: ${trimmed.replace(/^(?:tool(?:\s+call)?|调用工具)\s*[:：]\s*/i, "").trim()}`;
-  }
-  if (/^(?:tool\s*result|工具结果)\s*[:：]?\s*/i.test(trimmed)) {
-    return `tool result ${trimmed.replace(/^(?:tool\s*result|工具结果)\s*[:：]?\s*/i, "").trim()}`.trim();
-  }
-  if (/^(?:thinking|thought|思考)\s*[:：]\s*/i.test(trimmed)) {
-    return `thinking ${trimmed.replace(/^(?:thinking|thought|思考)\s*[:：]\s*/i, "").trim()}`;
-  }
-  if (/^web\s*search\s*[:：]\s*/i.test(trimmed)) {
-    return `web search ${trimmed.replace(/^web\s*search\s*[:：]\s*/i, "").trim()}`;
-  }
-  return trimmed;
-}
-
-function formatGeminiTraceSegmentForDisplay(
-  content: string,
-  cli: CliName | null = activeCliForRun
-): { content: string; shouldPersist: boolean } {
-  if (cli !== "gemini") {
-    return { content, shouldPersist: true };
-  }
-  const normalizedLines = content
-    .split("\n")
-    .map((line) => normalizeGeminiTraceLine(line));
-  const normalizedContent = normalizedLines.join("\n").trimEnd();
-  if (!normalizedContent.trim()) {
-    return { content: "", shouldPersist: false };
-  }
-  return { content: normalizedContent, shouldPersist: true };
-}
-
-function formatTraceSegmentForDisplay(
-  content: string,
-  cli: CliName | null = activeCliForRun
-): { content: string; shouldPersist: boolean } {
-  if (cli === "gemini") {
-    return formatGeminiTraceSegmentForDisplay(content, cli);
-  }
-  return { content, shouldPersist: true };
-}
-
-function shouldIgnoreTraceLine(line: string, hasSegment: boolean): boolean {
-  const trimmed = line.trim();
-  if (!trimmed) {
-    if (skipUserBlock) {
-      skipUserBlock = false;
-    }
-    if (skipCodexBlock) {
-      skipCodexBlock = false;
-    }
-    return !hasSegment;
-  }
-  if (activeCliForRun === "gemini" && isGeminiNoiseTraceLine(trimmed)) {
-    return true;
-  }
-  if (skipUserBlock) {
-    if (isTraceSegmentStart(trimmed)) {
-      skipUserBlock = false;
-    }
-    return true;
-  }
-  if (skipCodexBlock) {
-    if (isTraceSegmentStart(trimmed) || trimmed.startsWith("tokens used")) {
-      skipCodexBlock = false;
-    }
-    return true;
-  }
-  if (trimmed === "user") {
-    skipUserBlock = true;
-    return true;
-  }
-  if (trimmed === "codex") {
-    skipCodexBlock = true;
-    return true;
-  }
-  const ignoredPrefixes = [
-    "OpenAI Codex",
-    "--------",
-    "workdir:",
-    "model:",
-    "provider:",
-    "approval:",
-    "sandbox:",
-    "reasoning effort:",
-    "reasoning summaries:",
-    "session id:",
-    "mcp startup:",
-    "tokens used",
-  ];
-  if (ignoredPrefixes.some((prefix) => trimmed.startsWith(prefix))) {
-    return true;
-  }
-  return false;
-}
-
-function isTraceSegmentStart(line: string): boolean {
-  const trimmed = line.trim();
-  return Boolean(
-    trimmed.startsWith("thinking")
-      || trimmed.startsWith("思考")
-      || trimmed.startsWith("exec")
-      || trimmed.startsWith("file update")
-      || trimmed.startsWith("apply_patch")
-      || trimmed.startsWith("warning")
-      || trimmed.startsWith("error")
-      || /^\[(?:error|err|warn|warning)\]/i.test(trimmed)
-      || /^(?:tool(?:\s+call)?|调用工具)\s*[:：]/i.test(trimmed)
-      || /^(?:tool\s*result|工具结果)/i.test(trimmed)
-      || /^(?:running|executing)\s+command/i.test(trimmed)
-      || /^(?:web\s*search|【网络查询】)/i.test(trimmed)
-  );
-}
-
-function getTraceSegmentKind(content: string): "thinking" | "normal" {
-  return isThinkingTrace(content) ? "thinking" : "normal";
 }
 
 function startTaskRun(
@@ -13727,29 +8731,14 @@ function sendRunStatus(
 }
 
 function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null): string {
-  const hasDuration = typeof durationMs === "number" && Number.isFinite(durationMs);
-  const durationText = hasDuration ? formatDuration(Math.max(0, durationMs)) : null;
-  if (status === "error") {
-    return durationText ? t("run.failedWithDuration", { duration: durationText }) : t("run.failed");
-  }
-  if (status === "stopped") {
-    return durationText ? t("run.stoppedWithDuration", { duration: durationText }) : t("run.stopped");
-  }
-  return durationText ? t("run.completedWithDuration", { duration: durationText }) : t("run.completed");
-}
-
-function normalizeRawStreamContent(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (content === null || content === undefined) {
-    return "";
-  }
-  try {
-    return JSON.stringify(content);
-  } catch {
-    return String(content);
-  }
+  return buildTaskRunCompletionTextWithLabels(status, durationMs, {
+    failed: t("run.failed"),
+    stopped: t("run.stopped"),
+    completed: t("run.completed"),
+    failedWithDuration: (duration) => t("run.failedWithDuration", { duration }),
+    stoppedWithDuration: (duration) => t("run.stoppedWithDuration", { duration }),
+    completedWithDuration: (duration) => t("run.completedWithDuration", { duration }),
+  });
 }
 
 function sendRawStreamDelta(
@@ -13771,29 +8760,7 @@ function sendRawStreamDelta(
 }
 
 function sendPanelMessage(payload: Record<string, unknown>): void {
-  const type = typeof payload.type === "string" ? payload.type : "";
-  const shouldAttachTabId = Boolean(
-    activeTabIdForRun
-    && (
-      type === "appendMessage"
-      || type === "assistantDelta"
-      || type === "traceSegment"
-      || type === "rawStreamDelta"
-      || type === "removeMessage"
-      || type === "replaceMessage"
-      || type === "runStatus"
-      || type === "taskListUpdate"
-    )
-    && !Object.prototype.hasOwnProperty.call(payload, "tabId")
-  );
-  if (shouldAttachTabId) {
-    viewProvider?.postMessage({
-      ...payload,
-      tabId: activeTabIdForRun,
-    });
-    return;
-  }
-  viewProvider?.postMessage(payload);
+  sendPanelMessageWithActiveTab(payload, activeTabIdForRun, (message) => viewProvider?.postMessage(message));
 }
 
 function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus): TaskRunRecord | null {
@@ -13819,279 +8786,26 @@ function appendTaskRun(record: TaskRunRecord): void {
   writeTaskStore(store);
 }
 
-function normalizeTaskRunRecord(record: unknown): TaskRunRecord | null {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-  const raw = record as Partial<TaskRunRecord>;
-  const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
-  if (typeof raw.id !== "string" || !raw.id.trim() || !cli) {
-    return null;
-  }
-  if (typeof raw.prompt !== "string" || typeof raw.startedAt !== "number") {
-    return null;
-  }
-  if (typeof raw.endedAt !== "number" || typeof raw.durationMs !== "number") {
-    return null;
-  }
-  if (raw.status !== "end" && raw.status !== "error" && raw.status !== "stopped") {
-    return null;
-  }
+function getTaskStoreDeps() {
   return {
-    id: raw.id,
-    cli,
-    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : null,
-    prompt: raw.prompt,
-    startedAt: raw.startedAt,
-    endedAt: raw.endedAt,
-    durationMs: raw.durationMs,
-    status: raw.status,
-    taskRole: isLobsterTaskRole(raw.taskRole) ? raw.taskRole : undefined,
-    lobsterTaskId: typeof raw.lobsterTaskId === "string" ? raw.lobsterTaskId : undefined,
-    lobsterRound: typeof raw.lobsterRound === "number" ? raw.lobsterRound : undefined,
-    lobsterSubtaskId: typeof raw.lobsterSubtaskId === "string" ? raw.lobsterSubtaskId : undefined,
+    taskStoreFile: TASK_STORE_FILE,
+    isCliName,
+    isLobsterTaskRole,
+    isTimestampWithinHistoryRetention,
+    logError: (event: string, payload?: unknown) => void logError(event, payload),
   };
-}
-
-function ensureTaskStore(store?: TaskStore): TaskStore {
-  const now = Date.now();
-  const runs = Array.isArray(store?.runs)
-    ? store.runs
-        .map((record) => normalizeTaskRunRecord(record))
-        .filter((record): record is TaskRunRecord => Boolean(record))
-        .filter((record) => isTimestampWithinHistoryRetention(record.endedAt, now))
-    : [];
-  return { runs };
 }
 
 function readTaskStore(): TaskStore {
-  try {
-    if (!fs.existsSync(TASK_STORE_FILE)) {
-      return { runs: [] };
-    }
-    const raw = fs.readFileSync(TASK_STORE_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.runs)) {
-      return { runs: [] };
-    }
-    return ensureTaskStore({ runs: parsed.runs as TaskRunRecord[] });
-  } catch (error) {
-    void logError("task-store-read-error", { error: String(error) });
-    return { runs: [] };
-  }
+  return readTaskStoreWithDeps(getTaskStoreDeps());
 }
 
 function writeTaskStore(store: TaskStore): void {
-  try {
-    const dirPath = path.dirname(TASK_STORE_FILE);
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.writeFileSync(TASK_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
-  } catch (error) {
-    void logError("task-store-write-error", { error: String(error) });
-  }
+  writeTaskStoreWithDeps(store, getTaskStoreDeps());
 }
 
 function cleanupTaskStoreRetention(): void {
-  try {
-    if (!fs.existsSync(TASK_STORE_FILE)) {
-      return;
-    }
-    const normalized = readTaskStore();
-    if (normalized.runs.length > 0) {
-      writeTaskStore(normalized);
-      return;
-    }
-    fs.unlinkSync(TASK_STORE_FILE);
-  } catch (error) {
-    void logError("task-store-retention-cleanup-error", { error: String(error) });
-  }
-}
-
-function sanitizeLobsterPathSegment(value: string, fallback: string): string {
-  const normalized = String(value ?? "").trim().replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return normalized || fallback;
-}
-
-function getLobsterTaskStoreSessionFile(workspaceKey: string, cli: CliName, sessionId: string): string {
-  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
-  const sessionSegment = sanitizeLobsterPathSegment(sessionId, "session");
-  return path.join(LOBSTER_TASK_STORE_DIR, workspaceSegment, cli, sessionSegment, LOBSTER_TASK_STORE_FILENAME);
-}
-
-function getLobsterTaskStorePendingFile(workspaceKey: string, cli: CliName, taskId: string): string {
-  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
-  const taskSegment = sanitizeLobsterPathSegment(taskId, "task");
-  return path.join(
-    LOBSTER_TASK_STORE_DIR,
-    workspaceSegment,
-    cli,
-    "__pending__",
-    taskSegment,
-    LOBSTER_TASK_STORE_FILENAME
-  );
-}
-
-function buildLobsterTaskStoreFile(cli: CliName, workspaceKey: string, sessionId: string | null, taskId: string): string {
-  if (sessionId && sessionId.trim()) {
-    return getLobsterTaskStoreSessionFile(workspaceKey, cli, sessionId);
-  }
-  return getLobsterTaskStorePendingFile(workspaceKey, cli, taskId);
-}
-
-function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
-  if (!fs.existsSync(dirPath)) {
-    return [];
-  }
-  const collected: string[] = [];
-  const stack = [dirPath];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current) {
-      continue;
-    }
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch (error) {
-      void logError("lobster-task-store-readdir-error", { dirPath: current, error: String(error) });
-      continue;
-    }
-    entries.forEach((entry) => {
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-        return;
-      }
-      if (entry.isFile() && entry.name === LOBSTER_TASK_STORE_FILENAME) {
-        collected.push(fullPath);
-      }
-    });
-  }
-  return collected;
-}
-
-function listLobsterTaskStoreFiles(): string[] {
-  const files = collectLobsterTaskStoreFilesFromDir(LOBSTER_TASK_STORE_DIR);
-  if (fs.existsSync(LOBSTER_TASK_STORE_LEGACY_FILE)) {
-    files.push(LOBSTER_TASK_STORE_LEGACY_FILE);
-  }
-  return Array.from(new Set(files));
-}
-
-function resolveLobsterTaskStoreFileForTask(taskId: string): string | null {
-  const cached = lobsterTaskStoreFileCache.get(taskId);
-  if (cached && fs.existsSync(cached)) {
-    const cachedStore = readLobsterTaskStore(cached);
-    if (cachedStore.tasks.some((task) => task.id === taskId)) {
-      return cached;
-    }
-    lobsterTaskStoreFileCache.delete(taskId);
-  }
-  const candidateFiles = listLobsterTaskStoreFiles();
-  for (const filePath of candidateFiles) {
-    const store = readLobsterTaskStore(filePath);
-    if (store.tasks.some((task) => task.id === taskId)) {
-      lobsterTaskStoreFileCache.set(taskId, filePath);
-      return filePath;
-    }
-  }
-  return null;
-}
-
-function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null {
-  const tab = getConversationTabById(target.tabId);
-  return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-}
-
-function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
-  return resolvePromptRunTargetSessionId(target);
-}
-
-type LobsterCommunicationPaths = {
-  dir: string;
-  mainFile: string;
-  subtasksDir: string;
-};
-
-function getLobsterCommunicationPaths(taskId: string): LobsterCommunicationPaths {
-  const dir = path.join(LOBSTER_COMMUNICATION_DIR, taskId);
-  return {
-    dir,
-    mainFile: path.join(dir, "main-task.md"),
-    subtasksDir: path.join(dir, "subtasks"),
-  };
-}
-
-function ensureLobsterCommunicationFiles(taskId: string, rootPrompt: string): LobsterCommunicationPaths {
-  const paths = getLobsterCommunicationPaths(taskId);
-  try {
-    fs.mkdirSync(paths.subtasksDir, { recursive: true });
-    if (!fs.existsSync(paths.mainFile)) {
-      fs.writeFileSync(paths.mainFile, [
-        `# 龙虾任务沟通文件`,
-        ``,
-        `- 任务 ID：${taskId}`,
-        `- 创建时间：${new Date().toISOString()}`,
-        ``,
-        `## 原始目标`,
-        rootPrompt,
-        ``,
-        `## 主任务复核记录`,
-      ].join("\n"), "utf8");
-    }
-  } catch (error) {
-    void logError("lobster-communication-init-error", { taskId, error: String(error) });
-  }
-  return paths;
-}
-
-function buildLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string, round: number, retryCount: number): string {
-  const safeSubtaskId = subtaskId.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const retrySuffix = retryCount > 0 ? `-retry-${retryCount}` : "";
-  return path.join(getLobsterCommunicationPaths(taskId).subtasksDir, `round-${round}-${safeSubtaskId}${retrySuffix}.md`);
-}
-
-function prepareLobsterSubtaskCommunicationFile(
-  task: LobsterTaskRecord,
-  subtask: LobsterSubtaskRecord,
-  round: number,
-  retryCount: number
-): string {
-  const filePath = buildLobsterSubtaskCommunicationFile(task.id, subtask.id, round, retryCount);
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, [
-        `# 子任务沟通文件`,
-        ``,
-        `- 龙虾任务 ID：${task.id}`,
-        `- 子任务 ID：${subtask.id}`,
-        `- 子任务标题：${subtask.title}`,
-        `- 授权写入文件/范围：${formatLobsterWriteFiles(subtask.writeFiles) ?? "未声明；以子任务指令为准"}`,
-        `- 轮次：${round}`,
-        `- 重试次数：${retryCount}`,
-        `- 创建时间：${new Date().toISOString()}`,
-        ``,
-        `## 执行报告`,
-        `请在本节写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。`,
-      ].join("\n"), "utf8");
-    }
-  } catch (error) {
-    void logError("lobster-subtask-communication-init-error", { taskId: task.id, subtaskId: subtask.id, filePath, error: String(error) });
-  }
-  updateLobsterSubtaskCommunicationFile(task.id, subtask.id, filePath);
-  return filePath;
-}
-
-function updateLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string, filePath: string): void {
-  const task = readLobsterTaskRecord(taskId);
-  if (!task) {
-    return;
-  }
-  const subTasks = task.subTasks.map((item) => item.id === subtaskId ? { ...item, communicationFile: filePath, updatedAt: Date.now() } : item);
-  updateLobsterTaskRecord(taskId, { subTasks, updatedAt: Date.now() });
+  cleanupTaskStoreRetentionWithDeps(getTaskStoreDeps());
 }
 
 function createLobsterTaskRecord(
@@ -14135,471 +8849,25 @@ function createLobsterTaskRecord(
   const store = readLobsterTaskStore(taskStoreFile);
   store.tasks.push(record);
   writeLobsterTaskStore(taskStoreFile, store);
-  lobsterTaskStoreFileCache.set(id, taskStoreFile);
   return record;
 }
 
-function readLobsterTaskRecord(taskId: string): LobsterTaskRecord | null {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
-  if (!storeFile) {
-    return null;
-  }
-  const task = readLobsterTaskStore(storeFile).tasks.find((item) => item.id === taskId) ?? null;
-  if (!task) {
-    return null;
-  }
-  if (task.taskStoreFile !== storeFile) {
-    return { ...task, taskStoreFile: storeFile };
-  }
-  return task;
-}
-
-function updateLobsterTaskRecord(
-  taskId: string,
-  patch: Partial<LobsterTaskRecord>,
-  options: { allowCompletedToRunning?: boolean } = {}
-): LobsterTaskRecord | null {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
-  if (!storeFile) {
-    return null;
-  }
-  const store = readLobsterTaskStore(storeFile);
-  const index = store.tasks.findIndex((task) => task.id === taskId);
-  if (index < 0) {
-    return null;
-  }
-  const existing = store.tasks[index];
-  const nextStatus = existing.status === "completed" && patch.status === "running" && options.allowCompletedToRunning !== true
-    ? existing.status
-    : patch.status ?? existing.status;
-  const next: LobsterTaskRecord = {
-    ...existing,
-    ...patch,
-    taskStoreFile: typeof patch.taskStoreFile === "string" && patch.taskStoreFile.trim()
-      ? patch.taskStoreFile
-      : existing.taskStoreFile,
-    status: nextStatus,
-    subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
-    rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
-    debateRounds: Array.isArray(patch.debateRounds) ? patch.debateRounds : existing.debateRounds,
-    supplementalRequirements: Array.isArray(patch.supplementalRequirements)
-      ? patch.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
-      : existing.supplementalRequirements,
-    completionRoundSummaries: Array.isArray(patch.completionRoundSummaries)
-      ? patch.completionRoundSummaries
-      : existing.completionRoundSummaries,
-    completionRequirementCoverage: Array.isArray(patch.completionRequirementCoverage)
-      ? patch.completionRequirementCoverage
-      : existing.completionRequirementCoverage,
-    updatedAt: patch.updatedAt ?? Date.now(),
-  };
-  const targetStoreFile = next.taskStoreFile;
-  if (targetStoreFile !== storeFile) {
-    store.tasks.splice(index, 1);
-    if (store.tasks.length > 0) {
-      writeLobsterTaskStore(storeFile, store);
-    } else if (fs.existsSync(storeFile)) {
-      try {
-        fs.unlinkSync(storeFile);
-      } catch (error) {
-        void logError("lobster-task-store-delete-error", { filePath: storeFile, error: String(error) });
-      }
-    }
-    const targetStore = readLobsterTaskStore(targetStoreFile);
-    const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
-    if (targetIndex >= 0) {
-      targetStore.tasks[targetIndex] = next;
-    } else {
-      targetStore.tasks.push(next);
-    }
-    writeLobsterTaskStore(targetStoreFile, targetStore);
-    lobsterTaskStoreFileCache.set(taskId, targetStoreFile);
-    return next;
-  }
-  store.tasks[index] = next;
-  writeLobsterTaskStore(storeFile, store);
-  lobsterTaskStoreFileCache.set(taskId, storeFile);
-  return next;
-}
-
-function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
-  if (!storeFile) {
-    return;
-  }
-  const store = readLobsterTaskStore(storeFile);
-  const index = store.tasks.findIndex((task) => task.id === taskId);
-  if (index < 0) {
-    return;
-  }
-  const task = store.tasks[index];
-  const existingRoundIndex = task.rounds.findIndex((item) => (
-    item.round === round.round
-    && item.role === round.role
-    && (item.subtaskId ?? null) === (round.subtaskId ?? null)
-  ));
-  const rounds = [...task.rounds];
-  if (existingRoundIndex >= 0) {
-    rounds[existingRoundIndex] = { ...rounds[existingRoundIndex], ...round };
-  } else {
-    rounds.push(round);
-  }
-  store.tasks[index] = {
-    ...task,
-    rounds,
-    currentRound: Math.max(task.currentRound, round.round),
-    updatedAt: Date.now(),
-  };
-  writeLobsterTaskStore(storeFile, store);
-}
-
-function bindLobsterTaskToSession(taskId: string, sessionId: string): LobsterTaskRecord | null {
-  const normalizedSessionId = sessionId.trim();
-  if (!normalizedSessionId) {
-    return null;
-  }
-  const task = readLobsterTaskRecord(taskId);
-  if (!task) {
-    return null;
-  }
-  const targetStoreFile = getLobsterTaskStoreSessionFile(task.workspaceKey, task.cli, normalizedSessionId);
-  if (task.sessionId === normalizedSessionId && task.taskStoreFile === targetStoreFile) {
-    return task;
-  }
-  return updateLobsterTaskRecord(taskId, {
-    sessionId: normalizedSessionId,
-    taskStoreFile: targetStoreFile,
-    updatedAt: Date.now(),
+function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null {
+  return resolvePromptRunTargetSessionIdWithDeps(target, (candidate) => {
+    const tab = getConversationTabById(candidate.tabId);
+    return tab ? getConversationTabSessionIdForCli(tab, candidate.cli) : null;
   });
 }
 
-function isLobsterTaskCompleted(task: LobsterTaskRecord): boolean {
-  return task.status === "completed";
+function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
+  return resolveLobsterTaskSessionIdWithDeps(target, (candidate) => {
+    const tab = getConversationTabById(candidate.tabId);
+    return tab ? getConversationTabSessionIdForCli(tab, candidate.cli) : null;
+  });
 }
 
 function isLobsterTaskBlockedByMainAiFailureLimit(task: Pick<LobsterTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">): boolean {
-  return isLobsterMainAiFailureLimitReached(task);
-}
-
-function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): LobsterTaskRecord | null {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-  const raw = record as Partial<LobsterTaskRecord>;
-  const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
-  if (typeof raw.id !== "string" || !raw.id.trim() || !cli || typeof raw.rootPrompt !== "string") {
-    return null;
-  }
-  const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Date.now();
-  const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : createdAt;
-  const status = isLobsterTaskStatus(raw.status) ? raw.status : "running";
-  const workspaceKey = typeof raw.workspaceKey === "string" ? raw.workspaceKey : WORKSPACE_KEY_FALLBACK;
-  const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : null;
-  const taskStoreFile = typeof raw.taskStoreFile === "string" && raw.taskStoreFile.trim()
-    ? raw.taskStoreFile
-    : (sourceFile ?? buildLobsterTaskStoreFile(cli, workspaceKey, sessionId, raw.id));
-  const subTasks = Array.isArray(raw.subTasks)
-    ? raw.subTasks.map(normalizeLobsterSubtaskRecord).filter((item): item is LobsterSubtaskRecord => Boolean(item))
-    : [];
-  const rounds = Array.isArray(raw.rounds)
-    ? raw.rounds.map(normalizeLobsterRoundRecord).filter((item): item is LobsterRoundRecord => Boolean(item))
-    : [];
-  const completionRoundSummaries = Array.isArray(raw.completionRoundSummaries)
-    ? raw.completionRoundSummaries.map(normalizeSingleLobsterRoundSummary).filter((item): item is LobsterRoundSummary => Boolean(item))
-    : [];
-  const completionRequirementCoverage = normalizeLobsterAcceptanceChecks(
-    (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
-  );
-  const supplementalRequirements = Array.isArray((raw as { supplementalRequirements?: unknown }).supplementalRequirements)
-    ? (raw as { supplementalRequirements: unknown[] }).supplementalRequirements
-      .map((item) => String(item).trim())
-      .filter(Boolean)
-    : [];
-  const debateRounds = normalizeLobsterDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
-  return {
-    id: raw.id,
-    cli,
-    workspaceKey,
-    taskStoreFile,
-    rootPrompt: raw.rootPrompt,
-    executionMode: normalizeLobsterExecutionMode((raw as { executionMode?: unknown }).executionMode),
-    status,
-    createdAt,
-    updatedAt,
-    maxRounds: normalizeStoredLobsterMaxRounds(raw.maxRounds),
-    currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
-    communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLobsterCommunicationPaths(raw.id).dir,
-    mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLobsterCommunicationPaths(raw.id).mainFile,
-    sessionId,
-    activeSubtaskId: typeof raw.activeSubtaskId === "string" ? raw.activeSubtaskId : null,
-    activeSubtaskIds: Array.isArray((raw as { activeSubtaskIds?: unknown }).activeSubtaskIds)
-      ? (raw as { activeSubtaskIds: unknown[] }).activeSubtaskIds
-        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
-      : (typeof raw.activeSubtaskId === "string" && raw.activeSubtaskId.trim() ? [raw.activeSubtaskId] : []),
-    subTasks,
-    rounds,
-    answerConclusion: typeof raw.answerConclusion === "string" ? raw.answerConclusion : undefined,
-    finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
-    estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
-      (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
-    ),
-    mainAiFailureCount: normalizeLobsterMainAiFailureCount(
-      (raw as { mainAiFailureCount?: unknown }).mainAiFailureCount
-    ),
-    mainAiFailureLimitReached: Boolean((raw as { mainAiFailureLimitReached?: unknown }).mainAiFailureLimitReached),
-    mainAiLastFailureAt: typeof (raw as { mainAiLastFailureAt?: unknown }).mainAiLastFailureAt === "number"
-      ? (raw as { mainAiLastFailureAt: number }).mainAiLastFailureAt
-      : undefined,
-    mainAiLastFailureMessage: typeof (raw as { mainAiLastFailureMessage?: unknown }).mainAiLastFailureMessage === "string"
-      ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
-      : undefined,
-    supplementalRequirements,
-    debateRounds,
-    completionRoundSummaries,
-    completionRequirementCoverage,
-  };
-}
-
-function normalizeLobsterDebateRounds(value: unknown): LobsterDebateRoundRecord<LobsterMainDecision>[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  return value.filter((item): item is LobsterDebateRoundRecord<LobsterMainDecision> => (
-    Boolean(item && typeof item === "object" && !Array.isArray(item))
-  ));
-}
-
-function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | null {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-  const raw = record as Partial<LobsterSubtaskRecord>;
-  if (typeof raw.id !== "string" || !raw.id.trim() || typeof raw.title !== "string") {
-    return null;
-  }
-  const status = raw.status === "pending" || raw.status === "running" || raw.status === "completed" || raw.status === "skipped" || raw.status === "blocked"
-    ? raw.status
-    : "pending";
-  return {
-    id: raw.id,
-    title: raw.title,
-    prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
-    conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
-    writeFiles: normalizeLobsterWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
-    status,
-    summary: typeof raw.summary === "string" ? raw.summary : undefined,
-    communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
-    updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
-  };
-}
-
-function normalizeLobsterRoundRecord(record: unknown): LobsterRoundRecord | null {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-  const raw = record as Partial<LobsterRoundRecord>;
-  if (typeof raw.round !== "number" || !isLobsterTaskRole(raw.role)) {
-    return null;
-  }
-  if (raw.status !== "end" && raw.status !== "error" && raw.status !== "stopped") {
-    return null;
-  }
-  return {
-    round: raw.round,
-    role: raw.role,
-    subtaskId: typeof raw.subtaskId === "string" ? raw.subtaskId : undefined,
-    status: raw.status,
-    startedAt: typeof raw.startedAt === "number" ? raw.startedAt : Date.now(),
-    endedAt: typeof raw.endedAt === "number" ? raw.endedAt : Date.now(),
-    summary: typeof raw.summary === "string" ? raw.summary : undefined,
-  };
-}
-
-function isLobsterTaskStatus(value: unknown): value is LobsterTaskStatus {
-  return value === "running" || value === "completed" || value === "needs-review" || value === "error" || value === "stopped";
-}
-
-function ensureLobsterTaskStore(
-  store?: LobsterTaskStore,
-  options: { sourceFile?: string } = {}
-): LobsterTaskStore {
-  const now = Date.now();
-  const tasks = Array.isArray(store?.tasks)
-    ? store.tasks
-      .map((record) => normalizeLobsterTaskRecord(record, options.sourceFile))
-      .filter((record): record is LobsterTaskRecord => Boolean(record))
-      .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
-    : [];
-  return { tasks };
-}
-
-function readLobsterTaskStore(filePath: string): LobsterTaskStore {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return { tasks: [] };
-    }
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.tasks)) {
-      return { tasks: [] };
-    }
-    return ensureLobsterTaskStore({ tasks: parsed.tasks as LobsterTaskRecord[] }, { sourceFile: filePath });
-  } catch (error) {
-    void logError("lobster-task-store-read-error", { filePath, error: String(error) });
-    return { tasks: [] };
-  }
-}
-
-function writeLobsterTaskStore(filePath: string, store: LobsterTaskStore): void {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify(ensureLobsterTaskStore(store, { sourceFile: filePath }), null, 2),
-      "utf8"
-    );
-  } catch (error) {
-    void logError("lobster-task-store-write-error", { filePath, error: String(error) });
-  }
-}
-
-function cleanupLobsterTaskStoreRetention(): void {
-  try {
-    const filePaths = listLobsterTaskStoreFiles();
-    filePaths.forEach((filePath) => {
-      const normalized = readLobsterTaskStore(filePath);
-      if (normalized.tasks.length > 0) {
-        writeLobsterTaskStore(filePath, normalized);
-        normalized.tasks.forEach((task) => {
-          lobsterTaskStoreFileCache.set(task.id, filePath);
-        });
-        return;
-      }
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    });
-  } catch (error) {
-    void logError("lobster-task-store-retention-cleanup-error", { error: String(error) });
-  }
-}
-
-function collectRetainedLobsterTaskIds(): Set<string> {
-  const retainedTaskIds = new Set<string>();
-  const filePaths = listLobsterTaskStoreFiles();
-  filePaths.forEach((filePath) => {
-    const store = readLobsterTaskStore(filePath);
-    store.tasks.forEach((task) => {
-      retainedTaskIds.add(task.id);
-    });
-  });
-  return retainedTaskIds;
-}
-
-function getLatestMtimeMsInTree(rootPath: string): number {
-  let latestMtimeMs = 0;
-  const stack = [rootPath];
-  while (stack.length > 0) {
-    const currentPath = stack.pop();
-    if (!currentPath) {
-      continue;
-    }
-    let stats: fs.Stats;
-    try {
-      stats = fs.statSync(currentPath);
-    } catch {
-      continue;
-    }
-    if (Number.isFinite(stats.mtimeMs)) {
-      latestMtimeMs = Math.max(latestMtimeMs, stats.mtimeMs);
-    }
-    if (!stats.isDirectory()) {
-      continue;
-    }
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(currentPath, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    entries.forEach((entry) => {
-      stack.push(path.join(currentPath, entry.name));
-    });
-  }
-  return latestMtimeMs;
-}
-
-function cleanupLobsterCommunicationRetention(): void {
-  try {
-    if (!fs.existsSync(LOBSTER_COMMUNICATION_DIR)) {
-      return;
-    }
-    const now = Date.now();
-    const retainedTaskIds = collectRetainedLobsterTaskIds();
-    const entries = fs.readdirSync(LOBSTER_COMMUNICATION_DIR, { withFileTypes: true });
-    entries.forEach((entry) => {
-      if (!entry.isDirectory()) {
-        return;
-      }
-      const taskId = entry.name;
-      if (retainedTaskIds.has(taskId)) {
-        return;
-      }
-      const dirPath = path.join(LOBSTER_COMMUNICATION_DIR, taskId);
-      const latestTouchedAt = getLatestMtimeMsInTree(dirPath);
-      if (isTimestampWithinHistoryRetention(latestTouchedAt, now)) {
-        return;
-      }
-      try {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-      } catch (error) {
-        void logError("lobster-communication-retention-delete-error", {
-          taskId,
-          dirPath,
-          error: String(error),
-        });
-      }
-    });
-    if (fs.existsSync(LOBSTER_COMMUNICATION_DIR) && fs.readdirSync(LOBSTER_COMMUNICATION_DIR).length === 0) {
-      fs.rmSync(LOBSTER_COMMUNICATION_DIR, { recursive: true, force: true });
-    }
-  } catch (error) {
-    void logError("lobster-communication-retention-cleanup-error", { error: String(error) });
-  }
-}
-
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.floor(durationMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (value: number): string => String(value).padStart(2, "0");
-  return `${pad(minutes)}:${pad(seconds)}`;
-}
-
-function isThinkingMode(value: unknown): value is ThinkingMode {
-  return value === "off"
-    || value === "on"
-    || value === "low"
-    || value === "medium"
-    || value === "high"
-    || value === "xhigh"
-    || value === "max";
-}
-
-function isInteractiveMode(value: unknown): value is InteractiveMode {
-  return value === "coding" || value === "plan" || value === "lobster";
-}
-
-function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
-  return value === "lobster" ? "lobster" : "coding";
-}
-
-function isLobsterTaskRole(value: unknown): value is LobsterTaskRole {
-  return value === "main" || value === "subtask";
-}
-
-function isMacTaskShell(value: unknown): value is MacTaskShell {
-  return value === "zsh" || value === "bash";
+  return isLobsterTaskBlockedByMainAiFailureLimitWithLimit(task, LOBSTER_MAIN_AI_FAILURE_LIMIT);
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
@@ -14954,185 +9222,64 @@ function getWorkspaceLobsterAutoCloseSubtaskTabs(): boolean {
   return workspaceSettings.lobsterAutoCloseSubtaskTabs !== false;
 }
 
-function normalizeCliModelName(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized ? normalized : null;
+function getModelStoreOptions() {
+  return {
+    modelStoreFile: MODEL_STORE_FILE,
+    defaultModelStoreKey: DEFAULT_MODEL_STORE_KEY,
+    isThinkingMode,
+    normalizeThinkingModeForCli,
+    logError: (event: string, payload?: unknown) => void logError(event, payload),
+  };
 }
 
-function mergeUniqueModelNames(...groups: Array<readonly string[]>): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const group of groups) {
-    for (const item of group) {
-      const normalized = normalizeCliModelName(item);
-      if (!normalized) {
-        continue;
-      }
-      const dedupeKey = normalized.toLowerCase();
-      if (seen.has(dedupeKey)) {
-        continue;
-      }
-      seen.add(dedupeKey);
-      result.push(normalized);
-    }
-  }
-  return result;
+function getWorkspaceSettingsStoreOptions() {
+  return {
+    workspaceSettingsDir: WORKSPACE_SETTINGS_DIR,
+    workspaceKey: activeWorkspaceKey,
+    isCliName,
+    isThinkingMode,
+    isInteractiveMode,
+    normalizeVisibleInteractiveMode,
+    normalizeLobsterMaxRounds,
+    normalizeToolSettingsLocale,
+    sanitizeConversationTabRecord: (value: unknown): ConversationTabRecordForWorkspaceSettings | null => sanitizeConversationTabRecord(value),
+    logError: (event: string, payload?: unknown) => void logError(event, payload),
+  };
+}
+
+function getPromptHistoryStoreOptions() {
+  return {
+    promptHistoryDir: PROMPT_HISTORY_DIR,
+    legacyPromptHistoryFile: LEGACY_PROMPT_HISTORY_FILE,
+    workspaceKey: activeWorkspaceKey,
+    workspaceKeyFallback: WORKSPACE_KEY_FALLBACK,
+    promptHistoryLimit: PROMPT_HISTORY_LIMIT,
+    currentCli,
+    isCliName,
+    isTimestampWithinHistoryRetention,
+    logInfo: (event: string, payload?: unknown) => void logInfo(event, payload),
+    logError: (event: string, payload?: unknown) => void logError(event, payload),
+  };
 }
 
 function errorToMessage(error: unknown): string {
   return error instanceof Error ? (error.message || String(error)) : String(error);
 }
 
-function normalizeLobsterModelRoleFlags(value: unknown): { main: boolean; subtask: boolean } {
-  if (!value || typeof value !== "object") {
-    return { main: true, subtask: true };
-  }
-  const raw = value as { main?: unknown; subtask?: unknown };
-  const main = raw.main !== false;
-  const subtask = raw.subtask !== false;
-  if (!main && !subtask) {
-    return { main: true, subtask: true };
-  }
-  return { main, subtask };
-}
-
-function isLobsterTaskRoleValue(value: unknown): value is LobsterTaskRole {
-  return value === "main" || value === "subtask";
-}
-
 function ensureCliModelStore(store?: CliModelStore): CliModelStore {
-  const normalized: CliModelStore = {
-    selectedByConfigId: {},
-    optionsByConfigId: {},
-    thinkingByCliAndModel: {},
-    selectedLobsterByConfigId: {},
-    lobsterRolesByConfigId: {},
-  };
-  const storedOptionsByConfigId = store?.optionsByConfigId;
-  if (storedOptionsByConfigId && typeof storedOptionsByConfigId === "object") {
-    for (const [configId, rawOptions] of Object.entries(storedOptionsByConfigId)) {
-      if (!configId || !Array.isArray(rawOptions)) {
-        continue;
-      }
-      normalized.optionsByConfigId[configId] = mergeUniqueModelNames(rawOptions);
-    }
-  }
-  const storedSelectedByConfigId = store?.selectedByConfigId;
-  if (storedSelectedByConfigId && typeof storedSelectedByConfigId === "object") {
-    for (const [configId, rawModel] of Object.entries(storedSelectedByConfigId)) {
-      const normalizedModel = normalizeCliModelName(rawModel);
-      if (configId && normalizedModel) {
-        normalized.selectedByConfigId[configId] = normalizedModel;
-      }
-    }
-  }
-  const storedSelectedLobsterByConfigId = store?.selectedLobsterByConfigId;
-  if (storedSelectedLobsterByConfigId && typeof storedSelectedLobsterByConfigId === "object") {
-    for (const [configId, rawSelection] of Object.entries(storedSelectedLobsterByConfigId)) {
-      if (!configId || !rawSelection || typeof rawSelection !== "object") {
-        continue;
-      }
-      const nextSelection: Partial<Record<LobsterTaskRole, string>> = {};
-      for (const [rawRole, rawModel] of Object.entries(rawSelection)) {
-        if (!isLobsterTaskRoleValue(rawRole)) {
-          continue;
-        }
-        const normalizedModel = normalizeCliModelName(rawModel);
-        if (!normalizedModel) {
-          continue;
-        }
-        nextSelection[rawRole] = normalizedModel;
-      }
-      if (Object.keys(nextSelection).length > 0) {
-        normalized.selectedLobsterByConfigId[configId] = nextSelection;
-      }
-    }
-  }
-  const storedLobsterRolesByConfigId = store?.lobsterRolesByConfigId;
-  if (storedLobsterRolesByConfigId && typeof storedLobsterRolesByConfigId === "object") {
-    for (const [configId, rawRolesByModel] of Object.entries(storedLobsterRolesByConfigId)) {
-      if (!configId || !rawRolesByModel || typeof rawRolesByModel !== "object") {
-        continue;
-      }
-      const nextRolesByModel: Record<string, { main: boolean; subtask: boolean }> = {};
-      for (const [rawModel, rawRoleFlags] of Object.entries(rawRolesByModel)) {
-        const normalizedModel = normalizeCliModelName(rawModel);
-        if (!normalizedModel) {
-          continue;
-        }
-        nextRolesByModel[normalizedModel] = normalizeLobsterModelRoleFlags(rawRoleFlags);
-      }
-      if (Object.keys(nextRolesByModel).length > 0) {
-        normalized.lobsterRolesByConfigId[configId] = nextRolesByModel;
-      }
-    }
-  }
-  for (const cli of CLI_LIST) {
-    const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
-    if (storedThinkingByModel && typeof storedThinkingByModel === "object") {
-      const normalizedThinkingByModel: Record<string, ThinkingMode> = {};
-      for (const [rawModelKey, rawThinkingMode] of Object.entries(storedThinkingByModel)) {
-        const normalizedModelKey = rawModelKey === DEFAULT_MODEL_STORE_KEY
-          ? DEFAULT_MODEL_STORE_KEY
-          : normalizeCliModelName(rawModelKey);
-        if (!normalizedModelKey || !isThinkingMode(rawThinkingMode)) {
-          continue;
-        }
-        normalizedThinkingByModel[normalizedModelKey] = normalizeThinkingModeForCli(cli, rawThinkingMode);
-      }
-      if (Object.keys(normalizedThinkingByModel).length > 0) {
-        normalized.thinkingByCliAndModel[cli] = normalizedThinkingByModel;
-      }
-    }
-  }
-  return normalized;
+  return ensureCliModelSelectionStore(store, getModelStoreOptions());
 }
 
 function readModelStore(): CliModelStore | undefined {
-  try {
-    if (!fs.existsSync(MODEL_STORE_FILE)) {
-      lastModelStoreReadError = null;
-      return undefined;
-    }
-    const raw = fs.readFileSync(MODEL_STORE_FILE, "utf8");
-    const parsed = JSON.parse(raw) as CliModelStore;
-    lastModelStoreReadError = null;
-    return parsed;
-  } catch (error) {
-    lastModelStoreReadError = errorToMessage(error);
-    void logError("model-store-read-error", {
-      path: MODEL_STORE_FILE,
-      error: lastModelStoreReadError,
-    });
-    return undefined;
-  }
+  return readModelSelectionStore(modelSelectionStoreState, getModelStoreOptions());
 }
 
 function writeModelStore(store: CliModelStore): void {
-  try {
-    fs.mkdirSync(path.dirname(MODEL_STORE_FILE), { recursive: true });
-    fs.writeFileSync(MODEL_STORE_FILE, JSON.stringify(store, null, 2), "utf8");
-    lastModelStoreWriteError = null;
-  } catch (error) {
-    lastModelStoreWriteError = errorToMessage(error);
-    void logError("model-store-write-error", {
-      path: MODEL_STORE_FILE,
-      error: lastModelStoreWriteError,
-    });
-  }
+  writeModelSelectionStore(modelSelectionStoreState, store, getModelStoreOptions());
 }
 
 function loadModelStore(): CliModelStore {
-  const stored = readModelStore();
-  if (lastModelStoreReadError) {
-    return ensureCliModelStore();
-  }
-  const normalized = ensureCliModelStore(stored);
-  writeModelStore(normalized);
-  return normalized;
+  return loadModelSelectionStore(modelSelectionStoreState, getModelStoreOptions());
 }
 
 function getActiveConfigIdForCli(cli: CliName): string | null {
@@ -15144,20 +9291,11 @@ function getActiveConfigIdForCli(cli: CliName): string | null {
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return null;
-  }
-  return normalizeCliModelName(modelStore?.selectedByConfigId?.[configId]);
+  return getSelectedCliModelFromStore(modelStore, cli, configId);
 }
 
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return [];
-  }
-  const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
-    ? modelStore.optionsByConfigId[configId] ?? []
-    : [];
-  return mergeUniqueModelNames(storedOptions);
+  return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
 }
 
 function getCliModelLobsterRoleFlags(
@@ -15165,19 +9303,7 @@ function getCliModelLobsterRoleFlags(
   model: string,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): { main: boolean; subtask: boolean } {
-  const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
-    return { main: true, subtask: true };
-  }
-  const rolesByModel = modelStore?.lobsterRolesByConfigId?.[configId];
-  if (!rolesByModel || typeof rolesByModel !== "object") {
-    return { main: true, subtask: true };
-  }
-  const matchedKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === normalizedModel.toLowerCase());
-  if (!matchedKey) {
-    return { main: true, subtask: true };
-  }
-  return normalizeLobsterModelRoleFlags(rolesByModel[matchedKey]);
+  return getCliModelLobsterRoleFlagsFromStore(modelStore, cli, model, configId);
 }
 
 function getLobsterModelOptionsForCli(
@@ -15185,14 +9311,7 @@ function getLobsterModelOptionsForCli(
   role: LobsterTaskRole,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return [];
-  }
-  const options = getModelOptionsForCli(cli, configId);
-  return options.filter((modelName) => {
-    const roleFlags = getCliModelLobsterRoleFlags(cli, modelName, configId);
-    return role === "main" ? roleFlags.main : roleFlags.subtask;
-  });
+  return getLobsterModelOptionsForCliFromStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, configId);
 }
 
 function getSelectedLobsterCliModel(
@@ -15200,58 +9319,15 @@ function getSelectedLobsterCliModel(
   role: LobsterTaskRole,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): string | null {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return null;
-  }
-  const optionsForRole = getLobsterModelOptionsForCli(cli, role, configId);
-  if (optionsForRole.length === 0) {
-    return null;
-  }
-  const selectedByRole = modelStore?.selectedLobsterByConfigId?.[configId]?.[role];
-  const normalizedSelectedByRole = normalizeCliModelName(selectedByRole);
-  if (
-    normalizedSelectedByRole
-    && optionsForRole.some((modelName) => modelName.toLowerCase() === normalizedSelectedByRole.toLowerCase())
-  ) {
-    return normalizedSelectedByRole;
-  }
-  const selectedModel = getSelectedCliModel(cli, configId);
-  if (
-    selectedModel
-    && optionsForRole.some((modelName) => modelName.toLowerCase() === selectedModel.toLowerCase())
-  ) {
-    return selectedModel;
-  }
-  return optionsForRole[0] ?? null;
+  return getSelectedLobsterCliModelFromStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, configId);
 }
 
 function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return [];
-  }
-  const storedOptions = Array.isArray(modelStore?.optionsByConfigId?.[configId])
-    ? modelStore.optionsByConfigId[configId] ?? []
-    : [];
-  const selectedModel = getSelectedCliModel(cli, configId);
-  return mergeUniqueModelNames(
-    storedOptions,
-    selectedModel ? [selectedModel] : []
-  );
+  return getModelOptionsForCliFromStore(modelStore, cli, configId);
 }
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
-    return;
-  }
-  const normalized = normalizeCliModelName(model);
-  const nextStore = ensureCliModelStore(modelStore);
-  if (normalized) {
-    nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(nextStore.optionsByConfigId[configId] ?? [], [normalized]);
-    nextStore.selectedByConfigId[configId] = normalized;
-  } else {
-    delete nextStore.selectedByConfigId[configId];
-  }
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = selectCliModelInStore(modelStore, cli, model, configId);
   writeModelStore(modelStore);
 }
 
@@ -15261,32 +9337,11 @@ function selectCliLobsterModel(
   model: string | null,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): void {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  const nextStore = selectCliLobsterModelInStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, model, configId);
+  if (nextStore === modelStore) {
     return;
   }
-  const nextStore = ensureCliModelStore(modelStore);
-  const existingSelection = nextStore.selectedLobsterByConfigId[configId] ?? {};
-  const nextSelection: Partial<Record<LobsterTaskRole, string>> = { ...existingSelection };
-  const normalizedModel = normalizeCliModelName(model);
-  if (!normalizedModel) {
-    delete nextSelection[role];
-    if (Object.keys(nextSelection).length === 0) {
-      delete nextStore.selectedLobsterByConfigId[configId];
-    } else {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelection;
-    }
-    modelStore = ensureCliModelStore(nextStore);
-    writeModelStore(modelStore);
-    return;
-  }
-  const roleOptions = getLobsterModelOptionsForCli(cli, role, configId);
-  const existsInRoleOptions = roleOptions.some((option) => option.toLowerCase() === normalizedModel.toLowerCase());
-  if (!existsInRoleOptions) {
-    return;
-  }
-  nextSelection[role] = normalizedModel;
-  nextStore.selectedLobsterByConfigId[configId] = nextSelection;
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = nextStore;
   writeModelStore(modelStore);
 }
 
@@ -15297,845 +9352,122 @@ function setCliModelLobsterRole(
   enabled: boolean,
   configId: string | null = getActiveConfigIdForCli(cli)
 ): boolean {
-  const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
+  const result = setCliModelLobsterRoleInStore(modelStore, cli, model, role as LobsterTaskRoleForModelSelection, enabled, configId);
+  if (!result.updated) {
     return false;
   }
-  const managedModels = getManagedModelOptionsForCli(cli, configId);
-  const exists = managedModels.some((item) => item.toLowerCase() === normalizedModel.toLowerCase());
-  if (!exists) {
-    return false;
-  }
-  const nextStore = ensureCliModelStore(modelStore);
-  const existingFlags = getCliModelLobsterRoleFlags(cli, normalizedModel, configId);
-  const nextFlags = {
-    main: existingFlags.main,
-    subtask: existingFlags.subtask,
-  };
-  if (role === "main") {
-    nextFlags.main = enabled;
-  } else {
-    nextFlags.subtask = enabled;
-  }
-  if (!nextFlags.main && !nextFlags.subtask) {
-    return false;
-  }
-  const rolesByModel = {
-    ...(nextStore.lobsterRolesByConfigId[configId] ?? {}),
-  };
-  rolesByModel[normalizedModel] = nextFlags;
-  nextStore.lobsterRolesByConfigId[configId] = rolesByModel;
-
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
-  if (selectedByRole) {
-    const selectedModel = selectedByRole[role];
-    if (selectedModel && selectedModel.toLowerCase() === normalizedModel.toLowerCase() && !enabled) {
-      delete selectedByRole[role];
-      if (Object.keys(selectedByRole).length === 0) {
-        delete nextStore.selectedLobsterByConfigId[configId];
-      }
-    }
-  }
-
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = result.store;
   writeModelStore(modelStore);
   return true;
 }
 
 function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  if (!normalized) {
     return null;
   }
-  selectCliModel(cli, normalized, configId);
+  const nextStore = selectCliModelInStore(modelStore, cli, normalized, configId);
+  if (nextStore === modelStore) {
+    return null;
+  }
+  modelStore = nextStore;
+  writeModelStore(modelStore);
   return normalized;
 }
 
 function renameCliModel(cli: CliName, previousModel: string, nextModel: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  const previousNormalized = normalizeCliModelName(previousModel);
-  const nextNormalized = normalizeCliModelName(nextModel);
-  if (!previousNormalized || !nextNormalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  const result = renameCliModelInStore(modelStore, cli, previousModel, nextModel, configId);
+  if (!result.renamedModel) {
     return null;
   }
-  const previousKey = previousNormalized.toLowerCase();
-  const nextKey = nextNormalized.toLowerCase();
-  const nextStore = ensureCliModelStore(modelStore);
-  const currentOptions = nextStore.optionsByConfigId[configId] ?? [];
-  const duplicateExists = currentOptions.some((modelName) => {
-    const normalized = normalizeCliModelName(modelName);
-    if (!normalized) {
-      return false;
-    }
-    const currentKey = normalized.toLowerCase();
-    return currentKey === nextKey && currentKey !== previousKey;
-  });
-  if (duplicateExists) {
-    return null;
-  }
-
-  const renamedOptions = currentOptions.map((modelName) => {
-    const normalized = normalizeCliModelName(modelName);
-    return normalized && normalized.toLowerCase() === previousKey ? nextNormalized : modelName;
-  });
-  nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(renamedOptions);
-
-  if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === previousKey) {
-    nextStore.selectedByConfigId[configId] = nextNormalized;
-  }
-
-  const cliThinking = nextStore.thinkingByCliAndModel?.[cli];
-  if (cliThinking) {
-    const matchedThinkingKey = Object.keys(cliThinking).find((key) => key.toLowerCase() === previousKey);
-    if (matchedThinkingKey) {
-      const nextThinking = { ...cliThinking };
-      nextThinking[nextNormalized] = nextThinking[matchedThinkingKey];
-      nextStore.thinkingByCliAndModel[cli] = nextThinking;
-    }
-  }
-
-  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
-  if (rolesByModel) {
-    const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
-    if (matchedRoleKey) {
-      const nextRolesByModel = { ...rolesByModel };
-      nextRolesByModel[nextNormalized] = normalizeLobsterModelRoleFlags(nextRolesByModel[matchedRoleKey]);
-      delete nextRolesByModel[matchedRoleKey];
-      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
-    }
-  }
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
-  if (selectedByRole) {
-    const nextSelectedByRole: Partial<Record<LobsterTaskRole, string>> = { ...selectedByRole };
-    let changed = false;
-    (["main", "subtask"] as LobsterTaskRole[]).forEach((role) => {
-      const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
-      if (roleModel && roleModel.toLowerCase() === previousKey) {
-        nextSelectedByRole[role] = nextNormalized;
-        changed = true;
-      }
-    });
-    if (changed) {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
-    }
-  }
-
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = result.store;
   writeModelStore(modelStore);
-  return nextNormalized;
+  return result.renamedModel;
 }
 
 function deleteCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): void {
-  const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
-    return;
-  }
-  const targetKey = normalized.toLowerCase();
-  const nextStore = ensureCliModelStore(modelStore);
-  const currentOptions = nextStore.optionsByConfigId[configId] ?? [];
-  nextStore.optionsByConfigId[configId] = currentOptions.filter((modelName) => {
-    const currentNormalized = normalizeCliModelName(modelName);
-    return !(currentNormalized && currentNormalized.toLowerCase() === targetKey);
-  });
-
-  if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === targetKey) {
-    delete nextStore.selectedByConfigId[configId];
-  }
-
-  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
-  if (rolesByModel) {
-    const nextRolesByModel = { ...rolesByModel };
-    Object.keys(nextRolesByModel).forEach((key) => {
-      if (key.toLowerCase() === targetKey) {
-        delete nextRolesByModel[key];
-      }
-    });
-    if (Object.keys(nextRolesByModel).length > 0) {
-      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
-    } else {
-      delete nextStore.lobsterRolesByConfigId[configId];
-    }
-  }
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
-  if (selectedByRole) {
-    const nextSelectedByRole: Partial<Record<LobsterTaskRole, string>> = { ...selectedByRole };
-    (["main", "subtask"] as LobsterTaskRole[]).forEach((role) => {
-      const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
-      if (roleModel && roleModel.toLowerCase() === targetKey) {
-        delete nextSelectedByRole[role];
-      }
-    });
-    if (Object.keys(nextSelectedByRole).length > 0) {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
-    } else {
-      delete nextStore.selectedLobsterByConfigId[configId];
-    }
-  }
-
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = deleteCliModelFromStore(modelStore, cli, model, configId);
   writeModelStore(modelStore);
 }
 
 function moveCliModel(cli: CliName, model: string, direction: "up" | "down", configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  const result = moveCliModelInStore(modelStore, cli, model, direction, configId);
+  if (!result.movedModel) {
     return null;
   }
-  const targetKey = normalized.toLowerCase();
-  const nextStore = ensureCliModelStore(modelStore);
-  const currentOptions = [...(nextStore.optionsByConfigId[configId] ?? [])];
-  const currentIndex = currentOptions.findIndex((modelName) => {
-    const currentNormalized = normalizeCliModelName(modelName);
-    return Boolean(currentNormalized && currentNormalized.toLowerCase() === targetKey);
-  });
-  if (currentIndex < 0) {
-    return null;
-  }
-  const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-  if (nextIndex < 0 || nextIndex >= currentOptions.length) {
-    return normalized;
-  }
-  const swapped = currentOptions[currentIndex];
-  currentOptions[currentIndex] = currentOptions[nextIndex];
-  currentOptions[nextIndex] = swapped;
-  nextStore.optionsByConfigId[configId] = mergeUniqueModelNames(currentOptions);
-  modelStore = ensureCliModelStore(nextStore);
+  modelStore = result.store;
   writeModelStore(modelStore);
-  return normalized;
+  return result.movedModel;
 }
 
 function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCliModel(cli)): string[] {
-  return applyModelArg(cli, getCliArgs(cli), model);
+  return getEffectiveCliArgsFromStore(cli, model);
 }
 
 function buildModelState(
   activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
 ): PanelState["modelState"] {
-  const selectedByCli = {} as Record<CliName, string | null>;
-  const optionsByCli = {} as Record<CliName, string[]>;
-  const managedByCli = {} as Record<CliName, string[]>;
-  const selectedLobsterByCli = {} as Record<CliName, { main: string | null; subtask: string | null }>;
-  const lobsterOptionsByCli = {} as Record<CliName, { main: string[]; subtask: string[] }>;
-  const managedLobsterRolesByCli = {} as Record<CliName, Record<string, { main: boolean; subtask: boolean }>>;
-  for (const cli of CLI_LIST) {
-    const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
-    const managedModels = getManagedModelOptionsForCli(cli, activeConfigId);
-    selectedByCli[cli] = getSelectedCliModel(cli, activeConfigId);
-    optionsByCli[cli] = getModelOptionsForCli(cli, activeConfigId);
-    managedByCli[cli] = managedModels;
-    lobsterOptionsByCli[cli] = {
-      main: getLobsterModelOptionsForCli(cli, "main", activeConfigId),
-      subtask: getLobsterModelOptionsForCli(cli, "subtask", activeConfigId),
-    };
-    selectedLobsterByCli[cli] = {
-      main: getSelectedLobsterCliModel(cli, "main", activeConfigId),
-      subtask: getSelectedLobsterCliModel(cli, "subtask", activeConfigId),
-    };
-    managedLobsterRolesByCli[cli] = {};
-    managedModels.forEach((modelName) => {
-      managedLobsterRolesByCli[cli][modelName] = getCliModelLobsterRoleFlags(cli, modelName, activeConfigId);
-    });
-  }
-  return {
-    selectedByCli,
-    optionsByCli,
-    managedByCli,
-    selectedLobsterByCli,
-    lobsterOptionsByCli,
-    managedLobsterRolesByCli,
-  };
+  return buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {
-  const filePath = getWorkspaceSettingsFilePath();
-  if (!filePath || !fs.existsSync(filePath)) {
-    return {};
-  }
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
-      return {};
-    }
-    const result: WorkspaceSettings = {};
-    const thinkingMode = (parsed as WorkspaceSettings).thinkingMode;
-    if (isThinkingMode(thinkingMode)) {
-      result.thinkingMode = thinkingMode;
-    }
-    const currentCli = (parsed as WorkspaceSettings).currentCli;
-    if (currentCli && isCliName(currentCli)) {
-      result.currentCli = currentCli;
-    }
-    const interactiveModeByCli = (parsed as WorkspaceSettings).interactiveModeByCli;
-    if (interactiveModeByCli && typeof interactiveModeByCli === "object") {
-      const normalized: Partial<Record<CliName, InteractiveMode>> = {};
-      CLI_LIST.forEach((cli) => {
-        const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
-        if (isInteractiveMode(mode)) {
-          normalized[cli] = normalizeVisibleInteractiveMode(mode);
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        result.interactiveModeByCli = normalized;
-      }
-    }
-    const lobsterExecutionModeByCli = (parsed as WorkspaceSettings).lobsterExecutionModeByCli;
-    if (lobsterExecutionModeByCli && typeof lobsterExecutionModeByCli === "object") {
-      const normalized: Partial<Record<CliName, LobsterExecutionMode>> = {};
-      CLI_LIST.forEach((cli) => {
-        const mode = (lobsterExecutionModeByCli as Record<string, unknown>)[cli];
-        normalized[cli] = normalizeLobsterExecutionMode(mode);
-      });
-      result.lobsterExecutionModeByCli = normalized;
-    }
-    const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
-    if (typeof codexMultiAgentEnabled === "boolean") {
-      result.codexMultiAgentEnabled = codexMultiAgentEnabled;
-    }
-    const autoCompactContextAfterRun = (parsed as WorkspaceSettings).autoCompactContextAfterRun;
-    if (typeof autoCompactContextAfterRun === "boolean") {
-      result.autoCompactContextAfterRun = autoCompactContextAfterRun;
-    } else {
-      const autoCompactContextBeforeRun = (parsed as WorkspaceSettings).autoCompactContextBeforeRun;
-      if (typeof autoCompactContextBeforeRun === "boolean") {
-        result.autoCompactContextAfterRun = autoCompactContextBeforeRun;
-      }
-    }
-    const workspaceMemoryEnabled = (parsed as WorkspaceSettings).workspaceMemoryEnabled;
-    if (typeof workspaceMemoryEnabled === "boolean") {
-      result.workspaceMemoryEnabled = workspaceMemoryEnabled;
-    }
-    const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
-    if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
-      result.lobsterMaxRounds = normalizeLobsterMaxRounds(lobsterMaxRounds);
-    }
-    const lobsterAutoCloseSubtaskTabs = (parsed as WorkspaceSettings).lobsterAutoCloseSubtaskTabs;
-    if (typeof lobsterAutoCloseSubtaskTabs === "boolean") {
-      result.lobsterAutoCloseSubtaskTabs = lobsterAutoCloseSubtaskTabs;
-    }
-    const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
-    if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {
-      const normalized: Partial<Record<CliName, string>> = {};
-      CLI_LIST.forEach((cli) => {
-        const activeConfigId = (activeConfigIdByCli as Record<string, unknown>)[cli];
-        if (typeof activeConfigId === "string" && activeConfigId.trim()) {
-          normalized[cli] = activeConfigId;
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        result.activeConfigIdByCli = normalized;
-      }
-    }
-    const conversationTabs = (parsed as WorkspaceSettings).conversationTabs;
-    if (conversationTabs && typeof conversationTabs === "object") {
-      const record = conversationTabs as ConversationTabsState;
-      const tabs = Array.isArray(record.tabs)
-        ? record.tabs
-          .map((tab) => sanitizeConversationTabRecord(tab))
-          .filter((tab): tab is ConversationTabRecord => Boolean(tab))
-        : [];
-      if (tabs.length > 0) {
-        const activeTabId = typeof record.activeTabId === "string" && tabs.some((tab) => tab.id === record.activeTabId)
-          ? record.activeTabId
-          : tabs[tabs.length - 1].id;
-        result.conversationTabs = {
-          activeTabId,
-          tabs,
-        };
-      }
-    }
-    return result;
-  } catch (error) {
-    void logError("workspace-settings-read-error", { error: String(error) });
-    return {};
-  }
+  return loadWorkspaceSettingsFromStore(getWorkspaceSettingsStoreOptions());
 }
 
 function saveWorkspaceSettings(next: WorkspaceSettings): void {
-  const filePath = getWorkspaceSettingsFilePath();
-  if (!filePath) {
-    return;
-  }
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
-  } catch (error) {
-    void logError("workspace-settings-write-error", { error: String(error) });
-  }
-}
-
-function getWorkspaceSettingsFilePath(): string | null {
-  if (!activeWorkspaceKey) {
-    return null;
-  }
-  return path.join(WORKSPACE_SETTINGS_DIR, `${activeWorkspaceKey}.json`);
+  saveWorkspaceSettingsToStore(next, getWorkspaceSettingsStoreOptions());
 }
 
 function loadPromptHistoryStore(): PromptHistoryStore {
-  const stored = readPromptHistoryFile();
-  const normalized = ensurePromptHistoryStore(stored);
-  writePromptHistoryFile(normalized);
-  return normalized;
+  return loadPromptHistoryStoreFromStore(getPromptHistoryStoreOptions());
 }
 
 function ensurePromptHistoryStore(store?: PromptHistoryStore): PromptHistoryStore {
-  const now = Date.now();
-  const items = Array.isArray(store?.items) ? store?.items : [];
-  const normalized = items
-    .map((item) => normalizePromptHistoryItem(item))
-    .filter((item): item is PromptHistoryItem => Boolean(item))
-    .filter((item) => isTimestampWithinHistoryRetention(item.createdAt, now));
-  normalized.sort((a, b) => b.createdAt - a.createdAt);
-  if (normalized.length > PROMPT_HISTORY_LIMIT) {
-    normalized.length = PROMPT_HISTORY_LIMIT;
-  }
-  return { items: normalized };
-}
-
-function normalizePromptHistoryItem(item: unknown): PromptHistoryItem | null {
-  if (!item || typeof item !== "object") {
-    return null;
-  }
-  const record = item as PromptHistoryItem;
-  const prompt = typeof record.prompt === "string" ? record.prompt.trim() : "";
-  if (!prompt) {
-    return null;
-  }
-  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
-  const cli = isCliName(record.cli) ? record.cli : currentCli;
-  const id = typeof record.id === "string" && record.id.trim()
-    ? record.id
-    : createPromptHistoryId(createdAt);
-  return {
-    id,
-    prompt,
-    createdAt,
-    cli,
-  };
-}
-
-function createPromptHistoryId(timestamp?: number): string {
-  const base = typeof timestamp === "number" ? timestamp : Date.now();
-  return `prompt_${base}_${Math.random().toString(16).slice(2)}`;
+  return ensurePromptHistoryStoreState(store, getPromptHistoryStoreOptions());
 }
 
 function buildPromptHistoryState(): PromptHistoryItem[] {
-  return promptHistoryStore?.items ? [...promptHistoryStore.items] : [];
+  return buildPromptHistoryStateFromStore(promptHistoryStore);
 }
 
 function recordPromptHistory(prompt: string, cli: CliName): void {
-  const normalized = String(prompt ?? "").trim();
-  if (!normalized) {
-    return;
-  }
-  if (!promptHistoryStore) {
-    promptHistoryStore = loadPromptHistoryStore();
-  } else {
-    promptHistoryStore = ensurePromptHistoryStore(promptHistoryStore);
-  }
-  promptHistoryStore.items.unshift({
-    id: createPromptHistoryId(),
-    prompt: normalized,
-    createdAt: Date.now(),
-    cli,
-  });
-  if (promptHistoryStore.items.length > PROMPT_HISTORY_LIMIT) {
-    promptHistoryStore.items = promptHistoryStore.items.slice(0, PROMPT_HISTORY_LIMIT);
-  }
-  writePromptHistoryFile(promptHistoryStore);
+  promptHistoryStore = recordPromptHistoryInStore(promptHistoryStore, prompt, cli, getPromptHistoryStoreOptions());
 }
 
 function clearPromptHistory(): void {
-  if (!promptHistoryStore) {
-    promptHistoryStore = loadPromptHistoryStore();
-  }
-  promptHistoryStore.items = [];
-  writePromptHistoryFile(promptHistoryStore);
-  void logInfo("prompt-history-cleared", { workspace: activeWorkspaceKey });
+  promptHistoryStore = clearPromptHistoryStore(getPromptHistoryStoreOptions());
 }
 
 function getPromptHistoryFilePath(workspaceKey: string = activeWorkspaceKey): string {
-  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
-    return LEGACY_PROMPT_HISTORY_FILE;
-  }
-  return path.join(PROMPT_HISTORY_DIR, `${workspaceKey}.json`);
+  return getPromptHistoryStoreFilePath(getPromptHistoryStoreOptions(), workspaceKey);
 }
 
 function readPromptHistoryFile(workspaceKey: string = activeWorkspaceKey): PromptHistoryStore | undefined {
-  try {
-    const filePath = getPromptHistoryFilePath(workspaceKey);
-    if (!fs.existsSync(filePath)) {
-      return undefined;
-    }
-    const raw = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(raw) as PromptHistoryStore;
-  } catch (error) {
-    void logError("prompt-history-read-error", { error: String(error) });
-    return undefined;
-  }
+  return readPromptHistoryStoreFile(getPromptHistoryStoreOptions(), workspaceKey);
 }
 
 function writePromptHistoryFile(store: PromptHistoryStore, workspaceKey: string = activeWorkspaceKey): void {
-  try {
-    const filePath = getPromptHistoryFilePath(workspaceKey);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf8");
-  } catch (error) {
-    void logError("prompt-history-write-error", { error: String(error) });
-  }
+  writePromptHistoryStoreFile(store, getPromptHistoryStoreOptions(), workspaceKey);
 }
 
 function deletePromptHistoryFile(workspaceKey: string): void {
-  try {
-    const filePath = getPromptHistoryFilePath(workspaceKey);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (error) {
-    void logError("prompt-history-delete-error", {
-      workspace: workspaceKey,
-      error: String(error),
-    });
-  }
+  deletePromptHistoryStoreFile(getPromptHistoryStoreOptions(), workspaceKey);
 }
 
 function cleanupPromptHistoryRetentionAcrossWorkspaces(): void {
-  const workspaceKeys = collectWorkspaceKeysForPromptHistoryCleanup();
-  workspaceKeys.forEach((workspaceKey) => {
-    const normalized = ensurePromptHistoryStore(readPromptHistoryFile(workspaceKey));
-    if (normalized.items.length > 0) {
-      writePromptHistoryFile(normalized, workspaceKey);
-      return;
-    }
-    deletePromptHistoryFile(workspaceKey);
-  });
+  cleanupPromptHistoryStoreRetentionAcrossWorkspaces(getPromptHistoryStoreOptions());
 }
 
 function collectWorkspaceKeysForPromptHistoryCleanup(): string[] {
-  const workspaceKeys = new Set<string>();
-  if (fs.existsSync(LEGACY_PROMPT_HISTORY_FILE)) {
-    workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
-  }
-  if (fs.existsSync(PROMPT_HISTORY_DIR)) {
-    for (const entry of fs.readdirSync(PROMPT_HISTORY_DIR, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) {
-        continue;
-      }
-      workspaceKeys.add(entry.name.slice(0, -".json".length));
-    }
-  }
-  return Array.from(workspaceKeys);
+  return collectWorkspaceKeysForPromptHistoryStoreCleanup(getPromptHistoryStoreOptions());
 }
 
 function loadSessionStore(): SessionStore {
-  const stored = readSessionFile() ?? extensionContext.globalState.get<SessionStore>(getSessionStoreKey());
-  const normalized = ensureSessionStore(stored);
-  cleanupStaleSessionArtifacts(stored, normalized);
-  void persistSessionStore(normalized);
-  return normalized;
-}
-
-function ensureSessionStore(store?: SessionStore): SessionStore {
-  const now = Date.now();
-  const result = {
-    codex: { currentId: null, sessions: [] },
-    claude: { currentId: null, sessions: [] },
-    gemini: { currentId: null, sessions: [] },
-  } as SessionStore;
-
-  if (!store) {
-    return result;
-  }
-
-  for (const cli of CLI_LIST) {
-    const current = store[cli];
-    if (current) {
-      const sessions = Array.isArray(current.sessions)
-        ? current.sessions
-            .map((session) => {
-              const firstPrompt = typeof session.firstPrompt === "string" && session.firstPrompt.trim()
-                ? session.firstPrompt
-                : undefined;
-              const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
-              const normalizedLabel = typeof session.label === "string" ? session.label.trim() : "";
-              const label = shouldUseFallbackSessionLabel(normalizedLabel)
-                ? (fallbackLabel ?? t("session.unnamed"))
-                : normalizedLabel;
-              return {
-                id: session.id,
-                label,
-                createdAt: session.createdAt ?? Date.now(),
-                lastUsedAt: session.lastUsedAt ?? Date.now(),
-                firstPrompt,
-              };
-            })
-            .filter((session) => isSessionRecordWithinRetention(session, now))
-        : [];
-      result[cli] = {
-        currentId: current.currentId ?? null,
-        sessions,
-      };
-      if (
-        result[cli].currentId
-        && !sessions.some((session) => session.id === result[cli].currentId)
-      ) {
-        result[cli].currentId = getLatestSessionIdFromRecords(sessions);
-      }
-    }
-  }
-  return result;
-}
-
-function isSessionRecordWithinRetention(session: SessionRecord, now: number = Date.now()): boolean {
-  const referenceTime = Number.isFinite(session.lastUsedAt) ? session.lastUsedAt : session.createdAt;
-  return isTimestampWithinHistoryRetention(referenceTime, now);
-}
-
-function getLatestSessionIdFromRecords(sessions: SessionRecord[]): string | null {
-  if (sessions.length === 0) {
-    return null;
-  }
-  const latest = sessions.reduce((prev, current) =>
-    current.lastUsedAt > prev.lastUsedAt ? current : prev
-  );
-  return latest.id;
-}
-
-function cleanupStaleSessionArtifacts(
-  sourceStore: SessionStore | undefined,
-  retainedStore: SessionStore,
-  workspaceKey: string = activeWorkspaceKey
-): void {
-  const staleSessionIds = collectStaleSessionIds(sourceStore, retainedStore);
-
-  for (const cli of CLI_LIST) {
-    for (const sessionId of staleSessionIds[cli]) {
-      const key = getSessionKey(cli, sessionId, workspaceKey);
-      sessionMessageCache.delete(key);
-      sessionMessageLoadErrors.delete(key);
-      try {
-        const filePath = getMessageFile(cli, sessionId, workspaceKey);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      } catch (error) {
-        void logError("session-messages-retention-delete-error", {
-          cli,
-          sessionId,
-          error: String(error),
-        });
-      }
-    }
-  }
-
-  const meta = readSessionMetaStore(workspaceKey);
-  if (pruneStaleSessionMetaMappings(meta, retainedStore)) {
-    if (isSessionMetaStoreEmpty(meta)) {
-      deleteSessionMetaStoreFile(workspaceKey);
-    } else {
-      writeSessionMetaStore(meta, workspaceKey);
-    }
-  }
-
-  const removedCount = CLI_LIST.reduce((total, cli) => total + staleSessionIds[cli].length, 0);
-  if (removedCount > 0) {
-    void logInfo("session-history-retention-pruned", {
-      workspace: workspaceKey,
-      retentionDays: HISTORY_RETENTION_DAYS,
-      removedCount,
-      removedByCli: staleSessionIds,
-    });
-  }
-}
-
-function isSessionMetaStoreEmpty(meta: ReturnType<typeof readSessionMeta>): boolean {
-  return !meta.byCli || Object.keys(meta.byCli).length === 0;
-}
-
-function deleteSessionMetaStoreFile(workspaceKey: string): void {
-  try {
-    const filePath = getSessionMetaFilePath(workspaceKey);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (error) {
-    void logError("session-meta-delete-error", {
-      workspace: workspaceKey,
-      error: String(error),
-    });
-  }
-}
-
-function isSessionStoreEmpty(store: SessionStore): boolean {
-  return CLI_LIST.every((cli) => {
-    const bucket = store[cli];
-    return !bucket?.currentId && (!bucket?.sessions || bucket.sessions.length === 0);
-  });
-}
-
-function cleanupWorkspaceMessageFiles(workspaceKey: string, retainedStore: SessionStore): void {
-  const messageDir = getMessageDir(workspaceKey);
-  if (!fs.existsSync(messageDir)) {
-    return;
-  }
-  for (const cli of CLI_LIST) {
-    const cliDir = path.join(messageDir, cli);
-    if (!fs.existsSync(cliDir)) {
-      continue;
-    }
-    const retainedIds = new Set((retainedStore[cli]?.sessions ?? []).map((session) => session.id));
-    for (const entry of fs.readdirSync(cliDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) {
-        continue;
-      }
-      const sessionId = entry.name.slice(0, -".json".length);
-      if (retainedIds.has(sessionId)) {
-        continue;
-      }
-      try {
-        fs.unlinkSync(path.join(cliDir, entry.name));
-      } catch (error) {
-        void logError("session-message-orphan-delete-error", {
-          workspace: workspaceKey,
-          cli,
-          sessionId,
-          error: String(error),
-        });
-      }
-    }
-    if (fs.existsSync(cliDir) && fs.readdirSync(cliDir).length === 0) {
-      fs.rmSync(cliDir, { recursive: true, force: true });
-    }
-  }
-  if (workspaceKey !== WORKSPACE_KEY_FALLBACK && fs.existsSync(messageDir) && fs.readdirSync(messageDir).length === 0) {
-    fs.rmSync(messageDir, { recursive: true, force: true });
-  }
+  return sessionLifecycleController.loadSessionStore();
 }
 
 async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
-  const workspaceKeys = collectWorkspaceKeysForSessionCleanup();
-  for (const workspaceKey of workspaceKeys) {
-    const sourceStore = readSessionFile(workspaceKey)
-      ?? extensionContext.globalState.get<SessionStore>(getSessionStoreKey(workspaceKey));
-    const normalized = ensureSessionStore(sourceStore);
-    cleanupStaleSessionArtifacts(sourceStore, normalized, workspaceKey);
-    cleanupWorkspaceMessageFiles(workspaceKey, normalized);
-    if (isSessionStoreEmpty(normalized)) {
-      deleteSessionFile(workspaceKey);
-      await extensionContext.globalState.update(getSessionStoreKey(workspaceKey), undefined);
-    } else {
-      writeSessionFile(normalized, workspaceKey);
-      await extensionContext.globalState.update(getSessionStoreKey(workspaceKey), normalized);
-    }
-  }
-}
-
-function collectWorkspaceKeysForSessionCleanup(): string[] {
-  const workspaceKeys = new Set<string>();
-  if (fs.existsSync(LEGACY_SESSION_FILE)) {
-    workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
-  }
-  if (fs.existsSync(SESSION_DIR)) {
-    for (const entry of fs.readdirSync(SESSION_DIR, { withFileTypes: true })) {
-      if (!entry.isFile()) {
-        continue;
-      }
-      if (entry.name.endsWith(".meta.json")) {
-        workspaceKeys.add(entry.name.slice(0, -".meta.json".length));
-        continue;
-      }
-      if (entry.name.endsWith(".json")) {
-        workspaceKeys.add(entry.name.slice(0, -".json".length));
-      }
-    }
-  }
-  if (fs.existsSync(MESSAGE_DIR_ROOT)) {
-    for (const entry of fs.readdirSync(MESSAGE_DIR_ROOT, { withFileTypes: true })) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      if (CLI_LIST.includes(entry.name as CliName)) {
-        workspaceKeys.add(WORKSPACE_KEY_FALLBACK);
-        continue;
-      }
-      workspaceKeys.add(entry.name);
-    }
-  }
-  const prefix = `${SESSION_STORE_KEY}:`;
-  for (const key of extensionContext.globalState.keys()) {
-    if (key.startsWith(prefix)) {
-      workspaceKeys.add(key.slice(prefix.length));
-    }
-  }
-  return Array.from(workspaceKeys);
-}
-
-function collectStaleSessionIds(
-  sourceStore: SessionStore | undefined,
-  retainedStore: SessionStore
-): Record<CliName, string[]> {
-  const removed: Record<CliName, string[]> = {
-    codex: [],
-    claude: [],
-    gemini: [],
-  };
-
-  if (!sourceStore) {
-    return removed;
-  }
-
-  for (const cli of CLI_LIST) {
-    const retainedIds = new Set((retainedStore[cli]?.sessions ?? []).map((session) => session.id));
-    const sourceIds = Array.isArray(sourceStore[cli]?.sessions)
-      ? sourceStore[cli].sessions.map((session) => session.id)
-      : [];
-    removed[cli] = sourceIds.filter((sessionId) => !retainedIds.has(sessionId));
-  }
-
-  return removed;
-}
-
-function pruneStaleSessionMetaMappings(
-  meta: ReturnType<typeof readSessionMeta>,
-  retainedStore: SessionStore
-): boolean {
-  let changed = false;
-  const retainedIds = {
-    codex: new Set((retainedStore.codex?.sessions ?? []).map((session) => session.id)),
-    claude: new Set((retainedStore.claude?.sessions ?? []).map((session) => session.id)),
-  };
-
-  if (meta.byCli?.codex) {
-    Object.keys(meta.byCli.codex).forEach((sessionId) => {
-      if (!retainedIds.codex.has(sessionId)) {
-        delete meta.byCli?.codex?.[sessionId];
-        changed = true;
-      }
-    });
-    if (Object.keys(meta.byCli.codex).length === 0) {
-      delete meta.byCli.codex;
-      changed = true;
-    }
-  }
-
-  if (meta.byCli?.claude) {
-    Object.keys(meta.byCli.claude).forEach((sessionId) => {
-      if (!retainedIds.claude.has(sessionId)) {
-        delete meta.byCli?.claude?.[sessionId];
-        changed = true;
-      }
-    });
-    if (Object.keys(meta.byCli.claude).length === 0) {
-      delete meta.byCli.claude;
-      changed = true;
-    }
-  }
-
-  if (meta.byCli && Object.keys(meta.byCli).length === 0) {
-    delete meta.byCli;
-    changed = true;
-  }
-
-  return changed;
+  await sessionLifecycleController.cleanupSessionRetentionAcrossWorkspaces();
 }
 
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
@@ -16185,24 +9517,7 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
 }
 
 function buildLobsterGroupChatHistoryState(): LobsterGroupChatHistoryItem[] {
-  const runningTaskIds = collectRunningLobsterTaskIds();
-  return listLobsterGroupChatTasks()
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .map((task) => {
-      const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
-      return {
-        id: task.id,
-        cli: task.cli,
-        status: task.status,
-        executionMode: normalizeLobsterExecutionMode(task.executionMode),
-        rootPrompt: task.rootPrompt,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        currentRound: task.currentRound,
-        taskStoreFile: task.taskStoreFile,
-        canContinue: controlState.canContinue,
-      };
-    });
+  return lobsterDebateChatPanelCoordinator.buildGroupChatHistoryState();
 }
 
 function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | null {
@@ -16230,320 +9545,59 @@ function getCurrentSessionId(cli: CliName): string | null {
   return sessionStore[cli]?.currentId ?? null;
 }
 
-function buildConversationTabSessionLookupKey(cli: CliName, sessionId: string): string {
-  return `${cli}:${sessionId}`;
-}
-
 function buildOpenConversationTabSessionMap(): Map<string, string> {
-  const state = ensureConversationTabs();
-  const sessionMap = new Map<string, string>();
-  state.tabs.forEach((tab) => {
-    const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
-    if (!sessionId) {
-      return;
-    }
-    sessionMap.set(buildConversationTabSessionLookupKey(tab.cli, sessionId), tab.id);
-  });
-  return sessionMap;
+  return sessionTabsController.buildOpenConversationTabSessionMap();
 }
 
 function buildConversationTabsState(): {
   activeTabId: string | null;
   tabs: ConversationTabSummary[];
 } {
-  const state = ensureConversationTabs();
-  const runningLobsterTaskIds = collectRunningLobsterTaskIds();
-  return {
-    activeTabId: state.activeTabId,
-    tabs: state.tabs.map((tab) => {
-      const lobsterContext = resolveConversationTabLobsterContext(tab);
-      const lobsterTaskId = lobsterContext.lobsterTaskId;
-      const lobsterMainTabCloseLocked = (
-        lobsterContext.taskRole === "main"
-        && typeof lobsterTaskId === "string"
-        && runningLobsterTaskIds.has(lobsterTaskId)
-      );
-      return {
-        id: tab.id,
-        cli: tab.cli,
-        sessionId: tab.sessionId,
-        createdAt: tab.createdAt,
-        lobsterTaskRole: lobsterContext.taskRole ?? undefined,
-        lobsterTaskId: lobsterTaskId ?? undefined,
-        lobsterMainTabCloseLocked,
-      };
-    }),
-  };
+  return sessionTabsController.buildConversationTabsState();
 }
 
 function initializeConversationTabsFromWorkspaceSettings(): void {
-  const normalized = normalizeConversationTabsState(workspaceSettings.conversationTabs);
-  conversationTabStore.activeTabId = normalized.activeTabId;
-  conversationTabStore.tabs = normalized.tabs;
-  persistConversationTabsToWorkspaceSettings();
-}
-
-function normalizeConversationTabsState(
-  value?: ConversationTabsState
-): ConversationTabsState {
-  const now = Date.now();
-  const records = Array.isArray(value?.tabs)
-    ? value.tabs
-      .map((tab) => sanitizeConversationTabRecord(tab))
-      .filter((tab): tab is ConversationTabRecord => Boolean(tab))
-    : [];
-  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
-  const tabs = records.length > 0
-    ? records
-    : [{
-        id: createConversationTabId(),
-        cli: fallbackCli,
-        sessionId: getLatestSessionId(fallbackCli),
-        sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, fallbackCli, getLatestSessionId(fallbackCli)),
-        createdAt: now,
-      }];
-  const tabIds = new Set(tabs.map((tab) => tab.id));
-  const activeTabId = value?.activeTabId && tabIds.has(value.activeTabId)
-    ? value.activeTabId
-    : tabs[tabs.length - 1].id;
-  return {
-    activeTabId,
-    tabs: tabs.map((tab) => {
-      const sessionIdByCli = retainExistingConversationTabSessionIdMap(
-        sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId)
-      );
-      return {
-        id: tab.id,
-        cli: tab.cli,
-        sessionId: sessionIdByCli[tab.cli] ?? null,
-        sessionIdByCli,
-        createdAt: tab.createdAt,
-      };
-    }),
-  };
+  sessionTabsController.initializeConversationTabsFromWorkspaceSettings();
 }
 
 function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const record = value as ConversationTabRecord;
-  const id = typeof record.id === "string" && record.id.trim()
-    ? record.id
-    : createConversationTabId();
-  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
-  const cli = isCliName((record as { cli?: unknown }).cli as string)
-    ? ((record as { cli: CliName }).cli)
-    : fallbackCli;
-  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
-  const sessionId = typeof record.sessionId === "string" && record.sessionId.trim()
-    ? record.sessionId
-    : null;
-  const sessionIdByCli = retainExistingConversationTabSessionIdMap(
-    sanitizeConversationTabSessionIdMap(
-      (record as { sessionIdByCli?: unknown }).sessionIdByCli,
-      cli,
-      sessionId,
-    )
-  );
-  return {
-    id,
-    cli,
-    sessionId: sessionIdByCli[cli] ?? null,
-    sessionIdByCli,
-    createdAt,
-  };
-}
-
-function retainExistingConversationTabSessionIdMap(
-  value: Partial<Record<CliName, string>>,
-): Partial<Record<CliName, string>> {
-  if (!sessionStore) {
-    return { ...value };
-  }
-  const retained: Partial<Record<CliName, string>> = {};
-  for (const cli of CLI_LIST) {
-    const sessionId = value[cli];
-    if (typeof sessionId === "string" && hasSessionRecord(cli, sessionId)) {
-      retained[cli] = sessionId;
-    }
-  }
-  return retained;
-}
-
-function sanitizeConversationTabSessionIdMap(
-  value: unknown,
-  cli: CliName,
-  sessionId: string | null,
-): Partial<Record<CliName, string>> {
-  const normalized: Partial<Record<CliName, string>> = {};
-  if (value && typeof value === "object") {
-    for (const item of CLI_LIST) {
-      const candidate = (value as Partial<Record<CliName, unknown>>)[item];
-      if (typeof candidate === "string" && candidate.trim()) {
-        normalized[item] = candidate;
-      }
-    }
-  }
-  if (sessionId) {
-    normalized[cli] = sessionId;
-  } else {
-    delete normalized[cli];
-  }
-  return normalized;
-}
-
-function getConversationTabSessionIdForCli(tab: ConversationTabRecord, cli: CliName): string | null {
-  const sessionId = tab.sessionIdByCli?.[cli];
-  return typeof sessionId === "string" && sessionId.trim() ? sessionId : null;
-}
-
-function hasSessionRecord(cli: CliName, sessionId: string): boolean {
-  if (!sessionStore) {
-    return false;
-  }
-  return sessionStore[cli]?.sessions.some((session) => session.id === sessionId) ?? false;
-}
-
-function setConversationTabSessionIdForCli(
-  tab: ConversationTabRecord,
-  cli: CliName,
-  sessionId: string | null,
-): boolean {
-  const normalizedSessionId = typeof sessionId === "string" && sessionId.trim()
-    ? sessionId
-    : null;
-  const previousSessionId = getConversationTabSessionIdForCli(tab, cli);
-  let changed = previousSessionId !== normalizedSessionId;
-  if (normalizedSessionId) {
-    tab.sessionIdByCli[cli] = normalizedSessionId;
-  } else if (tab.sessionIdByCli[cli]) {
-    delete tab.sessionIdByCli[cli];
-  }
-  if (tab.cli === cli && tab.sessionId !== normalizedSessionId) {
-    tab.sessionId = normalizedSessionId;
-    changed = true;
-  }
-  return changed;
-}
-
-function switchConversationTabCli(tab: ConversationTabRecord, cli: CliName): boolean {
-  const nextSessionId = getConversationTabSessionIdForCli(tab, cli);
-  const cliChanged = tab.cli !== cli;
-  const sessionChanged = tab.sessionId !== nextSessionId;
-  if (!cliChanged && !sessionChanged) {
-    return false;
-  }
-  tab.cli = cli;
-  tab.sessionId = nextSessionId;
-  return true;
+  return sessionTabsController.sanitizeConversationTabRecord(value);
 }
 
 function ensureConversationTabs(): ConversationTabsState {
-  if (Array.isArray(conversationTabStore.tabs) && conversationTabStore.tabs.length > 0) {
-    if (
-      !conversationTabStore.activeTabId
-      || !conversationTabStore.tabs.some((tab) => tab.id === conversationTabStore.activeTabId)
-    ) {
-      conversationTabStore.activeTabId = conversationTabStore.tabs[conversationTabStore.tabs.length - 1].id;
-      persistConversationTabsToWorkspaceSettings();
-    }
-    return conversationTabStore;
-  }
-  const fallbackCli = isCliName(currentCli) ? currentCli : getDefaultCli();
-  const fallbackTab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli: fallbackCli,
-    sessionId: getLatestSessionId(fallbackCli),
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, fallbackCli, getLatestSessionId(fallbackCli)),
-    createdAt: Date.now(),
-  };
-  conversationTabStore.tabs = [fallbackTab];
-  conversationTabStore.activeTabId = fallbackTab.id;
-  persistConversationTabsToWorkspaceSettings();
-  return conversationTabStore;
+  return sessionTabsController.ensureConversationTabs();
 }
 
 function persistConversationTabsToWorkspaceSettings(): void {
-  const state = ensureConversationTabs();
-  workspaceSettings.conversationTabs = {
-    activeTabId: state.activeTabId,
-    tabs: state.tabs.map((tab) => ({
-      id: tab.id,
-      cli: tab.cli,
-      sessionId: tab.sessionId,
-      sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
-      createdAt: tab.createdAt,
-    })),
-  };
-  saveWorkspaceSettings(workspaceSettings);
+  sessionTabsController.persistConversationTabsToWorkspaceSettings();
 }
 
 function getConversationTabById(tabId: string): ConversationTabRecord | null {
-  const state = ensureConversationTabs();
-  const tab = state.tabs.find((item) => item.id === tabId);
-  return tab ?? null;
+  return sessionTabsController.getConversationTabById(tabId);
 }
 
 function getActiveConversationTabId(): string | null {
-  const state = ensureConversationTabs();
-  return state.activeTabId;
+  return sessionTabsController.getActiveConversationTabId();
 }
 
 function getActiveConversationTab(): ConversationTabRecord | null {
-  const state = ensureConversationTabs();
-  if (!state.activeTabId) {
-    return null;
-  }
-  return state.tabs.find((item) => item.id === state.activeTabId) ?? null;
+  return sessionTabsController.getActiveConversationTab();
 }
 
 function getActiveConversationSessionId(cli: CliName): string | null {
-  const activeTab = getActiveConversationTab();
-  if (!activeTab) {
-    return null;
-  }
-  return getConversationTabSessionIdForCli(activeTab, cli);
+  return sessionTabsController.getActiveConversationSessionId(cli);
 }
 
 function findConversationTabIdBySession(cli: CliName, sessionId: string): string | null {
-  const state = ensureConversationTabs();
-  const matched = state.tabs.find((tab) => tab.cli === cli && tab.sessionId === sessionId);
-  return matched ? matched.id : null;
+  return sessionTabsController.findConversationTabIdBySession(cli, sessionId);
 }
 
 function updateActiveConversationTabSession(cli: CliName, sessionId: string | null): void {
-  const tab = getActiveConversationTab();
-  if (!tab) {
-    return;
-  }
-  const changed = setConversationTabSessionIdForCli(tab, cli, sessionId);
-  if (!changed) {
-    return;
-  }
-  persistConversationTabsToWorkspaceSettings();
+  sessionTabsController.updateActiveConversationTabSession(cli, sessionId);
 }
 
 function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
-  const state = ensureConversationTabs();
-  const tab = state.tabs.find((item) => item.id === tabId);
-  if (!tab) {
-    return null;
-  }
-  const tabSessionId = getConversationTabSessionIdForCli(tab, tab.cli);
-  if (tab.sessionId !== tabSessionId) {
-    tab.sessionId = tabSessionId;
-  }
-  if (state.activeTabId !== tabId) {
-    state.activeTabId = tabId;
-    persistConversationTabsToWorkspaceSettings();
-  }
-  setWorkspaceInteractiveModeForCli(tab.cli, resolveAutoInteractiveModeForConversationTab(tab));
-  setCurrentSession(tab.cli, tabSessionId, { syncConversationTab: false });
-  return {
-    cli: tab.cli,
-    sessionId: tabSessionId,
-  };
+  return sessionTabsController.setActiveConversationTab(tabId);
 }
 
 async function switchVisibleConversationTabForLobster(
@@ -16597,50 +9651,11 @@ function addConversationTab(
   sessionId: string | null,
   options: { skipPersist?: boolean } = {}
 ): string | null {
-  const state = ensureConversationTabs();
-  const tab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli,
-    sessionId,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
-    createdAt: Date.now(),
-  };
-  state.tabs.push(tab);
-  state.activeTabId = tab.id;
-  if (!options.skipPersist) {
-    persistConversationTabsToWorkspaceSettings();
-  }
-  setCurrentSession(cli, sessionId, { syncConversationTab: false });
-  return sessionId;
+  return sessionTabsController.addConversationTab(cli, sessionId, options);
 }
 
 function closeConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
-  const state = ensureConversationTabs();
-  if (state.tabs.length <= 1) {
-    const active = getActiveConversationTab();
-    return active ? { cli: active.cli, sessionId: active.sessionId } : null;
-  }
-  const index = state.tabs.findIndex((tab) => tab.id === tabId);
-  if (index < 0) {
-    const active = getActiveConversationTab();
-    return active ? { cli: active.cli, sessionId: active.sessionId } : null;
-  }
-  clearPendingSessionDraft(tabId);
-  state.tabs.splice(index, 1);
-  if (!state.activeTabId || state.activeTabId === tabId) {
-    const fallbackIndex = index > 0 ? index - 1 : 0;
-    state.activeTabId = state.tabs[fallbackIndex]?.id ?? state.tabs[0].id;
-  }
-  persistConversationTabsToWorkspaceSettings();
-  const activeTab = getActiveConversationTab();
-  if (!activeTab) {
-    return null;
-  }
-  setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
-  return {
-    cli: activeTab.cli,
-    sessionId: activeTab.sessionId,
-  };
+  return sessionTabsController.closeConversationTab(tabId);
 }
 
 async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
@@ -16675,38 +9690,11 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
 }
 
 function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {
-  const state = ensureConversationTabs();
-  let changed = false;
-  state.tabs.forEach((tab) => {
-    if (getConversationTabSessionIdForCli(tab, cli) === sessionId) {
-      changed = setConversationTabSessionIdForCli(tab, cli, null) || changed;
-      clearPendingSessionDraft(tab.id, cli);
-    }
-  });
-  if (changed) {
-    persistConversationTabsToWorkspaceSettings();
-  }
+  sessionTabsController.detachConversationTabsFromSession(cli, sessionId);
 }
 
 function syncCurrentSessionWithActiveTab(preferredCli?: CliName): string | null {
-  const activeTab = getActiveConversationTab();
-  if (!activeTab) {
-    const cli = preferredCli ?? currentCli;
-    setCurrentSession(cli, null, { syncConversationTab: false });
-    return null;
-  }
-  if (currentCli !== activeTab.cli) {
-    currentCli = activeTab.cli;
-    updateStatusBar();
-    workspaceSettings.currentCli = currentCli;
-    saveWorkspaceSettings(workspaceSettings);
-  }
-  const sessionId = getConversationTabSessionIdForCli(activeTab, activeTab.cli);
-  if (activeTab.sessionId !== sessionId) {
-    activeTab.sessionId = sessionId;
-  }
-  setCurrentSession(activeTab.cli, sessionId, { syncConversationTab: false });
-  return sessionId;
+  return sessionTabsController.syncCurrentSessionWithActiveTab(preferredCli);
 }
 
 function setCurrentSession(
@@ -16730,21 +9718,8 @@ function setCurrentSession(
 
 function startNewSession(cli: CliName): void {
   const activeTab = getActiveConversationTab();
-  if (!activeTab) {
-    return;
-  }
-  let changed = false;
-  if (activeTab.cli !== cli) {
-    changed = switchConversationTabCli(activeTab, cli) || changed;
-  }
-  changed = setConversationTabSessionIdForCli(activeTab, cli, null) || changed;
-  if (changed) {
-    persistConversationTabsToWorkspaceSettings();
-  }
-  clearPendingSessionDraft(activeTab.id, cli);
-  updatePendingSessionDraft(activeTab.id, { messages: [] }, cli);
-  setCurrentSession(cli, null);
-  void logInfo("session-new", { cli, tabId: activeTab.id });
+  sessionTabsController.startNewSession(cli);
+  void logInfo("session-new", { cli, tabId: activeTab?.id ?? null });
 }
 
 async function resetConversationTabSession(): Promise<void> {
@@ -16788,7 +9763,12 @@ function touchSession(cli: CliName, sessionId: string): void {
 
 async function persistSessionStore(nextStore: SessionStore): Promise<void> {
   await extensionContext.globalState.update(getSessionStoreKey(), nextStore);
-  writeSessionFile(nextStore);
+  writeSessionFile(nextStore, activeWorkspaceKey, {
+    workspaceKeyFallback: WORKSPACE_KEY_FALLBACK,
+    legacySessionFile: LEGACY_SESSION_FILE,
+    sessionDir: SESSION_DIR,
+    logError: (event, payload) => void logError(event, payload),
+  });
 }
 
 function updateSessionBuffer(buffer: string, chunk: string): string {
@@ -16799,40 +9779,12 @@ function updateSessionBuffer(buffer: string, chunk: string): string {
   return next.slice(next.length - SESSION_BUFFER_LIMIT);
 }
 
-function createLocalSessionId(): string {
-  return `${LOCAL_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 function createConversationTabId(): string {
-  return `${CONVERSATION_TAB_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function resolvePendingSessionDraftCli(tabId: string, cli?: CliName): CliName {
-  if (cli) {
-    return cli;
-  }
-  const tab = getConversationTabById(tabId);
-  if (tab) {
-    return tab.cli;
-  }
-  return currentCli;
-}
-
-function getPendingSessionDraftKey(tabId: string, cli: CliName): string {
-  return `${tabId}::${cli}`;
+  return sessionTabsController.createConversationTabId();
 }
 
 function getPendingSessionDraft(tabId: string, cli?: CliName): PendingSessionDraft {
-  const resolvedCli = resolvePendingSessionDraftCli(tabId, cli);
-  const draftKey = getPendingSessionDraftKey(tabId, resolvedCli);
-  if (!pendingSessionDrafts[draftKey]) {
-    pendingSessionDrafts[draftKey] = {
-      label: null,
-      firstPrompt: null,
-      messages: [],
-    };
-  }
-  return pendingSessionDrafts[draftKey];
+  return sessionTabsController.getPendingSessionDraft(tabId, cli);
 }
 
 function updatePendingSessionDraft(
@@ -16840,229 +9792,35 @@ function updatePendingSessionDraft(
   patch: Partial<PendingSessionDraft>,
   cli?: CliName,
 ): PendingSessionDraft {
-  const draft = getPendingSessionDraft(tabId, cli);
-  if (patch.label !== undefined) {
-    draft.label = patch.label;
-  }
-  if (patch.firstPrompt !== undefined) {
-    draft.firstPrompt = patch.firstPrompt;
-  }
-  if (patch.messages !== undefined) {
-    draft.messages = patch.messages;
-  }
-  return draft;
+  return sessionTabsController.updatePendingSessionDraft(tabId, patch, cli);
 }
 
 function clearPendingSessionDraft(tabId: string, cli?: CliName): void {
-  if (cli) {
-    delete pendingSessionDrafts[getPendingSessionDraftKey(tabId, cli)];
-    return;
-  }
-  const prefix = `${tabId}::`;
-  Object.keys(pendingSessionDrafts).forEach((key) => {
-    if (key === tabId || key.startsWith(prefix)) {
-      delete pendingSessionDrafts[key];
-    }
-  });
+  sessionTabsController.clearPendingSessionDraft(tabId, cli);
 }
 
 function ensureLocalSession(cli: CliName, tabId: string): void {
-  if (getCurrentSessionId(cli)) {
-    return;
-  }
-  const draft = getPendingSessionDraft(tabId, cli);
-  if (!draft.messages.length) {
-    return;
-  }
-  adoptSessionId(cli, createLocalSessionId(), tabId);
+  sessionLifecycleController.ensureLocalSession(cli, tabId);
 }
 
 function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void {
-  if (getCurrentSessionId(cli)) {
-    return;
-  }
-  const draft = getPendingSessionDraft(tabId, cli);
-  if (!draft.firstPrompt) {
-    const normalizedPrompt = String(prompt ?? "").trim();
-    if (normalizedPrompt) {
-      draft.firstPrompt = normalizedPrompt;
-    }
-  }
-  if (draft.label) {
-    return;
-  }
-  const label = buildSessionLabelFromPrompt(prompt);
-  if (!label) {
-    return;
-  }
-  draft.label = label;
+  sessionTabsController.preparePendingLabel(cli, tabId, prompt);
 }
 
 function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): void {
-  const draft = getPendingSessionDraft(tabId, cli);
-  const label = draft.label;
-  const firstPrompt = draft.firstPrompt;
-  if (!label) {
-    if (firstPrompt) {
-      const sessions = sessionStore[cli].sessions;
-      const existing = sessions.find((item) => item.id === sessionId);
-      if (existing && !existing.firstPrompt) {
-        existing.firstPrompt = firstPrompt;
-        void persistSessionStore(sessionStore);
-        void postPanelState();
-      }
-    }
-    draft.firstPrompt = null;
-    return;
-  }
-  const sessions = sessionStore[cli].sessions;
-  const existing = sessions.find((item) => item.id === sessionId);
-  if (existing && shouldUseFallbackSessionLabel(existing.label)) {
-    existing.label = label;
-  }
-  if (existing && firstPrompt && !existing.firstPrompt) {
-    existing.firstPrompt = firstPrompt;
-  }
-  draft.label = null;
-  draft.firstPrompt = null;
-  void persistSessionStore(sessionStore);
-  void postPanelState();
-}
-
-function appendMessageToStore(target: ChatMessage[], message: ChatMessage): void {
-  if (isNearDuplicateWarningOrErrorMessage(target, message)) {
-    return;
-  }
-  if (typeof message.sequence !== "number") {
-    message.sequence = getNextMessageSequence(target);
-  }
-  target.push(message);
-}
-
-function normalizeDuplicateMessageContent(content: string): string {
-  return String(content || "").replace(/\r\n/g, "\n").trim();
-}
-
-function isWarningOrErrorChatMessage(message: ChatMessage | undefined): boolean {
-  if (!message || (message.role !== "trace" && message.role !== "system")) {
-    return false;
-  }
-  const content = normalizeDuplicateMessageContent(message.content);
-  if (!content) {
-    return false;
-  }
-  const firstLine = content.split("\n").find((line) => line.trim());
-  if (!firstLine) {
-    return false;
-  }
-  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
-}
-
-function isNearDuplicateWarningOrErrorMessage(
-  target: ChatMessage[],
-  message: ChatMessage,
-  windowMs = 3000,
-): boolean {
-  const last = target[target.length - 1];
-  if (!last) {
-    return false;
-  }
-  if (message.role !== last.role || !isWarningOrErrorChatMessage(message) || !isWarningOrErrorChatMessage(last)) {
-    return false;
-  }
-  if (message.role === "trace" && (message.kind || "normal") !== (last.kind || "normal")) {
-    return false;
-  }
-  const content = normalizeDuplicateMessageContent(message.content);
-  const lastContent = normalizeDuplicateMessageContent(last.content);
-  if (!content || content !== lastContent) {
-    return false;
-  }
-  const createdAt = typeof message.createdAt === "number" ? message.createdAt : Date.now();
-  const lastCreatedAt = typeof last.createdAt === "number" ? last.createdAt : 0;
-  return lastCreatedAt > 0 && Math.abs(createdAt - lastCreatedAt) <= windowMs;
-}
-
-function getNextMessageSequence(messages: ChatMessage[]): number {
-  if (!messages.length) {
-    return 0;
-  }
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const current = messages[i];
-    if (typeof current.sequence === "number") {
-      return current.sequence + 1;
-    }
-  }
-  return messages.length;
-}
-
-function appendAssistantChunkToStore(chunk: string, kind?: ChatMessage["kind"]): void {
-  if (!activeMessageTarget || activeMessageIndex === null) {
-    return;
-  }
-  const message = activeMessageTarget[activeMessageIndex];
-  if (!message || message.role !== "assistant") {
-    return;
-  }
-  if (kind === "thinking") {
-    message.kind = "thinking";
-  }
-  message.content += chunk;
-}
-
-function getActiveAssistantContent(): string | null {
-  if (!activeMessageTarget || activeMessageIndex === null) {
-    return null;
-  }
-  const message = activeMessageTarget[activeMessageIndex];
-  if (!message || message.role !== "assistant") {
-    return null;
-  }
-  const content = message.content ?? "";
-  return content.trim() ? content : null;
+  sessionLifecycleController.assignPendingLabel(cli, tabId, sessionId);
 }
 
 function persistActiveMessages(): void {
-  if (!activeCliForRun || !activeMessageTarget) {
-    return;
-  }
-  if (!activeSessionId) {
-    if (!activeTabIdForRun) {
-      return;
-    }
-    updatePendingSessionDraft(activeTabIdForRun, { messages: activeMessageTarget }, activeCliForRun);
-    ensureLocalSession(activeCliForRun, activeTabIdForRun);
-    return;
-  }
-  saveSessionMessages(activeCliForRun, activeSessionId, activeMessageTarget);
+  sessionLifecycleController.persistActiveMessages();
 }
 
 function attachPendingMessages(cli: CliName, tabId: string, sessionId: string): void {
-  const draft = getPendingSessionDraft(tabId, cli);
-  const pending = draft.messages;
-  if (!pending || pending.length === 0) {
-    return;
-  }
-  const existing = loadSessionMessages(cli, sessionId);
-  const merged = [...existing, ...pending];
-  draft.messages = [];
-  saveSessionMessages(cli, sessionId, merged);
-  if (activeCliForRun === cli && activeTabIdForRun === tabId && activeSessionId === null) {
-    activeSessionId = sessionId;
-    activeMessageTarget = merged;
-    activeMessageIndex = merged.length - 1;
-  }
+  sessionLifecycleController.attachPendingMessages(cli, tabId, sessionId);
 }
 
 function getSessionStoreKey(workspaceKey: string = activeWorkspaceKey): string {
   return `${SESSION_STORE_KEY}:${workspaceKey}`;
-}
-
-function getSessionFilePath(workspaceKey: string = activeWorkspaceKey): string {
-  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
-    return LEGACY_SESSION_FILE;
-  }
-  return path.join(SESSION_DIR, `${workspaceKey}.json`);
 }
 
 function getSessionMetaFilePath(workspaceKey: string = activeWorkspaceKey): string {
@@ -17083,64 +9841,16 @@ function writeSessionMetaStore(
   writeSessionMeta(getSessionMetaFilePath(workspaceKey), meta);
 }
 
-function getSessionRecord(cli: CliName, sessionId: string): SessionRecord | null {
-  const sessions = sessionStore[cli]?.sessions ?? [];
-  return sessions.find((session) => session.id === sessionId) ?? null;
-}
-
 function replaceConversationTabSessionReferences(
   cli: CliName,
   fromSessionId: string,
   toSessionId: string,
 ): void {
-  const state = ensureConversationTabs();
-  let changed = false;
-  state.tabs.forEach((tab) => {
-    if (getConversationTabSessionIdForCli(tab, cli) === fromSessionId) {
-      changed = setConversationTabSessionIdForCli(tab, cli, toSessionId) || changed;
-    }
-  });
-  if (changed) {
-    persistConversationTabsToWorkspaceSettings();
-  }
-}
-
-function replaceRuntimeSessionReferences(cli: CliName, fromSessionId: string, toSessionId: string): void {
-  if (activeCliForRun === cli && activeSessionId === fromSessionId) {
-    activeSessionId = toSessionId;
-    activeMessageTarget = loadSessionMessages(cli, toSessionId);
-    activeMessageIndex = activeMessageTarget.length > 0 ? activeMessageTarget.length - 1 : null;
-  }
-  parallelRunsByTabId.forEach((run) => {
-    if (run.cli === cli && run.sessionId === fromSessionId) {
-      run.sessionId = toSessionId;
-      run.messageTarget = loadSessionMessages(cli, toSessionId);
-    }
-  });
-  interactiveRunsByTabId.forEach((run) => {
-    if (run.cli === cli && run.sessionId === fromSessionId) {
-      run.sessionId = toSessionId;
-      run.messageTarget = loadSessionMessages(cli, toSessionId);
-    }
-  });
+  sessionLifecycleController.replaceConversationTabSessionReferences(cli, fromSessionId, toSessionId);
 }
 
 function deleteSessionMessageArtifacts(cli: CliName, sessionId: string): void {
-  sessionMessageCache.delete(getSessionKey(cli, sessionId));
-  const filePath = getMessageFile(cli, sessionId);
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (error) {
-    void logError("session-messages-delete-error", {
-      cli,
-      sessionId,
-      filePath,
-      error: String(error),
-    });
-  }
-  deleteInteractiveMapping(cli, sessionId);
+  sessionLifecycleController.deleteSessionMessageArtifacts(cli, sessionId);
 }
 
 function migrateLocalSessionToTargetSession(
@@ -17149,98 +9859,23 @@ function migrateLocalSessionToTargetSession(
   targetSessionId: string,
   options: { notifyPanel?: boolean } = {}
 ): void {
-  if (!localSessionId || !targetSessionId || localSessionId === targetSessionId) {
-    return;
-  }
-  const localRecord = getSessionRecord(cli, localSessionId);
-  const targetRecord = getSessionRecord(cli, targetSessionId);
-  if (!localRecord && !targetRecord) {
-    return;
-  }
-
-  const localMessages = loadSessionMessages(cli, localSessionId);
-  const targetMessages = loadSessionMessages(cli, targetSessionId);
-  const mergedMessages = mergeSessionMessages(targetMessages, localMessages);
-  saveSessionMessages(cli, targetSessionId, mergedMessages);
-
-  const sessions = sessionStore[cli]?.sessions ?? [];
-  const targetIndex = sessions.findIndex((session) => session.id === targetSessionId);
-
-  if (localRecord && targetIndex >= 0 && targetRecord) {
-    sessions[targetIndex] = mergeSessionRecords(targetRecord, localRecord);
-  } else if (localRecord && targetIndex < 0) {
-    sessions.push({ ...localRecord, id: targetSessionId });
-  }
-
-  const removableLocalIndex = sessions.findIndex((session) => session.id === localSessionId);
-  if (removableLocalIndex >= 0) {
-    sessions.splice(removableLocalIndex, 1);
-  }
-
-  if (getCurrentSessionId(cli) === localSessionId) {
-    setCurrentSession(cli, targetSessionId, { syncConversationTab: false });
-  }
-
-  replaceConversationTabSessionReferences(cli, localSessionId, targetSessionId);
-  replaceRuntimeSessionReferences(cli, localSessionId, targetSessionId);
-  deleteSessionMessageArtifacts(cli, localSessionId);
-  void persistSessionStore(sessionStore);
-  if (options.notifyPanel !== false) {
-    void postPanelState();
-  }
-  void logInfo("session-local-promoted", {
-    cli,
-    localSessionId,
-    targetSessionId,
-    mergedMessageCount: mergedMessages.length,
-  });
+  sessionLifecycleController.migrateLocalSessionToTargetSession(cli, localSessionId, targetSessionId, options);
 }
 
 function findSupersedingLocalSessionTarget(cli: CliName, sessionId: string): string | null {
-  if (!isLocalSessionId(sessionId)) {
-    return null;
-  }
-  const meta = readSessionMetaStore();
-  const mappedId = getMappedThreadId(meta, cli, sessionId);
-  if (mappedId && mappedId !== sessionId) {
-    return mappedId;
-  }
-  const localRecord = getSessionRecord(cli, sessionId);
-  if (!localRecord) {
-    return null;
-  }
-  return findSupersedingSessionId(localRecord, sessionStore[cli]?.sessions ?? [], {
-    getMessages: (candidateSessionId) => loadSessionMessages(cli, candidateSessionId),
-  });
+  return sessionLifecycleController.findSupersedingLocalSessionTarget(cli, sessionId);
 }
 
 function repairSupersededLocalSession(cli: CliName, sessionId: string, options: { notifyPanel?: boolean } = {}): string {
-  const targetSessionId = findSupersedingLocalSessionTarget(cli, sessionId);
-  if (!targetSessionId || targetSessionId === sessionId) {
-    return sessionId;
-  }
-  migrateLocalSessionToTargetSession(cli, sessionId, targetSessionId, options);
-  return targetSessionId;
+  return sessionLifecycleController.repairSupersededLocalSession(cli, sessionId, options);
 }
 
 function repairSupersededLocalSessions(options: { notifyPanel?: boolean } = {}): void {
-  CLI_LIST.forEach((cli) => {
-    const localSessionIds = (sessionStore[cli]?.sessions ?? [])
-      .map((session) => session.id)
-      .filter((sessionId) => isLocalSessionId(sessionId));
-    localSessionIds.forEach((sessionId) => {
-      repairSupersededLocalSession(cli, sessionId, options);
-    });
-  });
+  sessionLifecycleController.repairSupersededLocalSessions(options);
 }
 
 function resolveInteractiveMappedId(cli: CliName, sessionId: string): string | null {
-  const meta = readSessionMetaStore();
-  const mapped = getMappedThreadId(meta, cli, sessionId);
-  if (mapped) {
-    return mapped;
-  }
-  return isLocalSessionId(sessionId) ? null : sessionId;
+  return sessionLifecycleController.resolveInteractiveMappedId(cli, sessionId);
 }
 
 function upsertInteractiveMapping(
@@ -17249,203 +9884,19 @@ function upsertInteractiveMapping(
   mappedId: string,
   options: { freezePrevious?: string } = {}
 ): void {
-  const meta = readSessionMetaStore();
-  const next = upsertMapping(meta, cli, sessionId, mappedId, {
-    freezePrevious: options.freezePrevious,
-    maxFrozen: FROZEN_THREAD_LIMIT,
-  });
-  writeSessionMetaStore(next);
+  sessionLifecycleController.upsertInteractiveMapping(cli, sessionId, mappedId, options);
 }
 
 function deleteInteractiveMapping(cli: CliName, sessionId: string): void {
-  const meta = readSessionMetaStore() as any;
-  if (!meta?.byCli) {
-    return;
-  }
-  if (cli === "codex" && meta.byCli.codex && meta.byCli.codex[sessionId]) {
-    delete meta.byCli.codex[sessionId];
-    writeSessionMetaStore(meta);
-    return;
-  }
-  if (cli === "claude" && meta.byCli.claude && meta.byCli.claude[sessionId]) {
-    delete meta.byCli.claude[sessionId];
-    writeSessionMetaStore(meta);
-    return;
-  }
-}
-
-function getMessageDir(workspaceKey: string = activeWorkspaceKey): string {
-  if (workspaceKey === WORKSPACE_KEY_FALLBACK) {
-    return LEGACY_MESSAGE_DIR;
-  }
-  return path.join(MESSAGE_DIR_ROOT, workspaceKey);
-}
-
-function clearMessageStorage(): void {
-  const messageDir = getMessageDir();
-  if (activeWorkspaceKey === WORKSPACE_KEY_FALLBACK) {
-    for (const cli of CLI_LIST) {
-      const legacyCliDir = path.join(messageDir, cli);
-      if (fs.existsSync(legacyCliDir)) {
-        fs.rmSync(legacyCliDir, { recursive: true, force: true });
-      }
-    }
-    return;
-  }
-  if (fs.existsSync(messageDir)) {
-    fs.rmSync(messageDir, { recursive: true, force: true });
-  }
-}
-
-function getSessionKey(cli: CliName, sessionId: string, workspaceKey: string = activeWorkspaceKey): string {
-  return `${workspaceKey}:${cli}:${sessionId}`;
-}
-
-function getMessageFile(cli: CliName, sessionId: string, workspaceKey: string = activeWorkspaceKey): string {
-  return path.join(getMessageDir(workspaceKey), cli, `${sessionId}.json`);
+  sessionLifecycleController.deleteInteractiveMapping(cli, sessionId);
 }
 
 function loadSessionMessages(cli: CliName, sessionId: string): ChatMessage[] {
-  const key = getSessionKey(cli, sessionId);
-  const cached = sessionMessageCache.get(key);
-  if (cached) {
-    return cached;
-  }
-  const messages = readMessageFile(cli, sessionId);
-  const sanitized = sanitizeMessages(messages);
-  const recovered = maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
-  const resolvedMessages = recovered ?? sanitized.messages;
-  if (recovered || sanitized.changed) {
-    writeMessageFile(cli, sessionId, resolvedMessages);
-  }
-  sessionMessageCache.set(key, resolvedMessages);
-  return resolvedMessages;
-}
-
-function maybeRecoverClaudeSessionMessages(
-  cli: CliName,
-  sessionId: string,
-  messages: ChatMessage[]
-): ChatMessage[] | null {
-  if (cli !== "claude") {
-    return null;
-  }
-  const hasConversationContent = messages.some((message) => message.role === "assistant" || message.role === "trace");
-  if (hasConversationContent) {
-    return null;
-  }
-  const hasAnyUserMessage = messages.some((message) => message.role === "user" && message.content.trim());
-  if (!hasAnyUserMessage) {
-    return null;
-  }
-  try {
-    const recovered = recoverClaudeMessagesFromTranscript(sessionId, messages);
-    if (recovered) {
-      void logInfo("claude-session-recovered-from-transcript", {
-        sessionId,
-        originalSize: messages.length,
-        recoveredSize: recovered.length,
-      });
-    }
-    return recovered;
-  } catch (error) {
-    void logError("claude-session-recover-failed", {
-      sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
+  return sessionLifecycleController.loadSessionMessages(cli, sessionId);
 }
 
 function saveSessionMessages(cli: CliName, sessionId: string, messages: ChatMessage[]): void {
-  const key = getSessionKey(cli, sessionId);
-  const sanitized = sanitizeMessages(messages);
-  sessionMessageCache.set(key, sanitized.messages);
-  writeMessageFile(cli, sessionId, sanitized.messages);
-}
-
-function readMessageFile(cli: CliName, sessionId: string): ChatMessage[] {
-  const key = getSessionKey(cli, sessionId);
-  sessionMessageLoadErrors.delete(key);
-  try {
-    const filePath = getMessageFile(cli, sessionId);
-    if (!fs.existsSync(filePath)) {
-      return [];
-    }
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.messages)) {
-      const detail = [
-        "session message file format invalid",
-        `cli: ${cli}`,
-        `sessionId: ${sessionId}`,
-        `file: ${filePath}`,
-      ].join("\n");
-      sessionMessageLoadErrors.set(key, detail);
-      return [];
-    }
-    return parsed.messages as ChatMessage[];
-  } catch (error) {
-    const detail = buildErrorDetail(error);
-    sessionMessageLoadErrors.set(key, detail);
-    void logError("session-messages-read-error", {
-      cli,
-      sessionId,
-      filePath: getMessageFile(cli, sessionId),
-      error: detail,
-    });
-    return [];
-  }
-}
-
-function writeMessageFile(cli: CliName, sessionId: string, messages: ChatMessage[]): void {
-  try {
-    const cliDir = path.join(getMessageDir(), cli);
-    if (!fs.existsSync(cliDir)) {
-      fs.mkdirSync(cliDir, { recursive: true });
-    }
-    const filePath = getMessageFile(cli, sessionId);
-    fs.writeFileSync(filePath, JSON.stringify({ messages }, null, 2), "utf8");
-  } catch (error) {
-    void logError("session-messages-write-error", { error: String(error) });
-  }
-}
-
-function sanitizeMessages(messages: ChatMessage[]): { messages: ChatMessage[]; changed: boolean } {
-  if (!messages.length) {
-    return { messages, changed: false };
-  }
-  const cleaned: ChatMessage[] = [];
-  let changed = false;
-  for (const message of messages) {
-    const content = typeof message.content === "string" ? message.content : "";
-    if (
-      (message.role === "assistant" || message.role === "trace")
-      && !content.trim()
-    ) {
-      changed = true;
-      continue;
-    }
-    cleaned.push(message);
-  }
-  const normalized = ensureMessageSequence(cleaned);
-  return { messages: normalized.messages, changed: changed || normalized.changed };
-}
-
-function ensureMessageSequence(messages: ChatMessage[]): { messages: ChatMessage[]; changed: boolean } {
-  if (messages.length === 0) {
-    return { messages, changed: false };
-  }
-  let changed = false;
-  let nextSequence = 0;
-  for (const message of messages) {
-    if (message.sequence !== nextSequence) {
-      message.sequence = nextSequence;
-      changed = true;
-    }
-    nextSequence += 1;
-  }
-  return { messages, changed };
+  sessionLifecycleController.saveSessionMessages(cli, sessionId, messages);
 }
 
 function sendSessionLoadErrorToPanel(
@@ -17454,15 +9905,7 @@ function sendSessionLoadErrorToPanel(
   detail: string,
   tabId: string | null
 ): void {
-  const targetTabId = tabId ?? getActiveConversationTabId();
-  sendPanelMessage({
-    type: "sessionLoadError",
-    title: t("session.loadFailedTitle"),
-    detail,
-    tabId: targetTabId,
-    sessionId,
-    cli,
-  });
+  sessionLifecycleController.sendSessionLoadErrorToPanel(cli, sessionId, detail, tabId);
 }
 
 function sendSessionMessagesToPanel(
@@ -17470,587 +9913,35 @@ function sendSessionMessagesToPanel(
   sessionId: string | null,
   tabId: string | null = getActiveConversationTabId()
 ): void {
-  const targetTabId = tabId ?? getActiveConversationTabId();
-  if (!targetTabId) {
-    sendPanelMessage({ type: "setMessages", messages: [], tabId: null });
-    return;
-  }
-
-  const liveMessages = getLiveMessagesForTab(targetTabId);
-  if (liveMessages) {
-    sendPanelMessage({ type: "setMessages", messages: liveMessages, tabId: targetTabId });
-    void logDebug("setMessages-live", {
-      cli,
-      sessionId,
-      tabId: targetTabId,
-      size: liveMessages.length,
-      source: "active-run",
-    });
-    return;
-  }
-
-  if (!sessionId) {
-    const draftMessages = getPendingSessionDraft(targetTabId, cli).messages;
-    sendPanelMessage({ type: "setMessages", messages: draftMessages, tabId: targetTabId });
-    void logDebug("setMessages-draft", {
-      cli,
-      sessionId,
-      tabId: targetTabId,
-      size: draftMessages.length,
-      source: "draft",
-    });
-    return;
-  }
-
-  try {
-    const sessionMessages = loadSessionMessages(cli, sessionId);
-    const counts = sessionMessages.reduce((acc, message) => {
-      const role = typeof message?.role === "string" ? message.role : "unknown";
-      acc[role] = (acc[role] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    const loadError = sessionMessageLoadErrors.get(getSessionKey(cli, sessionId));
-    sendPanelMessage({
-      type: "setMessages",
-      messages: sessionMessages,
-      tabId: targetTabId,
-    });
-    if (loadError) {
-      sendSessionLoadErrorToPanel(cli, sessionId, loadError, targetTabId);
-      void showErrorWithActions(t("session.loadFailedTitle"), loadError);
-      void logError("session-load-surface-error", {
-        cli,
-        sessionId,
-        tabId: targetTabId,
-        detail: loadError,
-      });
-    }
-    void logDebug("setMessages-session", {
-      cli,
-      sessionId,
-      tabId: targetTabId,
-      size: sessionMessages.length,
-      counts,
-      source: "session-store",
-      loadError: loadError ?? null,
-    });
-  } catch (error) {
-    const detail = buildErrorDetail(error);
-    sendPanelMessage({ type: "setMessages", messages: [], tabId: targetTabId });
-    sendSessionLoadErrorToPanel(cli, sessionId, detail, targetTabId);
-    void logError("setMessages-session-failed", {
-      cli,
-      sessionId,
-      tabId: targetTabId,
-      error: detail,
-    });
-    void showErrorWithActions(t("session.loadFailedTitle"), detail);
-  }
+  sessionLifecycleController.sendSessionMessagesToPanel(cli, sessionId, tabId);
 }
 
 function deleteSession(cli: CliName, sessionId: string): void {
-  const sessions = sessionStore[cli].sessions;
-  const index = sessions.findIndex((item) => item.id === sessionId);
-  if (index === -1) {
-    return;
-  }
-  sessions.splice(index, 1);
-  sessionMessageCache.delete(getSessionKey(cli, sessionId));
-  deleteInteractiveMapping(cli, sessionId);
-  const filePath = getMessageFile(cli, sessionId);
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (error) {
-    void logError("session-messages-delete-error", { error: String(error) });
-  }
-  if (getCurrentSessionId(cli) === sessionId) {
-    setCurrentSession(cli, null);
-  }
-  void persistSessionStore(sessionStore);
-  void logInfo("session-deleted", { cli, sessionId });
+  sessionLifecycleController.deleteSession(cli, sessionId);
 }
 
 function clearAllSessions(): void {
-  sessionMessageCache.clear();
-  for (const cli of CLI_LIST) {
-    sessionStore[cli].currentId = null;
-    sessionStore[cli].sessions = [];
-  }
-  Object.keys(pendingSessionDrafts).forEach((tabId) => {
-    delete pendingSessionDrafts[tabId];
-  });
-  const tabs = ensureConversationTabs();
-  tabs.tabs.forEach((tab) => {
-    tab.sessionId = null;
-    tab.sessionIdByCli = {};
-  });
-  persistConversationTabsToWorkspaceSettings();
-  try {
-    clearMessageStorage();
-  } catch (error) {
-    void logError("session-messages-clear-error", { error: String(error) });
-  }
-  try {
-    const metaFile = getSessionMetaFilePath();
-    if (fs.existsSync(metaFile)) {
-      fs.unlinkSync(metaFile);
-    }
-  } catch (error) {
-    void logError("session-meta-clear-error", { error: String(error) });
-  }
-  void persistSessionStore(sessionStore);
-  void logInfo("session-clear-all", {});
-}
-
-function readSessionFile(workspaceKey: string = activeWorkspaceKey): SessionStore | undefined {
-  try {
-    const sessionFile = getSessionFilePath(workspaceKey);
-    if (!fs.existsSync(sessionFile)) {
-      return undefined;
-    }
-    const raw = fs.readFileSync(sessionFile, "utf8");
-    return JSON.parse(raw) as SessionStore;
-  } catch (error) {
-    void logError("session-file-read-error", { error: String(error) });
-    return undefined;
-  }
-}
-
-function writeSessionFile(store: SessionStore, workspaceKey: string = activeWorkspaceKey): void {
-  try {
-    const sessionFile = getSessionFilePath(workspaceKey);
-    const dirPath = path.dirname(sessionFile);
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.writeFileSync(sessionFile, JSON.stringify(store, null, 2), "utf8");
-  } catch (error) {
-    void logError("session-file-write-error", { error: String(error) });
-  }
-}
-
-function deleteSessionFile(workspaceKey: string): void {
-  try {
-    const sessionFile = getSessionFilePath(workspaceKey);
-    if (fs.existsSync(sessionFile)) {
-      fs.unlinkSync(sessionFile);
-    }
-  } catch (error) {
-    void logError("session-file-delete-error", {
-      workspace: workspaceKey,
-      error: String(error),
-    });
-  }
-}
-
-function formatGeminiPlainTextLines(lines: string[]): string {
-  return lines.join("\n").trimEnd();
-}
-
-function collectGeminiEventDisplay(
-  event: GeminiStreamJsonEvent,
-  handlers: {
-    onAssistantText?: (text: string) => void;
-    onTraceText?: (text: string) => void;
-    onSessionId?: (sessionId: string) => void;
-  } = {}
-): { assistantText: string; traceText: string; sessionId: string | null; resultStatus: string | null; errorText: string | null } {
-  const display = getGeminiEventDisplay(event);
-  if (display.sessionId) {
-    handlers.onSessionId?.(display.sessionId);
-  }
-  if (display.assistantText) {
-    handlers.onAssistantText?.(display.assistantText);
-  }
-  if (display.traceText) {
-    handlers.onTraceText?.(display.traceText);
-  }
-  return display;
-}
-
-function processGeminiStreamJsonChunk(
-  state: { remainder: string; assistantText: string; resultStatus: string | null; errorText: string | null },
-  chunk: string,
-  handlers: {
-    onAssistantText?: (text: string) => void;
-    onTraceText?: (text: string) => void;
-    onSessionId?: (sessionId: string) => void;
-    onPlainText?: (text: string) => void;
-  } = {}
-): void {
-  const parsed = parseGeminiStreamJsonChunk(state.remainder, chunk);
-  state.remainder = parsed.remainder;
-  parsed.events.forEach((event) => {
-    const display = collectGeminiEventDisplay(event, handlers);
-    if (display.assistantText) {
-      state.assistantText += display.assistantText;
-    }
-    if (display.resultStatus) {
-      state.resultStatus = display.resultStatus;
-    }
-    if (display.errorText) {
-      state.errorText = display.errorText;
-    }
-  });
-  const plainText = formatGeminiPlainTextLines(parsed.textLines);
-  if (plainText) {
-    state.assistantText += plainText;
-    handlers.onPlainText?.(plainText);
-  }
-}
-
-function finalizeGeminiStreamJsonState(
-  state: { remainder: string; assistantText: string; resultStatus: string | null; errorText: string | null },
-  handlers: {
-    onAssistantText?: (text: string) => void;
-    onTraceText?: (text: string) => void;
-    onSessionId?: (sessionId: string) => void;
-    onPlainText?: (text: string) => void;
-  } = {}
-): void {
-  const parsed = finalizeGeminiStreamJsonRemainder(state.remainder);
-  state.remainder = "";
-  if (!parsed) {
-    return;
-  }
-  if (parsed.kind === "event") {
-    const display = collectGeminiEventDisplay(parsed.event, handlers);
-    if (display.assistantText) {
-      state.assistantText += display.assistantText;
-    }
-    if (display.resultStatus) {
-      state.resultStatus = display.resultStatus;
-    }
-    if (display.errorText) {
-      state.errorText = display.errorText;
-    }
-    return;
-  }
-  const text = parsed.text.trimEnd();
-  if (text) {
-    state.assistantText += text;
-    handlers.onPlainText?.(text);
-  }
-}
-
-function extractSessionId(cli: CliName, text: string): string | undefined {
-  const patterns = getSessionIdPatterns(cli);
-  for (const pattern of patterns) {
-    const match = pattern.exec(text);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-  return undefined;
-}
-
-function getSessionIdPatterns(cli: CliName): RegExp[] {
-  const uuid = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-  const base = [
-    new RegExp(`session\\s*id\\s*[:=]?\\s*${uuid}`, "i"),
-    new RegExp(`conversation\\s*id\\s*[:=]?\\s*${uuid}`, "i"),
-    new RegExp(`\"session_id\"\\s*:\\s*\"${uuid}\"`, "i"),
-  ];
-  if (cli === "claude") {
-    return [
-      ...base,
-      /"session_id"\s*:\s*"([^"]+)"/i,
-    ];
-  }
-  if (cli === "gemini") {
-    return [
-      ...base,
-      /"session_id"\s*:\s*"([^"]+)"/i,
-    ];
-  }
-  return base;
+  sessionLifecycleController.clearAllSessions();
 }
 
 function applyProcessTitle(runId: string, cli: CliName, sessionId: string | null): void {
-  if (!activeProcessTitleBase) {
-    activeProcessTitleBase = process.title;
-  }
-  const labelId = sessionId ?? runId;
-  activeProcessTitleRunId = runId;
-  process.title = buildProcessLabel(cli, labelId);
+  sessionLifecycleController.applyProcessTitle(runId, cli, sessionId);
 }
 
 function updateProcessTitle(cli: CliName, sessionId: string): void {
-  if (!activeRunId || activeRunId !== activeProcessTitleRunId || activeCliForRun !== cli) {
-    return;
-  }
-  process.title = buildProcessLabel(cli, sessionId);
+  sessionLifecycleController.updateProcessTitle(cli, sessionId);
 }
 
 function restoreProcessTitle(): void {
-  if (!activeProcessTitleRunId) {
-    return;
-  }
-  if (activeProcessTitleBase) {
-    process.title = activeProcessTitleBase;
-  }
-  activeProcessTitleBase = null;
-  activeProcessTitleRunId = null;
+  sessionLifecycleController.restoreProcessTitle();
 }
 
 function syncPendingDraftMessagesForSessionAdoption(cli: CliName, tabId: string | null): void {
-  if (!tabId) {
-    return;
-  }
-
-  const activeRunMatches = getPrimaryRunTabId() === tabId
-    && activeCliForRun === cli
-    && activeSessionId === null
-    && Array.isArray(activeMessageTarget)
-    && activeMessageTarget.length > 0;
-  if (activeRunMatches && activeMessageTarget) {
-    updatePendingSessionDraft(tabId, { messages: activeMessageTarget }, cli);
-  }
-
-  const parallelRun = parallelRunsByTabId.get(tabId);
-  if (parallelRun && parallelRun.cli === cli && parallelRun.sessionId === null && parallelRun.messageTarget.length > 0) {
-    updatePendingSessionDraft(tabId, { messages: parallelRun.messageTarget }, cli);
-  }
-
-  const interactiveRun = interactiveRunsByTabId.get(tabId);
-  if (interactiveRun && interactiveRun.cli === cli && interactiveRun.sessionId === null && interactiveRun.messageTarget.length > 0) {
-    updatePendingSessionDraft(tabId, { messages: interactiveRun.messageTarget }, cli);
-  }
+  sessionLifecycleController.syncPendingDraftMessagesForSessionAdoption(cli, tabId);
 }
 
 function adoptSessionId(cli: CliName, sessionId: string, tabId: string | null = null): void {
-  const targetTabId = tabId ?? getActiveConversationTabId();
-  syncPendingDraftMessagesForSessionAdoption(cli, targetTabId);
-  let changed = false;
-  if (targetTabId) {
-    const tab = getConversationTabById(targetTabId);
-    if (tab) {
-      changed = switchConversationTabCli(tab, cli) || changed;
-      changed = setConversationTabSessionIdForCli(tab, cli, sessionId) || changed;
-    }
-  }
-  if (changed) {
-    persistConversationTabsToWorkspaceSettings();
-  }
-  const current = getCurrentSessionId(cli);
-  if (current !== sessionId) {
-    setCurrentSession(cli, sessionId, { syncConversationTab: false });
-  }
-  if (targetTabId) {
-    assignPendingLabel(cli, targetTabId, sessionId);
-    attachPendingMessages(cli, targetTabId, sessionId);
-  }
-
-  if (
-    targetTabId
-    && getPrimaryRunTabId() === targetTabId
-    && activeCliForRun === cli
-  ) {
-    activeSessionId = sessionId;
-    activeMessageTarget = loadSessionMessages(cli, sessionId);
-    activeMessageIndex = activeMessageTarget.length > 0 ? activeMessageTarget.length - 1 : null;
-  }
-
-  const parallelRun = targetTabId ? parallelRunsByTabId.get(targetTabId) : undefined;
-  if (parallelRun && parallelRun.cli === cli) {
-    parallelRun.sessionId = sessionId;
-    parallelRun.messageTarget = loadSessionMessages(cli, sessionId);
-  }
-  const interactiveRun = targetTabId ? interactiveRunsByTabId.get(targetTabId) : undefined;
-  if (interactiveRun && interactiveRun.cli === cli) {
-    interactiveRun.sessionId = sessionId;
-    interactiveRun.messageTarget = loadSessionMessages(cli, sessionId);
-  }
-
-  updateProcessTitle(cli, sessionId);
-  void postPanelState();
-  void logInfo("session-detected", { cli, sessionId, tabId: targetTabId });
-}
-
-function normalizePromptContextOptions(
-  options?: PromptContextOptions
-): Required<PromptContextOptions> {
-  return {
-    includeCurrentFile: options?.includeCurrentFile !== false,
-    includeSelection: options?.includeSelection !== false,
-  };
-}
-
-function getEditorDisplayPath(document: vscode.TextDocument): string {
-  const relativePath = vscode.workspace.asRelativePath(document.uri, false);
-  if (relativePath) {
-    return relativePath.replace(/\\/g, "/");
-  }
-  if (document.fileName) {
-    return document.fileName.replace(/\\/g, "/");
-  }
-  return document.uri.toString(true);
-}
-
-function getPrimaryNonEmptySelection(editor: vscode.TextEditor): vscode.Selection | null {
-  const selections = Array.isArray(editor.selections) && editor.selections.length
-    ? editor.selections
-    : [editor.selection];
-  for (const selection of selections) {
-    if (!selection.isEmpty) {
-      return selection;
-    }
-  }
-  return null;
-}
-
-function formatSelectionLabel(selection: vscode.Selection): string {
-  const startLine = selection.start.line + 1;
-  const startChar = selection.start.character + 1;
-  const endLine = selection.end.line + 1;
-  const endChar = selection.end.character + 1;
-  if (startLine === endLine) {
-    return `L${startLine}:${startChar}-${endChar}`;
-  }
-  return `L${startLine}:${startChar}-L${endLine}:${endChar}`;
-}
-
-function buildEditorContextState(): EditorContextState {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return {
-      filePath: null,
-      fileLabel: null,
-      hasSelection: false,
-      selectionLabel: null,
-    };
-  }
-  const fileLabel = getEditorDisplayPath(editor.document);
-  const selection = getPrimaryNonEmptySelection(editor);
-  return {
-    filePath: fileLabel,
-    fileLabel,
-    hasSelection: Boolean(selection),
-    selectionLabel: selection ? formatSelectionLabel(selection) : null,
-  };
-}
-
-type ActiveEditorPromptContext = {
-  fileLabel: string;
-  hasSelection: boolean;
-  selectionLabel: string | null;
-};
-
-function formatContextTagLabel(context: ActiveEditorPromptContext): string {
-  if (context.hasSelection && context.selectionLabel) {
-    return t("common.currentFileWithRange", {
-      file: context.fileLabel,
-      range: context.selectionLabel,
-    });
-  }
-  return `${t("common.currentFile")}: ${context.fileLabel}`;
-}
-
-function getActiveEditorPromptContext(): ActiveEditorPromptContext | null {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return null;
-  }
-  const fileLabel = getEditorDisplayPath(editor.document);
-  const selection = getPrimaryNonEmptySelection(editor);
-  return {
-    fileLabel,
-    hasSelection: Boolean(selection),
-    selectionLabel: selection ? formatSelectionLabel(selection) : null,
-  };
-}
-
-function buildPromptWithAutoContext(
-  prompt: string,
-  options?: PromptContextOptions
-): PromptContextBuildResult {
-  if (!prompt) {
-    return { modelPrompt: prompt, contextTags: [] };
-  }
-  if (!getAutoAddEditorContextTags()) {
-    return { modelPrompt: prompt, contextTags: [] };
-  }
-  const normalized = normalizePromptContextOptions(options);
-  if (!normalized.includeCurrentFile && !normalized.includeSelection) {
-    return { modelPrompt: prompt, contextTags: [] };
-  }
-  const context = getActiveEditorPromptContext();
-  if (!context) {
-    return { modelPrompt: prompt, contextTags: [] };
-  }
-
-  const referenceLines: string[] = [];
-  const contextTags: string[] = [];
-
-  if (normalized.includeSelection && context.hasSelection) {
-    contextTags.push(formatContextTagLabel(context));
-    if (context.selectionLabel) {
-      referenceLines.push(`Selected range in @${context.fileLabel}: ${context.selectionLabel}`);
-    } else {
-      referenceLines.push(`Selected range in @${context.fileLabel}`);
-    }
-  } else if (normalized.includeCurrentFile) {
-    referenceLines.push(`@${context.fileLabel}`);
-    contextTags.push(formatContextTagLabel(context));
-  }
-
-  if (!referenceLines.length) {
-    return { modelPrompt: prompt, contextTags: [] };
-  }
-
-  return {
-    modelPrompt: [prompt, "", "----", "Auto Context References:", ...referenceLines].join("\n"),
-    contextTags,
-  };
-}
-
-function buildLongTermMemoryFocusHints(contextTags: readonly string[]): string[] {
-  const hints = new Set<string>();
-  contextTags.forEach((tag) => {
-    const normalized = String(tag ?? "").trim();
-    if (normalized) {
-      hints.add(normalized);
-    }
-  });
-  const editorContext = getActiveEditorPromptContext();
-  if (editorContext?.fileLabel) {
-    hints.add(editorContext.fileLabel);
-  }
-  if (editorContext?.selectionLabel) {
-    hints.add(editorContext.selectionLabel);
-  }
-  return [...hints];
-}
-
-function maybeInjectLongTermMemoryForPrompt(
-  prompt: string,
-  modelPrompt: string,
-  contextTags: readonly string[],
-): string {
-  const runtimeSettings = buildLongTermMemoryRuntimeSettings();
-  if (!isMemoryRuntimeOperationAllowed("inject", runtimeSettings)) {
-    return modelPrompt;
-  }
-  const paths = getActiveWorkspaceMemoryPaths();
-  if (!paths) {
-    return modelPrompt;
-  }
-  try {
-    const recallPack = buildWorkspaceMemoryRecallPack(paths, {
-      prompt,
-      focusHints: buildLongTermMemoryFocusHints(contextTags),
-    });
-    const memoryBlock = buildLongTermMemoryPromptBlock(recallPack, resolveLocale());
-    return injectLongTermMemoryPrompt(modelPrompt, memoryBlock);
-  } catch (error) {
-    void logError("long-term-memory-inject-error", {
-      error: String(error),
-      workspace: paths.workspaceRoot,
-    });
-    return modelPrompt;
-  }
+  sessionLifecycleController.adoptSessionId(cli, sessionId, tabId);
 }
 
 function isPathWithinWorkspace(targetPath: string, workspacePath: string): boolean {
