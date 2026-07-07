@@ -5381,11 +5381,11 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
     return [
       rootPrompt,
       "",
-      "🦞 龙虾主任务：请拆分目标，优先并发派发互不冲突的子任务，返回 JSON 决策，由程序启动子任务。",
+      "Loop 主任务：请拆分目标，优先并发派发互不冲突的子任务，返回 JSON 决策，由程序启动子任务。",
     ].join("\n");
   }
   return [
-    `🦞 龙虾主任务第 ${round} 轮复核。`,
+    `Loop 主任务第 ${round} 轮复核。`,
     "上一批子任务已结束（可能成功或中断），请读取任务记录判断整体是否完成；未完成则返回下一批子任务 JSON。",
     "本轮必须预判 estimatedRemainingRounds，说明当前决策之后预计还剩多少轮。",
   ].join("\n");
@@ -5396,11 +5396,11 @@ function buildLobsterModeratorMainDisplayPrompt(rootPrompt: string, round: numbe
     return [
       rootPrompt,
       "",
-      "🦞 龙虾主持人主智能体：红蓝规划共识已形成，请基于共识进入主从多智能体执行，不再重复红蓝辩论。",
+      "Loop 主持人主智能体：红蓝规划共识已形成，请基于共识进入主从多智能体执行，不再重复红蓝辩论。",
     ].join("\n");
   }
   return [
-    `🦞 龙虾主持人主智能体第 ${round} 轮复核。`,
+    `Loop 主持人主智能体第 ${round} 轮复核。`,
     "上一批子任务已结束，请读取首轮红蓝规划共识、任务记录和主从沟通文件；后续实现阶段使用主从多智能体模式继续派发或验收。",
     "本轮必须预判 estimatedRemainingRounds，说明当前决策之后预计还剩多少轮。",
   ].join("\n");
@@ -5411,7 +5411,7 @@ function buildLobsterSubtaskDisplayPrompt(round: number, subtask: LobsterSubtask
     ? `第 ${retryCount} 次重试（最多 ${LOBSTER_SUBTASK_RETRY_MAX_RETRIES} 次）。`
     : "";
   return [
-    `🦞 龙虾子任务第 ${round} 轮执行：${subtask.title}`,
+    `Loop 子任务第 ${round} 轮执行：${subtask.title}`,
     retryLine,
     subtask.prompt ?? subtask.title,
   ].filter(Boolean).join("\n");
@@ -5428,15 +5428,15 @@ function buildLobsterMainModelPrompt(
   const communication = getLobsterCommunicationPaths(taskId);
   const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
   return [
-    "你正在执行 VS Code 插件的龙虾模式主任务。",
-    `龙虾任务 ID：${taskId}`,
+    "你正在执行 VS Code 插件的 Loop 模式主任务。",
+    `Loop 任务 ID：${taskId}`,
     `当前轮次：${round}`,
     `任务记录文件：${taskFile}`,
     `沟通目录：${communication.dir}`,
     `主任务沟通文件：${communication.mainFile}`,
     `子任务沟通目录：${communication.subtasksDir}`,
     "",
-    "龙虾模式原理（必须遵守）：",
+    "Loop 模式原理（必须遵守）：",
     "1. 主任务每轮只输出一个 JSON 决策，不直接做具体实现。",
     `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
     "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
@@ -5529,7 +5529,7 @@ function buildLobsterModeratorMainModelPrompt(
       ];
 
   return [
-    "你正在执行 VS Code 插件的龙虾红蓝辩论模式后续实现阶段。",
+    "你正在执行 VS Code 插件的 Loop 红蓝辩论模式后续实现阶段。",
     "",
     "关键阶段规则（必须优先遵守）：",
     "1. 红蓝辩论只用于规划阶段；当前阶段不要再启动、要求或模拟新的红蓝辩论。",
@@ -5572,10 +5572,10 @@ function buildLobsterSubtaskModelPrompt(
     ? subtask.writeFiles.join("、")
     : "未声明；以当前子任务指令明确授权的文件/范围为准";
   return [
-    "你正在执行 VS Code 插件的龙虾模式子任务。",
+    "你正在执行 VS Code 插件的 Loop 模式子任务。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词和任务记录文件。",
     "注意：同一轮可能存在其他子任务并发执行；必须严格限定在当前子任务授权范围内，发现写入范围冲突时先停止并在沟通文件中报告。",
-    `龙虾任务 ID：${taskId}`,
+    `Loop 任务 ID：${taskId}`,
     `当前轮次：${round}`,
     `当前子任务 ID：${subtask.id}`,
     `当前重试次数：${retryCount}`,
@@ -6073,7 +6073,7 @@ function buildLobsterSubtaskDecisionMarkdown(
 ): string {
   const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
   const lines: string[] = [
-    subtasks.length === 1 ? "## 龙虾子任务派发" : "## 龙虾并发子任务派发",
+    subtasks.length === 1 ? "## Loop 子任务派发" : "## Loop 并发子任务派发",
     "",
     `- 任务 ID：${task.id}`,
     `- 轮次：${round}`,
@@ -6339,8 +6339,8 @@ function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null 
   }
 
   const now = Date.now();
-  const stopSummary = "用户已从龙虾群聊中止任务。";
-  const subtaskStopSummary = "用户已从龙虾群聊中止该子任务。";
+  const stopSummary = "用户已从 Loop 群聊中止任务。";
+  const subtaskStopSummary = "用户已从 Loop 群聊中止该子任务。";
   const activeSubtaskIds = new Set(getActiveLobsterSubtaskIds(task));
   const subTasks = task.subTasks.map((subtask) => {
     const shouldStopSubtask = activeSubtaskIds.has(subtask.id)
@@ -6364,7 +6364,7 @@ function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null 
       return {
         ...participant,
         status: "stopped" as const,
-        summary: participant.summary || "用户已从龙虾群聊中止该参与者任务。",
+        summary: participant.summary || "用户已从 Loop 群聊中止该参与者任务。",
         updatedAt: now,
       };
     });

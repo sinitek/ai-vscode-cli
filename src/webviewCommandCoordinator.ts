@@ -702,8 +702,8 @@ export function buildLobsterDebateStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
+    `Loop 任务：${taskId}`,
     `brief：${paths.briefFile}`,
     `chat：${paths.chatFile}`,
   ].join("\n");
@@ -721,8 +721,8 @@ export function buildLobsterDebateDialogueTurnStartedText(
     ? `点名发言者：${speakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
     : "点名发言者：未指定";
   return [
-    `🦞 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
+    `Loop 任务：${taskId}`,
     speakersLine,
     `chat：${paths.chatFile}`,
   ].join("\n");
@@ -730,16 +730,16 @@ export function buildLobsterDebateDialogueTurnStartedText(
 
 export function buildLobsterDebateRerunText(taskId: string, round: number, reasons: string[]): string {
   return [
-    `🦞 红蓝对抗恢复校验未通过，将重跑第 ${round} 轮辩论。`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗恢复校验未通过，将重跑第 ${round} 轮辩论。`,
+    `Loop 任务：${taskId}`,
     `原因：${reasons.join("；")}`,
   ].join("\n");
 }
 
 export function buildLobsterDebateReuseText(taskId: string, round: number, paths: LobsterDebatePaths): string {
   return [
-    `🦞 已复用第 ${round} 轮红蓝对抗共识。`,
-    `龙虾任务：${taskId}`,
+    `Loop 已复用第 ${round} 轮红蓝对抗共识。`,
+    `Loop 任务：${taskId}`,
     `chat：${paths.chatFile}`,
     `decision：${paths.decisionFile}`,
   ].join("\n");
@@ -751,8 +751,8 @@ export function buildLobsterDebateParticipantRosterStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 裁判主持人正在设计红蓝参与者：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
+    `Loop 裁判主持人正在设计红蓝参与者：第 ${round} 轮`,
+    `Loop 任务：${taskId}`,
     `roster：${paths.participantRosterFile}`,
     `chat：${paths.chatFile}`,
   ].join("\n");
@@ -765,8 +765,8 @@ export function buildLobsterDebateParticipantRosterFinishedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
+    `Loop 任务：${taskId}`,
     `参与者：${participants.map((participant) => formatLobsterGroupChatMemberName(participant.title)).join("、")}`,
     `roster：${paths.participantRosterFile}`,
   ].join("\n");
@@ -779,8 +779,8 @@ export function buildLobsterDebateParticipantRosterFailedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 裁判主持人红蓝组队无效：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
+    `Loop 裁判主持人红蓝组队无效：第 ${round} 轮`,
+    `Loop 任务：${taskId}`,
     `原因：${reasons.join("；") || "未提供具体原因"}`,
     `roster：${paths.participantRosterFile}`,
   ].join("\n");
@@ -796,9 +796,9 @@ export function buildLobsterDebateParticipantStartedText(
 ): string {
   return [
     finalPass
-      ? `🦞 红蓝参与者已启动最终立场收集：${title}`
-      : `🦞 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
-    `龙虾任务：${taskId}`,
+      ? `Loop 红蓝参与者已启动最终立场收集：${title}`
+      : `Loop 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `artifact：${artifactFile}`,
   ].join("\n");
@@ -813,9 +813,9 @@ export function buildLobsterDebateParticipantFinishedText(
 ): string {
   return [
     finalPass
-      ? `🦞 红蓝最终立场已收集：${participant.title}`
-      : `🦞 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
-    `龙虾任务：${taskId}`,
+      ? `Loop 红蓝最终立场已收集：${participant.title}`
+      : `Loop 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `状态：${participant.status}`,
     `立场：${participant.stance ?? "未解析"}`,
@@ -829,8 +829,8 @@ export function buildLobsterDebateParticipantsCollectedText(
 ): string {
   const titles = participants.map((participant) => `${participant.title}=${participant.stance ?? "unknown"}`).join("、");
   return [
-    `🦞 红蓝最终立场已收集：${participants.length} 个参与者`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝最终立场已收集：${participants.length} 个参与者`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `最终立场：${titles}`,
   ].join("\n");
@@ -838,8 +838,8 @@ export function buildLobsterDebateParticipantsCollectedText(
 
 export function buildLobsterDebateConsensusStartedText(taskId: string, round: number, paths: LobsterDebatePaths): string {
   return [
-    `🦞 红蓝对抗共识汇总已启动：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗共识汇总已启动：第 ${round} 轮`,
+    `Loop 任务：${taskId}`,
     `chat：${paths.chatFile}`,
     `cross-review：${paths.crossReviewFile}`,
     `consensus：${paths.consensusFile}`,
@@ -854,8 +854,8 @@ export function buildLobsterDebateModeratorStartedText(
   artifactFile: string,
 ): string {
   return [
-    `🦞 裁判主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
-    `龙虾任务：${taskId}`,
+    `Loop 裁判主持人控场已启动：主任务第 ${round} 轮，发言批次 ${dialogueTurn}`,
+    `Loop 任务：${taskId}`,
     `artifact：${artifactFile}`,
   ].join("\n");
 }
@@ -872,8 +872,8 @@ export function buildLobsterDebateModeratorFinishedText(
     .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
     .map(formatLobsterGroupChatMemberName);
   return [
-    `🦞 裁判主持人控场已收束：${decision.action}`,
-    `龙虾任务：${taskId}`,
+    `Loop 裁判主持人控场已收束：${decision.action}`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `当前发言批次：${decision.dialogueTurn}/${maxDialogueTurns}`,
     `理由：${decision.reason}`,
@@ -893,8 +893,8 @@ export function buildLobsterDebateFinalStanceStartedText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 红蓝对抗进入最终立场收集：裁判动作 ${decision.action}`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗进入最终立场收集：裁判动作 ${decision.action}`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `chat：${paths.chatFile}`,
   ].join("\n");
@@ -912,8 +912,8 @@ export function buildLobsterDebateConsensusReachedText(
     ? `派发 ${getDecisionSubtasks(decision).length} 个子任务，预计剩余 ${formatEstimatedRemainingRounds(decision.estimatedRemainingRounds) ?? "未记录"}`
     : decision.status;
   return [
-    `🦞 红蓝对抗共识已形成：${decisionSummary}`,
-    `龙虾任务：${taskId}`,
+    `Loop 红蓝对抗共识已形成：${decisionSummary}`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `chat：${paths.chatFile}`,
     `decision：${paths.decisionFile}`,
@@ -927,8 +927,8 @@ export function buildLobsterDebateNeedsReviewText(
   paths: LobsterDebatePaths,
 ): string {
   return [
-    `🦞 ${reviewSummary.title}，已进入人工复核：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
+    `Loop ${reviewSummary.title}，已进入人工复核：第 ${round} 轮`,
+    `Loop 任务：${taskId}`,
     `摘要：${reviewSummary.details.join("；")}`,
     `辩论目录：${paths.roundDir}`,
   ].join("\n");

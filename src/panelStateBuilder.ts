@@ -317,7 +317,7 @@ function buildLobsterCombinedGroupChatMarkdown(
   }
 
   const lines: string[] = [
-    "# 龙虾群聊记录",
+    "# Loop 群聊记录",
     "",
     `- 任务 ID：${task.id}`,
     `- CLI：${task.cli}`,
@@ -594,7 +594,7 @@ function buildInitialLobsterMainSubChatTranscript(
 ): string {
   const mainTitle = getLobsterMainSubChatMainTitle(task);
   const lines: string[] = [
-    "# 龙虾主从群聊记录",
+    "# Loop 主从群聊记录",
     "",
     `- 任务 ID：${task.id}`,
     `- CLI：${task.cli}`,
@@ -611,7 +611,7 @@ function buildInitialLobsterMainSubChatTranscript(
     "- 本页面只读，真实执行仍以任务记录、主任务沟通文件和子任务沟通文件为准。",
     "",
     "## 任务事件",
-    `龙虾主从任务已创建。当前轮次：${task.currentRound || 0}。`,
+    `Loop 主从任务已创建。当前轮次：${task.currentRound || 0}。`,
   ];
 
   task.rounds
@@ -671,7 +671,7 @@ export function buildLobsterDebateChatMessageActionWithRoundKey(
   const action: ChatMessageAction = {
     type: "openLobsterDebateChat",
     taskId,
-    label: "打开龙虾群聊",
+    label: "打开 Loop 群聊",
   };
   if (typeof round === "number" && Number.isFinite(round)) {
     action.roundKey = buildLobsterDebateChatRoundKey(round, defaultDebateRound);
@@ -731,7 +731,7 @@ export function getLobsterSubtaskDisplayTitle(index: number, subtask: Pick<Lobst
 }
 
 export function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
-  return `🦞 龙虾任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
+  return `Loop 任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
 export function buildLobsterTaskResumedText(task: LobsterTaskRecord, round: number): string {
@@ -740,7 +740,7 @@ export function buildLobsterTaskResumedText(task: LobsterTaskRecord, round: numb
 
 export function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
   return [
-    `🦞 龙虾任务已完成：${task.id}`,
+    `Loop 任务已完成：${task.id}`,
     `记录文件：${task.taskStoreFile}`,
   ].join("\n");
 }
@@ -752,7 +752,7 @@ export function buildLobsterTaskNeedsReviewText(
   const failureSuffix = isBlockedByMainAiFailureLimit(task)
     ? `\n主任务 AI 调用已连续失败 ${normalizeLobsterMainAiFailureCount(task.mainAiFailureCount)}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
     : "";
-  return `🦞 龙虾任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
+  return `Loop 任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
 }
 
 export function buildLobsterMainResumeText(
@@ -762,8 +762,8 @@ export function buildLobsterMainResumeText(
 ): string {
   const subtaskTitles = subtasks.map((subtask) => subtask.title).join("、");
   return [
-    `🦞 正在唤醒主任务复核：第 ${round} 轮`,
-    `龙虾任务：${taskId}`,
+    `正在唤醒 Loop 主任务复核：第 ${round} 轮`,
+    `Loop 任务：${taskId}`,
     `已完成子任务：${subtaskTitles || "无"}`,
   ].join("\n");
 }
@@ -777,9 +777,9 @@ export function buildLobsterSubtaskBatchStartedText(
   const isSingleParallelGroup = executionPlan.groups.length <= 1;
   const lines = [
     isSingleParallelGroup
-      ? `🦞 并发子任务批次已启动：${subtasks.length} 个`
-      : `🦞 子任务批次已规划：${subtasks.length} 个，将按 ${executionPlan.groups.length} 组执行（组内并发、组间串行）`,
-    `龙虾任务：${taskId}`,
+      ? `Loop 并发子任务批次已启动：${subtasks.length} 个`
+      : `Loop 子任务批次已规划：${subtasks.length} 个，将按 ${executionPlan.groups.length} 组执行（组内并发、组间串行）`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
   ];
@@ -804,8 +804,8 @@ export function buildLobsterSubtaskExecutionGroupStartedText(
   subtasks: LobsterSubtaskRecord[],
 ): string {
   return [
-    `🦞 子任务执行组已启动：第 ${groupIndex + 1}/${groupCount} 组，${subtasks.length} 个`,
-    `龙虾任务：${taskId}`,
+    `Loop 子任务执行组已启动：第 ${groupIndex + 1}/${groupCount} 组，${subtasks.length} 个`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `组内子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
   ].join("\n");
@@ -817,8 +817,8 @@ export function buildLobsterSubtaskBatchCompletedText(
   subtasks: LobsterSubtaskRecord[],
 ): string {
   return [
-    `🦞 子任务批次已全部完成：${subtasks.length} 个`,
-    `龙虾任务：${taskId}`,
+    `Loop 子任务批次已全部完成：${subtasks.length} 个`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
   ].join("\n");
@@ -831,8 +831,8 @@ export function buildLobsterSubtaskRetryText(
   maxRetries: number,
 ): string {
   return [
-    `🦞 子任务执行出错，1 分钟后自动重试（${retryCount}/${maxRetries}）。`,
-    `龙虾任务：${taskId}`,
+    `Loop 子任务执行出错，1 分钟后自动重试（${retryCount}/${maxRetries}）。`,
+    `Loop 任务：${taskId}`,
     `子任务：${subtaskId}`,
   ].join("\n");
 }
@@ -846,8 +846,8 @@ export function buildLobsterSubtaskStartedText(
 ): string {
   const retryText = retryCount > 0 ? `（第 ${retryCount} 次重试）` : "";
   return [
-    `🦞 子任务已启动${retryText}：${subtask.title}`,
-    `龙虾任务：${taskId}`,
+    `Loop 子任务已启动${retryText}：${subtask.title}`,
+    `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `沟通文件：${communicationFile}`,
   ].join("\n");

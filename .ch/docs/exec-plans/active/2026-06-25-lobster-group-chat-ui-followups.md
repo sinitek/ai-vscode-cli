@@ -1,4 +1,4 @@
-# Lobster Group Chat UI Follow-ups
+# Loop Group Chat UI Follow-ups
 
 - Date: 2026-06-25
 - Status: in-progress

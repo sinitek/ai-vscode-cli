@@ -130,7 +130,7 @@ test("builds lobster final summary with question conclusion and overall summary"
     completionRoundSummaries: [],
     completionRequirementCoverage: [],
   }, {
-    answerConclusion: "问题结论：应该同时展示直接答案和龙虾最终总结。",
+    answerConclusion: "问题结论：应该同时展示直接答案和 Loop 最终总结。",
     finalSummary: "整体总结：已完成展示链路调整。",
     roundSummaries: [
       { round: 1, subtaskId: "subtask-a", title: "定位问题", summary: "确认缺少直接结论展示。" },
@@ -147,8 +147,8 @@ test("builds lobster final summary with question conclusion and overall summary"
     },
   });
 
-  assert.match(markdown, /^# 龙虾任务最终总结/mu);
-  assert.match(markdown, /## 问题回答结论\n问题结论：应该同时展示直接答案和龙虾最终总结/u);
+  assert.match(markdown, /^# Loop 任务最终总结/mu);
+  assert.match(markdown, /## 问题回答结论\n问题结论：应该同时展示直接答案和 Loop 最终总结/u);
   assert.match(markdown, /## 子任务完成摘要/u);
   assert.match(markdown, /第 1 轮 定位问题（subtask-a）：确认缺少直接结论展示/u);
   assert.match(markdown, /## 整体任务总结\n整体总结：已完成展示链路调整/u);
@@ -345,7 +345,7 @@ test("formats lobster group chat member names with bracketed display names", () 
 
 test("parses debate chat transcript into role-oriented segments", () => {
   const transcript = [
-    "# 龙虾红蓝对抗群聊记录",
+    "# Loop 红蓝对抗群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -377,7 +377,7 @@ test("parses debate chat transcript into role-oriented segments", () => {
 
   const parsed = parseLobsterDebateChatTranscript(transcript);
 
-  assert.equal(parsed.title, "龙虾红蓝对抗群聊记录");
+  assert.equal(parsed.title, "Loop 红蓝对抗群聊记录");
   assert.equal(parsed.closed, true);
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -401,7 +401,7 @@ test("parses debate chat transcript into role-oriented segments", () => {
 
 test("parses bracketed debate group chat member names with metadata ids", () => {
   const transcript = [
-    "# 龙虾红蓝对抗群聊记录",
+    "# Loop 红蓝对抗群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -462,7 +462,7 @@ test("parses bracketed debate group chat member names with metadata ids", () => 
 
 test("parses terminal lobster group chat status sections as final bubbles", () => {
   const transcript = [
-    "# 龙虾群聊记录",
+    "# Loop 群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -489,7 +489,7 @@ test("parses terminal lobster group chat status sections as final bubbles", () =
 
 test("parses bracketed main-sub group chat member names with metadata ids", () => {
   const transcript = [
-    "# 龙虾主从群聊记录",
+    "# Loop 主从群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -526,7 +526,7 @@ test("parses bracketed main-sub group chat member names with metadata ids", () =
 
 test("parses debate chat transcript without UI round section headings", () => {
   const transcript = [
-    "# 龙虾群聊记录",
+    "# Loop 群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -566,7 +566,7 @@ test("parses debate chat transcript without UI round section headings", () => {
 
 test("parses main-sub group chat transcript into role-oriented segments", () => {
   const transcript = [
-    "# 龙虾主从群聊记录",
+    "# Loop 主从群聊记录",
     "",
     "- 任务 ID：task-1",
     "",
@@ -591,7 +591,7 @@ test("parses main-sub group chat transcript into role-oriented segments", () => 
 
   const parsed = parseLobsterDebateChatTranscript(transcript);
 
-  assert.equal(parsed.title, "龙虾主从群聊记录");
+  assert.equal(parsed.title, "Loop 主从群聊记录");
   assert.equal(parsed.closed, true);
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -607,7 +607,7 @@ test("parses main-sub group chat transcript into role-oriented segments", () => 
 
 test("parses debate task execution group chat transcript after consensus dispatch", () => {
   const transcript = [
-    "# 龙虾主从群聊记录",
+    "# Loop 主从群聊记录",
     "",
     "- 任务 ID：debate-task-1",
     "",
@@ -632,7 +632,7 @@ test("parses debate task execution group chat transcript after consensus dispatc
 
   const parsed = parseLobsterDebateChatTranscript(transcript);
 
-  assert.equal(parsed.title, "龙虾主从群聊记录");
+  assert.equal(parsed.title, "Loop 主从群聊记录");
   assert.equal(parsed.closed, false);
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),

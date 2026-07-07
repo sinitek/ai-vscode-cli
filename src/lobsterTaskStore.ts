@@ -243,7 +243,7 @@ export function ensureLobsterCommunicationFiles(taskId: string, rootPrompt: stri
     fs.mkdirSync(paths.subtasksDir, { recursive: true });
     if (!fs.existsSync(paths.mainFile)) {
       fs.writeFileSync(paths.mainFile, [
-        `# 龙虾任务沟通文件`,
+        `# Loop 任务沟通文件`,
         ``,
         `- 任务 ID：${taskId}`,
         `- 创建时间：${new Date().toISOString()}`,
@@ -279,7 +279,7 @@ export function prepareLobsterSubtaskCommunicationFile(
       fs.writeFileSync(filePath, [
         `# 子任务沟通文件`,
         ``,
-        `- 龙虾任务 ID：${task.id}`,
+        `- Loop 任务 ID：${task.id}`,
         `- 子任务 ID：${subtask.id}`,
         `- 子任务标题：${subtask.title}`,
         `- 授权写入文件/范围：${formatLobsterWriteFiles(subtask.writeFiles) ?? "未声明；以子任务指令为准"}`,

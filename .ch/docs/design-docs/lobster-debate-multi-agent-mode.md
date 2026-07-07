@@ -1,4 +1,4 @@
-# 龙虾红蓝辩论多智能体模式详细设计
+# Loop 红蓝辩论多智能体模式详细设计
 
 - 状态：active
 - 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-session-tabs.md`
@@ -7,10 +7,10 @@
 
 ## 背景
 
-当前龙虾模式已经具备一条稳定的主从多智能体链路：
+当前 Loop 模式已经具备一条稳定的主从多智能体链路：
 
 - 用户在聊天面板选择 `interactiveMode=lobster`。
-- 扩展创建龙虾任务记录，写入 `~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json`。
+- 扩展创建 Loop 任务记录，写入 `~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json`。
 - 主任务每轮返回一个 JSON 决策，包含 `status`、`estimatedRemainingRounds`、`acceptance`、`subtasks` 等字段。
 - 扩展把 `subtasks` 批次转成子任务记录，并按 `writeFiles` / `conflictGroup` 规划组内并发、组间串行。
 - 子任务在独立会话执行，写入 `~/.sinitek_cli/lobster-communications/<taskId>/subtasks/` 下的沟通文件。
@@ -27,16 +27,16 @@
 
 ## 目标
 
-新增一个龙虾模式内的执行方式：`红蓝辩论多智能体`（内部值仍为 `debate_multi_agent`）。
+新增一个 Loop 模式内的执行方式：`红蓝辩论多智能体`（内部值仍为 `debate_multi_agent`）。
 
 目标行为：
 
-- 用户仍然选择顶层 `龙虾` 模式。
-- 龙虾模式下的执行方式可选：
+- 用户仍然选择顶层 `Loop` 模式。
+- Loop 模式下的执行方式可选：
   - `主从多智能体`：沿用当前主任务单独规划，再派发子任务。
   - `红蓝辩论多智能体`：蓝队提出可执行方案，红队攻击方案假设、证据和边界并暴露风险，裁判主持人收束后形成规划共识，再进入主持人主导的主从多智能体实现阶段。
 - 红蓝辩论只发生在规划阶段。
-- 红蓝辩论形成的规划共识仍输出为现有龙虾主任务 JSON 决策；后续复核轮由主持人主智能体读取该共识、主从执行群聊和子任务沟通文件后继续输出同一 JSON 协议。
+- 红蓝辩论形成的规划共识仍输出为现有 Loop 主任务 JSON 决策；后续复核轮由主持人主智能体读取该共识、主从执行群聊和子任务沟通文件后继续输出同一 JSON 协议。
 - 子任务派发、并发冲突规划、子任务重试、沟通文件、最终总结气泡、任务保留清理，尽量复用现有链路。
 
 成功标准：
@@ -61,9 +61,9 @@
 
 | 术语 | 含义 |
 | --- | --- |
-| 龙虾执行方式 | 龙虾模式内部的二级模式，不等同于顶层 `interactiveMode` |
+| Loop 执行方式 | Loop 模式内部的二级模式，不等同于顶层 `interactiveMode` |
 | 主从多智能体 | 当前模式。主任务单独规划和复核，子任务执行具体工作 |
-| 红蓝辩论多智能体 | `debate_multi_agent` 当前用户可见语义。蓝队提出和修正方案，红队攻击方案假设、证据和边界，裁判主持人收束后输出同样的龙虾主任务决策 |
+| 红蓝辩论多智能体 | `debate_multi_agent` 当前用户可见语义。蓝队提出和修正方案，红队攻击方案假设、证据和边界，裁判主持人收束后输出同样的 Loop 主任务决策 |
 | 蓝队参与者 | 提出、捍卫和修正方案，明确目标、约束、验收口径和证据要求，并回应红队质疑的参与者 |
 | 红队参与者 | 攻击方案假设、目标覆盖、证据链、边界场景、可行性、成本收益和可验证性的参与者；仅任务涉及代码、文件、权限、部署或流程执行时才额外检查写入范围、并发冲突、越权修改、回滚/恢复失败等工程风险 |
 | 裁判主持人 | 扩展启动的控场角色，负责红蓝组队、总结攻防、判断 continue / finalize / block |
@@ -76,18 +76,18 @@
 
 ### 运行时约束
 
-- 当前龙虾任务记录类型只有 `main` / `subtask` 两类角色。
+- 当前 Loop 任务记录类型只有 `main` / `subtask` 两类角色。
 - 当前主任务 JSON 解析集中在 `parseLobsterMainDecision`、`normalizeLobsterMainDecision`、`applyLobsterMainDecision`。
 - 当前子任务批次最多 `LOBSTER_PARALLEL_SUBTASK_MAX = 6`。
-- 当前龙虾最大主任务复核轮次由项目级设置控制，默认 20。
+- 当前 Loop 最大主任务复核轮次由项目级设置控制，默认 20。
 - 当前子任务失败会 1 分钟后自动重试，最多 5 次。
 - 任务记录和沟通目录有 30 天保留清理。
 
 ### UI 约束
 
-- 顶层模式选择为 `编码 / 龙虾`。
-- 龙虾执行方式应出现在龙虾模式底部模型区域中，位置在模型选择左侧。
-- 执行方式选择不应依赖插件侧模型选择是否可见。即使 Claude 不展示模型选择，龙虾执行方式仍应可见。
+- 顶层模式选择为 `Vibe / Loop`。
+- Loop 执行方式应出现在 Loop 模式底部模型区域中，位置在模型选择左侧。
+- 执行方式选择不应依赖插件侧模型选择是否可见。即使 Claude 不展示模型选择，Loop 执行方式仍应可见。
 - 执行中切换 UI 选择不应改变已创建任务。任务创建时必须把执行方式写入任务记录，恢复时沿用记录值。
 
 ### 文档与国际化约束
@@ -120,11 +120,11 @@
 
 结论：不采用。它无法满足“不是由一个主单独来规划”的核心要求。
 
-### 方案 B：完全重写龙虾为辩论式工作流
+### 方案 B：完全重写 Loop 为辩论式工作流
 
 做法：
 
-- 把龙虾主任务、子任务、复核全部改成多智能体辩论。
+- 把 Loop 主任务、子任务、复核全部改成多智能体辩论。
 - 子任务执行也由辩论组动态决定和监督。
 - 现有 `subtasks` 协议只作为兼容层。
 
@@ -145,7 +145,7 @@
 
 做法：
 
-- 新增龙虾执行方式 `debate_multi_agent`。
+- 新增 Loop 执行方式 `debate_multi_agent`。
 - 第一个规划决策轮开始时，扩展先启动多个辩论参与者。
 - 参与者只读取任务记录、沟通文件和工作区上下文，分别写出观点。
 - 至少经过“主持人指定首批发言”和“主持人继续点名/最终立场”两个群聊阶段。
@@ -174,18 +174,18 @@
 
 核心决策：
 
-- `红蓝辩论多智能体` 是龙虾模式下的执行方式，不是新的顶层 `InteractiveMode`；内部协议值仍是 `debate_multi_agent`。
+- `红蓝辩论多智能体` 是 Loop 模式下的执行方式，不是新的顶层 `InteractiveMode`；内部协议值仍是 `debate_multi_agent`。
 - 红蓝辩论只替代初始规划阶段。
-- 红蓝辩论完成后必须生成现有龙虾主任务 JSON 决策，作为首批执行决策。
+- 红蓝辩论完成后必须生成现有 Loop 主任务 JSON 决策，作为首批执行决策。
 - 后续实现和复核由裁判主持人作为主智能体，使用主从多智能体模式继续输出同一 JSON 协议。
 - 子任务执行链路保持不变。
-- 每个龙虾任务创建时固化执行方式，恢复任务时以任务记录为准。
+- 每个 Loop 任务创建时固化执行方式，恢复任务时以任务记录为准。
 
 ## 用户体验设计
 
 ### 面板控件
 
-龙虾模式下底部区域展示：
+Loop 模式下底部区域展示：
 
 ```text
 [执行方式: 主从多智能体/红蓝辩论多智能体] [主任务模型] [子任务模型] [思考模式]
@@ -193,10 +193,10 @@
 
 行为规则：
 
-- 只有顶层模式为 `龙虾` 时显示执行方式。
+- 只有顶层模式为 `Loop` 时显示执行方式。
 - 执行方式始终可见，不绑定模型选择能力。
 - `主任务模型 / 子任务模型` 仍只在 Codex / Gemini 等支持插件侧模型选择的 CLI 下展示。
-- 切换执行方式只影响新建龙虾任务。
+- 切换执行方式只影响新建 Loop 任务。
 - 若当前 tab 正在恢复旧任务，以任务记录中的 `executionMode` 为准，并在 UI 上同步显示。
 
 ### 文案
@@ -205,7 +205,7 @@
 
 - `主从多智能体`
 - `红蓝辩论多智能体`
-- `龙虾执行方式`
+- `Loop 执行方式`
 - `红蓝对抗已启动`
 - `红蓝对抗共识已形成`
 - `红蓝对抗达成阻塞共识，已进入人工复核`
@@ -215,7 +215,7 @@
 
 - `Main/Sub Multi-Agent`
 - `Red/Blue Debate Multi-Agent`
-- `Lobster execution mode`
+- `Loop execution mode`
 - `Red/Blue debate started`
 - `Red/Blue consensus reached`
 - `Red/Blue debate reached a blocking consensus. Manual review is required.`
@@ -226,22 +226,22 @@
 主任务标签中展示简明系统消息：
 
 ```text
-🦞 辩论主持人正在设计参与者：第 1 轮
-🦞 辩论参与者已动态加入：第 1 轮，3 个参与者
-🦞 辩论群聊已启动：主任务第 1 轮，3 个参与者，主持人控场，最多 N 个发言批次安全上限
-🦞 辩论群聊发言开始：主任务第 1 轮，发言批次 1/N，主持人已点名发言者，本批次结束后由主持人判断是否继续
-🦞 辩论最终立场已收集：主持人动态选定的参与者
-🦞 辩论共识已形成：派发 3 个子任务，预计剩余 2 轮
+Loop 辩论主持人正在设计参与者：第 1 轮
+Loop 辩论参与者已动态加入：第 1 轮，3 个参与者
+Loop 辩论群聊已启动：主任务第 1 轮，3 个参与者，主持人控场，最多 N 个发言批次安全上限
+Loop 辩论群聊发言开始：主任务第 1 轮，发言批次 1/N，主持人已点名发言者，本批次结束后由主持人判断是否继续
+Loop 辩论最终立场已收集：主持人动态选定的参与者
+Loop 辩论共识已形成：派发 3 个子任务，预计剩余 2 轮
 ```
 
 如果失败：
 
 ```text
-🦞 辩论达成阻塞共识，已进入人工复核：第 5 轮
-🦞 辩论未达成一致：存在阻塞性异议，已进入人工复核
+Loop 辩论达成阻塞共识，已进入人工复核：第 5 轮
+Loop 辩论未达成一致：存在阻塞性异议，已进入人工复核
 ```
 
-完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开龙虾群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
+完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开 Loop 群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
 
 ## 数据模型设计
 
@@ -316,7 +316,7 @@ type PanelMessage =
   }
 ```
 
-### 龙虾任务记录
+### Loop 任务记录
 
 `LobsterTaskRecord` 新增：
 
@@ -442,13 +442,13 @@ type LobsterDebateRoundRecord = {
 
 - `brief.md`：扩展生成的辩论简报，包含用户目标、任务记录路径、当前轮次、已有子任务结果、约束。
 - `chat.md`：扩展维护的模拟群聊 transcript。参与者和主持人不直接写该文件；每个角色 artifact 完成后由扩展按顺序追加。
-- `group-chat.md`：共识通过后复用主从执行链路维护的任务执行群聊 transcript；主任务决策、子任务加入、子任务完成后的最终回复和批次完成会追加到这里，并在同一龙虾群聊面板中按时间线继续展示；运行状态与验证依据仍保留在任务记录和子任务沟通文件中。
+- `group-chat.md`：共识通过后复用主从执行链路维护的任务执行群聊 transcript；主任务决策、子任务加入、子任务完成后的最终回复和批次完成会追加到这里，并在同一 Loop 群聊面板中按时间线继续展示；运行状态与验证依据仍保留在任务记录和子任务沟通文件中。
 - `participants/*-turn-<n>.md`：第 n 个发言批次的角色发言，供下一位角色和主持人读取。
 - `participants/moderator-turn-<n>.md`：第 n 个发言批次的主持人控场 artifact，必须输出 `continue / finalize / block`。
 - `participants/<role>.md`：主持人收束后每个参与者写出的最终立场，供共识校验读取。
 - `cross-review.md`：共识汇总器基于完整群聊时间线写出的质询摘要。
 - `consensus.md`：自然语言共识结论，必须列出一致意见、保留意见、已解决分歧、未解决分歧。
-- `decision.json`：最终要交给现有龙虾链路解析的 JSON 决策。
+- `decision.json`：最终要交给现有 Loop 链路解析的 JSON 决策。
 
 保留策略：
 
@@ -481,7 +481,7 @@ type LobsterDebateRoundRecord = {
 ### 总览
 
 ```text
-用户提交龙虾任务
+用户提交 Loop 任务
   ↓
 创建 LobsterTaskRecord，写入 executionMode
   ↓
@@ -641,7 +641,7 @@ agree / agree_with_reservations / block
   "subtasks": [
     {
       "id": "ui-lobster-execution-mode",
-      "title": "补齐龙虾执行方式 UI",
+      "title": "补齐 Loop 执行方式 UI",
       "conflictGroup": "src/webview",
       "writeFiles": ["src/webview/viewContent.ts", "src/webview/types.ts"],
       "prompt": "..."
@@ -661,7 +661,7 @@ agree / agree_with_reservations / block
 ### 参与者通用系统约束
 
 ```text
-你是龙虾模式“红蓝辩论多智能体”中的一个红队或蓝队参与者。
+你是 Loop 模式“红蓝辩论多智能体”中的一个红队或蓝队参与者。
 你不是执行子任务的智能体。
 你只能读取可用上下文、仓库、任务记录和沟通文件；只能写入指定辩论 artifact，不能修改工作区内容、任务记录或非指定沟通文件。
 你必须读取 chat.md 中已有群聊发言，把自己的下一条发言写入指定辩论文件。
@@ -673,7 +673,7 @@ agree / agree_with_reservations / block
 ### 主持人控场约束
 
 ```text
-你是龙虾模式“辩论多智能体”的主持人控场。
+你是 Loop 模式“辩论多智能体”的主持人控场。
 你必须读取完整 chat.md，总结当前共识、争议和未回答问题。
 每个发言批次只能输出 continue / finalize / block 之一。
 continue 表示仍有明确、可回答、会影响派发决策的问题，需要追加下一个发言批次。
@@ -718,7 +718,7 @@ block 表示当前讨论无法形成安全、可执行、可验收的自动化�
 如果存在未解决的 block，返回 status=blocked。
 如果 block 已被转化为自包含前置子任务、验收标准或风险说明，记录到 resolvedDisagreements 后可以继续。
 chat.md 已包含主持人控场与收束标记，不允许要求继续辩论。
-如果可以继续，返回现有龙虾主任务 JSON 决策。
+如果可以继续，返回现有 Loop 主任务 JSON 决策。
 输出必须是一个 JSON 对象，不要包裹 markdown。
 ```
 
@@ -769,7 +769,7 @@ async function runClassicLobsterMainDecision(...): Promise<LobsterDecisionRunRes
 - 同一批次内参与者 artifact 可并行生成；扩展等待本批次全部完成后统一追加到 `chat.md`，而不是让参与者直接写 transcript。
 - 成功完成后可自动关闭临时 tab，但必须先持久化 artifact。
 - 主任务或任一 debate/subtask 仍运行时，主任务 tab 禁止关闭。
-- debate tab 手动继续时强制按 coding 普通任务执行，禁止嵌套启动龙虾任务。
+- debate tab 手动继续时强制按内部 coding（即 Vibe）普通任务执行，禁止嵌套启动 Loop 任务。
 
 如果后续实现隐藏后台运行目标，也必须保留同等日志、状态和停止能力。
 
@@ -901,7 +901,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 手工验证最小链路：
 
-1. 选择龙虾模式和 `辩论多智能体`。
+1. 选择 Loop 模式和 `辩论多智能体`。
 2. 发送一个可拆分任务。
 3. 观察主 tab 出现辩论启动消息。
 4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
@@ -964,7 +964,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 第一版实现完成时必须满足：
 
-- 龙虾模式中可选择 `主从多智能体` 或 `红蓝辩论多智能体`。
+- Loop 模式中可选择 `主从多智能体` 或 `红蓝辩论多智能体`。
 - 新建任务记录能固化 `executionMode`。
 - 选择 `主从多智能体` 时，现有行为不变。
 - 选择 `红蓝辩论多智能体` 时，裁判主持人先设计 2-6 个动态参与者并指定首批发言者；新清单 `role` 只能是 `blue_team` 或 `red_team`，且至少包含 1 个蓝队和 1 个红队；每个发言批次都必须由主持人显式点名发言者，裁判主持人完成控场决策，且 `chat.md` 包含参与者加入、点名发言、主持人控场与收束标记。

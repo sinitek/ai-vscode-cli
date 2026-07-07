@@ -508,6 +508,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!meta || meta.taskRole !== "main" || !meta.lobsterTaskId) {
           return false;
         }
+        if (tab && isTabRunning(tab.id)) {
+          return true;
+        }
         const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs
           : [];
@@ -521,7 +524,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             return true;
           }
         }
-        return Boolean(tab && tab.lobsterMainTabCloseLocked);
+        return false;
       }
 
       function isLobsterMainTab(tab) {
@@ -762,7 +765,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           tabItem.setAttribute("aria-disabled", "false");
 
           const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
-          const labelText = isLobsterMainTab(tab) ? ("🦞 " + tabBaseLabel) : tabBaseLabel;
+          const labelText = isLobsterMainTab(tab) ? ("🦞 Loop " + tabBaseLabel) : tabBaseLabel;
           const label = document.createElement("span");
           label.className = "conversation-tab-label";
           label.textContent = labelText;

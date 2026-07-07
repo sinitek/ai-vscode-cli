@@ -207,7 +207,7 @@ export async function runLobsterDebateParticipantRoster(options: {
 
   try {
     await deps.runPrompt({
-      displayPrompt: `🦞 龙虾红蓝对抗第 ${round} 轮裁判主持人组队`,
+      displayPrompt: `Loop 红蓝对抗第 ${round} 轮裁判主持人组队`,
       modelPrompt: buildLobsterDebateParticipantRosterModelPrompt(task, round, paths),
       contextTags: [],
       model: resolveLobsterDebateModel(input),
@@ -541,7 +541,7 @@ export async function runLobsterDebateConsensusSummary(options: {
   deps.appendSystemMessageForLobster(consensusTarget, deps.buildLobsterDebateConsensusStartedText(task.id, round, paths));
   try {
     await deps.runPrompt({
-      displayPrompt: `🦞 龙虾红蓝对抗共识汇总：第 ${round} 轮`,
+      displayPrompt: `Loop 红蓝对抗共识汇总：第 ${round} 轮`,
       modelPrompt: buildLobsterDebateConsensusModelPrompt(task, round, paths, participants),
       contextTags: [],
       model: resolveLobsterDebateModel(input),

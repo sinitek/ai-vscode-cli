@@ -6,7 +6,7 @@
   "command.runCliThinkingOn": "CLI Bridge: 运行当前 CLI（思考开启）",
   "command.runCliThinkingOff": "CLI Bridge: 运行当前 CLI（思考关闭）",
   "command.openPanel": "CLI Bridge: 打开面板",
-  "command.openLobsterDebateChat": "CLI Bridge: 打开龙虾群聊",
+  "command.openLobsterDebateChat": "CLI Bridge: 打开 Loop 群聊",
   "config.title": "CLI Bridge",
   "config.defaultCli.description": "扩展激活时默认运行的 CLI。",
   "config.commands.codex.description": "用于运行 Codex CLI 的命令。",

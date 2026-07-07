@@ -92,10 +92,10 @@ export function buildLobsterDebateBriefMarkdown(
   const communication = getLobsterCommunicationPaths(task.id);
   const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
   const lines: string[] = [
-    "# 龙虾红蓝对抗简报",
+    "# Loop 红蓝对抗简报",
     "",
     `- 任务 ID：${task.id}`,
-    `- 龙虾轮次：${round}`,
+    `- Loop 轮次：${round}`,
     `- 生成时间：${new Date().toISOString()}`,
     `- 任务记录文件：${task.taskStoreFile}`,
     `- 主沟通文件：${task.mainCommunicationFile}`,
@@ -159,10 +159,10 @@ export function buildLobsterDebateInitialChatMarkdown(
   paths: LobsterDebatePaths,
 ): string {
   const lines: string[] = [
-    "# 龙虾红蓝对抗群聊记录",
+    "# Loop 红蓝对抗群聊记录",
     "",
     `- 任务 ID：${task.id}`,
-    `- 龙虾轮次：${round}`,
+    `- Loop 轮次：${round}`,
     `- 当前 CLI：${target.cli}`,
     `- brief 文件：${paths.briefFile}`,
     `- 红蓝参与者清单文件：${paths.participantRosterFile}`,
@@ -373,8 +373,8 @@ export function buildLobsterDebateParticipantDisplayPrompt(
   finalPass: boolean,
 ): string {
   return finalPass
-    ? `🦞 龙虾辩论第 ${round} 轮最终立场：${title}`
-    : `🦞 龙虾辩论第 ${round} 轮群聊 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}：${title}`;
+    ? `Loop 辩论第 ${round} 轮最终立场：${title}`
+    : `Loop 辩论第 ${round} 轮群聊 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}：${title}`;
 }
 
 export function buildLobsterDebateParticipantRosterModelPrompt(
@@ -386,10 +386,10 @@ export function buildLobsterDebateParticipantRosterModelPrompt(
     .map((participant) => `- ${participant.id}（${participant.title}，${participant.role}）：${participant.focus}`)
     .join("\n");
   return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人组队阶段。",
+    "你正在执行 VS Code 插件的 Loop 模式红蓝对抗裁判主持人组队阶段。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
     "你的职责是先判断本轮红蓝对抗需要哪些蓝队和红队参与者，再写出动态参与者清单。后续群聊将只按你的清单推进。",
-    `龙虾任务 ID：${task.id}`,
+    `Loop 任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `任务记录文件：${task.taskStoreFile}`,
     `brief 文件：${paths.briefFile}`,
@@ -476,11 +476,11 @@ export function buildLobsterDebateParticipantModelPrompt(
     ]
     : [];
   return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗参与者。",
+    "你正在执行 VS Code 插件的 Loop 模式红蓝对抗参与者。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
     "注意：这是一个受控模拟群聊。你必须读取 chat.md 中已经出现的发言，然后以自己的蓝队或红队身份继续发言。",
     "注意：同一发言批次内的参与者可能并行执行；你只能回应 chat.md 中在本次启动前已经存在的内容，不要假设能读到同批次其他参与者尚未落盘的发言。",
-    `龙虾任务 ID：${task.id}`,
+    `Loop 任务 ID：${task.id}`,
     `当前轮次：${round}`,
     finalPass
       ? "本次阶段：裁判主持人收束后的最终立场收集"
@@ -534,7 +534,7 @@ export function buildLobsterDebateModeratorDisplayPrompt(
   dialogueTurn: number,
   maxDialogueTurns: number,
 ): string {
-  return `🦞 龙虾红蓝对抗第 ${round} 轮裁判控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
+  return `Loop 红蓝对抗第 ${round} 轮裁判控场：发言批次 ${dialogueTurn}/${maxDialogueTurns}`;
 }
 
 export function buildLobsterDebateModeratorModelPrompt(
@@ -547,10 +547,10 @@ export function buildLobsterDebateModeratorModelPrompt(
 ): string {
   const atSafetyLimit = dialogueTurn >= maxDialogueTurns;
   return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗裁判主持人。",
+    "你正在执行 VS Code 插件的 Loop 模式红蓝对抗裁判主持人。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、brief、任务记录和沟通文件。",
     "你的职责不是重新规划，而是主持红蓝攻防：总结蓝队方案、红队攻击点和双方回应，判断是否还需要追加一个发言批次追问，或是否可以收束进入最终立场。",
-    `龙虾任务 ID：${task.id}`,
+    `Loop 任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `当前发言批次：${dialogueTurn}`,
     `最大安全发言批次数：${maxDialogueTurns}`,
@@ -609,9 +609,9 @@ export function buildLobsterDebateConsensusModelPrompt(
 ): string {
   const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
   return [
-    "你正在执行 VS Code 插件的龙虾模式红蓝对抗共识汇总。",
+    "你正在执行 VS Code 插件的 Loop 模式红蓝对抗共识汇总。",
     "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖红队 artifact 中的阻塞性异议，也不得忽略蓝队已给出的修正方案。",
-    `龙虾任务 ID：${task.id}`,
+    `Loop 任务 ID：${task.id}`,
     `当前轮次：${round}`,
     `任务记录文件：${task.taskStoreFile}`,
     `brief 文件：${paths.briefFile}`,

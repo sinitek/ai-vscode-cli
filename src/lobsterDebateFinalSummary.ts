@@ -94,7 +94,7 @@ function buildLobsterGroupChatFinalStatusBody(
   const lines = [
     headline,
     `- 状态：${task.status || "unknown"}`,
-    `- 龙虾任务：${task.id}`,
+    `- Loop 任务：${task.id}`,
   ];
   if (typeof task.currentRound === "number" && Number.isFinite(task.currentRound)) {
     lines.push(`- 当前主任务轮次：${Math.max(0, Math.floor(task.currentRound))}`);
@@ -172,7 +172,7 @@ export function buildLobsterFinalSummaryMarkdown(
   const answerConclusion = resolveLobsterAnswerConclusion(task, decision);
   const finalSummary = resolveLobsterOverallFinalSummary(task, decision);
   const lines: string[] = [
-    "# 龙虾任务最终总结",
+    "# Loop 任务最终总结",
     "",
     `- 任务 ID：${task.id}`,
     `- 会话 ID：${task.sessionId ?? "unknown"}`,

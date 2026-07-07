@@ -23,7 +23,7 @@
 │   ├── webview/              # 聊天面板、配置中心、前后端协议
 │   ├── config/               # 本地配置档案、Skills、MCP 管理
 │   ├── trace/                # trace/tool 输出格式化
-│   ├── lobsterDebate.ts      # 龙虾辩论路径、记录与共识校验纯函数
+│   ├── lobsterDebate.ts      # Loop 辩论路径、记录与共识校验纯函数
 │   ├── i18n.ts               # 国际化
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
@@ -73,7 +73,7 @@ cli / interactive / config 服务层
 #### 基础本地资源层
 
 - 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.gemini/`
-- 龙虾模式的任务记录位于 `~/.sinitek_cli/lobster-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/lobster-communications/`
+- Loop 模式的任务记录位于 `~/.sinitek_cli/lobster-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/lobster-communications/`
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
 
 ## 3. 扩展规则
@@ -85,7 +85,7 @@ cli / interactive / config 服务层
 3. 需要管理外部 CLI 配置、Skills、MCP：放 `src/config/`
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，再在 `src/extension.ts` 接线
-6. 只是龙虾辩论记录、路径或共识校验纯函数：放 `src/lobsterDebate.ts`，不要反向依赖 VS Code API 或 Webview
+6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/lobsterDebate.ts`，不要反向依赖 VS Code API 或 Webview
 
 ### 新增文档时怎么放
 

@@ -2,7 +2,7 @@
 
 ## 1. 背景
 
-当前这份 VS Code 插件已经有会话历史、消息存档、prompt history、龙虾任务记录和工具设置，但这些都不等于“长期记忆”。
+当前这份 VS Code 插件已经有会话历史、消息存档、prompt history、Loop 任务记录和工具设置，但这些都不等于“长期记忆”。
 
 之前的方案把长期记忆近似成：
 
@@ -87,7 +87,7 @@
 - 当前 tab 的消息流
 - `pendingSessionDrafts`
 - 当前运行的 trace
-- 当前轮龙虾任务的主/子任务上下文
+- 当前轮 Loop 任务的主/子任务上下文
 - 当前 prompt 的附件、文件标签、临时补充说明
 
 Working 层不是长期记忆正文的最终落盘位置。它的职责是作为记忆提炼的输入层。
@@ -100,7 +100,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 
 - 阶段摘要
 - 关键任务结果
-- 某轮龙虾执行的结论
+- 某轮 Loop 执行的结论
 - 某次 compact 后压缩出的高价值摘要
 - 当前仍未关闭的待办或风险
 
@@ -287,7 +287,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 默认流程应是：
 
 1. 当前任务执行
-2. 产生会话消息、compact 摘要、龙虾总结、手动“记住这条”
+2. 产生会话消息、compact 摘要、Loop 总结、手动“记住这条”
 3. 先形成候选摘要
 4. 再决定进入哪一层长期记忆
 5. 重新生成 recall/index
@@ -311,7 +311,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 
 - `ROLLING_SUMMARY.md`
   - 会话压缩摘要
-  - 龙虾任务阶段总结
+  - Loop 任务阶段总结
   - 多轮任务收口摘要
 - `EVENT_MEMORY.md`
   - 某次失败根因
@@ -420,7 +420,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 ## 9. 用户可见能力
 
-工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到编码模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
+工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到 Vibe 模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
 
 该开关同时控制“插件侧记忆系统是否参与本次任务”。
 
@@ -428,7 +428,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 - 召回长期记忆
 - 生成 recall pack
-- 从 compact / 龙虾结果里提炼候选
+- 从 compact / Loop 结果里提炼候选
 - 用户手动记住内容
 
 关闭时应禁止：
@@ -515,9 +515,9 @@ compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 - `ROLLING_SUMMARY.md` 的候选来源
 - `EVENT_MEMORY.md` 的候选来源
 
-### 11.3 龙虾任务
+### 11.3 Loop 任务
 
-龙虾主从执行和红蓝辩论会产生很多高价值结构化结论。
+Loop 主从执行和红蓝辩论会产生很多高价值结构化结论。
 
 这些结果不应直接原样进长期记忆，而应：
 
@@ -581,7 +581,7 @@ compact 的职责是压缩当前上下文，不是直接变成长期记忆。
 目标：
 
 - 从 compact
-- 从龙虾最终总结
+- 从 Loop 最终总结
 - 从用户手动记住
 
 提炼候选并上提到正确层级
