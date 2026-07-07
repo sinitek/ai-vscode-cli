@@ -65,14 +65,20 @@ export async function handleUpdateSettingMessage(
     return;
   }
   if (message.key === "lobsterMaxRounds") {
-    workspaceSettings.lobsterMaxRounds = deps.normalizeLobsterMaxRounds(message.value);
-    deps.saveWorkspaceSettings(workspaceSettings);
+    deps.updateStoredToolSettings({ lobsterMaxRounds: deps.normalizeLobsterMaxRounds(message.value) });
+    if ("lobsterMaxRounds" in workspaceSettings) {
+      delete workspaceSettings.lobsterMaxRounds;
+      deps.saveWorkspaceSettings(workspaceSettings);
+    }
     await deps.postPanelState();
     return;
   }
   if (message.key === "lobsterAutoCloseSubtaskTabs") {
-    workspaceSettings.lobsterAutoCloseSubtaskTabs = Boolean(message.value);
-    deps.saveWorkspaceSettings(workspaceSettings);
+    deps.updateStoredToolSettings({ lobsterAutoCloseSubtaskTabs: Boolean(message.value) });
+    if ("lobsterAutoCloseSubtaskTabs" in workspaceSettings) {
+      delete workspaceSettings.lobsterAutoCloseSubtaskTabs;
+      deps.saveWorkspaceSettings(workspaceSettings);
+    }
     await deps.postPanelState();
     return;
   }

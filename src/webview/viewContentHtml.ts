@@ -348,6 +348,26 @@ ${webviewStyles}    </style>
                 </label>
               </div>
               <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
+                <input
+                  type="number"
+                  id="lobsterMaxRounds"
+                  class="tool-settings-number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  title="${i18n.toolSettingsLobsterMaxRoundsTitle}"
+                  aria-label="${i18n.toolSettingsLobsterMaxRoundsLabel}"
+                />
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
+                  <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
+                  <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
                 <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
                   <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
@@ -378,26 +398,7 @@ ${webviewStyles}    </style>
                   <span>${i18n.toolSettingsCodexMultiAgentToggle}</span>
                 </label>
               </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
-                <input
-                  type="number"
-                  id="lobsterMaxRounds"
-                  class="tool-settings-number"
-                  min="1"
-                  max="100"
-                  step="1"
-                  title="${i18n.toolSettingsLobsterMaxRoundsTitle}"
-                  aria-label="${i18n.toolSettingsLobsterMaxRoundsLabel}"
-                />
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
-                  <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
-                  <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
-                </label>
-              </div>
+              <div class="tool-settings-note">${i18n.toolSettingsCodexMultiAgentHint}</div>
               <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
                 <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">

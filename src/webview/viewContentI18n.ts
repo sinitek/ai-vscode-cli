@@ -106,12 +106,14 @@ export const WEBVIEW_I18N = {
     toolSettingsCodexMultiAgentTitle:
       "Workspace setting. Enable Codex multi-agent task orchestration.",
     toolSettingsCodexMultiAgentToggle: "On",
+    toolSettingsCodexMultiAgentHint:
+      "Off by default. When enabled, Codex tasks can use the repo-local collaboration harness to split work into multiple agent roles for planning, implementation, review, and handoff. It only affects Codex orchestration in this workspace and does not change Claude or Gemini behavior.",
     toolSettingsLobsterMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLobsterMaxRoundsTitle:
-      "Workspace setting. Maximum review rounds for new Loop tasks.",
+      "Global setting. Maximum review rounds for new Loop tasks.",
     toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
     toolSettingsLobsterAutoCloseSubtaskTabsTitle:
-      "Workspace setting. Automatically close Loop subtask tabs after they finish.",
+      "Global setting. Automatically close Loop subtask tabs after they finish.",
     toolSettingsLobsterAutoCloseSubtaskTabsToggle: "On",
     toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
     toolSettingsLongTermMemoryTitle:
@@ -426,12 +428,14 @@ export const WEBVIEW_I18N = {
     toolSettingsCodexMultiAgentTitle:
       "工作区设置。启用 Codex 多智能体任务编排。",
     toolSettingsCodexMultiAgentToggle: "开启",
+    toolSettingsCodexMultiAgentHint:
+      "默认关闭。开启后，Codex 任务可复用当前仓库的协作 Harness，将复杂工作拆成规划、实现、复核、交接等多个智能体角色协同推进。该设置只影响当前工作区的 Codex 编排，不改变 Claude 或 Gemini 的行为。",
     toolSettingsLobsterMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLobsterMaxRoundsTitle:
-      "工作区设置。新建 Loop 任务时允许的最大复核轮次。",
+      "全局设置。新建 Loop 任务时允许的最大复核轮次。",
     toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
     toolSettingsLobsterAutoCloseSubtaskTabsTitle:
-      "工作区设置。Loop 子任务完成后自动关闭对应子任务标签页。",
+      "全局设置。Loop 子任务完成后自动关闭对应子任务标签页。",
     toolSettingsLobsterAutoCloseSubtaskTabsToggle: "开启",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:

@@ -8,6 +8,8 @@ export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
+  lobsterMaxRounds?: number;
+  lobsterAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -50,6 +52,17 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.autoAddEditorContextTags === "boolean") {
     normalized.autoAddEditorContextTags = record.autoAddEditorContextTags;
+  }
+  if (typeof record.lobsterMaxRounds === "number" || typeof record.lobsterMaxRounds === "string") {
+    const parsed = typeof record.lobsterMaxRounds === "number"
+      ? record.lobsterMaxRounds
+      : (record.lobsterMaxRounds.trim() ? Number(record.lobsterMaxRounds) : Number.NaN);
+    if (Number.isFinite(parsed)) {
+      normalized.lobsterMaxRounds = Math.floor(parsed);
+    }
+  }
+  if (typeof record.lobsterAutoCloseSubtaskTabs === "boolean") {
+    normalized.lobsterAutoCloseSubtaskTabs = record.lobsterAutoCloseSubtaskTabs;
   }
   if (record.locale === "auto" || record.locale === "zh-CN" || record.locale === "en") {
     normalized.locale = record.locale;

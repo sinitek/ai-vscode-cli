@@ -31,7 +31,9 @@ export type WorkspaceSettings = {
   autoCompactContextBeforeRun?: boolean;
   workspaceMemoryEnabled?: boolean;
   codexMultiAgentEnabled?: boolean;
+  /** @deprecated Loop max rounds is global; keep only for legacy reads. */
   lobsterMaxRounds?: number;
+  /** @deprecated Loop subtask tab auto-close is global; keep only for legacy reads. */
   lobsterAutoCloseSubtaskTabs?: boolean;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;

@@ -74,3 +74,23 @@ test("normalizes known legacy memory fields without accepting non-boolean values
     },
   );
 });
+
+test("normalizes global Loop tool settings", () => {
+  assert.deepEqual(
+    normalizeToolSettings({
+      lobsterMaxRounds: "42.9",
+      lobsterAutoCloseSubtaskTabs: false,
+    }),
+    {
+      lobsterMaxRounds: 42,
+      lobsterAutoCloseSubtaskTabs: false,
+    },
+  );
+  assert.deepEqual(
+    normalizeToolSettings({
+      lobsterMaxRounds: "",
+      lobsterAutoCloseSubtaskTabs: "false",
+    }),
+    {},
+  );
+});

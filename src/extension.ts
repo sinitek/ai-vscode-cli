@@ -1055,8 +1055,8 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getEffectiveLongTermMemoryEnabled,
     getWorkspaceAutoCompactContextAfterRun,
     getWorkspaceCodexMultiAgentEnabled,
-    getWorkspaceLobsterMaxRounds,
-    getWorkspaceLobsterAutoCloseSubtaskTabs,
+    getGlobalLobsterMaxRounds,
+    getGlobalLobsterAutoCloseSubtaskTabs,
     buildWorkspaceLobsterExecutionModeByCli,
     getDebugLogging,
     getLocaleSetting,
@@ -4913,7 +4913,7 @@ function appendTextFileEnsuringDir(filePath: string, content: string): boolean {
 }
 
 async function closeCompletedLobsterDebateTabs(tabIds: string[]): Promise<void> {
-  if (!getWorkspaceLobsterAutoCloseSubtaskTabs()) {
+  if (!getGlobalLobsterAutoCloseSubtaskTabs()) {
     return;
   }
   for (const tabId of tabIds) {
@@ -5268,7 +5268,7 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
     if (status !== "error") {
       const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
       markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
-      if (status === "end" && getWorkspaceLobsterAutoCloseSubtaskTabs()) {
+      if (status === "end" && getGlobalLobsterAutoCloseSubtaskTabs()) {
         await closeConversationTabAndRefreshPanel(subtaskTarget.tabId);
         void logInfo("lobster-subtask-tab-auto-closed", {
           taskId: task.id,
@@ -8832,7 +8832,7 @@ function createLobsterTaskRecord(
     status: "running",
     createdAt: now,
     updatedAt: now,
-    maxRounds: getWorkspaceLobsterMaxRounds(),
+    maxRounds: getGlobalLobsterMaxRounds(),
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
@@ -9214,11 +9214,19 @@ function parseLobsterMaxRoundsValue(value: unknown): number {
   return rawValue;
 }
 
-function getWorkspaceLobsterMaxRounds(): number {
+function getGlobalLobsterMaxRounds(): number {
+  const toolSettings = readToolSettings();
+  if (typeof toolSettings.lobsterMaxRounds === "number") {
+    return normalizeLobsterMaxRounds(toolSettings.lobsterMaxRounds);
+  }
   return normalizeLobsterMaxRounds(workspaceSettings.lobsterMaxRounds);
 }
 
-function getWorkspaceLobsterAutoCloseSubtaskTabs(): boolean {
+function getGlobalLobsterAutoCloseSubtaskTabs(): boolean {
+  const toolSettings = readToolSettings();
+  if (typeof toolSettings.lobsterAutoCloseSubtaskTabs === "boolean") {
+    return toolSettings.lobsterAutoCloseSubtaskTabs;
+  }
   return workspaceSettings.lobsterAutoCloseSubtaskTabs !== false;
 }
 
