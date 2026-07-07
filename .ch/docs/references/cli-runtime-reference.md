@@ -52,7 +52,7 @@
   - add-dir
   - web search
   - thinking / reasoning effort
-- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会在 app-server 启动参数中附加 `--disable multi_agent`，并在 thread config 中显式写入 `features.multi_agent=false`
+- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。
 
 ### Claude
 
@@ -81,7 +81,7 @@
 ## 3.5 工具设置存储
 
 - 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`）写入 `~/.sinitek_cli/settings.json`
-- 工具设置中的项目级项（如 `autoCompactContextAfterRun`、`codexMultiAgentEnabled`、`lobsterExecutionModeByCli`、`lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
+- 工具设置中的项目级项（如 `autoCompactContextAfterRun`、`codexMultiAgentEnabled`、`lobsterExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`；全局项（如 `lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/settings.json`，历史工作区字段仅作为兼容回退读取。
 - 工具设置“工作区”页中的 harness 骨架开关控制当前工作区基于 harness scaffold 的插件侧记忆层，默认关闭，并写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json` 的 `workspaceMemoryEnabled`。配置解析采用“显式 false 防误开优先”：兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。

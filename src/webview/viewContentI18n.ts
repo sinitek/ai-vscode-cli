@@ -104,10 +104,10 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoCompactAfterRunToggle: "On",
     toolSettingsCodexMultiAgentLabel: "Codex Multi-Agent",
     toolSettingsCodexMultiAgentTitle:
-      "Workspace setting. Enable Codex multi-agent task orchestration.",
+      "Workspace setting. Allow Codex's official multi_agent sub-agent capability.",
     toolSettingsCodexMultiAgentToggle: "On",
     toolSettingsCodexMultiAgentHint:
-      "Off by default. When enabled, Codex tasks can use the repo-local collaboration harness to split work into multiple agent roles for planning, implementation, review, and handoff. It only affects Codex orchestration in this workspace and does not change Claude or Gemini behavior.",
+      "Off by default. When disabled, the extension explicitly disables Codex's official multi_agent feature. When enabled, Codex may use its built-in sub-agent capability according to Codex's own runtime behavior. This setting only affects Codex.",
     toolSettingsLobsterMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLobsterMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
@@ -426,10 +426,10 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoCompactAfterRunToggle: "开启",
     toolSettingsCodexMultiAgentLabel: "Codex 多智能体",
     toolSettingsCodexMultiAgentTitle:
-      "工作区设置。启用 Codex 多智能体任务编排。",
+      "工作区设置。允许 Codex 官方 multi_agent 子智能体能力。",
     toolSettingsCodexMultiAgentToggle: "开启",
     toolSettingsCodexMultiAgentHint:
-      "默认关闭。开启后，Codex 任务可复用当前仓库的协作 Harness，将复杂工作拆成规划、实现、复核、交接等多个智能体角色协同推进。该设置只影响当前工作区的 Codex 编排，不改变 Claude 或 Gemini 的行为。",
+      "默认关闭。关闭时，扩展会显式禁用 Codex 官方 multi_agent 功能。开启后，Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。",
     toolSettingsLobsterMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLobsterMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
