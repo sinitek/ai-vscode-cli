@@ -98,6 +98,21 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextTitle:
       "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
+    toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
+    toolSettingsAutoCompactAfterRunTitle:
+      "Workspace setting. Automatically compact context after a successful task finishes.",
+    toolSettingsAutoCompactAfterRunToggle: "On",
+    toolSettingsCodexMultiAgentLabel: "Codex Multi-Agent",
+    toolSettingsCodexMultiAgentTitle:
+      "Workspace setting. Enable Codex multi-agent task orchestration.",
+    toolSettingsCodexMultiAgentToggle: "On",
+    toolSettingsLobsterMaxRoundsLabel: "Loop Max Rounds",
+    toolSettingsLobsterMaxRoundsTitle:
+      "Workspace setting. Maximum review rounds for new Loop tasks.",
+    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
+    toolSettingsLobsterAutoCloseSubtaskTabsTitle:
+      "Workspace setting. Automatically close Loop subtask tabs after they finish.",
+    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "On",
     toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
     toolSettingsLongTermMemoryTitle:
       "Workspace setting. Provides a repo-local AI collaboration scaffold with memory, pitfalls, handoffs, skills, and CodeGraph-assisted code navigation.",
@@ -403,6 +418,21 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
+    toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩上下文",
+    toolSettingsAutoCompactAfterRunTitle:
+      "工作区设置。任务成功结束后自动压缩上下文。",
+    toolSettingsAutoCompactAfterRunToggle: "开启",
+    toolSettingsCodexMultiAgentLabel: "Codex 多智能体",
+    toolSettingsCodexMultiAgentTitle:
+      "工作区设置。启用 Codex 多智能体任务编排。",
+    toolSettingsCodexMultiAgentToggle: "开启",
+    toolSettingsLobsterMaxRoundsLabel: "Loop 最大轮次",
+    toolSettingsLobsterMaxRoundsTitle:
+      "工作区设置。新建 Loop 任务时允许的最大复核轮次。",
+    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
+    toolSettingsLobsterAutoCloseSubtaskTabsTitle:
+      "工作区设置。Loop 子任务完成后自动关闭对应子任务标签页。",
+    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "开启",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

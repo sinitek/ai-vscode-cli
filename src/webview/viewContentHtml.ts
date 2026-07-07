@@ -365,6 +365,40 @@ ${webviewStyles}    </style>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
               <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
+                  <input type="checkbox" id="autoCompactContextAfterRun" />
+                  <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsCodexMultiAgentLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsCodexMultiAgentTitle}">
+                  <input type="checkbox" id="codexMultiAgentEnabled" />
+                  <span>${i18n.toolSettingsCodexMultiAgentToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
+                <input
+                  type="number"
+                  id="lobsterMaxRounds"
+                  class="tool-settings-number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  title="${i18n.toolSettingsLobsterMaxRoundsTitle}"
+                  aria-label="${i18n.toolSettingsLobsterMaxRoundsLabel}"
+                />
+              </div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
+                  <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
+                  <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
                 <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
                   <input type="checkbox" id="longTermMemoryEnabled" />
