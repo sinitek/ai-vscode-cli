@@ -2,7 +2,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
         backdrop-filter: blur(2px);
         display: none;
         align-items: center;
@@ -14,7 +14,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .modal {
         background: var(--vscode-editorWidget-background);
         border: 1px solid var(--vscode-widget-border);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        box-shadow: 0 8px 32px color-mix(in srgb, var(--vscode-editor-foreground) 24%, transparent);
         border-radius: 12px;
         width: 500px;
         max-width: 90vw;

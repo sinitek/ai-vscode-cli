@@ -62,7 +62,7 @@
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
 - 工具设置中的全局项（debug、自动文件标签、Loop 最大轮次、Loop 子任务自动关闭、语言、macOS task shell）保存在 `~/.sinitek_cli/settings.json`；项目级工具设置保存在 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
 - 工具设置提供工作区级“Harness 骨架”开关，控制当前工作区基于 harness scaffold 的插件侧本地记忆层，默认关闭。用户开启时，扩展先弹窗确认；确认后才补齐工作区 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的模板追加、只引用 `AGENTS.md` 的 `CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 `codegraph install --target codex --location global && codegraph init`。骨架安装成功后会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`；用户确认后，扩展把当前 AI 对话切到 coding 模式，并复用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。关闭后不得创建、更新、召回或注入插件侧长期记忆，只允许查看、导出和删除已有记忆；该开关不控制 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、配置、压缩结果或账号侧能力。
-- 工具设置提供项目级“执行后自动压缩上下文”开关（默认开启）；开启后，若当前任务目标为已有 Codex/Claude/Gemini 会话，会在任务成功结束且执行超过 5 分钟后自动执行一次上下文压缩；任务中断、报错或执行不超过 5 分钟不触发自动压缩；手动或自动压缩执行期间，聊天面板运行条会显示带动画的“压缩上下文中”状态
+- 工具设置提供项目级“执行后自动压缩上下文”开关（默认开启）；开启后，若当前任务目标为已有 Codex/Claude/Gemini 会话，会在任务成功结束且执行超过 5 分钟后自动执行一次上下文压缩；任务中断、报错或执行不超过 5 分钟不触发自动压缩；自动压缩以静默后台任务执行，不追加普通任务完成耗时气泡、不覆盖刚完成任务的真实执行时间；手动压缩执行期间，聊天面板运行条会显示带动画的“压缩上下文中”状态
 - 对非主动中断/异常，或 CLI 成功退出但本轮没有产生普通 assistant 最终结论气泡的情况，会隐式发送“继续/continue”自动重试最多 5 次，间隔依次为 5 秒、15 秒、30 秒、2 分钟、5 分钟；Codex 交互任务必须看到 `phase:"final_answer"`/`codexFinalAnswer=true` 才视为本轮最终结论，`phase:"commentary"` 只作为过程消息；不会展示这条隐式用户消息；每次失败进入下一次自动重试前会追加错误 trace 气泡展示本次失败信息，并追加系统提示说明当前是第几次自动重试；等待结束真正开始执行该次自动重试时，会再追加“第 X/Y 次自动重试已开始”提示并把标签页恢复到运行态；达到上限后会展示最近一次真实错误，避免只剩泛化提示
 - Codex 在工具设置中提供项目级“子智能体（multi_agent）”开关，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。
 - Codex 交互式运行会优先直接启动已解析的 CLI，可显式固定 `CODEX_HOME` / 工作区 trust，并在回合完成时优先采用渐进式关闭，降低长任务被异常打断的概率
@@ -136,6 +136,7 @@
 
 - 配置档案列表、排序、激活、删除、初始化
 - 当前配置查看与应用
+- 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、Gemini 的 `settings.json` / `.env`、Codex 的 `config.toml` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件
 - 备份与导出
 - 技能管理
   - 官方 Claude / Codex / Gemini skills 列表内置仓库快照，当前固定为 Claude 17 项、Codex 39 项、Gemini 40 项

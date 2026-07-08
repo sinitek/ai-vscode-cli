@@ -58,7 +58,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
 
       /* Input Box Container */
       .input-box {
-        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.55)));
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
         background: var(--vscode-input-background);
         border-radius: 10px;
         padding: 12px;
@@ -67,7 +67,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         gap: 10px;
         transition: border-color 0.2s, box-shadow 0.2s;
         position: relative;
-        box-shadow: 0 0 0 1px var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+        box-shadow: 0 0 0 1px var(--vscode-widget-border, var(--vscode-input-border));
       }
       .input-box:focus-within {
         border-color: var(--vscode-focusBorder);

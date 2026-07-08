@@ -7,7 +7,7 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
       .typing {
         display: inline-flex;
         gap: 4px;
-        padding: 8px 12px;
+        padding: 6px 8px;
         background: var(--vscode-editor-inactiveSelectionBackground);
         border-radius: 12px;
         align-items: center;
@@ -20,9 +20,11 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
         animation: typingPulse 1.4s infinite ease-in-out both;
       }
       .run-wait-time {
+        margin-left: 2px;
         font-size: 12px;
         color: var(--vscode-descriptionForeground);
         font-variant-numeric: tabular-nums;
+        line-height: 1;
       }
       .run-status-text {
         font-size: 12px;

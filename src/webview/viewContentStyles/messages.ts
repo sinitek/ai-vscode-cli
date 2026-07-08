@@ -68,8 +68,8 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         border-radius: 16px 16px 4px 16px;
         max-width: 85%;
         box-sizing: border-box;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        box-shadow: 0 1px 2px color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
         white-space: pre-wrap;
       }
       .message.user .user-context-tags {
@@ -103,7 +103,7 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
       }
       .message.assistant .bubble {
         background: transparent;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
         border-radius: var(--radius-md);
         padding: 12px;
         max-width: 100%;

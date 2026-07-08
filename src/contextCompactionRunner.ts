@@ -449,7 +449,9 @@ export async function runContextCompactionWithDeps(
   const runId = deps.createMessageId();
   deps.beginActiveRunState({ runId, cli, sessionId, tabId, messageTarget });
 
-  deps.sendRunStatus("start", undefined, { activity: "contextCompaction" });
+  if (!silent) {
+    deps.sendRunStatus("start", undefined, { activity: "contextCompaction" });
+  }
 
   let stopCurrentTurn: (() => void) | null = null;
   const stopFn = (): void => {
@@ -467,9 +469,11 @@ export async function runContextCompactionWithDeps(
     } catch {
       // ignore
     }
-    deps.sendRunStatus("stopped", t("run.stoppedByUser"));
-    deps.appendCompletionMessage("stopped");
-    deps.persistActiveMessages();
+    if (!silent) {
+      deps.sendRunStatus("stopped", t("run.stoppedByUser"));
+      deps.appendCompletionMessage("stopped");
+      deps.persistActiveMessages();
+    }
     deps.clearActiveRun();
   };
   deps.setActiveInteractiveStop(stopFn);
@@ -744,8 +748,10 @@ export async function runContextCompactionWithDeps(
       status,
       message: userMessage ?? null,
     });
-    deps.sendRunStatus(status === "end" ? "end" : status, userMessage);
-    deps.appendCompletionMessage(status);
+    if (!silent) {
+      deps.sendRunStatus(status === "end" ? "end" : status, userMessage);
+      deps.appendCompletionMessage(status);
+    }
     deps.persistActiveMessages();
     deps.clearActiveRun();
   }

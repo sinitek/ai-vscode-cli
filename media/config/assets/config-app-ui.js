@@ -61,7 +61,11 @@ const ConfigListPanel = () => {
             defaultValue: `${L} 配置 ${Date.now()}`,
           }),
           okButtonProps: {
-            style: { backgroundColor: "#1f1f1f", borderColor: "#1f1f1f" },
+            style: {
+              backgroundColor: "var(--vscode-button-background)",
+              borderColor: "var(--vscode-button-background)",
+              color: "var(--vscode-button-foreground)",
+            },
           },
           onOk: async () => {
             const U = document
@@ -195,9 +199,9 @@ const ConfigListPanel = () => {
             okType: "danger",
             okButtonProps: {
               style: {
-                backgroundColor: "#ff4d4f",
-                borderColor: "#ff4d4f",
-                color: "#fff",
+                backgroundColor: "var(--vscode-errorForeground)",
+                borderColor: "var(--vscode-errorForeground)",
+                color: "var(--vscode-button-foreground)",
               },
             },
             onOk: async () => {
@@ -228,7 +232,11 @@ const ConfigListPanel = () => {
               defaultValue: L.name,
             }),
             okButtonProps: {
-              style: { backgroundColor: "#1f1f1f", borderColor: "#1f1f1f" },
+              style: {
+                backgroundColor: "var(--vscode-button-background)",
+                borderColor: "var(--vscode-button-background)",
+                color: "var(--vscode-button-foreground)",
+              },
             },
             onOk: async () => {
               const U = document.getElementById("rename-input")?.value?.trim();
@@ -459,7 +467,9 @@ const ConfigListPanel = () => {
                   onDrop: (ae) => z(ae, k, F.id),
                   style: {
                     cursor: "pointer",
-                    backgroundColor: K ? "rgba(31, 31, 31, 0.08)" : void 0,
+                    backgroundColor: K
+                      ? "var(--vscode-list-activeSelectionBackground)"
+                      : void 0,
                     padding: "0",
                     borderRadius: "6px",
                     transition: "all 0.2s ease-in-out",
@@ -478,9 +488,11 @@ const ConfigListPanel = () => {
                         onClick: (ae) => B(ae, F),
                         style: Y
                           ? {
-                              backgroundColor: "#52c41a",
-                              borderColor: "#52c41a",
-                              color: "#fff",
+                              backgroundColor:
+                                "var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen))",
+                              borderColor:
+                                "var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen))",
+                              color: "var(--vscode-button-foreground)",
                             }
                           : void 0,
                         children: Y ? "更新配置" : "激活",
@@ -512,7 +524,12 @@ const ConfigListPanel = () => {
                   children: be.jsxs($s, {
                     children: [
                       be.jsx("span", {
-                        style: { fontWeight: K ? 500 : 400, color: "#1f1f1f" },
+                        style: {
+                          fontWeight: K ? 500 : 400,
+                          color: K
+                            ? "var(--vscode-list-activeSelectionForeground, var(--text-color))"
+                            : "var(--text-color)",
+                        },
                         children: F.name,
                       }),
                       Y &&
@@ -1979,8 +1996,15 @@ const jv = ({
                       }),
                       y.config.env &&
                         be.jsx(Wg, {
-                          color: "blue",
-                          style: { fontSize: "10px", lineHeight: "18px", marginBottom: "4px" },
+                          style: {
+                            backgroundColor:
+                              "var(--vscode-badge-background, var(--vscode-editorWidget-background))",
+                            borderColor: "var(--vscode-widget-border)",
+                            color: "var(--vscode-badge-foreground, var(--text-color-secondary))",
+                            fontSize: "10px",
+                            lineHeight: "18px",
+                            marginBottom: "4px",
+                          },
                           children: "需配置环境变量",
                         }),
                       k && H?.status === "unhealthy"
@@ -2648,7 +2672,7 @@ const SkillsManagerModal = ({
               border: "1px solid var(--border-color)",
               borderRadius: "6px",
               padding: "12px",
-              background: "var(--background-color-secondary, #f5f5f5)",
+              background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
             },
             children: x,
           })
@@ -2661,7 +2685,7 @@ const SkillsManagerModal = ({
               border: "1px solid var(--border-color)",
               borderRadius: "6px",
               padding: "12px",
-              background: "var(--background-color-secondary, #f5f5f5)",
+              background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
             },
             children: officialPackageLoadingTextByPlatform(n),
           })
@@ -2673,7 +2697,7 @@ const SkillsManagerModal = ({
                 border: "1px solid var(--border-color)",
                 borderRadius: "6px",
                 padding: "12px",
-                background: "var(--background-color-secondary, #f5f5f5)",
+                background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
               },
               children: officialPackageEmptyTextByPlatform(n),
             })
@@ -3276,7 +3300,7 @@ const ConfigEditorPanel = () => {
                       borderRadius: "6px",
                       border: "1px solid var(--border-color)",
                       backgroundColor:
-                        "var(--background-color-secondary, #f5f5f5)",
+                        "var(--background-color-secondary, var(--vscode-editorWidget-background))",
                       whiteSpace: "pre-wrap",
                       fontFamily: "monospace",
                       fontSize: "12px",
@@ -3296,54 +3320,88 @@ const ConfigEditorPanel = () => {
             Kt.error("已保存，但更新激活配置失败: " + k);
           }
       },
-      V = async () => {
+      saveClaudeSettingsCard = async () => {
         if (!O) {
           Kt.warning("请先选择一个配置");
           return;
         }
-        if (O.platform === "claude") {
-          if (!_(l)) {
-            Kt.error("JSON格式不正确");
-            return;
-          }
-          try {
-            const W = M(l);
-            (await r(O.id, { content: W, claudeSkills: C }),
-              s(W),
-              f(""),
-              Kt.success("保存成功"),
-              await A({ content: W, claudeSkills: C }));
-          } catch (W) {
-            Kt.error("保存失败: " + W);
-          }
-        } else if (O.platform === "gemini") {
-          if (!_(l)) {
-            Kt.error("JSON格式不正确");
-            return;
-          }
-          try {
-            const W = M(l);
-            (await r(O.id, { content: W, envContent: b, geminiSkills: C }),
-              s(W),
-              Kt.success("保存成功"),
-              await A({ content: W, envContent: b, geminiSkills: C }));
-          } catch (W) {
-            Kt.error("保存失败: " + W);
-          }
-        } else {
-          if (!_(p)) {
-            Kt.error("auth.json格式不正确");
-            return;
-          }
-          try {
-            const W = M(p);
-            (await r(O.id, { configContent: m, authContent: W, codexSkills: C }),
-              h(W),
-              Kt.success("保存成功"),
-              await A({ configContent: m, authContent: W, codexSkills: C }));
-          } catch (W) {
-            Kt.error("保存失败: " + W);
-          }
+        if (!_(l)) {
+          Kt.error("JSON格式不正确");
+          return;
+        }
+        try {
+          const W = M(l);
+          await r(O.id, { content: W });
+          s(W);
+          f("");
+          Kt.success("保存成功");
+          await A({ content: W, claudeSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      saveGeminiSettingsCard = async () => {
+        if (!O) {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        if (!_(l)) {
+          Kt.error("JSON格式不正确");
+          return;
+        }
+        try {
+          const W = M(l);
+          await r(O.id, { content: W });
+          s(W);
+          Kt.success("保存成功");
+          await A({ content: W, envContent: O.envContent ?? "", geminiSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      saveGeminiEnvCard = async () => {
+        if (!O) {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        try {
+          await r(O.id, { envContent: b });
+          Kt.success("保存成功");
+          await A({ content: O.content ?? "{}", envContent: b, geminiSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      saveCodexConfigCard = async () => {
+        if (!O) {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        try {
+          await r(O.id, { configContent: m });
+          Kt.success("保存成功");
+          await A({ configContent: m, authContent: O.authContent ?? "{}", codexSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      saveCodexAuthCard = async () => {
+        if (!O) {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        if (!_(p)) {
+          Kt.error("auth.json格式不正确");
+          return;
+        }
+        try {
+          const W = M(p);
+          await r(O.id, { authContent: W });
+          h(W);
+          Kt.success("保存成功");
+          await A({ configContent: O.configContent ?? "", authContent: W, codexSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
         }
       };
     const J = async (W, H, k) => {
@@ -3495,12 +3553,6 @@ const ConfigEditorPanel = () => {
                       onClick: () => setSkillsModalOpen(!0),
                       children: "Skills",
                     }),
-                    be.jsx(xn, {
-                      type: "primary",
-                      icon: be.jsx(Pv, {}),
-                      onClick: V,
-                      children: "保存",
-                    }),
                   ],
                 }),
                 style: {
@@ -3537,20 +3589,33 @@ const ConfigEditorPanel = () => {
                             color: "var(--text-color-secondary)",
                             display: "flex",
                             alignItems: "center",
+                            justifyContent: "space-between",
                             gap: 12,
                           },
                           children: [
-                            be.jsxs("span", {
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 12 },
                               children: [
-                                be.jsx(Ya, {}),
-                                " 配置文件路径: ",
-                                "~/.claude/settings.json",
+                                be.jsxs("span", {
+                                  children: [
+                                    be.jsx(Ya, {}),
+                                    " 配置文件路径: ",
+                                    "~/.claude/settings.json",
+                                  ],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("claude-settings"),
+                                  children: "查看范例",
+                                }),
                               ],
                             }),
                             be.jsx(xn, {
                               size: "small",
-                              onClick: () => N("claude-settings"),
-                              children: "查看范例",
+                              type: "primary",
+                              icon: be.jsx(Pv, {}),
+                              onClick: saveClaudeSettingsCard,
+                              children: "保存",
                             }),
                           ],
                         }),
@@ -3621,7 +3686,7 @@ const ConfigEditorPanel = () => {
                             borderRadius: "6px",
                             padding: "8px",
                             background:
-                              "var(--background-color-secondary, #f5f5f5)",
+                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
                           },
                           children:
                             C.length === 0
@@ -3770,12 +3835,6 @@ const ConfigEditorPanel = () => {
                       onClick: () => setSkillsModalOpen(!0),
                       children: "Skills",
                     }),
-                      be.jsx(xn, {
-                        type: "primary",
-                        icon: be.jsx(Pv, {}),
-                        onClick: V,
-                        children: "保存",
-                      }),
                     ],
                   }),
                   style: {
@@ -3808,15 +3867,28 @@ const ConfigEditorPanel = () => {
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
+                            justifyContent: "space-between",
                           },
                           children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " settings.json"],
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 8 },
+                              children: [
+                                be.jsxs("span", {
+                                  children: [be.jsx(Ya, {}), " settings.json"],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("gemini-settings"),
+                                  children: "查看范例",
+                                }),
+                              ],
                             }),
                             be.jsx(xn, {
                               size: "small",
-                              onClick: () => N("gemini-settings"),
-                              children: "查看范例",
+                              type: "primary",
+                              icon: be.jsx(Pv, {}),
+                              onClick: saveGeminiSettingsCard,
+                              children: "保存",
                             }),
                           ],
                         }),
@@ -3855,15 +3927,28 @@ const ConfigEditorPanel = () => {
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
+                            justifyContent: "space-between",
                           },
                           children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " .env"],
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 8 },
+                              children: [
+                                be.jsxs("span", {
+                                  children: [be.jsx(Ya, {}), " .env"],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("gemini-env"),
+                                  children: "查看范例",
+                                }),
+                              ],
                             }),
                             be.jsx(xn, {
                               size: "small",
-                              onClick: () => N("gemini-env"),
-                              children: "查看范例",
+                              type: "primary",
+                              icon: be.jsx(Pv, {}),
+                              onClick: saveGeminiEnvCard,
+                              children: "保存",
                             }),
                           ],
                         }),
@@ -3942,7 +4027,7 @@ const ConfigEditorPanel = () => {
                             borderRadius: "6px",
                             padding: "8px",
                             background:
-                              "var(--background-color-secondary, #f5f5f5)",
+                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
                           },
                           children:
                             C.length === 0
@@ -4090,12 +4175,6 @@ const ConfigEditorPanel = () => {
                       onClick: () => setSkillsModalOpen(!0),
                       children: "Skills",
                     }),
-                      be.jsx(xn, {
-                        type: "primary",
-                        icon: be.jsx(Pv, {}),
-                        onClick: V,
-                        children: "保存",
-                      }),
                     ],
                   }),
                   style: {
@@ -4128,15 +4207,28 @@ const ConfigEditorPanel = () => {
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
+                            justifyContent: "space-between",
                           },
                           children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " config.toml"],
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 8 },
+                              children: [
+                                be.jsxs("span", {
+                                  children: [be.jsx(Ya, {}), " config.toml"],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("codex-config"),
+                                  children: "查看范例",
+                                }),
+                              ],
                             }),
                             be.jsx(xn, {
                               size: "small",
-                              onClick: () => N("codex-config"),
-                              children: "查看范例",
+                              type: "primary",
+                              icon: be.jsx(Pv, {}),
+                              onClick: saveCodexConfigCard,
+                              children: "保存",
                             }),
                           ],
                         }),
@@ -4175,15 +4267,28 @@ const ConfigEditorPanel = () => {
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
+                            justifyContent: "space-between",
                           },
                           children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " auth.json"],
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 8 },
+                              children: [
+                                be.jsxs("span", {
+                                  children: [be.jsx(Ya, {}), " auth.json"],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("codex-auth"),
+                                  children: "查看范例",
+                                }),
+                              ],
                             }),
                             be.jsx(xn, {
                               size: "small",
-                              onClick: () => N("codex-auth"),
-                              children: "查看范例",
+                              type: "primary",
+                              icon: be.jsx(Pv, {}),
+                              onClick: saveCodexAuthCard,
+                              children: "保存",
                             }),
                           ],
                         }),
@@ -4262,7 +4367,7 @@ const ConfigEditorPanel = () => {
                             borderRadius: "6px",
                             padding: "8px",
                             background:
-                              "var(--background-color-secondary, #f5f5f5)",
+                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
                           },
                           children:
                             C.length === 0
@@ -4414,14 +4519,17 @@ const ConfigManagerLayout = () => {
         children: [
           be.jsx(jk, {
             style: {
-              background: "#001529",
-              color: "#fff",
+              background: "var(--vscode-titleBar-activeBackground, var(--vscode-sideBar-background))",
+              color: "var(--vscode-titleBar-activeForeground, var(--vscode-foreground))",
               display: "flex",
               alignItems: "center",
               padding: "0 24px",
             },
             children: be.jsx("h2", {
-              style: { margin: 0, color: "#fff" },
+              style: {
+                margin: 0,
+                color: "var(--vscode-titleBar-activeForeground, var(--vscode-foreground))",
+              },
               children: "携宁 CLI 配置",
             }),
           }),
@@ -4430,13 +4538,13 @@ const ConfigManagerLayout = () => {
               be.jsx(zk, {
                 width: 500,
                 style: {
-                  background: "#fff",
+                  background: "var(--bg-color-container)",
                   borderRight: "1px solid var(--border-color)",
                 },
                 children: be.jsx(ConfigListPanel, {}),
               }),
               be.jsx(Lk, {
-                style: { background: "#fff" },
+                style: { background: "var(--bg-color)" },
                 children: be.jsx(ConfigEditorPanel, {}),
               }),
             ],

@@ -206,10 +206,10 @@ export const SYSTEM_TRACE_STYLES = `      /* System & Trace Messages */
       .message.trace.trace-type-web-search .bubble {
         --trace-accent: var(
           --vscode-terminal-ansiMagenta,
-          var(--vscode-charts-purple, #b48ead)
+          var(--vscode-charts-purple, var(--vscode-textLink-foreground))
         );
         --trace-title-fg: var(--trace-accent);
-        --trace-title-bg: rgba(180, 142, 173, 0.15);
+        --trace-title-bg: color-mix(in srgb, var(--trace-accent) 15%, transparent);
         --trace-title-border: var(--trace-accent);
       }
       .trace-header {

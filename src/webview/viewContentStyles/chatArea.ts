@@ -7,7 +7,7 @@ export const CHAT_AREA_STYLES = `      /* Chat Area */
         background: var(--vscode-editor-background);
         min-height: 0;
         box-sizing: border-box;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.45)));
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
         border-radius: 10px;
         position: relative;
       }

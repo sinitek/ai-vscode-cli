@@ -98,14 +98,13 @@ ${webviewStyles}    </style>
         <span class="typing">
           <span class="typing-dot"></span>
           <span class="typing-dot"></span>
-          <span class="typing-dot"></span>
+          <span id="runWaitTime" class="run-wait-time">00:00</span>
         </span>
         <span id="runStatusText" class="run-status-text" style="display: none;"></span>
         <button id="runStreamButton" class="run-stream-button" style="display: none;" aria-label="${i18n.runStreamViewAria}" title="${i18n.runStreamViewAria}">
           ${i18n.runStreamViewLabel}
         </button>
         <span id="runStreamStaleBadge" class="run-stream-stale-badge" style="display: none;"></span>
-        <span id="runWaitTime" class="run-wait-time">00:00</span>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}
         </button>

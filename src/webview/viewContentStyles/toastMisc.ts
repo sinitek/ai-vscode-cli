@@ -7,7 +7,7 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         color: var(--vscode-notifications-foreground);
         padding: 10px 16px;
         border-radius: 6px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--vscode-editor-foreground) 20%, transparent);
         z-index: 200;
         opacity: 0;
         transform: translateY(10px);
