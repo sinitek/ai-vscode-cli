@@ -37,6 +37,7 @@ import {
   type LobsterDebateParticipantRecord,
   type LobsterDebateConsensusRecord,
 } from "../lobsterDebate";
+import { getStrings } from "../webview/lobsterDebatePanelRenderer";
 
 test("normalizes lobster execution mode with legacy-compatible default", () => {
   assert.equal(DEFAULT_LOBSTER_EXECUTION_MODE, "main_sub_multi_agent");
@@ -46,6 +47,43 @@ test("normalizes lobster execution mode with legacy-compatible default", () => {
   assert.equal(normalizeLobsterExecutionMode("main_sub"), "main_sub_multi_agent");
   assert.equal(normalizeLobsterExecutionMode("main_sub_multi_agent"), "main_sub_multi_agent");
   assert.equal(normalizeLobsterExecutionMode("debate_multi_agent"), "debate_multi_agent");
+});
+
+test("uses speaking action labels for Loop supplemental requirements", () => {
+  assert.equal(getStrings("zh-CN").supplementTask, "我要说话");
+  assert.equal(getStrings("en").supplementTask, "I want to speak");
+});
+
+test("parses supplemental requirements as user chat messages", () => {
+  const transcript = [
+    "# Loop 主从群聊记录",
+    "",
+    "## 任务事件",
+    "任务已启动。",
+    "",
+    "## 补充需求",
+    "- 时间：2026-07-10T08:00:00.000Z",
+    "- 主任务轮次：2",
+    "请优先补充失败场景测试。",
+    "",
+    "## 补充需求",
+    "- 时间：2026-07-10T08:01:00.000Z",
+    "- 主任务轮次：2",
+    "同时更新中英文文案。",
+  ].join("\n");
+
+  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const userMessages = parsed.segments.filter((segment) => segment.kind === "user-message");
+
+  assert.deepEqual(
+    parsed.segments.map((segment) => segment.kind),
+    ["preamble", "task-event", "user-message", "user-message"],
+  );
+  assert.deepEqual(userMessages.map((segment) => segment.body), [
+    "请优先补充失败场景测试。",
+    "同时更新中英文文案。",
+  ]);
+  assert.deepEqual(userMessages.map((segment) => segment.actorId), ["user", "user"]);
 });
 
 test("resolves lobster task run controls from persisted running status", () => {

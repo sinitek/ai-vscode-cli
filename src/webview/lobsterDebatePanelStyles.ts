@@ -310,6 +310,15 @@ export const LOBSTER_DEBATE_PANEL_STYLES = `      :root {
       .message.no-avatar {
         grid-template-columns: minmax(0, 1fr);
       }
+      .message.user-message {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .message.user-message .bubble {
+        width: min(85%, 760px);
+        border-color: var(--vscode-focusBorder);
+        background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background));
+      }
       .bubble {
         min-width: 0;
         width: 100%;

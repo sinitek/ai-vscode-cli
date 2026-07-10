@@ -80,7 +80,7 @@ export class LobsterDebateChatPanel {
   }
 }
 
-function buildLobsterDebateChatPanelHtml(
+export function buildLobsterDebateChatPanelHtml(
   webview: vscode.Webview,
   state: LobsterDebateChatPanelState,
   locale: AppLocale,
@@ -797,6 +797,9 @@ function renderSegment(segment: LobsterDebateChatSegment, strings: LobsterDebate
 }
 
 function getSegmentSpeaker(segment: LobsterDebateChatSegment, strings: LobsterDebateChatPanelStrings): string {
+  if (segment.kind === "user-message") {
+    return strings.user;
+  }
   if (segment.kind === "main-turn") {
     return segment.actorTitle ?? strings.mainTask;
   }
@@ -816,6 +819,9 @@ function getSegmentSpeaker(segment: LobsterDebateChatSegment, strings: LobsterDe
 }
 
 function getSegmentTag(segment: LobsterDebateChatSegment, strings: LobsterDebateChatPanelStrings): string {
+  if (segment.kind === "user-message") {
+    return strings.supplementalRequirement;
+  }
   if (segment.kind === "main-turn" && typeof segment.dialogueTurn === "number") {
     return `${strings.mainTask} · ${formatTemplate(strings.roundLabel, { round: segment.dialogueTurn })}`;
   }

@@ -5202,16 +5202,14 @@ function appendLobsterSupplementalRequirementToCommunication(
   task: LobsterTaskRecord,
   requirement: string,
 ): void {
+  const body = [
+    `- 时间：${new Date().toISOString()}`,
+    `- 主任务轮次：${Math.max(1, task.currentRound || 1)}`,
+    requirement,
+  ].join("\n");
   try {
     fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
-    const lines = [
-      "",
-      "## 补充需求",
-      `- 时间：${new Date().toISOString()}`,
-      `- 主任务轮次：${Math.max(1, task.currentRound || 1)}`,
-      requirement,
-    ];
-    fs.appendFileSync(task.mainCommunicationFile, `${lines.join("\n")}\n`, "utf8");
+    fs.appendFileSync(task.mainCommunicationFile, `\n## 补充需求\n${body}\n`, "utf8");
   } catch (error) {
     void logError("lobster-supplemental-requirement-write-error", {
       taskId: task.id,
@@ -5219,6 +5217,7 @@ function appendLobsterSupplementalRequirementToCommunication(
       error: String(error),
     });
   }
+  appendLobsterMainSubChatSection(task, "补充需求", body);
 }
 
 function appendLobsterMainSubChatTaskEvent(task: LobsterTaskRecord, body: string): void {

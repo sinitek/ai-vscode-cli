@@ -150,6 +150,7 @@ export type LobsterDebateChatSegmentKind =
   | "preamble"
   | "rules"
   | "task-event"
+  | "user-message"
   | "main-turn"
   | "subtask-joined"
   | "subtask-turn"
@@ -655,6 +656,15 @@ function sanitizeLobsterDebatePathSegment(value: string, fallback: string): stri
 function classifyLobsterDebateChatSection(heading: string, body: string): LobsterDebateChatSegment {
   const metadataActorId = extractLobsterGroupChatMetadataValue(body, ["成员 ID", "参与者 ID", "子任务 ID"]);
   const metadataDialogueTurn = extractLobsterGroupChatDialogueTurn(body);
+  if (heading === "补充需求") {
+    return {
+      kind: "user-message",
+      heading,
+      body: normalizeLobsterSupplementalRequirementBody(body),
+      actorId: "user",
+    };
+  }
+
   const mainTurn = heading.match(/^主任务发言：第\s+(\d+)\s+轮(?:（(.+?)）)?$/u);
   if (mainTurn) {
     return {
@@ -924,6 +934,7 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
 function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
   return heading === "群聊规则"
     || heading === "任务事件"
+    || heading === "补充需求"
     || heading === "运行时强制收束"
     || heading === "任务成功完成"
     || heading === "任务中断"
@@ -951,6 +962,14 @@ function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
 
 function normalizeLobsterDebateChatBody(lines: string[]): string {
   return lines.join("\n").replace(/^\s+|\s+$/g, "");
+}
+
+function normalizeLobsterSupplementalRequirementBody(body: string): string {
+  const lines = body.split("\n");
+  while (/^-\s*(?:时间|主任务轮次)：/u.test(lines[0] ?? "")) {
+    lines.shift();
+  }
+  return lines.join("\n").trim();
 }
 
 function normalizeLobsterMainSubAssistantContent(content: unknown): string {
