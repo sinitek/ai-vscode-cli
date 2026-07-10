@@ -34,7 +34,7 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "已添加": "Added",
   "技能": "Skills",
   "Claude 技能管理": "Claude Skills",
-  "Gemini 技能管理": "Gemini Skills / Extensions",
+  "OpenCode 技能管理": "OpenCode Skills",
   "Codex 技能管理": "Codex Skills",
   "健康": "Healthy",
   "不健康": "Unhealthy",
@@ -83,15 +83,14 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "请输入新的配置名称": "Enter new config name",
   "请输入JSON配置": "Enter JSON config",
   "请输入TOML配置": "Enter TOML config",
-  "请输入 .env 配置": "Enter .env config",
   "技能列表加载中...": "Loading skills list...",
   "Skills 加载中...": "Loading Skills...",
   "未检测到 Skills，请先安装到 ~/.claude/skills": "No skills detected. Install to ~/.claude/skills first.",
   "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills": "No skills detected. Install to ~/.agents/skills or workspace .codex/skills first.",
-  "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills": "No skills detected. Install to ~/.gemini/skills or workspace .gemini/skills first.",
+  "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills": "No skills detected. Install to ~/.opencode/skills or workspace .opencode/skills first.",
   "获取 Claude Skills 失败": "Failed to fetch Claude skills.",
   "获取 Codex Skills 失败": "Failed to fetch Codex skills.",
-  "获取 Gemini Skills 失败": "Failed to fetch Gemini skills.",
+  "获取 OpenCode Skills 失败": "Failed to fetch OpenCode skills.",
   "获取官方 Skills 失败": "Failed to fetch bundled official packages.",
   "更新技能失败": "Failed to update skills.",
   "内置官方 Skills": "Bundled Official Skills",
@@ -356,25 +355,42 @@ export function getConfigViewHtml(
 
       window.electronAPI = {
         config: {
-          getList: (platform) => requestConfig("getList", { platform }),
+          getList: (platform) =>
+            requestConfig("getList", { platform }).then((configs) => mapConfigListFromHost(configs, platform)),
           getOrder: (platform) => requestConfig("getOrder", { platform }),
           setOrder: (platform, order) => requestConfig("setOrder", { platform, order }),
-          getById: (platform, id) => requestConfig("getById", { platform, id }),
-          save: (config) => requestConfig("save", { config }),
+          getById: (platform, id) =>
+            requestConfig("getById", { platform, id }).then((config) => mapConfigFromHost(config, platform)),
+          save: (config) => requestConfig("save", { config: mapConfigForHost(config) }),
+          copy: (payload) =>
+            requestConfig("copy", { payload }).then((config) =>
+              mapConfigFromHost(config, payload && payload.targetPlatform)
+            ),
           delete: (platform, id) => requestConfig("delete", { platform, id }),
           getCurrent: (platform) => requestConfig("getCurrent", { platform }),
-          apply: (platform, payload) => requestConfig("apply", { platform, payload }),
+          apply: (platform, payload) => requestConfig("apply", { platform, payload: mapApplyPayloadForHost(payload) }),
           backup: (platform) => requestConfig("backup", { platform }),
           getBackups: (platform) => requestConfig("getBackups", { platform }),
-          initDefault: (platform) => requestConfig("initDefault", { platform }),
+          initDefault: (platform) =>
+            requestConfig("initDefault", { platform }).then((config) => mapConfigFromHost(config, platform)),
           getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
           getClaudeSkillsList: () => requestConfig("getClaudeSkillsList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
-          getGeminiSkillsList: () => requestConfig("getGeminiSkillsList", {}),
-          getOfficialSkillsCatalog: (platform) => requestConfig("getOfficialSkillsCatalog", { platform }),
-          installOfficialSkill: (platform, skillId) => requestConfig("installOfficialSkill", { platform, skillId }),
-          updateOfficialSkill: (platform, skillId) => requestConfig("updateOfficialSkill", { platform, skillId }),
-          uninstallOfficialSkill: (platform, skillId) => requestConfig("uninstallOfficialSkill", { platform, skillId }),
+          getOpenCodeSkillsList: () => requestConfig("getOpenCodeSkillsList", {}),
+          getOfficialSkillsCatalog: (platform) =>
+            platform === "opencode" ? Promise.resolve([]) : requestConfig("getOfficialSkillsCatalog", { platform }),
+          installOfficialSkill: (platform, skillId) =>
+            platform === "opencode"
+              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+              : requestConfig("installOfficialSkill", { platform, skillId }),
+          updateOfficialSkill: (platform, skillId) =>
+            platform === "opencode"
+              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+              : requestConfig("updateOfficialSkill", { platform, skillId }),
+          uninstallOfficialSkill: (platform, skillId) =>
+            platform === "opencode"
+              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+              : requestConfig("uninstallOfficialSkill", { platform, skillId }),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
           getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),
           getMcpHealth: (platform) => requestConfig("getMcpHealth", { platform }),
@@ -385,6 +401,46 @@ export function getConfigViewHtml(
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };
+
+      function mapConfigFromHost(config, requestedPlatform) {
+        if (!config || requestedPlatform !== "opencode") {
+          return config;
+        }
+        return {
+          ...config,
+          platform: "opencode",
+          openCodeSkills: config.openCodeSkills ?? config.geminiSkills ?? [],
+        };
+      }
+
+      function mapConfigListFromHost(configs, requestedPlatform) {
+        if (!Array.isArray(configs)) {
+          return [];
+        }
+        return configs.map((config) => mapConfigFromHost(config, requestedPlatform));
+      }
+
+      function mapConfigForHost(config) {
+        if (!config || config.platform !== "opencode") {
+          return config;
+        }
+        const { geminiSkills, ...rest } = config;
+        return {
+          ...rest,
+          openCodeSkills: geminiSkills ?? config.openCodeSkills ?? [],
+        };
+      }
+
+      function mapApplyPayloadForHost(payload) {
+        if (!payload || !Object.prototype.hasOwnProperty.call(payload, "geminiSkills")) {
+          return payload;
+        }
+        const { geminiSkills, ...rest } = payload;
+        return {
+          ...rest,
+          openCodeSkills: geminiSkills ?? [],
+        };
+      }
 
       const updateConfigLabel = ${JSON.stringify(t("config.updateLabel"))};
       function disableReadonlyActions() {
@@ -686,7 +742,7 @@ export function getConfigViewHtml(
         return JSON.stringify(next);
       }
 
-      function collectManagedGeminiSkillNames(skills) {
+      function collectManagedOpenCodeSkillNames(skills) {
         const managedNames = new Set();
         (Array.isArray(skills) ? skills : []).forEach((skill) => {
           if (!skill || typeof skill !== "object") {
@@ -701,8 +757,8 @@ export function getConfigViewHtml(
         return managedNames;
       }
 
-      function stripManagedGeminiSkillRules(content, skills) {
-        const managedNames = collectManagedGeminiSkillNames(skills);
+      function stripManagedOpenCodeSkillRules(content, skills) {
+        const managedNames = collectManagedOpenCodeSkillNames(skills);
         const parsed = parseJsonObject(content ?? "{}");
         if (!parsed || typeof parsed !== "object") {
           return content ?? "";
@@ -758,19 +814,15 @@ export function getConfigViewHtml(
             ? isDeepEqualSubset(configContentObj, currentContentObj)
             : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
         }
-        if (platform === "gemini") {
-          const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);
-          const normalizedCurrentContent = stripManagedGeminiSkillRules(current.content, config.geminiSkills);
+        if (platform === "opencode") {
+          const normalizedConfigContent = stripManagedOpenCodeSkillRules(config.content, config.openCodeSkills);
+          const normalizedCurrentContent = stripManagedOpenCodeSkillRules(current.content, config.openCodeSkills);
           const configContentObj = parseJsonObject(normalizedConfigContent);
           const currentContentObj = parseJsonObject(normalizedCurrentContent);
           const contentMatch = configContentObj && currentContentObj
             ? isDeepEqualSubset(configContentObj, currentContentObj)
             : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
-          return (
-            contentMatch &&
-            normalizeLineEndings(config.envContent ?? "") ===
-              normalizeLineEndings(current.envContent ?? "")
-          );
+          return contentMatch;
         }
         return (
           areLinesSubset(
@@ -782,7 +834,7 @@ export function getConfigViewHtml(
       }
 
       async function syncActiveConfigIds() {
-        const platforms = ["claude", "codex", "gemini"];
+        const platforms = ["claude", "codex", "opencode"];
         let updated = false;
         postConfigDebug({
           event: "syncActive:start",

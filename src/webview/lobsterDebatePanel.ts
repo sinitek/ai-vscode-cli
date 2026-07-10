@@ -111,7 +111,6 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
           ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
           ${state.task.canSupplement ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
           ${!state.task.canStop && state.task.canContinue ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
-          <button class="button${state.task.canStop || state.task.canContinue || state.task.canSupplement ? "" : " primary"}" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
         </div>
       </header>
       <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
@@ -169,6 +168,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	      let autoRefreshTimer = undefined;
 	      let suppressScrollButtonUntil = 0;
 	      let continueDialogOpen = false;
+	      let continueDialogMode = undefined;
 
 	      function getStoredState() {
 	        return vscode.getState() || {};
@@ -177,6 +177,29 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	      function getStoredScrollState() {
 	        const scroll = getStoredState().scroll;
 	        return scroll && typeof scroll === "object" ? scroll : {};
+	      }
+
+	      function getStoredDialogState() {
+	        const dialog = getStoredState().dialog;
+	        return dialog && typeof dialog === "object" ? dialog : {};
+	      }
+
+	      function saveDialogState() {
+	        const existingDialog = getStoredDialogState();
+	        vscode.setState({
+	          ...getStoredState(),
+	          dialog: {
+	            ...existingDialog,
+	            open: continueDialogOpen,
+	            mode: continueDialogMode,
+	            prompt: continueDialogInput ? continueDialogInput.value : existingDialog.prompt,
+	          },
+	        });
+	      }
+
+	      function clearDialogState() {
+	        const { dialog: _dialog, ...rest } = getStoredState();
+	        vscode.setState(rest);
 	      }
 
 	      function getDistanceToBottom() {
@@ -263,6 +286,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 
 	      function requestRefresh() {
 	        saveScrollState();
+	        saveDialogState();
 	        vscode.postMessage({ type: "lobsterDebateChat:refresh" });
 	      }
 
@@ -279,9 +303,12 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        }
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
+	        continueDialogMode = "continue";
 	        continueDialogInput.value = "${escapeJsString(strings.continuePromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
+	        saveDialogState();
 	        window.setTimeout(() => {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
@@ -293,9 +320,11 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	          return;
 	        }
 	        continueDialogOpen = false;
+	        continueDialogMode = undefined;
 	        continueDialogBackdrop.classList.remove("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "true");
 	        setContinueDialogError("");
+	        clearDialogState();
 	      }
 
 	      function submitContinueDialog() {
@@ -338,6 +367,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        }
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
+	        continueDialogMode = "supplement";
 	        const titleElement = document.getElementById("continueDialogTitle");
 	        const descriptionElement = document.getElementById("continueDialogDescription");
 	        const labelElement = document.querySelector('label[for="continueDialogInput"]');
@@ -354,10 +384,29 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
+	        saveDialogState();
 	        window.setTimeout(() => {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
 	        }, 0);
+	      }
+
+	      function restoreDialogState() {
+	        const dialog = getStoredDialogState();
+	        if (!dialog.open || !continueDialogInput) {
+	          return;
+	        }
+	        if (dialog.mode === "supplement") {
+	          openSupplementDialog();
+	        } else if (dialog.mode === "continue") {
+	          openContinueDialog();
+	        } else {
+	          return;
+	        }
+	        if (typeof dialog.prompt === "string") {
+	          continueDialogInput.value = dialog.prompt;
+	        }
+	        saveDialogState();
 	      }
 
 	      function startAutoRefresh() {
@@ -377,10 +426,6 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	          return;
 	        }
 	        const action = target.getAttribute("data-action");
-	        if (action === "refresh") {
-	          requestRefresh();
-	          return;
-	        }
 	        if (action === "continueTask") {
 	          saveScrollState();
 	          const titleElement = document.getElementById("continueDialogTitle");
@@ -445,6 +490,11 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        });
 	      }
 	      if (continueDialogInput) {
+	        continueDialogInput.addEventListener("input", () => {
+	          if (continueDialogOpen) {
+	            saveDialogState();
+	          }
+	        });
 	        continueDialogInput.addEventListener("keydown", (event) => {
 	          if (event.key === "Escape") {
 	            event.preventDefault();
@@ -471,12 +521,15 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        }
 	      });
 	      window.addEventListener("beforeunload", () => {
+	        saveScrollState();
+	        saveDialogState();
 	        if (autoRefreshTimer !== undefined) {
 	          window.clearInterval(autoRefreshTimer);
 	        }
 	      });
 	      window.requestAnimationFrame(() => {
 	        restoreScrollState();
+	        restoreDialogState();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
 	      startAutoRefresh();

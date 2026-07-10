@@ -6,7 +6,7 @@ import { type CliModelStore } from "./modelSelectionStore";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
-import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
+import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import {
   formatLobsterGroupChatMemberName,
@@ -304,7 +304,7 @@ function isDeepEqualSubset(expected: unknown, actual: unknown): boolean {
 }
 
 export function matchesActiveConfig(
-  platform: ConfigPlatform,
+  platform: ConfigPlatform | CliName,
   config: ConfigItem,
   current: CurrentConfig
 ): boolean {
@@ -325,9 +325,9 @@ export function matchesActiveConfig(
 
     return contentMatch && mcpMatch;
   }
-  if (platform === "gemini") {
-    const normalizedConfigContent = stripManagedGeminiSkillRules(config.content, config.geminiSkills);
-    const normalizedCurrentContent = stripManagedGeminiSkillRules(current.content, config.geminiSkills);
+  if (platform === "opencode") {
+    const normalizedConfigContent = stripManagedOpenCodeSkillRules(config.content, config.openCodeSkills);
+    const normalizedCurrentContent = stripManagedOpenCodeSkillRules(current.content, config.openCodeSkills);
     const configContentObj = parseJsonObject(normalizedConfigContent);
     const currentContentObj = parseJsonObject(normalizedCurrentContent);
     const contentMatch = configContentObj && currentContentObj

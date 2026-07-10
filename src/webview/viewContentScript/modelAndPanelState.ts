@@ -297,16 +297,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function syncThinkingOptions() {
-        const isGemini = state.currentCli === "gemini";
+        const isOpenCode = state.currentCli === "opencode";
         const isCodex = state.currentCli === "codex";
         const isClaude = state.currentCli === "claude";
         const mediumOption = elements.thinkingMode.querySelector('option[value="medium"]');
         const xhighOption = elements.thinkingMode.querySelector('option[value="xhigh"]');
         const maxOption = elements.thinkingMode.querySelector('option[value="max"]');
-        if (isGemini && mediumOption) {
+        if (isOpenCode && mediumOption) {
           mediumOption.remove();
         }
-        if (!isGemini && !mediumOption) {
+        if (!isOpenCode && !mediumOption) {
           const option = document.createElement("option");
           option.value = "medium";
           option.textContent = t("thinkingOptionLabelMedium");
@@ -350,7 +350,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           option.textContent = t("thinkingOptionLabelMax");
           elements.thinkingMode.appendChild(option);
         }
-        if (isGemini && state.thinkingMode === "medium") {
+        if (isOpenCode && state.thinkingMode === "medium") {
           updateThinkingMode("low");
         }
         if (isCodex && state.thinkingMode === "off") {

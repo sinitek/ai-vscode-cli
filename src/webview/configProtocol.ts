@@ -1,4 +1,4 @@
-import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform, OfficialSkillPlatform } from "../config/types";
+import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform, CopyConfigPayload, OfficialSkillPlatform } from "../config/types";
 
 export type ConfigAction =
   | "getList"
@@ -6,6 +6,7 @@ export type ConfigAction =
   | "setOrder"
   | "getById"
   | "save"
+  | "copy"
   | "delete"
   | "getCurrent"
   | "apply"
@@ -15,7 +16,7 @@ export type ConfigAction =
   | "getMcpMarketplaceList"
   | "getClaudeSkillsList"
   | "getCodexSkillsList"
-  | "getGeminiSkillsList"
+  | "getOpenCodeSkillsList"
   | "getOfficialSkillsCatalog"
   | "installOfficialSkill"
   | "updateOfficialSkill"
@@ -34,6 +35,7 @@ export type ConfigRequestPayload =
   | { action: "setOrder"; platform: ConfigPlatform; order: ConfigOrder }
   | { action: "getById"; platform: ConfigPlatform; id: string }
   | { action: "save"; config: ConfigItem }
+  | { action: "copy"; payload: CopyConfigPayload }
   | { action: "delete"; platform: ConfigPlatform; id: string }
   | { action: "getCurrent"; platform: ConfigPlatform }
   | { action: "apply"; platform: ConfigPlatform; payload: ApplyPayload }
@@ -43,7 +45,7 @@ export type ConfigRequestPayload =
   | { action: "getMcpMarketplaceList" }
   | { action: "getClaudeSkillsList" }
   | { action: "getCodexSkillsList" }
-  | { action: "getGeminiSkillsList" }
+  | { action: "getOpenCodeSkillsList" }
   | { action: "getOfficialSkillsCatalog"; platform: OfficialSkillPlatform }
   | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "updateOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }

@@ -3,13 +3,13 @@ import { CliName } from "./types";
 const CLI_INSTALL_COMMANDS: Record<CliName, string> = {
   codex: "npm install -g @openai/codex",
   claude: "npm install -g @anthropic-ai/claude-code",
-  gemini: "npm install -g @google/gemini-cli",
+  opencode: "npm install -g opencode-ai",
 };
 
 const CLI_DISPLAY_NAMES: Record<CliName, string> = {
   codex: "Codex",
   claude: "Claude",
-  gemini: "Gemini",
+  opencode: "OpenCode",
 };
 
 export function getCliInstallCommand(cli: CliName): string {

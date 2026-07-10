@@ -11,10 +11,14 @@ import {
 export const OFFICIAL_SKILL_METADATA_FILE = ".sinitek-official-skill.json";
 const OFFICIAL_SKILL_METADATA_SCHEMA_VERSION = 2;
 const OFFICIAL_SKILL_CONTENT_HASH_PREFIX = "sha256:";
+type CurrentOfficialSkillPlatform = Exclude<OfficialSkillPlatform, "gemini"> | "opencode";
+type WritableOfficialSkillCatalogItem = Omit<OfficialSkillCatalogItem, "platform"> & {
+  platform: OfficialSkillPlatform | "opencode";
+};
 
 export type OfficialSkillMetadataV1 = {
   schemaVersion: 1;
-  platform: OfficialSkillPlatform;
+  platform: CurrentOfficialSkillPlatform;
   skillId: string;
   name: string;
   sourceRepo: string;
@@ -26,7 +30,7 @@ export type OfficialSkillMetadataV1 = {
 
 export type OfficialSkillMetadataV2 = {
   schemaVersion: 2;
-  platform: OfficialSkillPlatform;
+  platform: CurrentOfficialSkillPlatform;
   skillId: string;
   name: string;
   sourceRepo: string;
@@ -65,8 +69,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
-function isOfficialSkillPlatform(value: string): value is OfficialSkillPlatform {
-  return value === "claude" || value === "codex" || value === "gemini";
+function isOfficialSkillPlatform(value: string): value is CurrentOfficialSkillPlatform {
+  return value === "claude" || value === "codex" || value === "opencode";
 }
 
 function hasString(value: unknown): value is string {
@@ -106,7 +110,10 @@ export function getOfficialSkillMetadataPath(skillDir: string): string {
   return path.join(skillDir, OFFICIAL_SKILL_METADATA_FILE);
 }
 
-export function buildOfficialSkillMetadata(item: OfficialSkillCatalogItem): OfficialSkillMetadataV2 {
+export function buildOfficialSkillMetadata(item: WritableOfficialSkillCatalogItem): OfficialSkillMetadataV2 {
+  if (!isOfficialSkillPlatform(item.platform)) {
+    throw new Error(`Unsupported official skill platform: ${item.platform}`);
+  }
   return {
     schemaVersion: OFFICIAL_SKILL_METADATA_SCHEMA_VERSION,
     platform: item.platform,
@@ -126,7 +133,7 @@ export function buildOfficialSkillMetadata(item: OfficialSkillCatalogItem): Offi
 
 export async function writeOfficialSkillMetadata(
   skillDir: string,
-  item: OfficialSkillCatalogItem,
+  item: WritableOfficialSkillCatalogItem,
 ): Promise<void> {
   const metadataPath = getOfficialSkillMetadataPath(skillDir);
   const content = JSON.stringify(buildOfficialSkillMetadata(item), null, 2);

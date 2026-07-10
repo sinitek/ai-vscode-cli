@@ -3,52 +3,75 @@
 *:after {
   box-sizing: border-box;
 }
-html {
-  line-height: 1.15;
-  -webkit-text-size-adjust: 100%;
-  -webkit-tap-highlight-color: transparent;
-}
-body {
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  font-family: var(
-    --font-family,
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    sans-serif
-  );
-  line-height: 1.5;
-  font-weight: 400;
-  color: var(--text-color, var(--vscode-foreground));
-  background-color: var(--bg-color, var(--vscode-editor-background));
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+
 :root {
-  --primary-color: var(--vscode-button-background);
-  --success-color: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen));
-  --warning-color: var(--vscode-editorWarning-foreground, var(--vscode-terminal-ansiYellow));
-  --error-color: var(--vscode-errorForeground, var(--vscode-terminal-ansiRed));
-  --info-color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground));
-  --text-color: var(--vscode-foreground);
-  --text-color-secondary: var(--vscode-descriptionForeground);
-  --text-color-tertiary: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
-  --text-color-disabled: var(--vscode-disabledForeground);
-  --text-color-inverse: var(--vscode-button-foreground);
-  --bg-color: var(--vscode-editor-background);
-  --bg-color-container: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  --bg-color-elevated: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  --bg-color-layout: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  --background-color: var(--bg-color);
-  --background-color-secondary: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
-  --border-color: var(--vscode-widget-border, var(--vscode-input-border));
-  --border-color-secondary: var(--vscode-panel-border, var(--vscode-widget-border));
+  color-scheme: light;
+  --clay-canvas: #faf9f7;
+  --clay-surface: #ffffff;
+  --clay-surface-muted: #f6f2eb;
+  --clay-border: #dad4c8;
+  --clay-border-soft: #eee9df;
+  --clay-text: #000000;
+  --clay-text-secondary: #55534e;
+  --clay-text-muted: #9f9b93;
+  --clay-inverse: #ffffff;
+  --clay-focus: #146ef5;
+  --clay-matcha: #84e7a5;
+  --clay-matcha-strong: #078a52;
+  --clay-slushie: #3bd3fd;
+  --clay-lemon: #f8cc65;
+  --clay-lemon-strong: #d08a11;
+  --clay-ube: #c1b0ff;
+  --clay-ube-strong: #43089f;
+  --clay-pomegranate: #fc7981;
+  --clay-pomegranate-strong: #c94d58;
+  --clay-blueberry: #01418d;
+  --clay-badge-bg: #f0f8ff;
+  --clay-badge-text: #3859f9;
+  --clay-info-border: #aac4ff;
+  --clay-success-soft: #e9faef;
+  --clay-success-text: #02492a;
+  --clay-warning-soft: #fff8e2;
+  --clay-warning-text: #7c5107;
+  --clay-error-soft: #fff0f1;
+  --clay-error-text: #9e303a;
+  --clay-header-glass: rgba(250, 249, 247, 0.94);
+  --clay-surface-glass: rgba(255, 255, 255, 0.94);
+  --clay-focus-shadow: rgba(20, 110, 245, 0.18);
+  --clay-overlay: rgba(23, 20, 16, 0.42);
+  --clay-floating-shadow: rgba(0, 0, 0, 0.14);
+  --clay-radius-control: 8px;
+  --clay-radius-card: 12px;
+  --clay-radius-panel: 24px;
+  --clay-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.1),
+    0 -1px 1px rgba(0, 0, 0, 0.04) inset,
+    0 -0.5px 1px rgba(0, 0, 0, 0.05);
+  --clay-shadow-panel: 0 16px 40px rgba(46, 39, 28, 0.08);
+  --clay-shadow-floating: -6px 7px 0 rgba(0, 0, 0, 0.96);
+  --clay-motion: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --primary-color: var(--clay-text);
+  --success-color: var(--clay-matcha-strong);
+  --warning-color: var(--clay-lemon-strong);
+  --error-color: var(--clay-pomegranate-strong);
+  --info-color: var(--clay-blueberry);
+  --text-color: var(--clay-text);
+  --text-color-secondary: var(--clay-text-secondary);
+  --text-color-tertiary: var(--clay-text-muted);
+  --text-color-disabled: var(--clay-text-muted);
+  --text-color-inverse: var(--clay-inverse);
+  --bg-color: var(--clay-canvas);
+  --bg-color-container: var(--clay-surface);
+  --bg-color-elevated: var(--clay-surface);
+  --bg-color-layout: var(--clay-canvas);
+  --background-color: var(--clay-surface);
+  --background-color-secondary: var(--clay-surface-muted);
+  --border-color: var(--clay-border);
+  --border-color-secondary: var(--clay-border-soft);
   --font-family:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   --font-size-sm: 12px;
   --font-size: 14px;
   --font-size-lg: 16px;
@@ -57,66 +80,990 @@ body {
   --spacing: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
-  --border-radius-sm: 6px;
-  --border-radius: 8px;
-  --border-radius-lg: 12px;
-  --box-shadow-sm: 0 2px 8px color-mix(in srgb, var(--vscode-editor-foreground) 6%, transparent);
-  --box-shadow: 0 4px 16px color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
-  --box-shadow-lg: 0 8px 32px color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent);
-  --transition-fast: 0.1s ease-in-out;
-  --transition-base: 0.2s ease-in-out;
-  --transition-slow: 0.3s ease-in-out;
+  --border-radius-sm: var(--clay-radius-control);
+  --border-radius: var(--clay-radius-card);
+  --border-radius-lg: var(--clay-radius-panel);
+  --box-shadow-sm: var(--clay-shadow);
+  --box-shadow: var(--clay-shadow-panel);
+  --box-shadow-lg: 0 22px 64px rgba(0, 0, 0, 0.18);
+  --transition-fast: 100ms ease-out;
+  --transition-base: var(--clay-motion);
+  --transition-slow: 300ms ease-out;
 }
-.text-primary {
-  color: var(--primary-color) !important;
+
+html {
+  line-height: 1.15;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--clay-canvas);
 }
-.text-success {
-  color: var(--success-color) !important;
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--clay-text);
+  background: var(--clay-canvas);
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.text-warning {
-  color: var(--warning-color) !important;
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
-.text-error {
-  color: var(--error-color) !important;
+
+::selection {
+  color: var(--clay-inverse);
+  background: var(--clay-text);
 }
-.text-secondary {
-  color: var(--text-color-secondary) !important;
-}
-.bg-container {
-  background-color: var(--bg-color-container) !important;
-}
-.bg-elevated {
-  background-color: var(--bg-color-elevated) !important;
-}
-.bg-layout {
-  background-color: var(--bg-color-layout) !important;
-}
+
 *:focus-visible {
-  outline: 2px solid var(--primary-color);
+  outline: 2px solid var(--clay-focus);
   outline-offset: 2px;
 }
+
+.text-primary { color: var(--primary-color) !important; }
+.text-success { color: var(--success-color) !important; }
+.text-warning { color: var(--warning-color) !important; }
+.text-error { color: var(--error-color) !important; }
+.text-secondary { color: var(--text-color-secondary) !important; }
+.bg-container { background-color: var(--bg-color-container) !important; }
+.bg-elevated { background-color: var(--bg-color-elevated) !important; }
+.bg-layout { background-color: var(--bg-color-layout) !important; }
+
+html,
+body,
+#root,
+.config-app-theme {
+  width: 100%;
+  height: 100%;
+  background: var(--clay-canvas) !important;
+  color: var(--clay-text) !important;
+}
+
+.config-app-theme {
+  min-width: 760px;
+  overflow: hidden;
+}
+
+.config-app-theme .ant-layout {
+  min-height: 0;
+  background: var(--clay-canvas) !important;
+}
+
+.config-app-header {
+  height: 72px !important;
+  padding: 0 28px !important;
+  background: var(--clay-header-glass) !important;
+  border-bottom: 1px solid var(--clay-border) !important;
+  backdrop-filter: blur(14px);
+}
+
+.config-app-title {
+  position: relative;
+  color: var(--clay-text) !important;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.45px;
+}
+
+.config-app-title:after {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 10px;
+  border: 1px solid var(--clay-text);
+  border-radius: 50%;
+  background: var(--clay-lemon);
+  vertical-align: 2px;
+}
+
+.config-app-workspace {
+  display: flex;
+  gap: 18px;
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
+  background: var(--clay-canvas) !important;
+}
+
+.config-app-sidebar,
+.config-app-content {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-panel);
+  background: var(--clay-surface) !important;
+  box-shadow: var(--clay-shadow-panel);
+}
+
+.config-app-sidebar {
+  flex: 0 0 min(42vw, 500px) !important;
+  width: min(42vw, 500px) !important;
+  min-width: 360px !important;
+  max-width: 500px !important;
+}
+
+.config-app-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.config-sidebar-panel {
+  padding: 16px !important;
+  scrollbar-gutter: stable;
+}
+
+.config-list-toolbar {
+  position: sticky;
+  top: -16px;
+  z-index: 4;
+  margin: -16px -16px 14px !important;
+  padding: 14px 16px 12px;
+  background: var(--clay-surface-glass);
+  border-bottom: 1px dashed var(--clay-border);
+  backdrop-filter: blur(12px);
+}
+
+.config-sidebar-panel > .ant-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: 16px !important;
+  background: var(--clay-surface) !important;
+  box-shadow: var(--clay-shadow);
+}
+
+.config-sidebar-panel > .ant-card:nth-of-type(2) { border-top: 4px solid var(--clay-lemon) !important; }
+.config-sidebar-panel > .ant-card:nth-of-type(3) { border-top: 4px solid var(--clay-ube) !important; }
+.config-sidebar-panel > .ant-card:nth-of-type(4) { border-top: 4px solid var(--clay-matcha) !important; }
+
+.config-sidebar-panel > .ant-card .ant-card-head {
+  min-height: 58px;
+  padding: 0 14px !important;
+  border-bottom: 1px dashed var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+}
+
+.config-sidebar-panel > .ant-card .ant-card-head-title {
+  padding: 12px 0;
+  white-space: normal;
+}
+
+.config-sidebar-panel > .ant-card .ant-card-body {
+  padding: 10px !important;
+}
+
+.ant-card,
+.ant-collapse,
+.ant-list,
+.ant-table-wrapper,
+.ant-alert {
+  color: var(--clay-text);
+}
+
+.config-app-content > div {
+  background: transparent;
+}
+
+.config-editor-shell {
+  padding: 18px !important;
+  background: var(--clay-surface) !important;
+}
+
+.config-editor-shell > .ant-card {
+  overflow: hidden;
+  border: 1px solid var(--clay-border-soft) !important;
+  border-radius: 18px !important;
+  background: var(--clay-surface) !important;
+  box-shadow: var(--clay-shadow) !important;
+}
+
+.config-editor-shell > .ant-card > .ant-card-head {
+  padding-inline: 18px;
+}
+
+.config-editor-shell > .ant-card > .ant-card-body {
+  background: var(--clay-surface) !important;
+}
+
+.config-empty-state {
+  height: auto !important;
+  min-height: calc(100% - 48px);
+  margin: 24px;
+  border: 1px dashed var(--clay-border) !important;
+  border-radius: var(--clay-radius-panel);
+  background: var(--clay-canvas) !important;
+  color: var(--clay-text-secondary) !important;
+  font-size: 15px;
+  box-shadow: var(--clay-shadow);
+}
+
+.config-empty-state:before {
+  content: "←";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-right: 12px;
+  border: 1px solid var(--clay-text);
+  border-radius: 50%;
+  background: var(--clay-lemon);
+  color: var(--clay-text);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.config-app-content > div > .ant-card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--clay-surface) !important;
+  box-shadow: none !important;
+}
+
+.config-app-content > div > .ant-card > .ant-card-head {
+  min-height: 68px;
+  border-bottom: 1px dashed var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+}
+
+.config-app-content .ant-card-head-title {
+  color: var(--clay-text);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.config-app-content .ant-card-body {
+  background: var(--clay-surface);
+}
+
+.config-app-content > .config-editor-shell > .ant-card {
+  border: 1px solid var(--clay-border-soft) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--clay-shadow) !important;
+}
+
 .config-list .ant-list-item {
-  transition: background-color var(--transition-base);
-  background-color: transparent;
-  border-bottom: 1px solid var(--border-color-secondary);
+  min-height: 52px;
+  margin: 5px 0;
+  padding: 8px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-canvas) !important;
+  color: var(--clay-text) !important;
+  transition:
+    transform var(--clay-motion),
+    border-color var(--clay-motion),
+    box-shadow var(--clay-motion),
+    background-color var(--clay-motion);
 }
-.config-list .ant-list-item:last-child {
-  border-bottom: none;
+
+.config-list .config-list-item:hover,
+.config-list .config-list-item:focus-visible {
+  z-index: 1;
+  border-color: var(--clay-text) !important;
+  background: var(--clay-surface) !important;
+  transform: translateY(-1px);
+  box-shadow: -3px 3px 0 var(--clay-border);
 }
+
+.config-list .config-list-item.config-list-item-selected,
+.config-list .config-list-item.config-list-item-selected:hover,
+.config-list .config-list-item.config-list-item-selected:focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+  transform: translateY(-2px);
+  box-shadow: -4px 5px 0 var(--clay-lemon);
+}
+
+.config-list .config-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--clay-text) !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-list .config-list-item-selected .config-name {
+  color: var(--clay-inverse) !important;
+}
+
+.config-list-actions {
+  flex-shrink: 0;
+}
+
+.config-list .ant-btn-text {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--clay-text-secondary);
+}
+
+.config-list .ant-btn-text:hover,
+.config-list .ant-btn-text:focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.config-list .config-list-item-selected .ant-btn-text,
+.config-list .config-list-item-selected .ant-btn-text span,
+.config-list .config-list-item-selected .ant-btn-text svg {
+  color: var(--clay-inverse) !important;
+  fill: currentColor;
+}
+
+.config-list .config-list-item-selected .ant-btn-text:hover,
+.config-list .config-list-item-selected .ant-btn-text:focus-visible {
+  border-color: var(--clay-inverse) !important;
+  background: var(--clay-inverse) !important;
+  color: var(--clay-text) !important;
+}
+
+.config-list .config-list-item-selected .ant-btn-text:hover span,
+.config-list .config-list-item-selected .ant-btn-text:hover svg,
+.config-list .config-list-item-selected .ant-btn-text:focus-visible span,
+.config-list .config-list-item-selected .ant-btn-text:focus-visible svg {
+  color: var(--clay-text) !important;
+}
+
 .config-active-tag {
   display: inline-flex;
   align-items: center;
-  padding: 0 6px;
-  border-radius: var(--border-radius-sm);
-  background-color: var(--success-color);
-  color: var(--text-color-inverse);
-  font-size: var(--font-size-sm);
-  line-height: 20px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--clay-text);
+  border-radius: 50%;
+  background: var(--clay-matcha);
+  color: var(--clay-text) !important;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
+
+.ant-btn {
+  border-radius: var(--clay-radius-card);
+  font-weight: 500;
+  box-shadow: var(--clay-shadow);
+  transition:
+    color var(--clay-motion),
+    background-color var(--clay-motion),
+    border-color var(--clay-motion),
+    transform var(--clay-motion),
+    box-shadow var(--clay-motion);
+}
+
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
+  border-color: var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover,
+.ant-btn:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link):not(:disabled):focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+  transform: translateY(-2px) rotate(-1deg);
+  box-shadow: -3px 4px 0 var(--clay-border) !important;
+}
+
+.ant-btn-primary,
+.ant-btn-primary:not(:disabled):hover,
+.ant-btn-primary:not(:disabled):focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+}
+
+.ant-btn-primary:not(:disabled):hover,
+.ant-btn-primary:not(:disabled):focus-visible {
+  transform: translateY(-2px) rotate(-1deg);
+  box-shadow: -4px 5px 0 var(--clay-lemon) !important;
+}
+
+.ant-btn-dangerous:not(.ant-btn-primary) {
+  border-color: var(--clay-pomegranate-strong) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-pomegranate-strong) !important;
+}
+
+.ant-btn-dangerous:not(.ant-btn-primary):not(:disabled):hover,
+.ant-btn-dangerous:not(.ant-btn-primary):not(:disabled):focus-visible,
+.ant-btn-primary.ant-btn-dangerous,
+.ant-btn-primary.ant-btn-dangerous:not(:disabled):hover,
+.ant-btn-primary.ant-btn-dangerous:not(:disabled):focus-visible {
+  border-color: var(--clay-pomegranate-strong) !important;
+  background: var(--clay-pomegranate) !important;
+  color: var(--clay-text) !important;
+  box-shadow: -3px 4px 0 var(--clay-text) !important;
+}
+
+.ant-btn-text {
+  box-shadow: none;
+}
+
+.ant-btn-text:not(:disabled):hover,
+.ant-btn-text:not(:disabled):focus-visible {
+  background: var(--clay-border-soft) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-btn:disabled {
+  border-color: var(--clay-border) !important;
+  background: var(--clay-surface-muted) !important;
+  color: var(--clay-text-muted) !important;
+  box-shadow: none !important;
+}
+
+.ant-btn span,
+.ant-btn svg {
+  color: inherit;
+  fill: currentColor;
+}
+
+.config-list .config-activate-button,
+.config-list .config-list-item-selected .config-activate-button {
+  min-width: 76px;
+  border-color: var(--clay-text) !important;
+  background: var(--clay-lemon) !important;
+  color: var(--clay-text) !important;
+  box-shadow: -2px 2px 0 var(--clay-text) !important;
+}
+
+.config-list .config-list-item .ant-btn.config-activate-button:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link),
+.config-list .config-list-item-selected .ant-btn.config-activate-button:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-lemon) !important;
+  color: var(--clay-text) !important;
+  box-shadow: -2px 2px 0 var(--clay-text) !important;
+}
+
+.config-list .config-activate-button:not(:disabled):hover,
+.config-list .config-activate-button:not(:disabled):focus-visible,
+.config-list .config-list-item-selected .config-activate-button:not(:disabled):hover,
+.config-list .config-list-item-selected .config-activate-button:not(:disabled):focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-lemon) !important;
+  color: var(--clay-text) !important;
+  transform: translateY(-1px) rotate(-1deg) !important;
+  box-shadow: -3px 4px 0 var(--clay-text) !important;
+}
+
+.config-list .config-activate-button-active,
+.config-list .config-list-item-selected .config-activate-button-active {
+  background: var(--clay-matcha) !important;
+}
+
+.config-list .config-list-item .ant-btn.config-activate-button-active:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link),
+.config-list .config-list-item-selected .ant-btn.config-activate-button-active:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
+  background: var(--clay-matcha) !important;
+}
+
+.config-list .config-list-item-selected .ant-btn.ant-btn-text,
+.config-list .config-list-item-selected .ant-btn.ant-btn-text.ant-btn-dangerous:not(.ant-btn-primary) {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--clay-inverse) !important;
+  box-shadow: none !important;
+}
+
+.config-list .config-list-item-selected .ant-btn.ant-btn-text:hover,
+.config-list .config-list-item-selected .ant-btn.ant-btn-text:focus-visible,
+.config-list .config-list-item-selected .ant-btn.ant-btn-text.ant-btn-dangerous:not(.ant-btn-primary):hover,
+.config-list .config-list-item-selected .ant-btn.ant-btn-text.ant-btn-dangerous:not(.ant-btn-primary):focus-visible {
+  border-color: var(--clay-inverse) !important;
+  background: var(--clay-inverse) !important;
+  color: var(--clay-text) !important;
+}
+
+.config-list .config-list-item-selected .ant-btn.ant-btn-text.ant-btn-dangerous:not(.ant-btn-primary):hover,
+.config-list .config-list-item-selected .ant-btn.ant-btn-text.ant-btn-dangerous:not(.ant-btn-primary):focus-visible {
+  color: var(--clay-pomegranate-strong) !important;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-select-selector,
+.ant-picker,
+.ant-cascader-picker,
+.ant-mentions,
+.ant-upload,
+.ant-upload-list-item,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+textarea {
+  border-color: var(--clay-border) !important;
+  border-radius: var(--clay-radius-control) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-text) !important;
+  box-shadow: none !important;
+  transition:
+    border-color var(--clay-motion),
+    box-shadow var(--clay-motion),
+    background-color var(--clay-motion);
+}
+
+.ant-input:hover,
+.ant-input-affix-wrapper:hover,
+.ant-input-number:hover,
+.ant-select-selector:hover,
+.ant-picker:hover,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
+textarea:hover {
+  border-color: var(--clay-text) !important;
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper-focused,
+.ant-input-number-focused,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+textarea:focus {
+  border-color: var(--clay-text) !important;
+  box-shadow: 0 0 0 2px var(--clay-focus-shadow) !important;
+  outline: none;
+}
+
+.ant-input::placeholder,
+.ant-input-number-input::placeholder,
+.ant-select-selection-placeholder,
+textarea::placeholder {
+  color: var(--clay-text-muted) !important;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--clay-text);
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--clay-text);
+  border-radius: var(--clay-radius-control);
+  background: var(--clay-text);
+  color: var(--clay-inverse);
+  cursor: pointer;
+}
+
+.ant-checkbox-inner,
+.ant-radio-inner,
+.ant-switch,
+.ant-segmented {
+  border-color: var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+}
+
+.ant-checkbox-checked .ant-checkbox-inner,
+.ant-radio-checked .ant-radio-inner,
+.ant-switch-checked,
+.ant-segmented-item-selected {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+}
+
+.ant-checkbox-checked .ant-checkbox-inner:after,
+.ant-radio-checked .ant-radio-inner:after {
+  border-color: var(--clay-inverse) !important;
+}
+
+.ant-tabs-nav:before {
+  border-color: var(--clay-border-soft) !important;
+}
+
+.ant-tabs-tab,
+.ant-tabs-tab-btn {
+  color: var(--clay-text-secondary) !important;
+}
+
+.ant-tabs-tab:hover .ant-tabs-tab-btn,
+.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--clay-text) !important;
+}
+
+.ant-tabs-ink-bar,
+.ant-progress-bg,
+.ant-spin-dot-item {
+  background: var(--clay-text) !important;
+}
+
+.ant-collapse {
+  overflow: hidden;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-surface) !important;
+}
+
+.ant-collapse-item,
+.ant-collapse-content {
+  border-color: var(--clay-border-soft) !important;
+  background: var(--clay-surface) !important;
+}
+
+.ant-collapse-header:hover {
+  background: var(--clay-canvas);
+}
+
+.ant-table-container {
+  overflow: hidden;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+}
+
+.ant-table,
+.ant-table-cell {
+  border-color: var(--clay-border-soft) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--clay-border-soft) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--clay-canvas) !important;
+}
+
+.ant-tag {
+  border-color: var(--clay-border) !important;
+  border-radius: 999px;
+  background: var(--clay-surface-muted) !important;
+  color: var(--clay-text-secondary) !important;
+  font-weight: 500;
+}
+
+.ant-tag-success { border-color: var(--clay-matcha) !important; background: var(--clay-success-soft) !important; color: var(--clay-success-text) !important; }
+.ant-tag-warning,
+.ant-tag-gold { border-color: var(--clay-lemon) !important; background: var(--clay-warning-soft) !important; color: var(--clay-warning-text) !important; }
+.ant-tag-error { border-color: var(--clay-pomegranate) !important; background: var(--clay-error-soft) !important; color: var(--clay-error-text) !important; }
+.ant-tag-blue,
+.ant-tag-processing { border-color: var(--clay-info-border) !important; background: var(--clay-badge-bg) !important; color: var(--clay-badge-text) !important; }
+
+.mcp-env-tag {
+  border-color: var(--clay-lemon) !important;
+  background: var(--clay-warning-soft) !important;
+  color: var(--clay-warning-text) !important;
+}
+
+.ant-alert {
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-surface-muted) !important;
+}
+
+.ant-alert-success { border-color: var(--clay-matcha) !important; background: var(--clay-success-soft) !important; }
+.ant-alert-warning { border-color: var(--clay-lemon) !important; background: var(--clay-warning-soft) !important; }
+.ant-alert-error { border-color: var(--clay-pomegranate) !important; background: var(--clay-error-soft) !important; }
+.ant-alert-info { border-color: var(--clay-info-border) !important; background: var(--clay-badge-bg) !important; }
+
+.ant-alert-icon,
+.ant-result-icon,
+.ant-form-item-explain-error {
+  color: currentColor;
+}
+
+.ant-modal-root,
+.ant-drawer-root,
+.ant-popover,
+.ant-dropdown,
+.ant-select-dropdown,
+.ant-message,
+.ant-notification {
+  color: var(--clay-text);
+  font-family: var(--font-family);
+}
+
+.ant-modal-mask,
+.ant-drawer-mask {
+  background: var(--clay-overlay) !important;
+  backdrop-filter: blur(3px);
+}
+
+.ant-modal-content,
+.ant-drawer-content {
+  overflow: hidden;
+  border: 1px solid var(--clay-text) !important;
+  border-radius: var(--clay-radius-panel) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-text) !important;
+  box-shadow: var(--clay-shadow-floating) !important;
+}
+
+.ant-modal {
+  max-width: calc(100vw - 40px) !important;
+}
+
+.ant-drawer {
+  max-width: calc(100vw - 20px) !important;
+}
+
+.ant-modal-header,
+.ant-drawer-header {
+  margin: 0 !important;
+  padding-bottom: 16px !important;
+  border-bottom: 1px dashed var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+}
+
+.ant-modal-title,
+.ant-drawer-title,
+.ant-modal-confirm-title,
+.ant-modal-confirm-content,
+.ant-popover-title,
+.ant-empty-description,
+.ant-form-item-label > label,
+.ant-checkbox-wrapper,
+.ant-radio-wrapper {
+  color: var(--clay-text) !important;
+}
+
+.ant-modal-confirm .ant-modal-confirm-body > .anticon {
+  color: var(--clay-lemon-strong) !important;
+}
+
+.ant-modal-title,
+.ant-drawer-title {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.3px;
+}
+
+.ant-modal-body,
+.ant-drawer-body {
+  background: var(--clay-surface) !important;
+}
+
+.ant-modal-footer {
+  padding-top: 16px !important;
+  border-top: 1px dashed var(--clay-border);
+}
+
+.ant-modal-close,
+.ant-drawer-close {
+  border-radius: 50% !important;
+  color: var(--clay-text-secondary) !important;
+}
+
+.ant-modal-close:hover,
+.ant-modal-close:focus-visible,
+.ant-drawer-close:hover,
+.ant-drawer-close:focus-visible {
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+}
+
+.ant-popover-inner,
+.ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-message-notice-content,
+.ant-notification-notice {
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-text) !important;
+  box-shadow: 0 14px 36px var(--clay-floating-shadow) !important;
+}
+
+.ant-tooltip-inner {
+  border: 1px solid var(--clay-text);
+  border-radius: var(--clay-radius-control) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+  box-shadow: var(--clay-shadow) !important;
+}
+
+.ant-tooltip-arrow:before {
+  background: var(--clay-text) !important;
+}
+
+.ant-dropdown-menu-item,
+.ant-dropdown-menu-submenu-title,
+.ant-select-item {
+  border-radius: var(--clay-radius-control) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-dropdown-menu-item:hover,
+.ant-dropdown-menu-submenu-title:hover,
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: var(--clay-border-soft) !important;
+  color: var(--clay-text) !important;
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled),
+.ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+}
+
+.ant-select-item-option-selected *,
+.ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected * {
+  color: var(--clay-inverse) !important;
+}
+
+.config-app-theme a,
+.ant-modal-root a,
+.ant-drawer-root a {
+  color: var(--clay-blueberry) !important;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.config-app-theme pre,
+.ant-modal-root pre,
+.ant-drawer-root pre {
+  border: 1px dashed var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-surface-muted) !important;
+  color: var(--clay-text) !important;
+}
+
+.skills-manager-modal .ant-modal-content {
+  background: var(--clay-surface) !important;
+}
+
+.skills-manager-content {
+  color: var(--clay-text);
+}
+
+.skills-manager-tabs {
+  padding: 5px;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: 14px;
+  background: var(--clay-surface-muted) !important;
+}
+
+.skills-manager-tab {
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--clay-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+.skills-manager-tab:hover,
+.skills-manager-tab:focus-visible {
+  border-color: var(--clay-border) !important;
+  background: var(--clay-surface) !important;
+  color: var(--clay-text) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.skills-manager-tab-active,
+.skills-manager-tab-active:hover,
+.skills-manager-tab-active:focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+}
+
+.skills-manager-item,
+.skills-manager-empty {
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-canvas) !important;
+  color: var(--clay-text) !important;
+  box-shadow: var(--clay-shadow);
+}
+
+.skills-manager-item:hover {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-surface) !important;
+}
+
+.skills-manager-badge {
+  border: 1px solid var(--clay-info-border) !important;
+  background: var(--clay-badge-bg) !important;
+  color: var(--clay-badge-text) !important;
+}
+
+.skills-manager-muted {
+  color: var(--clay-text-secondary) !important;
+}
+
+.ant-drawer-content pre[style*="vscode-textCodeBlock-background"],
+.ant-drawer-content pre[style*="vscode-textCodeBlock-background"] code {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--clay-border);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--clay-text-muted);
+  background-clip: padding-box;
+}
+
+@media (max-width: 920px) {
+  body {
+    overflow: auto;
+  }
+
+  .config-app-theme {
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .config-app-workspace {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .config-app-sidebar {
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: 48vh;
+  }
+
+  .config-app-content {
+    min-height: 720px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,
   *:after {
+    scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

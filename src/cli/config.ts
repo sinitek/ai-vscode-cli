@@ -1,11 +1,15 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { CliName, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
+import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
 
 export const CONFIG_NAMESPACE = "sinitek-cli-tools";
 const MAC_TASK_SHELL_KEY = "macTaskShell";
 const DEFAULT_MAC_TASK_SHELL: MacTaskShell = "zsh";
+
+function isConfiguredCliName(value: unknown): value is CliName {
+  return typeof value === "string" && (CLI_LIST as readonly string[]).includes(value);
+}
 
 function normalizeMacTaskShell(value: unknown): MacTaskShell | null {
   if (value === "zsh" || value === "bash") {
@@ -25,7 +29,8 @@ function detectCurrentMacTaskShell(): MacTaskShell {
 
 export function getDefaultCli(): CliName {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return config.get<CliName>("defaultCli", "codex");
+  const configured = config.get<string>("defaultCli", "codex");
+  return isConfiguredCliName(configured) ? configured : "codex";
 }
 
 export function getCliCommand(cli: CliName): string {
@@ -88,7 +93,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude" || cli === "gemini";
+  return cli === "codex" || cli === "claude";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
@@ -98,15 +103,16 @@ export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
 
 export function getThinkingMode(cli: CliName): ThinkingMode {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
     if (cli !== "claude" && globalMode === "max") {
-      return cli === "codex" ? "xhigh" : "high";
+      return usesCodexLikeThinking ? "xhigh" : "high";
     }
-    if (cli !== "codex" && cli !== "claude" && globalMode === "xhigh") {
+    if (!usesCodexLikeThinking && cli !== "claude" && globalMode === "xhigh") {
       return "high";
     }
-    if (cli === "codex" && globalMode === "off") {
+    if (usesCodexLikeThinking && globalMode === "off") {
       return "low";
     }
     return globalMode;
@@ -115,12 +121,12 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
   if (cli !== "claude" && mode === "max") {
-    return cli === "codex" ? "xhigh" : "high";
+    return usesCodexLikeThinking ? "xhigh" : "high";
   }
-  if (cli !== "codex" && cli !== "claude" && mode === "xhigh") {
+  if (!usesCodexLikeThinking && cli !== "claude" && mode === "xhigh") {
     return "high";
   }
-  if (cli === "codex" && mode === "off") {
+  if (usesCodexLikeThinking && mode === "off") {
     return "low";
   }
   return mode;

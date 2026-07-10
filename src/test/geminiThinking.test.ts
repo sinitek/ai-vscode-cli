@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 
 import { buildGeminiThinkingRuntimeProfile } from "../cli/geminiThinking";
 
-test("maps Gemini 2.5 thinking off to a runtime alias with thinkingBudget 0", () => {
+test("keeps legacy Gemini 2.5 thinking helper behavior with thinkingBudget 0", () => {
   const profile = buildGeminiThinkingRuntimeProfile("gemini-2.5-pro", "off");
 
   assert.equal(profile.strategy, "budget");
@@ -28,7 +28,7 @@ test("maps Gemini 2.5 thinking off to a runtime alias with thinkingBudget 0", ()
   });
 });
 
-test("maps Gemini 3 Pro thinking off to LOW because the model cannot disable thinking", () => {
+test("keeps legacy Gemini 3 Pro thinking helper behavior when thinking cannot be disabled", () => {
   const profile = buildGeminiThinkingRuntimeProfile("gemini-3-pro-preview", "off");
 
   assert.equal(profile.strategy, "level");
@@ -53,7 +53,7 @@ test("maps Gemini 3 Pro thinking off to LOW because the model cannot disable thi
   });
 });
 
-test("maps Gemini 3 Flash thinking off to MINIMAL", () => {
+test("keeps legacy Gemini 3 Flash thinking helper behavior with MINIMAL level", () => {
   const profile = buildGeminiThinkingRuntimeProfile("gemini-3-flash-preview", "off");
 
   assert.equal(profile.strategy, "level");
@@ -77,7 +77,7 @@ test("maps Gemini 3 Flash thinking off to MINIMAL", () => {
   });
 });
 
-test("passes through unsupported Gemini Flash Lite models without generating overrides", () => {
+test("keeps legacy Gemini helper passthrough for unsupported Flash Lite models", () => {
   const profile = buildGeminiThinkingRuntimeProfile("gemini-3.1-flash-lite-preview", "high");
 
   assert.equal(profile.strategy, "passthrough");

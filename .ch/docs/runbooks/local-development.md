@@ -34,22 +34,16 @@ npm run watch
 npm run sync:official-skills
 ```
 
-默认会刷新 Claude / Codex 的内置官方 Skills 归档与 catalog，并保留当前 Gemini 快照。
-如需强制重抓 Gemini 官方 extensions，优先执行：
+默认会刷新 Claude / Codex 的内置官方 Skills 归档，并输出 OpenCode 空平台占位。Gemini 已从当前配置中心支持范围移除；旧 Gemini 快照仅作历史迁移参考。
+如需审计历史 Gemini 官方 extensions 快照，可显式执行：
 
 ```bash
-npm run sync:official-skills:gemini-refresh
+python3 scripts/sync_official_skills.py --include-legacy-gemini
 ```
 
-等价命令：
+该命令只用于生成历史审计输出，不会把 Gemini 恢复为当前支持平台。旧 Gemini 刷新路径曾包含 repo 级进度日志、断点续传/重试，以及 tarball 失败时回退 shallow git clone。
 
-```bash
-python3 scripts/sync_official_skills.py --only gemini --refresh-gemini
-```
-
-脚本已针对 Gemini 强刷补充：repo 级进度日志、断点续传/重试，以及 tarball 失败时回退 shallow git clone。
-
-> 说明：默认模式优先保证仓库内置 catalog 与配置页可稳定使用；只有显式传入 `--refresh-gemini` 时才执行 Gemini 全量重抓。
+> 说明：默认模式优先保证仓库内置 catalog 与配置页可稳定使用；Gemini 相关命令只用于历史快照审计，不代表当前插件继续支持 Gemini。
 
 ### 5. 一键启动开发主机（macOS）
 

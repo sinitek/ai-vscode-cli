@@ -294,7 +294,7 @@ ${webviewStyles}    </style>
             <select id="rulesLoadCli" class="cli-select" aria-label="${i18n.rulesLoadCliAria}">
               <option value="codex">codex</option>
               <option value="claude">claude</option>
-              <option value="gemini">gemini</option>
+              <option value="opencode">opencode</option>
             </select>
             <button id="loadRules" class="secondary action-button">${i18n.rulesLoadButton}</button>
           </div>
@@ -305,7 +305,7 @@ ${webviewStyles}    </style>
             <div class="rules-checkboxes" role="group" aria-label="${i18n.rulesSaveGroupLabel}">
               <label><input type="checkbox" id="rulesSaveCodex" /> codex</label>
               <label><input type="checkbox" id="rulesSaveClaude" /> claude</label>
-              <label><input type="checkbox" id="rulesSaveGemini" /> gemini</label>
+              <label><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>
@@ -582,7 +582,7 @@ ${webviewStyles}    </style>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
-                <li>Gemini：<code>npm install -g @google/gemini-cli</code></li>
+                <li>OpenCode：<code>npm install -g opencode-ai</code></li>
               </ul>
             </div>
             <div class="help-section">
@@ -590,7 +590,7 @@ ${webviewStyles}    </style>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
-                <li>Gemini：<code>npm install -g @google/gemini-cli</code></li>
+                <li>OpenCode：<code>npm install -g opencode-ai</code></li>
               </ul>
             </div>
             <div class="help-section">
@@ -625,11 +625,11 @@ ${webviewStyles}    </style>
               </ul>
             </div>
             <div class="help-section">
-              <h4>${i18n.helpThinkingGeminiTitle}</h4>
+              <h4>${i18n.helpThinkingOpenCodeTitle}</h4>
               <ul>
-                <li>${i18n.helpThinkingGeminiItem1}</li>
-                <li>${i18n.helpThinkingGeminiItem2}</li>
-                <li>${i18n.helpThinkingGeminiItem3}</li>
+                <li>${i18n.helpThinkingOpenCodeItem1}</li>
+                <li>${i18n.helpThinkingOpenCodeItem2}</li>
+                <li>${i18n.helpThinkingOpenCodeItem3}</li>
               </ul>
             </div>
             <div class="help-section">

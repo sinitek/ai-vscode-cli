@@ -1,6 +1,12 @@
-export const CLI_LIST = ["codex", "claude", "gemini"] as const;
+export const CLI_LIST = ["codex", "claude", "opencode"] as const;
 
-export type CliName = (typeof CLI_LIST)[number];
+export type PublicCliName = (typeof CLI_LIST)[number];
+
+export type CliName = PublicCliName;
+
+export function isOpenCodeCli(value: unknown): boolean {
+  return value === "opencode";
+}
 
 export type ThinkingMode = "off" | "on" | "low" | "medium" | "high" | "xhigh" | "max";
 

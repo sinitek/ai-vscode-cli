@@ -49,7 +49,7 @@ export function ensureSessionStore(
   const result = {
     codex: { currentId: null, sessions: [] },
     claude: { currentId: null, sessions: [] },
-    gemini: { currentId: null, sessions: [] },
+    opencode: { currentId: null, sessions: [] },
   } as SessionStore;
 
   if (!store) {
@@ -130,7 +130,7 @@ export function collectStaleSessionIds(
   const removed: Record<CliName, string[]> = {
     codex: [],
     claude: [],
-    gemini: [],
+    opencode: [],
   };
 
   if (!sourceStore) {

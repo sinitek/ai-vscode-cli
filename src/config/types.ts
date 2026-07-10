@@ -1,11 +1,19 @@
-export type ConfigPlatform = "claude" | "codex" | "gemini";
+export const LEGACY_GEMINI_CONFIG_PLATFORM = "gemini" as const;
 
-export type ConfigOrder = Record<ConfigPlatform, string[]>;
+export type CurrentConfigPlatform = "claude" | "codex" | "opencode";
+export type LegacyConfigPlatform = typeof LEGACY_GEMINI_CONFIG_PLATFORM;
+export type ConfigPlatform = CurrentConfigPlatform | LegacyConfigPlatform;
+
+export type ConfigOrder = Partial<Record<ConfigPlatform, string[]>>;
 
 export type ConfigItem = {
   id: string;
   name: string;
   platform: ConfigPlatform;
+  sourcePlatform?: "claude" | "codex";
+  sourceId?: string;
+  sourceName?: string;
+  migrationVersion?: string;
   content?: string;
   mcpContent?: string;
   envContent?: string;
@@ -13,7 +21,7 @@ export type ConfigItem = {
   authContent?: string;
   codexSkills?: CodexSkillToggle[];
   claudeSkills?: ClaudeSkillToggle[];
-  geminiSkills?: GeminiSkillToggle[];
+  openCodeSkills?: OpenCodeSkillToggle[];
   createdAt: number;
   updatedAt: number;
 };
@@ -38,17 +46,17 @@ export type CodexSkillToggle = CodexSkillItem & {
   enabled: boolean;
 };
 
-export type GeminiSkillItem = {
+export type OpenCodeSkillItem = {
   name: string;
   path: string;
   description?: string;
 };
 
-export type GeminiSkillToggle = GeminiSkillItem & {
+export type OpenCodeSkillToggle = OpenCodeSkillItem & {
   enabled: boolean;
 };
 
-export type OfficialSkillPlatform = "claude" | "codex" | "gemini";
+export type OfficialSkillPlatform = CurrentConfigPlatform;
 
 export type OfficialSkillCatalogPlatformMeta = {
   repo: string;
@@ -158,7 +166,14 @@ export type ApplyPayload = {
   authContent?: string;
   codexSkills?: CodexSkillToggle[];
   claudeSkills?: ClaudeSkillToggle[];
-  geminiSkills?: GeminiSkillToggle[];
+  openCodeSkills?: OpenCodeSkillToggle[];
+};
+
+export type CopyConfigPayload = {
+  sourcePlatform: ConfigPlatform;
+  sourceId: string;
+  targetPlatform: CurrentConfigPlatform;
+  name?: string;
 };
 
 export type CurrentConfig = {

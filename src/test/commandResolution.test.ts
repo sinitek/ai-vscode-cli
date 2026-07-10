@@ -11,23 +11,23 @@ test("prefers the npm global user bin before later PATH entries", async () => {
   const homeDir = path.join(tempRoot, "home");
   const npmBin = path.join(homeDir, ".npm-global", "bin");
   const brewBin = path.join(tempRoot, "brew", "bin");
-  const npmGemini = path.join(npmBin, "gemini");
-  const brewGemini = path.join(brewBin, "gemini");
+  const npmOpenCode = path.join(npmBin, "opencode");
+  const brewOpenCode = path.join(brewBin, "opencode");
   const originalHome = process.env.HOME;
   const originalPath = process.env.PATH;
 
   await fs.mkdir(npmBin, { recursive: true });
   await fs.mkdir(brewBin, { recursive: true });
-  await fs.writeFile(npmGemini, "");
-  await fs.writeFile(brewGemini, "");
+  await fs.writeFile(npmOpenCode, "");
+  await fs.writeFile(brewOpenCode, "");
 
   try {
     process.env.HOME = homeDir;
     process.env.PATH = brewBin;
 
-    const resolved = resolveCliCommand("gemini");
+    const resolved = resolveCliCommand("opencode");
     assert.deepEqual(resolved, {
-      command: npmGemini,
+      command: npmOpenCode,
       resolvedFrom: "unix-user-bin",
     });
   } finally {
@@ -41,21 +41,21 @@ test("falls back to PATH when no preferred user-bin executable exists", async ()
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-command-resolution-"));
   const homeDir = path.join(tempRoot, "home");
   const brewBin = path.join(tempRoot, "brew", "bin");
-  const brewGemini = path.join(brewBin, "gemini");
+  const brewOpenCode = path.join(brewBin, "opencode");
   const originalHome = process.env.HOME;
   const originalPath = process.env.PATH;
 
   await fs.mkdir(path.join(homeDir, ".npm-global", "bin"), { recursive: true });
   await fs.mkdir(brewBin, { recursive: true });
-  await fs.writeFile(brewGemini, "");
+  await fs.writeFile(brewOpenCode, "");
 
   try {
     process.env.HOME = homeDir;
     process.env.PATH = brewBin;
 
-    const resolved = resolveCliCommand("gemini");
+    const resolved = resolveCliCommand("opencode");
     assert.deepEqual(resolved, {
-      command: brewGemini,
+      command: brewOpenCode,
       resolvedFrom: "path",
     });
   } finally {

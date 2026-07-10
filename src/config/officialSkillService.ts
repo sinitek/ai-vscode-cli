@@ -21,8 +21,13 @@ const OFFICIAL_SKILL_CATALOG_PATH = path.join(__dirname, "..", "..", "media", "o
 const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
 const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
 const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
-const OFFICIAL_GEMINI_EXTENSIONS_DIR = path.join(os.homedir(), ".gemini", "extensions");
+const OFFICIAL_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
 const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
+
+type CurrentOfficialSkillPlatform = OfficialSkillPlatform;
+type CurrentOfficialSkillCatalogItem = Omit<OfficialSkillCatalogItem, "platform"> & {
+  platform: CurrentOfficialSkillPlatform;
+};
 
 function t(key: string, params?: Record<string, string>): string {
   return require("../i18n").t(key, params) as string;
@@ -46,7 +51,7 @@ async function pathExists(targetPath: string): Promise<boolean> {
 }
 
 export function isOfficialSkillPlatform(value: string): value is OfficialSkillPlatform {
-  return value === "claude" || value === "codex" || value === "gemini";
+  return value === "claude" || value === "codex" || value === "opencode";
 }
 
 async function readOfficialSkillsCatalogFile(): Promise<OfficialSkillCatalog> {
@@ -66,14 +71,14 @@ export function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform)
   if (platform === "claude") {
     return OFFICIAL_CLAUDE_SKILLS_DIR;
   }
-  if (platform === "gemini") {
-    return OFFICIAL_GEMINI_EXTENSIONS_DIR;
+  if (platform === "opencode") {
+    return OFFICIAL_OPENCODE_SKILLS_DIR;
   }
   return OFFICIAL_CODEX_SKILLS_DIR;
 }
 
 export function getOfficialSkillTargetDir(
-  item: Pick<OfficialSkillCatalogItem, "platform" | "installFolderName">,
+  item: Pick<OfficialSkillCatalogItem, "platform" | "installFolderName"> | Pick<CurrentOfficialSkillCatalogItem, "platform" | "installFolderName">,
 ): string {
   return path.join(resolveOfficialSkillInstallRoot(item.platform), item.installFolderName);
 }
@@ -254,7 +259,7 @@ async function findExtractedArchiveDir(tempRoot: string): Promise<string | null>
 }
 
 export function getOfficialArchiveValidationFile(item: Pick<OfficialSkillCatalogItem, "platform">): string {
-  return item.platform === "gemini" ? "gemini-extension.json" : "SKILL.md";
+  return "SKILL.md";
 }
 
 async function installBundledOfficialSkill(
@@ -335,7 +340,7 @@ async function uninstallBundledOfficialSkill(
 }
 
 export async function getOfficialSkillsCatalog(
-  platform: OfficialSkillPlatform,
+  platform: OfficialSkillPlatform | "opencode",
 ): Promise<OfficialSkillCatalogItem[]> {
   if (!isOfficialSkillPlatform(platform)) {
     throw new Error(t("skill.installUnsupportedPlatform"));
@@ -348,7 +353,7 @@ export async function getOfficialSkillsCatalog(
 }
 
 async function getOfficialSkillCatalogEntry(
-  platform: OfficialSkillPlatform,
+  platform: OfficialSkillPlatform | "opencode",
   skillId: string,
 ): Promise<OfficialSkillCatalogItem> {
   if (!isOfficialSkillPlatform(platform)) {
@@ -363,7 +368,7 @@ async function getOfficialSkillCatalogEntry(
 }
 
 export async function installOfficialSkill(
-  platform: OfficialSkillPlatform,
+  platform: OfficialSkillPlatform | "opencode",
   skillId: string,
 ): Promise<OfficialSkillInstallResult> {
   const item = await getOfficialSkillCatalogEntry(platform, skillId);
@@ -371,7 +376,7 @@ export async function installOfficialSkill(
 }
 
 export async function updateOfficialSkill(
-  platform: OfficialSkillPlatform,
+  platform: OfficialSkillPlatform | "opencode",
   skillId: string,
 ): Promise<OfficialSkillInstallResult> {
   const item = await getOfficialSkillCatalogEntry(platform, skillId);
@@ -379,7 +384,7 @@ export async function updateOfficialSkill(
 }
 
 export async function uninstallOfficialSkill(
-  platform: OfficialSkillPlatform,
+  platform: OfficialSkillPlatform | "opencode",
   skillId: string,
 ): Promise<OfficialSkillInstallResult> {
   const item = await getOfficialSkillCatalogEntry(platform, skillId);

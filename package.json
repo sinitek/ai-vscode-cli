@@ -61,7 +61,7 @@
           "enum": [
             "codex",
             "claude",
-            "gemini"
+            "opencode"
           ],
           "default": "codex",
           "description": "%config.defaultCli.description%"
@@ -76,10 +76,10 @@
           "default": "claude",
           "description": "%config.commands.claude.description%"
         },
-        "sinitek-cli-tools.commands.gemini": {
+        "sinitek-cli-tools.commands.opencode": {
           "type": "string",
-          "default": "gemini",
-          "description": "%config.commands.gemini.description%"
+          "default": "opencode",
+          "description": "%config.commands.opencode.description%"
         },
         "sinitek-cli-tools.args.codex": {
           "type": "array",
@@ -105,16 +105,13 @@
           ],
           "description": "%config.args.claude.description%"
         },
-        "sinitek-cli-tools.args.gemini": {
+        "sinitek-cli-tools.args.opencode": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "default": [
-            "--approval-mode",
-            "auto_edit"
-          ],
-          "description": "%config.args.gemini.description%"
+          "default": [],
+          "description": "%config.args.opencode.description%"
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",
@@ -199,17 +196,19 @@
           "default": "medium",
           "description": "%config.thinkingModeClaude.description%"
         },
-        "sinitek-cli-tools.thinkingModeGemini": {
+        "sinitek-cli-tools.thinkingModeOpencode": {
           "type": "string",
           "enum": [
             "off",
             "on",
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh",
+            "max"
           ],
           "default": "medium",
-          "description": "%config.thinkingModeGemini.description%"
+          "description": "%config.thinkingModeOpencode.description%"
         },
         "sinitek-cli-tools.thinkingArgs.codex.on": {
           "type": "array",
@@ -325,45 +324,61 @@
           ],
           "description": "%config.thinkingArgs.claude.max.description%"
         },
-        "sinitek-cli-tools.thinkingArgs.gemini.on": {
+        "sinitek-cli-tools.thinkingArgs.opencode.on": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.gemini.on.description%"
+          "description": "%config.thinkingArgs.opencode.on.description%"
         },
-        "sinitek-cli-tools.thinkingArgs.gemini.off": {
+        "sinitek-cli-tools.thinkingArgs.opencode.off": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.gemini.off.description%"
+          "description": "%config.thinkingArgs.opencode.off.description%"
         },
-        "sinitek-cli-tools.thinkingArgs.gemini.low": {
+        "sinitek-cli-tools.thinkingArgs.opencode.low": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.gemini.low.description%"
+          "description": "%config.thinkingArgs.opencode.low.description%"
         },
-        "sinitek-cli-tools.thinkingArgs.gemini.medium": {
+        "sinitek-cli-tools.thinkingArgs.opencode.medium": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.gemini.medium.description%"
+          "description": "%config.thinkingArgs.opencode.medium.description%"
         },
-        "sinitek-cli-tools.thinkingArgs.gemini.high": {
+        "sinitek-cli-tools.thinkingArgs.opencode.high": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.gemini.high.description%"
+          "description": "%config.thinkingArgs.opencode.high.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.opencode.xhigh": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.thinkingArgs.opencode.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.opencode.max": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.thinkingArgs.opencode.max.description%"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.off": {
           "type": "string",
@@ -420,30 +435,40 @@
           "default": "",
           "description": "%config.thinkingPromptPrefix.claude.high.description%"
         },
-        "sinitek-cli-tools.thinkingPromptPrefix.gemini.off": {
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.gemini.off.description%"
+          "description": "%config.thinkingPromptPrefix.opencode.off.description%"
         },
-        "sinitek-cli-tools.thinkingPromptPrefix.gemini.on": {
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.gemini.on.description%"
+          "description": "%config.thinkingPromptPrefix.opencode.on.description%"
         },
-        "sinitek-cli-tools.thinkingPromptPrefix.gemini.low": {
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.gemini.low.description%"
+          "description": "%config.thinkingPromptPrefix.opencode.low.description%"
         },
-        "sinitek-cli-tools.thinkingPromptPrefix.gemini.medium": {
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.gemini.medium.description%"
+          "description": "%config.thinkingPromptPrefix.opencode.medium.description%"
         },
-        "sinitek-cli-tools.thinkingPromptPrefix.gemini.high": {
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.gemini.high.description%"
+          "description": "%config.thinkingPromptPrefix.opencode.high.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.xhigh": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptPrefix.opencode.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.max": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptPrefix.opencode.max.description%"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.off": {
           "type": "string",
@@ -500,30 +525,40 @@
           "default": "",
           "description": "%config.thinkingPromptSuffix.claude.high.description%"
         },
-        "sinitek-cli-tools.thinkingPromptSuffix.gemini.off": {
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.gemini.off.description%"
+          "description": "%config.thinkingPromptSuffix.opencode.off.description%"
         },
-        "sinitek-cli-tools.thinkingPromptSuffix.gemini.on": {
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.gemini.on.description%"
+          "description": "%config.thinkingPromptSuffix.opencode.on.description%"
         },
-        "sinitek-cli-tools.thinkingPromptSuffix.gemini.low": {
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.gemini.low.description%"
+          "description": "%config.thinkingPromptSuffix.opencode.low.description%"
         },
-        "sinitek-cli-tools.thinkingPromptSuffix.gemini.medium": {
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.gemini.medium.description%"
+          "description": "%config.thinkingPromptSuffix.opencode.medium.description%"
         },
-        "sinitek-cli-tools.thinkingPromptSuffix.gemini.high": {
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.gemini.high.description%"
+          "description": "%config.thinkingPromptSuffix.opencode.high.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.xhigh": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptSuffix.opencode.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.max": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptSuffix.opencode.max.description%"
         },
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.off": {
           "type": "array",
@@ -767,10 +802,10 @@
             ]
           }
         },
-        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.off": {
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.off": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.gemini.off.description%",
+          "description": "%config.thinkingWorkspaceFiles.opencode.off.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -789,10 +824,10 @@
             ]
           }
         },
-        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.on": {
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.on": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.gemini.on.description%",
+          "description": "%config.thinkingWorkspaceFiles.opencode.on.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -811,10 +846,10 @@
             ]
           }
         },
-        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.low": {
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.low": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.gemini.low.description%",
+          "description": "%config.thinkingWorkspaceFiles.opencode.low.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -833,10 +868,10 @@
             ]
           }
         },
-        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.medium": {
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.medium": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.gemini.medium.description%",
+          "description": "%config.thinkingWorkspaceFiles.opencode.medium.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -855,10 +890,54 @@
             ]
           }
         },
-        "sinitek-cli-tools.thinkingWorkspaceFiles.gemini.high": {
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.high": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.gemini.high.description%",
+          "description": "%config.thinkingWorkspaceFiles.opencode.high.description%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "%config.workspaceFile.path.description%"
+              },
+              "content": {
+                "type": "string",
+                "description": "%config.workspaceFile.content.description%"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.xhigh": {
+          "type": "array",
+          "default": [],
+          "description": "%config.thinkingWorkspaceFiles.opencode.xhigh.description%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "%config.workspaceFile.path.description%"
+              },
+              "content": {
+                "type": "string",
+                "description": "%config.workspaceFile.content.description%"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.max": {
+          "type": "array",
+          "default": [],
+          "description": "%config.thinkingWorkspaceFiles.opencode.max.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -903,8 +982,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
-    "sync:official-skills": "python3 scripts/sync_official_skills.py",
-    "sync:official-skills:gemini-refresh": "python3 scripts/sync_official_skills.py --only gemini --refresh-gemini"
+    "sync:official-skills": "python3 scripts/sync_official_skills.py"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",

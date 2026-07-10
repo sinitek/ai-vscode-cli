@@ -1,19 +1,21 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import type { CliName } from "../cli/types";
 import {
   ApplyPayload,
   ConfigItem,
   ConfigOrder,
   ConfigPlatform,
+  CopyConfigPayload,
   CurrentConfig,
   ClaudeSkillItem,
   CodexSkillItem,
-  GeminiSkillItem,
+  OpenCodeSkillItem,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
 import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
-import { listGeminiSkills, mergeGeminiSkillsConfig } from "./geminiSkills";
+import { listOpenCodeSkills, mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { t } from "../i18n";
 export {
   getOfficialSkillsCatalog,
@@ -25,6 +27,33 @@ export {
 const CONFIG_DIR_NAME = "__config";
 const CONFIG_ORDER_FILE = "config-order.json";
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
+type ConfigPlatformInput = ConfigPlatform | CliName;
+type LegacyConfigPlatformInput = ConfigPlatformInput;
+type ConfigPathPlatform = "claude" | "codex" | "opencode";
+const LEGACY_GEMINI_PLATFORM = "gemini";
+const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
+const OPENCODE_PLACEHOLDER_MODEL_IDS = new Set([
+  "my-model-name",
+  "my-small-model-name",
+  "gateway-chat-model",
+  "gateway-small-model",
+]);
+const OPENCODE_PLACEHOLDER_BASE_URLS = new Set([
+  "https://api.example.com",
+  "https://api.example.com/v1",
+  "https://api.myapi.example/v1",
+  "https://www.packyapi.com",
+]);
+export const OPENCODE_PROVIDER_ADAPTER_NPM_BY_PROTOCOL = Object.freeze({
+  anthropic: "@ai-sdk/anthropic",
+  google: "@ai-sdk/google",
+  openai: "@ai-sdk/openai",
+  openaiCompatible: "@ai-sdk/openai-compatible",
+});
+const OPENCODE_RUNTIME_DIR = path.join(os.homedir(), ".opencode");
+const OPENCODE_PROFILE_DIR = path.join(OPENCODE_RUNTIME_DIR, CONFIG_DIR_NAME);
+const OPENCODE_CONFIG_PATH = path.join(OPENCODE_RUNTIME_DIR, "config.json");
+const OPENCODE_LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "opencode", "opencode.json");
 
 const CONFIG_PATHS = {
   claude: {
@@ -37,12 +66,28 @@ const CONFIG_PATHS = {
     auth: path.join(os.homedir(), ".codex", "auth.json"),
     configDir: path.join(os.homedir(), ".codex", CONFIG_DIR_NAME),
   },
-  gemini: {
-    settings: path.join(os.homedir(), ".gemini", "settings.json"),
-    env: path.join(os.homedir(), ".gemini", ".env"),
-    configDir: path.join(os.homedir(), ".gemini", CONFIG_DIR_NAME),
+  opencode: {
+    config: OPENCODE_CONFIG_PATH,
+    configDir: OPENCODE_PROFILE_DIR,
+    legacyConfig: OPENCODE_LEGACY_CONFIG_PATH,
   },
 } as const;
+
+function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
+  if (platform === "claude") {
+    return "claude";
+  }
+  if (platform === "codex") {
+    return "codex";
+  }
+  if (platform === "opencode") {
+    return "opencode";
+  }
+  if (platform === LEGACY_GEMINI_PLATFORM) {
+    return "opencode";
+  }
+  throw new Error(`Unsupported config platform: ${String(platform)}`);
+}
 
 async function ensureDir(dirPath: string): Promise<void> {
   try {
@@ -61,8 +106,39 @@ async function ensureFile(filePath: string, defaultContent: string): Promise<voi
   }
 }
 
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+export function getOpenCodeRuntimePaths(): {
+  config: string;
+  legacyConfig: string;
+} {
+  return {
+    config: CONFIG_PATHS.opencode.config,
+    legacyConfig: CONFIG_PATHS.opencode.legacyConfig,
+  };
+}
+
+async function resolveOpenCodeReadPath(): Promise<string> {
+  if (await pathExists(CONFIG_PATHS.opencode.config)) {
+    return CONFIG_PATHS.opencode.config;
+  }
+
+  if (await pathExists(CONFIG_PATHS.opencode.legacyConfig)) {
+    return CONFIG_PATHS.opencode.legacyConfig;
+  }
+
+  return CONFIG_PATHS.opencode.config;
 }
 
 export async function readClaudeConfig(): Promise<string> {
@@ -85,14 +161,11 @@ export async function readCodexConfig(): Promise<{ config: string; auth: string 
   return { config, auth };
 }
 
-export async function readGeminiConfig(): Promise<{ settings: string; env: string }> {
-  await ensureFile(CONFIG_PATHS.gemini.settings, "{}");
-  await ensureFile(CONFIG_PATHS.gemini.env, "");
-  const [settings, env] = await Promise.all([
-    fs.readFile(CONFIG_PATHS.gemini.settings, "utf-8"),
-    fs.readFile(CONFIG_PATHS.gemini.env, "utf-8").catch(() => ""),
-  ]);
-  return { settings, env };
+export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
+  const runtimePath = await resolveOpenCodeReadPath();
+  await ensureFile(runtimePath, "{}");
+  const config = await fs.readFile(runtimePath, "utf-8");
+  return { config, env: "" };
 }
 
 export async function writeClaudeConfig(content: string): Promise<void> {
@@ -137,12 +210,9 @@ export async function writeCodexConfig(config: string, auth: string): Promise<vo
   ]);
 }
 
-export async function writeGeminiConfig(settings: string, env: string): Promise<void> {
-  await ensureDir(path.dirname(CONFIG_PATHS.gemini.settings));
-  await Promise.all([
-    fs.writeFile(CONFIG_PATHS.gemini.settings, settings, "utf-8"),
-    fs.writeFile(CONFIG_PATHS.gemini.env, env ?? "", "utf-8"),
-  ]);
+export async function writeOpenCodeConfig(config: string, _env?: string): Promise<void> {
+  await ensureDir(path.dirname(CONFIG_PATHS.opencode.config));
+  await fs.writeFile(CONFIG_PATHS.opencode.config, config, "utf-8");
 }
 
 function escapeRegExp(value: string): string {
@@ -159,7 +229,7 @@ function removeMcpServerFromJsonText(
   }
 
   let changed = false;
-  for (const key of ["mcpServers", "mcp_servers"] as const) {
+  for (const key of ["mcp", "mcpServers", "mcp_servers"] as const) {
     const section = parsed[key];
     if (!isPlainObject(section) || !(serverId in section)) {
       continue;
@@ -219,13 +289,13 @@ async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
   return true;
 }
 
-async function cleanupGeminiMcpDocument(serverId: string): Promise<boolean> {
-  const { settings, env } = await readGeminiConfig();
-  const next = removeMcpServerFromJsonText(settings, serverId);
+async function cleanupOpenCodeMcpDocument(serverId: string): Promise<boolean> {
+  const { config } = await readOpenCodeConfig();
+  const next = removeMcpServerFromJsonText(config, serverId);
   if (!next.changed) {
     return false;
   }
-  await writeGeminiConfig(next.content, env);
+  await writeOpenCodeConfig(next.content);
   return true;
 }
 
@@ -265,39 +335,37 @@ export async function backupCodexConfig(): Promise<string[]> {
   return [configBackupPath, authBackupPath];
 }
 
-export async function backupGeminiConfig(): Promise<string[]> {
+export async function backupOpenCodeConfig(): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
-  const { settings, env } = await readGeminiConfig();
+  const { config } = await readOpenCodeConfig();
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const settingsBackupPath = path.join(BACKUP_DIR, `gemini_settings_${timestamp}.json`);
-  const envBackupPath = path.join(BACKUP_DIR, `gemini_env_${timestamp}.env`);
-  await Promise.all([
-    fs.writeFile(settingsBackupPath, settings, "utf-8"),
-    fs.writeFile(envBackupPath, env, "utf-8"),
-  ]);
-  return [settingsBackupPath, envBackupPath];
+  const configBackupPath = path.join(BACKUP_DIR, `opencode_config_${timestamp}.json`);
+  await fs.writeFile(configBackupPath, config, "utf-8");
+  return [configBackupPath];
 }
 
-export async function getBackupList(platform: ConfigPlatform): Promise<string[]> {
+export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
   const files = await fs.readdir(BACKUP_DIR);
-  const prefix = platform === "claude" ? "claude_" : platform === "codex" ? "codex_" : "gemini_";
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  const prefix = normalizedPlatform === "claude" ? "claude_" : normalizedPlatform === "codex" ? "codex_" : "opencode_";
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
-function getConfigDir(platform: ConfigPlatform): string {
-  return CONFIG_PATHS[platform].configDir;
+function getConfigDir(platform: LegacyConfigPlatformInput): string {
+  return CONFIG_PATHS[normalizeConfigPlatform(platform)].configDir;
 }
 
-function getConfigOrderPath(platform: ConfigPlatform): string {
+function getConfigOrderPath(platform: LegacyConfigPlatformInput): string {
   return path.join(getConfigDir(platform), CONFIG_ORDER_FILE);
 }
 
-function getConfigFilePath(platform: ConfigPlatform, configId: string): string {
+function getConfigFilePath(platform: LegacyConfigPlatformInput, configId: string): string {
   return path.join(getConfigDir(platform), `${configId}.json`);
 }
 
-export async function getConfigList(platform: ConfigPlatform): Promise<ConfigItem[]> {
+async function readConfigList(platform: LegacyConfigPlatformInput): Promise<ConfigItem[]> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
   const configDir = getConfigDir(platform);
   await ensureDir(configDir);
   const files = await fs.readdir(configDir);
@@ -318,7 +386,8 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
         config.id.length === 0 ||
         typeof config.name !== "string" ||
         config.name.length === 0 ||
-        config.platform !== platform
+        config.platform !== normalizedPlatform &&
+        !(normalizedPlatform === "opencode" && (config as { platform?: unknown }).platform === LEGACY_GEMINI_PLATFORM)
       ) {
         continue;
       }
@@ -327,7 +396,7 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
         ...config,
         id: config.id,
         name: config.name,
-        platform: config.platform,
+        platform: normalizedPlatform,
         createdAt:
           typeof config.createdAt === "number" && Number.isFinite(config.createdAt)
             ? config.createdAt
@@ -345,11 +414,9 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
           normalizedConfig.claudeSkills = [];
         }
       }
-      if (normalizedConfig.platform === "gemini" && normalizedConfig.envContent === undefined) {
-        normalizedConfig.envContent = "";
-      }
-      if (normalizedConfig.platform === "gemini" && normalizedConfig.geminiSkills === undefined) {
-        normalizedConfig.geminiSkills = [];
+      delete normalizedConfig.envContent;
+      if (normalizedConfig.platform === "opencode" && normalizedConfig.openCodeSkills === undefined) {
+        normalizedConfig.openCodeSkills = [];
       }
       if (normalizedConfig.platform === "codex" && normalizedConfig.codexSkills === undefined) {
         normalizedConfig.codexSkills = [];
@@ -364,21 +431,32 @@ export async function getConfigList(platform: ConfigPlatform): Promise<ConfigIte
   return configs;
 }
 
-const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], gemini: [] };
+export async function getConfigList(platform: LegacyConfigPlatformInput): Promise<ConfigItem[]> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  const configs = await readConfigList(normalizedPlatform);
+  if (normalizedPlatform === "opencode") {
+    return configs.filter((config) => !isLegacyCrossMigratedOpenCodeConfig(config));
+  }
+  return configs;
+}
 
-function normalizeConfigOrder(order: ConfigOrder): ConfigOrder {
+type LegacyConfigOrder = ConfigOrder & { gemini?: string[] };
+
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [] };
+
+function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
   return {
     claude: Array.isArray(order.claude) ? [...order.claude] : [],
     codex: Array.isArray(order.codex) ? [...order.codex] : [],
-    gemini: Array.isArray(order.gemini) ? [...order.gemini] : [],
+    opencode: Array.isArray(order.opencode) ? [...order.opencode] : Array.isArray(order.gemini) ? [...order.gemini] : [],
   };
 }
 
-export async function getConfigOrder(platform: ConfigPlatform): Promise<ConfigOrder> {
+export async function getConfigOrder(platform: LegacyConfigPlatformInput): Promise<ConfigOrder> {
   const orderPath = getConfigOrderPath(platform);
   try {
     const content = await fs.readFile(orderPath, "utf-8");
-    const parsed = JSON.parse(content) as ConfigOrder;
+    const parsed = JSON.parse(content) as LegacyConfigOrder;
     if (!parsed || typeof parsed !== "object") {
       return { ...DEFAULT_CONFIG_ORDER };
     }
@@ -392,7 +470,7 @@ export async function getConfigOrder(platform: ConfigPlatform): Promise<ConfigOr
 }
 
 export async function setConfigOrder(
-  platform: ConfigPlatform,
+  platform: LegacyConfigPlatformInput,
   order: ConfigOrder
 ): Promise<void> {
   const orderPath = getConfigOrderPath(platform);
@@ -410,10 +488,349 @@ function formatJSONString(value: string): string {
   }
 }
 
+function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
+  const text = typeof value === "string" && value.trim().length > 0 ? value : fallback;
+  try {
+    const parsed = JSON.parse(text);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function parseEnvText(content: string | undefined): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const rawLine of (content ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) {
+      continue;
+    }
+    let value = match[2].trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\""))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[match[1]] = value;
+  }
+  return env;
+}
+
+export type OpenCodeConfigValidationIssueCode =
+  | "invalid-json"
+  | "placeholder-provider"
+  | "placeholder-model"
+  | "placeholder-base-url"
+  | "missing-env"
+  | "openai-compatible-base-url-missing"
+  | "openai-compatible-base-url-missing-v1";
+
+export type OpenCodeConfigValidationIssue = {
+  code: OpenCodeConfigValidationIssueCode;
+  message: string;
+};
+
+export type OpenCodeConfigValidationResult = {
+  ok: boolean;
+  issues: OpenCodeConfigValidationIssue[];
+};
+
+function collectEnvRefs(value: unknown, refs: Set<string>): void {
+  if (typeof value === "string") {
+    const envPattern = /\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = envPattern.exec(value)) !== null) {
+      refs.add(match[1]);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectEnvRefs(item, refs));
+    return;
+  }
+  if (isPlainObject(value)) {
+    Object.values(value).forEach((item) => collectEnvRefs(item, refs));
+  }
+}
+
+function addOpenCodeValidationIssue(
+  issues: OpenCodeConfigValidationIssue[],
+  code: OpenCodeConfigValidationIssueCode,
+  message: string
+): void {
+  if (!issues.some((issue) => issue.code === code && issue.message === message)) {
+    issues.push({ code, message });
+  }
+}
+
+export function validateOpenCodeConfigForRun(
+  content: string | undefined,
+  envContent: string | undefined,
+  processEnv: NodeJS.ProcessEnv = process.env
+): OpenCodeConfigValidationResult {
+  const issues: OpenCodeConfigValidationIssue[] = [];
+  const text = typeof content === "string" && content.trim().length > 0 ? content : "{}";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-json",
+        message: `OpenCode config JSON is invalid: ${(error as Error).message}`,
+      }],
+    };
+  }
+  if (!isPlainObject(parsed)) {
+    return {
+      ok: false,
+      issues: [{
+        code: "invalid-json",
+        message: "OpenCode config must be a JSON object.",
+      }],
+    };
+  }
+
+  const config = parsed as Record<string, unknown>;
+  const provider = isPlainObject(config.provider) ? config.provider : {};
+  const modelRefs = [config.model, config.small_model]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  for (const providerId of Object.keys(provider)) {
+    if (OPENCODE_PLACEHOLDER_PROVIDER_IDS.has(providerId.toLowerCase())) {
+      addOpenCodeValidationIssue(
+        issues,
+        "placeholder-provider",
+        `OpenCode config still uses placeholder provider "${providerId}". Replace it with a real provider id.`
+      );
+    }
+  }
+
+  for (const modelRef of modelRefs) {
+    const [providerId, modelId] = modelRef.split("/", 2);
+    if (OPENCODE_PLACEHOLDER_PROVIDER_IDS.has((providerId ?? "").toLowerCase())) {
+      addOpenCodeValidationIssue(
+        issues,
+        "placeholder-provider",
+        `OpenCode model "${modelRef}" still uses placeholder provider "${providerId}".`
+      );
+    }
+    if (OPENCODE_PLACEHOLDER_MODEL_IDS.has((modelId ?? "").toLowerCase())) {
+      addOpenCodeValidationIssue(
+        issues,
+        "placeholder-model",
+        `OpenCode model "${modelRef}" still uses placeholder model id "${modelId}".`
+      );
+    }
+  }
+
+  for (const [providerId, rawProviderConfig] of Object.entries(provider)) {
+    if (!isPlainObject(rawProviderConfig)) {
+      continue;
+    }
+    const providerConfig = rawProviderConfig as Record<string, unknown>;
+    const npmPackage = typeof providerConfig.npm === "string" ? providerConfig.npm.trim() : "";
+    const options = isPlainObject(providerConfig.options) ? providerConfig.options : {};
+    const baseURL = typeof options.baseURL === "string" ? options.baseURL.trim().replace(/\/+$/, "") : "";
+    if (baseURL && OPENCODE_PLACEHOLDER_BASE_URLS.has(baseURL)) {
+      addOpenCodeValidationIssue(
+        issues,
+        "placeholder-base-url",
+        `OpenCode provider "${providerId}" still uses example baseURL "${baseURL}".`
+      );
+    }
+    if (npmPackage === OPENCODE_PROVIDER_ADAPTER_NPM_BY_PROTOCOL.openaiCompatible) {
+      if (!baseURL) {
+        addOpenCodeValidationIssue(
+          issues,
+          "openai-compatible-base-url-missing",
+          `OpenCode provider "${providerId}" uses @ai-sdk/openai-compatible and must configure options.baseURL for the compatible API endpoint.`
+        );
+      } else if (!/\/v1$/u.test(baseURL)) {
+        addOpenCodeValidationIssue(
+          issues,
+          "openai-compatible-base-url-missing-v1",
+          `OpenCode provider "${providerId}" uses @ai-sdk/openai-compatible; baseURL should usually include the OpenAI-compatible /v1 endpoint.`
+        );
+      }
+    }
+  }
+
+  const envRefs = new Set<string>();
+  collectEnvRefs(config, envRefs);
+  const parsedEnv = parseEnvText(envContent);
+  for (const envName of envRefs) {
+    const value = parsedEnv[envName] ?? processEnv[envName];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      addOpenCodeValidationIssue(
+        issues,
+        "missing-env",
+        `OpenCode config references {env:${envName}}, but that variable is not set in the process environment.`
+      );
+    }
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function createCopyName(baseName: string, existingNames: string[]): string {
+  const baseCopyName = `${baseName}_副本`;
+  if (!existingNames.includes(baseCopyName)) {
+    return baseCopyName;
+  }
+  let index = 2;
+  let nextName = `${baseCopyName}${index}`;
+  while (existingNames.includes(nextName)) {
+    index += 1;
+    nextName = `${baseCopyName}${index}`;
+  }
+  return nextName;
+}
+
+function extractCodexMcpConfig(configContent: string | undefined): Record<string, unknown> {
+  const servers: Record<string, unknown> = {};
+  const sectionPattern = /^\s*\[mcp_servers\.([^\]]+)\]\s*$/;
+  const valuePattern = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/;
+  let currentServerId: string | null = null;
+  for (const line of (configContent ?? "").split(/\r?\n/)) {
+    const section = line.match(sectionPattern);
+    if (section) {
+      currentServerId = section[1].trim().replace(/^['"]|['"]$/g, "");
+      servers[currentServerId] = {};
+      continue;
+    }
+    if (!currentServerId) {
+      continue;
+    }
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) {
+      currentServerId = null;
+      continue;
+    }
+    const entry = line.match(valuePattern);
+    if (!entry) {
+      continue;
+    }
+    const target = servers[currentServerId] as Record<string, unknown>;
+    const key = entry[1];
+    const rawValue = entry[2].trim();
+    if (rawValue.startsWith("[") || rawValue.startsWith("{")) {
+      try {
+        target[key] = JSON.parse(rawValue.replace(/'/g, "\""));
+        continue;
+      } catch {
+        // Keep a plain string when the TOML value is not JSON-compatible.
+      }
+    }
+    target[key] = rawValue.replace(/^['"]|['"]$/g, "");
+  }
+  return Object.keys(servers).length > 0 ? { mcp: servers } : {};
+}
+
+function extractMcpConfig(source: ConfigItem): Record<string, unknown> {
+  if (source.platform === "codex") {
+    return extractCodexMcpConfig(source.configContent);
+  }
+  const config =
+    source.platform === "claude"
+      ? readJsonObjectText(source.mcpContent, "{}")
+      : readJsonObjectText(source.content, "{}");
+  const servers = isPlainObject(config.mcpServers)
+    ? config.mcpServers
+    : isPlainObject(config.mcp)
+      ? config.mcp
+    : isPlainObject(config.mcp_servers)
+      ? config.mcp_servers
+      : {};
+  return Object.keys(servers).length > 0 ? { mcp: servers } : {};
+}
+
+function cloneOpenCodeSkillsFromSource(source: ConfigItem): ConfigItem["openCodeSkills"] {
+  if (source.platform === "opencode") {
+    return [...(source.openCodeSkills ?? [])];
+  }
+  if (source.platform === "claude") {
+    return (source.claudeSkills ?? []).map((skill) => ({ ...skill }));
+  }
+  if (source.platform === "codex") {
+    return (source.codexSkills ?? []).map((skill) => ({ ...skill }));
+  }
+  return [];
+}
+
+function buildOpenCodeConfigFromSource(source: ConfigItem): Pick<ConfigItem, "content" | "openCodeSkills"> {
+  const content = readJsonObjectText(source.content, "{}");
+  if (isPlainObject(content.mcpServers) && !isPlainObject(content.mcp)) {
+    content.mcp = content.mcpServers;
+    delete content.mcpServers;
+  }
+  return {
+    content: `${JSON.stringify(content, null, 2)}\n`,
+    openCodeSkills: cloneOpenCodeSkillsFromSource(source),
+  };
+}
+
+function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform, name: string): ConfigItem {
+  const now = Date.now();
+  const base: ConfigItem = {
+    id: generateId(),
+    name,
+    platform: targetPlatform,
+    createdAt: now,
+    updatedAt: now,
+  };
+  if (targetPlatform === "opencode") {
+    return {
+      ...base,
+      ...buildOpenCodeConfigFromSource(source),
+    };
+  }
+  if (targetPlatform === "claude") {
+    return {
+      ...base,
+      content: source.platform === "claude" ? source.content ?? "{}" : "{}",
+      mcpContent: source.platform === "claude" ? source.mcpContent ?? "{}" : JSON.stringify(extractMcpConfig(source), null, 2),
+      claudeSkills: source.platform === "claude" ? [...(source.claudeSkills ?? [])] : [],
+    };
+  }
+  return {
+    ...base,
+    configContent: source.platform === "codex" ? source.configContent ?? "" : "",
+    authContent: source.platform === "codex" ? source.authContent ?? "{}" : "{}",
+    codexSkills: source.platform === "codex" ? [...(source.codexSkills ?? [])] : [],
+  };
+}
+
+function isLegacyCrossMigratedOpenCodeConfig(config: Partial<ConfigItem>): boolean {
+  if (config.platform !== "opencode") {
+    return false;
+  }
+  if (config.sourcePlatform === "claude" || config.sourcePlatform === "codex") {
+    return true;
+  }
+  if (typeof config.migrationVersion === "string" && config.migrationVersion.startsWith("opencode-auto-")) {
+    return true;
+  }
+  if (typeof config.id === "string" && config.id.startsWith("opencode_migrated_")) {
+    return true;
+  }
+  return typeof config.name === "string" && /^\[(Claude|Codex)\]\s/.test(config.name);
+}
+
 export async function saveConfig(config: ConfigItem): Promise<void> {
   const configDir = getConfigDir(config.platform);
   await ensureDir(configDir);
-  const configToSave: ConfigItem = { ...config };
+  const configToSave: ConfigItem = { ...config, platform: normalizeConfigPlatform(config.platform) };
 
   if (configToSave.content) {
     configToSave.content = formatJSONString(configToSave.content);
@@ -424,30 +841,58 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.authContent) {
     configToSave.authContent = formatJSONString(configToSave.authContent);
   }
-  if (configToSave.platform === "gemini" && configToSave.envContent === undefined) {
-    configToSave.envContent = "";
+  if (configToSave.platform === "opencode") {
+    delete configToSave.envContent;
+    const validation = validateOpenCodeConfigForRun(configToSave.content, undefined);
+    const blockingIssues = validation.issues.filter((issue) => issue.code !== "openai-compatible-base-url-missing-v1");
+    if (blockingIssues.length > 0) {
+      throw new Error(blockingIssues.map((issue) => issue.message).join("\n"));
+    }
   }
-  if (configToSave.platform === "gemini" && configToSave.geminiSkills === undefined) {
-    configToSave.geminiSkills = [];
+  const legacyConfig = configToSave as ConfigItem & { geminiSkills?: ConfigItem["openCodeSkills"] };
+  if (configToSave.platform === "opencode" && configToSave.openCodeSkills === undefined) {
+    configToSave.openCodeSkills = legacyConfig.geminiSkills ?? [];
   }
+  delete legacyConfig.geminiSkills;
 
-  const filePath = getConfigFilePath(config.platform, config.id);
+  const filePath = getConfigFilePath(configToSave.platform, config.id);
   await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), "utf-8");
 }
 
-export async function deleteConfig(platform: ConfigPlatform, configId: string): Promise<void> {
+export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem> {
+  const sourcePlatform = normalizeConfigPlatform(payload.sourcePlatform);
+  const targetPlatform = normalizeConfigPlatform(payload.targetPlatform);
+  const source = await getConfigById(sourcePlatform, payload.sourceId);
+  if (!source) {
+    throw new Error(t("config.notFound"));
+  }
+  if (
+    (sourcePlatform === "opencode" && targetPlatform !== "opencode")
+    || (sourcePlatform !== "opencode" && targetPlatform === "opencode")
+  ) {
+    throw new Error("OpenCode configs can only be copied as OpenCode configs; Claude/Codex configs are not converted.");
+  }
+  const existingNames = (await getConfigList(targetPlatform)).map((config) => config.name);
+  const name = payload.name?.trim() || createCopyName(source.name, existingNames);
+  const copiedConfig = buildConfigCopy(source, targetPlatform, name);
+  await saveConfig(copiedConfig);
+  return copiedConfig;
+}
+
+export async function deleteConfig(platform: LegacyConfigPlatformInput, configId: string): Promise<void> {
   const filePath = getConfigFilePath(platform, configId);
   await fs.unlink(filePath);
 }
 
 export async function getConfigById(
-  platform: ConfigPlatform,
+  platform: LegacyConfigPlatformInput,
   configId: string
 ): Promise<ConfigItem | null> {
   try {
     const filePath = getConfigFilePath(platform, configId);
     const content = await fs.readFile(filePath, "utf-8");
-    const config = JSON.parse(content) as ConfigItem;
+    const config = JSON.parse(content) as ConfigItem & { geminiSkills?: ConfigItem["openCodeSkills"] };
+    config.platform = normalizeConfigPlatform(platform);
     if (config.platform === "claude") {
       if (config.mcpContent === undefined) {
         config.mcpContent = "{}";
@@ -456,12 +901,11 @@ export async function getConfigById(
         config.claudeSkills = [];
       }
     }
-    if (config.platform === "gemini" && config.envContent === undefined) {
-      config.envContent = "";
+    delete config.envContent;
+    if (config.platform === "opencode" && config.openCodeSkills === undefined) {
+      config.openCodeSkills = config.geminiSkills ?? [];
     }
-    if (config.platform === "gemini" && config.geminiSkills === undefined) {
-      config.geminiSkills = [];
-    }
+    delete config.geminiSkills;
     if (config.platform === "codex" && config.codexSkills === undefined) {
       config.codexSkills = [];
     }
@@ -475,45 +919,47 @@ function generateId(): string {
   return `config_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
-export async function initDefaultConfig(platform: ConfigPlatform): Promise<ConfigItem | null> {
-  const existingConfigs = await getConfigList(platform);
-  if (existingConfigs.length > 0) {
+export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Promise<ConfigItem | null> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  const existingConfigs = await readConfigList(normalizedPlatform);
+  const hasNativeOpenCodeConfig = normalizedPlatform === "opencode"
+    ? existingConfigs.some((config) => !isLegacyCrossMigratedOpenCodeConfig(config))
+    : existingConfigs.length > 0;
+  if (hasNativeOpenCodeConfig) {
     return null;
   }
 
   const defaultConfig: ConfigItem = {
     id: generateId(),
     name: t("config.defaultName"),
-    platform,
+    platform: normalizedPlatform,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
 
   try {
-    if (platform === "claude") {
+    if (normalizedPlatform === "claude") {
       const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
       defaultConfig.content = content;
       defaultConfig.mcpContent = mcpContent;
       defaultConfig.claudeSkills = [];
-    } else if (platform === "codex") {
+    } else if (normalizedPlatform === "codex") {
       const { config, auth } = await readCodexConfig();
       defaultConfig.configContent = config;
       defaultConfig.authContent = auth;
     } else {
-      const { settings, env } = await readGeminiConfig();
-      defaultConfig.content = settings;
-      defaultConfig.envContent = env;
-      defaultConfig.geminiSkills = [];
+      const { config } = await readOpenCodeConfig();
+      defaultConfig.content = config;
+      defaultConfig.openCodeSkills = [];
     }
   } catch {
-    if (platform === "claude") {
+    if (normalizedPlatform === "claude") {
       defaultConfig.content = "{}";
       defaultConfig.mcpContent = "{}";
       defaultConfig.claudeSkills = [];
-    } else if (platform === "gemini") {
+    } else if (normalizedPlatform === "opencode") {
       defaultConfig.content = "{}";
-      defaultConfig.envContent = "";
-      defaultConfig.geminiSkills = [];
+      defaultConfig.openCodeSkills = [];
     } else {
       defaultConfig.configContent = "";
       defaultConfig.authContent = "{}";
@@ -525,21 +971,23 @@ export async function initDefaultConfig(platform: ConfigPlatform): Promise<Confi
   return defaultConfig;
 }
 
-export async function getCurrentConfig(platform: ConfigPlatform): Promise<CurrentConfig> {
-  if (platform === "claude") {
+export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Promise<CurrentConfig> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  if (normalizedPlatform === "claude") {
     const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
     return { content, mcpContent };
   }
-  if (platform === "codex") {
+  if (normalizedPlatform === "codex") {
     const { config, auth } = await readCodexConfig();
     return { configContent: config, authContent: auth };
   }
-  const { settings, env } = await readGeminiConfig();
-  return { content: settings, envContent: env };
+  const { config } = await readOpenCodeConfig();
+  return { content: config };
 }
 
-export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayload): Promise<void> {
-  if (platform === "claude") {
+export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  if (normalizedPlatform === "claude") {
     const nextSettings =
       payload.claudeSkills === undefined
         ? payload.content ?? "{}"
@@ -550,7 +998,7 @@ export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayloa
     }
     return;
   }
-  if (platform === "codex") {
+  if (normalizedPlatform === "codex") {
     if (payload.configContent === undefined || payload.authContent === undefined) {
       throw new Error(t("config.codexIncomplete"));
     }
@@ -561,21 +1009,24 @@ export async function applyConfig(platform: ConfigPlatform, payload: ApplyPayloa
     await writeCodexConfig(nextConfig, payload.authContent);
     return;
   }
+  const legacyPayload = payload as ApplyPayload & { geminiSkills?: ApplyPayload["openCodeSkills"] };
+  const openCodeSkills = payload.openCodeSkills ?? legacyPayload.geminiSkills;
   const nextSettings =
-    payload.geminiSkills === undefined
+    openCodeSkills === undefined
       ? payload.content ?? "{}"
-      : mergeGeminiSkillsConfig(payload.content ?? "{}", payload.geminiSkills);
-  await writeGeminiConfig(nextSettings, payload.envContent ?? "");
+      : mergeOpenCodeSkillsConfig(payload.content ?? "{}", openCodeSkills);
+  await writeOpenCodeConfig(nextSettings);
 }
 
-export async function backupConfig(platform: ConfigPlatform): Promise<string[]> {
-  if (platform === "claude") {
+export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  if (normalizedPlatform === "claude") {
     return backupClaudeConfig();
   }
-  if (platform === "codex") {
+  if (normalizedPlatform === "codex") {
     return backupCodexConfig();
   }
-  return backupGeminiConfig();
+  return backupOpenCodeConfig();
 }
 
 export {
@@ -596,6 +1047,6 @@ export async function getCodexSkillsList(workspaceRoots?: string[]): Promise<Cod
   return listCodexSkills(workspaceRoots);
 }
 
-export async function getGeminiSkillsList(workspaceRoots?: string[]): Promise<GeminiSkillItem[]> {
-  return listGeminiSkills(workspaceRoots);
+export async function getOpenCodeSkillsList(workspaceRoots?: string[]): Promise<OpenCodeSkillItem[]> {
+  return listOpenCodeSkills(workspaceRoots);
 }

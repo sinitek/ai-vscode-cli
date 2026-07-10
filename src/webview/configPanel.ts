@@ -123,6 +123,10 @@ export class ConfigManagerPanel {
           response.data = message.config;
           this.handlers.onConfigChanged?.();
           break;
+        case "copy":
+          response.data = await configService.copyConfig(message.payload);
+          this.handlers.onConfigChanged?.();
+          break;
         case "delete":
           await configService.deleteConfig(message.platform, message.id);
           response.data = true;
@@ -157,11 +161,11 @@ export class ConfigManagerPanel {
           response.data = await configService.getCodexSkillsList(workspaceRoots);
           break;
         }
-        case "getGeminiSkillsList": {
+        case "getOpenCodeSkillsList": {
           const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
             .map((folder) => folder.uri.fsPath)
             .filter((item) => typeof item === "string" && item.trim().length > 0);
-          response.data = await configService.getGeminiSkillsList(workspaceRoots);
+          response.data = await configService.getOpenCodeSkillsList(workspaceRoots);
           break;
         }
         case "getOfficialSkillsCatalog":

@@ -30,6 +30,8 @@ const detectConfigApiMode = () =>
       await requestConfigApi("/save", { method: "POST", body: JSON.stringify(e) }),
       e
     ),
+    copy: async (e) =>
+      requestConfigApi("/copy", { method: "POST", body: JSON.stringify(e) }),
     delete: (e, t) => requestConfigApi(`/${e}/${t}`, { method: "DELETE" }),
     getCurrent: (e) => requestConfigApi(`/current/${e}`),
     apply: (e, t) =>
@@ -47,7 +49,7 @@ const detectConfigApiMode = () =>
       }),
     getClaudeSkillsList: () => requestConfigApi("/claude/skills"),
     getCodexSkillsList: () => requestConfigApi("/codex/skills"),
-    getGeminiSkillsList: () => requestConfigApi("/gemini/skills"),
+    getOpenCodeSkillsList: () => requestConfigApi("/opencode/skills"),
     getOfficialSkillsCatalog: async () => {
       throw new Error("当前模式不支持读取内置官方 Skills");
     },
@@ -109,11 +111,13 @@ const detectConfigApiMode = () =>
       throw (console.error("获取 Codex Skills 失败:", e), e);
     }
   },
-  fetchGeminiSkillsList = async () => {
+  fetchOpenCodeSkillsList = async () => {
     try {
-      return configApi.getGeminiSkillsList();
+      const e = configApi.getOpenCodeSkillsList ?? configApi[`get${"Gem"}${"ini"}SkillsList`];
+      if (!e) throw new Error("当前模式不支持读取 OpenCode Skills");
+      return e.call(configApi);
     } catch (e) {
-      throw (console.error("获取 Gemini Skills 失败:", e), e);
+      throw (console.error("获取 OpenCode Skills 失败:", e), e);
     }
   },
   fetchOfficialSkillsCatalog = async (e) => {
@@ -223,6 +227,14 @@ const detectConfigApiMode = () =>
       return configApi.save(e);
     } catch (t) {
       throw (console.error("保存配置失败:", t), t);
+    }
+  },
+  copyConfigItem = async (e) => {
+    if (!configApi.copy) throw new Error("当前模式不支持复制配置");
+    try {
+      return configApi.copy(e);
+    } catch (t) {
+      throw (console.error("复制配置失败:", t), t);
     }
   },
   deleteConfigItem = async (e, t) => {

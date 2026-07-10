@@ -5,13 +5,13 @@ const GH = (e, t) => c.createElement(Qr, ip({}, e, { ref: t, icon: UH })),
 const DEFAULT_RUN_COMMANDS = {
     claude: "claude --dangerously-skip-permissions",
     codex: "codex --dangerously-bypass-approvals-and-sandbox",
-    gemini: "gemini --approval-mode auto_edit",
+    opencode: "opencode",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
     claude: "npm install -g @anthropic-ai/claude-code",
     codex: "npm i -g @openai/codex",
-    gemini: "npm install -g @google/gemini-cli",
+    opencode: "npm install -g opencode-ai",
   };
 
 const { confirm: uk } = xr;
@@ -43,7 +43,7 @@ const ConfigListPanel = () => {
       [isImporting, setIsImporting] = c.useState(!1),
       $ = c.useMemo(() => e.filter((k) => k.platform === "claude"), [e]),
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
-      O = c.useMemo(() => e.filter((k) => k.platform === "gemini"), [e]),
+      O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
       exportSelectedCount = c.useMemo(
         () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
@@ -52,7 +52,7 @@ const ConfigListPanel = () => {
       exportAnySelected = exportSelectedCount > 0,
       I = (k) => {
         const L =
-          k === "claude" ? "Claude" : k === "codex" ? "Codex" : "Gemini";
+          k === "claude" ? "Claude" : k === "codex" ? "Codex" : "OpenCode";
         xr.confirm({
           title: `添加${L}配置`,
           content: be.jsx(zi, {
@@ -60,13 +60,6 @@ const ConfigListPanel = () => {
             placeholder: "请输入配置名称",
             defaultValue: `${L} 配置 ${Date.now()}`,
           }),
-          okButtonProps: {
-            style: {
-              backgroundColor: "var(--vscode-button-background)",
-              borderColor: "var(--vscode-button-background)",
-              color: "var(--vscode-button-foreground)",
-            },
-          },
           onOk: async () => {
             const U = document
               .getElementById("config-name-input")
@@ -82,14 +75,13 @@ const ConfigListPanel = () => {
                     mcpContent: "{}",
                     claudeSkills: [],
                   }))
-                : k === "gemini"
-                  ? (T = await l({
-                      name: U,
-                      platform: k,
-                      content: "{}",
-                      envContent: "",
-                      geminiSkills: [],
-                    }))
+                : k === "opencode"
+	                  ? (T = await l({
+	                      name: U,
+	                      platform: k,
+	                      content: "{}",
+	                      openCodeSkills: [],
+	                    }))
                   : (T = await l({
                       name: U,
                       platform: k,
@@ -170,12 +162,11 @@ const ConfigListPanel = () => {
                   mcpContent: L.mcpContent,
                   claudeSkills: L.claudeSkills ?? [],
                 })
-              : L.platform === "gemini"
-                ? await applyConfigItem(L.platform, {
-                    content: L.content,
-                    envContent: L.envContent ?? "",
-                    geminiSkills: L.geminiSkills ?? [],
-                  })
+              : L.platform === "opencode"
+	                ? await applyConfigItem(L.platform, {
+	                    content: L.content,
+	                    openCodeSkills: L.openCodeSkills ?? [],
+	                  })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
                     authContent: L.authContent,
@@ -197,13 +188,6 @@ const ConfigListPanel = () => {
             okText: "确认",
             cancelText: "取消",
             okType: "danger",
-            okButtonProps: {
-              style: {
-                backgroundColor: "var(--vscode-errorForeground)",
-                borderColor: "var(--vscode-errorForeground)",
-                color: "var(--vscode-button-foreground)",
-              },
-            },
             onOk: async () => {
               try {
                 (await u(L.platform, L.id), Kt.success("删除成功"));
@@ -215,12 +199,45 @@ const ConfigListPanel = () => {
       },
       V = async (k, L) => {
         k.stopPropagation();
-        try {
-          const G = await f(L.id);
-          (o(G.id, G.platform), Kt.success(`已复制配置: ${G.name}`));
-        } catch (G) {
-          Kt.error(`复制失败: ${G}`);
-        }
+        const G = [
+          { label: L.platform === "claude" ? "Claude" : L.platform === "codex" ? "Codex" : "OpenCode", value: L.platform },
+        ];
+        const Y = G[0].label;
+        xr.confirm({
+          title: "复制配置",
+          content: be.jsxs("div", {
+            style: { display: "flex", flexDirection: "column", gap: "8px" },
+            children: [
+              be.jsx("div", { children: `从 ${L.name} 复制到 ${Y}` }),
+              be.jsx("select", {
+                id: "copy-target-platform",
+                defaultValue: G[G.length - 1].value,
+                style: {
+                  width: "100%",
+                  padding: "6px 8px",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "6px",
+                  background: "var(--bg-color-container)",
+                  color: "var(--text-color)",
+                },
+                children: G.map((K) =>
+                  be.jsx("option", { value: K.value, children: K.label }, K.value),
+                ),
+              }),
+            ],
+          }),
+          okText: "确认",
+          cancelText: "取消",
+          onOk: async () => {
+            const K = document.getElementById("copy-target-platform")?.value || L.platform;
+            try {
+              const Q = await f(L.id, K);
+              (o(Q.id, Q.platform), Kt.success(`已复制配置: ${Q.name}`));
+            } catch (Q) {
+              return (Kt.error(`复制失败: ${Q}`), Promise.reject(Q));
+            }
+          },
+        });
       },
       W = (k, L) => {
         (k.stopPropagation(),
@@ -231,13 +248,6 @@ const ConfigListPanel = () => {
               placeholder: "请输入新的配置名称",
               defaultValue: L.name,
             }),
-            okButtonProps: {
-              style: {
-                backgroundColor: "var(--vscode-button-background)",
-                borderColor: "var(--vscode-button-background)",
-                color: "var(--vscode-button-foreground)",
-              },
-            },
             onOk: async () => {
               const U = document.getElementById("rename-input")?.value?.trim();
               if (!U) return (Kt.error("配置名称不能为空"), Promise.reject());
@@ -288,15 +298,15 @@ const ConfigListPanel = () => {
         const L = {
           version: 1,
           exportedAt: Date.now(),
-          configs: k.map((G) => ({
-            name: G.name,
-            platform: G.platform,
-            content: G.content,
-            mcpContent: G.mcpContent,
-            envContent: G.envContent,
-            configContent: G.configContent,
-            authContent: G.authContent,
-          })),
+	          configs: k.map((G) => ({
+	            name: G.name,
+	            platform: G.platform,
+	            content: G.content,
+	            mcpContent: G.mcpContent,
+	            envContent: G.platform === "opencode" ? void 0 : G.envContent,
+	            configContent: G.configContent,
+	            authContent: G.authContent,
+	          })),
         };
         const G = JSON.stringify(L, null, 2);
         const Y = `sinitek-cli-configs-${new Date()
@@ -343,14 +353,13 @@ const ConfigListPanel = () => {
             mcpContent: k.mcpContent ?? "{}",
           };
         }
-        if (L === "gemini") {
-          return {
-            name: G,
-            platform: L,
-            content: k.content ?? "{}",
-            envContent: k.envContent ?? "",
-          };
-        }
+	        if (L === "opencode") {
+	          return {
+	            name: G,
+	            platform: L,
+	            content: k.content ?? "{}",
+	          };
+	        }
         if (L === "codex") {
           return {
             name: G,
@@ -404,7 +413,7 @@ const ConfigListPanel = () => {
       },
       H = (k, L) => {
         const G =
-            k === "claude" ? "Claude" : k === "codex" ? "Codex" : "Gemini",
+            k === "claude" ? "Claude" : k === "codex" ? "Codex" : "OpenCode",
           U = DEFAULT_RUN_COMMANDS[k],
           T = DEFAULT_INSTALL_COMMANDS[k];
         return be.jsx(aa, {
@@ -456,7 +465,7 @@ const ConfigListPanel = () => {
                   Q = p === F.id,
                   J = S === F.id;
                 return be.jsx(Bs.Item, {
-                  className: "config-list-item",
+                  className: K ? "config-list-item config-list-item-selected" : "config-list-item",
                   draggable: !0,
                   onClick: () => o(F.id, F.platform),
                   onDragStart: () => _(F.id),
@@ -467,9 +476,6 @@ const ConfigListPanel = () => {
                   onDrop: (ae) => z(ae, k, F.id),
                   style: {
                     cursor: "pointer",
-                    backgroundColor: K
-                      ? "var(--vscode-list-activeSelectionBackground)"
-                      : void 0,
                     padding: "0",
                     borderRadius: "6px",
                     transition: "all 0.2s ease-in-out",
@@ -478,23 +484,18 @@ const ConfigListPanel = () => {
                       : "1px solid transparent",
                   },
                   extra: be.jsxs($s, {
+                    className: "config-list-actions",
                     size: 8,
                     children: [
                       be.jsx(xn, {
                         type: "default",
                         size: "small",
+                        className: Y
+                          ? "config-activate-button config-activate-button-active"
+                          : "config-activate-button",
                         icon: be.jsx(KH, {}),
                         loading: Q,
                         onClick: (ae) => B(ae, F),
-                        style: Y
-                          ? {
-                              backgroundColor:
-                                "var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen))",
-                              borderColor:
-                                "var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen))",
-                              color: "var(--vscode-button-foreground)",
-                            }
-                          : void 0,
                         children: Y ? "更新配置" : "激活",
                       }),
                       be.jsx(xn, {
@@ -524,12 +525,8 @@ const ConfigListPanel = () => {
                   children: be.jsxs($s, {
                     children: [
                       be.jsx("span", {
-                        style: {
-                          fontWeight: K ? 500 : 400,
-                          color: K
-                            ? "var(--vscode-list-activeSelectionForeground, var(--text-color))"
-                            : "var(--text-color)",
-                        },
+                        className: "config-name",
+                        style: { fontWeight: K ? 600 : 500 },
                         children: F.name,
                       }),
                       Y &&
@@ -546,9 +543,11 @@ const ConfigListPanel = () => {
         });
       };
     return be.jsxs("div", {
+      className: "config-sidebar-panel",
       style: { height: "100%", padding: "8px", overflow: "auto" },
       children: [
         be.jsxs("div", {
+          className: "config-list-toolbar",
           style: {
             display: "flex",
             justifyContent: "flex-end",
@@ -562,7 +561,7 @@ const ConfigListPanel = () => {
         }),
         H("claude", $),
         H("codex", w),
-        H("gemini", O),
+        H("opencode", O),
         be.jsx(xr, {
           title: "导出配置",
           open: exportOpen,
@@ -659,7 +658,7 @@ const ConfigListPanel = () => {
                                           ? "Claude"
                                           : k.platform === "codex"
                                             ? "Codex"
-                                            : "Gemini",
+                                            : "OpenCode",
                                     }),
                                   ],
                                 }),
@@ -812,7 +811,7 @@ const ConfigListPanel = () => {
                                       ? "Claude"
                                       : k.platform === "codex"
                                         ? "Codex"
-                                        : "Gemini",
+                                        : "OpenCode",
                                 }),
                               ],
                             },
@@ -1996,11 +1995,8 @@ const jv = ({
                       }),
                       y.config.env &&
                         be.jsx(Wg, {
+                          className: "mcp-env-tag",
                           style: {
-                            backgroundColor:
-                              "var(--vscode-badge-background, var(--vscode-editorWidget-background))",
-                            borderColor: "var(--vscode-widget-border)",
-                            color: "var(--vscode-badge-foreground, var(--text-color-secondary))",
                             fontSize: "10px",
                             lineHeight: "18px",
                             marginBottom: "4px",
@@ -2273,29 +2269,29 @@ const McpInstallEnvModal = ({
 function skillsEmptyTextByPlatform(e) {
   return e === "claude"
     ? "未检测到 Skills，请先安装到 ~/.claude/skills"
-    : e === "gemini"
-      ? "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills"
+    : e === "opencode"
+      ? "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills"
       : "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills";
 }
 
 function skillsTitleByPlatform(e) {
   return e === "claude"
     ? "Claude Skills"
-    : e === "gemini"
-      ? "Gemini Skills / Extensions"
+    : e === "opencode"
+      ? "OpenCode Skills"
       : "Codex Skills";
 }
 
 function officialSkillInstallRootTextByPlatform(e) {
-  return e === "claude" ? "~/.claude/skills" : e === "gemini" ? "~/.gemini/extensions" : "~/.codex/skills";
+  return e === "claude" ? "~/.claude/skills" : e === "opencode" ? "~/.opencode/skills" : "~/.codex/skills";
 }
 
 function officialPackageLabelByPlatform(e) {
-  return e === "gemini" ? "Extensions" : "Skills";
+  return "Skills";
 }
 
 function officialPackageSingularByPlatform(e) {
-  return e === "gemini" ? "Extension" : "Skill";
+  return "Skill";
 }
 
 function officialPackageLoadingTextByPlatform(e) {
@@ -2307,17 +2303,17 @@ function officialPackageCountTextByPlatform(e, t) {
 }
 
 function officialPackageEmptyTextByPlatform(e) {
-  return e === "gemini" ? "暂无内置官方 Extensions" : "暂无内置官方 Skills";
+  return e === "opencode" ? "暂无内置官方 OpenCode Skills" : "暂无内置官方 Skills";
 }
 
 function officialPackageInstallHintByPlatform(e) {
-  return e === "gemini"
-    ? "内置官方 GitHub 快照，可直接安装到 ~/.gemini/extensions"
+  return e === "opencode"
+    ? "当前未配置内置官方 OpenCode Skills，可管理本地 ~/.opencode/skills"
     : "内置官方 GitHub 快照，可直接安装到用户 Skills 目录";
 }
 
 function officialPackageTabTextByPlatform(e) {
-  return e === "gemini" ? "安装 Extensions" : "安装 Skills";
+  return "安装 Skills";
 }
 
 function shortOfficialSkillRef(e) {
@@ -2380,6 +2376,7 @@ const renderSkillRows = (e, t, n, r, o, l) =>
     return be.jsx(
       "div",
       {
+        className: "skills-manager-item",
         style: {
           display: "flex",
           justifyContent: "space-between",
@@ -2387,8 +2384,6 @@ const renderSkillRows = (e, t, n, r, o, l) =>
           gap: "10px",
           padding: "8px",
           borderRadius: "6px",
-          background: "var(--background-color)",
-          border: "1px solid var(--border-color)",
           marginBottom: "8px",
           flexWrap: "wrap",
         },
@@ -2416,13 +2411,12 @@ const renderSkillRows = (e, t, n, r, o, l) =>
                       be.jsx("div", { children: s.name }),
                       u
                         ? be.jsx("span", {
+                            className: "skills-manager-badge",
                             style: {
                               fontSize: "11px",
                               lineHeight: 1,
                               padding: "3px 8px",
                               borderRadius: "999px",
-                              color: "var(--text-color-secondary)",
-                              border: "1px solid var(--border-color)",
                             },
                             children: m,
                           })
@@ -2430,8 +2424,8 @@ const renderSkillRows = (e, t, n, r, o, l) =>
                     ],
                   }),
                   be.jsx("div", {
+                    className: "skills-manager-muted",
                     style: {
-                      color: "var(--text-color-secondary)",
                       fontSize: "12px",
                       wordBreak: "break-all",
                     },
@@ -2439,8 +2433,8 @@ const renderSkillRows = (e, t, n, r, o, l) =>
                   }),
                   s.description
                     ? be.jsx("div", {
+                        className: "skills-manager-muted",
                         style: {
-                          color: "var(--text-color-secondary)",
                           fontSize: "12px",
                         },
                         children: s.description,
@@ -2489,14 +2483,13 @@ const renderOfficialSkillRows = (e, t, n, r, o) =>
     return be.jsx(
       "div",
       {
+        className: "skills-manager-item",
         style: {
           display: "flex",
           flexDirection: "column",
           gap: "8px",
           padding: "10px 12px",
           borderRadius: "6px",
-          background: "var(--background-color)",
-          border: "1px solid var(--border-color)",
           marginBottom: "8px",
         },
         children: [
@@ -2518,25 +2511,23 @@ const renderOfficialSkillRows = (e, t, n, r, o) =>
                       be.jsx("div", { children: l.name }),
                       l.group
                         ? be.jsx("span", {
+                            className: "skills-manager-badge",
                             style: {
                               fontSize: "11px",
                               lineHeight: 1,
                               padding: "3px 8px",
                               borderRadius: "999px",
-                              color: "var(--text-color-secondary)",
-                              border: "1px solid var(--border-color)",
                             },
                             children: l.group,
                           })
                         : null,
                       be.jsx("span", {
+                        className: "skills-manager-badge",
                         style: {
                           fontSize: "11px",
                           lineHeight: 1,
                           padding: "3px 8px",
                           borderRadius: "999px",
-                          color: "var(--text-color-secondary)",
-                          border: "1px solid var(--border-color)",
                         },
                         children: m,
                       }),
@@ -2544,19 +2535,19 @@ const renderOfficialSkillRows = (e, t, n, r, o) =>
                   }),
                   l.description
                     ? be.jsx("div", {
+                        className: "skills-manager-muted",
                         style: {
-                          color: "var(--text-color-secondary)",
                           fontSize: "12px",
                         },
                         children: l.description,
                       })
                     : null,
                   be.jsx("div", {
+                    className: "skills-manager-muted",
                     style: {
                       display: "flex",
                       flexDirection: "column",
                       gap: "2px",
-                      color: "var(--text-color-secondary)",
                       fontSize: "12px",
                     },
                     children: v.map((p) =>
@@ -2645,59 +2636,37 @@ const SkillsManagerModal = ({
       cursor: "pointer",
       transition: "background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease",
     },
-    L0 = (T) =>
-      T
-        ? {
-            ...k0,
-            border: "1px solid var(--vscode-button-background, var(--button-background, var(--border-color)))",
-            background: "var(--vscode-button-background, var(--button-background, var(--background-color)))",
-            color: "var(--vscode-button-foreground, var(--button-foreground, var(--text-on-accent, var(--text-color))))",
-            boxShadow: "0 0 0 1px var(--vscode-focusBorder, var(--border-color)) inset",
-          }
-        : {
-            ...k0,
-            border: "1px solid var(--border-color)",
-            background: "var(--background-color-secondary, transparent)",
-            color: "var(--text-color-secondary)",
-            boxShadow: "none",
-          },
     T0 = l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
     A0 = m ? officialPackageLoadingTextByPlatform(n) : officialPackageCountTextByPlatform(n, f.length),
     P0 = E0
       ? r.length === 0
         ? be.jsx("div", {
+            className: "skills-manager-empty",
             style: {
-              color: "var(--text-color-secondary)",
               fontSize: "12px",
-              border: "1px solid var(--border-color)",
               borderRadius: "6px",
               padding: "12px",
-              background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
             },
             children: x,
           })
         : renderSkillRows(r, s, f, h, p, b)
       : m
         ? be.jsx("div", {
+            className: "skills-manager-empty",
             style: {
-              color: "var(--text-color-secondary)",
               fontSize: "12px",
-              border: "1px solid var(--border-color)",
               borderRadius: "6px",
               padding: "12px",
-              background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
             },
             children: officialPackageLoadingTextByPlatform(n),
           })
         : f.length === 0
           ? be.jsx("div", {
+              className: "skills-manager-empty",
               style: {
-                color: "var(--text-color-secondary)",
                 fontSize: "12px",
-                border: "1px solid var(--border-color)",
                 borderRadius: "6px",
                 padding: "12px",
-                background: "var(--background-color-secondary, var(--vscode-editorWidget-background))",
               },
               children: officialPackageEmptyTextByPlatform(n),
             })
@@ -2709,7 +2678,9 @@ const SkillsManagerModal = ({
     width: 760,
     footer: null,
     destroyOnClose: !0,
+    rootClassName: "skills-manager-modal",
     children: be.jsxs("div", {
+      className: "skills-manager-content",
       style: {
         display: "flex",
         flexDirection: "column",
@@ -2718,26 +2689,27 @@ const SkillsManagerModal = ({
       },
       children: [
         be.jsxs("div", {
+          className: "skills-manager-tabs",
           style: {
             display: "flex",
             gap: "8px",
-            borderBottom: "1px solid var(--border-color)",
             padding: "4px",
             paddingBottom: "12px",
             borderRadius: "10px",
-            background: "var(--background-color-secondary, transparent)",
           },
           children: [
             be.jsx("button", {
               type: "button",
+              className: E0 ? "skills-manager-tab skills-manager-tab-active" : "skills-manager-tab",
               onClick: () => C0("installed"),
-              style: L0(E0),
+              style: k0,
               children: "已安装 Skills",
             }),
             be.jsx("button", {
               type: "button",
+              className: !E0 ? "skills-manager-tab skills-manager-tab-active" : "skills-manager-tab",
               onClick: () => C0("market"),
-              style: L0(!E0),
+              style: k0,
               children: officialPackageTabTextByPlatform(n),
             }),
           ],
@@ -2753,8 +2725,8 @@ const SkillsManagerModal = ({
           children: [
             E0
               ? be.jsx("div", {
+                  className: "skills-manager-muted",
                   style: {
-                    color: "var(--text-color-secondary)",
                     fontSize: "12px",
                   },
                   children: T0,
@@ -2767,15 +2739,15 @@ const SkillsManagerModal = ({
                   },
                   children: [
                     be.jsx("div", {
+                      className: "skills-manager-muted",
                       style: {
-                        color: "var(--text-color-secondary)",
                         fontSize: "12px",
                       },
                       children: A0,
                     }),
                     be.jsx("div", {
+                      className: "skills-manager-muted",
                       style: {
-                        color: "var(--text-color-secondary)",
                         fontSize: "12px",
                       },
                       children: officialPackageInstallHintByPlatform(n),
@@ -2848,43 +2820,44 @@ requires_openai_auth = true`,
   "OPENAI_API_KEY": "<你的 api key>"
 }`,
     },
-    gemini: {
+    opencode: {
       settings: `{
-  "ide": {
-    "enabled": true
-  },
-  "security": {
-    "auth": {
-      "selectedType": "gemini-api-key"
+  "$schema": "https://opencode.ai/config.json",
+  "model": "myAPI/gateway-chat-model",
+  "small_model": "myAPI/gateway-small-model",
+  "provider": {
+    "myAPI": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "myAPI",
+      "options": {
+        "baseURL": "https://api.myapi.example/v1",
+        "apiKey": "<你的 api key>"
+      },
+      "models": {
+        "gateway-chat-model": {
+          "name": "Gateway Chat Model"
+        },
+        "gateway-small-model": {
+          "name": "Gateway Small Model"
+        }
+      }
     }
   },
-  "context": {
-    "fileName": [
-      "AGENTS.md",
-      "GEMINI.md"
-    ]
-  },
-  "general": {
-    "defaultApprovalMode": "auto_edit"
-  }
+  "mcp": {}
 }`,
-      env: `GOOGLE_GEMINI_BASE_URL=<你的 url>
-GEMINI_API_KEY=<你的 api key>
-GEMINI_MODEL=gemini-2.5-pro`,
-    },
-  };
+	    },
+	  };
 
 const Nk = {
     "claude-settings": {
       title: "Claude settings.json",
       content: ps.claude.settings,
     },
-    "gemini-settings": {
-      title: "Gemini settings.json",
-      content: ps.gemini.settings,
-    },
-    "gemini-env": { title: "Gemini .env", content: ps.gemini.env },
-    "codex-config": { title: "Codex config.toml", content: ps.codex.config },
+	    "opencode-settings": {
+	      title: "OpenCode config.json（OpenAI-compatible 网关范例）",
+	      content: ps.opencode.settings,
+	    },
+	    "codex-config": { title: "Codex config.toml", content: ps.codex.config },
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
   };
 
@@ -2935,12 +2908,13 @@ const ConfigEditorPanel = () => {
         const W = t === "claude" ? u : l;
         try {
           const H = JSON.parse(W || "{}");
-          if (H && H.mcpServers) {
-            const k = Object.keys(H.mcpServers),
-              L = Array.isArray(mcpHealthItems)
+          const k = H && (H.mcp || H.mcpServers);
+          if (k) {
+            const L = Object.keys(k),
+              G = Array.isArray(mcpHealthItems)
                 ? mcpHealthItems.filter((U) => U && U.installed).map((U) => U.serverId)
                 : [];
-            return Array.from(new Set([...k, ...L]));
+            return Array.from(new Set([...L, ...G]));
           }
         } catch {}
         return Array.isArray(mcpHealthItems)
@@ -2979,12 +2953,11 @@ const ConfigEditorPanel = () => {
           f("");
           return;
         }
-        if (W === "gemini") {
-          const H = await fetchCurrentConfig("gemini");
-          H?.content !== void 0 && s(H.content);
-          H?.envContent !== void 0 && x(H.envContent);
-          return;
-        }
+	        if (W === "opencode") {
+	          const H = await fetchCurrentConfig("opencode");
+	          H?.content !== void 0 && s(H.content);
+	          return;
+	        }
         const H = await fetchCurrentConfig("codex");
         H?.configContent !== void 0 && v(H.configContent);
         H?.authContent !== void 0 && h(H.authContent);
@@ -3055,7 +3028,7 @@ const ConfigEditorPanel = () => {
         k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
       },
       te = async (W, H) => {
-        if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "gemini")) return;
+        if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "opencode")) return;
         const k0 = officialPackageSingularByPlatform(O.platform);
         setOfficialSkillActionId(W.id), setOfficialSkillActionType(H);
         try {
@@ -3107,11 +3080,11 @@ const ConfigEditorPanel = () => {
           setSkillsModalOpen(!1));
         return;
       }
-      O.platform === "claude"
-        ? (s(O.content || "{}"), f(""), x(""), v(""), h(""))
-        : O.platform === "gemini"
-          ? (s(O.content || "{}"), x(O.envContent || ""), v(""), h(""))
-          : (v(O.configContent || ""), h(O.authContent || "{}"), s(""), x(""));
+	      O.platform === "claude"
+	        ? (s(O.content || "{}"), f(""), x(""), v(""), h(""))
+	        : O.platform === "opencode"
+	          ? (s(O.content || "{}"), x(""), v(""), h(""))
+	          : (v(O.configContent || ""), h(O.authContent || "{}"), s(""), x(""));
     }, [O]);
     c.useEffect(() => {
       setMcpHealthItems([]), setMcpHealthLoading(!1), O?.platform !== "codex" && setCodexMcpServerIds([]);
@@ -3186,15 +3159,15 @@ const ConfigEditorPanel = () => {
       });
     }, []);
     const loadSkillsState = c.useCallback(async (W, H = () => !1) => {
-      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "gemini")) {
+      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "opencode")) {
         Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
       q(!0), setOfficialSkillsLoading(!0);
       const k = W.platform === "claude"
           ? fetchClaudeSkillsList()
-          : W.platform === "gemini"
-            ? fetchGeminiSkillsList()
+          : W.platform === "opencode"
+            ? fetchOpenCodeSkillsList()
             : fetchCodexSkillsList(),
         L = fetchOfficialSkillsCatalog(W.platform),
         [U, T] = await Promise.allSettled([k, L]);
@@ -3204,19 +3177,19 @@ const ConfigEditorPanel = () => {
         let Y = !1;
         if (W.platform === "claude") {
           F = tt(W.content || "{}");
-        } else if (W.platform === "gemini") {
+        } else if (W.platform === "opencode") {
           const ie = nt(W.content || "{}");
           F = ie.disabled;
           Y = ie.allDisabled;
         }
-        const ie = W.platform === "claude" ? W.claudeSkills : W.platform === "gemini" ? W.geminiSkills : W.codexSkills;
+        const ie = W.platform === "claude" ? W.claudeSkills : W.platform === "opencode" ? W.openCodeSkills : W.codexSkills;
         Z(G(U.value, ie, F, Y));
       } else {
         const F =
           W.platform === "claude"
             ? "获取 Claude Skills 失败"
-            : W.platform === "gemini"
-              ? "获取 Gemini Skills 失败"
+            : W.platform === "opencode"
+              ? "获取 OpenCode Skills 失败"
               : "获取 Codex Skills 失败";
         console.error(F + ":", U.reason), Kt.error(F), Z([]);
       }
@@ -3229,7 +3202,7 @@ const ConfigEditorPanel = () => {
     }, [G, tt, nt]);
     c.useEffect(() => {
       let W = !1;
-      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "gemini")) {
+      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "opencode")) {
         Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
@@ -3259,13 +3232,10 @@ const ConfigEditorPanel = () => {
         if (!(!I || !S)) {
           switch (S) {
             case "claude-settings":
-            case "gemini-settings":
-              s(I.content);
-              break;
-            case "gemini-env":
-              x(I.content);
-              break;
-            case "codex-config":
+	            case "opencode-settings":
+	              s(I.content);
+	              break;
+	            case "codex-config":
               v(I.content);
               break;
             case "codex-auth":
@@ -3277,6 +3247,7 @@ const ConfigEditorPanel = () => {
       },
       B = () =>
         be.jsx(RE, {
+          rootClassName: "config-example-drawer",
           title: I?.title || "配置范例",
           width: 560,
           open: !!I,
@@ -3299,8 +3270,7 @@ const ConfigEditorPanel = () => {
                       padding: "12px",
                       borderRadius: "6px",
                       border: "1px solid var(--border-color)",
-                      backgroundColor:
-                        "var(--background-color-secondary, var(--vscode-editorWidget-background))",
+                      backgroundColor: "var(--background-color-secondary)",
                       whiteSpace: "pre-wrap",
                       fontFamily: "monospace",
                       fontSize: "12px",
@@ -3340,7 +3310,7 @@ const ConfigEditorPanel = () => {
           Kt.error("保存失败: " + W);
         }
       },
-      saveGeminiSettingsCard = async () => {
+	      saveOpenCodeSettingsCard = async () => {
         if (!O) {
           Kt.warning("请先选择一个配置");
           return;
@@ -3349,38 +3319,31 @@ const ConfigEditorPanel = () => {
           Kt.error("JSON格式不正确");
           return;
         }
-        try {
-          const W = M(l);
-          await r(O.id, { content: W });
-          s(W);
-          Kt.success("保存成功");
-          await A({ content: W, envContent: O.envContent ?? "", geminiSkills: C });
-        } catch (W) {
-          Kt.error("保存失败: " + W);
-        }
-      },
-      saveGeminiEnvCard = async () => {
+	        try {
+	          const W = M(l);
+	          await r(O.id, { content: W });
+	          s(W);
+	          Kt.success("保存成功");
+	          await A({ content: W, openCodeSkills: C });
+	        } catch (W) {
+	          Kt.error("保存失败: " + W);
+	        }
+	      },
+	      saveCodexConfigCard = async () => {
         if (!O) {
           Kt.warning("请先选择一个配置");
           return;
         }
         try {
-          await r(O.id, { envContent: b });
+          if (!_(p)) {
+            Kt.error("auth.json格式不正确");
+            return;
+          }
+          const W = M(p);
+          await r(O.id, { configContent: m, authContent: W });
+          h(W);
           Kt.success("保存成功");
-          await A({ content: O.content ?? "{}", envContent: b, geminiSkills: C });
-        } catch (W) {
-          Kt.error("保存失败: " + W);
-        }
-      },
-      saveCodexConfigCard = async () => {
-        if (!O) {
-          Kt.warning("请先选择一个配置");
-          return;
-        }
-        try {
-          await r(O.id, { configContent: m });
-          Kt.success("保存成功");
-          await A({ configContent: m, authContent: O.authContent ?? "{}", codexSkills: C });
+          await A({ configContent: m, authContent: W, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -3396,10 +3359,10 @@ const ConfigEditorPanel = () => {
         }
         try {
           const W = M(p);
-          await r(O.id, { authContent: W });
+          await r(O.id, { configContent: m, authContent: W });
           h(W);
           Kt.success("保存成功");
-          await A({ configContent: O.configContent ?? "", authContent: W, codexSkills: C });
+          await A({ configContent: m, authContent: W, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -3412,8 +3375,8 @@ const ConfigEditorPanel = () => {
             const U =
               O.platform === "claude"
                 ? { claudeSkills: L }
-                : O.platform === "gemini"
-                  ? { geminiSkills: L }
+                : O.platform === "opencode"
+                  ? { openCodeSkills: L }
                   : { codexSkills: L };
             await r(O.id, U);
             if (o(O.platform) === O.id) {
@@ -3430,21 +3393,19 @@ const ConfigEditorPanel = () => {
                 const Y = await fetchCurrentConfig("claude");
                 Y?.content !== void 0 && s(Y.content);
                 f("");
-              } else if (O.platform === "gemini") {
+              } else if (O.platform === "opencode") {
                 if (!_(l)) {
                   Kt.error("JSON格式不正确");
                   return;
                 }
-                const T = M(l);
-                await applyConfigItem("gemini", {
-                  content: T,
-                  envContent: b,
-                  geminiSkills: L,
-                });
-                const F = await fetchCurrentConfig("gemini");
-                F?.content !== void 0 && s(F.content);
-                F?.envContent !== void 0 && x(F.envContent);
-              } else {
+	                const T = M(l);
+	                await applyConfigItem("opencode", {
+	                  content: T,
+	                  openCodeSkills: L,
+	                });
+	                const F = await fetchCurrentConfig("opencode");
+	                F?.content !== void 0 && s(F.content);
+	              } else {
                 if (!_(p)) {
                   Kt.error("auth.json格式不正确");
                   return;
@@ -3474,8 +3435,8 @@ const ConfigEditorPanel = () => {
             const k =
               O.platform === "claude"
                 ? { claudeSkills: H }
-                : O.platform === "gemini"
-                  ? { geminiSkills: H }
+                : O.platform === "opencode"
+                  ? { openCodeSkills: H }
                   : { codexSkills: H };
             await r(O.id, k);
             if (o(O.platform) === O.id) {
@@ -3492,21 +3453,19 @@ const ConfigEditorPanel = () => {
                 const T = await fetchCurrentConfig("claude");
                 T?.content !== void 0 && s(T.content);
                 f("");
-              } else if (O.platform === "gemini") {
+              } else if (O.platform === "opencode") {
                 if (!_(l)) {
                   Kt.error("JSON格式不正确");
                   return;
                 }
-                const L = M(l);
-                await applyConfigItem("gemini", {
-                  content: L,
-                  envContent: b,
-                  geminiSkills: H,
-                });
-                const U = await fetchCurrentConfig("gemini");
-                U?.content !== void 0 && s(U.content);
-                U?.envContent !== void 0 && x(U.envContent);
-              } else {
+	                const L = M(l);
+	                await applyConfigItem("opencode", {
+	                  content: L,
+	                  openCodeSkills: H,
+	                });
+	                const U = await fetchCurrentConfig("opencode");
+	                U?.content !== void 0 && s(U.content);
+	              } else {
                 if (!_(p)) {
                   Kt.error("auth.json格式不正确");
                   return;
@@ -3532,6 +3491,7 @@ const ConfigEditorPanel = () => {
     return O
       ? O.platform === "claude"
         ? be.jsxs("div", {
+            className: "config-editor-shell config-editor-claude",
             style: {
               height: "100%",
               display: "flex",
@@ -3549,12 +3509,18 @@ const ConfigEditorPanel = () => {
                       onClick: () => w(!0),
                       children: "MCP(全局)",
                     }),
-                    be.jsx(xn, {
-                      onClick: () => setSkillsModalOpen(!0),
-                      children: "Skills",
-                    }),
-                  ],
-                }),
+	                    be.jsx(xn, {
+	                      onClick: () => setSkillsModalOpen(!0),
+	                      children: "Skills",
+	                    }),
+	                    be.jsx(xn, {
+	                      type: "primary",
+	                      icon: be.jsx(Pv, {}),
+	                      onClick: saveClaudeSettingsCard,
+	                      children: "保存",
+	                    }),
+	                  ],
+	                }),
                 style: {
                   flex: 1,
                   display: "flex",
@@ -3609,16 +3575,9 @@ const ConfigEditorPanel = () => {
                                   children: "查看范例",
                                 }),
                               ],
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: "primary",
-                              icon: be.jsx(Pv, {}),
-                              onClick: saveClaudeSettingsCard,
-                              children: "保存",
-                            }),
-                          ],
-                        }),
+	                            }),
+	                          ],
+	                        }),
                         be.jsx(Qa, {
                           value: l,
                           onChange: (H) => s(H.target.value),
@@ -3685,8 +3644,7 @@ const ConfigEditorPanel = () => {
                             border: "1px solid var(--border-color)",
                             borderRadius: "6px",
                             padding: "8px",
-                            background:
-                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
+                            background: "var(--background-color-secondary)",
                           },
                           children:
                             C.length === 0
@@ -3812,8 +3770,9 @@ const ConfigEditorPanel = () => {
               B(),
             ],
           })
-        : O.platform === "gemini"
+        : O.platform === "opencode"
           ? be.jsxs("div", {
+              className: "config-editor-shell config-editor-opencode",
               style: {
                 height: "100%",
                 display: "flex",
@@ -3831,12 +3790,18 @@ const ConfigEditorPanel = () => {
                         onClick: () => w(!0),
                         children: "MCP(全局)",
                       }),
-                    be.jsx(xn, {
-                      onClick: () => setSkillsModalOpen(!0),
-                      children: "Skills",
-                    }),
-                    ],
-                  }),
+	                    be.jsx(xn, {
+	                      onClick: () => setSkillsModalOpen(!0),
+	                      children: "Skills",
+	                    }),
+	                    be.jsx(xn, {
+	                      type: "primary",
+	                      icon: be.jsx(Pv, {}),
+	                      onClick: saveOpenCodeSettingsCard,
+	                      children: "保存",
+	                    }),
+	                    ],
+	                  }),
                   style: {
                     flex: 1,
                     display: "flex",
@@ -3874,96 +3839,39 @@ const ConfigEditorPanel = () => {
                               style: { display: "flex", alignItems: "center", gap: 8 },
                               children: [
                                 be.jsxs("span", {
-                                  children: [be.jsx(Ya, {}), " settings.json"],
+                                  children: [be.jsx(Ya, {}), " config.json"],
                                 }),
                                 be.jsx(xn, {
                                   size: "small",
-                                  onClick: () => N("gemini-settings"),
+                                  onClick: () => N("opencode-settings"),
                                   children: "查看范例",
                                 }),
                               ],
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: "primary",
-                              icon: be.jsx(Pv, {}),
-                              onClick: saveGeminiSettingsCard,
-                              children: "保存",
-                            }),
-                          ],
-                        }),
+	                            }),
+	                          ],
+	                        }),
                         be.jsx("div", {
                           style: {
                             marginBottom: "8px",
                             color: "var(--text-color-secondary)",
                             fontSize: "12px",
                           },
-                          children: "配置文件路径: ~/.gemini/settings.json",
+	                          children: "配置文件路径: ~/.opencode/config.json",
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "8px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                            lineHeight: 1.5,
+                          },
+                          children:
+                            "npm 按 API 协议选择，不按模型名称选择：直连 Anthropic / Google / OpenAI 可使用内置 provider，或在自定义 provider 中分别使用 @ai-sdk/anthropic、@ai-sdk/google、@ai-sdk/openai；只有 OpenAI-compatible 网关使用 @ai-sdk/openai-compatible，即使网关承载 Claude、Gemini 或 DeepSeek 模型也不需要更换。",
                         }),
                         be.jsx(Qa, {
                           value: l,
                           onChange: (W) => s(W.target.value),
                           placeholder: "请输入JSON配置",
-                          rows: 10,
-                          style: {
-                            flex: 1,
-                            fontFamily: "monospace",
-                            fontSize: "13px",
-                          },
-                        }),
-                      ],
-                    }),
-                    be.jsxs("div", {
-                      style: {
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "8px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 8 },
-                              children: [
-                                be.jsxs("span", {
-                                  children: [be.jsx(Ya, {}), " .env"],
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => N("gemini-env"),
-                                  children: "查看范例",
-                                }),
-                              ],
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: "primary",
-                              icon: be.jsx(Pv, {}),
-                              onClick: saveGeminiEnvCard,
-                              children: "保存",
-                            }),
-                          ],
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            marginBottom: "8px",
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: "配置文件路径: ~/.gemini/.env",
-                        }),
-                        be.jsx(Qa, {
-                          value: b,
-                          onChange: (W) => x(W.target.value),
-                          placeholder: "请输入 .env 配置",
                           rows: 10,
                           style: {
                             flex: 1,
@@ -4026,8 +3934,7 @@ const ConfigEditorPanel = () => {
                             border: "1px solid var(--border-color)",
                             borderRadius: "6px",
                             padding: "8px",
-                            background:
-                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
+                            background: "var(--background-color-secondary)",
                           },
                           children:
                             C.length === 0
@@ -4036,7 +3943,7 @@ const ConfigEditorPanel = () => {
                                     color: "var(--text-color-secondary)",
                                     fontSize: "12px",
                                   },
-                                  children: "未检测到 Skills，请先安装到 ~/.gemini/skills 或工作区 .gemini/skills",
+                                  children: "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills",
                                 })
                               : C.map((W) =>
                                   be.jsx(
@@ -4154,6 +4061,7 @@ const ConfigEditorPanel = () => {
               ],
             })
           : be.jsxs("div", {
+              className: "config-editor-shell config-editor-codex",
               style: {
                 height: "100%",
                 display: "flex",
@@ -4171,12 +4079,18 @@ const ConfigEditorPanel = () => {
                         onClick: () => w(!0),
                         children: "MCP(全局)",
                       }),
-                    be.jsx(xn, {
-                      onClick: () => setSkillsModalOpen(!0),
-                      children: "Skills",
-                    }),
-                    ],
-                  }),
+	                    be.jsx(xn, {
+	                      onClick: () => setSkillsModalOpen(!0),
+	                      children: "Skills",
+	                    }),
+	                    be.jsx(xn, {
+	                      type: "primary",
+	                      icon: be.jsx(Pv, {}),
+	                      onClick: saveCodexConfigCard,
+	                      children: "保存",
+	                    }),
+	                    ],
+	                  }),
                   style: {
                     flex: 1,
                     display: "flex",
@@ -4222,16 +4136,9 @@ const ConfigEditorPanel = () => {
                                   children: "查看范例",
                                 }),
                               ],
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: "primary",
-                              icon: be.jsx(Pv, {}),
-                              onClick: saveCodexConfigCard,
-                              children: "保存",
-                            }),
-                          ],
-                        }),
+	                            }),
+	                          ],
+	                        }),
                         be.jsx("div", {
                           style: {
                             marginBottom: "8px",
@@ -4282,16 +4189,9 @@ const ConfigEditorPanel = () => {
                                   children: "查看范例",
                                 }),
                               ],
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: "primary",
-                              icon: be.jsx(Pv, {}),
-                              onClick: saveCodexAuthCard,
-                              children: "保存",
-                            }),
-                          ],
-                        }),
+	                            }),
+	                          ],
+	                        }),
                         be.jsx("div", {
                           style: {
                             marginBottom: "8px",
@@ -4366,8 +4266,7 @@ const ConfigEditorPanel = () => {
                             border: "1px solid var(--border-color)",
                             borderRadius: "6px",
                             padding: "8px",
-                            background:
-                              "var(--background-color-secondary, var(--vscode-editorWidget-background))",
+                            background: "var(--background-color-secondary)",
                           },
                           children:
                             C.length === 0
@@ -4492,6 +4391,7 @@ const ConfigEditorPanel = () => {
               ],
             })
       : be.jsx("div", {
+          className: "config-empty-state",
           style: {
             height: "100%",
             display: "flex",
@@ -4515,27 +4415,29 @@ const ConfigManagerLayout = () => {
         })();
       }, [e, t]),
       be.jsxs(Li, {
+        className: "config-app-theme",
         style: { height: "100vh" },
         children: [
           be.jsx(jk, {
+            className: "config-app-header",
             style: {
-              background: "var(--vscode-titleBar-activeBackground, var(--vscode-sideBar-background))",
-              color: "var(--vscode-titleBar-activeForeground, var(--vscode-foreground))",
               display: "flex",
               alignItems: "center",
               padding: "0 24px",
             },
             children: be.jsx("h2", {
+              className: "config-app-title",
               style: {
                 margin: 0,
-                color: "var(--vscode-titleBar-activeForeground, var(--vscode-foreground))",
               },
               children: "携宁 CLI 配置",
             }),
           }),
           be.jsxs(Li, {
+            className: "config-app-workspace",
             children: [
               be.jsx(zk, {
+                className: "config-app-sidebar",
                 width: 500,
                 style: {
                   background: "var(--bg-color-container)",
@@ -4544,6 +4446,7 @@ const ConfigManagerLayout = () => {
                 children: be.jsx(ConfigListPanel, {}),
               }),
               be.jsx(Lk, {
+                className: "config-app-content",
                 style: { background: "var(--bg-color)" },
                 children: be.jsx(ConfigEditorPanel, {}),
               }),
@@ -4554,11 +4457,139 @@ const ConfigManagerLayout = () => {
     );
   };
 
+const configClayPalette = {
+  canvas: "#faf9f7",
+  surface: "#ffffff",
+  border: "#dad4c8",
+  borderSoft: "#eee9df",
+  text: "#000000",
+  textSecondary: "#55534e",
+  textMuted: "#9f9b93",
+  success: "#078a52",
+  warning: "#d08a11",
+  error: "#c94d58",
+  info: "#01418d",
+  focus: "#146ef5",
+};
+
+const configClayTheme = {
+  ...ZB,
+  token: {
+    ...(ZB.token || {}),
+    colorPrimary: configClayPalette.text,
+    colorPrimaryHover: configClayPalette.textSecondary,
+    colorPrimaryActive: configClayPalette.text,
+    colorInfo: configClayPalette.info,
+    colorSuccess: configClayPalette.success,
+    colorWarning: configClayPalette.warning,
+    colorError: configClayPalette.error,
+    colorText: configClayPalette.text,
+    colorTextSecondary: configClayPalette.textSecondary,
+    colorTextTertiary: configClayPalette.textMuted,
+    colorTextQuaternary: configClayPalette.textMuted,
+    colorTextDisabled: configClayPalette.textMuted,
+    colorTextLightSolid: configClayPalette.surface,
+    colorBgBase: configClayPalette.canvas,
+    colorBgContainer: configClayPalette.surface,
+    colorBgElevated: configClayPalette.surface,
+    colorBgLayout: configClayPalette.canvas,
+    colorFill: configClayPalette.borderSoft,
+    colorFillSecondary: configClayPalette.borderSoft,
+    colorFillTertiary: configClayPalette.canvas,
+    colorFillQuaternary: configClayPalette.canvas,
+    colorBorder: configClayPalette.border,
+    colorBorderSecondary: configClayPalette.borderSoft,
+    colorLink: configClayPalette.text,
+    colorLinkHover: configClayPalette.info,
+    colorLinkActive: configClayPalette.text,
+    controlOutline: configClayPalette.focus,
+    borderRadius: 12,
+    borderRadiusLG: 24,
+    borderRadiusSM: 8,
+    boxShadow: "0 1px 1px rgba(0, 0, 0, 0.1), 0 -1px 1px rgba(0, 0, 0, 0.04) inset, 0 -0.5px 1px rgba(0, 0, 0, 0.05)",
+    boxShadowSecondary: "0 18px 48px rgba(0, 0, 0, 0.16)",
+    fontFamily: '"DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+  components: {
+    ...(ZB.components || {}),
+    Button: {
+      ...(ZB.components?.Button || {}),
+      defaultBg: configClayPalette.surface,
+      defaultColor: configClayPalette.text,
+      defaultBorderColor: configClayPalette.border,
+      defaultHoverBg: configClayPalette.text,
+      defaultHoverColor: configClayPalette.surface,
+      defaultHoverBorderColor: configClayPalette.text,
+      primaryColor: configClayPalette.surface,
+      dangerColor: configClayPalette.error,
+      dangerBorderColor: configClayPalette.error,
+      dangerBg: configClayPalette.surface,
+      primaryShadow: "none",
+      dangerShadow: "none",
+      borderRadius: 12,
+      controlHeight: 36,
+    },
+    Card: {
+      ...(ZB.components?.Card || {}),
+      headerBg: configClayPalette.surface,
+      colorBorderSecondary: configClayPalette.borderSoft,
+    },
+    Form: {
+      ...(ZB.components?.Form || {}),
+      labelColor: configClayPalette.text,
+    },
+    Input: {
+      ...(ZB.components?.Input || {}),
+      activeBorderColor: configClayPalette.text,
+      hoverBorderColor: configClayPalette.text,
+      activeShadow: `0 0 0 2px ${configClayPalette.focus}24`,
+    },
+    Layout: {
+      ...(ZB.components?.Layout || {}),
+      headerBg: configClayPalette.canvas,
+      siderBg: configClayPalette.surface,
+      bodyBg: configClayPalette.canvas,
+      triggerBg: configClayPalette.text,
+      triggerColor: configClayPalette.surface,
+    },
+    Modal: {
+      ...(ZB.components?.Modal || {}),
+      headerBg: configClayPalette.surface,
+      contentBg: configClayPalette.surface,
+      titleColor: configClayPalette.text,
+      borderRadiusLG: 24,
+    },
+    Drawer: {
+      ...(ZB.components?.Drawer || {}),
+      colorBgElevated: configClayPalette.surface,
+    },
+    Table: {
+      ...(ZB.components?.Table || {}),
+      headerBg: configClayPalette.borderSoft,
+      headerColor: configClayPalette.text,
+      rowHoverBg: configClayPalette.canvas,
+    },
+    Tree: {
+      ...(ZB.components?.Tree || {}),
+      nodeHoverBg: configClayPalette.canvas,
+      nodeSelectedBg: configClayPalette.text,
+      nodeSelectedColor: configClayPalette.surface,
+    },
+    Tabs: {
+      ...(ZB.components?.Tabs || {}),
+      inkBarColor: configClayPalette.text,
+      itemActiveColor: configClayPalette.text,
+      itemHoverColor: configClayPalette.text,
+      itemSelectedColor: configClayPalette.text,
+    },
+  },
+};
+
 // App root
 const ConfigAppRoot = () =>
     be.jsx(Do, {
       locale: BB,
-      theme: ZB,
+      theme: configClayTheme,
       children: be.jsx(l$, {
         children: be.jsx(iP, {
           children: be.jsxs(LR, {

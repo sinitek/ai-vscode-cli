@@ -1,6 +1,6 @@
 // Model manager, model selection, and model persistence handlers.
 export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsManagedModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "gemini";
+        return cli === "codex" || cli === "opencode";
       }
 
       function getModelsForCurrentCli() {

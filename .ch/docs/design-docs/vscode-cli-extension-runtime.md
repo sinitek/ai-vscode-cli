@@ -24,7 +24,7 @@
 src/
 ├── extension.ts              # 扩展入口、命令注册、状态编排、面板消息总线
 ├── cli/                      # CLI 设置读取、命令解析、参数构建、进程执行
-├── interactive/              # Codex/Claude 交互 Runner 与会话映射
+├── interactive/              # Codex/Claude/OpenCode 交互 Runner 与会话映射
 ├── webview/                  # 侧边栏聊天面板、配置中心面板、前后端协议
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
 ├── trace/                    # trace/tool 事件格式化
@@ -92,7 +92,7 @@ media/
 
 ### 4.2 `src/interactive/*`：会话型执行层
 
-当前只有 Codex 和 Claude 进入交互 Runner：
+Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 AI 任务走 `src/cli/commandRunner.ts` 的 `opencode run --format json [message..]` one-shot / 并行子进程路径：
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
 - `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
@@ -100,7 +100,11 @@ media/
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
 
-Gemini 当前仍走 one-shot 路径，不进入 `interactive/`。
+OpenCode 运行前仍会应用当前激活的 `~/.opencode/config.json`；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 示例占位、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
+
+OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事件提取 assistant 文本生成最终结论气泡；默认格式兼容路径只接受 stdout 正文，不把 stderr 中 `> build · model` 这类状态行当作最终回答。若 CLI 输出 JSON `error` 事件，即使进程 `code!=0` 且 stderr 为空，也会把其中的 `APIError`、HTTP status、provider message、`responseBody.error.code` 和请求 URL 作为错误展示；只有没有可解析 provider/API 错误时才回退通用 `CLI 退出码`。若 `code=0` 但没有 assistant 文本，运行态会展示明确的 OpenCode 空输出/状态错误并按错误收口，避免误报为泛化的“缺少最终结论气泡”或继续隐藏重试。若 one-shot 尝试启动后长时间没有 stdout/stderr 输出，会转成 OpenCode 空输出超时错误进入 hidden retry；重试耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志。
+
+Gemini 已从当前支持 CLI 中移除；旧 one-shot 路径只作为历史迁移参考。
 
 ### 4.3 扩展侧 Loop 编排
 
@@ -115,14 +119,14 @@ Loop 模式仍由 `src/extension.ts` 统一编排，不新增独立后端服务�
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
-- 读取和写入 `~/.claude`、`~/.codex`、`~/.gemini` 相关配置
+- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；OpenCode 配置中心只维护 `~/.opencode/config.json`，不再维护 `~/.opencode/.env` 或第二配置文件；旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
 - 管理配置档案（config profiles）
 - 管理备份、导出
 - 扫描和安装 Skills
 - 扫描、安装、卸载、检测 MCP
 - 读取内置官方 Skills / MCP 市场目录
 
-与之配套的 `src/config/codexSkills.ts`、`claudeSkills.ts`、`geminiSkills.ts` 负责各平台 Skills 的列表与受控配置片段合并。
+与之配套的 `src/config/codexSkills.ts`、`claudeSkills.ts`、OpenCode 相关 Skills 模块负责各平台 Skills 的列表与受控配置片段合并；`geminiSkills.ts` 仅作旧实现迁移参考。
 
 ## 6. 状态落盘与本地数据
 
@@ -203,7 +207,7 @@ cli / interactive / config 服务层
 
 - 不要让 Webview 直接感知 `fs`、CLI 或 home 目录结构
 - 不要让 `configService` 反向依赖 Webview DOM 或消息渲染
-- 不要把 Codex / Claude / Gemini 的协议分支散落到多个 UI 文件
+- 不要把 Codex / Claude / OpenCode 的协议分支散落到多个 UI 文件
 - 不要在多个模块重复维护同一份本地状态格式
 
 ## 9. 扩展规则
@@ -232,5 +236,5 @@ cli / interactive / config 服务层
 ## 10. 当前已知限制
 
 - `extension.ts` 仍然偏大，属于中心编排文件，后续若继续扩展应逐步下沉非核心细节
-- Gemini 目前没有接入交互 Runner
+- OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化

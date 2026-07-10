@@ -197,8 +197,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.rulesSaveClaude.checked) {
           targets.push("claude");
         }
-        if (elements.rulesSaveGemini.checked) {
-          targets.push("gemini");
+        if (elements.rulesSaveOpenCode.checked) {
+          targets.push("opencode");
         }
         return targets;
       }

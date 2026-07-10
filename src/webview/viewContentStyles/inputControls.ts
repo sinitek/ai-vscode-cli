@@ -33,6 +33,10 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         flex: 0 1 88px;
         min-width: 88px;
       }
+      .config-select-row .cli-select {
+        flex-basis: calc(88px * 1.15);
+        min-width: calc(88px * 1.15);
+      }
       .config-select {
         flex: 1 1 165px;
         min-width: 120px;

@@ -1,25 +1,25 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { GeminiSkillItem, GeminiSkillToggle } from "./types";
+import { OpenCodeSkillItem, OpenCodeSkillToggle } from "./types";
 import { t } from "../i18n";
 
-const HOME_GEMINI_SKILLS_DIR = path.join(os.homedir(), ".gemini", "skills");
-const SYSTEM_GEMINI_SKILLS_DIR = path.join(path.sep, "etc", "gemini", "skills");
-const WORKSPACE_GEMINI_SKILLS_RELATIVE_DIR = path.join(".gemini", "skills");
+const HOME_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
+const SYSTEM_OPENCODE_SKILLS_DIR = path.join(path.sep, "etc", "opencode", "skills");
+const WORKSPACE_OPENCODE_SKILLS_RELATIVE_DIR = path.join(".opencode", "skills");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseGeminiSettings(content: string): Record<string, unknown> {
+function parseOpenCodeConfig(content: string): Record<string, unknown> {
   const normalized = (content ?? "").trim();
   if (!normalized) {
     return {};
   }
   const parsed = JSON.parse(normalized) as unknown;
   if (!isPlainObject(parsed)) {
-    throw new Error("Gemini settings must be a JSON object.");
+    throw new Error("OpenCode config must be a JSON object.");
   }
   return { ...parsed };
 }
@@ -60,7 +60,7 @@ function collectAncestorDirs(startPath: string): string[] {
   return output;
 }
 
-function resolveGeminiSkillRoots(workspaceRoots: string[] | undefined): string[] {
+function resolveOpenCodeSkillRoots(workspaceRoots: string[] | undefined): string[] {
   const roots: string[] = [];
   const seen = new Set<string>();
 
@@ -78,12 +78,12 @@ function resolveGeminiSkillRoots(workspaceRoots: string[] | undefined): string[]
 
   normalizeWorkspaceRoots(workspaceRoots).forEach((workspaceRoot) => {
     collectAncestorDirs(workspaceRoot).forEach((ancestor) => {
-      append(path.join(ancestor, WORKSPACE_GEMINI_SKILLS_RELATIVE_DIR));
+      append(path.join(ancestor, WORKSPACE_OPENCODE_SKILLS_RELATIVE_DIR));
     });
   });
 
-  append(HOME_GEMINI_SKILLS_DIR);
-  append(SYSTEM_GEMINI_SKILLS_DIR);
+  append(HOME_OPENCODE_SKILLS_DIR);
+  append(SYSTEM_OPENCODE_SKILLS_DIR);
 
   return roots;
 }
@@ -162,7 +162,7 @@ function normalizeDisabledSkills(value: unknown): string[] {
     .filter((item) => item.length > 0);
 }
 
-function buildManagedSkillNameSet(skills: GeminiSkillToggle[] | undefined): Set<string> {
+function buildManagedSkillNameSet(skills: OpenCodeSkillToggle[] | undefined): Set<string> {
   const managed = new Set<string>();
   (skills ?? []).forEach((skill) => {
     const name = normalizeSkillName(skill?.name ?? "");
@@ -196,7 +196,7 @@ function dedupeStrings(items: string[]): string[] {
 
 function applyManagedSkillsSettings(
   settings: Record<string, unknown>,
-  skills: GeminiSkillToggle[] | undefined
+  skills: OpenCodeSkillToggle[] | undefined
 ): Record<string, unknown> {
   const managedSkillNames = buildManagedSkillNameSet(skills);
   const disabledManagedSkills = (skills ?? [])
@@ -229,21 +229,21 @@ function applyManagedSkillsSettings(
   return nextSettings;
 }
 
-export function mergeGeminiSkillsConfig(
+export function mergeOpenCodeSkillsConfig(
   baseConfig: string,
-  skills: GeminiSkillToggle[] | undefined
+  skills: OpenCodeSkillToggle[] | undefined
 ): string {
-  const settings = parseGeminiSettings(baseConfig ?? "{}");
+  const settings = parseOpenCodeConfig(baseConfig ?? "{}");
   const nextSettings = applyManagedSkillsSettings(settings, skills);
   return JSON.stringify(nextSettings, null, 2);
 }
 
-export function stripManagedGeminiSkillRules(
+export function stripManagedOpenCodeSkillRules(
   content: string | undefined,
-  skills: GeminiSkillToggle[] | undefined
+  skills: OpenCodeSkillToggle[] | undefined
 ): string {
   try {
-    const settings = parseGeminiSettings(content ?? "{}");
+    const settings = parseOpenCodeConfig(content ?? "{}");
     const managedSkillNames = buildManagedSkillNameSet(skills);
     if (managedSkillNames.size === 0) {
       return JSON.stringify(settings);
@@ -283,9 +283,9 @@ export function stripManagedGeminiSkillRules(
   }
 }
 
-export async function listGeminiSkills(workspaceRoots?: string[]): Promise<GeminiSkillItem[]> {
-  const skillRoots = resolveGeminiSkillRoots(workspaceRoots);
-  const skillsByName = new Map<string, GeminiSkillItem>();
+export async function listOpenCodeSkills(workspaceRoots?: string[]): Promise<OpenCodeSkillItem[]> {
+  const skillRoots = resolveOpenCodeSkillRoots(workspaceRoots);
+  const skillsByName = new Map<string, OpenCodeSkillItem>();
 
   for (const skillRoot of skillRoots) {
     const dirs = await listSkillDirNames(skillRoot);

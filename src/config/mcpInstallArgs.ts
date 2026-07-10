@@ -164,7 +164,7 @@ export function buildClaudeMcpInstallArgs(
   };
 }
 
-export function buildGeminiMcpInstallArgs(
+export function buildOpenCodeMcpInstallArgs(
   item: McpMarketplaceItem,
   envOverrides?: Record<string, string>,
 ): { commandArgs: string[]; warnings: string[] } {
@@ -199,6 +199,9 @@ export function buildGeminiMcpInstallArgs(
   commandArgs.push(item.id, command, ...mcpArgs);
   return { commandArgs, warnings: uniqueWarnings(warnings) };
 }
+
+// Compatibility export used until tests/callers are migrated off the legacy Gemini name.
+export const buildGeminiMcpInstallArgs = buildOpenCodeMcpInstallArgs;
 
 export function parseCodexMcpServerIds(rawContent: string): string[] {
   const parsed = JSON.parse(rawContent) as unknown;

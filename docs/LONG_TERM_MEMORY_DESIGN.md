@@ -353,7 +353,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
   -> 当前文件/选区自动上下文
   -> 召回长期记忆
   -> 生成补充提示词块
-  -> 和本次 prompt 一起送给 Codex / Claude / Gemini
+  -> 和本次 prompt 一起送给 Codex / Claude / OpenCode
 ```
 
 ### 8.2 注入内容来源

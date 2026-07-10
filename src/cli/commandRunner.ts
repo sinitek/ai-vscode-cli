@@ -4,7 +4,6 @@ import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
-import { ensureGeminiHeadlessArgs } from "./geminiStreamJson";
 import { normalizeCommandInput, resolveCliCommand } from "./commandResolution";
 
 export { resolveCliCommand } from "./commandResolution";
@@ -13,6 +12,7 @@ export type { ResolvedCliCommand } from "./commandResolution";
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
   model?: string | null;
+  openCodeConfigContent?: string | null;
   imagePaths?: string[];
   envOverrides?: Record<string, string>;
 };
@@ -107,6 +107,265 @@ export type RunProcess = {
   kill: (signal?: NodeJS.Signals | number) => boolean | void;
 };
 
+export type OpenCodeRunOutput = {
+  finalText: string | null;
+  errorText: string | null;
+  statusText: string | null;
+};
+
+export type OpenCodeFailureMessageOptions = {
+  missingFinalOutputMessage?: string;
+  missingFinalOutputWithStatusMessage?: (statusText: string) => string;
+};
+
+const ANSI_ESCAPE_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+const OPENCODE_STATUS_LINE_PATTERN = /^>\s*[^·\n]+(?:\s*·\s*.+)?$/u;
+const OPENCODE_JSON_TEXT_PART_TYPES = new Set([
+  "text",
+  "text-delta",
+  "text_delta",
+  "message",
+  "message-part",
+  "message_part",
+  "part",
+  "part-delta",
+  "part_delta",
+  "assistant",
+  "assistant-message",
+  "assistant_message",
+  "output",
+  "result",
+]);
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+function cleanOpenCodeStatusOutput(value: string): string {
+  return stripAnsi(value)
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !OPENCODE_STATUS_LINE_PATTERN.test(line))
+    .join("\n")
+    .trim();
+}
+
+function readStringProperty(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function readNumberProperty(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function pushUniqueText(target: string[], value: string | null | undefined): void {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    return;
+  }
+  if (!target.includes(normalized)) {
+    target.push(normalized);
+  }
+}
+
+function collectOpenCodeProviderErrorDetails(error: Record<string, unknown>, data: Record<string, unknown>): string[] {
+  const details: string[] = [];
+  pushUniqueText(details, readStringProperty(error, ["name"]));
+  pushUniqueText(details, readStringProperty(error, ["message"]));
+  pushUniqueText(details, readStringProperty(data, ["message", "error", "detail"]));
+  pushUniqueText(details, readStringProperty(data, ["ref", "requestId", "requestID", "request_id"]));
+  pushUniqueText(details, readStringProperty(error, ["ref", "requestId", "requestID", "request_id"]));
+
+  const statusCode = readNumberProperty(data, ["statusCode", "status"]);
+  if (statusCode !== null) {
+    pushUniqueText(details, String(statusCode));
+  }
+
+  const metadata = data.metadata && typeof data.metadata === "object"
+    ? data.metadata as Record<string, unknown>
+    : {};
+  pushUniqueText(details, readStringProperty(metadata, ["url"]));
+
+  const responseBody = readStringProperty(data, ["responseBody", "body"]);
+  if (responseBody) {
+    try {
+      const parsedBody = JSON.parse(responseBody) as unknown;
+      if (parsedBody && typeof parsedBody === "object") {
+        const bodyRecord = parsedBody as Record<string, unknown>;
+        const bodyError = bodyRecord.error && typeof bodyRecord.error === "object"
+          ? bodyRecord.error as Record<string, unknown>
+          : bodyRecord;
+        pushUniqueText(details, readStringProperty(bodyError, ["message", "type", "code", "param"]));
+        pushUniqueText(details, readStringProperty(bodyError, ["type"]));
+        pushUniqueText(details, readStringProperty(bodyError, ["code"]));
+      }
+    } catch {
+      pushUniqueText(details, responseBody);
+    }
+  }
+
+  return details;
+}
+
+function combineOpenCodeErrorText(...values: Array<string | null | undefined>): string | null {
+  const lines: string[] = [];
+  for (const value of values) {
+    for (const line of (value ?? "").split(/\r?\n/u)) {
+      pushUniqueText(lines, line);
+    }
+  }
+  return lines.join("\n").trim() || null;
+}
+
+function collectOpenCodeJsonText(value: unknown, parentType?: string): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : parentType;
+  const normalizedType = typeof type === "string" ? type.toLowerCase() : "";
+  const role = typeof record.role === "string" ? record.role.toLowerCase() : "";
+  const shouldReadText = OPENCODE_JSON_TEXT_PART_TYPES.has(normalizedType)
+    || role === "assistant"
+    || parentType === "assistant";
+  const nestedParentType = role === "assistant" ? "assistant" : normalizedType || parentType;
+  const chunks: string[] = [];
+
+  if (shouldReadText) {
+    const directText = readStringProperty(record, ["text", "content", "delta", "message", "output", "result"]);
+    if (directText) {
+      chunks.push(directText);
+    }
+  }
+
+  const part = record.part;
+  if (part && typeof part === "object") {
+    chunks.push(...collectOpenCodeJsonText(part, nestedParentType));
+  }
+
+  for (const key of ["parts", "content", "message", "messages", "output"]) {
+    const nested = record[key];
+    if (Array.isArray(nested)) {
+      nested.forEach((item) => chunks.push(...collectOpenCodeJsonText(item, nestedParentType)));
+    } else if (nested && typeof nested === "object") {
+      chunks.push(...collectOpenCodeJsonText(nested, nestedParentType));
+    }
+  }
+
+  return chunks;
+}
+
+function parseOpenCodeJsonOutput(stdout: string): string | null {
+  const chunks: string[] = [];
+  for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      chunks.push(...collectOpenCodeJsonText(JSON.parse(trimmed)));
+    } catch {
+      // Ignore non-JSON progress lines in default output.
+    }
+  }
+  const finalText = chunks.join("").trim();
+  return finalText || null;
+}
+
+function parseOpenCodePlainOutput(stdout: string): string | null {
+  const cleaned = cleanOpenCodeStatusOutput(stdout);
+  if (!cleaned) {
+    return null;
+  }
+  const meaningfulLines = cleaned
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (meaningfulLines.length > 0 && meaningfulLines.every((line) => line.startsWith("{"))) {
+    return null;
+  }
+  const jsonText = parseOpenCodeJsonOutput(cleaned);
+  return jsonText ?? cleaned;
+}
+
+function collectOpenCodeJsonErrors(stdout: string): string | null {
+  const errors: string[] = [];
+  for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      const record = JSON.parse(trimmed) as Record<string, unknown>;
+      if (record.type !== "error" || !record.error || typeof record.error !== "object") {
+        continue;
+      }
+      const error = record.error as Record<string, unknown>;
+      const data = error.data && typeof error.data === "object"
+        ? error.data as Record<string, unknown>
+        : {};
+      const details = collectOpenCodeProviderErrorDetails(error, data);
+      if (details.length > 0) {
+        pushUniqueText(errors, details.join("\n"));
+      } else {
+        pushUniqueText(errors, readStringProperty(error, ["message", "name"]));
+      }
+    } catch {
+      // Ignore non-JSON progress lines in default output.
+    }
+  }
+
+  return errors.join("\n").trim() || null;
+}
+
+export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCodeRunOutput {
+  const finalText = parseOpenCodeJsonOutput(stdout) ?? parseOpenCodePlainOutput(stdout);
+  const stderrErrorText = cleanOpenCodeStatusOutput(stderr);
+  const jsonErrorText = collectOpenCodeJsonErrors(stdout);
+  const statusText = stripAnsi(stderr)
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => OPENCODE_STATUS_LINE_PATTERN.test(line))
+    .join("\n")
+    .trim();
+
+  return {
+    finalText,
+    errorText: combineOpenCodeErrorText(jsonErrorText, stderrErrorText),
+    statusText: statusText || null,
+  };
+}
+
+export function buildOpenCodeRunFailureMessage(
+  output: OpenCodeRunOutput,
+  fallbackMessage: string,
+  options: OpenCodeFailureMessageOptions = {},
+): string {
+  if (output.errorText) {
+    return output.errorText;
+  }
+  if (output.statusText) {
+    return options.missingFinalOutputWithStatusMessage?.(output.statusText)
+      ?? `OpenCode exited successfully, but did not return an assistant answer. Last status: ${output.statusText}`;
+  }
+  return fallbackMessage || options.missingFinalOutputMessage
+    || "OpenCode exited without returning an assistant answer or a provider error. Check the OpenCode provider/model config or run `opencode run --format json` to verify it.";
+}
+
 export function buildCliArgs(
   cli: CliName,
   options: RunStreamOptions = {},
@@ -117,7 +376,9 @@ export function buildCliArgs(
     ? getThinkingArgs(cli, options.thinkingMode)
     : [];
   const sessionId = options.sessionId ?? null;
-  let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model);
+  let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model, {
+    openCodeConfigContent: options.openCodeConfigContent,
+  });
   if (cli === "codex" && !sharedArgs.includes("--skip-git-repo-check")) {
     sharedArgs = [...sharedArgs, "--skip-git-repo-check"];
   }
@@ -134,15 +395,12 @@ export function buildCliArgs(
     }
   }
 
-  if (cli === "gemini") {
-    const sessionArgs = sessionId && !sessionId.startsWith(LOCAL_SESSION_PREFIX)
-      ? [...sharedArgs, "--resume", sessionId]
-      : sharedArgs;
-    return ensureGeminiHeadlessArgs(sessionArgs, prompt);
-  }
-
   if (prompt === undefined || prompt === "") {
     return sharedArgs;
+  }
+
+  if (cli === "opencode") {
+    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt);
   }
 
   if (sessionId) {
@@ -158,19 +416,32 @@ export function buildProcessLabel(cli: CliName, sessionId?: string | null): stri
 }
 
 function buildSessionArgs(
-  cli: CliName,
+  _cli: CliName,
   sharedArgs: string[],
-  sessionId: string,
+  _sessionId: string,
   prompt: string
 ): string[] {
-  if (cli === "gemini" && !sessionId.startsWith(LOCAL_SESSION_PREFIX)) {
-    return [...sharedArgs, "--resume", sessionId, prompt];
-  }
   return [...sharedArgs, prompt];
 }
 
 function buildPromptArgs(_cli: CliName, sharedArgs: string[], prompt: string): string[] {
   return [...sharedArgs, prompt];
+}
+
+function buildOpenCodeRunArgs(
+  sharedArgs: string[],
+  sessionId: string | null,
+  prompt: string
+): string[] {
+  const hasRunSubcommand = sharedArgs[0] === "run";
+  const runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
+  if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
+    runArgs.splice(1, 0, "--format", "json");
+  }
+  if (sessionId && !runArgs.includes("--session") && !runArgs.includes("-s")) {
+    return [...runArgs, "--session", sessionId, prompt];
+  }
+  return [...runArgs, prompt];
 }
 
 function buildShellCommandLine(command: string, args: string[]): string {

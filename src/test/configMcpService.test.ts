@@ -4,12 +4,12 @@ import assert = require("node:assert/strict");
 import {
   buildClaudeMcpInstallArgs,
   buildCodexMcpInstallArgs,
-  buildGeminiMcpInstallArgs,
+  buildOpenCodeMcpInstallArgs,
   parseCodexMcpServerIds,
 } from "../config/mcpInstallArgs";
 import {
   parseClaudeMcpHealthOutput,
-  parseGeminiMcpHealthOutput,
+  parseGeminiMcpHealthOutput as parseLegacyGeminiMcpHealthOutput,
   parseInstalledCodexMcpServer,
 } from "../config/mcpHealth";
 import { McpMarketplaceItem } from "../config/types";
@@ -80,7 +80,7 @@ test("builds Codex HTTP install args with bearer token env var", () => {
   ]);
 });
 
-test("builds Claude and Gemini install args without executing CLIs", () => {
+test("builds Claude and OpenCode install args without executing CLIs", () => {
   const httpItem = createMarketplaceItem({
     config: {
       type: "sse",
@@ -102,7 +102,7 @@ test("builds Claude and Gemini install args without executing CLIs", () => {
     "Authorization: Bearer ${MCP_TOKEN}",
     "https://mcp.example.test/sse",
   ]);
-  assert.deepEqual(buildGeminiMcpInstallArgs(stdioItem, {
+  assert.deepEqual(buildOpenCodeMcpInstallArgs(stdioItem, {
     ACTIVE_TOKEN: "runtime-token",
   }).commandArgs, [
     "mcp",
@@ -188,7 +188,7 @@ test("normalizes installed Codex MCP server transports", () => {
   });
 });
 
-test("parses Claude and Gemini MCP health output", () => {
+test("parses Claude MCP health output and legacy OpenCode-compatible health format", () => {
   const claude = parseClaudeMcpHealthOutput([
     "\u001B[32mcontext7: npx - Connected\u001B[0m",
     "broken: npx - Failed to connect",
@@ -196,10 +196,10 @@ test("parses Claude and Gemini MCP health output", () => {
   assert.equal(claude.get("context7")?.status, "healthy");
   assert.equal(claude.get("broken")?.status, "unhealthy");
 
-  const gemini = parseGeminiMcpHealthOutput([
+  const legacyOpenCode = parseLegacyGeminiMcpHealthOutput([
     "✓ context7: npx - Connected",
     "✗ broken: npx - Timeout",
   ].join("\n"));
-  assert.equal(gemini.get("context7")?.status, "healthy");
-  assert.equal(gemini.get("broken")?.status, "unhealthy");
+  assert.equal(legacyOpenCode.get("context7")?.status, "healthy");
+  assert.equal(legacyOpenCode.get("broken")?.status, "unhealthy");
 });

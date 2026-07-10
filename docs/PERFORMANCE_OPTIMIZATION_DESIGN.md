@@ -2,7 +2,7 @@
 
 ## 1. 背景与目标
 
-本设计面向 `sinitek-cli-tools` VS Code 插件的后续性能优化实施。插件当前在 VS Code 内提供 AI 对话面板，统一接入本地 `codex`、`claude`、`gemini` 等 CLI，并承担配置中心、会话管理、Loop 多智能体任务、本地日志与状态持久化等职责。根据本轮静态调研，当前性能风险主要集中在启动激活、Webview 渲染、CLI 流处理、本地 JSON 存储和 Loop 任务目录扫描等路径。
+本设计面向 `sinitek-cli-tools` VS Code 插件的后续性能优化实施。插件当前在 VS Code 内提供 AI 对话面板，统一接入本地 `codex`、`claude`、`opencode` 等 CLI，并承担配置中心、会话管理、Loop 多智能体任务、本地日志与状态持久化等职责。根据本轮静态调研，当前性能风险主要集中在启动激活、Webview 渲染、CLI 流处理、本地 JSON 存储和 Loop 任务目录扫描等路径。
 
 本文档的目标是：
 
@@ -117,7 +117,7 @@
 - 证据文件路径：
   - `src/webview/viewContentScript/runStreamAndQueue.ts`：`renderRunStreamRecord()` 渲染单条记录，`renderRunStream()` 清空 `runStreamContent.innerHTML` 后重新 append 全部记录。
   - 同文件 `formatRunStreamExpandedContent()` 会对 JSON 内容尝试 parse/pretty print。
-- 触发场景：CLI stdout/stderr event 流较细，用户打开运行流浮层，Codex/Claude/Gemini 输出大量 trace 或原始 JSON。
+- 触发场景：CLI stdout/stderr event 流较细，用户打开运行流浮层，Codex/Claude/OpenCode 输出大量 trace 或原始 JSON。
 - 性能影响：每条新 chunk 触发全量重绘会产生 O(n²) 累积成本；大 JSON 频繁 pretty print 会增加 Webview 主线程 CPU。
 - 建议设计：
   - 将 Run Stream 记录改为 append-only DOM 更新，保存 `recordId -> node`。
@@ -168,7 +168,7 @@
   - `src/logger.ts`：`logCliInteractiveOutput()` 每段流内容都会写日志；`appendToSegmentedLog()` 每次写入前通过 `resolveSegmentedLogPath()` 读取日志目录并 stat 最新 segment。
   - `src/interactive/codexRunner.ts`：Codex app-server runner 使用 `stderrChunks: Buffer[]` 累积 stderr；`assistantBuffers` 与 `emittedTraceContents` 按 item 缓冲内容。
   - `src/cli/commandRunner.ts`：一次性 `runCliStream()` 将 stdout/stderr data 直接传给 handler，进程关闭策略与 interactive runner 分叉。
-- 触发场景：debug logging 开启、长 Codex/Claude/Gemini 任务、trace/tool/event 大量输出、多个 Loop 子任务并发运行。
+- 触发场景：debug logging 开启、长 Codex/Claude/OpenCode 任务、trace/tool/event 大量输出、多个 Loop 子任务并发运行。
 - 性能影响：Extension Host heap 随长 stdout/stderr 和 stderrChunks 线性增长；每 chunk 写 debug 日志可能造成目录扫描和 append 队列积压；Webview 消息量高时增加前端渲染压力。
 - 建议设计：
   - 引入 `BoundedTextBuffer` / `BoundedBufferCollector`，默认保留 tail 和总字节数，不在内存中无上限保留完整 raw stdout/stderr。
@@ -338,7 +338,7 @@
 
 - `npm run build` 或项目现有 TypeScript 编译命令。
 - 与修改模块就近的单元测试或新增 fixture 测试。
-- 手工 Extension Host 验证：启动、打开聊天面板、打开配置中心、运行一次 Codex/Claude/Gemini、运行 Loop 群聊面板。
+- 手工 Extension Host 验证：启动、打开聊天面板、打开配置中心、运行一次 Codex/Claude/OpenCode、运行 Loop 群聊面板。
 
 本文档阶段未修改源码，因此不要求运行 build。
 

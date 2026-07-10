@@ -5,10 +5,16 @@ import { spawn } from "cross-spawn";
 import { getCliCommand } from "../cli/config";
 import { CliName } from "../cli/types";
 import { ConfigPlatform, CodexMcpHealthItem, CodexMcpInstallResult, McpHealthItem, McpMarketplaceItem } from "./types";
-import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, buildGeminiMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
-import { parseClaudeMcpHealthOutput, parseGeminiMcpHealthOutput, parseInstalledCodexMcpServer, probeInstalledCodexMcpServer } from "./mcpHealth";
+import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, buildOpenCodeMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
+import {
+  parseClaudeMcpHealthOutput,
+  parseGeminiMcpHealthOutput as parseLegacyGeminiMcpHealthOutput,
+  parseInstalledCodexMcpServer,
+  probeInstalledCodexMcpServer,
+} from "./mcpHealth";
 
 const CODEX_MCP_COMMAND_TIMEOUT_MS = 120000;
+const OPENCODE_CLI = "opencode" as CliName;
 
 export type CodexRunResult = {
   stdout: string;
@@ -207,32 +213,11 @@ async function runClaudeCommand(
   return runConfiguredCliCommand("claude", args, timeoutMs);
 }
 
-async function runGeminiCommand(
+async function runOpenCodeCommand(
   args: string[],
   timeoutMs = CODEX_MCP_COMMAND_TIMEOUT_MS,
 ): Promise<CodexRunResult> {
-  try {
-    return await runConfiguredCliCommand("gemini", args, timeoutMs);
-  } catch (error) {
-    const geminiEntry = path.join(
-      os.homedir(),
-      ".npm-global",
-      "lib",
-      "node_modules",
-      "@google",
-      "gemini-cli",
-      "dist",
-      "index.js",
-    );
-    const [entryExists, node20Binary] = await Promise.all([
-      pathExists(geminiEntry),
-      findNewestNvmNodeBinary(20),
-    ]);
-    if (!entryExists || !node20Binary) {
-      throw error;
-    }
-    return runCommandParts([node20Binary, geminiEntry], args, "gemini", timeoutMs);
-  }
+  return runConfiguredCliCommand(OPENCODE_CLI, args, timeoutMs);
 }
 
 async function runCodexCommand(args: string[], timeoutMs = CODEX_MCP_COMMAND_TIMEOUT_MS): Promise<CodexRunResult> {
@@ -328,8 +313,8 @@ async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
   return true;
 }
 
-async function cleanupGeminiMcpDocument(serverId: string): Promise<boolean> {
-  const settingsPath = path.join(os.homedir(), ".gemini", "settings.json");
+async function cleanupOpenCodeMcpDocument(serverId: string): Promise<boolean> {
+  const settingsPath = path.join(os.homedir(), ".opencode", "config.json");
   const currentContent = await readTextFileIfExists(settingsPath, "{}");
   const next = removeMcpServerFromJsonText(currentContent, serverId);
   if (!next.changed) {
@@ -367,21 +352,21 @@ async function listInstalledCodexMcpServers(): Promise<CodexInstalledMcpServer[]
 }
 
 async function getCliListedMcpHealth(
-  platform: Extract<ConfigPlatform, "claude" | "gemini">,
+  platform: Extract<ConfigPlatform, "claude" | "opencode">,
 ): Promise<McpHealthItem[]> {
-  const cli = platform === "claude" ? "claude" : "gemini";
+  const cli = platform === "claude" ? "claude" : OPENCODE_CLI;
   const checkedAt = new Date().toISOString();
   const marketplace = await getMcpMarketplaceList();
 
   let listedById = new Map<string, Omit<McpHealthItem, "platform" | "serverId" | "installed" | "checkedAt">>();
   try {
-    const { stdout, stderr } = platform === "gemini"
-      ? await runGeminiCommand(["mcp", "list"])
+    const { stdout, stderr } = platform === "opencode"
+      ? await runOpenCodeCommand(["mcp", "list"])
       : await runConfiguredCliCommand(cli, ["mcp", "list"]);
     const rawOutput = [stdout, stderr].filter((item) => item.trim().length > 0).join("\n");
     listedById = platform === "claude"
       ? parseClaudeMcpHealthOutput(rawOutput)
-      : parseGeminiMcpHealthOutput(rawOutput);
+      : parseLegacyGeminiMcpHealthOutput(rawOutput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return marketplace.map((item) => ({
@@ -495,7 +480,7 @@ export async function getMcpHealth(platform: ConfigPlatform): Promise<McpHealthI
   if (platform === "claude") {
     return getCliListedMcpHealth("claude");
   }
-  return getCliListedMcpHealth("gemini");
+  return getCliListedMcpHealth("opencode");
 }
 
 export async function installCodexMcpServer(mcpId: string): Promise<CodexMcpInstallResult> {
@@ -537,12 +522,12 @@ export async function installMcpServer(
 
   const { commandArgs, warnings } = platform === "claude"
     ? buildClaudeMcpInstallArgs(item, envOverrides)
-    : buildGeminiMcpInstallArgs(item, envOverrides);
+    : buildOpenCodeMcpInstallArgs(item, envOverrides);
 
   if (platform === "claude") {
     await runClaudeCommand(commandArgs);
   } else {
-    await runGeminiCommand(commandArgs);
+    await runOpenCodeCommand(commandArgs);
   }
 
   return {
@@ -567,7 +552,7 @@ export async function uninstallMcpServer(
     } else if (platform === "claude") {
       await runClaudeCommand(["mcp", "remove", "--scope", "user", mcpId]);
     } else {
-      await runGeminiCommand(["mcp", "remove", "--scope", "user", mcpId]);
+      await runOpenCodeCommand(["mcp", "remove", "--scope", "user", mcpId]);
     }
   } catch (error) {
     commandError = error instanceof Error ? error : new Error(String(error));
@@ -577,7 +562,7 @@ export async function uninstallMcpServer(
     ? await cleanupCodexMcpDocument(mcpId)
     : platform === "claude"
       ? await cleanupClaudeMcpDocument(mcpId)
-      : await cleanupGeminiMcpDocument(mcpId);
+      : await cleanupOpenCodeMcpDocument(mcpId);
 
   if (commandError && !documentChanged) {
     throw commandError;

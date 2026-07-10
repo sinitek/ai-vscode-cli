@@ -6,30 +6,31 @@
 
 ## 背景
 
-当前 VS Code 插件内置了 Claude、Codex、Gemini 三组官方 skills/extensions 的归档快照与 catalog。用户要求：
+当前 VS Code 插件内置官方 skills/extensions 的当前支持口径已调整为 Claude、Codex、OpenCode：Claude / Codex 保留官方归档快照与 catalog，OpenCode 官方 catalog 暂无可靠上游来源时保持空平台占位。Gemini 已从当前支持平台移除，仅保留历史审计路径。用户要求：
 
-1. 核验三组官方来源是否已有新版本或新条目需要纳入。
+1. 核验当前官方来源是否已有新版本或新条目需要纳入。
 2. 为每个 skill/extension 记录明确的版本号或可替代版本标识。
 3. 修复当前“是否最新”判断疑似不准确的问题。
 
 现有事实来源表明：
 
-- 2026-06-01 仓库曾刷新过 Claude / Codex 内置 zip，Gemini 默认沿用已验证快照。
+- 2026-06-01 仓库曾刷新过 Claude / Codex 内置 zip；Gemini 历史快照不再作为当前支持目标。
+- 2026-07-08 round-2 `official-skills-opencode` 已将当前 catalog 口径迁移为 Claude / Codex / OpenCode；OpenCode 官方 catalog 当前明确为空/待接入。
 - `media/official_skills_catalog.json` 当前依赖 `sourceRef` 判断上游变化，但该字段可能只有仓库级粒度，未必能可靠表达每个 skill 的具体版本。
-- 上游是否提供显式语义版本号，需要分别对 Claude、Codex、Gemini 做事实核验与字段审计。
+- 上游是否提供显式语义版本号，需要分别对 Claude、Codex、OpenCode 做事实核验与字段审计；OpenCode 无可靠上游来源时继续保持空占位，不编造官方条目。
 
 本计划用于后续轮次协作，先固定范围、阶段、验收标准与风险，再由并行审计子任务回填事实。
 
 ## 目标
 
-1. 形成一套可落地的官方 skills/extensions 刷新方案，覆盖 Claude / Codex / Gemini 三组来源。
+1. 形成一套可落地的官方 skills/extensions 刷新方案，覆盖 Claude / Codex / OpenCode 当前支持口径。
 2. 为每个 skill/extension 建立可展示、可比较、可回溯的版本记录字段。
 3. 修复内置 catalog、已安装 metadata、配置页状态判断之间的“是否最新”判定链路，使结果准确且可解释。
 4. 完成必要的测试与文档同步，确保后续维护者可以重复执行同一刷新流程。
 
 ## 范围
 
-- 核验三组官方上游来源、目录结构、版本字段、ref 粒度与本地快照差异。
+- 核验当前支持平台的官方上游来源、目录结构、版本字段、ref 粒度与本地快照差异。
 - 刷新官方 catalog 与对应 zip 归档（仅在审计确认后实施）。
 - 设计并落地每个 skill/extension 的版本列表或版本字段方案。
 - 修复“是否最新”判断逻辑，包括 catalog schema、安装 metadata、UI 展示与状态计算。
@@ -38,13 +39,13 @@
 ## 非目标
 
 - 本轮计划阶段不直接修改共享 catalog、zip 或业务代码。
-- 不引入新的技能来源平台；仅处理现有官方 Claude / Codex / Gemini 分组。
+- 不引入本计划以外的技能来源平台；当前仅处理 Claude / Codex / OpenCode 分组。
 - 不做与官方 skills 管理无关的 UI 重构、插件架构调整或技术栈替换。
 - 不在未核验前假设上游存在统一语义版本号。
 
 ## 验收标准
 
-- [x] 已完成 Claude / Codex / Gemini 三组上游核验，产出差异清单与版本字段审计结论。
+- [x] 已完成 Claude / Codex / OpenCode 当前口径核验；OpenCode 官方 catalog 暂无可靠上游来源时保持空占位。
 - [x] 已确认并实现每个 skill/extension 的版本记录方案，能够生成或维护可枚举的版本列表。
 - [x] `media/official_skills_catalog.json` 及相关 schema 支持准确表达版本、来源与比较依据，且 description 保持中文。
 - [x] 配置页或相关状态展示能准确判断 installed / update-available / unknown-source，不再仅依赖不可靠的粗粒度 ref。
@@ -83,7 +84,7 @@
 ## 验证计划
 
 - 最小相关验证：
-  - 审核三组上游来源与本地 catalog/zip 是否一致。
+  - 审核当前支持平台的上游来源与本地 catalog/zip 是否一致。
   - 核验 catalog schema 是否能表达每个条目的版本与来源比较依据。
   - 验证 installed metadata 与 catalog 之间的状态计算样例。
 - 扩展验证：
@@ -106,7 +107,7 @@
 
 - [x] 阶段 1：建立执行计划，锁定背景、目标、范围、阶段和验收标准。
 - [x] 阶段 2：上游核验与版本字段审计。
-  - 覆盖 Claude / Codex / Gemini 三组官方来源。
+  - 覆盖 Claude / Codex / OpenCode 当前官方口径。
   - 明确本地条目数、上游条目数、差异清单、显式 version 字段可用性。
   - 给出“每个 skill 版本号”推荐来源与优先级。
 - [x] 阶段 3：catalog / zip 刷新方案与产物更新。
@@ -130,23 +131,23 @@
 - 2026-06-27：先创建执行计划，不直接改 catalog 或业务代码；等待并行审计子任务提供三组上游核验与状态判断审计结论。
 - 2026-06-27：计划默认把“每个 skill 版本号记录”解释为“优先语义版本号，缺失时使用可稳定比较的替代版本标识”，避免被单一字段模型卡住。
 - 2026-06-27：第一阶段必须先完成上游核验与版本字段审计，再进入 catalog/zip 刷新与状态判断修复。
-- 2026-06-27：官方最新判断口径固定为“优先比较 per-item `contentHash`，缺失时才回退 `sourceRef`”；Claude / Codex 使用短 `contentHash` 作为可见版本，Gemini 优先使用 manifest `version`。
-- 2026-06-27：`gemini:firebase` 正式迁移到 `firebase/agent-skills`，并把 `gemini-cli-extensions/firebase`、`firebase/skills` 视为历史别名，不再作为 catalog canonical 来源。
+- 2026-06-27 历史 Gemini 记录（已移除）：当时的官方最新判断口径固定为“优先比较 per-item `contentHash`，缺失时才回退 `sourceRef`”；Claude / Codex 使用短 `contentHash` 作为可见版本，已移除的历史 Gemini catalog 当时优先使用 manifest `version`。
+- 2026-06-27 历史 Gemini 记录（已移除）：当时 `gemini:firebase` 迁移到 `firebase/agent-skills`，并把 `gemini-cli-extensions/firebase`、`firebase/skills` 视为历史别名；该记录仅用于审计历史 catalog，不代表当前支持平台或当前 canonical 来源。
 
 ## 当前结论
 
-当前已完成本轮刷新、版本字段落库与文档同步，结果如下：
+当前已完成本轮刷新、版本字段落库与文档同步。当前支持平台仅为 Claude / Codex / OpenCode；以下 Gemini 内容均为已移除历史 catalog 的审计记录，不代表当前支持目标。
 
-1. `media/official_skills_catalog.json` 已刷新到 `2026-06-27T12:34:44Z`，计数为 Claude 17、Codex 39、Gemini 40。
+1. `media/official_skills_catalog.json` 已刷新到 `2026-06-27T12:34:44Z`；当前支持口径覆盖 Claude 17、Codex 39，历史 Gemini 记录（已移除）当时计数为 40。
 2. 所有 catalog 条目都已落 `version`、`versionSource`、`contentHash`；`sourceCommit` 对多数条目已落库。
 3. 代表性变化已落地：
    - Claude：`claude-api`、`frontend-design` 的 `sourceRef` 与 `contentHash` 已更新。
    - Codex：`openai-docs` 已刷新到新的 `sourceRef` / `contentHash`。
-   - Gemini：至少 `alloydb`、`google-workspace` 等条目已升级 manifest `version`；`gemini:firebase` 已切换到 `firebase/agent-skills`，当前版本 `1.0.0`。
-4. 本轮 Gemini 刷新摘要为 `tarball=38`、`git=1`、`reused=1`。其中 `gemini-cli-extensions/security` 因 tarball 与 shallow clone 都超时，暂时复用了仓库内现有 zip；16 个 Gemini 条目因 `git ls-remote` 超时缺少 `sourceCommit`，但 `version` / `contentHash` 已正常落库。
+   - 历史 Gemini 记录（已移除）：当时至少 `alloydb`、`google-workspace` 等条目已升级 manifest `version`；历史 `gemini:firebase` 当时切换到 `firebase/agent-skills`，版本 `1.0.0`。
+4. 历史 Gemini 记录（已移除）的当轮刷新摘要为 `tarball=38`、`git=1`、`reused=1`。其中 `gemini-cli-extensions/security` 因 tarball 与 shallow clone 都超时，暂时复用了仓库内既有 zip；16 个历史 Gemini 条目因 `git ls-remote` 超时缺少 `sourceCommit`，但 `version` / `contentHash` 已正常落库。该摘要仅用于历史审计。
 5. 事实来源文档与功能清单已同步，明确记录版本展示、`contentHash` 判断规则和 `firebase` canonical 来源。
 
 剩余风险：
 
-- 少数 Gemini 仓库的 `sourceCommit` 仍为空，后续若要补齐，只需在网络稳定时重跑刷新脚本。
-- `gemini-cli-extensions/security` 本轮未拿到新上游快照，主任务复核时应保留这一条风险说明。
+- 历史 Gemini 记录（已移除）中少数仓库的 `sourceCommit` 仍为空；如未来仅为历史审计补齐，可在网络稳定时重跑显式 legacy 审计路径，不应恢复为当前支持平台。
+- 历史 Gemini 记录（已移除）里的 `gemini-cli-extensions/security` 当轮未拿到新上游快照，主任务复核时仅保留为历史审计风险说明。

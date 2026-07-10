@@ -112,42 +112,42 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         selectedModelsByCli: {
           codex: "",
           claude: "",
-          gemini: "",
+          opencode: "",
         },
         selectedLobsterMainModelsByCli: {
           codex: "",
           claude: "",
-          gemini: "",
+          opencode: "",
         },
         selectedLobsterSubtaskModelsByCli: {
           codex: "",
           claude: "",
-          gemini: "",
+          opencode: "",
         },
         modelsByCli: {
           codex: [],
           claude: [],
-          gemini: [],
+          opencode: [],
         },
         lobsterMainModelsByCli: {
           codex: [],
           claude: [],
-          gemini: [],
+          opencode: [],
         },
         lobsterSubtaskModelsByCli: {
           codex: [],
           claude: [],
-          gemini: [],
+          opencode: [],
         },
         managedModelsByCli: {
           codex: [],
           claude: [],
-          gemini: [],
+          opencode: [],
         },
         managedModelRolesByCli: {
           codex: {},
           claude: {},
-          gemini: {},
+          opencode: {},
         },
         autoAppliedConfig: false,
         sessionState: {
@@ -171,7 +171,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         lobsterExecutionModeByCli: {
           codex: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
           claude: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-          gemini: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+          opencode: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
         },
         locale: "auto",
         isMac: false,
@@ -290,7 +290,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulesInput: document.getElementById("rulesInput"),
         rulesSaveCodex: document.getElementById("rulesSaveCodex"),
         rulesSaveClaude: document.getElementById("rulesSaveClaude"),
-        rulesSaveGemini: document.getElementById("rulesSaveGemini"),
+        rulesSaveOpenCode: document.getElementById("rulesSaveOpenCode"),
         saveRules: document.getElementById("saveRules"),
         rulesHint: document.getElementById("rulesHint"),
         rulesPath: document.getElementById("rulesPath"),

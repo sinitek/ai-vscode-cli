@@ -8,26 +8,27 @@
 | --- | --- | --- | --- |
 | Codex | 交互式 + 一次性 | 支持 | `src/interactive/codexRunner.ts`、`src/cli/commandRunner.ts` |
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
-| Gemini | 一次性 headless stream-json | 复用 CLI `--resume` 参数，不维护交互 Runner | `src/cli/commandRunner.ts`、`src/cli/geminiStreamJson.ts` |
+| OpenCode | one-shot / 并行 `opencode run [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
+| Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
 ## 2. 命令来源
 
-三个平台命令都从 VS Code 设置读取：
+当前支持平台命令都从 VS Code 设置读取：
 
 - `sinitek-cli-tools.commands.codex`
 - `sinitek-cli-tools.commands.claude`
-- `sinitek-cli-tools.commands.gemini`
+- `sinitek-cli-tools.commands.opencode`
 
 参数来源：
 
 - `sinitek-cli-tools.args.codex`
 - `sinitek-cli-tools.args.claude`
-- `sinitek-cli-tools.args.gemini`
+- `sinitek-cli-tools.args.opencode`
 
 命令解析逻辑集中在 `src/cli/commandRunner.ts`：
 
 - 支持绝对路径、PATH 查找
-- Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低旧 Homebrew CLI 抢占 `gemini` 命令的概率
+- Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低用户级 CLI 命令被系统路径中旧版本抢占的概率
 - Windows 下额外尝试 npm 全局安装目录
 - macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
 
@@ -43,7 +44,7 @@
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前对 Codex / Claude / Gemini 生效
+- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
@@ -67,16 +68,26 @@
 - 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
 - Claude 交互 Runner 的任务列表除了兼容 `TodoWrite` 外，还会从 `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskStop` 工具调用及结果中归一化出 `{ text, done }`，供 AI 对话面板实时展示
 
+### OpenCode
+
+- OpenCode 是 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、统一会话存档和统一配置读取接入
+- 命令与参数读取 `sinitek-cli-tools.commands.opencode` / `sinitek-cli-tools.args.opencode`
+- one-shot / 并行任务当前通过 `opencode run --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional，并从 JSON 事件中提取 assistant 文本生成最终结论气泡
+- OpenCode 进程非零退出时也必须解析 stdout JSON `error` 事件；若事件中存在 `APIError` / `UnknownError`、HTTP status、provider message、server `ref`、`responseBody.error.code` 或请求 URL，错误气泡优先展示这些 provider/API 详情，仅在没有可解析错误时才回退 `CLI 退出码`
+- OpenCode one-shot 单次尝试启动后若长时间没有 stdout/stderr 输出，会按 OpenCode 空输出超时错误收口并进入 hidden retry；hidden retry 最终耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志，不允许只留下 trace 或运行态
+- OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务会先应用激活的 `config.json`，再进入 `src/cli/commandRunner.ts` 的 `opencode run` 子进程路径，避免误触发 `interactive-runner-unsupported:opencode`
+- OpenCode 配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前配置来源
+- 配置示例使用 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、可选 `small_model`、`provider`、`mcp`。配置页展示的是明确标注的 OpenAI-compatible 网关范例，provider 名称保持 `myAPI`，模型 id 使用中性网关占位名，避免把模型品牌误解为适配器选择依据。
+- `provider.<id>.npm` 选择的是 API 协议适配器，不是模型品牌。直接使用 OpenCode 内置 Anthropic / Google / OpenAI provider 时，通常通过 `/connect` 鉴权并使用 `anthropic/...`、`google/...`、`openai/...`，无需自定义 `npm`；需要手写自定义直连 provider 时，对应适配器分别是 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`。只有请求实际 OpenAI-compatible endpoint 的自定义网关使用 `@ai-sdk/openai-compatible`；即使该网关承载 Claude、Gemini、DeepSeek 等模型，也仍按网关协议使用该适配器。
+- OpenAI-compatible 自定义 provider 必须配置 `options.baseURL` 并指向实际兼容 API endpoint；缺少 `baseURL` 会在保存/运行前阻断，未以常见 `/v1` 结尾会继续给出校验提示。`model` / `small_model` 仍应使用 `provider/真实模型 id`；`models.<id>.name` 仅作为展示元数据，不能依赖它把占位 alias 改写成真实模型名。
+- OpenCode 自定义 provider 下，UI 托管模型若保存为裸模型 id（例如 `gpt-5.5`），运行时必须按已生效 `config.json` 顶层 `model=provider/model` 和 `provider.<id>.models` 规范化为 `provider/model` 后再传给 `opencode run --model`；若裸模型不在 active provider 的 `models` 中，应直接显示配置/模型不匹配诊断，不能用裸 `--model` 覆盖配置默认值。
+- OpenCode 运行前会做配置 preflight：阻止 `myprovider`、`my-model-name`、`my-small-model-name`、配置页范例中的 `gateway-chat-model` / `gateway-small-model`、示例 baseURL、OpenAI-compatible provider 缺少 `baseURL` 等未完成配置；OpenAI-compatible baseURL 缺少常见 `/v1` 会作为提示暴露，避免把范例直接当成真实配置运行。
+- 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
+
 ### Gemini
 
-- 当前不维护交互 Runner
-- 插件默认参数推荐使用 `--approval-mode auto_edit`；若用户显式改写 `sinitek-cli-tools.args.gemini`，则以用户配置为准
-- 插件侧 one-shot / parallel 调用会自动补齐 Gemini headless 参数：`-p <prompt>`
-- 若用户未显式配置 `--output-format`，插件会追加 `--output-format stream-json`，并按 JSONL 事件解析 assistant delta、`init.session_id`、`result.status` 与错误事件
-- 若用户已在参数中显式配置 `-p` / `--prompt` 或 `--output-format`，插件不会重复插入对应参数，保持用户配置优先
-- session 续接仍复用 Gemini CLI 的 `--resume <sessionId>` 参数；扩展侧不维护类似 Codex app-server 的 Gemini 交互 Runner
-- 面板“常用命令 -> 压缩上下文”在 Gemini 下会直接复用当前 `sessionId` 调用官方 `/compress` 命令，继续走现有 headless `stream-json` 链路；“执行后自动压缩上下文”开启后，Gemini 也会在已有会话任务成功结束且执行超过 5 分钟后自动执行一次 `/compress`
-- 会参与统一 UI、统一会话存档和统一配置读取
+- Gemini 已从当前 AI 对话和配置中心支持范围移除
+- 旧版 Gemini headless / stream-json 事实只作为历史迁移参考，不再作为当前支持 CLI 的验收口径
 
 ## 3.5 工具设置存储
 
@@ -86,7 +97,7 @@
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。
 - 骨架安装成功后，扩展会二次弹窗询问是否初始化 `ARCHITECTURE.md`；用户确认后，扩展侧把当前 AI 对话切到 `coding` 模式，并通过现有 `runPrompt` 链路复用当前 CLI 分组、配置和模型发起架构分析任务。用户取消时不影响 harness 开关保存或 CodeGraph 初始化。
-- 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / Gemini 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。
+- 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。
 - 长期记忆热区位于当前工作区 `.ch/docs/memory/`，generated recall 产物位于 `.ch/docs/generated/memory-index/`。插件侧踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。运行总结或失败回复中出现明确失败、阻塞、回滚、踩坑等信号，并伴随根因、规避或验证线索时，运行时可写入结构化坑点条目；这些条目会进入 generated recall 和 prompt 注入。该写入同样受长期记忆总开关限制。
 - 自动提取还有二级条件：`memoryAutoExtractAfterCompact` 只允许 compact 成功后的提取，`memoryAutoExtractAfterLobsterTask` 只允许 Loop 任务完成后的提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许新增或更新当前工作区 `.ch/docs/memory/` 与相关 generated recall。
 - 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主
@@ -99,7 +110,7 @@
 
 - Codex：映射到 reasoning effort / 相关参数
 - Claude：优先映射到 Claude Code `--effort`；旧版本兼容回退到 `maxThinkingTokens` 和 SDK 选项
-- Gemini：继续走 CLI 参数拼装；one-shot 场景默认使用 `-p` 与 `--output-format stream-json`
+- OpenCode：按插件通用 CLI 参数拼装接入；当前通过 `opencode run` one-shot / 并行路径执行，不声明交互 Runner 支持
 
 ### interactive mode
 
@@ -115,7 +126,7 @@ Loop 内部执行方式事实：
 - 共识汇总器读取 `brief.md`、完整 `chat.md` 与所有动态参与者最终 artifact，生成 `cross-review.md`、`consensus.md` 和纯 JSON `decision.json`。恢复 `debate_multi_agent` 任务时，若当前轮已有完整有效的 `chat.md`（含参与者加入、裁判主持人控场与 `## 群聊收束` 标记）、`decision.json`、`consensus.md` 和动态参与者最终 artifact，且共识校验允许继续，运行时优先复用 `decision.json`，再交给现有 `applyLobsterMainDecision`。如果旧产物缺少裁判主持人控场、`chat.md` 或收束标记、产物缺失或不可解析，会重跑当前辩论轮；如果已有共识显示未解决阻塞，则进入 `needs-review`。
 - 缺少或无法写入 `brief.md` / `chat.md`、裁判主持人红蓝参与者清单缺失或非法、任一群聊发言 artifact 缺失、裁判主持人 artifact 缺失或无法解析、最终参与者 artifact 缺失或立场不可解析、裁判主持人输出 `block`、共识后的最终参与者立场仍为 `block`、未解决 `blocking` disagreement、缺少 `cross-review.md`、`consensus.md` 不含合法共识 JSON、`decision.json` 非法、或 `status=continue` 但无合法 `subtasks` 时，运行时不派发子任务，清空 activeSubtask 字段，把任务更新为 `needs-review`，并向主 tab 系统消息和 `main-task.md` 记录原因。若 `consensus.md` 已达成但仍包含未解决阻塞，主 tab 和 `main-task.md` 应按“红蓝对抗达成阻塞共识”记录，并同步共识摘要、`decision.finalSummary` 和 `decision.estimatedRemainingRounds`，避免沿用上一轮剩余轮次造成误判。参与者 artifact 的原始 `block` 可由下一轮裁判主持人追问、蓝队修正或共识汇总器通过 `resolvedDisagreements`、前置子任务、验收标准或风险说明解决；运行时以 `consensus.md` 中的最终 `participantStances` 和 `openDisagreements` 做派发判定，缺失的 participant stance 才用 artifact stance 补齐。
 
-运行结束判定补充：普通任务只有在本轮用户消息之后产生非 thinking 的 assistant 最终结论气泡，才会按成功完成收口；Codex 交互任务必须看到 app-server `phase:"final_answer"` 并在消息上标记 `codexFinalAnswer=true`，`phase:"commentary"` 只作为过程消息，不算最终结论。如果 CLI 已成功退出但没有该气泡，扩展会隐式发送“继续”重试，重试上限沿用统一 hidden retry 配置。每次失败进入下一轮前会先展示错误 trace 和“第 X/Y 次自动重试将在 N 秒/分钟后开始”的系统提示；等待结束真正开始该次重试时，还会再展示“第 X/Y 次自动重试已开始”，并把对应标签从等待重试错误态恢复为运行态。Loop 任务还要求主任务对话中同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；最终总结气泡内容会同时包含直接回答用户问题的 `answerConclusion` 和整体任务总结；若任务记录已是 `completed` 但任一完成气泡缺失，扩展会自动恢复同一任务并以“继续”重新唤醒主任务。
+运行结束判定补充：普通任务只有在本轮用户消息之后产生非 thinking 的 assistant 最终结论气泡，才会按成功完成收口；Codex 交互任务必须看到 app-server `phase:"final_answer"` 并在消息上标记 `codexFinalAnswer=true`，`phase:"commentary"` 只作为过程消息，不算最终结论。OpenCode one-shot / 并行任务会优先解析 `--format json` 的文本事件，默认格式或兼容场景下只把 stdout 正文当作最终回答，不会把 `> build · model` 这类 stderr 状态行当作 assistant 结论；若 OpenCode `code=0` 但没有返回 assistant 文本，会直接展示“OpenCode 已成功退出，但没有返回助手回答”及最后状态/错误并按错误收口，不再因泛化的“没有产生最终结论气泡”进入自动继续。OpenCode 非零退出、JSON error、空 assistant、长时间无输出超时以及 hidden retry 耗尽都必须最终追加可见 system 错误气泡并落盘；provider/API 详情优先级高于通用退出码。其它 CLI 已退出但没有该气泡时，扩展会隐式发送“继续”重试，重试上限沿用统一 hidden retry 配置。每次失败进入下一轮前会先展示错误 trace 和“第 X/Y 次自动重试将在 N 秒/分钟后开始”的系统提示；等待结束真正开始该次重试时，还会再展示“第 X/Y 次自动重试已开始”，并把对应标签从等待重试错误态恢复为运行态。Loop 任务还要求主任务对话中同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；最终总结气泡内容会同时包含直接回答用户问题的 `answerConclusion` 和整体任务总结；若任务记录已是 `completed` 但任一完成气泡缺失，扩展会自动恢复同一任务并以“继续”重新唤醒主任务。
 
 ## 5. 图片与附件
 
@@ -140,7 +151,7 @@ Loop 内部执行方式事实：
 
 如果出现 `spawn <cli> ENOENT`：
 
-1. 先用 `where codex` / `where claude` / `where gemini` 验证命令
+1. 先用 `where codex` / `where claude` / `where opencode` 验证命令
 2. 必要时把命令配置成绝对路径
 3. 修改 PATH 后重启 VS Code
 

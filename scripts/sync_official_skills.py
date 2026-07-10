@@ -20,7 +20,10 @@ MEDIA_DIR = ROOT / "media"
 OFFICIAL_SKILLS_DIR = MEDIA_DIR / "official-skills"
 CATALOG_PATH = MEDIA_DIR / "official_skills_catalog.json"
 
-PLATFORMS = ("claude", "codex", "gemini")
+ACTIVE_PLATFORMS = ("claude", "codex", "opencode")
+SYNCABLE_PLATFORMS = ("claude", "codex")
+LEGACY_GEMINI_PLATFORM = "gemini"
+PLATFORM_CHOICES = ACTIVE_PLATFORMS + (LEGACY_GEMINI_PLATFORM,)
 PLATFORM_DEFAULTS: Dict[str, Dict[str, str]] = {
     "claude": {
         "group": "example-skills",
@@ -30,9 +33,17 @@ PLATFORM_DEFAULTS: Dict[str, Dict[str, str]] = {
         "group": "curated",
         "groupDescription": "可通过官方 `$skill-installer` 工作流安装的 OpenAI curated skills。",
     },
-    "gemini": {
-        "group": "extensions",
-        "groupDescription": "Google Gemini CLI 官方 Extensions，可直接安装到 `~/.gemini/extensions`。",
+    "opencode": {
+        "group": "official",
+        "groupDescription": "OpenCode 官方 Skills catalog 尚未接入；当前无内置官方条目。",
+    },
+}
+PLATFORM_META_DEFAULTS: Dict[str, Dict[str, str]] = {
+    "opencode": {
+        "repo": "",
+        "sourceUrl": "",
+        "installRootHint": "~/.opencode/skills",
+        "notes": "OpenCode 官方 Skills catalog 尚未接入；当前不提供内置官方条目。",
     },
 }
 MANUAL_ITEM_OVERRIDES: Dict[Tuple[str, str], Dict[str, str]] = {
@@ -128,15 +139,20 @@ class SeedLookup:
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync bundled official skills/extensions snapshots.")
     parser.add_argument(
+        "--include-legacy-gemini",
+        action="store_true",
+        help="显式包含已移除的 Gemini Extensions 快照，仅用于历史审计，不作为当前官方 catalog 默认平台。",
+    )
+    parser.add_argument(
         "--refresh-gemini",
         action="store_true",
-        help="强制尝试重新抓取 Gemini 官方 extensions；失败时会尽量回退到仓库内现有快照。",
+        help="配合 --include-legacy-gemini 使用，强制尝试重新抓取已移除的 Gemini extensions。",
     )
     parser.add_argument(
         "--only",
         nargs="+",
-        choices=PLATFORMS,
-        help="只刷新指定平台；未指定的平台沿用当前 catalog 快照。",
+        choices=PLATFORM_CHOICES,
+        help="只刷新指定平台；未指定的平台沿用当前 catalog 快照。Gemini 仅在配合 --include-legacy-gemini 时可输出。",
     )
     return parser.parse_args(list(argv))
 
@@ -454,19 +470,6 @@ def get_item_metadata(
     }
 
 
-def build_platform_meta(seed_meta: Dict[str, Any], ref: str, *, notes_suffix: str = PLATFORM_NOTES_SUFFIX) -> Dict[str, str]:
-    notes = str(seed_meta.get("notes") or "")
-    if notes_suffix not in notes:
-        notes = f"{notes} {notes_suffix}".strip()
-    return {
-        "repo": str(seed_meta.get("repo") or ""),
-        "ref": ref,
-        "sourceUrl": str(seed_meta.get("sourceUrl") or ""),
-        "installRootHint": str(seed_meta.get("installRootHint") or ""),
-        "notes": notes,
-    }
-
-
 def remove_stale_archives(platform_root: Path, expected_files: Iterable[Path]) -> None:
     expected_names = {path.name for path in expected_files}
     if not platform_root.exists():
@@ -694,6 +697,9 @@ def enrich_seed_item_from_archive(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def clone_seed_platform_items(seed_catalog: Dict[str, Any], platform: str) -> Tuple[List[Dict[str, Any]], str]:
     items = [enrich_seed_item_from_archive(item) for item in seed_catalog.get("skills", []) if item.get("platform") == platform]
+    if platform == "opencode" and not items:
+        platform_meta = seed_catalog.get("platforms", {}).get(platform) or PLATFORM_META_DEFAULTS["opencode"]
+        return [], str(platform_meta.get("ref") or "unavailable:official-catalog-not-connected")
     if not items:
         raise SyncError(f"Seed catalog does not contain {platform} items to reuse.")
     for item in items:
@@ -882,9 +888,36 @@ def validate_catalog(catalog: Dict[str, Any]) -> None:
                 raise SyncError(f"Archive missing validation entry */{validation_name}: {archive_path}")
 
 
+def selected_output_platforms(args: argparse.Namespace) -> Tuple[str, ...]:
+    selected_platforms = tuple(args.only) if args.only else ACTIVE_PLATFORMS
+    if LEGACY_GEMINI_PLATFORM in selected_platforms and not args.include_legacy_gemini:
+        raise SyncError("Gemini official extensions are removed from the current catalog. Use --include-legacy-gemini only for historical audit output.")
+    if args.refresh_gemini and not args.include_legacy_gemini:
+        raise SyncError("--refresh-gemini requires --include-legacy-gemini.")
+    output_platforms = ACTIVE_PLATFORMS
+    if args.include_legacy_gemini:
+        output_platforms = output_platforms + (LEGACY_GEMINI_PLATFORM,)
+    return output_platforms
+
+
+def build_platform_meta(platform: str, seed_meta: Dict[str, Any], ref: str, *, notes_suffix: str = PLATFORM_NOTES_SUFFIX) -> Dict[str, str]:
+    defaults = PLATFORM_META_DEFAULTS.get(platform, {})
+    notes = str(seed_meta.get("notes") or defaults.get("notes") or "")
+    if notes_suffix and notes_suffix not in notes:
+        notes = f"{notes} {notes_suffix}".strip()
+    return {
+        "repo": str(seed_meta.get("repo") or defaults.get("repo") or ""),
+        "ref": ref,
+        "sourceUrl": str(seed_meta.get("sourceUrl") or defaults.get("sourceUrl") or ""),
+        "installRootHint": str(seed_meta.get("installRootHint") or defaults.get("installRootHint") or ""),
+        "notes": notes,
+    }
+
+
 def main(argv: Sequence[str]) -> int:
     args = parse_args(argv)
-    selected_platforms = tuple(args.only) if args.only else PLATFORMS
+    selected_platforms = tuple(args.only) if args.only else SYNCABLE_PLATFORMS
+    output_platforms = selected_output_platforms(args)
     seed_catalog = load_existing_catalog()
     lookup = build_seed_lookup(seed_catalog)
     output_root = OFFICIAL_SKILLS_DIR
@@ -892,7 +925,7 @@ def main(argv: Sequence[str]) -> int:
 
     platform_results: Dict[str, Tuple[List[Dict[str, Any]], str]] = {}
 
-    for platform in PLATFORMS:
+    for platform in output_platforms:
         if platform not in selected_platforms:
             platform_results[platform] = clone_seed_platform_items(seed_catalog, platform)
             continue
@@ -904,7 +937,11 @@ def main(argv: Sequence[str]) -> int:
             print("[2/4] Syncing Codex official skills...", flush=True)
             platform_results[platform] = sync_codex_or_claude("codex", "openai/skills", "skills/.curated", lookup, output_root)
             continue
-        print("[3/4] Syncing Gemini official extensions...", flush=True)
+        if platform == "opencode":
+            print("[3/4] OpenCode official skills catalog is not connected; writing empty catalog platform.", flush=True)
+            platform_results[platform] = clone_seed_platform_items(seed_catalog, platform)
+            continue
+        print("[legacy] Syncing Gemini extensions for historical audit output...", flush=True)
         if args.refresh_gemini:
             platform_results[platform] = sync_gemini(lookup, seed_catalog, output_root)
         else:
@@ -915,25 +952,26 @@ def main(argv: Sequence[str]) -> int:
         "generatedAt": generated_at,
         "platforms": {
             platform: build_platform_meta(
+                platform,
                 lookup.platform_meta.get(platform, {}),
                 platform_results[platform][1],
                 notes_suffix=(
                     "每个 extension 条目分别记录对应 repo 的 tarball ETag，供配置页判断是否可更新。"
                     if platform == "gemini"
-                    else PLATFORM_NOTES_SUFFIX
+                    else ("" if platform == "opencode" else PLATFORM_NOTES_SUFFIX)
                 ),
             )
-            for platform in PLATFORMS
+            for platform in output_platforms
         },
         "skills": sorted(
-            [item for platform in PLATFORMS for item in platform_results[platform][0]],
+            [item for platform in output_platforms for item in platform_results[platform][0]],
             key=lambda item: (item["platform"], item["name"].lower()),
         ),
     }
     validate_catalog(catalog)
     CATALOG_PATH.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    counts = {platform: len(platform_results[platform][0]) for platform in PLATFORMS}
+    counts = {platform: len(platform_results[platform][0]) for platform in output_platforms}
     print("[4/4] Done", flush=True)
     print(json.dumps({"generatedAt": generated_at, "counts": counts, "selected": list(selected_platforms)}, ensure_ascii=False))
     return 0

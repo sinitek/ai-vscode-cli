@@ -18,22 +18,17 @@ import {
 } from "./cli/config";
 import {
   buildCliArgs,
+  buildOpenCodeRunFailureMessage,
   buildProcessLabel,
   captureCliOutput,
+  parseOpenCodeRunOutput,
   resolveCliCommand,
   runCli,
   runCliStream,
   isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
-import { readModelArg, supportsCliManagedModelSelection } from "./cli/modelArgs";
-import {
-  buildGeminiThinkingRuntimeProfile,
-  GEMINI_SYSTEM_SETTINGS_ENV_KEY,
-} from "./cli/geminiThinking";
-import {
-  isGeminiNativeCompactUnsupportedErrorText,
-} from "./cli/geminiCompaction";
+import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "./cli/modelArgs";
 import {
   CliName,
   CLI_LIST,
@@ -107,7 +102,7 @@ import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
-import { stripManagedGeminiSkillRules } from "./config/geminiSkills";
+import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
 import {
@@ -238,8 +233,6 @@ import {
 import { ensureWorkspaceHarnessScaffold } from "./workspaceScaffold";
 import {
   type ContextCompactionOptions,
-  finalizeGeminiStreamJsonState,
-  processGeminiStreamJsonChunk,
   runContextCompactionWithDeps,
 } from "./contextCompactionRunner";
 import {
@@ -564,16 +557,15 @@ const UNNAMED_SESSION_LABELS = new Set([
 function shouldUseFallbackSessionLabel(label: string | null | undefined): boolean {
   return shouldUseFallbackSessionLabelWithSet(label, UNNAMED_SESSION_LABELS);
 }
-const LEGACY_GEMINI_THINKING_SETTINGS_PATH = ".gemini/settings.json";
 const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
   claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
-  gemini: path.join(os.homedir(), ".gemini", "GEMINI.md"),
+  opencode: path.join(os.homedir(), ".opencode", "AGENTS.md"),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
   claude: "CLAUDE.md",
-  gemini: "GEMINI.md",
+  opencode: "AGENTS.md",
 };
 
 const PROMPT_HISTORY_LIMIT = 200;
@@ -626,7 +618,7 @@ type CliInstallStatus = {
 const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   codex: null,
   claude: null,
-  gemini: null,
+  opencode: null,
 };
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
@@ -1296,13 +1288,13 @@ function getProjectRulePaths(): Record<CliName, string | null> {
     return {
       codex: null,
       claude: null,
-      gemini: null,
+      opencode: null,
     };
   }
   return {
     codex: path.join(root, CLI_RULE_FILENAMES_PROJECT.codex),
     claude: path.join(root, CLI_RULE_FILENAMES_PROJECT.claude),
-    gemini: path.join(root, CLI_RULE_FILENAMES_PROJECT.gemini),
+    opencode: path.join(root, CLI_RULE_FILENAMES_PROJECT.opencode),
   };
 }
 
@@ -1342,7 +1334,7 @@ function normalizeRuleTargets(targets: CliName[] | undefined): CliName[] {
   if (!Array.isArray(targets)) {
     return [];
   }
-  return targets.filter((target) => CLI_LIST.includes(target));
+  return targets.filter((target): target is CliName => (CLI_LIST as readonly string[]).includes(target));
 }
 
 function normalizeLineEndings(value: string | undefined): string {
@@ -1398,56 +1390,6 @@ function applyThinkingWorkspaceFiles(
   });
 }
 
-function readGeminiSettingsFile(filePath: string): Record<string, unknown> | null {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function buildLegacyManagedGeminiThinkingSettings(mode: "low" | "medium" | "high"): Record<string, unknown> {
-  return {
-    modelConfigs: {
-      "chat-base-3": {
-        modelConfig: {
-          generateContentConfig: {
-            thinkingConfig: {
-              thinkingLevel: mode,
-            },
-          },
-        },
-      },
-      "gemini-3-pro-preview": {
-        extends: "chat-base-3",
-        modelConfig: {
-          model: "gemini-3-pro-preview",
-        },
-      },
-      "gemini-3-flash-preview": {
-        extends: "chat-base-3",
-        modelConfig: {
-          model: "gemini-3-flash-preview",
-        },
-      },
-    },
-  };
-}
-
-function isLegacyManagedGeminiThinkingSettings(settings: Record<string, unknown>): boolean {
-  const normalized = stableStringify(settings);
-  return (["low", "medium", "high"] as const).some((mode) => (
-    normalized === stableStringify(buildLegacyManagedGeminiThinkingSettings(mode))
-  ));
-}
-
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(",")}]`;
@@ -1459,26 +1401,6 @@ function stableStringify(value: unknown): string {
     return `{${entries.join(",")}}`;
   }
   return JSON.stringify(value);
-}
-
-function cleanupLegacyGeminiThinkingSettings(cwd: string | undefined): void {
-  if (!cwd) {
-    return;
-  }
-  const targetPath = resolveWorkspaceFilePath(cwd, LEGACY_GEMINI_THINKING_SETTINGS_PATH);
-  const parsed = readGeminiSettingsFile(targetPath);
-  if (!parsed || !isLegacyManagedGeminiThinkingSettings(parsed)) {
-    return;
-  }
-  try {
-    fs.rmSync(targetPath, { force: true });
-    void logInfo("gemini-legacy-thinking-settings-removed", { targetPath });
-  } catch (error) {
-    void logError("gemini-legacy-thinking-settings-remove-failed", {
-      targetPath,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 function startHistoryArtifactRetentionCleanup(context: vscode.ExtensionContext): void {
@@ -1598,6 +1520,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
     authContent: config.authContent,
     codexSkills: config.codexSkills,
     claudeSkills: config.claudeSkills,
+    openCodeSkills: config.openCodeSkills,
   });
   setWorkspaceActiveConfigId(cli, configId);
 }
@@ -1620,6 +1543,55 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     logError: (event, payload) => void logError(event, payload),
     errorToMessage,
   });
+}
+
+type OpenCodeRuntimePreparation = {
+  envOverrides: Record<string, string>;
+  configContent: string;
+};
+
+async function prepareOpenCodeRuntime(
+  configId: string | null = getActiveConfigIdForCli("opencode")
+): Promise<OpenCodeRuntimePreparation> {
+  const runtimePaths = configService.getOpenCodeRuntimePaths();
+  const activeConfig = configId
+    ? await configService.getConfigById("opencode", configId)
+    : null;
+  if (activeConfig) {
+    const validation = configService.validateOpenCodeConfigForRun(
+      activeConfig.content,
+      activeConfig.envContent
+    );
+    if (!validation.ok) {
+      throw new Error(validation.issues.map((issue) => issue.message).join("\n"));
+    }
+    await configService.applyConfig("opencode", {
+      content: activeConfig.content,
+      envContent: activeConfig.envContent,
+      openCodeSkills: activeConfig.openCodeSkills,
+    });
+    return {
+      envOverrides: {
+        ...configService.parseEnvText(activeConfig.envContent ?? ""),
+        OPENCODE_CONFIG: runtimePaths.config,
+      },
+      configContent: activeConfig.content ?? "{}",
+    };
+  }
+
+  const current = await configService.getCurrentConfig("opencode");
+  const validation = configService.validateOpenCodeConfigForRun(current.content, current.envContent);
+  if (!validation.ok) {
+    throw new Error(validation.issues.map((issue) => issue.message).join("\n"));
+  }
+  await configService.writeOpenCodeConfig(current.content ?? "{}", current.envContent ?? "");
+  return {
+    envOverrides: {
+      ...configService.parseEnvText(current.envContent ?? ""),
+      OPENCODE_CONFIG: runtimePaths.config,
+    },
+    configContent: current.content ?? "{}",
+  };
 }
 async function refreshCliInstallStatuses(): Promise<void> {
   await Promise.all(CLI_LIST.map(async (cli) => {
@@ -2371,13 +2343,71 @@ function stopOtherRunsExceptTab(tabId: string | null): void {
   }
 }
 
+function appendOpenCodeAssistantMessageForTab(
+  target: ChatMessage[],
+  tabId: string,
+  content: string,
+  options: Pick<ChatMessage, "taskRole" | "lobsterTaskId" | "lobsterRound" | "lobsterSubtaskId"> = {},
+): void {
+  const assistantMessage: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content,
+    createdAt: Date.now(),
+    taskRole: options.taskRole,
+    lobsterTaskId: options.lobsterTaskId,
+    lobsterRound: options.lobsterRound,
+    lobsterSubtaskId: options.lobsterSubtaskId,
+  };
+  appendMessageToStore(target, assistantMessage);
+  sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId });
+}
+
+function buildOpenCodeMissingFinalOutputMessage(statusText?: string | null): string {
+  const status = statusText && statusText.trim() ? statusText.trim() : null;
+  return resolveLocale(getLocaleSetting()).startsWith("zh")
+    ? (
+        status
+          ? `OpenCode 已成功退出，但没有返回助手回答。最后状态：${status}`
+          : "OpenCode 已成功退出，但没有返回助手回答。请检查 OpenCode provider/model 配置，或运行 `opencode run --format json` 验证。"
+      )
+    : (
+        status
+          ? `OpenCode exited successfully, but did not return an assistant answer. Last status: ${status}`
+          : "OpenCode exited successfully, but did not return an assistant answer. Check the OpenCode provider/model config or run `opencode run --format json` to verify it."
+      );
+}
+
+function buildOpenCodeNoFinalOutputErrorMessage(output: ReturnType<typeof parseOpenCodeRunOutput>): string {
+  return output.errorText ?? buildOpenCodeMissingFinalOutputMessage(output.statusText);
+}
+
+function buildOpenCodeFailureMessage(
+  output: ReturnType<typeof parseOpenCodeRunOutput>,
+  fallbackMessage: string,
+): string {
+  return buildOpenCodeRunFailureMessage(output, fallbackMessage, {
+    missingFinalOutputMessage: buildOpenCodeMissingFinalOutputMessage(),
+    missingFinalOutputWithStatusMessage: buildOpenCodeMissingFinalOutputMessage,
+  });
+}
+
+const OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS = 60 * 1000;
+
+function buildOpenCodeOneShotIdleTimeoutMessage(timeoutMs: number): string {
+  const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  return resolveLocale(getLocaleSetting()).startsWith("zh")
+    ? `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json 'hi'\` 验证。`
+    : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json 'hi'\` in a terminal.`;
+}
+
 async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
   }
   const runCli = target.cli;
-  if (runCli !== "gemini") {
+  if (runCli !== "opencode") {
     throw new Error(`parallel-run-unsupported:${runCli}`);
   }
   const modelPrompt = input.modelPrompt || prompt;
@@ -2388,9 +2418,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const selectedModel = input.model || getSelectedCliModel(runCli);
   const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-  const geminiRunProfile = prepareGeminiRunProfile(selectedModel, thinkingMode, cwd);
-  const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
-  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
+  const runtimeModel = selectedModel;
+  const runtimePreparation = await prepareOpenCodeRuntime();
+  const runtimeEnvOverrides = runtimePreparation.envOverrides;
+  const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
   const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
 
   preparePendingLabel(runCli, target.tabId, prompt);
@@ -2490,7 +2521,6 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     let rawStdout = "";
     let rawStderr = "";
-    const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
@@ -2513,26 +2543,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
             }
             rawStdout += chunk;
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
-            processGeminiStreamJsonChunk(geminiStreamState, chunk, {
-              onAssistantText: (text) => {
-                if (text.trim().length > 0) {
-                  attemptHadNormalReply = true;
-                }
-              },
-              onPlainText: (text) => {
-                if (text.trim().length > 0) {
-                  attemptHadNormalReply = true;
-                }
-              },
-              onSessionId: (nextSessionId) => {
-                if (!sessionId) {
-                  sessionId = nextSessionId;
-                  adoptSessionId(runCli, nextSessionId, target.tabId);
-                  messageTarget = loadSessionMessages(runCli, nextSessionId);
-                  syncParallelRun(process);
-                }
-              },
-            });
+            if (chunk.trim().length > 0) {
+              attemptHadNormalReply = true;
+            }
           },
           onStderr: (chunk: string) => {
             if (!isParallelRunActive()) {
@@ -2553,6 +2566,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           sessionId,
           thinkingMode,
           model: runtimeModel,
+          openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
           processLabel: buildProcessLabel(runCli, sessionId ?? runId),
         }
@@ -2564,25 +2578,6 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       return;
     }
 
-    finalizeGeminiStreamJsonState(geminiStreamState, {
-      onAssistantText: (text) => {
-        if (text.trim().length > 0) {
-          attemptHadNormalReply = true;
-        }
-      },
-      onPlainText: (text) => {
-        if (text.trim().length > 0) {
-          attemptHadNormalReply = true;
-        }
-      },
-      onSessionId: (nextSessionId) => {
-        if (!sessionId) {
-          sessionId = nextSessionId;
-          adoptSessionId(runCli, nextSessionId, target.tabId);
-          messageTarget = loadSessionMessages(runCli, nextSessionId);
-        }
-      },
-    });
     const detectedSessionId = extractSessionId(runCli, `${rawStdout}
 ${rawStderr}`);
     if (!sessionId && detectedSessionId) {
@@ -2593,53 +2588,19 @@ ${rawStderr}`);
 
     if (attemptResult.type === "exit" && attemptResult.code === 0) {
       const currentMessageTarget = resolveParallelMessageTarget();
-      const finalText = String(geminiStreamState.assistantText || "").trim();
-      if (finalText) {
-        const assistantMessage: ChatMessage = {
-          id: createMessageId(),
-          role: "assistant",
-          content: finalText,
-          createdAt: Date.now(),
+      const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
+      if (openCodeOutput.finalText) {
+        appendOpenCodeAssistantMessageForTab(currentMessageTarget, target.tabId, openCodeOutput.finalText, {
           taskRole: input.taskRole,
           lobsterTaskId: input.lobsterTaskId,
           lobsterRound: input.lobsterRound,
           lobsterSubtaskId: input.lobsterSubtaskId,
-        };
-        appendMessageToStore(currentMessageTarget, assistantMessage);
-        sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
+        });
       }
       if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
         fallbackCreatedAt: userCreatedAt,
       })) {
-        const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
-        if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
-          appendHiddenRetryErrorTraceMessage(currentMessageTarget, missingConclusionMessage, {
-            tabId: target.tabId,
-            taskRole: input.taskRole,
-            lobsterTaskId: input.lobsterTaskId,
-            lobsterRound: input.lobsterRound,
-            lobsterSubtaskId: input.lobsterSubtaskId,
-          }, { createMessageId, sendPanelMessage });
-          const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
-          const systemMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "system",
-            content: retryMessage,
-            createdAt: Date.now(),
-          };
-          appendMessageToStore(currentMessageTarget, systemMessage);
-          sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-          hiddenRetryCount += 1;
-          void logInfo("runPrompt-parallel-missing-final-conclusion-retry", {
-            cli: runCli,
-            tabId: target.tabId,
-            runId,
-            sessionId,
-            retryCount: hiddenRetryCount,
-            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          });
-          continue;
-        }
+        const missingConclusionMessage = buildOpenCodeNoFinalOutputErrorMessage(openCodeOutput);
         parallelRunsByTabId.delete(target.tabId);
         const taskRecord: TaskRunRecord = {
           id: runId,
@@ -2729,15 +2690,10 @@ ${rawStderr}`);
     const retryableErrorInfo = attemptResult.type === "error"
       ? getErrorInfo(attemptResult.error)
       : null;
-    const geminiResultFailed = attemptResult.type === "exit"
-      && attemptResult.code === 0
-      && geminiStreamState.resultStatus !== null
-      && geminiStreamState.resultStatus !== "success";
-    const lastFailureMessage = getAttemptFailureMessage(attemptResult, geminiStreamState.errorText);
+    const lastFailureMessage = getAttemptFailureMessage(attemptResult, rawStderr || null);
     hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      geminiResultFailed
-        || attemptResult.type === "exit"
+      attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
     );
     const failureMessageTarget = resolveParallelMessageTarget();
@@ -2763,16 +2719,14 @@ ${rawStderr}`);
     }
 
     parallelRunsByTabId.delete(target.tabId);
-    const finalText = String(geminiStreamState.assistantText || rawStdout || "").trim();
-    if (finalText) {
-      const assistantMessage: ChatMessage = {
-        id: createMessageId(),
-        role: "assistant",
-        content: finalText,
-        createdAt: Date.now(),
-      };
-      appendMessageToStore(failureMessageTarget, assistantMessage);
-      sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId: target.tabId });
+    const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
+    if (openCodeOutput.finalText) {
+      appendOpenCodeAssistantMessageForTab(failureMessageTarget, target.tabId, openCodeOutput.finalText, {
+        taskRole: input.taskRole,
+        lobsterTaskId: input.lobsterTaskId,
+        lobsterRound: input.lobsterRound,
+        lobsterSubtaskId: input.lobsterSubtaskId,
+      });
     }
 
     const taskRecord: TaskRunRecord = {
@@ -2791,12 +2745,13 @@ ${rawStderr}`);
     };
     appendTaskRun(taskRecord);
 
+    const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
     const userMessageText = buildHiddenRetryFailureMessage({
       hiddenRetryCount,
       maxRetries: HIDDEN_RETRY_MAX_RETRIES,
       retryLimitMessage: buildHiddenRetryLimitMessage(),
-      fallbackMessage: lastFailureMessage,
-      lastFailureMessage,
+      fallbackMessage: finalFailureMessage,
+      lastFailureMessage: finalFailureMessage,
       lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
     });
     const systemMessage: ChatMessage = {
@@ -6751,8 +6706,8 @@ function getLatestLobsterRoundRunRecord(
   return null;
 }
 
-function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "gemini" {
-  return cli === "codex" || cli === "claude" || cli === "gemini";
+function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "opencode" {
+  return cli === "codex" || cli === "claude" || cli === "opencode";
 }
 
 function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
@@ -6774,6 +6729,40 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     ...input,
     preloadedUserMessageId: messageId,
   };
+}
+
+function appendSystemMessageForPromptTarget(target: PromptRunTarget, content: string): void {
+  if (!content.trim()) {
+    return;
+  }
+  const messageTarget = target.sessionId
+    ? loadSessionMessages(target.cli, target.sessionId)
+    : getPendingSessionDraft(target.tabId, target.cli).messages;
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "system",
+    content,
+    createdAt: Date.now(),
+  };
+  appendMessageToStore(messageTarget, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistMessagesForTab(target.cli, target.sessionId, target.tabId, messageTarget);
+}
+
+async function getOpenCodeConfigPreflightMessage(selectedModel?: string | null): Promise<string | null> {
+  const configId = getActiveConfigIdForCli("opencode");
+  const activeConfig = configId
+    ? await configService.getConfigById("opencode", configId)
+    : null;
+  const source = activeConfig
+    ? { content: activeConfig.content, envContent: activeConfig.envContent }
+    : await configService.getCurrentConfig("opencode");
+  const validation = configService.validateOpenCodeConfigForRun(source.content, source.envContent);
+  if (!validation.ok) {
+    return validation.issues.map((issue) => issue.message).join("\n");
+  }
+  const modelResolution = resolveOpenCodeModelForConfig(selectedModel, source.content);
+  return modelResolution.error;
 }
 
 function maybePersistLongTermMemoryFromRun(options: {
@@ -6845,12 +6834,29 @@ async function runPrompt(
   }
 
   scheduleLogRetentionCleanup();
+  let promptInput = input;
+
+  if (target.cli === "opencode") {
+    promptInput = preloadUserMessageForPrompt(promptInput, target);
+    const selectedOpenCodeModel = promptInput.model || getSelectedCliModel(target.cli);
+    const preflightMessage = await getOpenCodeConfigPreflightMessage(selectedOpenCodeModel);
+    if (preflightMessage) {
+      void logError("opencode-config-preflight-failed", {
+        cli: target.cli,
+        tabId: target.tabId,
+        error: preflightMessage,
+      });
+      appendSystemMessageForPromptTarget(target, preflightMessage);
+      sendRunStatusForTab(target.tabId, "error", { message: preflightMessage });
+      return;
+    }
+  }
 
   const shouldUseInteractive = isInteractiveSupported(target.cli);
 
   if (shouldUseInteractive) {
     try {
-      await runPromptInteractive(input, target);
+      await runPromptInteractive(promptInput, target);
       return;
     } catch (error) {
       const info = getErrorInfo(error);
@@ -6876,17 +6882,17 @@ async function runPrompt(
   }
 
   if (hasOtherTabRun(target.tabId)) {
-    await runPromptParallel(input, target);
+    await runPromptParallel(promptInput, target);
     return;
   }
 
-  await runPromptOneShot(input, target);
+  await runPromptOneShot(promptInput, target);
 }
 
 async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   const runCli = target.cli;
-  if (runCli !== "gemini") {
+  if (runCli !== "opencode") {
     throw new Error(`one-shot-run-unsupported:${runCli}`);
   }
   const modelPrompt = input.modelPrompt || prompt;
@@ -6903,9 +6909,10 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const selectedModel = input.model || getSelectedCliModel(runCli);
   const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-  const geminiRunProfile = prepareGeminiRunProfile(selectedModel, thinkingMode, cwd);
-  const runtimeModel = geminiRunProfile.runtimeModel ?? selectedModel;
-  const runtimeEnvOverrides = geminiRunProfile.envOverrides;
+  const runtimeModel = selectedModel;
+  const runtimePreparation = await prepareOpenCodeRuntime();
+  const runtimeEnvOverrides = runtimePreparation.envOverrides;
+  const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
   const activeTabId = target.tabId;
   const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
   preparePendingLabel(runCli, activeTabId, prompt);
@@ -6918,7 +6925,13 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     : getPendingSessionDraft(activeTabId, runCli).messages;
   const args = buildCliArgs(
     runCli,
-    { sessionId: initialSessionId, thinkingMode, model: runtimeModel, envOverrides: runtimeEnvOverrides },
+    {
+      sessionId: initialSessionId,
+      thinkingMode,
+      model: runtimeModel,
+      openCodeConfigContent: runtimeOpenCodeConfigContent,
+      envOverrides: runtimeEnvOverrides,
+    },
     thinkingPrompt,
   );
   const command = getCliCommand(runCli);
@@ -7005,20 +7018,50 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let sessionBuffer = "";
     let rawStdout = "";
     let rawStderr = "";
-    const geminiStreamState = { remainder: "", assistantText: "", resultStatus: null as string | null, errorText: null as string | null };
     const runtimeSessionId = activeSessionId;
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
     >((resolve) => {
       let settled = false;
+      let idleTimeoutHandle: NodeJS.Timeout | null = null;
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
         }
         settled = true;
+        if (idleTimeoutHandle) {
+          clearTimeout(idleTimeoutHandle);
+          idleTimeoutHandle = null;
+        }
         resolve(result);
       };
+      const resetIdleTimeout = (): void => {
+        if (idleTimeoutHandle) {
+          clearTimeout(idleTimeoutHandle);
+        }
+        idleTimeoutHandle = setTimeout(() => {
+          const error = new Error(buildOpenCodeOneShotIdleTimeoutMessage(OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS));
+          if (!isCurrentOneShotRunActive()) {
+            settle({ type: "error", error });
+            return;
+          }
+          void logError("runPrompt-one-shot-idle-timeout", {
+            cli: runCli,
+            runId,
+            tabId: activeTabId,
+            sessionId: activeSessionId,
+            attempt: attemptNumber,
+            retryCount: hiddenRetryCount,
+            timeoutMs: OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS,
+            stdoutLength: rawStdout.length,
+            stderrLength: rawStderr.length,
+          });
+          activeProcess?.kill();
+          settle({ type: "error", error });
+        }, OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimeout();
       activeProcess = runCliStream(
         runCli,
         attemptPrompt,
@@ -7027,26 +7070,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (!isCurrentOneShotRunActive()) {
               return;
             }
+            resetIdleTimeout();
             rawStdout += chunk;
             sendRawStreamDelta(chunk, { stream: "stdout" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
-            processGeminiStreamJsonChunk(geminiStreamState, chunk, {
-              onAssistantText: (text) => {
-                if (text.trim().length > 0) {
-                  attemptHadNormalReply = true;
-                }
-                appendAssistantChunk(text);
-              },
-              onTraceText: (text) => appendTraceLines(`${text}\n`),
-              onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
-              onPlainText: (text) => {
-                if (text.trim().length > 0) {
-                  attemptHadNormalReply = true;
-                }
-                appendAssistantChunk(text);
-              },
-            });
+            if (parseOpenCodeRunOutput(rawStdout, rawStderr).finalText) {
+              attemptHadNormalReply = true;
+            }
             if (debugLogging) {
               void logCliStream(runCli, activeSessionId, "stdout", chunk);
             }
@@ -7055,6 +7086,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (!isCurrentOneShotRunActive()) {
               return;
             }
+            resetIdleTimeout();
             rawStderr += chunk;
             sendRawStreamDelta(chunk, { stream: "stderr" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
@@ -7076,6 +7108,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           sessionId: runtimeSessionId,
           thinkingMode,
           model: runtimeModel,
+          openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
@@ -7100,29 +7133,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       });
     }
 
-    finalizeGeminiStreamJsonState(geminiStreamState, {
-      onAssistantText: (text) => {
-        if (text.trim().length > 0) {
-          attemptHadNormalReply = true;
-        }
-        appendAssistantChunk(text);
-      },
-      onTraceText: (text) => appendTraceLines(`${text}\n`),
-      onSessionId: (nextSessionId) => adoptSessionId(runCli, nextSessionId, activeTabIdForRun),
-      onPlainText: (text) => {
-        if (text.trim().length > 0) {
-          attemptHadNormalReply = true;
-        }
-        appendAssistantChunk(text);
-      },
-    });
-
-    const geminiResultFailed = attemptResult.type === "exit"
-      && attemptResult.code === 0
-      && geminiStreamState.resultStatus !== null
-      && geminiStreamState.resultStatus !== "success";
-
-    if (attemptResult.type === "exit" && attemptResult.code === 0 && !geminiResultFailed) {
+    if (attemptResult.type === "exit" && attemptResult.code === 0) {
       const finalSessionId = activeSessionId;
       const durationMs = activeTaskRun?.id === runId
         ? Math.max(0, Date.now() - activeTaskRun.startedAt)
@@ -7130,29 +7141,14 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
       flushTraceBuffer();
       const finalMessageTarget = activeMessageTarget ?? messageTarget;
+      const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
+      if (openCodeOutput.finalText) {
+        appendAssistantChunk(`${openCodeOutput.finalText}\n`);
+      }
       if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
         fallbackCreatedAt: userCreatedAt,
       })) {
-        const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
-        if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
-          appendHiddenRetryErrorTraceMessage(activeMessageTarget, missingConclusionMessage, {
-            taskRole: input.taskRole,
-            lobsterTaskId: input.lobsterTaskId,
-            lobsterRound: input.lobsterRound,
-            lobsterSubtaskId: input.lobsterSubtaskId,
-          }, { createMessageId, sendPanelMessage });
-          appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
-          hiddenRetryCount += 1;
-          void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", {
-            cli: runCli,
-            runId,
-            tabId: activeTabId,
-            sessionId: activeSessionId,
-            retryCount: hiddenRetryCount,
-            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          });
-          continue;
-        }
+        const missingConclusionMessage = buildOpenCodeNoFinalOutputErrorMessage(openCodeOutput);
         const userMessageText = buildHiddenRetryFailureMessage({
           hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
@@ -7189,10 +7185,13 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     }
 
     hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-    const retryFailureMessage = getAttemptFailureMessage(attemptResult, geminiStreamState.errorText);
+    const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
+    const retryFailureMessage = buildOpenCodeFailureMessage(
+      openCodeOutput,
+      getAttemptFailureMessage(attemptResult, rawStderr || null),
+    );
     const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      geminiResultFailed
-        || attemptResult.type === "exit"
+      attemptResult.type === "exit"
         || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
     );
     if (shouldRetry) {
@@ -7238,19 +7237,32 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         error: isNotFound ? `${error.message} (ENOENT)` : error.message,
       });
       sendRunStatus("error", userMessage);
+      appendSystemMessage(userMessage);
     } else {
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
-      const lastFailureMessage = geminiStreamState.errorText
-        ? geminiStreamState.errorText
+      const lastFailureMessage = rawStderr.trim()
+        ? rawStderr.trim()
         : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
-      sendRunStatus("error", buildHiddenRetryFailureMessage({
+      const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
+      const userMessage = buildHiddenRetryFailureMessage({
         hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
         retryLimitMessage: buildHiddenRetryLimitMessage(),
-        fallbackMessage: lastFailureMessage,
-        lastFailureMessage,
+        fallbackMessage: finalFailureMessage,
+        lastFailureMessage: finalFailureMessage,
         lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-      }));
+      });
+      void logError("runPrompt-opencode-final-failure", {
+        cli: runCli,
+        code: attemptResult.code,
+        hiddenRetryCount,
+        errorText: openCodeOutput.errorText,
+        statusText: openCodeOutput.statusText,
+        stdoutLength: rawStdout.length,
+        stderrLength: rawStderr.length,
+      });
+      sendRunStatus("error", userMessage);
+      appendSystemMessage(userMessage);
     }
 
     flushTraceBuffer();
@@ -7454,7 +7466,6 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     sendPanelMessage: (message) => sendPanelMessage(message),
     updateProcessTitle,
     appendTraceMessage,
-    prepareGeminiRunProfile,
     setActiveProcess: (process) => {
       activeProcess = process;
     },
@@ -8463,7 +8474,7 @@ function stopActiveRun(): void {
   activeProcess.kill();
   void logInfo("runPrompt-stopped", { cli: currentCli });
   sendRunStatus("stopped", t("run.stoppedByUser"));
-  if (currentCli === "codex" || currentCli === "gemini") {
+  if (currentCli === "codex" || currentCli === "opencode") {
     flushTraceBuffer();
   }
   appendCompletionMessage("stopped");
@@ -8590,7 +8601,7 @@ function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
 }
 
 function startTraceMessage(cli: CliName): void {
-  if (cli !== "codex" && cli !== "gemini") {
+  if (cli !== "codex" && cli !== "opencode") {
     activeTraceMessageId = undefined;
     return;
   }
@@ -8923,54 +8934,6 @@ function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMod
 
 function getEffectiveThinkingMode(cli: CliName, model: string | null = getSelectedCliModel(cli)): ThinkingMode {
   return getStoredCliModelThinkingMode(cli, model) ?? getWorkspaceThinkingMode(cli);
-}
-
-type PreparedGeminiRunProfile = {
-  sourceModel: string | null;
-  runtimeModel: string | null;
-  envOverrides?: Record<string, string>;
-};
-
-function prepareGeminiRunProfile(
-  selectedModel: string | null,
-  thinkingMode: ThinkingMode,
-  cwd?: string,
-): PreparedGeminiRunProfile {
-  cleanupLegacyGeminiThinkingSettings(cwd);
-  const baseModel = normalizeCliModelName(selectedModel)
-    ?? readModelArg("gemini", getCliArgs("gemini"));
-  const runtimeProfile = buildGeminiThinkingRuntimeProfile(baseModel, thinkingMode);
-  if (!runtimeProfile.systemSettings || !runtimeProfile.runtimeModel) {
-    void logInfo("gemini-thinking-runtime-passthrough", {
-      selectedModel: runtimeProfile.baseModel,
-      requestedMode: runtimeProfile.requestedMode,
-      effectiveMode: runtimeProfile.effectiveMode,
-      strategy: runtimeProfile.strategy,
-    });
-    return {
-      sourceModel: runtimeProfile.baseModel,
-      runtimeModel: runtimeProfile.runtimeModel ?? runtimeProfile.baseModel,
-    };
-  }
-  ensureTempDir();
-  cleanupTempDir();
-  const settingsPath = buildTempFilePath("gemini-system-settings.json");
-  fs.writeFileSync(settingsPath, JSON.stringify(runtimeProfile.systemSettings, null, 2), "utf8");
-  void logInfo("gemini-thinking-runtime-prepared", {
-    selectedModel: runtimeProfile.baseModel,
-    runtimeModel: runtimeProfile.runtimeModel,
-    requestedMode: runtimeProfile.requestedMode,
-    effectiveMode: runtimeProfile.effectiveMode,
-    strategy: runtimeProfile.strategy,
-    settingsPath,
-  });
-  return {
-    sourceModel: runtimeProfile.baseModel,
-    runtimeModel: runtimeProfile.runtimeModel,
-    envOverrides: {
-      [GEMINI_SYSTEM_SETTINGS_ENV_KEY]: settingsPath,
-    },
-  };
 }
 
 function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {

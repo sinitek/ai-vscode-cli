@@ -2,7 +2,7 @@
 
 本项目是 VS Code 插件。
 
-作用：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 codex / gemini / claude）执行对话请求并展示结果。
+作用：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 codex / claude / opencode）执行对话请求并展示结果。
 
 # CLI 助手调用手册
 - docs/cli-reference.md（兼容入口）

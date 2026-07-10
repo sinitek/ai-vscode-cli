@@ -203,13 +203,13 @@ export const WEBVIEW_I18N = {
     helpThinkingCodexItem1: "Control intensity via model_reasoning_effort.",
     helpThinkingCodexItem2:
       "Options: low / medium / high (no explicit off; low is minimal).",
-    helpThinkingGeminiTitle: "Gemini",
-    helpThinkingGeminiItem1:
-      "Controlled via thinkingConfig in the config file.",
-    helpThinkingGeminiItem2:
-      "Gemini 2.5: not supported yet; Gemini 3: thinkingLevel.",
-    helpThinkingGeminiItem3:
-      "Common values: minimal / low / medium / high (varies by model).",
+    helpThinkingOpenCodeTitle: "OpenCode",
+    helpThinkingOpenCodeItem1:
+      "Controlled via OpenCode config and command arguments.",
+    helpThinkingOpenCodeItem2:
+      "Uses this extension's OpenCode thinking mode settings when configured.",
+    helpThinkingOpenCodeItem3:
+      "Common values follow the configured OpenCode model and provider.",
     helpThinkingClaudeTitle: "Claude",
     helpThinkingClaudeItem1:
       "Use --max-thinking-tokens to control thinking tokens.",
@@ -523,11 +523,11 @@ export const WEBVIEW_I18N = {
     helpThinkingCodexItem1: "通过配置 model_reasoning_effort 控制强度。",
     helpThinkingCodexItem2:
       "可选值：low / medium / high（无显式关闭，low 近似最低）。",
-    helpThinkingGeminiTitle: "Gemini",
-    helpThinkingGeminiItem1: "通过配置文件的 thinkingConfig 控制。",
-    helpThinkingGeminiItem2: "Gemini 2.5：暂不支持；Gemini 3：thinkingLevel。",
-    helpThinkingGeminiItem3:
-      "常见值：minimal / low / medium / high（随模型而异）。",
+    helpThinkingOpenCodeTitle: "OpenCode",
+    helpThinkingOpenCodeItem1: "通过 OpenCode 配置和命令参数控制。",
+    helpThinkingOpenCodeItem2: "使用本扩展中的 OpenCode 思考模式配置。",
+    helpThinkingOpenCodeItem3:
+      "常见值取决于当前配置的 OpenCode 模型和供应商。",
     helpThinkingClaudeTitle: "Claude",
     helpThinkingClaudeItem1: "使用 --max-thinking-tokens 控制思考 token 数。",
     helpThinkingClaudeItem2: "0 视为关闭，数值越高推理越深入。",

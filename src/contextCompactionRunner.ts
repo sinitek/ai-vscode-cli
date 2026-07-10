@@ -195,7 +195,7 @@ export async function runGeminiNativeContextCompactionWithDeps(
   deps: GeminiNativeContextCompactionDeps,
   options: GeminiNativeContextCompactionOptions
 ): Promise<{ compacted: boolean; sessionId: string; resultStatus: string | null; errorText: string | null }> {
-  const runCli: CliName = "gemini";
+  const runCli = "gemini" as unknown as CliName;
   const geminiRunProfile = deps.prepareGeminiRunProfile(options.selectedModel, options.thinkingMode, options.cwd ?? undefined);
   const runtimeModel = geminiRunProfile.runtimeModel ?? options.selectedModel;
   const runtimeEnvOverrides = geminiRunProfile.envOverrides;
@@ -383,7 +383,7 @@ export type ContextCompactionRunDeps = {
   sendPanelMessage: (message: { type: "taskListUpdate"; items: { text: string; done: boolean }[] }) => void;
   updateProcessTitle: (cli: CliName, sessionId: string) => void;
   appendTraceMessage: (content: string) => void;
-  prepareGeminiRunProfile: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
+  prepareGeminiRunProfile?: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
   setActiveProcess: (process: RunProcess | undefined) => void;
   appendAssistantChunk: (chunk: string) => void;
   adoptSessionId: (cli: CliName, sessionId: string, tabId: string | null) => void;
@@ -677,38 +677,17 @@ export async function runContextCompactionWithDeps(
       return true;
     }
 
-    if (cli === "gemini") {
-      const result = await runGeminiNativeContextCompactionWithDeps(
-        {
-          ...createDefaultGeminiNativeContextCompactionDeps(deps.setActiveProcess),
-          prepareGeminiRunProfile: deps.prepareGeminiRunProfile,
-        },
-        {
-          sessionId,
-          selectedModel,
-          cwd: cwd ?? null,
-          thinkingMode,
-          onTraceText: (text) => deps.appendTraceMessage(`${text}\n`),
-          onAssistantText: (text) => {
-            if (text.trim()) {
-              deps.appendAssistantChunk(text);
-            }
-          },
-          onRawStream: (chunk, stream) => {
-            deps.sendRawStreamDelta(chunk, { stream });
-          },
-        }
-      );
-      deps.adoptSessionId(cli, result.sessionId, deps.getActiveConversationTabId());
-      deps.appendSystemMessage(t("compact.geminiNativeCompressed", { sessionId: result.sessionId }));
-      void logInfo("context-compact-gemini-native-complete", {
+    if (cli === "opencode") {
+      if (!silent) {
+        deps.appendSystemMessage(t("compact.openCodeGenericUnavailable"));
+      }
+      void logInfo("context-compact-opencode-generic-unavailable", {
         cli,
         sessionId,
-        resolvedSessionId: result.sessionId,
-        resultStatus: result.resultStatus,
+        silent,
       });
       cleanupAfterRun("end");
-      return true;
+      return false;
     }
 
     cleanupAfterRun("end");

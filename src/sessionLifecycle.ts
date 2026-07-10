@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { buildProcessLabel } from "./cli/commandRunner";
-import { CliName, CLI_LIST } from "./cli/types";
+import { CliName, CLI_LIST, isOpenCodeCli } from "./cli/types";
 import { buildErrorDetail } from "./errorDisplay";
 import {
   getMappedThreadId,
@@ -87,7 +87,7 @@ function getSessionIdPatterns(cli: CliName): RegExp[] {
       /"session_id"\s*:\s*"([^"]+)"/i,
     ];
   }
-  if (cli === "gemini") {
+  if (isOpenCodeCli(cli)) {
     return [
       ...base,
       /"session_id"\s*:\s*"([^"]+)"/i,

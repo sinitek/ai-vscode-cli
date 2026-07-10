@@ -1,4 +1,4 @@
-import { CliName } from "./cli/types";
+import { CliName, isOpenCodeCli } from "./cli/types";
 
 export type TraceMessageKind = "thinking" | "normal" | "tool-use";
 
@@ -94,7 +94,7 @@ export function formatCodexExecSegmentForDisplay(
   content: string,
   cli: CliName | null
 ): TraceDisplayResult {
-  if (cli !== "codex") {
+  if (cli !== "codex" && !isOpenCodeCli(cli)) {
     return { content, shouldPersist: true };
   }
   const lines = content.split("\n");
@@ -135,7 +135,7 @@ export function formatCodexExecSegmentForDisplay(
   return { content: merged || commandLine, shouldPersist: true };
 }
 
-export function isGeminiNoiseTraceLine(trimmed: string): boolean {
+export function isLegacyGeminiNoiseTraceLine(trimmed: string): boolean {
   if (!trimmed) {
     return false;
   }
@@ -155,7 +155,7 @@ export function isGeminiNoiseTraceLine(trimmed: string): boolean {
   return false;
 }
 
-export function normalizeGeminiTraceLine(line: string): string {
+export function normalizeLegacyGeminiTraceLine(line: string): string {
   const trimmed = line.trim();
   if (!trimmed) {
     return line;
@@ -184,16 +184,16 @@ export function normalizeGeminiTraceLine(line: string): string {
   return trimmed;
 }
 
-export function formatGeminiTraceSegmentForDisplay(
+export function formatLegacyGeminiTraceSegmentForDisplay(
   content: string,
-  cli: CliName | null
+  cli: string | null
 ): TraceDisplayResult {
   if (cli !== "gemini") {
     return { content, shouldPersist: true };
   }
   const normalizedLines = content
     .split("\n")
-    .map((line) => normalizeGeminiTraceLine(line));
+    .map((line) => normalizeLegacyGeminiTraceLine(line));
   const normalizedContent = normalizedLines.join("\n").trimEnd();
   if (!normalizedContent.trim()) {
     return { content: "", shouldPersist: false };
@@ -205,9 +205,6 @@ export function formatTraceSegmentForDisplay(
   content: string,
   cli: CliName | null
 ): TraceDisplayResult {
-  if (cli === "gemini") {
-    return formatGeminiTraceSegmentForDisplay(content, cli);
-  }
   return { content, shouldPersist: true };
 }
 
@@ -272,9 +269,6 @@ export function shouldIgnoreTraceLine(
       state.skipCodexBlock = false;
     }
     return !hasSegment;
-  }
-  if (cli === "gemini" && isGeminiNoiseTraceLine(trimmed)) {
-    return true;
   }
   if (state.skipUserBlock) {
     if (isTraceSegmentStart(trimmed)) {

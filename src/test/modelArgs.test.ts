@@ -1,7 +1,12 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { applyModelArg, supportsCliManagedModelSelection } from "../cli/modelArgs";
+import {
+  applyModelArg,
+  readModelArg,
+  stripModelArgs,
+  supportsCliManagedModelSelection,
+} from "../cli/modelArgs";
 
 test("Claude keeps configured args unchanged even when the webview passes a selected model", () => {
   assert.equal(supportsCliManagedModelSelection("claude"), false);
@@ -16,5 +21,46 @@ test("Codex still injects the selected model into CLI args", () => {
   assert.deepEqual(
     applyModelArg("codex", ["--dangerously-bypass-approvals-and-sandbox", "--model", "old-model"], "gpt-5-codex"),
     ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5-codex"]
+  );
+});
+
+test("OpenCode reads model args from long, short, and inline forms", () => {
+  assert.equal(supportsCliManagedModelSelection("opencode"), true);
+  assert.equal(readModelArg("opencode", ["--model", "kimi-k2"]), "kimi-k2");
+  assert.equal(readModelArg("opencode", ["-m", "qwen3-coder"]), "qwen3-coder");
+  assert.equal(readModelArg("opencode", ["--model=gpt-5"]), "gpt-5");
+  assert.equal(readModelArg("opencode", ["-m=deepseek-v3.1"]), "deepseek-v3.1");
+});
+
+test("OpenCode strips existing model args before writing the selected model", () => {
+  const args = [
+    "--print",
+    "--model",
+    "old-model",
+    "--mode",
+    "build",
+    "-m=older-model",
+  ];
+
+  assert.deepEqual(stripModelArgs("opencode", args), ["--print", "--mode", "build"]);
+  assert.deepEqual(
+    applyModelArg("opencode", args, "gpt-5-opencode"),
+    ["--print", "--mode", "build", "--model", "gpt-5-opencode"],
+  );
+});
+
+test("OpenCode preserves official provider/model model ids", () => {
+  assert.equal(readModelArg("opencode", ["--model", "myprovider/my-model-name"]), "myprovider/my-model-name");
+  assert.equal(readModelArg("opencode", ["-m=myprovider/my-model-name"]), "myprovider/my-model-name");
+  assert.deepEqual(
+    applyModelArg("opencode", ["run", "--format", "json"], "myprovider/my-model-name"),
+    ["run", "--format", "json", "--model", "myprovider/my-model-name"],
+  );
+});
+
+test("OpenCode leaves args unchanged when no selected model is provided", () => {
+  assert.deepEqual(
+    applyModelArg("opencode", ["--print", "--model", "configured-model"], ""),
+    ["--print", "--model", "configured-model"],
   );
 });
