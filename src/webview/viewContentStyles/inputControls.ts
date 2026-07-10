@@ -213,6 +213,21 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .input-model-row .lobster-model-group .lobster-execution-mode-select {
         min-width: 122px;
       }
+      .open-code-model-group {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .open-code-model-issue {
+        color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+        font-size: 11px;
+        max-width: 260px;
+        line-height: 1.3;
+      }
       .debug-toggle {
         display: inline-flex;
         align-items: center;

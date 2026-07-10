@@ -8,6 +8,7 @@ import {
   type ThinkingMode,
 } from "./cli/types";
 import type { PanelState } from "./webview/types";
+import type { OpenCodeModelRole } from "./cli/opencodeconfigmodels";
 
 export type LobsterTaskRoleForModelSelection = "main" | "subtask";
 
@@ -18,6 +19,7 @@ export type CliModelStore = {
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
   selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRoleForModelSelection, string>>>;
   lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
+  openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeModelRole, string>>>;
 };
 
 export type ModelSelectionStoreState = {
@@ -100,6 +102,7 @@ export function ensureCliModelStore(
     openCodeVariantByConfigAndModel: {},
     selectedLobsterByConfigId: {},
     lobsterRolesByConfigId: {},
+    openCodeRoleModelsByConfigId: {},
   };
   const storedOptionsByConfigId = store?.optionsByConfigId;
   if (storedOptionsByConfigId && typeof storedOptionsByConfigId === "object") {
@@ -157,6 +160,24 @@ export function ensureCliModelStore(
       }
       if (Object.keys(variantsByModel).length > 0) {
         normalized.openCodeVariantByConfigAndModel[configId] = variantsByModel;
+      }
+    }
+  }
+  const storedOpenCodeRoleModels = store?.openCodeRoleModelsByConfigId;
+  if (storedOpenCodeRoleModels && typeof storedOpenCodeRoleModels === "object") {
+    for (const [configId, rawSelection] of Object.entries(storedOpenCodeRoleModels)) {
+      if (!configId || !rawSelection || typeof rawSelection !== "object") {
+        continue;
+      }
+      const selection: Partial<Record<OpenCodeModelRole, string>> = {};
+      for (const role of ["primary", "small"] as const) {
+        const model = normalizeCliModelName(rawSelection[role]);
+        if (model) {
+          selection[role] = model;
+        }
+      }
+      if (Object.keys(selection).length > 0) {
+        normalized.openCodeRoleModelsByConfigId[configId] = selection;
       }
     }
   }
@@ -261,7 +282,7 @@ export function getSelectedCliModelFromStore(
   cli: CliName,
   configId: string | null
 ): string | null {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return null;
   }
   return normalizeCliModelName(store?.selectedByConfigId?.[configId]);
@@ -277,6 +298,43 @@ export function getOpenCodeVariantFromStore(
     return null;
   }
   return normalizeCliModelName(store.openCodeVariantByConfigAndModel?.[configId]?.[normalizedModel]);
+}
+
+export function getOpenCodeRoleModelFromStore(
+  store: CliModelStore,
+  configId: string | null,
+  role: OpenCodeModelRole
+): string | null {
+  if (!configId) {
+    return null;
+  }
+  return normalizeCliModelName(ensureCliModelStore(store).openCodeRoleModelsByConfigId[configId]?.[role]);
+}
+
+export function setOpenCodeRoleModelInStore(
+  store: CliModelStore,
+  configId: string | null,
+  role: OpenCodeModelRole,
+  model: string | null
+): CliModelStore {
+  if (!configId) {
+    return ensureCliModelStore(store);
+  }
+  const nextStore = ensureCliModelStore(store);
+  const selection = { ...(nextStore.openCodeRoleModelsByConfigId[configId] ?? {}) };
+  const normalizedModel = normalizeCliModelName(model);
+  if (normalizedModel) {
+    selection[role] = normalizedModel;
+    nextStore.openCodeRoleModelsByConfigId[configId] = selection;
+  } else {
+    delete selection[role];
+    if (Object.keys(selection).length === 0) {
+      delete nextStore.openCodeRoleModelsByConfigId[configId];
+    } else {
+      nextStore.openCodeRoleModelsByConfigId[configId] = selection;
+    }
+  }
+  return ensureCliModelStore(nextStore);
 }
 
 export function setOpenCodeVariantInStore(
@@ -321,7 +379,7 @@ export function getManagedModelOptionsForCliFromStore(
   cli: CliName,
   configId: string | null
 ): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return [];
   }
   const storedOptions = Array.isArray(store?.optionsByConfigId?.[configId])
@@ -337,7 +395,7 @@ export function getCliModelLobsterRoleFlagsFromStore(
   configId: string | null
 ): { main: boolean; subtask: boolean } {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || !normalizedModel || cli !== "codex") {
     return { main: true, subtask: true };
   }
   const rolesByModel = store?.lobsterRolesByConfigId?.[configId];
@@ -356,7 +414,7 @@ export function getModelOptionsForCliFromStore(
   cli: CliName,
   configId: string | null
 ): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return [];
   }
   const storedOptions = Array.isArray(store?.optionsByConfigId?.[configId])
@@ -375,7 +433,7 @@ export function getLobsterModelOptionsForCliFromStore(
   role: LobsterTaskRoleForModelSelection,
   configId: string | null
 ): string[] {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return [];
   }
   const options = getModelOptionsForCliFromStore(store, cli, configId);
@@ -391,7 +449,7 @@ export function getSelectedLobsterCliModelFromStore(
   role: LobsterTaskRoleForModelSelection,
   configId: string | null
 ): string | null {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return null;
   }
   const optionsForRole = getLobsterModelOptionsForCliFromStore(store, cli, role, configId);
@@ -422,7 +480,7 @@ export function selectCliModelInStore(
   model: string | null,
   configId: string | null,
 ): CliModelStore {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return ensureCliModelStore(store);
   }
   const normalized = normalizeCliModelName(model);
@@ -443,7 +501,7 @@ export function selectCliLobsterModelInStore(
   model: string | null,
   configId: string | null,
 ): CliModelStore {
-  if (!configId || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || cli !== "codex") {
     return ensureCliModelStore(store);
   }
   const nextStore = ensureCliModelStore(store);
@@ -478,7 +536,7 @@ export function setCliModelLobsterRoleInStore(
   configId: string | null
 ): { store: CliModelStore; updated: boolean } {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || !supportsCliManagedModelSelection(cli)) {
+  if (!configId || !normalizedModel || cli !== "codex") {
     return { store: ensureCliModelStore(store), updated: false };
   }
   const managedModels = getManagedModelOptionsForCliFromStore(store, cli, configId);
@@ -529,7 +587,7 @@ export function renameCliModelInStore(
 ): { store: CliModelStore; renamedModel: string | null } {
   const previousNormalized = normalizeCliModelName(previousModel);
   const nextNormalized = normalizeCliModelName(nextModel);
-  if (!previousNormalized || !nextNormalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  if (!previousNormalized || !nextNormalized || !configId || cli !== "codex") {
     return { store: ensureCliModelStore(store), renamedModel: null };
   }
   const previousKey = previousNormalized.toLowerCase();
@@ -604,7 +662,7 @@ export function deleteCliModelFromStore(
   configId: string | null
 ): CliModelStore {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  if (!normalized || !configId || cli !== "codex") {
     return ensureCliModelStore(store);
   }
   const targetKey = normalized.toLowerCase();
@@ -660,7 +718,7 @@ export function moveCliModelInStore(
   configId: string | null
 ): { store: CliModelStore; movedModel: string | null } {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || !supportsCliManagedModelSelection(cli)) {
+  if (!normalized || !configId || cli !== "codex") {
     return { store: ensureCliModelStore(store), movedModel: null };
   }
   const targetKey = normalized.toLowerCase();

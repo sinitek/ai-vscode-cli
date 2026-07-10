@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Codex | 交互式 + 一次性 | 支持 | `src/interactive/codexRunner.ts`、`src/cli/commandRunner.ts` |
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
-| OpenCode | one-shot / 并行 `opencode run [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
+| OpenCode | one-shot / 并行 `opencode run --auto [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
 ## 2. 命令来源
@@ -72,22 +72,31 @@
 
 - OpenCode 是 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、统一会话存档和统一配置读取接入
 - 命令与参数读取 `sinitek-cli-tools.commands.opencode` / `sinitek-cli-tools.args.opencode`
-- one-shot / 并行任务当前通过 `opencode run --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional，并从 JSON 事件中提取 assistant 文本生成最终结论气泡
+- OpenCode 1.17.16 的根命令和 `run` 子命令都支持官方 `--auto`：自动批准未被显式拒绝的权限请求。插件在 `src/cli/commandRunner.ts` 的共享 OpenCode 参数构建路径集中注入并去重该参数，因此普通消息、one-shot、并行任务、Loop 主任务/子任务、续跑与唤醒统一获得 `--auto`，无 prompt 的终端启动则为 `opencode --auto`
+- one-shot / 并行任务当前通过 `opencode run --auto --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional，并从 JSON 事件中提取 assistant 文本生成最终结论气泡。例如：`opencode run --auto --format json --model <provider/model> --variant <variant> --session <sessionId> "<message>"`
+- OpenCode 1.17.16 的 JSONL 顶层和 `part` 对象使用 camel-case `sessionID` 返回真实 `ses_*`；插件必须在首轮流式输出中接管该 ID，后续同一 tab 才能通过 `--session <ses_*>` 续接。`local_*` 仅是插件消息落盘占位 ID，禁止传给 OpenCode；历史 `local_*` tab 再次执行时先启动新底层会话，捕获真实 ID 后迁移插件消息和 tab 引用，不使用全局 `--continue` 猜测最近会话。
+- `--auto` 在用途上对应插件为 Claude 提供的 `--dangerously-skip-permissions` 和为 Codex 提供的 `--dangerously-bypass-approvals-and-sandbox`，但安全语义并不等价：它只自动批准仍处于 `ask` 的请求。默认 `external_directory: ask` 因而可以自动跨目录读写；用户配置、agent 配置或 OpenCode 默认规则中的显式 `deny` 仍优先，插件不会用运行时 overlay 强制改写为 `allow`
 - OpenCode 进程非零退出时也必须解析 stdout JSON `error` 事件；若事件中存在 `APIError` / `UnknownError`、HTTP status、provider message、server `ref`、`responseBody.error.code` 或请求 URL，错误气泡优先展示这些 provider/API 详情，仅在没有可解析错误时才回退 `CLI 退出码`
 - OpenCode one-shot 单次尝试启动后若长时间没有 stdout/stderr 输出，会按 OpenCode 空输出超时错误收口并进入 hidden retry；hidden retry 最终耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志，不允许只留下 trace 或运行态
-- OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务会先应用激活的 `config.json`，再进入 `src/cli/commandRunner.ts` 的 `opencode run` 子进程路径，避免误触发 `interactive-runner-unsupported:opencode`
+- OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务只读取 active config 内容，并为每次 `opencode run` 生成独立 runtime overlay，不会为对话运行改写用户真实 `~/.opencode/config.json`。
 - OpenCode 配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前配置来源
-- 配置示例使用 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、可选 `small_model`、`provider`、`mcp`。配置页展示的是明确标注的 OpenAI-compatible 网关范例，provider 名称保持 `myAPI`，模型 id 使用中性网关占位名，避免把模型品牌误解为适配器选择依据。
+- 配置示例使用严格 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、`small_model=provider/model`、`provider`、`mcp`。配置页展示 `myAPI` OpenAI-compatible 双模型范例，provider 凭据使用官方 `{env:VARIABLE_NAME}` 语法，不要求或生成 `.env` 文件。
 - `provider.<id>.npm` 选择的是 API 协议适配器，不是模型品牌。直接使用 OpenCode 内置 Anthropic / Google / OpenAI provider 时，通常通过 `/connect` 鉴权并使用 `anthropic/...`、`google/...`、`openai/...`，无需自定义 `npm`；需要手写自定义直连 provider 时，对应适配器分别是 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`。只有请求实际 OpenAI-compatible endpoint 的自定义网关使用 `@ai-sdk/openai-compatible`；即使该网关承载 Claude、Gemini、DeepSeek 等模型，也仍按网关协议使用该适配器。
 - OpenAI-compatible 自定义 provider 必须配置 `options.baseURL` 并指向实际兼容 API endpoint；缺少 `baseURL` 会在保存/运行前阻断，未以常见 `/v1` 结尾会继续给出校验提示。`model` / `small_model` 仍应使用 `provider/真实模型 id`；`models.<id>.name` 仅作为展示元数据，不能依赖它把占位 alias 改写成真实模型名。
-- OpenCode 自定义 provider 下，UI 托管模型若保存为裸模型 id（例如 `gpt-5.5`），运行时必须按已生效 `config.json` 顶层 `model=provider/model` 和 `provider.<id>.models` 规范化为 `provider/model` 后再传给 `opencode run --model`；若裸模型不在 active provider 的 `models` 中，应直接显示配置/模型不匹配诊断，不能用裸 `--model` 覆盖配置默认值。
-- OpenCode 运行前会做配置 preflight：阻止 `myprovider`、`my-model-name`、`my-small-model-name`、配置页范例中的 `gateway-chat-model` / `gateway-small-model`、示例 baseURL、OpenAI-compatible provider 缺少 `baseURL` 等未完成配置；OpenAI-compatible baseURL 缺少常见 `/v1` 会作为提示暴露，避免把范例直接当成真实配置运行。
+- OpenCode 模式展示“主模型（model）”与“小模型（small_model）”两个下拉；候选只从当前 active config 的 `provider.<id>.models` 固定结构加载，值始终为精确 `provider/model`，不提供新增、编辑、删除、排序等模型管理入口。
+- 普通对话、one-shot、并行任务、Loop 主任务和 Loop 子任务的对话请求仍使用主模型。`small_model` 只供 OpenCode 内部标题等轻量请求使用，不等同于 Loop 子任务模型；CLI 没有 `--small-model`，插件若临时切换小模型，只能通过本次运行的 runtime config overlay 覆盖顶层 `small_model`。
+- primary/small 覆盖按 active config id 隔离，空值跟随顶层配置，配置切换或候选变化会清理失效覆盖；OpenCode 不读取通用 selected/options 或 Loop main/subtask 选择。
+- overlay 同时固定 effective `model` / `small_model`，使用随机临时目录、`0700` 目录权限和 `0600` 文件权限，通过 `OPENCODE_CONFIG` 注入，并在 exit/error/timeout/cancel 后清理。
+- OpenCode 角色选择只接受 active config 候选中的精确 `provider/model`；裸模型 id、跨 provider 猜测或不在 `provider.<id>.models` 的引用会在启动前拒绝，不能自动补全。
+- OpenCode 运行前会对 effective primary、effective small 和 overlay 后配置做 preflight：缺少有效 primary、角色引用不是当前配置候选、provider/model 已被过滤或配置仍含占位值时阻止启动；OpenAI-compatible provider 缺少 `baseURL` 等未完成配置同样阻断。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
+- Claude 配置中心管理用户级 `~/.claude/settings.json`。卡片默认进入可视化模式，也可切换到 JSON 高级模式；模式切换和保存都会先校验 JSON/可视化状态，无效 JSON 不得清空或覆盖最后一次有效状态。可视化模式定向维护 `model`、`fallbackModel`（最多三个）、`availableModels`、`effortLevel`（`low|medium|high|xhigh`）、常用行为字段、权限规则、API/网关环境变量，以及 `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` 三档模型映射；所有未受管字段基于原始 JSON 保留。
 
 #### OpenCode 动态 variants 与运行参数
 
-- OpenCode 的推理力度使用精确模型的 `variants`，运行参数为 `opencode run --variant <name>`；`--thinking` 只控制 thinking blocks 是否展示，不能作为推理力度参数。
+- OpenCode 主模型的基础推理力度来自该模型 `options`，运行时档位来自该模型 `variants`，并由 `opencode run --variant <name>` 选择；`--thinking` 只控制 thinking blocks 是否展示，不能作为推理力度参数。
 - 可选档位按以下优先级解析：当前命令/version 下 `opencode models <provider> --verbose` 返回的精确 `provider/model` metadata → 当前激活配置 `provider.<id>.models.<model>.variants` 中未禁用的显式声明 → Default-only。不得按 provider `npm`、provider 名或模型名猜测档位；`@ai-sdk/openai-compatible` 仅代表协议 adapter。
+- `small_model` 可以在自身模型定义中同时声明 `options` 与 `variants`，但 OpenCode 内部 `small: true` 请求会跳过 variants，实际只使用小模型自身 `options`；只有该模型被当作普通主模型运行时，其 variants 才可由 `--variant` 选择。
 - PanelState 每次携带完整 `openCodeThinking` 快照。配置 ID、配置内容 hash、命令、CLI version、provider 或 model 变化时会形成新的能力身份；解析中、失败或未知模型时立即保守显示 `Default / Follow OpenCode`，旧异步结果不得覆盖新模型状态。
 - variant 选择按 active config id + 精确 `provider/model` 隔离持久化。空选择表示 Default 并删除持久值；保存值不再存在于当前 options 时会回退 Default 并清理，切换 CLI、配置或模型不会沿用旧 options。
 - 运行时只在持久值仍属于当前精确模型 options 时追加 `--variant <name>`；Default 不传。若 `sinitek-cli-tools.args.opencode` 已显式包含 `--variant value` 或 `--variant=value`，显式参数优先，插件不重复覆盖。
@@ -170,6 +179,15 @@ Loop 内部执行方式事实：
 
 - `sinitek-cli-tools.macTaskShell = zsh`
 - `sinitek-cli-tools.macTaskShell = bash`
+
+### OpenCode 1.17.16 全局 MCP
+
+- OpenCode local MCP 的非交互安装参数为 `opencode mcp add <id> [--env KEY=VALUE ...] -- <command> [args...]`；`--` 是 CLI 参数与 MCP 命令的分隔符。
+- OpenCode remote MCP 的非交互安装参数为 `opencode mcp add <id> --url <url> [--header KEY=VALUE ...]`；header 使用 `KEY=VALUE`，不能复用 Claude 的 `Header: value` 形式。
+- OpenCode 不接受 Claude 风格的 `--scope user`、`--transport stdio|http|sse`。在 1.17.16 中传入这些参数会退出失败，且不会完成 MCP 安装。
+- 全局 MCP 写入 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 的顶层 `mcp`；CLI 更新目标条目时会保留其他顶层字段和已有 MCP。
+- `opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 出现在列表中，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。未出现在列表中的市场条目才是未安装。
+- 2026-07-10 的隔离组合 smoke 使用 OpenCode 1.17.16，在同一临时 `HOME` / `XDG_CONFIG_HOME` 中分别安装 local 与 remote MCP，两次安装均退出 `0`，配置保留断言通过；随后真实列表输出中的两个失败条目均被解析为“已安装但不健康”。
 
 ## 8. 更新本文档时的原则
 

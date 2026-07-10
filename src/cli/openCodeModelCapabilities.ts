@@ -1,6 +1,12 @@
 import type { CapturedCliOutput } from "./commandRunner";
 import { parseOpenCodeModelVariants } from "../config/configService";
 import type { OpenCodeThinkingMessageKey } from "./types";
+import {
+  parseOpenCodeConfigModels,
+  parseOpenCodeModelReference,
+  validateOpenCodeModelOverride,
+} from "./opencodeconfigmodels";
+import type { ParsedOpenCodeConfigModels } from "./opencodeconfigmodels";
 
 export type OpenCodeVariantOption = {
   value: string;
@@ -13,6 +19,7 @@ export type OpenCodeThinkingCapability = {
   modelId: string | null;
   reasoning: boolean | "unknown";
   options: OpenCodeVariantOption[];
+  configuredDefaultVariant: string | null;
   selectedVariant: string | null;
   status: "ready" | "unknown" | "error";
   source: "resolved-cli" | "config" | "fallback";
@@ -48,7 +55,10 @@ type ParsedOpenCodeModelMetadata = {
   options: OpenCodeVariantOption[];
 };
 
-type OpenCodeThinkingCapabilityBase = Omit<OpenCodeThinkingCapability, "selectedVariant">;
+type OpenCodeThinkingCapabilityBase = Omit<
+  OpenCodeThinkingCapability,
+  "configuredDefaultVariant" | "selectedVariant"
+>;
 
 type JsonObjectBlock = {
   start: number;
@@ -244,18 +254,8 @@ function parseVariantOptions(
 }
 
 export function splitOpenCodeModelReference(value: string | null | undefined): OpenCodeModelReference | null {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return null;
-  }
-  const separatorIndex = normalized.indexOf("/");
-  if (separatorIndex <= 0 || separatorIndex >= normalized.length - 1) {
-    return null;
-  }
-
-  const providerId = normalized.slice(0, separatorIndex).trim();
-  const modelId = normalized.slice(separatorIndex + 1).trim();
-  return providerId && modelId ? { providerId, modelId } : null;
+  const target = parseOpenCodeModelReference(value);
+  return target ? { providerId: target.providerId, modelId: target.modelId } : null;
 }
 
 export function parseOpenCodeModelsVerboseOutput(
@@ -350,15 +350,48 @@ async function readVersionIdentity(
   return "unknown";
 }
 
-function applySelectedVariant(
+function readConfiguredDefaultVariant(
+  parsedConfig: ParsedOpenCodeConfigModels,
+  target: OpenCodeModelReference
+): string | null {
+  const providers = parsedConfig.config?.provider;
+  if (!isPlainObject(providers)) {
+    return null;
+  }
+  const provider = providers[target.providerId];
+  if (!isPlainObject(provider) || !isPlainObject(provider.models)) {
+    return null;
+  }
+  const model = provider.models[target.modelId];
+  if (!isPlainObject(model) || !isPlainObject(model.options)) {
+    return null;
+  }
+  const reasoningEffort = model.options.reasoningEffort;
+  if (typeof reasoningEffort !== "string") {
+    return null;
+  }
+  const normalized = reasoningEffort.trim();
+  return normalized || null;
+}
+
+function applyConfiguredAndSelectedVariants(
   capability: OpenCodeThinkingCapabilityBase,
+  configuredDefaultVariant: string | null,
   selectedVariant: string | null | undefined
 ): OpenCodeThinkingCapability {
+  const configuredDefault = configuredDefaultVariant !== null
+    && capability.options.some((option) => option.value === configuredDefaultVariant)
+    ? configuredDefaultVariant
+    : null;
   const selected = typeof selectedVariant === "string"
     && capability.options.some((option) => option.value === selectedVariant)
     ? selectedVariant
     : null;
-  return { ...capability, selectedVariant: selected };
+  return {
+    ...capability,
+    configuredDefaultVariant: configuredDefault,
+    selectedVariant: selected,
+  };
 }
 
 function buildFallbackCapability(
@@ -442,13 +475,18 @@ async function resolveCapabilityBase(
 export async function resolveOpenCodeThinkingCapability(
   options: ResolveOpenCodeThinkingCapabilityOptions
 ): Promise<OpenCodeThinkingCapability> {
-  const target = splitOpenCodeModelReference(options.model);
+  const parsedConfig = parseOpenCodeConfigModels(options.configContent);
+  const validatedModel = validateOpenCodeModelOverride(parsedConfig, "primary", options.model);
+  const target = validatedModel.ok
+    ? splitOpenCodeModelReference(validatedModel.modelRef)
+    : null;
   if (target === null) {
     return {
       providerId: null,
       modelId: null,
       reasoning: "unknown",
       options: [],
+      configuredDefaultVariant: null,
       selectedVariant: null,
       status: "unknown",
       source: "fallback",
@@ -486,7 +524,11 @@ export async function resolveOpenCodeThinkingCapability(
   }
 
   const capability = await pendingCapability;
-  return applySelectedVariant(capability, options.selectedVariant);
+  return applyConfiguredAndSelectedVariants(
+    capability,
+    readConfiguredDefaultVariant(parsedConfig, target),
+    options.selectedVariant
+  );
 }
 
 export function clearOpenCodeThinkingCapabilityCache(): void {

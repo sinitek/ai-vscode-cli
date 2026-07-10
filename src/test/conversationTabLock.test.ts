@@ -7,6 +7,7 @@ type TabSummary = {
   id: string;
   lobsterTaskRole?: string;
   lobsterTaskId?: string;
+  lobsterTaskRunning?: boolean;
   lobsterMainTabCloseLocked?: boolean;
 };
 
@@ -59,6 +60,21 @@ function buildIsLobsterMainTabCloseLocked(
   )(state, isTabRunning, getLobsterMetaForTabSummary) as (tab: TabSummary | null) => boolean;
 }
 
+function buildIsConversationTabRunning(
+  runningTabIds: readonly string[],
+): (tab: TabSummary | null) => boolean {
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isConversationTabRunning");
+  const running = new Set(runningTabIds);
+  const isTabRunning = (tabId: string | undefined): boolean => Boolean(tabId && running.has(tabId));
+  const isLobsterMainTab = (tab: TabSummary | null): boolean => tab?.lobsterTaskRole === "main";
+
+  return new Function(
+    "isTabRunning",
+    "isLobsterMainTab",
+    `${functionSource}; return isConversationTabRunning;`,
+  )(isTabRunning, isLobsterMainTab) as (tab: TabSummary | null) => boolean;
+}
+
 test("does not keep completed Loop main tab locked from stale backend state", () => {
   const mainTab = {
     id: "main-tab",
@@ -86,6 +102,36 @@ test("keeps Loop main tab locked while it or a same-task child tab is running", 
 
   assert.equal(buildIsLobsterMainTabCloseLocked([mainTab], ["main-tab"])(mainTab), true);
   assert.equal(buildIsLobsterMainTabCloseLocked([mainTab, subtaskTab], ["subtask-tab"])(mainTab), true);
+});
+
+test("keeps Loop main tab locked while the persisted task is still running", () => {
+  const mainTab = {
+    id: "main-tab",
+    lobsterTaskRole: "main",
+    lobsterTaskId: "task-1",
+    lobsterTaskRunning: true,
+  };
+
+  assert.equal(buildIsLobsterMainTabCloseLocked([mainTab], [])(mainTab), true);
+});
+
+test("keeps only the Loop main tab visually running from persisted task state", () => {
+  const isRunning = buildIsConversationTabRunning([]);
+
+  assert.equal(isRunning({
+    id: "main-tab",
+    lobsterTaskRole: "main",
+    lobsterTaskId: "task-1",
+    lobsterTaskRunning: true,
+  }), true);
+  assert.equal(isRunning({
+    id: "subtask-tab",
+    lobsterTaskRole: "subtask",
+    lobsterTaskId: "task-1",
+    lobsterTaskRunning: true,
+  }), false);
+  assert.equal(isRunning({ id: "ordinary-running-tab" }), false);
+  assert.equal(buildIsConversationTabRunning(["ordinary-running-tab"])({ id: "ordinary-running-tab" }), true);
 });
 
 test("does not lock Loop main tab for unrelated running tasks", () => {

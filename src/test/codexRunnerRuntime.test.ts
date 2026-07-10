@@ -252,7 +252,7 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
   });
   handleCodexItemEvent({
     eventType: "item.completed",
-    rawItem: { type: "reasoning", text: [{ text: "Think" }] },
+    rawItem: { type: "reasoning", text: [{ text: "Think\n\n<!-- -->" }] },
     assistantBuffers,
     emittedTraceContents,
     handlers,

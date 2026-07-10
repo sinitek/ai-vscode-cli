@@ -1,5 +1,5 @@
 import { spawn } from "cross-spawn";
-import { McpHealthItem } from "./types";
+import { ConfigPlatform, McpHealthItem, McpMarketplaceItem } from "./types";
 import type {
   CodexInstalledMcpServer,
   CodexMcpTransportConfig,
@@ -478,8 +478,10 @@ export async function probeInstalledCodexMcpServer(
   return probeStdioCodexMcpServer(server, server.transport, envValues);
 }
 
+type ListedMcpHealthItem = Omit<McpHealthItem, "platform" | "serverId" | "installed" | "checkedAt">;
+
 function stripAnsi(value: string): string {
-  return value.replace(/\u001B\[[0-9;]*m/g, "");
+  return value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
 function parseConnectedStatus(value: string): { status: McpHealthItem["status"]; details: string } {
@@ -560,4 +562,118 @@ export function parseGeminiMcpHealthOutput(rawContent: string): Map<string, Omit
   }
 
   return result;
+}
+
+const OPEN_CODE_MCP_ENTRY_PATTERN = /^[●○]\s*(?:([✓✔✗✘×!?])\s*)?(.+?)\s+(connected|failed|disabled|unknown)\b(.*)$/i;
+
+function parseOpenCodeMcpDetailLine(rawLine: string): string | null {
+  const hasTreePrefix = /^\s*[│┃]/.test(rawLine);
+  if (!hasTreePrefix && !/^\s+/.test(rawLine)) {
+    return null;
+  }
+
+  const normalized = hasTreePrefix
+    ? rawLine.replace(/^\s*[│┃]\s*/, "").trim()
+    : rawLine.trim();
+  return normalized || null;
+}
+
+export function parseOpenCodeMcpHealthOutput(rawContent: string): Map<string, ListedMcpHealthItem> {
+  const result = new Map<string, ListedMcpHealthItem>();
+  let currentEntry: {
+    serverId: string;
+    statusText: string;
+    detailLines: string[];
+  } | null = null;
+
+  const flushCurrentEntry = (): void => {
+    if (!currentEntry) {
+      return;
+    }
+
+    const parsedStatus = parseConnectedStatus(currentEntry.statusText);
+    result.set(currentEntry.serverId, {
+      enabled: !/\bdisabled\b/i.test(currentEntry.statusText),
+      status: parsedStatus.status,
+      details: [parsedStatus.details, ...currentEntry.detailLines].join("\n"),
+      latencyMs: undefined,
+    });
+    currentEntry = null;
+  };
+
+  for (const rawLine of rawContent.split(/\r?\n/)) {
+    const line = stripAnsi(rawLine);
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+
+    const entryMatch = trimmedLine.match(OPEN_CODE_MCP_ENTRY_PATTERN);
+    if (entryMatch) {
+      flushCurrentEntry();
+      const serverId = entryMatch[2]?.trim() || "";
+      if (!serverId) {
+        continue;
+      }
+      const statusName = entryMatch[3]?.trim() || "unknown";
+      const statusSummary = entryMatch[4]?.trim().replace(/^[-:]\s*/, "") || "";
+      currentEntry = {
+        serverId,
+        statusText: statusSummary ? `${statusName}: ${statusSummary}` : statusName,
+        detailLines: [],
+      };
+      continue;
+    }
+
+    if (/^[┌└├┤┬┴]/.test(trimmedLine)) {
+      if (/^└/.test(trimmedLine)) {
+        flushCurrentEntry();
+      }
+      continue;
+    }
+
+    if (!currentEntry) {
+      continue;
+    }
+    const detailLine = parseOpenCodeMcpDetailLine(line);
+    if (detailLine) {
+      currentEntry.detailLines.push(detailLine);
+    }
+  }
+
+  flushCurrentEntry();
+  return result;
+}
+
+export function mapCliListedMcpHealth(
+  platform: Extract<ConfigPlatform, "claude" | "opencode">,
+  marketplace: ReadonlyArray<Pick<McpMarketplaceItem, "id">>,
+  listedById: ReadonlyMap<string, ListedMcpHealthItem>,
+  checkedAt: string,
+): McpHealthItem[] {
+  return marketplace.map((item) => {
+    const listed = listedById.get(item.id);
+    if (!listed) {
+      return {
+        platform,
+        serverId: item.id,
+        installed: false,
+        enabled: false,
+        status: "unknown",
+        checkedAt,
+        details: "未安装",
+      } satisfies McpHealthItem;
+    }
+
+    return {
+      platform,
+      serverId: item.id,
+      installed: true,
+      enabled: listed.enabled,
+      status: listed.status,
+      checkedAt,
+      details: listed.details,
+      latencyMs: listed.latencyMs,
+    } satisfies McpHealthItem;
+  });
 }

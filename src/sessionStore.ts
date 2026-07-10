@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { CliName } from "./cli/types";
+import { sanitizeCodexReasoningContent } from "./codexReasoningContent";
 import { ChatMessage } from "./webview/types";
 
 export type SessionRecord = {
@@ -378,7 +379,10 @@ export function writeMessageFile(
   }
 }
 
-export function sanitizeMessages(messages: ChatMessage[]): { messages: ChatMessage[]; changed: boolean } {
+export function sanitizeMessages(
+  messages: ChatMessage[],
+  cli?: CliName
+): { messages: ChatMessage[]; changed: boolean } {
   if (!messages.length) {
     return { messages, changed: false };
   }
@@ -386,11 +390,21 @@ export function sanitizeMessages(messages: ChatMessage[]): { messages: ChatMessa
   let changed = false;
   for (const message of messages) {
     const content = typeof message.content === "string" ? message.content : "";
+    const sanitizedContent = cli === "codex"
+      && message.kind === "thinking"
+      && (message.role === "assistant" || message.role === "trace")
+      ? sanitizeCodexReasoningContent(content)
+      : content;
     if (
       (message.role === "assistant" || message.role === "trace")
-      && !content.trim()
+      && !sanitizedContent.trim()
     ) {
       changed = true;
+      continue;
+    }
+    if (sanitizedContent !== content) {
+      changed = true;
+      cleaned.push({ ...message, content: sanitizedContent });
       continue;
     }
     cleaned.push(message);

@@ -38,6 +38,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       function normalizeOpenCodeThinkingPayload(payload) {
         const normalized = {
           selectedVariant: null,
+          configuredDefaultVariant: null,
           options: [],
           disabled: false,
           messageKey: "",
@@ -69,6 +70,69 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
               ? item.source.trim()
               : undefined;
             normalized.options.push({ value, label, source });
+          });
+        }
+        const configuredDefaultVariant = typeof payload.configuredDefaultVariant === "string"
+          ? payload.configuredDefaultVariant.trim()
+          : "";
+        normalized.configuredDefaultVariant = configuredDefaultVariant && seen.has(configuredDefaultVariant)
+          ? configuredDefaultVariant
+          : null;
+        return normalized;
+      }
+
+      function normalizeOpenCodeModelsPayload(payload) {
+        const normalized = {
+          models: [],
+          configPrimaryRef: null,
+          configSmallRef: null,
+          selectedPrimaryRef: null,
+          selectedSmallRef: null,
+          issues: [],
+        };
+        if (!payload || typeof payload !== "object") {
+          return normalized;
+        }
+        ["configPrimaryRef", "configSmallRef", "selectedPrimaryRef", "selectedSmallRef"].forEach((key) => {
+          const value = typeof payload[key] === "string" ? payload[key].trim() : "";
+          normalized[key] = value || null;
+        });
+        const seenRefs = new Set();
+        if (Array.isArray(payload.models)) {
+          payload.models.forEach((item) => {
+            if (!item || typeof item !== "object") {
+              return;
+            }
+            const ref = typeof item.ref === "string" ? item.ref.trim() : "";
+            if (!ref || seenRefs.has(ref)) {
+              return;
+            }
+            seenRefs.add(ref);
+            const label = typeof item.label === "string" && item.label.trim()
+              ? item.label.trim()
+              : ref;
+            normalized.models.push({
+              ref,
+              label,
+              providerId: typeof item.providerId === "string" ? item.providerId.trim() : "",
+              modelId: typeof item.modelId === "string" ? item.modelId.trim() : "",
+            });
+          });
+        }
+        if (Array.isArray(payload.issues)) {
+          payload.issues.forEach((issue) => {
+            if (!issue || typeof issue !== "object") {
+              return;
+            }
+            const code = typeof issue.code === "string" ? issue.code.trim() : "";
+            if (!code) {
+              return;
+            }
+            const role = issue.role === "primary" || issue.role === "small" ? issue.role : undefined;
+            const messageKey = typeof issue.messageKey === "string" && issue.messageKey.trim()
+              ? issue.messageKey.trim()
+              : undefined;
+            normalized.issues.push({ role, code, messageKey });
           });
         }
         return normalized;
@@ -220,6 +284,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
         state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
+        state.openCodeModels = normalizeOpenCodeModelsPayload(panelState.openCodeModels);
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
@@ -263,6 +328,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
+        updateOpenCodeModelSelectOptions();
         updateLobsterModelSelectOptions();
         syncModelSelectorByInteractiveMode();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
@@ -307,6 +373,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         renderConfigOptions();
         syncRunningStateForActiveTab();
         renderConversationTabs();
+        syncOpenCurrentLobsterGroupChatButton();
         renderSessionList();
         renderPromptHistoryList();
         renderLobsterGroupChatHistoryList();
@@ -374,17 +441,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const payload = normalizeOpenCodeThinkingPayload(state.openCodeThinking);
         state.openCodeThinking = payload;
         elements.thinkingMode.innerHTML = "";
-        appendThinkingOption("", t("openCodeThinkingOptionDefault"));
         const options = payload.disabled ? [] : payload.options;
         const availableValues = new Set();
         options.forEach((option) => {
           availableValues.add(option.value);
           appendThinkingOption(option.value, getOpenCodeThinkingOptionLabel(option));
         });
-        const selectedVariant = payload.selectedVariant && availableValues.has(payload.selectedVariant)
+        const displayVariant = payload.selectedVariant && availableValues.has(payload.selectedVariant)
           ? payload.selectedVariant
-          : "";
-        elements.thinkingMode.value = selectedVariant;
+          : payload.configuredDefaultVariant && availableValues.has(payload.configuredDefaultVariant)
+            ? payload.configuredDefaultVariant
+            : "";
+        elements.thinkingMode.value = displayVariant;
         const unavailable = payload.disabled || options.length === 0;
         elements.thinkingMode.disabled = unavailable;
         const localizedMessage = getOpenCodeThinkingMessage(payload.messageKey);
@@ -440,7 +508,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        const visible = supported;
+        const visible = supported || state.currentCli === "opencode";
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
         elements.interactiveModeSelect.disabled = !visible;
         elements.interactiveModeSelect.value = normalizeInteractiveMode(state.interactiveMode);

@@ -90,6 +90,7 @@ export type PanelStateBuilderDeps = {
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
   openCodeThinking: PanelState["openCodeThinking"];
+  openCodeModels?: PanelState["openCodeModels"];
   getWorkspaceInteractiveMode: (cli: CliName) => PanelState["interactiveMode"];
   isInteractiveSupported: typeof isInteractiveSupported;
   getProjectRulePaths: () => Record<CliName, string | null>;
@@ -129,6 +130,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,
     thinkingMode: deps.getEffectiveThinkingMode(deps.currentCli, selectedModel),
     openCodeThinking: deps.openCodeThinking,
+    openCodeModels: deps.openCodeModels,
     interactiveMode: deps.getWorkspaceInteractiveMode(deps.currentCli),
     interactive: {
       supported: deps.isInteractiveSupported(deps.currentCli),

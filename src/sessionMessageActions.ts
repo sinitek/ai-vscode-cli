@@ -200,12 +200,12 @@ export async function handleSendPromptMessage(
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
-  const lobsterMainModel = supportsCliManagedModelSelection(targetCli)
+  const lobsterMainModel = targetCli === "codex"
     ? (typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
         ? message.lobsterMainModel.trim()
         : (deps.getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined))
     : undefined;
-  const lobsterSubtaskModel = supportsCliManagedModelSelection(targetCli)
+  const lobsterSubtaskModel = targetCli === "codex"
     ? (typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
         ? message.lobsterSubtaskModel.trim()
         : (deps.getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined))
@@ -214,7 +214,7 @@ export async function handleSendPromptMessage(
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,
-    model: supportsCliManagedModelSelection(targetCli) && typeof message.model === "string" && message.model
+    model: targetCli === "codex" && typeof message.model === "string" && message.model
       ? message.model
       : undefined,
     lobsterMainModel,

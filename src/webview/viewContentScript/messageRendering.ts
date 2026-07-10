@@ -508,6 +508,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!meta || meta.taskRole !== "main" || !meta.lobsterTaskId) {
           return false;
         }
+        if (tab && tab.lobsterTaskRunning === true) {
+          return true;
+        }
         if (tab && isTabRunning(tab.id)) {
           return true;
         }
@@ -567,6 +570,16 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           return false;
         }
         return typeof runningTabStartedAtById[tabId] === "number";
+      }
+
+      function isConversationTabRunning(tab) {
+        return Boolean(
+          tab
+          && (
+            isTabRunning(tab.id)
+            || (isLobsterMainTab(tab) && tab.lobsterTaskRunning === true)
+          )
+        );
       }
 
       function isTabErrored(tabId) {
@@ -756,7 +769,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           }
           if (isTabErrored(tab.id)) {
             tabItem.classList.add("errored");
-          } else if (isTabRunning(tab.id)) {
+          } else if (isConversationTabRunning(tab)) {
             tabItem.classList.add("running");
           }
           tabItem.setAttribute("role", "tab");
@@ -778,7 +791,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             closeButton.textContent = "×";
             closeButton.title = t("conversationTabCloseAria", { label: labelText });
             closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-            closeButton.disabled = isTabRunning(tab.id) || isLobsterMainTabCloseLocked(tab);
+            closeButton.disabled = isConversationTabRunning(tab) || isLobsterMainTabCloseLocked(tab);
             closeButton.addEventListener("click", (event) => {
               event.preventDefault();
               event.stopPropagation();

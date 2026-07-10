@@ -5,6 +5,7 @@ import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import { normalizeCommandInput, resolveCliCommand } from "./commandResolution";
+import { createOpenCodeRuntimeConfigOverlay } from "./opencoderuntimeconfig";
 
 export { resolveCliCommand } from "./commandResolution";
 export type { ResolvedCliCommand } from "./commandResolution";
@@ -13,6 +14,7 @@ type RunCliOptions = {
   thinkingMode?: ThinkingMode;
   openCodeVariant?: string | null;
   model?: string | null;
+  openCodeSmallModel?: string | null;
   openCodeConfigContent?: string | null;
   imagePaths?: string[];
   envOverrides?: Record<string, string>;
@@ -157,6 +159,34 @@ function readStringProperty(record: Record<string, unknown>, keys: string[]): st
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
       return value;
+    }
+  }
+  return null;
+}
+
+export function parseOpenCodeSessionId(output: string): string | null {
+  for (const line of output.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      const event = JSON.parse(trimmed) as Record<string, unknown>;
+      const eventSessionId = readStringProperty(event, ["sessionID", "sessionId", "session_id"]);
+      if (eventSessionId) {
+        return eventSessionId;
+      }
+      if (event.part && typeof event.part === "object") {
+        const partSessionId = readStringProperty(
+          event.part as Record<string, unknown>,
+          ["sessionID", "sessionId", "session_id"],
+        );
+        if (partSessionId) {
+          return partSessionId;
+        }
+      }
+    } catch {
+      // A stream buffer can end with a partial JSONL event; the next chunk will retry it.
     }
   }
   return null;
@@ -397,6 +427,7 @@ export function buildCliArgs(
   }
   if (cli === "opencode") {
     sharedArgs = applyOpenCodeVariantArg(sharedArgs, options.openCodeVariant);
+    sharedArgs = applyOpenCodeAutoArg(sharedArgs);
   }
 
   if (prompt === undefined || prompt === "") {
@@ -426,6 +457,16 @@ export function applyOpenCodeVariantArg(
   return [...args, "--variant", normalizedVariant];
 }
 
+function applyOpenCodeAutoArg(args: readonly string[]): string[] {
+  const normalizedArgs = args.filter((arg) => arg !== "--auto");
+  const insertIndex = normalizedArgs[0] === "run" ? 1 : 0;
+  return [
+    ...normalizedArgs.slice(0, insertIndex),
+    "--auto",
+    ...normalizedArgs.slice(insertIndex),
+  ];
+}
+
 export function buildProcessLabel(cli: CliName, sessionId?: string | null): string {
   const suffix = sessionId ? sessionId : "new";
   return `${PROCESS_LABEL_PREFIX}-${cli}/${suffix}`;
@@ -452,7 +493,8 @@ function buildOpenCodeRunArgs(
   const hasRunSubcommand = sharedArgs[0] === "run";
   const runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
   if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
-    runArgs.splice(1, 0, "--format", "json");
+    const formatInsertIndex = runArgs[1] === "--auto" ? 2 : 1;
+    runArgs.splice(formatInsertIndex, 0, "--format", "json");
   }
   if (sessionId && !runArgs.includes("--session") && !runArgs.includes("-s")) {
     return [...runArgs, "--session", sessionId, prompt];
@@ -503,8 +545,27 @@ export function runCliStream(
   const configuredCommand = getCliCommand(cli);
   const fullArgs = buildCliArgs(cli, options, prompt);
   const processLabel = options.processLabel;
+  const runtimeOverlay = cli === "opencode" && options.openCodeConfigContent && options.model
+    ? createOpenCodeRuntimeConfigOverlay({
+        configContent: options.openCodeConfigContent,
+        primaryModel: options.model,
+        smallModel: options.openCodeSmallModel ?? null,
+      })
+    : null;
+  if (runtimeOverlay && (!runtimeOverlay.ok || !runtimeOverlay.overlay)) {
+    const error = new Error(runtimeOverlay.issues.map((issue) => issue.message).join("\n"));
+    handlers.onError(error);
+    handlers.onExit(1);
+    return {
+      pid: undefined,
+      resolvedCommand: undefined,
+      kill: () => false,
+    };
+  }
+  const overlay = runtimeOverlay?.overlay ?? null;
   const spawnCommand = resolveSpawnCommand(configuredCommand, fullArgs);
   if (!spawnCommand) {
+    overlay?.cleanup();
     const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
     error.code = "ENOENT";
     handlers.onError(error);
@@ -518,7 +579,11 @@ export function runCliStream(
 
   const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
     cwd: options.cwd,
-    env: options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env,
+    env: {
+      ...process.env,
+      ...(options.envOverrides ?? {}),
+      ...(overlay?.envOverrides ?? {}),
+    },
     argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
@@ -537,10 +602,12 @@ export function runCliStream(
   });
 
   child.on("error", (error) => {
+    overlay?.cleanup();
     handlers.onError(error);
   });
 
   child.on("close", (code) => {
+    overlay?.cleanup();
     handlers.onExit(code);
   });
 

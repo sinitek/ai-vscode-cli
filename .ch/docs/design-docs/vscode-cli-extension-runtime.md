@@ -85,6 +85,8 @@ media/
 - `config.ts`：从 VS Code settings 读取 CLI 命令、参数、思考模式、shell 选项等
 - `commandRunner.ts`：负责命令解析、PATH 探测、命令可用性检测、一次性流式执行与输出捕获
 - `modelArgs.ts`：统一处理模型参数读写
+- `opencodeconfigmodels.ts`：解析 active config 双角色候选、strict exact ref 与 effective overlay 对象
+- `opencoderuntimeconfig.ts`：创建 `0700` 临时目录、`0600` JSON overlay 和幂等清理
 - `installer.ts`：提供不同 CLI 的安装提示文案
 - `types.ts`：定义 CLI 名称、思考模式、交互模式等稳定类型
 
@@ -92,7 +94,17 @@ media/
 
 ### 4.2 `src/interactive/*`：会话型执行层
 
-Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 AI 任务走 `src/cli/commandRunner.ts` 的 `opencode run --format json [message..]` one-shot / 并行子进程路径：
+Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 AI 任务走 `src/cli/commandRunner.ts` 的 `opencode run --auto --format json [message..]` one-shot / 并行子进程路径：
+- 普通消息、并行请求、全部 Loop 主任务/子任务、续跑和唤醒最终共享 `commandRunner.ts` 的 OpenCode 参数构建器；构建器集中注入并去重官方 `--auto`，所以这些路径不会各自维护权限参数。无 prompt 的终端启动也复用同一构建入口，默认得到 `opencode --auto`。
+- 首轮 `opencode run --format json` 流式事件中的 `sessionID` 是 OpenCode 真实续接 ID；`sessionLifecycle.ts` 负责结构化提取并让 tab 接管该 `ses_*`，后续运行才可生成 `--session <ses_*>`。插件生成的 `local_*` 只用于真实 ID 缺失时暂存消息，运行边界会过滤它；旧 tab 捕获新真实 ID 后通过既有本地会话迁移逻辑保留消息和 tab 引用。
+- `--auto` 只自动批准未被显式拒绝的请求；runtime overlay 继续保留 active config 的 `permission`，不会为了跨目录访问覆盖用户或 agent 的显式 `deny`。
+- primary/small 覆盖按 active config id 保存；PanelState 重解析 active config、清理失效覆盖并序列化双角色候选与 issue code。
+- 普通、并行和全部 Loop 对话只使用 effective primary 作为 `--model`；effective small 只进入本次运行 overlay，variant 只绑定 primary。
+- overlay 不改写用户配置，并在 exit/error/timeout/cancel 后清理；启动前校验 effective 角色和 overlay 后配置。
+- OpenCode 在对话面板提供 coding / Loop 两种模式；Loop 复用现有主任务、子任务、多轮复核、任务群聊、状态落盘和唤醒链路，每次主任务或子任务仍通过非交互式 one-shot `opencode run` 执行。
+- `isInteractiveSupported(opencode)` 继续为 `false`，只表示 OpenCode 不提供 Codex/Claude interactive runner 与 common command。该标记不能用于隐藏 Loop 模式入口，也不能为了开放入口改成 `true`，否则普通 coding 请求可能错误进入不存在的交互式链路。
+- OpenCode 不读取 Codex 专用的 Loop 主任务/子任务模型分配；对话、并行请求、Loop 主任务、Loop 子任务、续跑和唤醒都使用 active config 解析出的 effective primary，`small_model` 仅供 OpenCode 自身内部轻量请求。
+
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
 - `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
@@ -100,7 +112,13 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
 
-OpenCode 运行前仍会应用当前激活的 `~/.opencode/config.json`；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 示例占位、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
+OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
+
+OpenCode 模型选择按 active config 解析为两个角色下拉：主模型对应顶层 `model`，小模型对应顶层 `small_model`，候选均只来自 `provider.<id>.models`，不复用插件模型管理器，也不提供新增、编辑、删除或排序入口。聊天区 DOM 只保留两个紧凑 select 与共享错误区域，不显示可见角色 label、思考力度说明或“跟随配置”option；正常 option 文本只使用模型 `name`，缺失时回退 model id。选择当前配置默认 ref 时，Webview 发送 `null` 清除该角色的临时覆盖；其他选择发送 exact ref。普通对话、并行任务、Loop 主任务与 Loop 子任务继续使用主模型；小模型仅服务 OpenCode 内部轻量请求，不是 Loop 子任务模型。
+
+配置中心的 OpenCode `config.json` 卡片默认使用 Provider/模型可视化编辑器，并保留 JSON 高级模式。可视化层基于原始 JSON 深拷贝维护保留底稿，只重建 Provider/模型索引和编辑器负责的字段；Provider 支持 `id/name/npm/options.baseURL/options.apiKey`，模型支持 `id/name/reasoning`、主/小角色和逗号思考力度。力度输入 trim、去空、稳定去重，首项写 `options.reasoningEffort`，全部值生成简单 variants；清空只删除编辑器管理的简单 reasoning 字段，复杂 variants 和未知顶层/provider/model/options 字段保留。Provider/模型 id 重命名同步顶层 `model` / `small_model`，删除引用项会形成显式校验错误并阻止保存；无效 JSON 不覆盖有效可视化状态，范例导入后立即重建可视化。保存仍先更新配置档案，仅当档案为当前激活配置时调用应用链路；API Key 仅以密码输入展示，不写日志。
+
+主模型运行时通过精确 `--model provider/model` 覆盖，并可用 `--variant` 选择该主模型 variants。CLI 不存在 `--small-model`；小模型临时选择必须写入本次 runtime config overlay 的顶层 `small_model`。每个模型的 `options` 定义基础参数，`variants` 定义该模型作为主模型运行时的可选档位；OpenCode 内部小模型请求会跳过 variants，只使用小模型自身 `options`。`@ai-sdk/openai-compatible` 只描述 API 协议适配器，不决定 low/medium/high 等档位。
 
 OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事件提取 assistant 文本生成最终结论气泡；默认格式兼容路径只接受 stdout 正文，不把 stderr 中 `> build · model` 这类状态行当作最终回答。若 CLI 输出 JSON `error` 事件，即使进程 `code!=0` 且 stderr 为空，也会把其中的 `APIError`、HTTP status、provider message、`responseBody.error.code` 和请求 URL 作为错误展示；只有没有可解析 provider/API 错误时才回退通用 `CLI 退出码`。若 `code=0` 但没有 assistant 文本，运行态会展示明确的 OpenCode 空输出/状态错误并按错误收口，避免误报为泛化的“缺少最终结论气泡”或继续隐藏重试。若 one-shot 尝试启动后长时间没有 stdout/stderr 输出，会转成 OpenCode 空输出超时错误进入 hidden retry；重试耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志。
 
@@ -112,6 +130,8 @@ Loop 模式仍由 `src/extension.ts` 统一编排，不新增独立后端服务�
 
 - `main_sub_multi_agent`：经典主从多智能体，主任务直接返回 `LobsterMainDecision`，再复用现有子任务批次、冲突规划、重试、沟通文件和最终总结链路。运行时在 `~/.sinitek_cli/lobster-communications/<taskId>/group-chat.md` 维护主从群聊 transcript，任务开始/恢复气泡会显示“打开 Loop 群聊”动作；内容区群聊面板把“主任务”和动态加入的“子任务 1~N”作为成员展示，成员区标题统一使用“成员”，不沿用红蓝文案；子任务成功完成后的发言气泡展示该子任务最终回复，运行状态与验证依据继续写入任务记录和子任务沟通文件，并在主任务或当前子任务运行时显示“思考中”气泡。未完成且未触发主任务 AI 连续失败上限的 Loop 任务都会在群聊面板显示“补充需求”按钮，把新增需求写入任务记录与主任务沟通文件，供下一轮主任务/裁判主持人读取；当同一 Loop 任务当前没有运行进程且仍可继续时，群聊面板额外显示“继续执行”按钮，点击后先弹出可编辑确认框（默认“继续”），确认后复用同一 `resumeTaskId`，把该继续消息作为本次继续指令交给主任务/裁判主持人判断下一步；同一 Loop 任务存在运行进程时，群聊面板显示“中止”按钮并按 `lobsterTaskId` 停止主任务、子任务和相关运行，把任务记录标记为 stopped。AI 对话面板中的 Loop 主任务 tab 在主任务或同一 Loop 任务任一子任务仍在运行时强制跟随最新消息；用户手动滚离底部时仍显示置底按钮，点击后回到最新消息。普通 Vibe tab 与 Loop 子任务 tab 保持原有按用户滚动位置决定的策略。
 - `debate_multi_agent`：只替代主任务规划/复核阶段，并以红蓝对抗作为辩论语义。每个主任务复核轮先通过临时普通对话 tab 启动裁判主持人组队，裁判主持人写入 `moderator-participants.md` 并动态设计 2-6 个红蓝参与者；新清单的 `role` 只能是 `blue_team` 或 `red_team`，且必须至少包含 1 个蓝队和 1 个红队。蓝队负责提出、捍卫和修正方案，红队负责攻击方案假设、目标覆盖、证据链、边界场景、可行性、成本收益和可验证性；只有任务涉及代码、文件、权限、部署或流程执行时，红队才额外检查并发冲突、越权修改、回滚/恢复失败等工程风险。扩展校验后把这些成员作为 `## 参与者加入：...` 写入 `chat.md`。每个发言批次内参与者并行运行，各自只写独立的 `participants/<participantId>-turn-<n>.md`，扩展等待本批次全部 artifact 完成后按裁判主持人清单顺序追加到 `chat.md`，再启动裁判主持人写 `participants/moderator-turn-<n>.md` 并输出 `continue / finalize / block`；`continue` 表示红队攻击尚未被蓝队充分回应或蓝队新方案尚未被攻击，`finalize` 并行收集最终 `participants/<participantId>.md` 和 `## 立场` 后交给共识汇总器生成 `decision.json`，`block` 进入人工复核。参与者和裁判主持人的临时 tab 在回答完成后可按“Loop 子任务自动关标签”设置关闭，后续同一角色优先用 `debateRounds` 中记录的 sessionId 新建临时 tab 续接。最大发言批次数只作为防无限循环安全上限，达到上限后运行时强制收束。红蓝辩论任务也复用“打开 Loop 群聊”动作；通用面板把 `debates/round-*/chat.md` 与根部 `group-chat.md` 合并为单条时间线，主任务轮次、发言批次和执行阶段以系统消息呈现，不再提供轮次切换，并根据 `debateRounds.activeSpeaker` 显示当前裁判主持人/参与者/共识汇总器的“思考中”等待气泡。群聊面板的“中止”入口同样按 `lobsterTaskId` 停止裁判主持人、参与者、共识汇总器以及共识通过后的主从执行子任务，并把运行中的辩论轮和参与者标记为 stopped。共识通过后仍交给现有 `applyLobsterMainDecision`，子任务执行链路不分叉，但主任务决策、子任务加入、子任务完成和批次完成会继续写入根部 `group-chat.md`，同一任务页面继续在同一时间线展示后续“任务执行群聊”消息，并根据 activeSubtaskId / activeSubtaskIds 显示当前主任务或子任务“思考中”。两种模式的群聊面板都会在状态落盘后主动刷新，5 秒自动刷新仅作兜底；若刷新前群聊滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时保留手动刷新；当任务尚未完成且未触发主任务 AI 连续失败上限时，面板都提供“补充需求”以把新增要求持久化到任务记录和主沟通文件，供下一轮主持人或主任务读取。不同 `taskId` 的 Loop 群聊页面由扩展侧按任务隔离管理，可同时打开；同一 `taskId` 重复打开时复用该任务已有页面并刷新状态。
+
+Loop 主任务 tab 的视觉运行态和关闭锁以持久化任务状态为准，而不是以当前 AI/CLI 进程为准。只要任务记录仍为 `running`，即使正处于主任务与子任务、裁判主持人与参与者之间的编排空档，主 tab 仍保持运行态和不可关闭；进入 `completed`、`needs-review`、`error` 或 `stopped` 后解除。普通 Vibe tab 与 Loop 子任务 tab 继续按实际执行进程显示运行态。
 
 `src/lobsterDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、裁判主持人决策类型、红蓝角色常量、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。AI 对话历史记录弹窗的“Loop 群聊” tab 只下发任务摘要并按 `taskId` 打开对应任务的内容区群聊面板，不直接加载普通 session 或自动继续任务。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、裁判主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被裁判主持人追问、蓝队修正或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
 

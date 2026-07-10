@@ -176,6 +176,7 @@ test("resolved CLI metadata takes precedence over configured variants", async ()
     modelId: "model",
     reasoning: true,
     options: [{ value: "high", label: "high", source: "resolved-cli" }],
+    configuredDefaultVariant: null,
     selectedVariant: "high",
     status: "ready",
     source: "resolved-cli",
@@ -221,8 +222,68 @@ test("falls back to exact active-config variants after CLI failure", async () =>
   assert.equal(result.status, "ready");
   assert.equal(result.reasoning, "unknown");
   assert.deepEqual(result.options, [{ value: "custom", label: "custom", source: "config" }]);
+  assert.equal(result.configuredDefaultVariant, null);
   assert.equal(result.selectedVariant, null);
   assert.equal(result.messageKey, "config-variants");
+});
+
+test("maps the exact configured default without converting it into an explicit override", async () => {
+  const capabilities = loadCapabilities();
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  const result = await capabilities.resolveOpenCodeThinkingCapability({
+    version: "1",
+    configContent: JSON.stringify({
+      model: "gateway/main",
+      provider: {
+        gateway: {
+          models: {
+            main: { options: { reasoningEffort: " xhigh " } },
+          },
+        },
+      },
+    }),
+    model: "gateway/main",
+    selectedVariant: "low",
+    executor: async () => ({
+      stdout: verboseModel("gateway", "main", {
+        capabilities: { reasoning: true },
+        variants: { low: {}, xhigh: {} },
+      }),
+      stderr: "",
+      exitCode: 0,
+    }),
+  });
+
+  assert.equal(result.configuredDefaultVariant, "xhigh");
+  assert.equal(result.selectedVariant, "low");
+});
+
+test("ignores a configured default that is absent from the resolved variants", async () => {
+  const capabilities = loadCapabilities();
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  const result = await capabilities.resolveOpenCodeThinkingCapability({
+    version: "1",
+    configContent: JSON.stringify({
+      provider: {
+        gateway: {
+          models: {
+            main: { options: { reasoningEffort: "medium" } },
+          },
+        },
+      },
+    }),
+    model: "gateway/main",
+    executor: async () => ({
+      stdout: verboseModel("gateway", "main", {
+        capabilities: { reasoning: true },
+        variants: { xhigh: {} },
+      }),
+      stderr: "",
+      exitCode: 0,
+    }),
+  });
+
+  assert.equal(result.configuredDefaultVariant, null);
 });
 
 test("returns Default-only for unknown models without guessing from npm or model name", async () => {
@@ -350,6 +411,12 @@ test("isolates cache entries by command, version, config, provider, and model", 
       command: "opencode-a",
       version: "1",
       configIdentity: "config-a",
+      configContent: JSON.stringify({
+        provider: {
+          "provider-a": { models: { "model-a": {}, "model-b": {} } },
+          "provider-b": { models: { "model-a": {} } },
+        },
+      }),
       model: "provider-a/model-a",
       executor,
       ...overrides,
@@ -365,4 +432,102 @@ test("isolates cache entries by command, version, config, provider, and model", 
   await resolve({ model: "provider-b/model-a" });
 
   assert.equal(modelQueries, 6);
+});
+
+test("binds config variants only to the validated exact primary model", async () => {
+  const capabilities = loadCapabilities();
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  const configContent = JSON.stringify({
+    model: "gateway/main",
+    small_model: "gateway/small",
+    provider: {
+      gateway: {
+        models: {
+          main: { options: { reasoningEffort: "high" }, variants: { high: {} } },
+          small: { options: { reasoningEffort: "low" }, variants: { low: {} } },
+        },
+      },
+    },
+  });
+  const result = await capabilities.resolveOpenCodeThinkingCapability({
+    version: "1",
+    configContent,
+    model: "gateway/main",
+    executor: async () => ({ stdout: "", stderr: "failed", exitCode: 1 }),
+  });
+
+  assert.deepEqual(result.options.map((option) => option.value), ["high"]);
+  assert.equal(result.configuredDefaultVariant, "high");
+  assert.equal(result.options.some((option) => option.value === "low"), false);
+});
+
+test("refreshes configured defaults across active config and primary model changes", async () => {
+  const capabilities = loadCapabilities();
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  const executor = async () => ({ stdout: "", stderr: "failed", exitCode: 1 });
+  const resolve = (
+    configIdentity: string,
+    model: string,
+    configContent: Record<string, unknown>
+  ) => capabilities.resolveOpenCodeThinkingCapability({
+    version: "1",
+    configIdentity,
+    configContent: JSON.stringify(configContent),
+    model,
+    executor,
+  });
+
+  const configA = await resolve("config-a", "gateway/main", {
+    provider: {
+      gateway: {
+        models: {
+          main: { options: { reasoningEffort: "low" }, variants: { low: {}, high: {} } },
+        },
+      },
+    },
+  });
+  const configB = await resolve("config-b", "gateway/main", {
+    provider: {
+      gateway: {
+        models: {
+          main: { options: { reasoningEffort: "high" }, variants: { low: {}, high: {} } },
+          alternate: { options: { reasoningEffort: "xhigh" }, variants: { xhigh: {} } },
+        },
+      },
+    },
+  });
+  const alternate = await resolve("config-b", "gateway/alternate", {
+    provider: {
+      gateway: {
+        models: {
+          main: { options: { reasoningEffort: "high" }, variants: { high: {} } },
+          alternate: { options: { reasoningEffort: "xhigh" }, variants: { xhigh: {} } },
+        },
+      },
+    },
+  });
+
+  assert.equal(configA.configuredDefaultVariant, "low");
+  assert.equal(configB.configuredDefaultVariant, "high");
+  assert.equal(alternate.configuredDefaultVariant, "xhigh");
+});
+
+test("does not query variant metadata for a model absent from active config", async () => {
+  const capabilities = loadCapabilities();
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  let queryCount = 0;
+  const result = await capabilities.resolveOpenCodeThinkingCapability({
+    version: "1",
+    configContent: JSON.stringify({
+      provider: { gateway: { models: { main: {} } } },
+    }),
+    model: "gateway/missing",
+    executor: async () => {
+      queryCount += 1;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    },
+  });
+
+  assert.equal(queryCount, 0);
+  assert.equal(result.messageKey, "select-model");
 });

@@ -14,6 +14,10 @@ export type ConfigSummary = {
   platform: ConfigPlatform;
 };
 
+export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
+  configuredDefaultVariant?: string | null;
+};
+
 export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
@@ -38,6 +42,7 @@ export type PanelMessage =
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
   | { type: "updateOpenCodeVariant"; value: string | null }
+  | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | {
       type: "sendPrompt";
@@ -133,6 +138,7 @@ export type ConversationTabSummary = {
   createdAt: number;
   lobsterTaskRole?: "main" | "subtask";
   lobsterTaskId?: string;
+  lobsterTaskRunning?: boolean;
   lobsterMainTabCloseLocked?: boolean;
 };
 
@@ -183,6 +189,26 @@ export type ChatMessage = {
   actions?: ChatMessageAction[];
 };
 
+export type OpenCodeModelOption = {
+  ref: string;
+  label: string;
+  providerId: string;
+  modelId: string;
+};
+
+export type OpenCodeModelsState = {
+  models: OpenCodeModelOption[];
+  configPrimaryRef: string | null;
+  configSmallRef: string | null;
+  selectedPrimaryRef: string | null;
+  selectedSmallRef: string | null;
+  issues: Array<{
+    role?: "primary" | "small";
+    code: string;
+    messageKey?: string;
+  }>;
+};
+
 export type PanelState = {
   currentCli: CliName;
   autoOpenPanel: boolean;
@@ -200,7 +226,8 @@ export type PanelState = {
   isMac: boolean;
   macTaskShell: MacTaskShell;
   thinkingMode: ThinkingMode;
-  openCodeThinking: OpenCodeThinkingState;
+  openCodeThinking: WebviewOpenCodeThinkingState;
+  openCodeModels?: OpenCodeModelsState;
   interactive: {
     supported: boolean;
     enabled: boolean;

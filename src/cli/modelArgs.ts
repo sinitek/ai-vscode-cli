@@ -1,4 +1,8 @@
 import { CliName, isOpenCodeCli } from "./types";
+import {
+  parseOpenCodeConfigModels,
+  validateOpenCodeModelOverride,
+} from "./opencodeconfigmodels";
 
 const MODEL_ARG_KEYS: Record<string, string[]> = {
   codex: ["--model", "-m"],
@@ -25,31 +29,6 @@ export function supportsCliManagedModelSelection(cli: CliName): boolean {
   return cli === "codex" || isOpenCodeCli(cli);
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
-
-function splitProviderModel(value: string): { providerId: string; modelId: string } | null {
-  const separatorIndex = value.indexOf("/");
-  if (separatorIndex <= 0 || separatorIndex >= value.length - 1) {
-    return null;
-  }
-  return {
-    providerId: value.slice(0, separatorIndex),
-    modelId: value.slice(separatorIndex + 1),
-  };
-}
-
-function getOpenCodeProviderModelKeys(config: Record<string, unknown>, providerId: string): string[] {
-  const providers = isPlainObject(config.provider) ? config.provider : {};
-  const providerConfig = providers[providerId];
-  if (!isPlainObject(providerConfig)) {
-    return [];
-  }
-  const models = isPlainObject(providerConfig.models) ? providerConfig.models : {};
-  return Object.keys(models);
-}
-
 export function resolveOpenCodeModelForConfig(
   model: string | null | undefined,
   openCodeConfigContent: string | null | undefined,
@@ -58,45 +37,14 @@ export function resolveOpenCodeModelForConfig(
   if (!normalizedModel) {
     return { model: null, error: null };
   }
-  if (splitProviderModel(normalizedModel)) {
-    return { model: normalizedModel, error: null };
+  const parsed = parseOpenCodeConfigModels(openCodeConfigContent);
+  const validation = validateOpenCodeModelOverride(parsed, "primary", normalizedModel);
+  if (validation.ok && validation.modelRef) {
+    return { model: validation.modelRef, error: null };
   }
-
-  const configText = typeof openCodeConfigContent === "string" ? openCodeConfigContent.trim() : "";
-  if (!configText) {
-    return { model: normalizedModel, error: null };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(configText);
-  } catch {
-    return { model: normalizedModel, error: null };
-  }
-  if (!isPlainObject(parsed)) {
-    return { model: normalizedModel, error: null };
-  }
-
-  const activeModel = typeof parsed.model === "string" ? parsed.model.trim() : "";
-  const activeRef = splitProviderModel(activeModel);
-  if (!activeRef) {
-    return { model: normalizedModel, error: null };
-  }
-
-  const activeProviderModelKeys = getOpenCodeProviderModelKeys(parsed, activeRef.providerId);
-  if (activeProviderModelKeys.includes(normalizedModel)) {
-    return {
-      model: `${activeRef.providerId}/${normalizedModel}`,
-      error: null,
-    };
-  }
-
   return {
     model: null,
-    error: [
-      `OpenCode selected model "${normalizedModel}" is not defined in active provider "${activeRef.providerId}".`,
-      `Use a provider-qualified model such as "${activeModel}", or add "${normalizedModel}" to provider.${activeRef.providerId}.models in ~/.opencode/config.json.`,
-    ].join(" "),
+    error: validation.issue?.message ?? "OpenCode selected model is invalid.",
   };
 }
 
@@ -152,7 +100,7 @@ export function applyModelArg(
   options: ApplyModelArgOptions = {},
 ): string[] {
   const normalizedModel = typeof model === "string" ? model.trim() : "";
-  if (!normalizedModel || !supportsCliManagedModelSelection(cli)) {
+  if (!normalizedModel || (cli !== "codex" && !isOpenCodeCli(cli))) {
     return [...args];
   }
   const resolvedModel = isOpenCodeCli(cli)

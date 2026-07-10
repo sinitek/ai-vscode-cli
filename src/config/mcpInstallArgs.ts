@@ -63,6 +63,17 @@ function collectManagedMcpHeaders(item: McpMarketplaceItem): string[] {
     .filter((headerValue) => headerValue.length > 2);
 }
 
+function collectManagedOpenCodeMcpHeaders(item: McpMarketplaceItem): string[] {
+  const headers = item.config?.headers;
+  if (!headers || typeof headers !== "object") {
+    return [];
+  }
+
+  return Object.entries(headers)
+    .filter(([headerName, headerValue]) => Boolean(headerName) && typeof headerValue === "string")
+    .map(([headerName, headerValue]) => `${headerName}=${headerValue.trim()}`);
+}
+
 export function buildCodexMcpInstallArgs(
   item: McpMarketplaceItem,
   envOverrides?: Record<string, string>,
@@ -170,18 +181,18 @@ export function buildOpenCodeMcpInstallArgs(
 ): { commandArgs: string[]; warnings: string[] } {
   const warnings: string[] = [];
   const config = item.config ?? {};
-  const transport = config.type === "http" || config.type === "sse" ? config.type : typeof config.url === "string" ? "http" : "stdio";
+  const isRemote = config.type === "http" || config.type === "sse" || typeof config.url === "string";
 
-  if (transport === "http" || transport === "sse") {
-    const commandArgs = ["mcp", "add", "--scope", "user", "--transport", transport, item.id];
+  if (isRemote) {
     const url = config.url?.trim();
     if (!url) {
-      throw new Error(`MCP ${item.id} is missing ${transport} url.`);
+      throw new Error(`MCP ${item.id} is missing remote url.`);
     }
-    for (const header of collectManagedMcpHeaders(item)) {
+    const commandArgs = ["mcp", "add", item.id, "--url", url];
+    for (const header of collectManagedOpenCodeMcpHeaders(item)) {
       commandArgs.push("--header", header);
     }
-    return { commandArgs: [...commandArgs, url], warnings: uniqueWarnings(warnings) };
+    return { commandArgs, warnings: uniqueWarnings(warnings) };
   }
 
   const command = config.command?.trim();
@@ -189,14 +200,14 @@ export function buildOpenCodeMcpInstallArgs(
     throw new Error(`MCP ${item.id} is missing command.`);
   }
 
-  const commandArgs = ["mcp", "add", "--scope", "user", "--transport", transport];
+  const commandArgs = ["mcp", "add", item.id];
   for (const [envName, envValue] of collectManagedMcpEnvEntries(item, warnings, envOverrides)) {
     commandArgs.push("--env", `${envName}=${envValue}`);
   }
   const mcpArgs = Array.isArray(config.args)
     ? config.args.filter((arg): arg is string => typeof arg === "string")
     : [];
-  commandArgs.push(item.id, command, ...mcpArgs);
+  commandArgs.push("--", command, ...mcpArgs);
   return { commandArgs, warnings: uniqueWarnings(warnings) };
 }
 

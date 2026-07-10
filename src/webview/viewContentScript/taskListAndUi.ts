@@ -499,18 +499,74 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return true;
       }
 
-      function getRunPromptText(tabId) {
+      function getRunPromptHistory(tabId) {
         const runtimeState = getConversationRuntimeState(tabId, { create: false });
-        const prompt = String(runtimeState && runtimeState.currentRunPrompt ? runtimeState.currentRunPrompt : "");
-        return prompt.trim() ? prompt : t("runPromptEmpty");
+        if (!runtimeState) {
+          return [];
+        }
+        const prompts = ensureRuntimeStateMessages(runtimeState)
+          .map((message, index) => ({ message, index }))
+          .filter(({ message }) => message && message.role === "user" && String(message.content || "").trim())
+          .map(({ message, index }) => ({
+            content: String(message.content || "").trim(),
+            createdAt: Number.isFinite(message.createdAt) ? message.createdAt : 0,
+            index,
+          }))
+          .sort((left, right) => right.createdAt - left.createdAt || right.index - left.index);
+        const currentPrompt = String(runtimeState.currentRunPrompt || "").trim();
+        if (currentPrompt && (!prompts[0] || prompts[0].content !== currentPrompt)) {
+          prompts.unshift({ content: currentPrompt, createdAt: 0, index: Number.MAX_SAFE_INTEGER });
+        }
+        return prompts;
+      }
+
+      function renderRunPromptHistory(tabId) {
+        if (!elements.runPromptContent) {
+          return;
+        }
+        const prompts = getRunPromptHistory(tabId);
+        elements.runPromptContent.replaceChildren();
+        if (prompts.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "run-prompt-empty";
+          empty.textContent = t("runPromptEmpty");
+          elements.runPromptContent.appendChild(empty);
+          return;
+        }
+        prompts.forEach((prompt, index) => {
+          const item = document.createElement("article");
+          item.className = "run-prompt-item";
+
+          const meta = document.createElement("div");
+          meta.className = "run-prompt-item-meta";
+          if (prompt.createdAt > 0) {
+            const time = document.createElement("time");
+            const date = new Date(prompt.createdAt);
+            time.dateTime = date.toISOString();
+            time.textContent = date.toLocaleString();
+            meta.appendChild(time);
+          }
+          if (index === 0) {
+            const latest = document.createElement("span");
+            latest.className = "run-prompt-latest-badge";
+            latest.textContent = t("runPromptLatestLabel");
+            meta.appendChild(latest);
+          }
+
+          const content = document.createElement("div");
+          content.className = "run-prompt-item-content";
+          content.textContent = prompt.content;
+          item.appendChild(meta);
+          item.appendChild(content);
+          elements.runPromptContent.appendChild(item);
+        });
       }
 
       function updateRunPromptButton() {
         if (!elements.runPromptButton) {
           return;
         }
-        const runtimeState = getActiveConversationRuntimeState({ create: false });
-        const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
+        const hasPrompt = getRunPromptHistory(getActiveConversationTabId()).length > 0;
         elements.runPromptButton.style.display = hasPrompt && isRunArtifactsVisibleForActiveTab() ? "inline-flex" : "none";
         updateRunWait();
       }
@@ -520,12 +576,12 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return;
         }
         const runtimeState = getActiveConversationRuntimeState({ create: false });
-        const hasPrompt = Boolean(runtimeState && String(runtimeState.currentRunPrompt || "").trim().length > 0);
+        const hasPrompt = getRunPromptHistory(getActiveConversationTabId()).length > 0;
         const visible = Boolean(runtimeState && runtimeState.overlays.runPrompt && hasPrompt && isRunArtifactsVisibleForActiveTab());
         if (visible) {
-          elements.runPromptContent.textContent = getRunPromptText(getActiveConversationTabId());
+          renderRunPromptHistory(getActiveConversationTabId());
         } else {
-          elements.runPromptContent.textContent = "";
+          elements.runPromptContent.replaceChildren();
           if (runtimeState) {
             runtimeState.overlays.runPrompt = false;
           }
@@ -538,7 +594,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (!runtimeState) {
           return;
         }
-        const hasPrompt = String(runtimeState.currentRunPrompt || "").trim().length > 0;
+        const hasPrompt = getRunPromptHistory(getActiveConversationTabId()).length > 0;
         if (!hasPrompt || !isRunArtifactsVisibleForActiveTab()) {
           return;
         }

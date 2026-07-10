@@ -66,6 +66,11 @@ export type PanelMessageHandlerDeps = {
   syncCurrentSessionWithActiveTab: () => string | null;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => void;
+  updateOpenCodeRoleModel?: (
+    role: "primary" | "small",
+    value: string | null,
+    configId: string | null
+  ) => Promise<string | null>;
   selectCliLobsterModel: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => void;
   setCliModelLobsterRole: (cli: CliName, model: string, role: "main" | "subtask", enabled: boolean, configId?: string | null) => boolean;
   addCliModel: (cli: CliName, model: string, configId?: string | null) => string | null;
@@ -154,6 +159,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
     selectCliModel,
+    updateOpenCodeRoleModel,
     selectCliLobsterModel,
     setCliModelLobsterRole,
     addCliModel,
@@ -296,6 +302,18 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
   if (message.type === "selectCliModel" && message.cli) {
     const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
     selectCliModel(message.cli, message.model ?? null, configId);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "updateOpenCodeRoleModel") {
+    const configId = getActiveConfigIdForCli("opencode");
+    const error = updateOpenCodeRoleModel
+      ? await updateOpenCodeRoleModel(message.role, message.value ?? null, configId)
+      : "OpenCode role model updates are unavailable.";
+    if (error) {
+      void showWebviewError(t("panel.runtimeError"), error);
+    }
     await postPanelState();
     return;
   }

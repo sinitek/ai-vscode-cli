@@ -48,6 +48,25 @@ test("extractReasoningText flattens reasoning fragments and removes duplicates",
   );
 });
 
+test("extractReasoningText removes only standalone empty HTML comments", () => {
+  assert.equal(
+    extractReasoningText({
+      text: "**Planning first step**\n\n<!-- -->",
+      summary: [
+        "**Planning second step**\n\n<!--\t-->",
+        "Keep inline <!-- --> example",
+        "<!-- keep this explanation -->",
+      ],
+    }),
+    [
+      "**Planning first step**",
+      "**Planning second step**",
+      "Keep inline <!-- --> example",
+      "<!-- keep this explanation -->",
+    ].join("\n")
+  );
+});
+
 test("toExecLikeItem normalizes item type, web search action, aliases, and errors", () => {
   assert.deepEqual(
     toExecLikeItem({

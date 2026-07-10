@@ -160,7 +160,7 @@ body,
 
 .config-app-header {
   height: 72px !important;
-  padding: 0 28px !important;
+  padding: 0 14px !important;
   background: var(--clay-header-glass) !important;
   border-bottom: 1px solid var(--clay-border) !important;
   backdrop-filter: blur(14px);
@@ -179,7 +179,7 @@ body,
   display: inline-block;
   width: 9px;
   height: 9px;
-  margin-left: 10px;
+  margin-left: 5px;
   border: 1px solid var(--clay-text);
   border-radius: 50%;
   background: var(--clay-lemon);
@@ -223,7 +223,7 @@ body,
 .config-mobile-directory-icon {
   display: grid;
   width: 18px;
-  gap: 4px;
+  gap: 2px;
 }
 
 .config-mobile-directory-icon > span {
@@ -235,9 +235,9 @@ body,
 
 .config-app-workspace {
   display: flex;
-  gap: 18px;
+  gap: 9px;
   min-height: 0;
-  padding: 18px;
+  padding: 0;
   overflow: hidden;
   background: var(--clay-canvas) !important;
 }
@@ -265,16 +265,16 @@ body,
 }
 
 .config-sidebar-panel {
-  padding: 16px !important;
+  padding: 8px !important;
   scrollbar-gutter: stable;
 }
 
 .config-list-toolbar {
   position: sticky;
-  top: -16px;
+  top: -8px;
   z-index: 4;
-  margin: -16px -16px 14px !important;
-  padding: 14px 16px 12px;
+  margin: -8px -8px 7px !important;
+  padding: 7px 8px 6px;
   background: var(--clay-surface-glass);
   border-bottom: 1px dashed var(--clay-border);
   backdrop-filter: blur(12px);
@@ -295,18 +295,18 @@ body,
 
 .config-sidebar-panel > .ant-card .ant-card-head {
   min-height: 58px;
-  padding: 0 14px !important;
+  padding: 0 7px !important;
   border-bottom: 1px dashed var(--clay-border) !important;
   background: var(--clay-surface) !important;
 }
 
 .config-sidebar-panel > .ant-card .ant-card-head-title {
-  padding: 12px 0;
+  padding: 6px 0;
   white-space: normal;
 }
 
 .config-sidebar-panel > .ant-card .ant-card-body {
-  padding: 10px !important;
+  padding: 5px !important;
 }
 
 .ant-card,
@@ -322,7 +322,7 @@ body,
 }
 
 .config-editor-shell {
-  padding: 18px !important;
+  padding: 9px !important;
   background: var(--clay-surface) !important;
 }
 
@@ -335,17 +335,18 @@ body,
 }
 
 .config-editor-shell > .ant-card > .ant-card-head {
-  padding-inline: 18px;
+  padding-inline: 9px;
 }
 
 .config-editor-shell > .ant-card > .ant-card-body {
+  padding: 12px !important;
   background: var(--clay-surface) !important;
 }
 
 .config-empty-state {
   height: auto !important;
-  min-height: calc(100% - 48px);
-  margin: 24px;
+  min-height: calc(100% - 24px);
+  margin: 12px;
   border: 1px dashed var(--clay-border) !important;
   border-radius: var(--clay-radius-panel);
   background: var(--clay-canvas) !important;
@@ -361,7 +362,7 @@ body,
   justify-content: center;
   width: 36px;
   height: 36px;
-  margin-right: 12px;
+  margin-right: 6px;
   border: 1px solid var(--clay-text);
   border-radius: 50%;
   background: var(--clay-lemon);
@@ -379,11 +380,13 @@ body,
 
 .config-app-content > div > .ant-card > .ant-card-head {
   min-height: 68px;
+  padding-inline: 12px !important;
   border-bottom: 1px dashed var(--clay-border) !important;
   background: var(--clay-surface) !important;
 }
 
 .config-app-content .ant-card-head-title {
+  padding: 8px 0;
   color: var(--clay-text);
   font-size: 17px;
   font-weight: 600;
@@ -391,6 +394,7 @@ body,
 }
 
 .config-app-content .ant-card-body {
+  padding: 12px !important;
   background: var(--clay-surface);
 }
 
@@ -402,8 +406,8 @@ body,
 
 .config-list .ant-list-item {
   min-height: 52px;
-  margin: 5px 0;
-  padding: 8px 10px !important;
+  margin: 3px 0;
+  padding: 4px 5px !important;
   border: 1px solid transparent !important;
   border-radius: var(--clay-radius-card) !important;
   background: var(--clay-canvas) !important;
@@ -588,7 +592,7 @@ body,
 
 .config-list .config-activate-button,
 .config-list .config-list-item-selected .config-activate-button {
-  min-width: 76px;
+  min-width: 56px;
   border-color: var(--clay-text) !important;
   background: var(--clay-lemon) !important;
   color: var(--clay-text) !important;
@@ -1089,8 +1093,8 @@ input[type="file"]::file-selector-button {
   }
 
   .config-app-header {
-    gap: 12px;
-    padding: 0 14px !important;
+    gap: 6px;
+    padding: 0 7px !important;
   }
 
   .config-mobile-directory-button {
@@ -1099,18 +1103,18 @@ input[type="file"]::file-selector-button {
 
   .config-app-workspace {
     flex-direction: row;
-    padding: 12px;
+    padding: 0;
     overflow: hidden;
   }
 
   .config-app-sidebar {
     position: fixed !important;
-    top: 12px;
-    bottom: 12px;
-    left: 12px;
+    top: 6px;
+    bottom: 6px;
+    left: 6px;
     z-index: 1001;
     flex: none !important;
-    width: min(calc(100vw - 24px), 420px) !important;
+    width: min(calc(100vw - 12px), 420px) !important;
     height: auto !important;
     min-width: 0 !important;
     max-width: 420px !important;
@@ -1118,7 +1122,7 @@ input[type="file"]::file-selector-button {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translateX(calc(-100% - 28px));
+    transform: translateX(calc(-100% - 14px));
     transition:
       transform var(--clay-motion),
       opacity var(--clay-motion),
@@ -1185,24 +1189,24 @@ input[type="file"]::file-selector-button {
   }
 
   .config-sidebar-panel {
-    padding: 12px !important;
+    padding: 6px !important;
   }
 
   .config-list-toolbar {
-    top: -12px;
-    margin: -12px -12px 12px !important;
-    padding: 12px;
+    top: -6px;
+    margin: -6px -6px 6px !important;
+    padding: 6px;
   }
 
   .config-sidebar-panel > .ant-card .ant-card-head {
-    padding: 0 12px !important;
+    padding: 0 6px !important;
   }
 
   .config-sidebar-panel > .ant-card .ant-card-head-wrapper {
     align-items: flex-start;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 12px 0;
+    gap: 4px;
+    padding: 6px 0;
   }
 
   .config-sidebar-panel > .ant-card .ant-card-head-title {
@@ -1221,7 +1225,7 @@ input[type="file"]::file-selector-button {
 
   .config-list .config-list-item {
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 4px;
   }
 
   .config-list .config-list-item > .ant-list-item-extra {

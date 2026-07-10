@@ -29,6 +29,8 @@ export type ConfigHeartbeatSnapshot = {
   lobsterMainModelSelected: string | null;
   lobsterSubtaskModelSelected: string | null;
   lobsterRoleSignature: string;
+  openCodePrimaryModelSelected: string | null;
+  openCodeSmallModelSelected: string | null;
 };
 
 export type ConfigHeartbeatCoordinatorDeps = {
@@ -104,6 +106,9 @@ function getConfigHeartbeatPayload(
         return `${modelName}:${flags.main ? "1" : "0"}${flags.subtask ? "1" : "0"}`;
       })
   );
+  const openCodeRoleSelection = cli === "opencode" && modelConfigId
+    ? (normalizedStore.openCodeRoleModelsByConfigId[modelConfigId] ?? {})
+    : {};
   return {
     cli,
     activeConfigId,
@@ -113,6 +118,8 @@ function getConfigHeartbeatPayload(
     lobsterMainModelSelected,
     lobsterSubtaskModelSelected,
     lobsterRoleSignature,
+    openCodePrimaryModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.primary),
+    openCodeSmallModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.small),
   };
 }
 
@@ -146,6 +153,12 @@ function shouldRefreshConfigState(
     return true;
   }
   if (snapshot.lobsterRoleSignature !== nextPayload.lobsterRoleSignature) {
+    return true;
+  }
+  if (snapshot.openCodePrimaryModelSelected !== nextPayload.openCodePrimaryModelSelected) {
+    return true;
+  }
+  if (snapshot.openCodeSmallModelSelected !== nextPayload.openCodeSmallModelSelected) {
     return true;
   }
   return false;

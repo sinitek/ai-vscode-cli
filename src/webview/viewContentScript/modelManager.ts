@@ -1,6 +1,6 @@
 // Model manager, model selection, and model persistence handlers.
 export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsManagedModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "opencode";
+        return cli === "codex";
       }
 
       function getModelsForCurrentCli() {
@@ -279,6 +279,118 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         elements.modelSelect.value = "";
       }
 
+      function clearOpenCodeModelOptions() {
+        state.openCodeModels = normalizeOpenCodeModelsPayload(null);
+        updateOpenCodeModelSelectOptions();
+      }
+
+      function getOpenCodeModelIssueMessage(issue) {
+        if (!issue || typeof issue !== "object") {
+          return "";
+        }
+        const issueKey = typeof issue.messageKey === "string" && issue.messageKey
+          ? issue.messageKey
+          : issue.code;
+        const i18nKeyByIssue = {
+          "invalid-json": "openCodeModelIssueInvalidJson",
+          "missing-role-model": "openCodeModelIssueMissingRoleModel",
+          "invalid-model-ref": "openCodeModelIssueInvalidModelRef",
+          "provider-not-found": "openCodeModelIssueProviderNotFound",
+          "model-not-found": "openCodeModelIssueModelNotFound",
+          "duplicate-role-model": "openCodeModelIssueDuplicateRoleModel",
+          "provider-disabled": "openCodeModelIssueProviderDisabled",
+          "model-filtered": "openCodeModelIssueModelFiltered",
+          "metadata-unavailable": "openCodeModelIssueMetadataUnavailable",
+        };
+        if (typeof issue.messageKey === "string" && Object.prototype.hasOwnProperty.call(i18n, issue.messageKey)) {
+          return t(issue.messageKey);
+        }
+        return t(i18nKeyByIssue[issueKey] || i18nKeyByIssue[issue.code] || "openCodeModelIssueGeneric");
+      }
+
+      function getOpenCodeModelOptionLabel(model) {
+        const ref = model && typeof model.ref === "string" ? model.ref.trim() : "";
+        const rawLabel = model && typeof model.label === "string" ? model.label : "";
+        const label = rawLabel.trim();
+        const legacyRefSuffix = ref ? " (" + ref + ")" : "";
+        const legacyRefOnlyLabel = legacyRefSuffix.trim();
+        const suffixCandidate = rawLabel.trimEnd();
+        const normalizedLabel = label === legacyRefOnlyLabel
+          ? ""
+          : legacyRefSuffix && suffixCandidate.endsWith(legacyRefSuffix)
+            ? suffixCandidate.slice(0, -legacyRefSuffix.length).trim()
+            : label;
+        if (normalizedLabel && normalizedLabel !== ref) {
+          return normalizedLabel;
+        }
+        const modelId = model && typeof model.modelId === "string" ? model.modelId.trim() : "";
+        if (modelId) {
+          return modelId;
+        }
+        const separatorIndex = ref.lastIndexOf("/");
+        return separatorIndex >= 0 ? ref.slice(separatorIndex + 1) : ref;
+      }
+
+      function updateOpenCodeRoleModelSelect(selectElement, role) {
+        if (!selectElement) {
+          return;
+        }
+        const payload = state.openCodeModels || normalizeOpenCodeModelsPayload(null);
+        const models = Array.isArray(payload.models) ? payload.models : [];
+        const selectedRef = role === "small" ? payload.selectedSmallRef : payload.selectedPrimaryRef;
+        const validRefs = new Set(models.map((model) => model.ref));
+        const nextValue = selectedRef && validRefs.has(selectedRef) ? selectedRef : "";
+        if (role === "small") {
+          payload.selectedSmallRef = nextValue || null;
+        } else {
+          payload.selectedPrimaryRef = nextValue || null;
+        }
+        selectElement.innerHTML = "";
+        if (models.length === 0) {
+          const placeholderOption = document.createElement("option");
+          placeholderOption.value = "";
+          placeholderOption.textContent = t("openCodeNoConfiguredModel");
+          placeholderOption.disabled = true;
+          selectElement.appendChild(placeholderOption);
+        } else {
+          models.forEach((model) => {
+            const option = document.createElement("option");
+            option.value = model.ref;
+            option.textContent = getOpenCodeModelOptionLabel(model);
+            selectElement.appendChild(option);
+          });
+        }
+        selectElement.value = nextValue;
+        const issue = Array.isArray(payload.issues)
+          ? payload.issues.find((candidate) => !candidate.role || candidate.role === role)
+          : null;
+        const baseTitle = role === "small"
+          ? t("openCodeSmallModelSelectAria")
+          : t("openCodePrimaryModelSelectAria");
+        const issueMessage = getOpenCodeModelIssueMessage(issue);
+        selectElement.title = [baseTitle, issueMessage].filter(Boolean).join(" ");
+        if (issueMessage) {
+          selectElement.setAttribute("aria-invalid", "true");
+        } else {
+          selectElement.removeAttribute("aria-invalid");
+        }
+      }
+
+      function updateOpenCodeModelSelectOptions() {
+        updateOpenCodeRoleModelSelect(elements.openCodePrimaryModelSelect, "primary");
+        updateOpenCodeRoleModelSelect(elements.openCodeSmallModelSelect, "small");
+        if (!elements.openCodeModelIssue) {
+          return;
+        }
+        const payload = state.openCodeModels || normalizeOpenCodeModelsPayload(null);
+        const issueMessages = Array.isArray(payload.issues)
+          ? payload.issues.map(getOpenCodeModelIssueMessage).filter(Boolean)
+          : [];
+        const uniqueMessages = Array.from(new Set(issueMessages));
+        elements.openCodeModelIssue.textContent = uniqueMessages.join(" ");
+        elements.openCodeModelIssue.style.display = uniqueMessages.length > 0 ? "inline" : "none";
+      }
+
       function fillModelSelectWithOptions(selectElement, options, defaultLabel, selectedValue) {
         if (!selectElement) {
           return;
@@ -321,12 +433,22 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         );
       }
 
-      function syncModelSelectorByInteractiveMode() {
-        const supportsModelSelection = cliSupportsManagedModelSelection();
+      function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
+        const supportsModelSelection = cliSupportsManagedModelSelection(cli);
+        const isOpenCode = cli === "opencode";
         const isLobster = normalizeInteractiveMode(state.interactiveMode) === "lobster";
         const showSingleModelSelect = supportsModelSelection && !isLobster;
         const showLobsterExecutionModeSelect = isLobster;
         const showLobsterModelSelect = supportsModelSelection && isLobster;
+        if (elements.openCodeModelGroup) {
+          elements.openCodeModelGroup.style.display = isOpenCode ? "inline-flex" : "none";
+        }
+        if (elements.openCodePrimaryModelSelect) {
+          elements.openCodePrimaryModelSelect.disabled = !isOpenCode;
+        }
+        if (elements.openCodeSmallModelSelect) {
+          elements.openCodeSmallModelSelect.disabled = !isOpenCode;
+        }
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
           elements.modelSelect.disabled = !showSingleModelSelect;

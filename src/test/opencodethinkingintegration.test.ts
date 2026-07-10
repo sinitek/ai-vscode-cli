@@ -18,9 +18,13 @@ const {
 const {
   handleUpdateOpenCodeVariantMessage,
 } = require("../sessionMessageActions") as typeof import("../sessionMessageActions");
+const {
+  createConfigHeartbeatCoordinator,
+} = require("../webviewCommandCoordinator") as typeof import("../webviewCommandCoordinator");
 
 import type { OpenCodeThinkingState } from "../cli/types";
 import type { PanelStateBuilderDeps } from "../panelStateBuilder";
+import type { PanelState } from "../webview/types";
 
 test("persists OpenCode variants by active config and exact model", () => {
   const empty = ensureCliModelStore();
@@ -50,11 +54,12 @@ test("does not migrate legacy ThinkingMode values into OpenCode variants", () =>
 });
 
 test("serializes dynamic OpenCode thinking state into PanelState", () => {
-  const openCodeThinking: OpenCodeThinkingState = {
+  const openCodeThinking: OpenCodeThinkingState & { configuredDefaultVariant: string | null } = {
     providerId: "gateway",
     modelId: "model",
     reasoning: true,
     options: [{ value: "custom", label: "Custom", source: "config" }],
+    configuredDefaultVariant: "custom",
     selectedVariant: "custom",
     status: "ready",
     source: "config",
@@ -80,6 +85,14 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getMacTaskShell: () => "zsh",
     getEffectiveThinkingMode: () => "off",
     openCodeThinking,
+    openCodeModels: {
+      models: [{ ref: "gateway/model", label: "Model", providerId: "gateway", modelId: "model" }],
+      configPrimaryRef: "gateway/default",
+      configSmallRef: "gateway/small",
+      selectedPrimaryRef: "gateway/model",
+      selectedSmallRef: "gateway/small",
+      issues: [],
+    },
     getWorkspaceInteractiveMode: () => "coding",
     isInteractiveSupported: () => false,
     getProjectRulePaths: () => ({ codex: null, claude: null, opencode: null }),
@@ -97,7 +110,52 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getSelectedCliModel: () => "gateway/model",
   };
 
-  assert.deepEqual(buildPanelStateWithDeps(deps).openCodeThinking, openCodeThinking);
+  const state = buildPanelStateWithDeps(deps);
+  assert.deepEqual(state.openCodeThinking, openCodeThinking);
+  assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");
+  assert.equal(state.openCodeModels?.selectedSmallRef, "gateway/small");
+});
+
+test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {
+  const configState = { configs: [{ id: "config-a", name: "A", platform: "opencode" as const }], activeConfigId: "config-a" };
+  let store = ensureCliModelStore();
+  let snapshot: import("../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null = null;
+  let running = false;
+  let posted = 0;
+  const coordinator = createConfigHeartbeatCoordinator({
+    intervalMs: 1000,
+    getCurrentCli: () => "opencode",
+    getWorkspaceKey: () => "workspace",
+    getSnapshot: () => snapshot,
+    setSnapshot: (value) => { snapshot = value; },
+    isRunning: () => running,
+    setRunning: (value) => { running = value; },
+    getTimer: () => null,
+    setTimer: () => undefined,
+    loadConfigState: async () => configState,
+    getLastConfigStateLoadError: () => null,
+    readNormalizedModelStoreFromDisk: () => store,
+    setModelStore: () => undefined,
+    resolveModelConfigIdForCli: () => "config-a",
+    ensureCliModelStore,
+    normalizeCliModelName: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+    mergeUniqueModelNames: (...groups) => Array.from(new Set(groups.flat())),
+    getSelectedLobsterCliModel: () => null,
+    normalizeLobsterModelRoleFlags: () => ({ main: true, subtask: true }),
+    buildPanelStateWithConfigState: async () => ({} as PanelState),
+    postState: () => { posted += 1; },
+    syncConfigManagerPanel: () => undefined,
+    logDebug: () => undefined,
+    logEssential: () => undefined,
+    logError: () => undefined,
+    createDisposable: (dispose) => ({ dispose }),
+  });
+  coordinator.updateSnapshot("opencode", configState, store);
+  store = require("../modelSelectionStore").setOpenCodeRoleModelInStore(store, "config-a", "small", "gateway/small");
+  await coordinator.poll();
+  assert.equal(posted, 1);
+  const finalSnapshot = snapshot as import("../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null;
+  assert.equal(finalSnapshot?.openCodeSmallModelSelected, "gateway/small");
 });
 
 test("rejects stale asynchronous OpenCode capability results", () => {

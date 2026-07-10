@@ -14,6 +14,71 @@
 
 ## 当前有效条目
 
+## Codex reasoning 摘要不能按普通 assistant 正文直接落盘
+
+- 状态：已规避，需随 Codex app-server 事件协议复核
+- 首次发现：2026-07-10
+- 适用范围：Codex `item.completed` reasoning 事件、thinking 气泡、历史会话存档
+
+### 现象
+- 部分 Codex 模型的 reasoning `summary` / `text` 会输出 `**Planning ...**`，并在其后附加独占一行的空 HTML 注释 `<!-- -->`。
+- 插件把 reasoning 作为 thinking assistant 消息持久化后，空注释残片会反复出现在对话和历史会话中。
+
+### 触发条件与根因
+- Codex app-server 原始事件为 `item.completed` 且 `item.type=reasoning`，与正常最终回答的 `agent_message` 不是同一事件类型。
+- reasoning 提取器此前只做片段扁平化和去重，没有对该模型特有的空分隔标记做边界清洗。
+
+### 长期规避
+- 只在 Codex reasoning/thinking 边界清洗独占一行的空 HTML 注释，禁止对全部消息做全局 HTML 注释正则替换。
+- 行内 `<!-- -->`、非空 `<!-- explanation -->`、普通 assistant/user 消息必须保持原样。
+- 会话加载和保存使用同一清洗函数修复历史 Codex thinking 消息；清洗后为空的 thinking 消息直接移除。
+
+### 验证方式
+- 用真实日志形态 `**Planning ...**\n\n<!-- -->` 断言 reasoning trace 只保留标题。
+- 断言普通 assistant 消息中的 `<!-- -->`、行内空注释和非空注释不变。
+- 断言历史 Codex thinking 消息加载后被清洗，而 Claude thinking 消息不受影响。
+
+### 关联资料
+- `src/codexReasoningContent.ts`
+- `src/interactive/codexAppServerProtocol.ts`
+- `src/sessionStore.ts`
+- `src/test/codexReasoningContent.test.ts`
+
+## OpenCode 真实会话字段是 `sessionID`，不能把插件 `local_*` 当作 CLI session
+
+- 状态：已规避，需随 OpenCode JSONL 协议复核
+- 首次发现：2026-07-10
+- 适用范围：OpenCode 1.17.16、one-shot / 并行执行、会话 tab 二次执行
+
+### 现象
+- 同一个 OpenCode 会话 tab 第一次执行成功，第二次稳定报 `Error: Session not found`。
+- CLI 启动参数出现 `--session local_<timestamp>_<random>`，而不是 OpenCode 返回的 `ses_*`。
+
+### 触发条件
+- 会话提取器只识别 `session_id`，没有识别 OpenCode JSONL 的 `sessionID`。
+- 首轮未捕获真实 ID后，插件为消息落盘创建 `local_*` 占位会话，下一轮又没有在 CLI 边界过滤该占位 ID。
+
+### 根因
+- OpenCode 1.17.16 的 `step_start`、`text`、`step_finish` 和 `error` JSONL 事件在顶层及 `part` 中使用 `sessionID`。
+- `local_*` 是插件内部存储身份，不存在于 OpenCode session store；把它传入 `opencode run --session` 必然找不到会话。
+
+### 长期规避
+- OpenCode 输出优先按 JSONL 结构读取 `sessionID`，同时兼容 `sessionId` / `session_id`，不要只依赖单一正则字段名。
+- OpenCode 运行边界必须拒绝插件 `local_*`，只把真实外部 ID传给 `--session`。
+- 修复前已有 `local_*` tab 不使用 `--continue` 猜测全局最近会话；启动新底层会话并捕获 `ses_*` 后，先迁移本地消息和 tab 引用再接管真实 ID，避免多 tab 或并发串线。
+
+### 验证方式
+- 用真实 OpenCode JSONL 样例断言 `sessionID` 可提取为 `ses_*`。
+- 断言 `resolveCliSessionIdForResume("opencode", "local_...")` 返回空，最终 argv 不含 `--session local_*`。
+- 在同一 tab 连续运行两次，第二次日志应包含 `--session ses_*`，且不再出现 `Session not found`。
+
+### 关联资料
+- `src/cli/commandRunner.ts`
+- `src/sessionLifecycle.ts`
+- `src/extension.ts`
+- `src/test/opencodeCommandRunner.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+
 ## OpenCode provider `npm` 不能按模型品牌推断
 
 - 状态：有效
@@ -219,6 +284,75 @@
 - `src/modelSelectionStore.ts`
 - `src/cli/commandRunner.ts`
 - `src/extension.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+
+## OpenCode `--auto` 不能写成“禁用权限系统”
+
+- 状态：有效
+- 首次发现：2026-07-10
+- 适用范围：OpenCode 1.17.16、`src/cli/commandRunner.ts`、普通消息与 Loop 任务执行
+
+### 现象
+- 加入 `opencode --auto` 或 `opencode run --auto` 后，默认 `external_directory: ask` 的跨目录读写可以自动执行，容易被误写成“完全跳过权限”或“禁用权限系统”。
+- 当用户配置、agent 配置或 OpenCode 默认规则显式拒绝某项权限时，请求仍会被阻止；例如 `.env` 等文件的显式 `read: deny` 保护不会被 `--auto` 绕过。
+
+### 触发条件
+- 把 OpenCode `--auto` 直接类比为 Claude `--dangerously-skip-permissions` 或 Codex `--dangerously-bypass-approvals-and-sandbox`，但没有核对 OpenCode 的 `ask` / `allow` / `deny` 语义。
+- 为了“全部目录可读写”而在 runtime overlay 中无条件写入全局 `permission: "allow"`，覆盖用户已有的显式拒绝规则。
+
+### 根因
+- OpenCode `--auto` 的官方语义是自动批准**未被显式拒绝**的权限请求；它处理的是 `ask`，不是把 `deny` 改成 `allow`。
+- `external_directory` 默认通常为 `ask`，所以 `--auto` 足以覆盖默认跨目录请求；但用户级、agent 级和内置显式拒绝仍属于独立安全边界。
+
+### 长期规避
+- 文档、UI 和代码注释统一使用“自动批准未被显式拒绝的请求”，不得写成“关闭权限”“绕过所有权限”或“所有文件无条件可读写”。
+- 插件只在共享参数构建器集中注入并去重 `--auto`；runtime overlay 保留用户 `permission`，不得静默覆盖显式 `deny`。
+- 若未来产品确需覆盖某一权限，只允许基于明确需求做最小范围规则（例如单独处理 `external_directory`），并单独评审安全影响；禁止顺带移除 `.env` 等保护。
+
+### 验证方式
+- 默认配置下，以工作目录 A 运行 `opencode run --auto`，验证可以读取并写入外部目录 B。
+- 显式设置 `external_directory: deny` 后重复测试，确认请求被阻止；对 `.env` 等显式拒绝文件确认仍不可读取。
+- 回归检查普通消息、并行任务、Loop 主任务/子任务与无 prompt 终端启动都只包含一次 `--auto`。
+
+### 关联资料
+- `src/cli/commandRunner.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
+
+## OpenCode MCP 参数和列表退出码不能复用其他 CLI 语义
+
+- 状态：已规避，需随 OpenCode 版本复核
+- 首次发现：2026-07-10
+- 适用范围：OpenCode 1.17.16、全局 MCP 安装、MCP 健康检测
+
+### 现象
+- 使用 `--scope user`、`--transport stdio|http|sse` 安装 OpenCode MCP 时，CLI 直接退出失败且不写入目标配置。
+- remote header 如果沿用 Claude 的 `Header: value` 格式，不能按 OpenCode CLI 期望的键值参数写入。
+- `opencode mcp list --pure` 即使列出的服务全部连接失败，也可能退出 `0`；只看退出码会把“不健康”误判成“健康”，只保留健康 id 又会把已安装条目误判成未安装。
+
+### 触发条件
+- OpenCode builder 复用 Claude MCP 参数或 header 格式。
+- 健康检测把列表命令退出码、连接成功状态和安装状态合并成一个布尔值。
+
+### 根因
+- OpenCode 1.17.16 的 `mcp add` 参数契约与 Claude CLI 不同：local 依赖 `--` 分隔命令，remote 使用 `--url`，header 使用 `KEY=VALUE`。
+- `mcp list` 同时承载“已配置条目清单”和“当前连接状态”；单个条目 `failed` 不会让列表命令整体失败。
+
+### 长期规避
+- OpenCode local 固定生成 `mcp add <id> [--env KEY=VALUE] -- <command> [args...]`；remote 固定生成 `mcp add <id> --url <url> [--header KEY=VALUE]`。
+- 禁止为 OpenCode 生成 `--scope`、`--transport`，也禁止复用 Claude 的冒号 header 格式。
+- 安装状态按目标 id 是否出现在解析后的列表中判断；连接失败映射为 `installed: true`、`status: unhealthy`，未列出才映射为未安装。
+- 全局安装 smoke 必须重定向 `HOME`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`、`XDG_STATE_HOME`、`XDG_CACHE_HOME`，并在临时工作目录运行，避免读取或污染真实用户配置。
+
+### 验证方式
+- 使用编译后的参数构建器分别生成 local/remote argv，断言不含 `--scope`、`--transport`，并检查 local 的 `--`、remote 的 `--url` 与 `KEY=VALUE` header。
+- 在同一临时 XDG 配置中预置其他顶层字段和已有 MCP，真实执行两次安装，确认退出码为 `0` 且原配置保留。
+- 对不可连接的 local/remote 服务运行真实 `opencode mcp list --pure`，确认条目显示 `failed` 时 parser 仍将其映射为已安装且不健康，并将未列出条目映射为未安装。
+
+### 关联资料
+- `src/config/mcpInstallArgs.ts`
+- `src/config/mcpHealth.ts`
+- `src/config/mcpService.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
 ## 建议模板

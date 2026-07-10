@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { buildProcessLabel } from "./cli/commandRunner";
+import { buildProcessLabel, parseOpenCodeSessionId } from "./cli/commandRunner";
 import { CliName, CLI_LIST, isOpenCodeCli } from "./cli/types";
 import { buildErrorDetail } from "./errorDisplay";
 import {
@@ -64,6 +64,12 @@ export type ProcessTitleState = {
 export type SessionLifecycleController = ReturnType<typeof createSessionLifecycleController>;
 
 export function extractSessionId(cli: CliName, text: string): string | undefined {
+  if (isOpenCodeCli(cli)) {
+    const structuredSessionId = parseOpenCodeSessionId(text);
+    if (structuredSessionId) {
+      return structuredSessionId;
+    }
+  }
   const patterns = getSessionIdPatterns(cli);
   for (const pattern of patterns) {
     const match = pattern.exec(text);
@@ -72,6 +78,17 @@ export function extractSessionId(cli: CliName, text: string): string | undefined
     }
   }
   return undefined;
+}
+
+export function resolveCliSessionIdForResume(cli: CliName, sessionId: string | null | undefined): string | null {
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalizedSessionId) {
+    return null;
+  }
+  if (isOpenCodeCli(cli) && isLocalSessionId(normalizedSessionId)) {
+    return null;
+  }
+  return normalizedSessionId;
 }
 
 function getSessionIdPatterns(cli: CliName): RegExp[] {
@@ -90,6 +107,7 @@ function getSessionIdPatterns(cli: CliName): RegExp[] {
   if (isOpenCodeCli(cli)) {
     return [
       ...base,
+      /"sessionID"\s*:\s*"([^"]+)"/i,
       /"session_id"\s*:\s*"([^"]+)"/i,
     ];
   }
@@ -321,7 +339,7 @@ export function createSessionLifecycleController(deps: {
       loadErrors: deps.sessionMessageLoadErrors,
       logError: (event, payload) => deps.logError(event, payload),
     });
-    const sanitized = sanitizeMessages(messages);
+    const sanitized = sanitizeMessages(messages, cli);
     const recovered = maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
     const resolvedMessages = recovered ?? sanitized.messages;
     if (recovered || sanitized.changed) {
@@ -372,7 +390,7 @@ export function createSessionLifecycleController(deps: {
 
   const saveMessages = (cli: CliName, sessionId: string, messages: ChatMessage[]): void => {
     const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
-    const sanitized = sanitizeMessages(messages);
+    const sanitized = sanitizeMessages(messages, cli);
     deps.sessionMessageCache.set(key, sanitized.messages);
     writeMessageFile(cli, sessionId, sanitized.messages, {
       activeWorkspaceKey: deps.activeWorkspaceKey(),

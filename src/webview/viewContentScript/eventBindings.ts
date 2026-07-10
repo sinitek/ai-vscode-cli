@@ -1,7 +1,10 @@
 // Primary UI event bindings and conversation reset controls.
 export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.addEventListener("change", (event) => {
         armPromptContextForConversationStart();
-        vscode.postMessage({ type: "selectCli", cli: event.target.value });
+        const nextCli = event.target.value;
+        clearOpenCodeModelOptions();
+        syncModelSelectorByInteractiveMode(nextCli);
+        vscode.postMessage({ type: "selectCli", cli: nextCli });
       });
 
       elements.configSelect.addEventListener("change", (event) => {
@@ -34,6 +37,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.add
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
+        clearOpenCodeModelOptions();
         updateLobsterModelSelectOptions();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();
@@ -111,7 +115,13 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.add
 
       function handleThinkingModeChange(rawValue) {
         if (state.currentCli === "opencode") {
-          const value = typeof rawValue === "string" && rawValue !== "" ? rawValue : null;
+          const selectedVariant = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
+          const configuredDefaultVariant = state.openCodeThinking
+            ? state.openCodeThinking.configuredDefaultVariant
+            : null;
+          const value = selectedVariant && selectedVariant === configuredDefaultVariant
+            ? null
+            : selectedVariant;
           if (state.openCodeThinking) {
             state.openCodeThinking.selectedVariant = value;
           }
@@ -133,6 +143,46 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.add
       elements.thinkingMode.addEventListener("change", (event) => {
         handleThinkingModeChange(event.target.value);
       });
+
+      function handleOpenCodeRoleModelChange(role, rawValue) {
+        const selectedRef = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
+        const configRef = state.openCodeModels
+          ? (role === "small" ? state.openCodeModels.configSmallRef : state.openCodeModels.configPrimaryRef)
+          : null;
+        const value = selectedRef && selectedRef === configRef ? null : selectedRef;
+        if (state.openCodeModels) {
+          if (role === "small") {
+            state.openCodeModels.selectedSmallRef = selectedRef;
+          } else {
+            state.openCodeModels.selectedPrimaryRef = selectedRef;
+            state.openCodeThinking = {
+              selectedVariant: null,
+              configuredDefaultVariant: null,
+              options: [],
+              disabled: true,
+              messageKey: "loading",
+            };
+            syncThinkingOptions();
+          }
+        }
+        vscode.postMessage({
+          type: "updateOpenCodeRoleModel",
+          role,
+          value,
+        });
+      }
+
+      if (elements.openCodePrimaryModelSelect) {
+        elements.openCodePrimaryModelSelect.addEventListener("change", (event) => {
+          handleOpenCodeRoleModelChange("primary", event.target.value);
+        });
+      }
+
+      if (elements.openCodeSmallModelSelect) {
+        elements.openCodeSmallModelSelect.addEventListener("change", (event) => {
+          handleOpenCodeRoleModelChange("small", event.target.value);
+        });
+      }
 
       // Model selection management
       const MODEL_MANAGE_OPTION_VALUE = "__manage__";

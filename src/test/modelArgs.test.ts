@@ -4,9 +4,18 @@ import assert = require("node:assert/strict");
 import {
   applyModelArg,
   readModelArg,
+  resolveOpenCodeModelForConfig,
   stripModelArgs,
   supportsCliManagedModelSelection,
 } from "../cli/modelArgs";
+
+const openCodeConfigContent = JSON.stringify({
+  model: "myprovider/main-model",
+  provider: {
+    myprovider: { models: { "main-model": {}, "other-model": {} } },
+    other: { models: { "cross-provider-model": {} } },
+  },
+});
 
 test("Claude keeps configured args unchanged even when the webview passes a selected model", () => {
   assert.equal(supportsCliManagedModelSelection("claude"), false);
@@ -44,8 +53,8 @@ test("OpenCode strips existing model args before writing the selected model", ()
 
   assert.deepEqual(stripModelArgs("opencode", args), ["--print", "--mode", "build"]);
   assert.deepEqual(
-    applyModelArg("opencode", args, "gpt-5-opencode"),
-    ["--print", "--mode", "build", "--model", "gpt-5-opencode"],
+    applyModelArg("opencode", args, "myprovider/other-model", { openCodeConfigContent }),
+    ["--print", "--mode", "build", "--model", "myprovider/other-model"],
   );
 });
 
@@ -53,8 +62,25 @@ test("OpenCode preserves official provider/model model ids", () => {
   assert.equal(readModelArg("opencode", ["--model", "myprovider/my-model-name"]), "myprovider/my-model-name");
   assert.equal(readModelArg("opencode", ["-m=myprovider/my-model-name"]), "myprovider/my-model-name");
   assert.deepEqual(
-    applyModelArg("opencode", ["run", "--format", "json"], "myprovider/my-model-name"),
-    ["run", "--format", "json", "--model", "myprovider/my-model-name"],
+    applyModelArg("opencode", ["run", "--format", "json"], "myprovider/main-model", {
+      openCodeConfigContent,
+    }),
+    ["run", "--format", "json", "--model", "myprovider/main-model"],
+  );
+});
+
+test("OpenCode rejects bare and unavailable model overrides before CLI execution", () => {
+  assert.throws(
+    () => applyModelArg("opencode", ["run"], "main-model", { openCodeConfigContent }),
+    /must be an exact provider\/model reference/
+  );
+  assert.throws(
+    () => applyModelArg("opencode", ["run"], "myprovider/missing", { openCodeConfigContent }),
+    /not an available model declared by the active config/
+  );
+  assert.deepEqual(
+    resolveOpenCodeModelForConfig("other/cross-provider-model", openCodeConfigContent),
+    { model: "other/cross-provider-model", error: null }
   );
 });
 

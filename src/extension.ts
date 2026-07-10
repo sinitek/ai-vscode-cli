@@ -42,7 +42,16 @@ import {
   ThinkingWorkspaceFile,
   normalizeLobsterExecutionMode,
 } from "./cli/types";
-import { resolveOpenCodeThinkingCapability } from "./cli/openCodeModelCapabilities";
+import {
+  resolveOpenCodeThinkingCapability,
+  type OpenCodeThinkingCapability,
+} from "./cli/openCodeModelCapabilities";
+import {
+  applyOpenCodeRuntimeModelOverlay,
+  parseOpenCodeConfigModels,
+  validateOpenCodeModelOverride,
+  type OpenCodeModelRole,
+} from "./cli/opencodeconfigmodels";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
@@ -282,6 +291,7 @@ import {
 import {
   createSessionLifecycleController,
   extractSessionId,
+  resolveCliSessionIdForResume,
   type ProcessTitleState,
   type SessionLifecycleController,
 } from "./sessionLifecycle";
@@ -298,6 +308,7 @@ import {
   getManagedModelOptionsForConfigFromStore,
   getModelOptionsForCliFromStore,
   getModelOptionsForConfigFromStore,
+  getOpenCodeRoleModelFromStore,
   getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
   getSelectedLobsterCliModelFromStore,
@@ -311,6 +322,7 @@ import {
   renameCliModelInStore,
   selectCliLobsterModelInStore,
   selectCliModelInStore,
+  setOpenCodeRoleModelInStore,
   setOpenCodeVariantInStore,
   setCliModelLobsterRoleInStore,
   summarizeModelStoreByConfigId,
@@ -628,6 +640,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   opencode: null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+let openCodeModelsState: PanelState["openCodeModels"] = undefined;
 let openCodeThinkingContextKey = "";
 let openCodeThinkingConfigId: string | null = null;
 let openCodeThinkingExactModel: string | null = null;
@@ -656,6 +669,7 @@ function initializeSessionControllers(): void {
     setWorkspaceInteractiveModeForCli,
     resolveAutoInteractiveModeForConversationTab,
     collectRunningLobsterTaskIds,
+    isLobsterTaskRunning,
     resolveConversationTabLobsterContext,
     buildSessionLabelFromPrompt,
   });
@@ -958,6 +972,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
     selectCliModel,
+    updateOpenCodeRoleModel: updateOpenCodeRoleModelForConfig,
     selectCliLobsterModel,
     setCliModelLobsterRole,
     addCliModel,
@@ -1076,6 +1091,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getMacTaskShell,
     getEffectiveThinkingMode,
     openCodeThinking: openCodeThinkingState,
+    openCodeModels: openCodeModelsState,
     getWorkspaceInteractiveMode,
     isInteractiveSupported,
     getProjectRulePaths,
@@ -1093,13 +1109,14 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
 function buildDefaultOpenCodeThinkingState(
   messageKey: OpenCodeThinkingMessageKey = "follow-default",
   exactModel: string | null = null
-): OpenCodeThinkingState {
+): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
   const separatorIndex = exactModel?.indexOf("/") ?? -1;
   return {
     providerId: separatorIndex > 0 ? exactModel!.slice(0, separatorIndex) : null,
     modelId: separatorIndex > 0 ? exactModel!.slice(separatorIndex + 1) : null,
     reasoning: "unknown",
     options: [],
+    configuredDefaultVariant: null,
     selectedVariant: null,
     status: "unknown",
     source: "fallback",
@@ -1131,6 +1148,80 @@ function updateOpenCodeVariantForCurrentSelection(value: string | null): void {
   };
 }
 
+function resolveOpenCodeRoleModelsForConfig(
+  configId: string | null,
+  configContent: string
+): { primary: string | null; small: string | null } {
+  const parsed = parseOpenCodeConfigModels(configContent);
+  const issues = [...parsed.issues];
+  let nextStore = modelStore;
+
+  if (configId) {
+    const legacyPrimary = normalizeCliModelName(modelStore.selectedByConfigId?.[configId]);
+    const storedPrimary = getOpenCodeRoleModelFromStore(modelStore, configId, "primary");
+    if (!storedPrimary && legacyPrimary) {
+      const legacyValidation = validateOpenCodeModelOverride(parsed, "primary", legacyPrimary);
+      if (legacyValidation.ok && legacyValidation.modelRef) {
+        nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "primary", legacyValidation.modelRef);
+      }
+    }
+    if (
+      modelStore.selectedByConfigId?.[configId]
+      || modelStore.optionsByConfigId?.[configId]
+      || modelStore.selectedLobsterByConfigId?.[configId]
+      || modelStore.lobsterRolesByConfigId?.[configId]
+    ) {
+      nextStore = ensureCliModelSelectionStore(nextStore);
+      delete nextStore.selectedByConfigId[configId];
+      delete nextStore.optionsByConfigId[configId];
+      delete nextStore.selectedLobsterByConfigId[configId];
+      delete nextStore.lobsterRolesByConfigId[configId];
+    }
+  }
+
+  const resolveRole = (role: OpenCodeModelRole): string | null => {
+    const override = getOpenCodeRoleModelFromStore(nextStore, configId, role);
+    if (override) {
+      const validation = validateOpenCodeModelOverride(parsed, role, override);
+      if (validation.ok && validation.modelRef) {
+        return validation.modelRef;
+      }
+      if (validation.issue) {
+        issues.push(validation.issue);
+      }
+      nextStore = setOpenCodeRoleModelInStore(nextStore, configId, role, null);
+    }
+    return role === "primary"
+      ? parsed.primaryModel?.ref ?? null
+      : parsed.smallModel?.ref ?? null;
+  };
+
+  const primary = resolveRole("primary");
+  const small = resolveRole("small");
+  if (nextStore !== modelStore) {
+    modelStore = nextStore;
+    writeModelStore(modelStore);
+  }
+  openCodeModelsState = {
+    models: parsed.candidates.map((candidate) => ({
+      ref: candidate.ref,
+      label: candidate.label,
+      providerId: candidate.providerId,
+      modelId: candidate.modelId,
+    })),
+    configPrimaryRef: parsed.primaryModelRef,
+    configSmallRef: parsed.smallModelRef,
+    selectedPrimaryRef: primary,
+    selectedSmallRef: small,
+    issues: issues.map((issue) => ({
+      ...(issue.role ? { role: issue.role } : {}),
+      code: issue.code,
+      messageKey: `opencodeModels.issue.${issue.code}`,
+    })),
+  };
+  return { primary, small };
+}
+
 async function refreshOpenCodeThinkingState(configState: PanelState["configState"]): Promise<void> {
   if (currentCli !== "opencode") {
     openCodeThinkingRequestId += 1;
@@ -1138,17 +1229,16 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     openCodeThinkingConfigId = null;
     openCodeThinkingExactModel = null;
     openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+    openCodeModelsState = undefined;
     return;
   }
 
   const configId = resolveModelConfigIdForCli("opencode", configState);
-  const selectedModel = getSelectedCliModel("opencode", configId);
   const activeConfig = configId
     ? await configService.getConfigById("opencode", configId)
     : await configService.getCurrentConfig("opencode");
   const configContent = activeConfig?.content ?? "{}";
-  const resolvedModel = resolveOpenCodeModelForConfig(selectedModel, configContent);
-  const exactModel = resolvedModel.error ? null : resolvedModel.model;
+  const exactModel = resolveOpenCodeRoleModelsForConfig(configId, configContent).primary;
   const command = getCliCommand("opencode");
   const configHash = createHash("sha256").update(configContent).digest("hex");
   const contextKey = [command, configId ?? "current", configHash, exactModel ?? ""].join("\u0000");
@@ -1707,49 +1797,45 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
 type OpenCodeRuntimePreparation = {
   envOverrides: Record<string, string>;
   configContent: string;
+  primaryModel: string;
+  smallModel: string | null;
 };
 
 async function prepareOpenCodeRuntime(
   configId: string | null = getActiveConfigIdForCli("opencode")
 ): Promise<OpenCodeRuntimePreparation> {
-  const runtimePaths = configService.getOpenCodeRuntimePaths();
   const activeConfig = configId
     ? await configService.getConfigById("opencode", configId)
     : null;
-  if (activeConfig) {
-    const validation = configService.validateOpenCodeConfigForRun(
-      activeConfig.content,
-      activeConfig.envContent
-    );
-    if (!validation.ok) {
-      throw new Error(validation.issues.map((issue) => issue.message).join("\n"));
-    }
-    await configService.applyConfig("opencode", {
-      content: activeConfig.content,
-      envContent: activeConfig.envContent,
-      openCodeSkills: activeConfig.openCodeSkills,
-    });
-    return {
-      envOverrides: {
-        ...configService.parseEnvText(activeConfig.envContent ?? ""),
-        OPENCODE_CONFIG: runtimePaths.config,
-      },
-      configContent: activeConfig.content ?? "{}",
-    };
+  const current = activeConfig ?? await configService.getCurrentConfig("opencode");
+  const configContent = current.content ?? "{}";
+  const roles = resolveOpenCodeRoleModelsForConfig(configId, configContent);
+  if (!roles.primary) {
+    throw new Error("OpenCode primary model is unavailable; select a valid primary model from the active config.");
   }
-
-  const current = await configService.getCurrentConfig("opencode");
-  const validation = configService.validateOpenCodeConfigForRun(current.content, current.envContent);
+  const parsedConfig = parseOpenCodeConfigModels(configContent).config;
+  if (!parsedConfig) {
+    throw new Error("OpenCode config JSON is invalid.");
+  }
+  const overlay = applyOpenCodeRuntimeModelOverlay(parsedConfig, {
+    primary: roles.primary,
+    small: roles.small,
+  });
+  if (!overlay.ok || !overlay.config) {
+    throw new Error(overlay.issues.map((issue) => issue.message).join("\n"));
+  }
+  const validation = configService.validateOpenCodeConfigForRun(
+    JSON.stringify(overlay.config),
+    current.envContent
+  );
   if (!validation.ok) {
     throw new Error(validation.issues.map((issue) => issue.message).join("\n"));
   }
-  await configService.writeOpenCodeConfig(current.content ?? "{}", current.envContent ?? "");
   return {
-    envOverrides: {
-      ...configService.parseEnvText(current.envContent ?? ""),
-      OPENCODE_CONFIG: runtimePaths.config,
-    },
-    configContent: current.content ?? "{}",
+    envOverrides: configService.parseEnvText(current.envContent ?? ""),
+    configContent,
+    primaryModel: roles.primary,
+    smallModel: roles.small,
   };
 }
 async function refreshCliInstallStatuses(): Promise<void> {
@@ -2193,6 +2279,17 @@ function collectRunningLobsterTaskIds(): Set<string> {
   return runningTaskIds;
 }
 
+function isLobsterTaskRunning(
+  taskId: string,
+  runningTaskIds: ReadonlySet<string> = collectRunningLobsterTaskIds(),
+): boolean {
+  const task = readLobsterTaskRecord(taskId);
+  if (!task) {
+    return runningTaskIds.has(taskId);
+  }
+  return resolveLobsterTaskRunControlState(task, runningTaskIds).isRunning;
+}
+
 function resolveAutoInteractiveModeForConversationTab(
   tab: ConversationTabRecord | null
 ): InteractiveMode {
@@ -2218,7 +2315,7 @@ function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
     return false;
   }
   const runningTaskIds = collectRunningLobsterTaskIds();
-  return runningTaskIds.has(context.lobsterTaskId);
+  return isLobsterTaskRunning(context.lobsterTaskId, runningTaskIds);
 }
 
 function hasOtherTabRun(activeTabId: string | null): boolean {
@@ -2574,11 +2671,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
     : [];
   const cwd = resolveWorkspaceCwd();
-  const selectedModel = input.model || getSelectedCliModel(runCli);
-  const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
-  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-  const runtimeModel = selectedModel;
   const runtimePreparation = await prepareOpenCodeRuntime();
+  const runtimeModel = runtimePreparation.primaryModel;
+  const thinkingMode = getEffectiveThinkingMode(runCli, runtimeModel);
+  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
   const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
   const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
@@ -2648,6 +2744,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+    const runtimeSessionId = resolveCliSessionIdForResume(runCli, sessionId);
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
@@ -2722,7 +2819,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         },
         {
           cwd,
-          sessionId,
+          sessionId: runtimeSessionId,
           thinkingMode,
           openCodeVariant: getOpenCodeVariantForRun(
             runCli,
@@ -2731,9 +2828,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
             runtimeOpenCodeConfigContent
           ),
           model: runtimeModel,
+          openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
-          processLabel: buildProcessLabel(runCli, sessionId ?? runId),
+          processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
       );
       syncParallelRun(process);
@@ -2745,9 +2843,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     const detectedSessionId = extractSessionId(runCli, `${rawStdout}
 ${rawStderr}`);
-    if (!sessionId && detectedSessionId) {
+    if ((!sessionId || isLocalSessionId(sessionId)) && detectedSessionId) {
+      adoptDetectedSessionId(runCli, detectedSessionId, target.tabId, sessionId);
       sessionId = detectedSessionId;
-      adoptSessionId(runCli, detectedSessionId, target.tabId);
       messageTarget = loadSessionMessages(runCli, detectedSessionId);
     }
 
@@ -6914,20 +7012,13 @@ function appendSystemMessageForPromptTarget(target: PromptRunTarget, content: st
   persistMessagesForTab(target.cli, target.sessionId, target.tabId, messageTarget);
 }
 
-async function getOpenCodeConfigPreflightMessage(selectedModel?: string | null): Promise<string | null> {
-  const configId = getActiveConfigIdForCli("opencode");
-  const activeConfig = configId
-    ? await configService.getConfigById("opencode", configId)
-    : null;
-  const source = activeConfig
-    ? { content: activeConfig.content, envContent: activeConfig.envContent }
-    : await configService.getCurrentConfig("opencode");
-  const validation = configService.validateOpenCodeConfigForRun(source.content, source.envContent);
-  if (!validation.ok) {
-    return validation.issues.map((issue) => issue.message).join("\n");
+async function getOpenCodeConfigPreflightMessage(): Promise<string | null> {
+  try {
+    await prepareOpenCodeRuntime();
+    return null;
+  } catch (error) {
+    return errorToMessage(error);
   }
-  const modelResolution = resolveOpenCodeModelForConfig(selectedModel, source.content);
-  return modelResolution.error;
 }
 
 function maybePersistLongTermMemoryFromRun(options: {
@@ -7003,8 +7094,7 @@ async function runPrompt(
 
   if (target.cli === "opencode") {
     promptInput = preloadUserMessageForPrompt(promptInput, target);
-    const selectedOpenCodeModel = promptInput.model || getSelectedCliModel(target.cli);
-    const preflightMessage = await getOpenCodeConfigPreflightMessage(selectedOpenCodeModel);
+    const preflightMessage = await getOpenCodeConfigPreflightMessage();
     if (preflightMessage) {
       void logError("opencode-config-preflight-failed", {
         cli: target.cli,
@@ -7071,17 +7161,17 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: runCli });
   }
-  const selectedModel = input.model || getSelectedCliModel(runCli);
-  const thinkingMode = getEffectiveThinkingMode(runCli, selectedModel);
-  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-  const runtimeModel = selectedModel;
   const runtimePreparation = await prepareOpenCodeRuntime();
+  const runtimeModel = runtimePreparation.primaryModel;
+  const thinkingMode = getEffectiveThinkingMode(runCli, runtimeModel);
+  applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
   const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
   const activeTabId = target.tabId;
   const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
   preparePendingLabel(runCli, activeTabId, prompt);
   const initialSessionId = target.sessionId;
+  const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, initialSessionId);
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
   const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
   const debugLogging = getDebugLogging();
@@ -7091,7 +7181,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   const args = buildCliArgs(
     runCli,
     {
-      sessionId: initialSessionId,
+      sessionId: initialRuntimeSessionId,
       thinkingMode,
       openCodeVariant: getOpenCodeVariantForRun(
         runCli,
@@ -7189,7 +7279,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let sessionBuffer = "";
     let rawStdout = "";
     let rawStderr = "";
-    const runtimeSessionId = activeSessionId;
+    const runtimeSessionId = resolveCliSessionIdForResume(runCli, activeSessionId);
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
@@ -7285,6 +7375,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             runtimeOpenCodeConfigContent
           ),
           model: runtimeModel,
+          openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
@@ -9482,6 +9573,31 @@ function selectCliModel(cli: CliName, model: string | null, configId: string | n
   writeModelStore(modelStore);
 }
 
+async function updateOpenCodeRoleModelForConfig(
+  role: OpenCodeModelRole,
+  value: string | null,
+  configId: string | null
+): Promise<string | null> {
+  if (!configId) {
+    return `OpenCode ${role} model cannot be changed because there is no active config.`;
+  }
+  const activeConfig = await configService.getConfigById("opencode", configId);
+  if (!activeConfig) {
+    return `OpenCode ${role} model cannot be changed because active config "${configId}" was not found.`;
+  }
+  const parsed = parseOpenCodeConfigModels(activeConfig.content);
+  const validation = validateOpenCodeModelOverride(parsed, role, value);
+  if (!validation.ok) {
+    return validation.issue?.message ?? `OpenCode ${role} model selection is invalid.`;
+  }
+  const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, role, validation.modelRef);
+  if (nextStore !== modelStore) {
+    modelStore = nextStore;
+    writeModelStore(modelStore);
+  }
+  return null;
+}
+
 function selectCliLobsterModel(
   cli: CliName,
   role: LobsterTaskRole,
@@ -9898,7 +10014,25 @@ function captureSessionFromBuffer(cli: CliName, buffer: string): void {
   if (!sessionId) {
     return;
   }
-  adoptSessionId(cli, sessionId, activeTabIdForRun);
+  adoptDetectedSessionId(cli, sessionId, activeTabIdForRun, activeSessionId);
+}
+
+function adoptDetectedSessionId(
+  cli: CliName,
+  sessionId: string,
+  tabId: string | null,
+  previousSessionId: string | null,
+): void {
+  if (previousSessionId === sessionId) {
+    return;
+  }
+  if (previousSessionId && !isLocalSessionId(previousSessionId)) {
+    return;
+  }
+  if (previousSessionId) {
+    migrateLocalSessionToTargetSession(cli, previousSessionId, sessionId, { notifyPanel: false });
+  }
+  adoptSessionId(cli, sessionId, tabId);
 }
 
 function touchSession(cli: CliName, sessionId: string): void {

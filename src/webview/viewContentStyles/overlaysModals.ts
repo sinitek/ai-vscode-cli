@@ -288,12 +288,48 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         border: 1px solid var(--vscode-widget-border);
         border-radius: 8px;
         padding: 10px;
-        font-size: 12px;
-        color: var(--vscode-foreground);
-        max-height: 260px;
+        max-height: 360px;
         overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .run-prompt-item {
+        padding: 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .run-prompt-item-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 18px;
+        margin-bottom: 6px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .run-prompt-latest-badge {
+        flex: 0 0 auto;
+        padding: 1px 7px;
+        border: 1px solid var(--vscode-focusBorder);
+        border-radius: 999px;
+        color: var(--vscode-foreground);
+      }
+      .run-prompt-item-content {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        line-height: 1.5;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+      .run-prompt-empty {
+        padding: 16px 8px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        text-align: center;
       }
       .run-stream-modal {
         width: 760px;

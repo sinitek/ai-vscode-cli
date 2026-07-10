@@ -108,6 +108,9 @@ ${webviewStyles}    </style>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}
         </button>
+        <button id="openCurrentLobsterGroupChat" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentLobsterGroupChatAria}" title="${i18n.openCurrentLobsterGroupChatAria}">
+          ${i18n.openCurrentLobsterGroupChatLabel}
+        </button>
         <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
           ${i18n.queueIndicatorLabel}
           <span id="queueCount" class="run-queue-count">0</span>
@@ -173,6 +176,11 @@ ${webviewStyles}    </style>
                 <option value="">${i18n.modelOptionSubtaskDefault}</option>
                 <option value="__manage__">${i18n.modelOptionManage}</option>
               </select>
+            </div>
+            <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
+              <select id="openCodePrimaryModelSelect" class="model-select" aria-label="${i18n.openCodePrimaryModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodePrimaryModelSelectAria}"></select>
+              <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
+              <span id="openCodeModelIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             </div>
             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
               <option value="">${i18n.modelOptionDefault}</option>

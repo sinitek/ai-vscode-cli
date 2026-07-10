@@ -1,4 +1,5 @@
 import { normalizeCodexExecItemType } from "./codexAppServerEvents";
+import { sanitizeCodexReasoningContent } from "../codexReasoningContent";
 
 export type JsonRpcError = {
   code: number;
@@ -74,7 +75,13 @@ export function extractReasoningText(item: Record<string, unknown>): string {
   if (!fragments.length) {
     return "";
   }
-  return fragments.filter((value, index) => fragments.indexOf(value) === index).join("\n").trim();
+  const sanitizedFragments = fragments
+    .map((value) => sanitizeCodexReasoningContent(value))
+    .filter(Boolean);
+  return sanitizedFragments
+    .filter((value, index) => sanitizedFragments.indexOf(value) === index)
+    .join("\n")
+    .trim();
 }
 
 export function normalizeTodoListItems(items: unknown[]): CodexTodoListItem[] {

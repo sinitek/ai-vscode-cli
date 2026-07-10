@@ -58,14 +58,20 @@
 ### 3.3 执行模式
 
 - Codex / Claude：支持交互式会话续接
-- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run [message..]` 启动，配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；交互 Runner、会话续接和上下文压缩行为仍以当前实现为准
+- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动，配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；模型区仅显示主模型与小模型两个紧凑 select 和错误区域，候选只来自 active config 的 `provider.<id>.models` 且没有模型管理入口；下拉无可见 label、思考力度说明或“跟随配置”选项，正常 option 仅显示模型 `name`（缺失时回退 model id）；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
+- OpenCode 所有任务路径默认注入官方 `--auto`，自动批准仍处于 `ask` 的权限请求；默认 `external_directory: ask` 因而支持跨工作目录读写。插件不把 runtime permission 强制覆盖为 `allow`，用户配置、agent 配置及 OpenCode 默认规则中的显式 `deny` 仍优先，包括 `.env` 等受显式拒绝规则保护的文件。
 - AI 对话面板支持 `coding / lobster` 两种顶层交互模式；旧配置中的 `plan` 会按 `coding` 兼容归一化
+- OpenCode 对话面板同样提供 coding / Loop 两种模式。Loop 复用既有主任务、子任务、多轮复核、群聊和 active config effective primary 运行链路，每次主任务或子任务请求仍通过非交互式 one-shot `opencode run --auto` 执行。
+- OpenCode 支持 Loop 编排不等于支持插件交互式 runner：`isInteractiveSupported(opencode)` 继续为 `false`，只表示不存在 Codex/Claude interactive runner 与 common command，不得再用该标记隐藏 OpenCode 的 Loop 模式入口，也不得为开放入口把它改成 `true`。
+- Loop 主任务 Tab 的运行态跟随持久化任务生命周期：任务记录为 `running` 时，即使当前没有主任务、子任务、裁判主持人或参与者 AI/CLI 进程，主 Tab 仍显示运行态并保持不可关闭；任务进入 `completed`、`needs-review`、`error` 或 `stopped` 后解除。普通对话 Tab 与 Loop 子任务 Tab 仍按各自实际执行进程显示运行态。
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
 - 工具设置中的全局项（debug、自动文件标签、Loop 最大轮次、Loop 子任务自动关闭、语言、macOS task shell）保存在 `~/.sinitek_cli/settings.json`；项目级工具设置保存在 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
 - 工具设置提供工作区级“Harness 骨架”开关，控制当前工作区基于 harness scaffold 的插件侧本地记忆层，默认关闭。用户开启时，扩展先弹窗确认；确认后才补齐工作区 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的模板追加、只引用 `AGENTS.md` 的 `CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 `codegraph install --target codex --location global && codegraph init`。骨架安装成功后会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`；用户确认后，扩展把当前 AI 对话切到 coding 模式，并复用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。关闭后不得创建、更新、召回或注入插件侧长期记忆，只允许查看、导出和删除已有记忆；该开关不控制 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、配置、压缩结果或账号侧能力。
 - 工具设置提供项目级“执行后自动压缩上下文”开关（默认开启）；开启后，若当前任务目标为已有 Codex/Claude/OpenCode 会话，会在任务成功结束且执行超过 5 分钟后自动执行一次上下文压缩；任务中断、报错或执行不超过 5 分钟不触发自动压缩；自动压缩以静默后台任务执行，不追加普通任务完成耗时气泡、不覆盖刚完成任务的真实执行时间；手动压缩执行期间，聊天面板运行条会显示带动画的“压缩上下文中”状态；OpenCode 的具体压缩路径以当前实现为准
 - 对非主动中断/异常，或 CLI 成功退出但本轮没有产生普通 assistant 最终结论气泡的情况，会隐式发送“继续/continue”自动重试最多 5 次，间隔依次为 5 秒、15 秒、30 秒、2 分钟、5 分钟；Codex 交互任务必须看到 `phase:"final_answer"`/`codexFinalAnswer=true` 才视为本轮最终结论，`phase:"commentary"` 只作为过程消息；不会展示这条隐式用户消息；每次失败进入下一次自动重试前会追加错误 trace 气泡展示本次失败信息，并追加系统提示说明当前是第几次自动重试；等待结束真正开始执行该次自动重试时，会再追加“第 X/Y 次自动重试已开始”提示并把标签页恢复到运行态；达到上限后会展示最近一次真实错误，避免只剩泛化提示
 - Codex 在工具设置中提供项目级“子智能体（multi_agent）”开关，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。
+
+OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 Provider 的模型列表为核心，并保留 JSON 高级模式。可视化表单支持 Provider `id`、`name`、`npm`、`options.baseURL`、`options.apiKey`，以及模型 `id`、`name`、`reasoning`、主模型/小模型角色和逗号分隔的思考力度；API Key 使用密码输入。思考力度会 trim、过滤空项并稳定去重，首项写入 `options.reasoningEffort`，全部值生成对应简单 `variants`；清空时只移除编辑器管理的简单 reasoning 字段，未知顶层字段、MCP、permission、Provider/模型扩展字段、其他 options 和复杂 variants 原样保留。Provider/模型重命名会同步顶层 `model` / `small_model` exact ref；删除被引用项后会阻止保存；无效 JSON 不覆盖最后一次有效可视化状态；范例一键导入后立即加载到可视化编辑器。保存配置记录后，只有该档案当前处于激活状态时才应用到运行配置。
 - Codex 交互式运行会优先直接启动已解析的 CLI，可显式固定 `CODEX_HOME` / 工作区 trust，并在回合完成时优先采用渐进式关闭，降低长任务被异常打断的概率
 - Loop 模式会沿用当前 tab 的会话上下文，并按会话隔离写入任务记录：`~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json`（首次主任务尚未拿到真实会话 ID 时会暂存到 pending 路径，拿到真实会话 ID 后自动迁移到该会话文件）；主任务、子任务、轮次概要、预计剩余轮次和用户后续补充需求都写入该会话记录文件，同时在 `~/.sinitek_cli/lobster-communications/<taskId>/` 维护主子任务沟通文件；全局工具设置支持配置新建 Loop 任务最大主任务复核轮次（默认 20，范围 1-100，已有任务保持记录值），以及“子任务成功完成后自动关闭 AI 对话标签页”开关（默认开启），历史工作区字段仅作为兼容回退读取；Loop 主任务标签页会显示 `Loop` 前缀，且主任务或任一子任务仍在运行时禁止关闭主任务标签页；若在该主任务标签继续执行普通（非 Loop）任务，前缀会恢复为普通标签；点击不同类型会话标签会自动切换为 Loop/Vibe 模式，新建标签默认 Vibe 模式；主任务返回 JSON 决策并在每次复核中预判 `estimatedRemainingRounds` 剩余轮次，扩展兼容旧 `subtask` 字段，并优先解析 `subtasks` 批次；主任务按“并发优先、文件冲突兜底串行”判断子任务是否冲突，优先把能确认 `writeFiles` / `conflictGroup` 互不重叠的子任务放入同一批次，同一轮最多 6 个；扩展会按声明的写入文件/冲突组自动规划组内并发、组间串行；扩展为批次内每个子任务创建独立新会话，单子任务仍自动切换到子任务标签展示气泡和流式消息，多子任务批次会创建多个子任务标签并并发运行；每次 `status=continue` 的主任务 JSON 协议气泡会原位替换为 Markdown 子任务派发摘要，并同步追加到 `main-task.md`；只有批次内所有子任务都正常完成后才切回主任务并自动唤醒主任务审核验收，不满足则继续启动下一批子任务，验收通过才结束；主任务 AI 调用若连续失败 5 次，会把任务记录更新为 `needs-review`，停止自动派发和自动恢复，避免在失败状态下重复复用旧主任务决策或继续加派子任务；轮次按主任务复核轮计数，同一轮可包含一个或多个并发子任务；第 1 轮先做总体阶段规划，再优先派发首批互不冲突子任务，不再默认只派发 1 个；Codex / OpenCode 在 Loop 模式下底部模型选择拆分为“主任务模型 / 子任务模型”，并在“管理模型”中为每个模型提供“主任务 / 子任务”可用角色开关（至少保留一个角色）；Claude 分组不展示插件侧模型选择或模型管理入口，沿用 CLI 默认模型或用户手动配置的命令参数；最终完成时主任务必须返回 `answerConclusion`（直接回答用户原始问题）、整体总结、各轮子任务摘要和用户需求覆盖清单（全部 passed=true），扩展会写入 `main-task.md` 和任务记录，并移除最终主任务 JSON 协议气泡，在 AI 对话主消息流中先追加 `lobsterAnswerConclusion=true` 的 assistant Markdown 问题回答结论气泡，再追加 `lobsterFinalSummary=true` 的 assistant Markdown 最终总结气泡；最终总结气泡会继续展示问题回答结论、子任务摘要、验收结果、需求覆盖和整体任务总结；只有主任务显式返回 `status=completed` 且主任务对话已同时存在 `lobsterAnswerConclusion=true` 问题回答结论气泡和包含“问题回答结论”“整体任务总结”小节的 `lobsterFinalSummary=true` 最终总结气泡才视为真正结束，如果任务记录已完成但这些气泡缺失或最终总结仍为旧格式，扩展会自动按“继续”恢复同一任务并再次唤醒主任务；主任务中断后可在同一标签输入“继续/continue/resume”等短提示词恢复同一任务并从当前轮次继续，也可在 Loop 群聊面板点击“继续执行”后先确认或编辑默认“继续”消息，再复用同一任务 ID 唤醒主任务/主持人判断下一步；若主任务已经触发上述连续失败上限，则群聊“继续执行”和子任务手动补跑后的自动唤醒都不会再自动恢复主任务，只能保留人工复核信号；若用户在群聊面板点击“补充需求”，扩展会先把补充内容写入任务记录和主任务沟通文件，供下一轮主任务/主持人在恢复时读取并调整安排；子任务结束前必须写清沟通文件，供主任务唤醒后读取；子任务出错会间隔 1 分钟自动重试最多 5 次；子任务中断后在子任务标签手动继续时会强制按内部 coding（即 Vibe）任务执行，不允许再次启动 Loop 任务；消息气泡会标记“Loop / 子任务”
 - AI 对话面板中的 Loop 主任务 tab 在主任务或同一 Loop 任务任一子任务仍在运行时强制跟随最新消息；如果用户手动滚离底部，仍会在消息区显示置底按钮，点击后回到最新消息。普通 Vibe 任务和 Loop 子任务 tab 保持原有按用户滚动位置决定是否自动置底的策略。
@@ -82,10 +88,12 @@
 - 历史记录弹窗支持查看单个历史会话的已保存消息，并可将该会话消息导出为 TXT；历史记录中的操作按钮允许换行展示，避免挤压列表宽度
 - 历史记录弹窗提供“Loop 群聊” tab，按更新时间列出保留期内的 Loop 任务摘要；点击“加载”只按 `taskId` 重新打开 Loop 群聊 UI，不改变普通会话绑定，也不会自动继续任务
 - 从历史加载未打开的会话时会新建 tab 承载该会话；若该会话已在 tabs 中打开，则直接切换到已有 tab
+- OpenCode 首次执行会从 JSONL `sessionID` 接管真实 `ses_*`，同一 tab 后续执行使用该真实 ID续接；插件内部 `local_*` 占位 ID不会作为 `--session` 传入 CLI。修复前留下的 `local_*` tab 会在下一次执行创建新底层会话，并在捕获真实 ID后迁移已有插件消息历史。
 - 多个 conversation tab（超过 5 个时启用左右翻页按钮，每页最多显示 5 个）
 - 即使只有 1 个 conversation tab 也展示顶部标签；运行中 tab 使用主题 focus 色蓝色虚线流水边框，异常终止或进入自动重试等待期的 tab 显示错误红框，手动停止不标红，后续恢复输出或成功结束会恢复正常样式
 - 单个 tab 切换 CLI 分组或切换历史会话时，不应中断其他 tab 中正在执行的任务
 - 历史会话删除、清空、重置当前 Tab；其中“重置当前 Tab”会关闭当前 tab 并新建一个空白 tab，不会复用原 tab 清空后继续写入，因此旧会话历史仍可从会话列表恢复
+- 对话运行状态区的“提示词”按钮会展示当前会话内全部用户输入，并按输入时间倒序排列，最新提示词置顶
 - Prompt 历史记录
 - 历史提示词、历史会话与任务运行痕迹默认仅保留最近 30 天（约 1 个月）
 - 长期记忆不套用普通历史 30 天清理；关闭长期记忆也不自动删除已有记忆，用户需要通过查看/导出/删除入口显式处理
@@ -118,6 +126,7 @@
 - 最终成功回复使用强调卡片样式，Markdown 外层带主题强调边框
 - trace 分段展示
 - thinking 与 tool-use 事件区分渲染
+- Codex app-server 的 reasoning/thinking 摘要会精准移除独占一行的空 HTML 注释 `<!-- -->` 及其水平空白变体；不会改写普通 assistant/user 消息、行内空注释或非空 HTML 注释。历史 Codex thinking 消息在加载时使用同一规则清洗并回写会话存档。
 - 任务列表提取与展示；Claude 交互式运行除兼容 `TodoWrite` 外，也会根据 `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskStop` 工具事件实时刷新任务列表
 - 原始流消息导出；历史会话消息可按 TXT 日志导出
 - 错误详情查看 / 复制
@@ -138,7 +147,8 @@
 - 配置档案列表、排序、激活、删除、初始化
 - 当前配置查看与应用
 - 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、OpenCode 的 `config.json`、Codex 的 `config.toml` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件。Gemini 配置卡片已移出当前支持范围。
-- OpenCode 配置页为单文件保存模型，只维护 `~/.opencode/config.json`，不提供多个保存按钮，不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例遵循 OpenCode JSON 口径：`$schema`、`model=provider/model`、可选 `small_model`、`provider`、`mcp`；范例明确标记为 OpenAI-compatible 网关，provider 名称统一使用 `myAPI`，模型 id 使用中性网关占位名。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
+- Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式。可视化模式覆盖 Claude Code 官方 `~/.claude/settings.json` 的常用核心字段：`model`、`fallbackModel`、`availableModels`、`effortLevel`、`language`、`outputStyle`、`autoUpdatesChannel`、`cleanupPeriodDays`、`alwaysThinkingEnabled`、`includeCoAuthoredBy`、`permissions.defaultMode/allow/ask/deny`，以及 `env` 中的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`。第三方网关或云平台可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。可视化序列化基于原始 JSON 定向合并，保留未展示字段、额外环境变量、hooks、权限扩展和企业策略；无效 JSON 不覆盖最后一次有效可视化状态。
+- OpenCode 配置页为单文件保存模型，只维护 `~/.opencode/config.json`，不提供多个保存按钮，不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 双模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model`、两个 `provider.myAPI.models` 定义、主模型 `options+variants`、小模型固定 `options` 与可选 `variants`、禁用的 `mcp` 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
 - 技能管理
@@ -184,11 +194,23 @@
 
 ## 4.6 OpenCode 动态 variant 能力
 
-- OpenCode 思考力度由精确模型的 variants 决定，面板通过可序列化 `openCodeThinking` 状态动态渲染任意 variant 名称，并始终提供 Default / Follow OpenCode。
+- OpenCode 主模型未选档位时使用自身 `options`，可切换思考力度由该精确主模型的 variants 决定，面板通过可序列化 `openCodeThinking` 状态动态渲染任意 variant 名称，并始终提供 Default / Follow OpenCode。
 - 能力解析以 `opencode models <provider> --verbose` 的精确模型 metadata 为首选，当前激活配置的显式 `provider.<id>.models.<model>.variants` 为回退；两者都没有时为 Default-only。禁止使用 provider `npm`、provider 名或模型名推断档位。
+- 主模型由 `--model provider/model` 选择，variant 由 `--variant` 选择；CLI 没有 `--small-model`，小模型临时选择通过 runtime config overlay 覆盖顶层 `small_model`。小模型内部请求会跳过 variants，实际只使用其自身 `options`；只有该模型被当作主模型运行时，其 variants 才生效。
+- 普通对话、并行任务、Loop 主任务、Loop 子任务、续跑和唤醒统一使用下拉选择的 effective primary；OpenCode 不使用 Codex 专用的 Loop 主/子任务模型分配，`small_model` 仅供 OpenCode 内部轻量请求，不等同于 Loop 子任务模型。
+- primary/small 覆盖按 active config id 隔离，空值跟随顶层配置；配置切换或候选变化会清理失效覆盖，OpenCode 不读取通用 selected/options 或 Loop main/subtask 选择。
+- runtime overlay 同时固定 effective `model` / `small_model`，通过随机 `OPENCODE_CONFIG` 文件注入，目录/文件权限为 `0700`/`0600`，exit/error/timeout/cancel 后清理且不改写用户配置。
+- 运行前校验 effective primary、effective small 和 overlay 后配置；角色不在 active config 候选、provider/model 被过滤或 primary 缺失时阻止启动。
 - active config id、配置内容 hash、OpenCode 命令/version、provider/model 共同隔离能力缓存和选择状态；解析失败保守回退，旧请求不会覆盖后续配置或模型。
 - variant 选择按 active config id + 精确 `provider/model` 保存；空值删除选择，失效值自动清理。运行时仅传递当前 options 内的非空值，并尊重用户显式 `--variant` 参数。
 - `--variant` 负责推理力度，`--thinking` 只负责 thinking blocks 展示。固定 OpenCode ThinkingMode 和 `thinkingArgs.opencode.*` 已退出运行链路，Codex / Claude 行为不变。
+
+## 4.7 OpenCode 全局 MCP 管理
+
+- MCP 市场可为 OpenCode 安装 local 与 remote 全局 MCP：local 通过命令和参数数组安装，remote 通过 URL 与多个 header 安装。
+- 安装调用遵循 OpenCode 1.17.16 原生参数：local 使用 `mcp add <id> [--env KEY=VALUE] -- <command> [args...]`，remote 使用 `mcp add <id> --url <url> [--header KEY=VALUE]`，不生成 Claude 专用的 `--scope` 或 `--transport`。
+- OpenCode CLI 将全局 MCP 保存在 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`；新增目标 MCP 时保留文件中的其他顶层配置和已有 MCP。
+- MCP 是否已安装由 `opencode mcp list` 中是否存在对应 id 决定，而不是由列表命令退出码或连接健康状态决定。已列出但连接失败的条目仍显示为已安装，同时状态为 `unhealthy`；未列出的市场条目显示为未安装。
 
 ## 5. 验收视角
 

@@ -7,9 +7,10 @@ import { CliName } from "../cli/types";
 import { ConfigPlatform, CodexMcpHealthItem, CodexMcpInstallResult, McpHealthItem, McpMarketplaceItem } from "./types";
 import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, buildOpenCodeMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
 import {
+  mapCliListedMcpHealth,
   parseClaudeMcpHealthOutput,
-  parseGeminiMcpHealthOutput as parseLegacyGeminiMcpHealthOutput,
   parseInstalledCodexMcpServer,
+  parseOpenCodeMcpHealthOutput,
   probeInstalledCodexMcpServer,
 } from "./mcpHealth";
 
@@ -366,7 +367,7 @@ async function getCliListedMcpHealth(
     const rawOutput = [stdout, stderr].filter((item) => item.trim().length > 0).join("\n");
     listedById = platform === "claude"
       ? parseClaudeMcpHealthOutput(rawOutput)
-      : parseLegacyGeminiMcpHealthOutput(rawOutput);
+      : parseOpenCodeMcpHealthOutput(rawOutput);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return marketplace.map((item) => ({
@@ -380,31 +381,7 @@ async function getCliListedMcpHealth(
     }));
   }
 
-  return marketplace.map((item) => {
-    const listed = listedById.get(item.id);
-    if (!listed) {
-      return {
-        platform,
-        serverId: item.id,
-        installed: false,
-        enabled: false,
-        status: "unknown",
-        checkedAt,
-        details: "未安装",
-      } satisfies McpHealthItem;
-    }
-
-    return {
-      platform,
-      serverId: item.id,
-      installed: true,
-      enabled: listed.enabled,
-      status: listed.status,
-      checkedAt,
-      details: listed.details,
-      latencyMs: listed.latencyMs,
-    } satisfies McpHealthItem;
-  });
+  return mapCliListedMcpHealth(platform, marketplace, listedById, checkedAt);
 }
 
 export async function getCodexMcpServerIds(): Promise<string[]> {

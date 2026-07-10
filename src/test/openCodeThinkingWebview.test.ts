@@ -122,12 +122,18 @@ function optionPairs(select: ThinkingSelect): Array<[string, string]> {
   return select.options.map((option) => [option.value, option.textContent]);
 }
 
-function buildThinkingChangeHandler(currentCli: string) {
+function buildThinkingChangeHandler(
+  currentCli: string,
+  configuredDefaultVariant: string | null = null,
+) {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, "handleThinkingModeChange");
   const state = {
     currentCli,
     thinkingMode: "medium",
-    openCodeThinking: { selectedVariant: "low" as string | null },
+    openCodeThinking: {
+      selectedVariant: "low" as string | null,
+      configuredDefaultVariant,
+    },
   };
   const messages: unknown[] = [];
   const vscode = {
@@ -147,6 +153,7 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
   const harness = buildThinkingSync("en");
   harness.state.openCodeThinking = {
     selectedVariant: "turbo",
+    configuredDefaultVariant: "low",
     options: [
       { value: "none", label: "ignored standard label" },
       { value: "low", label: "ignored low label" },
@@ -156,7 +163,6 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
   harness.syncThinkingOptions();
 
   assert.deepEqual(optionPairs(harness.thinkingMode), [
-    ["", "Default / Follow OpenCode"],
     ["none", "None"],
     ["low", "Low"],
     ["turbo", "Turbo++"],
@@ -166,22 +172,48 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
 
   harness.state.openCodeThinking = {
     selectedVariant: "turbo",
+    configuredDefaultVariant: "eco",
     options: [{ value: "eco", label: "Eco" }],
   };
   harness.syncThinkingOptions();
 
-  assert.deepEqual(optionPairs(harness.thinkingMode), [
-    ["", "Default / Follow OpenCode"],
-    ["eco", "Eco"],
-  ]);
-  assert.equal(harness.thinkingMode.value, "");
+  assert.deepEqual(optionPairs(harness.thinkingMode), [["eco", "Eco"]]);
+  assert.equal(harness.thinkingMode.value, "eco");
 });
 
-test("uses Default-only for unavailable or disabled OpenCode variants", () => {
+test("shows only the configured real default variant without an explicit override", () => {
+  const harness = buildThinkingSync("zh-CN");
+  harness.state.openCodeThinking = {
+    selectedVariant: null,
+    configuredDefaultVariant: "xhigh",
+    options: [{ value: "xhigh", label: "ignored" }],
+  };
+  harness.syncThinkingOptions();
+
+  assert.deepEqual(optionPairs(harness.thinkingMode), [["xhigh", "超高"]]);
+  assert.equal(harness.thinkingMode.value, "xhigh");
+  assert.deepEqual(harness.messages, []);
+});
+
+test("keeps no selection when OpenCode has no mapped default variant", () => {
+  const harness = buildThinkingSync("en");
+  harness.state.openCodeThinking = {
+    selectedVariant: null,
+    configuredDefaultVariant: "missing",
+    options: [{ value: "xhigh", label: "ignored" }],
+  };
+  harness.syncThinkingOptions();
+
+  assert.deepEqual(optionPairs(harness.thinkingMode), [["xhigh", "X-High"]]);
+  assert.equal(harness.thinkingMode.value, "");
+  assert.deepEqual(harness.messages, []);
+});
+
+test("uses no visible options for unavailable or disabled OpenCode variants", () => {
   const emptyHarness = buildThinkingSync("en");
   emptyHarness.state.openCodeThinking = { selectedVariant: null, options: [] };
   emptyHarness.syncThinkingOptions();
-  assert.deepEqual(optionPairs(emptyHarness.thinkingMode), [["", "Default / Follow OpenCode"]]);
+  assert.deepEqual(optionPairs(emptyHarness.thinkingMode), []);
   assert.equal(emptyHarness.thinkingMode.disabled, true);
   assert.equal(
     emptyHarness.thinkingMode.title,
@@ -196,7 +228,7 @@ test("uses Default-only for unavailable or disabled OpenCode variants", () => {
     message: "Variants disabled by provider",
   };
   disabledHarness.syncThinkingOptions();
-  assert.deepEqual(optionPairs(disabledHarness.thinkingMode), [["", "Default / Follow OpenCode"]]);
+  assert.deepEqual(optionPairs(disabledHarness.thinkingMode), []);
   assert.equal(disabledHarness.thinkingMode.value, "");
   assert.equal(disabledHarness.thinkingMode.disabled, true);
   assert.equal(disabledHarness.thinkingMode.title, "Follow the OpenCode default for this model.");
@@ -291,7 +323,7 @@ test("localizes every standard OpenCode variant in English and Chinese", () => {
     harness.state.openCodeThinking = { selectedVariant: "thinking", options };
     harness.syncThinkingOptions();
     assert.deepEqual(
-      optionPairs(harness.thinkingMode).slice(1),
+      optionPairs(harness.thinkingMode),
       options.map((option, index) => [option.value, labels[index]]),
     );
   });
@@ -309,7 +341,6 @@ test("preserves custom OpenCode labels and falls back to the variant name", () =
   harness.syncThinkingOptions();
 
   assert.deepEqual(optionPairs(harness.thinkingMode), [
-    ["", "默认 / 跟随 OpenCode"],
     ["custom", "自定义档"],
     ["raw-name", "raw-name"],
   ]);
@@ -348,14 +379,15 @@ test("keeps fixed Codex and Claude thinking mode behavior", () => {
 });
 
 test("routes OpenCode variant changes separately from generic thinking settings", () => {
-  const openCode = buildThinkingChangeHandler("opencode");
-  openCode.handler("high");
-  openCode.handler("");
-  assert.deepEqual(openCode.messages, [
-    { type: "updateOpenCodeVariant", value: "high" },
-    { type: "updateOpenCodeVariant", value: null },
-  ]);
+  const openCode = buildThinkingChangeHandler("opencode", "xhigh");
+  openCode.handler("xhigh");
   assert.equal(openCode.state.openCodeThinking.selectedVariant, null);
+  openCode.handler("high");
+  assert.deepEqual(openCode.messages, [
+    { type: "updateOpenCodeVariant", value: null },
+    { type: "updateOpenCodeVariant", value: "high" },
+  ]);
+  assert.equal(openCode.state.openCodeThinking.selectedVariant, "high");
 
   const codex = buildThinkingChangeHandler("codex");
   codex.handler("xhigh");
@@ -380,4 +412,54 @@ test("applies the latest OpenCode thinking payload on every panel state", () => 
     handlerSource.slice(0, genericBranchStart),
     /type: "updateSetting"|key: "thinkingMode"/,
   );
+});
+
+test("refreshes variants only when the OpenCode primary model changes", () => {
+  const handlerSource = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_EVENT_BINDINGS,
+    "handleOpenCodeRoleModelChange",
+  );
+  const messages: unknown[] = [];
+  let thinkingSyncCount = 0;
+  const state: any = {
+    openCodeModels: {
+      selectedPrimaryRef: null,
+      selectedSmallRef: null,
+    },
+    openCodeThinking: {
+      selectedVariant: "high",
+      configuredDefaultVariant: "high",
+      options: [{ value: "high", label: "High" }],
+      disabled: false,
+      messageKey: "config-variants",
+    },
+  };
+  const handler = new Function(
+    "state",
+    "vscode",
+    "syncThinkingOptions",
+    `${handlerSource}; return handleOpenCodeRoleModelChange;`,
+  )(
+    state,
+    { postMessage(message: unknown) { messages.push(message); } },
+    () => { thinkingSyncCount += 1; },
+  ) as (role: "primary" | "small", value: string) => void;
+
+  handler("small", "myAPI/small-task");
+  assert.equal(state.openCodeThinking.selectedVariant, "high");
+  assert.equal(thinkingSyncCount, 0);
+
+  handler("primary", "myAPI/main-chat");
+  assert.deepEqual(state.openCodeThinking, {
+    selectedVariant: null,
+    configuredDefaultVariant: null,
+    options: [],
+    disabled: true,
+    messageKey: "loading",
+  });
+  assert.equal(thinkingSyncCount, 1);
+  assert.deepEqual(messages, [
+    { type: "updateOpenCodeRoleModel", role: "small", value: "myAPI/small-task" },
+    { type: "updateOpenCodeRoleModel", role: "primary", value: "myAPI/main-chat" },
+  ]);
 });

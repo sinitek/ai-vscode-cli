@@ -32,6 +32,16 @@ type SentPromptRun = {
   options?: { targetTabId?: string | null };
 };
 
+type SentLobsterPromptRun = {
+  input: PromptRunInputForPanel;
+  options: Parameters<PanelMessageHandlerDeps["runLobsterPrompt"]>[1];
+};
+
+type WakeLobsterMainCall = {
+  context: Parameters<PanelMessageHandlerDeps["maybeWakeLobsterMainAfterSubtaskContinuation"]>[0];
+  options: Parameters<PanelMessageHandlerDeps["maybeWakeLobsterMainAfterSubtaskContinuation"]>[1];
+};
+
 type SendPromptHarness = {
   deps: PanelMessageHandlerDeps;
   calls: {
@@ -41,12 +51,13 @@ type SendPromptHarness = {
     statusUpdates: number;
     activeTabSwitches: string[];
     interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
+    lobsterExecutionModes: Array<{ cli: CliName; mode: LobsterExecutionMode }>;
     promptHistory: Array<{ prompt: string; cli: CliName }>;
     promptTargets: Array<string | null>;
     preloaded: Array<{ input: PromptRunInputForPanel; target: { tabId: string; cli: CliName; sessionId: string | null } }>;
     runPrompt: SentPromptRun[];
-    runLobsterPrompt: Array<{ input: PromptRunInputForPanel; options: { targetTabId?: string | null } }>;
-    wakeMain: number;
+    runLobsterPrompt: SentLobsterPromptRun[];
+    wakeMain: WakeLobsterMainCall[];
     stoppedTabs: Array<string | null>;
   };
   state: {
@@ -102,17 +113,29 @@ function createSendPromptHarness(): SendPromptHarness {
     statusUpdates: 0,
     activeTabSwitches: [],
     interactiveModes: [],
+    lobsterExecutionModes: [],
     promptHistory: [],
     promptTargets: [],
     preloaded: [],
     runPrompt: [],
     runLobsterPrompt: [],
-    wakeMain: 0,
+    wakeMain: [],
     stoppedTabs: [],
   };
   const state: SendPromptHarness["state"] = {
     currentCli: "codex",
     workspaceSettings: {},
+  };
+  const persistWorkspaceSettings = (settings: WorkspaceSettings): void => {
+    const snapshot: WorkspaceSettings = { ...settings };
+    if (settings.interactiveModeByCli) {
+      snapshot.interactiveModeByCli = { ...settings.interactiveModeByCli };
+    }
+    if (settings.lobsterExecutionModeByCli) {
+      snapshot.lobsterExecutionModeByCli = { ...settings.lobsterExecutionModeByCli };
+    }
+    calls.savedSettings.push(snapshot);
+    state.workspaceSettings = settings;
   };
 
   const deps: PanelMessageHandlerDeps = {
@@ -154,10 +177,7 @@ function createSendPromptHarness(): SendPromptHarness {
       calls.statusUpdates += 1;
     },
     getWorkspaceSettings: () => state.workspaceSettings,
-    saveWorkspaceSettings: (settings) => {
-      calls.savedSettings.push({ ...settings });
-      state.workspaceSettings = settings;
-    },
+    saveWorkspaceSettings: persistWorkspaceSettings,
     addConversationTab: () => null,
     startNewSession: () => undefined,
     getConversationTabById: (tabId) => (tabId === tab.id ? tab : null),
@@ -176,6 +196,11 @@ function createSendPromptHarness(): SendPromptHarness {
     clearPromptHistory: () => undefined,
     setWorkspaceInteractiveModeForCli: (cli, mode) => {
       calls.interactiveModes.push({ cli, mode });
+      state.workspaceSettings.interactiveModeByCli = {
+        ...(state.workspaceSettings.interactiveModeByCli ?? {}),
+        [cli]: mode,
+      };
+      persistWorkspaceSettings(state.workspaceSettings);
     },
     resetConversationTabSession: async () => undefined,
     getConfigManagerPanel: () => undefined,
@@ -193,7 +218,14 @@ function createSendPromptHarness(): SendPromptHarness {
       value === "coding" || value === "plan" || value === "lobster"
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
-    setWorkspaceLobsterExecutionModeForCli: () => undefined,
+    setWorkspaceLobsterExecutionModeForCli: (cli, mode) => {
+      calls.lobsterExecutionModes.push({ cli, mode });
+      state.workspaceSettings.lobsterExecutionModeByCli = {
+        ...(state.workspaceSettings.lobsterExecutionModeByCli ?? {}),
+        [cli]: mode,
+      };
+      persistWorkspaceSettings(state.workspaceSettings);
+    },
     loadModelStore: () => undefined,
     normalizeLobsterMaxRounds: () => 20,
     normalizeToolSettingsLocale: () => null,
@@ -232,8 +264,8 @@ function createSendPromptHarness(): SendPromptHarness {
     runPrompt: async (input, options) => {
       calls.runPrompt.push({ input, options });
     },
-    maybeWakeLobsterMainAfterSubtaskContinuation: async () => {
-      calls.wakeMain += 1;
+    maybeWakeLobsterMainAfterSubtaskContinuation: async (context, options) => {
+      calls.wakeMain.push({ context, options });
     },
     resolveLobsterResumeTaskFromPrompt: () => null,
     isLobsterResumePrompt: () => false,
@@ -257,9 +289,9 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
     },
     tabId: "tab-opencode-smoke",
     cli: "opencode",
-    model: "packyapi/claude-sonnet-5",
-    lobsterMainModel: "main-model",
-    lobsterSubtaskModel: "sub-model",
+    model: undefined,
+    lobsterMainModel: undefined,
+    lobsterSubtaskModel: undefined,
     preserveActiveTab: false,
   };
 
@@ -268,27 +300,175 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   assert.equal(calls.ensured, 1);
   assert.deepEqual(calls.activeTabSwitches, ["tab-opencode-smoke"]);
   assert.equal(state.currentCli, "opencode");
-  assert.deepEqual(calls.savedSettings, [{ currentCli: "opencode" }]);
+  assert.deepEqual(calls.savedSettings, [
+    { currentCli: "opencode" },
+    {
+      currentCli: "opencode",
+      interactiveModeByCli: { opencode: "coding" },
+    },
+  ]);
   assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "coding" }]);
   assert.deepEqual(calls.promptHistory, [{ prompt: "hi", cli: "opencode" }]);
   assert.deepEqual(calls.promptTargets, ["tab-opencode-smoke"]);
   assert.equal(calls.postPanelState, 1);
   assert.equal(calls.runLobsterPrompt.length, 0);
-  assert.equal(calls.wakeMain, 0);
+  assert.equal(calls.wakeMain.length, 0);
   assert.equal(calls.runPrompt.length, 1);
   assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
   assert.deepEqual(calls.runPrompt[0].input, {
     displayPrompt: "hi",
     modelPrompt: "hi",
     contextTags: [],
-    model: "packyapi/claude-sonnet-5",
-    lobsterMainModel: "main-model",
-    lobsterSubtaskModel: "sub-model",
+    model: undefined,
+    lobsterMainModel: undefined,
+    lobsterSubtaskModel: undefined,
     imagePaths: undefined,
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.preloaded.length, 1);
   assert.equal(calls.preloaded[0].target.cli, "opencode");
+});
+
+test("routes OpenCode Loop through runLobsterPrompt with persisted modes and active-config model resolution", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  deps.getWorkspaceLobsterExecutionMode = (cli) => {
+    assert.equal(cli, "opencode");
+    return "debate_multi_agent";
+  };
+  deps.getSelectedLobsterCliModel = () => {
+    throw new Error("OpenCode Loop must not read Codex lobster role models");
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run the loop",
+    interactiveMode: "lobster",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    model: "provider/general-model",
+    lobsterMainModel: "codex-main-model",
+    lobsterSubtaskModel: "codex-subtask-model",
+  }, deps);
+
+  assert.equal(state.currentCli, "opencode");
+  assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "lobster");
+  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "lobster" }]);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLobsterPrompt.length, 1);
+  assert.deepEqual(calls.runLobsterPrompt[0].options, {
+    targetTabId: "tab-opencode-smoke",
+    resumeTaskId: null,
+    resumeRequested: false,
+  });
+  assert.deepEqual(calls.runLobsterPrompt[0].input, {
+    displayPrompt: "run the loop",
+    modelPrompt: "run the loop",
+    contextTags: [],
+    model: undefined,
+    lobsterMainModel: undefined,
+    lobsterSubtaskModel: undefined,
+    imagePaths: undefined,
+    lobsterExecutionMode: "debate_multi_agent",
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.equal(calls.wakeMain.length, 0);
+});
+
+test("persists the OpenCode Loop execution mode by CLI", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "lobsterExecutionMode.opencode",
+    value: "debate_multi_agent",
+  }, deps);
+
+  assert.deepEqual(calls.lobsterExecutionModes, [
+    { cli: "opencode", mode: "debate_multi_agent" },
+  ]);
+  assert.equal(state.workspaceSettings.lobsterExecutionModeByCli?.opencode, "debate_multi_agent");
+  assert.equal(calls.postPanelState, 1);
+});
+
+test("forces a manual OpenCode Loop subtask continuation through coding runPrompt", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  deps.resolveLobsterSubtaskConversationContext = () => ({
+    taskId: "task-opencode-loop",
+    subtaskId: "subtask-routing",
+    round: 2,
+  });
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "continue this subtask",
+    interactiveMode: "lobster",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "coding" }]);
+  assert.equal(calls.runLobsterPrompt.length, 0);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(calls.runPrompt[0].input, {
+    displayPrompt: "continue this subtask",
+    modelPrompt: "continue this subtask",
+    contextTags: [],
+    model: undefined,
+    lobsterMainModel: undefined,
+    lobsterSubtaskModel: undefined,
+    imagePaths: undefined,
+    taskRole: "subtask",
+    lobsterTaskId: "task-opencode-loop",
+    lobsterRound: 2,
+    lobsterSubtaskId: "subtask-routing",
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.deepEqual(calls.wakeMain, [{
+    context: {
+      taskId: "task-opencode-loop",
+      subtaskId: "subtask-routing",
+      round: 2,
+    },
+    options: {
+      tabId: "tab-opencode-smoke",
+      previousRunEndedAt: 0,
+      model: undefined,
+      lobsterMainModel: undefined,
+      lobsterSubtaskModel: undefined,
+    },
+  }]);
+});
+
+test("saves and clears OpenCode role models through the active config", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const updates: Array<{ role: "primary" | "small"; value: string | null; configId: string | null }> = [];
+  deps.updateOpenCodeRoleModel = async (role, value, configId) => {
+    updates.push({ role, value, configId });
+    return null;
+  };
+  await handlePanelMessageWithDeps({
+    type: "updateOpenCodeRoleModel",
+    role: "primary",
+    value: "provider/main",
+  }, deps);
+  await handlePanelMessageWithDeps({
+    type: "updateOpenCodeRoleModel",
+    role: "small",
+    value: null,
+  }, deps);
+  assert.deepEqual(updates, [
+    { role: "primary", value: "provider/main", configId: "config-opencode" },
+    { role: "small", value: null, configId: "config-opencode" },
+  ]);
+  assert.equal(calls.postPanelState, 2);
 });
 
 test("AI-dialogue OpenCode sendPrompt path converts JSON assistant output into a final bubble", async () => {

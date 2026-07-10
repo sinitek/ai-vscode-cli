@@ -17,6 +17,12 @@ import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
 import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
 import { listOpenCodeSkills, mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { t } from "../i18n";
+import {
+  OpenCodeConfigModelIssueCode,
+  OpenCodeModelRole,
+  parseOpenCodeConfigModels,
+  parseOpenCodeModelReference,
+} from "../cli/opencodeconfigmodels";
 export {
   getOfficialSkillsCatalog,
   installOfficialSkill,
@@ -128,17 +134,15 @@ export function parseOpenCodeModelVariants(
     return [];
   }
 
-  const text = typeof content === "string" && content.trim().length > 0 ? content : "{}";
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
+  const parsedModels = parseOpenCodeConfigModels(content);
+  const target = parseOpenCodeModelReference(`${providerId}/${modelId}`);
+  if (!target || !parsedModels.candidates.some((candidate) => candidate.ref === target.ref)) {
     return [];
   }
-  if (!isPlainObject(parsed) || !isPlainObject(parsed.provider)) {
+  const parsed = parsedModels.config;
+  if (!parsed || !isPlainObject(parsed.provider)) {
     return [];
   }
-
   const providerConfig = parsed.provider[providerId];
   if (!isPlainObject(providerConfig) || !isPlainObject(providerConfig.models)) {
     return [];
@@ -560,7 +564,7 @@ export function parseEnvText(content: string | undefined): Record<string, string
 }
 
 export type OpenCodeConfigValidationIssueCode =
-  | "invalid-json"
+  | OpenCodeConfigModelIssueCode
   | "placeholder-provider"
   | "placeholder-model"
   | "placeholder-base-url"
@@ -571,6 +575,8 @@ export type OpenCodeConfigValidationIssueCode =
 export type OpenCodeConfigValidationIssue = {
   code: OpenCodeConfigValidationIssueCode;
   message: string;
+  role?: OpenCodeModelRole;
+  ref?: string;
 };
 
 export type OpenCodeConfigValidationResult = {
@@ -611,31 +617,23 @@ export function validateOpenCodeConfigForRun(
   envContent: string | undefined,
   processEnv: NodeJS.ProcessEnv = process.env
 ): OpenCodeConfigValidationResult {
-  const issues: OpenCodeConfigValidationIssue[] = [];
-  const text = typeof content === "string" && content.trim().length > 0 ? content : "{}";
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
+  const parsedModels = parseOpenCodeConfigModels(content);
+  const issues: OpenCodeConfigValidationIssue[] = parsedModels.issues
+    .filter((issue) => issue.severity === "error")
+    .map((issue) => ({
+      code: issue.code,
+      message: issue.message,
+      ...(issue.role ? { role: issue.role } : {}),
+      ...(issue.ref ? { ref: issue.ref } : {}),
+    }));
+  if (!parsedModels.config) {
     return {
       ok: false,
-      issues: [{
-        code: "invalid-json",
-        message: `OpenCode config JSON is invalid: ${(error as Error).message}`,
-      }],
-    };
-  }
-  if (!isPlainObject(parsed)) {
-    return {
-      ok: false,
-      issues: [{
-        code: "invalid-json",
-        message: "OpenCode config must be a JSON object.",
-      }],
+      issues,
     };
   }
 
-  const config = parsed as Record<string, unknown>;
+  const config = parsedModels.config;
   const provider = isPlainObject(config.provider) ? config.provider : {};
   const modelRefs = [config.model, config.small_model]
     .filter((value): value is string => typeof value === "string")

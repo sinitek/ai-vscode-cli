@@ -16,6 +16,38 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
         }
       }
+
+      function getActiveLobsterMainTaskId() {
+        const conversationTabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs
+          : { activeTabId: null, tabs: [] };
+        const activeTab = conversationTabs.tabs.find((tab) => tab && tab.id === conversationTabs.activeTabId);
+        if (!activeTab || activeTab.lobsterTaskRole !== "main") {
+          return "";
+        }
+        return typeof activeTab.lobsterTaskId === "string" ? activeTab.lobsterTaskId.trim() : "";
+      }
+
+      function syncOpenCurrentLobsterGroupChatButton() {
+        if (!elements.openCurrentLobsterGroupChat) {
+          return;
+        }
+        const taskId = getActiveLobsterMainTaskId();
+        elements.openCurrentLobsterGroupChat.style.display = taskId ? "inline-flex" : "none";
+        elements.openCurrentLobsterGroupChat.disabled = !taskId;
+        if (elements.runWait) {
+          elements.runWait.classList.toggle("has-current-lobster-group-chat", Boolean(taskId));
+        }
+      }
+
+      function openCurrentLobsterGroupChat() {
+        const taskId = getActiveLobsterMainTaskId();
+        if (!taskId) {
+          return;
+        }
+        vscode.postMessage({ type: "openLobsterDebateChat", taskId });
+      }
+
       if (elements.toolSettingsGlobalTab) {
         elements.toolSettingsGlobalTab.addEventListener("click", () => setToolSettingsTab("global"));
       }
@@ -392,6 +424,18 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       elements.runPromptButton.addEventListener("click", () => {
         openRunPromptOverlay();
       });
+
+      if (elements.openCurrentLobsterGroupChat) {
+        elements.openCurrentLobsterGroupChat.addEventListener("click", () => {
+          openCurrentLobsterGroupChat();
+        });
+      }
+
+      if (elements.conversationTabs) {
+        elements.conversationTabs.addEventListener("click", () => {
+          window.setTimeout(syncOpenCurrentLobsterGroupChatButton, 0);
+        });
+      }
 
       elements.runStreamButton.addEventListener("click", () => {
         openRunStreamOverlay();

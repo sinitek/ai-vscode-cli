@@ -116,6 +116,7 @@ export function createSessionTabsController(deps: {
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
   collectRunningLobsterTaskIds: () => Set<string>;
+  isLobsterTaskRunning: (taskId: string, runningTaskIds: ReadonlySet<string>) => boolean;
   resolveConversationTabLobsterContext: (tab: ConversationTabRecord) => LobsterConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
 }): {
@@ -379,10 +380,13 @@ export function createSessionTabsController(deps: {
       tabs: state.tabs.map((tab) => {
         const lobsterContext = deps.resolveConversationTabLobsterContext(tab);
         const lobsterTaskId = lobsterContext.lobsterTaskId;
+        const lobsterTaskRunning = (
+          typeof lobsterTaskId === "string"
+          && deps.isLobsterTaskRunning(lobsterTaskId, runningLobsterTaskIds)
+        );
         const lobsterMainTabCloseLocked = (
           lobsterContext.taskRole === "main"
-          && typeof lobsterTaskId === "string"
-          && runningLobsterTaskIds.has(lobsterTaskId)
+          && lobsterTaskRunning
         );
         return {
           id: tab.id,
@@ -391,6 +395,7 @@ export function createSessionTabsController(deps: {
           createdAt: tab.createdAt,
           lobsterTaskRole: lobsterContext.taskRole ?? undefined,
           lobsterTaskId: lobsterTaskId ?? undefined,
+          lobsterTaskRunning,
           lobsterMainTabCloseLocked,
         };
       }),
