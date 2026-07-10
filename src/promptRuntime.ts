@@ -10,6 +10,7 @@ import { buildWorkspaceMemoryRecallPack } from "./memory/memoryRecall";
 import type { MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import { isMemoryRuntimeOperationAllowed } from "./memory/runtimeGate";
 import type { ChatMessage, PromptContextOptions } from "./webview/types";
+import { FINAL_ANSWER_PROMPT_INSTRUCTION } from "./finalAnswerProtocol";
 
 const CODEX_IMAGE_EXTENSIONS = new Set([
   ".png",
@@ -68,6 +69,7 @@ export function mergePromptSections(prefix: string, prompt: string, suffix: stri
 export type ThinkingPromptOptions = {
   includePrefix?: boolean;
   includeSuffix?: boolean;
+  includeFinalAnswerInstruction?: boolean;
 };
 
 export function buildThinkingPrompt(
@@ -80,14 +82,24 @@ export function buildThinkingPrompt(
   const includeSuffix = options.includeSuffix !== false;
   const prefix = includePrefix ? getThinkingPromptPrefix(cli, mode) : "";
   const suffix = includeSuffix ? getThinkingPromptSuffix(cli, mode) : "";
-  if (!prefix.trim() && !suffix.trim()) {
-    return prompt;
+  const promptWithThinkingInstructions = !prefix.trim() && !suffix.trim()
+    ? prompt
+    : mergePromptSections(prefix, prompt, suffix);
+  if (options.includeFinalAnswerInstruction === false) {
+    return promptWithThinkingInstructions;
   }
-  return mergePromptSections(prefix, prompt, suffix);
+  return mergePromptSections("", promptWithThinkingInstructions, FINAL_ANSWER_PROMPT_INSTRUCTION);
 }
 
-export function buildHiddenRetryPrompt(cli: CliName, thinkingMode: ThinkingMode): string {
-  return buildThinkingPrompt(cli, thinkingMode, t("run.hiddenContinuePrompt"), { includeSuffix: false });
+export function buildHiddenRetryPrompt(
+  cli: CliName,
+  thinkingMode: ThinkingMode,
+  options: Pick<ThinkingPromptOptions, "includeFinalAnswerInstruction"> = {},
+): string {
+  return buildThinkingPrompt(cli, thinkingMode, t("run.hiddenContinuePrompt"), {
+    ...options,
+    includeSuffix: false,
+  });
 }
 
 export function redactPromptArg(args: string[], prompt?: string): string[] {

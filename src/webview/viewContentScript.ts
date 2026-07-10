@@ -20,6 +20,8 @@ export type BuildWebviewRuntimeScriptInput = {
   lobsterMaxRoundsMax: number;
   lobsterExecutionModeMainSubMultiAgent: string;
   lobsterExecutionModeDebateMultiAgent: string;
+  finalAnswerPolicyDefault: string;
+  finalAnswerPolicySuccessfulReplyFallback: string;
 };
 
 const RUNTIME_SCRIPT_PARTS = [
@@ -43,33 +45,19 @@ function replaceLiteral(value: string, search: string, replacement: string): str
 }
 
 export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput): string {
-  return replaceLiteral(
-    replaceLiteral(
-      replaceLiteral(
-        replaceLiteral(
-          replaceLiteral(
-            replaceLiteral(
-              replaceLiteral(
-                RUNTIME_SCRIPT_PARTS.join(""),
-                "${JSON.stringify(i18n)}",
-                JSON.stringify(input.i18n),
-              ),
-              "${JSON.stringify(CLI_LIST)}",
-              JSON.stringify(input.cliList),
-            ),
-            "${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}",
-            String(input.lobsterMaxRoundsDefault),
-          ),
-          "${LOBSTER_MAX_ROUNDS_SETTING_MIN}",
-          String(input.lobsterMaxRoundsMin),
-        ),
-        "${LOBSTER_MAX_ROUNDS_SETTING_MAX}",
-        String(input.lobsterMaxRoundsMax),
-      ),
-      "${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-      input.lobsterExecutionModeMainSubMultiAgent,
-    ),
-    "${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}",
-    input.lobsterExecutionModeDebateMultiAgent,
+  const replacements: Array<[string, string]> = [
+    ["${JSON.stringify(i18n)}", JSON.stringify(input.i18n)],
+    ["${JSON.stringify(CLI_LIST)}", JSON.stringify(input.cliList)],
+    ["${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}", String(input.lobsterMaxRoundsDefault)],
+    ["${LOBSTER_MAX_ROUNDS_SETTING_MIN}", String(input.lobsterMaxRoundsMin)],
+    ["${LOBSTER_MAX_ROUNDS_SETTING_MAX}", String(input.lobsterMaxRoundsMax)],
+    ["${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.lobsterExecutionModeMainSubMultiAgent],
+    ["${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.lobsterExecutionModeDebateMultiAgent],
+    ["${FINAL_ANSWER_POLICY_DEFAULT}", input.finalAnswerPolicyDefault],
+    ["${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}", input.finalAnswerPolicySuccessfulReplyFallback],
+  ];
+  return replacements.reduce(
+    (script, [search, replacement]) => replaceLiteral(script, search, replacement),
+    RUNTIME_SCRIPT_PARTS.join(""),
   );
 }

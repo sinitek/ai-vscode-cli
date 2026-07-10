@@ -77,6 +77,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getEffectiveLongTermMemoryEnabled: () => false,
     getWorkspaceAutoCompactContextAfterRun: () => false,
     getWorkspaceCodexMultiAgentEnabled: () => false,
+    getGlobalFinalAnswerPolicy: () => "successful_reply_fallback",
     getGlobalLobsterMaxRounds: () => 1,
     getGlobalLobsterAutoCloseSubtaskTabs: () => false,
     buildWorkspaceLobsterExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent" }),
@@ -114,6 +115,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.deepEqual(state.openCodeThinking, openCodeThinking);
   assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");
   assert.equal(state.openCodeModels?.selectedSmallRef, "gateway/small");
+  assert.equal(state.finalAnswerPolicy, "successful_reply_fallback");
 });
 
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {

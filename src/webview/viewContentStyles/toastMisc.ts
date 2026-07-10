@@ -107,6 +107,18 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         font-size: 12px;
         color: var(--vscode-foreground);
       }
+      .tool-settings-select {
+        flex: 1 1 200px;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .tool-settings-policy-row {
+        flex-wrap: wrap;
+      }
+      .tool-settings-policy-row .tool-settings-label {
+        flex: 1 1 130px;
+      }
       .tool-settings-note {
         margin-top: -6px;
         font-size: 11px;

@@ -1,9 +1,10 @@
 import type { ChatMessage } from "./webview/types";
+import { containsFinalAnswerTextMarker } from "./finalAnswerProtocol";
 
 export type FinalConclusionCheckOptions = {
-  observedCodexFinalAnswer?: boolean;
+  observedFinalAnswer?: boolean;
   fallbackCreatedAt?: number | null;
-  requireExplicitCodexFinalAnswer?: boolean;
+  requireExplicitFinalAnswer?: boolean;
 };
 
 export function isAssistantFinalConclusionMessage(message: ChatMessage | undefined): boolean {
@@ -16,8 +17,11 @@ export function isAssistantFinalConclusionMessage(message: ChatMessage | undefin
   );
 }
 
-function isCodexFinalConclusionMessage(message: ChatMessage | undefined): boolean {
-  return isAssistantFinalConclusionMessage(message) && message?.codexFinalAnswer === true;
+export function isExplicitAssistantFinalConclusionMessage(message: ChatMessage | undefined): boolean {
+  return isAssistantFinalConclusionMessage(message) && (
+    message?.codexFinalAnswer === true
+    || containsFinalAnswerTextMarker(message?.content)
+  );
 }
 
 export function hasAssistantFinalConclusionAfterMessage(
@@ -25,12 +29,12 @@ export function hasAssistantFinalConclusionAfterMessage(
   messageId: string,
   options: FinalConclusionCheckOptions = {},
 ): boolean {
-  if (options.observedCodexFinalAnswer === true) {
+  if (options.observedFinalAnswer === true) {
     return true;
   }
 
-  const isConclusionMessage = options.requireExplicitCodexFinalAnswer === true
-    ? isCodexFinalConclusionMessage
+  const isConclusionMessage = options.requireExplicitFinalAnswer === true
+    ? isExplicitAssistantFinalConclusionMessage
     : isAssistantFinalConclusionMessage;
 
   const messageIndex = messages.findIndex((message) => message.id === messageId);

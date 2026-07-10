@@ -16,6 +16,7 @@ import {
   buildCodexTurnInput,
   buildCodexTurnStartParams,
   collectArgValues,
+  createCodexTurnAssistantObserver,
   handleCodexItemEvent,
   mapCodexReasoningEffort,
   pickArgValue,
@@ -300,6 +301,42 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
   assert.equal(traces.filter((trace) => trace.kind === "thinking")[0]?.content, "Think");
   assert.equal(traces.filter((trace) => trace.content.includes("npm test")).length, 1);
   assert.deepEqual(visibleErrors, []);
+});
+
+test("completed Codex turns promote commentary text to a final answer exactly once", () => {
+  const emitted: Array<{ chunk: string; final?: boolean }> = [];
+  const observer = createCodexTurnAssistantObserver((chunk, meta) => {
+    emitted.push({ chunk, final: meta?.codexFinalAnswer });
+  });
+
+  observer.emit("Commentary answer");
+
+  assert.equal(observer.promoteCommentaryOnCompletedTurn("completed", true), true);
+  assert.equal(observer.promoteCommentaryOnCompletedTurn("completed", true), false);
+  assert.deepEqual(emitted, [
+    { chunk: "Commentary answer", final: undefined },
+    { chunk: "", final: true },
+  ]);
+});
+
+test("Codex turn fallback preserves explicit finals and rejects empty or unsuccessful turns", () => {
+  const explicitFinal = createCodexTurnAssistantObserver(() => {});
+  explicitFinal.emit("Done", { codexFinalAnswer: true });
+  assert.equal(explicitFinal.promoteCommentaryOnCompletedTurn("completed", true), false);
+
+  const emptyTurn = createCodexTurnAssistantObserver(() => {});
+  emptyTurn.emit("   ");
+  assert.equal(emptyTurn.promoteCommentaryOnCompletedTurn("completed", true), false);
+
+  const strictTurn = createCodexTurnAssistantObserver(() => {});
+  strictTurn.emit("Process update");
+  assert.equal(strictTurn.promoteCommentaryOnCompletedTurn("completed", false), false);
+
+  for (const status of ["failed", "interrupted", ""] as const) {
+    const unsuccessfulTurn = createCodexTurnAssistantObserver(() => {});
+    unsuccessfulTurn.emit("Process update");
+    assert.equal(unsuccessfulTurn.promoteCommentaryOnCompletedTurn(status, true), false);
+  }
 });
 
 test("trace candidate helper rejects blanks and repeated item content", () => {

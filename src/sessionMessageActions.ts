@@ -107,6 +107,13 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key === "finalAnswerPolicy") {
+    deps.updateStoredToolSettings({
+      finalAnswerPolicy: deps.normalizeFinalAnswerPolicy(message.value),
+    });
+    await deps.postPanelState();
+    return;
+  }
   if (message.key === "workspaceMemoryEnabled" || message.key === "longTermMemoryEnabled") {
     workspaceSettings.workspaceMemoryEnabled = message.value === true;
     deps.saveWorkspaceSettings(workspaceSettings);

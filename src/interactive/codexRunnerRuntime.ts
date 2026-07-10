@@ -43,6 +43,48 @@ export type CodexRuntimeItemEventHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
 };
 
+export type CodexTurnAssistantObserver = {
+  emit: CodexRuntimeItemEventHandlers["onAssistantDelta"];
+  promoteCommentaryOnCompletedTurn: (
+    turnStatus: unknown,
+    allowCompletedTurnFallback: boolean
+  ) => boolean;
+};
+
+export function createCodexTurnAssistantObserver(
+  onAssistantDelta: CodexRuntimeItemEventHandlers["onAssistantDelta"]
+): CodexTurnAssistantObserver {
+  let observedNonEmptyText = false;
+  let observedFinalAnswer = false;
+
+  const emit: CodexRuntimeItemEventHandlers["onAssistantDelta"] = (chunk, meta) => {
+    if (chunk.trim()) {
+      observedNonEmptyText = true;
+    }
+    if (meta?.codexFinalAnswer === true) {
+      observedFinalAnswer = true;
+    }
+    onAssistantDelta(chunk, meta);
+  };
+
+  return {
+    emit,
+    promoteCommentaryOnCompletedTurn: (turnStatus, allowCompletedTurnFallback) => {
+      if (
+        !allowCompletedTurnFallback
+        || String(turnStatus || "").trim() !== "completed"
+        || !observedNonEmptyText
+        || observedFinalAnswer
+      ) {
+        return false;
+      }
+      observedFinalAnswer = true;
+      onAssistantDelta("", { codexFinalAnswer: true });
+      return true;
+    },
+  };
+}
+
 export function createCodexAbortError(): Error {
   const error = new Error("Codex run aborted");
   error.name = "AbortError";

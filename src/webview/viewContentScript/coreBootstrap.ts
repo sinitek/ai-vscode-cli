@@ -166,6 +166,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         workspaceMemoryEnabled: false,
         autoCompactContextAfterRun: true,
         codexMultiAgentEnabled: false,
+        finalAnswerPolicy: "\${FINAL_ANSWER_POLICY_DEFAULT}",
         lobsterMaxRounds: \${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
         lobsterAutoCloseSubtaskTabs: true,
         lobsterExecutionModeByCli: {
@@ -272,6 +273,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         toolSettingsWorkspacePanel: document.getElementById("toolSettingsWorkspacePanel"),
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         codexMultiAgentEnabled: document.getElementById("codexMultiAgentEnabled"),
+        finalAnswerPolicy: document.getElementById("finalAnswerPolicy"),
         lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
         lobsterAutoCloseSubtaskTabs: document.getElementById("lobsterAutoCloseSubtaskTabs"),
         languageSelect: document.getElementById("languageSelect"),

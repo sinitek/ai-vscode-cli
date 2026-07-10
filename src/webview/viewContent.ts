@@ -7,6 +7,11 @@ import { readFileSync } from "fs";
 import * as path from "path";
 import { WEBVIEW_STYLES } from "./viewContentStyles";
 import { buildWebviewRuntimeScript } from "./viewContentScript";
+import {
+  FINAL_ANSWER_POLICY_DEFAULT,
+  FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+  FINAL_ANSWER_POLICY_STRICT,
+} from "../toolSettings";
 
 const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
@@ -37,6 +42,9 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
       LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
     lobsterExecutionModeDebateMultiAgent:
       LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT,
+    finalAnswerPolicySuccessfulReplyFallback:
+      FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+    finalAnswerPolicyStrict: FINAL_ANSWER_POLICY_STRICT,
   });
 
   return `${staticHtml}
@@ -50,6 +58,10 @@ ${buildWebviewRuntimeScript({
       LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
     lobsterExecutionModeDebateMultiAgent:
       LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT,
+    finalAnswerPolicyDefault:
+      FINAL_ANSWER_POLICY_DEFAULT,
+    finalAnswerPolicySuccessfulReplyFallback:
+      FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
   })}
     </script>
   </body>

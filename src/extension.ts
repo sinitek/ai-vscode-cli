@@ -229,7 +229,10 @@ import {
   type LobsterTaskStore,
 } from "./lobsterTaskStore";
 import {
+  FINAL_ANSWER_POLICY_STRICT,
+  normalizeFinalAnswerPolicy,
   readToolSettings,
+  type FinalAnswerPolicy,
   type ToolSettingsLocale,
   type ToolSettingsState,
   writeToolSettings,
@@ -1021,6 +1024,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     loadModelStore: () => { modelStore = loadModelStore(); },
     normalizeLobsterMaxRounds,
     normalizeToolSettingsLocale,
+    normalizeFinalAnswerPolicy,
     isCliName,
     updateStoredToolSettings,
     isMacTaskShell,
@@ -1083,6 +1087,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getEffectiveLongTermMemoryEnabled,
     getWorkspaceAutoCompactContextAfterRun,
     getWorkspaceCodexMultiAgentEnabled,
+    getGlobalFinalAnswerPolicy,
     getGlobalLobsterMaxRounds,
     getGlobalLobsterAutoCloseSubtaskTabs,
     buildWorkspaceLobsterExecutionModeByCli,
@@ -2634,8 +2639,16 @@ function buildOpenCodeMissingFinalOutputMessage(statusText?: string | null): str
       );
 }
 
-function buildOpenCodeNoFinalOutputErrorMessage(output: ReturnType<typeof parseOpenCodeRunOutput>): string {
-  return output.errorText ?? buildOpenCodeMissingFinalOutputMessage(output.statusText);
+function buildOpenCodeMissingFinalConclusionMessage(output: ReturnType<typeof parseOpenCodeRunOutput>): string {
+  if (output.errorText) {
+    return output.errorText;
+  }
+  if (output.finalText?.trim()) {
+    return resolveLocale(getLocaleSetting()).startsWith("zh")
+      ? "OpenCode 已返回助手答复，但正文未包含 `[final_answer]`，因此未通过严格最终答复判定。"
+      : "OpenCode returned an assistant reply, but it did not contain `[final_answer]`, so strict final-reply detection rejected it.";
+  }
+  return buildOpenCodeMissingFinalOutputMessage(output.statusText);
 }
 
 function buildOpenCodeFailureMessage(
@@ -2681,8 +2694,13 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
   preparePendingLabel(runCli, target.tabId, prompt);
   let sessionId = target.sessionId;
-  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
-  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
+  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
+    includeFinalAnswerInstruction,
+  });
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode, {
+    includeFinalAnswerInstruction,
+  });
   let messageTarget = sessionId
     ? loadSessionMessages(runCli, sessionId)
     : getPendingSessionDraft(target.tabId, runCli).messages;
@@ -2862,8 +2880,9 @@ ${rawStderr}`);
       }
       if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
         fallbackCreatedAt: userCreatedAt,
+        requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
       })) {
-        const missingConclusionMessage = buildOpenCodeNoFinalOutputErrorMessage(openCodeOutput);
+        const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
         parallelRunsByTabId.delete(target.tabId);
         const taskRecord: TaskRunRecord = {
           id: runId,
@@ -7172,8 +7191,13 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   preparePendingLabel(runCli, activeTabId, prompt);
   const initialSessionId = target.sessionId;
   const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, initialSessionId);
-  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt);
-  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode);
+  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
+    includeFinalAnswerInstruction,
+  });
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode, {
+    includeFinalAnswerInstruction,
+  });
   const debugLogging = getDebugLogging();
   const messageTarget = initialSessionId
     ? loadSessionMessages(runCli, initialSessionId)
@@ -7415,8 +7439,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       }
       if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
         fallbackCreatedAt: userCreatedAt,
+        requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
       })) {
-        const missingConclusionMessage = buildOpenCodeNoFinalOutputErrorMessage(openCodeOutput);
+        const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
         const userMessageText = buildHiddenRetryFailureMessage({
           hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
@@ -7821,8 +7846,14 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     ? loadSessionMessages(cli, uiSessionId)
     : getPendingSessionDraft(tabId, cli).messages;
 
-  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, { includeSuffix: false });
-  const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode);
+  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
+    includeSuffix: false,
+    includeFinalAnswerInstruction,
+  });
+  const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode, {
+    includeFinalAnswerInstruction,
+  });
   const debugLogging = getDebugLogging();
   const args = cli === "codex"
     ? buildCliArgs(cli, {
@@ -8310,9 +8341,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       return { action: "stopped" };
     }
     if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
-      observedCodexFinalAnswer: source === "codex" && observedCodexFinalAnswer,
+      observedFinalAnswer: source === "codex" && observedCodexFinalAnswer,
       fallbackCreatedAt: userCreatedAt,
-      requireExplicitCodexFinalAnswer: source === "codex",
+      requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
     })) {
       return { action: "ok" };
     }
@@ -8479,6 +8510,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             }
             syncInteractiveRunEntry();
           },
+        }, {
+          allowCompletedTurnFinalAnswerFallback:
+            !shouldRequireExplicitFinalAnswerForRun(input),
         });
         const finalConclusionState = handleMissingFinalConclusionForTab("codex");
         if (finalConclusionState.action === "stopped") {
@@ -9260,6 +9294,15 @@ function buildWorkspaceLobsterExecutionModeByCli(): Record<CliName, LobsterExecu
 
 function getWorkspaceCodexMultiAgentEnabled(): boolean {
   return workspaceSettings.codexMultiAgentEnabled === true;
+}
+
+function getGlobalFinalAnswerPolicy(): FinalAnswerPolicy {
+  return normalizeFinalAnswerPolicy(readToolSettings().finalAnswerPolicy);
+}
+
+function shouldRequireExplicitFinalAnswerForRun(input: { lobsterTaskId?: string }): boolean {
+  return !input.lobsterTaskId
+    && getGlobalFinalAnswerPolicy() === FINAL_ANSWER_POLICY_STRICT;
 }
 
 function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {

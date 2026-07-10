@@ -13,6 +13,8 @@ export type BuildWebviewStaticHtmlInput = {
   webviewStyles: string;
   lobsterExecutionModeMainSubMultiAgent: string;
   lobsterExecutionModeDebateMultiAgent: string;
+  finalAnswerPolicySuccessfulReplyFallback: string;
+  finalAnswerPolicyStrict: string;
 };
 
 export function buildWebviewStaticHtml(
@@ -28,6 +30,8 @@ export function buildWebviewStaticHtml(
     webviewStyles,
     lobsterExecutionModeMainSubMultiAgent,
     lobsterExecutionModeDebateMultiAgent,
+    finalAnswerPolicySuccessfulReplyFallback,
+    finalAnswerPolicyStrict,
   } = input;
   const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT =
     lobsterExecutionModeMainSubMultiAgent;
@@ -353,6 +357,13 @@ ${webviewStyles}    </style>
                   <input type="checkbox" id="autoAddEditorContextTags" />
                   <span>${i18n.toolSettingsAutoContextToggle}</span>
                 </label>
+              </div>
+              <div class="tool-settings-row tool-settings-policy-row">
+                <div class="tool-settings-label">${i18n.toolSettingsFinalAnswerPolicyLabel}</div>
+                <select id="finalAnswerPolicy" class="tool-settings-select" title="${i18n.toolSettingsFinalAnswerPolicyTitle}" aria-label="${i18n.toolSettingsFinalAnswerPolicyAria}">
+                  <option value="${finalAnswerPolicyStrict}">${i18n.toolSettingsFinalAnswerPolicyStrict}</option>
+                  <option value="${finalAnswerPolicySuccessfulReplyFallback}">${i18n.toolSettingsFinalAnswerPolicyCompletedTurn}</option>
+                </select>
               </div>
               <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>

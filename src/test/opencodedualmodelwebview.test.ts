@@ -208,6 +208,8 @@ test("renders compact accessible OpenCode selectors without visible labels or ef
     webviewStyles: "",
     lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
+    finalAnswerPolicySuccessfulReplyFallback: "successful_reply_fallback",
+    finalAnswerPolicyStrict: "strict_final_answer",
   });
   const group = html.match(/<div id="openCodeModelGroup"[\s\S]*?<\/div>/)?.[0] || "";
 

@@ -14,6 +14,44 @@
 
 ## 当前有效条目
 
+## 不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复
+
+- 状态：已规避，需随 Codex app-server 事件协议复核
+- 首次发现：2026-06-14；再次确认：2026-07-10
+- 适用范围：Codex / Claude / OpenCode prompt、Codex app-server `agent_message` / `turn.completed`、最终结论气泡与 hidden retry
+
+### 现象
+- Codex 已在 AI 对话中输出非空 assistant 答复，并以 `turn.completed status:"completed"` 正常结束，但该回合所有 `agent_message` 都是 `phase:"commentary"`，没有 `phase:"final_answer"`。
+- 如果插件只接受显式 `final_answer`，会显示“任务已退出，但没有产生最终结论气泡，自动继续”，对同一已结束回合重复发送“继续”。
+
+### 触发条件与根因
+- 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。
+- `phase` 描述消息阶段，`turn.completed status:"completed"` 描述结构化回合终态。不同 Codex 模型或版本可能成功结束一个没有显式 final phase 的回合，不能假设两者永远同时出现；Claude / OpenCode 也没有统一等价的 `final_answer` phase 可供插件依赖。
+- 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义。
+
+### 长期规避
+- 所有普通任务和 hidden retry 的实际模型 prompt 都追加统一约定：任务完成后的最终回复必须以 `[final_answer]` 开头，过程更新不得使用该标记；不要改写界面里的原始用户消息。
+- Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
+- 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化类型时，只从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
+- 全局默认 `strict_final_answer`，只接受结构化 final 或文本标记。可选 `successful_reply_fallback` 才额外接受成功退出后的普通 assistant 文本；Codex completed-turn 原位提升仅在该兼容策略生效。
+- 空回复、failed、interrupted 和主动停止不得提升。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
+
+### 验证方式
+- 对 Codex / Claude / OpenCode 的首轮和 hidden retry prompt 断言都含最终回复标记约定。
+- 对 Loop 机器协议断言首轮和 hidden retry prompt 都不含 `[final_answer]`，且全局严格策略不会覆盖其专用终态规则。
+- 严格模式断言结构化 final 和 `[final_answer]` assistant 文本通过；普通正文、thinking 中的标记和当前用户锚点之前的旧标记不通过。
+- 兼容模式用 `commentary agent_message -> turn.completed completed` 断言 Codex 只提升一次且不复制正文；显式 final 不重复提升，空文本、failed、interrupted 和缺失状态都不提升。
+- 工具设置缺失或非法策略值时应显示并使用“严格 final_answer（默认）”；切换兼容策略后下一次任务立即生效；旧 Codex 设置能迁移为新兼容值。
+
+### 关联资料
+- `src/toolSettings.ts`
+- `src/interactive/codexRunner.ts`
+- `src/interactive/codexRunnerRuntime.ts`
+- `src/finalConclusion.ts`
+- `src/test/finalAnswerPolicy.test.ts`
+- `src/test/promptRuntime.test.ts`
+- `src/test/codexRunnerRuntime.test.ts`
+
 ## Codex reasoning 摘要不能按普通 assistant 正文直接落盘
 
 - 状态：已规避，需随 Codex app-server 事件协议复核

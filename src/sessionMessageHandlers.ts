@@ -8,7 +8,11 @@ import { exportRunStreamRecordsToTxt, exportSessionHistoryMessagesToTxt, buildWo
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type InteractiveSessionBinding } from "./interactive/runnerRetention";
-import { type ToolSettingsLocale } from "./toolSettings";
+import {
+  type FinalAnswerPolicy,
+  type ToolSettingsLocale,
+  type ToolSettingsState,
+} from "./toolSettings";
 import { type LobsterTaskRecord } from "./lobsterTaskStore";
 import { type ConfigManagerPanel } from "./webview/configPanel";
 import { handleSendPromptMessage, handleUpdateSettingMessage } from "./sessionMessageActions";
@@ -116,8 +120,9 @@ export type PanelMessageHandlerDeps = {
   loadModelStore: () => void;
   normalizeLobsterMaxRounds: (value: unknown) => number;
   normalizeToolSettingsLocale: (value: unknown) => ToolSettingsLocale | null;
+  normalizeFinalAnswerPolicy: (value: unknown) => FinalAnswerPolicy;
   isCliName: (value: string) => value is CliName;
-  updateStoredToolSettings: (patch: Partial<{ debug: boolean; autoAddEditorContextTags: boolean; lobsterMaxRounds: number; lobsterAutoCloseSubtaskTabs: boolean; locale: ToolSettingsLocale; macTaskShell: MacTaskShell }>) => void;
+  updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => void;
   isMacTaskShell: (value: unknown) => value is MacTaskShell;
   confirmAndInitializeWorkspaceHarness: () => Promise<boolean>;
   appendUserMessageForCli: (cli: CliName, sessionId: string | null, content: string, options?: { merge?: boolean }) => void;

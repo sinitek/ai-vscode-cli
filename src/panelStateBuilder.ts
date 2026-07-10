@@ -82,6 +82,7 @@ export type PanelStateBuilderDeps = {
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getWorkspaceAutoCompactContextAfterRun: () => boolean;
   getWorkspaceCodexMultiAgentEnabled: () => boolean;
+  getGlobalFinalAnswerPolicy: () => PanelState["finalAnswerPolicy"];
   getGlobalLobsterMaxRounds: () => number;
   getGlobalLobsterAutoCloseSubtaskTabs: () => boolean;
   buildWorkspaceLobsterExecutionModeByCli: () => PanelState["lobsterExecutionModeByCli"];
@@ -121,6 +122,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     workspaceMemoryEnabled: deps.workspaceSettings.workspaceMemoryEnabled === true,
     autoCompactContextAfterRun: deps.getWorkspaceAutoCompactContextAfterRun(),
     codexMultiAgentEnabled: deps.getWorkspaceCodexMultiAgentEnabled(),
+    finalAnswerPolicy: deps.getGlobalFinalAnswerPolicy(),
     lobsterMaxRounds: deps.getGlobalLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: deps.getGlobalLobsterAutoCloseSubtaskTabs(),
     lobsterExecutionModeByCli: deps.buildWorkspaceLobsterExecutionModeByCli(),

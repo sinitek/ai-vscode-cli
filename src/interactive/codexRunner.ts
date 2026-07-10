@@ -30,6 +30,7 @@ import {
   buildCodexThreadParams,
   buildCodexTurnStartParams,
   collectArgValues,
+  createCodexTurnAssistantObserver,
   createCodexAbortError,
   createCodexRunnerDisposedError,
   emitCodexTodoListUpdate,
@@ -56,6 +57,10 @@ export type CodexStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
   onEvent?: (event: unknown) => void;
+};
+
+export type CodexStreamRunOptions = {
+  allowCompletedTurnFinalAnswerFallback?: boolean;
 };
 
 type JsonRpcPendingRequest = {
@@ -494,7 +499,11 @@ export class CodexInteractiveRunner {
     }
   }
 
-  public async runStreamed(prompt: string, handlers: CodexStreamHandlers): Promise<void> {
+  public async runStreamed(
+    prompt: string,
+    handlers: CodexStreamHandlers,
+    runOptions: CodexStreamRunOptions = {}
+  ): Promise<void> {
     await this.ensureReady();
 
     const runGeneration = this.abortGeneration;
@@ -701,6 +710,12 @@ export class CodexInteractiveRunner {
     };
 
     const rawResponseToolNames = new Map<string, string>();
+    const turnAssistantObserver = createCodexTurnAssistantObserver(handlers.onAssistantDelta);
+    const runtimeItemHandlers = {
+      onAssistantDelta: turnAssistantObserver.emit,
+      onTrace: handlers.onTrace,
+      onTaskListUpdate: handlers.onTaskListUpdate,
+    };
 
     const handleItemEvent = (eventType: "item.started" | "item.completed", rawItem: unknown): void => {
       handleCodexItemEvent({
@@ -708,7 +723,7 @@ export class CodexInteractiveRunner {
         rawItem,
         assistantBuffers,
         emittedTraceContents,
-        handlers,
+        handlers: runtimeItemHandlers,
         onVisibleError: failRunWithVisibleMessage,
         formatCollabToolFailure: (failure) => t("codex.collabToolFailed", {
           tool: failure.tool,
@@ -820,7 +835,10 @@ export class CodexInteractiveRunner {
               assistantBuffers.set(itemId, `${assistantBuffers.get(itemId) ?? ""}${delta}`);
             }
             if (delta) {
-              handlers.onAssistantDelta(delta, isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined);
+              turnAssistantObserver.emit(
+                delta,
+                isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined
+              );
             }
             continue;
           }
@@ -873,9 +891,19 @@ export class CodexInteractiveRunner {
             const turn = params.turn && typeof params.turn === "object"
               ? params.turn as Record<string, unknown>
               : {};
-            if (String(turn.status || "").trim() === "failed") {
+            const turnStatus = String(turn.status || "").trim();
+            if (turnStatus === "failed") {
               settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
             } else {
+              if (turnAssistantObserver.promoteCommentaryOnCompletedTurn(
+                turnStatus,
+                runOptions.allowCompletedTurnFinalAnswerFallback !== false
+              )) {
+                void logInfo("codex-app-server-commentary-promoted-final-answer", {
+                  threadId: this.options.threadId,
+                  turnStatus,
+                });
+              }
               settleTurnCompletion();
             }
             setTimeout(() => shutdownChild("graceful"), 0);

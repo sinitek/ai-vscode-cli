@@ -24,6 +24,10 @@ import type {
   PromptRunInputForPanel,
 } from "../sessionMessageHandlers";
 import type { CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell, ThinkingMode } from "../cli/types";
+import {
+  normalizeFinalAnswerPolicy,
+  type ToolSettingsState,
+} from "../toolSettings";
 import type { ChatMessage, PanelMessage } from "../webview/types";
 import type { WorkspaceSettings } from "../workspaceSettingsStore";
 
@@ -59,6 +63,7 @@ type SendPromptHarness = {
     runLobsterPrompt: SentLobsterPromptRun[];
     wakeMain: WakeLobsterMainCall[];
     stoppedTabs: Array<string | null>;
+    toolSettingsPatches: Array<Partial<ToolSettingsState>>;
   };
   state: {
     currentCli: CliName;
@@ -121,6 +126,7 @@ function createSendPromptHarness(): SendPromptHarness {
     runLobsterPrompt: [],
     wakeMain: [],
     stoppedTabs: [],
+    toolSettingsPatches: [],
   };
   const state: SendPromptHarness["state"] = {
     currentCli: "codex",
@@ -229,10 +235,13 @@ function createSendPromptHarness(): SendPromptHarness {
     loadModelStore: () => undefined,
     normalizeLobsterMaxRounds: () => 20,
     normalizeToolSettingsLocale: () => null,
+    normalizeFinalAnswerPolicy,
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),
-    updateStoredToolSettings: () => undefined,
+    updateStoredToolSettings: (patch) => {
+      calls.toolSettingsPatches.push(patch);
+    },
     isMacTaskShell: (value: unknown): value is MacTaskShell => value === "zsh" || value === "bash",
     confirmAndInitializeWorkspaceHarness: async () => true,
     appendUserMessageForCli: () => undefined,
@@ -392,6 +401,33 @@ test("persists the OpenCode Loop execution mode by CLI", async () => {
   ]);
   assert.equal(state.workspaceSettings.lobsterExecutionModeByCli?.opencode, "debate_multi_agent");
   assert.equal(calls.postPanelState, 1);
+});
+
+test("persists the normalized global final-answer policy", async () => {
+  const { deps, calls } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "finalAnswerPolicy",
+    value: "strict_final_answer",
+  }, deps);
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "finalAnswerPolicy",
+    value: "invalid",
+  }, deps);
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "finalAnswerPolicy",
+    value: "successful_reply_fallback",
+  }, deps);
+
+  assert.deepEqual(calls.toolSettingsPatches, [
+    { finalAnswerPolicy: "strict_final_answer" },
+    { finalAnswerPolicy: "strict_final_answer" },
+    { finalAnswerPolicy: "successful_reply_fallback" },
+  ]);
+  assert.equal(calls.postPanelState, 3);
 });
 
 test("forces a manual OpenCode Loop subtask continuation through coding runPrompt", async () => {

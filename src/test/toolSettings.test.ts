@@ -2,10 +2,56 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+  FINAL_ANSWER_POLICY_STRICT,
+  normalizeFinalAnswerPolicy,
   normalizeToolSettings,
   resolveLongTermMemoryEnabled,
   type ToolSettingsState,
 } from "../toolSettings";
+
+test("defaults the global final-answer policy to strict mode", () => {
+  assert.equal(
+    normalizeFinalAnswerPolicy(undefined),
+    FINAL_ANSWER_POLICY_STRICT,
+  );
+  assert.equal(
+    normalizeFinalAnswerPolicy("unknown"),
+    FINAL_ANSWER_POLICY_STRICT,
+  );
+  assert.equal(
+    normalizeFinalAnswerPolicy(FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK),
+    FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+  );
+});
+
+test("persists only known global final-answer policies", () => {
+  assert.deepEqual(
+    normalizeToolSettings({
+      finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT,
+    }),
+    { finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT },
+  );
+  assert.deepEqual(
+    normalizeToolSettings({ finalAnswerPolicy: "unknown" }),
+    {},
+  );
+});
+
+test("migrates the legacy Codex completed-turn policy to the global compatibility policy", () => {
+  assert.equal(
+    normalizeFinalAnswerPolicy("completed_turn_fallback"),
+    FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+  );
+  assert.deepEqual(
+    normalizeToolSettings({ codexFinalAnswerPolicy: "completed_turn_fallback" }),
+    { finalAnswerPolicy: FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK },
+  );
+  assert.deepEqual(
+    normalizeToolSettings({ codexFinalAnswerPolicy: "strict_final_answer" }),
+    { finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT },
+  );
+});
 
 test("resolves long-term memory disabled by default without requiring persisted settings", () => {
   assert.equal(resolveLongTermMemoryEnabled({}), false);

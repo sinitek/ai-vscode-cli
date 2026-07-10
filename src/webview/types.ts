@@ -7,6 +7,7 @@ import {
   ThinkingMode,
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
+import type { FinalAnswerPolicy } from "../toolSettings";
 
 export type ConfigSummary = {
   id: string;
@@ -218,6 +219,7 @@ export type PanelState = {
   workspaceMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
   codexMultiAgentEnabled: boolean;
+  finalAnswerPolicy: FinalAnswerPolicy;
   lobsterMaxRounds: number;
   lobsterAutoCloseSubtaskTabs: boolean;
   lobsterExecutionModeByCli?: Record<CliName, LobsterExecutionMode>;

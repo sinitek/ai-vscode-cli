@@ -75,6 +75,8 @@ test("places the persistent group-chat button immediately after the prompt butto
     webviewStyles: "",
     lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
+    finalAnswerPolicySuccessfulReplyFallback: "successful_reply_fallback",
+    finalAnswerPolicyStrict: "strict_final_answer",
   });
   const promptIndex = html.indexOf('id="runPromptButton"');
   const groupChatIndex = html.indexOf('id="openCurrentLobsterGroupChat"');
@@ -128,4 +130,3 @@ test("opens the existing Loop group chat with the active main task id", () => {
   harness.openCurrentLobsterGroupChat();
   assert.equal(harness.messages.length, 1);
 });
-

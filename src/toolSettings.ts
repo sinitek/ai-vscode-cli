@@ -5,6 +5,16 @@ import { MacTaskShell } from "./cli/types";
 
 export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 
+export const FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK = "successful_reply_fallback" as const;
+export const FINAL_ANSWER_POLICY_STRICT = "strict_final_answer" as const;
+export const FINAL_ANSWER_POLICY_DEFAULT = FINAL_ANSWER_POLICY_STRICT;
+
+const LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK = "completed_turn_fallback";
+
+export type FinalAnswerPolicy =
+  | typeof FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
+  | typeof FINAL_ANSWER_POLICY_STRICT;
+
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
@@ -12,6 +22,7 @@ export type ToolSettingsState = {
   lobsterAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
+  finalAnswerPolicy?: FinalAnswerPolicy;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   longTermMemoryEnabled?: boolean;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -41,6 +52,17 @@ export type ResolveLongTermMemoryEnabledInput = LongTermMemorySettingsInput & {
   workspaceSettings?: LongTermMemorySettingsInput | null;
 };
 
+export function normalizeFinalAnswerPolicy(value: unknown): FinalAnswerPolicy {
+  if (value === FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
+    || value === LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK) {
+    return FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK;
+  }
+  if (value === FINAL_ANSWER_POLICY_STRICT) {
+    return FINAL_ANSWER_POLICY_STRICT;
+  }
+  return FINAL_ANSWER_POLICY_DEFAULT;
+}
+
 export function normalizeToolSettings(value: unknown): ToolSettingsState {
   const normalized: ToolSettingsState = {};
   if (!value || typeof value !== "object") {
@@ -69,6 +91,14 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (record.macTaskShell === "zsh" || record.macTaskShell === "bash") {
     normalized.macTaskShell = record.macTaskShell;
+  }
+  const finalAnswerPolicy = record.finalAnswerPolicy ?? record.codexFinalAnswerPolicy;
+  if (
+    finalAnswerPolicy === FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
+    || finalAnswerPolicy === FINAL_ANSWER_POLICY_STRICT
+    || finalAnswerPolicy === LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK
+  ) {
+    normalized.finalAnswerPolicy = normalizeFinalAnswerPolicy(finalAnswerPolicy);
   }
   if (typeof record.longTermMemoryEnabled === "boolean") {
     normalized.longTermMemoryEnabled = record.longTermMemoryEnabled;

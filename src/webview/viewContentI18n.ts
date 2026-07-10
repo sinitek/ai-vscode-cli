@@ -128,6 +128,12 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextTitle:
       "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
+    toolSettingsFinalAnswerPolicyLabel: "Final Reply Detection",
+    toolSettingsFinalAnswerPolicyAria: "Final reply detection policy for all CLI tools",
+    toolSettingsFinalAnswerPolicyTitle:
+      "Global setting for all CLI tools. Strict mode accepts a structured final_answer or assistant text containing [final_answer]. Compatibility mode also accepts an ordinary assistant reply after a successful run.",
+    toolSettingsFinalAnswerPolicyCompletedTurn: "Successful reply compatibility",
+    toolSettingsFinalAnswerPolicyStrict: "Strict final_answer (Default)",
     toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
     toolSettingsAutoCompactAfterRunTitle:
       "Workspace setting. Automatically compact context after a successful task finishes.",
@@ -476,6 +482,12 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
+    toolSettingsFinalAnswerPolicyLabel: "最终答复判定",
+    toolSettingsFinalAnswerPolicyAria: "所有 CLI 的最终答复判定策略",
+    toolSettingsFinalAnswerPolicyTitle:
+      "所有 CLI 的全局设置。严格模式接受结构化 final_answer 或包含 [final_answer] 的助手文本；兼容模式还接受任务成功退出后的普通助手答复。",
+    toolSettingsFinalAnswerPolicyCompletedTurn: "成功回复兼容",
+    toolSettingsFinalAnswerPolicyStrict: "严格 final_answer（默认）",
     toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩上下文",
     toolSettingsAutoCompactAfterRunTitle:
       "工作区设置。任务成功结束后自动压缩上下文。",
