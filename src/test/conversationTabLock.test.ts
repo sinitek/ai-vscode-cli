@@ -8,6 +8,7 @@ type TabSummary = {
   lobsterTaskRole?: string;
   lobsterTaskId?: string;
   lobsterTaskRunning?: boolean;
+  lobsterTaskStatus?: string;
   lobsterMainTabCloseLocked?: boolean;
 };
 
@@ -132,6 +133,23 @@ test("keeps only the Loop main tab visually running from persisted task state", 
   }), false);
   assert.equal(isRunning({ id: "ordinary-running-tab" }), false);
   assert.equal(buildIsConversationTabRunning(["ordinary-running-tab"])({ id: "ordinary-running-tab" }), true);
+});
+
+test("treats explicit Loop task running status as a visual running fallback", () => {
+  const isRunning = buildIsConversationTabRunning([]);
+
+  assert.equal(isRunning({
+    id: "main-tab",
+    lobsterTaskRole: "main",
+    lobsterTaskId: "task-1",
+    lobsterTaskStatus: "running",
+  }), true);
+  assert.equal(isRunning({
+    id: "main-tab",
+    lobsterTaskRole: "main",
+    lobsterTaskId: "task-1",
+    lobsterTaskStatus: "completed",
+  }), false);
 });
 
 test("does not lock Loop main tab for unrelated running tasks", () => {

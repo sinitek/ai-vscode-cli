@@ -533,12 +533,16 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           return null;
         }
         const contextOptions = payload.contextOptions || {};
+        const interactiveMode = payload.interactiveMode === "lobster" || payload.interactiveMode === "coding"
+          ? payload.interactiveMode
+          : undefined;
         return {
           prompt,
           contextOptions: {
             includeCurrentFile: contextOptions.includeCurrentFile !== false,
             includeSelection: contextOptions.includeSelection !== false,
           },
+          ...(interactiveMode ? { interactiveMode } : {}),
         };
       }
 

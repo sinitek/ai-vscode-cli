@@ -7,6 +7,7 @@ import {
   ThinkingMode,
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
+import type { LobsterTaskStatus } from "../lobsterTaskStore";
 import type { FinalAnswerPolicy } from "../toolSettings";
 
 export type ConfigSummary = {
@@ -140,6 +141,7 @@ export type ConversationTabSummary = {
   lobsterTaskRole?: "main" | "subtask";
   lobsterTaskId?: string;
   lobsterTaskRunning?: boolean;
+  lobsterTaskStatus?: LobsterTaskStatus;
   lobsterMainTabCloseLocked?: boolean;
 };
 

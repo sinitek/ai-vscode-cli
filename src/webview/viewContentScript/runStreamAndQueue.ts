@@ -540,8 +540,8 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           return;
         }
         runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex] = {
+          ...currentPayload,
           prompt: nextPrompt,
-          contextOptions: currentPayload.contextOptions,
         };
         runtimeState.queueEditingIndex = -1;
         runtimeState.queueEditingDraft = "";
@@ -557,7 +557,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const activeTabId = getActiveConversationTabId();
         if (elements.continueQueue) {
           const hasQueue = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
-          elements.continueQueue.disabled = !hasQueue || isTabRunning(activeTabId);
+          elements.continueQueue.disabled = !hasQueue || isConversationTabBusy(activeTabId);
         }
         if (!runtimeState) {
           elements.queueBody.innerHTML = "";
@@ -747,7 +747,10 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState) {
           return;
         }
-        runtimeState.pendingPromptQueue.push(normalizedPayload);
+        runtimeState.pendingPromptQueue.push({
+          ...normalizedPayload,
+          interactiveMode: normalizeInteractiveMode(state.interactiveMode),
+        });
         updateQueueIndicator();
         showToast(t("toastQueueAdded"));
       }
@@ -803,7 +806,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
 
       function flushPendingPromptQueue(tabId) {
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
-        if (isTabRunning(targetTabId)) {
+        if (isConversationTabBusy(targetTabId)) {
           return false;
         }
         const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
@@ -846,7 +849,14 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           return;
         }
         const promptPayload = buildPromptPayload(prompt);
-        if (state.isRunning) {
+        const activeTabId = getActiveConversationTabId();
+        if (isLobsterMainConversationTabRunning(activeTabId)) {
+          queuePromptForLater(promptPayload);
+          elements.promptInput.value = "";
+          resetPromptContextForNextPrompt();
+          return;
+        }
+        if (isConversationTabBusy(activeTabId)) {
           openRunConflictOverlay(promptPayload);
           return;
         }

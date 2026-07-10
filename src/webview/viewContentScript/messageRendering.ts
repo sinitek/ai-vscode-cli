@@ -366,10 +366,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function isActiveConversationTabResetLocked() {
         const activeTabId = getActiveConversationTabId();
-        if (isTabRunning(activeTabId)) {
-          return true;
-        }
-        return isLobsterMainTabCloseLocked(getConversationTabSummary(activeTabId));
+        return isConversationTabBusy(activeTabId);
       }
 
       function normalizeLobsterTaskRole(value) {
@@ -577,9 +574,22 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           tab
           && (
             isTabRunning(tab.id)
-            || (isLobsterMainTab(tab) && tab.lobsterTaskRunning === true)
+            || (
+              isLobsterMainTab(tab)
+              && (tab.lobsterTaskRunning === true || tab.lobsterTaskStatus === "running")
+            )
           )
         );
+      }
+
+      function isConversationTabBusy(tabId) {
+        const tab = getConversationTabSummary(tabId);
+        return isConversationTabRunning(tab) || isLobsterMainTabCloseLocked(tab);
+      }
+
+      function isLobsterMainConversationTabRunning(tabId) {
+        const tab = getConversationTabSummary(tabId);
+        return isLobsterMainTab(tab) && isConversationTabBusy(tabId);
       }
 
       function isTabErrored(tabId) {

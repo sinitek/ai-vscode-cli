@@ -420,6 +420,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         elements.promptInput.value = "";
         closeRunConflictOverlay();
+        if (isLobsterMainConversationTabRunning(getActiveConversationTabId())) {
+          queuePromptForLater(promptPayload);
+          resetPromptContextForNextPrompt();
+          return;
+        }
         const sent = dispatchPrompt(promptPayload);
         if (sent) {
           resetPromptContextForNextPrompt();

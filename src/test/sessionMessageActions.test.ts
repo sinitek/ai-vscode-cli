@@ -385,6 +385,7 @@ test("routes OpenCode Loop through runLobsterPrompt with persisted modes and act
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);
+  assert.equal(calls.postPanelState, 1);
 });
 
 test("persists the OpenCode Loop execution mode by CLI", async () => {

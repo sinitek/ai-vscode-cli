@@ -217,14 +217,40 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
       }
 
+      function getNewlyCompletedLobsterTabIds(previousConversationTabs, nextConversationTabs) {
+        const previousTabs = previousConversationTabs && Array.isArray(previousConversationTabs.tabs)
+          ? previousConversationTabs.tabs
+          : [];
+        const nextTabs = nextConversationTabs && Array.isArray(nextConversationTabs.tabs)
+          ? nextConversationTabs.tabs
+          : [];
+        const previousById = new Map(previousTabs.map((tab) => [tab.id, tab]));
+        return nextTabs
+          .filter((tab) => {
+            const previous = tab && previousById.get(tab.id);
+            const wasRunning = Boolean(
+              previous
+              && (previous.lobsterTaskRunning === true || previous.lobsterTaskStatus === "running")
+            );
+            return wasRunning && tab.lobsterTaskStatus === "completed";
+          })
+          .map((tab) => tab.id);
+      }
+
       function applyState(panelState) {
         const previousCli = state.currentCli;
-        const previousActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
-          ? state.conversationTabs.activeTabId
+        const previousConversationTabs = state.conversationTabs || { activeTabId: null, tabs: [] };
+        const previousActiveTabId = typeof previousConversationTabs.activeTabId === "string"
+          ? previousConversationTabs.activeTabId
           : null;
         state.currentCli = panelState.currentCli;
         state.sessionState = panelState.sessionState;
-        state.conversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const nextConversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const newlyCompletedLobsterTabIds = getNewlyCompletedLobsterTabIds(
+          previousConversationTabs,
+          nextConversationTabs
+        );
+        state.conversationTabs = nextConversationTabs;
         const nextActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
           ? state.conversationTabs.activeTabId
           : null;
@@ -384,6 +410,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         renderPromptHistoryList();
         renderLobsterGroupChatHistoryList();
         applyEditorContext(panelState.editorContext);
+        newlyCompletedLobsterTabIds.forEach((tabId) => {
+          flushPendingPromptQueue(tabId);
+        });
       }
 
       function renderConfigOptions() {

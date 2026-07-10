@@ -427,7 +427,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetLobsterSubtaskModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterSubtaskModelsByCli
           ? state.selectedLobsterSubtaskModelsByCli[targetCli] || ""
           : "";
-        const targetInteractiveMode = isBackgroundDispatch ? undefined : state.interactiveMode;
+        const targetInteractiveMode = normalizedPayload.interactiveMode
+          || (isBackgroundDispatch ? undefined : state.interactiveMode);
         const targetLobsterExecutionMode = targetInteractiveMode === "lobster"
           ? getLobsterExecutionModeForCli(targetCli)
           : undefined;

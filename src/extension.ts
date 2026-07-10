@@ -673,6 +673,7 @@ function initializeSessionControllers(): void {
     resolveAutoInteractiveModeForConversationTab,
     collectRunningLobsterTaskIds,
     isLobsterTaskRunning,
+    getLobsterTaskStatus: (taskId) => readLobsterTaskRecord(taskId)?.status ?? null,
     resolveConversationTabLobsterContext,
     buildSessionLabelFromPrompt,
   });
@@ -3062,6 +3063,17 @@ async function runLobsterPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
 ): Promise<void> {
+  try {
+    await runLobsterPromptOrchestration(input, options);
+  } finally {
+    await postPanelState();
+  }
+}
+
+async function runLobsterPromptOrchestration(
+  input: PromptRunInput,
+  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
+): Promise<void> {
   const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
   if (!target || !input.displayPrompt.trim()) {
     return;
@@ -3148,6 +3160,8 @@ async function runLobsterPrompt(
       }
     ));
   }
+
+  await postPanelState();
 
   while (task && round <= task.maxRounds) {
     const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
