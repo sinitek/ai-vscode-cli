@@ -178,7 +178,7 @@ ${webviewStyles}    </style>
               <option value="">${i18n.modelOptionDefault}</option>
               <option value="__manage__">${i18n.modelOptionManage}</option>
             </select>
-            <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}">
+            <select id="thinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}" title="${i18n.thinkingModeAria}">
               <option value="off">${i18n.thinkingOptionOff}</option>
               <option value="low">${i18n.thinkingOptionLow}</option>
               <option value="medium">${i18n.thinkingOptionMedium}</option>

@@ -184,6 +184,43 @@
 - `src/extension.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
+## OpenCode 推理力度不能按 adapter 或模型名猜测
+
+- 状态：已规避
+- 首次发现：2026-07-10
+- 适用范围：OpenCode 模型选择、PanelState、`opencode run` 参数、配置切换
+
+### 现象
+- 同为 `@ai-sdk/openai-compatible` 的模型可能有不同 variants，也可能完全没有可调档位；把 OpenCode 固定显示为 low/high 会展示无效选项。
+- 把 `--thinking` 或 `thinkingArgs.opencode.*` 当成推理力度会与 OpenCode 官方语义不一致；配置/模型切换后复用旧选择还会把无效 `--variant` 传给新模型。
+
+### 触发条件
+- 仅根据 provider `npm`、provider 名或模型名推断能力。
+- PanelState 只增量更新 options，没有在 CLI、配置或模型变化时发送完整 Default-only 快照。
+- 持久化键未包含 active config id 和精确 `provider/model`，或运行时未重新校验选择是否属于当前 options。
+
+### 根因
+- OpenCode 的 variant 集合由精确模型 metadata、模型版本和用户显式配置共同决定，adapter 只是协议层输入，不能证明后端接受哪些推理参数。
+- `--thinking` 控制 thinking blocks 展示；实际力度参数是 `--variant <name>`，且不传 variant 才表示跟随 OpenCode 默认。
+
+### 长期规避
+- 优先读取 `opencode models <provider> --verbose` 的精确模型 metadata；失败时仅回退当前激活配置显式 variants，再失败则 Default-only。
+- 能力身份至少包含命令/version、active config id、配置内容 hash、provider 和 model；异步结果应用前校验请求序号和完整身份。
+- 选择按配置和精确模型隔离；null 删除持久值，失效选择自动清理。运行时只传当前有效非空值，且用户显式 `--variant` 优先。
+- 不恢复固定 `thinkingModeOpencode` 或 `thinkingArgs.opencode.*`；不得从 legacy ThinkingMode 迁移或映射成 variant。
+
+### 验证方式
+- 覆盖 CLI metadata 优先、配置 variants 回退、未知模型 Default-only、配置/模型隔离、失效清理和异步竞态。
+- 覆盖 Default 不传 `--variant`、有效值追加、`--variant value` / `--variant=value` 显式参数优先，以及 Codex / Claude 原行为。
+- 脱敏 smoke 只使用 `opencode models <provider> --verbose` 实际返回的 variant；返回空 variants 时验证命令不带 `--variant`，不得臆造档位。
+
+### 关联资料
+- `src/cli/openCodeModelCapabilities.ts`
+- `src/modelSelectionStore.ts`
+- `src/cli/commandRunner.ts`
+- `src/extension.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+
 ## 建议模板
 
 ```md

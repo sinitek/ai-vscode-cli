@@ -182,6 +182,14 @@
 
 这些内容属于本机 CLI 生态的一部分，不属于仓库内代码产物。
 
+## 4.6 OpenCode 动态 variant 能力
+
+- OpenCode 思考力度由精确模型的 variants 决定，面板通过可序列化 `openCodeThinking` 状态动态渲染任意 variant 名称，并始终提供 Default / Follow OpenCode。
+- 能力解析以 `opencode models <provider> --verbose` 的精确模型 metadata 为首选，当前激活配置的显式 `provider.<id>.models.<model>.variants` 为回退；两者都没有时为 Default-only。禁止使用 provider `npm`、provider 名或模型名推断档位。
+- active config id、配置内容 hash、OpenCode 命令/version、provider/model 共同隔离能力缓存和选择状态；解析失败保守回退，旧请求不会覆盖后续配置或模型。
+- variant 选择按 active config id + 精确 `provider/model` 保存；空值删除选择，失效值自动清理。运行时仅传递当前 options 内的非空值，并尊重用户显式 `--variant` 参数。
+- `--variant` 负责推理力度，`--thinking` 只负责 thinking blocks 展示。固定 OpenCode ThinkingMode 和 `thinkingArgs.opencode.*` 已退出运行链路，Codex / Claude 行为不变。
+
 ## 5. 验收视角
 
 当前版本至少应满足：

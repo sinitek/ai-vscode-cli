@@ -119,6 +119,44 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+export function parseOpenCodeModelVariants(
+  content: string | undefined,
+  providerId: string,
+  modelId: string
+): string[] {
+  if (!providerId || !modelId) {
+    return [];
+  }
+
+  const text = typeof content === "string" && content.trim().length > 0 ? content : "{}";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!isPlainObject(parsed) || !isPlainObject(parsed.provider)) {
+    return [];
+  }
+
+  const providerConfig = parsed.provider[providerId];
+  if (!isPlainObject(providerConfig) || !isPlainObject(providerConfig.models)) {
+    return [];
+  }
+
+  const modelConfig = providerConfig.models[modelId];
+  if (!isPlainObject(modelConfig) || !isPlainObject(modelConfig.variants)) {
+    return [];
+  }
+
+  return Object.entries(modelConfig.variants)
+    .filter(([variantName, variantConfig]) => (
+      variantName.length > 0
+      && !(isPlainObject(variantConfig) && variantConfig.disabled === true)
+    ))
+    .map(([variantName]) => variantName);
+}
+
 export function getOpenCodeRuntimePaths(): {
   config: string;
   legacyConfig: string;

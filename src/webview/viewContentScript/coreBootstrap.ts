@@ -177,6 +177,12 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
+        openCodeThinking: {
+          selectedVariant: null,
+          options: [],
+          disabled: true,
+          messageKey: "follow-default",
+        },
         interactiveMode: "coding",
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },

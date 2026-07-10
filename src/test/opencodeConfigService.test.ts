@@ -149,6 +149,61 @@ test("OpenCode provider adapters are selected by API protocol", () => {
   });
 });
 
+test("OpenCode model variants preserve custom names and filter disabled entries", () => {
+  const configService = loadConfigService();
+  const content = JSON.stringify({
+    provider: {
+      gateway: {
+        npm: "@ai-sdk/openai-compatible",
+        models: {
+          "exact-model": {
+            variants: {
+              low: {},
+              turbo_reasoning: { budget: 12_345 },
+              hidden: { disabled: true },
+            },
+          },
+          "exact-model-plus": {
+            variants: {
+              high: {},
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    configService.parseOpenCodeModelVariants(content, "gateway", "exact-model"),
+    ["low", "turbo_reasoning"]
+  );
+  assert.deepEqual(
+    configService.parseOpenCodeModelVariants(content, "gateway", "exact-model-plus"),
+    ["high"]
+  );
+  assert.deepEqual(configService.parseOpenCodeModelVariants(content, "gateway", "exact"), []);
+});
+
+test("OpenCode model variants do not infer capabilities from provider npm", () => {
+  const configService = loadConfigService();
+  const content = JSON.stringify({
+    provider: {
+      gateway: {
+        npm: "@ai-sdk/openai-compatible",
+        models: {
+          "gpt-looking-name": {},
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    configService.parseOpenCodeModelVariants(content, "gateway", "gpt-looking-name"),
+    []
+  );
+  assert.deepEqual(configService.parseOpenCodeModelVariants("not-json", "gateway", "model"), []);
+});
+
 test("OpenCode preflight allows native API adapters without an OpenAI-compatible baseURL", () => {
   const configService = loadConfigService();
   const adapters = [

@@ -36,10 +36,13 @@ import {
   InteractiveMode,
   LobsterExecutionMode,
   MacTaskShell,
+  OpenCodeThinkingMessageKey,
+  OpenCodeThinkingState,
   ThinkingMode,
   ThinkingWorkspaceFile,
   normalizeLobsterExecutionMode,
 } from "./cli/types";
+import { resolveOpenCodeThinkingCapability } from "./cli/openCodeModelCapabilities";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
@@ -295,6 +298,7 @@ import {
   getManagedModelOptionsForConfigFromStore,
   getModelOptionsForCliFromStore,
   getModelOptionsForConfigFromStore,
+  getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
   getSelectedLobsterCliModelFromStore,
   isLobsterTaskRoleValue,
@@ -307,12 +311,14 @@ import {
   renameCliModelInStore,
   selectCliLobsterModelInStore,
   selectCliModelInStore,
+  setOpenCodeVariantInStore,
   setCliModelLobsterRoleInStore,
   summarizeModelStoreByConfigId,
   writeModelStore as writeModelSelectionStore,
   type CliModelStore,
   type LobsterTaskRoleForModelSelection,
 } from "./modelSelectionStore";
+import { handleUpdateOpenCodeVariantMessage } from "./sessionMessageActions";
 import {
   loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
   saveWorkspaceSettings as saveWorkspaceSettingsToStore,
@@ -323,6 +329,7 @@ import { handlePanelMessageWithDeps } from "./sessionMessageHandlers";
 import { registerExtensionCommands } from "./commandRegistry";
 import {
   buildEditorContextState,
+  isOpenCodeThinkingRequestCurrent,
   buildLobsterMainResumeText,
   buildLobsterSubtaskBatchCompletedText,
   buildLobsterSubtaskBatchStartedText,
@@ -620,6 +627,11 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   claude: null,
   opencode: null,
 };
+let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+let openCodeThinkingContextKey = "";
+let openCodeThinkingConfigId: string | null = null;
+let openCodeThinkingExactModel: string | null = null;
+let openCodeThinkingRequestId = 0;
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
 let historyArtifactRetentionCleanupPromise: Promise<void> | null = null;
@@ -924,6 +936,13 @@ function resolveClaudeInteractiveEntrypoint(command: string | undefined): string
 }
 
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
+  if (message.type === "updateOpenCodeVariant") {
+    await handleUpdateOpenCodeVariantMessage(message, {
+      updateOpenCodeVariant: updateOpenCodeVariantForCurrentSelection,
+      postPanelState,
+    });
+    return;
+  }
   await handlePanelMessageWithDeps(message, {
     ensureWorkspaceSessionStore,
     postPanelState,
@@ -1025,6 +1044,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const configState = await loadConfigState(currentCli);
+  await refreshOpenCodeThinkingState(configState);
   return buildPanelStateFromConfigState(configState);
 }
 
@@ -1032,6 +1052,7 @@ async function buildPanelStateWithConfigState(
   configState: PanelState["configState"]
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
+  await refreshOpenCodeThinkingState(configState);
   return buildPanelStateFromConfigState(configState);
 }
 
@@ -1054,6 +1075,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getLocaleSetting,
     getMacTaskShell,
     getEffectiveThinkingMode,
+    openCodeThinking: openCodeThinkingState,
     getWorkspaceInteractiveMode,
     isInteractiveSupported,
     getProjectRulePaths,
@@ -1066,6 +1088,143 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     resolveModelConfigIdForCli,
     getSelectedCliModel,
   });
+}
+
+function buildDefaultOpenCodeThinkingState(
+  messageKey: OpenCodeThinkingMessageKey = "follow-default",
+  exactModel: string | null = null
+): OpenCodeThinkingState {
+  const separatorIndex = exactModel?.indexOf("/") ?? -1;
+  return {
+    providerId: separatorIndex > 0 ? exactModel!.slice(0, separatorIndex) : null,
+    modelId: separatorIndex > 0 ? exactModel!.slice(separatorIndex + 1) : null,
+    reasoning: "unknown",
+    options: [],
+    selectedVariant: null,
+    status: "unknown",
+    source: "fallback",
+    disabled: true,
+    messageKey,
+  };
+}
+
+function persistOpenCodeVariant(configId: string | null, exactModel: string | null, variant: string | null): void {
+  const nextStore = setOpenCodeVariantInStore(modelStore, configId, exactModel, variant);
+  if (nextStore === modelStore) {
+    return;
+  }
+  modelStore = nextStore;
+  writeModelStore(modelStore);
+}
+
+function updateOpenCodeVariantForCurrentSelection(value: string | null): void {
+  if (currentCli !== "opencode" || !openCodeThinkingConfigId || !openCodeThinkingExactModel) {
+    return;
+  }
+  const nextVariant = value && openCodeThinkingState.options.some((option) => option.value === value)
+    ? value
+    : null;
+  persistOpenCodeVariant(openCodeThinkingConfigId, openCodeThinkingExactModel, nextVariant);
+  openCodeThinkingState = {
+    ...openCodeThinkingState,
+    selectedVariant: nextVariant,
+  };
+}
+
+async function refreshOpenCodeThinkingState(configState: PanelState["configState"]): Promise<void> {
+  if (currentCli !== "opencode") {
+    openCodeThinkingRequestId += 1;
+    openCodeThinkingContextKey = `inactive:${currentCli}`;
+    openCodeThinkingConfigId = null;
+    openCodeThinkingExactModel = null;
+    openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+    return;
+  }
+
+  const configId = resolveModelConfigIdForCli("opencode", configState);
+  const selectedModel = getSelectedCliModel("opencode", configId);
+  const activeConfig = configId
+    ? await configService.getConfigById("opencode", configId)
+    : await configService.getCurrentConfig("opencode");
+  const configContent = activeConfig?.content ?? "{}";
+  const resolvedModel = resolveOpenCodeModelForConfig(selectedModel, configContent);
+  const exactModel = resolvedModel.error ? null : resolvedModel.model;
+  const command = getCliCommand("opencode");
+  const configHash = createHash("sha256").update(configContent).digest("hex");
+  const contextKey = [command, configId ?? "current", configHash, exactModel ?? ""].join("\u0000");
+  if (contextKey === openCodeThinkingContextKey) {
+    return;
+  }
+
+  openCodeThinkingContextKey = contextKey;
+  openCodeThinkingConfigId = configId;
+  openCodeThinkingExactModel = exactModel;
+  const requestId = ++openCodeThinkingRequestId;
+  openCodeThinkingState = buildDefaultOpenCodeThinkingState(
+    exactModel ? "loading" : "select-model",
+    exactModel
+  );
+  if (!exactModel) {
+    return;
+  }
+
+  const persistedVariant = getOpenCodeVariantFromStore(modelStore, configId, exactModel);
+  void resolveOpenCodeThinkingCapability({
+    command,
+    configIdentity: `${configId ?? "current"}:${configHash}`,
+    configContent,
+    model: exactModel,
+    selectedVariant: persistedVariant,
+  }).then((capability) => {
+    if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
+      return;
+    }
+    const selectedVariant = persistedVariant
+      && capability.options.some((option) => option.value === persistedVariant)
+      ? persistedVariant
+      : null;
+    if (persistedVariant && !selectedVariant) {
+      persistOpenCodeVariant(configId, exactModel, null);
+    }
+    openCodeThinkingState = {
+      ...capability,
+      selectedVariant,
+      disabled: capability.options.length === 0,
+    };
+    void postPanelState();
+  }).catch(() => {
+    if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
+      return;
+    }
+    if (persistedVariant) {
+      persistOpenCodeVariant(configId, exactModel, null);
+    }
+    openCodeThinkingState = buildDefaultOpenCodeThinkingState(
+      "metadata-error",
+      exactModel
+    );
+    void postPanelState();
+  });
+}
+
+function getOpenCodeVariantForRun(
+  cli: CliName,
+  model: string | null | undefined,
+  configId: string | null,
+  configContent: string | null | undefined
+): string | null {
+  if (cli !== "opencode" || !configId) {
+    return null;
+  }
+  const resolution = resolveOpenCodeModelForConfig(model, configContent);
+  const exactModel = resolution.error ? null : resolution.model;
+  if (!exactModel || exactModel !== openCodeThinkingExactModel || configId !== openCodeThinkingConfigId) {
+    return null;
+  }
+  const variant = getOpenCodeVariantFromStore(modelStore, configId, exactModel);
+  return variant && openCodeThinkingState.options.some((option) => option.value === variant)
+    ? variant
+    : null;
 }
 
 async function postPanelState(): Promise<void> {
@@ -2565,6 +2724,12 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           cwd,
           sessionId,
           thinkingMode,
+          openCodeVariant: getOpenCodeVariantForRun(
+            runCli,
+            runtimeModel,
+            getActiveConfigIdForCli(runCli),
+            runtimeOpenCodeConfigContent
+          ),
           model: runtimeModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
@@ -6928,6 +7093,12 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     {
       sessionId: initialSessionId,
       thinkingMode,
+      openCodeVariant: getOpenCodeVariantForRun(
+        runCli,
+        runtimeModel,
+        getActiveConfigIdForCli(runCli),
+        runtimeOpenCodeConfigContent
+      ),
       model: runtimeModel,
       openCodeConfigContent: runtimeOpenCodeConfigContent,
       envOverrides: runtimeEnvOverrides,
@@ -7107,6 +7278,12 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           cwd,
           sessionId: runtimeSessionId,
           thinkingMode,
+          openCodeVariant: getOpenCodeVariantForRun(
+            runCli,
+            runtimeModel,
+            getActiveConfigIdForCli(runCli),
+            runtimeOpenCodeConfigContent
+          ),
           model: runtimeModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
@@ -8933,6 +9110,9 @@ function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMod
 }
 
 function getEffectiveThinkingMode(cli: CliName, model: string | null = getSelectedCliModel(cli)): ThinkingMode {
+  if (cli === "opencode") {
+    return "off";
+  }
   return getStoredCliModelThinkingMode(cli, model) ?? getWorkspaceThinkingMode(cli);
 }
 

@@ -89,6 +89,7 @@ export type PanelStateBuilderDeps = {
   getLocaleSetting: typeof getLocaleSetting;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
+  openCodeThinking: PanelState["openCodeThinking"];
   getWorkspaceInteractiveMode: (cli: CliName) => PanelState["interactiveMode"];
   isInteractiveSupported: typeof isInteractiveSupported;
   getProjectRulePaths: () => Record<CliName, string | null>;
@@ -127,6 +128,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     isMac: deps.processPlatform === "darwin",
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,
     thinkingMode: deps.getEffectiveThinkingMode(deps.currentCli, selectedModel),
+    openCodeThinking: deps.openCodeThinking,
     interactiveMode: deps.getWorkspaceInteractiveMode(deps.currentCli),
     interactive: {
       supported: deps.isInteractiveSupported(deps.currentCli),
@@ -144,6 +146,15 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     modelState: deps.buildModelState(activeConfigIdByCli),
     editorContext: deps.buildEditorContextState(),
   };
+}
+
+export function isOpenCodeThinkingRequestCurrent(
+  requestId: number,
+  contextKey: string,
+  currentRequestId: number,
+  currentContextKey: string
+): boolean {
+  return requestId === currentRequestId && contextKey === currentContextKey;
 }
 
 function getEditorDisplayPath(document: vscode.TextDocument): string {

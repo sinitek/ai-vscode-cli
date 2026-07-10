@@ -11,6 +11,7 @@ export type { ResolvedCliCommand } from "./commandResolution";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
+  openCodeVariant?: string | null;
   model?: string | null;
   openCodeConfigContent?: string | null;
   imagePaths?: string[];
@@ -372,7 +373,7 @@ export function buildCliArgs(
   prompt?: string
 ): string[] {
   const baseArgs = getCliArgs(cli);
-  const thinkingArgs = options.thinkingMode
+  const thinkingArgs = cli !== "opencode" && options.thinkingMode
     ? getThinkingArgs(cli, options.thinkingMode)
     : [];
   const sessionId = options.sessionId ?? null;
@@ -394,6 +395,9 @@ export function buildCliArgs(
       ];
     }
   }
+  if (cli === "opencode") {
+    sharedArgs = applyOpenCodeVariantArg(sharedArgs, options.openCodeVariant);
+  }
 
   if (prompt === undefined || prompt === "") {
     return sharedArgs;
@@ -408,6 +412,18 @@ export function buildCliArgs(
   }
 
   return buildPromptArgs(cli, sharedArgs, prompt);
+}
+
+export function applyOpenCodeVariantArg(
+  args: readonly string[],
+  variant: string | null | undefined
+): string[] {
+  const normalizedVariant = typeof variant === "string" ? variant.trim() : "";
+  const hasExplicitVariant = args.some((arg) => arg === "--variant" || arg.startsWith("--variant="));
+  if (!normalizedVariant || hasExplicitVariant) {
+    return [...args];
+  }
+  return [...args, "--variant", normalizedVariant];
 }
 
 export function buildProcessLabel(cli: CliName, sessionId?: string | null): string {

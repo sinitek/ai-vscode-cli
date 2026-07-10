@@ -15,6 +15,7 @@ export type CliModelStore = {
   selectedByConfigId: Record<string, string>;
   optionsByConfigId: Record<string, string[]>;
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
+  openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
   selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRoleForModelSelection, string>>>;
   lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
 };
@@ -96,6 +97,7 @@ export function ensureCliModelStore(
     selectedByConfigId: {},
     optionsByConfigId: {},
     thinkingByCliAndModel: {},
+    openCodeVariantByConfigAndModel: {},
     selectedLobsterByConfigId: {},
     lobsterRolesByConfigId: {},
   };
@@ -136,6 +138,25 @@ export function ensureCliModelStore(
       }
       if (Object.keys(nextSelection).length > 0) {
         normalized.selectedLobsterByConfigId[configId] = nextSelection;
+      }
+    }
+  }
+  const storedOpenCodeVariants = store?.openCodeVariantByConfigAndModel;
+  if (storedOpenCodeVariants && typeof storedOpenCodeVariants === "object") {
+    for (const [configId, rawVariantsByModel] of Object.entries(storedOpenCodeVariants)) {
+      if (!configId || !rawVariantsByModel || typeof rawVariantsByModel !== "object") {
+        continue;
+      }
+      const variantsByModel: Record<string, string> = {};
+      for (const [rawModel, rawVariant] of Object.entries(rawVariantsByModel)) {
+        const model = normalizeCliModelName(rawModel);
+        const variant = normalizeCliModelName(rawVariant);
+        if (model && variant) {
+          variantsByModel[model] = variant;
+        }
+      }
+      if (Object.keys(variantsByModel).length > 0) {
+        normalized.openCodeVariantByConfigAndModel[configId] = variantsByModel;
       }
     }
   }
@@ -244,6 +265,55 @@ export function getSelectedCliModelFromStore(
     return null;
   }
   return normalizeCliModelName(store?.selectedByConfigId?.[configId]);
+}
+
+export function getOpenCodeVariantFromStore(
+  store: CliModelStore,
+  configId: string | null,
+  model: string | null | undefined
+): string | null {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return null;
+  }
+  return normalizeCliModelName(store.openCodeVariantByConfigAndModel?.[configId]?.[normalizedModel]);
+}
+
+export function setOpenCodeVariantInStore(
+  store: CliModelStore,
+  configId: string | null,
+  model: string | null | undefined,
+  variant: string | null | undefined
+): CliModelStore {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return store;
+  }
+  const normalizedVariant = normalizeCliModelName(variant);
+  const currentVariant = getOpenCodeVariantFromStore(store, configId, normalizedModel);
+  if (currentVariant === normalizedVariant) {
+    return store;
+  }
+  const nextStore: CliModelStore = {
+    ...store,
+    openCodeVariantByConfigAndModel: {
+      ...(store.openCodeVariantByConfigAndModel ?? {}),
+    },
+  };
+  const nextByModel = {
+    ...(nextStore.openCodeVariantByConfigAndModel[configId] ?? {}),
+  };
+  if (normalizedVariant) {
+    nextByModel[normalizedModel] = normalizedVariant;
+  } else {
+    delete nextByModel[normalizedModel];
+  }
+  if (Object.keys(nextByModel).length > 0) {
+    nextStore.openCodeVariantByConfigAndModel[configId] = nextByModel;
+  } else {
+    delete nextStore.openCodeVariantByConfigAndModel[configId];
+  }
+  return nextStore;
 }
 
 export function getManagedModelOptionsForCliFromStore(

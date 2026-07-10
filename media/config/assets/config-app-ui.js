@@ -17,7 +17,7 @@ const DEFAULT_INSTALL_COMMANDS = {
 const { confirm: uk } = xr;
 
 // Config list panel
-const ConfigListPanel = () => {
+const ConfigListPanel = ({ onMobileClose } = {}) => {
     const {
         configs: e,
         activeConfigIds: t,
@@ -467,7 +467,9 @@ const ConfigListPanel = () => {
                 return be.jsx(Bs.Item, {
                   className: K ? "config-list-item config-list-item-selected" : "config-list-item",
                   draggable: !0,
-                  onClick: () => o(F.id, F.platform),
+                  onClick: () => {
+                    (o(F.id, F.platform), onMobileClose?.());
+                  },
                   onDragStart: () => _(F.id),
                   onDragOver: (ae) => {
                     (ae.stopPropagation(), N(ae, F.id));
@@ -555,6 +557,18 @@ const ConfigListPanel = () => {
             marginBottom: "8px",
           },
           children: [
+            be.jsx(xn, {
+              type: "text",
+              size: "small",
+              className: "config-mobile-close-button",
+              "aria-label": "关闭配置目录",
+              onClick: onMobileClose,
+              children: be.jsx("span", {
+                className: "config-mobile-close-icon",
+                "aria-hidden": "true",
+                children: "×",
+              }),
+            }),
             be.jsx(xn, { size: "small", onClick: openExportModal, children: "导出" }),
             be.jsx(xn, { size: "small", onClick: openImportModal, children: "导入" }),
           ],
@@ -4407,54 +4421,94 @@ const { Header: jk, Sider: zk, Content: Lk } = Li;
 
 // Config manager layout
 const ConfigManagerLayout = () => {
-    const { loadConfigs: e, initDefaultConfigs: t } = useConfigStore();
-    return (
-      c.useEffect(() => {
-        (async () => {
-          (await e(), await t(), await e());
-        })();
-      }, [e, t]),
-      be.jsxs(Li, {
-        className: "config-app-theme",
-        style: { height: "100vh" },
-        children: [
-          be.jsx(jk, {
-            className: "config-app-header",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              padding: "0 24px",
-            },
-            children: be.jsx("h2", {
+    const { loadConfigs: e, initDefaultConfigs: t } = useConfigStore(),
+      [mobileNavigationOpen, setMobileNavigationOpen] = c.useState(!1),
+      closeMobileNavigation = () => setMobileNavigationOpen(!1);
+
+    c.useEffect(() => {
+      (async () => {
+        (await e(), await t(), await e());
+      })();
+    }, [e, t]);
+
+    c.useEffect(() => {
+      if (!mobileNavigationOpen) return;
+      const handleKeyDown = (event) => {
+        event.key === "Escape" && closeMobileNavigation();
+      };
+      return (
+        window.addEventListener("keydown", handleKeyDown),
+        () => window.removeEventListener("keydown", handleKeyDown)
+      );
+    }, [mobileNavigationOpen]);
+
+    return be.jsxs(Li, {
+      className: "config-app-theme",
+      style: { height: "100vh" },
+      children: [
+        be.jsxs(jk, {
+          className: "config-app-header",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            padding: "0 24px",
+          },
+          children: [
+            be.jsx("button", {
+              type: "button",
+              className: "config-mobile-directory-button",
+              "aria-label": "打开配置目录",
+              "aria-controls": "config-directory-panel",
+              "aria-expanded": mobileNavigationOpen,
+              onClick: () => setMobileNavigationOpen(!0),
+              children: be.jsxs("span", {
+                className: "config-mobile-directory-icon",
+                "aria-hidden": "true",
+                children: [be.jsx("span", {}), be.jsx("span", {}), be.jsx("span", {})],
+              }),
+            }),
+            be.jsx("h2", {
               className: "config-app-title",
               style: {
                 margin: 0,
               },
               children: "携宁 CLI 配置",
             }),
-          }),
-          be.jsxs(Li, {
-            className: "config-app-workspace",
-            children: [
-              be.jsx(zk, {
-                className: "config-app-sidebar",
-                width: 500,
-                style: {
-                  background: "var(--bg-color-container)",
-                  borderRight: "1px solid var(--border-color)",
-                },
-                children: be.jsx(ConfigListPanel, {}),
+          ],
+        }),
+        be.jsxs(Li, {
+          className: "config-app-workspace",
+          children: [
+            mobileNavigationOpen &&
+              be.jsx("button", {
+                type: "button",
+                className: "config-mobile-sidebar-backdrop",
+                "aria-label": "关闭配置目录",
+                onClick: closeMobileNavigation,
               }),
-              be.jsx(Lk, {
-                className: "config-app-content",
-                style: { background: "var(--bg-color)" },
-                children: be.jsx(ConfigEditorPanel, {}),
+            be.jsx(zk, {
+              id: "config-directory-panel",
+              className: mobileNavigationOpen
+                ? "config-app-sidebar config-app-sidebar-open"
+                : "config-app-sidebar",
+              width: 500,
+              style: {
+                background: "var(--bg-color-container)",
+                borderRight: "1px solid var(--border-color)",
+              },
+              children: be.jsx(ConfigListPanel, {
+                onMobileClose: closeMobileNavigation,
               }),
-            ],
-          }),
-        ],
-      })
-    );
+            }),
+            be.jsx(Lk, {
+              className: "config-app-content",
+              style: { background: "var(--bg-color)" },
+              children: be.jsx(ConfigEditorPanel, {}),
+            }),
+          ],
+        }),
+      ],
+    });
   };
 
 const configClayPalette = {

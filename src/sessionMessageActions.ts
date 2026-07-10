@@ -8,6 +8,20 @@ import {
   type PromptRunInputForPanel,
 } from "./sessionMessageHandlers";
 
+export async function handleUpdateOpenCodeVariantMessage(
+  message: Extract<PanelMessage, { type: "updateOpenCodeVariant" }>,
+  deps: {
+    updateOpenCodeVariant: (value: string | null) => void;
+    postPanelState: () => Promise<void>;
+  }
+): Promise<void> {
+  const value = typeof message.value === "string" && message.value.trim()
+    ? message.value.trim()
+    : null;
+  deps.updateOpenCodeVariant(value);
+  await deps.postPanelState();
+}
+
 export async function handleUpdateSettingMessage(
   message: Extract<PanelMessage, { type: "updateSetting" }>,
   deps: PanelMessageHandlerDeps

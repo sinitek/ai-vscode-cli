@@ -109,14 +109,29 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.add
         });
       }
 
-      elements.thinkingMode.addEventListener("change", (event) => {
-        const nextMode = event.target.value || "off";
+      function handleThinkingModeChange(rawValue) {
+        if (state.currentCli === "opencode") {
+          const value = typeof rawValue === "string" && rawValue !== "" ? rawValue : null;
+          if (state.openCodeThinking) {
+            state.openCodeThinking.selectedVariant = value;
+          }
+          vscode.postMessage({
+            type: "updateOpenCodeVariant",
+            value,
+          });
+          return;
+        }
+        const nextMode = rawValue || "off";
         state.thinkingMode = nextMode;
         vscode.postMessage({
           type: "updateSetting",
           key: "thinkingMode",
           value: nextMode,
         });
+      }
+
+      elements.thinkingMode.addEventListener("change", (event) => {
+        handleThinkingModeChange(event.target.value);
       });
 
       // Model selection management

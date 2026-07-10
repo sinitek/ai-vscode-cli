@@ -5,6 +5,7 @@ import { installVscodeMock } from "./vscodeMock";
 installVscodeMock();
 
 const {
+  applyOpenCodeVariantArg,
   buildOpenCodeRunFailureMessage,
   buildCliArgs,
   parseOpenCodeRunOutput,
@@ -26,6 +27,62 @@ test("builds OpenCode run args with provider/model selection", () => {
     buildCliArgs("opencode", { model: "packyapi/claude-sonnet-5", sessionId: "session-1" }, "hello"),
     ["run", "--format", "json", "--model", "packyapi/claude-sonnet-5", "--session", "session-1", "hello"],
   );
+});
+
+test("adds only a valid non-default OpenCode variant", () => {
+  assert.deepEqual(
+    buildCliArgs("opencode", { model: "myAPI/model", openCodeVariant: "high" }, "hello"),
+    ["run", "--format", "json", "--model", "myAPI/model", "--variant", "high", "hello"],
+  );
+  assert.deepEqual(
+    buildCliArgs("opencode", { model: "myAPI/model", openCodeVariant: null }, "hello"),
+    ["run", "--format", "json", "--model", "myAPI/model", "hello"],
+  );
+});
+
+test("preserves explicit OpenCode variant args over persisted selection", () => {
+  assert.deepEqual(
+    applyOpenCodeVariantArg(["run", "--variant", "custom"], "high"),
+    ["run", "--variant", "custom"],
+  );
+  assert.deepEqual(
+    applyOpenCodeVariantArg(["run", "--variant=custom"], "high"),
+    ["run", "--variant=custom"],
+  );
+});
+
+test("ignores fixed OpenCode thinking args while preserving Codex behavior", () => {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, defaultValue?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, defaultValue?: T): T | undefined => {
+      if (key === "thinkingArgs.opencode.high") {
+        return ["--legacy-opencode-effort"] as T;
+      }
+      if (key === "thinkingArgs.codex.high") {
+        return ["--codex-thinking"] as T;
+      }
+      return defaultValue;
+    },
+  });
+  try {
+    assert.deepEqual(
+      buildCliArgs("opencode", { thinkingMode: "high" }, "hello"),
+      ["run", "--format", "json", "hello"],
+    );
+    assert.deepEqual(
+      buildCliArgs("codex", { thinkingMode: "high" }, "hello"),
+      ["--codex-thinking", "--skip-git-repo-check", "hello"],
+    );
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  }
 });
 
 test("builds OpenCode run args by qualifying bare model with active custom provider", () => {

@@ -35,6 +35,45 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         return typeof value === "string" ? value.trim() : "";
       }
 
+      function normalizeOpenCodeThinkingPayload(payload) {
+        const normalized = {
+          selectedVariant: null,
+          options: [],
+          disabled: false,
+          messageKey: "",
+        };
+        if (!payload || typeof payload !== "object") {
+          return normalized;
+        }
+        const selectedVariant = typeof payload.selectedVariant === "string"
+          ? payload.selectedVariant.trim()
+          : "";
+        normalized.selectedVariant = selectedVariant || null;
+        normalized.disabled = payload.disabled === true;
+        normalized.messageKey = typeof payload.messageKey === "string" ? payload.messageKey.trim() : "";
+        const seen = new Set();
+        if (Array.isArray(payload.options)) {
+          payload.options.forEach((item) => {
+            if (!item || typeof item !== "object") {
+              return;
+            }
+            const value = typeof item.value === "string" ? item.value.trim() : "";
+            if (!value || seen.has(value)) {
+              return;
+            }
+            seen.add(value);
+            const label = typeof item.label === "string" && item.label.trim()
+              ? item.label.trim()
+              : value;
+            const source = typeof item.source === "string" && item.source.trim()
+              ? item.source.trim()
+              : undefined;
+            normalized.options.push({ value, label, source });
+          });
+        }
+        return normalized;
+      }
+
       function shouldPreserveCurrentCliModelsOnEmptySnapshot(cli, nextModels, nextManagedModels, previousModels, previousManagedModels) {
         if (cli !== state.currentCli) {
           return false;
@@ -180,6 +219,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
+        state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
@@ -220,7 +260,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         updateRulesScope(state.ruleScope);
         syncThinkingOptions();
-        elements.thinkingMode.value = state.thinkingMode;
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
@@ -296,62 +335,80 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         elements.configSelect.value = state.selectedConfigId || "";
       }
 
-      function syncThinkingOptions() {
-        const isOpenCode = state.currentCli === "opencode";
+      function appendThinkingOption(value, label) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        elements.thinkingMode.appendChild(option);
+      }
+
+      function getOpenCodeThinkingOptionLabel(option) {
+        const standardLabelKeys = {
+          none: "openCodeThinkingOptionNone",
+          minimal: "openCodeThinkingOptionMinimal",
+          low: "thinkingOptionLabelLow",
+          medium: "thinkingOptionLabelMedium",
+          high: "thinkingOptionLabelHigh",
+          xhigh: "thinkingOptionLabelXHigh",
+          max: "thinkingOptionLabelMax",
+          thinking: "openCodeThinkingOptionThinking",
+        };
+        const labelKey = standardLabelKeys[option.value];
+        return labelKey ? t(labelKey) : option.label || option.value;
+      }
+
+      function getOpenCodeThinkingMessage(messageKey) {
+        const messageKeys = {
+          "follow-default": "openCodeThinkingMessageFollowDefault",
+          loading: "openCodeThinkingMessageLoading",
+          "select-model": "openCodeThinkingMessageSelectModel",
+          "metadata-error": "openCodeThinkingMessageMetadataError",
+          "no-variants": "openCodeThinkingMessageNoVariants",
+          "config-variants": "openCodeThinkingMessageConfigVariants",
+        };
+        const translationKey = messageKeys[messageKey];
+        return translationKey ? t(translationKey) : "";
+      }
+
+      function syncOpenCodeThinkingOptions() {
+        const payload = normalizeOpenCodeThinkingPayload(state.openCodeThinking);
+        state.openCodeThinking = payload;
+        elements.thinkingMode.innerHTML = "";
+        appendThinkingOption("", t("openCodeThinkingOptionDefault"));
+        const options = payload.disabled ? [] : payload.options;
+        const availableValues = new Set();
+        options.forEach((option) => {
+          availableValues.add(option.value);
+          appendThinkingOption(option.value, getOpenCodeThinkingOptionLabel(option));
+        });
+        const selectedVariant = payload.selectedVariant && availableValues.has(payload.selectedVariant)
+          ? payload.selectedVariant
+          : "";
+        elements.thinkingMode.value = selectedVariant;
+        const unavailable = payload.disabled || options.length === 0;
+        elements.thinkingMode.disabled = unavailable;
+        const localizedMessage = getOpenCodeThinkingMessage(payload.messageKey);
+        elements.thinkingMode.title = localizedMessage
+          || (unavailable ? t("openCodeThinkingMessageFollowDefault") : t("thinkingModeAria"));
+      }
+
+      function syncGenericThinkingOptions() {
         const isCodex = state.currentCli === "codex";
         const isClaude = state.currentCli === "claude";
-        const mediumOption = elements.thinkingMode.querySelector('option[value="medium"]');
-        const xhighOption = elements.thinkingMode.querySelector('option[value="xhigh"]');
-        const maxOption = elements.thinkingMode.querySelector('option[value="max"]');
-        if (isOpenCode && mediumOption) {
-          mediumOption.remove();
+        elements.thinkingMode.innerHTML = "";
+        elements.thinkingMode.disabled = false;
+        elements.thinkingMode.title = t("thinkingModeAria");
+        if (!isCodex) {
+          appendThinkingOption("off", t("thinkingOptionLabelOff"));
         }
-        if (!isOpenCode && !mediumOption) {
-          const option = document.createElement("option");
-          option.value = "medium";
-          option.textContent = t("thinkingOptionLabelMedium");
-          const highOption = elements.thinkingMode.querySelector('option[value="high"]');
-          if (highOption && highOption.parentElement) {
-            highOption.parentElement.insertBefore(option, highOption);
-          } else {
-            elements.thinkingMode.appendChild(option);
-          }
+        appendThinkingOption("low", t("thinkingOptionLabelLow"));
+        appendThinkingOption("medium", t("thinkingOptionLabelMedium"));
+        appendThinkingOption("high", t("thinkingOptionLabelHigh"));
+        if (isCodex || isClaude) {
+          appendThinkingOption("xhigh", t("thinkingOptionLabelXHigh"));
         }
-        const offOption = elements.thinkingMode.querySelector('option[value="off"]');
-        if (isCodex && offOption) {
-          offOption.remove();
-        }
-        if (!isCodex && !offOption) {
-          const option = document.createElement("option");
-          option.value = "off";
-          option.textContent = t("thinkingOptionLabelOff");
-          const lowOption = elements.thinkingMode.querySelector('option[value="low"]');
-          if (lowOption && lowOption.parentElement) {
-            lowOption.parentElement.insertBefore(option, lowOption);
-          } else {
-            elements.thinkingMode.appendChild(option);
-          }
-        }
-        if (!isCodex && !isClaude && xhighOption) {
-          xhighOption.remove();
-        }
-        if ((isCodex || isClaude) && !xhighOption) {
-          const option = document.createElement("option");
-          option.value = "xhigh";
-          option.textContent = t("thinkingOptionLabelXHigh");
-          elements.thinkingMode.appendChild(option);
-        }
-        if (!isClaude && maxOption) {
-          maxOption.remove();
-        }
-        if (isClaude && !maxOption) {
-          const option = document.createElement("option");
-          option.value = "max";
-          option.textContent = t("thinkingOptionLabelMax");
-          elements.thinkingMode.appendChild(option);
-        }
-        if (isOpenCode && state.thinkingMode === "medium") {
-          updateThinkingMode("low");
+        if (isClaude) {
+          appendThinkingOption("max", t("thinkingOptionLabelMax"));
         }
         if (isCodex && state.thinkingMode === "off") {
           updateThinkingMode("low");
@@ -362,6 +419,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (!isClaude && state.thinkingMode === "max") {
           updateThinkingMode(isCodex ? "xhigh" : "high");
         }
+        elements.thinkingMode.value = state.thinkingMode;
+      }
+
+      function syncThinkingOptions() {
+        if (state.currentCli === "opencode") {
+          syncOpenCodeThinkingOptions();
+          return;
+        }
+        syncGenericThinkingOptions();
       }
 
       function syncInteractiveOptions() {

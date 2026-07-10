@@ -196,20 +196,6 @@
           "default": "medium",
           "description": "%config.thinkingModeClaude.description%"
         },
-        "sinitek-cli-tools.thinkingModeOpencode": {
-          "type": "string",
-          "enum": [
-            "off",
-            "on",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "default": "medium",
-          "description": "%config.thinkingModeOpencode.description%"
-        },
         "sinitek-cli-tools.thinkingArgs.codex.on": {
           "type": "array",
           "items": {
@@ -323,62 +309,6 @@
             "max"
           ],
           "description": "%config.thinkingArgs.claude.max.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.on": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.on.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.off": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.off.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.low": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.low.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.medium": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.medium.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.high": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.high.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.xhigh": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.xhigh.description%"
-        },
-        "sinitek-cli-tools.thinkingArgs.opencode.max": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.thinkingArgs.opencode.max.description%"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.off": {
           "type": "string",

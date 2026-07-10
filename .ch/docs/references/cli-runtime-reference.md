@@ -84,6 +84,15 @@
 - OpenCode 运行前会做配置 preflight：阻止 `myprovider`、`my-model-name`、`my-small-model-name`、配置页范例中的 `gateway-chat-model` / `gateway-small-model`、示例 baseURL、OpenAI-compatible provider 缺少 `baseURL` 等未完成配置；OpenAI-compatible baseURL 缺少常见 `/v1` 会作为提示暴露，避免把范例直接当成真实配置运行。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 
+#### OpenCode 动态 variants 与运行参数
+
+- OpenCode 的推理力度使用精确模型的 `variants`，运行参数为 `opencode run --variant <name>`；`--thinking` 只控制 thinking blocks 是否展示，不能作为推理力度参数。
+- 可选档位按以下优先级解析：当前命令/version 下 `opencode models <provider> --verbose` 返回的精确 `provider/model` metadata → 当前激活配置 `provider.<id>.models.<model>.variants` 中未禁用的显式声明 → Default-only。不得按 provider `npm`、provider 名或模型名猜测档位；`@ai-sdk/openai-compatible` 仅代表协议 adapter。
+- PanelState 每次携带完整 `openCodeThinking` 快照。配置 ID、配置内容 hash、命令、CLI version、provider 或 model 变化时会形成新的能力身份；解析中、失败或未知模型时立即保守显示 `Default / Follow OpenCode`，旧异步结果不得覆盖新模型状态。
+- variant 选择按 active config id + 精确 `provider/model` 隔离持久化。空选择表示 Default 并删除持久值；保存值不再存在于当前 options 时会回退 Default 并清理，切换 CLI、配置或模型不会沿用旧 options。
+- 运行时只在持久值仍属于当前精确模型 options 时追加 `--variant <name>`；Default 不传。若 `sinitek-cli-tools.args.opencode` 已显式包含 `--variant value` 或 `--variant=value`，显式参数优先，插件不重复覆盖。
+- 固定的 `thinkingModeOpencode` 和 `thinkingArgs.opencode.*` 设置已移除；Codex / Claude 的固定 ThinkingMode 和参数映射保持原行为。
+
 ### Gemini
 
 - Gemini 已从当前 AI 对话和配置中心支持范围移除

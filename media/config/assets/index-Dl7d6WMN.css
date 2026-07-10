@@ -186,6 +186,53 @@ body,
   vertical-align: 2px;
 }
 
+.config-mobile-directory-button,
+.config-mobile-close-button,
+.config-mobile-sidebar-backdrop {
+  display: none !important;
+}
+
+.config-mobile-directory-button {
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--clay-text);
+  border-radius: 12px;
+  background: var(--clay-text);
+  color: var(--clay-inverse);
+  box-shadow: 3px 3px 0 var(--clay-lemon);
+  cursor: pointer;
+  transition:
+    transform var(--clay-motion),
+    box-shadow var(--clay-motion);
+}
+
+.config-mobile-directory-button:hover,
+.config-mobile-directory-button:focus-visible {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--clay-lemon);
+}
+
+.config-mobile-directory-button:focus-visible {
+  outline: 3px solid var(--clay-focus-shadow);
+  outline-offset: 2px;
+}
+
+.config-mobile-directory-icon {
+  display: grid;
+  width: 18px;
+  gap: 4px;
+}
+
+.config-mobile-directory-icon > span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .config-app-workspace {
   display: flex;
   gap: 18px;
@@ -1033,29 +1080,158 @@ input[type="file"]::file-selector-button {
 
 @media (max-width: 920px) {
   body {
-    overflow: auto;
+    overflow: hidden;
   }
 
   .config-app-theme {
     min-width: 0;
-    overflow: auto;
+    overflow: hidden;
+  }
+
+  .config-app-header {
+    gap: 12px;
+    padding: 0 14px !important;
+  }
+
+  .config-mobile-directory-button {
+    display: inline-flex !important;
   }
 
   .config-app-workspace {
-    flex-direction: column;
-    overflow: visible;
+    flex-direction: row;
+    padding: 12px;
+    overflow: hidden;
   }
 
   .config-app-sidebar {
+    position: fixed !important;
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    z-index: 1001;
     flex: none !important;
-    width: 100% !important;
+    width: min(calc(100vw - 24px), 420px) !important;
+    height: auto !important;
     min-width: 0 !important;
-    max-width: none !important;
-    max-height: 48vh;
+    max-width: 420px !important;
+    max-height: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(calc(-100% - 28px));
+    transition:
+      transform var(--clay-motion),
+      opacity var(--clay-motion),
+      visibility 0s linear var(--clay-motion);
+  }
+
+  .config-app-sidebar.config-app-sidebar-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
+
+  .config-mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: block !important;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: var(--clay-overlay);
+    cursor: pointer;
+  }
+
+  .config-mobile-close-button {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    margin-right: auto;
+    border: 1px solid var(--clay-border) !important;
+    border-radius: 10px !important;
+    background: var(--clay-surface) !important;
+    color: var(--clay-text) !important;
+  }
+
+  .config-mobile-close-button:hover,
+  .config-mobile-close-button:focus-visible {
+    border-color: var(--clay-text) !important;
+    background: var(--clay-text) !important;
+    color: var(--clay-inverse) !important;
+  }
+
+  .config-mobile-close-icon {
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
   }
 
   .config-app-content {
-    min-height: 720px;
+    width: 100%;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 460px) {
+  .config-app-sidebar {
+    border-radius: 20px;
+  }
+
+  .config-sidebar-panel {
+    padding: 12px !important;
+  }
+
+  .config-list-toolbar {
+    top: -12px;
+    margin: -12px -12px 12px !important;
+    padding: 12px;
+  }
+
+  .config-sidebar-panel > .ant-card .ant-card-head {
+    padding: 0 12px !important;
+  }
+
+  .config-sidebar-panel > .ant-card .ant-card-head-wrapper {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 0;
+  }
+
+  .config-sidebar-panel > .ant-card .ant-card-head-title {
+    flex: 1 1 100%;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .config-sidebar-panel > .ant-card .ant-card-extra {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-inline-start: 0;
+    padding: 0;
+  }
+
+  .config-list .config-list-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .config-list .config-list-item > .ant-list-item-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .config-list-actions {
+    justify-content: flex-end;
+    width: 100%;
   }
 }
 

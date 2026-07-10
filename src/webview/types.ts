@@ -1,4 +1,11 @@
-import { CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell, ThinkingMode } from "../cli/types";
+import {
+  CliName,
+  InteractiveMode,
+  LobsterExecutionMode,
+  MacTaskShell,
+  OpenCodeThinkingState,
+  ThinkingMode,
+} from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 
 export type ConfigSummary = {
@@ -30,6 +37,7 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
+  | { type: "updateOpenCodeVariant"; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | {
       type: "sendPrompt";
@@ -192,6 +200,7 @@ export type PanelState = {
   isMac: boolean;
   macTaskShell: MacTaskShell;
   thinkingMode: ThinkingMode;
+  openCodeThinking: OpenCodeThinkingState;
   interactive: {
     supported: boolean;
     enabled: boolean;
