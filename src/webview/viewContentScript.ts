@@ -22,6 +22,7 @@ export type BuildWebviewRuntimeScriptInput = {
   lobsterExecutionModeDebateMultiAgent: string;
   finalAnswerPolicyDefault: string;
   finalAnswerPolicySuccessfulReplyFallback: string;
+  finalAnswerTextMarker: string;
 };
 
 const RUNTIME_SCRIPT_PARTS = [
@@ -55,6 +56,7 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.lobsterExecutionModeDebateMultiAgent],
     ["${FINAL_ANSWER_POLICY_DEFAULT}", input.finalAnswerPolicyDefault],
     ["${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}", input.finalAnswerPolicySuccessfulReplyFallback],
+    ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(
     (script, [search, replacement]) => replaceLiteral(script, search, replacement),

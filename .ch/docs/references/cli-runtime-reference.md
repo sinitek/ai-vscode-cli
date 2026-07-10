@@ -147,6 +147,8 @@ Loop 内部执行方式事实：
 
 运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务只有在本轮用户消息之后产生符合当前策略的非 thinking assistant 最终结论气泡，才会按成功完成收口。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`，优先级最高；缺少结构化 final 类型时，共享判定会把内容包含 `[final_answer]` 的非 thinking assistant 消息视为显式最终答复。默认 `strict_final_answer` 只接受结构化 final 或文本标记；`successful_reply_fallback` 额外接受成功退出后的普通非空 assistant 文本，其中 Codex 收到 `turn.completed status:"completed"` 时会发送空内容终态标记，把最后一条 assistant 气泡原位提升为最终结论，不复制正文或新增气泡。thinking、trace、system、user、旧回合消息、空回复、`failed`、`interrupted` 和主动停止都不得通过该 fallback 收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；OpenCode 非零退出、JSON error、空 assistant、长时间无输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
 
+展示层补充：Webview 仅在 assistant 气泡渲染时从展示文本中移除 `[final_answer]`，不改写用于严格判定、会话续接和存档的原始 assistant 内容；user、system 和 trace 消息保持原样。
+
 ## 5. 图片与附件
 
 当前聊天面板支持上传附件，Codex 额外支持图片输入桥接：

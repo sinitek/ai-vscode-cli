@@ -33,6 +33,7 @@
 - 所有普通任务和 hidden retry 的实际模型 prompt 都追加统一约定：任务完成后的最终回复必须以 `[final_answer]` 开头，过程更新不得使用该标记；不要改写界面里的原始用户消息。
 - Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
 - 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化类型时，只从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
+- `[final_answer]` 只能在 Webview assistant 气泡的展示文本中移除；不能提前改写 `message.content` 或会话存档，否则默认严格策略、历史恢复和 hidden retry 会丢失兜底终态信号。
 - 全局默认 `strict_final_answer`，只接受结构化 final 或文本标记。可选 `successful_reply_fallback` 才额外接受成功退出后的普通 assistant 文本；Codex completed-turn 原位提升仅在该兼容策略生效。
 - 空回复、failed、interrupted 和主动停止不得提升。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
 

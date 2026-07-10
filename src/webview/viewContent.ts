@@ -12,6 +12,7 @@ import {
   FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
   FINAL_ANSWER_POLICY_STRICT,
 } from "../toolSettings";
+import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
 
 const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
@@ -62,6 +63,7 @@ ${buildWebviewRuntimeScript({
       FINAL_ANSWER_POLICY_DEFAULT,
     finalAnswerPolicySuccessfulReplyFallback:
       FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+    finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   })}
     </script>
   </body>

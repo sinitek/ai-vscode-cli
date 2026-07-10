@@ -298,6 +298,20 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           '<div class="user-context-tags">' + tagsHtml + '</div>';
       }
 
+      function getAssistantMessageContentForDisplay(message) {
+        const content = String(message && message.content ? message.content : "");
+        if (!message || message.role !== "assistant") {
+          return content;
+        }
+        const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
+        if (!content.includes(marker)) {
+          return content;
+        }
+        const markerStartsResponse = content.trimStart().startsWith(marker);
+        const filteredContent = content.split(marker).join("");
+        return markerStartsResponse ? filteredContent.trimStart() : filteredContent;
+      }
+
       function isToolResultLikeMessage(message) {
         if (!message || message.role === "user") {
           return false;
@@ -307,7 +321,10 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function renderToolResultLikeMessage(message) {
-        const content = renderTraceContent(message);
+        const displayMessage = message && message.role === "assistant"
+          ? { ...message, content: getAssistantMessageContentForDisplay(message) }
+          : message;
+        const content = renderTraceContent(displayMessage);
         const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
         if (time) {
           return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
@@ -316,7 +333,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function renderAssistantMessageContent(message, messageIndex) {
-        const content = String(message && message.content ? message.content : "");
+        const content = getAssistantMessageContentForDisplay(message);
         const presentation = getTracePresentation(content);
         if (isFinalAssistantSummaryMessage(messageIndex)) {
           return '<div class="assistant-message-content assistant-message-content-final">' + renderMarkdown(content) + '</div>';

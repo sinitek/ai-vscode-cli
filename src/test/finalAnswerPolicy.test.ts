@@ -10,6 +10,7 @@ import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
 import { WEBVIEW_I18N } from "../webview/viewContentI18n";
 import { buildWebviewRuntimeScript } from "../webview/viewContentScript";
 import { TOAST_MISC_STYLES } from "../webview/viewContentStyles/toastMisc";
+import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
 
 function buildStaticHtml(locale: "en" | "zh-CN"): string {
   return buildWebviewStaticHtml({
@@ -55,10 +56,56 @@ test("webview runtime defaults and updates the global final-answer policy", () =
       FINAL_ANSWER_POLICY_DEFAULT,
     finalAnswerPolicySuccessfulReplyFallback:
       FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+    finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
 
   assert.match(script, /finalAnswerPolicy:\s*"strict_final_answer"/);
   assert.match(script, /key:\s*"finalAnswerPolicy"/);
   assert.match(script, /event\.target\.value === "successful_reply_fallback"/);
   assert.doesNotMatch(script, /\$\{FINAL_ANSWER_POLICY_/);
+  assert.doesNotMatch(script, /\$\{FINAL_ANSWER_TEXT_MARKER\}/);
+});
+
+test("webview hides final-answer text markers only from assistant bubble display content", () => {
+  const script = buildWebviewRuntimeScript({
+    i18n: WEBVIEW_I18N.en,
+    cliList: ["codex", "claude", "opencode"],
+    lobsterMaxRoundsDefault: 20,
+    lobsterMaxRoundsMin: 1,
+    lobsterMaxRoundsMax: 100,
+    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+    finalAnswerPolicyDefault: FINAL_ANSWER_POLICY_DEFAULT,
+    finalAnswerPolicySuccessfulReplyFallback:
+      FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+    finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
+  });
+  const functionSource = script.match(
+    /function getAssistantMessageContentForDisplay\(message\) \{[\s\S]*?\n      \}/,
+  )?.[0];
+  assert.ok(functionSource, "assistant display filter should be present in the webview runtime");
+  const getDisplayContent = new Function(
+    `${functionSource}; return getAssistantMessageContentForDisplay;`,
+  )() as (message: { role: string; content: string }) => string;
+
+  assert.equal(
+    getDisplayContent({ role: "assistant", content: "[final_answer]\n\nCompleted." }),
+    "Completed.",
+  );
+  assert.equal(
+    getDisplayContent({
+      role: "assistant",
+      content: "Completed. [final_answer] Details [final_answer]",
+    }),
+    "Completed.  Details ",
+  );
+  assert.equal(
+    getDisplayContent({ role: "assistant", content: "Ordinary reply" }),
+    "Ordinary reply",
+  );
+  assert.equal(
+    getDisplayContent({ role: "user", content: "Please include [final_answer]" }),
+    "Please include [final_answer]",
+  );
+  assert.match(script, /const content = getAssistantMessageContentForDisplay\(message\);/);
 });
