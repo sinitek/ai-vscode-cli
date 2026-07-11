@@ -49,7 +49,14 @@ test("configuration cards and list items keep compact internal spacing", () => {
     rule(css, ".config-app-content .ant-card-body"),
     /\bpadding:\s*12px !important;/,
   );
-  assert.match(rule(css, ".config-list .ant-list-item"), /\bpadding:\s*4px 5px !important;/);
+  assert.match(rule(css, ".config-list"), /\bfont-size:\s*80%;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bmin-height:\s*42px;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bmargin:\s*2px 0;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bpadding:\s*3px 4px !important;/);
+  assert.match(rule(css, ".config-list .ant-btn-text"), /\bwidth:\s*24px;/);
+  assert.match(rule(css, ".config-list .ant-btn-text"), /\bheight:\s*24px;/);
+  assert.match(rule(css, ".config-active-tag"), /\bwidth:\s*16px;/);
+  assert.match(rule(css, ".config-active-tag"), /\bfont-size:\s*9px;/);
 });
 
 test("configuration mobile overrides preserve zero workspace padding", () => {

@@ -59,7 +59,6 @@ export const OPENCODE_PROVIDER_ADAPTER_NPM_BY_PROTOCOL = Object.freeze({
 const OPENCODE_RUNTIME_DIR = path.join(os.homedir(), ".opencode");
 const OPENCODE_PROFILE_DIR = path.join(OPENCODE_RUNTIME_DIR, CONFIG_DIR_NAME);
 const OPENCODE_CONFIG_PATH = path.join(OPENCODE_RUNTIME_DIR, "config.json");
-const OPENCODE_LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "opencode", "opencode.json");
 
 const CONFIG_PATHS = {
   claude: {
@@ -75,7 +74,6 @@ const CONFIG_PATHS = {
   opencode: {
     config: OPENCODE_CONFIG_PATH,
     configDir: OPENCODE_PROFILE_DIR,
-    legacyConfig: OPENCODE_LEGACY_CONFIG_PATH,
   },
 } as const;
 
@@ -163,24 +161,10 @@ export function parseOpenCodeModelVariants(
 
 export function getOpenCodeRuntimePaths(): {
   config: string;
-  legacyConfig: string;
 } {
   return {
     config: CONFIG_PATHS.opencode.config,
-    legacyConfig: CONFIG_PATHS.opencode.legacyConfig,
   };
-}
-
-async function resolveOpenCodeReadPath(): Promise<string> {
-  if (await pathExists(CONFIG_PATHS.opencode.config)) {
-    return CONFIG_PATHS.opencode.config;
-  }
-
-  if (await pathExists(CONFIG_PATHS.opencode.legacyConfig)) {
-    return CONFIG_PATHS.opencode.legacyConfig;
-  }
-
-  return CONFIG_PATHS.opencode.config;
 }
 
 export async function readClaudeConfig(): Promise<string> {
@@ -204,9 +188,8 @@ export async function readCodexConfig(): Promise<{ config: string; auth: string 
 }
 
 export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
-  const runtimePath = await resolveOpenCodeReadPath();
-  await ensureFile(runtimePath, "{}");
-  const config = await fs.readFile(runtimePath, "utf-8");
+  await ensureFile(CONFIG_PATHS.opencode.config, "{}");
+  const config = await fs.readFile(CONFIG_PATHS.opencode.config, "utf-8");
   return { config, env: "" };
 }
 

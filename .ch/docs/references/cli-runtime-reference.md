@@ -80,8 +80,9 @@
 - OpenCode 进程非零退出时也必须解析 stdout JSON `error` 事件；若事件中存在 `APIError` / `UnknownError`、HTTP status、provider message、server `ref`、`responseBody.error.code` 或请求 URL，错误气泡优先展示这些 provider/API 详情，仅在没有可解析错误时才回退 `CLI 退出码`
 - OpenCode one-shot 单次尝试启动后若长时间没有 stdout/stderr 输出，会按 OpenCode 空输出超时错误收口并进入 hidden retry；hidden retry 最终耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志，不允许只留下 trace 或运行态
 - OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务只读取 active config 内容，并为每次 `opencode run` 生成独立 runtime overlay，不会为对话运行改写用户真实 `~/.opencode/config.json`。
-- OpenCode 配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前配置来源
-- 配置示例使用严格 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、`small_model=provider/model`、`provider`、`mcp`。配置页展示 `myAPI` OpenAI-compatible 双模型范例，provider 凭据使用官方 `{env:VARIABLE_NAME}` 语法，不要求或生成 `.env` 文件。
+- OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前模型配置来源，不从官方全局 MCP 文件回退读取。
+- OpenCode 全局 MCP 使用第二个明确配置文件：官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，由 MCP 市场安装/卸载路径维护。
+- 配置示例使用严格 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、`small_model=provider/model`、`provider`。配置页展示 `myAPI` OpenAI-compatible 双模型范例，provider 凭据使用官方 `{env:VARIABLE_NAME}` 语法，不要求或生成 `.env` 文件，且不再内嵌 MCP 示例以免混淆两个配置文件。
 - `provider.<id>.npm` 选择的是 API 协议适配器，不是模型品牌。直接使用 OpenCode 内置 Anthropic / Google / OpenAI provider 时，通常通过 `/connect` 鉴权并使用 `anthropic/...`、`google/...`、`openai/...`，无需自定义 `npm`；需要手写自定义直连 provider 时，对应适配器分别是 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`。只有请求实际 OpenAI-compatible endpoint 的自定义网关使用 `@ai-sdk/openai-compatible`；即使该网关承载 Claude、Gemini、DeepSeek 等模型，也仍按网关协议使用该适配器。
 - OpenAI-compatible 自定义 provider 必须配置 `options.baseURL` 并指向实际兼容 API endpoint；缺少 `baseURL` 会在保存/运行前阻断，未以常见 `/v1` 结尾会继续给出校验提示。`model` / `small_model` 仍应使用 `provider/真实模型 id`；`models.<id>.name` 仅作为展示元数据，不能依赖它把占位 alias 改写成真实模型名。
 - OpenCode 模式展示“主模型（model）”与“小模型（small_model）”两个下拉；候选只从当前 active config 的 `provider.<id>.models` 固定结构加载，值始终为精确 `provider/model`，不提供新增、编辑、删除、排序等模型管理入口。

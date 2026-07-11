@@ -32,17 +32,24 @@
   {
     "id": "mysql",
     "name": "MySQL",
-    "description": "MySQL 数据库访问与管理。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/mysql",
+    "description": "通过只读查询访问 MySQL 数据库，支持运行时连接字符串和环境变量配置。",
+    "homepage": "https://github.com/hovecapital/read-only-local-mysql-mcp-server",
     "category": "文件与数据",
     "config": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-mysql",
-        "mysql://user:password@localhost:3306/dbname"
-      ]
-    }
+        "@hovecapital/read-only-mysql-mcp-server"
+      ],
+      "env": {
+        "DB_HOST": "<DB_HOST>",
+        "DB_PORT": "3306",
+        "DB_DATABASE": "<DB_DATABASE>",
+        "DB_USERNAME": "<DB_USERNAME>",
+        "DB_PASSWORD": "<DB_PASSWORD>"
+      }
+    },
+    "signupUrl": "https://github.com/hovecapital/read-only-local-mysql-mcp-server"
   },
   {
     "id": "sqlite",
@@ -165,16 +172,16 @@
     "id": "sentry",
     "name": "Sentry",
     "description": "从 Sentry.io 获取和分析问题。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sentry",
+    "homepage": "https://github.com/getsentry/sentry-mcp",
     "category": "开发工具",
     "config": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-sentry"
+        "@sentry/mcp-server"
       ],
       "env": {
-        "SENTRY_AUTH_TOKEN": "<YOUR_TOKEN>"
+        "SENTRY_ACCESS_TOKEN": "<YOUR_TOKEN>"
       }
     },
     "signupUrl": "https://sentry.io/settings/account/api/auth-tokens/"
@@ -186,10 +193,9 @@
     "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
     "category": "开发工具",
     "config": {
-      "command": "npx",
+      "command": "uvx",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-git"
+        "mcp-server-git"
       ]
     }
   },
@@ -197,13 +203,13 @@
     "id": "docker",
     "name": "Docker",
     "description": "管理 Docker 容器、镜像和卷。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/docker",
+    "homepage": "https://github.com/sondt2709/docker-mcp",
     "category": "基础设施",
     "config": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-docker"
+        "docker-mcp"
       ]
     }
   },
@@ -211,13 +217,13 @@
     "id": "kubernetes",
     "name": "Kubernetes",
     "description": "管理 Kubernetes 集群资源。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/kubernetes",
+    "homepage": "https://github.com/containers/kubernetes-mcp-server",
     "category": "基础设施",
     "config": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-kubernetes"
+        "kubernetes-mcp-server@latest"
       ]
     }
   },
@@ -306,36 +312,24 @@
   {
     "id": "notion",
     "name": "Notion",
-    "description": "访问和管理 Notion 页面与数据库。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/notion",
+    "description": "通过 Notion 官方远程 MCP 访问和管理 Notion 页面与数据库。",
+    "homepage": "https://developers.notion.com/docs/mcp",
     "category": "生产力工具",
     "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-notion"
-      ],
-      "env": {
-        "NOTION_API_KEY": "<YOUR_API_KEY>"
-      }
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
     },
     "signupUrl": "https://www.notion.so/profile/integrations"
   },
   {
     "id": "linear",
     "name": "Linear",
-    "description": "Linear 项目管理与问题追踪。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/linear",
+    "description": "通过 Linear 官方远程 MCP 进行项目管理与问题追踪。",
+    "homepage": "https://linear.app/docs/mcp",
     "category": "生产力工具",
     "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-linear"
-      ],
-      "env": {
-        "LINEAR_API_KEY": "<YOUR_API_KEY>"
-      }
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp"
     },
     "signupUrl": "https://linear.app/settings/api"
   },
@@ -411,10 +405,9 @@
     "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
     "category": "其他",
     "config": {
-      "command": "npx",
+      "command": "uvx",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-time"
+        "mcp-server-time"
       ]
     }
   },

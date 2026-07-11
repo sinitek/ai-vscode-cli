@@ -139,7 +139,7 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
-- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；OpenCode 配置中心只维护 `~/.opencode/config.json`，不再维护 `~/.opencode/.env` 或第二配置文件；旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
+- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
 - 管理配置档案（config profiles）
 - 管理备份、导出
 - 扫描和安装 Skills

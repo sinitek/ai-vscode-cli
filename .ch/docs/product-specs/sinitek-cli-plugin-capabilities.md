@@ -58,7 +58,7 @@
 ### 3.3 执行模式
 
 - Codex / Claude：支持交互式会话续接
-- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动，配置中心只维护 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；模型区仅显示主模型与小模型两个紧凑 select 和错误区域，候选只来自 active config 的 `provider.<id>.models` 且没有模型管理入口；下拉无可见 label、思考力度说明或“跟随配置”选项，正常 option 仅显示模型 `name`（缺失时回退 model id）；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
+- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动。OpenCode 明确分成两个配置文件：模型/Provider 配置中心只维护 `~/.opencode/config.json`，全局 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不再要求或生成 `~/.opencode/.env`；模型区仅显示主模型与小模型两个紧凑 select 和错误区域，候选只来自 active config 的 `provider.<id>.models` 且没有模型管理入口；下拉无可见 label、思考力度说明或“跟随配置”选项，正常 option 仅显示模型 `name`（缺失时回退 model id）；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
 - OpenCode 所有任务路径默认注入官方 `--auto`，自动批准仍处于 `ask` 的权限请求；默认 `external_directory: ask` 因而支持跨工作目录读写。插件不把 runtime permission 强制覆盖为 `allow`，用户配置、agent 配置及 OpenCode 默认规则中的显式 `deny` 仍优先，包括 `.env` 等受显式拒绝规则保护的文件。
 - AI 对话面板支持 `coding / lobster` 两种顶层交互模式；旧配置中的 `plan` 会按 `coding` 兼容归一化
 - OpenCode 对话面板同样提供 coding / Loop 两种模式。Loop 复用既有主任务、子任务、多轮复核、群聊和 active config effective primary 运行链路，每次主任务或子任务请求仍通过非交互式 one-shot `opencode run --auto` 执行。
@@ -151,7 +151,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 当前配置查看与应用
 - 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、OpenCode 的 `config.json`、Codex 的 `config.toml` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件。Gemini 配置卡片已移出当前支持范围。
 - Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式。可视化模式覆盖 Claude Code 官方 `~/.claude/settings.json` 的常用核心字段：`model`、`fallbackModel`、`availableModels`、`effortLevel`、`language`、`outputStyle`、`autoUpdatesChannel`、`cleanupPeriodDays`、`alwaysThinkingEnabled`、`includeCoAuthoredBy`、`permissions.defaultMode/allow/ask/deny`，以及 `env` 中的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`。第三方网关或云平台可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。可视化序列化基于原始 JSON 定向合并，保留未展示字段、额外环境变量、hooks、权限扩展和企业策略；无效 JSON 不覆盖最后一次有效可视化状态。
-- OpenCode 配置页为单文件保存模型，只维护 `~/.opencode/config.json`，不提供多个保存按钮，不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 双模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model`、两个 `provider.myAPI.models` 定义、主模型 `options+variants`、小模型固定 `options` 与可选 `variants`、禁用的 `mcp` 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
+- OpenCode 配置页为模型/Provider 单文件保存，只维护 `~/.opencode/config.json`；OpenCode 全局 MCP 另由 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。配置中心不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 双模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model`、两个 `provider.myAPI.models` 定义、主模型 `options+variants`、小模型固定 `options` 与可选 `variants`，不再内嵌 MCP 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
 - 技能管理
@@ -189,7 +189,8 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 - `~/.claude/*`
 - `~/.codex/*`
-- `~/.opencode/config.json`
+- `~/.opencode/config.json`：OpenCode 模型/Provider 配置中心
+- `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`：OpenCode 官方全局 MCP 配置，插件只维护顶层 `mcp`
 - OpenCode 配置中心不再读写 `~/.opencode/.env`；历史多文件配置只作为迁移参考
 - 旧 `~/.gemini/*` 仅作历史迁移参考；当前配置中心不再作为 Gemini 配置管理入口
 

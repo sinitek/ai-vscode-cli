@@ -24,7 +24,6 @@ type OpenCodeExample = {
       models: Record<string, ExampleModel>;
     }
   >;
-  mcp: Record<string, unknown>;
 };
 
 function loadVisualParser(source: string): (content: string) => any {
@@ -69,7 +68,7 @@ test("OpenCode config page exposes a parseable myAPI dual-model example", async 
   assert.equal(smallModel.options.reasoningEffort, "low");
   assert.equal(smallModel.variants.low.reasoningEffort, "low");
   assert.equal(smallModel.variants.high.reasoningEffort, "high");
-  assert.ok(example.mcp.example);
+  assert.equal(Object.prototype.hasOwnProperty.call(example, "mcp"), false);
   assert.doesNotMatch(exampleText, /PackyAPI/i);
   assert.doesNotMatch(exampleText, /\.env/i);
 

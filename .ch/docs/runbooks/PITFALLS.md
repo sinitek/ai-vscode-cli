@@ -401,6 +401,39 @@
 - `src/config/mcpService.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
+## npx 缓存损坏会把可用 MCP 误报为健康检查超时
+
+- 状态：已确认，需在 MCP 排障时优先排除
+- 首次发现：2026-07-11
+- 适用范围：Claude/Codex/OpenCode 通过 `npx -y` 启动的 stdio MCP，尤其是 Context7 等频繁更新的 npm 包
+
+### 现象
+- `claude mcp list` 的健康检查出现单个 MCP 连接失败或超时。
+- 直接执行对应 `npx -y <package>` 可能报 `ENOTEMPTY: directory not empty, rename .../.<package>-*`。
+- MCP 包本身在 npm 或官方 Registry 中仍然存在，且删除损坏缓存后健康检查恢复。
+
+### 触发条件
+- `~/.npm/_npx/<hash>/node_modules/<scope>/<package>` 下同时存在旧包目录和 npm 临时 rename 目录。
+- 上一次 `npx` 安装或更新被中断，留下半更新状态。
+
+### 根因
+- npm 在 `_npx` 缓存目录中更新包时需要 rename 临时目录；残留目录导致 rename 失败。
+- 健康检查只看到 MCP 进程未按时完成初始化，容易误判为 MCP 服务或配置已经失效。
+
+### 长期规避
+- 对 `npx -y` MCP 的单点失败先运行对应 `npx -y <package> --help` 或等价启动探针。
+- 如果看到 `ENOTEMPTY` / `rename`，删除对应 `~/.npm/_npx/<hash>` 损坏缓存目录后复测。
+- 只有 npm/PyPI/官方 Registry 或供应商官方文档确认包名/端点失效时，才从全局配置或市场清单删除。
+
+### 验证方式
+- 清理损坏 `_npx` 目录后重新运行 `claude mcp list`，确认失败项变为 `Connected`。
+- 对仓库内 MCP 市场包名定期运行 npm/PyPI/官方 Registry 可用性检查，避免重新引入已下线包名。
+
+### 关联资料
+- `media/mcp_marketplace.json`
+- `src/config/mcpHealth.ts`
+- `src/config/mcpService.ts`
+
 ## TypeScript 构建不会自动删除已移除源码对应的 dist 产物
 
 - 状态：已规避

@@ -78,3 +78,15 @@ test("opens the configuration list initially when the config page starts narrow"
   assert.match(managerLayout, /event\.key === "Escape" && closeMobileNavigation\(\)/);
   assert.match(managerLayout, /onClick: closeMobileNavigation/);
 });
+
+test("MCP install and uninstall refresh health in the background", () => {
+  const source = loadUiSource();
+  const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
+  const mcpActions = extractSection(editorPanel, "refreshMcpHealthInBackground =", "V0 =");
+
+  assert.match(mcpActions, /refreshMcpHealthInBackground = c\.useCallback/);
+  assert.match(mcpActions, /setTimeout\(\(\) => \{\s+void checkMcpHealth\(W, H\);/);
+  assert.doesNotMatch(mcpActions, /await checkMcpHealth/);
+  assert.match(mcpActions, /Kt\.success\(`已安装 MCP: \$\{W\.name\}`\);\s+refreshMcpHealthInBackground\(t, t === "codex"\);/);
+  assert.match(mcpActions, /Kt\.success\(`已卸载 MCP: \$\{W\.name\}`\);\s+refreshMcpHealthInBackground\(t, t === "codex"\);/);
+});

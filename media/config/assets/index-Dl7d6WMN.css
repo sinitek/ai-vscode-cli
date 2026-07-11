@@ -404,10 +404,14 @@ body,
   box-shadow: var(--clay-shadow) !important;
 }
 
+.config-list {
+  font-size: 80%;
+}
+
 .config-list .ant-list-item {
-  min-height: 52px;
-  margin: 3px 0;
-  padding: 4px 5px !important;
+  min-height: 42px;
+  margin: 2px 0;
+  padding: 3px 4px !important;
   border: 1px solid transparent !important;
   border-radius: var(--clay-radius-card) !important;
   background: var(--clay-canvas) !important;
@@ -455,12 +459,12 @@ body,
 }
 
 .config-list .ant-btn-text {
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 7px;
   color: var(--clay-text-secondary);
 }
 
@@ -498,13 +502,13 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border: 1px solid var(--clay-text);
   border-radius: 50%;
   background: var(--clay-matcha);
   color: var(--clay-text) !important;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1;
 }

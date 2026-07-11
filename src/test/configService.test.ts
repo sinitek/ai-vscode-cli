@@ -27,13 +27,14 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
-test("OpenCode runtime config writes only ~/.opencode/config.json", async () => {
+test("OpenCode runtime model config writes only ~/.opencode/config.json", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
     const paths = configService.getOpenCodeRuntimePaths();
 
     assert.equal(paths.config, path.join(homeDir, ".opencode", "config.json"));
     assert.equal(Object.prototype.hasOwnProperty.call(paths, "env"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(paths, "legacyConfig"), false);
 
     await configService.writeOpenCodeConfig("{\n  \"model\": \"myAPI/claude-sonnet-5\"\n}\n", "IGNORED=1\n");
 
@@ -96,17 +97,17 @@ test("OpenCode saved profiles omit envContent and keep myAPI config content", as
   });
 });
 
-test("OpenCode current config falls back to legacy opencode.json but rewrites config.json only", async () => {
+test("OpenCode current model config ignores the separate global MCP opencode.json", async () => {
   await withTempHome(async (homeDir) => {
     await fs.mkdir(path.join(homeDir, ".config", "opencode"), { recursive: true });
     await fs.writeFile(
       path.join(homeDir, ".config", "opencode", "opencode.json"),
-      "{\n  \"model\": \"legacy/model\"\n}\n",
+      "{\n  \"mcp\": {\n    \"pencil\": {\n      \"enabled\": true\n    }\n  }\n}\n",
     );
 
     const configService = loadConfigService();
     assert.deepEqual(await configService.getCurrentConfig("opencode"), {
-      content: "{\n  \"model\": \"legacy/model\"\n}\n",
+      content: "{}",
     });
 
     await configService.applyConfig("opencode", {
@@ -119,22 +120,24 @@ test("OpenCode current config falls back to legacy opencode.json but rewrites co
     );
     assert.equal(
       await fs.readFile(path.join(homeDir, ".config", "opencode", "opencode.json"), "utf-8"),
-      "{\n  \"model\": \"legacy/model\"\n}\n",
+      "{\n  \"mcp\": {\n    \"pencil\": {\n      \"enabled\": true\n    }\n  }\n}\n",
     );
   });
 });
 
-test("OpenCode config UI exposes only the config.json editor entry", async () => {
+test("OpenCode config UI exposes separate model and MCP config paths", async () => {
   const uiScript = await fs.readFile(
     path.join(process.cwd(), "media", "config", "assets", "config-app-ui.js"),
     "utf-8",
   );
 
-  assert.match(uiScript, /OpenCode config\.json/);
+  assert.match(uiScript, /OpenCode 模型配置 config\.json/);
   assert.match(uiScript, /~\/\.opencode\/config\.json/);
-  assert.match(uiScript, /OpenAI-compatible 网关范例/);
-  assert.match(uiScript, /npm 按 API 协议选择，不按模型名称选择/);
-  assert.match(uiScript, /myAPI\/gateway-chat-model/);
+  assert.match(uiScript, /\$\{XDG_CONFIG_HOME:-~\/\.config\}\/opencode\/opencode\.json/);
+  assert.match(uiScript, /模型\/Provider 配置/);
+  assert.match(uiScript, /全局 MCP 配置/);
+  assert.match(uiScript, /myAPI 双模型与思考力度范例/);
+  assert.match(uiScript, /myAPI\/main-chat-model/);
   assert.doesNotMatch(uiScript, /opencode-env|插件辅助档案|请输入 \.env 配置/);
   assert.doesNotMatch(uiScript, /PackyAPI|packyapi|PACKYAPI/);
 
@@ -146,19 +149,20 @@ test("OpenCode config UI exposes only the config.json editor entry", async () =>
 
   assert.equal(sampleText, JSON.stringify(sample, null, 2));
   assert.equal(sample.$schema, "https://opencode.ai/config.json");
-  assert.equal(sample.model, "myAPI/gateway-chat-model");
-  assert.equal(sample.small_model, "myAPI/gateway-small-model");
+  assert.equal(sample.model, "myAPI/main-chat-model");
+  assert.equal(sample.small_model, "myAPI/small-task-model");
   assert.equal(sample.provider.myAPI.npm, "@ai-sdk/openai-compatible");
   assert.equal(sample.provider.myAPI.name, "myAPI");
-  assert.equal(sample.provider.myAPI.options.baseURL, "https://api.myapi.example/v1");
-  assert.equal(sample.provider.myAPI.options.apiKey, "<你的 api key>");
-  assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "gateway-chat-model"));
-  assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "gateway-small-model"));
-  assert.deepEqual(sample.mcp, {});
+  assert.equal(sample.provider.myAPI.options.baseURL, "{env:MY_API_BASE_URL}");
+  assert.equal(sample.provider.myAPI.options.apiKey, "{env:MY_API_KEY}");
+  assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "main-chat-model"));
+  assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "small-task-model"));
+  assert.equal(Object.prototype.hasOwnProperty.call(sample, "mcp"), false);
 
   const configService = loadConfigService();
   const validation = configService.validateOpenCodeConfigForRun(sampleText, undefined, {});
   assert.equal(validation.ok, false);
-  assert.ok(validation.issues.some((issue) => issue.code === "placeholder-model"));
-  assert.ok(validation.issues.some((issue) => issue.code === "placeholder-base-url"));
+  assert.ok(validation.issues.some((issue) => issue.code === "missing-env"));
+  assert.equal(validation.issues.some((issue) => issue.code === "placeholder-model"), false);
+  assert.equal(validation.issues.some((issue) => issue.code === "placeholder-base-url"), false);
 });

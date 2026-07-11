@@ -3425,16 +3425,6 @@ requires_openai_auth = true`,
         }
       }
     }
-  },
-  "mcp": {
-    "example": {
-      "type": "local",
-      "command": [
-        "my-mcp-server",
-        "--stdio"
-      ],
-      "enabled": false
-    }
   }
 }`,
 	    },
@@ -3446,7 +3436,7 @@ const Nk = {
       content: ps.claude.settings,
     },
 	    "opencode-settings": {
-	      title: "OpenCode config.json（myAPI 双模型与思考力度范例）",
+	      title: "OpenCode 模型配置 config.json（myAPI 双模型与思考力度范例）",
 	      content: ps.opencode.settings,
 	    },
 	    "codex-config": { title: "Codex config.toml", content: ps.codex.config },
@@ -3564,6 +3554,12 @@ const ConfigEditorPanel = () => {
         H?.configContent !== void 0 && v(H.configContent);
         H?.authContent !== void 0 && h(H.authContent);
       }, []),
+      refreshMcpHealthInBackground = c.useCallback((W, H = !1) => {
+        if (!W) return;
+        setTimeout(() => {
+          void checkMcpHealth(W, H);
+        }, 0);
+      }, [checkMcpHealth]),
       installMcpItem = async (W, H = {}) => {
         try {
           if (!t) return;
@@ -3576,8 +3572,8 @@ const ConfigEditorPanel = () => {
           } catch (k) {
             console.error("刷新 MCP 配置失败:", k);
           }
-          await checkMcpHealth(t, t === "codex");
           Kt.success(`已安装 MCP: ${W.name}`);
+          refreshMcpHealthInBackground(t, t === "codex");
           return !0;
         } catch (H) {
           console.error("安装 MCP 失败:", H), Kt.error("安装 MCP 失败");
@@ -3604,8 +3600,8 @@ const ConfigEditorPanel = () => {
           } catch (H) {
             console.error("刷新 MCP 配置失败:", H);
           }
-          await checkMcpHealth(t, t === "codex");
           Kt.success(`已卸载 MCP: ${W.name}`);
+          refreshMcpHealthInBackground(t, t === "codex");
         } catch (H) {
           console.error("卸载 MCP 失败:", H), Kt.error("卸载 MCP 失败");
         } finally {
@@ -5384,7 +5380,8 @@ const ConfigEditorPanel = () => {
                             color: "var(--text-color-secondary)",
                             fontSize: "12px",
                           },
-                          children: "配置文件路径: ~/.opencode/config.json",
+                          children:
+                            "模型/Provider 配置: ~/.opencode/config.json；全局 MCP 配置: ${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json；不使用 ~/.opencode/.env",
                         }),
                         openCodeVisualError
                           ? be.jsx("div", {
