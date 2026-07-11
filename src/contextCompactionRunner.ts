@@ -1,4 +1,12 @@
-import { buildProcessLabel, resolveCliCommand, runCliStream, type RunProcess } from "./cli/commandRunner";
+import {
+  buildOpenCodeRunFailureMessage,
+  buildProcessLabel,
+  parseOpenCodeSessionId,
+  parseOpenCodeRunOutput,
+  resolveCliCommand,
+  runCliStream,
+  type RunProcess,
+} from "./cli/commandRunner";
 import { GEMINI_NATIVE_COMPACT_PROMPT } from "./cli/geminiCompaction";
 import {
   finalizeGeminiStreamJsonRemainder,
@@ -28,6 +36,30 @@ type GeminiStreamJsonHandlers = {
   onSessionId?: (sessionId: string) => void;
   onPlainText?: (text: string) => void;
 };
+
+type OpenCodeNativeCompactResult = {
+  compacted: boolean;
+  sessionId: string;
+  finalText: string | null;
+};
+
+type OpenCodeRuntimeOptions = {
+  openCodeVariant?: string | null;
+  model?: string | null;
+  openCodeSmallModel?: string | null;
+  openCodeConfigContent?: string | null;
+  envOverrides?: Record<string, string>;
+};
+
+const OPENCODE_NATIVE_COMPACT_COMMAND = "/compact";
+
+function buildOpenCodeCompactSuccessMessage(sessionId: string): string {
+  return `OpenCode context compaction completed for current session: ${sessionId}`;
+}
+
+function buildOpenCodeCompactFailureMessage(message: string): string {
+  return `OpenCode context compaction failed: ${message}`;
+}
 
 export function processGeminiStreamJsonChunk(
   state: GeminiStreamJsonState,
@@ -302,6 +334,127 @@ export function createDefaultGeminiNativeContextCompactionDeps(
   };
 }
 
+type OpenCodeNativeContextCompactionOptions = {
+  sessionId: string;
+  tabId?: string | null;
+  selectedModel: string | null;
+  cwd: string | null;
+};
+
+async function runOpenCodeNativeContextCompactionWithDeps(
+  deps: ContextCompactionRunDeps,
+  options: OpenCodeNativeContextCompactionOptions
+): Promise<OpenCodeNativeCompactResult> {
+  const runtimeOptions = await deps.prepareOpenCodeRunProfile?.(
+    options.selectedModel,
+    options.cwd ?? undefined,
+    "opencode"
+  ) ?? { model: options.selectedModel };
+  const runStream = deps.runCliStream ?? runCliStream;
+  const processLabelBuilder = deps.buildProcessLabel ?? buildProcessLabel;
+  const parseOutput = deps.parseOpenCodeRunOutput ?? parseOpenCodeRunOutput;
+  const buildFailureMessage = deps.buildOpenCodeRunFailureMessage ?? buildOpenCodeRunFailureMessage;
+  let rawStdout = "";
+  let rawStderr = "";
+
+  const attemptResult = await new Promise<
+    { type: "exit"; code: number | null }
+    | { type: "error"; error: Error }
+  >((resolve) => {
+    let settled = false;
+    const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
+
+    const process = runStream(
+      "opencode",
+      OPENCODE_NATIVE_COMPACT_COMMAND,
+      {
+        onStdout: (chunk: string) => {
+          rawStdout += chunk;
+          deps.sendRawStreamDelta(chunk, { stream: "stdout" });
+        },
+        onStderr: (chunk: string) => {
+          rawStderr += chunk;
+          deps.sendRawStreamDelta(chunk, { stream: "stderr" });
+          if (chunk.trim()) {
+            deps.appendTraceMessage(chunk.trimEnd());
+          }
+        },
+        onExit: (code: number | null) => settle({ type: "exit", code }),
+        onError: (error: Error) => settle({ type: "error", error }),
+      },
+      {
+        cwd: options.cwd ?? undefined,
+        sessionId: options.sessionId,
+        openCodeVariant: runtimeOptions.openCodeVariant,
+        model: runtimeOptions.model ?? options.selectedModel,
+        openCodeSmallModel: runtimeOptions.openCodeSmallModel,
+        openCodeConfigContent: runtimeOptions.openCodeConfigContent,
+        envOverrides: runtimeOptions.envOverrides,
+        processLabel: processLabelBuilder("opencode", options.sessionId),
+      }
+    );
+
+    deps.setActiveProcess(process);
+  });
+
+  deps.setActiveProcess(undefined);
+  const output = parseOutput(rawStdout, rawStderr);
+
+  if (attemptResult.type === "error") {
+    throw new Error(buildOpenCodeCompactFailureMessage(attemptResult.error.message || String(attemptResult.error)));
+  }
+
+  if (attemptResult.code !== 0) {
+    const failureMessage = buildFailureMessage(
+      output,
+      `OpenCode /compact exited with code ${attemptResult.code ?? 1}.`,
+      {
+        missingFinalOutputMessage: "OpenCode /compact exited without returning a final result.",
+        missingFinalOutputWithStatusMessage: (statusText) => `OpenCode /compact exited without returning a final result. Last status: ${statusText}`,
+      }
+    );
+    throw new Error(buildOpenCodeCompactFailureMessage(failureMessage));
+  }
+
+  if (!output.finalText) {
+    const failureMessage = buildFailureMessage(
+      output,
+      "OpenCode /compact completed without returning a final result.",
+      {
+        missingFinalOutputMessage: "OpenCode /compact completed without returning a final result. Verify that this OpenCode CLI version supports slash commands in `opencode run --auto --format json`.",
+        missingFinalOutputWithStatusMessage: (statusText) => `OpenCode /compact completed without returning a final result. Last status: ${statusText}`,
+      }
+    );
+    throw new Error(buildOpenCodeCompactFailureMessage(failureMessage));
+  }
+
+  if (isOpenCodeNativeCompactUnsupportedText(output.finalText)) {
+    throw new Error(buildOpenCodeCompactFailureMessage(
+      "This OpenCode CLI did not accept the native /compact command in `opencode run --auto --format json`. Update OpenCode or compact from the OpenCode TUI."
+    ));
+  }
+
+  return {
+    compacted: true,
+    sessionId: parseOpenCodeSessionId(rawStdout) ?? options.sessionId,
+    finalText: output.finalText,
+  };
+}
+
+function isOpenCodeNativeCompactUnsupportedText(text: string | null): boolean {
+  if (!text) {
+    return false;
+  }
+  return /(?:unknown|unrecognized|unsupported|invalid)\s+(?:slash\s+)?command|not\s+(?:a\s+)?command/iu.test(text)
+    && /\/(?:compact|summarize)\b/iu.test(text);
+}
+
 export type ContextCompactionOptions = {
   silent?: boolean;
   cli?: CliName;
@@ -384,9 +537,18 @@ export type ContextCompactionRunDeps = {
   updateProcessTitle: (cli: CliName, sessionId: string) => void;
   appendTraceMessage: (content: string) => void;
   prepareGeminiRunProfile?: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
+  prepareOpenCodeRunProfile?: (
+    selectedModel: string | null,
+    cwd?: string,
+    cli?: CliName
+  ) => Promise<OpenCodeRuntimeOptions> | OpenCodeRuntimeOptions;
   setActiveProcess: (process: RunProcess | undefined) => void;
   appendAssistantChunk: (chunk: string) => void;
   adoptSessionId: (cli: CliName, sessionId: string, tabId: string | null) => void;
+  runCliStream?: typeof runCliStream;
+  buildProcessLabel?: typeof buildProcessLabel;
+  parseOpenCodeRunOutput?: typeof parseOpenCodeRunOutput;
+  buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
 export async function runContextCompactionWithDeps(
@@ -678,23 +840,30 @@ export async function runContextCompactionWithDeps(
     }
 
     if (cli === "opencode") {
-      if (!silent) {
-        deps.appendSystemMessage(t("compact.openCodeGenericUnavailable"));
-      }
-      void logInfo("context-compact-opencode-generic-unavailable", {
+      const result = await runOpenCodeNativeContextCompactionWithDeps(deps, {
+        sessionId,
+        tabId,
+        selectedModel,
+        cwd: cwd ?? null,
+      });
+      deps.adoptSessionId(cli, result.sessionId, tabId);
+      deps.appendSystemMessage(buildOpenCodeCompactSuccessMessage(result.sessionId));
+      void logInfo("context-compact-opencode-native-complete", {
         cli,
         sessionId,
-        silent,
+        resolvedSessionId: result.sessionId,
+        compacted: result.compacted,
       });
       cleanupAfterRun("end");
-      return false;
+      return true;
     }
 
     cleanupAfterRun("end");
     return true;
   } catch (error) {
     if (!silent) {
-      deps.appendSystemMessage(t("compact.failException"));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      deps.appendSystemMessage(cli === "opencode" && errorMessage ? errorMessage : t("compact.failException"));
     }
     void logError("context-compact-command-failed", {
       cli,

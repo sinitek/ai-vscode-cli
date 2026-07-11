@@ -27,6 +27,150 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
+test("Codex runtime config uses ~/.codex/config.toml and ~/.codex/.env", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const paths = configService.getCodexRuntimePaths();
+
+    assert.equal(paths.config, path.join(homeDir, ".codex", "config.toml"));
+    assert.equal(paths.env, path.join(homeDir, ".codex", ".env"));
+
+    assert.deepEqual(await configService.getCurrentConfig("codex"), {
+      content: "",
+      envContent: "",
+      configContent: "",
+      authContent: "{}",
+    });
+
+    await assert.rejects(
+      () => fs.stat(path.join(homeDir, ".codex", ".env")),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+    );
+
+    await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), "model = \"gpt-5\"\n");
+    await fs.writeFile(path.join(homeDir, ".codex", ".env"), "OPENAI_API_KEY=from-env\n");
+
+    assert.deepEqual(await configService.getCurrentConfig("codex"), {
+      content: "model = \"gpt-5\"\n",
+      envContent: "OPENAI_API_KEY=from-env\n",
+      configContent: "model = \"gpt-5\"\n",
+      authContent: "{}",
+    });
+  });
+});
+
+test("Codex applyConfig writes TOML content and envContent", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+
+    await configService.applyConfig("codex", {
+      content: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n",
+      envContent: "OPENAI_API_KEY=from-profile\n",
+    });
+
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf-8"),
+      "model = \"gpt-5\"\nmodel_provider = \"openai\"\n",
+    );
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"),
+      "OPENAI_API_KEY=from-profile\n",
+    );
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", "auth.json"), "utf-8"),
+      "{}",
+    );
+
+    await configService.applyConfig("codex", {
+      content: "model = \"gpt-5-mini\"\n",
+      envContent: "",
+    });
+
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf-8"),
+      "model = \"gpt-5-mini\"\n",
+    );
+    assert.equal(await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"), "");
+  });
+});
+
+test("Codex backup writes config, env, and auth files", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+
+    await fs.mkdir(path.join(homeDir, ".codex"), { recursive: true });
+    await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), "model = \"gpt-5\"\n");
+    await fs.writeFile(path.join(homeDir, ".codex", ".env"), "OPENAI_API_KEY=from-env\n");
+    await fs.writeFile(path.join(homeDir, ".codex", "auth.json"), "{\n  \"token\": \"from-auth\"\n}\n");
+
+    const backups = await configService.backupCodexConfig();
+    assert.equal(backups.length, 3);
+
+    const configBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_config_"));
+    const envBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_env_"));
+    const authBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_auth_"));
+
+    assert.ok(configBackupPath, "config.toml backup should be returned");
+    assert.ok(envBackupPath, ".env backup should be returned");
+    assert.ok(authBackupPath, "auth.json backup should be returned");
+    assert.match(path.basename(configBackupPath), /^codex_config_.*\.toml$/);
+    assert.match(path.basename(envBackupPath), /^codex_env_.*\.env$/);
+    assert.match(path.basename(authBackupPath), /^codex_auth_.*\.json$/);
+    assert.equal(await fs.readFile(configBackupPath, "utf-8"), "model = \"gpt-5\"\n");
+    assert.equal(await fs.readFile(envBackupPath, "utf-8"), "OPENAI_API_KEY=from-env\n");
+    assert.equal(await fs.readFile(authBackupPath, "utf-8"), "{\n  \"token\": \"from-auth\"\n}\n");
+  });
+});
+
+test("Codex backup writes an empty env backup when ~/.codex/.env is missing", async () => {
+  await withTempHome(async () => {
+    const configService = loadConfigService();
+
+    await configService.writeCodexConfig("model = \"gpt-5\"\n", "{}");
+
+    const backups = await configService.backupCodexConfig();
+    const envBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_env_"));
+
+    assert.ok(envBackupPath, ".env backup should be returned");
+    assert.equal(await fs.readFile(envBackupPath, "utf-8"), "");
+  });
+});
+
+test("Codex saved profiles preserve content and envContent", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const config = {
+      id: "codex-toml-env",
+      name: "Codex TOML Env",
+      platform: "codex" as const,
+      content: "model = \"gpt-5\"\n",
+      envContent: "OPENAI_API_KEY=from-profile\n",
+      codexSkills: [],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    await configService.saveConfig(config);
+    const savedPath = path.join(homeDir, ".codex", "__config", "codex-toml-env.json");
+    const saved = JSON.parse(await fs.readFile(savedPath, "utf-8"));
+
+    assert.equal(saved.platform, "codex");
+    assert.equal(saved.content, "model = \"gpt-5\"\n");
+    assert.equal(saved.configContent, "model = \"gpt-5\"\n");
+    assert.equal(saved.envContent, "OPENAI_API_KEY=from-profile\n");
+    assert.equal(saved.authContent, "{}");
+
+    const loaded = await configService.getConfigById("codex", "codex-toml-env");
+    assert.equal(loaded?.content, "model = \"gpt-5\"\n");
+    assert.equal(loaded?.configContent, "model = \"gpt-5\"\n");
+    assert.equal(loaded?.envContent, "OPENAI_API_KEY=from-profile\n");
+    assert.equal(loaded?.authContent, "{}");
+
+    const list = await configService.getConfigList("codex");
+    assert.equal(list[0]?.envContent, "OPENAI_API_KEY=from-profile\n");
+  });
+});
+
 test("OpenCode runtime model config writes only ~/.opencode/config.json", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
@@ -138,7 +282,7 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   assert.match(uiScript, /全局 MCP 配置/);
   assert.match(uiScript, /myAPI 双模型与思考力度范例/);
   assert.match(uiScript, /myAPI\/main-chat-model/);
-  assert.doesNotMatch(uiScript, /opencode-env|插件辅助档案|请输入 \.env 配置/);
+  assert.doesNotMatch(uiScript, /opencode-env|插件辅助档案/);
   assert.doesNotMatch(uiScript, /PackyAPI|packyapi|PACKYAPI/);
 
   const sampleMatch = uiScript.match(/opencode:\s*\{\s*settings:\s*`([\s\S]*?)`,\s*\},/);
@@ -148,6 +292,7 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   const sample = JSON.parse(sampleText);
 
   assert.equal(sampleText, JSON.stringify(sample, null, 2));
+  assert.doesNotMatch(sampleText, /\.env/i);
   assert.equal(sample.$schema, "https://opencode.ai/config.json");
   assert.equal(sample.model, "myAPI/main-chat-model");
   assert.equal(sample.small_model, "myAPI/small-task-model");

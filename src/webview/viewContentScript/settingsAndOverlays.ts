@@ -48,6 +48,23 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         vscode.postMessage({ type: "openLobsterDebateChat", taskId });
       }
 
+      function syncCommonCommandOptions() {
+        if (!elements.commonCommandButton) {
+          return;
+        }
+        const supported = Boolean(state.interactive && state.interactive.supported);
+        const visible = state.currentCli === "opencode"
+          || (supported && (state.currentCli === "claude" || state.currentCli === "codex"));
+        const disabled = !visible || state.isRunning;
+        elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
+        elements.commonCommandButton.disabled = disabled;
+        elements.commonCommandButton.setAttribute("aria-disabled", String(disabled));
+        elements.commonCommandButton.tabIndex = disabled ? -1 : 0;
+        if (elements.commandCompact) {
+          elements.commandCompact.disabled = disabled;
+        }
+      }
+
       if (elements.toolSettingsGlobalTab) {
         elements.toolSettingsGlobalTab.addEventListener("click", () => setToolSettingsTab("global"));
       }
@@ -370,6 +387,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       elements.commonCommandButton.addEventListener("click", () => {
+        if (elements.commonCommandButton.getAttribute("aria-disabled") === "true") {
+          return;
+        }
         openCommonCommands();
       });
 

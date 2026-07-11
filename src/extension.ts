@@ -7772,6 +7772,25 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     sendPanelMessage: (message) => sendPanelMessage(message),
     updateProcessTitle,
     appendTraceMessage,
+    prepareOpenCodeRunProfile: async (selectedModel, _cwd, cli) => {
+      if (cli !== "opencode") {
+        return { model: selectedModel };
+      }
+      const configId = getActiveConfigIdForCli("opencode");
+      const runtimePreparation = await prepareOpenCodeRuntime(configId);
+      return {
+        openCodeVariant: getOpenCodeVariantForRun(
+          "opencode",
+          runtimePreparation.primaryModel,
+          configId,
+          runtimePreparation.configContent
+        ),
+        model: runtimePreparation.primaryModel,
+        openCodeSmallModel: runtimePreparation.smallModel,
+        openCodeConfigContent: runtimePreparation.configContent,
+        envOverrides: runtimePreparation.envOverrides,
+      };
+    },
     setActiveProcess: (process) => {
       activeProcess = process;
     },

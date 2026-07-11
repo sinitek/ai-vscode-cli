@@ -316,7 +316,7 @@ export const LOBSTER_DEBATE_PANEL_STYLES = `      :root {
       }
       .message.user-message .bubble {
         width: min(85%, 760px);
-        border-color: var(--vscode-focusBorder);
+        border-color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, var(--vscode-focusBorder)));
         background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background));
       }
       .bubble {

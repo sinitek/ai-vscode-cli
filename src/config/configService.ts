@@ -68,6 +68,7 @@ const CONFIG_PATHS = {
   },
   codex: {
     config: path.join(os.homedir(), ".codex", "config.toml"),
+    env: path.join(os.homedir(), ".codex", ".env"),
     auth: path.join(os.homedir(), ".codex", "auth.json"),
     configDir: path.join(os.homedir(), ".codex", CONFIG_DIR_NAME),
   },
@@ -107,6 +108,32 @@ async function ensureFile(filePath: string, defaultContent: string): Promise<voi
   } catch {
     await ensureDir(path.dirname(filePath));
     await fs.writeFile(filePath, defaultContent, "utf-8");
+  }
+}
+
+async function readFileOrDefault(filePath: string, defaultContent: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return defaultContent;
+    }
+    throw error;
+  }
+}
+
+async function writeFileAtomically(filePath: string, content: string): Promise<void> {
+  await ensureDir(path.dirname(filePath));
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  try {
+    await fs.writeFile(tempPath, content, "utf-8");
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
   }
 }
 
@@ -167,6 +194,16 @@ export function getOpenCodeRuntimePaths(): {
   };
 }
 
+export function getCodexRuntimePaths(): {
+  config: string;
+  env: string;
+} {
+  return {
+    config: CONFIG_PATHS.codex.config,
+    env: CONFIG_PATHS.codex.env,
+  };
+}
+
 export async function readClaudeConfig(): Promise<string> {
   await ensureFile(CONFIG_PATHS.claude.settings, "{}");
   return fs.readFile(CONFIG_PATHS.claude.settings, "utf-8");
@@ -177,14 +214,15 @@ export async function readClaudeMcpConfig(): Promise<string> {
   return fs.readFile(CONFIG_PATHS.claude.mcp, "utf-8");
 }
 
-export async function readCodexConfig(): Promise<{ config: string; auth: string }> {
+export async function readCodexConfig(): Promise<{ config: string; env: string; auth: string }> {
   await ensureFile(CONFIG_PATHS.codex.config, "");
   await ensureFile(CONFIG_PATHS.codex.auth, "{}");
-  const [config, auth] = await Promise.all([
+  const [config, env, auth] = await Promise.all([
     fs.readFile(CONFIG_PATHS.codex.config, "utf-8"),
+    readFileOrDefault(CONFIG_PATHS.codex.env, ""),
     fs.readFile(CONFIG_PATHS.codex.auth, "utf-8"),
   ]);
-  return { config, auth };
+  return { config, env, auth };
 }
 
 export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
@@ -227,12 +265,16 @@ export async function writeClaudeMcpConfig(content: string): Promise<void> {
   await fs.writeFile(CONFIG_PATHS.claude.mcp, JSON.stringify(mergedConfig, null, 2), "utf-8");
 }
 
-export async function writeCodexConfig(config: string, auth: string): Promise<void> {
+export async function writeCodexConfig(config: string, auth?: string, env?: string): Promise<void> {
   await ensureDir(path.dirname(CONFIG_PATHS.codex.config));
-  await Promise.all([
-    fs.writeFile(CONFIG_PATHS.codex.config, config, "utf-8"),
-    fs.writeFile(CONFIG_PATHS.codex.auth, auth, "utf-8"),
-  ]);
+  const writes: Promise<void>[] = [writeFileAtomically(CONFIG_PATHS.codex.config, config)];
+  if (auth !== undefined) {
+    writes.push(writeFileAtomically(CONFIG_PATHS.codex.auth, auth));
+  }
+  if (env !== undefined) {
+    writes.push(writeFileAtomically(CONFIG_PATHS.codex.env, env));
+  }
+  await Promise.all(writes);
 }
 
 export async function writeOpenCodeConfig(config: string, _env?: string): Promise<void> {
@@ -349,15 +391,17 @@ export async function backupClaudeConfig(): Promise<string[]> {
 
 export async function backupCodexConfig(): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
-  const { config, auth } = await readCodexConfig();
+  const { config, env, auth } = await readCodexConfig();
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const configBackupPath = path.join(BACKUP_DIR, `codex_config_${timestamp}.toml`);
+  const envBackupPath = path.join(BACKUP_DIR, `codex_env_${timestamp}.env`);
   const authBackupPath = path.join(BACKUP_DIR, `codex_auth_${timestamp}.json`);
   await Promise.all([
     fs.writeFile(configBackupPath, config, "utf-8"),
+    fs.writeFile(envBackupPath, env, "utf-8"),
     fs.writeFile(authBackupPath, auth, "utf-8"),
   ]);
-  return [configBackupPath, authBackupPath];
+  return [configBackupPath, envBackupPath, authBackupPath];
 }
 
 export async function backupOpenCodeConfig(): Promise<string[]> {
@@ -439,12 +483,14 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
           normalizedConfig.claudeSkills = [];
         }
       }
-      delete normalizedConfig.envContent;
+      if (normalizedConfig.platform === "opencode") {
+        delete normalizedConfig.envContent;
+      }
       if (normalizedConfig.platform === "opencode" && normalizedConfig.openCodeSkills === undefined) {
         normalizedConfig.openCodeSkills = [];
       }
-      if (normalizedConfig.platform === "codex" && normalizedConfig.codexSkills === undefined) {
-        normalizedConfig.codexSkills = [];
+      if (normalizedConfig.platform === "codex") {
+        normalizeCodexConfigFields(normalizedConfig);
       }
       configs.push(normalizedConfig);
     } catch {
@@ -511,6 +557,19 @@ function formatJSONString(value: string): string {
   } catch {
     return value;
   }
+}
+
+function getCodexTomlContent(config: Pick<ConfigItem, "content" | "configContent">): string {
+  return config.content ?? config.configContent ?? "";
+}
+
+function normalizeCodexConfigFields(config: ConfigItem): void {
+  const content = getCodexTomlContent(config);
+  config.content = content;
+  config.configContent = content;
+  config.envContent = config.envContent ?? "";
+  config.authContent = config.authContent ?? "{}";
+  config.codexSkills = config.codexSkills ?? [];
 }
 
 function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
@@ -758,7 +817,7 @@ function extractCodexMcpConfig(configContent: string | undefined): Record<string
 
 function extractMcpConfig(source: ConfigItem): Record<string, unknown> {
   if (source.platform === "codex") {
-    return extractCodexMcpConfig(source.configContent);
+    return extractCodexMcpConfig(getCodexTomlContent(source));
   }
   const config =
     source.platform === "claude"
@@ -824,7 +883,9 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
   }
   return {
     ...base,
-    configContent: source.platform === "codex" ? source.configContent ?? "" : "",
+    content: source.platform === "codex" ? getCodexTomlContent(source) : "",
+    envContent: source.platform === "codex" ? source.envContent ?? "" : "",
+    configContent: source.platform === "codex" ? getCodexTomlContent(source) : "",
     authContent: source.platform === "codex" ? source.authContent ?? "{}" : "{}",
     codexSkills: source.platform === "codex" ? [...(source.codexSkills ?? [])] : [],
   };
@@ -851,7 +912,10 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   await ensureDir(configDir);
   const configToSave: ConfigItem = { ...config, platform: normalizeConfigPlatform(config.platform) };
 
-  if (configToSave.content) {
+  if (configToSave.platform === "codex") {
+    normalizeCodexConfigFields(configToSave);
+  }
+  if (configToSave.content && configToSave.platform !== "codex") {
     configToSave.content = formatJSONString(configToSave.content);
   }
   if (configToSave.mcpContent) {
@@ -920,13 +984,15 @@ export async function getConfigById(
         config.claudeSkills = [];
       }
     }
-    delete config.envContent;
+    if (config.platform === "opencode") {
+      delete config.envContent;
+    }
     if (config.platform === "opencode" && config.openCodeSkills === undefined) {
       config.openCodeSkills = config.geminiSkills ?? [];
     }
     delete config.geminiSkills;
-    if (config.platform === "codex" && config.codexSkills === undefined) {
-      config.codexSkills = [];
+    if (config.platform === "codex") {
+      normalizeCodexConfigFields(config);
     }
     return config;
   } catch {
@@ -963,9 +1029,12 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
       defaultConfig.mcpContent = mcpContent;
       defaultConfig.claudeSkills = [];
     } else if (normalizedPlatform === "codex") {
-      const { config, auth } = await readCodexConfig();
+      const { config, env, auth } = await readCodexConfig();
+      defaultConfig.content = config;
+      defaultConfig.envContent = env;
       defaultConfig.configContent = config;
       defaultConfig.authContent = auth;
+      defaultConfig.codexSkills = [];
     } else {
       const { config } = await readOpenCodeConfig();
       defaultConfig.content = config;
@@ -980,6 +1049,8 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
       defaultConfig.content = "{}";
       defaultConfig.openCodeSkills = [];
     } else {
+      defaultConfig.content = "";
+      defaultConfig.envContent = "";
       defaultConfig.configContent = "";
       defaultConfig.authContent = "{}";
       defaultConfig.codexSkills = [];
@@ -997,8 +1068,8 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
     return { content, mcpContent };
   }
   if (normalizedPlatform === "codex") {
-    const { config, auth } = await readCodexConfig();
-    return { configContent: config, authContent: auth };
+    const { config, env, auth } = await readCodexConfig();
+    return { content: config, envContent: env, configContent: config, authContent: auth };
   }
   const { config } = await readOpenCodeConfig();
   return { content: config };
@@ -1018,14 +1089,16 @@ export async function applyConfig(platform: LegacyConfigPlatformInput, payload: 
     return;
   }
   if (normalizedPlatform === "codex") {
-    if (payload.configContent === undefined || payload.authContent === undefined) {
+    const configContent = payload.content ?? payload.configContent;
+    if (configContent === undefined) {
       throw new Error(t("config.codexIncomplete"));
     }
+    const current = payload.authContent === undefined ? await readCodexConfig() : undefined;
     const nextConfig =
       payload.codexSkills === undefined
-        ? payload.configContent
-        : mergeCodexSkillsConfig(payload.configContent, payload.codexSkills);
-    await writeCodexConfig(nextConfig, payload.authContent);
+        ? configContent
+        : mergeCodexSkillsConfig(configContent, payload.codexSkills);
+    await writeCodexConfig(nextConfig, payload.authContent ?? current?.auth ?? "{}", payload.envContent);
     return;
   }
   const legacyPayload = payload as ApplyPayload & { geminiSkills?: ApplyPayload["openCodeSkills"] };

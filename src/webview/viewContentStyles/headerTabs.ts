@@ -15,7 +15,7 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       }
       .header-actions {
         display: flex;
-        gap: 6px;
+        gap: 10px;
       }
       .icon-button {
         background: transparent;
@@ -33,6 +33,27 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       .icon-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
         opacity: 1;
+      }
+      .icon-action {
+        display: block;
+        color: var(--vscode-icon-foreground);
+        cursor: pointer;
+        flex: 0 0 auto;
+        opacity: 0.8;
+        transition: opacity 0.2s, color 0.2s;
+      }
+      .icon-action:hover,
+      .icon-action:focus-visible {
+        opacity: 1;
+      }
+      .icon-action:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
+      .icon-action[aria-disabled="true"] {
+        cursor: not-allowed;
+        opacity: 0.45;
+        pointer-events: none;
       }
       .send-icon-button {
         background: var(--vscode-button-background);

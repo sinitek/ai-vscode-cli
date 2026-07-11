@@ -1,5 +1,28 @@
 // Primary UI event bindings and conversation reset controls.
-export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.addEventListener("change", (event) => {
+export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
+          elements.helpButton,
+          elements.toolSettingsButton,
+          elements.rulesButton,
+          elements.newSession,
+          elements.resetSession,
+          elements.commonCommandButton,
+          elements.pathPickerButton,
+          elements.attachmentButton,
+          elements.historyButton,
+        ].filter(Boolean).forEach((element) => {
+          element.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+              return;
+            }
+            if (element.getAttribute("aria-disabled") === "true") {
+              return;
+            }
+            event.preventDefault();
+            element.click();
+          });
+        });
+
+      elements.currentCli.addEventListener("change", (event) => {
         armPromptContextForConversationStart();
         const nextCli = event.target.value;
         clearOpenCodeModelOptions();
@@ -62,6 +85,8 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      elements.currentCli.add
         const resetLocked = isActiveConversationTabResetLocked();
         if (elements.resetSession) {
           elements.resetSession.disabled = resetLocked;
+          elements.resetSession.setAttribute("aria-disabled", String(resetLocked));
+          elements.resetSession.tabIndex = resetLocked ? -1 : 0;
         }
         if (elements.clearAllHistory) {
           elements.clearAllHistory.disabled = state.historyTab === "lobster" || (state.historyTab === "sessions" && resetLocked);

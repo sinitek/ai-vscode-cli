@@ -189,12 +189,13 @@ export function resolveLobsterTaskRunControlState(
   task: { id: string; status: string; mainAiFailureLimitReached?: boolean | null },
   runningTaskIds: ReadonlySet<string>,
 ): LobsterTaskRunControlState {
+  const hasRunningProcess = runningTaskIds.has(task.id);
   const isCompleted = task.status === "completed";
-  const isRunning = !isCompleted && (task.status === "running" || runningTaskIds.has(task.id));
+  const isRunning = hasRunningProcess || (!isCompleted && task.status === "running");
   const blockedByFailureLimit = Boolean(task.mainAiFailureLimitReached);
   return {
     isRunning,
-    canSupplement: !isCompleted && !blockedByFailureLimit,
+    canSupplement: isRunning || (!isCompleted && !blockedByFailureLimit),
     canContinue: !isCompleted && !isRunning && !blockedByFailureLimit,
     canStop: isRunning,
   };

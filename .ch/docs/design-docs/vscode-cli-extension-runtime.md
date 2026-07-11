@@ -112,11 +112,11 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
 
-OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
+OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。OpenCode 官方 TUI 支持 `/compact`（alias `/summarize`）用于 compact current session，且配置层有 `compaction.auto` 默认自动压缩；因此插件侧可以把 OpenCode 纳入手动压缩与执行后自动压缩的产品范围，但运行时必须清晰区分可附着会话链路与非交互 fallback，不能把 OpenCode 说成已经拥有与 Codex app-server 完全相同的压缩通道。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。Codex 配置页不同于 OpenCode / Claude：主配置文件是 `~/.codex/config.toml`，格式为 TOML，并另有 `~/.codex/.env` 环境变量文件；配置中心需要同时支持 Codex 常用字段可视化编辑、TOML 源码编辑和 `.env` 文本管理，不能把 Codex 主配置误建模为 JSON。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
 
 OpenCode 模型选择按 active config 解析为两个角色下拉：主模型对应顶层 `model`，小模型对应顶层 `small_model`，候选均只来自 `provider.<id>.models`，不复用插件模型管理器，也不提供新增、编辑、删除或排序入口。聊天区 DOM 只保留两个紧凑 select 与共享错误区域，不显示可见角色 label、思考力度说明或“跟随配置”option；正常 option 文本只使用模型 `name`，缺失时回退 model id。选择当前配置默认 ref 时，Webview 发送 `null` 清除该角色的临时覆盖；其他选择发送 exact ref。普通对话、并行任务、Loop 主任务与 Loop 子任务继续使用主模型；小模型仅服务 OpenCode 内部轻量请求，不是 Loop 子任务模型。
 
-配置中心的 OpenCode `config.json` 卡片默认使用 Provider/模型可视化编辑器，并保留 JSON 高级模式。可视化层基于原始 JSON 深拷贝维护保留底稿，只重建 Provider/模型索引和编辑器负责的字段；Provider 支持 `id/name/npm/options.baseURL/options.apiKey`，模型支持 `id/name/reasoning`、主/小角色和逗号思考力度。力度输入 trim、去空、稳定去重，首项写 `options.reasoningEffort`，全部值生成简单 variants；清空只删除编辑器管理的简单 reasoning 字段，复杂 variants 和未知顶层/provider/model/options 字段保留。Provider/模型 id 重命名同步顶层 `model` / `small_model`，删除引用项会形成显式校验错误并阻止保存；无效 JSON 不覆盖有效可视化状态，范例导入后立即重建可视化。保存仍先更新配置档案，仅当档案为当前激活配置时调用应用链路；API Key 仅以密码输入展示，不写日志。
+配置中心的 OpenCode `config.json` 卡片默认使用 Provider/模型可视化编辑器，并保留 JSON 高级模式。可视化层基于原始 JSON 深拷贝维护保留底稿，只重建 Provider/模型索引和编辑器负责的字段；Provider 支持 `id/name/npm/options.baseURL/options.apiKey`，模型支持 `id/name/reasoning`、主/小角色和逗号思考力度。力度输入 trim、去空、稳定去重，首项写 `options.reasoningEffort`，全部值生成简单 variants；清空只删除编辑器管理的简单 reasoning 字段，复杂 variants 和未知顶层/provider/model/options 字段保留。Provider/模型 id 重命名同步顶层 `model` / `small_model`，删除引用项会形成显式校验错误并阻止保存；无效 JSON 不覆盖有效可视化状态，范例导入后立即重建可视化。Claude 配置卡片的视觉样式、背景和表单密度对齐 OpenCode 配置卡片，但仍按 Claude `settings.json` 的字段语义保存。保存仍先更新配置档案，仅当档案为当前激活配置时调用应用链路；API Key 仅以密码输入展示，不写日志。
 
 主模型运行时通过精确 `--model provider/model` 覆盖，并可用 `--variant` 选择该主模型 variants。CLI 不存在 `--small-model`；小模型临时选择必须写入本次 runtime config overlay 的顶层 `small_model`。每个模型的 `options` 定义基础参数，`variants` 定义该模型作为主模型运行时的可选档位；OpenCode 内部小模型请求会跳过 variants，只使用小模型自身 `options`。`@ai-sdk/openai-compatible` 只描述 API 协议适配器，不决定 low/medium/high 等档位。
 
@@ -139,7 +139,8 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
-- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
+- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；Codex 配置中心维护 `~/.codex/config.toml` 主配置（TOML）、`~/.codex/.env` 环境变量文件和既有受控鉴权入口；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
+- 配置中心 UI 的 Claude、OpenCode、Codex 三组可视化参数采用同一交互约定：参数 label 右侧展示问号 tooltip，枚举参数在 tooltip 中列出允许值；“查看范例”入口固定在配置文件名右侧，三组保持 OpenCode 风格的相同位置和密度
 - 管理配置档案（config profiles）
 - 管理备份、导出
 - 扫描和安装 Skills
@@ -202,6 +203,8 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 - 历史会话仅保留最近 30 天内使用过的记录，并清理对应消息文件与交互映射
 - `tasks.json` 中的任务运行记录仅保留最近 30 天（约 1 个月）
 - 会在插件启动后的后台清理中覆盖当前工作区与其他旧工作区，不依赖用户重新打开旧工作区
+
+配置中心空白页排查优先落在本插件可控链路：Webview 渲染、配置解析、初始化数据和本插件日志。`AugmentExtensionSidecar` 对 Augment 服务返回 403 属于外部扩展请求失败，通常不能作为本插件 Claude 配置页空白的直接根因证据；只有同时有本插件错误链路指向相关交互时才继续关联排查。
 
 `src/errorDisplay.ts` 负责把异常统一转换为：
 

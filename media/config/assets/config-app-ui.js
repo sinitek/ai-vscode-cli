@@ -14,6 +14,18 @@ const DEFAULT_INSTALL_COMMANDS = {
     opencode: "npm install -g opencode-ai",
   };
 
+const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS = 500;
+const CONFIG_FIELD_HELP_TOOLTIP_DELAY_MS = CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS / 2;
+const CONFIG_PROVIDER_CARD_ORIGINAL_WIDTH_PX = 220;
+const CONFIG_PROVIDER_CARD_ORIGINAL_MIN_WIDTH_PX = 190;
+const CONFIG_PROVIDER_CARD_WIDTH_SCALE = 0.6;
+const CONFIG_PROVIDER_CARD_WIDTH_PX = Math.round(
+  CONFIG_PROVIDER_CARD_ORIGINAL_WIDTH_PX * CONFIG_PROVIDER_CARD_WIDTH_SCALE,
+);
+const CONFIG_PROVIDER_CARD_MIN_WIDTH_PX = Math.round(
+  CONFIG_PROVIDER_CARD_ORIGINAL_MIN_WIDTH_PX * CONFIG_PROVIDER_CARD_WIDTH_SCALE,
+);
+
 const { confirm: uk } = xr;
 
 // Config list panel
@@ -86,6 +98,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       name: U,
                       platform: k,
                       configContent: "",
+                      envContent: "",
                       authContent: "{}",
                       codexSkills: [],
                     })),
@@ -169,6 +182,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	                  })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
+                    envContent: L.envContent,
                     authContent: L.authContent,
                     codexSkills: L.codexSkills ?? [],
                   }),
@@ -365,6 +379,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             name: G,
             platform: L,
             configContent: k.configContent ?? "",
+            envContent: k.envContent ?? "",
             authContent: k.authContent ?? "{}",
           };
         }
@@ -3322,6 +3337,454 @@ const ClaudeConfigVisualEditorUtils = Object.freeze({
 });
 // CLAUDE_VISUAL_EDITOR_UTILS_END
 
+// CODEX_VISUAL_EDITOR_UTILS_START
+const codexVisualIsRecord = (value) =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const codexVisualClone = (value) =>
+  value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
+
+const codexVisualManagedRootKeys = Object.freeze([
+  "model",
+  "model_provider",
+  "approval_policy",
+  "sandbox_mode",
+  "model_reasoning_effort",
+  "model_reasoning_summary",
+  "model_verbosity",
+  "web_search",
+  "disable_response_storage",
+  "hide_agent_reasoning",
+  "model_supports_reasoning_summaries",
+]);
+
+const codexVisualManagedProviderKeys = Object.freeze([
+  "name",
+  "base_url",
+  "env_key",
+  "wire_api",
+  "requires_openai_auth",
+]);
+
+const codexVisualManagedEnvKeys = Object.freeze([
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_ORG_ID",
+  "OPENAI_ORGANIZATION",
+]);
+
+const codexVisualTomlBareKeyPattern = /^[A-Za-z0-9_-]+$/;
+
+const codexVisualUnquoteTomlString = (value) => {
+  const quote = value[0];
+  if ((quote !== '"' && quote !== "'") || value[value.length - 1] !== quote)
+    throw new Error("字符串没有正确闭合");
+  const body = value.slice(1, -1);
+  return quote === "'" ? body : body.replace(/\\(["\\nrt])/g, (_match, escaped) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    return escaped;
+  });
+};
+
+const codexVisualSplitTomlPath = (value) =>
+  String(value || "")
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) =>
+      part[0] === '"' || part[0] === "'"
+        ? codexVisualUnquoteTomlString(part)
+        : part,
+    );
+
+const codexVisualStripTomlComment = (value) => {
+  let quote = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === "\\" && quote === '"') {
+        index += 1;
+      } else if (char === quote) {
+        quote = "";
+      }
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "#") {
+      return value.slice(0, index).trim();
+    }
+  }
+  return value.trim();
+};
+
+const codexVisualSplitTomlArray = (value) => {
+  const parts = [];
+  let quote = "",
+    start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === "\\" && quote === '"') {
+        index += 1;
+      } else if (char === quote) {
+        quote = "";
+      }
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ",") {
+      parts.push(value.slice(start, index).trim()), (start = index + 1);
+    }
+  }
+  parts.push(value.slice(start).trim());
+  return parts.filter(Boolean);
+};
+
+const codexVisualParseTomlValue = (value) => {
+  const normalized = codexVisualStripTomlComment(value);
+  if (!normalized) throw new Error("缺少 TOML 值");
+  if (normalized[0] === '"' || normalized[0] === "'")
+    return codexVisualUnquoteTomlString(normalized);
+  if (normalized === "true") return !0;
+  if (normalized === "false") return !1;
+  if (/^[+-]?\d+$/.test(normalized)) return Number(normalized);
+  if (/^[+-]?\d+\.\d+$/.test(normalized)) return Number(normalized);
+  if (normalized[0] === "[" && normalized[normalized.length - 1] === "]") {
+    const body = normalized.slice(1, -1).trim();
+    return body ? codexVisualSplitTomlArray(body).map(codexVisualParseTomlValue) : [];
+  }
+  if (normalized[0] === "{" || normalized.includes("\n"))
+    throw new Error("复杂 TOML 请保留在源码模式编辑");
+  return normalized;
+};
+
+const codexVisualSetDeepValue = (target, path, value) => {
+  let cursor = target;
+  path.slice(0, -1).forEach((part) => {
+    if (!codexVisualIsRecord(cursor[part])) cursor[part] = {};
+    cursor = cursor[part];
+  });
+  cursor[path[path.length - 1]] = value;
+};
+
+const codexVisualParseToml = (content) => {
+  const root = {};
+  let tablePath = [];
+  String(content || "")
+    .split(/\r?\n/)
+    .forEach((rawLine, lineIndex) => {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) return;
+      const tableMatch = line.match(/^\[([^\]]+)\]\s*(?:#.*)?$/);
+      if (tableMatch) {
+        tablePath = codexVisualSplitTomlPath(tableMatch[1]);
+        if (tablePath.length === 0) throw new Error(`第 ${lineIndex + 1} 行表名为空`);
+        codexVisualSetDeepValue(root, tablePath, codexVisualClone(codexVisualGetDeepValue(root, tablePath)) || {});
+        return;
+      }
+      const eqIndex = line.indexOf("=");
+      if (eqIndex <= 0) throw new Error(`第 ${lineIndex + 1} 行不是有效的 key = value`);
+      const keyPath = codexVisualSplitTomlPath(line.slice(0, eqIndex));
+      if (keyPath.length === 0) throw new Error(`第 ${lineIndex + 1} 行 key 为空`);
+      codexVisualSetDeepValue(root, [...tablePath, ...keyPath], codexVisualParseTomlValue(line.slice(eqIndex + 1)));
+    });
+  return root;
+};
+
+function codexVisualGetDeepValue(target, path) {
+  let cursor = target;
+  for (const part of path) {
+    if (!codexVisualIsRecord(cursor) || !(part in cursor)) return void 0;
+    cursor = cursor[part];
+  }
+  return cursor;
+}
+
+const codexVisualTomlKey = (key) =>
+  codexVisualTomlBareKeyPattern.test(String(key))
+    ? String(key)
+    : JSON.stringify(String(key));
+
+const codexVisualTomlValue = (value) => {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value) && value.every((item) => !codexVisualIsRecord(item)))
+    return `[${value.map(codexVisualTomlValue).join(", ")}]`;
+  return JSON.stringify(value);
+};
+
+const codexVisualStringifyTomlBlock = (record, path = []) => {
+  const lines = [],
+    nested = [];
+  Object.entries(record || {}).forEach(([key, value]) => {
+    if (codexVisualIsRecord(value) || (Array.isArray(value) && value.some(codexVisualIsRecord))) {
+      nested.push([key, value]);
+    } else if (value !== void 0) {
+      lines.push(`${codexVisualTomlKey(key)} = ${codexVisualTomlValue(value)}`);
+    }
+  });
+  nested.forEach(([key, value]) => {
+    const nextPath = [...path, key].map(codexVisualTomlKey).join(".");
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        lines.push("", `[[${nextPath}]]`, ...codexVisualStringifyTomlBlock(item, [...path, key]));
+      });
+    } else {
+      lines.push("", `[${nextPath}]`, ...codexVisualStringifyTomlBlock(value, [...path, key]));
+    }
+  });
+  return lines;
+};
+
+const codexVisualStringifyToml = (record) =>
+  `${codexVisualStringifyTomlBlock(record).join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+
+const codexVisualReadString = (value) => (typeof value === "string" ? value : "");
+
+const codexVisualReadOptionalBoolean = (value) =>
+  value === !0 ? "true" : value === !1 ? "false" : "";
+
+const codexVisualSetString = (target, key, value) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  normalized ? (target[key] = normalized) : delete target[key];
+};
+
+const codexVisualSetOptionalBoolean = (target, key, value) => {
+  value === "true" ? (target[key] = !0) : value === "false" ? (target[key] = !1) : delete target[key];
+};
+
+const codexVisualParseEnv = (content) => {
+  const env = {};
+  String(content || "")
+    .split(/\r?\n/)
+    .forEach((line) => {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!match) return;
+      let value = match[2] || "";
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      env[match[1]] = value;
+    });
+  return env;
+};
+
+const codexVisualSerializeEnv = (content, env) => {
+  const keys = new Set(codexVisualManagedEnvKeys),
+    seen = new Set(),
+    lines = String(content || "").split(/\r?\n/).filter((line, index, list) => index < list.length - 1 || line !== "");
+  const nextLines = lines
+    .map((line) => {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+      if (!match || !keys.has(match[1])) return line;
+      seen.add(match[1]);
+      const value = codexVisualReadString(env?.[match[1]]).trim();
+      return value ? `${match[1]}=${value}` : null;
+    })
+    .filter((line) => line !== null);
+  codexVisualManagedEnvKeys.forEach((key) => {
+    const value = codexVisualReadString(env?.[key]).trim();
+    if (value && !seen.has(key)) nextLines.push(`${key}=${value}`);
+  });
+  return nextLines.join("\n");
+};
+
+const codexVisualCreateProvider = (id, value = {}) => ({
+  id,
+  name: codexVisualReadString(value.name),
+  baseUrl: codexVisualReadString(value.base_url),
+  envKey: codexVisualReadString(value.env_key),
+  wireApi: codexVisualReadString(value.wire_api),
+  requiresOpenaiAuth: codexVisualReadOptionalBoolean(value.requires_openai_auth),
+  source: codexVisualClone(value) || {},
+});
+
+const codexVisualCreateState = (configContent, envContent = "") => {
+  const source = codexVisualParseToml(configContent || ""),
+    providersSource = codexVisualIsRecord(source.model_providers) ? source.model_providers : {},
+    providers = Object.entries(providersSource)
+      .filter(([, value]) => codexVisualIsRecord(value))
+      .map(([id, value]) => codexVisualCreateProvider(id, value)),
+    tools = codexVisualIsRecord(source.tools) ? source.tools : {},
+    features = codexVisualIsRecord(source.features) ? source.features : {},
+    envSource = codexVisualParseEnv(envContent),
+    env = {};
+  codexVisualManagedEnvKeys.forEach((key) => {
+    env[key] = codexVisualReadString(envSource[key]);
+  });
+  return {
+    source,
+    envContent: envContent || "",
+    model: codexVisualReadString(source.model),
+    modelProvider: codexVisualReadString(source.model_provider),
+    approvalPolicy: codexVisualReadString(source.approval_policy),
+    sandboxMode: codexVisualReadString(source.sandbox_mode),
+    reasoningEffort: codexVisualReadString(source.model_reasoning_effort),
+    reasoningSummary: codexVisualReadString(source.model_reasoning_summary),
+    verbosity: codexVisualReadString(source.model_verbosity),
+    webSearch: codexVisualReadOptionalBoolean(source.web_search),
+    toolsWebSearch: codexVisualReadOptionalBoolean(tools.web_search),
+    featuresWebSearch: codexVisualReadOptionalBoolean(features.web_search),
+    disableResponseStorage: codexVisualReadOptionalBoolean(source.disable_response_storage),
+    hideAgentReasoning: codexVisualReadOptionalBoolean(source.hide_agent_reasoning),
+    supportsReasoningSummaries: codexVisualReadOptionalBoolean(source.model_supports_reasoning_summaries),
+    providers,
+    selectedProviderId: codexVisualReadString(source.model_provider) || providers[0]?.id || "",
+    env,
+  };
+};
+
+const codexVisualParseContent = (configContent, envContent = "") => {
+  try {
+    return { ok: !0, state: codexVisualCreateState(configContent, envContent), error: "" };
+  } catch (error) {
+    return {
+      ok: !1,
+      state: null,
+      error: `TOML 无法加载到可视化编辑器：${error instanceof Error ? error.message : error}。请切换到 TOML 源码修复。`,
+    };
+  }
+};
+
+const codexVisualValidateState = (state) => {
+  if (!state || !codexVisualIsRecord(state)) return "Codex 可视化配置不可用，请切换到 TOML 源码修复";
+  const providerIds = new Set();
+  for (const [index, provider] of (state.providers || []).entries()) {
+    const id = codexVisualReadString(provider.id).trim();
+    if (!id) return `第 ${index + 1} 个 Provider 的 id 不能为空`;
+    if (providerIds.has(id)) return `Provider id “${id}” 重复`;
+    providerIds.add(id);
+  }
+  if (state.modelProvider && !providerIds.has(state.modelProvider))
+    return `model_provider “${state.modelProvider}” 未在 model_providers 中定义`;
+  return "";
+};
+
+const codexVisualSerializeState = (state) => {
+  const validation = codexVisualValidateState(state);
+  if (validation) return { ok: !1, content: "", envContent: state?.envContent || "", error: validation };
+  const config = codexVisualClone(state.source) || {};
+  [
+    ["model", state.model],
+    ["model_provider", state.modelProvider],
+    ["approval_policy", state.approvalPolicy],
+    ["sandbox_mode", state.sandboxMode],
+    ["model_reasoning_effort", state.reasoningEffort],
+    ["model_reasoning_summary", state.reasoningSummary],
+    ["model_verbosity", state.verbosity],
+  ].forEach(([key, value]) => codexVisualSetString(config, key, value));
+  codexVisualSetOptionalBoolean(config, "web_search", state.webSearch);
+  codexVisualSetOptionalBoolean(config, "disable_response_storage", state.disableResponseStorage);
+  codexVisualSetOptionalBoolean(config, "hide_agent_reasoning", state.hideAgentReasoning);
+  codexVisualSetOptionalBoolean(config, "model_supports_reasoning_summaries", state.supportsReasoningSummaries);
+
+  const tools = codexVisualIsRecord(config.tools) ? { ...config.tools } : {};
+  codexVisualSetOptionalBoolean(tools, "web_search", state.toolsWebSearch);
+  Object.keys(tools).length > 0 ? (config.tools = tools) : delete config.tools;
+  const features = codexVisualIsRecord(config.features) ? { ...config.features } : {};
+  codexVisualSetOptionalBoolean(features, "web_search", state.featuresWebSearch);
+  Object.keys(features).length > 0 ? (config.features = features) : delete config.features;
+
+  const providers = {};
+  (state.providers || []).forEach((provider) => {
+    const value = codexVisualClone(provider.source) || {};
+    codexVisualManagedProviderKeys.forEach((key) => delete value[key]);
+    codexVisualSetString(value, "name", provider.name);
+    codexVisualSetString(value, "base_url", provider.baseUrl);
+    codexVisualSetString(value, "env_key", provider.envKey);
+    codexVisualSetString(value, "wire_api", provider.wireApi);
+    codexVisualSetOptionalBoolean(value, "requires_openai_auth", provider.requiresOpenaiAuth);
+    providers[provider.id.trim()] = value;
+  });
+  Object.keys(providers).length > 0
+    ? (config.model_providers = providers)
+    : delete config.model_providers;
+  return {
+    ok: !0,
+    content: codexVisualStringifyToml(config),
+    envContent: codexVisualSerializeEnv(state.envContent, state.env),
+    error: "",
+  };
+};
+
+const codexVisualUpdateState = (state, patch) => ({ ...state, ...patch });
+
+const codexVisualUpdateEnv = (state, key, value) => ({
+  ...state,
+  env: { ...state.env, [key]: value },
+});
+
+const codexVisualUniqueId = (items, prefix) => {
+  const ids = new Set((items || []).map((item) => item.id));
+  if (!ids.has(prefix)) return prefix;
+  let index = 2;
+  for (; ids.has(`${prefix}${index}`); index += 1);
+  return `${prefix}${index}`;
+};
+
+const codexVisualAddProvider = (state) => {
+  const id = codexVisualUniqueId(state.providers, "openai"),
+    provider = codexVisualCreateProvider(id, {
+      name: "OpenAI",
+      base_url: "https://api.openai.com/v1",
+      env_key: "OPENAI_API_KEY",
+      wire_api: "responses",
+      requires_openai_auth: !0,
+    });
+  return {
+    ...state,
+    providers: [...state.providers, provider],
+    selectedProviderId: id,
+    modelProvider: state.modelProvider || id,
+  };
+};
+
+const codexVisualUpdateProvider = (state, providerId, patch) => {
+  const nextId = patch.id === void 0 ? providerId : String(patch.id);
+  return {
+    ...state,
+    providers: state.providers.map((provider) =>
+      provider.id === providerId ? { ...provider, ...patch, id: nextId } : provider,
+    ),
+    modelProvider: state.modelProvider === providerId ? nextId : state.modelProvider,
+    selectedProviderId: state.selectedProviderId === providerId ? nextId : state.selectedProviderId,
+  };
+};
+
+const codexVisualDeleteProvider = (state, providerId) => {
+  const providers = state.providers.filter((provider) => provider.id !== providerId),
+    selected = providers[0]?.id || "";
+  return {
+    ...state,
+    providers,
+    selectedProviderId: state.selectedProviderId === providerId ? selected : state.selectedProviderId,
+    modelProvider: state.modelProvider === providerId ? selected : state.modelProvider,
+  };
+};
+
+const CodexConfigVisualEditorUtils = Object.freeze({
+  managedRootKeys: codexVisualManagedRootKeys,
+  managedProviderKeys: codexVisualManagedProviderKeys,
+  managedEnvKeys: codexVisualManagedEnvKeys,
+  parseToml: codexVisualParseToml,
+  stringifyToml: codexVisualStringifyToml,
+  parseEnv: codexVisualParseEnv,
+  createState: codexVisualCreateState,
+  parseContent: codexVisualParseContent,
+  validateState: codexVisualValidateState,
+  serializeState: codexVisualSerializeState,
+  updateState: codexVisualUpdateState,
+  updateEnv: codexVisualUpdateEnv,
+  addProvider: codexVisualAddProvider,
+  updateProvider: codexVisualUpdateProvider,
+  deleteProvider: codexVisualDeleteProvider,
+});
+// CODEX_VISUAL_EDITOR_UTILS_END
+
 const { TextArea: Qa } = zi;
 const ps = {
     claude: {
@@ -3369,12 +3832,17 @@ model_verbosity = "high"
 model_supports_reasoning_summaries = true
 disable_response_storage = true
 hide_agent_reasoning = false
+web_search = true
 
 [model_providers.codex]
 name = "codex"
 base_url = "<供应商 url>"
+env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = true`,
+      env: `# ~/.codex/.env
+OPENAI_API_KEY=<你的 api key>
+OPENAI_BASE_URL=<可选供应商 url>`,
       auth: `{
   "OPENAI_API_KEY": "<你的 api key>"
 }`,
@@ -3439,7 +3907,8 @@ const Nk = {
 	      title: "OpenCode 模型配置 config.json（myAPI 双模型与思考力度范例）",
 	      content: ps.opencode.settings,
 	    },
-	    "codex-config": { title: "Codex config.toml", content: ps.codex.config },
+	    "codex-config": { title: "Codex config.toml 与 .env", content: `${ps.codex.config}\n\n# ~/.codex/.env\n${ps.codex.env}` },
+    "codex-env": { title: "Codex .env", content: ps.codex.env },
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
   };
 
@@ -3486,6 +3955,13 @@ const ConfigEditorPanel = () => {
         openCodeVisualCreateState({}),
       ),
       [openCodeVisualError, setOpenCodeVisualError] = c.useState(""),
+      [codexEditorMode, setCodexEditorMode] = c.useState("visual"),
+      [codexVisualState, setCodexVisualState] = c.useState(() =>
+        codexVisualCreateState("", ""),
+      ),
+      [codexVisualError, setCodexVisualError] = c.useState(""),
+      [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
+      configFieldHelpTooltipTimerRef = c.useRef(null),
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null,
       R = c.useMemo(() => {
@@ -3555,9 +4031,10 @@ const ConfigEditorPanel = () => {
 	          const H = await fetchCurrentConfig("opencode");
 	          H?.content !== void 0 && s(H.content);
 	          return;
-	        }
+        }
         const H = await fetchCurrentConfig("codex");
         H?.configContent !== void 0 && v(H.configContent);
+        H?.envContent !== void 0 && x(H.envContent);
         H?.authContent !== void 0 && h(H.authContent);
       }, []),
       refreshMcpInstalledIdsInBackground = c.useCallback((W) => {
@@ -3662,6 +4139,11 @@ const ConfigEditorPanel = () => {
       ee = async (W) => te(W, "update"),
       ne = async (W) => te(W, "uninstall");
     c.useEffect(() => {
+      return () => {
+        configFieldHelpTooltipTimerRef.current && clearTimeout(configFieldHelpTooltipTimerRef.current);
+      };
+    }, []);
+    c.useEffect(() => {
       if (!O) {
         (s(""),
           f(""),
@@ -3685,7 +4167,13 @@ const ConfigEditorPanel = () => {
           setSkillsModalOpen(!1),
           setClaudeEditorMode("visual"),
           setClaudeVisualState(claudeVisualCreateState({})),
-          setClaudeVisualError(""));
+          setClaudeVisualError(""),
+          setOpenCodeEditorMode("visual"),
+          setOpenCodeVisualState(openCodeVisualCreateState({})),
+          setOpenCodeVisualError(""),
+          setCodexEditorMode("visual"),
+          setCodexVisualState(codexVisualCreateState("", "")),
+          setCodexVisualError(""));
         return;
       }
       if (O.platform === "claude") {
@@ -3703,7 +4191,13 @@ const ConfigEditorPanel = () => {
           ? (setOpenCodeVisualState(H.state), setOpenCodeVisualError(""))
           : (setOpenCodeVisualState(null), setOpenCodeVisualError(H.error));
       } else {
-        v(O.configContent || ""), h(O.authContent || "{}"), s(""), x("");
+        const W = O.configContent || "",
+          H = O.envContent || "",
+          k = codexVisualParseContent(W, H);
+        v(W), x(H), h(O.authContent || "{}"), s(""), setCodexEditorMode("visual");
+        k.ok
+          ? (setCodexVisualState(k.state), setCodexVisualError(""))
+          : (setCodexVisualState(null), setCodexVisualError(k.error));
       }
     }, [O]);
     c.useEffect(() => {
@@ -3716,6 +4210,13 @@ const ConfigEditorPanel = () => {
       const W = openCodeVisualSerializeState(openCodeVisualState);
       W.ok ? (s(W.content), setOpenCodeVisualError("")) : setOpenCodeVisualError(W.error);
     }, [openCodeEditorMode, openCodeVisualState]);
+    c.useEffect(() => {
+      if (codexEditorMode !== "visual" || !codexVisualState) return;
+      const W = codexVisualSerializeState(codexVisualState);
+      W.ok
+        ? (v(W.content), x(W.envContent || ""), setCodexVisualError(""))
+        : setCodexVisualError(W.error);
+    }, [codexEditorMode, codexVisualState]);
     c.useEffect(() => {
         setMcpHealthItems([]),
         setMcpHealthLoading(!1),
@@ -3922,6 +4423,38 @@ const ConfigEditorPanel = () => {
         }
         s(H.content), setOpenCodeVisualError(""), setOpenCodeEditorMode("json");
       },
+      syncCodexVisualContent = (W, H = b, k = "visual", L = !1) => {
+        const U = codexVisualParseContent(W, H);
+        if (!U.ok) {
+          setCodexVisualError(U.error), L && Kt.error(U.error);
+          return !1;
+        }
+        return (
+          v(W),
+          x(H),
+          setCodexVisualState(U.state),
+          setCodexVisualError(""),
+          setCodexEditorMode(k),
+          !0
+        );
+      },
+      switchCodexEditorMode = (W) => {
+        if (W === codexEditorMode) return;
+        if (W === "visual") {
+          syncCodexVisualContent(m, b, "visual", !0);
+          return;
+        }
+        if (!codexVisualState) {
+          setCodexEditorMode("toml");
+          return;
+        }
+        const H = codexVisualSerializeState(codexVisualState);
+        if (!H.ok) {
+          setCodexVisualError(H.error), Kt.error(H.error);
+          return;
+        }
+        v(H.content), x(H.envContent || ""), setCodexVisualError(""), setCodexEditorMode("toml");
+      },
       N = (W) => y(W),
       z = () => y(null),
       D = () => {
@@ -3931,11 +4464,14 @@ const ConfigEditorPanel = () => {
               syncClaudeVisualContent(I.content, "visual", !0);
               break;
 		            case "opencode-settings":
-		              syncOpenCodeVisualContent(I.content, "visual", !0);
-		              break;
-	            case "codex-config":
-              v(I.content);
+			              syncOpenCodeVisualContent(I.content, "visual", !0);
+			              break;
+		            case "codex-config":
+              syncCodexVisualContent(ps.codex.config, ps.codex.env, "visual", !0);
               break;
+            case "codex-env":
+              syncCodexVisualContent(m, I.content, codexEditorMode, !0);
+	              break;
             case "codex-auth":
               h(I.content);
               break;
@@ -4071,21 +4607,46 @@ const ConfigEditorPanel = () => {
           Kt.error("保存失败: " + H);
         }
       },
-	      saveCodexConfigCard = async () => {
+      saveCodexConfigCard = async () => {
         if (!O) {
           Kt.warning("请先选择一个配置");
           return;
         }
         try {
+          let W = m,
+            H = b;
+          if (codexEditorMode === "visual") {
+            if (!codexVisualState) {
+              const k =
+                codexVisualError || "当前 TOML 尚未成功加载到可视化编辑器，请切换到 TOML 源码修复";
+              setCodexVisualError(k), Kt.error(k);
+              return;
+            }
+            const k = codexVisualSerializeState(codexVisualState);
+            if (!k.ok) {
+              setCodexVisualError(k.error), Kt.error(k.error);
+              return;
+            }
+            W = k.content;
+            H = k.envContent || "";
+          } else {
+            const k = codexVisualParseContent(m, b);
+            if (!k.ok) {
+              setCodexVisualError(k.error), Kt.error(k.error);
+              return;
+            }
+          }
           if (!_(p)) {
             Kt.error("auth.json格式不正确");
             return;
           }
-          const W = M(p);
-          await r(O.id, { configContent: m, authContent: W });
-          h(W);
+          const k = M(p);
+          await r(O.id, { configContent: W, envContent: H, authContent: k });
+          v(W), x(H), h(k);
+          const L = codexVisualParseContent(W, H);
+          L.ok && setCodexVisualState(L.state);
           Kt.success("保存成功");
-          await A({ configContent: m, authContent: W, codexSkills: C });
+          await A({ configContent: W, envContent: H, authContent: k, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -4101,10 +4662,10 @@ const ConfigEditorPanel = () => {
         }
         try {
           const W = M(p);
-          await r(O.id, { configContent: m, authContent: W });
+          await r(O.id, { configContent: m, envContent: b, authContent: W });
           h(W);
           Kt.success("保存成功");
-          await A({ configContent: m, authContent: W, codexSkills: C });
+          await A({ configContent: m, envContent: b, authContent: W, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -4155,11 +4716,13 @@ const ConfigEditorPanel = () => {
                 const T = M(p);
                 await applyConfigItem("codex", {
                   configContent: m,
+                  envContent: b,
                   authContent: T,
                   codexSkills: L,
                 });
                 const F = await fetchCurrentConfig("codex");
                 F?.configContent !== void 0 && v(F.configContent);
+                F?.envContent !== void 0 && x(F.envContent);
                 F?.authContent !== void 0 && h(F.authContent);
               }
               Kt.success("已更新当前激活的配置");
@@ -4215,11 +4778,13 @@ const ConfigEditorPanel = () => {
                 const L = M(p);
                 await applyConfigItem("codex", {
                   configContent: m,
+                  envContent: b,
                   authContent: L,
                   codexSkills: H,
                 });
                 const U = await fetchCurrentConfig("codex");
                 U?.configContent !== void 0 && v(U.configContent);
+                U?.envContent !== void 0 && x(U.envContent);
                 U?.authContent !== void 0 && h(U.authContent);
               }
               Kt.success("已更新当前激活的配置");
@@ -4235,6 +4800,159 @@ const ConfigEditorPanel = () => {
         !navigator.language ||
         navigator.language.toLowerCase().startsWith("zh"),
       claudeText = (W, H) => (configAppUsesChinese ? W : H),
+      configFieldHelpMap = Object.freeze({
+        "默认模型 model": "会话默认模型，可填写 sonnet、opus、haiku 或供应商模型 ID。",
+        "Default model": "Default session model; use sonnet, opus, haiku, or a provider model ID.",
+        "推理强度 effortLevel": "控制 Claude Code 的推理预算。",
+        "Effort level": "Controls the Claude Code reasoning budget.",
+        "回退模型 fallbackModel": "主模型不可用时按顺序尝试的回退模型，每行一个，最多 3 个。",
+        "Fallback models": "Fallback models tried in order when the primary model is unavailable; one per line, up to 3.",
+        "可选模型 availableModels": "限制 UI 或命令中可选择的模型范围，每行一个别名或完整模型名。",
+        "Available models": "Restricts selectable models in UI or commands; one alias or full model name per line.",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "将 Claude Haiku 档映射到第三方供应商的实际模型名。",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "将 Claude Sonnet 档映射到第三方供应商的实际模型名。",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "将 Claude Opus 档映射到第三方供应商的实际模型名。",
+        ANTHROPIC_BASE_URL: "Anthropic 或兼容网关的 API Base URL。",
+        ANTHROPIC_API_KEY: "Anthropic 官方 API Key，敏感值仅保存在本机配置。",
+        ANTHROPIC_AUTH_TOKEN: "第三方网关 Bearer Token，敏感值仅保存在本机配置。",
+        "界面语言 language": "设置 Claude Code 界面或输出偏好的语言。",
+        Language: "Sets the preferred language for Claude Code UI or output.",
+        "输出风格 outputStyle": "设置 Claude Code 默认输出风格名称。",
+        "Output style": "Sets the default Claude Code output style name.",
+        自动更新通道: "选择 Claude Code 自动更新通道。",
+        "Auto-update channel": "Selects the Claude Code auto-update channel.",
+        会话保留天数: "会话清理保留天数，需为大于等于 1 的整数。",
+        "Session retention days": "Session cleanup retention in days; must be an integer of at least 1.",
+        默认启用扩展思考: "是否默认启用扩展思考。",
+        "Extended thinking by default": "Whether extended thinking is enabled by default.",
+        "提交信息附加 Co-Authored-By": "是否在提交信息中附加 Co-Authored-By。",
+        "Include Co-Authored-By": "Whether to append Co-Authored-By to commit messages.",
+        默认权限模式: "Claude Code 默认权限模式。可选值：default / acceptEdits / plan / dontAsk",
+        "Default permission mode": "Default Claude Code permission mode. Options: default / acceptEdits / plan / dontAsk",
+        allow: "始终允许的工具规则，每行一个 Tool 或 Tool(specifier)。",
+        ask: "需要确认的工具规则，每行一个 Tool 或 Tool(specifier)。",
+        deny: "始终拒绝的工具规则，每行一个 Tool 或 Tool(specifier)。",
+        "Provider id": "Provider 唯一标识，会被模型引用使用。",
+        名称: "Provider 展示名称，用于配置页列表识别。",
+        npm: "OpenCode 加载的 provider npm 包名。",
+        "Base URL": "兼容 OpenAI 协议的网关地址，可使用 {env:VAR} 引用环境变量。",
+        "API Key": "Provider API Key，可使用 {env:VAR} 引用环境变量。",
+        "模型 id": "Provider 下的模型唯一标识，会拼成 provider/model 引用。",
+        模型名称: "模型在配置页中显示的人类可读名称。",
+        思考力度: "该模型支持的 reasoning effort，逗号分隔。可选值：low / medium / high",
+        model: "Codex CLI 默认模型名称。",
+        model_provider: "Codex 使用的默认模型供应商。",
+        approval_policy: "控制命令执行前的审批策略。",
+        sandbox_mode: "控制 Codex CLI 文件系统沙箱范围。",
+        model_reasoning_effort: "控制模型推理强度。",
+        model_reasoning_summary: "控制推理摘要展示方式。",
+        model_verbosity: "控制模型输出详略程度。",
+        web_search: "是否启用 web_search。",
+        "tools.web_search": "是否启用 tools.web_search。",
+        "features.web_search": "是否启用 features.web_search。",
+        disable_response_storage: "是否禁用响应存储。",
+        hide_agent_reasoning: "是否隐藏 agent reasoning。",
+        model_supports_reasoning_summaries: "声明当前模型是否支持 reasoning summaries。",
+        name: "Provider 展示名称。",
+        base_url: "Provider API Base URL。",
+        env_key: "从 .env 读取 API Key 的环境变量名。",
+        wire_api: "Provider 使用的 wire API。可选值：responses / chat",
+        requires_openai_auth: "Provider 是否需要 OpenAI auth。",
+        OPENAI_API_KEY: "OpenAI 或兼容服务 API Key。",
+        OPENAI_BASE_URL: "通过环境变量覆盖 OpenAI Base URL。",
+        OPENAI_ORG_ID: "OpenAI organization id。",
+        OPENAI_ORGANIZATION: "OpenAI organization 名称或兼容变量。",
+      }),
+      getConfigLabelText = (W) => (typeof W === "string" ? W : String(W || "")),
+      getConfigFieldHelp = (W, H) =>
+        H || configFieldHelpMap[getConfigLabelText(W)] || `${getConfigLabelText(W)} 配置项。`,
+      stripConfigHelpOption = (W = {}) => {
+        const { help: H, ...k } = W;
+        return k;
+      },
+      showConfigFieldHelpTooltip = (W) => {
+        configFieldHelpTooltipTimerRef.current && clearTimeout(configFieldHelpTooltipTimerRef.current);
+        configFieldHelpTooltipTimerRef.current = setTimeout(() => {
+          setConfigFieldHelpTooltipKey(W);
+        }, CONFIG_FIELD_HELP_TOOLTIP_DELAY_MS);
+      },
+      hideConfigFieldHelpTooltip = () => {
+        configFieldHelpTooltipTimerRef.current && clearTimeout(configFieldHelpTooltipTimerRef.current);
+        configFieldHelpTooltipTimerRef.current = null;
+        setConfigFieldHelpTooltipKey("");
+      },
+      renderConfigFieldLabel = (W, H) =>
+        be.jsxs("span", {
+          style: {
+            color: "var(--text-color-secondary)",
+            fontSize: "12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "4px",
+            minWidth: 0,
+          },
+          children: [
+            be.jsx("span", { children: W }),
+            getConfigFieldHelp(W, H)
+              ? be.jsxs("span", {
+                  style: { position: "relative", display: "inline-flex", flex: "0 0 auto" },
+                  children: [
+                    be.jsx("span", {
+                      title: getConfigFieldHelp(W, H),
+                      "aria-label": getConfigFieldHelp(W, H),
+                      role: "img",
+                      onMouseEnter: () => showConfigFieldHelpTooltip(getConfigLabelText(W)),
+                      onMouseLeave: hideConfigFieldHelpTooltip,
+                      onFocus: () => showConfigFieldHelpTooltip(getConfigLabelText(W)),
+                      onBlur: hideConfigFieldHelpTooltip,
+                      style: {
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: "14px",
+                        height: "14px",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "50%",
+                        color: "var(--text-color-secondary)",
+                        background: "var(--background-color)",
+                        fontSize: "10px",
+                        lineHeight: 1,
+                        cursor: "help",
+                        flex: "0 0 auto",
+                      },
+                      children: "?",
+                    }),
+                    configFieldHelpTooltipKey === getConfigLabelText(W)
+                      ? be.jsx("span", {
+                          role: "tooltip",
+                          style: {
+                            position: "absolute",
+                            left: "50%",
+                            bottom: "calc(100% + 6px)",
+                            transform: "translateX(-50%)",
+                            zIndex: 20,
+                            width: "max-content",
+                            maxWidth: "260px",
+                            padding: "5px 7px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            background: "var(--background-color)",
+                            color: "var(--text-color)",
+                            boxShadow: "0 4px 14px var(--shadow-color)",
+                            fontSize: "12px",
+                            lineHeight: 1.45,
+                            whiteSpace: "normal",
+                            pointerEvents: "none",
+                          },
+                          children: getConfigFieldHelp(W, H),
+                        })
+                      : null,
+                  ],
+                })
+              : null,
+          ],
+        }),
+      formatConfigEnumHelp = (W, H) => `${W}${W ? " " : ""}可选值：${H.join(" / ")}`,
       updateClaudeVisualState = (W) =>
         setClaudeVisualState((H) => (H ? claudeVisualUpdateState(H, W) : H)),
       updateClaudeVisualEnv = (W, H) =>
@@ -4245,37 +4963,25 @@ const ConfigEditorPanel = () => {
         be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
-            be.jsx("span", { style: { fontWeight: 500, fontSize: "12px" }, children: W }),
-            be.jsx("input", {
+            renderConfigFieldLabel(W, U.help),
+            be.jsx(zi, {
               value: H || "",
               onChange: (T) => k(T.target.value),
               placeholder: L,
               type: U.type || "text",
               min: U.min,
               step: U.step,
-              style: {
-                width: "100%",
-                minHeight: "30px",
-                padding: "4px 8px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "6px",
-                color: "var(--text-color)",
-                background: "var(--background-color)",
-              },
             }),
-            U.help
-              ? be.jsx("span", {
-                  style: { color: "var(--text-color-secondary)", fontSize: "11px", lineHeight: 1.4 },
-                  children: U.help,
-                })
-              : null,
           ],
         }),
-      renderClaudeSelect = (W, H, k, L) =>
+      renderClaudeSelect = (W, H, k, L, U = {}) =>
         be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
-            be.jsx("span", { style: { fontWeight: 500, fontSize: "12px" }, children: W }),
+            renderConfigFieldLabel(
+              W,
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), L.map((T) => T.value || T.label)),
+            ),
             be.jsx("select", {
               value: H || "",
               onChange: (U) => k(U.target.value),
@@ -4294,11 +5000,11 @@ const ConfigEditorPanel = () => {
             }),
           ],
         }),
-      renderClaudeListField = (W, H, k, L, U = 3) =>
+      renderClaudeListField = (W, H, k, L, U = 3, T = {}) =>
         be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
-            be.jsx("span", { style: { fontWeight: 500, fontSize: "12px" }, children: W }),
+            renderConfigFieldLabel(W, T.help),
             be.jsx(Qa, {
               value: H || "",
               onChange: (T) => k(T.target.value),
@@ -4313,8 +5019,7 @@ const ConfigEditorPanel = () => {
           style: {
             border: "1px solid var(--border-color)",
             borderRadius: "6px",
-            padding: "8px",
-            background: "var(--background-color-secondary)",
+            padding: "6px",
           },
           children: [
             be.jsx("div", { style: { fontWeight: 600, marginBottom: "2px" }, children: W }),
@@ -4324,7 +5029,7 @@ const ConfigEditorPanel = () => {
                     color: "var(--text-color-secondary)",
                     fontSize: "12px",
                     lineHeight: 1.5,
-                    marginBottom: "7px",
+                    marginBottom: "6px",
                   },
                   children: H,
                 })
@@ -4336,11 +5041,10 @@ const ConfigEditorPanel = () => {
         if (!claudeVisualState)
           return be.jsx("div", {
             style: {
-              padding: "24px 8px",
-              textAlign: "center",
+              padding: "8px",
               border: "1px solid var(--border-color)",
               borderRadius: "6px",
-              color: "var(--text-color-secondary)",
+              color: "var(--error-color)",
             },
             children:
               claudeVisualError ||
@@ -4357,10 +5061,10 @@ const ConfigEditorPanel = () => {
           gridStyle = {
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
-            gap: "7px",
+            gap: "5px",
           };
         return be.jsxs("div", {
-          style: { display: "flex", flexDirection: "column", gap: "8px" },
+          style: { display: "flex", flexDirection: "column", gap: "6px" },
           children: [
             be.jsx("div", {
               style: {
@@ -4635,15 +5339,12 @@ const ConfigEditorPanel = () => {
         be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
-            be.jsx("span", {
-              style: { color: "var(--text-color-secondary)", fontSize: "12px" },
-              children: W,
-            }),
+            renderConfigFieldLabel(W, U.help),
             be.jsx(zi, {
               value: H,
               onChange: (T) => k(T.target.value),
               placeholder: L,
-              ...U,
+              ...stripConfigHelpOption(U),
             }),
           ],
         }),
@@ -4672,8 +5373,8 @@ const ConfigEditorPanel = () => {
           children: [
             be.jsxs("div", {
               style: {
-                width: "220px",
-                minWidth: "190px",
+                width: `${CONFIG_PROVIDER_CARD_WIDTH_PX}px`,
+                minWidth: `${CONFIG_PROVIDER_CARD_MIN_WIDTH_PX}px`,
                 maxWidth: "100%",
                 display: "flex",
                 flexDirection: "column",
@@ -4783,8 +5484,8 @@ const ConfigEditorPanel = () => {
                       children: [
                         be.jsxs("div", {
                           style: {
-                            width: "220px",
-                            minWidth: "190px",
+                            width: `${CONFIG_PROVIDER_CARD_WIDTH_PX}px`,
+                            minWidth: `${CONFIG_PROVIDER_CARD_MIN_WIDTH_PX}px`,
                             maxWidth: "100%",
                             display: "flex",
                             flexDirection: "column",
@@ -4959,7 +5660,315 @@ const ConfigEditorPanel = () => {
                       },
                       children: "请从左侧新增 Provider",
                     }),
+              ],
+            }),
+          ],
+        });
+      },
+      selectedCodexProvider = codexVisualState?.providers.find(
+        (W) => W.id === codexVisualState.selectedProviderId,
+      ),
+      updateCodexVisualState = (W) =>
+        setCodexVisualState((H) => (H ? codexVisualUpdateState(H, W) : H)),
+      updateCodexVisualEnv = (W, H) =>
+        setCodexVisualState((k) => (k ? codexVisualUpdateEnv(k, W, H) : k)),
+      selectCodexProvider = (W) =>
+        setCodexVisualState((H) => (H ? { ...H, selectedProviderId: W } : H)),
+      updateSelectedCodexProvider = (W) => {
+        selectedCodexProvider &&
+          setCodexVisualState((H) =>
+            H ? codexVisualUpdateProvider(H, selectedCodexProvider.id, W) : H,
+          );
+      },
+      confirmDeleteCodexProvider = () => {
+        if (!selectedCodexProvider) return;
+        xr.confirm({
+          title: "删除 Provider",
+          content: `确定删除 ${selectedCodexProvider.name || selectedCodexProvider.id} 吗？`,
+          okText: "删除",
+          cancelText: "取消",
+          onOk: () =>
+            setCodexVisualState((W) =>
+              W ? codexVisualDeleteProvider(W, selectedCodexProvider.id) : W,
+            ),
+        });
+      },
+      renderCodexField = (W, H, k, L, U = {}) =>
+        be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(W, U.help),
+            be.jsx(zi, {
+              value: H || "",
+              onChange: (T) => k(T.target.value),
+              placeholder: L,
+              ...stripConfigHelpOption(U),
+            }),
+          ],
+        }),
+      renderCodexSelect = (W, H, k, L, U = {}) =>
+        be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(
+              W,
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), L.map((T) => T.value || T.label)),
+            ),
+            be.jsx("select", {
+              value: H || "",
+              onChange: (U) => k(U.target.value),
+              style: {
+                width: "100%",
+                minHeight: "30px",
+                padding: "4px 8px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "6px",
+                color: "var(--text-color)",
+                background: "var(--background-color)",
+              },
+              children: L.map((U) =>
+                be.jsx("option", { value: U.value, children: U.label }, U.value || "__default"),
+              ),
+            }),
+          ],
+        }),
+      renderCodexSection = (W, H, k) =>
+        be.jsxs("section", {
+          style: {
+            border: "1px solid var(--border-color)",
+            borderRadius: "6px",
+            padding: "6px",
+          },
+          children: [
+            be.jsx("div", { style: { fontWeight: 600, marginBottom: "2px" }, children: W }),
+            H
+              ? be.jsx("div", {
+                  style: {
+                    color: "var(--text-color-secondary)",
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                    marginBottom: "6px",
+                  },
+                  children: H,
+                })
+              : null,
+            k,
+          ],
+        }),
+      renderCodexVisualEditor = () => {
+        if (!codexVisualState)
+          return be.jsx("div", {
+            style: {
+              padding: "8px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              color: "var(--error-color)",
+            },
+            children: codexVisualError || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。",
+          });
+        const W = selectedCodexProvider,
+          H = [
+            { value: "", label: "跟随默认" },
+            { value: "true", label: "true" },
+            { value: "false", label: "false" },
+          ],
+          k = {
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+            gap: "5px",
+          };
+        return be.jsxs("div", {
+          style: {
+            display: "flex",
+            gap: "6px",
+            alignItems: "stretch",
+            flexWrap: "wrap",
+            minHeight: 420,
+          },
+          children: [
+            be.jsxs("div", {
+              style: {
+                width: `${CONFIG_PROVIDER_CARD_WIDTH_PX}px`,
+                minWidth: `${CONFIG_PROVIDER_CARD_MIN_WIDTH_PX}px`,
+                maxWidth: "100%",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                border: "1px solid var(--border-color)",
+                borderRadius: "6px",
+                padding: "5px",
+              },
+              children: [
+                be.jsxs("div", {
+                  style: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+                  children: [
+                    be.jsx("strong", { children: "Provider" }),
+                    be.jsx(xn, {
+                      size: "small",
+                      onClick: () =>
+                        setCodexVisualState((L) =>
+                          L ? codexVisualAddProvider(L) : codexVisualCreateState("", ""),
+                        ),
+                      children: "新增",
+                    }),
                   ],
+                }),
+                codexVisualState.providers.length > 0
+                  ? codexVisualState.providers.map((L) =>
+                      be.jsx(
+                        xn,
+                        {
+                          type: L.id === codexVisualState.selectedProviderId ? "primary" : "default",
+                          onClick: () => selectCodexProvider(L.id),
+                          style: { width: "100%", textAlign: "left", overflow: "hidden" },
+                          children: L.name || L.id,
+                        },
+                        L.id,
+                      ),
+                    )
+                  : be.jsx("div", {
+                      style: {
+                        padding: "10px 2px",
+                        textAlign: "center",
+                        color: "var(--text-color-secondary)",
+                      },
+                      children: "暂无 Provider，请新增",
+                    }),
+              ],
+            }),
+            be.jsxs("div", {
+              style: {
+                flex: "1 1 420px",
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              },
+              children: [
+                renderCodexSection(
+                  "核心配置",
+                  "编辑 ~/.codex/config.toml 中稳定常用字段；未展示的 TOML 字段会保留。",
+                  be.jsxs("div", {
+                    style: k,
+                    children: [
+                      renderCodexField("model", codexVisualState.model, (L) => updateCodexVisualState({ model: L }), "gpt-5.1-codex"),
+                      renderCodexSelect(
+                        "model_provider",
+                        codexVisualState.modelProvider,
+                        (L) => updateCodexVisualState({ modelProvider: L }),
+                        [
+                          { value: "", label: "未设置" },
+                          ...codexVisualState.providers.map((L) => ({ value: L.id, label: L.id })),
+                        ],
+                      ),
+                      renderCodexSelect(
+                        "approval_policy",
+                        codexVisualState.approvalPolicy,
+                        (L) => updateCodexVisualState({ approvalPolicy: L }),
+                        ["", "untrusted", "on-request", "on-failure", "never"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
+                      renderCodexSelect(
+                        "sandbox_mode",
+                        codexVisualState.sandboxMode,
+                        (L) => updateCodexVisualState({ sandboxMode: L }),
+                        ["", "read-only", "workspace-write", "danger-full-access"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
+                      renderCodexSelect(
+                        "model_reasoning_effort",
+                        codexVisualState.reasoningEffort,
+                        (L) => updateCodexVisualState({ reasoningEffort: L }),
+                        ["", "minimal", "low", "medium", "high"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
+                      renderCodexSelect(
+                        "model_reasoning_summary",
+                        codexVisualState.reasoningSummary,
+                        (L) => updateCodexVisualState({ reasoningSummary: L }),
+                        ["", "auto", "concise", "detailed", "none"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
+                    ],
+                  }),
+                ),
+                renderCodexSection(
+                  "开关与工具",
+                  "",
+                  be.jsxs("div", {
+                    style: k,
+                    children: [
+                      renderCodexSelect("web_search", codexVisualState.webSearch, (L) => updateCodexVisualState({ webSearch: L }), H),
+                      renderCodexSelect("tools.web_search", codexVisualState.toolsWebSearch, (L) => updateCodexVisualState({ toolsWebSearch: L }), H),
+                      renderCodexSelect("features.web_search", codexVisualState.featuresWebSearch, (L) => updateCodexVisualState({ featuresWebSearch: L }), H),
+                      renderCodexSelect("disable_response_storage", codexVisualState.disableResponseStorage, (L) => updateCodexVisualState({ disableResponseStorage: L }), H),
+                      renderCodexSelect("hide_agent_reasoning", codexVisualState.hideAgentReasoning, (L) => updateCodexVisualState({ hideAgentReasoning: L }), H),
+                      renderCodexSelect("model_supports_reasoning_summaries", codexVisualState.supportsReasoningSummaries, (L) => updateCodexVisualState({ supportsReasoningSummaries: L }), H),
+                    ],
+                  }),
+                ),
+                W
+                  ? renderCodexSection(
+                      "Provider 配置",
+                      "Provider 写入 [model_providers.<id>]，env_key 对应 ~/.codex/.env 中的密钥名。",
+                      be.jsxs(be.Fragment, {
+                        children: [
+                          be.jsxs("div", {
+                            style: {
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: "4px",
+                              marginBottom: "5px",
+                            },
+                            children: [
+                              be.jsx("strong", { children: W.name || W.id }),
+                              be.jsx(xn, {
+                                size: "small",
+                                danger: !0,
+                                onClick: confirmDeleteCodexProvider,
+                                children: "删除 Provider",
+                              }),
+                            ],
+                          }),
+                          be.jsxs("div", {
+                            style: k,
+                            children: [
+                              renderCodexField("Provider id", W.id, (L) => updateSelectedCodexProvider({ id: L }), "openai"),
+                              renderCodexField("name", W.name, (L) => updateSelectedCodexProvider({ name: L }), "OpenAI"),
+                              renderCodexField("base_url", W.baseUrl, (L) => updateSelectedCodexProvider({ baseUrl: L }), "https://api.openai.com/v1"),
+                              renderCodexField("env_key", W.envKey, (L) => updateSelectedCodexProvider({ envKey: L }), "OPENAI_API_KEY"),
+                              renderCodexField("wire_api", W.wireApi, (L) => updateSelectedCodexProvider({ wireApi: L }), "responses"),
+                              renderCodexSelect("requires_openai_auth", W.requiresOpenaiAuth, (L) => updateSelectedCodexProvider({ requiresOpenaiAuth: L }), H),
+                            ],
+                          }),
+                        ],
+                      }),
+                    )
+                  : null,
+                renderCodexSection(
+                  "~/.codex/.env",
+                  "主配置使用 env_key 引用这里的环境变量；长尾变量可在源码模式直接编辑。",
+                  be.jsxs("div", {
+                    style: k,
+                    children: [
+                      renderCodexField("OPENAI_API_KEY", codexVisualState.env.OPENAI_API_KEY, (L) => updateCodexVisualEnv("OPENAI_API_KEY", L), "sk-...", { type: "password" }),
+                      renderCodexField("OPENAI_BASE_URL", codexVisualState.env.OPENAI_BASE_URL, (L) => updateCodexVisualEnv("OPENAI_BASE_URL", L), "https://api.example.com/v1"),
+                      renderCodexField("OPENAI_ORG_ID", codexVisualState.env.OPENAI_ORG_ID, (L) => updateCodexVisualEnv("OPENAI_ORG_ID", L), "org_..."),
+                      renderCodexField("OPENAI_ORGANIZATION", codexVisualState.env.OPENAI_ORGANIZATION, (L) => updateCodexVisualEnv("OPENAI_ORGANIZATION", L), "org_..."),
+                    ],
+                  }),
+                ),
+              ],
             }),
           ],
         });
@@ -5664,8 +6673,73 @@ const ConfigEditorPanel = () => {
                   children: [
                     be.jsxs("div", {
                       style: {
-                        flex: 1,
                         display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                      },
+                      children: [
+                        be.jsxs("div", {
+                          style: { display: "flex", flexDirection: "column", gap: "2px" },
+                          children: [
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                              children: [
+                                be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml / .env"] }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("codex-config"),
+                                  children: "查看范例",
+                                }),
+                              ],
+                            }),
+                            be.jsx("span", {
+                              style: {
+                                color: "var(--text-color-secondary)",
+                                fontSize: "12px",
+                                lineHeight: 1.5,
+                              },
+                              children:
+                                "主配置: ~/.codex/config.toml；密钥: ~/.codex/.env；auth.json 保持兼容显示，不是主配置。",
+                            }),
+                          ],
+                        }),
+                        be.jsxs("div", {
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          children: [
+                            be.jsx(xn, {
+                              size: "small",
+                              type: codexEditorMode === "visual" ? "primary" : "default",
+                              onClick: () => switchCodexEditorMode("visual"),
+                              children: "可视化",
+                            }),
+                            be.jsx(xn, {
+                              size: "small",
+                              type: codexEditorMode === "toml" ? "primary" : "default",
+                              onClick: () => switchCodexEditorMode("toml"),
+                              children: "TOML 源码",
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                    codexVisualError
+                      ? be.jsx("div", {
+                          style: {
+                            padding: "8px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            color: "var(--error-color)",
+                          },
+                          children: codexVisualError,
+                        })
+                      : null,
+                    codexEditorMode === "visual" ? renderCodexVisualEditor() : null,
+                    be.jsxs("div", {
+                      style: {
+                        flex: 1,
+                        display: codexEditorMode === "toml" ? "flex" : "none",
                         flexDirection: "column",
                       },
                       children: [
@@ -5718,7 +6792,61 @@ const ConfigEditorPanel = () => {
                     be.jsxs("div", {
                       style: {
                         flex: 1,
-                        display: "flex",
+                        display: codexEditorMode === "toml" ? "flex" : "none",
+                        flexDirection: "column",
+                      },
+                      children: [
+                        be.jsxs("div", {
+                          style: {
+                            marginBottom: "4px",
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            justifyContent: "space-between",
+                          },
+                          children: [
+                            be.jsxs("div", {
+                              style: { display: "flex", alignItems: "center", gap: 4 },
+                              children: [
+                                be.jsxs("span", {
+                                  children: [be.jsx(Ya, {}), " .env"],
+                                }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  onClick: () => N("codex-env"),
+                                  children: "查看范例",
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "4px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: "配置文件路径: ~/.codex/.env",
+                        }),
+                        be.jsx(Qa, {
+                          value: b,
+                          onChange: (W) => (x(W.target.value), setCodexVisualError("")),
+                          placeholder: "请输入 .env 配置",
+                          rows: 8,
+                          style: {
+                            flex: 1,
+                            minHeight: 180,
+                            fontFamily: "monospace",
+                            fontSize: "13px",
+                          },
+                        }),
+                      ],
+                    }),
+                    be.jsxs("div", {
+                      style: {
+                        flex: 1,
+                        display: codexEditorMode === "toml" ? "flex" : "none",
                         flexDirection: "column",
                       },
                       children: [

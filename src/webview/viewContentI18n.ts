@@ -136,7 +136,7 @@ export const WEBVIEW_I18N = {
     toolSettingsFinalAnswerPolicyStrict: "Strict final_answer (Default)",
     toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
     toolSettingsAutoCompactAfterRunTitle:
-      "Workspace setting. Automatically compact context after a successful task finishes.",
+      "Workspace setting for Codex, Claude, and OpenCode. Automatically compact context after a successful task finishes.",
     toolSettingsAutoCompactAfterRunToggle: "On",
     toolSettingsCodexMultiAgentLabel: "Codex Multi-Agent",
     toolSettingsCodexMultiAgentTitle:
@@ -170,7 +170,7 @@ export const WEBVIEW_I18N = {
     commonCommandsClose: "Close",
     commonCommandCompactTitle: "Compact Context",
     commonCommandCompactDesc:
-      "After compaction, the next task uses fewer tokens.",
+      "Available for Codex, Claude, and OpenCode. After compaction, the next task uses fewer tokens.",
     runConflictTitle: "Task Running",
     runConflictClose: "Close",
     runConflictBody:
@@ -239,7 +239,7 @@ export const WEBVIEW_I18N = {
     helpThinkingCodexTitle: "Codex",
     helpThinkingCodexItem1: "Control intensity via model_reasoning_effort.",
     helpThinkingCodexItem2:
-      "Options: low / medium / high (no explicit off; low is minimal).",
+      "Options: low / medium / high / xhigh / max",
     helpThinkingOpenCodeTitle: "OpenCode",
     helpThinkingOpenCodeItem1:
       "Controlled via OpenCode config and command arguments.",
@@ -490,7 +490,7 @@ export const WEBVIEW_I18N = {
     toolSettingsFinalAnswerPolicyStrict: "严格 final_answer（默认）",
     toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩上下文",
     toolSettingsAutoCompactAfterRunTitle:
-      "工作区设置。任务成功结束后自动压缩上下文。",
+      "Codex、Claude、OpenCode 的工作区设置。任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
     toolSettingsCodexMultiAgentLabel: "Codex 多智能体",
     toolSettingsCodexMultiAgentTitle:
@@ -523,7 +523,7 @@ export const WEBVIEW_I18N = {
     commonCommandsTitle: "常用指令",
     commonCommandsClose: "关闭",
     commonCommandCompactTitle: "压缩上下文",
-    commonCommandCompactDesc: "压缩后下一个任务节省 token 数消耗",
+    commonCommandCompactDesc: "适用于 Codex、Claude、OpenCode。压缩后下一个任务节省 token 数消耗",
     runConflictTitle: "任务执行中",
     runConflictClose: "关闭",
     runConflictBody: "检测到当前任务仍在执行，要如何处理这条消息？",
@@ -591,7 +591,7 @@ export const WEBVIEW_I18N = {
     helpThinkingCodexTitle: "Codex",
     helpThinkingCodexItem1: "通过配置 model_reasoning_effort 控制强度。",
     helpThinkingCodexItem2:
-      "可选值：low / medium / high（无显式关闭，low 近似最低）。",
+      "可选值：low / medium / high / xhigh / max",
     helpThinkingOpenCodeTitle: "OpenCode",
     helpThinkingOpenCodeItem1: "通过 OpenCode 配置和命令参数控制。",
     helpThinkingOpenCodeItem2: "使用本扩展中的 OpenCode 思考模式配置。",

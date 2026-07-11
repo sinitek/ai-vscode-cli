@@ -82,8 +82,8 @@ test("configuration activate button has a compact text-safe minimum width", () =
   );
   assert.match(activateButton, /\bmin-width:\s*45px;/);
   assert.match(activateButton, /\bheight:\s*24px;/);
-  assert.match(activateButton, /\bpadding:\s*0 6px;/);
-  assert.match(activateButton, /\bfont-size:\s*80%;/);
+  assert.match(activateButton, /\bpadding:\s*0 3px;/);
+  assert.match(activateButton, /\bfont-size:\s*calc\(80% \+ 1px\);/);
   assert.doesNotMatch(activateButton, /\bmin-width:\s*76px;/);
 });
 

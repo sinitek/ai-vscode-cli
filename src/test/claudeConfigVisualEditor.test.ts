@@ -159,6 +159,70 @@ test("official example and editor expose visual plus JSON modes", () => {
   assert.match(source, /switchClaudeEditorMode\("json"\)/);
   assert.match(source, /renderClaudeVisualEditor\(\)/);
   assert.match(source, /claudeText\("可视化", "Visual"\)/);
+  assert.match(
+    source,
+    /~\/\.claude\/settings\.json[\s\S]*?children: "查看范例"[\s\S]*?switchClaudeEditorMode\("visual"\)/,
+    "Claude example entry should sit beside the config filename and before mode controls",
+  );
   assert.match(source, /Default model family mapping/);
   assert.match(source, /Advanced JSON mode preserves every Claude Code field/);
+});
+
+test("visual labels expose tooltip help and visual mode is never hidden", () => {
+  const source = loadUiSource();
+  const claudeStart = source.indexOf('className: "config-editor-shell config-editor-claude"');
+  const codexStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
+  assert.notEqual(claudeStart, -1, "Claude editor branch should exist");
+  assert.notEqual(codexStart, -1, "Codex editor branch should exist");
+  const claudeBranch = source.slice(claudeStart, codexStart);
+
+  assert.match(source, /renderConfigFieldLabel =/);
+  assert.match(source, /children: "\?"/);
+  assert.match(source, /title: getConfigFieldHelp\(W, H\)/);
+  assert.match(source, /formatConfigEnumHelp\(getConfigFieldHelp\(W, U\.help\)/);
+  assert.match(source, /推理强度 effortLevel[\s\S]*?可选值：default \/ acceptEdits \/ plan \/ dontAsk/);
+  assert.doesNotMatch(
+    claudeBranch,
+    /display: claudeEditorMode === "json" \? "flex" : "none"/,
+    "Claude visual mode should not be hidden by the JSON container",
+  );
+});
+
+test("visual editor style stays aligned with OpenCode cards", () => {
+  const source = loadUiSource();
+  const claudeStart = source.indexOf('className: "config-editor-shell config-editor-claude"');
+  const codexStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
+  assert.notEqual(claudeStart, -1, "Claude editor branch should exist");
+  assert.notEqual(codexStart, -1, "Codex editor branch should exist");
+  assert.doesNotMatch(
+    source.slice(claudeStart, codexStart),
+    /Codex config\.toml 与 \.env/,
+    "Claude branch should not contain Codex mode controls",
+  );
+
+  const visualRenderStart = source.indexOf("renderClaudeField =");
+  const visualRenderEnd = source.indexOf("renderOpenCodeVisualEditor =", visualRenderStart);
+  assert.notEqual(visualRenderStart, -1, "Claude visual render start should exist");
+  assert.notEqual(visualRenderEnd, -1, "OpenCode visual render marker should follow Claude render helpers");
+  const visualSource = source.slice(visualRenderStart, visualRenderEnd);
+  assert.match(
+    visualSource,
+    /gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(240px, 100%\), 1fr\)\)"/,
+    "Claude field layout should keep its existing responsive width",
+  );
+  assert.doesNotMatch(
+    visualSource,
+    /CONFIG_PROVIDER_CARD_WIDTH_PX|CONFIG_PROVIDER_CARD_MIN_WIDTH_PX/,
+    "Claude layout should not use OpenCode/Codex provider card width constants",
+  );
+  assert.match(visualSource, /be\.jsx\(zi, \{/);
+  assert.match(visualSource, /color: "var\(--text-color-secondary\)"[\s\S]*?fontSize: "12px"/);
+  assert.match(visualSource, /border: "1px solid var\(--border-color\)"/);
+  assert.match(visualSource, /padding: "6px"/);
+  assert.doesNotMatch(visualSource, /background: "var\(--background-color-secondary\)"/);
+  assert.doesNotMatch(
+    visualSource,
+    /#[0-9a-f]{3,8}|rgba?\(|hsla?\(/i,
+    "Claude visual editor should use theme variables instead of hardcoded colors",
+  );
 });

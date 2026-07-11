@@ -253,10 +253,10 @@ body,
 }
 
 .config-app-sidebar {
-  flex: 0 0 min(42vw, 500px) !important;
-  width: min(42vw, 500px) !important;
+  flex: 0 0 360px !important;
+  width: 360px !important;
   min-width: 360px !important;
-  max-width: 500px !important;
+  max-width: 360px !important;
 }
 
 .config-app-content {
@@ -620,11 +620,11 @@ body,
 .config-list .config-list-item-selected .config-activate-button {
   min-width: 45px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 3px;
   border-color: var(--clay-text) !important;
   background: var(--clay-lemon) !important;
   color: var(--clay-text) !important;
-  font-size: 80%;
+  font-size: calc(80% + 1px);
   line-height: 1;
   box-shadow: -2px 2px 0 var(--clay-text) !important;
 }

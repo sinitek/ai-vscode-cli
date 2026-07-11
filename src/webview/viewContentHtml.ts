@@ -57,38 +57,33 @@ ${webviewStyles}    </style>
             <input id="resultOnlyToggle" type="checkbox" aria-label="${i18n.resultOnlyAria}" />
             <span>${i18n.resultOnlyLabel}</span>
           </label>
-          <button id="helpButton" class="secondary icon-button" title="${i18n.headerHelp}" aria-label="${i18n.headerHelp}">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.8" />
-              <path d="M12 16.5h.01" />
-            </svg>
-          </button>
-          <button id="toolSettingsButton" class="secondary icon-button" title="${i18n.headerToolSettings}" aria-label="${i18n.headerToolSettings}">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-              <circle cx="9" cy="6" r="2" />
-              <circle cx="15" cy="12" r="2" />
-              <circle cx="11" cy="18" r="2" />
-            </svg>
-          </button>
-          <button id="rulesButton" class="secondary icon-button" title="${i18n.headerRules}" aria-label="${i18n.headerRules}">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
-              <path d="M14 3v4h4" />
-              <path d="M8 11h8" />
-              <path d="M8 15h8" />
-            </svg>
-          </button>
-          <button id="newSession" class="secondary icon-button" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}">＋</button>
-          <button id="resetSession" class="secondary icon-button" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-              <polyline points="20 4 20 10 14 10" />
-            </svg>
-          </button>
+          <svg id="helpButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerHelp}" aria-label="${i18n.headerHelp}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.8" />
+            <path d="M12 16.5h.01" />
+          </svg>
+          <svg id="toolSettingsButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerToolSettings}" aria-label="${i18n.headerToolSettings}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+            <circle cx="9" cy="6" r="2" />
+            <circle cx="15" cy="12" r="2" />
+            <circle cx="11" cy="18" r="2" />
+          </svg>
+          <svg id="rulesButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerRules}" aria-label="${i18n.headerRules}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+            <path d="M14 3v4h4" />
+            <path d="M8 11h8" />
+            <path d="M8 15h8" />
+          </svg>
+          <svg id="newSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <svg id="resetSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+            <polyline points="20 4 20 10 14 10" />
+          </svg>
         </div>
       </div>
 
@@ -198,24 +193,20 @@ ${webviewStyles}    </style>
             </select>
           </div>
           <div class="input-actions">
-            <button id="commonCommandButton" class="secondary icon-button" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}">
-              <span>&gt;_</span>
-            </button>
-            <button id="pathPickerButton" class="secondary icon-button" title="${i18n.pathPickerButton}" aria-label="${i18n.pathPickerButton}">
-              <span>@</span>
-            </button>
-            <button id="attachmentButton" class="secondary icon-button" title="${i18n.attachmentButton}" aria-label="${i18n.attachmentButton}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
-              </svg>
-            </button>
-            <button id="historyButton" class="secondary icon-button" title="${i18n.historyButton}" aria-label="${i18n.historyButton}">
-              <svg class="icon" viewBox="2 2 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 6v4h4" />
-                <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
-                <path d="M12 8.2v4.2l2.8 1.9" />
-              </svg>
-            </button>
+            <svg id="commonCommandButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}" viewBox="0 0 24 24" fill="currentColor">
+              <text x="12" y="17" text-anchor="middle" font-size="15.6" font-family="monospace" font-weight="700">&gt;_</text>
+            </svg>
+            <svg id="pathPickerButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.pathPickerButton}" aria-label="${i18n.pathPickerButton}" viewBox="0 0 24 24" fill="currentColor">
+              <text x="12" y="18" text-anchor="middle" font-size="20.4" font-family="monospace" font-weight="700">@</text>
+            </svg>
+            <svg id="attachmentButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.attachmentButton}" aria-label="${i18n.attachmentButton}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.5l-7.4 7.4a5 5 0 01-7.1-7.1l9.2-9.2a3 3 0 014.2 4.2l-9.2 9.2a1 1 0 01-1.4-1.4l8.5-8.5" />
+            </svg>
+            <svg id="historyButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.historyButton}" aria-label="${i18n.historyButton}" viewBox="2 2 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 6v4h4" />
+              <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
+              <path d="M12 8.2v4.2l2.8 1.9" />
+            </svg>
             <button id="sendPrompt" class="icon-button send-icon-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 2L11 13" />

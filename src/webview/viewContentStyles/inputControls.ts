@@ -181,7 +181,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .input-actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 10px;
         width: 100%;
         justify-content: flex-end;
       }

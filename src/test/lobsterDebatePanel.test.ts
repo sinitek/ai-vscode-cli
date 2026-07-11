@@ -51,6 +51,7 @@ test("renders submitted Loop supplemental requirements as user message bubbles",
 
   assert.match(html, />我要说话<\/button>/u);
   assert.match(html, /class="message user-message no-avatar"/u);
+  assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
   assert.match(html, /<span class="speaker">我<\/span>/u);
   assert.match(html, /<pre class="message-text">请补充提交失败场景。<\/pre>/u);
   assert.doesNotMatch(html, /<pre class="message-text">[^<]*主任务轮次/u);

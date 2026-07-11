@@ -234,10 +234,40 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
     /renderOpenCodeVisualEditor[\s\S]*?flexWrap: "wrap"[\s\S]*?flex: "1 1 420px"/,
     "provider and editor columns should wrap at narrow widths",
   );
+  assert.match(source, /const CONFIG_PROVIDER_CARD_ORIGINAL_WIDTH_PX = 220;/);
+  assert.match(source, /const CONFIG_PROVIDER_CARD_WIDTH_SCALE = 0\.6;/);
+  const openCodeStart = source.indexOf("renderOpenCodeVisualEditor = () =>");
+  const openCodeEnd = source.indexOf("selectedCodexProvider =", openCodeStart);
+  assert.notEqual(openCodeStart, -1, "OpenCode visual editor should exist");
+  assert.notEqual(openCodeEnd, -1, "OpenCode visual editor should terminate before Codex state");
+  const openCodeVisualSource = source.slice(openCodeStart, openCodeEnd);
+  assert.equal(
+    (openCodeVisualSource.match(/width: `\$\{CONFIG_PROVIDER_CARD_WIDTH_PX\}px`,\s+minWidth: `\$\{CONFIG_PROVIDER_CARD_MIN_WIDTH_PX\}px`,/g) || []).length,
+    2,
+    "OpenCode provider and model list cards should use the 60% shared width constants",
+  );
+  assert.match(
+    source,
+    /config\.json[\s\S]*?children: "查看范例"[\s\S]*?switchOpenCodeEditorMode\("visual"\)/,
+    "OpenCode example entry should remain beside the config filename",
+  );
+  assert.match(source, /renderConfigFieldLabel =/);
+  assert.match(source, /children: "\?"/);
+  assert.match(source, /思考力度: "该模型支持的 reasoning effort，逗号分隔。可选值：low \/ medium \/ high"/);
   assert.match(
     source,
     /display: "flex",\s+gap: "6px",\s+flexWrap: "wrap",\s+flex: 1,\s+minHeight: 260/,
     "model list and model form should wrap at narrow widths",
+  );
+  assert.doesNotMatch(
+    openCodeVisualSource,
+    /width: "220px",\s+minWidth: "190px"/,
+    "OpenCode model list should no longer use the original full-width card sizing",
+  );
+  assert.match(
+    openCodeVisualSource,
+    /Provider 配置[\s\S]*?gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(210px, 100%\), 1fr\)\)"/,
+    "OpenCode provider configuration form should keep its existing responsive grid",
   );
   assert.match(source, /flex: "1 1 360px"/, "model form should keep a flexible narrow-width basis");
   const visualRenderStart = source.indexOf("renderOpenCodeField =");
@@ -248,5 +278,15 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
     source.slice(visualRenderStart, visualRenderEnd),
     /#[0-9a-f]{3,8}|rgba?\(|hsla?\(/i,
     "visual editor should use theme variables instead of hardcoded colors",
+  );
+  assert.match(
+    source.slice(visualRenderStart, visualRenderEnd),
+    /border: "1px solid var\(--border-color\)"[\s\S]*?padding: "6px"/,
+    "OpenCode visual card density should remain the style baseline",
+  );
+  assert.match(
+    source.slice(visualRenderStart, visualRenderEnd),
+    /renderOpenCodeField[\s\S]*?color: "var\(--text-color-secondary\)"[\s\S]*?fontSize: "12px"/,
+    "OpenCode field labels should keep compact secondary styling",
   );
 });

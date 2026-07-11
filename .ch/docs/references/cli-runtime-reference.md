@@ -93,6 +93,9 @@
 - OpenCode 运行前会对 effective primary、effective small 和 overlay 后配置做 preflight：缺少有效 primary、角色引用不是当前配置候选、provider/model 已被过滤或配置仍含占位值时阻止启动；OpenAI-compatible provider 缺少 `baseURL` 等未完成配置同样阻断。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - Claude 配置中心管理用户级 `~/.claude/settings.json`。卡片默认进入可视化模式，也可切换到 JSON 高级模式；模式切换和保存都会先校验 JSON/可视化状态，无效 JSON 不得清空或覆盖最后一次有效状态。可视化模式定向维护 `model`、`fallbackModel`（最多三个）、`availableModels`、`effortLevel`（`low|medium|high|xhigh`）、常用行为字段、权限规则、API/网关环境变量，以及 `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` 三档模型映射；所有未受管字段基于原始 JSON 保留。
+- Codex 配置中心管理用户级 `~/.codex/config.toml` 与 `~/.codex/.env`。`config.toml` 是 Codex 主配置文件，格式为 TOML，支持可视化编辑和 TOML 源码编辑；`.env` 是独立环境变量文件，按文本键值保存，不得误称或序列化为 JSON，也不得与 `auth.json` 混作同一配置面。Claude 配置页仅做视觉风格对齐 OpenCode，不改变 Claude `settings.json` 的运行时语义。
+- Claude、OpenCode、Codex 三组配置可视化参数的 label 右侧提供问号 tooltip；tooltip 说明字段含义、写入目标和注意事项，枚举字段同时列出可选值。三组“查看范例”入口统一放在配置文件名右侧，并与 OpenCode 现有交互风格保持一致。
+- 用户控制台若出现 `AugmentExtensionSidecar` 访问 `https://d17.api.augmentcode.com/find-missing` 或 `/record-session-events` 返回 403，应按 Augment 扩展侧鉴权/网络问题记录；本插件 Claude 配置页空白仍优先排查 Webview 渲染、配置 JSON/TOML 解析和初始化数据链路，不应仅凭该 403 判定根因。
 
 #### OpenCode 动态 variants 与运行参数
 
@@ -117,7 +120,7 @@
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。
 - 骨架安装成功后，扩展会二次弹窗询问是否初始化 `ARCHITECTURE.md`；用户确认后，扩展侧把当前 AI 对话切到 `coding` 模式，并通过现有 `runPrompt` 链路复用当前 CLI 分组、配置和模型发起架构分析任务。用户取消时不影响 harness 开关保存或 CodeGraph 初始化。
-- 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。
+- 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。OpenCode 官方另有上下文压缩能力：TUI slash commands 文档列出 `/compact`，alias `/summarize`，用于 compact current session；配置文档提供 `compaction.auto`（默认 `true`）、`compaction.prune`、`compaction.reserved`，CLI 环境变量列表包含 `OPENCODE_DISABLE_AUTOCOMPACT` 用于关闭自动压缩。插件的“执行后自动压缩上下文”和手动压缩按钮可把 OpenCode 纳入支持范围，但实现口径必须区分 Codex app-server/Claude 交互 Runner 与 OpenCode 非交互 fallback：无法附着既有 OpenCode 会话时，只能发送官方 slash command 或等待 runtime 子任务提供可靠路径。
 - 长期记忆热区位于当前工作区 `.ch/docs/memory/`，generated recall 产物位于 `.ch/docs/generated/memory-index/`。插件侧踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。运行总结或失败回复中出现明确失败、阻塞、回滚、踩坑等信号，并伴随根因、规避或验证线索时，运行时可写入结构化坑点条目；这些条目会进入 generated recall 和 prompt 注入。该写入同样受长期记忆总开关限制。
 - 自动提取还有二级条件：`memoryAutoExtractAfterCompact` 只允许 compact 成功后的提取，`memoryAutoExtractAfterLobsterTask` 只允许 Loop 任务完成后的提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许新增或更新当前工作区 `.ch/docs/memory/` 与相关 generated recall。
 - 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主

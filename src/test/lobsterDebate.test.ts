@@ -113,7 +113,24 @@ test("keeps lobster continue available only for incomplete non-running tasks", (
   );
   assert.deepEqual(
     resolveLobsterTaskRunControlState({ id: "task-1", status: "completed" }, new Set(["task-1"])),
-    { isRunning: false, canSupplement: false, canContinue: false, canStop: false },
+    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
+  );
+});
+
+test("keeps lobster speaking available whenever the task still has a running process", () => {
+  assert.deepEqual(
+    resolveLobsterTaskRunControlState(
+      { id: "task-1", status: "running", mainAiFailureLimitReached: true },
+      new Set(["task-1"]),
+    ),
+    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
+  );
+  assert.deepEqual(
+    resolveLobsterTaskRunControlState(
+      { id: "task-1", status: "completed", mainAiFailureLimitReached: true },
+      new Set(["task-1"]),
+    ),
+    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
   );
 });
 

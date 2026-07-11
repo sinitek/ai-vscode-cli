@@ -556,10 +556,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
         const visible = supported && (state.currentCli === "claude" || state.currentCli === "codex");
+        const disabled = !visible || state.isRunning;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
-        elements.commonCommandButton.disabled = !visible || state.isRunning;
+        elements.commonCommandButton.disabled = disabled;
+        elements.commonCommandButton.setAttribute("aria-disabled", String(disabled));
+        elements.commonCommandButton.tabIndex = disabled ? -1 : 0;
         if (elements.commandCompact) {
-          elements.commandCompact.disabled = !visible || state.isRunning;
+          elements.commandCompact.disabled = disabled;
         }
       }
 
