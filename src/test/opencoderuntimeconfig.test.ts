@@ -45,3 +45,23 @@ test("rejects unavailable runtime role models before writing a file", () => {
   assert.equal(result.overlay, null);
   assert.match(result.issues[0]?.message ?? "", /not an available model/u);
 });
+
+
+test("writes independent OpenCode reasoning effort overlays for both role models", () => {
+  const result = createOpenCodeRuntimeConfigOverlay({
+    configContent,
+    primaryModel: "provider/selected",
+    smallModel: "provider/tiny",
+    primaryVariant: "high",
+    smallVariant: "low",
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.overlay);
+  const overlay = result.overlay!;
+  const parsed = JSON.parse(fs.readFileSync(overlay.configPath, "utf8")) as {
+    provider: { provider: { models: Record<string, { options?: { reasoningEffort?: string } }> } };
+  };
+  assert.equal(parsed.provider.provider.models.selected.options?.reasoningEffort, "high");
+  assert.equal(parsed.provider.provider.models.tiny.options?.reasoningEffort, "low");
+  overlay.cleanup();
+});

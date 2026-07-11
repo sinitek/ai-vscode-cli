@@ -17,6 +17,7 @@ export type CliModelStore = {
   optionsByConfigId: Record<string, string[]>;
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
+  openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeModelRole, string>>>>;
   selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRoleForModelSelection, string>>>;
   lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
   openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeModelRole, string>>>;
@@ -100,6 +101,7 @@ export function ensureCliModelStore(
     optionsByConfigId: {},
     thinkingByCliAndModel: {},
     openCodeVariantByConfigAndModel: {},
+    openCodeVariantByConfigModelAndRole: {},
     selectedLobsterByConfigId: {},
     lobsterRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
@@ -160,6 +162,34 @@ export function ensureCliModelStore(
       }
       if (Object.keys(variantsByModel).length > 0) {
         normalized.openCodeVariantByConfigAndModel[configId] = variantsByModel;
+      }
+    }
+  }
+  const storedOpenCodeRoleVariants = store?.openCodeVariantByConfigModelAndRole;
+  if (storedOpenCodeRoleVariants && typeof storedOpenCodeRoleVariants === "object") {
+    for (const [configId, rawVariantsByModel] of Object.entries(storedOpenCodeRoleVariants)) {
+      if (!configId || !rawVariantsByModel || typeof rawVariantsByModel !== "object") {
+        continue;
+      }
+      const variantsByModel: Record<string, Partial<Record<OpenCodeModelRole, string>>> = {};
+      for (const [rawModel, rawVariantsByRole] of Object.entries(rawVariantsByModel)) {
+        const model = normalizeCliModelName(rawModel);
+        if (!model || !rawVariantsByRole || typeof rawVariantsByRole !== "object") {
+          continue;
+        }
+        const variantsByRole: Partial<Record<OpenCodeModelRole, string>> = {};
+        for (const role of ["primary", "small"] as const) {
+          const variant = normalizeCliModelName((rawVariantsByRole as Partial<Record<OpenCodeModelRole, unknown>>)[role]);
+          if (variant) {
+            variantsByRole[role] = variant;
+          }
+        }
+        if (Object.keys(variantsByRole).length > 0) {
+          variantsByModel[model] = variantsByRole;
+        }
+      }
+      if (Object.keys(variantsByModel).length > 0) {
+        normalized.openCodeVariantByConfigModelAndRole[configId] = variantsByModel;
       }
     }
   }
@@ -300,6 +330,27 @@ export function getOpenCodeVariantFromStore(
   return normalizeCliModelName(store.openCodeVariantByConfigAndModel?.[configId]?.[normalizedModel]);
 }
 
+export function getOpenCodeRoleVariantFromStore(
+  store: CliModelStore,
+  configId: string | null,
+  model: string | null | undefined,
+  role: OpenCodeModelRole
+): string | null {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return null;
+  }
+  const roleVariant = normalizeCliModelName(
+    store.openCodeVariantByConfigModelAndRole?.[configId]?.[normalizedModel]?.[role]
+  );
+  if (roleVariant) {
+    return roleVariant;
+  }
+  return role === "primary"
+    ? getOpenCodeVariantFromStore(store, configId, normalizedModel)
+    : null;
+}
+
 export function getOpenCodeRoleModelFromStore(
   store: CliModelStore,
   configId: string | null,
@@ -372,6 +423,52 @@ export function setOpenCodeVariantInStore(
     delete nextStore.openCodeVariantByConfigAndModel[configId];
   }
   return nextStore;
+}
+
+export function setOpenCodeRoleVariantInStore(
+  store: CliModelStore,
+  configId: string | null,
+  model: string | null | undefined,
+  role: OpenCodeModelRole,
+  variant: string | null | undefined
+): CliModelStore {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || !normalizedModel) {
+    return store;
+  }
+  const normalizedVariant = normalizeCliModelName(variant);
+  const currentVariant = getOpenCodeRoleVariantFromStore(store, configId, normalizedModel, role);
+  if (currentVariant === normalizedVariant) {
+    return store;
+  }
+  const nextStore: CliModelStore = {
+    ...store,
+    openCodeVariantByConfigModelAndRole: {
+      ...(store.openCodeVariantByConfigModelAndRole ?? {}),
+    },
+  };
+  const nextByModel = {
+    ...(nextStore.openCodeVariantByConfigModelAndRole[configId] ?? {}),
+  };
+  const nextByRole = {
+    ...(nextByModel[normalizedModel] ?? {}),
+  };
+  if (normalizedVariant) {
+    nextByRole[role] = normalizedVariant;
+  } else {
+    delete nextByRole[role];
+  }
+  if (Object.keys(nextByRole).length > 0) {
+    nextByModel[normalizedModel] = nextByRole;
+  } else {
+    delete nextByModel[normalizedModel];
+  }
+  if (Object.keys(nextByModel).length > 0) {
+    nextStore.openCodeVariantByConfigModelAndRole[configId] = nextByModel;
+  } else {
+    delete nextStore.openCodeVariantByConfigModelAndRole[configId];
+  }
+  return ensureCliModelStore(nextStore);
 }
 
 export function getManagedModelOptionsForCliFromStore(

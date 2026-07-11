@@ -251,11 +251,12 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   const harness = buildHarness();
 
   harness.syncInteractiveModeSelector();
-  assert.equal(harness.elements.openCodeModelGroup.style.display, "inline-flex");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
   assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
 
   harness.elements.interactiveModeSelect.dispatchChange("lobster");
@@ -265,8 +266,9 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     key: "interactiveMode.opencode",
     value: "lobster",
   });
-  assert.equal(harness.elements.openCodeModelGroup.style.display, "inline-flex");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "inline-flex");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, false);
   assert.equal(harness.elements.lobsterExecutionModeSelect.value, "main-sub-multi-agent");
   assert.equal(harness.elements.lobsterMainModelSelect.style.display, "none");
@@ -279,8 +281,9 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     key: "interactiveMode.opencode",
     value: "coding",
   });
-  assert.equal(harness.elements.openCodeModelGroup.style.display, "inline-flex");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });

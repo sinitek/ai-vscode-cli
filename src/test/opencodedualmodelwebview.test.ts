@@ -141,6 +141,7 @@ function buildRoleModelChangeHarness() {
       selectedSmallRef: "myAPI/other",
     },
     openCodeThinking: null as unknown,
+    openCodeSmallThinking: null as unknown,
   };
   const postedMessages: unknown[] = [];
   let thinkingSyncCount = 0;
@@ -197,7 +198,7 @@ function buildVisibilityHarness() {
   return { state, elements, sync };
 }
 
-test("renders compact accessible OpenCode selectors without visible labels or effort hint", () => {
+test("renders OpenCode selectors as labeled primary and small model rows", () => {
   const html = buildWebviewStaticHtml({
     locale: "en",
     cspSource: "vscode-webview:",
@@ -213,30 +214,37 @@ test("renders compact accessible OpenCode selectors without visible labels or ef
   });
   const group = html.match(/<div id="openCodeModelGroup"[\s\S]*?<\/div>/)?.[0] || "";
 
+  assert.match(group, /<label class="open-code-model-row" for="openCodePrimaryModelSelect">/);
+  assert.match(group, /<label class="open-code-model-row" for="openCodeSmallModelSelect">/);
+  assert.match(group, /<span class="open-code-model-label">Main<\/span>/);
+  assert.match(group, /<span class="open-code-model-label">Small<\/span>/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
+  assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
+  assert.match(group, /id="openCodeSmallThinkingMode"[^>]*class="thinking-select"/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*title="OpenCode small model selection"/);
-  assert.doesNotMatch(group, /<label|openCodeSmallModelHint|reasoning effort|>Main<|>Small</);
+  assert.doesNotMatch(group, /openCodeSmallModelHint|reasoning effort/);
 });
 
-test("keeps OpenCode selectors on the shared Codex width contract with narrow-width wrapping", () => {
-  const sharedModelRule = extractCssRule(INPUT_CONTROLS_STYLES, ".input-model-row .model-select");
-  const openCodeModelRule = INPUT_CONTROLS_STYLES.match(
-    /\.open-code-model-group\s+\.model-select\s*\{([^}]*)\}/,
-  )?.[1];
-  const effectiveModelRule = openCodeModelRule ?? sharedModelRule;
+test("lays out OpenCode selectors as two full-width model rows", () => {
   const openCodeGroupRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-group");
+  const openCodeRowRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row");
+  const openCodeLabelRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-label");
+  const openCodeModelRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row .model-select");
+  const openCodeThinkingRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row .thinking-select");
 
-  assert.match(effectiveModelRule, /flex:\s*0 1 118px;/);
-  assert.match(effectiveModelRule, /min-width:\s*92px;/);
-  assert.match(effectiveModelRule, /max-width:\s*180px;/);
-  assert.doesNotMatch(openCodeModelRule ?? "", /(?:210|140|260)px/);
-  assert.match(openCodeGroupRule, /display:\s*inline-flex;/);
-  assert.match(openCodeGroupRule, /justify-content:\s*flex-end;/);
+  assert.match(openCodeGroupRule, /display:\s*flex;/);
+  assert.match(openCodeGroupRule, /flex:\s*1 1 100%;/);
+  assert.match(openCodeGroupRule, /flex-direction:\s*column;/);
   assert.match(openCodeGroupRule, /gap:\s*6px;/);
   assert.match(openCodeGroupRule, /min-width:\s*0;/);
-  assert.match(openCodeGroupRule, /flex-wrap:\s*wrap;/);
+  assert.match(openCodeRowRule, /display:\s*grid;/);
+  assert.match(openCodeRowRule, /grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) 70px;/);
+  assert.match(openCodeLabelRule, /color:\s*var\(--vscode-descriptionForeground\);/);
+  assert.match(openCodeModelRule, /width:\s*100%;/);
+  assert.match(openCodeModelRule, /min-width:\s*0;/);
+  assert.match(openCodeThinkingRule, /width:\s*70px;/);
 });
 
 test("rebuilds both OpenCode selects with model names and direct effective selections", () => {
@@ -332,7 +340,7 @@ test("clears an override when selecting the configured default and sends exact r
   ]);
   assert.equal(harness.state.openCodeModels.selectedPrimaryRef, "myAPI/main-chat");
   assert.equal(harness.state.openCodeModels.selectedSmallRef, "myAPI/other-small");
-  assert.equal(harness.getThinkingSyncCount(), 1);
+  assert.equal(harness.getThinkingSyncCount(), 2);
 });
 
 test("shows a localized disabled placeholder when no models are configured", () => {
@@ -372,14 +380,15 @@ test("shows OpenCode dual selectors in coding and Loop while preserving Codex an
 
   harness.state.interactiveMode = "coding";
   harness.sync("opencode");
-  assert.equal(harness.elements.openCodeModelGroup.style.display, "inline-flex");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
   assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
 
   harness.state.interactiveMode = "lobster";
   harness.sync("opencode");
-  assert.equal(harness.elements.openCodeModelGroup.style.display, "inline-flex");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "inline-flex");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.lobsterMainModelSelect.style.display, "none");
   assert.equal(harness.elements.lobsterSubtaskModelSelect.style.display, "none");
 
@@ -390,6 +399,8 @@ test("shows OpenCode dual selectors in coding and Loop while preserving Codex an
 
   harness.state.interactiveMode = "lobster";
   harness.sync("codex");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.lobsterModelGroup.style.display, "inline-flex");
   assert.equal(harness.elements.lobsterMainModelSelect.style.display, "");
   assert.equal(harness.elements.lobsterSubtaskModelSelect.style.display, "");
 

@@ -138,22 +138,28 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         });
       }
 
+      function handleOpenCodeThinkingModeChange(role, rawValue) {
+        const thinkingState = role === "small" ? state.openCodeSmallThinking : state.openCodeThinking;
+        const selectedVariant = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
+        const configuredDefaultVariant = thinkingState
+          ? thinkingState.configuredDefaultVariant
+          : null;
+        const value = selectedVariant && selectedVariant === configuredDefaultVariant
+          ? null
+          : selectedVariant;
+        if (thinkingState) {
+          thinkingState.selectedVariant = value;
+        }
+        vscode.postMessage({
+          type: "updateOpenCodeVariant",
+          role,
+          value,
+        });
+      }
+
       function handleThinkingModeChange(rawValue) {
         if (state.currentCli === "opencode") {
-          const selectedVariant = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
-          const configuredDefaultVariant = state.openCodeThinking
-            ? state.openCodeThinking.configuredDefaultVariant
-            : null;
-          const value = selectedVariant && selectedVariant === configuredDefaultVariant
-            ? null
-            : selectedVariant;
-          if (state.openCodeThinking) {
-            state.openCodeThinking.selectedVariant = value;
-          }
-          vscode.postMessage({
-            type: "updateOpenCodeVariant",
-            value,
-          });
+          handleOpenCodeThinkingModeChange("primary", rawValue);
           return;
         }
         const nextMode = rawValue || "off";
@@ -168,6 +174,16 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
       elements.thinkingMode.addEventListener("change", (event) => {
         handleThinkingModeChange(event.target.value);
       });
+      if (elements.openCodePrimaryThinkingMode) {
+        elements.openCodePrimaryThinkingMode.addEventListener("change", (event) => {
+          handleOpenCodeThinkingModeChange("primary", event.target.value);
+        });
+      }
+      if (elements.openCodeSmallThinkingMode) {
+        elements.openCodeSmallThinkingMode.addEventListener("change", (event) => {
+          handleOpenCodeThinkingModeChange("small", event.target.value);
+        });
+      }
 
       function handleOpenCodeRoleModelChange(role, rawValue) {
         const selectedRef = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
@@ -178,6 +194,13 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         if (state.openCodeModels) {
           if (role === "small") {
             state.openCodeModels.selectedSmallRef = selectedRef;
+            state.openCodeSmallThinking = {
+              selectedVariant: null,
+              configuredDefaultVariant: null,
+              options: [],
+              disabled: true,
+              messageKey: "loading",
+            };
           } else {
             state.openCodeModels.selectedPrimaryRef = selectedRef;
             state.openCodeThinking = {
@@ -187,8 +210,8 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               disabled: true,
               messageKey: "loading",
             };
-            syncThinkingOptions();
           }
+          syncThinkingOptions();
         }
         vscode.postMessage({
           type: "updateOpenCodeRoleModel",

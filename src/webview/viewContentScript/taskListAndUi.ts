@@ -255,6 +255,12 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         renderConversationTabs();
         elements.stopRun.disabled = !isRunning;
         elements.thinkingMode.disabled = false;
+        if (elements.openCodePrimaryThinkingMode) {
+          elements.openCodePrimaryThinkingMode.disabled = false;
+        }
+        if (elements.openCodeSmallThinkingMode) {
+          elements.openCodeSmallThinkingMode.disabled = false;
+        }
         if (elements.debugMode) {
           elements.debugMode.disabled = isRunning;
         }

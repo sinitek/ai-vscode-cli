@@ -15,6 +15,7 @@ type RunCliOptions = {
   openCodeVariant?: string | null;
   model?: string | null;
   openCodeSmallModel?: string | null;
+  openCodeSmallVariant?: string | null;
   openCodeConfigContent?: string | null;
   imagePaths?: string[];
   envOverrides?: Record<string, string>;
@@ -755,6 +756,8 @@ export function runCliStream(
         configContent: options.openCodeConfigContent,
         primaryModel: options.model,
         smallModel: options.openCodeSmallModel ?? null,
+        primaryVariant: options.openCodeVariant ?? null,
+        smallVariant: options.openCodeSmallVariant ?? null,
       })
     : null;
   if (runtimeOverlay && (!runtimeOverlay.ok || !runtimeOverlay.overlay)) {

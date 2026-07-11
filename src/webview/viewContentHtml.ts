@@ -158,15 +158,6 @@ ${webviewStyles}    </style>
         <div class="input-footer">
           <div class="input-model-row">
             <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
-              <select
-                id="lobsterExecutionModeSelect"
-                class="lobster-execution-mode-select"
-                aria-label="${i18n.lobsterExecutionModeSelectAria}"
-                title="${i18n.lobsterExecutionModeSelectAria}"
-              >
-                <option value="${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.lobsterExecutionModeOptionMainSubMultiAgent}</option>
-                <option value="${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.lobsterExecutionModeOptionDebateMultiAgent}</option>
-              </select>
               <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
                 <option value="">${i18n.modelOptionMainDefault}</option>
                 <option value="__manage__">${i18n.modelOptionManage}</option>
@@ -177,8 +168,21 @@ ${webviewStyles}    </style>
               </select>
             </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
-              <select id="openCodePrimaryModelSelect" class="model-select" aria-label="${i18n.openCodePrimaryModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodePrimaryModelSelectAria}"></select>
-              <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
+              <label class="open-code-model-row" for="openCodePrimaryModelSelect">
+                <span class="open-code-model-label">${i18n.openCodePrimaryModelLabel}</span>
+                <select id="openCodePrimaryModelSelect" class="model-select" aria-label="${i18n.openCodePrimaryModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodePrimaryModelSelectAria}"></select>
+                <select id="openCodePrimaryThinkingMode" class="thinking-select" aria-label="${i18n.openCodePrimaryThinkingModeAria}" title="${i18n.openCodePrimaryThinkingModeAria}">
+                  <option value="off">${i18n.thinkingOptionOff}</option>
+                  <option value="low">${i18n.thinkingOptionLow}</option>
+                  <option value="medium">${i18n.thinkingOptionMedium}</option>
+                  <option value="high">${i18n.thinkingOptionHigh}</option>
+                </select>
+              </label>
+              <label class="open-code-model-row" for="openCodeSmallModelSelect">
+                <span class="open-code-model-label">${i18n.openCodeSmallModelLabel}</span>
+                <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
+                <select id="openCodeSmallThinkingMode" class="thinking-select" aria-label="${i18n.openCodeSmallThinkingModeAria}" title="${i18n.openCodeSmallThinkingModeAria}" style="display: none;"></select>
+              </label>
               <span id="openCodeModelIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             </div>
             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
@@ -193,6 +197,16 @@ ${webviewStyles}    </style>
             </select>
           </div>
           <div class="input-actions">
+            <select
+              id="lobsterExecutionModeSelect"
+              class="lobster-execution-mode-select"
+              aria-label="${i18n.lobsterExecutionModeSelectAria}"
+              title="${i18n.lobsterExecutionModeSelectAria}"
+              style="display: none;"
+            >
+              <option value="${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.lobsterExecutionModeOptionMainSubMultiAgent}</option>
+              <option value="${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.lobsterExecutionModeOptionDebateMultiAgent}</option>
+            </select>
             <svg id="commonCommandButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}" viewBox="0 0 24 24" fill="currentColor">
               <text x="12" y="17" text-anchor="middle" font-size="15.6" font-family="monospace" font-weight="700">&gt;_</text>
             </svg>
@@ -306,9 +320,9 @@ ${webviewStyles}    </style>
           <div class="rules-row rules-save-row">
             <span>${i18n.rulesSaveLabel}</span>
             <div class="rules-checkboxes" role="group" aria-label="${i18n.rulesSaveGroupLabel}">
-              <label><input type="checkbox" id="rulesSaveCodex" /> codex</label>
-              <label><input type="checkbox" id="rulesSaveClaude" /> claude</label>
-              <label><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
+              <label id="rulesSaveCodexOption"><input type="checkbox" id="rulesSaveCodex" /> <span id="rulesSaveCodexLabel">codex</span></label>
+              <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> claude</label>
+              <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>

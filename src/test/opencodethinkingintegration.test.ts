@@ -167,17 +167,20 @@ test("rejects stale asynchronous OpenCode capability results", () => {
 });
 
 test("handles OpenCode variant save and null clear events", async () => {
-  const values: Array<string | null> = [];
+  const values: Array<{ role: "primary" | "small"; value: string | null }> = [];
   let refreshCount = 0;
   const deps = {
-    updateOpenCodeVariant: (value: string | null) => values.push(value),
+    updateOpenCodeVariant: (role: "primary" | "small", value: string | null) => values.push({ role, value }),
     postPanelState: async () => { refreshCount += 1; },
   };
 
   await handleUpdateOpenCodeVariantMessage({ type: "updateOpenCodeVariant", value: " high " }, deps);
-  await handleUpdateOpenCodeVariantMessage({ type: "updateOpenCodeVariant", value: null }, deps);
+  await handleUpdateOpenCodeVariantMessage({ type: "updateOpenCodeVariant", role: "small", value: null }, deps);
 
-  assert.deepEqual(values, ["high", null]);
+  assert.deepEqual(values, [
+    { role: "primary", value: "high" },
+    { role: "small", value: null },
+  ]);
   assert.equal(refreshCount, 2);
 });
 

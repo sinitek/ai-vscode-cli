@@ -276,7 +276,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const scopeLabel = data.scope === "project"
               ? t("rulesScopeProject")
               : t("rulesScopeGlobal");
-            setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: data.cli }));
+            const cliLabel = data.scope === "project" && data.cli === "codex" ? "codex/opencode" : data.cli;
+            setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: cliLabel }));
           }
           if (data.type === "rulesSaved") {
             if (data.error) {
@@ -289,7 +290,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             setRulesHint(
               t("rulesHintSaved", {
                 scope: scopeLabel,
-                targets: Array.isArray(data.targets) ? data.targets.join(", ") : "",
+                targets: Array.isArray(data.targets)
+                  ? data.targets.map((target) => data.scope === "project" && target === "codex" ? "codex/opencode" : target).join(", ")
+                  : "",
               })
             );
           }

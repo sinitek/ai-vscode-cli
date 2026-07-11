@@ -43,7 +43,7 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
-  | { type: "updateOpenCodeVariant"; value: string | null }
+  | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small" }
   | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | {
@@ -231,6 +231,7 @@ export type PanelState = {
   macTaskShell: MacTaskShell;
   thinkingMode: ThinkingMode;
   openCodeThinking: WebviewOpenCodeThinkingState;
+  openCodeSmallThinking?: WebviewOpenCodeThinkingState;
   openCodeModels?: OpenCodeModelsState;
   interactive: {
     supported: boolean;

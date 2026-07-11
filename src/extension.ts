@@ -314,6 +314,7 @@ import {
   getModelOptionsForCliFromStore,
   getModelOptionsForConfigFromStore,
   getOpenCodeRoleModelFromStore,
+  getOpenCodeRoleVariantFromStore,
   getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
   getSelectedLobsterCliModelFromStore,
@@ -328,6 +329,7 @@ import {
   selectCliLobsterModelInStore,
   selectCliModelInStore,
   setOpenCodeRoleModelInStore,
+  setOpenCodeRoleVariantInStore,
   setOpenCodeVariantInStore,
   setCliModelLobsterRoleInStore,
   summarizeModelStoreByConfigId,
@@ -647,10 +649,11 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   opencode: null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeModelsState: PanelState["openCodeModels"] = undefined;
 let openCodeThinkingContextKey = "";
 let openCodeThinkingConfigId: string | null = null;
-let openCodeThinkingExactModel: string | null = null;
+let openCodeThinkingExactModels: Record<OpenCodeModelRole, string | null> = { primary: null, small: null };
 let openCodeThinkingRequestId = 0;
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
@@ -1101,6 +1104,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getMacTaskShell,
     getEffectiveThinkingMode,
     openCodeThinking: openCodeThinkingState,
+    openCodeSmallThinking: openCodeSmallThinkingState,
     openCodeModels: openCodeModelsState,
     getWorkspaceInteractiveMode,
     isInteractiveSupported,
@@ -1135,8 +1139,31 @@ function buildDefaultOpenCodeThinkingState(
   };
 }
 
-function persistOpenCodeVariant(configId: string | null, exactModel: string | null, variant: string | null): void {
-  const nextStore = setOpenCodeVariantInStore(modelStore, configId, exactModel, variant);
+function getOpenCodeThinkingStateForRole(role: OpenCodeModelRole): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
+  return role === "small" ? openCodeSmallThinkingState : openCodeThinkingState;
+}
+
+function setOpenCodeThinkingStateForRole(
+  role: OpenCodeModelRole,
+  state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">
+): void {
+  if (role === "small") {
+    openCodeSmallThinkingState = state;
+    return;
+  }
+  openCodeThinkingState = state;
+}
+
+function persistOpenCodeVariant(
+  configId: string | null,
+  exactModel: string | null,
+  role: OpenCodeModelRole,
+  variant: string | null
+): void {
+  let nextStore = setOpenCodeRoleVariantInStore(modelStore, configId, exactModel, role, variant);
+  if (role === "primary") {
+    nextStore = setOpenCodeVariantInStore(nextStore, configId, exactModel, variant);
+  }
   if (nextStore === modelStore) {
     return;
   }
@@ -1144,18 +1171,23 @@ function persistOpenCodeVariant(configId: string | null, exactModel: string | nu
   writeModelStore(modelStore);
 }
 
-function updateOpenCodeVariantForCurrentSelection(value: string | null): void {
-  if (currentCli !== "opencode" || !openCodeThinkingConfigId || !openCodeThinkingExactModel) {
+function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRole, value: string | null): void {
+  if (currentCli !== "opencode" || !openCodeThinkingConfigId) {
     return;
   }
-  const nextVariant = value && openCodeThinkingState.options.some((option) => option.value === value)
+  const exactModel = openCodeThinkingExactModels[role];
+  if (!exactModel) {
+    return;
+  }
+  const currentState = getOpenCodeThinkingStateForRole(role);
+  const nextVariant = value && currentState.options.some((option) => option.value === value)
     ? value
     : null;
-  persistOpenCodeVariant(openCodeThinkingConfigId, openCodeThinkingExactModel, nextVariant);
-  openCodeThinkingState = {
-    ...openCodeThinkingState,
+  persistOpenCodeVariant(openCodeThinkingConfigId, exactModel, role, nextVariant);
+  setOpenCodeThinkingStateForRole(role, {
+    ...currentState,
     selectedVariant: nextVariant,
-  };
+  });
 }
 
 function resolveOpenCodeRoleModelsForConfig(
@@ -1237,8 +1269,9 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     openCodeThinkingRequestId += 1;
     openCodeThinkingContextKey = `inactive:${currentCli}`;
     openCodeThinkingConfigId = null;
-    openCodeThinkingExactModel = null;
+    openCodeThinkingExactModels = { primary: null, small: null };
     openCodeThinkingState = buildDefaultOpenCodeThinkingState();
+    openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
     openCodeModelsState = undefined;
     return;
   }
@@ -1248,81 +1281,93 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     ? await configService.getConfigById("opencode", configId)
     : await configService.getCurrentConfig("opencode");
   const configContent = activeConfig?.content ?? "{}";
-  const exactModel = resolveOpenCodeRoleModelsForConfig(configId, configContent).primary;
+  const roleModels = resolveOpenCodeRoleModelsForConfig(configId, configContent);
   const command = getCliCommand("opencode");
   const configHash = createHash("sha256").update(configContent).digest("hex");
-  const contextKey = [command, configId ?? "current", configHash, exactModel ?? ""].join("\u0000");
+  const contextKey = [
+    command,
+    configId ?? "current",
+    configHash,
+    roleModels.primary ?? "",
+    roleModels.small ?? "",
+  ].join("\u0000");
   if (contextKey === openCodeThinkingContextKey) {
     return;
   }
 
   openCodeThinkingContextKey = contextKey;
   openCodeThinkingConfigId = configId;
-  openCodeThinkingExactModel = exactModel;
+  openCodeThinkingExactModels = roleModels;
   const requestId = ++openCodeThinkingRequestId;
-  openCodeThinkingState = buildDefaultOpenCodeThinkingState(
-    exactModel ? "loading" : "select-model",
-    exactModel
-  );
-  if (!exactModel) {
-    return;
-  }
-
-  const persistedVariant = getOpenCodeVariantFromStore(modelStore, configId, exactModel);
-  void resolveOpenCodeThinkingCapability({
-    command,
-    configIdentity: `${configId ?? "current"}:${configHash}`,
-    configContent,
-    model: exactModel,
-    selectedVariant: persistedVariant,
-  }).then((capability) => {
-    if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-      return;
-    }
-    const selectedVariant = persistedVariant
-      && capability.options.some((option) => option.value === persistedVariant)
-      ? persistedVariant
-      : null;
-    if (persistedVariant && !selectedVariant) {
-      persistOpenCodeVariant(configId, exactModel, null);
-    }
-    openCodeThinkingState = {
-      ...capability,
-      selectedVariant,
-      disabled: capability.options.length === 0,
-    };
-    void postPanelState();
-  }).catch(() => {
-    if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-      return;
-    }
-    if (persistedVariant) {
-      persistOpenCodeVariant(configId, exactModel, null);
-    }
-    openCodeThinkingState = buildDefaultOpenCodeThinkingState(
-      "metadata-error",
+  const refreshRoleThinking = (role: OpenCodeModelRole, exactModel: string | null): void => {
+    setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
+      exactModel ? "loading" : "select-model",
       exactModel
-    );
-    void postPanelState();
-  });
+    ));
+    if (!exactModel) {
+      return;
+    }
+
+    const persistedVariant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role);
+    void resolveOpenCodeThinkingCapability({
+      command,
+      configIdentity: `${configId ?? "current"}:${configHash}:${role}`,
+      configContent,
+      model: exactModel,
+      selectedVariant: persistedVariant,
+    }).then((capability) => {
+      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
+        return;
+      }
+      const selectedVariant = persistedVariant
+        && capability.options.some((option) => option.value === persistedVariant)
+        ? persistedVariant
+        : null;
+      if (persistedVariant && !selectedVariant) {
+        persistOpenCodeVariant(configId, exactModel, role, null);
+      }
+      setOpenCodeThinkingStateForRole(role, {
+        ...capability,
+        selectedVariant,
+        disabled: capability.options.length === 0,
+      });
+      void postPanelState();
+    }).catch(() => {
+      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
+        return;
+      }
+      if (persistedVariant) {
+        persistOpenCodeVariant(configId, exactModel, role, null);
+      }
+      setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
+        "metadata-error",
+        exactModel
+      ));
+      void postPanelState();
+    });
+  };
+  refreshRoleThinking("primary", roleModels.primary);
+  refreshRoleThinking("small", roleModels.small);
 }
 
 function getOpenCodeVariantForRun(
   cli: CliName,
   model: string | null | undefined,
   configId: string | null,
-  configContent: string | null | undefined
+  configContent: string | null | undefined,
+  role: OpenCodeModelRole = "primary"
 ): string | null {
   if (cli !== "opencode" || !configId) {
     return null;
   }
   const resolution = resolveOpenCodeModelForConfig(model, configContent);
   const exactModel = resolution.error ? null : resolution.model;
-  if (!exactModel || exactModel !== openCodeThinkingExactModel || configId !== openCodeThinkingConfigId) {
+  if (!exactModel || exactModel !== openCodeThinkingExactModels[role] || configId !== openCodeThinkingConfigId) {
     return null;
   }
-  const variant = getOpenCodeVariantFromStore(modelStore, configId, exactModel);
-  return variant && openCodeThinkingState.options.some((option) => option.value === variant)
+  const state = getOpenCodeThinkingStateForRole(role);
+  const variant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role);
+  return variant && state.options.some((option) => option.value === variant)
     ? variant
     : null;
 }
@@ -1809,6 +1854,8 @@ type OpenCodeRuntimePreparation = {
   configContent: string;
   primaryModel: string;
   smallModel: string | null;
+  primaryVariant: string | null;
+  smallVariant: string | null;
 };
 
 async function prepareOpenCodeRuntime(
@@ -1830,6 +1877,8 @@ async function prepareOpenCodeRuntime(
   const overlay = applyOpenCodeRuntimeModelOverlay(parsedConfig, {
     primary: roles.primary,
     small: roles.small,
+    primaryVariant: getOpenCodeVariantForRun("opencode", roles.primary, configId, configContent, "primary"),
+    smallVariant: getOpenCodeVariantForRun("opencode", roles.small, configId, configContent, "small"),
   });
   if (!overlay.ok || !overlay.config) {
     throw new Error(overlay.issues.map((issue) => issue.message).join("\n"));
@@ -1846,6 +1895,8 @@ async function prepareOpenCodeRuntime(
     configContent,
     primaryModel: roles.primary,
     smallModel: roles.small,
+    primaryVariant: getOpenCodeVariantForRun("opencode", roles.primary, configId, configContent, "primary"),
+    smallVariant: getOpenCodeVariantForRun("opencode", roles.small, configId, configContent, "small"),
   };
 }
 async function refreshCliInstallStatuses(): Promise<void> {
@@ -2850,12 +2901,8 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           cwd,
           sessionId: runtimeSessionId,
           thinkingMode,
-          openCodeVariant: getOpenCodeVariantForRun(
-            runCli,
-            runtimeModel,
-            getActiveConfigIdForCli(runCli),
-            runtimeOpenCodeConfigContent
-          ),
+          openCodeVariant: runtimePreparation.primaryVariant,
+          openCodeSmallVariant: runtimePreparation.smallVariant,
           model: runtimeModel,
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
@@ -7230,12 +7277,8 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     {
       sessionId: initialRuntimeSessionId,
       thinkingMode,
-      openCodeVariant: getOpenCodeVariantForRun(
-        runCli,
-        runtimeModel,
-        getActiveConfigIdForCli(runCli),
-        runtimeOpenCodeConfigContent
-      ),
+      openCodeVariant: runtimePreparation.primaryVariant,
+      openCodeSmallVariant: runtimePreparation.smallVariant,
       model: runtimeModel,
       openCodeConfigContent: runtimeOpenCodeConfigContent,
       envOverrides: runtimeEnvOverrides,
@@ -7443,12 +7486,8 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           cwd,
           sessionId: runtimeSessionId,
           thinkingMode,
-          openCodeVariant: getOpenCodeVariantForRun(
-            runCli,
-            runtimeModel,
-            getActiveConfigIdForCli(runCli),
-            runtimeOpenCodeConfigContent
-          ),
+          openCodeVariant: runtimePreparation.primaryVariant,
+          openCodeSmallVariant: runtimePreparation.smallVariant,
           model: runtimeModel,
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
@@ -7870,12 +7909,8 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
       const configId = getActiveConfigIdForCli("opencode");
       const runtimePreparation = await prepareOpenCodeRuntime(configId);
       return {
-        openCodeVariant: getOpenCodeVariantForRun(
-          "opencode",
-          runtimePreparation.primaryModel,
-          configId,
-          runtimePreparation.configContent
-        ),
+        openCodeVariant: runtimePreparation.primaryVariant,
+        openCodeSmallVariant: runtimePreparation.smallVariant,
         model: runtimePreparation.primaryModel,
         openCodeSmallModel: runtimePreparation.smallModel,
         openCodeConfigContent: runtimePreparation.configContent,

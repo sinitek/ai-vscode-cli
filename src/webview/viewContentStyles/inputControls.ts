@@ -184,6 +184,10 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         gap: 10px;
         width: 100%;
         justify-content: flex-end;
+        min-width: 0;
+      }
+      .input-actions .lobster-execution-mode-select {
+        margin-right: auto;
       }
       .input-model-row {
         display: flex;
@@ -210,17 +214,37 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .input-model-row .lobster-model-group .model-select {
         min-width: 92px;
       }
-      .input-model-row .lobster-model-group .lobster-execution-mode-select {
-        min-width: 122px;
-      }
       .open-code-model-group {
-        display: inline-flex;
-        align-items: center;
-        justify-content: flex-end;
+        display: flex;
+        flex: 1 1 100%;
+        flex-direction: column;
         gap: 6px;
-        flex: 1 1 auto;
         min-width: 0;
-        flex-wrap: wrap;
+      }
+      .open-code-model-row {
+        display: grid;
+        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) 70px;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .open-code-model-label {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .open-code-model-row .model-select {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+      }
+      .open-code-model-row .thinking-select {
+        width: 70px;
+        min-width: 70px;
+      }
+      .open-code-model-group .open-code-model-issue {
+        align-self: flex-start;
       }
       .open-code-model-issue {
         color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));

@@ -441,7 +441,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const showLobsterExecutionModeSelect = isLobster;
         const showLobsterModelSelect = supportsModelSelection && isLobster;
         if (elements.openCodeModelGroup) {
-          elements.openCodeModelGroup.style.display = isOpenCode ? "inline-flex" : "none";
+          elements.openCodeModelGroup.style.display = isOpenCode ? "" : "none";
         }
         if (elements.openCodePrimaryModelSelect) {
           elements.openCodePrimaryModelSelect.disabled = !isOpenCode;
@@ -453,12 +453,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
           elements.modelSelect.disabled = !showSingleModelSelect;
         }
-        if (elements.lobsterModelGroup) {
-          elements.lobsterModelGroup.style.display = showLobsterExecutionModeSelect ? "inline-flex" : "none";
-        }
         if (elements.lobsterExecutionModeSelect) {
+          elements.lobsterExecutionModeSelect.style.display = showLobsterExecutionModeSelect ? "" : "none";
           elements.lobsterExecutionModeSelect.disabled = !showLobsterExecutionModeSelect;
           elements.lobsterExecutionModeSelect.value = getLobsterExecutionModeForCli();
+        }
+        if (elements.lobsterModelGroup) {
+          elements.lobsterModelGroup.style.display = showLobsterModelSelect ? "inline-flex" : "none";
         }
         if (elements.lobsterMainModelSelect) {
           elements.lobsterMainModelSelect.style.display = showLobsterModelSelect ? "" : "none";

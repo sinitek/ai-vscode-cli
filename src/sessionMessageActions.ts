@@ -11,14 +11,15 @@ import {
 export async function handleUpdateOpenCodeVariantMessage(
   message: Extract<PanelMessage, { type: "updateOpenCodeVariant" }>,
   deps: {
-    updateOpenCodeVariant: (value: string | null) => void;
+    updateOpenCodeVariant: (role: "primary" | "small", value: string | null) => void;
     postPanelState: () => Promise<void>;
   }
 ): Promise<void> {
   const value = typeof message.value === "string" && message.value.trim()
     ? message.value.trim()
     : null;
-  deps.updateOpenCodeVariant(value);
+  const role = message.role === "small" ? "small" : "primary";
+  deps.updateOpenCodeVariant(role, value);
   await deps.postPanelState();
 }
 

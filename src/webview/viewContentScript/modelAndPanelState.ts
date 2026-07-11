@@ -310,6 +310,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.selectedConfigId = nextSelected;
         state.thinkingMode = panelState.thinkingMode || "medium";
         state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
+        state.openCodeSmallThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeSmallThinking);
         state.openCodeModels = normalizeOpenCodeModelsPayload(panelState.openCodeModels);
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
@@ -437,11 +438,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         elements.configSelect.value = state.selectedConfigId || "";
       }
 
-      function appendThinkingOption(value, label) {
+      function appendThinkingOption(selectElement, value, label) {
         const option = document.createElement("option");
         option.value = value;
         option.textContent = label;
-        elements.thinkingMode.appendChild(option);
+        selectElement.appendChild(option);
       }
 
       function getOpenCodeThinkingOptionLabel(option) {
@@ -472,27 +473,52 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         return translationKey ? t(translationKey) : "";
       }
 
-      function syncOpenCodeThinkingOptions() {
-        const payload = normalizeOpenCodeThinkingPayload(state.openCodeThinking);
-        state.openCodeThinking = payload;
-        elements.thinkingMode.innerHTML = "";
-        const options = payload.disabled ? [] : payload.options;
+      function syncOpenCodeThinkingSelect(selectElement, payload, titleFallback) {
+        if (!selectElement) {
+          return normalizeOpenCodeThinkingPayload(payload);
+        }
+        const normalizedPayload = normalizeOpenCodeThinkingPayload(payload);
+        selectElement.innerHTML = "";
+        const options = normalizedPayload.disabled ? [] : normalizedPayload.options;
         const availableValues = new Set();
         options.forEach((option) => {
           availableValues.add(option.value);
-          appendThinkingOption(option.value, getOpenCodeThinkingOptionLabel(option));
+          appendThinkingOption(selectElement, option.value, getOpenCodeThinkingOptionLabel(option));
         });
-        const displayVariant = payload.selectedVariant && availableValues.has(payload.selectedVariant)
-          ? payload.selectedVariant
-          : payload.configuredDefaultVariant && availableValues.has(payload.configuredDefaultVariant)
-            ? payload.configuredDefaultVariant
+        const displayVariant = normalizedPayload.selectedVariant && availableValues.has(normalizedPayload.selectedVariant)
+          ? normalizedPayload.selectedVariant
+          : normalizedPayload.configuredDefaultVariant && availableValues.has(normalizedPayload.configuredDefaultVariant)
+            ? normalizedPayload.configuredDefaultVariant
             : "";
-        elements.thinkingMode.value = displayVariant;
-        const unavailable = payload.disabled || options.length === 0;
-        elements.thinkingMode.disabled = unavailable;
-        const localizedMessage = getOpenCodeThinkingMessage(payload.messageKey);
-        elements.thinkingMode.title = localizedMessage
-          || (unavailable ? t("openCodeThinkingMessageFollowDefault") : t("thinkingModeAria"));
+        selectElement.value = displayVariant;
+        const unavailable = normalizedPayload.disabled || options.length === 0;
+        selectElement.disabled = unavailable;
+        const localizedMessage = getOpenCodeThinkingMessage(normalizedPayload.messageKey);
+        selectElement.title = localizedMessage
+          || (unavailable ? t("openCodeThinkingMessageFollowDefault") : titleFallback);
+        return normalizedPayload;
+      }
+
+      function syncOpenCodeThinkingOptions() {
+        state.openCodeThinking = syncOpenCodeThinkingSelect(
+          elements.openCodePrimaryThinkingMode,
+          state.openCodeThinking,
+          t("openCodePrimaryThinkingModeAria")
+        );
+        state.openCodeSmallThinking = syncOpenCodeThinkingSelect(
+          elements.openCodeSmallThinkingMode,
+          state.openCodeSmallThinking,
+          t("openCodeSmallThinkingModeAria")
+        );
+        if (elements.thinkingMode) {
+          elements.thinkingMode.style.display = "none";
+        }
+        if (elements.openCodePrimaryThinkingMode) {
+          elements.openCodePrimaryThinkingMode.style.display = "";
+        }
+        if (elements.openCodeSmallThinkingMode) {
+          elements.openCodeSmallThinkingMode.style.display = state.currentCli === "opencode" ? "" : "none";
+        }
       }
 
       function syncGenericThinkingOptions() {
@@ -502,16 +528,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         elements.thinkingMode.disabled = false;
         elements.thinkingMode.title = t("thinkingModeAria");
         if (!isCodex) {
-          appendThinkingOption("off", t("thinkingOptionLabelOff"));
+          appendThinkingOption(elements.thinkingMode, "off", t("thinkingOptionLabelOff"));
         }
-        appendThinkingOption("low", t("thinkingOptionLabelLow"));
-        appendThinkingOption("medium", t("thinkingOptionLabelMedium"));
-        appendThinkingOption("high", t("thinkingOptionLabelHigh"));
+        appendThinkingOption(elements.thinkingMode, "low", t("thinkingOptionLabelLow"));
+        appendThinkingOption(elements.thinkingMode, "medium", t("thinkingOptionLabelMedium"));
+        appendThinkingOption(elements.thinkingMode, "high", t("thinkingOptionLabelHigh"));
         if (isCodex || isClaude) {
-          appendThinkingOption("xhigh", t("thinkingOptionLabelXHigh"));
+          appendThinkingOption(elements.thinkingMode, "xhigh", t("thinkingOptionLabelXHigh"));
         }
         if (isCodex || isClaude) {
-          appendThinkingOption("max", t("thinkingOptionLabelMax"));
+          appendThinkingOption(elements.thinkingMode, "max", t("thinkingOptionLabelMax"));
         }
         if (isCodex && state.thinkingMode === "off") {
           updateThinkingMode("low");
@@ -529,6 +555,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (state.currentCli === "opencode") {
           syncOpenCodeThinkingOptions();
           return;
+        }
+        if (elements.openCodeSmallThinkingMode) {
+          elements.openCodeSmallThinkingMode.style.display = "none";
+        }
+        if (elements.openCodePrimaryThinkingMode) {
+          elements.openCodePrimaryThinkingMode.style.display = "none";
+        }
+        if (elements.thinkingMode) {
+          elements.thinkingMode.style.display = "";
         }
         syncGenericThinkingOptions();
       }

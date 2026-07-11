@@ -23,6 +23,8 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
   configContent: string;
   primaryModel: string;
   smallModel: string | null;
+  primaryVariant?: string | null;
+  smallVariant?: string | null;
 }): OpenCodeRuntimeConfigOverlayResult {
   let parsedConfig: unknown;
   try {
@@ -51,7 +53,12 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
   }
   const applied = applyOpenCodeRuntimeModelOverlay(
     parsedConfig as Record<string, unknown>,
-    { primary: input.primaryModel, small: input.smallModel }
+    {
+      primary: input.primaryModel,
+      small: input.smallModel,
+      primaryVariant: input.primaryVariant ?? null,
+      smallVariant: input.smallVariant ?? null,
+    }
   );
   if (!applied.ok || !applied.config) {
     return { ok: false, overlay: null, issues: applied.issues };

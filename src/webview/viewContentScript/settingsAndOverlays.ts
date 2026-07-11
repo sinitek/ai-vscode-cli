@@ -265,6 +265,41 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         return targets;
       }
 
+      function setRulesLoadCliOptions(isGlobal) {
+        const currentValue = elements.rulesLoadCli.value;
+        const options = isGlobal
+          ? [
+              { value: "codex", label: "codex" },
+              { value: "claude", label: "claude" },
+              { value: "opencode", label: "opencode" },
+            ]
+          : [
+              { value: "codex", label: "codex/opencode" },
+              { value: "claude", label: "claude" },
+            ];
+        elements.rulesLoadCli.innerHTML = "";
+        options.forEach((option) => {
+          const optionElement = document.createElement("option");
+          optionElement.value = option.value;
+          optionElement.textContent = option.label;
+          elements.rulesLoadCli.appendChild(optionElement);
+        });
+        const nextValue = options.some((option) => option.value === currentValue) ? currentValue : options[0].value;
+        elements.rulesLoadCli.value = nextValue;
+      }
+
+      function syncRulesSaveOptions(isGlobal) {
+        if (elements.rulesSaveCodexLabel) {
+          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : "codex/opencode";
+        }
+        if (elements.rulesSaveOpenCodeOption) {
+          elements.rulesSaveOpenCodeOption.style.display = isGlobal ? "" : "none";
+        }
+        if (!isGlobal && elements.rulesSaveOpenCode) {
+          elements.rulesSaveOpenCode.checked = false;
+        }
+      }
+
       function updateRulesPath(cli) {
         if (!elements.rulesPath) {
           return;
@@ -285,6 +320,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.scopeProject.className = isGlobal ? "help-tab" : "help-tab active";
         elements.scopeGlobal.setAttribute("aria-selected", String(isGlobal));
         elements.scopeProject.setAttribute("aria-selected", String(!isGlobal));
+        setRulesLoadCliOptions(isGlobal);
+        syncRulesSaveOptions(isGlobal);
         updateRulesPath(elements.rulesLoadCli.value);
       }
 

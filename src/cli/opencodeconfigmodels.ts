@@ -448,7 +448,12 @@ export function validateOpenCodeModelOverride(
 
 export function applyOpenCodeRuntimeModelOverlay(
   config: Readonly<Record<string, unknown>>,
-  overrides: { primary?: string | null; small?: string | null }
+  overrides: {
+    primary?: string | null;
+    small?: string | null;
+    primaryVariant?: string | null;
+    smallVariant?: string | null;
+  }
 ): OpenCodeRuntimeConfigOverlayResult {
   const parsed = parseOpenCodeConfigObject(config as Record<string, unknown>);
   const primary = validateOpenCodeModelOverride(parsed, "primary", overrides.primary);
@@ -467,5 +472,44 @@ export function applyOpenCodeRuntimeModelOverlay(
   if (small.modelRef !== null) {
     overlay.small_model = small.modelRef;
   }
+  const applyVariant = (modelRef: string | null, variant: string | null | undefined): void => {
+    const normalizedVariant = typeof variant === "string" ? variant.trim() : "";
+    if (!modelRef || !normalizedVariant) {
+      return;
+    }
+    const reference = parseOpenCodeModelReference(modelRef);
+    if (!reference) {
+      return;
+    }
+    const providers = isPlainObject(overlay.provider)
+      ? { ...overlay.provider }
+      : null;
+    if (!providers) {
+      return;
+    }
+    const provider = isPlainObject(providers[reference.providerId])
+      ? { ...providers[reference.providerId] as Record<string, unknown> }
+      : null;
+    if (!provider) {
+      return;
+    }
+    const models = isPlainObject(provider.models)
+      ? { ...provider.models }
+      : null;
+    if (!models) {
+      return;
+    }
+    const model = models[reference.modelId];
+    const nextModel = isPlainObject(model) ? { ...model } : {};
+    const options = isPlainObject(nextModel.options) ? { ...nextModel.options } : {};
+    options.reasoningEffort = normalizedVariant;
+    nextModel.options = options;
+    models[reference.modelId] = nextModel;
+    provider.models = models;
+    providers[reference.providerId] = provider;
+    overlay.provider = providers;
+  };
+  applyVariant(primary.modelRef, overrides.primaryVariant);
+  applyVariant(small.modelRef, overrides.smallVariant);
   return { ok: true, config: overlay, issues: [] };
 }

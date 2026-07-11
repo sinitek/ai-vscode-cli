@@ -61,7 +61,7 @@
 - OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动。OpenCode 明确分成两个配置文件：模型/Provider 配置中心只维护 `~/.opencode/config.json`，全局 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不再要求或生成 `~/.opencode/.env`；模型区仅显示主模型与小模型两个紧凑 select 和错误区域，候选只来自 active config 的 `provider.<id>.models` 且没有模型管理入口；下拉无可见 label、思考力度说明或“跟随配置”选项，正常 option 仅显示模型 `name`（缺失时回退 model id）；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
 - OpenCode 所有任务路径默认注入官方 `--auto`，自动批准仍处于 `ask` 的权限请求；默认 `external_directory: ask` 因而支持跨工作目录读写。插件不把 runtime permission 强制覆盖为 `allow`，用户配置、agent 配置及 OpenCode 默认规则中的显式 `deny` 仍优先，包括 `.env` 等受显式拒绝规则保护的文件。
 - AI 对话面板支持 `coding / lobster` 两种顶层交互模式；旧配置中的 `plan` 会按 `coding` 兼容归一化
-- OpenCode 对话面板同样提供 coding / Loop 两种模式。Loop 复用既有主任务、子任务、多轮复核、群聊和 active config effective primary 运行链路，每次主任务或子任务请求仍通过非交互式 one-shot `opencode run --auto` 执行。
+- OpenCode 对话面板同样提供 coding / Loop 两种模式。Loop 复用既有主任务、子任务、多轮复核、群聊和 active config effective primary 运行链路，每次主任务或子任务请求仍通过非交互式 one-shot `opencode run --auto` 执行。Loop 多智能体执行模式下拉统一放在输入区底部操作图标左侧，Codex / Claude / OpenCode 三个 CLI 保持一致，模型行只展示对应 CLI 的模型与思考控件。
 - OpenCode 支持 Loop 编排不等于支持插件交互式 runner：`isInteractiveSupported(opencode)` 继续为 `false`，只表示不存在 Codex/Claude interactive runner 与 common command，不得再用该标记隐藏 OpenCode 的 Loop 模式入口，也不得为开放入口把它改成 `true`。
 - Loop 主任务 Tab 的运行态跟随持久化任务生命周期：任务记录为 `running` 时，即使当前没有主任务、子任务、裁判主持人或参与者 AI/CLI 进程，主 Tab 仍显示运行态并保持不可关闭；任务进入 `completed`、`needs-review`、`error` 或 `stopped` 后解除。普通对话 Tab 与 Loop 子任务 Tab 仍按各自实际执行进程显示运行态。
 - 支持停止当前任务、查看运行中 prompt、查看原始流式记录
@@ -203,15 +203,15 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 ## 4.6 OpenCode 动态 variant 能力
 
-- OpenCode 主模型未选档位时使用自身 `options`，可切换思考力度由该精确主模型的 variants 决定，面板通过可序列化 `openCodeThinking` 状态动态渲染任意 variant 名称，并始终提供 Default / Follow OpenCode。
+- OpenCode 主模型与小模型分别维护思考力度：主模型使用 `openCodeThinking`，小模型使用 `openCodeSmallThinking`，两者都由对应精确 `provider/model` 的 variants 决定，面板动态渲染任意 variant 名称。
 - 能力解析以 `opencode models <provider> --verbose` 的精确模型 metadata 为首选，当前激活配置的显式 `provider.<id>.models.<model>.variants` 为回退；两者都没有时为 Default-only。禁止使用 provider `npm`、provider 名或模型名推断档位。
-- 主模型由 `--model provider/model` 选择，variant 由 `--variant` 选择；CLI 没有 `--small-model`，小模型临时选择通过 runtime config overlay 覆盖顶层 `small_model`。小模型内部请求会跳过 variants，实际只使用其自身 `options`；只有该模型被当作主模型运行时，其 variants 才生效。
+- 主模型由 `--model provider/model` 选择；OpenCode CLI 的 `run --variant` 是主模型推理力度参数。CLI 没有 `--small-model` / `--small-variant`，因此插件在 runtime config overlay 中同时覆盖顶层 `small_model`，并把主/小模型各自选中的 variant 写入对应 `provider.<id>.models.<model>.options.reasoningEffort`，避免改写用户原始配置。
 - 普通对话、并行任务、Loop 主任务、Loop 子任务、续跑和唤醒统一使用下拉选择的 effective primary；OpenCode 不使用 Codex 专用的 Loop 主/子任务模型分配，`small_model` 仅供 OpenCode 内部轻量请求，不等同于 Loop 子任务模型。
 - primary/small 覆盖按 active config id 隔离，空值跟随顶层配置；配置切换或候选变化会清理失效覆盖，OpenCode 不读取通用 selected/options 或 Loop main/subtask 选择。
 - runtime overlay 同时固定 effective `model` / `small_model`，通过随机 `OPENCODE_CONFIG` 文件注入，目录/文件权限为 `0700`/`0600`，exit/error/timeout/cancel 后清理且不改写用户配置。
 - 运行前校验 effective primary、effective small 和 overlay 后配置；角色不在 active config 候选、provider/model 被过滤或 primary 缺失时阻止启动。
 - active config id、配置内容 hash、OpenCode 命令/version、provider/model 共同隔离能力缓存和选择状态；解析失败保守回退，旧请求不会覆盖后续配置或模型。
-- variant 选择按 active config id + 精确 `provider/model` 保存；空值删除选择，失效值自动清理。运行时仅传递当前 options 内的非空值，并尊重用户显式 `--variant` 参数。
+- variant 选择按 active config id + 精确 `provider/model` + role 保存，primary 兼容旧的 config/model 存储；空值删除选择，失效值自动清理。运行时仅应用当前 options 内的非空值，并尊重用户显式 `--variant` 参数。
 - `--variant` 负责推理力度，`--thinking` 只负责 thinking blocks 展示。固定 OpenCode ThinkingMode 和 `thinkingArgs.opencode.*` 已退出运行链路，Codex / Claude 行为不变。
 
 ## 4.7 OpenCode 全局 MCP 管理
