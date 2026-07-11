@@ -106,8 +106,8 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "claude" && globalMode === "max") {
-      return usesCodexLikeThinking ? "xhigh" : "high";
+    if (cli !== "codex" && cli !== "claude" && globalMode === "max") {
+      return "high";
     }
     if (!usesCodexLikeThinking && cli !== "claude" && globalMode === "xhigh") {
       return "high";
@@ -120,8 +120,8 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "claude" && mode === "max") {
-    return usesCodexLikeThinking ? "xhigh" : "high";
+  if (cli !== "codex" && cli !== "claude" && mode === "max") {
+    return "high";
   }
   if (!usesCodexLikeThinking && cli !== "claude" && mode === "xhigh") {
     return "high";

@@ -156,6 +156,14 @@ async function readOpenCodeConfig(configPath: string): Promise<OpenCodeConfigDoc
   }
 }
 
+export async function listInstalledOpenCodeMcpServerIds(
+  options: OpenCodeMcpConfigPathOptions = {},
+): Promise<string[]> {
+  const configPath = resolveOpenCodeGlobalConfigPath(options);
+  const document = await readOpenCodeConfig(configPath);
+  return Object.keys(getMcpSection(document)).sort((left, right) => left.localeCompare(right));
+}
+
 async function writeOpenCodeConfigAtomically(
   configPath: string,
   config: OpenCodeConfigDocument,

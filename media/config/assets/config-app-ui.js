@@ -3466,6 +3466,7 @@ const ConfigEditorPanel = () => {
       [pendingInstallMcpItem, setPendingInstallMcpItem] = c.useState(null),
       [installEnvDraft, setInstallEnvDraft] = c.useState({}),
       [healthDetailState, setHealthDetailState] = c.useState(null),
+      [mcpInstalledServerIds, setMcpInstalledServerIds] = c.useState(null),
       [C, Z] = c.useState([]),
       [j, q] = c.useState(!1),
       [officialSkills, setOfficialSkills] = c.useState([]),
@@ -3488,6 +3489,7 @@ const ConfigEditorPanel = () => {
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null,
       R = c.useMemo(() => {
+        if (Array.isArray(mcpInstalledServerIds)) return mcpInstalledServerIds;
         if (t === "codex" && Array.isArray(codexMcpServerIds) && codexMcpServerIds.length > 0)
           return codexMcpServerIds;
         if (t === "codex") {
@@ -3497,22 +3499,24 @@ const ConfigEditorPanel = () => {
           } catch {}
           return [];
         }
-        const W = t === "claude" ? u : l;
+        const H = t === "claude" ? u : l;
         try {
-          const H = JSON.parse(W || "{}");
-          const k = H && (H.mcp || H.mcpServers);
-          if (k) {
-            const L = Object.keys(k),
-              G = Array.isArray(mcpHealthItems)
-                ? mcpHealthItems.filter((U) => U && U.installed).map((U) => U.serverId)
-                : [];
-            return Array.from(new Set([...L, ...G]));
-          }
+          const k = JSON.parse(H || "{}"),
+            L = k && (k.mcp || k.mcpServers || k.mcp_servers);
+          if (L) return Object.keys(L);
         } catch {}
-        return Array.isArray(mcpHealthItems)
-          ? mcpHealthItems.filter((H) => H && H.installed).map((H) => H.serverId)
-          : [];
-      }, [l, u, m, t, codexMcpServerIds, mcpHealthItems]),
+        return [];
+      }, [l, u, m, t, codexMcpServerIds, mcpInstalledServerIds]),
+      refreshMcpInstalledIds = c.useCallback(async (W = t) => {
+        if (!W) return;
+        try {
+          const H = await fetchMcpInstalledServerIds(W);
+          Array.isArray(H) ? setMcpInstalledServerIds(H) : setMcpInstalledServerIds([]);
+          W === "codex" && (Array.isArray(H) ? setCodexMcpServerIds(H) : setCodexMcpServerIds([]));
+        } catch (H) {
+          console.error("刷新 MCP 安装状态失败:", H), setMcpInstalledServerIds(null);
+        }
+      }, [t]),
       checkMcpHealth = c.useCallback(
         async (W = t, H = !1) => {
           if (!W) return;
@@ -3522,8 +3526,10 @@ const ConfigEditorPanel = () => {
             Array.isArray(k) ? setMcpHealthItems(k) : setMcpHealthItems([]);
             if (W === "codex" || H) {
               try {
-                const L = await fetchCodexMcpServerIds();
-                Array.isArray(L) ? setCodexMcpServerIds(L) : setCodexMcpServerIds([]);
+                const L = await fetchMcpInstalledServerIds("codex");
+                Array.isArray(L)
+                  ? (setMcpInstalledServerIds(L), setCodexMcpServerIds(L))
+                  : (setMcpInstalledServerIds([]), setCodexMcpServerIds([]));
               } catch (L) {
                 console.error("刷新 Codex MCP 列表失败:", L), setCodexMcpServerIds([]);
               }
@@ -3554,12 +3560,12 @@ const ConfigEditorPanel = () => {
         H?.configContent !== void 0 && v(H.configContent);
         H?.authContent !== void 0 && h(H.authContent);
       }, []),
-      refreshMcpHealthInBackground = c.useCallback((W, H = !1) => {
+      refreshMcpInstalledIdsInBackground = c.useCallback((W) => {
         if (!W) return;
         setTimeout(() => {
-          void checkMcpHealth(W, H);
+          void refreshMcpInstalledIds(W);
         }, 0);
-      }, [checkMcpHealth]),
+      }, [refreshMcpInstalledIds]),
       installMcpItem = async (W, H = {}) => {
         try {
           if (!t) return;
@@ -3573,7 +3579,7 @@ const ConfigEditorPanel = () => {
             console.error("刷新 MCP 配置失败:", k);
           }
           Kt.success(`已安装 MCP: ${W.name}`);
-          refreshMcpHealthInBackground(t, t === "codex");
+          refreshMcpInstalledIdsInBackground(t);
           return !0;
         } catch (H) {
           console.error("安装 MCP 失败:", H), Kt.error("安装 MCP 失败");
@@ -3601,7 +3607,7 @@ const ConfigEditorPanel = () => {
             console.error("刷新 MCP 配置失败:", H);
           }
           Kt.success(`已卸载 MCP: ${W.name}`);
-          refreshMcpHealthInBackground(t, t === "codex");
+          refreshMcpInstalledIdsInBackground(t);
         } catch (H) {
           console.error("卸载 MCP 失败:", H), Kt.error("卸载 MCP 失败");
         } finally {
@@ -3671,6 +3677,7 @@ const ConfigEditorPanel = () => {
           setPendingInstallMcpItem(null),
           setInstallEnvDraft({}),
           setHealthDetailState(null),
+          setMcpInstalledServerIds(null),
           setOfficialSkills([]),
           setOfficialSkillsLoading(!1),
           setOfficialSkillActionId(""),
@@ -3710,8 +3717,12 @@ const ConfigEditorPanel = () => {
       W.ok ? (s(W.content), setOpenCodeVisualError("")) : setOpenCodeVisualError(W.error);
     }, [openCodeEditorMode, openCodeVisualState]);
     c.useEffect(() => {
-      setMcpHealthItems([]), setMcpHealthLoading(!1), O?.platform !== "codex" && setCodexMcpServerIds([]);
-    }, [O]);
+        setMcpHealthItems([]),
+        setMcpHealthLoading(!1),
+        setMcpInstalledServerIds(null),
+        O?.platform !== "codex" && setCodexMcpServerIds([]),
+        O?.platform && void refreshMcpInstalledIds(O.platform);
+    }, [O, refreshMcpInstalledIds]);
     const tt = c.useCallback((W) => {
       const H = new Set();
       try {

@@ -391,6 +391,7 @@ export function getConfigViewHtml(
             platform === "opencode"
               ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
               : requestConfig("uninstallOfficialSkill", { platform, skillId }),
+          getMcpInstalledServerIds: (platform) => requestConfig("getMcpInstalledServerIds", { platform }),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
           getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),
           getMcpHealth: (platform) => requestConfig("getMcpHealth", { platform }),

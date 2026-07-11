@@ -21,6 +21,7 @@ export type ConfigAction =
   | "installOfficialSkill"
   | "updateOfficialSkill"
   | "uninstallOfficialSkill"
+  | "getMcpInstalledServerIds"
   | "getCodexMcpServerIds"
   | "getCodexMcpHealth"
   | "getMcpHealth"
@@ -50,6 +51,7 @@ export type ConfigRequestPayload =
   | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "updateOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "uninstallOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
+  | { action: "getMcpInstalledServerIds"; platform: ConfigPlatform }
   | { action: "getCodexMcpServerIds" }
   | { action: "getCodexMcpHealth" }
   | { action: "getMcpHealth"; platform: ConfigPlatform }

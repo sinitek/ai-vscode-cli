@@ -510,7 +510,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (isCodex || isClaude) {
           appendThinkingOption("xhigh", t("thinkingOptionLabelXHigh"));
         }
-        if (isClaude) {
+        if (isCodex || isClaude) {
           appendThinkingOption("max", t("thinkingOptionLabelMax"));
         }
         if (isCodex && state.thinkingMode === "off") {
@@ -519,8 +519,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (!isCodex && !isClaude && state.thinkingMode === "xhigh") {
           updateThinkingMode("high");
         }
-        if (!isClaude && state.thinkingMode === "max") {
-          updateThinkingMode(isCodex ? "xhigh" : "high");
+        if (!isCodex && !isClaude && state.thinkingMode === "max") {
+          updateThinkingMode("high");
         }
         elements.thinkingMode.value = state.thinkingMode;
       }

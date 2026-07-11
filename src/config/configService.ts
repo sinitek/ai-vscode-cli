@@ -1049,6 +1049,7 @@ export async function backupConfig(platform: LegacyConfigPlatformInput): Promise
 }
 
 export {
+  getMcpInstalledServerIds,
   getCodexMcpServerIds,
   getCodexMcpHealth,
   getMcpHealth,

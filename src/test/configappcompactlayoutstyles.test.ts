@@ -39,20 +39,24 @@ test("configuration workspace and panels use compact desktop spacing", () => {
 test("configuration cards and list items keep compact internal spacing", () => {
   assert.match(
     rule(css, ".config-sidebar-panel > .ant-card .ant-card-head"),
-    /\bpadding:\s*0 7px !important;/,
+    /\bpadding:\s*0 4px !important;/,
+  );
+  assert.match(
+    rule(css, ".config-sidebar-panel > .ant-card .ant-card-head-title"),
+    /\bpadding:\s*3px 0;/,
   );
   assert.match(
     rule(css, ".config-sidebar-panel > .ant-card .ant-card-body"),
-    /\bpadding:\s*5px !important;/,
+    /\bpadding:\s*3px !important;/,
   );
   assert.match(
     rule(css, ".config-app-content .ant-card-body"),
     /\bpadding:\s*12px !important;/,
   );
   assert.match(rule(css, ".config-list"), /\bfont-size:\s*80%;/);
-  assert.match(rule(css, ".config-list .ant-list-item"), /\bmin-height:\s*42px;/);
-  assert.match(rule(css, ".config-list .ant-list-item"), /\bmargin:\s*2px 0;/);
-  assert.match(rule(css, ".config-list .ant-list-item"), /\bpadding:\s*3px 4px !important;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bmin-height:\s*34px;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bmargin:\s*1px 0;/);
+  assert.match(rule(css, ".config-list .ant-list-item"), /\bpadding:\s*2px !important;/);
   assert.match(rule(css, ".config-list .ant-btn-text"), /\bwidth:\s*24px;/);
   assert.match(rule(css, ".config-list .ant-btn-text"), /\bheight:\s*24px;/);
   assert.match(rule(css, ".config-active-tag"), /\bwidth:\s*16px;/);
@@ -76,6 +80,32 @@ test("configuration activate button has a compact text-safe minimum width", () =
     css,
     ".config-list .config-activate-button,\n.config-list .config-list-item-selected .config-activate-button",
   );
-  assert.match(activateButton, /\bmin-width:\s*56px;/);
+  assert.match(activateButton, /\bmin-width:\s*45px;/);
+  assert.match(activateButton, /\bheight:\s*24px;/);
+  assert.match(activateButton, /\bpadding:\s*0 6px;/);
+  assert.match(activateButton, /\bfont-size:\s*80%;/);
   assert.doesNotMatch(activateButton, /\bmin-width:\s*76px;/);
+});
+
+test("configuration action buttons use compact square shared styling", () => {
+  const topActionButton = rule(
+    css,
+    ".config-sidebar-panel > .ant-card .ant-card-extra .ant-btn,\n.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn",
+  );
+  assert.match(topActionButton, /\bheight:\s*20px;/);
+  assert.match(topActionButton, /\bpadding:\s*0 6px !important;/);
+  assert.match(topActionButton, /\bbackground:\s*var\(--clay-text\) !important;/);
+  assert.match(topActionButton, /\bcolor:\s*var\(--clay-inverse\) !important;/);
+  assert.match(topActionButton, /\bfont-size:\s*80%;/);
+  assert.match(topActionButton, /\bborder-radius:\s*0 !important;/);
+
+  assert.match(css, /\.ant-btn \{\s+border-radius:\s*0;/);
+  assert.match(rule(css, ".config-list .ant-btn-text"), /\bborder-radius:\s*0;/);
+  assert.match(
+    rule(
+      css,
+      ".config-app-theme button,\n.ant-modal-root button,\n.ant-drawer-root button,\n.ant-popover button,\n.ant-dropdown button",
+    ),
+    /\bborder-radius:\s*0 !important;/,
+  );
 });

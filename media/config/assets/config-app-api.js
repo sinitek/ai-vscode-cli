@@ -62,6 +62,9 @@ const detectConfigApiMode = () =>
     uninstallOfficialSkill: async () => {
       throw new Error("当前模式不支持卸载内置官方 Skills");
     },
+    getMcpInstalledServerIds: async () => {
+      throw new Error("当前模式不支持读取 MCP 安装状态");
+    },
     getCodexMcpServerIds: async () => {
       throw new Error("当前模式不支持读取 Codex MCP");
     },
@@ -150,6 +153,14 @@ const detectConfigApiMode = () =>
       return configApi.uninstallOfficialSkill(e, t);
     } catch (n) {
       throw (console.error("卸载 Skill 失败:", n), n);
+    }
+  },
+  fetchMcpInstalledServerIds = async (e) => {
+    if (!configApi.getMcpInstalledServerIds) return [];
+    try {
+      return configApi.getMcpInstalledServerIds(e);
+    } catch (t) {
+      throw (console.error("获取 MCP 安装状态失败:", t), t);
     }
   },
   fetchCodexMcpServerIds = async () => {

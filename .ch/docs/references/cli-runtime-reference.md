@@ -128,7 +128,7 @@
 
 插件对外暴露统一的 thinking mode，但实际映射按 CLI 各自处理：
 
-- Codex：映射到 reasoning effort / 相关参数
+- Codex：映射到 reasoning effort / 相关参数，支持 `low`、`medium`、`high`、`xhigh`、`max`
 - Claude：优先映射到 Claude Code `--effort`；旧版本兼容回退到 `maxThinkingTokens` 和 SDK 选项
 - OpenCode：按插件通用 CLI 参数拼装接入；当前通过 `opencode run` one-shot / 并行路径执行，不声明交互 Runner 支持
 
@@ -191,8 +191,14 @@ Loop 内部执行方式事实：
 - 安装只合并或覆盖 `mcp[id]`，保留其他顶层字段和已有 MCP；卸载只删除 `mcp[id]`，目标不存在时幂等成功。
 - 输入支持 JSON 与 JSONC；配置无效或顶层 `mcp` 不是对象时拒绝覆盖。发生修改后以格式化严格 JSON 原子写回，并保留原文件权限。
 - OpenCode 1.17.16 与 1.17.18 均没有 `mcp remove` 子命令；卸载不得依赖不存在的 CLI 命令，也不得误改插件配置中心使用的 `~/.opencode/config.json`。
-- `opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 出现在列表中，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。未出现在列表中的市场条目才是未安装。
+- OpenCode MCP 安装状态优先由官方全局配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 判断；配置页和市场打开时不应为了安装状态运行健康检测。`opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康；该命令仅用于用户主动触发健康检测时映射连接状态。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 在健康检测列表中出现，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。
 - 配置变更由 `src/config/openCodeMcpConfig.ts` 负责；CLI 仅保留列表与连接健康检测职责。
+
+### MCP 市场目录校验
+
+- 内置 MCP 市场事实来源为 `media/mcp_marketplace.json`，当前目录保留 16 个官方/权威候选，优先厂商官方 remote HTTP/SSE 或官方维护的 npm、uvx、Docker 运行方式。
+- 市场条目必须保留现有消费链路可识别字段：`id/name/description/homepage/category/config`，local 使用 `config.command + config.args + config.env`，remote 使用 `config.type + config.url + config.headers`。
+- `scripts/validate_mcp_marketplace.js` 是目录静态验收入口，npm script 为 `npm run validate:mcp-marketplace`；该脚本会阻止旧 `github.com/modelcontextprotocol/servers/tree/main/src/` homepage 和旧 `@modelcontextprotocol/server-*` 包名回流，并校验中文 description、官方/权威来源和密钥占位。
 
 ## 8. 更新本文档时的原则
 

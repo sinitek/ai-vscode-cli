@@ -192,6 +192,9 @@ export function buildCodexAppServerClientInfo(commandPath: string): {
 }
 
 export function mapCodexReasoningEffort(mode: ThinkingMode): string {
+  if (mode === "max") {
+    return "max";
+  }
   if (mode === "xhigh") {
     return "xhigh";
   }

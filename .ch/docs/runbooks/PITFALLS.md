@@ -386,7 +386,7 @@
 - local MCP 固定写入 `type=local`、`command` 数组、`environment` 和 `enabled`；remote 固定写入 `type=remote`、`url`、`headers` 和 `enabled`。
 - 安装只合并 `mcp[id]`；卸载只删除 `mcp[id]` 且目标不存在时幂等成功。其他顶层字段和已有 MCP 必须保留。
 - JSON/JSONC 必须先完整解析；无效配置或非对象 `mcp` 不得覆盖。成功修改使用同目录临时文件原子替换。
-- 安装状态按目标 id 是否出现在解析后的列表中判断；连接失败映射为 `installed: true`、`status: unhealthy`，未列出才映射为未安装。
+- 安装状态不要依赖健康检测列表：配置页打开时按目标 id 是否存在于对应配置文件判断，Claude 读 `~/.claude.json`，Codex 读 `~/.codex/config.toml`，OpenCode 读 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。健康检测列表只在用户主动点击健康检查时用于连接状态映射；连接失败映射为 `installed: true`、`status: unhealthy`。
 
 ### 验证方式
 - 对默认路径、`XDG_CONFIG_HOME` 和 `~` 展开做路径单测。

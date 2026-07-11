@@ -79,14 +79,25 @@ test("opens the configuration list initially when the config page starts narrow"
   assert.match(managerLayout, /onClick: closeMobileNavigation/);
 });
 
-test("MCP install and uninstall refresh health in the background", () => {
+test("MCP install and uninstall refresh installation status without health probing", () => {
   const source = loadUiSource();
   const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
-  const mcpActions = extractSection(editorPanel, "refreshMcpHealthInBackground =", "V0 =");
+  const mcpActions = extractSection(editorPanel, "refreshMcpInstalledIdsInBackground =", "V0 =");
 
-  assert.match(mcpActions, /refreshMcpHealthInBackground = c\.useCallback/);
-  assert.match(mcpActions, /setTimeout\(\(\) => \{\s+void checkMcpHealth\(W, H\);/);
+  assert.match(mcpActions, /refreshMcpInstalledIdsInBackground = c\.useCallback/);
+  assert.match(mcpActions, /setTimeout\(\(\) => \{\s+void refreshMcpInstalledIds\(W\);/);
   assert.doesNotMatch(mcpActions, /await checkMcpHealth/);
-  assert.match(mcpActions, /Kt\.success\(`已安装 MCP: \$\{W\.name\}`\);\s+refreshMcpHealthInBackground\(t, t === "codex"\);/);
-  assert.match(mcpActions, /Kt\.success\(`已卸载 MCP: \$\{W\.name\}`\);\s+refreshMcpHealthInBackground\(t, t === "codex"\);/);
+  assert.doesNotMatch(mcpActions, /void checkMcpHealth/);
+  assert.match(mcpActions, /Kt\.success\(`已安装 MCP: \$\{W\.name\}`\);\s+refreshMcpInstalledIdsInBackground\(t\);/);
+  assert.match(mcpActions, /Kt\.success\(`已卸载 MCP: \$\{W\.name\}`\);\s+refreshMcpInstalledIdsInBackground\(t\);/);
+});
+
+test("MCP marketplace loads installation status separately from health status", () => {
+  const source = loadUiSource();
+  const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
+
+  assert.match(editorPanel, /fetchMcpInstalledServerIds\(W\)/);
+  assert.match(editorPanel, /O\?\.platform && void refreshMcpInstalledIds\(O\.platform\)/);
+  assert.match(editorPanel, /if \(Array\.isArray\(mcpInstalledServerIds\)\) return mcpInstalledServerIds;/);
+  assert.match(editorPanel, /setMcpHealthItems\(\[\]\)/);
 });

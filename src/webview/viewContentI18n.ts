@@ -677,7 +677,7 @@ export const WEBVIEW_I18N = {
     thinkingOptionLabelMedium: "中",
     thinkingOptionLabelHigh: "高",
     thinkingOptionLabelXHigh: "超高",
-    thinkingOptionLabelMax: "最大",
+    thinkingOptionLabelMax: "最高",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
     modelMainSelectAria: "Loop 主任务模型选择",

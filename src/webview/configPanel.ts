@@ -180,6 +180,9 @@ export class ConfigManagerPanel {
         case "uninstallOfficialSkill":
           response.data = await configService.uninstallOfficialSkill(message.platform, message.skillId);
           break;
+        case "getMcpInstalledServerIds":
+          response.data = await configService.getMcpInstalledServerIds(message.platform);
+          break;
         case "getCodexMcpServerIds":
           response.data = await configService.getCodexMcpServerIds();
           break;

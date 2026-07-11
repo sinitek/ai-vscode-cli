@@ -314,7 +314,7 @@ test("localizes every standard OpenCode variant in English and Chinese", () => {
     },
     {
       locale: "zh-CN" as const,
-      labels: ["无", "最小", "低", "中", "高", "超高", "最大", "思考"],
+      labels: ["无", "最小", "低", "中", "高", "超高", "最高", "思考"],
     },
   ];
 
@@ -356,6 +356,7 @@ test("keeps fixed Codex and Claude thinking mode behavior", () => {
     "medium",
     "high",
     "xhigh",
+    "max",
   ]);
   assert.equal(codex.thinkingMode.value, "low");
   assert.deepEqual(codex.messages, [

@@ -13,7 +13,7 @@ import {
   parseOpenCodeMcpHealthOutput,
   probeInstalledCodexMcpServer,
 } from "./mcpHealth";
-import { installOpenCodeMcpConfig, uninstallOpenCodeMcpConfig } from "./openCodeMcpConfig";
+import { installOpenCodeMcpConfig, listInstalledOpenCodeMcpServerIds, uninstallOpenCodeMcpConfig } from "./openCodeMcpConfig";
 
 const CODEX_MCP_COMMAND_TIMEOUT_MS = 120000;
 const OPENCODE_CLI = "opencode" as CliName;
@@ -326,6 +326,56 @@ async function cleanupCodexMcpDocument(serverId: string): Promise<boolean> {
   return true;
 }
 
+function readMcpServerIdsFromJsonText(content: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content || "{}");
+  } catch {
+    return [];
+  }
+  if (!isPlainObject(parsed)) {
+    return [];
+  }
+
+  const serverIds = new Set<string>();
+  for (const key of ["mcp", "mcpServers", "mcp_servers"] as const) {
+    const section = parsed[key];
+    if (!isPlainObject(section)) {
+      continue;
+    }
+    for (const serverId of Object.keys(section)) {
+      const normalized = serverId.trim();
+      if (normalized) {
+        serverIds.add(normalized);
+      }
+    }
+  }
+  return Array.from(serverIds).sort((left, right) => left.localeCompare(right));
+}
+
+function readCodexMcpServerIdsFromToml(content: string): string[] {
+  const serverIds = new Set<string>();
+  const sectionPattern = /^\s*\[mcp_servers\.([^\]]+)\]\s*$/;
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(sectionPattern);
+    const serverId = match?.[1]?.trim().replace(/^['"]|['"]$/g, "");
+    if (serverId) {
+      serverIds.add(serverId);
+    }
+  }
+  return Array.from(serverIds).sort((left, right) => left.localeCompare(right));
+}
+
+async function listInstalledClaudeMcpServerIds(): Promise<string[]> {
+  const filePath = path.join(os.homedir(), ".claude.json");
+  return readMcpServerIdsFromJsonText(await readTextFileIfExists(filePath, "{}"));
+}
+
+async function listInstalledCodexMcpServerIdsFromConfig(): Promise<string[]> {
+  const configPath = path.join(os.homedir(), ".codex", "config.toml");
+  return readCodexMcpServerIdsFromToml(await readTextFileIfExists(configPath, ""));
+}
+
 async function listInstalledCodexMcpServers(): Promise<CodexInstalledMcpServer[]> {
   try {
     const { stdout } = await runCodexCommand(["mcp", "list", "--json"]);
@@ -340,6 +390,16 @@ async function listInstalledCodexMcpServers(): Promise<CodexInstalledMcpServer[]
   } catch {
     return [];
   }
+}
+
+export async function getMcpInstalledServerIds(platform: ConfigPlatform): Promise<string[]> {
+  if (platform === "codex") {
+    return listInstalledCodexMcpServerIdsFromConfig();
+  }
+  if (platform === "claude") {
+    return listInstalledClaudeMcpServerIds();
+  }
+  return listInstalledOpenCodeMcpServerIds();
 }
 
 async function getCliListedMcpHealth(

@@ -295,18 +295,40 @@ body,
 
 .config-sidebar-panel > .ant-card .ant-card-head {
   min-height: 58px;
-  padding: 0 7px !important;
+  padding: 0 4px !important;
   border-bottom: 1px dashed var(--clay-border) !important;
   background: var(--clay-surface) !important;
 }
 
 .config-sidebar-panel > .ant-card .ant-card-head-title {
-  padding: 6px 0;
+  padding: 3px 0;
   white-space: normal;
 }
 
 .config-sidebar-panel > .ant-card .ant-card-body {
-  padding: 5px !important;
+  padding: 3px !important;
+}
+
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn,
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn {
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px !important;
+  border-color: var(--clay-text) !important;
+  border-radius: 0 !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
+  font-size: 80%;
+  line-height: 1;
+}
+
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(:disabled):hover,
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(:disabled):focus-visible,
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(:disabled):hover,
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(:disabled):focus-visible {
+  border-color: var(--clay-text) !important;
+  background: var(--clay-text) !important;
+  color: var(--clay-inverse) !important;
 }
 
 .ant-card,
@@ -409,9 +431,9 @@ body,
 }
 
 .config-list .ant-list-item {
-  min-height: 42px;
-  margin: 2px 0;
-  padding: 3px 4px !important;
+  min-height: 34px;
+  margin: 1px 0;
+  padding: 2px !important;
   border: 1px solid transparent !important;
   border-radius: var(--clay-radius-card) !important;
   background: var(--clay-canvas) !important;
@@ -464,7 +486,7 @@ body,
   height: 24px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 0;
   color: var(--clay-text-secondary);
 }
 
@@ -514,7 +536,7 @@ body,
 }
 
 .ant-btn {
-  border-radius: var(--clay-radius-card);
+  border-radius: 0;
   font-weight: 500;
   box-shadow: var(--clay-shadow);
   transition:
@@ -596,10 +618,14 @@ body,
 
 .config-list .config-activate-button,
 .config-list .config-list-item-selected .config-activate-button {
-  min-width: 56px;
+  min-width: 45px;
+  height: 24px;
+  padding: 0 6px;
   border-color: var(--clay-text) !important;
   background: var(--clay-lemon) !important;
   color: var(--clay-text) !important;
+  font-size: 80%;
+  line-height: 1;
   box-shadow: -2px 2px 0 var(--clay-text) !important;
 }
 
@@ -1163,7 +1189,7 @@ input[type="file"]::file-selector-button {
     height: 32px;
     margin-right: auto;
     border: 1px solid var(--clay-border) !important;
-    border-radius: 10px !important;
+    border-radius: 0 !important;
     background: var(--clay-surface) !important;
     color: var(--clay-text) !important;
   }
@@ -1241,6 +1267,14 @@ input[type="file"]::file-selector-button {
     justify-content: flex-end;
     width: 100%;
   }
+}
+
+.config-app-theme button,
+.ant-modal-root button,
+.ant-drawer-root button,
+.ant-popover button,
+.ant-dropdown button {
+  border-radius: 0 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

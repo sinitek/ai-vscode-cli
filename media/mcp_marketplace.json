@@ -1,319 +1,200 @@
 [
   {
-    "id": "filesystem",
-    "name": "Filesystem",
-    "description": "允许 LLM 访问本地文件系统。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
-    "category": "文件与数据",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/path/to/allowed/directory"
-      ]
-    }
-  },
-  {
-    "id": "postgres",
-    "name": "PostgreSQL",
-    "description": "只读访问 PostgreSQL 数据库并查看架构。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
-    "category": "文件与数据",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "postgresql://user:password@localhost:5432/dbname"
-      ]
-    }
-  },
-  {
-    "id": "mysql",
-    "name": "MySQL",
-    "description": "通过只读查询访问 MySQL 数据库，支持运行时连接字符串和环境变量配置。",
-    "homepage": "https://github.com/hovecapital/read-only-local-mysql-mcp-server",
-    "category": "文件与数据",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@hovecapital/read-only-mysql-mcp-server"
-      ],
-      "env": {
-        "DB_HOST": "<DB_HOST>",
-        "DB_PORT": "3306",
-        "DB_DATABASE": "<DB_DATABASE>",
-        "DB_USERNAME": "<DB_USERNAME>",
-        "DB_PASSWORD": "<DB_PASSWORD>"
-      }
-    },
-    "signupUrl": "https://github.com/hovecapital/read-only-local-mysql-mcp-server"
-  },
-  {
-    "id": "sqlite",
-    "name": "SQLite",
-    "description": "交互式操作 SQLite 数据库。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
-    "category": "文件与数据",
-    "config": {
-      "command": "uvx",
-      "args": [
-        "mcp-server-sqlite",
-        "--db-path",
-        "/path/to/database.db"
-      ]
-    }
-  },
-  {
-    "id": "google-drive",
-    "name": "Google Drive",
-    "description": "访问和搜索 Google Drive 中的文件。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/gdrive",
-    "category": "文件与数据",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-gdrive"
-      ]
-    }
-  },
-  {
-    "id": "excel-mcp-server",
-    "name": "Excel",
-    "description": "使用开源 Excel MCP 直接读取和修改 Excel 工作簿，无需本地安装 Office。",
-    "homepage": "https://github.com/haris-musa/excel-mcp-server",
-    "category": "文件与数据",
-    "config": {
-      "command": "uvx",
-      "args": [
-        "excel-mcp-server",
-        "stdio"
-      ]
-    }
-  },
-  {
-    "id": "ms-365",
-    "name": "Microsoft 365",
-    "description": "官方 Graph API 驱动的 365 套件 MCP，覆盖 Word/Excel/OneDrive/邮件等文件访问与操作。",
-    "homepage": "https://github.com/softeria/ms-365-mcp-server",
-    "category": "文件与数据",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@softeria/ms-365-mcp-server"
-      ],
-      "env": {
-        "MS365_MCP_CLIENT_ID": "<AZURE_APP_CLIENT_ID>",
-        "MS365_MCP_CLIENT_SECRET": "<AZURE_APP_CLIENT_SECRET>",
-        "MS365_MCP_TENANT_ID": "common"
-      }
-    },
-    "signupUrl": "https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
-  },
-  {
-    "id": "docling",
-    "name": "Docling",
-    "description": "Docling 官方 MCP，提供高保真 PDF 等文档解析为结构化结果。",
-    "homepage": "https://github.com/docling-project/docling-mcp",
-    "category": "文件与数据",
-    "config": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "docling-mcp",
-        "docling-mcp-server",
-        "--transport",
-        "stdio"
-      ]
-    }
-  },
-  {
     "id": "github",
     "name": "GitHub",
-    "description": "集成 GitHub API 进行仓库管理、Issue 和 PR 操作。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+    "description": "GitHub 官方 MCP，建议使用 OAuth 或最小权限 PAT，按需限制仓库、Issue、PR、Actions 和安全相关工具集。",
+    "homepage": "https://github.com/github/github-mcp-server",
     "category": "开发工具",
     "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     },
-    "signupUrl": "https://github.com/settings/tokens"
+    "signupUrl": "https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/set-up-the-github-mcp-server"
   },
   {
-    "id": "gitlab",
-    "name": "GitLab",
-    "description": "集成 GitLab API 进行项目管理。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/gitlab",
-    "category": "开发工具",
+    "id": "microsoft-learn",
+    "name": "Microsoft Learn",
+    "description": "Microsoft Learn 官方 MCP，提供 Microsoft、Azure 和开发者文档检索与示例查询，通常无需私有凭据。",
+    "homepage": "https://github.com/MicrosoftDocs/mcp",
+    "category": "AI与智能",
+    "config": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    },
+    "signupUrl": "https://learn.microsoft.com/api/mcp"
+  },
+  {
+    "id": "playwright",
+    "name": "Playwright",
+    "description": "Microsoft Playwright 官方 MCP，提供浏览器自动化、页面交互和测试调试能力；访问登录态或写操作前应由用户确认。",
+    "homepage": "https://github.com/microsoft/playwright-mcp",
+    "category": "网络与浏览器",
     "config": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-gitlab"
-      ],
-      "env": {
-        "GITLAB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>",
-        "GITLAB_API_URL": "https://gitlab.com/api/v4"
+        "@playwright/mcp@latest"
+      ]
+    },
+    "signupUrl": "https://playwright.dev/mcp/installation"
+  },
+  {
+    "id": "docker-mcp-gateway",
+    "name": "Docker MCP Gateway",
+    "description": "Docker 官方 MCP Catalog 与 Gateway，用容器隔离、Profile、凭据和日志能力集中运行经验证 MCP 服务。",
+    "homepage": "https://docs.docker.com/ai/mcp-catalog-and-toolkit/",
+    "category": "基础设施",
+    "config": {
+      "command": "docker",
+      "args": [
+        "mcp",
+        "gateway",
+        "run"
+      ]
+    },
+    "signupUrl": "https://docs.docker.com/ai/mcp-catalog-and-toolkit/mcp-gateway/"
+  },
+  {
+    "id": "cloudflare-docs",
+    "name": "Cloudflare Docs",
+    "description": "Cloudflare 官方文档 MCP，用于检索 Cloudflare 产品文档和示例，优先作为低风险只读知识源使用。",
+    "homepage": "https://github.com/cloudflare/mcp-server-cloudflare",
+    "category": "网络与浏览器",
+    "config": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "signupUrl": "https://developers.cloudflare.com/"
+  },
+  {
+    "id": "cloudflare-browser",
+    "name": "Cloudflare Browser Rendering",
+    "description": "Cloudflare 官方 Browser Rendering MCP，连接 Cloudflare 浏览器渲染能力；访问站点和自动化操作前应确认权限边界。",
+    "homepage": "https://github.com/cloudflare/mcp-server-cloudflare",
+    "category": "网络与浏览器",
+    "config": {
+      "type": "http",
+      "url": "https://browser.mcp.cloudflare.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CLOUDFLARE_API_TOKEN}"
       }
     },
-    "signupUrl": "https://gitlab.com/-/user_settings/personal_access_tokens"
+    "signupUrl": "https://developers.cloudflare.com/browser-rendering/"
+  },
+  {
+    "id": "stripe",
+    "name": "Stripe",
+    "description": "Stripe 官方 MCP，支持文档和受限 API 操作；支付、退款、订阅等高风险写操作必须使用 restricted key 和人工确认。",
+    "homepage": "https://docs.stripe.com/mcp",
+    "category": "生产力工具",
+    "config": {
+      "type": "http",
+      "url": "https://mcp.stripe.com",
+      "headers": {
+        "Authorization": "Bearer ${STRIPE_API_KEY}"
+      }
+    },
+    "signupUrl": "https://dashboard.stripe.com/apikeys"
   },
   {
     "id": "sentry",
     "name": "Sentry",
-    "description": "从 Sentry.io 获取和分析问题。",
+    "description": "Sentry 官方 MCP，用于读取 Issue、Trace、性能和调试上下文；建议使用最小权限 token，默认定位为只读诊断。",
     "homepage": "https://github.com/getsentry/sentry-mcp",
     "category": "开发工具",
     "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@sentry/mcp-server"
-      ],
-      "env": {
-        "SENTRY_ACCESS_TOKEN": "<YOUR_TOKEN>"
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp",
+      "headers": {
+        "Authorization": "Sentry-Bearer ${SENTRY_ACCESS_TOKEN}"
       }
     },
     "signupUrl": "https://sentry.io/settings/account/api/auth-tokens/"
   },
   {
-    "id": "git",
-    "name": "Git",
-    "description": "本地 Git 仓库操作工具。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
-    "category": "开发工具",
+    "id": "mongodb",
+    "name": "MongoDB",
+    "description": "MongoDB 官方 MCP，默认只读连接 MongoDB 或 Atlas，适合 schema 理解和查询；写能力需单独确认。",
+    "homepage": "https://github.com/mongodb-js/mongodb-mcp-server",
+    "category": "文件与数据",
+    "config": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mongodb-mcp-server@latest",
+        "--readOnly"
+      ],
+      "env": {
+        "MDB_MCP_CONNECTION_STRING": "<YOUR_MONGODB_CONNECTION_STRING>",
+        "MDB_MCP_READ_ONLY": "true"
+      }
+    },
+    "signupUrl": "https://www.mongodb.com/products/tools/mcp-server"
+  },
+  {
+    "id": "grafana",
+    "name": "Grafana",
+    "description": "Grafana Labs 官方 MCP，可查询 dashboard、datasource、告警和观测数据；服务账号 token 应使用最小只读权限。",
+    "homepage": "https://github.com/grafana/mcp-grafana",
+    "category": "基础设施",
     "config": {
       "command": "uvx",
       "args": [
-        "mcp-server-git"
-      ]
-    }
-  },
-  {
-    "id": "docker",
-    "name": "Docker",
-    "description": "管理 Docker 容器、镜像和卷。",
-    "homepage": "https://github.com/sondt2709/docker-mcp",
-    "category": "基础设施",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "docker-mcp"
-      ]
-    }
-  },
-  {
-    "id": "kubernetes",
-    "name": "Kubernetes",
-    "description": "管理 Kubernetes 集群资源。",
-    "homepage": "https://github.com/containers/kubernetes-mcp-server",
-    "category": "基础设施",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "kubernetes-mcp-server@latest"
-      ]
-    }
-  },
-  {
-    "id": "fetch",
-    "name": "Fetch",
-    "description": "获取并处理网页内容，将 HTML 转换为 Markdown。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
-    "category": "网络与浏览器",
-    "config": {
-      "command": "uvx",
-      "args": [
-        "mcp-server-fetch"
-      ]
-    }
-  },
-  {
-    "id": "puppeteer",
-    "name": "Puppeteer",
-    "description": "浏览器自动化和网页抓取。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
-    "category": "网络与浏览器",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-puppeteer"
-      ]
-    }
-  },
-  {
-    "id": "brave-search",
-    "name": "Brave Search",
-    "description": "使用 Brave Search API 进行网络和本地搜索。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
-    "category": "网络与浏览器",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-brave-search"
+        "mcp-grafana"
       ],
       "env": {
-        "BRAVE_API_KEY": "<YOUR_API_KEY>"
+        "GRAFANA_URL": "<YOUR_GRAFANA_URL>",
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "<YOUR_GRAFANA_SERVICE_ACCOUNT_TOKEN>"
       }
     },
-    "signupUrl": "https://api.search.brave.com/app/keys"
+    "signupUrl": "https://grafana.com/docs/grafana/latest/administration/service-accounts/"
   },
   {
-    "id": "google-maps",
-    "name": "Google Maps",
-    "description": "获取位置、路线和地点详情。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/google-maps",
-    "category": "网络与浏览器",
+    "id": "elasticsearch",
+    "name": "Elasticsearch",
+    "description": "Elastic 官方 Elasticsearch MCP，建议使用只读 API key 检索和分析集群数据，避免暴露敏感索引或关闭证书校验。",
+    "homepage": "https://github.com/elastic/mcp-server-elasticsearch",
+    "category": "文件与数据",
     "config": {
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-google-maps"
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "ES_URL",
+        "-e",
+        "ES_API_KEY",
+        "docker.elastic.co/mcp/elasticsearch",
+        "stdio"
       ],
       "env": {
-        "GOOGLE_MAPS_API_KEY": "<YOUR_API_KEY>"
+        "ES_URL": "<YOUR_ELASTICSEARCH_URL>",
+        "ES_API_KEY": "<YOUR_ELASTICSEARCH_API_KEY>"
       }
     },
-    "signupUrl": "https://console.cloud.google.com/google/maps-apis/credentials"
+    "signupUrl": "https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html"
   },
   {
     "id": "slack",
     "name": "Slack",
-    "description": "Slack 频道管理和消息收发。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+    "description": "Slack 官方 MCP，支持搜索、读取线程和协作上下文；发送消息或管理频道前必须确认 OAuth scope 和组织策略。",
+    "homepage": "https://docs.slack.dev/ai/slack-mcp-server/",
     "category": "生产力工具",
     "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-slack"
-      ],
-      "env": {
-        "SLACK_BOT_TOKEN": "<YOUR_BOT_TOKEN>",
-        "SLACK_TEAM_ID": "<YOUR_TEAM_ID>"
-      }
+      "type": "http",
+      "url": "https://mcp.slack.com/mcp"
     },
     "signupUrl": "https://api.slack.com/apps"
   },
   {
     "id": "notion",
     "name": "Notion",
-    "description": "通过 Notion 官方远程 MCP 访问和管理 Notion 页面与数据库。",
-    "homepage": "https://developers.notion.com/docs/mcp",
+    "description": "Notion 官方托管 MCP，按用户授权访问页面、数据库和工作区内容；知识库写入需人工确认。",
+    "homepage": "https://developers.notion.com/guides/mcp/overview",
     "category": "生产力工具",
     "config": {
       "type": "http",
@@ -324,133 +205,49 @@
   {
     "id": "linear",
     "name": "Linear",
-    "description": "通过 Linear 官方远程 MCP 进行项目管理与问题追踪。",
+    "description": "Linear 官方远程 MCP，可查询、创建和更新 issue、project 与 comment；建议通过 OAuth 或只读 token 控制权限。",
     "homepage": "https://linear.app/docs/mcp",
     "category": "生产力工具",
     "config": {
       "type": "http",
-      "url": "https://mcp.linear.app/mcp"
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      }
     },
     "signupUrl": "https://linear.app/settings/api"
   },
   {
-    "id": "sequential-thinking",
-    "name": "Sequential Thinking",
-    "description": "帮助模型进行复杂的顺序思考和推理。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
-    "category": "AI与智能",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
-    }
-  },
-  {
-    "id": "context7",
-    "name": "Context7",
-    "description": "为 AI 提供最新的、特定版本的文档和代码示例。",
-    "homepage": "https://context7.com/dashboard",
-    "category": "AI与智能",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@latest"
-      ],
-      "env": {
-        "CONTEXT7_API_KEY": "<YOUR_CONTEXT7_API_KEY>"
-      }
-    },
-    "signupUrl": "https://context7.com/dashboard"
-  },
-  {
-    "id": "memory",
-    "name": "Memory",
-    "description": "基于知识图谱的持久化记忆系统。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
-    "category": "AI与智能",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-memory"
-      ]
-    }
-  },
-  {
-    "id": "zai-mcp-server",
-    "name": "智普-图片识别",
-    "description": "调用智谱通用图像理解能力进行图片内容识别。",
-    "homepage": "https://www.zhipuai.cn/",
-    "category": "AI与智能",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@z_ai/mcp-server"
-      ],
-      "env": {
-        "Z_AI_API_KEY": "<YOUR_API_KEY>",
-        "Z_AI_MODE": "ZHIPU"
-      }
-    },
-    "signupUrl": "https://open.bigmodel.cn/usercenter/apikeys"
-  },
-  {
-    "id": "time",
-    "name": "Time",
-    "description": "获取当前时间和时区信息。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
-    "category": "其他",
-    "config": {
-      "command": "uvx",
-      "args": [
-        "mcp-server-time"
-      ]
-    }
-  },
-  {
-    "id": "everything",
-    "name": "Everything",
-    "description": "MCP 参考实现，包含各种工具示例。",
-    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
-    "category": "其他",
-    "config": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-everything"
-      ]
-    }
-  },
-  {
-    "id": "web-search-prime",
-    "name": "智普-联网搜索",
-    "description": "通过大模型开放平台的 Web Search Prime 接口进行联网搜索。",
-    "homepage": "https://open.bigmodel.cn/",
+    "id": "brave-search",
+    "name": "Brave Search",
+    "description": "Brave 官方 Search MCP，提供网页、新闻、图片、视频和本地搜索；建议限制工具范围并注意搜索内容注入风险。",
+    "homepage": "https://github.com/brave/brave-search-mcp-server",
     "category": "网络与浏览器",
     "config": {
-      "type": "http",
-      "url": "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
-      "headers": {
-        "Authorization": "Bearer <your_api_key>"
+      "command": "npx",
+      "args": [
+        "-y",
+        "@brave/brave-search-mcp-server",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "<YOUR_BRAVE_API_KEY>",
+        "BRAVE_MCP_ENABLED_TOOLS": "web_search,news_search"
       }
-    }
+    },
+    "signupUrl": "https://brave.com/search/api/"
   },
   {
-    "id": "web-reader",
-    "name": "智普-网页读取",
-    "description": "通过大模型开放平台的 Web Reader 接口读取网页内容。",
-    "homepage": "https://open.bigmodel.cn/",
-    "category": "网络与浏览器",
+    "id": "atlassian",
+    "name": "Atlassian",
+    "description": "Atlassian 官方 MCP 入口，面向 Jira、Confluence 和 Forge 开发知识；组织数据写入需 OAuth 授权和人工确认。",
+    "homepage": "https://www.atlassian.com/blog/blog/announcements/remote-mcp-server",
+    "category": "生产力工具",
     "config": {
-      "type": "http",
-      "url": "https://open.bigmodel.cn/api/mcp/web_reader/mcp",
-      "headers": {
-        "Authorization": "Bearer <your_api_key>"
-      }
-    }
+      "type": "sse",
+      "url": "https://mcp.atlassian.com/v1/sse"
+    },
+    "signupUrl": "https://developer.atlassian.com/platform/forge/ai-development-toolkit/forge-mcp/"
   }
 ]

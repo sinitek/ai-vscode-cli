@@ -9197,8 +9197,8 @@ function isLobsterTaskBlockedByMainAiFailureLimit(task: Pick<LobsterTaskRecord, 
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
-  if (cli !== "claude" && mode === "max") {
-    return cli === "codex" ? "xhigh" : "high";
+  if (cli !== "codex" && cli !== "claude" && mode === "max") {
+    return "high";
   }
   if (cli !== "codex" && cli !== "claude" && mode === "xhigh") {
     return "high";

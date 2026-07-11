@@ -138,7 +138,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 模型列表与当前选择按当前配置档案 id 维护，插件侧持久化到 `~/.sinitek_cli/models.json`
 - Claude 分组不展示插件侧模型选择或模型管理入口，执行时不会注入 webview 侧选择值；如需固定模型，需由用户自行在 Claude 命令参数中配置
 - 打开“管理模型”时，如果前端看到空列表但磁盘或运行态仍有模型数据，扩展会弹出可复制的诊断详情，包含配置 id、存储路径、模型计数和最近读取/配置加载错误
-- thinking mode 按 CLI 记忆
+- thinking mode 按 CLI 记忆；Codex 和 Claude 固定选项包含 `low`、`medium`、`high`、`xhigh`、`max`，中文 UI 中 `max` 显示为“最高”
 - Global / Project 规则读写
 - 规则目标覆盖 Codex / Claude / OpenCode
 
@@ -215,7 +215,9 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 插件直接管理 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`：local 写入 `type=local`、命令数组、`environment` 和 `enabled`；remote 写入 `type=remote`、URL、`headers` 和 `enabled`。
 - 安装只合并目标 `mcp[id]`，保留其他顶层配置和已有 MCP；卸载只删除目标键且支持幂等调用，不执行 OpenCode 不支持的 `mcp remove`。
 - 配置读取支持 JSON/JSONC；无效配置不会被覆盖，成功修改后通过同目录临时文件原子替换。
-- MCP 是否已安装由 `opencode mcp list --pure` 中是否存在对应 id 决定，而不是由列表命令退出码或连接健康状态决定。已列出但连接失败的条目仍显示为已安装，同时状态为 `unhealthy`；未列出的市场条目显示为未安装。
+- MCP 市场打开时只做快速安装状态判断，不做健康探测：Claude 读取 `~/.claude.json` 的 `mcp` / `mcpServers` / `mcp_servers`，Codex 读取 `~/.codex/config.toml` 的 `[mcp_servers.<id>]`，OpenCode 读取 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。健康状态只由“一键检测健康”按钮触发；OpenCode 健康检测仍可用 `opencode mcp list --pure` 映射连接状态，已列出但连接失败的条目显示为已安装且 `unhealthy`，未配置的市场条目显示未安装。
+- 内置 `media/mcp_marketplace.json` 已刷新为 16 个官方或权威 MCP 候选：GitHub、Microsoft Learn、Playwright、Docker MCP Gateway、Cloudflare Docs/Browser、Stripe、Sentry、MongoDB、Grafana、Elasticsearch、Slack、Notion、Linear、Brave Search、Atlassian。所有 description 保持中文，凭据只使用环境变量占位；涉及支付、生产错误、数据库、协作写入或浏览器自动化的条目在描述中提示 OAuth、只读、最小权限或人工确认。
+- `npm run validate:mcp-marketplace` 读取真实市场 JSON 并校验顶层数组、唯一 id、必填字段、中文 description、官方/权威 homepage、local/remote config、env/headers 类型、占位密钥，以及禁止旧 `github.com/modelcontextprotocol/servers/tree/main/src/` 和旧 `@modelcontextprotocol/server-*` 来源回流。
 
 ## 5. 验收视角
 

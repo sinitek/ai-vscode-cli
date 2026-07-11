@@ -90,6 +90,7 @@ test("buildCodexThreadOptions preserves CLI behavior and plan overrides", () => 
 test("app server builders produce stable config, args, input, and sandbox policies", () => {
   assert.equal(mapCodexReasoningEffort("on"), "low");
   assert.equal(mapCodexReasoningEffort("xhigh"), "xhigh");
+  assert.equal(mapCodexReasoningEffort("max"), "max");
   assert.deepEqual(
     buildCodexAppServerArgs(false, ["projects.'/repo'.trust_level=\"trusted\""]),
     [

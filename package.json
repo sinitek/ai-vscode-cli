@@ -177,7 +177,8 @@
             "low",
             "medium",
             "high",
-            "xhigh"
+            "xhigh",
+            "max"
           ],
           "default": "medium",
           "description": "%config.thinkingModeCodex.description%"
@@ -235,6 +236,14 @@
           },
           "default": [],
           "description": "%config.thinkingArgs.codex.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.max": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.thinkingArgs.codex.max.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.on": {
           "type": "array",
@@ -340,6 +349,11 @@
           "default": "",
           "description": "%config.thinkingPromptPrefix.codex.xhigh.description%"
         },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.max": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptPrefix.codex.max.description%"
+        },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.off": {
           "type": "string",
           "default": "",
@@ -429,6 +443,11 @@
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
           "description": "%config.thinkingPromptSuffix.codex.xhigh.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.max": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "%config.thinkingPromptSuffix.codex.max.description%"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.off": {
           "type": "string",
@@ -604,6 +623,28 @@
           "type": "array",
           "default": [],
           "description": "%config.thinkingWorkspaceFiles.codex.xhigh.description%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "%config.workspaceFile.path.description%"
+              },
+              "content": {
+                "type": "string",
+                "description": "%config.workspaceFile.content.description%"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.max": {
+          "type": "array",
+          "default": [],
+          "description": "%config.thinkingWorkspaceFiles.codex.max.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -913,6 +954,7 @@
     "compile": "npm run build",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
+    "validate:mcp-marketplace": "node scripts/validate_mcp_marketplace.js",
     "sync:official-skills": "python3 scripts/sync_official_skills.py"
   },
   "devDependencies": {
