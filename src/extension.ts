@@ -18,9 +18,11 @@ import {
 } from "./cli/config";
 import {
   buildCliArgs,
+  detectOpenCodeStreamActivity,
   buildOpenCodeRunFailureMessage,
   buildProcessLabel,
   captureCliOutput,
+  parseOpenCodeVisibleStreamEvent,
   parseOpenCodeRunOutput,
   resolveCliCommand,
   runCli,
@@ -493,6 +495,8 @@ let activeAssistantMessageId: string | undefined;
 let activeTraceMessageId: string | undefined;
 let activeTraceBuffer = "";
 let activeTraceSegmentLines: string[] = [];
+let activeOpenCodeJsonlBuffer = "";
+let activeOpenCodeDisplayedFinalText: string | null = null;
 const activeTraceLineFilterState = createTraceLineFilterState();
 let activeCompletionSent = false;
 let activeRunId: string | undefined;
@@ -2662,13 +2666,19 @@ function buildOpenCodeFailureMessage(
   });
 }
 
-const OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS = 60 * 1000;
+const OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS = 60 * 1000;
+const OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
-function buildOpenCodeOneShotIdleTimeoutMessage(timeoutMs: number): string {
+function buildOpenCodeOneShotIdleTimeoutMessage(timeoutMs: number, hasProgress = false): string {
   const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  if (hasProgress) {
+    return resolveLocale(getLocaleSetting()).startsWith("zh")
+      ? `OpenCode run --format json 已启动并持续返回进度，但 ${seconds} 秒内没有返回助手回答或错误。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`
+      : `OpenCode run --format json started and kept returning progress, but did not return an assistant answer or error within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
+  }
   return resolveLocale(getLocaleSetting()).startsWith("zh")
-    ? `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json 'hi'\` 验证。`
-    : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json 'hi'\` in a terminal.`;
+    ? `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`
+    : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
 }
 
 async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
@@ -7323,6 +7333,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     >((resolve) => {
       let settled = false;
       let idleTimeoutHandle: NodeJS.Timeout | null = null;
+      let sawOpenCodeActivity = false;
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
@@ -7338,8 +7349,26 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         if (idleTimeoutHandle) {
           clearTimeout(idleTimeoutHandle);
         }
+        const timeoutMs = sawOpenCodeActivity
+          ? OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS
+          : OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS;
         idleTimeoutHandle = setTimeout(() => {
-          const error = new Error(buildOpenCodeOneShotIdleTimeoutMessage(OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS));
+          const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+          const hasCurrentActivity = activity.hasAssistantAnswer
+            || activity.hasError
+            || activity.hasStatus
+            || activity.hasProgress;
+          const timedOutAfterActivity = sawOpenCodeActivity || hasCurrentActivity;
+          if (hasCurrentActivity) {
+            sawOpenCodeActivity = true;
+          }
+          const reportedTimeoutMs = timedOutAfterActivity
+            ? OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS
+            : timeoutMs;
+          const error = new Error(buildOpenCodeOneShotIdleTimeoutMessage(
+            reportedTimeoutMs,
+            timedOutAfterActivity,
+          ));
           if (!isCurrentOneShotRunActive()) {
             settle({ type: "error", error });
             return;
@@ -7351,13 +7380,13 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             sessionId: activeSessionId,
             attempt: attemptNumber,
             retryCount: hiddenRetryCount,
-            timeoutMs: OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS,
+            timeoutMs: reportedTimeoutMs,
             stdoutLength: rawStdout.length,
             stderrLength: rawStderr.length,
           });
           activeProcess?.kill();
           settle({ type: "error", error });
-        }, OPENCODE_ONE_SHOT_IDLE_TIMEOUT_MS);
+        }, timeoutMs);
       };
       resetIdleTimeout();
       activeProcess = runCliStream(
@@ -7368,12 +7397,17 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (!isCurrentOneShotRunActive()) {
               return;
             }
-            resetIdleTimeout();
             rawStdout += chunk;
+            const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+            if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
+              sawOpenCodeActivity = true;
+            }
+            resetIdleTimeout();
             sendRawStreamDelta(chunk, { stream: "stdout" });
+            appendOpenCodeJsonlEvents(chunk);
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
-            if (parseOpenCodeRunOutput(rawStdout, rawStderr).finalText) {
+            if (activity.hasAssistantAnswer) {
               attemptHadNormalReply = true;
             }
             if (debugLogging) {
@@ -7384,8 +7418,12 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (!isCurrentOneShotRunActive()) {
               return;
             }
-            resetIdleTimeout();
             rawStderr += chunk;
+            const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+            if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
+              sawOpenCodeActivity = true;
+            }
+            resetIdleTimeout();
             sendRawStreamDelta(chunk, { stream: "stderr" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
@@ -7444,11 +7482,12 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         ? Math.max(0, Date.now() - activeTaskRun.startedAt)
         : null;
       void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
+      flushOpenCodeJsonlBuffer();
       flushTraceBuffer();
       const finalMessageTarget = activeMessageTarget ?? messageTarget;
       const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
       if (openCodeOutput.finalText) {
-        appendAssistantChunk(`${openCodeOutput.finalText}\n`);
+        appendOpenCodeFinalText(openCodeOutput.finalText);
       }
       if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
         fallbackCreatedAt: userCreatedAt,
@@ -7571,6 +7610,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       appendSystemMessage(userMessage);
     }
 
+    flushOpenCodeJsonlBuffer();
     flushTraceBuffer();
     appendCompletionMessage("error");
     persistActiveMessages();
@@ -7627,6 +7667,57 @@ function appendTraceMessage(
     kind: resolvedKind,
     ...mergePayload,
   });
+}
+
+function appendOpenCodeFinalText(finalText: string): void {
+  const displayedText = activeOpenCodeDisplayedFinalText?.trim() ?? "";
+  if (displayedText && finalText === displayedText) {
+    activeOpenCodeDisplayedFinalText = finalText;
+    return;
+  }
+  if (displayedText && finalText.startsWith(displayedText)) {
+    const remainingText = finalText.slice(displayedText.length).trim();
+    if (remainingText) {
+      appendAssistantChunk(`${remainingText}\n`);
+    }
+    activeOpenCodeDisplayedFinalText = finalText;
+    return;
+  }
+  appendAssistantChunk(`${finalText}\n`);
+  activeOpenCodeDisplayedFinalText = finalText;
+}
+
+function appendOpenCodeJsonlEvents(chunk: string): void {
+  const normalized = chunk.replace(/\r\n/g, "\n");
+  const combined = activeOpenCodeJsonlBuffer + normalized;
+  const lines = combined.split("\n");
+  activeOpenCodeJsonlBuffer = lines.pop() ?? "";
+  lines.forEach(appendOpenCodeJsonlLine);
+}
+
+function flushOpenCodeJsonlBuffer(): void {
+  const line = activeOpenCodeJsonlBuffer.trim();
+  activeOpenCodeJsonlBuffer = "";
+  if (line) {
+    appendOpenCodeJsonlLine(line);
+  }
+}
+
+function appendOpenCodeJsonlLine(line: string): void {
+  const event = parseOpenCodeVisibleStreamEvent(line);
+  if (!event) {
+    return;
+  }
+  if (event.kind === "assistant") {
+    appendAssistantChunk(event.content);
+    activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
+    return;
+  }
+  if (event.kind === "thinking") {
+    appendTraceMessage(event.content, "thinking");
+    return;
+  }
+  appendTraceMessage(event.content, "tool-use", { merge: false, forceTraceBubble: true });
 }
 
 function appendSystemMessage(content: string): void {
@@ -8827,6 +8918,8 @@ function clearActiveRun(): void {
   activeTraceMessageId = undefined;
   activeTraceBuffer = "";
   activeTraceSegmentLines = [];
+  activeOpenCodeJsonlBuffer = "";
+  activeOpenCodeDisplayedFinalText = null;
   resetTraceLineFilterState(activeTraceLineFilterState);
   activeCompletionSent = false;
   activeRunId = undefined;

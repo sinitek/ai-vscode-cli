@@ -116,6 +116,18 @@ export type OpenCodeRunOutput = {
   statusText: string | null;
 };
 
+export type OpenCodeStreamActivity = {
+  hasAssistantAnswer: boolean;
+  hasError: boolean;
+  hasStatus: boolean;
+  hasProgress: boolean;
+};
+
+export type OpenCodeVisibleStreamEvent = {
+  kind: "assistant" | "thinking" | "tool-use";
+  content: string;
+};
+
 export type OpenCodeFailureMessageOptions = {
   missingFinalOutputMessage?: string;
   missingFinalOutputWithStatusMessage?: (statusText: string) => string;
@@ -138,6 +150,19 @@ const OPENCODE_JSON_TEXT_PART_TYPES = new Set([
   "assistant_message",
   "output",
   "result",
+]);
+
+const OPENCODE_JSON_PROGRESS_TYPES = new Set([
+  "step_start",
+  "step-start",
+  "step_finish",
+  "step-finish",
+  "tool_use",
+  "tool-use",
+  "tool",
+  "reasoning",
+  "reasoning-delta",
+  "reasoning_delta",
 ]);
 
 function stripAnsi(value: string): string {
@@ -300,6 +325,117 @@ function collectOpenCodeJsonText(value: unknown, parentType?: string): string[] 
   return chunks;
 }
 
+function readObjectProperty(record: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const value = record[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function normalizeOpenCodeJsonType(value: unknown): string {
+  return typeof value === "string" ? value.toLowerCase() : "";
+}
+
+function getOpenCodeJsonPart(record: Record<string, unknown>): Record<string, unknown> | null {
+  return readObjectProperty(record, "part");
+}
+
+function formatOpenCodeToolUseEvent(record: Record<string, unknown>): OpenCodeVisibleStreamEvent | null {
+  const part = getOpenCodeJsonPart(record);
+  const source = part ?? record;
+  const type = normalizeOpenCodeJsonType(record.type);
+  const partType = normalizeOpenCodeJsonType(source.type);
+  if (type !== "tool_use" && type !== "tool-use" && type !== "tool" && partType !== "tool") {
+    return null;
+  }
+
+  const state = readObjectProperty(source, "state") ?? readObjectProperty(record, "state") ?? {};
+  const toolName = readStringProperty(source, ["tool", "name"])
+    ?? readStringProperty(record, ["tool", "name"])
+    ?? "tool";
+  const status = readStringProperty(state, ["status"])
+    ?? readStringProperty(source, ["status"]);
+  const title = readStringProperty(state, ["title"])
+    ?? readStringProperty(source, ["title"]);
+  const lines = [`tool ${toolName}`];
+  if (status) {
+    lines.push(`status: ${status}`);
+  }
+  if (title && title !== status) {
+    lines.push(title);
+  }
+
+  return { kind: "tool-use", content: lines.join("\n") };
+}
+
+function collectOpenCodeReasoningText(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = normalizeOpenCodeJsonType(record.type);
+  const chunks: string[] = [];
+  if (type === "reasoning" || type === "reasoning-delta" || type === "reasoning_delta") {
+    const text = readStringProperty(record, ["text", "content", "delta", "summary"]);
+    if (text) {
+      chunks.push(text);
+    }
+  }
+
+  const part = getOpenCodeJsonPart(record);
+  if (part) {
+    chunks.push(...collectOpenCodeReasoningText(part));
+  }
+
+  for (const key of ["parts", "content", "message", "messages", "output"]) {
+    const nested = record[key];
+    if (Array.isArray(nested)) {
+      nested.forEach((item) => chunks.push(...collectOpenCodeReasoningText(item)));
+    } else if (nested && typeof nested === "object") {
+      chunks.push(...collectOpenCodeReasoningText(nested));
+    }
+  }
+
+  return chunks;
+}
+
+export function parseOpenCodeVisibleStreamEvent(line: string): OpenCodeVisibleStreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+
+  let record: Record<string, unknown>;
+  try {
+    record = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const assistantText = collectOpenCodeJsonText(record).join("");
+  if (assistantText.trim()) {
+    return { kind: "assistant", content: assistantText };
+  }
+
+  const toolEvent = formatOpenCodeToolUseEvent(record);
+  if (toolEvent) {
+    return toolEvent;
+  }
+
+  const reasoningText = collectOpenCodeReasoningText(record).join("").trim();
+  if (reasoningText) {
+    return { kind: "thinking", content: `thinking\n${reasoningText}` };
+  }
+
+  const type = normalizeOpenCodeJsonType(record.type);
+  if (type === "step_start" || type === "step-start") {
+    return { kind: "thinking", content: "thinking\nOpenCode is planning the next step…" };
+  }
+
+  return null;
+}
+
 function parseOpenCodeJsonOutput(stdout: string): string | null {
   const chunks: string[] = [];
   for (const line of stdout.split(/\r?\n/u)) {
@@ -315,6 +451,75 @@ function parseOpenCodeJsonOutput(stdout: string): string | null {
   }
   const finalText = chunks.join("").trim();
   return finalText || null;
+}
+
+function collectOpenCodeJsonActivity(value: unknown, activity: OpenCodeStreamActivity): void {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+  const role = typeof record.role === "string" ? record.role.toLowerCase() : "";
+
+  if (type === "error" || record.error) {
+    activity.hasError = true;
+  }
+  if (role === "assistant" || collectOpenCodeJsonText(record).join("").trim()) {
+    activity.hasAssistantAnswer = true;
+  }
+  if (OPENCODE_JSON_PROGRESS_TYPES.has(type)) {
+    activity.hasProgress = true;
+  }
+
+  const part = record.part;
+  if (part && typeof part === "object") {
+    collectOpenCodeJsonActivity(part, activity);
+  }
+
+  for (const key of ["parts", "content", "message", "messages", "output"]) {
+    const nested = record[key];
+    if (Array.isArray(nested)) {
+      nested.forEach((item) => collectOpenCodeJsonActivity(item, activity));
+    } else if (nested && typeof nested === "object") {
+      collectOpenCodeJsonActivity(nested, activity);
+    }
+  }
+}
+
+export function detectOpenCodeStreamActivity(stdout: string, stderr: string): OpenCodeStreamActivity {
+  const parsed = parseOpenCodeRunOutput(stdout, stderr);
+  const activity: OpenCodeStreamActivity = {
+    hasAssistantAnswer: Boolean(parsed.finalText),
+    hasError: Boolean(parsed.errorText),
+    hasStatus: Boolean(parsed.statusText),
+    hasProgress: false,
+  };
+
+  for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      collectOpenCodeJsonActivity(JSON.parse(trimmed), activity);
+    } catch {
+      // Ignore incomplete JSONL events while the process is still streaming.
+    }
+  }
+
+  const plainStdout = cleanOpenCodeStatusOutput(stdout);
+  if (plainStdout && !activity.hasAssistantAnswer) {
+    const plainLines = plainStdout
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (plainLines.some((line) => !line.startsWith("{"))) {
+      activity.hasProgress = true;
+    }
+  }
+
+  return activity;
 }
 
 function parseOpenCodePlainOutput(stdout: string): string | null {

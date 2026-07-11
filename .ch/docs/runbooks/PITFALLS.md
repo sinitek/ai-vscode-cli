@@ -208,6 +208,7 @@
 - 运行前 preflight 必须阻止 `myprovider`、`my-model-name`、`my-small-model-name`、示例 baseURL、缺失 `{env:NAME}`；JSON error 事件必须展示 provider/API message，不能只显示泛化空响应。
 - OpenCode `code!=0` 且 stderr 为空时，仍要解析 stdout JSON `error` 事件；PackyAPI 403 这类错误气泡应包含 `APIError`、`403`、`access_denied` 或 provider message，不能只显示 `CLI 退出码: 1`。
 - OpenCode one-shot 启动后若长时间没有 stdout/stderr 输出，必须按空输出超时进入 hidden retry；重试耗尽时要追加可见 system 错误气泡并写入会话存档，不能只停在运行态或只留下 trace。
+- OpenCode `--format json` 的 `step_start`、`tool_use`、reasoning 和 `text` 事件主要出现在 stdout；可见气泡解析必须消费 stdout JSONL，不能只依赖 stderr trace，否则用户会只看到最终答复，看不到思考/工具/中间 AI 气泡。
 
 ### 验证方式
 - 对占位配置运行 `validateOpenCodeConfigForRun`，应返回 placeholder / missing env 等阻断问题。

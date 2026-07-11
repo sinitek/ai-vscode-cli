@@ -11,6 +11,8 @@ const {
   applyOpenCodeVariantArg,
   buildOpenCodeRunFailureMessage,
   buildCliArgs,
+  detectOpenCodeStreamActivity,
+  parseOpenCodeVisibleStreamEvent,
   parseOpenCodeSessionId,
   parseOpenCodeRunOutput,
   runCliStream,
@@ -451,6 +453,81 @@ test("keeps OpenCode provider API details from JSON error events", () => {
   assert.match(output.errorText ?? "", /403/);
   assert.match(output.errorText ?? "", /access_denied/);
   assert.match(output.errorText ?? "", /https:\/\/www\.packyapi\.com\/v1\/chat\/completions/);
+});
+
+test("detects OpenCode progress-only JSONL activity", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "step_start",
+      sessionID: "ses_progress",
+      part: { type: "step-start", sessionID: "ses_progress" },
+    }),
+    JSON.stringify({
+      type: "tool_use",
+      sessionID: "ses_progress",
+      part: { type: "tool", tool: "read", state: { status: "completed" } },
+    }),
+  ].join("\n");
+
+  assert.deepEqual(detectOpenCodeStreamActivity(stdout, ""), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: true,
+  });
+});
+
+test("detects OpenCode final answer activity from text events", () => {
+  const stdout = JSON.stringify({
+    type: "text",
+    sessionID: "ses_final",
+    part: {
+      type: "text",
+      text: "[final_answer] done",
+    },
+  });
+
+  assert.deepEqual(detectOpenCodeStreamActivity(stdout, ""), {
+    hasAssistantAnswer: true,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: false,
+  });
+});
+
+test("formats OpenCode JSONL tool events for visible trace bubbles", () => {
+  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+    type: "tool_use",
+    sessionID: "ses_visible",
+    part: {
+      type: "tool",
+      tool: "read",
+      state: { status: "completed", title: "src/extension.ts" },
+    },
+  })), {
+    kind: "tool-use",
+    content: "tool read\nstatus: completed\nsrc/extension.ts",
+  });
+});
+
+test("formats OpenCode JSONL text and reasoning events for visible bubbles", () => {
+  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+    type: "text",
+    sessionID: "ses_visible",
+    part: { type: "text", text: "开始检查日志。\n" },
+  })), {
+    kind: "assistant",
+    content: "开始检查日志。\n",
+  });
+
+  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+    type: "reasoning_delta",
+    sessionID: "ses_visible",
+    part: { type: "reasoning-delta", text: "需要先确认事件类型" },
+  })), {
+    kind: "thinking",
+    content: "thinking\n需要先确认事件类型",
+  });
 });
 
 test("deduplicates OpenCode JSON and stderr error text", () => {
