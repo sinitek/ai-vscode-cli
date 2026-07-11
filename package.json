@@ -908,8 +908,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p ./",
-    "compile": "tsc -p ./",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p ./",
+    "compile": "npm run build",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
     "sync:official-skills": "python3 scripts/sync_official_skills.py"

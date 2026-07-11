@@ -5,7 +5,7 @@ import { spawn } from "cross-spawn";
 import { getCliCommand } from "../cli/config";
 import { CliName } from "../cli/types";
 import { ConfigPlatform, CodexMcpHealthItem, CodexMcpInstallResult, McpHealthItem, McpMarketplaceItem } from "./types";
-import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, buildOpenCodeMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
+import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
 import {
   mapCliListedMcpHealth,
   parseClaudeMcpHealthOutput,
@@ -13,6 +13,7 @@ import {
   parseOpenCodeMcpHealthOutput,
   probeInstalledCodexMcpServer,
 } from "./mcpHealth";
+import { installOpenCodeMcpConfig, uninstallOpenCodeMcpConfig } from "./openCodeMcpConfig";
 
 const CODEX_MCP_COMMAND_TIMEOUT_MS = 120000;
 const OPENCODE_CLI = "opencode" as CliName;
@@ -314,17 +315,6 @@ async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
   return true;
 }
 
-async function cleanupOpenCodeMcpDocument(serverId: string): Promise<boolean> {
-  const settingsPath = path.join(os.homedir(), ".opencode", "config.json");
-  const currentContent = await readTextFileIfExists(settingsPath, "{}");
-  const next = removeMcpServerFromJsonText(currentContent, serverId);
-  if (!next.changed) {
-    return false;
-  }
-  await fs.writeFile(settingsPath, next.content, "utf-8");
-  return true;
-}
-
 async function cleanupCodexMcpDocument(serverId: string): Promise<boolean> {
   const configPath = path.join(os.homedir(), ".codex", "config.toml");
   const currentContent = await readTextFileIfExists(configPath, "");
@@ -362,7 +352,7 @@ async function getCliListedMcpHealth(
   let listedById = new Map<string, Omit<McpHealthItem, "platform" | "serverId" | "installed" | "checkedAt">>();
   try {
     const { stdout, stderr } = platform === "opencode"
-      ? await runOpenCodeCommand(["mcp", "list"])
+      ? await runOpenCodeCommand(["mcp", "list", "--pure"])
       : await runConfiguredCliCommand(cli, ["mcp", "list"]);
     const rawOutput = [stdout, stderr].filter((item) => item.trim().length > 0).join("\n");
     listedById = platform === "claude"
@@ -497,16 +487,17 @@ export async function installMcpServer(
     };
   }
 
-  const { commandArgs, warnings } = platform === "claude"
-    ? buildClaudeMcpInstallArgs(item, envOverrides)
-    : buildOpenCodeMcpInstallArgs(item, envOverrides);
-
-  if (platform === "claude") {
-    await runClaudeCommand(commandArgs);
-  } else {
-    await runOpenCodeCommand(commandArgs);
+  if (platform !== "claude") {
+    const result = await installOpenCodeMcpConfig(item, envOverrides);
+    return {
+      serverId: item.id,
+      commandArgs: [],
+      warnings: result.warnings,
+    };
   }
 
+  const { commandArgs, warnings } = buildClaudeMcpInstallArgs(item, envOverrides);
+  await runClaudeCommand(commandArgs);
   return {
     serverId: item.id,
     commandArgs,
@@ -522,14 +513,20 @@ export async function uninstallMcpServer(
     throw new Error("MCP id is required.");
   }
 
+  if (platform !== "codex" && platform !== "claude") {
+    await uninstallOpenCodeMcpConfig(mcpId);
+    return {
+      platform,
+      serverId: mcpId,
+    };
+  }
+
   let commandError: Error | null = null;
   try {
     if (platform === "codex") {
       await runCodexCommand(["mcp", "remove", mcpId]);
-    } else if (platform === "claude") {
-      await runClaudeCommand(["mcp", "remove", "--scope", "user", mcpId]);
     } else {
-      await runOpenCodeCommand(["mcp", "remove", "--scope", "user", mcpId]);
+      await runClaudeCommand(["mcp", "remove", "--scope", "user", mcpId]);
     }
   } catch (error) {
     commandError = error instanceof Error ? error : new Error(String(error));
@@ -537,9 +534,7 @@ export async function uninstallMcpServer(
 
   const documentChanged = platform === "codex"
     ? await cleanupCodexMcpDocument(mcpId)
-    : platform === "claude"
-      ? await cleanupClaudeMcpDocument(mcpId)
-      : await cleanupOpenCodeMcpDocument(mcpId);
+    : await cleanupClaudeMcpDocument(mcpId);
 
   if (commandError && !documentChanged) {
     throw commandError;

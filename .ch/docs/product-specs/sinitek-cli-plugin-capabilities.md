@@ -147,6 +147,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 配置中心支持：
 
 - 配置档案列表、排序、激活、删除、初始化
+- 从对话面板的配置按钮打开配置中心时，若当前视口处于小于等于 `920px` 的窄宽度模式，左侧配置目录首次默认展开；展开后仍可通过关闭按钮、遮罩或 `Esc` 收起
 - 当前配置查看与应用
 - 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、OpenCode 的 `config.json`、Codex 的 `config.toml` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件。Gemini 配置卡片已移出当前支持范围。
 - Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式。可视化模式覆盖 Claude Code 官方 `~/.claude/settings.json` 的常用核心字段：`model`、`fallbackModel`、`availableModels`、`effortLevel`、`language`、`outputStyle`、`autoUpdatesChannel`、`cleanupPeriodDays`、`alwaysThinkingEnabled`、`includeCoAuthoredBy`、`permissions.defaultMode/allow/ask/deny`，以及 `env` 中的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`。第三方网关或云平台可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。可视化序列化基于原始 JSON 定向合并，保留未展示字段、额外环境变量、hooks、权限扩展和企业策略；无效 JSON 不覆盖最后一次有效可视化状态。
@@ -209,10 +210,11 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 ## 4.7 OpenCode 全局 MCP 管理
 
-- MCP 市场可为 OpenCode 安装 local 与 remote 全局 MCP：local 通过命令和参数数组安装，remote 通过 URL 与多个 header 安装。
-- 安装调用遵循 OpenCode 1.17.16 原生参数：local 使用 `mcp add <id> [--env KEY=VALUE] -- <command> [args...]`，remote 使用 `mcp add <id> --url <url> [--header KEY=VALUE]`，不生成 Claude 专用的 `--scope` 或 `--transport`。
-- OpenCode CLI 将全局 MCP 保存在 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`；新增目标 MCP 时保留文件中的其他顶层配置和已有 MCP。
-- MCP 是否已安装由 `opencode mcp list` 中是否存在对应 id 决定，而不是由列表命令退出码或连接健康状态决定。已列出但连接失败的条目仍显示为已安装，同时状态为 `unhealthy`；未列出的市场条目显示为未安装。
+- MCP 市场可为 OpenCode 安装、覆盖和卸载 local 与 remote 全局 MCP。
+- 插件直接管理 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`：local 写入 `type=local`、命令数组、`environment` 和 `enabled`；remote 写入 `type=remote`、URL、`headers` 和 `enabled`。
+- 安装只合并目标 `mcp[id]`，保留其他顶层配置和已有 MCP；卸载只删除目标键且支持幂等调用，不执行 OpenCode 不支持的 `mcp remove`。
+- 配置读取支持 JSON/JSONC；无效配置不会被覆盖，成功修改后通过同目录临时文件原子替换。
+- MCP 是否已安装由 `opencode mcp list --pure` 中是否存在对应 id 决定，而不是由列表命令退出码或连接健康状态决定。已列出但连接失败的条目仍显示为已安装，同时状态为 `unhealthy`；未列出的市场条目显示为未安装。
 
 ## 5. 验收视角
 

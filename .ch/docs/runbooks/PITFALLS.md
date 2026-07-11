@@ -358,41 +358,82 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
-## OpenCode MCP 参数和列表退出码不能复用其他 CLI 语义
+## OpenCode MCP 卸载不能依赖 CLI，且全局配置不能写错路径
 
 - 状态：已规避，需随 OpenCode 版本复核
 - 首次发现：2026-07-10
-- 适用范围：OpenCode 1.17.16、全局 MCP 安装、MCP 健康检测
+- 适用范围：OpenCode 1.17.16 / 1.17.18、全局 MCP 安装卸载、MCP 健康检测
 
 ### 现象
-- 使用 `--scope user`、`--transport stdio|http|sse` 安装 OpenCode MCP 时，CLI 直接退出失败且不写入目标配置。
-- remote header 如果沿用 Claude 的 `Header: value` 格式，不能按 OpenCode CLI 期望的键值参数写入。
+- `opencode mcp add` 可以写入配置，但当前 CLI 没有 `mcp remove` 子命令；调用 `opencode mcp remove --scope user <id>` 必然失败。
+- 旧回退逻辑误写 `~/.opencode/config.json`，且只删除 `mcpServers` / `mcp_servers`，无法删除官方全局配置中的顶层 `mcp[id]`。
+- 插件模型档案 `~/.opencode/config.json` 与官方全局 MCP 文件 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 不是同一个配置来源。
 - `opencode mcp list --pure` 即使列出的服务全部连接失败，也可能退出 `0`；只看退出码会把“不健康”误判成“健康”，只保留健康 id 又会把已安装条目误判成未安装。
 
 ### 触发条件
-- OpenCode builder 复用 Claude MCP 参数或 header 格式。
+- 把 Claude/Codex 的 add/remove CLI 工作流直接套到 OpenCode。
+- 把配置中心维护的 OpenCode 模型档案路径误当成官方 XDG 全局配置路径。
+- 删除逻辑只兼容 Claude 的 `mcpServers` 命名。
 - 健康检测把列表命令退出码、连接成功状态和安装状态合并成一个布尔值。
 
 ### 根因
-- OpenCode 1.17.16 的 `mcp add` 参数契约与 Claude CLI 不同：local 依赖 `--` 分隔命令，remote 使用 `--url`，header 使用 `KEY=VALUE`。
+- OpenCode 当前只提供 `mcp add/list/auth/logout/debug`，没有对称的 `mcp remove`。
+- OpenCode 官方全局 MCP 使用 XDG 配置路径和顶层 `mcp`；插件自己的模型档案为了配置中心隔离保存在 `~/.opencode/config.json`。
 - `mcp list` 同时承载“已配置条目清单”和“当前连接状态”；单个条目 `failed` 不会让列表命令整体失败。
 
 ### 长期规避
-- OpenCode local 固定生成 `mcp add <id> [--env KEY=VALUE] -- <command> [args...]`；remote 固定生成 `mcp add <id> --url <url> [--header KEY=VALUE]`。
-- 禁止为 OpenCode 生成 `--scope`、`--transport`，也禁止复用 Claude 的冒号 header 格式。
+- OpenCode MCP 安装和卸载直接管理 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不执行 add/remove CLI。
+- local MCP 固定写入 `type=local`、`command` 数组、`environment` 和 `enabled`；remote 固定写入 `type=remote`、`url`、`headers` 和 `enabled`。
+- 安装只合并 `mcp[id]`；卸载只删除 `mcp[id]` 且目标不存在时幂等成功。其他顶层字段和已有 MCP 必须保留。
+- JSON/JSONC 必须先完整解析；无效配置或非对象 `mcp` 不得覆盖。成功修改使用同目录临时文件原子替换。
 - 安装状态按目标 id 是否出现在解析后的列表中判断；连接失败映射为 `installed: true`、`status: unhealthy`，未列出才映射为未安装。
-- 全局安装 smoke 必须重定向 `HOME`、`XDG_CONFIG_HOME`、`XDG_DATA_HOME`、`XDG_STATE_HOME`、`XDG_CACHE_HOME`，并在临时工作目录运行，避免读取或污染真实用户配置。
 
 ### 验证方式
-- 使用编译后的参数构建器分别生成 local/remote argv，断言不含 `--scope`、`--transport`，并检查 local 的 `--`、remote 的 `--url` 与 `KEY=VALUE` header。
-- 在同一临时 XDG 配置中预置其他顶层字段和已有 MCP，真实执行两次安装，确认退出码为 `0` 且原配置保留。
+- 对默认路径、`XDG_CONFIG_HOME` 和 `~` 展开做路径单测。
+- 在临时 XDG 配置中预置 JSONC、其他顶层字段和已有 MCP，分别安装 local/remote、覆盖同 id、卸载目标 id，确认结构与字段保留。
+- 对无效 JSON 和非对象 `mcp` 断言操作失败且原文件内容不变。
 - 对不可连接的 local/remote 服务运行真实 `opencode mcp list --pure`，确认条目显示 `failed` 时 parser 仍将其映射为已安装且不健康，并将未列出条目映射为未安装。
 
 ### 关联资料
 - `src/config/mcpInstallArgs.ts`
+- `src/config/openCodeMcpConfig.ts`
 - `src/config/mcpHealth.ts`
 - `src/config/mcpService.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
+
+## TypeScript 构建不会自动删除已移除源码对应的 dist 产物
+
+- 状态：已规避
+- 首次发现：2026-07-11
+- 适用范围：`npm run build`、`node --test dist/test/*.test.js`、已删除或重命名的 `src/test/*.ts`
+
+### 现象
+- 仓库根目录出现多个未跟踪的 `.tmp-lobster-launch-*` 空目录。
+- 当前源码已没有 `lobsterBoundaryRecord.test.ts`，但 `dist/test/lobsterBoundaryRecord.test.js` 仍存在并可被全量 `node --test dist/test/*.test.js` 执行。
+- 旧测试使用 `fs.mkdtempSync(path.join(process.cwd(), ".tmp-lobster-launch-"))`，测试进程异常退出或被中止时会把空目录留在仓库根目录。
+
+### 触发条件
+- 测试源码被删除或重命名后，只运行 `tsc -p ./` 增量覆盖输出，不先清理 `dist`。
+- 后续直接按 `dist/test/*.test.js` 跑全量测试，导致陈旧 JS 测试产物继续参与执行。
+- 测试 helper 把临时目录建在 `process.cwd()` 下，而不是系统临时目录；进程未进入 `finally` 清理路径时就会污染仓库根目录。
+
+### 根因
+- `tsc` 不负责删除 `outDir` 里已经没有源文件对应的旧输出。
+- 旧 `dist/test/lobsterBoundaryRecord.test.js` 保留了仓库根目录临时目录创建逻辑。
+
+### 长期规避
+- `npm run build` 必须先清理 `dist`，再执行 `tsc -p ./`。
+- 新增测试临时目录默认使用 `os.tmpdir()`；如确需建在仓库内，目录前缀必须加入 `.gitignore`，并确保异常路径可清理。
+- 发现无对应 `src/test` 的 `dist/test/*.test.js` 时，优先清理 `dist` 后重建，不要按旧产物继续解释失败。
+
+### 验证方式
+- 运行 `npm run build` 后确认 `dist/test/lobsterBoundaryRecord.test.js` 不再存在。
+- 运行 `find . -maxdepth 1 -type d -name '.tmp-lobster-launch-*'`，确认仓库根目录没有残留临时目录。
+
+### 关联资料
+- `package.json`
+- `.gitignore`
+- `dist/test/lobsterBoundaryRecord.test.js`（已清理的历史生成物）
 
 ## 建议模板
 

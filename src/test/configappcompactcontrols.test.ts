@@ -58,3 +58,23 @@ test("halves core inline spacing across the config list and editor cards", () =>
   assert.match(editorPanel, /className: "config-editor-shell config-editor-codex",[\s\S]*?padding: "8px"[\s\S]*?bodyStyle: \{[\s\S]*?padding: "8px",\s+gap: "8px"/);
   assert.match(managerLayout, /className: "config-app-header",[\s\S]*?padding: "0 12px"/);
 });
+
+test("opens the configuration list initially when the config page starts narrow", () => {
+  const source = loadUiSource();
+  const managerLayout = extractSection(source, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const configClayPalette =");
+
+  assert.match(
+    managerLayout,
+    /const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY = "\(max-width: 920px\)";/,
+  );
+  assert.match(
+    managerLayout,
+    /window\.matchMedia\(CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY\)\.matches/,
+  );
+  assert.match(
+    managerLayout,
+    /c\.useState\(\s*shouldOpenConfigMobileNavigationInitially,\s*\)/,
+  );
+  assert.match(managerLayout, /event\.key === "Escape" && closeMobileNavigation\(\)/);
+  assert.match(managerLayout, /onClick: closeMobileNavigation/);
+});

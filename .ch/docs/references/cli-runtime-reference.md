@@ -183,14 +183,15 @@ Loop 内部执行方式事实：
 - `sinitek-cli-tools.macTaskShell = zsh`
 - `sinitek-cli-tools.macTaskShell = bash`
 
-### OpenCode 1.17.16 全局 MCP
+### OpenCode 全局 MCP 配置管理
 
-- OpenCode local MCP 的非交互安装参数为 `opencode mcp add <id> [--env KEY=VALUE ...] -- <command> [args...]`；`--` 是 CLI 参数与 MCP 命令的分隔符。
-- OpenCode remote MCP 的非交互安装参数为 `opencode mcp add <id> --url <url> [--header KEY=VALUE ...]`；header 使用 `KEY=VALUE`，不能复用 Claude 的 `Header: value` 形式。
-- OpenCode 不接受 Claude 风格的 `--scope user`、`--transport stdio|http|sse`。在 1.17.16 中传入这些参数会退出失败，且不会完成 MCP 安装。
-- 全局 MCP 写入 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 的顶层 `mcp`；CLI 更新目标条目时会保留其他顶层字段和已有 MCP。
+- 插件不再通过 `opencode mcp add/remove` 管理 OpenCode MCP，而是直接读写官方全局 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 的顶层 `mcp`。
+- local MCP 写为 `{ "type": "local", "command": ["command", "arg"], "environment": {}, "enabled": true }`；remote MCP 写为 `{ "type": "remote", "url": "...", "headers": {}, "enabled": true }`。
+- 安装只合并或覆盖 `mcp[id]`，保留其他顶层字段和已有 MCP；卸载只删除 `mcp[id]`，目标不存在时幂等成功。
+- 输入支持 JSON 与 JSONC；配置无效或顶层 `mcp` 不是对象时拒绝覆盖。发生修改后以格式化严格 JSON 原子写回，并保留原文件权限。
+- OpenCode 1.17.16 与 1.17.18 均没有 `mcp remove` 子命令；卸载不得依赖不存在的 CLI 命令，也不得误改插件配置中心使用的 `~/.opencode/config.json`。
 - `opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 出现在列表中，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。未出现在列表中的市场条目才是未安装。
-- 2026-07-10 的隔离组合 smoke 使用 OpenCode 1.17.16，在同一临时 `HOME` / `XDG_CONFIG_HOME` 中分别安装 local 与 remote MCP，两次安装均退出 `0`，配置保留断言通过；随后真实列表输出中的两个失败条目均被解析为“已安装但不健康”。
+- 配置变更由 `src/config/openCodeMcpConfig.ts` 负责；CLI 仅保留列表与连接健康检测职责。
 
 ## 8. 更新本文档时的原则
 

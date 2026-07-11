@@ -63,15 +63,68 @@ function collectManagedMcpHeaders(item: McpMarketplaceItem): string[] {
     .filter((headerValue) => headerValue.length > 2);
 }
 
-function collectManagedOpenCodeMcpHeaders(item: McpMarketplaceItem): string[] {
-  const headers = item.config?.headers;
-  if (!headers || typeof headers !== "object") {
-    return [];
+export type OpenCodeLocalMcpConfig = {
+  type: "local";
+  command: string[];
+  environment: Record<string, string>;
+  enabled: true;
+};
+
+export type OpenCodeRemoteMcpConfig = {
+  type: "remote";
+  url: string;
+  headers: Record<string, string>;
+  enabled: true;
+};
+
+export type OpenCodeMcpConfig = OpenCodeLocalMcpConfig | OpenCodeRemoteMcpConfig;
+
+export function buildOpenCodeMcpConfig(
+  item: McpMarketplaceItem,
+  envOverrides?: Record<string, string>,
+): { config: OpenCodeMcpConfig; warnings: string[] } {
+  const warnings: string[] = [];
+  const config = item.config ?? {};
+  const isRemote = config.type === "http" || config.type === "sse" || typeof config.url === "string";
+
+  if (isRemote) {
+    const url = config.url?.trim();
+    if (!url) {
+      throw new Error(`MCP ${item.id} is missing remote url.`);
+    }
+    const headers = Object.fromEntries(
+      Object.entries(config.headers ?? {})
+        .filter(([headerName, headerValue]) => Boolean(headerName) && typeof headerValue === "string")
+        .map(([headerName, headerValue]) => [headerName, headerValue.trim()]),
+    );
+    return {
+      config: {
+        type: "remote",
+        url,
+        headers,
+        enabled: true,
+      },
+      warnings: uniqueWarnings(warnings),
+    };
   }
 
-  return Object.entries(headers)
-    .filter(([headerName, headerValue]) => Boolean(headerName) && typeof headerValue === "string")
-    .map(([headerName, headerValue]) => `${headerName}=${headerValue.trim()}`);
+  const command = config.command?.trim();
+  if (!command) {
+    throw new Error(`MCP ${item.id} is missing command.`);
+  }
+  const mcpArgs = Array.isArray(config.args)
+    ? config.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+
+  return {
+    config: {
+      type: "local",
+      command: [command, ...mcpArgs],
+      environment: Object.fromEntries(collectManagedMcpEnvEntries(item, warnings, envOverrides)),
+      enabled: true,
+    },
+    warnings: uniqueWarnings(warnings),
+  };
 }
 
 export function buildCodexMcpInstallArgs(
@@ -179,36 +232,23 @@ export function buildOpenCodeMcpInstallArgs(
   item: McpMarketplaceItem,
   envOverrides?: Record<string, string>,
 ): { commandArgs: string[]; warnings: string[] } {
-  const warnings: string[] = [];
-  const config = item.config ?? {};
-  const isRemote = config.type === "http" || config.type === "sse" || typeof config.url === "string";
+  const result = buildOpenCodeMcpConfig(item, envOverrides);
 
-  if (isRemote) {
-    const url = config.url?.trim();
-    if (!url) {
-      throw new Error(`MCP ${item.id} is missing remote url.`);
-    }
-    const commandArgs = ["mcp", "add", item.id, "--url", url];
-    for (const header of collectManagedOpenCodeMcpHeaders(item)) {
+  if (result.config.type === "remote") {
+    const commandArgs = ["mcp", "add", item.id, "--url", result.config.url];
+    for (const [headerName, headerValue] of Object.entries(result.config.headers)) {
+      const header = `${headerName}=${headerValue}`;
       commandArgs.push("--header", header);
     }
-    return { commandArgs, warnings: uniqueWarnings(warnings) };
-  }
-
-  const command = config.command?.trim();
-  if (!command) {
-    throw new Error(`MCP ${item.id} is missing command.`);
+    return { commandArgs, warnings: result.warnings };
   }
 
   const commandArgs = ["mcp", "add", item.id];
-  for (const [envName, envValue] of collectManagedMcpEnvEntries(item, warnings, envOverrides)) {
+  for (const [envName, envValue] of Object.entries(result.config.environment)) {
     commandArgs.push("--env", `${envName}=${envValue}`);
   }
-  const mcpArgs = Array.isArray(config.args)
-    ? config.args.filter((arg): arg is string => typeof arg === "string")
-    : [];
-  commandArgs.push("--", command, ...mcpArgs);
-  return { commandArgs, warnings: uniqueWarnings(warnings) };
+  commandArgs.push("--", ...result.config.command);
+  return { commandArgs, warnings: result.warnings };
 }
 
 // Compatibility export used until tests/callers are migrated off the legacy Gemini name.

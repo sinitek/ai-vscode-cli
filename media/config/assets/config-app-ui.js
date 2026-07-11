@@ -5952,10 +5952,18 @@ const ConfigEditorPanel = () => {
 
 const { Header: jk, Sider: zk, Content: Lk } = Li;
 
+const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY = "(max-width: 920px)";
+
+const shouldOpenConfigMobileNavigationInitially = () =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY).matches;
+
 // Config manager layout
 const ConfigManagerLayout = () => {
     const { loadConfigs: e, initDefaultConfigs: t } = useConfigStore(),
-      [mobileNavigationOpen, setMobileNavigationOpen] = c.useState(!1),
+      [mobileNavigationOpen, setMobileNavigationOpen] = c.useState(
+        shouldOpenConfigMobileNavigationInitially,
+      ),
       closeMobileNavigation = () => setMobileNavigationOpen(!1);
 
     c.useEffect(() => {
