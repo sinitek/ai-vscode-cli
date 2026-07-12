@@ -521,8 +521,18 @@ export async function runLobsterDebateConsensusSummary(options: {
   debateRound: number;
   paths: LobsterDebatePaths;
   participants: LobsterDebateParticipantRecord[];
+  compactSkillCatalogSection?: string;
 }): Promise<LobsterDebateConsensusRunResult> {
-  const { deps, input, task, round, debateRound, paths, participants } = options;
+  const {
+    deps,
+    input,
+    task,
+    round,
+    debateRound,
+    paths,
+    participants,
+    compactSkillCatalogSection,
+  } = options;
   const consensusTarget = deps.createLobsterSubtaskRunTarget(task.cli);
   deps.updateLobsterDebateActiveSpeakerRecord(
     task.id,
@@ -541,7 +551,13 @@ export async function runLobsterDebateConsensusSummary(options: {
   try {
     await deps.runPrompt({
       displayPrompt: `Loop 红蓝对抗共识汇总：第 ${round} 轮`,
-      modelPrompt: buildLobsterDebateConsensusModelPrompt(task, round, paths, participants),
+      modelPrompt: buildLobsterDebateConsensusModelPrompt(
+        task,
+        round,
+        paths,
+        participants,
+        compactSkillCatalogSection,
+      ),
       contextTags: [],
       model: resolveLobsterDebateModel(input),
     }, { targetTabId: consensusTarget.tabId });

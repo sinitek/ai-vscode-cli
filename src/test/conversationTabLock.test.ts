@@ -76,6 +76,44 @@ function buildIsConversationTabRunning(
   )(isTabRunning, isLobsterMainTab) as (tab: TabSummary | null) => boolean;
 }
 
+function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: string) => string {
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabLabel");
+  const getLobsterMetaForTabSummary = (
+    tab: TabSummary | null,
+  ): { taskRole: string; lobsterTaskId: string } | null => {
+    if (!tab || !tab.lobsterTaskRole || !tab.lobsterTaskId) {
+      return null;
+    }
+    return {
+      taskRole: tab.lobsterTaskRole,
+      lobsterTaskId: tab.lobsterTaskId,
+    };
+  };
+
+  return new Function(
+    "getLobsterMetaForTabSummary",
+    `${functionSource}; return formatConversationTabLabel;`,
+  )(getLobsterMetaForTabSummary) as (tab: TabSummary | null, baseLabel: string) => string;
+}
+
+test("uses sun and moon icons to identify Loop task tabs", () => {
+  const formatLabel = buildFormatConversationTabLabel();
+
+  assert.equal(
+    formatLabel({ id: "main-tab", lobsterTaskRole: "main", lobsterTaskId: "task-1" }, "codex"),
+    "☀️ codex",
+  );
+  assert.equal(
+    formatLabel({ id: "main-tab-2", lobsterTaskRole: "main", lobsterTaskId: "task-2" }, "codex2"),
+    "☀️ codex2",
+  );
+  assert.equal(
+    formatLabel({ id: "subtask-tab", lobsterTaskRole: "subtask", lobsterTaskId: "task-1" }, "codex2"),
+    "🌛 codex2",
+  );
+  assert.equal(formatLabel({ id: "ordinary-tab" }, "claude"), "claude");
+});
+
 test("does not keep completed Loop main tab locked from stale backend state", () => {
   const mainTab = {
     id: "main-tab",

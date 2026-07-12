@@ -532,6 +532,20 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return Boolean(meta && meta.taskRole === "main");
       }
 
+      function formatConversationTabLabel(tab, baseLabel) {
+        const meta = getLobsterMetaForTabSummary(tab);
+        if (!meta) {
+          return baseLabel;
+        }
+        if (meta.taskRole === "main") {
+          return "☀️ " + baseLabel;
+        }
+        if (meta.taskRole === "subtask") {
+          return "🌛 " + baseLabel;
+        }
+        return baseLabel;
+      }
+
       function shouldForceFollowLatestMessagesForActiveTab() {
         const activeTab = getConversationTabSummary(getActiveConversationTabId());
         return isLobsterMainTab(activeTab) && isLobsterMainTabCloseLocked(activeTab);
@@ -697,12 +711,21 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return conversationTabPageIndex;
       }
 
-      function createConversationTabPagerButton(direction, disabled, onClick) {
+      function shouldShowConversationTabPagerButton(direction, pageIndex, pageCount) {
+        if (pageCount <= 1) {
+          return false;
+        }
+        if (direction === "prev") {
+          return pageIndex > 0;
+        }
+        return direction === "next" && pageIndex < pageCount - 1;
+      }
+
+      function createConversationTabPagerButton(direction, onClick) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "icon-button conversation-tabs-nav conversation-tabs-nav-" + direction;
         button.textContent = direction === "prev" ? "<" : ">";
-        button.disabled = Boolean(disabled);
         const ariaKey = direction === "prev" ? "conversationTabsPrevPage" : "conversationTabsNextPage";
         const ariaLabel = t(ariaKey);
         button.title = ariaLabel;
@@ -710,9 +733,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         button.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (button.disabled) {
-            return;
-          }
           onClick();
         });
         return button;
@@ -743,15 +763,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           setConversationTabPageIndex(conversationTabPageIndex, tabs.length);
         }
         conversationTabPageAnchorTabId = activeTabId;
-        const showPager = tabs.length > CONVERSATION_TAB_PAGE_SIZE;
         const pageCount = getConversationTabPageCount(tabs.length);
         const pageStartIndex = conversationTabPageIndex * CONVERSATION_TAB_PAGE_SIZE;
         const pageEndIndex = pageStartIndex + CONVERSATION_TAB_PAGE_SIZE;
 
-        if (showPager) {
+        if (shouldShowConversationTabPagerButton("prev", conversationTabPageIndex, pageCount)) {
           const prevButton = createConversationTabPagerButton(
             "prev",
-            conversationTabPageIndex <= 0,
             () => {
               setConversationTabPageIndex(conversationTabPageIndex - 1, tabs.length);
               renderConversationTabs();
@@ -788,7 +806,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           tabItem.setAttribute("aria-disabled", "false");
 
           const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
-          const labelText = isLobsterMainTab(tab) ? ("🦞 Loop " + tabBaseLabel) : tabBaseLabel;
+          const labelText = formatConversationTabLabel(tab, tabBaseLabel);
           const label = document.createElement("span");
           label.className = "conversation-tab-label";
           label.textContent = labelText;
@@ -837,10 +855,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           tabTrack.appendChild(tabItem);
         });
         elements.conversationTabs.appendChild(tabTrack);
-        if (showPager) {
+        if (shouldShowConversationTabPagerButton("next", conversationTabPageIndex, pageCount)) {
           const nextButton = createConversationTabPagerButton(
             "next",
-            conversationTabPageIndex >= pageCount - 1,
             () => {
               setConversationTabPageIndex(conversationTabPageIndex + 1, tabs.length);
               renderConversationTabs();

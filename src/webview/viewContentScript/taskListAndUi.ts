@@ -170,6 +170,27 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           .filter(Boolean);
       }
 
+      function applyExternalTaskListUpdate(items, tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        const taskListState = getTaskListState(targetTabId);
+        if (!taskListState) {
+          return [];
+        }
+        const normalized = normalizeTaskListItems(items);
+        if (normalized.length) {
+          setTaskListItems(taskListState, normalized);
+          taskListState.source = "external";
+        } else {
+          const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
+          const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
+          resetTaskListState(taskListState, startIndex);
+        }
+        if (isRuntimeStateForActiveTab(targetTabId)) {
+          renderTaskList(taskListState);
+        }
+        return normalized;
+      }
+
       function escapeHtml(value) {
         let text = "";
         if (typeof value === "string") {

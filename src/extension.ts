@@ -28,6 +28,7 @@ import {
   runCli,
   runCliStream,
   isCliCommandAvailable,
+  type OpenCodeVisibleStreamEvent,
   type RunProcess,
 } from "./cli/commandRunner";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "./cli/modelArgs";
@@ -48,9 +49,16 @@ import {
   resolveOpenCodeThinkingCapability,
   type OpenCodeThinkingCapability,
 } from "./cli/openCodeModelCapabilities";
+import type { OpenCodeTaskListItem } from "./cli/openCodeTaskList";
 import {
   resolveOpenCodeOneShotWatchdogTimeoutMs,
 } from "./cli/opencodewatchdog";
+import {
+  appendOpenCodeFinalTextToTabStream,
+  consumeOpenCodeTabStreamChunk,
+  createOpenCodeTabStreamState,
+  type OpenCodeTabStreamAction,
+} from "./openCodeTabStream";
 import {
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
@@ -141,6 +149,16 @@ import {
   type LobsterSubtaskExecutionPlan,
 } from "./lobsterParallel";
 import {
+  buildLobsterSkillCatalog,
+  buildLobsterSkillGuidance,
+  classifyLobsterRootTask,
+  loadLobsterSkillPack,
+  type LobsterSkillDiagnostic,
+  type LobsterSkillPack,
+  type LobsterSkillPackLoadResult,
+  type LobsterTaskClassification,
+} from "./lobsterSkillGuidance";
+import {
   buildLobsterAnswerConclusionMarkdown,
   buildLobsterDebateNeedsReviewSummary,
   buildLobsterDebateModeratorArtifactFile,
@@ -230,6 +248,7 @@ import {
   type LobsterRoundSummary,
   type LobsterSubtaskDecision,
   type LobsterSubtaskRecord,
+  type LobsterTaskKind,
   type LobsterTaskRecord,
   type LobsterTaskStore,
 } from "./lobsterTaskStore";
@@ -530,6 +549,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
 const SESSION_STORE_KEY = "sessionStore";
@@ -1367,6 +1387,7 @@ async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
   updateConfigHeartbeatSnapshot(state.currentCli, state.configState);
   viewProvider?.postState(state);
+  replayOpenCodeTaskLists();
 }
 
 function postEditorContextState(): void {
@@ -1863,11 +1884,25 @@ async function prepareOpenCodeRuntime(
   if (!parsedConfig) {
     throw new Error("OpenCode config JSON is invalid.");
   }
+  const primaryVariant = getOpenCodeVariantForRun(
+    "opencode",
+    roles.primary,
+    configId,
+    configContent,
+    "primary",
+  );
+  const smallVariant = getOpenCodeVariantForRun(
+    "opencode",
+    roles.small,
+    configId,
+    configContent,
+    "small",
+  );
   const overlay = applyOpenCodeRuntimeModelOverlay(parsedConfig, {
     primary: roles.primary,
     small: roles.small,
-    primaryVariant: getOpenCodeVariantForRun("opencode", roles.primary, configId, configContent, "primary"),
-    smallVariant: getOpenCodeVariantForRun("opencode", roles.small, configId, configContent, "small"),
+    primaryVariant,
+    smallVariant,
   });
   if (!overlay.ok || !overlay.config) {
     throw new Error(overlay.issues.map((issue) => issue.message).join("\n"));
@@ -1879,13 +1914,21 @@ async function prepareOpenCodeRuntime(
   if (!validation.ok) {
     throw new Error(validation.issues.map((issue) => issue.message).join("\n"));
   }
+  void logInfo("opencode-runtime-profile", {
+    configId,
+    primaryModel: roles.primary,
+    smallModel: roles.small,
+    primaryVariant,
+    smallVariant,
+    smallModelUsage: "opencode-internal-lightweight",
+  });
   return {
     envOverrides: configService.parseEnvText(current.envContent ?? ""),
     configContent,
     primaryModel: roles.primary,
     smallModel: roles.small,
-    primaryVariant: getOpenCodeVariantForRun("opencode", roles.primary, configId, configContent, "primary"),
-    smallVariant: getOpenCodeVariantForRun("opencode", roles.small, configId, configContent, "small"),
+    primaryVariant,
+    smallVariant,
   };
 }
 async function refreshCliInstallStatuses(): Promise<void> {
@@ -2201,6 +2244,178 @@ type PromptRunTarget = {
   cli: CliName;
   sessionId: string | null;
 };
+
+type LobsterSkillRuntimeContext = {
+  taskId: string;
+  round: number;
+  rootTaskKind: LobsterTaskClassification;
+  pack: LobsterSkillPack | null;
+  compactCatalogSection?: string;
+  candidateIds: string[];
+};
+
+type LobsterSkillRuntimeContextOptions = {
+  extensionRoot: string;
+  loadSkillPack?: (extensionRoot: unknown) => Promise<LobsterSkillPackLoadResult>;
+  reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void;
+};
+
+type LobsterSubtaskSkillSnapshot = {
+  skillIds: string[];
+  skillGuidance: string;
+};
+
+function resolveNewLobsterTaskKind(
+  input: Pick<PromptRunInput, "displayPrompt" | "contextTags"> & { modelPrompt?: unknown },
+  workspacePaths: unknown = collectTrustedLobsterWorkspacePaths(),
+): LobsterTaskKind | undefined {
+  const classification = classifyLobsterRootTask({
+    displayPrompt: input.displayPrompt,
+    contextTags: input.contextTags,
+    workspacePaths,
+  });
+  return classification === "unknown" ? undefined : classification;
+}
+
+function collectTrustedLobsterWorkspacePaths(): string[] {
+  const workspacePaths = (vscode.workspace.workspaceFolders ?? [])
+    .map((folder) => folder.uri.fsPath)
+    .filter((filePath): filePath is string => typeof filePath === "string" && filePath.trim().length > 0);
+  const activeEditorPath = vscode.window.activeTextEditor?.document.uri.fsPath;
+  if (typeof activeEditorPath === "string" && activeEditorPath.trim()) {
+    workspacePaths.push(activeEditorPath);
+  }
+  return Array.from(new Set(workspacePaths));
+}
+
+async function buildLobsterSkillRuntimeContext(
+  task: LobsterTaskRecord,
+  round: number,
+  options: LobsterSkillRuntimeContextOptions,
+): Promise<LobsterSkillRuntimeContext> {
+  const rootTaskKind: LobsterTaskClassification = task.taskKind ?? "unknown";
+  const emptyContext: LobsterSkillRuntimeContext = {
+    taskId: task.id,
+    round,
+    rootTaskKind,
+    pack: null,
+    compactCatalogSection: undefined,
+    candidateIds: [],
+  };
+  if (rootTaskKind !== "development") {
+    return emptyContext;
+  }
+
+  let loadResult: LobsterSkillPackLoadResult;
+  try {
+    loadResult = await (options.loadSkillPack ?? loadLobsterSkillPack)(options.extensionRoot);
+  } catch {
+    loadResult = {
+      pack: null,
+      diagnostics: [{
+        code: "pack_unavailable",
+        message: "Skill pack loading failed before validation completed.",
+      }],
+    };
+  }
+  if (loadResult.diagnostics.length > 0) {
+    options.reportDiagnostics?.("load", loadResult.diagnostics);
+  }
+  if (!loadResult.pack) {
+    return emptyContext;
+  }
+
+  const catalog = buildLobsterSkillCatalog(loadResult.pack, rootTaskKind);
+  if (catalog.diagnostics.length > 0) {
+    options.reportDiagnostics?.("catalog", catalog.diagnostics);
+  }
+  if (!catalog.section || catalog.candidateIds.length === 0) {
+    return emptyContext;
+  }
+  return {
+    taskId: task.id,
+    round,
+    rootTaskKind,
+    pack: loadResult.pack,
+    compactCatalogSection: catalog.section,
+    candidateIds: catalog.candidateIds,
+  };
+}
+
+function reportLobsterSkillDiagnostics(
+  taskId: string,
+  round: number,
+  scope: string,
+  diagnostics: LobsterSkillDiagnostic[],
+): void {
+  if (diagnostics.length === 0) {
+    return;
+  }
+  void logInfo("lobster-skill-runtime-diagnostics", {
+    taskId,
+    round,
+    scope,
+    diagnostics: diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      ...(diagnostic.skillId ? { skillId: diagnostic.skillId } : {}),
+      ...(diagnostic.resourcePath ? { resourcePath: diagnostic.resourcePath } : {}),
+    })),
+  });
+}
+
+async function createLobsterSkillRuntimeContext(
+  task: LobsterTaskRecord,
+  round: number,
+): Promise<LobsterSkillRuntimeContext> {
+  return buildLobsterSkillRuntimeContext(task, round, {
+    extensionRoot: extensionUri.fsPath,
+    reportDiagnostics: (scope, diagnostics) => {
+      reportLobsterSkillDiagnostics(task.id, round, scope, diagnostics);
+    },
+  });
+}
+
+function buildLobsterSubtaskSkillSnapshots(
+  task: LobsterTaskRecord,
+  subtasks: LobsterSubtaskDecision[],
+  runtimeContext: LobsterSkillRuntimeContext,
+  reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void,
+): Map<string, LobsterSubtaskSkillSnapshot> {
+  const rootTaskKind: LobsterTaskClassification = task.taskKind ?? "unknown";
+  const trustedRuntime = runtimeContext.taskId === task.id
+    && runtimeContext.rootTaskKind === rootTaskKind;
+  const pack = trustedRuntime ? runtimeContext.pack : null;
+  const candidateIds = trustedRuntime ? runtimeContext.candidateIds : [];
+  const snapshots = new Map<string, LobsterSubtaskSkillSnapshot>();
+  for (const subtask of subtasks) {
+    const id = subtask.id && subtask.id.trim()
+      ? subtask.id.trim()
+      : buildLobsterSubtaskId(subtask.title);
+    const result = buildLobsterSkillGuidance(pack, {
+      rootTaskKind,
+      requestedSkillIds: subtask.skillIds,
+      allowedSkillIds: candidateIds,
+      subtask: {
+        title: subtask.title,
+        prompt: subtask.prompt,
+        writeFiles: subtask.writeFiles,
+        conflictGroup: subtask.conflictGroup,
+      },
+      role: "subtask",
+      availableCapabilities: [],
+    });
+    if (result.diagnostics.length > 0) {
+      reportDiagnostics?.(`subtask:${id}`, result.diagnostics);
+    }
+    if (result.skillIds.length > 0 && result.skillGuidance) {
+      snapshots.set(id, {
+        skillIds: result.skillIds,
+        skillGuidance: result.skillGuidance,
+      });
+    }
+  }
+  return snapshots;
+}
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
@@ -2538,6 +2753,7 @@ function sendRunStatusForTab(
   status: "start" | "end" | "error" | "stopped",
   options: { message?: string; prompt?: string; startedAt?: number } = {}
 ): void {
+  latestOpenCodeTaskListByTabId.delete(tabId);
   sendPanelMessage({
     type: "runStatus",
     status,
@@ -2546,6 +2762,52 @@ function sendRunStatusForTab(
     startedAt: status === "start" ? options.startedAt : undefined,
     tabId,
   });
+}
+
+function sendOpenCodeTaskListUpdate(
+  items: readonly OpenCodeTaskListItem[],
+  options: {
+    source: "primary-stream" | "parallel-stream";
+    tabId?: string | null;
+  }
+): void {
+  const normalizedItems = items.map((item) => ({
+    text: item.text,
+    done: item.done,
+  }));
+  const tabId = options.tabId ?? activeTabIdForRun ?? getActiveConversationTabId();
+  if (tabId) {
+    latestOpenCodeTaskListByTabId.set(tabId, normalizedItems);
+  }
+  sendPanelMessage({
+    type: "taskListUpdate",
+    items: normalizedItems,
+    ...(tabId ? { tabId } : {}),
+  });
+  void logDebug("opencode-task-list-forwarded", {
+    source: options.source,
+    tabId: tabId ?? null,
+    itemCount: normalizedItems.length,
+    completedCount: normalizedItems.filter((item) => item.done).length,
+  });
+}
+
+function replayOpenCodeTaskLists(): void {
+  if (!viewProvider) {
+    return;
+  }
+  const tabIds = new Set(conversationTabStore.tabs.map((tab) => tab.id));
+  for (const [tabId, items] of latestOpenCodeTaskListByTabId.entries()) {
+    if (!tabIds.has(tabId)) {
+      latestOpenCodeTaskListByTabId.delete(tabId);
+      continue;
+    }
+    viewProvider.postMessage({
+      type: "taskListUpdate",
+      items,
+      tabId,
+    });
+  }
 }
 
 function persistMessagesForTab(cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]): void {
@@ -2646,26 +2908,6 @@ function stopOtherRunsExceptTab(tabId: string | null): void {
   }
 }
 
-function appendOpenCodeAssistantMessageForTab(
-  target: ChatMessage[],
-  tabId: string,
-  content: string,
-  options: Pick<ChatMessage, "taskRole" | "lobsterTaskId" | "lobsterRound" | "lobsterSubtaskId"> = {},
-): void {
-  const assistantMessage: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    taskRole: options.taskRole,
-    lobsterTaskId: options.lobsterTaskId,
-    lobsterRound: options.lobsterRound,
-    lobsterSubtaskId: options.lobsterSubtaskId,
-  };
-  appendMessageToStore(target, assistantMessage);
-  sendPanelMessage({ type: "appendMessage", message: assistantMessage, tabId });
-}
-
 function buildOpenCodeMissingFinalOutputMessage(statusText?: string | null): string {
   const status = statusText && statusText.trim() ? statusText.trim() : null;
   return resolveLocale(getLocaleSetting()).startsWith("zh")
@@ -2756,6 +2998,26 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const runId = createMessageId();
   const startedAt = Date.now();
   let hiddenRetryCount = 0;
+  let openCodeTabStreamState = createOpenCodeTabStreamState();
+  const openCodeTabStreamContext = {
+    createMessageId,
+    metadata: {
+      taskRole: input.taskRole,
+      lobsterTaskId: input.lobsterTaskId,
+      lobsterRound: input.lobsterRound,
+      lobsterSubtaskId: input.lobsterSubtaskId,
+    },
+  };
+  void logInfo("runPrompt-parallel-start", {
+    cli: runCli,
+    cwd,
+    tabId: target.tabId,
+    sessionId,
+    primaryModel: runtimePreparation.primaryModel,
+    smallModel: runtimePreparation.smallModel,
+    primaryVariant: runtimePreparation.primaryVariant,
+    smallVariant: runtimePreparation.smallVariant,
+  });
   sendRunStatusForTab(target.tabId, "start", { prompt, startedAt });
 
   const isParallelRunActive = (): boolean => {
@@ -2799,6 +3061,94 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     });
   };
 
+  const appendParallelTrace = (
+    content: string,
+    taskListItems?: OpenCodeTaskListItem[],
+  ): void => {
+    if (!content.trim()) {
+      return;
+    }
+    const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content, runCli);
+    if (!displayContent.trim()) {
+      return;
+    }
+    const resolvedKind = resolveTraceKind(displayContent, "tool-use");
+    const shouldMerge = resolveTraceMerge(displayContent, false);
+    const mergePayload = shouldMerge ? {} : { merge: false };
+    const message: ChatMessage = {
+      id: createMessageId(),
+      role: "trace",
+      content: displayContent,
+      createdAt: Date.now(),
+      kind: resolvedKind,
+      ...mergePayload,
+    };
+    if (shouldPersist) {
+      appendMessageToStore(resolveParallelMessageTarget(), message);
+    }
+    sendPanelMessage({
+      type: "traceSegment",
+      id: message.id,
+      createdAt: message.createdAt,
+      sequence: message.sequence,
+      content: message.content,
+      kind: resolvedKind,
+      tabId: target.tabId,
+      ...(Array.isArray(taskListItems) ? { taskListItems } : {}),
+      ...mergePayload,
+    });
+  };
+
+  const applyOpenCodeTabStreamActions = (actions: readonly OpenCodeTabStreamAction[]): void => {
+    actions.forEach((action) => {
+      if (action.type === "task-list-update") {
+        sendOpenCodeTaskListUpdate(action.items, {
+          source: "parallel-stream",
+          tabId: target.tabId,
+        });
+        return;
+      }
+      if (action.type === "append-trace") {
+        appendParallelTrace(action.content, action.taskListItems);
+        return;
+      }
+      if (action.type === "append-assistant-message") {
+        appendMessageToStore(resolveParallelMessageTarget(), action.message);
+        sendPanelMessage({ type: "appendMessage", message: action.message, tabId: target.tabId });
+        return;
+      }
+
+      const currentMessageTarget = resolveParallelMessageTarget();
+      let message = currentMessageTarget.find((item) => item.id === action.id);
+      if (!message) {
+        message = {
+          id: action.id,
+          role: "assistant",
+          content: "",
+          createdAt: Date.now(),
+          ...(action.kind === "thinking" ? { kind: "thinking" as const } : {}),
+          ...openCodeTabStreamContext.metadata,
+        };
+        appendMessageToStore(currentMessageTarget, message);
+        sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+      }
+      if (message.role !== "assistant") {
+        return;
+      }
+      message.content += action.content;
+      if (action.kind === "thinking") {
+        message.kind = "thinking";
+      }
+      sendPanelMessage({
+        type: "assistantDelta",
+        id: action.id,
+        content: action.content,
+        kind: action.kind,
+        tabId: target.tabId,
+      });
+    });
+  };
+
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
@@ -2812,6 +3162,11 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       if (!shouldContinue) {
         return;
       }
+      openCodeTabStreamState = {
+        ...openCodeTabStreamState,
+        activeAssistantMessageId: null,
+        activeAssistantKind: null,
+      };
       const retryStartedMessage: ChatMessage = {
         id: createMessageId(),
         role: "system",
@@ -2857,7 +3212,17 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
             }
             rawStdout += chunk;
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
-            if (chunk.trim().length > 0) {
+            const streamResult = consumeOpenCodeTabStreamChunk(
+              openCodeTabStreamState,
+              chunk,
+              false,
+              openCodeTabStreamContext,
+            );
+            openCodeTabStreamState = streamResult.state;
+            applyOpenCodeTabStreamActions(streamResult.actions);
+            if (streamResult.actions.some((action) => (
+              action.type === "append-assistant-delta" && action.kind !== "thinking"
+            ))) {
               attemptHadNormalReply = true;
             }
           },
@@ -2891,6 +3256,16 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       syncParallelRun(process);
     });
 
+    if (isParallelRunActive()) {
+      const streamResult = consumeOpenCodeTabStreamChunk(
+        openCodeTabStreamState,
+        "",
+        true,
+        openCodeTabStreamContext,
+      );
+      openCodeTabStreamState = streamResult.state;
+      applyOpenCodeTabStreamActions(streamResult.actions);
+    }
     if (!isParallelRunActive()) {
       return;
     }
@@ -2907,14 +3282,16 @@ ${rawStderr}`);
       const currentMessageTarget = resolveParallelMessageTarget();
       const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
       if (openCodeOutput.finalText) {
-        appendOpenCodeAssistantMessageForTab(currentMessageTarget, target.tabId, openCodeOutput.finalText, {
-          taskRole: input.taskRole,
-          lobsterTaskId: input.lobsterTaskId,
-          lobsterRound: input.lobsterRound,
-          lobsterSubtaskId: input.lobsterSubtaskId,
-        });
+        const finalTextResult = appendOpenCodeFinalTextToTabStream(
+          openCodeTabStreamState,
+          openCodeOutput.finalText,
+          openCodeTabStreamContext,
+        );
+        openCodeTabStreamState = finalTextResult.state;
+        applyOpenCodeTabStreamActions(finalTextResult.actions);
       }
       if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
+        observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
       })) {
@@ -3039,12 +3416,13 @@ ${rawStderr}`);
     parallelRunsByTabId.delete(target.tabId);
     const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
     if (openCodeOutput.finalText) {
-      appendOpenCodeAssistantMessageForTab(failureMessageTarget, target.tabId, openCodeOutput.finalText, {
-        taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
-      });
+      const finalTextResult = appendOpenCodeFinalTextToTabStream(
+        openCodeTabStreamState,
+        openCodeOutput.finalText,
+        openCodeTabStreamContext,
+      );
+      openCodeTabStreamState = finalTextResult.state;
+      applyOpenCodeTabStreamActions(finalTextResult.actions);
     }
 
     const taskRecord: TaskRunRecord = {
@@ -3179,9 +3557,11 @@ async function runLobsterPromptOrchestration(
       });
     }
     const initialSessionId = resolveLobsterTaskSessionId(target);
+    const taskKind = resolveNewLobsterTaskKind(input);
     task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
       sessionId: initialSessionId,
       executionMode: input.lobsterExecutionMode,
+      taskKind,
     });
     if (!isLobsterDebateGroupChatTask(task)) {
       ensureLobsterMainSubChatTranscript(task);
@@ -3238,16 +3618,24 @@ async function runLobsterPromptOrchestration(
     const executionMode = normalizeLobsterExecutionMode(latest.executionMode);
     const shouldRunPlanningDebate = executionMode === "debate_multi_agent"
       && shouldRunLobsterPlanningDebate(latest, round);
+    const skillRuntimeContext = await createLobsterSkillRuntimeContext(latest, round);
     let decisionRunResult: LobsterMainDecisionRunResult;
     try {
       decisionRunResult = shouldRunPlanningDebate
-        ? await runLobsterDebateRound({ input, target, task: latest, round })
+        ? await runLobsterDebateRound({
+            input,
+            target,
+            task: latest,
+            round,
+            skillRuntimeContext,
+          })
         : await runClassicLobsterMainDecision({
             input,
             target,
             task: latest,
             round,
             moderatorLed: executionMode === "debate_multi_agent",
+            skillRuntimeContext,
           });
     } catch (error) {
       void logError("lobster-main-decision-run-error", {
@@ -3327,8 +3715,9 @@ async function runClassicLobsterMainDecision(options: {
   task: LobsterTaskRecord;
   round: number;
   moderatorLed?: boolean;
+  skillRuntimeContext: LobsterSkillRuntimeContext;
 }): Promise<LobsterMainDecisionRunResult> {
-  const { input, target, task, round } = options;
+  const { input, target, task, round, skillRuntimeContext } = options;
   const moderatorLed = options.moderatorLed === true;
   let mainStatus: TaskRunStatus;
   try {
@@ -3347,12 +3736,14 @@ async function runClassicLobsterMainDecision(options: {
             task,
             round,
             input.lobsterContinuePrompt,
+            skillRuntimeContext.compactCatalogSection,
           )
         : buildLobsterMainModelPrompt(
             input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
             task,
             round,
             input.lobsterContinuePrompt,
+            skillRuntimeContext.compactCatalogSection,
           ),
     });
   } catch (error) {
@@ -3384,18 +3775,32 @@ async function runClassicLobsterMainDecision(options: {
     return { status: "needs-review", task: failedRecord };
   }
 
-  return applyLobsterMainDecisionForRun(task.id, decision);
+  return applyLobsterMainDecisionForRun(task.id, decision, skillRuntimeContext);
 }
 
 function applyLobsterMainDecisionForRun(
   taskId: string,
   decision: LobsterMainDecision,
+  skillRuntimeContext?: LobsterSkillRuntimeContext,
 ): LobsterMainDecisionRunResult {
   updateLobsterTaskRecord(taskId, {
     ...buildResetLobsterMainAiFailureState(),
     updatedAt: Date.now(),
   });
-  const decisionResult = applyLobsterMainDecision(taskId, decision);
+  const currentTask = readLobsterTaskRecord(taskId);
+  const skillSnapshots = currentTask
+    && decision.status === "continue"
+    && skillRuntimeContext
+    ? buildLobsterSubtaskSkillSnapshots(
+        currentTask,
+        getLobsterDecisionSubtasks(decision),
+        skillRuntimeContext,
+        (scope, diagnostics) => {
+          reportLobsterSkillDiagnostics(taskId, skillRuntimeContext.round, scope, diagnostics);
+        },
+      )
+    : undefined;
+  const decisionResult = applyLobsterMainDecision(taskId, decision, skillSnapshots);
   if (decisionResult.status === "completed") {
     return { status: "completed", task: decisionResult.task, decision };
   }
@@ -3495,8 +3900,9 @@ async function runLobsterDebateRound(options: {
   target: PromptRunTarget;
   task: LobsterTaskRecord;
   round: number;
+  skillRuntimeContext: LobsterSkillRuntimeContext;
 }): Promise<LobsterMainDecisionRunResult> {
-  const { input, target, task, round } = options;
+  const { input, target, task, round, skillRuntimeContext } = options;
   const debateRound = LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND;
   const paths = buildLobsterDebatePaths(task.communicationDir, round, debateRound);
   const model = resolveLobsterDebateModel(input);
@@ -3529,7 +3935,7 @@ async function runLobsterDebateRound(options: {
       `decision.json：${paths.decisionFile}`,
       `consensus.md：${paths.consensusFile}`,
     ]);
-    return applyLobsterMainDecisionForRun(task.id, reusable.decision);
+    return applyLobsterMainDecisionForRun(task.id, reusable.decision, skillRuntimeContext);
   }
   if (reusable.status === "needs-review") {
     return markLobsterDebateNeedsReview({
@@ -3551,7 +3957,14 @@ async function runLobsterDebateRound(options: {
   const startedAt = Date.now();
   const briefWritten = writeTextFileEnsuringDir(
     paths.briefFile,
-    buildLobsterDebateBriefMarkdown(task, target, round, paths, input.lobsterContinuePrompt)
+    buildLobsterDebateBriefMarkdown(
+      task,
+      target,
+      round,
+      paths,
+      input.lobsterContinuePrompt,
+      skillRuntimeContext.compactCatalogSection,
+    )
   );
   if (!briefWritten) {
     return markLobsterDebateNeedsReview({
@@ -4060,6 +4473,7 @@ async function runLobsterDebateRound(options: {
     debateRound,
     paths,
     participants: participantValidation.participants,
+    compactSkillCatalogSection: skillRuntimeContext.compactCatalogSection,
   });
   await closeCompletedLobsterDebateTabs([consensusRun.tabId]);
   await switchVisibleConversationTabForLobster(target.tabId);
@@ -4151,7 +4565,7 @@ async function runLobsterDebateRound(options: {
     `决策状态：${decision.status}`,
     `decision.json：${paths.decisionFile}`,
   ]);
-  return applyLobsterMainDecisionForRun(task.id, decision);
+  return applyLobsterMainDecisionForRun(task.id, decision, skillRuntimeContext);
 }
 
 function resolveLobsterDebateModel(input: PromptRunInput): string | undefined {
@@ -5704,11 +6118,29 @@ function buildLobsterMainModelPrompt(
   task: LobsterTaskRecord,
   round: number,
   continuePrompt?: string,
+  compactSkillCatalogSection?: string,
 ): string {
   const taskId = task.id;
   const taskFile = task.taskStoreFile;
   const communication = getLobsterCommunicationPaths(taskId);
   const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
+  const normalizedSkillCatalog = task.taskKind === "development"
+    && typeof compactSkillCatalogSection === "string"
+    && compactSkillCatalogSection.trim()
+    ? compactSkillCatalogSection.trim()
+    : null;
+  const skillCatalogLines = normalizedSkillCatalog
+    ? [
+        "",
+        normalizedSkillCatalog,
+        "",
+        "开发 Skill ID-only 决策合约：",
+        "- subtasks[*] 在现有字段之外唯一允许新增的 Skill 字段是可选 `skillIds?: string[]`。",
+        "- skillIds 只能选择上方 compact catalog 中的稳定 id，每个子任务最多 3 个；没有合法匹配时省略该字段。",
+        "- 必须遵守 catalog 的 phases、taskKinds、roles 与 requiredCapabilities；main-only、interactive/main-only 或宿主未声明 capability 的 Skill 不得选择。",
+        "- 不得返回或复制 Skill path、hash、Markdown 正文、skillGuidance、CLI、model、command，也不得把这些内容伪装进其他字段。",
+      ]
+    : [];
   return [
     "你正在执行 VS Code 插件的 Loop 模式主任务。",
     `Loop 任务 ID：${taskId}`,
@@ -5735,11 +6167,12 @@ function buildLobsterMainModelPrompt(
     `7. 每批最多 ${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
     "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
     "9. 若子任务沟通文件已提供可核验的单测/编译命令与结果，主任务无需重复执行这些验证；优先复核逻辑正确性、改动范围和结果一致性，仅在证据缺失或结果可疑时补充验证。",
-    "10. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
-    "11. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
-    "12. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
-    "13. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
-    "14. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
+    "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；确实必须用户或人工确认时返回 blocked，不得把该子任务误判为已验收。",
+    "11. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
+    "12. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
+    "13. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
+    "14. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+    "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
     "",
     "JSON 协议：",
     '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
@@ -5764,6 +6197,7 @@ function buildLobsterMainModelPrompt(
     "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
     "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
     "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、answerConclusion、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
+    ...skillCatalogLines,
     "",
     ...buildLobsterSupplementalRequirementsLines(task),
     ...(normalizedContinuePrompt ? [
@@ -5781,6 +6215,7 @@ function buildLobsterModeratorMainModelPrompt(
   task: LobsterTaskRecord,
   round: number,
   continuePrompt?: string,
+  compactSkillCatalogSection?: string,
 ): string {
   const planningDebate = findReusableLobsterPlanningDebateRound(task);
   const planningPaths = planningDebate
@@ -5790,7 +6225,13 @@ function buildLobsterModeratorMainModelPrompt(
     ?? (planningDebate ? readLobsterPlanningDebateDecision(task, planningDebate) : null);
   const planningConsensus = planningDebate?.consensus;
   const mainSubChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
-  const basePrompt = buildLobsterMainModelPrompt(rootPrompt, task, round, continuePrompt);
+  const basePrompt = buildLobsterMainModelPrompt(
+    rootPrompt,
+    task,
+    round,
+    continuePrompt,
+    compactSkillCatalogSection,
+  );
   const planningLines = planningDebate && planningPaths
     ? [
         `- 红蓝规划轮次：主任务第 ${planningDebate.lobsterRound} 轮 / 辩论第 ${planningDebate.debateRound} 轮`,
@@ -5853,6 +6294,19 @@ function buildLobsterSubtaskModelPrompt(
   const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
     ? subtask.writeFiles.join("、")
     : "未声明；以当前子任务指令明确授权的文件/范围为准";
+  const skillGuidance = typeof subtask.skillGuidance === "string" && subtask.skillGuidance.trim()
+    ? subtask.skillGuidance
+    : null;
+  const skillGuidanceLines = skillGuidance
+    ? [
+        "",
+        skillGuidance,
+        "",
+        "Skill 执行要求后的优先级重申：",
+        "- 系统/用户要求、根与局部 AGENTS.md、当前子任务职责、授权 writeFiles、验收与沟通要求始终优先于 Skill。",
+        "- Skill 只能补充执行方法，不得扩大写入范围、改变 CLI/模型、跳过中央校验或创建下级子任务。",
+      ]
+    : [];
   return [
     "你正在执行 VS Code 插件的 Loop 模式子任务。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词和任务记录文件。",
@@ -5873,6 +6327,14 @@ function buildLobsterSubtaskModelPrompt(
     "5. 涉及代码改动时，优先在子任务内完成必要单测/编译，并把命令与结果写入沟通文件，供主任务直接复核，不要留给主任务重复执行。",
     "6. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
     "7. 子任务结束后不要继续生成下一个子任务；程序会自动唤醒主任务复核。",
+    "",
+    "疑问交接协议（强制）：",
+    "1. 只有当需求不明、授权不足、依赖或写入冲突，或存在必须由主任务/用户确认后才能安全继续的问题时，立即停止实施；能依据现有事实和规则自行判断的问题不得上交。",
+    "2. 在本子任务沟通文件的 `## 待主任务确认` 章节写明：待确认问题、已知事实、影响/阻塞步骤、可选方案、推荐方案；不要等待回复。",
+    "3. 合并更新任务记录中当前 subTasks 项：status=completed，summary 明确“待主任务确认”，communicationFile 指向本文件；然后结束子任务。",
+    "4. 严禁在 assistant 回复中向用户或主任务提问，也不得复述待确认问题；疑问只允许出现在沟通文件中。",
+    "5. 疑问交接场景的最终 assistant 回复必须且只能是：`子任务已结束，待主任务确认事项已写入沟通文件。`",
+    ...skillGuidanceLines,
     "",
     "当前子任务：",
     `标题：${subtask.title}`,
@@ -6102,6 +6564,7 @@ function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDe
     prompt?: unknown;
     conflictGroup?: unknown;
     writeFiles?: unknown;
+    skillIds?: unknown;
   };
   const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
   const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
@@ -6115,12 +6578,19 @@ function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDe
     ? subtask.conflictGroup.trim()
     : undefined;
   const writeFiles = normalizeLobsterWriteFiles(subtask.writeFiles);
+  const skillIds = Array.isArray(subtask.skillIds)
+    ? subtask.skillIds
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
   return {
     id,
     title,
     prompt,
     conflictGroup,
     writeFiles: writeFiles.length > 0 ? writeFiles : undefined,
+    ...(skillIds.length > 0 ? { skillIds } : {}),
   };
 }
 
@@ -6200,7 +6670,8 @@ function buildLobsterSubtaskId(title: string): string {
 
 function applyLobsterMainDecision(
   taskId: string,
-  decision: LobsterMainDecision
+  decision: LobsterMainDecision,
+  skillSnapshots?: ReadonlyMap<string, LobsterSubtaskSkillSnapshot>,
 ): { status: "completed" | "continue" | "blocked"; task: LobsterTaskRecord; subtasks?: LobsterSubtaskRecord[] } {
   const existing = readLobsterTaskRecord(taskId);
   if (!existing) {
@@ -6248,7 +6719,7 @@ function applyLobsterMainDecision(
     return { status: "blocked", task };
   }
 
-  const subtaskBatch = upsertLobsterSubtasks(existing, decisionSubtasks);
+  const subtaskBatch = upsertLobsterSubtasks(existing, decisionSubtasks, skillSnapshots);
   const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
   const task = updateLobsterTaskRecord(taskId, {
     status: "running",
@@ -6417,7 +6888,8 @@ function buildLobsterSubtaskDecisionMarkdown(
 
 function upsertLobsterSubtask(
   task: LobsterTaskRecord,
-  subtask: NonNullable<LobsterMainDecision["subtask"]>
+  subtask: NonNullable<LobsterMainDecision["subtask"]>,
+  skillSnapshot?: LobsterSubtaskSkillSnapshot,
 ): { record: LobsterSubtaskRecord; nextSubtasks: LobsterSubtaskRecord[] } {
   const now = Date.now();
   const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLobsterSubtaskId(subtask.title);
@@ -6429,16 +6901,25 @@ function upsertLobsterSubtask(
     prompt: subtask.prompt,
     conflictGroup: subtask.conflictGroup,
     writeFiles: subtask.writeFiles,
+    ...(skillSnapshot ? {
+      skillIds: skillSnapshot.skillIds,
+      skillGuidance: skillSnapshot.skillGuidance,
+    } : {}),
     status: "running",
     updatedAt: now,
   };
   if (existingIndex >= 0) {
-    nextSubtasks[existingIndex] = {
+    const nextRecord: LobsterSubtaskRecord = {
       ...nextSubtasks[existingIndex],
       ...record,
       status: nextSubtasks[existingIndex].status === "completed" ? "completed" : "running",
     };
-    return { record: nextSubtasks[existingIndex], nextSubtasks };
+    if (!skillSnapshot) {
+      delete nextRecord.skillIds;
+      delete nextRecord.skillGuidance;
+    }
+    nextSubtasks[existingIndex] = nextRecord;
+    return { record: nextRecord, nextSubtasks };
   }
   nextSubtasks.push(record);
   return { record, nextSubtasks };
@@ -6447,16 +6928,36 @@ function upsertLobsterSubtask(
 function upsertLobsterSubtasks(
   task: LobsterTaskRecord,
   subtasks: LobsterSubtaskDecision[],
+  skillSnapshots?: ReadonlyMap<string, LobsterSubtaskSkillSnapshot>,
 ): { records: LobsterSubtaskRecord[]; nextSubtasks: LobsterSubtaskRecord[] } {
   let nextSubtasks = [...task.subTasks];
   const records: LobsterSubtaskRecord[] = [];
   subtasks.forEach((subtask) => {
-    const result = upsertLobsterSubtask({ ...task, subTasks: nextSubtasks }, subtask);
+    const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLobsterSubtaskId(subtask.title);
+    const result = upsertLobsterSubtask(
+      { ...task, subTasks: nextSubtasks },
+      subtask,
+      skillSnapshots?.get(id),
+    );
     nextSubtasks = result.nextSubtasks;
     records.push(result.record);
   });
   return { records, nextSubtasks };
 }
+
+export const __lobsterSkillIntegrationTestApi = {
+  resolveNewLobsterTaskKind,
+  createLobsterTaskRecord,
+  buildLobsterSkillRuntimeContext,
+  buildLobsterSubtaskSkillSnapshots,
+  buildLobsterMainModelPrompt,
+  buildLobsterModeratorMainModelPrompt,
+  buildLobsterSubtaskDisplayPrompt,
+  buildLobsterSubtaskModelPrompt,
+  normalizeSingleLobsterSubtaskDecision,
+  applyLobsterMainDecisionForRun,
+  upsertLobsterSubtasks,
+};
 
 function getActiveLobsterSubtaskIds(task: LobsterTaskRecord): string[] {
   const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
@@ -7262,7 +7763,11 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     cwd,
     command,
     args: redactPromptArg(args, thinkingPrompt),
-    env: sanitizeEnv({ ...process.env, ...(runtimeEnvOverrides ?? {}) }),
+    env: sanitizeEnv({
+      ...process.env,
+      ...(runtimeEnvOverrides ?? {}),
+      ...(cwd ? { PWD: cwd } : {}),
+    }),
     mode: "one-shot",
   });
   void logInfo("runPrompt-start", {
@@ -7273,6 +7778,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     sessionId: initialSessionId,
     thinkingMode,
     model: runtimeModel,
+    smallModel: runtimePreparation.smallModel,
+    primaryVariant: runtimePreparation.primaryVariant,
+    smallVariant: runtimePreparation.smallVariant,
   });
 
   const userMessageId = input.preloadedUserMessageId ?? createMessageId();
@@ -7497,6 +8005,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         appendOpenCodeFinalText(openCodeOutput.finalText);
       }
       if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
+        observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
       })) {
@@ -7630,6 +8139,7 @@ type TraceMessageOptions = {
   merge?: boolean;
   persist?: boolean;
   forceTraceBubble?: boolean;
+  taskListItems?: OpenCodeTaskListItem[];
 };
 
 function appendTraceMessage(
@@ -7672,6 +8182,7 @@ function appendTraceMessage(
     sequence: message.sequence,
     content: message.content,
     kind: resolvedKind,
+    ...(Array.isArray(options.taskListItems) ? { taskListItems: options.taskListItems } : {}),
     ...mergePayload,
   });
 }
@@ -7695,35 +8206,56 @@ function appendOpenCodeFinalText(finalText: string): void {
 }
 
 function appendOpenCodeJsonlEvents(chunk: string): void {
-  const normalized = chunk.replace(/\r\n/g, "\n");
-  const combined = activeOpenCodeJsonlBuffer + normalized;
-  const lines = combined.split("\n");
-  activeOpenCodeJsonlBuffer = lines.pop() ?? "";
-  lines.forEach(appendOpenCodeJsonlLine);
+  activeOpenCodeJsonlBuffer = consumeOpenCodeJsonlChunk(
+    activeOpenCodeJsonlBuffer,
+    chunk,
+    false,
+    appendOpenCodeVisibleEvent,
+  );
 }
 
 function flushOpenCodeJsonlBuffer(): void {
-  const line = activeOpenCodeJsonlBuffer.trim();
-  activeOpenCodeJsonlBuffer = "";
-  if (line) {
-    appendOpenCodeJsonlLine(line);
-  }
+  activeOpenCodeJsonlBuffer = consumeOpenCodeJsonlChunk(
+    activeOpenCodeJsonlBuffer,
+    "",
+    true,
+    appendOpenCodeVisibleEvent,
+  );
 }
 
-function appendOpenCodeJsonlLine(line: string): void {
-  const events = parseOpenCodeVisibleStreamEvents(line);
-  for (const event of events) {
-    if (event.kind === "assistant") {
-      appendAssistantChunk(event.content);
-      activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
-      continue;
-    }
-    if (event.kind === "thinking") {
-      appendTraceMessage(event.content, "thinking");
-      continue;
-    }
-    appendTraceMessage(event.content, "tool-use", { merge: false, forceTraceBubble: true });
+function consumeOpenCodeJsonlChunk(
+  currentBuffer: string,
+  chunk: string,
+  flush: boolean,
+  onEvent: (event: OpenCodeVisibleStreamEvent) => void,
+): string {
+  const combined = currentBuffer + chunk.replace(/\r\n/g, "\n");
+  const lines = combined.split("\n");
+  const nextBuffer = flush ? "" : (lines.pop() ?? "");
+  lines.forEach((line) => {
+    parseOpenCodeVisibleStreamEvents(line).forEach(onEvent);
+  });
+  return nextBuffer;
+}
+
+function appendOpenCodeVisibleEvent(event: OpenCodeVisibleStreamEvent): void {
+  if (Array.isArray(event.taskListItems)) {
+    sendOpenCodeTaskListUpdate(event.taskListItems, { source: "primary-stream" });
   }
+  if (event.kind === "assistant") {
+    appendAssistantChunk(event.content);
+    activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
+    return;
+  }
+  if (event.kind === "thinking") {
+    appendTraceMessage(event.content, "thinking");
+    return;
+  }
+  appendTraceMessage(event.content, "tool-use", {
+    merge: false,
+    forceTraceBubble: true,
+    taskListItems: event.taskListItems,
+  });
 }
 
 function appendSystemMessage(content: string): void {
@@ -8346,6 +8878,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       content: message.content,
       kind: resolvedKind,
       tabId,
+      ...(Array.isArray(options.taskListItems) ? { taskListItems: options.taskListItems } : {}),
       ...mergePayload,
     });
     syncInteractiveRunEntry();
@@ -8913,6 +9446,9 @@ function stopActiveRun(): void {
 }
 
 function clearActiveRun(): void {
+  if (activeCliForRun === "opencode" && activeTabIdForRun) {
+    latestOpenCodeTaskListByTabId.delete(activeTabIdForRun);
+  }
   restoreProcessTitle();
   activeProcess = undefined;
   activeInteractiveStop = null;
@@ -9160,6 +9696,9 @@ function sendRunStatus(
   message?: string,
   options: { activity?: RunActivity } = {}
 ): void {
+  if (activeCliForRun === "opencode" && activeTabIdForRun) {
+    latestOpenCodeTaskListByTabId.delete(activeTabIdForRun);
+  }
   sendPanelMessage({
     type: "runStatus",
     status,
@@ -9251,7 +9790,11 @@ function cleanupTaskStoreRetention(): void {
 function createLobsterTaskRecord(
   cli: CliName,
   rootPrompt: string,
-  options: { sessionId?: string | null; executionMode?: LobsterExecutionMode } = {}
+  options: {
+    sessionId?: string | null;
+    executionMode?: LobsterExecutionMode;
+    taskKind?: LobsterTaskKind;
+  } = {}
 ): LobsterTaskRecord {
   const now = Date.now();
   const id = createMessageId();
@@ -9268,6 +9811,7 @@ function createLobsterTaskRecord(
     workspaceKey: activeWorkspaceKey,
     taskStoreFile,
     rootPrompt,
+    ...(options.taskKind ? { taskKind: options.taskKind } : {}),
     executionMode,
     status: "running",
     createdAt: now,

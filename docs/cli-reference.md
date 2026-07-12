@@ -3,8 +3,11 @@
 本文档是兼容入口。当前 CLI 运行事实来源请阅读：
 
 - `.ch/docs/references/cli-runtime-reference.md`
+- `.ch/docs/references/authoritative-skills.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - `.ch/docs/runbooks/local-development.md`
+
+Loop 开发级 Workflow Skills 的字段、门禁、恢复与降级以 CLI 运行时参考为准；内置快照来源、许可和隔离以权威 Skills 文档为准；同步、测试与 VSIX 逐项核验以本地开发 runbook 为准。本文不重复维护这些规则。
 
 Loop 模型语义：Claude 不接受插件侧模型选择；Codex 的 Coding/Loop 共用一个模型并供主任务、子任务、裁判、参与者、续跑和唤醒复用；OpenCode 保持自身大模型/小模型与独立思考力度，`small_model` 不等于 Loop 子任务模型。内部 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` wrapper 会被定向解析或去标签，普通 HTML 标签不受影响。
 

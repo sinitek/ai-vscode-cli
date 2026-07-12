@@ -97,10 +97,6 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         line-height: 1;
         font-size: 12px;
       }
-      .conversation-tabs-nav:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
       .conversation-tab {
         display: inline-flex;
         align-items: center;

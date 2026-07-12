@@ -11,6 +11,11 @@ import {
   splitThinkingTaggedContent,
   stripThinkingWrapperTags,
 } from "../thinkingMarkup";
+import {
+  extractOpenCodeTaskListItems,
+  isOpenCodeTaskListTool,
+  type OpenCodeTaskListItem,
+} from "./openCodeTaskList";
 
 export { resolveCliCommand } from "./commandResolution";
 export type { ResolvedCliCommand } from "./commandResolution";
@@ -120,6 +125,7 @@ export type OpenCodeRunOutput = {
   finalText: string | null;
   errorText: string | null;
   statusText: string | null;
+  hasStructuredFinalAnswer: boolean;
 };
 
 export type OpenCodeStreamActivity = {
@@ -132,6 +138,7 @@ export type OpenCodeStreamActivity = {
 export type OpenCodeVisibleStreamEvent = {
   kind: "assistant" | "thinking" | "tool-use";
   content: string;
+  taskListItems?: OpenCodeTaskListItem[];
 };
 
 export type OpenCodeFailureMessageOptions = {
@@ -346,6 +353,31 @@ function getOpenCodeJsonPart(record: Record<string, unknown>): Record<string, un
   return readObjectProperty(record, "part");
 }
 
+function readOpenCodeMessageId(record: Record<string, unknown>): string | null {
+  const part = getOpenCodeJsonPart(record);
+  return (part ? readStringProperty(part, ["messageID", "messageId", "message_id"]) : null)
+    ?? readStringProperty(record, ["messageID", "messageId", "message_id"]);
+}
+
+function isOpenCodeStructuredFinalEvent(record: Record<string, unknown>): boolean {
+  const part = getOpenCodeJsonPart(record);
+  const source = part ?? record;
+  const eventType = normalizeOpenCodeJsonType(record.type);
+  const partType = normalizeOpenCodeJsonType(source.type);
+  if (
+    eventType !== "step_finish"
+    && eventType !== "step-finish"
+    && partType !== "step_finish"
+    && partType !== "step-finish"
+  ) {
+    return false;
+  }
+
+  const reason = readStringProperty(source, ["reason"])
+    ?? readStringProperty(record, ["reason"]);
+  return reason?.trim().toLowerCase() === "stop";
+}
+
 function formatOpenCodeToolUseEvent(record: Record<string, unknown>): OpenCodeVisibleStreamEvent | null {
   const part = getOpenCodeJsonPart(record);
   const source = part ?? record;
@@ -370,8 +402,17 @@ function formatOpenCodeToolUseEvent(record: Record<string, unknown>): OpenCodeVi
   if (title && title !== status) {
     lines.push(title);
   }
+  const taskListItems = isOpenCodeTaskListTool(toolName)
+    ? extractOpenCodeTaskListItems(state)
+      ?? extractOpenCodeTaskListItems(source)
+      ?? extractOpenCodeTaskListItems(record)
+    : null;
 
-  return { kind: "tool-use", content: lines.join("\n") };
+  return {
+    kind: "tool-use",
+    content: lines.join("\n"),
+    ...(taskListItems === null ? {} : { taskListItems }),
+  };
 }
 
 function collectOpenCodeReasoningText(value: unknown): string[] {
@@ -446,21 +487,46 @@ export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleS
   return [];
 }
 
-function parseOpenCodeJsonOutput(stdout: string): string | null {
+function parseOpenCodeJsonOutput(stdout: string): {
+  finalText: string | null;
+  hasStructuredFinalAnswer: boolean;
+} {
   const chunks: string[] = [];
+  const assistantTextMessageIds = new Set<string>();
+  const structuredFinalMessageIds = new Set<string>();
   for (const line of stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{")) {
       continue;
     }
     try {
-      chunks.push(...collectOpenCodeJsonText(JSON.parse(trimmed)));
+      const record = JSON.parse(trimmed) as Record<string, unknown>;
+      const messageId = readOpenCodeMessageId(record);
+      const recordChunks = collectOpenCodeJsonText(record);
+      chunks.push(...recordChunks);
+      const hasAssistantText = splitThinkingTaggedContent(recordChunks.join(""))
+        .some((segment) => segment.kind === "assistant" && segment.content.trim().length > 0);
+      if (hasAssistantText) {
+        if (messageId) {
+          assistantTextMessageIds.add(messageId);
+        }
+      }
+      if (isOpenCodeStructuredFinalEvent(record)) {
+        if (messageId) {
+          structuredFinalMessageIds.add(messageId);
+        }
+      }
     } catch {
       // Ignore non-JSON progress lines in default output.
     }
   }
   const finalText = extractAssistantTextWithoutThinkingBlocks(chunks.join("")).trim();
-  return finalText || null;
+  const hasScopedStructuredFinalAnswer = Array.from(structuredFinalMessageIds)
+    .some((messageId) => assistantTextMessageIds.has(messageId));
+  return {
+    finalText: finalText || null,
+    hasStructuredFinalAnswer: hasScopedStructuredFinalAnswer,
+  };
 }
 
 function collectOpenCodeJsonActivity(value: unknown, activity: OpenCodeStreamActivity): void {
@@ -547,7 +613,7 @@ function parseOpenCodePlainOutput(stdout: string): string | null {
   if (meaningfulLines.length > 0 && meaningfulLines.every((line) => line.startsWith("{"))) {
     return null;
   }
-  const jsonText = parseOpenCodeJsonOutput(cleaned);
+  const jsonText = parseOpenCodeJsonOutput(cleaned).finalText;
   const plainText = extractAssistantTextWithoutThinkingBlocks(cleaned).trim();
   return jsonText ?? (plainText || null);
 }
@@ -583,7 +649,8 @@ function collectOpenCodeJsonErrors(stdout: string): string | null {
 }
 
 export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCodeRunOutput {
-  const finalText = parseOpenCodeJsonOutput(stdout) ?? parseOpenCodePlainOutput(stdout);
+  const jsonOutput = parseOpenCodeJsonOutput(stdout);
+  const finalText = jsonOutput.finalText ?? parseOpenCodePlainOutput(stdout);
   const stderrErrorText = cleanOpenCodeStatusOutput(stderr);
   const jsonErrorText = collectOpenCodeJsonErrors(stdout);
   const statusText = stripAnsi(stderr)
@@ -597,6 +664,7 @@ export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCode
     finalText,
     errorText: combineOpenCodeErrorText(jsonErrorText, stderrErrorText),
     statusText: statusText || null,
+    hasStructuredFinalAnswer: jsonOutput.hasStructuredFinalAnswer,
   };
 }
 
@@ -755,6 +823,22 @@ function resolveSpawnCommand(command: string, args: string[]): {
   };
 }
 
+function buildSpawnEnvironment(
+  cwd: string | undefined,
+  envOverrides?: Record<string, string>,
+  runtimeEnvOverrides?: Record<string, string>
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...(envOverrides ?? {}),
+    ...(runtimeEnvOverrides ?? {}),
+  };
+  if (cwd) {
+    env.PWD = cwd;
+  }
+  return env;
+}
+
 export function runCliStream(
   cli: CliName,
   prompt: string,
@@ -800,11 +884,7 @@ export function runCliStream(
 
   const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
     cwd: options.cwd,
-    env: {
-      ...process.env,
-      ...(options.envOverrides ?? {}),
-      ...(overlay?.envOverrides ?? {}),
-    },
+    env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides),
     argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
@@ -855,7 +935,7 @@ export function captureCliOutput(
 
     const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
       cwd: options.cwd,
-      env: process.env,
+      env: buildSpawnEnvironment(options.cwd),
       detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

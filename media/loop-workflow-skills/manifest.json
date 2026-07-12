@@ -1,0 +1,968 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "name": "agent-skills",
+    "url": "https://github.com/addyosmani/agent-skills",
+    "version": "1.0.0",
+    "license": "MIT",
+    "snapshotSha256": "2603c030a1ded0bcad531ce189b81d83bef67054ebaa6855e254ff100922bcf8"
+  },
+  "files": [
+    {
+      "path": "THIRD_PARTY_LICENSE.md",
+      "bytes": 1573,
+      "sha256": "bc2fa27920357a8c9b02d1424deb4e56170175cfef4f2ee585c19b9947d995f9"
+    },
+    {
+      "path": "references/accessibility-checklist.md",
+      "bytes": 5206,
+      "sha256": "61c759d94d52296231f5f310b92b401f56c44e4430dc3cc95ebac5d7b1d5ffac"
+    },
+    {
+      "path": "references/definition-of-done.md",
+      "bytes": 3798,
+      "sha256": "d1c75d2ae65d2c7a9cd01f93fa8de63e00e75f2fe5d08be224d576157054dcee"
+    },
+    {
+      "path": "references/observability-checklist.md",
+      "bytes": 4931,
+      "sha256": "28659e0a4b9625a434285fa9ede632802afa909f768d0f8d839dca227e53d8fe"
+    },
+    {
+      "path": "references/orchestration-patterns.md",
+      "bytes": 18201,
+      "sha256": "61e543d86f19f86b83074f8c1c769455c7085a2c72dd47b1da21a8c63785be4a"
+    },
+    {
+      "path": "references/performance-checklist.md",
+      "bytes": 7408,
+      "sha256": "628539583b7f515f84d0b8e4f4210ccdc0449afd31901149a078209f0769e654"
+    },
+    {
+      "path": "references/security-checklist.md",
+      "bytes": 11828,
+      "sha256": "3ab8aed0bfc37f60e2293d0139522ad470b4beea1938f456617eb6fa8b3b7fc8"
+    },
+    {
+      "path": "references/testing-patterns.md",
+      "bytes": 7094,
+      "sha256": "6e000cca2c8f7dc6b5916de3016c09f493384da3b08217160afc19b5a841166d"
+    },
+    {
+      "path": "skills/api-and-interface-design/SKILL.md",
+      "bytes": 10307,
+      "sha256": "293db2903b41316a5109a1e0ce3e1740eeafae31735bc1f9143dafbfd1187363"
+    },
+    {
+      "path": "skills/browser-testing-with-devtools/SKILL.md",
+      "bytes": 14539,
+      "sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9"
+    },
+    {
+      "path": "skills/ci-cd-and-automation/SKILL.md",
+      "bytes": 11332,
+      "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0"
+    },
+    {
+      "path": "skills/code-review-and-quality/SKILL.md",
+      "bytes": 20543,
+      "sha256": "bec431b759ff389e47b8d2c9d74e1981ff93cf5f3c36b4a3b6a71a75c250be2c"
+    },
+    {
+      "path": "skills/code-simplification/SKILL.md",
+      "bytes": 13545,
+      "sha256": "f0c5ed754057eb0c1e027e2587f59de816651feb5e837242296c43ea21cf621d"
+    },
+    {
+      "path": "skills/context-engineering/SKILL.md",
+      "bytes": 11070,
+      "sha256": "ff9d4e5706bdd2eb7de1bfed569f1f42d28e478979ce6fcc32e617e7861b491d"
+    },
+    {
+      "path": "skills/debugging-and-error-recovery/SKILL.md",
+      "bytes": 10603,
+      "sha256": "927ad6917fa2891827351cfa3470cd715423faaa5c5f27fe74534d9324c35eea"
+    },
+    {
+      "path": "skills/deprecation-and-migration/SKILL.md",
+      "bytes": 12516,
+      "sha256": "92d9846321fab624eded7ac55d19a7738cfd2321c2be2e35eb153dcacf7359de"
+    },
+    {
+      "path": "skills/documentation-and-adrs/SKILL.md",
+      "bytes": 8734,
+      "sha256": "7fed35f9c5b95d8e3623ad24d78d209c3267ab62d7157fc03954c76a7e58adf4"
+    },
+    {
+      "path": "skills/doubt-driven-development/SKILL.md",
+      "bytes": 16487,
+      "sha256": "59aef769adeae40aad67a1d54474aaf914ea7ecdfc2a4752a54840a8d29f80de"
+    },
+    {
+      "path": "skills/frontend-ui-engineering/SKILL.md",
+      "bytes": 10705,
+      "sha256": "9c284b1f06d617b289c0d250004af5cbaedd5135071e1b17c0211a0aa03a73a4"
+    },
+    {
+      "path": "skills/git-workflow-and-versioning/SKILL.md",
+      "bytes": 14000,
+      "sha256": "51677cf03845dd29d08ea4d3125665057b720aea3dccc572f25d8b172409ece6"
+    },
+    {
+      "path": "skills/idea-refine/SKILL.md",
+      "bytes": 8111,
+      "sha256": "79e773058963adc7646b0115b4f8a4afc974c5ff95843e4ef1cafff3cb51899e"
+    },
+    {
+      "path": "skills/idea-refine/examples.md",
+      "bytes": 20284,
+      "sha256": "563204bfbf2f80a444151695205af4cb759e722b3d1e5460e08f278a69c89ba1"
+    },
+    {
+      "path": "skills/idea-refine/frameworks.md",
+      "bytes": 5404,
+      "sha256": "161ebc18fdf2d996bc62a87a2d747cf1bf53548354f8925de25c732c27f00309"
+    },
+    {
+      "path": "skills/idea-refine/refinement-criteria.md",
+      "bytes": 5738,
+      "sha256": "1ca2973a4d01b5cb37ab7ddb2eff77fa4e792634a33d0ce44961c068fc88d51a"
+    },
+    {
+      "path": "skills/incremental-implementation/SKILL.md",
+      "bytes": 9249,
+      "sha256": "960f2ed08ccdd51527c347d29d2d00c80edb9992e95d67030d8a289ba04eed4e"
+    },
+    {
+      "path": "skills/interview-me/SKILL.md",
+      "bytes": 14359,
+      "sha256": "1d94741d10d2c826cd0c191aea3981ee94c8abb27ef2a166f6a372117d06448f"
+    },
+    {
+      "path": "skills/observability-and-instrumentation/SKILL.md",
+      "bytes": 11047,
+      "sha256": "40c59a0c3ba28f5697600add521e38f81f880f986317628cdc0df9bdb8acf126"
+    },
+    {
+      "path": "skills/performance-optimization/SKILL.md",
+      "bytes": 11658,
+      "sha256": "c56f6059fed0b77c50c946e38275f04c8b297657f3742d5782ee564514ecc4dc"
+    },
+    {
+      "path": "skills/planning-and-task-breakdown/SKILL.md",
+      "bytes": 7632,
+      "sha256": "d87ff6bb23aa791f78a504d784e903bb13602975923f884af5d13d5b66b1651a"
+    },
+    {
+      "path": "skills/security-and-hardening/SKILL.md",
+      "bytes": 20511,
+      "sha256": "266c60e073bc81651ad070a1427a93af4d062dc44470580eae31806b38561833"
+    },
+    {
+      "path": "skills/shipping-and-launch/SKILL.md",
+      "bytes": 10045,
+      "sha256": "efc70a45ad6435d93f2b3cef16c125ff6d75a2383e49f30056fcba04b27d6e4a"
+    },
+    {
+      "path": "skills/source-driven-development/SKILL.md",
+      "bytes": 8204,
+      "sha256": "b979e7531ea601ed14a090f32a5b135db517c48ab9821c5e8b09efd80f4ff4d8"
+    },
+    {
+      "path": "skills/spec-driven-development/SKILL.md",
+      "bytes": 8527,
+      "sha256": "af5b873414a8b45b96b0d30d5297400f55eb3a56425161a088e470c14260a1e5"
+    },
+    {
+      "path": "skills/test-driven-development/SKILL.md",
+      "bytes": 14976,
+      "sha256": "6c60e193d77a6c52eb3d9a7ca774f1801b9f798ec34f075720e0425a8094f50e"
+    },
+    {
+      "path": "skills/using-agent-skills/SKILL.md",
+      "bytes": 10337,
+      "sha256": "a5bf05293cfb67af9c5e21e14023d723d2ac8ca42912cef4cee29fbb07e67d64"
+    }
+  ],
+  "skills": [
+    {
+      "id": "api-and-interface-design",
+      "name": "api-and-interface-design",
+      "description": "Guides stable API and interface design.",
+      "path": "skills/api-and-interface-design/SKILL.md",
+      "bytes": 10307,
+      "sha256": "293db2903b41316a5109a1e0ce3e1740eeafae31735bc1f9143dafbfd1187363",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "architecture",
+        "api"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "API contract",
+        "public interface"
+      ],
+      "negativeTriggers": [
+        "internal implementation with no contract change"
+      ]
+    },
+    {
+      "id": "browser-testing-with-devtools",
+      "name": "browser-testing-with-devtools",
+      "description": "Tests in real browsers via Chrome DevTools MCP.",
+      "path": "skills/browser-testing-with-devtools/SKILL.md",
+      "bytes": 14539,
+      "sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "verify"
+      ],
+      "taskKinds": [
+        "ui",
+        "test",
+        "debug",
+        "performance"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [
+        "chrome-devtools-mcp"
+      ],
+      "priority": 50,
+      "positiveTriggers": [
+        "browser runtime verification",
+        "DOM inspection"
+      ],
+      "negativeTriggers": [
+        "chrome devtools capability unavailable"
+      ]
+    },
+    {
+      "id": "ci-cd-and-automation",
+      "name": "ci-cd-and-automation",
+      "description": "Automates CI/CD pipeline setup.",
+      "path": "skills/ci-cd-and-automation/SKILL.md",
+      "bytes": 11332,
+      "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "ci",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "continuous integration",
+        "deployment pipeline"
+      ],
+      "negativeTriggers": [
+        "local change with no automation impact"
+      ]
+    },
+    {
+      "id": "code-review-and-quality",
+      "name": "code-review-and-quality",
+      "description": "Conducts multi-axis code review.",
+      "path": "skills/code-review-and-quality/SKILL.md",
+      "bytes": 20543,
+      "sha256": "bec431b759ff389e47b8d2c9d74e1981ff93cf5f3c36b4a3b6a71a75c250be2c",
+      "supportFiles": [
+        "references/performance-checklist.md",
+        "references/security-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "review"
+      ],
+      "taskKinds": [
+        "review",
+        "security",
+        "performance"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 60,
+      "positiveTriggers": [
+        "code quality review",
+        "merge readiness"
+      ],
+      "negativeTriggers": [
+        "implementation is still in progress"
+      ]
+    },
+    {
+      "id": "code-simplification",
+      "name": "code-simplification",
+      "description": "Simplifies code for clarity.",
+      "path": "skills/code-simplification/SKILL.md",
+      "bytes": 13545,
+      "sha256": "f0c5ed754057eb0c1e027e2587f59de816651feb5e837242296c43ea21cf621d",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "review"
+      ],
+      "taskKinds": [
+        "refactor",
+        "review"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 60,
+      "positiveTriggers": [
+        "behavior-preserving refactor",
+        "simplification"
+      ],
+      "negativeTriggers": [
+        "behavior change is required"
+      ]
+    },
+    {
+      "id": "context-engineering",
+      "name": "context-engineering",
+      "description": "Optimizes agent context setup.",
+      "path": "skills/context-engineering/SKILL.md",
+      "bytes": 11070,
+      "sha256": "ff9d4e5706bdd2eb7de1bfed569f1f42d28e478979ce6fcc32e617e7861b491d",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning",
+        "implementation",
+        "debug",
+        "review"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "new session",
+        "unfamiliar codebase"
+      ],
+      "negativeTriggers": [
+        "task context is already bounded and sufficient"
+      ]
+    },
+    {
+      "id": "debugging-and-error-recovery",
+      "name": "debugging-and-error-recovery",
+      "description": "Guides systematic root-cause debugging.",
+      "path": "skills/debugging-and-error-recovery/SKILL.md",
+      "bytes": 10603,
+      "sha256": "927ad6917fa2891827351cfa3470cd715423faaa5c5f27fe74534d9324c35eea",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "verify"
+      ],
+      "taskKinds": [
+        "test",
+        "debug"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 50,
+      "positiveTriggers": [
+        "failing test",
+        "root cause analysis"
+      ],
+      "negativeTriggers": [
+        "no reproducible failure or unexpected behavior"
+      ]
+    },
+    {
+      "id": "deprecation-and-migration",
+      "name": "deprecation-and-migration",
+      "description": "Manages deprecation and migration.",
+      "path": "skills/deprecation-and-migration/SKILL.md",
+      "bytes": 12516,
+      "sha256": "92d9846321fab624eded7ac55d19a7738cfd2321c2be2e35eb153dcacf7359de",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "refactor",
+        "migration",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "deprecated API",
+        "migration plan"
+      ],
+      "negativeTriggers": [
+        "no consumer migration or removal is involved"
+      ]
+    },
+    {
+      "id": "documentation-and-adrs",
+      "name": "documentation-and-adrs",
+      "description": "Records decisions and documentation.",
+      "path": "skills/documentation-and-adrs/SKILL.md",
+      "bytes": 8734,
+      "sha256": "7fed35f9c5b95d8e3623ad24d78d209c3267ab62d7157fc03954c76a7e58adf4",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "architecture",
+        "api",
+        "documentation",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "architecture decision",
+        "technical documentation"
+      ],
+      "negativeTriggers": [
+        "pure copywriting unrelated to software delivery"
+      ]
+    },
+    {
+      "id": "doubt-driven-development",
+      "name": "doubt-driven-development",
+      "description": "Subjects every non-trivial decision to a fresh-context adversarial review before it stands.",
+      "path": "skills/doubt-driven-development/SKILL.md",
+      "bytes": 16487,
+      "sha256": "59aef769adeae40aad67a1d54474aaf914ea7ecdfc2a4752a54840a8d29f80de",
+      "supportFiles": [
+        "references/orchestration-patterns.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning",
+        "implementation",
+        "review",
+        "security"
+      ],
+      "roles": [
+        "main"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "high-stakes decision",
+        "security-sensitive logic"
+      ],
+      "negativeTriggers": [
+        "noninteractive subtask"
+      ]
+    },
+    {
+      "id": "frontend-ui-engineering",
+      "name": "frontend-ui-engineering",
+      "description": "Builds production-quality, accessible, responsive user-facing UIs.",
+      "path": "skills/frontend-ui-engineering/SKILL.md",
+      "bytes": 10705,
+      "sha256": "9c284b1f06d617b289c0d250004af5cbaedd5135071e1b17c0211a0aa03a73a4",
+      "supportFiles": [
+        "references/accessibility-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "ui",
+        "implementation",
+        "refactor",
+        "test"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "accessible interface",
+        "user-facing page"
+      ],
+      "negativeTriggers": [
+        "backend-only task"
+      ]
+    },
+    {
+      "id": "git-workflow-and-versioning",
+      "name": "git-workflow-and-versioning",
+      "description": "Structures git workflow practices.",
+      "path": "skills/git-workflow-and-versioning/SKILL.md",
+      "bytes": 14000,
+      "sha256": "51677cf03845dd29d08ea4d3125665057b720aea3dccc572f25d8b172409ece6",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "git",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "semantic versioning",
+        "version-control conflict"
+      ],
+      "negativeTriggers": [
+        "unauthorized version-control mutation"
+      ]
+    },
+    {
+      "id": "idea-refine",
+      "name": "idea-refine",
+      "description": "Refines raw ideas into sharp, actionable concepts through structured divergent and convergent thinking.",
+      "path": "skills/idea-refine/SKILL.md",
+      "bytes": 8111,
+      "sha256": "79e773058963adc7646b0115b4f8a4afc974c5ff95843e4ef1cafff3cb51899e",
+      "supportFiles": [
+        "skills/idea-refine/examples.md",
+        "skills/idea-refine/frameworks.md",
+        "skills/idea-refine/refinement-criteria.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "define"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning",
+        "documentation"
+      ],
+      "roles": [
+        "main"
+      ],
+      "requiredCapabilities": [
+        "interactive-user"
+      ],
+      "priority": 20,
+      "positiveTriggers": [
+        "ambiguous product idea",
+        "MVP definition"
+      ],
+      "negativeTriggers": [
+        "noninteractive subtask"
+      ]
+    },
+    {
+      "id": "incremental-implementation",
+      "name": "incremental-implementation",
+      "description": "Delivers changes incrementally.",
+      "path": "skills/incremental-implementation/SKILL.md",
+      "bytes": 9249,
+      "sha256": "960f2ed08ccdd51527c347d29d2d00c80edb9992e95d67030d8a289ba04eed4e",
+      "supportFiles": [
+        "references/definition-of-done.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "implementation",
+        "refactor",
+        "migration"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "cross-file change",
+        "vertical slice"
+      ],
+      "negativeTriggers": [
+        "single trivial edit"
+      ]
+    },
+    {
+      "id": "interview-me",
+      "name": "interview-me",
+      "description": "Extracts what the user actually wants instead of what they think they should want.",
+      "path": "skills/interview-me/SKILL.md",
+      "bytes": 14359,
+      "sha256": "1d94741d10d2c826cd0c191aea3981ee94c8abb27ef2a166f6a372117d06448f",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "define"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning"
+      ],
+      "roles": [
+        "main"
+      ],
+      "requiredCapabilities": [
+        "interactive-user"
+      ],
+      "priority": 20,
+      "positiveTriggers": [
+        "ambiguous requirements",
+        "unknown user intent"
+      ],
+      "negativeTriggers": [
+        "noninteractive subtask"
+      ]
+    },
+    {
+      "id": "observability-and-instrumentation",
+      "name": "observability-and-instrumentation",
+      "description": "Instruments code so production behavior is visible and diagnosable.",
+      "path": "skills/observability-and-instrumentation/SKILL.md",
+      "bytes": 11047,
+      "sha256": "40c59a0c3ba28f5697600add521e38f81f880f986317628cdc0df9bdb8acf126",
+      "supportFiles": [
+        "references/observability-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "implementation",
+        "observability",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "production diagnosis",
+        "tracing"
+      ],
+      "negativeTriggers": [
+        "no production runtime or telemetry impact"
+      ]
+    },
+    {
+      "id": "performance-optimization",
+      "name": "performance-optimization",
+      "description": "Optimizes application performance across frontend, backend, queries, and databases.",
+      "path": "skills/performance-optimization/SKILL.md",
+      "bytes": 11658,
+      "sha256": "c56f6059fed0b77c50c946e38275f04c8b297657f3742d5782ee564514ecc4dc",
+      "supportFiles": [
+        "references/performance-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "review"
+      ],
+      "taskKinds": [
+        "debug",
+        "review",
+        "performance"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 60,
+      "positiveTriggers": [
+        "measured bottleneck",
+        "performance regression"
+      ],
+      "negativeTriggers": [
+        "no measured performance issue or requirement"
+      ]
+    },
+    {
+      "id": "planning-and-task-breakdown",
+      "name": "planning-and-task-breakdown",
+      "description": "Breaks work into ordered tasks.",
+      "path": "skills/planning-and-task-breakdown/SKILL.md",
+      "bytes": 7632,
+      "sha256": "d87ff6bb23aa791f78a504d784e903bb13602975923f884af5d13d5b66b1651a",
+      "supportFiles": [
+        "references/definition-of-done.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "plan"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 30,
+      "positiveTriggers": [
+        "implementation plan",
+        "task breakdown"
+      ],
+      "negativeTriggers": [
+        "requirements remain ambiguous"
+      ]
+    },
+    {
+      "id": "security-and-hardening",
+      "name": "security-and-hardening",
+      "description": "Hardens code against vulnerabilities.",
+      "path": "skills/security-and-hardening/SKILL.md",
+      "bytes": 20511,
+      "sha256": "266c60e073bc81651ad070a1427a93af4d062dc44470580eae31806b38561833",
+      "supportFiles": [
+        "references/security-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "review"
+      ],
+      "taskKinds": [
+        "implementation",
+        "review",
+        "security"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 60,
+      "positiveTriggers": [
+        "sensitive data",
+        "untrusted input"
+      ],
+      "negativeTriggers": [
+        "no trust boundary or security-sensitive behavior"
+      ]
+    },
+    {
+      "id": "shipping-and-launch",
+      "name": "shipping-and-launch",
+      "description": "Prepares production launches.",
+      "path": "skills/shipping-and-launch/SKILL.md",
+      "bytes": 10045,
+      "sha256": "efc70a45ad6435d93f2b3cef16c125ff6d75a2383e49f30056fcba04b27d6e4a",
+      "supportFiles": [
+        "references/accessibility-checklist.md",
+        "references/definition-of-done.md",
+        "references/performance-checklist.md",
+        "references/security-checklist.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "ship"
+      ],
+      "taskKinds": [
+        "test",
+        "security",
+        "performance",
+        "ci",
+        "observability",
+        "release"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 70,
+      "positiveTriggers": [
+        "production deployment",
+        "release readiness"
+      ],
+      "negativeTriggers": [
+        "implementation is incomplete"
+      ]
+    },
+    {
+      "id": "source-driven-development",
+      "name": "source-driven-development",
+      "description": "Grounds every implementation decision in official documentation.",
+      "path": "skills/source-driven-development/SKILL.md",
+      "bytes": 8204,
+      "sha256": "b979e7531ea601ed14a090f32a5b135db517c48ab9821c5e8b09efd80f4ff4d8",
+      "supportFiles": [],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "api",
+        "ui",
+        "implementation",
+        "documentation"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "official documentation",
+        "version-specific API"
+      ],
+      "negativeTriggers": [
+        "version-independent pure logic"
+      ]
+    },
+    {
+      "id": "spec-driven-development",
+      "name": "spec-driven-development",
+      "description": "Creates specs before coding.",
+      "path": "skills/spec-driven-development/SKILL.md",
+      "bytes": 8527,
+      "sha256": "af5b873414a8b45b96b0d30d5297400f55eb3a56425161a088e470c14260a1e5",
+      "supportFiles": [
+        "skills/context-engineering/SKILL.md",
+        "skills/incremental-implementation/SKILL.md",
+        "skills/test-driven-development/SKILL.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "define"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning",
+        "documentation"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 20,
+      "positiveTriggers": [
+        "requirements specification",
+        "significant change"
+      ],
+      "negativeTriggers": [
+        "small bounded change with clear requirements"
+      ]
+    },
+    {
+      "id": "test-driven-development",
+      "name": "test-driven-development",
+      "description": "Drives development with tests.",
+      "path": "skills/test-driven-development/SKILL.md",
+      "bytes": 14976,
+      "sha256": "6c60e193d77a6c52eb3d9a7ca774f1801b9f798ec34f075720e0425a8094f50e",
+      "supportFiles": [
+        "references/testing-patterns.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "build"
+      ],
+      "taskKinds": [
+        "implementation",
+        "refactor",
+        "test",
+        "debug"
+      ],
+      "roles": [
+        "subtask"
+      ],
+      "requiredCapabilities": [],
+      "priority": 40,
+      "positiveTriggers": [
+        "behavior change",
+        "bug fix"
+      ],
+      "negativeTriggers": [
+        "documentation-only change"
+      ]
+    },
+    {
+      "id": "using-agent-skills",
+      "name": "using-agent-skills",
+      "description": "Discovers and invokes agent skills.",
+      "path": "skills/using-agent-skills/SKILL.md",
+      "bytes": 10337,
+      "sha256": "a5bf05293cfb67af9c5e21e14023d723d2ac8ca42912cef4cee29fbb07e67d64",
+      "supportFiles": [
+        "references/definition-of-done.md"
+      ],
+      "developmentOnly": true,
+      "phases": [
+        "meta"
+      ],
+      "taskKinds": [
+        "architecture",
+        "planning",
+        "api",
+        "ui",
+        "implementation",
+        "refactor",
+        "migration",
+        "test",
+        "debug",
+        "review",
+        "security",
+        "performance",
+        "documentation",
+        "ci",
+        "observability",
+        "git",
+        "release"
+      ],
+      "roles": [
+        "main"
+      ],
+      "requiredCapabilities": [],
+      "priority": 10,
+      "positiveTriggers": [
+        "lifecycle phase selection",
+        "skill discovery"
+      ],
+      "negativeTriggers": [
+        "non-development task"
+      ]
+    }
+  ]
+}

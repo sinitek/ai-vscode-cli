@@ -239,6 +239,9 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function applyTraceSegment(data) {
+        if (Array.isArray(data.taskListItems)) {
+          applyExternalTaskListUpdate(data.taskListItems, data.tabId);
+        }
         const messageId = typeof data.id === "string" && data.id ? data.id : "";
         const existingIndex = findExistingMessageIndexById(messageId);
         if (existingIndex !== -1) {
@@ -677,6 +680,37 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return hash % 4;
       }
 
+      function getLocalizedToolTitle(toolName) {
+        const rawName = String(toolName || "").trim();
+        if (!rawName) {
+          return t("traceToolFallback");
+        }
+        const normalizedName = rawName.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const titleKeys = {
+          read: "traceToolReadFile",
+          glob: "traceToolFindFiles",
+          grep: "traceToolSearchText",
+          search: "traceToolSearchText",
+          bash: "traceExec",
+          shell: "traceExec",
+          applypatch: "traceApplyPatch",
+          todowrite: "traceToolUpdateTaskList",
+          webfetch: "traceToolFetchWebPage",
+          websearch: "traceWebSearch",
+          write: "traceToolWriteFile",
+          edit: "traceToolEditFile",
+          multiedit: "traceToolEditFile",
+          task: "traceToolRunTask",
+          taskcreate: "traceToolCreateTask",
+          taskupdate: "traceToolUpdateTask",
+          tasklist: "traceToolTaskList",
+          taskget: "traceToolViewTask",
+          taskstop: "traceToolStopTask",
+        };
+        const titleKey = titleKeys[normalizedName];
+        return titleKey ? t(titleKey) : rawName;
+      }
+
       function getTraceTypeDefinition(line) {
         const trimmed = line.trim();
         const toolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\\s*(.+)?$/i);
@@ -685,7 +719,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           const bucket = getToolStyleBucket(toolName);
           return {
             type: "tool-use-" + bucket,
-            title: toolName || t("traceToolFallback"),
+            title: getLocalizedToolTitle(toolName),
             match: /^(?:tool|调用工具)[:：]?\\s*(.+)?$/i,
             detail: () => "",
           };

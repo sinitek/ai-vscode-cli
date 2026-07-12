@@ -22,12 +22,16 @@ const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
 const LOBSTER_DEFAULT_MAX_ROUNDS = 20;
 const LOBSTER_MIN_MAX_ROUNDS = 1;
 const LOBSTER_MAX_MAX_ROUNDS = 100;
+const LOBSTER_MAX_SKILL_IDS_PER_SUBTASK = 3;
+const LOBSTER_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
+const LOBSTER_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const lobsterTaskStoreFileCache = new Map<string, string>();
 
 export type LobsterTaskRole = "main" | "subtask";
 export type LobsterTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
 export type LobsterRunStatus = "end" | "error" | "stopped";
+export type LobsterTaskKind = "development" | "non_development";
 
 export type LobsterSubtaskRecord = {
   id: string;
@@ -35,6 +39,8 @@ export type LobsterSubtaskRecord = {
   prompt?: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  skillIds?: string[];
+  skillGuidance?: string;
   status: "pending" | "running" | "completed" | "skipped" | "blocked";
   summary?: string;
   communicationFile?: string;
@@ -66,6 +72,7 @@ export type LobsterSubtaskDecision = {
   prompt: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  skillIds?: string[];
 };
 
 export type LobsterMainDecision = {
@@ -97,6 +104,7 @@ export type LobsterTaskRecord = {
   workspaceKey: string;
   taskStoreFile: string;
   rootPrompt: string;
+  taskKind?: LobsterTaskKind;
   executionMode?: LobsterExecutionMode;
   status: LobsterTaskStatus;
   createdAt: number;
@@ -306,6 +314,16 @@ export function prepareLobsterSubtaskCommunicationFile(
         ``,
         `## 执行报告`,
         `请在本节写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。`,
+        ``,
+        `## 待主任务确认`,
+        `- 当前状态：无`,
+        `- 待确认问题：无`,
+        `- 已知事实：无`,
+        `- 影响/阻塞步骤：无`,
+        `- 可选方案：无`,
+        `- 推荐方案：无`,
+        ``,
+        `如出现必须由主任务或用户确认后才能继续的问题，请立即停止实施，把当前状态改为“待确认”并补全本节；不要在 assistant 回复中提问或复述问题。`,
       ].join("\n"), "utf8");
     }
   } catch (error) {
@@ -493,12 +511,14 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
       .filter(Boolean)
     : [];
   const debateRounds = normalizeLobsterDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
+  const taskKind = normalizeLobsterTaskKind((raw as { taskKind?: unknown }).taskKind);
   return {
     id: raw.id,
     cli,
     workspaceKey,
     taskStoreFile,
     rootPrompt: raw.rootPrompt,
+    ...(taskKind ? { taskKind } : {}),
     executionMode: normalizeLobsterExecutionMode((raw as { executionMode?: unknown }).executionMode),
     status,
     createdAt,
@@ -557,17 +577,56 @@ function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | 
   const status = raw.status === "pending" || raw.status === "running" || raw.status === "completed" || raw.status === "skipped" || raw.status === "blocked"
     ? raw.status
     : "pending";
+  const skillIds = normalizeLobsterSkillIds((raw as { skillIds?: unknown }).skillIds);
+  const skillGuidance = normalizeLobsterSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
   return {
     id: raw.id,
     title: raw.title,
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
     writeFiles: normalizeLobsterWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
+    ...(skillIds && skillGuidance ? { skillIds, skillGuidance } : {}),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
   };
+}
+
+function normalizeLobsterTaskKind(value: unknown): LobsterTaskKind | undefined {
+  return value === "development" || value === "non_development" ? value : undefined;
+}
+
+function normalizeLobsterSkillIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const skillIds: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const skillId = item.trim();
+    if (!skillId || !LOBSTER_SKILL_ID_PATTERN.test(skillId) || skillIds.includes(skillId)) {
+      continue;
+    }
+    skillIds.push(skillId);
+    if (skillIds.length >= LOBSTER_MAX_SKILL_IDS_PER_SUBTASK) {
+      break;
+    }
+  }
+  return skillIds.length > 0 ? skillIds : undefined;
+}
+
+function normalizeLobsterSkillGuidance(value: unknown): string | undefined {
+  if (
+    typeof value !== "string"
+    || !value.trim()
+    || value.length > LOBSTER_MAX_SKILL_GUIDANCE_LENGTH
+  ) {
+    return undefined;
+  }
+  return value;
 }
 
 function normalizeLobsterRoundRecord(record: unknown): LobsterRoundRecord | null {

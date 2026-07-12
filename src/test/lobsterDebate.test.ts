@@ -37,6 +37,7 @@ import {
   type LobsterDebateParticipantRecord,
   type LobsterDebateConsensusRecord,
 } from "../lobsterDebate";
+import type { LobsterMainDecision } from "../lobsterTaskStore";
 import { getStrings } from "../webview/lobsterDebatePanelRenderer";
 
 test("normalizes lobster execution mode with legacy-compatible default", () => {
@@ -745,6 +746,40 @@ test("allows proceeding when consensus is reached and all participants agree", (
   assert.deepEqual(validation.blockingParticipantIds, []);
   assert.deepEqual(validation.blockingDisagreementIds, []);
   assert.deepEqual(validation.reasons, []);
+  assert.equal(canProceedWithLobsterDebateConsensus(consensus), true);
+});
+
+test("accepts legacy debate continue decisions whose subtasks omit skillIds", () => {
+  const legacyDecision: LobsterMainDecision = {
+    status: "continue",
+    estimatedRemainingRounds: 1,
+    acceptance: {
+      passed: false,
+      summary: "One implementation step remains.",
+      checks: [{ name: "implementation", passed: false, detail: "Run the legacy subtask." }],
+    },
+    subtasks: [{
+      id: "legacy-subtask",
+      title: "Legacy subtask",
+      prompt: "Execute the existing red-blue decision contract.",
+      writeFiles: ["src/legacy.ts"],
+    }],
+  };
+  const consensus: LobsterDebateConsensusRecord = {
+    artifactFile: "/tmp/consensus.md",
+    reached: true,
+    summary: "The legacy decision remains executable.",
+    participantStances: [
+      { participantId: "blue_planner", stance: "agree" },
+      { participantId: "red_attacker", stance: "agree_with_reservations" },
+    ],
+    resolvedDisagreements: [],
+    openDisagreements: [],
+    decision: legacyDecision,
+  };
+
+  assert.equal(Object.prototype.hasOwnProperty.call(legacyDecision.subtasks?.[0] ?? {}, "skillIds"), false);
+  assert.equal(validateLobsterDebateConsensus(consensus).canProceed, true);
   assert.equal(canProceedWithLobsterDebateConsensus(consensus), true);
 });
 

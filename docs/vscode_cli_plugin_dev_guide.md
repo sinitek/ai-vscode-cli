@@ -3,9 +3,12 @@
 本文档是兼容入口。当前开发事实来源请阅读：
 
 - `.ch/docs/references/cli-runtime-reference.md`
+- `.ch/docs/references/authoritative-skills.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - `.ch/docs/runbooks/local-development.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+Loop 开发级 Workflow Skills 的运行字段与降级、内置快照来源与许可、同步测试与 VSIX 核验，分别以以上 CLI 运行时参考、权威 Skills 文档和本地开发 runbook 为准；本兼容入口不复制完整规则。
 
 新增或修改用户可见能力时，需要同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。长期记忆能力的设计口径见 `docs/long_term_memory_design.md`。
 

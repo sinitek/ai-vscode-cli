@@ -8,6 +8,7 @@ import {
   LOBSTER_MAIN_AI_FAILURE_LIMIT,
   normalizeLobsterMainAiFailureCount,
 } from "../lobsterMainFailure";
+import { buildLobsterSkillCatalog } from "../lobsterSkillGuidance";
 
 test("normalizes invalid lobster main AI failure counts to zero", () => {
   assert.equal(normalizeLobsterMainAiFailureCount(undefined), 0);
@@ -45,4 +46,15 @@ test("resets lobster main AI failure state after a successful main decision", ()
     mainAiLastFailureAt: undefined,
     mainAiLastFailureMessage: undefined,
   });
+});
+
+test("keeps an unavailable Skill catalog on the safe-degrade path instead of counting a main AI failure", () => {
+  const catalog = buildLobsterSkillCatalog(null, "development");
+
+  assert.deepEqual(catalog, {
+    section: undefined,
+    candidateIds: [],
+    diagnostics: [],
+  });
+  assert.equal(isLobsterMainAiFailureLimitReached(buildResetLobsterMainAiFailureState()), false);
 });

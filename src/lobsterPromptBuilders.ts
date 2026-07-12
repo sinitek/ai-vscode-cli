@@ -68,6 +68,14 @@ function normalizeLobsterContinuePromptForPrompt(value: unknown): string | null 
   return trimmed ? trimmed : null;
 }
 
+function normalizeLobsterCompactSkillCatalogSection(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 function formatLobsterEstimatedRemainingRounds(value?: number): string | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -88,9 +96,13 @@ export function buildLobsterDebateBriefMarkdown(
   round: number,
   paths: LobsterDebatePaths,
   continuePrompt?: string,
+  compactSkillCatalogSection?: string,
 ): string {
   const communication = getLobsterCommunicationPaths(task.id);
   const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
+  const normalizedCompactSkillCatalogSection = task.taskKind === "development"
+    ? normalizeLobsterCompactSkillCatalogSection(compactSkillCatalogSection)
+    : null;
   const lines: string[] = [
     "# Loop 红蓝对抗简报",
     "",
@@ -124,6 +136,10 @@ export function buildLobsterDebateBriefMarkdown(
     "## 子任务概要",
     ...buildLobsterDebateSubtaskSummaryLines(task),
     "",
+    ...(normalizedCompactSkillCatalogSection ? [
+      normalizedCompactSkillCatalogSection,
+      "",
+    ] : []),
     "## 红蓝对抗约束",
     `- 新辩论参与者只能属于蓝队（role=${LOBSTER_DEBATE_BLUE_TEAM_ROLE}）或红队（role=${LOBSTER_DEBATE_RED_TEAM_ROLE}）。`,
     "- 蓝队负责提出可执行方案、补足验收口径、回应红队攻击并修正计划。",
@@ -606,8 +622,14 @@ export function buildLobsterDebateConsensusModelPrompt(
   round: number,
   paths: LobsterDebatePaths,
   participants: LobsterDebateParticipantRecord[],
+  compactSkillCatalogSection?: string,
 ): string {
   const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
+  const skillSelectionEnabled = task.taskKind === "development"
+    && normalizeLobsterCompactSkillCatalogSection(compactSkillCatalogSection) !== null;
+  const continueDecisionExample = skillSelectionEnabled
+    ? '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围","skillIds":["test-driven-development"]}]}'
+    : '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}';
   return [
     "你正在执行 VS Code 插件的 Loop 模式红蓝对抗共识汇总。",
     "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖红队 artifact 中的阻塞性异议，也不得忽略蓝队已给出的修正方案。",
@@ -631,6 +653,14 @@ export function buildLobsterDebateConsensusModelPrompt(
     "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
     "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
     "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
+    ...(skillSelectionEnabled ? [
+      "",
+      "开发 Skill 选择合约：",
+      "- compact Skill catalog 位于 brief.md；每个 subtask 在现有字段之外唯一允许新增的 Skill 字段是可选 `skillIds?: string[]`。",
+      "- skillIds 只能包含 catalog 中列出的稳定 id，每个 subtask 最多 3 个；没有合法匹配时必须省略 skillIds，不得编造、替换或扩展 ID。",
+      "- 选择必须遵守 catalog 的 phases、taskKinds、roles 和 requiredCapabilities 元数据；roles 不包含 subtask 的 main-only Skill 不得选择，interactive/main-only Skill 不得选择，宿主未显式提供所需 capability 时不得选择。",
+      "- 不得返回或复制 Skill path、hash、Markdown 正文、skillGuidance、CLI、model、command；也不得把这些内容塞入 prompt、writeFiles、conflictGroup 或其他字段。",
+    ] : []),
     "",
     "cross-review.md 内容要求：",
     "- 按群聊时间线总结蓝队方案、红队攻击和互相回应。",
@@ -643,7 +673,7 @@ export function buildLobsterDebateConsensusModelPrompt(
     "",
     "decision.json 必须是纯 JSON 对象，符合现有 LobsterMainDecision 协议：",
     '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-    '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
+    continueDecisionExample,
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
     "status=completed 时 answerConclusion 必须直接回答用户原始问题，finalSummary 用于整体任务完成说明。",
     "",

@@ -148,7 +148,15 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
           const lobsterMetaChanged = updateLobsterMetaForTabFromMessages(tabId, runtimeState.messages);
-          resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
+          const taskListState = ensureRuntimeTaskList(runtimeState);
+          const shouldPreserveExternalTaskList = Boolean(
+            taskListState
+            && taskListState.source === "external"
+            && isConversationTabBusy(tabId)
+          );
+          if (!shouldPreserveExternalTaskList) {
+            resetTaskListState(taskListState, 0);
+          }
           hydrateRunArtifactsFromMessages(tabId, runtimeState.messages);
           if (isRuntimeStateForActiveTab(tabId)) {
             state.messages = runtimeState.messages;

@@ -233,16 +233,20 @@
 - OpenCode `code!=0` 且 stderr 为空时，仍要解析 stdout JSON `error` 事件；PackyAPI 403 这类错误气泡应包含 `APIError`、`403`、`access_denied` 或 provider message，不能只显示 `CLI 退出码: 1`。
 - OpenCode one-shot 只在启动后完全没有 assistant / error / status / progress 活动的 60 秒内按空输出超时进入 hidden retry；收到首个有效事件后必须解除外层 watchdog。重试耗尽时要追加可见 system 错误气泡并写入会话存档，不能只停在运行态或只留下 trace。
 - OpenCode `--format json` 的 `step_start`、`tool_use`、reasoning 和 `text` 事件主要出现在 stdout；可见气泡解析必须消费 stdout JSONL，不能只依赖 stderr trace，否则用户会只看到最终答复，看不到思考/工具/中间 AI 气泡。
+- 普通 one-shot 与并行/Loop 子任务必须走同一套 visible-event 语义。`rawStreamDelta` 只更新原始流诊断面，不能替代 `appendMessage` / `assistantDelta` / `traceSegment`；否则并行子任务会持续显示流记录，却在进程退出前没有任何对话气泡。退出时还必须按本轮已展示 assistant 文本去重完整 final text。
 
 ### 验证方式
 - 对占位配置运行 `validateOpenCodeConfigForRun`，应返回 placeholder / missing env 等阻断问题。
 - 对修正后的 PackyAPI `/v1` 配置运行 `OPENCODE_CONFIG=... opencode run --format json 'Reply with exactly: OK_OPENCODE_CONFIG_TEST'`，应返回 assistant 文本，或返回明确 provider/API 错误；不得再出现 `code=0` 且 tokens=0 的空 assistant。
 - 对 PackyAPI 返回非零退出的场景，stdout JSON `error` 中的 provider/API 详情应进入 AI 对话错误气泡；无 JSON error 时才允许回退通用退出码。
 - 对 OpenCode 启动后无 stdout/stderr 的场景，最终错误气泡应包含 OpenCode 空输出/超时诊断；hidden retry 最终失败后仍应有可见 system 错误消息。
+- 回放并行 OpenCode 的 `step_start -> tool_use -> text` JSONL 时，应在对应 `tabId` 依次产生 thinking、trace、assistant 消息；完整 final text 与已流式展示文本相同时不得再追加重复 assistant 气泡。
 
 ### 关联资料
 - `src/config/configService.ts`
 - `src/cli/commandRunner.ts`
+- `src/openCodeTabStream.ts`
+- `src/test/openCodeTabStream.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
@@ -587,6 +591,264 @@
 - `src/sessionStore.ts`
 - `src/test/opencodeCommandRunner.test.ts`
 - `src/test/codexReasoningContent.test.ts`
+
+## OpenCode 最终回复不能只靠 `[final_answer]` 文本标记识别
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：OpenCode `run --format json`、严格最终答复策略、one-shot / 并行 conversation tab
+
+### 现象
+- OpenCode 已返回非空助手答复并正常退出，界面仍追加“正文未包含 `[final_answer]`，严格最终答复判定拒绝”的 system 错误和任务失败气泡。
+- 真实会话 `ses_0aaa0f435ffenK9Zu7ID3cpsL3` 的最终助手消息是在等待用户选择项目序号；OpenCode 导出显示该消息 `finish="stop"`，对应 parts 同时包含非空 `text` 与 `step-finish reason="stop"`。
+
+### 触发条件
+- 全局 `finalAnswerPolicy=strict_final_answer`。
+- OpenCode 返回面向用户的最终回复，但没有遵循插件追加的 `[final_answer]` 文本约定。
+- 运行时只检查正文标记，没有消费 OpenCode 自带的结构化终态。
+
+### 根因
+- 严格策略设计允许“结构化 final 或文本标记”，但实现只接入了 Codex `phase="final_answer"`，遗漏了 OpenCode JSONL 的 `step_finish.reason="stop"`。
+- 单独看到 `text` 不能证明它是最终回复，因为 OpenCode 在 `tool-calls` 阶段也可能输出过程文本；单独看到 `stop` 也不能证明存在可见答案。
+
+### 长期规避
+- 解析 OpenCode JSONL 时按 `messageID` 关联非 thinking assistant `text` 与 `step_finish.reason="stop"`，二者属于同一消息才视为结构化最终答复。
+- `step_finish.reason="tool-calls"`、跨 message ID 的正文与终态、无正文 `stop`、thinking-only 文本继续拒绝，不得根据问号或“请回复”等自然语言猜测终态。
+- one-shot 与并行 tab 的成功退出路径必须传入同一个结构化终态信号，避免两条链路行为漂移。
+
+### 验证方式
+- 构造同 message ID 的 `text` + `step_finish reason="stop"`，确认严格策略成功收口。
+- 构造 `tool-calls`、跨 message ID 和无正文 `stop`，确认均不产生结构化最终答复信号。
+- 运行 `npm run build && node --test dist/test/opencodeCommandRunner.test.js dist/test/finalConclusion.test.js`。
+
+### 关联资料
+- `src/cli/commandRunner.ts`
+- `src/extension.ts`
+- `src/test/opencodeCommandRunner.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+
+## Loop 子任务不能在用户可见回复中直接提问
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：Loop 主从执行、子任务沟通文件、独立子任务 conversation tab
+
+### 现象
+- 子任务遇到需求不明、授权不足或依赖冲突时停止推进，却直接在 assistant 气泡里向用户提问。
+- 主任务虽然会读取子任务沟通文件，但文件没有固定的待确认结构，难以稳定区分普通遗留问题与必须确认的阻塞事项。
+
+### 触发条件
+- 子任务提示词只要求结束前写执行报告，没有明确规定“有疑问立即结束”和“不得向用户提问”。
+- 子任务运行在独立可见标签页，assistant 输出会正常形成气泡，因此任何直接提问都会绕过主任务统一复核。
+
+### 根因
+- 主从协议缺少疑问转交契约：没有定义触发边界、沟通文件字段、任务记录收口方式和唯一允许的最终回复。
+- 现有 `end -> completed -> 唤醒主任务` 已能完成交接，问题不在调度状态，而在模型职责约束不足。
+
+### 长期规避
+- 仅当问题必须由主任务或用户确认后才能安全继续时，子任务立即停止；能依据现有事实和仓库规则判断的问题仍应自行处理。
+- 待确认内容只写入沟通文件的 `## 待主任务确认`，至少包含问题、已知事实、影响/阻塞步骤、选项和推荐方案。
+- 子任务按 completed 正常收口并使用固定中性 assistant 文本，不提问、不复述问题、不等待回复；主任务读取后自行决策，确需人工确认时走 blocked。
+- 不使用问号、疑问词等启发式隐藏或替换流式消息，避免误伤正常技术说明和已经可见的子任务 assistant 气泡。
+
+### 验证方式
+- 断言子任务 model prompt 同时包含触发条件、沟通章节、任务记录更新、禁止提问和固定收口文本。
+- 断言主任务 model prompt 必须处理待确认章节，并在确需人工确认时返回 blocked。
+- 新建子任务沟通文件，确认默认包含状态为“无”的结构化 `## 待主任务确认` 章节。
+- 运行 `npm run build && node --test dist/test/lobsterSkillIntegration.test.js dist/test/lobsterTaskStore.test.js`。
+
+### 关联资料
+- `src/extension.ts`
+- `src/lobsterTaskStore.ts`
+- `src/test/lobsterSkillIntegration.test.ts`
+- `src/test/lobsterTaskStore.test.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+## OpenCode 的 spawn cwd 正确但会话仍可能落到 `/`
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：OpenCode 1.17.18、VS Code extension host、`opencode run` one-shot / 并行 / Loop 路径
+
+### 现象
+- 插件 `cli-startup` 日志中的 cwd 是目标项目，但 OpenCode export 与数据库中的 session `directory`、assistant `path.cwd/root` 都是 `/`，`projectID` 为 `global`。
+- 模型从文件系统根目录搜索，可能找到多个包含相同相对目录的仓库，并要求用户重新选择当前项目。
+
+### 触发条件
+- VS Code extension host 的环境变量继承了 `PWD=/`。
+- child process 只通过 spawn option 设置正确 cwd，但继续原样继承旧 `PWD`。
+- 使用 OpenCode `run` 创建或续接任务；普通 `debug info` 不一定暴露该问题。
+
+### 根因
+- OpenCode `run` 先按真实进程 cwd 创建 CLI 实例，随后其内部请求还会读取 `PWD` 解析工作目录。
+- 当真实 cwd 是项目、`PWD` 却是 `/` 时，同一 OpenCode 进程会先记录项目实例，再创建一个根目录实例；新会话最终绑定到 `/`。
+- 这不是 child process 忽略 spawn cwd，也不是插件 workspace key 本身丢失，因此只检查插件 cwd 日志会得到误导性结论。
+
+### 长期规避
+- 所有带 cwd 的 CLI child process 环境都应把 `PWD` 最后收敛为同一路径，调用方 env override 和 runtime overlay 不得再次覆盖它。
+- OpenCode 并行启动日志必须包含 cwd，排查时同时核对插件日志、OpenCode `creating instance/fromDirectory` 日志和 session export 的 `directory/path`。
+- 不通过直接修改 OpenCode 数据库修复历史会话；保证后续实际进程 cwd/PWD 正确，必要时新建底层会话。
+
+### 验证方式
+- 使用 mock child 同时记录 `process.cwd()` 与 `process.env.PWD`，传入错误 `PWD=/` 后断言两者仍等于目标 workspace cwd。
+- 可在隔离 HOME/XDG 目录中用 OpenCode 1.17.18 和无效模型复现：stale `PWD=/` 会出现第二个 `directory=/` 实例，同步 `PWD` 后只创建目标项目实例。
+- 运行 `npm run build && node --test dist/test/opencodeCommandRunner.test.js`。
+
+### 关联资料
+- `src/cli/commandRunner.ts`
+- `src/extension.ts`
+- `src/test/opencodeCommandRunner.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+- `.ch/docs/exec-plans/completed/2026-07-12-opencode-workspace-cwd.md`
+
+## Loop Workflow Skill 根分类不能读取长期记忆拼接后的 `modelPrompt`
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：Loop 新任务分类、排队 prompt、非开发任务与旧任务恢复
+
+### 现象
+- 翻译、摘要或意图不明的任务，可能仅因长期记忆或补充上下文里的开发词汇被误判为 development，继而出现 Skill 候选目录和正文注入。
+- Skill pack 缺失、损坏或没有合法 ID 时，如果把可选能力失败当成主任务失败，会错误进入 `needs-review`，中断原本可以直接安排的 Loop。
+
+### 触发条件
+- 根分类读取已经拼入长期记忆、系统补充或模型生成文本的 `modelPrompt`，或根据旧记录重新猜测任务类型。
+- `non_development`、unknown、legacy 或 Skill 校验失败路径仍尝试加载 pack、追加 catalog，或累计主任务 AI 失败。
+
+### 根因
+- `modelPrompt` 不是用户本轮原始意图，可能包含跨轮记忆、自动补充文本或模型输出；把它作为分类证据会让不可信派生内容反向开启高级能力。
+- Workflow Skill 是 development Loop 的可选增强，不是 Loop 调度成功的前置条件。
+
+### 长期规避
+- 根任务只使用原始 `displayPrompt`、原始 `contextTags` 和宿主确认的 workspace / active-editor 路径分类；不得读取 `modelPrompt`、Skill 正文或模型输出。
+- 只持久化明确的 `development` / `non_development`；unknown 保持缺字段，legacy 不做猜测迁移。
+- `non_development`、unknown 和 legacy 不加载 pack、不追加 catalog 或 guidance，继续按原 Loop 直接安排。
+- pack 或门禁校验失败只降级为“无 Skill”，不得仅因此进入 `needs-review`、累计主任务 AI 失败或改变 CLI、模型、并发与重试语义。
+
+### 验证方式
+- 用“原始 display 为翻译、modelPrompt 含实现 API”和“原始意图不明、modelPrompt 含实现测试”样例，确认分别保持 `non_development` 与 unknown。
+- 断言 non-development / legacy runtime context 不调用 loader；资源缺失时主 prompt 与无 catalog 基线一致，且不会达到主任务 AI 失败上限。
+
+### 关联资料
+- `src/lobsterSkillGuidance.ts`
+- `src/extension.ts`
+- `src/test/loopPromptQueue.test.ts`
+- `src/test/lobsterSkillIntegration.test.ts`
+- `src/test/lobsterMainFailure.test.ts`
+
+## Loop Workflow Skill 选择不能让模型自报能力、路径或正文
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：Skill manifest、主模型决策、宿主中央校验、子任务 prompt 与诊断日志
+
+### 现象
+- 如果接受模型返回的 path、`skillGuidance` 或 capability，模型可以绕过 manifest、角色和运行时能力门禁，注入未批准 Markdown 或声称拥有不存在的工具。
+- 如果自动展开 `supportFiles`，参考资料、其他 Skill 入口甚至不应展示的正文会被递归塞入子任务上下文；如果复用 display/log/Webview 通道，还会扩大正文暴露面。
+
+### 触发条件
+- 主模型决策字段超过 `skillIds?: string[]`，或宿主直接信任模型返回的路径、hash、正文、CLI、model、command、capability。
+- loader 从 cwd、用户 Home、workspace 同名目录或外部源回退读取，或把 `supportFiles` 当作自动注入清单。
+- 将已校验 Skill 正文拼入 `displayPrompt`、诊断日志或 Webview payload / HTML。
+
+### 根因
+- 模型输出和 Markdown 都是不可信输入；可信路径、文件完整性、角色和 capability 只能由扩展宿主与内置 manifest 确认。
+- `supportFiles` 当前只用于静态快照完整性与依赖清单，不等价于授权扩展上下文预算。
+
+### 长期规避
+- 主模型只接收有界 compact metadata，并且只允许返回稳定 Skill ID；归一化后再由中央宿主按本轮 allowlist、phase、task kind、role、负向 trigger、预算和 capability 校验。
+- `requiredCapabilities` 必须来自宿主可信能力集；当前普通 Loop 子任务显式传空集合，模型或 Skill Markdown 自报均无效。
+- 运行时只从 `extensionUri.fsPath/media/loop-workflow-skills` 加载并执行 containment、symlink、hash、bytes、UTF-8 与预算校验；禁止回退 Home、workspace、cwd 或外部源。
+- 只清洗并注入所选 Skill 的入口 `SKILL.md` 正文；`supportFiles` 必须通过完整性校验，但不得自动递归注入。
+- 正文只进入 Store 持久化快照和子任务 `modelPrompt`；`displayPrompt`、诊断日志与 Webview 不含正文，日志只记录诊断 code 及可选 `skillId/resourcePath`。
+
+### 验证方式
+- 让模型伪造 `skillGuidance`、path、command、CLI、model 和非法 ID，确认归一化只保留字符串 ID，Store 只写宿主生成的快照。
+- 分别以空 capability 和宿主声明 `chrome-devtools-mcp` 校验浏览器 Skill，确认只有后者通过。
+- 在 `supportFiles` 放入唯一标记，确认 loader 会校验该文件，但最终 guidance、display prompt 和 Webview 源码均不含该标记或正文 delimiter。
+
+### 关联资料
+- `media/loop-workflow-skills/manifest.json`
+- `src/lobsterSkillGuidance.ts`
+- `src/extension.ts`
+- `src/test/lobsterSkillGuidance.test.ts`
+- `src/test/lobsterSkillIntegration.test.ts`
+
+## Loop Workflow Skill 的红蓝共识与自动重试不能绕过 runner / Store 快照
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：普通主从、红蓝首轮 consensus、中央 apply、子任务自动重试
+
+### 现象
+- 只修改普通主任务 prompt builder 时，红蓝 brief 可能展示 Skill catalog，但真正生成 decision JSON 的 consensus 会话没有同一份 ID-only 合约。
+- 自动重试如果只保存 Skill ID 并重新读取 pack，插件升级、资源变化或文件删除会让同一子任务前后收到不同执行要求。
+
+### 触发条件
+- 把红蓝首轮共识误认为普通主任务 prompt 的调用方，遗漏 `src/lobsterDebateRunner.ts` 内部直接构造 consensus model prompt 的真实 seam。
+- retry 再次加载 pack、重新选择 ID 或重新生成 guidance，而不是使用任务 Store 中已经持久化的 `skillGuidance`。
+
+### 根因
+- 红蓝首轮 brief 与 consensus 经过不同调用链；后者由 runner 直接调用 consensus builder。
+- ID 只能定位某一版资源，不能冻结已执行子任务的具体正文；可重复重试需要保存宿主确认后的内容快照。
+
+### 长期规避
+- 每个主任务轮次只创建一次 Skill runtime context；红蓝 brief 与 runner consensus 必须透传同一个 `compactCatalogSection`，普通主从和红蓝 decision 再共同经过 `applyLobsterMainDecisionForRun`。
+- 中央 apply 在写 Store 前生成稳定 `skillIds + skillGuidance` 快照；模型原始正文没有持久化路径。
+- 子任务正文固定注入到“子任务职责”之后、“当前子任务”之前；首跑和自动 retry 都只读取已持久化 `subtask.skillGuidance`，不得重新加载或重新选择。
+- Store 没有可用快照时保持无正文的原 Loop，不从已变化的 pack、外部目录或历史模型输出补造 guidance。
+
+### 验证方式
+- 断言红蓝 brief 与 runner consensus 使用同一 catalog，且 consensus prompt 开放的唯一新增字段仍是 `skillIds?: string[]`。
+- 先持久化宿主 guidance，再删除扩展 pack 副本，确认首跑与 retry model prompt 仍逐字包含同一快照一次，display prompt 始终不含正文。
+
+### 关联资料
+- `src/lobsterDebateRunner.ts`
+- `src/lobsterPromptBuilders.ts`
+- `src/extension.ts`
+- `src/lobsterTaskStore.ts`
+- `src/test/lobsterPromptBuilders.test.ts`
+- `src/test/lobsterSkillIntegration.test.ts`
+- `src/test/lobsterTaskStore.test.ts`
+
+## OpenCode 已解析 `todowrite` 但任务浮层仍可能被消息刷新覆盖
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：OpenCode one-shot、并行 tab、Loop 子任务、Webview 重载与会话消息刷新
+
+### 现象
+- `~/.sinitek_cli/logs/sinitek-cli.opencode.*.log` 中能看到完整 `tool_use/todowrite` 和 `state.input.todos`，工具 trace 也可能已经出现，但任务列表浮层没有显示或在切换/刷新后消失。
+- 只验证 OpenCode JSONL 解析器会得到“任务已识别”的假阳性，不能证明对应 tab 的 Webview 浮层真正收到并保留了列表。
+
+### 触发条件
+- 任务列表和工具 trace 使用两条独立 Webview 消息，专用任务消息丢失、Webview 重建或 tab 刷新时没有回放来源。
+- `setMessagesForTab` 在运行中无条件重置 task-list runtime state，而 OpenCode 的 `todowrite` 更新通常比 Codex 稀疏，清空后可能长时间没有下一条事件补回。
+
+### 根因
+- 任务解析、tab 定向消息和浮层状态原先只有分层单测，没有覆盖“真实工具事件 -> trace/message -> Webview task-list DOM”的完整可见链路。
+- external 任务列表被当作可由历史 assistant 文本重新推导的自动列表处理，但 OpenCode 明细只存在于结构化工具事件，普通消息刷新无法重建。
+
+### 长期规避
+- 保留 `taskListUpdate` 主通道，同时让同一 `traceSegment` 携带 `taskListItems`，只要对应 tool trace 能送达，活动 tab 就能原子恢复浮层。
+- 扩展宿主按 tab 缓存仍在运行的最新 OpenCode 列表；panel state 重建后定向重放，运行结束时立即释放。
+- Webview 的 `setMessagesForTab` 仅在 tab 空闲或列表不是 external 来源时重置任务状态；`runStatus` 完成路径继续负责关闭浮层。
+- 记录 `opencode-task-list-forwarded` 调试日志，现场至少核对 `source`、`tabId`、`itemCount`、`completedCount`，不要只看原始 CLI 日志。
+
+### 验证方式
+- 使用真实 `part.state.input.todos` 形状确认 parser 同时产出 tool trace 与 `{ text, done }[]`。
+- 断言专用任务消息和 trace 元数据都调用同一 Webview 更新函数，并实际检查 panel display、details open、任务数量和完成状态。
+- 在 external 列表显示期间模拟运行中的 `setMessagesForTab`，确认列表保留；将 tab 切为空闲后再次刷新，确认列表按既有规则清空。
+- 执行 `node --test dist/test/openCodeTaskList.test.js dist/test/openCodeTabStream.test.js dist/test/openCodeTaskListOverlay.test.js dist/test/opencodeCommandRunner.test.js`。
+
+### 关联资料
+- `src/cli/openCodeTaskList.ts`
+- `src/openCodeTabStream.ts`
+- `src/extension.ts`
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/webview/viewContentScript/coreRuntimeState.ts`
+- `src/webview/viewContentScript/traceRendering.ts`
+- `src/test/openCodeTaskListOverlay.test.ts`
 
 ## 建议模板
 

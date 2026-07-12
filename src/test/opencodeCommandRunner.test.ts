@@ -292,6 +292,141 @@ test("cleans runtime overlays after cancellation", async () => {
   await runOverlayLifecycleTest(true);
 });
 
+test("synchronizes the child PWD environment with the requested cwd", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-runner-cwd-test-"));
+  const workspacePath = path.join(tempDir, "workspace");
+  const markerPath = path.join(tempDir, "cwd.json");
+  const commandPath = path.join(tempDir, "mock-opencode.js");
+  fs.mkdirSync(workspacePath, { recursive: true });
+  const workspaceDir = fs.realpathSync(workspacePath);
+  fs.writeFileSync(commandPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "fs.writeFileSync(process.env.TEST_CWD_MARKER, JSON.stringify({ cwd: process.cwd(), pwd: process.env.PWD }));",
+  ].join("\n"), { mode: 0o755 });
+
+  const vscode = require("vscode") as {
+    workspace: { getConfiguration: () => { get: <T>(key: string, fallback?: T) => T | undefined } };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => {
+      if (key === "commands.opencode") {
+        return commandPath as T;
+      }
+      if (key === "args.opencode") {
+        return [] as T;
+      }
+      return fallback;
+    },
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      runCliStream("opencode", "hello", {
+        onStdout: () => undefined,
+        onStderr: () => undefined,
+        onError: reject,
+        onExit: (code) => {
+          if (code === 0) {
+            resolve();
+            return;
+          }
+          reject(new Error(`mock OpenCode exited with code ${String(code)}`));
+        },
+      }, {
+        cwd: workspaceDir,
+        envOverrides: {
+          PWD: path.parse(workspaceDir).root,
+          TEST_CWD_MARKER: markerPath,
+        },
+      });
+    });
+
+    const childLocation = JSON.parse(fs.readFileSync(markerPath, "utf8")) as {
+      cwd?: string;
+      pwd?: string;
+    };
+    assert.deepEqual(childLocation, {
+      cwd: workspaceDir,
+      pwd: workspaceDir,
+    });
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("passes independent OpenCode role models and reasoning efforts to the child process", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-runner-profile-test-"));
+  const overlayPathMarker = path.join(tempDir, "overlay-path.txt");
+  const overlayContentCopy = path.join(tempDir, "overlay-content.json");
+  const commandPath = path.join(tempDir, "mock-opencode.js");
+  fs.writeFileSync(commandPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const configPath = process.env.OPENCODE_CONFIG || '';",
+    "fs.writeFileSync(process.env.TEST_OVERLAY_PATH_MARKER, configPath);",
+    "fs.copyFileSync(configPath, process.env.TEST_OVERLAY_CONTENT_COPY);",
+  ].join("\n"), { mode: 0o755 });
+
+  const vscode = require("vscode") as {
+    workspace: { getConfiguration: () => { get: <T>(key: string, fallback?: T) => T | undefined } };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => {
+      if (key === "commands.opencode") {
+        return commandPath as T;
+      }
+      if (key === "args.opencode") {
+        return [] as T;
+      }
+      return fallback;
+    },
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      runCliStream("opencode", "hello", {
+        onStdout: () => undefined,
+        onStderr: () => undefined,
+        onError: reject,
+        onExit: () => resolve(),
+      }, {
+        model: "myAPI/model",
+        openCodeSmallModel: "myAPI/gpt-5.5",
+        openCodeVariant: "max",
+        openCodeSmallVariant: "medium",
+        openCodeConfigContent: myApiConfig,
+        envOverrides: {
+          TEST_OVERLAY_PATH_MARKER: overlayPathMarker,
+          TEST_OVERLAY_CONTENT_COPY: overlayContentCopy,
+        },
+      });
+    });
+
+    const overlayPath = fs.readFileSync(overlayPathMarker, "utf8");
+    const overlay = JSON.parse(fs.readFileSync(overlayContentCopy, "utf8")) as {
+      model?: string;
+      small_model?: string;
+      provider?: {
+        myAPI?: {
+          models?: Record<string, { options?: { reasoningEffort?: string } }>;
+        };
+      };
+    };
+    assert.equal(overlay.model, "myAPI/model");
+    assert.equal(overlay.small_model, "myAPI/gpt-5.5");
+    assert.equal(overlay.provider?.myAPI?.models?.model?.options?.reasoningEffort, "max");
+    assert.equal(overlay.provider?.myAPI?.models?.["gpt-5.5"]?.options?.reasoningEffort, "medium");
+    assert.equal(fs.existsSync(overlayPath), false);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("extracts assistant text from OpenCode JSON events", () => {
   const stdout = [
     JSON.stringify({ type: "step_start", part: { type: "step-start" } }),
@@ -304,6 +439,91 @@ test("extracts assistant text from OpenCode JSON events", () => {
     finalText: "Hello world",
     errorText: null,
     statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+});
+
+test("accepts an OpenCode stop event as a structured final answer for the same text message", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      sessionID: "ses_final",
+      part: {
+        type: "text",
+        text: "Please choose project 1 or 2.",
+        messageID: "msg_final",
+      },
+    }),
+    JSON.stringify({
+      type: "step_finish",
+      sessionID: "ses_final",
+      part: {
+        type: "step-finish",
+        reason: "stop",
+        messageID: "msg_final",
+      },
+    }),
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "Please choose project 1 or 2.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: true,
+  });
+});
+
+test("does not combine OpenCode text and stop events from different messages", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      part: { type: "text", text: "Still working.", messageID: "msg_progress" },
+    }),
+    JSON.stringify({
+      type: "step_finish",
+      part: { type: "step-finish", reason: "stop", messageID: "msg_empty_final" },
+    }),
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "Still working.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+});
+
+test("does not treat OpenCode stop events without message ids as structured final answers", () => {
+  const stdout = [
+    JSON.stringify({ type: "text", part: { type: "text", text: "Unscoped reply." } }),
+    JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "stop" } }),
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "Unscoped reply.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+});
+
+test("does not treat OpenCode tool-call step finishes as structured final answers", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      part: { type: "text", text: "I will inspect the files.", messageID: "msg_tool" },
+    }),
+    JSON.stringify({
+      type: "step_finish",
+      part: { type: "step-finish", reason: "tool-calls", messageID: "msg_tool" },
+    }),
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "I will inspect the files.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -312,6 +532,7 @@ test("does not treat OpenCode status lines as assistant text", () => {
     finalText: null,
     errorText: null,
     statusText: "> build · claude-sonnet-5",
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -325,6 +546,7 @@ test("does not treat OpenCode JSON bookkeeping events as assistant text", () => 
     finalText: null,
     errorText: null,
     statusText: "> build · claude-sonnet-5",
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -333,6 +555,7 @@ test("keeps OpenCode stderr errors visible when no final text exists", () => {
     finalText: null,
     errorText: "provider failed",
     statusText: "> build · claude-sonnet-5",
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -351,6 +574,7 @@ test("keeps OpenCode JSON error events visible when no final text exists", () =>
     finalText: null,
     errorText: "访问被拒绝\naccess_denied",
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -373,6 +597,7 @@ test("keeps OpenCode UnknownError server ref visible", () => {
     finalText: null,
     errorText: "UnknownError\nUnexpected server error. Check server logs for details.\nerr_8e6c658e",
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 
   const message = buildOpenCodeRunFailureMessage(output, "CLI exit code: 1");
@@ -412,6 +637,7 @@ test("builds OpenCode final failure from empty stdout and stderr fallback", () =
     finalText: null,
     errorText: null,
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 
   const message = buildOpenCodeRunFailureMessage(output, "CLI exit code: 1");
@@ -534,6 +760,98 @@ test("formats OpenCode JSONL tool events for visible trace bubbles", () => {
   }]);
 });
 
+test("extracts OpenCode todowrite tasks while preserving the tool trace bubble", () => {
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
+    type: "tool_use",
+    sessionID: "ses_visible",
+    part: {
+      type: "tool",
+      tool: "todowrite",
+      state: {
+        status: "completed",
+        title: "3 todos",
+        input: {
+          todos: [
+            { content: "检查日志", status: "completed", priority: "high" },
+            { content: "实现解析", status: "in_progress", priority: "high" },
+            { content: "运行测试", status: "pending", priority: "high" },
+          ],
+        },
+      },
+    },
+  })), [{
+    kind: "tool-use",
+    content: "tool todowrite\nstatus: completed\n3 todos",
+    taskListItems: [
+      { text: "检查日志", done: true },
+      { text: "实现解析", done: false },
+      { text: "运行测试", done: false },
+    ],
+  }]);
+
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
+    type: "tool_use",
+    part: {
+      type: "tool",
+      tool: "todo_write",
+      state: { status: "completed", title: "0 todos", input: { todos: [] } },
+    },
+  })), [{
+    kind: "tool-use",
+    content: "tool todo_write\nstatus: completed\n0 todos",
+    taskListItems: [],
+  }]);
+});
+
+test("forwards parsed OpenCode visible events to the matching conversation tab", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const handlerStart = extensionSource.indexOf("function appendOpenCodeVisibleEvent");
+  const handlerEnd = extensionSource.indexOf("function appendSystemMessage", handlerStart);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  const handlerSource = extensionSource.slice(handlerStart, handlerEnd);
+
+  assert.match(handlerSource, /Array\.isArray\(event\.taskListItems\)/);
+  assert.match(handlerSource, /sendOpenCodeTaskListUpdate\(event\.taskListItems,[\s\S]*primary-stream/);
+  assert.match(handlerSource, /appendTraceMessage\(event\.content,[\s\S]*taskListItems: event\.taskListItems/);
+  assert.match(
+    extensionSource,
+    /consumeOpenCodeTabStreamChunk\([\s\S]*applyOpenCodeTabStreamActions\(streamResult\.actions\)/,
+  );
+  assert.match(
+    extensionSource,
+    /action\.type === "task-list-update"[\s\S]*sendOpenCodeTaskListUpdate\(action\.items,[\s\S]*tabId: target\.tabId/,
+  );
+  assert.match(
+    extensionSource,
+    /action\.type === "append-trace"[\s\S]*appendParallelTrace\(action\.content, action\.taskListItems\)/,
+  );
+  assert.match(
+    extensionSource,
+    /action\.type === "append-assistant-message"[\s\S]*appendMessage[\s\S]*tabId: target\.tabId/,
+  );
+  assert.match(
+    extensionSource,
+    /type: "assistantDelta"[\s\S]*tabId: target\.tabId/,
+  );
+  assert.match(
+    extensionSource,
+    /latestOpenCodeTaskListByTabId\.set\(tabId, normalizedItems\)[\s\S]*opencode-task-list-forwarded/,
+  );
+  assert.match(
+    extensionSource,
+    /function postPanelState\([\s\S]*viewProvider\?\.postState\(state\);[\s\S]*replayOpenCodeTaskLists\(\)/,
+  );
+});
+
+test("uses structured OpenCode final events in both successful completion paths", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const structuredFinalChecks = extensionSource.match(
+    /observedFinalAnswer:\s*openCodeOutput\.hasStructuredFinalAnswer/g,
+  ) ?? [];
+
+  assert.equal(structuredFinalChecks.length, 2);
+});
+
 test("formats OpenCode JSONL text and reasoning events for visible bubbles", () => {
   assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
     type: "text",
@@ -572,6 +890,7 @@ test("splits OpenCode thinking wrappers from mixed assistant text without showin
     finalText: "继续检查运行链路。",
     errorText: null,
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -608,6 +927,7 @@ test("deduplicates OpenCode JSON and stderr error text", () => {
     finalText: null,
     errorText: "APIError\n访问被拒绝\n403\naccess_denied",
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 });
 
@@ -616,5 +936,6 @@ test("falls back to plain stdout when OpenCode emits non-JSON text", () => {
     finalText: "plain final answer",
     errorText: null,
     statusText: null,
+    hasStructuredFinalAnswer: false,
   });
 });

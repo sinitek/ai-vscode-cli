@@ -249,23 +249,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             openConfigApplyErrorOverlay(data.error);
           }
           if (data.type === "taskListUpdate") {
-            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
-            const taskListState = getTaskListState(eventTabId);
-            if (!taskListState) {
-              return;
-            }
-            const normalized = normalizeTaskListItems(data.items);
-            if (normalized.length) {
-              setTaskListItems(taskListState, normalized);
-              taskListState.source = "external";
-            } else {
-              const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
-              const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
-              resetTaskListState(taskListState, startIndex);
-            }
-            if (isRuntimeStateForActiveTab(eventTabId)) {
-              renderTaskList(taskListState);
-            }
+            applyExternalTaskListUpdate(data.items, data.tabId);
           }
           if (data.type === "rulesContent") {
             if (data.error) {

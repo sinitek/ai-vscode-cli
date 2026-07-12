@@ -7,6 +7,7 @@ import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewConten
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../webview/viewContentScript/runStreamAndQueue";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
+import { classifyLobsterRootTask } from "../lobsterSkillGuidance";
 
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);
@@ -199,4 +200,24 @@ test("refreshes the panel task status whenever Loop orchestration exits", () => 
 
   assert.match(functionSource, /try\s*{[\s\S]*runLobsterPromptOrchestration\(input, options\)/);
   assert.match(functionSource, /finally\s*{[\s\S]*await postPanelState\(\)/);
+});
+
+test("classifies queued Loop work from original display/context data rather than an injected model prompt", () => {
+  const input = {
+    displayPrompt: "帮我处理一下",
+    contextTags: [],
+    workspacePaths: [],
+    modelPrompt: "实现、测试并发布一个 TypeScript 功能",
+  };
+
+  assert.equal(classifyLobsterRootTask(input), "unknown");
+  assert.equal(classifyLobsterRootTask({
+    ...input,
+    contextTags: ["file: src/extension.ts"],
+  }), "development");
+  assert.equal(classifyLobsterRootTask({
+    ...input,
+    displayPrompt: "翻译这篇文章",
+    contextTags: ["file: src/extension.ts"],
+  }), "non_development");
 });

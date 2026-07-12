@@ -35,6 +35,7 @@ src/
 media/
 ├── marked.min.js             # 聊天面板 Markdown 运行时依赖
 ├── config/assets/            # 配置中心前端静态构建产物
+├── loop-workflow-skills/     # Loop 开发级 Workflow Skill 静态执行快照
 ├── mcp_marketplace.json      # MCP 市场数据
 └── official_skills_catalog.json
 ```
@@ -139,6 +140,36 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 
 `src/lobsterDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、裁判主持人决策类型、红蓝角色常量、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。AI 对话历史记录弹窗的“Loop 群聊” tab 只下发任务摘要并按 `taskId` 打开对应任务的内容区群聊面板，不直接加载普通 session 或自动继续任务。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、裁判主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被裁判主持人追问、蓝队修正或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
 
+#### 4.3.1 开发级 Workflow Skill 选择与注入
+
+`media/loop-workflow-skills/` 是扩展内置的只读执行快照，`src/lobsterSkillGuidance.ts` 是唯一 loader、分类和选择模块。生产路径由 `createLobsterSkillRuntimeContext` 把 `extensionUri.fsPath` 传给 `loadLobsterSkillPack`，再解析固定相对目录 `media/loop-workflow-skills`；运行时不扫描 cwd、工作区同名目录、用户 Home、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。
+
+```text
+可信原始 displayPrompt / contextTags + 宿主 workspace/active-editor 路径
+  -> resolveNewLobsterTaskKind
+  -> taskKind: development | non_development | 缺失(unknown/legacy)
+  -> createLobsterSkillRuntimeContext（仅 development 加载 pack 与 compact catalog）
+  -> 普通主任务 / 红蓝首轮 brief + consensus / 红蓝后续主持人
+  -> 主模型每个子任务只返回 skillIds
+  -> applyLobsterMainDecisionForRun 中央复核
+  -> Store 持久化宿主 skillIds + skillGuidance 快照
+  -> buildLobsterSubtaskModelPrompt 注入；自动 retry 复用同一快照
+```
+
+- **可信粗分类**：新任务只使用原始 `displayPrompt`、原始 `contextTags` 和宿主采集的 workspace folder / active editor `fsPath` 调用 `classifyLobsterRootTask`；`modelPrompt`、长期记忆、模型输出和 Skill 正文不参与分类。明确开发任务持久化 `taskKind="development"`，明确非开发任务持久化 `taskKind="non_development"`，不确定任务不写该字段；旧记录不猜测迁移。
+- **单轮同源 catalog**：每个主任务轮次在普通/红蓝分流前只创建一次 `LobsterSkillRuntimeContext`。普通主任务和红蓝后续主持人复用 `buildLobsterMainModelPrompt`；红蓝首轮把同一个 `compactCatalogSection` 写入 `brief.md`，并经 `runLobsterDebateConsensusSummary` 原样传给 consensus prompt。模型只看到 `id/name/description/phases/taskKinds/roles/requiredCapabilities/priority/positiveTriggers/negativeTriggers`，看不到 path、hash、bytes、supportFiles、source 或正文。
+- **ID-only 决策**：主模型唯一新增的 Skill 字段是每个子任务可选的 `skillIds?: string[]`，最多 3 个。`normalizeSingleLobsterSubtaskDecision` 只保留字符串 ID；模型返回的 path、hash、正文、`skillGuidance`、CLI、model、command 和其他未知字段不会进入任务记录。
+- **中央精门禁**：普通主从和红蓝共识都经过 `applyLobsterMainDecisionForRun`。宿主对每个子任务使用 `title/prompt/writeFiles/conflictGroup` 重新分类，并按根任务类型、子任务 phase、task kind、role、宿主 capability、当轮候选 allowlist、负向 trigger、资源完整性和预算逐项复核；被拒 ID 不会被替换。当前普通子任务的 `availableCapabilities` 固定为空数组，因此需要 `interactive-user` 或 `chrome-devtools-mcp` 的 Skill 会被拒绝。
+- **有界快照**：compact catalog 最多 32 项、单项 description 最多 240 个 JavaScript 字符单元、总长最多 12,000；每子任务最多 3 个 ID，单篇清洗后 guidance 最多 24,000，总 guidance 最多 32,000。排序固定为 `priority ASC, id ASC`，超预算按整项/整篇及其后续项跳过，不截断规则正文；supportFiles 只做完整性校验，首版不递归注入。
+- **Store 与 prompt**：`upsertLobsterSubtask` 只写宿主确认后的稳定 `skillIds` 和宿主生成的 `skillGuidance`。正文只进入 `buildLobsterSubtaskModelPrompt`，位置固定在“子任务职责”之后、“当前子任务”之前，并再次声明系统/用户、AGENTS、职责、`writeFiles`、验收和沟通要求优先；`buildLobsterSubtaskDisplayPrompt` 不包含正文。
+- **重试稳定性**：自动重试继续使用首次中央 apply 后已持久化的同一 `LobsterSubtaskRecord`，不会重新加载 pack、重新选择 ID 或按升级后的资源重建正文；因此同一子任务的新会话获得逐字相同的 Skill 快照。
+
+#### 4.3.2 降级与首版边界
+
+- `non_development`、unknown、缺失 `taskKind` 的 legacy 记录在 loader 前即返回空 runtime context，不加载 compact catalog 或正文，普通主任务、红蓝 brief/consensus、后续轮和子任务继续按原 Loop 直接安排。
+- pack/manifest 缺失或损坏、未知 schema、路径/完整性校验失败、catalog 为空、模型未返回合法 ID、角色/能力/allowlist/预算不匹配时，同样不生成快照；Skill 失败本身不把任务置为 `needs-review`，不累计主任务 AI 失败，也不扫描替代目录。
+- 诊断只记录 `code` 以及可选 `skillId/resourcePath`，不记录 Skill 正文或完整 prompt。首版没有用户设置、开关、配置中心入口、Webview 状态或新增 i18n 文案；普通 coding 模式不经过该链路。
+
 ## 5. 配置与本地集成层
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
@@ -170,7 +201,7 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 - `workspace-settings/`：工作区级 UI/CLI 偏好与项目级工具设置
 - `models.json`：各 CLI 的模型列表与选择
 - `tasks.json`：任务相关状态
-- `lobster-tasks/`：按工作区、CLI 和会话隔离的 Loop 任务记录；新任务写入 `executionMode`，老任务缺字段时按 `main_sub_multi_agent` 兼容，辩论模式额外保留 `debateRounds`
+- `lobster-tasks/`：按工作区、CLI 和会话隔离的 Loop 任务记录；新任务写入 `executionMode`，老任务缺字段时按 `main_sub_multi_agent` 兼容，辩论模式额外保留 `debateRounds`；开发级新任务可保存宿主 `taskKind`，子任务可保存宿主确认的 `skillIds/skillGuidance` 快照，旧记录缺少这些可选字段时继续按原 Loop 读取和运行
 - `lobster-communications/`：Loop 主任务、子任务和辩论沟通文件；`debate_multi_agent` 在 `<taskId>/debates/round-<n>/` 下生成 `brief.md`、`chat.md`、`moderator-participants.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/*.md`、`cross-review.md`、`consensus.md`、`decision.json`
 - `temp/`：临时附件文件
 - `logs/`：运行日志

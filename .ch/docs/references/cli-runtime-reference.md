@@ -68,13 +68,16 @@
 - 插件交互 Runner 优先通过 SDK `extraArgs.effort` 传递新版思考力度；若旧 Claude Code/SDK 不支持该参数，则回退到 `maxThinkingTokens`
 - 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
 - Claude 交互 Runner 的任务列表除了兼容 `TodoWrite` 外，还会从 `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskStop` 工具调用及结果中归一化出 `{ text, done }`，供 AI 对话面板实时展示
+- OpenCode JSONL `tool_use` 的 `todowrite` 任务列表主格式为 `part.state.input.todos[]`，单项至少读取 `content` 与 `status`，并兼容 `metadata.todos` 和 JSON `output`；`completed/done` 等完成态归一化为 `done=true`，`pending/in_progress` 保持未完成，显式空数组用于清空任务列表。前台与并行 OpenCode 运行都会定向更新对应 conversation tab：专用 `taskListUpdate` 是主通道，同一 `traceSegment` 携带的 `taskListItems` 是原子回退；扩展宿主缓存仍在运行的最新列表并在 panel state 重建后重放，Webview 的 `setMessages` 仅在 tab 空闲时清空 external 列表。调试日志事件 `opencode-task-list-forwarded` 记录来源、tab、任务数和完成数。
+- Webview 对 tool-use trace 的已知稳定工具名做展示层本地化，中文界面优先显示“读取文件 / 查找文件 / 搜索文本 / 执行命令 / 应用补丁 / 更新任务列表 / 获取网页”等标题；命令、路径、正则和未知工具名不翻译，存档原文不改写。
 
 ### OpenCode
 
 - OpenCode 是 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、统一会话存档和统一配置读取接入
 - 命令与参数读取 `sinitek-cli-tools.commands.opencode` / `sinitek-cli-tools.args.opencode`
 - OpenCode 1.17.16 的根命令和 `run` 子命令都支持官方 `--auto`：自动批准未被显式拒绝的权限请求。插件在 `src/cli/commandRunner.ts` 的共享 OpenCode 参数构建路径集中注入并去重该参数，因此普通消息、one-shot、并行任务、Loop 主任务/子任务、续跑与唤醒统一获得 `--auto`，无 prompt 的终端启动则为 `opencode --auto`
-- one-shot / 并行任务当前通过 `opencode run --auto --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional，并从 JSON 事件中提取 assistant 文本生成最终结论气泡。例如：`opencode run --auto --format json --model <provider/model> --variant <variant> --session <sessionId> "<message>"`
+- one-shot / 并行任务当前通过 `opencode run --auto --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional。例如：`opencode run --auto --format json --model <provider/model> --variant <variant> --session <sessionId> "<message>"`。one-shot 与并行 conversation tab 都消费 stdout JSONL visible events：`text` 实时写入 assistant 气泡，`reasoning` / `step_start` 写入 thinking 气泡，`tool_use` 写入 trace 气泡；并行/Loop 子任务不能只转发 `rawStreamDelta`。进程退出后的完整 assistant 文本只补齐未展示尾部，禁止重复追加整段最终回复。
+- CLI child process 的 `cwd` 是当前 VS Code 工作区的权威执行目录，runner 同时把 child env `PWD` 收敛为同一路径。OpenCode 1.17.18 的 `run` 内部请求会读取 `PWD`；如果只设置 spawn cwd、却继承 extension host 的旧 `PWD=/`，OpenCode 会先在正确项目创建实例，随后又在 `/` 创建会话并把 `projectID` 记为 `global`。one-shot、并行/Loop 子任务及复用该 runner 的 OpenCode 后台路径必须保持 cwd/PWD 一致。修复前已经绑定 `/` 的历史 session 会继续遵循其原始目录，升级后应新建一次 OpenCode 对话，不直接改写 OpenCode 数据库。
 - OpenCode 1.17.16 的 JSONL 顶层和 `part` 对象使用 camel-case `sessionID` 返回真实 `ses_*`；插件必须在首轮流式输出中接管该 ID，后续同一 tab 才能通过 `--session <ses_*>` 续接。`local_*` 仅是插件消息落盘占位 ID，禁止传给 OpenCode；历史 `local_*` tab 再次执行时先启动新底层会话，捕获真实 ID 后迁移插件消息和 tab 引用，不使用全局 `--continue` 猜测最近会话。
 - `--auto` 在用途上对应插件为 Claude 提供的 `--dangerously-skip-permissions` 和为 Codex 提供的 `--dangerously-bypass-approvals-and-sandbox`，但安全语义并不等价：它只自动批准仍处于 `ask` 的请求。默认 `external_directory: ask` 因而可以自动跨目录读写；用户配置、agent 配置或 OpenCode 默认规则中的显式 `deny` 仍优先，插件不会用运行时 overlay 强制改写为 `allow`
 - OpenCode 进程非零退出时也必须解析 stdout JSON `error` 事件；若事件中存在 `APIError` / `UnknownError`、HTTP status、provider message、server `ref`、`responseBody.error.code` 或请求 URL，错误气泡优先展示这些 provider/API 详情，仅在没有可解析错误时才回退 `CLI 退出码`
@@ -151,7 +154,48 @@ Loop 内部执行方式事实：
 - 共识汇总器读取 `brief.md`、完整 `chat.md` 与所有动态参与者最终 artifact，生成 `cross-review.md`、`consensus.md` 和纯 JSON `decision.json`。恢复 `debate_multi_agent` 任务时，若当前轮已有完整有效的 `chat.md`（含参与者加入、裁判主持人控场与 `## 群聊收束` 标记）、`decision.json`、`consensus.md` 和动态参与者最终 artifact，且共识校验允许继续，运行时优先复用 `decision.json`，再交给现有 `applyLobsterMainDecision`。如果旧产物缺少裁判主持人控场、`chat.md` 或收束标记、产物缺失或不可解析，会重跑当前辩论轮；如果已有共识显示未解决阻塞，则进入 `needs-review`。
 - 缺少或无法写入 `brief.md` / `chat.md`、裁判主持人红蓝参与者清单缺失或非法、任一群聊发言 artifact 缺失、裁判主持人 artifact 缺失或无法解析、最终参与者 artifact 缺失或立场不可解析、裁判主持人输出 `block`、共识后的最终参与者立场仍为 `block`、未解决 `blocking` disagreement、缺少 `cross-review.md`、`consensus.md` 不含合法共识 JSON、`decision.json` 非法、或 `status=continue` 但无合法 `subtasks` 时，运行时不派发子任务，清空 activeSubtask 字段，把任务更新为 `needs-review`，并向主 tab 系统消息和 `main-task.md` 记录原因。若 `consensus.md` 已达成但仍包含未解决阻塞，主 tab 和 `main-task.md` 应按“红蓝对抗达成阻塞共识”记录，并同步共识摘要、`decision.finalSummary` 和 `decision.estimatedRemainingRounds`，避免沿用上一轮剩余轮次造成误判。参与者 artifact 的原始 `block` 可由下一轮裁判主持人追问、蓝队修正或共识汇总器通过 `resolvedDisagreements`、前置子任务、验收标准或风险说明解决；运行时以 `consensus.md` 中的最终 `participantStances` 和 `openDisagreements` 做派发判定，缺失的 participant stance 才用 artifact stance 补齐。
 
-运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务只有在本轮用户消息之后产生符合当前策略的非 thinking assistant 最终结论气泡，才会按成功完成收口。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`，优先级最高；缺少结构化 final 类型时，共享判定会把内容包含 `[final_answer]` 的非 thinking assistant 消息视为显式最终答复。默认 `strict_final_answer` 只接受结构化 final 或文本标记；`successful_reply_fallback` 额外接受成功退出后的普通非空 assistant 文本，其中 Codex 收到 `turn.completed status:"completed"` 时会发送空内容终态标记，把最后一条 assistant 气泡原位提升为最终结论，不复制正文或新增气泡。thinking、trace、system、user、旧回合消息、空回复、`failed`、`interrupted` 和主动停止都不得通过该 fallback 收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；`step_start`、`tool_use`、reasoning 等 JSONL 事件只算运行活动，不算最终答复；其中 `text`、`reasoning`、`step_start` 和 `tool_use` 会实时转成 assistant / thinking / tool-use 气泡，避免只在结束时显示最终答复。启动后 60 秒内若没有 assistant / error / status / progress 任一活动才按启动空输出失败处理；一旦已观察到运行活动就立即解除外层 watchdog，不再以父 stdout/stderr 静默时长判断卡死，因为 OpenCode 分组/子代理可能在内部持续读文件、调用模型和执行工具而父 JSONL 长时间没有新事件。OpenCode 非零退出、JSON error、空 assistant、启动空输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
+### Loop 开发级 Workflow Skills
+
+该能力只进入 `lobster` / Loop 编排链路；普通 `coding` 模式不读取该目录。首版没有新增设置、按钮、状态气泡或其他 UI，也没有新增 i18n 文案。
+
+#### 兼容字段
+
+| 字段 | 写入方与语义 | 兼容行为 |
+| --- | --- | --- |
+| `LobsterTaskRecord.taskKind?: "development" \| "non_development"` | 新建 Loop 根任务时由宿主分类并持久化；`development` 才允许加载 compact catalog | 分类为 `unknown` 时省略；旧记录缺字段时保持 legacy，不重新猜测迁移 |
+| `LobsterSubtaskDecision.skillIds?: string[]` | 主模型唯一允许返回的 Skill 字段，只能包含 catalog 中的稳定 ID | 可省略；解析层只保留字符串，可信性仍由共享中央校验决定 |
+| `LobsterSubtaskRecord.skillIds?: string[]` | 中央校验通过后由宿主保存的最终 ID 快照，最多 3 个 | 旧子任务无字段可继续读取、恢复、重试和完成 |
+| `LobsterSubtaskRecord.skillGuidance?: string` | 宿主从已校验资源生成并保存的执行要求快照，模型没有写入入口 | 非空且不超过 32,000 字符时才从 Store 恢复；无字段时不注入 |
+
+Store 边界会丢弃非法类型、重复/非法/超量 ID、超长 guidance 以及模型伪造的路径、hash、CLI、model、command 等未知字段；这不会改变旧 decision 或旧任务记录的读取语义。
+
+#### 可信分类与目录传递
+
+- 根任务分类只使用原始 `displayPrompt`、原始 `contextTags`，以及宿主读取的真实 workspace/active-editor 路径；不使用 `modelPrompt`、模型输出、长期记忆或 Skill 正文。开发和非开发证据同时出现时归为 `unknown`，显式非开发归为 `non_development`，缺少足够开发证据时也归为 `unknown`。
+- 子任务精分类使用 `title`、`prompt`、`writeFiles`、`conflictGroup` 推断 phase 与 task kind。根任务和子任务都必须是 `development` 才可能生成 guidance。
+- 每个主任务轮次在普通/红蓝分流前创建一次显式 runtime context；只有 `taskKind=development` 才从 `extensionUri.fsPath/media/loop-workflow-skills/` 加载并校验资源。运行时不从 cwd、workspace 同名目录、用户 Home 或开发期上游目录回退扫描。
+- 普通主从模式把同一轮的 compact metadata catalog 追加到主任务 model prompt；主模型只能为每个子任务返回 `skillIds`，不能返回路径、Markdown 正文或 `skillGuidance`。
+- 红蓝首轮把同一个 catalog section 写入 `brief.md`，并把同一 section 传给共识汇总器启用 ID-only decision 合约；红蓝后续主持人主任务复用普通主任务 prompt。复用既有 `decision.json` 时仍进入共享中央 apply，不绕过校验。
+- `non_development`、`unknown` 和 legacy 任务不加载 catalog 或 guidance，继续按原 Loop 直接安排子任务。
+
+#### 中央校验、快照与注入
+
+- 普通主从和红蓝共用 `applyLobsterMainDecisionForRun`。写 Store 前，宿主对每个子任务独立校验：当前任务/轮次 context、manifest 中的 allowlist、ID 语法与去重、phase、task kind、`role="subtask"`、required capabilities、negative triggers 和预算。
+- 首版宿主没有为 Loop 子任务声明浏览器或交互能力，`availableCapabilities` 固定为空集合；需要 `chrome-devtools-mcp`、`interactive-user` 或 main-only role 的 Skill 会被拒绝，不会被替换成其他 ID。
+- catalog 最多 32 项、总长最多 12,000 字符、单项 description 最多 240 字符；每个子任务最多 3 个 Skill，单篇 guidance 最多 24,000 字符，总 guidance 最多 32,000 字符。排序按 `priority ASC, id ASC`；超限时整篇及其后续项跳过，不截断规则正文。
+- 只有中央校验后的 `skillIds` 与宿主生成的 `skillGuidance` 会写入子任务记录。子任务 model prompt 只读取这份已持久化快照，并固定插在“子任务职责”之后、“当前子任务”之前；随后再次声明系统/用户要求、根与局部 `AGENTS.md`、当前职责、`writeFiles`、验收和沟通要求优先。
+- 只注入被选 Skill 的入口 `SKILL.md` 清洗正文；`supportFiles` 用于完整性与依赖闭包校验，不自动递归拼入子任务 prompt，完整 catalog 和未选 Skill 正文也不会进入子任务 prompt。
+
+#### 恢复、重试、降级与日志边界
+
+- 恢复 Loop 任务时使用 Store 中已有的 `taskKind`；缺字段的旧记录保持 `unknown` 等价行为。development 任务进入新的主任务轮次时可重新构建当轮 transient catalog，但已保存的子任务快照不会被重写。
+- 自动重试始终复用同一 `LobsterSubtaskRecord` 中已保存的 `skillIds` / `skillGuidance`，不重新加载资源、不重新选择。即使重试前资源包变化或暂时缺失，已确认 guidance 仍逐字复用。
+- pack 缺失、schema/hash/bytes/UTF-8/路径/符号链接校验失败、catalog 为空、请求 ID 非法或无合法匹配时，Skill 链路返回空 context/空快照；不会仅因 Skill 失败把任务置为 `needs-review`，而是继续原 Loop 行为。
+- Skill 正文只作为 Store 中的宿主快照和子任务 model prompt 内容，不进入 `buildLobsterSubtaskDisplayPrompt`、Webview HTML 或诊断日志。`lobster-skill-runtime-diagnostics` 只记录 `taskId`、`round`、`scope`、诊断 `code`，以及可选 `skillId` / `resourcePath`，不记录 guidance、完整 prompt 或秘密。
+
+实现与回归事实来源：`src/lobsterSkillGuidance.ts`、`src/extension.ts`、`src/lobsterTaskStore.ts`、`src/lobsterPromptBuilders.ts`、`src/lobsterDebateRunner.ts`、`src/test/lobsterSkillGuidance.test.ts`、`src/test/lobsterSkillIntegration.test.ts`、`src/test/lobsterTaskStore.test.ts`、`src/test/lobsterPromptBuilders.test.ts`。
+
+运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务只有在本轮用户消息之后产生符合当前策略的非 thinking assistant 最终结论气泡，才会按成功完成收口。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`，优先级最高；OpenCode `--format json` 中，同一 `messageID` 的非 thinking assistant `text` 与 `step_finish.reason="stop"` 配对时同样视为结构化最终答复，允许澄清提问等本轮面向用户的终态回复正常结束。缺少结构化 final 类型时，共享判定会把内容包含 `[final_answer]` 的非 thinking assistant 消息视为显式最终答复。默认 `strict_final_answer` 只接受结构化 final 或文本标记；`successful_reply_fallback` 额外接受成功退出后的普通非空 assistant 文本，其中 Codex 收到 `turn.completed status:"completed"` 时会发送空内容终态标记，把最后一条 assistant 气泡原位提升为最终结论，不复制正文或新增气泡。thinking、trace、system、user、旧回合消息、空回复、`failed`、`interrupted` 和主动停止都不得通过该 fallback 收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；`step_start`、`tool_use`、reasoning 和 `step_finish.reason="tool-calls"` 等 JSONL 事件只算运行活动，不算最终答复；其中 `text`、`reasoning`、`step_start` 和 `tool_use` 会实时转成 assistant / thinking / tool-use 气泡，避免只在结束时显示最终答复。OpenCode 的正文与 `stop` 必须属于同一 `messageID`；跨消息终态、无正文 `stop` 和纯 thinking 文本不得通过结构化判定。启动后 60 秒内若没有 assistant / error / status / progress 任一活动才按启动空输出失败处理；一旦已观察到运行活动就立即解除外层 watchdog，不再以父 stdout/stderr 静默时长判断卡死，因为 OpenCode 分组/子代理可能在内部持续读文件、调用模型和执行工具而父 JSONL 长时间没有新事件。OpenCode 非零退出、JSON error、空 assistant、启动空输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
 
 展示层补充：Webview 仅在 assistant 气泡渲染时从展示文本中移除 `[final_answer]`，不改写用于严格判定、会话续接和存档的原始 assistant 内容；user、system 和 trace 消息保持原样。
 
@@ -171,6 +215,8 @@ Loop 内部执行方式事实：
 - Claude：扩展 sessionId ↔ Claude sessionId
 
 映射数据通过 `src/interactive/metaStore.ts` 落盘，避免切换会话或重启 VS Code 后丢失续接能力。
+
+OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，没有 `--small-model` / `--small-variant`。插件因此把 effective `small_model` 和小模型 reasoning effort 写入随机 `OPENCODE_CONFIG` overlay。OpenCode 当前会把 small model 用于会话标题等内部轻量任务；普通 `build` 回合、Loop 子任务和 `explore` 子代理仍使用 primary。插件日志事件 `opencode-runtime-profile`、`runPrompt-start` 和 `runPrompt-parallel-start` 会记录 primary/small model 与各自 variant，作为运行时诊断依据。
 
 ## 7. 当前平台注意事项
 
