@@ -6,6 +6,11 @@ import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./c
 import { applyModelArg } from "./modelArgs";
 import { normalizeCommandInput, resolveCliCommand } from "./commandResolution";
 import { createOpenCodeRuntimeConfigOverlay } from "./opencoderuntimeconfig";
+import {
+  extractAssistantTextWithoutThinkingBlocks,
+  splitThinkingTaggedContent,
+  stripThinkingWrapperTags,
+} from "../thinkingMarkup";
 
 export { resolveCliCommand } from "./commandResolution";
 export type { ResolvedCliCommand } from "./commandResolution";
@@ -401,40 +406,44 @@ function collectOpenCodeReasoningText(value: unknown): string[] {
   return chunks;
 }
 
-export function parseOpenCodeVisibleStreamEvent(line: string): OpenCodeVisibleStreamEvent | null {
+export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleStreamEvent[] {
   const trimmed = line.trim();
   if (!trimmed.startsWith("{")) {
-    return null;
+    return [];
   }
 
   let record: Record<string, unknown>;
   try {
     record = JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
-    return null;
+    return [];
   }
 
   const assistantText = collectOpenCodeJsonText(record).join("");
   if (assistantText.trim()) {
-    return { kind: "assistant", content: assistantText };
+    return splitThinkingTaggedContent(assistantText).map((segment) => (
+      segment.kind === "thinking"
+        ? { kind: "thinking", content: `thinking\n${segment.content}` }
+        : { kind: "assistant", content: segment.content }
+    ));
   }
 
   const toolEvent = formatOpenCodeToolUseEvent(record);
   if (toolEvent) {
-    return toolEvent;
+    return [toolEvent];
   }
 
-  const reasoningText = collectOpenCodeReasoningText(record).join("").trim();
+  const reasoningText = stripThinkingWrapperTags(collectOpenCodeReasoningText(record).join("")).trim();
   if (reasoningText) {
-    return { kind: "thinking", content: `thinking\n${reasoningText}` };
+    return [{ kind: "thinking", content: `thinking\n${reasoningText}` }];
   }
 
   const type = normalizeOpenCodeJsonType(record.type);
   if (type === "step_start" || type === "step-start") {
-    return { kind: "thinking", content: "thinking\nOpenCode is planning the next step…" };
+    return [{ kind: "thinking", content: "thinking\nOpenCode is planning the next step…" }];
   }
 
-  return null;
+  return [];
 }
 
 function parseOpenCodeJsonOutput(stdout: string): string | null {
@@ -450,7 +459,7 @@ function parseOpenCodeJsonOutput(stdout: string): string | null {
       // Ignore non-JSON progress lines in default output.
     }
   }
-  const finalText = chunks.join("").trim();
+  const finalText = extractAssistantTextWithoutThinkingBlocks(chunks.join("")).trim();
   return finalText || null;
 }
 
@@ -461,13 +470,16 @@ function collectOpenCodeJsonActivity(value: unknown, activity: OpenCodeStreamAct
 
   const record = value as Record<string, unknown>;
   const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-  const role = typeof record.role === "string" ? record.role.toLowerCase() : "";
 
   if (type === "error" || record.error) {
     activity.hasError = true;
   }
-  if (role === "assistant" || collectOpenCodeJsonText(record).join("").trim()) {
+  const textSegments = splitThinkingTaggedContent(collectOpenCodeJsonText(record).join(""));
+  if (textSegments.some((segment) => segment.kind === "assistant")) {
     activity.hasAssistantAnswer = true;
+  }
+  if (textSegments.some((segment) => segment.kind === "thinking")) {
+    activity.hasProgress = true;
   }
   if (OPENCODE_JSON_PROGRESS_TYPES.has(type)) {
     activity.hasProgress = true;
@@ -536,7 +548,8 @@ function parseOpenCodePlainOutput(stdout: string): string | null {
     return null;
   }
   const jsonText = parseOpenCodeJsonOutput(cleaned);
-  return jsonText ?? cleaned;
+  const plainText = extractAssistantTextWithoutThinkingBlocks(cleaned).trim();
+  return jsonText ?? (plainText || null);
 }
 
 function collectOpenCodeJsonErrors(stdout: string): string | null {

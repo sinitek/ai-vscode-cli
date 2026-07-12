@@ -165,11 +165,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const nextModelsByCli = {};
         const nextManagedModelsByCli = {};
         const nextSelectedModelsByCli = {};
-        const nextLobsterMainModelsByCli = {};
-        const nextLobsterSubtaskModelsByCli = {};
-        const nextSelectedLobsterMainModelsByCli = {};
-        const nextSelectedLobsterSubtaskModelsByCli = {};
-        const nextManagedModelRolesByCli = {};
 
         CLI_NAMES.forEach((cli) => {
           const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli]);
@@ -189,31 +184,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           nextSelectedModelsByCli[cli] = preservePrevious
             ? normalizeModelSelection(state.selectedModelsByCli && state.selectedModelsByCli[cli])
             : normalizeModelSelection(modelState.selectedByCli && modelState.selectedByCli[cli]);
-          nextLobsterMainModelsByCli[cli] = preservePrevious
-            ? normalizeModelNameList(state.lobsterMainModelsByCli && state.lobsterMainModelsByCli[cli])
-            : normalizeModelNameList(modelState.lobsterOptionsByCli && modelState.lobsterOptionsByCli[cli] && modelState.lobsterOptionsByCli[cli].main);
-          nextLobsterSubtaskModelsByCli[cli] = preservePrevious
-            ? normalizeModelNameList(state.lobsterSubtaskModelsByCli && state.lobsterSubtaskModelsByCli[cli])
-            : normalizeModelNameList(modelState.lobsterOptionsByCli && modelState.lobsterOptionsByCli[cli] && modelState.lobsterOptionsByCli[cli].subtask);
-          nextSelectedLobsterMainModelsByCli[cli] = preservePrevious
-            ? normalizeModelSelection(state.selectedLobsterMainModelsByCli && state.selectedLobsterMainModelsByCli[cli])
-            : normalizeModelSelection(modelState.selectedLobsterByCli && modelState.selectedLobsterByCli[cli] && modelState.selectedLobsterByCli[cli].main);
-          nextSelectedLobsterSubtaskModelsByCli[cli] = preservePrevious
-            ? normalizeModelSelection(state.selectedLobsterSubtaskModelsByCli && state.selectedLobsterSubtaskModelsByCli[cli])
-            : normalizeModelSelection(modelState.selectedLobsterByCli && modelState.selectedLobsterByCli[cli] && modelState.selectedLobsterByCli[cli].subtask);
-          nextManagedModelRolesByCli[cli] = preservePrevious
-            ? ((state.managedModelRolesByCli && state.managedModelRolesByCli[cli]) || {})
-            : ((modelState.managedLobsterRolesByCli && modelState.managedLobsterRolesByCli[cli]) || {});
         });
 
         state.modelsByCli = nextModelsByCli;
         state.managedModelsByCli = nextManagedModelsByCli;
         state.selectedModelsByCli = nextSelectedModelsByCli;
-        state.lobsterMainModelsByCli = nextLobsterMainModelsByCli;
-        state.lobsterSubtaskModelsByCli = nextLobsterSubtaskModelsByCli;
-        state.selectedLobsterMainModelsByCli = nextSelectedLobsterMainModelsByCli;
-        state.selectedLobsterSubtaskModelsByCli = nextSelectedLobsterSubtaskModelsByCli;
-        state.managedModelRolesByCli = nextManagedModelRolesByCli;
         state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
       }
 
@@ -356,7 +331,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           updateModelSelectOptions();
         }
         updateOpenCodeModelSelectOptions();
-        updateLobsterModelSelectOptions();
         syncModelSelectorByInteractiveMode();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();

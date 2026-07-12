@@ -891,35 +891,17 @@ export function buildModelState(
   const selectedByCli = {} as Record<CliName, string | null>;
   const optionsByCli = {} as Record<CliName, string[]>;
   const managedByCli = {} as Record<CliName, string[]>;
-  const selectedLobsterByCli = {} as Record<CliName, { main: string | null; subtask: string | null }>;
-  const lobsterOptionsByCli = {} as Record<CliName, { main: string[]; subtask: string[] }>;
-  const managedLobsterRolesByCli = {} as Record<CliName, Record<string, { main: boolean; subtask: boolean }>>;
   for (const cli of CLI_LIST) {
     const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
     const managedModels = getManagedModelOptionsForCliFromStore(store, cli, activeConfigId);
     selectedByCli[cli] = getSelectedCliModelFromStore(store, cli, activeConfigId);
     optionsByCli[cli] = getModelOptionsForCliFromStore(store, cli, activeConfigId);
     managedByCli[cli] = managedModels;
-    lobsterOptionsByCli[cli] = {
-      main: getLobsterModelOptionsForCliFromStore(store, cli, "main", activeConfigId),
-      subtask: getLobsterModelOptionsForCliFromStore(store, cli, "subtask", activeConfigId),
-    };
-    selectedLobsterByCli[cli] = {
-      main: getSelectedLobsterCliModelFromStore(store, cli, "main", activeConfigId),
-      subtask: getSelectedLobsterCliModelFromStore(store, cli, "subtask", activeConfigId),
-    };
-    managedLobsterRolesByCli[cli] = {};
-    managedModels.forEach((modelName) => {
-      managedLobsterRolesByCli[cli][modelName] = getCliModelLobsterRoleFlagsFromStore(store, cli, modelName, activeConfigId);
-    });
   }
   return {
     selectedByCli,
     optionsByCli,
     managedByCli,
-    selectedLobsterByCli,
-    lobsterOptionsByCli,
-    managedLobsterRolesByCli,
   };
 }
 

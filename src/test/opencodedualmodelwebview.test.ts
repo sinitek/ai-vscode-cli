@@ -176,10 +176,7 @@ function buildVisibilityHarness() {
     openCodePrimaryModelSelect: createVisibilityElement(),
     openCodeSmallModelSelect: createVisibilityElement(),
     modelSelect: createVisibilityElement(),
-    lobsterModelGroup: createVisibilityElement(),
     lobsterExecutionModeSelect: createVisibilityElement(),
-    lobsterMainModelSelect: createVisibilityElement(),
-    lobsterSubtaskModelSelect: createVisibilityElement(),
   };
   const sync = new Function(
     "state",
@@ -227,6 +224,7 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*title="OpenCode small model selection"/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|reasoning effort/);
+  assert.doesNotMatch(html, /lobsterMainModelSelect|lobsterSubtaskModelSelect|Loop main-task model|Loop subtask model/);
   const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
   assert.match(genericThinking, /<option value="xhigh">X-High<\/option>/);
   assert.match(genericThinking, /<option value="max">Max<\/option>/);
@@ -380,22 +378,19 @@ test("clears stale OpenCode options and selections during config or CLI switchin
   assert.match(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, /configSelect[\s\S]*clearOpenCodeModelOptions\(\)/);
 });
 
-test("shows OpenCode dual selectors in coding and Loop while preserving Codex and Claude behavior", () => {
+test("keeps OpenCode dual models, Codex one model, and Claude no model across Loop mode", () => {
   const harness = buildVisibilityHarness();
 
   harness.state.interactiveMode = "coding";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
 
   harness.state.interactiveMode = "lobster";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
-  assert.equal(harness.elements.lobsterMainModelSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterSubtaskModelSelect.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
   harness.sync("codex");
@@ -405,12 +400,15 @@ test("shows OpenCode dual selectors in coding and Loop while preserving Codex an
   harness.state.interactiveMode = "lobster";
   harness.sync("codex");
   assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "inline-flex");
-  assert.equal(harness.elements.lobsterMainModelSelect.style.display, "");
-  assert.equal(harness.elements.lobsterSubtaskModelSelect.style.display, "");
+  assert.equal(harness.elements.modelSelect.style.display, "");
 
   harness.state.interactiveMode = "coding";
   harness.sync("claude");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.state.interactiveMode = "lobster";
+  harness.sync("claude");
+  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });

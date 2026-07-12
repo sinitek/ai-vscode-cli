@@ -114,27 +114,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: "",
           opencode: "",
         },
-        selectedLobsterMainModelsByCli: {
-          codex: "",
-          claude: "",
-          opencode: "",
-        },
-        selectedLobsterSubtaskModelsByCli: {
-          codex: "",
-          claude: "",
-          opencode: "",
-        },
         modelsByCli: {
-          codex: [],
-          claude: [],
-          opencode: [],
-        },
-        lobsterMainModelsByCli: {
-          codex: [],
-          claude: [],
-          opencode: [],
-        },
-        lobsterSubtaskModelsByCli: {
           codex: [],
           claude: [],
           opencode: [],
@@ -143,11 +123,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           codex: [],
           claude: [],
           opencode: [],
-        },
-        managedModelRolesByCli: {
-          codex: {},
-          claude: {},
-          opencode: {},
         },
         autoAppliedConfig: false,
         sessionState: {
@@ -266,11 +241,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         openCodePrimaryModelSelect: document.getElementById("openCodePrimaryModelSelect"),
         openCodeSmallModelSelect: document.getElementById("openCodeSmallModelSelect"),
         openCodeModelIssue: document.getElementById("openCodeModelIssue"),
-        lobsterModelGroup: document.getElementById("lobsterModelGroup"),
         lobsterExecutionModeSelect: document.getElementById("lobsterExecutionModeSelect"),
         modelSelect: document.getElementById("modelSelect"),
-        lobsterMainModelSelect: document.getElementById("lobsterMainModelSelect"),
-        lobsterSubtaskModelSelect: document.getElementById("lobsterSubtaskModelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         longTermMemoryEnabled: document.getElementById("longTermMemoryEnabled"),

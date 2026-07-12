@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { CliName } from "./cli/types";
 import { sanitizeCodexReasoningContent } from "./codexReasoningContent";
+import { stripThinkingWrapperTags } from "./thinkingMarkup";
 import { ChatMessage } from "./webview/types";
 
 export type SessionRecord = {
@@ -390,11 +391,13 @@ export function sanitizeMessages(
   let changed = false;
   for (const message of messages) {
     const content = typeof message.content === "string" ? message.content : "";
-    const sanitizedContent = cli === "codex"
-      && message.kind === "thinking"
-      && (message.role === "assistant" || message.role === "trace")
+    const isThinkingMessage = message.kind === "thinking"
+      && (message.role === "assistant" || message.role === "trace");
+    const sanitizedContent = cli === "codex" && isThinkingMessage
       ? sanitizeCodexReasoningContent(content)
-      : content;
+      : isThinkingMessage || (cli === "opencode" && message.role === "assistant")
+        ? stripThinkingWrapperTags(content)
+        : content;
     if (
       (message.role === "assistant" || message.role === "trace")
       && !sanitizedContent.trim()

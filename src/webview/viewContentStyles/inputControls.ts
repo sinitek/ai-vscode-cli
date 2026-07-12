@@ -207,13 +207,6 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         width: 70px;
         min-width: 70px;
       }
-      .input-model-row .lobster-model-group {
-        flex: 0 1 auto;
-        min-width: 0;
-      }
-      .input-model-row .lobster-model-group .model-select {
-        min-width: 92px;
-      }
       .open-code-model-group {
         display: flex;
         flex: 1 1 100%;

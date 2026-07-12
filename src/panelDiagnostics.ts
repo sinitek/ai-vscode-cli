@@ -604,8 +604,6 @@ type LobsterPromptRunInput = {
   contextTags: string[];
   model?: string;
   lobsterExecutionMode: ReturnType<typeof normalizeLobsterExecutionMode>;
-  lobsterMainModel?: string;
-  lobsterSubtaskModel?: string;
   lobsterContinuePrompt: string;
 };
 
@@ -643,7 +641,6 @@ type LobsterDebateChatPanelDeps = {
   isTabRunActive: (tabId: string | null) => boolean;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
-  getSelectedLobsterCliModel: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   runLobsterPrompt: (input: LobsterPromptRunInput, options: LobsterPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
   markTaskStoppedByUser: (taskId: string) => LobsterTaskRecord | null;
@@ -777,8 +774,6 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
       contextTags: [],
       model: deps.getSelectedCliModel(task.cli, activeConfigId) ?? undefined,
       lobsterExecutionMode: normalizeLobsterExecutionMode(task.executionMode),
-      lobsterMainModel: deps.getSelectedLobsterCliModel(task.cli, "main", activeConfigId) ?? undefined,
-      lobsterSubtaskModel: deps.getSelectedLobsterCliModel(task.cli, "subtask", activeConfigId) ?? undefined,
       lobsterContinuePrompt: resumePrompt,
     }, {
       targetTabId: target.tabId,

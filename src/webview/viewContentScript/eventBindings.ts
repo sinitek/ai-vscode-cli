@@ -36,32 +36,16 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         if (state.selectedModelsByCli) {
           state.selectedModelsByCli[state.currentCli] = "";
         }
-        if (state.selectedLobsterMainModelsByCli) {
-          state.selectedLobsterMainModelsByCli[state.currentCli] = "";
-        }
-        if (state.selectedLobsterSubtaskModelsByCli) {
-          state.selectedLobsterSubtaskModelsByCli[state.currentCli] = "";
-        }
         if (state.modelsByCli) {
           state.modelsByCli[state.currentCli] = [];
         }
-        if (state.lobsterMainModelsByCli) {
-          state.lobsterMainModelsByCli[state.currentCli] = [];
-        }
-        if (state.lobsterSubtaskModelsByCli) {
-          state.lobsterSubtaskModelsByCli[state.currentCli] = [];
-        }
         if (state.managedModelsByCli) {
           state.managedModelsByCli[state.currentCli] = [];
-        }
-        if (state.managedModelRolesByCli) {
-          state.managedModelRolesByCli[state.currentCli] = {};
         }
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
         clearOpenCodeModelOptions();
-        updateLobsterModelSelectOptions();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();
         }

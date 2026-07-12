@@ -22,7 +22,7 @@ import {
   buildOpenCodeRunFailureMessage,
   buildProcessLabel,
   captureCliOutput,
-  parseOpenCodeVisibleStreamEvent,
+  parseOpenCodeVisibleStreamEvents,
   parseOpenCodeRunOutput,
   resolveCliCommand,
   runCli,
@@ -48,6 +48,9 @@ import {
   resolveOpenCodeThinkingCapability,
   type OpenCodeThinkingCapability,
 } from "./cli/openCodeModelCapabilities";
+import {
+  resolveOpenCodeOneShotWatchdogTimeoutMs,
+} from "./cli/opencodewatchdog";
 import {
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
@@ -306,9 +309,7 @@ import {
   createEmptyModelSelectionStoreState,
   deleteCliModelFromStore,
   ensureCliModelStore as ensureCliModelSelectionStore,
-  getCliModelLobsterRoleFlagsFromStore,
   getEffectiveCliArgs as getEffectiveCliArgsFromStore,
-  getLobsterModelOptionsForCliFromStore,
   getManagedModelOptionsForCliFromStore,
   getManagedModelOptionsForConfigFromStore,
   getModelOptionsForCliFromStore,
@@ -317,25 +318,19 @@ import {
   getOpenCodeRoleVariantFromStore,
   getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
-  getSelectedLobsterCliModelFromStore,
-  isLobsterTaskRoleValue,
   loadModelStore as loadModelSelectionStore,
   mergeUniqueModelNames,
   moveCliModelInStore,
   normalizeCliModelName,
-  normalizeLobsterModelRoleFlags,
   readModelStore as readModelSelectionStore,
   renameCliModelInStore,
-  selectCliLobsterModelInStore,
   selectCliModelInStore,
   setOpenCodeRoleModelInStore,
   setOpenCodeRoleVariantInStore,
   setOpenCodeVariantInStore,
-  setCliModelLobsterRoleInStore,
   summarizeModelStoreByConfigId,
   writeModelStore as writeModelSelectionStore,
   type CliModelStore,
-  type LobsterTaskRoleForModelSelection,
 } from "./modelSelectionStore";
 import { handleUpdateOpenCodeVariantMessage } from "./sessionMessageActions";
 import {
@@ -984,8 +979,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getActiveConfigIdForCli,
     selectCliModel,
     updateOpenCodeRoleModel: updateOpenCodeRoleModelForConfig,
-    selectCliLobsterModel,
-    setCliModelLobsterRole,
     addCliModel,
     renameCliModel,
     deleteCliModel,
@@ -1054,7 +1047,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       })
     ),
     resolveCodexImagePathsForPrompt,
-    getSelectedLobsterCliModel,
     getLatestLobsterRoundRunRecord,
     recordPromptHistory,
     resolvePromptRunTarget,
@@ -1431,8 +1423,6 @@ const configHeartbeatCoordinator = createConfigHeartbeatCoordinator({
   ensureCliModelStore,
   normalizeCliModelName,
   mergeUniqueModelNames,
-  getSelectedLobsterCliModel,
-  normalizeLobsterModelRoleFlags,
   buildPanelStateWithConfigState,
   postState: (state) => viewProvider?.postState(state),
   syncConfigManagerPanel: () => configManagerPanel?.syncActiveConfig(),
@@ -2066,7 +2056,6 @@ const lobsterDebateChatPanelCoordinator = createLobsterDebateChatPanelCoordinato
   isTabRunActive,
   getActiveConfigIdForCli,
   getSelectedCliModel,
-  getSelectedLobsterCliModel,
   runLobsterPrompt,
   stopRunsForTask: stopLobsterRunsForTask,
   markTaskStoppedByUser: markLobsterTaskStoppedByUser,
@@ -2199,8 +2188,6 @@ type PromptRunInput = {
   preloadedUserMessageId?: string;
   model?: string;
   lobsterExecutionMode?: LobsterExecutionMode;
-  lobsterMainModel?: string;
-  lobsterSubtaskModel?: string;
   lobsterContinuePrompt?: string;
   imagePaths?: string[];
   taskRole?: LobsterTaskRole;
@@ -2716,16 +2703,8 @@ function buildOpenCodeFailureMessage(
   });
 }
 
-const OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS = 60 * 1000;
-const OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-
-function buildOpenCodeOneShotIdleTimeoutMessage(timeoutMs: number, hasProgress = false): string {
+function buildOpenCodeOneShotStartupTimeoutMessage(timeoutMs: number): string {
   const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-  if (hasProgress) {
-    return resolveLocale(getLocaleSetting()).startsWith("zh")
-      ? `OpenCode run --format json 已启动并持续返回进度，但 ${seconds} 秒内没有返回助手回答或错误。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`
-      : `OpenCode run --format json started and kept returning progress, but did not return an assistant answer or error within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
-  }
   return resolveLocale(getLocaleSetting()).startsWith("zh")
     ? `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`
     : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
@@ -4176,7 +4155,7 @@ async function runLobsterDebateRound(options: {
 }
 
 function resolveLobsterDebateModel(input: PromptRunInput): string | undefined {
-  return input.lobsterMainModel ?? input.model;
+  return input.model;
 }
 
 function getLobsterDebateRunnerDeps(): LobsterDebateRunnerDeps {
@@ -5618,9 +5597,6 @@ type LobsterRoundRunOptions = {
 async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, role, displayPrompt, modelPrompt, subtaskId } = options;
   const roundStartedAt = Date.now();
-  const runModel = role === "main"
-    ? (input.lobsterMainModel ?? input.model)
-    : (input.lobsterSubtaskModel ?? input.model);
   const activeSubtaskPatch = role === "main"
     ? { activeSubtaskId: null, activeSubtaskIds: [] }
     : buildLobsterActiveSubtaskPatch(task.id, subtaskId);
@@ -5636,7 +5612,7 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
     ...input,
     displayPrompt,
     modelPrompt,
-    model: runModel,
+    model: input.model,
     taskRole: role,
     lobsterTaskId: task.id,
     lobsterRound: round,
@@ -6752,8 +6728,6 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
     tabId: string;
     previousRunEndedAt: number;
     model?: string;
-    lobsterMainModel?: string;
-    lobsterSubtaskModel?: string;
   }
 ): Promise<void> {
   const latestRun = getLatestLobsterRoundRunRecord(
@@ -6798,8 +6772,6 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
     modelPrompt: resumePrompt,
     contextTags: [],
     model: options.model,
-    lobsterMainModel: options.lobsterMainModel,
-    lobsterSubtaskModel: options.lobsterSubtaskModel,
   }, {
     targetTabId: mainTarget.tabId,
     resumeTaskId: latestTask.id,
@@ -7374,43 +7346,40 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       | { type: "error"; error: Error }
     >((resolve) => {
       let settled = false;
-      let idleTimeoutHandle: NodeJS.Timeout | null = null;
+      let startupTimeoutHandle: NodeJS.Timeout | null = null;
       let sawOpenCodeActivity = false;
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
         }
         settled = true;
-        if (idleTimeoutHandle) {
-          clearTimeout(idleTimeoutHandle);
-          idleTimeoutHandle = null;
+        if (startupTimeoutHandle) {
+          clearTimeout(startupTimeoutHandle);
+          startupTimeoutHandle = null;
         }
         resolve(result);
       };
-      const resetIdleTimeout = (): void => {
-        if (idleTimeoutHandle) {
-          clearTimeout(idleTimeoutHandle);
+      const refreshStartupTimeout = (): void => {
+        if (startupTimeoutHandle) {
+          clearTimeout(startupTimeoutHandle);
+          startupTimeoutHandle = null;
         }
-        const timeoutMs = sawOpenCodeActivity
-          ? OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS
-          : OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS;
-        idleTimeoutHandle = setTimeout(() => {
+        const timeoutMs = resolveOpenCodeOneShotWatchdogTimeoutMs(sawOpenCodeActivity);
+        if (timeoutMs === null) {
+          return;
+        }
+        startupTimeoutHandle = setTimeout(() => {
+          startupTimeoutHandle = null;
           const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
           const hasCurrentActivity = activity.hasAssistantAnswer
             || activity.hasError
             || activity.hasStatus
             || activity.hasProgress;
-          const timedOutAfterActivity = sawOpenCodeActivity || hasCurrentActivity;
           if (hasCurrentActivity) {
             sawOpenCodeActivity = true;
+            return;
           }
-          const reportedTimeoutMs = timedOutAfterActivity
-            ? OPENCODE_ONE_SHOT_ACTIVE_IDLE_TIMEOUT_MS
-            : timeoutMs;
-          const error = new Error(buildOpenCodeOneShotIdleTimeoutMessage(
-            reportedTimeoutMs,
-            timedOutAfterActivity,
-          ));
+          const error = new Error(buildOpenCodeOneShotStartupTimeoutMessage(timeoutMs));
           if (!isCurrentOneShotRunActive()) {
             settle({ type: "error", error });
             return;
@@ -7422,7 +7391,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             sessionId: activeSessionId,
             attempt: attemptNumber,
             retryCount: hiddenRetryCount,
-            timeoutMs: reportedTimeoutMs,
+            timeoutMs,
             stdoutLength: rawStdout.length,
             stderrLength: rawStderr.length,
           });
@@ -7430,7 +7399,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           settle({ type: "error", error });
         }, timeoutMs);
       };
-      resetIdleTimeout();
+      refreshStartupTimeout();
       activeProcess = runCliStream(
         runCli,
         attemptPrompt,
@@ -7444,7 +7413,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
             }
-            resetIdleTimeout();
+            refreshStartupTimeout();
             sendRawStreamDelta(chunk, { stream: "stdout" });
             appendOpenCodeJsonlEvents(chunk);
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
@@ -7465,7 +7434,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
             }
-            resetIdleTimeout();
+            refreshStartupTimeout();
             sendRawStreamDelta(chunk, { stream: "stderr" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
@@ -7742,20 +7711,19 @@ function flushOpenCodeJsonlBuffer(): void {
 }
 
 function appendOpenCodeJsonlLine(line: string): void {
-  const event = parseOpenCodeVisibleStreamEvent(line);
-  if (!event) {
-    return;
+  const events = parseOpenCodeVisibleStreamEvents(line);
+  for (const event of events) {
+    if (event.kind === "assistant") {
+      appendAssistantChunk(event.content);
+      activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
+      continue;
+    }
+    if (event.kind === "thinking") {
+      appendTraceMessage(event.content, "thinking");
+      continue;
+    }
+    appendTraceMessage(event.content, "tool-use", { merge: false, forceTraceBubble: true });
   }
-  if (event.kind === "assistant") {
-    appendAssistantChunk(event.content);
-    activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
-    return;
-  }
-  if (event.kind === "thinking") {
-    appendTraceMessage(event.content, "thinking");
-    return;
-  }
-  appendTraceMessage(event.content, "tool-use", { merge: false, forceTraceBubble: true });
 }
 
 function appendSystemMessage(content: string): void {
@@ -9742,30 +9710,6 @@ function getManagedModelOptionsForCli(cli: CliName, configId: string | null = ge
   return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
 }
 
-function getCliModelLobsterRoleFlags(
-  cli: CliName,
-  model: string,
-  configId: string | null = getActiveConfigIdForCli(cli)
-): { main: boolean; subtask: boolean } {
-  return getCliModelLobsterRoleFlagsFromStore(modelStore, cli, model, configId);
-}
-
-function getLobsterModelOptionsForCli(
-  cli: CliName,
-  role: LobsterTaskRole,
-  configId: string | null = getActiveConfigIdForCli(cli)
-): string[] {
-  return getLobsterModelOptionsForCliFromStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, configId);
-}
-
-function getSelectedLobsterCliModel(
-  cli: CliName,
-  role: LobsterTaskRole,
-  configId: string | null = getActiveConfigIdForCli(cli)
-): string | null {
-  return getSelectedLobsterCliModelFromStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, configId);
-}
-
 function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
   return getModelOptionsForCliFromStore(modelStore, cli, configId);
 }
@@ -9798,36 +9742,6 @@ async function updateOpenCodeRoleModelForConfig(
     writeModelStore(modelStore);
   }
   return null;
-}
-
-function selectCliLobsterModel(
-  cli: CliName,
-  role: LobsterTaskRole,
-  model: string | null,
-  configId: string | null = getActiveConfigIdForCli(cli)
-): void {
-  const nextStore = selectCliLobsterModelInStore(modelStore, cli, role as LobsterTaskRoleForModelSelection, model, configId);
-  if (nextStore === modelStore) {
-    return;
-  }
-  modelStore = nextStore;
-  writeModelStore(modelStore);
-}
-
-function setCliModelLobsterRole(
-  cli: CliName,
-  model: string,
-  role: LobsterTaskRole,
-  enabled: boolean,
-  configId: string | null = getActiveConfigIdForCli(cli)
-): boolean {
-  const result = setCliModelLobsterRoleInStore(modelStore, cli, model, role as LobsterTaskRoleForModelSelection, enabled, configId);
-  if (!result.updated) {
-    return false;
-  }
-  modelStore = result.store;
-  writeModelStore(modelStore);
-  return true;
 }
 
 function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {

@@ -23,7 +23,6 @@ import {
 
 export type LobsterDebateRunInput = {
   model?: string;
-  lobsterMainModel?: string;
 };
 
 export type LobsterDebateRunPromptInput = {
@@ -173,7 +172,7 @@ export type LobsterDebateRunnerDeps = {
 };
 
 function resolveLobsterDebateModel(input: LobsterDebateRunInput): string | undefined {
-  return input.lobsterMainModel ?? input.model;
+  return input.model;
 }
 
 export async function runLobsterDebateParticipantRoster(options: {

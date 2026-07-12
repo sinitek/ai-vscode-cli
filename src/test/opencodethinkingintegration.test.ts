@@ -141,8 +141,6 @@ test("refreshes heartbeat snapshots when OpenCode role overrides change", async 
     ensureCliModelStore,
     normalizeCliModelName: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     mergeUniqueModelNames: (...groups) => Array.from(new Set(groups.flat())),
-    getSelectedLobsterCliModel: () => null,
-    normalizeLobsterModelRoleFlags: () => ({ main: true, subtask: true }),
     buildPanelStateWithConfigState: async () => ({} as PanelState),
     postState: () => { posted += 1; },
     syncConfigManagerPanel: () => undefined,

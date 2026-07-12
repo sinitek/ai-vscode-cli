@@ -22,6 +22,39 @@ test("sanitizeCodexReasoningContent preserves inline and non-empty comments", ()
   assert.equal(sanitizeCodexReasoningContent(content), content);
 });
 
+test("sanitizeCodexReasoningContent removes internal thinking wrapper tags", () => {
+  assert.equal(
+    sanitizeCodexReasoningContent("<thinking>**Mapping execution flow**</thinking>"),
+    "**Mapping execution flow**",
+  );
+  assert.equal(
+    sanitizeCodexReasoningContent("Keep <div>real markup</div> intact"),
+    "Keep <div>real markup</div> intact",
+  );
+});
+
+test("sanitizeMessages removes thinking wrappers from persisted OpenCode assistant output", () => {
+  const messages: ChatMessage[] = [
+    {
+      id: "opencode-assistant",
+      role: "assistant",
+      content: "<thinking>**Inspecting tests**</thinking>\n继续处理。",
+      createdAt: 1,
+    },
+    {
+      id: "opencode-user",
+      role: "user",
+      content: "请解释 <thinking> 标签",
+      createdAt: 2,
+    },
+  ];
+
+  const result = sanitizeMessages(messages, "opencode");
+  assert.equal(result.changed, true);
+  assert.equal(result.messages[0]?.content, "**Inspecting tests**\n继续处理。");
+  assert.equal(result.messages[1]?.content, "请解释 <thinking> 标签");
+});
+
 test("sanitizeMessages repairs only persisted Codex thinking messages", () => {
   const messages: ChatMessage[] = [
     {

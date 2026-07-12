@@ -26,9 +26,6 @@ export type ConfigHeartbeatSnapshot = {
   configIds: string[];
   modelSelected: string | null;
   managedModelOptions: string[];
-  lobsterMainModelSelected: string | null;
-  lobsterSubtaskModelSelected: string | null;
-  lobsterRoleSignature: string;
   openCodePrimaryModelSelected: string | null;
   openCodeSmallModelSelected: string | null;
 };
@@ -51,8 +48,6 @@ export type ConfigHeartbeatCoordinatorDeps = {
   ensureCliModelStore: (store?: CliModelStore) => CliModelStore;
   normalizeCliModelName: (value: unknown) => string | null;
   mergeUniqueModelNames: (...groups: Array<readonly string[]>) => string[];
-  getSelectedLobsterCliModel: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
-  normalizeLobsterModelRoleFlags: (value: unknown) => { main: boolean; subtask: boolean };
   buildPanelStateWithConfigState: (configState: PanelState["configState"]) => Promise<PanelState>;
   postState: (state: PanelState) => void;
   syncConfigManagerPanel: () => void;
@@ -89,23 +84,6 @@ function getConfigHeartbeatPayload(
   const managedModelOptions = modelConfigId
     ? deps.mergeUniqueModelNames(normalizedStore.optionsByConfigId[modelConfigId] ?? [])
     : [];
-  const lobsterMainModelSelected = modelConfigId
-    ? deps.getSelectedLobsterCliModel(cli, "main", modelConfigId)
-    : null;
-  const lobsterSubtaskModelSelected = modelConfigId
-    ? deps.getSelectedLobsterCliModel(cli, "subtask", modelConfigId)
-    : null;
-  const lobsterRolesForConfig = modelConfigId
-    ? (normalizedStore.lobsterRolesByConfigId[modelConfigId] ?? {})
-    : {};
-  const lobsterRoleSignature = JSON.stringify(
-    Object.keys(lobsterRolesForConfig)
-      .sort((left, right) => left.localeCompare(right))
-      .map((modelName) => {
-        const flags = deps.normalizeLobsterModelRoleFlags(lobsterRolesForConfig[modelName]);
-        return `${modelName}:${flags.main ? "1" : "0"}${flags.subtask ? "1" : "0"}`;
-      })
-  );
   const openCodeRoleSelection = cli === "opencode" && modelConfigId
     ? (normalizedStore.openCodeRoleModelsByConfigId[modelConfigId] ?? {})
     : {};
@@ -115,9 +93,6 @@ function getConfigHeartbeatPayload(
     configIds: configState.configs.map((config) => config.id),
     modelSelected,
     managedModelOptions,
-    lobsterMainModelSelected,
-    lobsterSubtaskModelSelected,
-    lobsterRoleSignature,
     openCodePrimaryModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.primary),
     openCodeSmallModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.small),
   };
@@ -144,15 +119,6 @@ function shouldRefreshConfigState(
     return true;
   }
   if (!areStringListsEqual(snapshot.managedModelOptions, nextPayload.managedModelOptions)) {
-    return true;
-  }
-  if (snapshot.lobsterMainModelSelected !== nextPayload.lobsterMainModelSelected) {
-    return true;
-  }
-  if (snapshot.lobsterSubtaskModelSelected !== nextPayload.lobsterSubtaskModelSelected) {
-    return true;
-  }
-  if (snapshot.lobsterRoleSignature !== nextPayload.lobsterRoleSignature) {
     return true;
   }
   if (snapshot.openCodePrimaryModelSelected !== nextPayload.openCodePrimaryModelSelected) {

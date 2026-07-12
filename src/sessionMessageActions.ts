@@ -207,26 +207,14 @@ export async function handleSendPromptMessage(
   const imagePaths = targetCli === "codex"
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
-  const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
-  const lobsterMainModel = targetCli === "codex"
-    ? (typeof message.lobsterMainModel === "string" && message.lobsterMainModel.trim()
-        ? message.lobsterMainModel.trim()
-        : (deps.getSelectedLobsterCliModel(targetCli, "main", activeConfigId) ?? undefined))
-    : undefined;
-  const lobsterSubtaskModel = targetCli === "codex"
-    ? (typeof message.lobsterSubtaskModel === "string" && message.lobsterSubtaskModel.trim()
-        ? message.lobsterSubtaskModel.trim()
-        : (deps.getSelectedLobsterCliModel(targetCli, "subtask", activeConfigId) ?? undefined))
-    : undefined;
+  const requestedModel = targetCli === "codex" && typeof message.model === "string"
+    ? message.model.trim()
+    : "";
   const promptInput: PromptRunInputForPanel = {
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,
-    model: targetCli === "codex" && typeof message.model === "string" && message.model
-      ? message.model
-      : undefined,
-    lobsterMainModel,
-    lobsterSubtaskModel,
+    model: requestedModel || undefined,
     imagePaths: imagePaths.length ? imagePaths : undefined,
   };
   if (lobsterExecutionMode) {
@@ -276,8 +264,6 @@ export async function handleSendPromptMessage(
         tabId: promptTargetTabId,
         previousRunEndedAt: previousSubtaskRunEndedAt,
         model: preparedPromptInput.model,
-        lobsterMainModel: preparedPromptInput.lobsterMainModel,
-        lobsterSubtaskModel: preparedPromptInput.lobsterSubtaskModel,
       });
     }
   }

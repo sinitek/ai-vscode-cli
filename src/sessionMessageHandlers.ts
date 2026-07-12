@@ -3,7 +3,6 @@ import { CLI_LIST, CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell,
 import { t } from "./i18n";
 import { logDebug, logError } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
-import { isLobsterTaskRoleValue } from "./modelSelectionStore";
 import { exportRunStreamRecordsToTxt, exportSessionHistoryMessagesToTxt, buildWorkspacePathItems, saveUploadedFiles } from "./webview/panelFileActions";
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
@@ -25,8 +24,6 @@ export type PromptRunInputForPanel = {
   preloadedUserMessageId?: string;
   model?: string;
   lobsterExecutionMode?: LobsterExecutionMode;
-  lobsterMainModel?: string;
-  lobsterSubtaskModel?: string;
   lobsterContinuePrompt?: string;
   imagePaths?: string[];
   taskRole?: "main" | "subtask";
@@ -75,8 +72,6 @@ export type PanelMessageHandlerDeps = {
     value: string | null,
     configId: string | null
   ) => Promise<string | null>;
-  selectCliLobsterModel: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => void;
-  setCliModelLobsterRole: (cli: CliName, model: string, role: "main" | "subtask", enabled: boolean, configId?: string | null) => boolean;
   addCliModel: (cli: CliName, model: string, configId?: string | null) => string | null;
   renameCliModel: (cli: CliName, previousModel: string, nextModel: string, configId?: string | null) => string | null;
   deleteCliModel: (cli: CliName, model: string, configId?: string | null) => void;
@@ -135,14 +130,13 @@ export type PanelMessageHandlerDeps = {
   buildPromptWithAutoContext: (prompt: string, options?: PromptContextOptions) => { modelPrompt: string; contextTags: string[] };
   maybeInjectLongTermMemoryForPrompt: (displayPrompt: string, modelPrompt: string, contextTags: string[]) => string;
   resolveCodexImagePathsForPrompt: (prompt: string) => Promise<string[]>;
-  getSelectedLobsterCliModel: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   getLatestLobsterRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string) => { endedAt: number } | null;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
   preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
   runLobsterPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
-  maybeWakeLobsterMainAfterSubtaskContinuation: (context: LobsterSubtaskConversationContextForPanel, options: { tabId: string; previousRunEndedAt: number; model?: string; lobsterMainModel?: string; lobsterSubtaskModel?: string }) => Promise<void>;
+  maybeWakeLobsterMainAfterSubtaskContinuation: (context: LobsterSubtaskConversationContextForPanel, options: { tabId: string; previousRunEndedAt: number; model?: string }) => Promise<void>;
   resolveLobsterResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LobsterTaskRecord | null;
   isLobsterResumePrompt: (prompt: string) => boolean;
   stopRunForTab: (tabId: string | null) => void;
@@ -165,8 +159,6 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     getActiveConfigIdForCli,
     selectCliModel,
     updateOpenCodeRoleModel,
-    selectCliLobsterModel,
-    setCliModelLobsterRole,
     addCliModel,
     renameCliModel,
     deleteCliModel,
@@ -224,7 +216,6 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     buildPromptWithAutoContext,
     maybeInjectLongTermMemoryForPrompt,
     resolveCodexImagePathsForPrompt,
-    getSelectedLobsterCliModel,
     getLatestLobsterRoundRunRecord,
     recordPromptHistory,
     resolvePromptRunTarget,
@@ -318,33 +309,6 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
       : "OpenCode role model updates are unavailable.";
     if (error) {
       void showWebviewError(t("panel.runtimeError"), error);
-    }
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "selectCliLobsterModel" && message.cli && isLobsterTaskRoleValue(message.role)) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    selectCliLobsterModel(message.cli, message.role, message.model ?? null, configId);
-    await postPanelState();
-    return;
-  }
-
-  if (message.type === "setCliModelLobsterRole" && message.cli && isLobsterTaskRoleValue(message.role)) {
-    const configId = typeof message.configId === "string" && message.configId
-      ? message.configId
-      : getActiveConfigIdForCli(message.cli);
-    const updated = setCliModelLobsterRole(
-      message.cli,
-      message.model,
-      message.role,
-      message.enabled,
-      configId
-    );
-    if (!updated) {
-      return;
     }
     await postPanelState();
     return;

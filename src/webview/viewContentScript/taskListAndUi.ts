@@ -427,12 +427,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : "";
-        const targetLobsterMainModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterMainModelsByCli
-          ? state.selectedLobsterMainModelsByCli[targetCli] || ""
-          : "";
-        const targetLobsterSubtaskModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedLobsterSubtaskModelsByCli
-          ? state.selectedLobsterSubtaskModelsByCli[targetCli] || ""
-          : "";
         const targetInteractiveMode = normalizedPayload.interactiveMode
           || (isBackgroundDispatch ? undefined : state.interactiveMode);
         const targetLobsterExecutionMode = targetInteractiveMode === "lobster"
@@ -446,8 +440,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           tabId: targetTabId || undefined,
           cli: targetCli,
           model: targetModel || undefined,
-          lobsterMainModel: targetLobsterMainModel || undefined,
-          lobsterSubtaskModel: targetLobsterSubtaskModel || undefined,
           preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
         };
         if (targetLobsterExecutionMode) {

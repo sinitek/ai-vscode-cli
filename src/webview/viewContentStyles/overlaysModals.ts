@@ -138,23 +138,6 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         font-size: 12px;
         word-break: break-all;
       }
-      .model-manager-role-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .model-manager-role-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: var(--vscode-descriptionForeground);
-        user-select: none;
-      }
-      .model-manager-role-toggle input {
-        margin: 0;
-      }
       .model-manager-actions {
         display: inline-flex;
         align-items: center;
@@ -173,12 +156,6 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         color: var(--vscode-descriptionForeground);
         font-size: 12px;
       }
-      .lobster-model-group {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-      }
-
       .run-queue-indicator {
         display: inline-flex;
         align-items: center;

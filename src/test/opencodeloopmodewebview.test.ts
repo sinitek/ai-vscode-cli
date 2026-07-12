@@ -119,10 +119,7 @@ function buildHarness() {
     openCodePrimaryModelSelect: createControl(),
     openCodeSmallModelSelect: createControl(),
     modelSelect: createControl(),
-    lobsterModelGroup: createControl(),
     lobsterExecutionModeSelect: createControl(),
-    lobsterMainModelSelect: createControl(),
-    lobsterSubtaskModelSelect: createControl(),
   };
   const normalizeInteractiveMode = (value: string) => value === "lobster" ? "lobster" : "coding";
   const modelFunctionSource = ["cliSupportsManagedModelSelection", "syncModelSelectorByInteractiveMode"]
@@ -255,7 +252,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
 
@@ -267,12 +263,9 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "lobster",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, false);
   assert.equal(harness.elements.lobsterExecutionModeSelect.value, "main-sub-multi-agent");
-  assert.equal(harness.elements.lobsterMainModelSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterSubtaskModelSelect.style.display, "none");
 
   harness.elements.interactiveModeSelect.dispatchChange("coding");
   assert.equal(harness.state.interactiveMode, "coding");
@@ -282,7 +275,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "coding",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterModelGroup.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");

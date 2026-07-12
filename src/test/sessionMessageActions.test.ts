@@ -103,10 +103,10 @@ function appendOpenCodeSmokeResult(
   }
 }
 
-function createSendPromptHarness(): SendPromptHarness {
+function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
   const tab: ConversationTabRecordForPanel = {
     id: "tab-opencode-smoke",
-    cli: "opencode",
+    cli,
     sessionId: null,
     sessionIdByCli: {},
     createdAt: 100,
@@ -167,8 +167,6 @@ function createSendPromptHarness(): SendPromptHarness {
     syncCurrentSessionWithActiveTab: () => null,
     getActiveConfigIdForCli: () => "config-opencode",
     selectCliModel: () => undefined,
-    selectCliLobsterModel: () => undefined,
-    setCliModelLobsterRole: () => true,
     addCliModel: () => null,
     renameCliModel: () => null,
     deleteCliModel: () => undefined,
@@ -254,7 +252,6 @@ function createSendPromptHarness(): SendPromptHarness {
     buildPromptWithAutoContext: (prompt) => ({ modelPrompt: prompt, contextTags: [] }),
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt, modelPrompt) => modelPrompt,
     resolveCodexImagePathsForPrompt: async () => [],
-    getSelectedLobsterCliModel: () => null,
     getLatestLobsterRoundRunRecord: () => null,
     recordPromptHistory: (prompt, cli) => {
       calls.promptHistory.push({ prompt, cli });
@@ -299,8 +296,6 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
     tabId: "tab-opencode-smoke",
     cli: "opencode",
     model: undefined,
-    lobsterMainModel: undefined,
-    lobsterSubtaskModel: undefined,
     preserveActiveTab: false,
   };
 
@@ -329,8 +324,6 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
     modelPrompt: "hi",
     contextTags: [],
     model: undefined,
-    lobsterMainModel: undefined,
-    lobsterSubtaskModel: undefined,
     imagePaths: undefined,
     preloadedUserMessageId: "user-preloaded",
   });
@@ -338,16 +331,12 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   assert.equal(calls.preloaded[0].target.cli, "opencode");
 });
 
-test("routes OpenCode Loop through runLobsterPrompt with persisted modes and active-config model resolution", async () => {
+test("routes OpenCode Loop through runLobsterPrompt while ignoring the generic Codex model field", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   deps.getWorkspaceLobsterExecutionMode = (cli) => {
     assert.equal(cli, "opencode");
     return "debate_multi_agent";
   };
-  deps.getSelectedLobsterCliModel = () => {
-    throw new Error("OpenCode Loop must not read Codex lobster role models");
-  };
-
   await handlePanelMessageWithDeps({
     type: "sendPrompt",
     prompt: "run the loop",
@@ -359,8 +348,6 @@ test("routes OpenCode Loop through runLobsterPrompt with persisted modes and act
     tabId: "tab-opencode-smoke",
     cli: "opencode",
     model: "provider/general-model",
-    lobsterMainModel: "codex-main-model",
-    lobsterSubtaskModel: "codex-subtask-model",
   }, deps);
 
   assert.equal(state.currentCli, "opencode");
@@ -378,14 +365,41 @@ test("routes OpenCode Loop through runLobsterPrompt with persisted modes and act
     modelPrompt: "run the loop",
     contextTags: [],
     model: undefined,
-    lobsterMainModel: undefined,
-    lobsterSubtaskModel: undefined,
     imagePaths: undefined,
     lobsterExecutionMode: "debate_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);
   assert.equal(calls.postPanelState, 1);
+});
+
+test("uses one Codex model for a Loop request and ignores legacy role-model fields", async () => {
+  const { deps, calls } = createSendPromptHarness("codex");
+  const legacyMessage = {
+    type: "sendPrompt",
+    prompt: "run one-model loop",
+    interactiveMode: "lobster",
+    tabId: "tab-opencode-smoke",
+    cli: "codex",
+    model: "  gpt-5.3-codex  ",
+    lobsterMainModel: "legacy-main",
+    lobsterSubtaskModel: "legacy-subtask",
+  } as unknown as PanelMessage;
+
+  await handlePanelMessageWithDeps(legacyMessage, deps);
+
+  assert.equal(calls.runLobsterPrompt.length, 1);
+  assert.deepEqual(calls.runLobsterPrompt[0].input, {
+    displayPrompt: "run one-model loop",
+    modelPrompt: "run one-model loop",
+    contextTags: [],
+    model: "gpt-5.3-codex",
+    imagePaths: undefined,
+    lobsterExecutionMode: "main_sub_multi_agent",
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(calls.runLobsterPrompt[0].input, "lobsterMainModel"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls.runLobsterPrompt[0].input, "lobsterSubtaskModel"), false);
 });
 
 test("persists the OpenCode Loop execution mode by CLI", async () => {
@@ -459,8 +473,6 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
     modelPrompt: "continue this subtask",
     contextTags: [],
     model: undefined,
-    lobsterMainModel: undefined,
-    lobsterSubtaskModel: undefined,
     imagePaths: undefined,
     taskRole: "subtask",
     lobsterTaskId: "task-opencode-loop",
@@ -478,8 +490,6 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
       tabId: "tab-opencode-smoke",
       previousRunEndedAt: 0,
       model: undefined,
-      lobsterMainModel: undefined,
-      lobsterSubtaskModel: undefined,
     },
   }]);
 });

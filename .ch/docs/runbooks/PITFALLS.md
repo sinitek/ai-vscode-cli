@@ -231,7 +231,7 @@
 - 产品配置示例保持中性 `myAPI` 网关，不绑定具体供应商；真实排障或 smoke 必须替换为实际 provider/model、兼容 endpoint 和鉴权信息。
 - 运行前 preflight 必须阻止 `myprovider`、`my-model-name`、`my-small-model-name`、示例 baseURL、缺失 `{env:NAME}`；JSON error 事件必须展示 provider/API message，不能只显示泛化空响应。
 - OpenCode `code!=0` 且 stderr 为空时，仍要解析 stdout JSON `error` 事件；PackyAPI 403 这类错误气泡应包含 `APIError`、`403`、`access_denied` 或 provider message，不能只显示 `CLI 退出码: 1`。
-- OpenCode one-shot 启动后若长时间没有 stdout/stderr 输出，必须按空输出超时进入 hidden retry；重试耗尽时要追加可见 system 错误气泡并写入会话存档，不能只停在运行态或只留下 trace。
+- OpenCode one-shot 只在启动后完全没有 assistant / error / status / progress 活动的 60 秒内按空输出超时进入 hidden retry；收到首个有效事件后必须解除外层 watchdog。重试耗尽时要追加可见 system 错误气泡并写入会话存档，不能只停在运行态或只留下 trace。
 - OpenCode `--format json` 的 `step_start`、`tool_use`、reasoning 和 `text` 事件主要出现在 stdout；可见气泡解析必须消费 stdout JSONL，不能只依赖 stderr trace，否则用户会只看到最终答复，看不到思考/工具/中间 AI 气泡。
 
 ### 验证方式
@@ -245,6 +245,36 @@
 - `src/cli/commandRunner.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
+
+## OpenCode 分组/子代理执行不能用父 JSONL 静默判断卡死
+
+- 状态：有效
+- 首次发现：2026-07-12
+- 适用范围：OpenCode 1.17.18、`opencode run --format json`、分组/子代理任务、one-shot hidden retry
+
+### 现象
+- 父 `opencode run --format json` 已返回 `step_start`、assistant 文本和工具事件，之后连续 300 秒没有新的 stdout/stderr，插件报“kept returning progress”并终止本次尝试。
+- 同一时间 OpenCode 自身日志仍持续记录子代理的文件读取、搜索、模型 stream 和 loop step；超时前 1 秒仍有活动，说明任务并未卡死。
+
+### 根因
+- OpenCode 分组/子代理在内部 session 中执行时，不保证把每个子代理活动实时转发到父 `run --format json` JSONL。
+- 父 stdout/stderr 的静默只表示“当前没有父事件”，不能作为整个 OpenCode 任务的可靠心跳。固定 5 分钟活跃空闲超时会误杀正常长任务，并错误触发 hidden retry。
+
+### 长期规避
+- 只保留 60 秒启动 watchdog，用于识别进程启动后完全没有 assistant / error / status / progress 的配置或启动异常。
+- 首个有效事件到达后立即解除外层 watchdog；后续生命周期只由 CLI exit/error、用户停止和扩展进程管理收口，不再根据父 JSONL 静默时长自动杀进程。
+- 不通过读取 OpenCode 私有数据库或日志来补造心跳，避免绑定外部 CLI 的内部存储实现。
+
+### 验证方式
+- `resolveOpenCodeOneShotWatchdogTimeoutMs(false)` 返回 60 秒，传入已检测到的 `step_start`/progress 活动后返回 `null`。
+- 回放包含首个 JSONL 活动、随后超过 5 分钟父流静默的分组任务时，不应再出现 `runPrompt-one-shot-idle-timeout`，任务应继续等待 OpenCode 自身退出或用户停止。
+- 启动后 60 秒完全没有 stdout/stderr 的场景仍应进入 hidden retry，并保留可见 system 错误消息与日志。
+
+### 关联资料
+- `src/cli/opencodewatchdog.ts`
+- `src/extension.ts`
+- `src/test/opencodeCommandRunner.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
 
 ## OpenCode `UnknownError` 要保留 server ref
 
@@ -492,6 +522,71 @@
 - `package.json`
 - `.gitignore`
 - `dist/test/lobsterBoundaryRecord.test.js`（已清理的历史生成物）
+
+## Loop 编排角色不能复用为模型角色
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：Loop Webview、模型持久化、`sendPrompt`、主从执行、红蓝辩论、续跑与自动唤醒
+
+### 现象
+- Codex Loop 同时展示“主任务模型 / 子任务模型”，同一任务不同角色可能收到不同模型。
+- Claude 明明不支持插件侧模型选择，Loop 区域仍容易被通用模型 UI 逻辑误伤。
+- OpenCode 的 `small_model` 容易被误解为 Loop 子任务模型，进而错误删除或映射。
+
+### 根因
+- 把 Loop 的主任务、子任务、裁判主持人、参与者等编排角色，错误建模成通用模型角色。
+- OpenCode primary/small 是 CLI 自身能力，与 Loop 主从编排无直接对应关系。
+
+### 长期规避
+- Claude 在 Coding/Loop 均不展示插件侧模型选择。
+- Codex 在 Coding/Loop 复用同一个模型下拉，消息只传 `model`；普通轮次、子任务、裁判、参与者、共识汇总、续跑和唤醒全部沿用该值。
+- OpenCode 在 Coding/Loop 均保留 primary/small 和各自思考力度；所有 Loop 对话角色使用 effective primary，small 只用于 OpenCode 内部请求。
+- 历史 `selectedLobsterByConfigId` / `lobsterRolesByConfigId` 可以继续归一化读取，避免旧文件崩溃，但不得进入 PanelState、Webview payload 或运行时选择。
+
+### 验证方式
+- Webview 覆盖 OpenCode 双模型、Codex 单模型、Claude 无模型三种 Coding/Loop 组合。
+- 用带旧 `lobsterMainModel` / `lobsterSubtaskModel` 的兼容消息回放，确认运行输入只保留统一 `model`。
+- 构造包含旧主/子选择的模型存储，确认 PanelState 只暴露通用 Codex 选择。
+
+### 关联资料
+- `src/webview/viewContentScript/modelManager.ts`
+- `src/sessionMessageActions.ts`
+- `src/extension.ts`
+- `src/lobsterDebateRunner.ts`
+- `src/test/opencodedualmodelwebview.test.ts`
+- `src/test/sessionMessageActions.test.ts`
+
+## 内部思考 wrapper 不能用通用 HTML 清洗
+
+- 状态：已规避
+- 首次发现：2026-07-12
+- 适用范围：OpenCode JSONL text/reasoning、Codex reasoning、历史消息清洗
+
+### 现象
+- OpenCode `text` 事件可能直接返回 `<thinking>...</thinking>`，标签会原样显示在气泡中；同一事件还可能在思考块后继续包含可见正文。
+- 如果简单删除所有尖括号内容，会破坏用户问题、代码片段和普通 `<div>` 等合法内容。
+
+### 根因
+- 外部 CLI 的内部思考协议与 assistant 正文共用 text 通道，旧解析器把整段都当作可见 assistant 文本。
+- 通用 HTML sanitizer 无法区分协议 wrapper 与用户内容。
+
+### 长期规避
+- 只识别 `<thinking>`、`<think>`、`<analysis>`、`<reasoning>` 四类 wrapper，大小写不敏感。
+- OpenCode 混合 text 按原顺序拆成 thinking 与 assistant；最终答复只收集 assistant 段。
+- reasoning、Codex thinking 和历史消息只去除 wrapper 标签，不删除普通 HTML 或代码标签。
+
+### 验证方式
+- 回放 `~/.sinitek_cli/logs/sinitek-cli.opencode.2026-07-12.log` 中的 `<thinking>Mapping Codex loop model controls and execution flow</thinking>` 样本，确认可见文本无尖括号 wrapper。
+- 覆盖混合思考+正文、纯思考、历史消息修复和普通 `<div>` 保留。
+
+### 关联资料
+- `src/thinkingMarkup.ts`
+- `src/cli/commandRunner.ts`
+- `src/codexReasoningContent.ts`
+- `src/sessionStore.ts`
+- `src/test/opencodeCommandRunner.test.ts`
+- `src/test/codexReasoningContent.test.ts`
 
 ## 建议模板
 

@@ -12,12 +12,16 @@ const {
   buildOpenCodeRunFailureMessage,
   buildCliArgs,
   detectOpenCodeStreamActivity,
-  parseOpenCodeVisibleStreamEvent,
+  parseOpenCodeVisibleStreamEvents,
   parseOpenCodeSessionId,
   parseOpenCodeRunOutput,
   runCliStream,
 } = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
 const { isInteractiveSupported } = require("../cli/config") as typeof import("../cli/config");
+const {
+  OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS,
+  resolveOpenCodeOneShotWatchdogTimeoutMs,
+} = require("../cli/opencodewatchdog") as typeof import("../cli/opencodewatchdog");
 const {
   extractSessionId,
   resolveCliSessionIdForResume,
@@ -477,6 +481,26 @@ test("detects OpenCode progress-only JSONL activity", () => {
   });
 });
 
+test("disarms the OpenCode startup watchdog after the first JSONL activity", () => {
+  assert.equal(
+    resolveOpenCodeOneShotWatchdogTimeoutMs(false),
+    OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS,
+  );
+
+  const activity = detectOpenCodeStreamActivity(JSON.stringify({
+    type: "step_start",
+    sessionID: "ses_subagent",
+    part: { type: "step-start", sessionID: "ses_subagent" },
+  }), "");
+  const hasActivity = activity.hasAssistantAnswer
+    || activity.hasError
+    || activity.hasStatus
+    || activity.hasProgress;
+
+  assert.equal(hasActivity, true);
+  assert.equal(resolveOpenCodeOneShotWatchdogTimeoutMs(hasActivity), null);
+});
+
 test("detects OpenCode final answer activity from text events", () => {
   const stdout = JSON.stringify({
     type: "text",
@@ -496,7 +520,7 @@ test("detects OpenCode final answer activity from text events", () => {
 });
 
 test("formats OpenCode JSONL tool events for visible trace bubbles", () => {
-  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
     type: "tool_use",
     sessionID: "ses_visible",
     part: {
@@ -504,29 +528,65 @@ test("formats OpenCode JSONL tool events for visible trace bubbles", () => {
       tool: "read",
       state: { status: "completed", title: "src/extension.ts" },
     },
-  })), {
+  })), [{
     kind: "tool-use",
     content: "tool read\nstatus: completed\nsrc/extension.ts",
-  });
+  }]);
 });
 
 test("formats OpenCode JSONL text and reasoning events for visible bubbles", () => {
-  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
     type: "text",
     sessionID: "ses_visible",
     part: { type: "text", text: "开始检查日志。\n" },
-  })), {
+  })), [{
     kind: "assistant",
     content: "开始检查日志。\n",
-  });
+  }]);
 
-  assert.deepEqual(parseOpenCodeVisibleStreamEvent(JSON.stringify({
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
     type: "reasoning_delta",
     sessionID: "ses_visible",
     part: { type: "reasoning-delta", text: "需要先确认事件类型" },
-  })), {
+  })), [{
     kind: "thinking",
     content: "thinking\n需要先确认事件类型",
+  }]);
+});
+
+test("splits OpenCode thinking wrappers from mixed assistant text without showing tags", () => {
+  const stdout = JSON.stringify({
+    type: "text",
+    sessionID: "ses_tagged_thinking",
+    part: {
+      type: "text",
+      text: "<thinking>**Mapping execution flow**</thinking>\n继续检查运行链路。",
+    },
+  });
+
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(stdout), [
+    { kind: "thinking", content: "thinking\n**Mapping execution flow**" },
+    { kind: "assistant", content: "\n继续检查运行链路。" },
+  ]);
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "继续检查运行链路。",
+    errorText: null,
+    statusText: null,
+  });
+});
+
+test("treats a tagged OpenCode thinking-only text event as progress, not an assistant answer", () => {
+  const stdout = JSON.stringify({
+    type: "text",
+    sessionID: "ses_tagged_thinking",
+    part: { type: "text", text: "<thinking>Inspecting tests</thinking>" },
+  });
+
+  assert.deepEqual(detectOpenCodeStreamActivity(stdout, ""), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: true,
   });
 });
 

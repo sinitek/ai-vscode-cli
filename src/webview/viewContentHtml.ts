@@ -157,16 +157,6 @@ ${webviewStyles}    </style>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
           <div class="input-model-row">
-            <div id="lobsterModelGroup" class="lobster-model-group" style="display: none;">
-              <select id="lobsterMainModelSelect" class="model-select" aria-label="${i18n.modelMainSelectAria}">
-                <option value="">${i18n.modelOptionMainDefault}</option>
-                <option value="__manage__">${i18n.modelOptionManage}</option>
-              </select>
-              <select id="lobsterSubtaskModelSelect" class="model-select" aria-label="${i18n.modelSubtaskSelectAria}">
-                <option value="">${i18n.modelOptionSubtaskDefault}</option>
-                <option value="__manage__">${i18n.modelOptionManage}</option>
-              </select>
-            </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
               <label class="open-code-model-row" for="openCodePrimaryModelSelect">
                 <span class="open-code-model-label">${i18n.openCodePrimaryModelLabel}</span>
