@@ -7,3 +7,4 @@ package-lock.json
 .vscode/
 .tmp-lobster-*/
 .tmp-lobster-launch-*/
+.codegraph/
