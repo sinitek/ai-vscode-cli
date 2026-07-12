@@ -933,33 +933,11 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     );
   };
 
-  const buildGroupChatHistoryState = () => {
-    const runningTaskIds = deps.collectRunningTaskIds();
-    return listLobsterGroupChatTasks(deps)
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .map((task) => {
-        const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
-        return {
-          id: task.id,
-          cli: task.cli,
-          status: task.status,
-          executionMode: normalizeLobsterExecutionMode(task.executionMode),
-          rootPrompt: task.rootPrompt,
-          createdAt: task.createdAt,
-          updatedAt: task.updatedAt,
-          currentRound: task.currentRound,
-          taskStoreFile: task.taskStoreFile,
-          canContinue: controlState.canContinue,
-        };
-      });
-  };
-
   return {
     open,
     refresh,
     refreshOpenPanelForTask,
     buildMessageAction,
-    buildGroupChatHistoryState,
     listGroupChatTasks: () => listLobsterGroupChatTasks(deps),
   };
 }

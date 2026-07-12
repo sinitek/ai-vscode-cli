@@ -127,6 +127,23 @@ export type LobsterTaskStore = {
   tasks: LobsterTaskRecord[];
 };
 
+export function buildLobsterSessionIdsByCli(
+  tasks: readonly Pick<LobsterTaskRecord, "cli" | "sessionId">[]
+): Record<CliName, Set<string>> {
+  const sessionIdsByCli: Record<CliName, Set<string>> = {
+    codex: new Set<string>(),
+    claude: new Set<string>(),
+    opencode: new Set<string>(),
+  };
+  tasks.forEach((task) => {
+    const sessionId = typeof task.sessionId === "string" ? task.sessionId.trim() : "";
+    if (sessionId) {
+      sessionIdsByCli[task.cli].add(sessionId);
+    }
+  });
+  return sessionIdsByCli;
+}
+
 export type LobsterCommunicationPaths = {
   dir: string;
   mainFile: string;

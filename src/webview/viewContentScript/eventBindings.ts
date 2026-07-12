@@ -89,7 +89,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
           elements.resetSession.tabIndex = resetLocked ? -1 : 0;
         }
         if (elements.clearAllHistory) {
-          elements.clearAllHistory.disabled = state.historyTab === "lobster" || (state.historyTab === "sessions" && resetLocked);
+          elements.clearAllHistory.disabled = state.historyTab === "sessions" && resetLocked;
         }
       }
 

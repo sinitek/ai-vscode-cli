@@ -75,7 +75,7 @@ test("serializes visual edits without dropping unknown settings", () => {
     model: "vendor-sonnet",
     fallbackModels: "vendor-opus, vendor-haiku",
     availableModels: "vendor-sonnet\nvendor-opus",
-    effortLevel: "xhigh",
+    effortLevel: "max",
     language: "zh-CN",
     outputStyle: "Explanatory",
     autoUpdatesChannel: "stable",
@@ -108,6 +108,7 @@ test("serializes visual edits without dropping unknown settings", () => {
   assert.equal(config.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "vendor-opus");
   assert.deepEqual(config.fallbackModel, ["vendor-opus", "vendor-haiku"]);
   assert.deepEqual(config.availableModels, ["vendor-sonnet", "vendor-opus"]);
+  assert.equal(config.effortLevel, "max");
   assert.equal(config.cleanupPeriodDays, 45);
   assert.equal(config.alwaysThinkingEnabled, true);
   assert.equal(config.includeCoAuthoredBy, false);
@@ -166,6 +167,7 @@ test("official example and editor expose visual plus JSON modes", () => {
   );
   assert.match(source, /Default model family mapping/);
   assert.match(source, /Advanced JSON mode preserves every Claude Code field/);
+  assert.match(source, /\.\.\.\["low", "medium", "high", "xhigh", "max"\]\.map/);
 });
 
 test("visual labels expose tooltip help and visual mode is never hidden", () => {

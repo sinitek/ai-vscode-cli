@@ -118,6 +118,30 @@
 - `src/test/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
+## OpenCode 空配置档案不能按运行完整性阻断保存
+
+- 状态：有效
+- 首次发现：2026-07-12
+- 适用范围：OpenCode 配置中心、配置档案保存、运行前校验
+
+### 现象
+- 点击“添加 OpenCode 配置”时，空档案使用 `{}` 初始化，却立即报错 `OpenCode primary model is missing`，导致用户无法先创建档案再填写 Provider 和模型。
+
+### 根因
+- 配置档案保存直接复用了运行前完整性校验；顶层 `model` 对运行是必需项，但对尚未填写的草稿不是保存前提。
+
+### 长期规避
+- 保存档案时允许缺少顶层 `model` 的草稿落盘，但继续阻止无效 JSON、错误模型引用、占位配置和不完整的兼容网关配置。
+- 应用或运行 OpenCode 前仍执行完整校验，缺少主模型必须阻断执行。
+
+### 验证方式
+- `saveConfig` 可以保存内容为 `{}` 的 OpenCode 档案。
+- `validateOpenCodeConfigForRun("{}")` 仍返回 `role-model-missing`。
+
+### 关联资料
+- `src/config/configService.ts`
+- `src/test/configService.test.ts`
+
 ## OpenCode provider `npm` 不能按模型品牌推断
 
 - 状态：有效

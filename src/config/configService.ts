@@ -927,7 +927,10 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.platform === "opencode") {
     delete configToSave.envContent;
     const validation = validateOpenCodeConfigForRun(configToSave.content, undefined);
-    const blockingIssues = validation.issues.filter((issue) => issue.code !== "openai-compatible-base-url-missing-v1");
+    const blockingIssues = validation.issues.filter((issue) => (
+      issue.code !== "role-model-missing"
+      && issue.code !== "openai-compatible-base-url-missing-v1"
+    ));
     if (blockingIssues.length > 0) {
       throw new Error(blockingIssues.map((issue) => issue.message).join("\n"));
     }

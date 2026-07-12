@@ -56,6 +56,29 @@ test("visual parser loads current myAPI example and roles", () => {
   assert.equal(parsed.state.smallModel, "myAPI/small-task-model");
 });
 
+test("visual editor exposes official provider adapters and full reasoning efforts", () => {
+  const utils = loadVisualUtils();
+  assert.deepEqual(
+    Array.from(utils.providerNpmOptions, (option: any) => option.value),
+    [
+      "@ai-sdk/openai-compatible",
+      "@ai-sdk/openai",
+      "@ai-sdk/anthropic",
+      "@ai-sdk/google",
+    ],
+  );
+  assert.deepEqual(
+    Array.from(utils.reasoningEffortOptions),
+    ["low", "medium", "high", "xhigh", "max"],
+  );
+
+  const source = loadUiSource();
+  assert.match(source, /renderOpenCodeSelect\([\s\S]*?"npm"[\s\S]*?OPEN_CODE_PROVIDER_NPM_OPTIONS/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "multiple"/);
+  assert.match(source, /renderOpenCodeMultiSelect\([\s\S]*?OPEN_CODE_REASONING_EFFORT_OPTIONS\.map/);
+  assert.match(source, /Google \(@ai-sdk\/google\)/);
+});
+
 test("provider and model operations add edit delete and preserve selection", () => {
   const utils = loadVisualUtils();
   let state = utils.createState({});
@@ -253,7 +276,7 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   );
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
-  assert.match(source, /思考力度: "该模型支持的 reasoning effort，逗号分隔。可选值：low \/ medium \/ high"/);
+  assert.match(source, /思考力度: "该模型支持的 reasoning effort，可多选。可选值：low \/ medium \/ high \/ xhigh \/ max"/);
   assert.match(
     source,
     /display: "flex",\s+gap: "6px",\s+flexWrap: "wrap",\s+flex: 1,\s+minHeight: 260/,

@@ -75,7 +75,6 @@ import {
   PanelState,
   PromptContextOptions,
   ConversationTabSummary,
-  LobsterGroupChatHistoryItem,
   PromptHistoryItem,
   SessionSummary,
 } from "./webview/types";
@@ -207,6 +206,7 @@ import {
 import {
   appendLobsterRound,
   bindLobsterTaskToSession,
+  buildLobsterSessionIdsByCli,
   buildLobsterTaskStoreFile,
   buildLobsterSubtaskCommunicationFile,
   cleanupLobsterCommunicationRetention,
@@ -1112,7 +1112,6 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     buildSessionState,
     buildConversationTabsState,
     buildPromptHistoryState,
-    buildLobsterGroupChatHistoryState,
     buildModelState,
     buildEditorContextState,
     resolveModelConfigIdForCli,
@@ -9943,6 +9942,9 @@ async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
+  const lobsterSessionIdsByCli = buildLobsterSessionIdsByCli(
+    lobsterDebateChatPanelCoordinator.listGroupChatTasks()
+  );
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
@@ -9970,6 +9972,7 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
+        isLobsterSession: lobsterSessionIdsByCli[item].has(record.id),
         isOpenInConversationTabs: Boolean(openConversationTabId),
         openConversationTabId,
         firstPrompt,
@@ -9984,10 +9987,6 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
     currentSessionId: sessionStore[cli]?.currentId ?? null,
     sessions,
   };
-}
-
-function buildLobsterGroupChatHistoryState(): LobsterGroupChatHistoryItem[] {
-  return lobsterDebateChatPanelCoordinator.buildGroupChatHistoryState();
 }
 
 function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | null {

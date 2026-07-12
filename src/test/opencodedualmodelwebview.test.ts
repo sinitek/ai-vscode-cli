@@ -222,9 +222,14 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
   assert.match(group, /id="openCodeSmallThinkingMode"[^>]*class="thinking-select"/);
+  assert.match(group, /<option value="xhigh">X-High<\/option>/);
+  assert.match(group, /<option value="max">Max<\/option>/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*title="OpenCode small model selection"/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|reasoning effort/);
+  const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
+  assert.match(genericThinking, /<option value="xhigh">X-High<\/option>/);
+  assert.match(genericThinking, /<option value="max">Max<\/option>/);
 });
 
 test("lays out OpenCode selectors as two full-width model rows", () => {

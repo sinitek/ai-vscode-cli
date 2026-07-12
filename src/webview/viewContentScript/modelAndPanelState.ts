@@ -268,9 +268,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
-        state.lobsterGroupChatHistory = Array.isArray(panelState.lobsterGroupChatHistory)
-          ? panelState.lobsterGroupChatHistory
-          : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         const configs = Array.isArray(state.configState.configs)
           ? state.configState.configs
@@ -409,7 +406,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         syncOpenCurrentLobsterGroupChatButton();
         renderSessionList();
         renderPromptHistoryList();
-        renderLobsterGroupChatHistoryList();
         applyEditorContext(panelState.editorContext);
         newlyCompletedLobsterTabIds.forEach((tabId) => {
           flushPendingPromptQueue(tabId);

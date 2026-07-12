@@ -174,7 +174,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       function openHistory() {
         renderSessionList();
         renderPromptHistoryList();
-        renderLobsterGroupChatHistoryList();
         setHistoryTab(state.historyTab);
         elements.historyOverlay.classList.add("visible");
       }
@@ -217,18 +216,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function setHistoryTab(tab) {
         const isPrompts = tab === "prompts";
-        const isLobster = tab === "lobster";
-        const isSessions = !isPrompts && !isLobster;
-        state.historyTab = isPrompts ? "prompts" : isLobster ? "lobster" : "sessions";
+        const isSessions = !isPrompts;
+        state.historyTab = isPrompts ? "prompts" : "sessions";
         elements.historyTabPrompts.classList.toggle("active", isPrompts);
         elements.historyTabSessions.classList.toggle("active", isSessions);
-        elements.historyTabLobsterGroupChats.classList.toggle("active", isLobster);
         elements.historyTabPrompts.setAttribute("aria-selected", String(isPrompts));
         elements.historyTabSessions.setAttribute("aria-selected", String(isSessions));
-        elements.historyTabLobsterGroupChats.setAttribute("aria-selected", String(isLobster));
         elements.historyPanelPrompts.classList.toggle("active", isPrompts);
         elements.historyPanelSessions.classList.toggle("active", isSessions);
-        elements.historyPanelLobsterGroupChats.classList.toggle("active", isLobster);
         if (elements.clearAllHistory) {
           elements.clearAllHistory.textContent = isPrompts
             ? t("historyClearPrompts")
@@ -347,9 +342,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
             vscode.postMessage({ type: "clearPromptHistory" });
             return;
           }
-          if (state.historyTab === "lobster") {
-            return;
-          }
           requestResetConversationTabSession();
         });
       }
@@ -360,10 +352,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       elements.historyTabSessions.addEventListener("click", () => {
         setHistoryTab("sessions");
-      });
-
-      elements.historyTabLobsterGroupChats.addEventListener("click", () => {
-        setHistoryTab("lobster");
       });
 
       elements.historyOverlay.addEventListener("click", (event) => {

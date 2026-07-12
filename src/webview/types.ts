@@ -128,6 +128,7 @@ export type SessionSummary = {
   createdAt: number;
   lastUsedAt: number;
   cli: CliName;
+  isLobsterSession: boolean;
   isOpenInConversationTabs: boolean;
   openConversationTabId: string | null;
   firstPrompt?: string;
@@ -150,19 +151,6 @@ export type PromptHistoryItem = {
   prompt: string;
   createdAt: number;
   cli: CliName;
-};
-
-export type LobsterGroupChatHistoryItem = {
-  id: string;
-  cli: CliName;
-  status: string;
-  executionMode: LobsterExecutionMode;
-  rootPrompt: string;
-  createdAt: number;
-  updatedAt: number;
-  currentRound: number;
-  taskStoreFile: string;
-  canContinue: boolean;
 };
 
 export type ChatMessageAction =
@@ -251,7 +239,6 @@ export type PanelState = {
     tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];
-  lobsterGroupChatHistory: LobsterGroupChatHistoryItem[];
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;

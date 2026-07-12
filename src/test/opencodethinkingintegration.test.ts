@@ -100,7 +100,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     buildSessionState: () => ({ currentSessionId: null, sessions: [] }),
     buildConversationTabsState: () => ({ activeTabId: null, tabs: [] }),
     buildPromptHistoryState: () => [],
-    buildLobsterGroupChatHistoryState: () => [],
     buildModelState: () => ({
       selectedByCli: { codex: null, claude: null, opencode: "gateway/model" },
       optionsByCli: { codex: [], claude: [], opencode: [] },

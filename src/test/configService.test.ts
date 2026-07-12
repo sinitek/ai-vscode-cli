@@ -241,6 +241,31 @@ test("OpenCode saved profiles omit envContent and keep myAPI config content", as
   });
 });
 
+test("OpenCode saved profiles allow an empty draft while runtime validation still requires a primary model", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const config = {
+      id: "empty-opencode-draft",
+      name: "Empty OpenCode Draft",
+      platform: "opencode" as const,
+      content: "{}",
+      openCodeSkills: [],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    await configService.saveConfig(config);
+
+    const savedPath = path.join(homeDir, ".opencode", "__config", "empty-opencode-draft.json");
+    const saved = JSON.parse(await fs.readFile(savedPath, "utf-8"));
+    assert.equal(saved.content, "{}");
+
+    const validation = configService.validateOpenCodeConfigForRun(saved.content, undefined, {});
+    assert.equal(validation.ok, false);
+    assert.ok(validation.issues.some((issue) => issue.code === "role-model-missing"));
+  });
+});
+
 test("OpenCode current model config ignores the separate global MCP opencode.json", async () => {
   await withTempHome(async (homeDir) => {
     await fs.mkdir(path.join(homeDir, ".config", "opencode"), { recursive: true });

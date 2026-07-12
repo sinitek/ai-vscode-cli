@@ -85,9 +85,9 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 ### 3.4 会话与并发
 
 - 会话列表与当前会话切换
-- 历史会话列表会显示该会话是否已在 AI 对话 tabs 中打开，并移除“复制 ID”按钮
+- 历史会话列表会显示该会话是否为 Loop 会话、是否已在 AI 对话 tabs 中打开，并移除“复制 ID”按钮
 - 历史记录弹窗支持查看单个历史会话的已保存消息，并可将该会话消息导出为 TXT；历史记录中的操作按钮允许换行展示，避免挤压列表宽度
-- 历史记录弹窗提供“Loop 群聊” tab，按更新时间列出保留期内的 Loop 任务摘要；点击“加载”只按 `taskId` 重新打开 Loop 群聊 UI，不改变普通会话绑定，也不会自动继续任务
+- 历史记录弹窗不再提供独立“Loop 群聊”恢复 tab；Loop 会话统一从“历史会话”加载，恢复主会话后通过输入区已有“打开群聊”按钮进入对应群聊
 - 从历史加载未打开的会话时会新建 tab 承载该会话；若该会话已在 tabs 中打开，则直接切换到已有 tab
 - OpenCode 首次执行会从 JSONL `sessionID` 接管真实 `ses_*`，同一 tab 后续执行使用该真实 ID续接；插件内部 `local_*` 占位 ID不会作为 `--session` 传入 CLI。修复前留下的 `local_*` tab 会在下一次执行创建新底层会话，并在捕获真实 ID后迁移已有插件消息历史。
 - 多个 conversation tab（超过 5 个时启用左右翻页按钮，每页最多显示 5 个）
@@ -150,10 +150,10 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 从对话面板的配置按钮打开配置中心时，若当前视口处于小于等于 `920px` 的窄宽度模式，左侧配置目录首次默认展开；展开后仍可通过关闭按钮、遮罩或 `Esc` 收起
 - 当前配置查看与应用
 - 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、OpenCode 的 `config.json`、Codex 的 `config.toml` / `.env` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件。Gemini 配置卡片已移出当前支持范围。
-- Codex 配置卡片管理用户级 `~/.codex/config.toml` 与 `~/.codex/.env`。`config.toml` 是 Codex 主配置文件，必须按 TOML 解析与保存，不得按 JSON 处理；卡片支持常用字段可视化编辑，也支持 TOML 源码编辑。`.env` 作为独立环境变量文件展示和保存，用于 Codex 相关密钥或环境覆盖，不与主 TOML 合并成同一个 JSON 文档。
-- Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式；页面视觉样式、卡片背景和表单密度与 OpenCode 配置卡片对齐。可视化模式覆盖 Claude Code 官方 `~/.claude/settings.json` 的常用核心字段：`model`、`fallbackModel`、`availableModels`、`effortLevel`、`language`、`outputStyle`、`autoUpdatesChannel`、`cleanupPeriodDays`、`alwaysThinkingEnabled`、`includeCoAuthoredBy`、`permissions.defaultMode/allow/ask/deny`，以及 `env` 中的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`。第三方网关或云平台可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。可视化序列化基于原始 JSON 定向合并，保留未展示字段、额外环境变量、hooks、权限扩展和企业策略；无效 JSON 不覆盖最后一次有效可视化状态。
+- Codex 配置卡片管理用户级 `~/.codex/config.toml` 与 `~/.codex/.env`。`config.toml` 是 Codex 主配置文件，必须按 TOML 解析与保存，不得按 JSON 处理；卡片支持常用字段可视化编辑，也支持 TOML 源码编辑；`model_reasoning_effort` 使用下拉选择，覆盖 `minimal / low / medium / high / xhigh / max`。`.env` 作为独立环境变量文件展示和保存，用于 Codex 相关密钥或环境覆盖，不与主 TOML 合并成同一个 JSON 文档。
+- Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式；页面视觉样式、卡片背景和表单密度与 OpenCode 配置卡片对齐。可视化模式覆盖 Claude Code 官方 `~/.claude/settings.json` 的常用核心字段：`model`、`fallbackModel`、`availableModels`、`effortLevel`、`language`、`outputStyle`、`autoUpdatesChannel`、`cleanupPeriodDays`、`alwaysThinkingEnabled`、`includeCoAuthoredBy`、`permissions.defaultMode/allow/ask/deny`，以及 `env` 中的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`；`effortLevel` 下拉覆盖 `low / medium / high / xhigh / max`。第三方网关或云平台可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。可视化序列化基于原始 JSON 定向合并，保留未展示字段、额外环境变量、hooks、权限扩展和企业策略；无效 JSON 不覆盖最后一次有效可视化状态。
 - Claude、OpenCode、Codex 三组配置卡片的可视化参数 label 右侧都应提供问号提示；鼠标 hover 展示该参数用途、写入位置和注意事项，枚举型参数必须在提示中列出可选值。三组“查看范例”入口统一放在配置文件名右侧，视觉位置和交互风格对齐 OpenCode，避免 Claude / Codex 与 OpenCode 出现不同布局。
-- OpenCode 配置页为模型/Provider 单文件保存，只维护 `~/.opencode/config.json`；OpenCode 全局 MCP 另由 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。配置中心不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 双模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model`、两个 `provider.myAPI.models` 定义、主模型 `options+variants`、小模型固定 `options` 与可选 `variants`，不再内嵌 MCP 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
+- OpenCode 配置页为模型/Provider 单文件保存，只维护 `~/.opencode/config.json`；OpenCode 全局 MCP 另由 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。配置中心不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 双模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model`、两个 `provider.myAPI.models` 定义、主模型 `options+variants`、小模型固定 `options` 与可选 `variants`，不再内嵌 MCP 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。Provider `npm` 使用单选下拉，提供 `@ai-sdk/openai-compatible`、`@ai-sdk/openai`、`@ai-sdk/anthropic`、`@ai-sdk/google`；模型思考力度使用可多选下拉，固定覆盖 `low / medium / high / xhigh / max`，首个选择写入默认 `options.reasoningEffort`，全部选择生成对应 variants，并在加载旧配置时保留未知已有值。页面同时说明 `npm` 按 API 协议选择：直连内置 Anthropic / Google / OpenAI provider 通常无需自定义 `npm`；手写自定义直连 provider 时分别使用 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`；实际 OpenAI-compatible 网关才使用 `@ai-sdk/openai-compatible`，不能根据 Claude、Gemini、DeepSeek 等模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
 - 技能管理

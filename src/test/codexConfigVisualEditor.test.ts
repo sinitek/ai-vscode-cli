@@ -189,6 +189,10 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /"read-only"/);
   assert.match(source, /"workspace-write"/);
   assert.match(source, /"danger-full-access"/);
+  assert.match(
+    source,
+    /"model_reasoning_effort"[\s\S]*?\["", "minimal", "low", "medium", "high", "xhigh", "max"\]\.map/,
+  );
   assert.match(source, /wire_api: "Provider 使用的 wire API。可选值：responses \/ chat"/);
 });
 

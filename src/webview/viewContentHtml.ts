@@ -176,6 +176,8 @@ ${webviewStyles}    </style>
                   <option value="low">${i18n.thinkingOptionLow}</option>
                   <option value="medium">${i18n.thinkingOptionMedium}</option>
                   <option value="high">${i18n.thinkingOptionHigh}</option>
+                  <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
+                  <option value="max">${i18n.thinkingOptionMax}</option>
                 </select>
               </label>
               <label class="open-code-model-row" for="openCodeSmallModelSelect">
@@ -194,6 +196,8 @@ ${webviewStyles}    </style>
               <option value="low">${i18n.thinkingOptionLow}</option>
               <option value="medium">${i18n.thinkingOptionMedium}</option>
               <option value="high">${i18n.thinkingOptionHigh}</option>
+              <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
+              <option value="max">${i18n.thinkingOptionMax}</option>
             </select>
           </div>
           <div class="input-actions">
@@ -252,16 +256,12 @@ ${webviewStyles}    </style>
           <div class="history-tabs help-tabs" role="tablist" aria-label="${i18n.historyTabsLabel}">
             <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabPrompts}</button>
             <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
-            <button id="historyTabLobsterGroupChats" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabLobsterGroupChats}</button>
           </div>
           <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
             <div id="promptHistoryList" class="prompt-list"></div>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
             <div id="sessionList" class="session-list"></div>
-          </div>
-          <div id="historyPanelLobsterGroupChats" class="history-panel lobster" role="tabpanel">
-            <div id="lobsterGroupChatHistoryList" class="session-list"></div>
           </div>
         </div>
       </div>

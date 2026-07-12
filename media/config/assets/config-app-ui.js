@@ -2823,6 +2823,21 @@ const openCodeVisualIsRecord = (value) =>
 const openCodeVisualClone = (value) =>
   value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 
+const OPEN_CODE_PROVIDER_NPM_OPTIONS = Object.freeze([
+  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible (@ai-sdk/openai-compatible)" },
+  { value: "@ai-sdk/openai", label: "OpenAI (@ai-sdk/openai)" },
+  { value: "@ai-sdk/anthropic", label: "Anthropic (@ai-sdk/anthropic)" },
+  { value: "@ai-sdk/google", label: "Google (@ai-sdk/google)" },
+]);
+
+const OPEN_CODE_REASONING_EFFORT_OPTIONS = Object.freeze([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
 const openCodeVisualNormalizeEfforts = (value) => {
   const values = Array.isArray(value) ? value : String(value || "").split(","),
     seen = new Set(),
@@ -3132,6 +3147,8 @@ const openCodeVisualRunSaveFlow = async ({ content, saveConfig, applyActiveConfi
 };
 
 const OpenCodeConfigVisualEditorUtils = Object.freeze({
+  providerNpmOptions: OPEN_CODE_PROVIDER_NPM_OPTIONS,
+  reasoningEffortOptions: OPEN_CODE_REASONING_EFFORT_OPTIONS,
   normalizeEfforts: openCodeVisualNormalizeEfforts,
   readEfforts: openCodeVisualReadEfforts,
   applyEfforts: openCodeVisualApplyEfforts,
@@ -3242,9 +3259,9 @@ const claudeVisualValidateState = (state) => {
   if (fallbackModels.length > 3) return "回退模型最多支持 3 个";
   if (
     state.effortLevel &&
-    !["low", "medium", "high", "xhigh"].includes(state.effortLevel)
+    !["low", "medium", "high", "xhigh", "max"].includes(state.effortLevel)
   )
-    return "推理强度必须是 low、medium、high 或 xhigh";
+    return "推理强度必须是 low、medium、high、xhigh 或 max";
   if (
     state.autoUpdatesChannel &&
     !["stable", "latest"].includes(state.autoUpdatesChannel)
@@ -4839,7 +4856,7 @@ const ConfigEditorPanel = () => {
         "API Key": "Provider API Key，可使用 {env:VAR} 引用环境变量。",
         "模型 id": "Provider 下的模型唯一标识，会拼成 provider/model 引用。",
         模型名称: "模型在配置页中显示的人类可读名称。",
-        思考力度: "该模型支持的 reasoning effort，逗号分隔。可选值：low / medium / high",
+        思考力度: "该模型支持的 reasoning effort，可多选。可选值：low / medium / high / xhigh / max",
         model: "Codex CLI 默认模型名称。",
         model_provider: "Codex 使用的默认模型供应商。",
         approval_policy: "控制命令执行前的审批策略。",
@@ -5101,7 +5118,7 @@ const ConfigEditorPanel = () => {
                     (W) => updateClaudeVisualState({ effortLevel: W }),
                     [
                       { value: "", label: claudeText("跟随默认", "Use default") },
-                      ...["low", "medium", "high", "xhigh"].map((W) => ({ value: W, label: W })),
+                      ...["low", "medium", "high", "xhigh", "max"].map((W) => ({ value: W, label: W })),
                     ],
                   ),
                   renderClaudeListField(
@@ -5348,6 +5365,56 @@ const ConfigEditorPanel = () => {
             }),
           ],
         }),
+      renderOpenCodeSelect = (W, H, k, L, U = {}) => {
+        const T = L.some((Z) => Z.value === H)
+          ? L
+          : H
+            ? [...L, { value: H, label: H }]
+            : L;
+        return be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(
+              W,
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value)),
+            ),
+            be.jsx($l, {
+              value: H || void 0,
+              onChange: (Z) => k(Z || ""),
+              options: T,
+              allowClear: !0,
+              showSearch: !0,
+              optionFilterProp: "label",
+              placeholder: U.placeholder,
+              style: { width: "100%" },
+            }),
+          ],
+        });
+      },
+      renderOpenCodeMultiSelect = (W, H, k, L, U = {}) => {
+        const T = openCodeVisualNormalizeEfforts(H),
+          Z = new Set(L.map((Q) => Q.value)),
+          ee = [...L, ...T.filter((Q) => !Z.has(Q)).map((Q) => ({ value: Q, label: Q }))];
+        return be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(
+              W,
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), ee.map((Q) => Q.value)),
+            ),
+            be.jsx($l, {
+              mode: "multiple",
+              value: T,
+              onChange: (Q) => k(openCodeVisualNormalizeEfforts(Q).join(", ")),
+              options: ee,
+              allowClear: !0,
+              maxTagCount: "responsive",
+              placeholder: U.placeholder,
+              style: { width: "100%" },
+            }),
+          ],
+        });
+      },
       renderOpenCodeVisualEditor = () => {
         if (!openCodeVisualState)
           return be.jsx("div", {
@@ -5466,7 +5533,15 @@ const ConfigEditorPanel = () => {
                           children: [
                             renderOpenCodeField("Provider id", W.id, (L) => updateSelectedOpenCodeProvider({ id: L }), "例如 myAPI"),
                             renderOpenCodeField("名称", W.name, (L) => updateSelectedOpenCodeProvider({ name: L }), "Provider 名称"),
-                            renderOpenCodeField("npm", W.npm, (L) => updateSelectedOpenCodeProvider({ npm: L }), "例如 @ai-sdk/openai-compatible"),
+                            renderOpenCodeSelect(
+                              "npm",
+                              W.npm,
+                              (L) => updateSelectedOpenCodeProvider({ npm: L }),
+                              OPEN_CODE_PROVIDER_NPM_OPTIONS,
+                              {
+                                placeholder: claudeText("选择 Provider npm 包", "Select a provider npm package"),
+                              },
+                            ),
                             renderOpenCodeField("Base URL", W.baseURL, (L) => updateSelectedOpenCodeProvider({ baseURL: L }), "例如 {env:MY_API_BASE_URL}"),
                             renderOpenCodeField("API Key", W.apiKey, (L) => updateSelectedOpenCodeProvider({ apiKey: L }), "例如 {env:MY_API_KEY}", { type: "password" }),
                           ],
@@ -5574,7 +5649,15 @@ const ConfigEditorPanel = () => {
                                   children: [
                                     renderOpenCodeField("模型 id", H.id, (L) => updateSelectedOpenCodeModel({ id: L }), "模型标识"),
                                     renderOpenCodeField("模型名称", H.name, (L) => updateSelectedOpenCodeModel({ name: L }), "列表中显示的名称"),
-                                    renderOpenCodeField("思考力度", H.efforts, (L) => updateSelectedOpenCodeModel({ efforts: L }), "low, medium, high"),
+                                    renderOpenCodeMultiSelect(
+                                      "思考力度",
+                                      H.efforts,
+                                      (L) => updateSelectedOpenCodeModel({ efforts: L }),
+                                      OPEN_CODE_REASONING_EFFORT_OPTIONS.map((L) => ({ value: L, label: L })),
+                                      {
+                                        placeholder: claudeText("选择一个或多个思考力度", "Select one or more efforts"),
+                                      },
+                                    ),
                                   ],
                                 }),
                                 be.jsxs("div", {
@@ -5632,7 +5715,10 @@ const ConfigEditorPanel = () => {
                                     color: "var(--text-color-secondary)",
                                     fontSize: "12px",
                                   },
-                                  children: "多个思考力度请用逗号分隔；首项作为默认 reasoningEffort。",
+                                  children: claudeText(
+                                    "可多选思考力度；首项作为默认 reasoningEffort。",
+                                    "Select multiple efforts; the first is the default reasoningEffort.",
+                                  ),
                                 }),
                               ]
                             : [
@@ -5883,7 +5969,7 @@ const ConfigEditorPanel = () => {
                         "model_reasoning_effort",
                         codexVisualState.reasoningEffort,
                         (L) => updateCodexVisualState({ reasoningEffort: L }),
-                        ["", "minimal", "low", "medium", "high"].map((L) => ({
+                        ["", "minimal", "low", "medium", "high", "xhigh", "max"].map((L) => ({
                           value: L,
                           label: L || "跟随默认",
                         })),

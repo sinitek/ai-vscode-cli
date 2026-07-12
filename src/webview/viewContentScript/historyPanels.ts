@@ -282,6 +282,12 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           }
 
           titleRow.appendChild(label);
+          if (session.isLobsterSession) {
+            const badge = document.createElement("span");
+            badge.className = "session-status-badge";
+            badge.textContent = t("sessionLoopLabel");
+            titleRow.appendChild(badge);
+          }
           if (session.isOpenInConversationTabs) {
             const badge = document.createElement("span");
             badge.className = "session-status-badge";
@@ -348,80 +354,6 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           item.appendChild(actions);
           elements.sessionList.appendChild(item);
         });
-      }
-
-      function renderLobsterGroupChatHistoryList() {
-        if (!elements.lobsterGroupChatHistoryList) {
-          return;
-        }
-        elements.lobsterGroupChatHistoryList.innerHTML = "";
-        const items = Array.isArray(state.lobsterGroupChatHistory) ? state.lobsterGroupChatHistory : [];
-        if (!items.length) {
-          const empty = document.createElement("div");
-          empty.className = "empty-state";
-          empty.textContent = t("historyEmptyLobsterGroupChats");
-          elements.lobsterGroupChatHistoryList.appendChild(empty);
-          return;
-        }
-        items.forEach((item) => {
-          const wrapper = document.createElement("div");
-          wrapper.className = "session-item";
-
-          const info = document.createElement("div");
-          info.className = "session-info";
-
-          const titleRow = document.createElement("div");
-          titleRow.className = "session-title-row";
-
-          const label = document.createElement("div");
-          label.className = "session-label";
-          const cliLabel = item.cli ? "[" + item.cli + "] " : "";
-          const promptPreview = buildPromptPreview(item.rootPrompt || item.id || "");
-          label.textContent = cliLabel + promptPreview;
-          label.title = item.rootPrompt || item.id || "";
-          titleRow.appendChild(label);
-
-          const statusBadge = document.createElement("span");
-          statusBadge.className = "session-status-badge";
-          statusBadge.textContent = item.status || "";
-          titleRow.appendChild(statusBadge);
-
-          const subtitle = document.createElement("div");
-          subtitle.className = "session-subtitle";
-          subtitle.textContent = t("lobsterHistoryMeta", {
-            mode: formatLobsterHistoryMode(item),
-            round: item.currentRound || 0,
-            time: item.updatedAt ? formatDateTime(item.updatedAt) : "",
-          });
-
-          info.appendChild(titleRow);
-          info.appendChild(subtitle);
-
-          const actions = document.createElement("div");
-          actions.className = "session-actions";
-
-          const loadButton = document.createElement("button");
-          loadButton.className = "secondary";
-          loadButton.textContent = t("sessionLoadLabel");
-          loadButton.addEventListener("click", () => {
-            closeHistory();
-            vscode.postMessage({
-              type: "openLobsterDebateChat",
-              taskId: item.id,
-            });
-          });
-
-          actions.appendChild(loadButton);
-          wrapper.appendChild(info);
-          wrapper.appendChild(actions);
-          elements.lobsterGroupChatHistoryList.appendChild(wrapper);
-        });
-      }
-
-      function formatLobsterHistoryMode(item) {
-        return item && item.executionMode === "debate_multi_agent"
-          ? t("lobsterHistoryModeDebate")
-          : t("lobsterHistoryModeMainSub");
       }
 
       function renderPromptHistoryList() {
