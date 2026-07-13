@@ -4,9 +4,11 @@ import { InteractiveMode, ThinkingMode } from "../cli/types";
 import {
   extractCodexCollabToolFailure,
   extractCodexItemTraceCandidate,
+  extractCodexSubagentLifecycleUpdates,
   isCodexFinalAnswerAgentMessage,
   type CodexCollabToolFailure,
   type CodexItemTraceEventType,
+  type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
 import {
   extractDelta,
@@ -41,6 +43,7 @@ export type CodexRuntimeItemEventHandlers = {
   onAssistantDelta: (chunk: string, meta?: { codexFinalAnswer?: boolean }) => void;
   onTrace: (content: string, kind?: CodexRuntimeTraceKind, meta?: CodexRuntimeTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
+  onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
 };
 
 export type CodexTurnAssistantObserver = {
@@ -489,6 +492,8 @@ function emitTraceCandidate(
 export function handleCodexItemEvent(options: {
   eventType: CodexItemTraceEventType;
   rawItem: unknown;
+  threadId?: string;
+  primaryThreadId?: string;
   assistantBuffers: Map<string, string>;
   emittedTraceContents: Map<string, string>;
   handlers: CodexRuntimeItemEventHandlers;
@@ -498,6 +503,8 @@ export function handleCodexItemEvent(options: {
   const {
     eventType,
     rawItem,
+    threadId,
+    primaryThreadId,
     assistantBuffers,
     emittedTraceContents,
     handlers,
@@ -506,6 +513,49 @@ export function handleCodexItemEvent(options: {
   } = options;
   const item = toExecLikeItem(rawItem);
   const itemType = String(item.type || "").trim();
+  const normalizedThreadId = String(threadId || "").trim();
+  const normalizedPrimaryThreadId = String(primaryThreadId || "").trim();
+  const isSubagentThread = Boolean(
+    normalizedThreadId
+    && normalizedPrimaryThreadId
+    && normalizedThreadId !== normalizedPrimaryThreadId
+  );
+
+  extractCodexSubagentLifecycleUpdates(item).forEach((update) => {
+    handlers.onSubagentUpdate?.(update);
+  });
+
+  if (isSubagentThread) {
+    const itemId = String(item.id || "").trim();
+    const bufferKey = itemId ? `${normalizedThreadId}:${itemId}` : "";
+    if (itemType === "agent_message" && eventType === "item.completed") {
+      const nextText = typeof item.text === "string" ? item.text : "";
+      const previousText = bufferKey ? (assistantBuffers.get(bufferKey) ?? "") : "";
+      const delta = extractDelta(previousText, nextText);
+      handlers.onSubagentUpdate?.({
+        threadId: normalizedThreadId,
+        status: "running",
+        ...(delta ? { delta } : {}),
+      });
+      if (bufferKey) {
+        assistantBuffers.delete(bufferKey);
+      }
+      return;
+    }
+    if (itemType === "error") {
+      const message = typeof item.message === "string"
+        ? item.message.trim()
+        : extractItemErrorMessage(item);
+      handlers.onSubagentUpdate?.({
+        threadId: normalizedThreadId,
+        status: "failed",
+        ...(message ? { error: message } : {}),
+      });
+      return;
+    }
+    handlers.onSubagentUpdate?.({ threadId: normalizedThreadId, status: "running" });
+    return;
+  }
 
   if (itemType === "agent_message") {
     if (eventType === "item.completed") {

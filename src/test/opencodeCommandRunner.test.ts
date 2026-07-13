@@ -160,6 +160,13 @@ test("adds one OpenCode auto flag for one-shot and terminal launches", () => {
   assert.deepEqual(buildCliArgs("opencode", {}), ["--auto"]);
 });
 
+test("exposes a reserved OpenCode server port for subagent monitoring", () => {
+  assert.deepEqual(
+    buildCliArgs("opencode", { openCodeServerPort: 41873 }, "hello"),
+    ["run", "--auto", "--format", "json", "--port", "41873", "hello"],
+  );
+});
+
 test("deduplicates an explicit OpenCode auto flag", () => {
   const vscode = require("vscode") as {
     workspace: {
@@ -840,6 +847,31 @@ test("forwards parsed OpenCode visible events to the matching conversation tab",
   assert.match(
     extensionSource,
     /function postPanelState\([\s\S]*viewProvider\?\.postState\(state\);[\s\S]*replayOpenCodeTaskLists\(\)/,
+  );
+});
+
+test("wires subagent event monitoring and 60-second polling into both OpenCode run paths", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const connectionFactories = extensionSource.match(/resolveOpenCodeSubagentConnection\(getCliArgs\(runCli\)/g) ?? [];
+  const monitorFactories = extensionSource.match(/createOpenCodeSubagentMonitor\(\{/g) ?? [];
+  const serverPorts = extensionSource.match(/openCodeServerPort: subagentConnection\.serverPort/g) ?? [];
+  const progressUpdates = extensionSource.match(/subagentProgress\.update\(update\)/g) ?? [];
+  const localizedMessages = extensionSource.match(/t\("run\.openCodeSubagentPollEmpty"\)/g) ?? [];
+
+  assert.equal(connectionFactories.length, 2);
+  assert.equal(monitorFactories.length, 2);
+  assert.equal(serverPorts.length, 2);
+  assert.equal(progressUpdates.length, 2);
+  assert.equal(localizedMessages.length, 2);
+  assert.match(extensionSource, /runPrompt-parallel-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
+  assert.match(extensionSource, /runPrompt-one-shot-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
+  assert.match(
+    extensionSource,
+    /silentProgressNoticeShown = true;[\s\S]*activeAssistantMessageId: null,[\s\S]*activeAssistantKind: null/,
+  );
+  assert.match(
+    extensionSource,
+    /silentProgressNoticeShown = true;[\s\S]*activeAssistantMessageId = undefined;[\s\S]*activeMessageIndex = null/,
   );
 });
 

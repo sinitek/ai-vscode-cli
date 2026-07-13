@@ -192,6 +192,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           && last.role === "assistant"
           && last.id === resolvedId
           && isSameAssistantKind(last, kind);
+        const existingTarget = targetIndex === -1 ? null : state.messages[targetIndex];
+        const canUpdateDetachedSubagent = Boolean(
+          existingTarget
+          && existingTarget.role === "assistant"
+          && existingTarget.subagentId
+        );
         let requiresFullRender = false;
         if (targetIndex !== -1 && !hasContent && marksCodexFinalAnswer) {
           const target = state.messages[targetIndex];
@@ -204,7 +210,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (targetIndex === -1 && !hasContent && marksCodexFinalAnswer) {
           return;
         }
-        if (targetIndex === -1 || !isLastAssistant) {
+        if (targetIndex === -1 || (!isLastAssistant && !canUpdateDetachedSubagent)) {
           const newId = createMessageId();
           assistantRedirects[id] = newId;
           state.messages.push({

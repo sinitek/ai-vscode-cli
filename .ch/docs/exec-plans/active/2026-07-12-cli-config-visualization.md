@@ -74,7 +74,7 @@
 | 顶层 `web_search` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | `string`：`disabled`、`cached`、`indexed`、`live` | 当前是 bool 三态，保存其他字段时可能丢失 string mode | 固定 select：inherit / 四个 mode | 已有 bool 是 legacy 形状，未知 string 也必须原样保留，除非用户明确选择迁移值 | `include` |
 | `[model_providers.<id>].wire_api` | 同上；用户自定义 Provider map | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | 可选 `string`；当前官方参考仅列出 `responses` | 自由文本 | 固定 select：inherit / `responses` | `chat` 或其他既有值不可静默删除；保留 raw 值，用户需显式迁移 | `include` |
 | `approval_policy` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | 简单 `string`：`untrusted`、`on-request`、`never`；另支持 granular table；`on-failure` 已弃用 | 简单 select 目前提供 `on-failure`，复杂 table 会被空值覆盖 | 简单 string 固定 select；table 仅源码保留 | 不再产生 `on-failure`；遇到 table 锁定/保留源码，不能把复杂值归一为空 | `include`（兼容保护） |
-| `model_reasoning_effort` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | `string`：`minimal`、`low`、`medium`、`high`、`xhigh`；模型支持子集不同 | 现有 select 还提供 `max` | 固定 select，仅提供已核验值 | `max` 或未来值保留 raw 值，不再由新 UI 产生 | `include`（兼容保护） |
+| `model_reasoning_effort` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | `string`：`minimal`、`low`、`medium`、`high`、`xhigh`；模型支持子集不同；`max` / `ultra` 为后续明确要求的产品 raw value | 现有 select 还提供 `max` | 固定 select：inherit / `minimal` / `low` / `medium` / `high` / `xhigh` / `max` / `ultra` | `max` 紧跟 `xhigh` 并按 raw 值写入；未来未知值继续保留 | `include`（产品扩展与兼容保护） |
 | `[tools].web_search` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | legacy `boolean` 或扩展 object；object 的完整子字段不在本批建模 | bool 三态会覆盖 object | legacy bool 可保留；object 仅源码保留 | object 不能被 bool 或空值覆盖；仅做无损保护，不在本批表单化 | `include`（兼容保护） |
 | `[features].web_search` | 同上 | <https://developers.openai.com/codex/config-reference/>; `2026-07-12` | 已弃用 `boolean` feature flag | 当前 bool 入口可能写入 | 不提供新视觉入口；原始 TOML 保留 | 不再产生该字段；既有值不得在保存其他字段时丢失 | `reject-new / include-compat` |
 
@@ -140,7 +140,7 @@
 ### 思考力度与兼容边界
 
 - 面板和配置中心统一显示 raw value，不把 `low`、`xhigh`、`max` 或 `ultra` 翻译成中文别名。所有同时提供固定 `max` 和 `ultra` 的用户可见列表按 `... xhigh, max, ultra` 排列，`ultra` 为末位。
-- `ultra` 是本次用户要求的产品级扩展，不宣称为 Codex、Claude、OpenCode 三家共同确认的官方固定枚举。Codex/Claude 会保留并传递该 raw value，实际兼容性取决于用户安装的 CLI 和模型；其配置编辑器的新建固定候选止于 `ultra`，不会重新把 `max` 作为新值提供。加载存量 `max` 时，仅将兼容选项插入 `ultra` 前；未知值继续保留。
+- `ultra` 是本次用户要求的产品级扩展，不宣称为 Codex、Claude、OpenCode 三家共同确认的官方固定枚举。Codex/Claude 会保留并传递该 raw value，实际兼容性取决于用户安装的 CLI 和模型。后续产品要求已将 `max` 加回 Codex 配置编辑器的固定候选，并置于 `xhigh` 后、`ultra` 前；Claude 仍只在加载存量 `max` 时插入兼容选项。未知值继续保留。
 - OpenCode 的面板思考力度以精确 `provider/model` 的 metadata 或当前配置 variants 为准，动态 payload 的 `option.value` 与原始顺序直接呈现，不按固定序列排序、过滤或伪造。配置编辑器仅添加无损的 `ultra` 建议，仍允许 provider-specific/custom effort，且没有全局固定 reasoning effort enum。
 
 ### 已验证证据
@@ -205,7 +205,7 @@
 
 实现者必须按表单语义补齐或更新三份视觉编辑器测试，且至少覆盖以下断言：
 
-- **Codex：** `model_verbosity`、`developer_instructions`、顶层 string `web_search` 和 `wire_api` 的 parse → state → serialize；旧 bool/`chat`/未知值保留；granular `approval_policy` table、`[tools].web_search` object 和弃用 feature 不能在保存其他字段时丢失；新 UI 不再产生 `on-failure`、`max` 或 `[features].web_search`。
+- **Codex：** `model_verbosity`、`developer_instructions`、顶层 string `web_search` 和 `wire_api` 的 parse → state → serialize；旧 bool/`chat`/未知值保留；granular `approval_policy` table、`[tools].web_search` object 和弃用 feature 不能在保存其他字段时丢失；新 UI 不再产生 `on-failure` 或 `[features].web_search`，并可在 `xhigh` 后选择、序列化 `max`。
 - **Claude：** `permissions.defaultMode` 的六个新写入值、`manual`/未知值回退、`bypassPermissions` 风险帮助；`effortLevel` 只新写持久化值且遗留 `max` 保留；七个新增标量的设置/清除/未知字段保留。
 - **OpenCode：** `share`、`autoupdate`、`logLevel`、`snapshot` 的 inherit/set/clear；未声明或内置 `model` / `small_model` ref 保留且两个角色可相同；任意 npm 包名和自定义 effort/variant 往返；不得把官方样例转化为硬编码候选。
 - **共同约束：** 保留每组原有无效 TOML/JSON 防覆盖语义、`source` 中未知顶层/嵌套键、Claude 额外 `env`/permissions、OpenCode `$schema`/`permission`/`mcp`；不新增硬编码颜色。
@@ -233,8 +233,8 @@ node --check media/config/assets/config-app-ui.js
 
 ## 测试与清单同步
 
-- 单元测试新增/更新：已更新 `src/test/codexConfigVisualEditor.test.ts`、`src/test/claudeConfigVisualEditor.test.ts`、`src/test/opencodeconfigvisualeditor.test.ts`，覆盖解析、合并、未知字段保留、源码切换和受控控件语义；第 3 轮额外更新 panel、schema、runtime 与排序测试，覆盖 raw value、`ultra`、legacy `max` 和 OpenCode 动态顺序。
-- 单元自测结果：共享 UI 集成已通过 `npm run build`、三份视觉编辑器测试（`31/31`）和 `node --check media/config/assets/config-app-ui.js`；raw value/`ultra` 批次通过八份定向 `dist/test`（`81/81`）；最终排序批次通过六份定向 `dist/test`（`70/70`）。三批均记录了相应静态资源/JSON/diff 检查的通过结果，未出现需作为范围外基线失败处理的项。
+- 单元测试新增/更新：已更新 `src/test/codexConfigVisualEditor.test.ts`、`src/test/claudeConfigVisualEditor.test.ts`、`src/test/opencodeconfigvisualeditor.test.ts`，覆盖解析、合并、未知字段保留、源码切换和受控控件语义；第 3 轮额外更新 panel、schema、runtime 与排序测试，覆盖 raw value、`ultra`、Codex 固定 `max`、Claude legacy `max` 和 OpenCode 动态顺序。
+- 单元自测结果：共享 UI 集成已通过 `npm run build`、三份视觉编辑器测试（`31/31`）和 `node --check media/config/assets/config-app-ui.js`；raw value/`ultra` 批次通过八份定向 `dist/test`（`81/81`）；最终排序批次通过六份定向 `dist/test`（`70/70`）。Codex 固定 `max` 后续修复通过 `npm run build`、三份配置可视化定向测试（`36/36`）和 `node --check media/config/assets/config-app-ui.js`。各批均记录了相应静态资源/JSON/diff 检查的通过结果，未出现需作为范围外基线失败处理的项。
 - 失败处理记录：若出现历史/范围外失败，记录失败命令、基线证据、影响和不在本计划中修复的理由；不得为通过测试改动无关逻辑。
 - 功能清单：已在 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 中同步三组编辑器字段、源码模式边界、raw value/`ultra` 规则与定向验证证据。
 - 相关文档同步：已更新 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`。本批没有新增配置中心协议、构建链路或可复发的实现坑，且授权范围不包含运行时参考、设计文档和排障手册，故未修改它们。
@@ -260,7 +260,8 @@ node --check media/config/assets/config-app-ui.js
 - 2026-07-12：`config-app-ui.js` 是当前受版本控制的 canonical runtime asset，未发现再生源码/前端构建入口；由一个集成者直接维护、配套测试并执行单一 build，不能并行拆分三平台 UI 写入。
 - 2026-07-12：本批 `include` 是实施授权而非已实现标记。复杂配置只纳入无损保护，`CODEX_HOME`、`CLAUDE_CONFIG_DIR`、OpenCode JSONC/discovery/内置模型预检和复杂 compaction/attachment/permission/MCP 保持延期。
 - 2026-07-13：共享 UI、raw value、`ultra` 和最终显示顺序均已交付并通过定向验证。`ultra` 是用户要求的产品级值，不能回写为三家 CLI 共同的官方固定枚举；固定列表只在同一列表同时出现 `max`/`ultra` 时保证 `max` 紧邻在 `ultra` 前，OpenCode 精确模型的动态 variants 保持 payload 原序。
+- 2026-07-13：根据后续产品要求，Codex 配置中心把 `max` 作为可新建、可保存的固定 `model_reasoning_effort` 候选，唯一顺序为 `... xhigh, max, ultra`；Claude 与 OpenCode 的既有策略不变。
 
 ## 当前结论
 
-本计划的实施目标已完成：三组 CLI 都有与原生 TOML/JSON 源码模式并存的可视化编辑器，稳定字段已采用合适的单选、三态、可编辑组合框、多值 tags 或文本控件，未知/复杂配置仍受定向合并与源码回退保护。官方 URL、`2026-07-12` 访问日期和 defer 边界继续保留在台账；`ultra` 的产品扩展、legacy `max` 兼容和 OpenCode 动态 variant 不重排已在完成记录中明确。主任务可据此进行最终独立审计并在整个 Loop 任务完成后统一归档本计划。
+本计划的实施目标已完成：三组 CLI 都有与原生 TOML/JSON 源码模式并存的可视化编辑器，稳定字段已采用合适的单选、三态、可编辑组合框、多值 tags 或文本控件，未知/复杂配置仍受定向合并与源码回退保护。官方 URL、`2026-07-12` 访问日期和 defer 边界继续保留在台账；`ultra` 的产品扩展、Codex 固定 `max`、Claude legacy `max` 兼容和 OpenCode 动态 variant 不重排已在完成记录中明确。主任务可据此进行最终独立审计并在整个 Loop 任务完成后统一归档本计划。

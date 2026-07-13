@@ -33,6 +33,21 @@ test("ignores thinking assistant messages as final conclusions", () => {
   );
 });
 
+test("ignores subagent assistant bubbles as parent final conclusions", () => {
+  const subagent = message({
+    id: "assistant-subagent",
+    role: "assistant",
+    content: "[final_answer] child result",
+    subagentProvider: "codex",
+    subagentId: "thread-child",
+    subagentStatus: "completed",
+    createdAt: 20,
+  });
+
+  assert.equal(isAssistantFinalConclusionMessage(subagent), false);
+  assert.equal(isExplicitAssistantFinalConclusionMessage(subagent), false);
+});
+
 test("accepts an observed Codex final answer when the user anchor is missing", () => {
   assert.equal(
     hasAssistantFinalConclusionAfterMessage([], "missing-user", {

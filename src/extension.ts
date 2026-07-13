@@ -54,6 +54,11 @@ import {
   resolveOpenCodeOneShotWatchdogTimeoutMs,
 } from "./cli/opencodewatchdog";
 import {
+  createOpenCodeSubagentMonitor,
+  OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+  resolveOpenCodeSubagentConnection,
+} from "./cli/openCodeSubagentMonitor";
+import {
   appendOpenCodeFinalTextToTabStream,
   consumeOpenCodeTabStreamChunk,
   createOpenCodeTabStreamState,
@@ -110,6 +115,10 @@ import {
   resetHiddenRetryCountOnRecoveredReply,
 } from "./hiddenRetry";
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
+import {
+  createSubagentProgressController,
+  type SubagentProgressLabels,
+} from "./subagentProgress";
 import {
   buildNextLobsterMainAiFailureState,
   buildResetLobsterMainAiFailureState,
@@ -2956,6 +2965,23 @@ function buildOpenCodeOneShotStartupTimeoutMessage(timeoutMs: number): string {
     : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
 }
 
+function buildSubagentProgressLabels(): SubagentProgressLabels {
+  return {
+    provider: {
+      opencode: "OpenCode",
+      codex: "Codex",
+    },
+    subagent: t("run.subagent.label"),
+    status: {
+      running: t("run.subagent.running"),
+      completed: t("run.subagent.completed"),
+      failed: t("run.subagent.failed"),
+      interrupted: t("run.subagent.interrupted"),
+    },
+    errorPrefix: t("run.subagent.errorPrefix"),
+  };
+}
+
 async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
@@ -3002,6 +3028,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const runId = createMessageId();
   const startedAt = Date.now();
   let hiddenRetryCount = 0;
+  let silentProgressNoticeShown = false;
   let openCodeTabStreamState = createOpenCodeTabStreamState();
   const openCodeTabStreamContext = {
     createMessageId,
@@ -3153,6 +3180,40 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     });
   };
 
+  const subagentProgress = createSubagentProgressController({
+    labels: buildSubagentProgressLabels(),
+    createMessageId,
+    messageMetadata: openCodeTabStreamContext.metadata,
+    appendMessage: (message) => {
+      openCodeTabStreamState = {
+        ...openCodeTabStreamState,
+        activeAssistantMessageId: null,
+        activeAssistantKind: null,
+      };
+      appendMessageToStore(resolveParallelMessageTarget(), message);
+      sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+    },
+    replaceMessage: (message) => {
+      const currentMessageTarget = resolveParallelMessageTarget();
+      const index = currentMessageTarget.findIndex((item) => item.id === message.id);
+      if (index < 0) {
+        appendMessageToStore(currentMessageTarget, message);
+        sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+        return;
+      }
+      currentMessageTarget[index] = message;
+      sendPanelMessage({ type: "replaceMessage", message, tabId: target.tabId });
+    },
+    appendDelta: (messageId, content) => {
+      sendPanelMessage({
+        type: "assistantDelta",
+        id: messageId,
+        content,
+        tabId: target.tabId,
+      });
+    },
+  });
+
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
     const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
@@ -3194,19 +3255,82 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     let rawStdout = "";
     let rawStderr = "";
+    const subagentConnection = await resolveOpenCodeSubagentConnection(getCliArgs(runCli), {
+      env: runtimeEnvOverrides,
+    });
+    void logInfo("runPrompt-parallel-subagent-monitor-start", {
+      cli: runCli,
+      runId,
+      tabId: target.tabId,
+      sessionId: runtimeSessionId,
+      endpointSource: subagentConnection.serverPort ? "reserved-local-port" : "configured",
+      reservedPort: subagentConnection.serverPort ?? null,
+      pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+    });
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
     >((resolve) => {
       let settled = false;
+      const subagentMonitor = createOpenCodeSubagentMonitor({
+        connection: subagentConnection,
+        directory: cwd ?? process.cwd(),
+        onUpdate: (update) => {
+          const current = parallelRunsByTabId.get(target.tabId);
+          if (!current || current.runId !== runId) {
+            return;
+          }
+          subagentProgress.update(update);
+        },
+        onNoChildren: () => {
+          if (silentProgressNoticeShown || !isParallelRunActive()) {
+            return;
+          }
+          silentProgressNoticeShown = true;
+          openCodeTabStreamState = {
+            ...openCodeTabStreamState,
+            activeAssistantMessageId: null,
+            activeAssistantKind: null,
+          };
+          const message: ChatMessage = {
+            id: createMessageId(),
+            role: "system",
+            content: t("run.openCodeSubagentPollEmpty"),
+            createdAt: Date.now(),
+          };
+          appendMessageToStore(resolveParallelMessageTarget(), message);
+          sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+          void logInfo("runPrompt-parallel-subagent-poll-empty", {
+            cli: runCli,
+            runId,
+            tabId: target.tabId,
+            sessionId,
+            attempt: attemptNumber,
+            pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+          });
+        },
+        onError: (error) => {
+          void logDebug("runPrompt-parallel-subagent-monitor-error", {
+            cli: runCli,
+            runId,
+            tabId: target.tabId,
+            sessionId,
+            attempt: attemptNumber,
+            error: error.message,
+          });
+        },
+      });
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
         }
         settled = true;
+        subagentMonitor.finish(
+          result.type === "exit" && result.code === 0 ? "completed" : "failed",
+        );
         resolve(result);
       };
-      const process = runCliStream(
+      const runProcess = runCliStream(
         runCli,
         attemptPrompt,
         {
@@ -3215,6 +3339,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
               return;
             }
             rawStdout += chunk;
+            subagentMonitor.setParentSessionId(extractSessionId(runCli, rawStdout));
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
             const streamResult = consumeOpenCodeTabStreamChunk(
               openCodeTabStreamState,
@@ -3254,10 +3379,12 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
+          openCodeServerPort: subagentConnection.serverPort,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
       );
-      syncParallelRun(process);
+      syncParallelRun(runProcess);
+      subagentMonitor.setParentSessionId(runtimeSessionId);
     });
 
     if (isParallelRunActive()) {
@@ -7849,8 +7976,52 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
 
   sendRunStatus("start");
   let hiddenRetryCount = 0;
+  let silentProgressNoticeShown = false;
 
   const isCurrentOneShotRunActive = (): boolean => activeRunId === runId;
+  const subagentProgress = createSubagentProgressController({
+    labels: buildSubagentProgressLabels(),
+    createMessageId,
+    messageMetadata: {
+      taskRole: input.taskRole,
+      lobsterTaskId: input.lobsterTaskId,
+      lobsterRound: input.lobsterRound,
+      lobsterSubtaskId: input.lobsterSubtaskId,
+    },
+    appendMessage: (message) => {
+      if (!activeMessageTarget || !isCurrentOneShotRunActive()) {
+        return;
+      }
+      activeAssistantMessageId = undefined;
+      activeMessageIndex = null;
+      appendMessageToStore(activeMessageTarget, message);
+      sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
+    },
+    replaceMessage: (message) => {
+      if (!activeMessageTarget || !isCurrentOneShotRunActive()) {
+        return;
+      }
+      const index = activeMessageTarget.findIndex((item) => item.id === message.id);
+      if (index < 0) {
+        appendMessageToStore(activeMessageTarget, message);
+        sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
+        return;
+      }
+      activeMessageTarget[index] = message;
+      sendPanelMessage({ type: "replaceMessage", message, tabId: activeTabId });
+    },
+    appendDelta: (messageId, content) => {
+      if (!isCurrentOneShotRunActive()) {
+        return;
+      }
+      sendPanelMessage({
+        type: "assistantDelta",
+        id: messageId,
+        content,
+        tabId: activeTabId,
+      });
+    },
+  });
 
   while (true) {
     const attemptNumber = hiddenRetryCount + 1;
@@ -7881,6 +8052,18 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let rawStdout = "";
     let rawStderr = "";
     const runtimeSessionId = resolveCliSessionIdForResume(runCli, activeSessionId);
+    const subagentConnection = await resolveOpenCodeSubagentConnection(getCliArgs(runCli), {
+      env: runtimeEnvOverrides,
+    });
+    void logInfo("runPrompt-one-shot-subagent-monitor-start", {
+      cli: runCli,
+      runId,
+      tabId: activeTabId,
+      sessionId: runtimeSessionId,
+      endpointSource: subagentConnection.serverPort ? "reserved-local-port" : "configured",
+      reservedPort: subagentConnection.serverPort ?? null,
+      pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+    });
     const attemptResult = await new Promise<
       { type: "exit"; code: number | null }
       | { type: "error"; error: Error }
@@ -7888,11 +8071,52 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       let settled = false;
       let startupTimeoutHandle: NodeJS.Timeout | null = null;
       let sawOpenCodeActivity = false;
+      const subagentMonitor = createOpenCodeSubagentMonitor({
+        connection: subagentConnection,
+        directory: cwd ?? process.cwd(),
+        onUpdate: (update) => {
+          if (isCurrentOneShotRunActive()) {
+            sawOpenCodeActivity = true;
+            refreshStartupTimeout();
+            subagentProgress.update(update);
+          }
+        },
+        onNoChildren: () => {
+          if (silentProgressNoticeShown || !isCurrentOneShotRunActive()) {
+            return;
+          }
+          silentProgressNoticeShown = true;
+          activeAssistantMessageId = undefined;
+          activeMessageIndex = null;
+          appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
+          void logInfo("runPrompt-one-shot-subagent-poll-empty", {
+            cli: runCli,
+            runId,
+            tabId: activeTabId,
+            sessionId: activeSessionId,
+            attempt: attemptNumber,
+            pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+          });
+        },
+        onError: (error) => {
+          void logDebug("runPrompt-one-shot-subagent-monitor-error", {
+            cli: runCli,
+            runId,
+            tabId: activeTabId,
+            sessionId: activeSessionId,
+            attempt: attemptNumber,
+            error: error.message,
+          });
+        },
+      });
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
         }
         settled = true;
+        subagentMonitor.finish(
+          result.type === "exit" && result.code === 0 ? "completed" : "failed",
+        );
         if (startupTimeoutHandle) {
           clearTimeout(startupTimeoutHandle);
           startupTimeoutHandle = null;
@@ -7958,6 +8182,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             appendOpenCodeJsonlEvents(chunk);
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
+            subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
             if (activity.hasAssistantAnswer) {
               attemptHadNormalReply = true;
             }
@@ -7978,6 +8203,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
             sendRawStreamDelta(chunk, { stream: "stderr" });
             sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             captureSessionFromBuffer(runCli, sessionBuffer);
+            subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
             appendTraceLines(chunk);
             if (debugLogging) {
               void logCliStream(runCli, activeSessionId, "stderr", chunk);
@@ -8000,9 +8226,11 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
+          openCodeServerPort: subagentConnection.serverPort,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
       );
+      subagentMonitor.setParentSessionId(runtimeSessionId);
     });
 
     if (activeRunId !== runId) {
@@ -8237,13 +8465,18 @@ function appendOpenCodeFinalText(finalText: string): void {
   activeOpenCodeDisplayedFinalText = finalText;
 }
 
-function appendOpenCodeJsonlEvents(chunk: string): void {
+function appendOpenCodeJsonlEvents(chunk: string): boolean {
+  let hasVisibleEvent = false;
   activeOpenCodeJsonlBuffer = consumeOpenCodeJsonlChunk(
     activeOpenCodeJsonlBuffer,
     chunk,
     false,
-    appendOpenCodeVisibleEvent,
+    (event) => {
+      hasVisibleEvent = true;
+      appendOpenCodeVisibleEvent(event);
+    },
   );
+  return hasVisibleEvent;
 }
 
 function flushOpenCodeJsonlBuffer(): void {
@@ -8736,6 +8969,39 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     }, 200);
   };
 
+  const subagentProgress = createSubagentProgressController({
+    labels: buildSubagentProgressLabels(),
+    createMessageId,
+    messageMetadata: {
+      taskRole: input.taskRole,
+      lobsterTaskId: input.lobsterTaskId,
+      lobsterRound: input.lobsterRound,
+      lobsterSubtaskId: input.lobsterSubtaskId,
+    },
+    appendMessage: appendMessageForTab,
+    replaceMessage: (message) => {
+      const index = messageTarget.findIndex((item) => item.id === message.id);
+      if (index < 0) {
+        appendMessageForTab(message);
+        return;
+      }
+      messageTarget[index] = message;
+      sendPanelMessage({ type: "replaceMessage", message, tabId });
+      syncInteractiveRunEntry();
+      schedulePersistForInteractiveRun();
+    },
+    appendDelta: (messageId, content) => {
+      sendPanelMessage({
+        type: "assistantDelta",
+        id: messageId,
+        content,
+        tabId,
+      });
+      syncInteractiveRunEntry();
+      schedulePersistForInteractiveRun();
+    },
+  });
+
   const refreshMessageTargetFromSession = (): void => {
     if (!uiSessionId) {
       return;
@@ -8944,6 +9210,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   };
 
   const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
+    subagentProgress.finishRunning(status === "end" ? "completed" : "failed");
     void logInfo("runPrompt-interactive-end", {
       cli,
       sessionId: uiSessionId,
@@ -8999,6 +9266,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       return;
     }
     entry.stopped = true;
+    subagentProgress.finishRunning("interrupted");
     void logInfo("runPrompt-interactive-stop-requested", { cli, sessionId: uiSessionId, runId, tabId });
     const removedPlaceholder = removeAssistantPlaceholderForTab();
     appendSystemMessageForTab(t("run.stoppedByUser"));
@@ -9162,6 +9430,19 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               codexFinalAnswer: meta?.codexFinalAnswer === true,
             });
             appendDebugStdout(chunk);
+          },
+          onSubagentUpdate: (update) => {
+            if (!isCurrentRunActive()) {
+              return;
+            }
+            subagentProgress.update({
+              provider: "codex",
+              id: update.threadId,
+              agentName: update.agentName,
+              status: update.status,
+              delta: update.delta,
+              error: update.error,
+            });
           },
           onTrace: (content, kind, meta) => {
             if (!isCurrentRunActive()) {
@@ -9362,6 +9643,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         });
         return;
       }
+      subagentProgress.finishRunning("failed");
 
       const canContinueCurrentConversation = Boolean(uiSessionId);
       hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);

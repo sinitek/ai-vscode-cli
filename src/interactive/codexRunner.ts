@@ -10,6 +10,9 @@ import {
   extractCodexWaitTimeoutPayload,
   isCodexFinalAnswerPhase,
   isCodexContextCompactionCompletedNotification,
+  isCodexSubagentThreadEvent,
+  shouldSettleCodexPrimaryTurn,
+  type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
 import {
   buildAppServerRequestResolution,
@@ -53,6 +56,7 @@ export type CodexAssistantDeltaMeta = {
 
 export type CodexStreamHandlers = {
   onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
+  onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
   onTrace: (content: string, kind?: CodexTraceKind, meta?: CodexTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
@@ -594,6 +598,7 @@ export class CodexInteractiveRunner {
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
     const assistantBuffers = new Map<string, string>();
     const emittedTraceContents = new Map<string, string>();
+    let activeTurnId = "";
     let turnCompletionResolve: (() => void) | null = null;
     let turnCompletionReject: ((error: Error) => void) | null = null;
 
@@ -655,9 +660,12 @@ export class CodexInteractiveRunner {
       requestChildShutdown(child, mode);
     };
 
-    const updateThreadId = (threadId: unknown): void => {
+    const updateThreadId = (threadId: unknown, allowReplace = false): void => {
       const normalized = String(threadId || "").trim();
       if (!normalized || this.options.threadId === normalized) {
+        return;
+      }
+      if (this.options.threadId && !allowReplace) {
         return;
       }
       this.options.threadId = normalized;
@@ -713,14 +721,21 @@ export class CodexInteractiveRunner {
     const turnAssistantObserver = createCodexTurnAssistantObserver(handlers.onAssistantDelta);
     const runtimeItemHandlers = {
       onAssistantDelta: turnAssistantObserver.emit,
+      onSubagentUpdate: handlers.onSubagentUpdate,
       onTrace: handlers.onTrace,
       onTaskListUpdate: handlers.onTaskListUpdate,
     };
 
-    const handleItemEvent = (eventType: "item.started" | "item.completed", rawItem: unknown): void => {
+    const handleItemEvent = (
+      eventType: "item.started" | "item.completed",
+      rawItem: unknown,
+      threadId?: string,
+    ): void => {
       handleCodexItemEvent({
         eventType,
         rawItem,
+        threadId,
+        primaryThreadId: this.options.threadId ?? undefined,
         assistantBuffers,
         emittedTraceContents,
         handlers: runtimeItemHandlers,
@@ -819,9 +834,22 @@ export class CodexInteractiveRunner {
           }
 
           if (method === "thread/started") {
-            updateThreadId((message.params as Record<string, unknown> | undefined)?.thread && typeof (message.params as Record<string, unknown>).thread === "object"
+            const startedThreadId = (message.params as Record<string, unknown> | undefined)?.thread && typeof (message.params as Record<string, unknown>).thread === "object"
               ? ((message.params as Record<string, unknown>).thread as Record<string, unknown>).id
-              : undefined);
+              : undefined;
+            const normalizedStartedThreadId = String(startedThreadId || "").trim();
+            if (
+              normalizedStartedThreadId
+              && this.options.threadId
+              && normalizedStartedThreadId !== this.options.threadId
+            ) {
+              handlers.onSubagentUpdate?.({
+                threadId: normalizedStartedThreadId,
+                status: "running",
+              });
+            } else {
+              updateThreadId(normalizedStartedThreadId);
+            }
             continue;
           }
 
@@ -829,16 +857,27 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
+            const eventThreadId = String(params.threadId || "").trim();
             const itemId = String(params.itemId || "").trim();
             const delta = String(params.delta || "");
-            if (itemId) {
-              assistantBuffers.set(itemId, `${assistantBuffers.get(itemId) ?? ""}${delta}`);
+            const isSubagentDelta = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+            const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
+            if (bufferKey) {
+              assistantBuffers.set(bufferKey, `${assistantBuffers.get(bufferKey) ?? ""}${delta}`);
             }
             if (delta) {
-              turnAssistantObserver.emit(
-                delta,
-                isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined
-              );
+              if (isSubagentDelta) {
+                handlers.onSubagentUpdate?.({
+                  threadId: eventThreadId,
+                  status: "running",
+                  delta,
+                });
+              } else {
+                turnAssistantObserver.emit(
+                  delta,
+                  isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined
+                );
+              }
             }
             continue;
           }
@@ -851,7 +890,12 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
-            emitCodexTodoListUpdate(Array.isArray(params.plan) ? params.plan : [], handlers.onTaskListUpdate);
+            const eventThreadId = String(params.threadId || "").trim();
+            if (!eventThreadId || !this.options.threadId || eventThreadId === this.options.threadId) {
+              emitCodexTodoListUpdate(Array.isArray(params.plan) ? params.plan : [], handlers.onTaskListUpdate);
+            } else {
+              handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
+            }
             continue;
           }
 
@@ -859,6 +903,11 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
+            const eventThreadId = String(params.threadId || "").trim();
+            if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+              handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
+              continue;
+            }
             const rawItem = params.item;
             const toolCall = extractCodexRawResponseToolCall(rawItem);
             if (toolCall) {
@@ -888,10 +937,36 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
+            const eventThreadId = String(params.threadId || "").trim();
             const turn = params.turn && typeof params.turn === "object"
               ? params.turn as Record<string, unknown>
               : {};
+            const completedTurnId = String(turn.id || "").trim();
             const turnStatus = String(turn.status || "").trim();
+            const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+            if (isSubagentTurn) {
+              const error = turnStatus === "failed"
+                ? buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))
+                : "";
+              handlers.onSubagentUpdate?.({
+                threadId: eventThreadId,
+                status: turnStatus === "failed"
+                  ? "failed"
+                  : turnStatus === "interrupted"
+                    ? "interrupted"
+                    : "completed",
+                ...(error ? { error } : {}),
+              });
+              continue;
+            }
+            if (!shouldSettleCodexPrimaryTurn({
+              eventThreadId,
+              eventTurnId: completedTurnId,
+              primaryThreadId: this.options.threadId,
+              activeTurnId,
+            })) {
+              continue;
+            }
             if (turnStatus === "failed") {
               settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
             } else {
@@ -914,12 +989,29 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
+            const eventThreadId = String(params.threadId || "").trim();
+            const structuredError = params.error && typeof params.error === "object"
+              ? params.error as Record<string, unknown>
+              : {};
+            const warning = String(
+              params.message
+              || structuredError.message
+              || structuredError.additionalDetails
+              || ""
+            ).trim();
+            if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+              handlers.onSubagentUpdate?.({
+                threadId: eventThreadId,
+                status: params.willRetry === true ? "running" : "failed",
+                ...(warning ? { error: warning } : {}),
+              });
+              continue;
+            }
             const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
             if (rateLimitMessage) {
               failRunWithVisibleMessage(rateLimitMessage);
               continue;
             }
-            const warning = String(params.message || "").trim();
             if (warning) {
               const lower = warning.toLowerCase();
               if (lower.startsWith("reconnecting") || lower.startsWith("retrying")) {
@@ -939,7 +1031,11 @@ export class CodexInteractiveRunner {
             const params = message.params && typeof message.params === "object"
               ? message.params as Record<string, unknown>
               : {};
-            handleItemEvent(method === "item/started" ? "item.started" : "item.completed", params.item);
+            handleItemEvent(
+              method === "item/started" ? "item.started" : "item.completed",
+              params.item,
+              String(params.threadId || "").trim(),
+            );
             continue;
           }
         }
@@ -965,14 +1061,18 @@ export class CodexInteractiveRunner {
       const thread = threadResult?.thread && typeof threadResult.thread === "object"
         ? threadResult.thread as Record<string, unknown>
         : null;
-      updateThreadId(thread?.id);
+      updateThreadId(thread?.id, true);
 
-      await request("turn/start", buildCodexTurnStartParams(
+      const turnResult = await request<Record<string, unknown>>("turn/start", buildCodexTurnStartParams(
         this.options.threadId,
         prompt,
         imagePaths,
         threadOptions
       ));
+      const startedTurn = turnResult?.turn && typeof turnResult.turn === "object"
+        ? turnResult.turn as Record<string, unknown>
+        : {};
+      activeTurnId = String(startedTurn.id || "").trim();
       handlers.onEvent?.({ type: "turn.started" });
 
       await turnCompletionPromise;

@@ -2,10 +2,68 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  extractCodexSubagentLifecycleUpdates,
+  isCodexSubagentThreadEvent,
   isCodexContextCompactionCompletedNotification,
   isCodexFinalAnswerAgentMessage,
   isCodexFinalAnswerPhase,
+  shouldSettleCodexPrimaryTurn,
 } from "../interactive/codexAppServerEvents";
+
+test("keeps child thread completion separate from the active parent turn", () => {
+  assert.equal(isCodexSubagentThreadEvent("child", "parent"), true);
+  assert.equal(shouldSettleCodexPrimaryTurn({
+    eventThreadId: "child",
+    eventTurnId: "child-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "parent-turn",
+  }), false);
+  assert.equal(shouldSettleCodexPrimaryTurn({
+    eventThreadId: "parent",
+    eventTurnId: "old-parent-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "parent-turn",
+  }), false);
+  assert.equal(shouldSettleCodexPrimaryTurn({
+    eventThreadId: "parent",
+    eventTurnId: "parent-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "parent-turn",
+  }), true);
+});
+
+test("extracts Codex collaboration and subagent activity lifecycle updates", () => {
+  assert.deepEqual(extractCodexSubagentLifecycleUpdates({
+    type: "collabAgentToolCall",
+    tool: "spawnAgent",
+    status: "completed",
+    receiverThreadIds: ["child-1"],
+    agentsStates: {
+      "child-1": { status: "running" },
+    },
+  }), [{ threadId: "child-1", status: "running" }]);
+
+  assert.deepEqual(extractCodexSubagentLifecycleUpdates({
+    type: "collabAgentToolCall",
+    tool: "wait",
+    status: "failed",
+    receiverThreadIds: ["child-1", "child-2"],
+    agentsStates: {
+      "child-1": { status: "completed" },
+      "child-2": { status: "errored", message: "review failed" },
+    },
+  }), [
+    { threadId: "child-1", status: "completed" },
+    { threadId: "child-2", status: "failed", error: "review failed" },
+  ]);
+
+  assert.deepEqual(extractCodexSubagentLifecycleUpdates({
+    type: "subAgentActivity",
+    agentThreadId: "child-3",
+    agentPath: "reviewer",
+    kind: "started",
+  }), [{ threadId: "child-3", status: "running", agentName: "reviewer" }]);
+});
 
 test("detects thread/compacted notification for the expected thread", () => {
   assert.equal(

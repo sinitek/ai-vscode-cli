@@ -26,22 +26,6 @@ function loadVisualUtils(): any {
   return sandbox.__utils;
 }
 
-function loadLegacyMaxCompatibilityOptionOrderer(): any {
-  const source = loadUiSource();
-  const startMarker = "insertLegacyMaxCompatibilityOption = ";
-  const endMarker = ",\n      renderClaudeSelect";
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start);
-  assert.notEqual(start, -1, "legacy max compatibility orderer should exist");
-  assert.notEqual(end, -1, "legacy max compatibility orderer should terminate before select rendering");
-  const sandbox: Record<string, unknown> = {};
-  vm.runInNewContext(
-    `globalThis.__orderer = ${source.slice(start + startMarker.length, end)};`,
-    sandbox,
-  );
-  return sandbox.__orderer;
-}
-
 function extractCodexConfigExample(): string {
   const source = loadUiSource();
   const marker = "codex: {\n      config: `";
@@ -199,28 +183,31 @@ test("Codex visual state accepts and serializes the product ultra reasoning valu
   assert.equal(utils.parseToml(serialized.content).model_reasoning_effort, "ultra");
 });
 
-test("Codex visual legacy max select keeps max immediately before ultra", () => {
-  const orderer = loadLegacyMaxCompatibilityOptionOrderer();
-  const fixedOptions = ["", "minimal", "low", "medium", "high", "xhigh", "ultra"].map((value) => ({
-    value,
-    label: value || "Use default",
-  }));
-
-  assert.deepEqual(
-    Array.from(orderer(fixedOptions, "max", { value: "max", label: "max" }), (option: any) => option.value),
-    ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
-  );
-  assert.deepEqual(
-    Array.from(orderer(fixedOptions, "future-effort", { value: "future-effort", label: "future-effort" }), (option: any) => option.value),
-    ["", "minimal", "low", "medium", "high", "xhigh", "ultra", "future-effort"],
-  );
+test("Codex visual max option follows xhigh and serializes for new configs", () => {
+  const utils = loadVisualUtils();
+  assert.deepEqual(Array.from(utils.reasoningEffortOptions), [
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+  ]);
+  const state = utils.updateState(utils.createState("", ""), { reasoningEffort: "max" });
+  const serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(utils.parseToml(serialized.content).model_reasoning_effort, "max");
 
   const source = loadUiSource();
-  const selectStart = source.indexOf("renderCodexSelect =");
-  const selectEnd = source.indexOf(",\n      renderCodexTextArea", selectStart);
-  assert.notEqual(selectStart, -1, "Codex select renderer should exist");
-  assert.notEqual(selectEnd, -1, "Codex select renderer should terminate before text area rendering");
-  assert.match(source.slice(selectStart, selectEnd), /insertLegacyMaxCompatibilityOption\(L, H,/);
+  assert.match(
+    source,
+    /\[state\.reasoningEffort, CODEX_VISUAL_REASONING_EFFORT_OPTIONS,/,
+  );
+  assert.match(
+    source,
+    /"model_reasoning_effort"[\s\S]*?\["", \.\.\.CODEX_VISUAL_REASONING_EFFORT_OPTIONS\]\.map/,
+  );
 });
 
 test("Codex visual saves preserve legacy values and complex approval or web-search objects", () => {
@@ -349,7 +336,7 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /"danger-full-access"/);
   assert.match(
     source,
-    /"model_reasoning_effort"[\s\S]*?\["", "minimal", "low", "medium", "high", "xhigh", "ultra"\]\.map/,
+    /"model_reasoning_effort"[\s\S]*?\["", \.\.\.CODEX_VISUAL_REASONING_EFFORT_OPTIONS\]\.map/,
   );
   assert.match(source, /"model_verbosity"[\s\S]*?\["", "low", "medium", "high"\]\.map/);
   assert.match(source, /renderCodexTextArea\([\s\S]*?"developer_instructions"/);

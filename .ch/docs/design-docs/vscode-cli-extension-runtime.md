@@ -108,7 +108,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
-- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护 threadId；优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
+- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护主 threadId；`item/agentMessage/delta`、`collabAgentToolCall`、`subAgentActivity` 和 `turn/completed` 均按通知 `threadId` 区分父线程与子线程，子线程输出进入独立子代理气泡，不得改写主 threadId、主任务列表、父回复 final 标记或父 turn 完成状态。Runner 优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且工具设置可选“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
 - `claudeRunner.ts`：通过 `@anthropic-ai/claude-agent-sdk` 建立交互会话，维护 Claude session；“常用命令 -> 压缩上下文”优先直接发送官方 `/compact`，并根据 SDK `status=compacting` / `compact_boundary` 信号判定完成；仅在旧环境明确不支持原生 compact 时回退到摘要模拟
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
@@ -121,7 +121,7 @@ OpenCode 模型选择按 active config 解析为两个角色下拉：主模型�
 
 主模型运行时通过精确 `--model provider/model` 覆盖，并可用 `--variant` 选择该主模型 variants。CLI 不存在 `--small-model`；小模型临时选择必须写入本次 runtime config overlay 的顶层 `small_model`。每个模型的 `options` 定义基础参数，`variants` 定义该模型作为主模型运行时的可选档位；OpenCode 内部小模型请求会跳过 variants，只使用小模型自身 `options`。`@ai-sdk/openai-compatible` 只描述 API 协议适配器，不决定 low/medium/high 等档位。
 
-OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事件提取 assistant 文本生成最终结论气泡；默认格式兼容路径只接受 stdout 正文，不把 stderr 中 `> build · model` 这类状态行当作最终回答。若 CLI 输出 JSON `error` 事件，即使进程 `code!=0` 且 stderr 为空，也会把其中的 `APIError`、HTTP status、provider message、`responseBody.error.code` 和请求 URL 作为错误展示；只有没有可解析 provider/API 错误时才回退通用 `CLI 退出码`。若 `code=0` 但没有 assistant 文本，运行态会展示明确的 OpenCode 空输出/状态错误并按错误收口，避免误报为泛化的“缺少最终结论气泡”或继续隐藏重试。one-shot 只在启动后 60 秒完全没有 assistant / error / status / progress 活动时转成 OpenCode 启动空输出错误并进入 hidden retry；首个有效事件后解除 watchdog，不再使用父 stdout/stderr 静默时长判定卡死，因为 OpenCode 分组/子代理可能在内部持续工作但父 JSONL 长时间不输出。重试耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志。
+OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事件提取 assistant 文本生成最终结论气泡；默认格式兼容路径只接受 stdout 正文，不把 stderr 中 `> build · model` 这类状态行当作最终回答。若 CLI 输出 JSON `error` 事件，即使进程 `code!=0` 且 stderr 为空，也会把其中的 `APIError`、HTTP status、provider message、`responseBody.error.code` 和请求 URL 作为错误展示；只有没有可解析 provider/API 错误时才回退通用 `CLI 退出码`。若 `code=0` 但没有 assistant 文本，运行态会展示明确的 OpenCode 空输出/状态错误并按错误收口，避免误报为泛化的“缺少最终结论气泡”或继续隐藏重试。one-shot 只在启动后 60 秒完全没有 assistant / error / status / progress 活动时转成 OpenCode 启动空输出错误并进入 hidden retry；父 JSONL、子代理会话或子代理气泡出现活动后解除 watchdog。内部子代理增量不会由父 `run --format json` 转发，因此每次 one-shot / 并行运行会为 OpenCode 本地 run server 分配可访问端口，捕获父 session 后订阅公开 `/event` SSE；子会话事件只触发读取 `/session/{id}/message` 权威快照，并通过 `/session/{parent}/children` 与 `/session/status` 校验父子关系和状态。无论 SSE 是否遗漏，运行期间都每 60 秒全量补捞一次；每个当前尝试新建的子 session 对应一个独立、不可合并的 assistant 气泡，正文按快照前缀增量追加，完成、失败和中断更新原气泡。若 60 秒检查仍没有子会话，最多追加一次保守 system 状态气泡。该链路不读取 OpenCode 私有 SQLite，子代理消息标记 `subagentId`，不参与父任务最终答复与 hidden retry 成功判定。重试耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志。
 
 OpenCode `text` JSONL 允许同一字符串同时包含内部思考 wrapper 与可见正文。解析层必须按顺序拆分 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` 块与 assistant 文本，最终结论只收集 assistant 段；Codex reasoning 和历史消息复用同一 wrapper 去除逻辑。该能力是定向协议清洗，不是通用 HTML sanitizer，普通尖括号标签必须原样保留。
 

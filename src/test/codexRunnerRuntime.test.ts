@@ -305,6 +305,36 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
   assert.deepEqual(visibleErrors, []);
 });
 
+test("item event helper keeps child-thread output out of the parent assistant stream", () => {
+  const assistant: string[] = [];
+  const subagents: Array<{ threadId: string; status: string; delta?: string; error?: string }> = [];
+  const assistantBuffers = new Map<string, string>([["child-1:msg-1", "hello"]]);
+  const handlers = {
+    onAssistantDelta: (chunk: string) => assistant.push(chunk),
+    onSubagentUpdate: (update: { threadId: string; status: string; delta?: string; error?: string }) => {
+      subagents.push(update);
+    },
+    onTrace: () => {},
+    onTaskListUpdate: () => {},
+  };
+
+  handleCodexItemEvent({
+    eventType: "item.completed",
+    rawItem: { type: "agentMessage", id: "msg-1", text: "hello child", phase: "final_answer" },
+    threadId: "child-1",
+    primaryThreadId: "parent",
+    assistantBuffers,
+    emittedTraceContents: new Map(),
+    handlers,
+    onVisibleError: () => assert.fail("child errors must not fail the parent turn"),
+    formatCollabToolFailure: () => "failed",
+  });
+
+  assert.deepEqual(assistant, []);
+  assert.deepEqual(subagents, [{ threadId: "child-1", status: "running", delta: " child" }]);
+  assert.equal(assistantBuffers.has("child-1:msg-1"), false);
+});
+
 test("completed Codex turns promote commentary text to a final answer exactly once", () => {
   const emitted: Array<{ chunk: string; final?: boolean }> = [];
   const observer = createCodexTurnAssistantObserver((chunk, meta) => {

@@ -54,7 +54,7 @@
   - add-dir
   - web search
   - thinking / reasoning effort
-- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。
+- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。该设置只影响 Codex。
 
 ### Claude
 
@@ -76,12 +76,12 @@
 - OpenCode 是 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、统一会话存档和统一配置读取接入
 - 命令与参数读取 `sinitek-cli-tools.commands.opencode` / `sinitek-cli-tools.args.opencode`
 - OpenCode 1.17.16 的根命令和 `run` 子命令都支持官方 `--auto`：自动批准未被显式拒绝的权限请求。插件在 `src/cli/commandRunner.ts` 的共享 OpenCode 参数构建路径集中注入并去重该参数，因此普通消息、one-shot、并行任务、Loop 主任务/子任务、续跑与唤醒统一获得 `--auto`，无 prompt 的终端启动则为 `opencode --auto`
-- one-shot / 并行任务当前通过 `opencode run --auto --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional。例如：`opencode run --auto --format json --model <provider/model> --variant <variant> --session <sessionId> "<message>"`。one-shot 与并行 conversation tab 都消费 stdout JSONL visible events：`text` 实时写入 assistant 气泡，`reasoning` / `step_start` 写入 thinking 气泡，`tool_use` 写入 trace 气泡；并行/Loop 子任务不能只转发 `rawStreamDelta`。进程退出后的完整 assistant 文本只补齐未展示尾部，禁止重复追加整段最终回复。
+- one-shot / 并行任务当前通过 `opencode run --auto --format json [message..]` 启动；插件运行时会把 prompt 作为 `run` 子命令消息参数，而不是根命令的 project positional。例如：`opencode run --auto --format json --model <provider/model> --variant <variant> --port <localPort> --session <sessionId> "<message>"`。one-shot 与并行 conversation tab 都消费 stdout JSONL visible events：`text` 实时写入 assistant 气泡，`reasoning` / `step_start` 写入 thinking 气泡，`tool_use` 写入 trace 气泡；并行/Loop 子任务不能只转发 `rawStreamDelta`。进程退出后的完整 assistant 文本只补齐未展示尾部，禁止重复追加整段最终回复。OpenCode 内部子代理的增量事件不会随父 `run --format json` 转发；插件通过 run 自带本地服务的公开 `/event`、`/session/{parent}/children`、`/session/{child}/message` 与 `/session/status` 获取当前尝试新建的子会话。SSE 事件触发低延迟消息快照刷新，同时每 60 秒全量轮询兜底；每个子 session 固定更新一个独立 assistant 气泡，多个子代理交错时也按 session ID 定向追加，不合并到父回复。若 60 秒检查仍没有子会话，最多追加一次国际化 system 状态气泡。该链路不读取 OpenCode 私有 SQLite，任务结束、报错或停止会清理订阅和轮询。
 - CLI child process 的 `cwd` 是当前 VS Code 工作区的权威执行目录，runner 同时把 child env `PWD` 收敛为同一路径。OpenCode 1.17.18 的 `run` 内部请求会读取 `PWD`；如果只设置 spawn cwd、却继承 extension host 的旧 `PWD=/`，OpenCode 会先在正确项目创建实例，随后又在 `/` 创建会话并把 `projectID` 记为 `global`。one-shot、并行/Loop 子任务及复用该 runner 的 OpenCode 后台路径必须保持 cwd/PWD 一致。修复前已经绑定 `/` 的历史 session 会继续遵循其原始目录，升级后应新建一次 OpenCode 对话，不直接改写 OpenCode 数据库。
 - OpenCode 1.17.16 的 JSONL 顶层和 `part` 对象使用 camel-case `sessionID` 返回真实 `ses_*`；插件必须在首轮流式输出中接管该 ID，后续同一 tab 才能通过 `--session <ses_*>` 续接。`local_*` 仅是插件消息落盘占位 ID，禁止传给 OpenCode；历史 `local_*` tab 再次执行时先启动新底层会话，捕获真实 ID 后迁移插件消息和 tab 引用，不使用全局 `--continue` 猜测最近会话。
 - `--auto` 在用途上对应插件为 Claude 提供的 `--dangerously-skip-permissions` 和为 Codex 提供的 `--dangerously-bypass-approvals-and-sandbox`，但安全语义并不等价：它只自动批准仍处于 `ask` 的请求。默认 `external_directory: ask` 因而可以自动跨目录读写；用户配置、agent 配置或 OpenCode 默认规则中的显式 `deny` 仍优先，插件不会用运行时 overlay 强制改写为 `allow`
 - OpenCode 进程非零退出时也必须解析 stdout JSON `error` 事件；若事件中存在 `APIError` / `UnknownError`、HTTP status、provider message、server `ref`、`responseBody.error.code` 或请求 URL，错误气泡优先展示这些 provider/API 详情，仅在没有可解析错误时才回退 `CLI 退出码`
-- OpenCode one-shot 单次尝试只在启动阶段保留 60 秒空输出 watchdog：完全没有 assistant / error / status / progress 活动时才按 OpenCode 启动空输出错误收口并进入 hidden retry；首个有效事件后立即解除 watchdog，因为 OpenCode 分组/子代理会在内部持续工作但父 `opencode run --format json` 可能长时间不输出。hidden retry 最终耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志，不允许只留下 trace 或运行态
+- OpenCode one-shot 单次尝试只在启动阶段保留 60 秒空输出 watchdog：完全没有父 JSONL、error/status/progress 或子代理会话活动时才按 OpenCode 启动空输出错误收口并进入 hidden retry；首个有效父事件或子代理更新后立即解除 watchdog。后续不再用父 stdout/stderr 静默判断卡死，而由 SSE 加 60 秒子会话快照轮询持续提供进度。hidden retry 最终耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志，不允许只留下 trace 或运行态
 - OpenCode `text` 事件可能把内部思考 wrapper 与最终正文放在同一个字符串中。运行时只识别 `<thinking>`、`<think>`、`<analysis>`、`<reasoning>` 四类 wrapper，按原顺序拆成 thinking / assistant 事件，并从最终正文中排除思考块；reasoning 与历史消息只去除 wrapper 标签，不能使用通用尖括号或 HTML 清洗破坏普通内容。
 - OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务只读取 active config 内容，并为每次 `opencode run` 生成独立 runtime overlay，不会为对话运行改写用户真实 `~/.opencode/config.json`。
 - OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前模型配置来源，不从官方全局 MCP 文件回退读取。

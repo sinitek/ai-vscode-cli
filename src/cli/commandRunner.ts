@@ -29,6 +29,7 @@ type RunCliOptions = {
   openCodeConfigContent?: string | null;
   imagePaths?: string[];
   envOverrides?: Record<string, string>;
+  openCodeServerPort?: number;
 };
 
 const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
@@ -722,7 +723,7 @@ export function buildCliArgs(
   }
 
   if (cli === "opencode") {
-    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt);
+    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt, options.openCodeServerPort);
   }
 
   if (sessionId) {
@@ -775,13 +776,25 @@ function buildPromptArgs(_cli: CliName, sharedArgs: string[], prompt: string): s
 function buildOpenCodeRunArgs(
   sharedArgs: string[],
   sessionId: string | null,
-  prompt: string
+  prompt: string,
+  serverPort?: number,
 ): string[] {
   const hasRunSubcommand = sharedArgs[0] === "run";
   const runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
   if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
     const formatInsertIndex = runArgs[1] === "--auto" ? 2 : 1;
     runArgs.splice(formatInsertIndex, 0, "--format", "json");
+  }
+  const hasAttach = runArgs.some((arg) => arg === "--attach" || arg.startsWith("--attach="));
+  const hasPort = runArgs.some((arg) => arg === "--port" || arg.startsWith("--port="));
+  if (
+    !hasAttach
+    && !hasPort
+    && Number.isInteger(serverPort)
+    && Number(serverPort) > 0
+    && Number(serverPort) <= 65535
+  ) {
+    runArgs.push("--port", String(serverPort));
   }
   if (sessionId && !runArgs.includes("--session") && !runArgs.includes("-s")) {
     return [...runArgs, "--session", sessionId, prompt];

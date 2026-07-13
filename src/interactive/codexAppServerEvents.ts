@@ -33,6 +33,36 @@ export type CodexItemTraceCandidate = {
   content: string;
 };
 
+export type CodexSubagentStatus = "running" | "completed" | "failed" | "interrupted";
+
+export type CodexSubagentUpdate = {
+  threadId: string;
+  status: CodexSubagentStatus;
+  agentName?: string;
+  delta?: string;
+  error?: string;
+};
+
+export function isCodexSubagentThreadEvent(eventThreadId: unknown, primaryThreadId: unknown): boolean {
+  const eventId = String(eventThreadId || "").trim();
+  const primaryId = String(primaryThreadId || "").trim();
+  return Boolean(eventId && primaryId && eventId !== primaryId);
+}
+
+export function shouldSettleCodexPrimaryTurn(options: {
+  eventThreadId: unknown;
+  eventTurnId: unknown;
+  primaryThreadId: unknown;
+  activeTurnId: unknown;
+}): boolean {
+  if (isCodexSubagentThreadEvent(options.eventThreadId, options.primaryThreadId)) {
+    return false;
+  }
+  const eventTurnId = String(options.eventTurnId || "").trim();
+  const activeTurnId = String(options.activeTurnId || "").trim();
+  return !eventTurnId || !activeTurnId || eventTurnId === activeTurnId;
+}
+
 function normalizeCodexCompactionItemType(type: unknown): string {
   return String(type || "").trim().replace(/[_-]/g, "").toLowerCase();
 }
@@ -120,7 +150,107 @@ export function normalizeCodexExecItemType(type: unknown): string {
     webSearch: "web_search",
     dynamicToolCall: "dynamic_tool_call",
     collabAgentToolCall: "collab_agent_tool_call",
+    subAgentActivity: "sub_agent_activity",
   } as Record<string, string>)[normalized] || normalized;
+}
+
+function mapCodexAgentStateStatus(value: unknown): CodexSubagentStatus | null {
+  const state = toRecord(value);
+  const rawStatus = state?.status ?? value;
+  const statusRecord = toRecord(rawStatus);
+  if (statusRecord) {
+    if (typeof statusRecord.errored === "string" || statusRecord.notFound === true) {
+      return "failed";
+    }
+    return null;
+  }
+  const status = String(rawStatus || "").trim().replace(/[_-]/gu, "").toLowerCase();
+  if (["pendinginit", "running"].includes(status)) {
+    return "running";
+  }
+  if (["completed", "shutdown"].includes(status)) {
+    return "completed";
+  }
+  if (status === "interrupted") {
+    return "interrupted";
+  }
+  if (["errored", "notfound"].includes(status)) {
+    return "failed";
+  }
+  return null;
+}
+
+function extractCodexAgentStateError(value: unknown): string {
+  const state = toRecord(value);
+  const status = toRecord(state?.status);
+  return [
+    typeof state?.message === "string" ? state.message.trim() : "",
+    typeof status?.errored === "string" ? status.errored.trim() : "",
+  ].find(Boolean) ?? "";
+}
+
+function mapCollabToolFallbackStatus(item: Record<string, unknown>): CodexSubagentStatus {
+  const status = String(item.status || "").trim();
+  const tool = String(item.tool || "").trim();
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "inProgress") {
+    return "running";
+  }
+  if (tool === "closeAgent") {
+    return "interrupted";
+  }
+  if (tool === "wait") {
+    return "completed";
+  }
+  return "running";
+}
+
+export function extractCodexSubagentLifecycleUpdates(rawItem: unknown): CodexSubagentUpdate[] {
+  const item = toRecord(rawItem);
+  const itemType = normalizeCodexExecItemType(item?.type);
+  if (!item || !itemType) {
+    return [];
+  }
+
+  if (itemType === "sub_agent_activity") {
+    const threadId = String(item.agentThreadId ?? item.agent_thread_id ?? "").trim();
+    if (!threadId) {
+      return [];
+    }
+    const kind = String(item.kind || "").trim();
+    return [{
+      threadId,
+      status: kind === "interrupted" ? "interrupted" : "running",
+      ...(String(item.agentPath ?? item.agent_path ?? "").trim()
+        ? { agentName: String(item.agentPath ?? item.agent_path).trim() }
+        : {}),
+    }];
+  }
+
+  if (itemType !== "collab_agent_tool_call") {
+    return [];
+  }
+  const agentsStates = toRecord(item.agentsStates) ?? toRecord(item.agents_states) ?? {};
+  const receiverThreadIds = Array.isArray(item.receiverThreadIds ?? item.receiver_thread_ids)
+    ? (item.receiverThreadIds ?? item.receiver_thread_ids) as unknown[]
+    : [];
+  const threadIds = Array.from(new Set([
+    ...receiverThreadIds.map((value) => String(value || "").trim()),
+    ...Object.keys(agentsStates),
+  ].filter(Boolean)));
+  const fallbackStatus = mapCollabToolFallbackStatus(item);
+  return threadIds.map((threadId) => {
+    const rawState = agentsStates[threadId];
+    const status = mapCodexAgentStateStatus(rawState) ?? fallbackStatus;
+    const error = extractCodexAgentStateError(rawState);
+    return {
+      threadId,
+      status,
+      ...(error ? { error } : {}),
+    };
+  });
 }
 
 export function isCodexFinalAnswerPhase(phase: unknown): boolean {

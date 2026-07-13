@@ -12,6 +12,7 @@ export function isAssistantFinalConclusionMessage(message: ChatMessage | undefin
     message
     && message.role === "assistant"
     && message.kind !== "thinking"
+    && !message.subagentId
     && typeof message.content === "string"
     && message.content.trim().length > 0
   );

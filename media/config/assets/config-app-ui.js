@@ -3549,6 +3549,16 @@ const codexVisualManagedRootKeys = Object.freeze([
   "model_supports_reasoning_summaries",
 ]);
 
+const CODEX_VISUAL_REASONING_EFFORT_OPTIONS = Object.freeze([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+]);
+
 const codexVisualManagedProviderKeys = Object.freeze([
   "name",
   "base_url",
@@ -3893,7 +3903,7 @@ const codexVisualValidateState = (state) => {
   const source = codexVisualIsRecord(state.source) ? state.source : {};
   for (const [value, allowedValues, sourceValue, label] of [
     [state.approvalPolicy, ["untrusted", "on-request", "never"], source.approval_policy, "approval_policy"],
-    [state.reasoningEffort, ["minimal", "low", "medium", "high", "xhigh", "ultra"], source.model_reasoning_effort, "model_reasoning_effort"],
+    [state.reasoningEffort, CODEX_VISUAL_REASONING_EFFORT_OPTIONS, source.model_reasoning_effort, "model_reasoning_effort"],
     [state.verbosity, ["low", "medium", "high"], source.model_verbosity, "model_verbosity"],
     [state.webSearch, ["disabled", "cached", "indexed", "live"], source.web_search, "web_search"],
   ]) {
@@ -4021,6 +4031,7 @@ const CodexConfigVisualEditorUtils = Object.freeze({
   managedRootKeys: codexVisualManagedRootKeys,
   managedProviderKeys: codexVisualManagedProviderKeys,
   managedEnvKeys: codexVisualManagedEnvKeys,
+  reasoningEffortOptions: CODEX_VISUAL_REASONING_EFFORT_OPTIONS,
   parseToml: codexVisualParseToml,
   stringifyToml: codexVisualStringifyToml,
   parseEnv: codexVisualParseEnv,
@@ -6431,7 +6442,7 @@ const ConfigEditorPanel = () => {
                         "model_reasoning_effort",
                         codexVisualState.reasoningEffort,
                         (L) => updateCodexVisualState({ reasoningEffort: L }),
-                        ["", "minimal", "low", "medium", "high", "xhigh", "ultra"].map((L) => ({
+                        ["", ...CODEX_VISUAL_REASONING_EFFORT_OPTIONS].map((L) => ({
                           value: L,
                           label: L || "跟随默认",
                         })),
