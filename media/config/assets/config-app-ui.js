@@ -2830,13 +2830,75 @@ const OPEN_CODE_PROVIDER_NPM_OPTIONS = Object.freeze([
   { value: "@ai-sdk/google", label: "Google (@ai-sdk/google)" },
 ]);
 
-const OPEN_CODE_REASONING_EFFORT_OPTIONS = Object.freeze([
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
+const OPEN_CODE_VISUAL_COMPATIBILITY_PREFIX = "__sinitek_opencode_compatibility__:";
+
+const openCodeVisualCompatibilityValue = (value) =>
+  `${OPEN_CODE_VISUAL_COMPATIBILITY_PREFIX}${Array.isArray(value) ? "array" : typeof value}`;
+
+const openCodeVisualIsCompatibilityValue = (value) =>
+  typeof value === "string" && value.startsWith(OPEN_CODE_VISUAL_COMPATIBILITY_PREFIX);
+
+const openCodeVisualReadString = (value) =>
+  typeof value === "string"
+    ? value
+    : value === void 0
+      ? ""
+      : openCodeVisualCompatibilityValue(value);
+
+const openCodeVisualReadOptionalBoolean = (value) =>
+  value === !0
+    ? "true"
+    : value === !1
+      ? "false"
+      : value === void 0
+        ? ""
+        : openCodeVisualCompatibilityValue(value);
+
+const openCodeVisualReadAutoUpdate = (value) =>
+  value === !0
+    ? "true"
+    : value === !1
+      ? "false"
+      : typeof value === "string"
+        ? value
+        : value === void 0
+          ? ""
+          : openCodeVisualCompatibilityValue(value);
+
+const openCodeVisualSetString = (target, key, value) => {
+  if (openCodeVisualIsCompatibilityValue(value)) return;
+  const normalized = typeof value === "string" ? value.trim() : "";
+  normalized ? (target[key] = normalized) : delete target[key];
+};
+
+const openCodeVisualSetOptionalBoolean = (target, key, value) => {
+  if (openCodeVisualIsCompatibilityValue(value)) return;
+  value === "true" ? (target[key] = !0) : value === "false" ? (target[key] = !1) : delete target[key];
+};
+
+const openCodeVisualSetAutoUpdate = (target, value) => {
+  if (openCodeVisualIsCompatibilityValue(value)) return;
+  value === "true"
+    ? (target.autoupdate = !0)
+    : value === "notify"
+      ? (target.autoupdate = "notify")
+      : value === "false"
+        ? (target.autoupdate = !1)
+        : typeof value === "string" && value
+          ? (target.autoupdate = value)
+          : delete target.autoupdate;
+};
+
+const openCodeVisualValidateEnum = (value, allowedValues, sourceValue, label) => {
+  if (
+    !value ||
+    openCodeVisualIsCompatibilityValue(value) ||
+    allowedValues.includes(value) ||
+    value === sourceValue
+  )
+    return "";
+  return `${label} 必须是 ${allowedValues.join("、")} 之一`;
+};
 
 const openCodeVisualNormalizeEfforts = (value) => {
   const values = Array.isArray(value) ? value : String(value || "").split(","),
@@ -2913,6 +2975,7 @@ const openCodeVisualCreateState = (config) => {
             name: typeof model.name === "string" ? model.name : "",
             reasoning: model.reasoning === !0,
             efforts: openCodeVisualReadEfforts(model),
+            sourceEfforts: openCodeVisualReadEfforts(model),
             source: openCodeVisualClone(model),
           };
         });
@@ -2931,6 +2994,10 @@ const openCodeVisualCreateState = (config) => {
     providers,
     primaryModel: typeof source.model === "string" ? source.model : "",
     smallModel: typeof source.small_model === "string" ? source.small_model : "",
+    share: openCodeVisualReadString(source.share),
+    autoupdate: openCodeVisualReadAutoUpdate(source.autoupdate),
+    logLevel: openCodeVisualReadString(source.logLevel),
+    snapshot: openCodeVisualReadOptionalBoolean(source.snapshot),
     selectedProviderId: providers[0]?.id || "",
     selectedModelId: providers[0]?.models[0]?.id || "",
   };
@@ -2953,6 +3020,37 @@ const openCodeVisualParseContent = (content) => {
 };
 
 const openCodeVisualModelRef = (providerId, modelId) => `${providerId}/${modelId}`;
+
+const openCodeVisualUniqueStrings = (values) => {
+  const seen = new Set();
+  return (values || []).filter((value) => {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    if (!normalized || seen.has(normalized)) return !1;
+    seen.add(normalized);
+    return !0;
+  });
+};
+
+const openCodeVisualModelSuggestions = (state) =>
+  openCodeVisualUniqueStrings([
+    ...(state?.providers || []).flatMap((provider) =>
+      (provider?.models || []).map((model) => openCodeVisualModelRef(provider.id, model.id)),
+    ),
+    state?.primaryModel,
+    state?.smallModel,
+  ]);
+
+const openCodeVisualNpmSuggestions = (state) =>
+  openCodeVisualUniqueStrings([
+    ...OPEN_CODE_PROVIDER_NPM_OPTIONS.map((option) => option.value),
+    ...(state?.providers || []).map((provider) => provider?.npm),
+  ]);
+
+const openCodeVisualEffortSuggestions = (model) =>
+  openCodeVisualUniqueStrings([
+    ...openCodeVisualNormalizeEfforts(model?.efforts || model?.sourceEfforts),
+    "ultra",
+  ]);
 
 const openCodeVisualValidateState = (state) => {
   const errors = [],
@@ -2978,10 +3076,13 @@ const openCodeVisualValidateState = (state) => {
     });
   });
   [
-    ["主模型", state?.primaryModel],
-    ["小模型", state?.smallModel],
-  ].forEach(([label, ref]) => {
-    ref && !modelRefs.has(ref) && errors.push(`${label}引用 “${ref}” 不存在，请重新选择模型`);
+    [state?.share, ["manual", "auto", "disabled"], state?.source?.share, "share"],
+    [state?.autoupdate, ["true", "notify", "false"], state?.source?.autoupdate, "autoupdate"],
+    [state?.logLevel, ["DEBUG", "INFO", "WARN", "ERROR"], state?.source?.logLevel, "logLevel"],
+    [state?.snapshot, ["true", "false"], state?.source?.snapshot, "snapshot"],
+  ].forEach(([value, allowedValues, sourceValue, label]) => {
+    const error = openCodeVisualValidateEnum(value, allowedValues, sourceValue, label);
+    error && errors.push(error);
   });
   return { valid: errors.length === 0, errors, modelRefs: Array.from(modelRefs) };
 };
@@ -2998,6 +3099,10 @@ const openCodeVisualSerializeState = (state) => {
   if (!validation.valid) return { ok: !1, config: null, error: validation.errors[0], errors: validation.errors };
   const config = openCodeVisualClone(state?.source) || {},
     providerConfig = {};
+  openCodeVisualSetString(config, "share", state.share);
+  openCodeVisualSetAutoUpdate(config, state.autoupdate);
+  openCodeVisualSetString(config, "logLevel", state.logLevel);
+  openCodeVisualSetOptionalBoolean(config, "snapshot", state.snapshot);
   (state?.providers || []).forEach((provider) => {
     const providerId = provider.id.trim(),
       providerValue = openCodeVisualClone(provider.source) || {},
@@ -3017,7 +3122,10 @@ const openCodeVisualSerializeState = (state) => {
       ? (providerValue.options = providerOptions)
       : delete providerValue.options;
     (provider.models || []).forEach((model) => {
-      const modelValue = openCodeVisualApplyEfforts(model.source, model.efforts);
+      const modelValue =
+        model.efforts === model.sourceEfforts
+          ? openCodeVisualClone(model.source) || {}
+          : openCodeVisualApplyEfforts(model.source, model.efforts);
       model.name.trim() ? (modelValue.name = model.name.trim()) : delete modelValue.name;
       modelValue.reasoning = model.reasoning === !0;
       models[model.id.trim()] = modelValue;
@@ -3148,10 +3256,12 @@ const openCodeVisualRunSaveFlow = async ({ content, saveConfig, applyActiveConfi
 
 const OpenCodeConfigVisualEditorUtils = Object.freeze({
   providerNpmOptions: OPEN_CODE_PROVIDER_NPM_OPTIONS,
-  reasoningEffortOptions: OPEN_CODE_REASONING_EFFORT_OPTIONS,
   normalizeEfforts: openCodeVisualNormalizeEfforts,
   readEfforts: openCodeVisualReadEfforts,
   applyEfforts: openCodeVisualApplyEfforts,
+  modelSuggestions: openCodeVisualModelSuggestions,
+  npmSuggestions: openCodeVisualNpmSuggestions,
+  effortSuggestions: openCodeVisualEffortSuggestions,
   createState: openCodeVisualCreateState,
   parseContent: openCodeVisualParseContent,
   validateState: openCodeVisualValidateState,
@@ -3183,6 +3293,21 @@ const claudeVisualManagedEnvKeys = Object.freeze([
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
 ]);
 
+const CLAUDE_VISUAL_COMPATIBILITY_PREFIX = "__sinitek_claude_compatibility__:";
+
+const claudeVisualCompatibilityValue = (value) =>
+  `${CLAUDE_VISUAL_COMPATIBILITY_PREFIX}${Array.isArray(value) ? "array" : typeof value}`;
+
+const claudeVisualIsCompatibilityValue = (value) =>
+  typeof value === "string" && value.startsWith(CLAUDE_VISUAL_COMPATIBILITY_PREFIX);
+
+const claudeVisualReadEnum = (value) =>
+  typeof value === "string"
+    ? value
+    : value === void 0
+      ? ""
+      : claudeVisualCompatibilityValue(value);
+
 const claudeVisualNormalizeList = (value) => {
   const values = Array.isArray(value) ? value : String(value || "").split(/[\n,]/),
     seen = new Set(),
@@ -3200,7 +3325,13 @@ const claudeVisualReadList = (value) =>
   claudeVisualNormalizeList(value).join("\n");
 
 const claudeVisualReadOptionalBoolean = (value) =>
-  value === !0 ? "true" : value === !1 ? "false" : "";
+  value === !0
+    ? "true"
+    : value === !1
+      ? "false"
+      : value === void 0
+        ? ""
+        : claudeVisualCompatibilityValue(value);
 
 const claudeVisualCreateState = (config) => {
   const source = claudeVisualIsRecord(config) ? claudeVisualClone(config) : {},
@@ -3215,19 +3346,23 @@ const claudeVisualCreateState = (config) => {
     model: typeof source.model === "string" ? source.model : "",
     fallbackModels: claudeVisualReadList(source.fallbackModel),
     availableModels: claudeVisualReadList(source.availableModels),
-    effortLevel: typeof source.effortLevel === "string" ? source.effortLevel : "",
+    effortLevel: claudeVisualReadEnum(source.effortLevel),
     language: typeof source.language === "string" ? source.language : "",
     outputStyle: typeof source.outputStyle === "string" ? source.outputStyle : "",
-    autoUpdatesChannel:
-      typeof source.autoUpdatesChannel === "string" ? source.autoUpdatesChannel : "",
+    autoUpdatesChannel: claudeVisualReadEnum(source.autoUpdatesChannel),
     cleanupPeriodDays:
       typeof source.cleanupPeriodDays === "number" ? String(source.cleanupPeriodDays) : "",
     alwaysThinkingEnabled: claudeVisualReadOptionalBoolean(source.alwaysThinkingEnabled),
-    includeCoAuthoredBy: claudeVisualReadOptionalBoolean(source.includeCoAuthoredBy),
+    autoCompactEnabled: claudeVisualReadOptionalBoolean(source.autoCompactEnabled),
+    autoMemoryEnabled: claudeVisualReadOptionalBoolean(source.autoMemoryEnabled),
+    fileCheckpointingEnabled: claudeVisualReadOptionalBoolean(source.fileCheckpointingEnabled),
+    editorMode: claudeVisualReadEnum(source.editorMode),
+    viewMode: claudeVisualReadEnum(source.viewMode),
+    tui: claudeVisualReadEnum(source.tui),
+    verbose: claudeVisualReadOptionalBoolean(source.verbose),
     env: managedEnv,
     permissions: {
-      defaultMode:
-        typeof permissions.defaultMode === "string" ? permissions.defaultMode : "",
+      defaultMode: claudeVisualReadEnum(permissions.defaultMode),
       allow: claudeVisualReadList(permissions.allow),
       ask: claudeVisualReadList(permissions.ask),
       deny: claudeVisualReadList(permissions.deny),
@@ -3257,16 +3392,41 @@ const claudeVisualValidateState = (state) => {
   if (!state || !claudeVisualIsRecord(state)) return "Claude 可视化配置不可用";
   const fallbackModels = claudeVisualNormalizeList(state.fallbackModels);
   if (fallbackModels.length > 3) return "回退模型最多支持 3 个";
-  if (
-    state.effortLevel &&
-    !["low", "medium", "high", "xhigh", "max"].includes(state.effortLevel)
-  )
-    return "推理强度必须是 low、medium、high、xhigh 或 max";
-  if (
-    state.autoUpdatesChannel &&
-    !["stable", "latest"].includes(state.autoUpdatesChannel)
-  )
-    return "自动更新通道必须是 stable 或 latest";
+  const source = claudeVisualIsRecord(state.source) ? state.source : {},
+    sourcePermissions = claudeVisualIsRecord(source.permissions) ? source.permissions : {},
+    enumValidation = [
+      [state.effortLevel, ["low", "medium", "high", "xhigh", "ultra"], source.effortLevel, "推理强度"],
+      [state.autoUpdatesChannel, ["stable", "latest"], source.autoUpdatesChannel, "自动更新通道"],
+      [state.editorMode, ["normal", "vim"], source.editorMode, "编辑模式"],
+      [state.viewMode, ["default", "verbose", "focus"], source.viewMode, "视图模式"],
+      [state.tui, ["default", "fullscreen"], source.tui, "终端界面模式"],
+      [
+        state.permissions?.defaultMode,
+        ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"],
+        sourcePermissions.defaultMode,
+        "默认权限模式",
+      ],
+    ];
+  for (const [value, allowedValues, sourceValue, label] of enumValidation) {
+    if (
+      value &&
+      !claudeVisualIsCompatibilityValue(value) &&
+      !allowedValues.includes(value) &&
+      value !== sourceValue
+    )
+      return `${label}必须是 ${allowedValues.join("、")} 之一`;
+  }
+  for (const [key, label] of [
+    ["alwaysThinkingEnabled", "默认扩展思考"],
+    ["autoCompactEnabled", "自动压缩"],
+    ["autoMemoryEnabled", "自动记忆"],
+    ["fileCheckpointingEnabled", "文件检查点"],
+    ["verbose", "详细输出"],
+  ]) {
+    const value = state[key];
+    if (value && value !== "true" && value !== "false" && !claudeVisualIsCompatibilityValue(value))
+      return `${label}只能设为 true 或 false`;
+  }
   if (state.cleanupPeriodDays) {
     const cleanupPeriodDays = Number(state.cleanupPeriodDays);
     if (!Number.isInteger(cleanupPeriodDays) || cleanupPeriodDays < 1)
@@ -3280,7 +3440,13 @@ const claudeVisualSetString = (target, key, value) => {
   normalized ? (target[key] = normalized) : delete target[key];
 };
 
+const claudeVisualSetEnum = (target, key, value) => {
+  if (claudeVisualIsCompatibilityValue(value)) return;
+  claudeVisualSetString(target, key, value);
+};
+
 const claudeVisualSetOptionalBoolean = (target, key, value) => {
+  if (claudeVisualIsCompatibilityValue(value)) return;
   value === "true" ? (target[key] = !0) : value === "false" ? (target[key] = !1) : delete target[key];
 };
 
@@ -3293,9 +3459,14 @@ const claudeVisualSerializeState = (state) => {
     env = claudeVisualIsRecord(config.env) ? { ...config.env } : {},
     permissions = claudeVisualIsRecord(config.permissions) ? { ...config.permissions } : {};
 
-  ["model", "effortLevel", "language", "outputStyle", "autoUpdatesChannel"].forEach(
+  ["model", "language", "outputStyle"].forEach(
     (key) => claudeVisualSetString(config, key, state[key]),
   );
+  claudeVisualSetEnum(config, "effortLevel", state.effortLevel);
+  claudeVisualSetEnum(config, "autoUpdatesChannel", state.autoUpdatesChannel);
+  claudeVisualSetEnum(config, "editorMode", state.editorMode);
+  claudeVisualSetEnum(config, "viewMode", state.viewMode);
+  claudeVisualSetEnum(config, "tui", state.tui);
   fallbackModels.length === 0
     ? delete config.fallbackModel
     : (config.fallbackModel = fallbackModels.length === 1 ? fallbackModels[0] : fallbackModels);
@@ -3310,14 +3481,16 @@ const claudeVisualSerializeState = (state) => {
     "alwaysThinkingEnabled",
     state.alwaysThinkingEnabled,
   );
-  claudeVisualSetOptionalBoolean(config, "includeCoAuthoredBy", state.includeCoAuthoredBy);
+  ["autoCompactEnabled", "autoMemoryEnabled", "fileCheckpointingEnabled", "verbose"].forEach(
+    (key) => claudeVisualSetOptionalBoolean(config, key, state[key]),
+  );
 
   claudeVisualManagedEnvKeys.forEach((key) =>
     claudeVisualSetString(env, key, state.env?.[key]),
   );
   Object.keys(env).length > 0 ? (config.env = env) : delete config.env;
 
-  claudeVisualSetString(permissions, "defaultMode", state.permissions?.defaultMode);
+  claudeVisualSetEnum(permissions, "defaultMode", state.permissions?.defaultMode);
   ["allow", "ask", "deny"].forEach((key) => {
     const values = claudeVisualNormalizeList(state.permissions?.[key]);
     values.length > 0 ? (permissions[key] = values) : delete permissions[key];
@@ -3369,6 +3542,7 @@ const codexVisualManagedRootKeys = Object.freeze([
   "model_reasoning_effort",
   "model_reasoning_summary",
   "model_verbosity",
+  "developer_instructions",
   "web_search",
   "disable_response_storage",
   "hide_agent_reasoning",
@@ -3559,16 +3733,66 @@ const codexVisualStringifyToml = (record) =>
 
 const codexVisualReadString = (value) => (typeof value === "string" ? value : "");
 
+const CODEX_VISUAL_COMPATIBILITY_PREFIX = "__sinitek_codex_compatibility__:";
+
+const codexVisualCompatibilityValue = (value) =>
+  `${CODEX_VISUAL_COMPATIBILITY_PREFIX}${Array.isArray(value) ? "array" : typeof value}`;
+
+const codexVisualIsCompatibilityValue = (value) =>
+  typeof value === "string" && value.startsWith(CODEX_VISUAL_COMPATIBILITY_PREFIX);
+
+const codexVisualReadEnum = (value) =>
+  typeof value === "string"
+    ? value
+    : value === void 0
+      ? ""
+      : codexVisualCompatibilityValue(value);
+
+const codexVisualReadText = (value) =>
+  typeof value === "string"
+    ? value
+    : value === void 0
+      ? ""
+      : codexVisualCompatibilityValue(value);
+
 const codexVisualReadOptionalBoolean = (value) =>
-  value === !0 ? "true" : value === !1 ? "false" : "";
+  value === !0
+    ? "true"
+    : value === !1
+      ? "false"
+      : value === void 0
+        ? ""
+        : codexVisualCompatibilityValue(value);
 
 const codexVisualSetString = (target, key, value) => {
   const normalized = typeof value === "string" ? value.trim() : "";
   normalized ? (target[key] = normalized) : delete target[key];
 };
 
+const codexVisualSetEnum = (target, key, value) => {
+  if (codexVisualIsCompatibilityValue(value)) return;
+  codexVisualSetString(target, key, value);
+};
+
+const codexVisualSetText = (target, key, value) => {
+  if (codexVisualIsCompatibilityValue(value)) return;
+  typeof value === "string" && value.length > 0 ? (target[key] = value) : delete target[key];
+};
+
 const codexVisualSetOptionalBoolean = (target, key, value) => {
+  if (codexVisualIsCompatibilityValue(value)) return;
   value === "true" ? (target[key] = !0) : value === "false" ? (target[key] = !1) : delete target[key];
+};
+
+const codexVisualValidateEnum = (value, allowedValues, sourceValue, label) => {
+  if (
+    !value ||
+    codexVisualIsCompatibilityValue(value) ||
+    allowedValues.includes(value) ||
+    value === sourceValue
+  )
+    return "";
+  return `${label}必须是 ${allowedValues.join("、")} 之一`;
 };
 
 const codexVisualParseEnv = (content) => {
@@ -3615,7 +3839,7 @@ const codexVisualCreateProvider = (id, value = {}) => ({
   name: codexVisualReadString(value.name),
   baseUrl: codexVisualReadString(value.base_url),
   envKey: codexVisualReadString(value.env_key),
-  wireApi: codexVisualReadString(value.wire_api),
+  wireApi: codexVisualReadEnum(value.wire_api),
   requiresOpenaiAuth: codexVisualReadOptionalBoolean(value.requires_openai_auth),
   source: codexVisualClone(value) || {},
 });
@@ -3626,8 +3850,6 @@ const codexVisualCreateState = (configContent, envContent = "") => {
     providers = Object.entries(providersSource)
       .filter(([, value]) => codexVisualIsRecord(value))
       .map(([id, value]) => codexVisualCreateProvider(id, value)),
-    tools = codexVisualIsRecord(source.tools) ? source.tools : {},
-    features = codexVisualIsRecord(source.features) ? source.features : {},
     envSource = codexVisualParseEnv(envContent),
     env = {};
   codexVisualManagedEnvKeys.forEach((key) => {
@@ -3638,14 +3860,13 @@ const codexVisualCreateState = (configContent, envContent = "") => {
     envContent: envContent || "",
     model: codexVisualReadString(source.model),
     modelProvider: codexVisualReadString(source.model_provider),
-    approvalPolicy: codexVisualReadString(source.approval_policy),
+    approvalPolicy: codexVisualReadEnum(source.approval_policy),
     sandboxMode: codexVisualReadString(source.sandbox_mode),
-    reasoningEffort: codexVisualReadString(source.model_reasoning_effort),
-    reasoningSummary: codexVisualReadString(source.model_reasoning_summary),
-    verbosity: codexVisualReadString(source.model_verbosity),
-    webSearch: codexVisualReadOptionalBoolean(source.web_search),
-    toolsWebSearch: codexVisualReadOptionalBoolean(tools.web_search),
-    featuresWebSearch: codexVisualReadOptionalBoolean(features.web_search),
+    reasoningEffort: codexVisualReadEnum(source.model_reasoning_effort),
+    reasoningSummary: codexVisualReadEnum(source.model_reasoning_summary),
+    verbosity: codexVisualReadEnum(source.model_verbosity),
+    developerInstructions: codexVisualReadText(source.developer_instructions),
+    webSearch: codexVisualReadEnum(source.web_search),
     disableResponseStorage: codexVisualReadOptionalBoolean(source.disable_response_storage),
     hideAgentReasoning: codexVisualReadOptionalBoolean(source.hide_agent_reasoning),
     supportsReasoningSummaries: codexVisualReadOptionalBoolean(source.model_supports_reasoning_summaries),
@@ -3669,12 +3890,29 @@ const codexVisualParseContent = (configContent, envContent = "") => {
 
 const codexVisualValidateState = (state) => {
   if (!state || !codexVisualIsRecord(state)) return "Codex 可视化配置不可用，请切换到 TOML 源码修复";
+  const source = codexVisualIsRecord(state.source) ? state.source : {};
+  for (const [value, allowedValues, sourceValue, label] of [
+    [state.approvalPolicy, ["untrusted", "on-request", "never"], source.approval_policy, "approval_policy"],
+    [state.reasoningEffort, ["minimal", "low", "medium", "high", "xhigh", "ultra"], source.model_reasoning_effort, "model_reasoning_effort"],
+    [state.verbosity, ["low", "medium", "high"], source.model_verbosity, "model_verbosity"],
+    [state.webSearch, ["disabled", "cached", "indexed", "live"], source.web_search, "web_search"],
+  ]) {
+    const error = codexVisualValidateEnum(value, allowedValues, sourceValue, label);
+    if (error) return error;
+  }
   const providerIds = new Set();
   for (const [index, provider] of (state.providers || []).entries()) {
     const id = codexVisualReadString(provider.id).trim();
     if (!id) return `第 ${index + 1} 个 Provider 的 id 不能为空`;
     if (providerIds.has(id)) return `Provider id “${id}” 重复`;
     providerIds.add(id);
+    const wireApiError = codexVisualValidateEnum(
+      provider.wireApi,
+      ["responses"],
+      provider.source?.wire_api,
+      `Provider “${id}” 的 wire_api`,
+    );
+    if (wireApiError) return wireApiError;
   }
   if (state.modelProvider && !providerIds.has(state.modelProvider))
     return `model_provider “${state.modelProvider}” 未在 model_providers 中定义`;
@@ -3688,32 +3926,28 @@ const codexVisualSerializeState = (state) => {
   [
     ["model", state.model],
     ["model_provider", state.modelProvider],
-    ["approval_policy", state.approvalPolicy],
     ["sandbox_mode", state.sandboxMode],
-    ["model_reasoning_effort", state.reasoningEffort],
-    ["model_reasoning_summary", state.reasoningSummary],
-    ["model_verbosity", state.verbosity],
   ].forEach(([key, value]) => codexVisualSetString(config, key, value));
-  codexVisualSetOptionalBoolean(config, "web_search", state.webSearch);
+  codexVisualSetEnum(config, "approval_policy", state.approvalPolicy);
+  codexVisualSetEnum(config, "model_reasoning_effort", state.reasoningEffort);
+  codexVisualSetEnum(config, "model_reasoning_summary", state.reasoningSummary);
+  codexVisualSetEnum(config, "model_verbosity", state.verbosity);
+  codexVisualSetText(config, "developer_instructions", state.developerInstructions);
+  codexVisualSetEnum(config, "web_search", state.webSearch);
   codexVisualSetOptionalBoolean(config, "disable_response_storage", state.disableResponseStorage);
   codexVisualSetOptionalBoolean(config, "hide_agent_reasoning", state.hideAgentReasoning);
   codexVisualSetOptionalBoolean(config, "model_supports_reasoning_summaries", state.supportsReasoningSummaries);
 
-  const tools = codexVisualIsRecord(config.tools) ? { ...config.tools } : {};
-  codexVisualSetOptionalBoolean(tools, "web_search", state.toolsWebSearch);
-  Object.keys(tools).length > 0 ? (config.tools = tools) : delete config.tools;
-  const features = codexVisualIsRecord(config.features) ? { ...config.features } : {};
-  codexVisualSetOptionalBoolean(features, "web_search", state.featuresWebSearch);
-  Object.keys(features).length > 0 ? (config.features = features) : delete config.features;
-
   const providers = {};
   (state.providers || []).forEach((provider) => {
     const value = codexVisualClone(provider.source) || {};
-    codexVisualManagedProviderKeys.forEach((key) => delete value[key]);
+    codexVisualManagedProviderKeys
+      .filter((key) => key !== "wire_api" || !codexVisualIsCompatibilityValue(provider.wireApi))
+      .forEach((key) => delete value[key]);
     codexVisualSetString(value, "name", provider.name);
     codexVisualSetString(value, "base_url", provider.baseUrl);
     codexVisualSetString(value, "env_key", provider.envKey);
-    codexVisualSetString(value, "wire_api", provider.wireApi);
+    codexVisualSetEnum(value, "wire_api", provider.wireApi);
     codexVisualSetOptionalBoolean(value, "requires_openai_auth", provider.requiresOpenaiAuth);
     providers[provider.id.trim()] = value;
   });
@@ -3849,7 +4083,7 @@ model_verbosity = "high"
 model_supports_reasoning_summaries = true
 disable_response_storage = true
 hide_agent_reasoning = false
-web_search = true
+web_search = "cached"
 
 [model_providers.codex]
 name = "codex"
@@ -4842,38 +5076,61 @@ const ConfigEditorPanel = () => {
         "Session retention days": "Session cleanup retention in days; must be an integer of at least 1.",
         默认启用扩展思考: "是否默认启用扩展思考。",
         "Extended thinking by default": "Whether extended thinking is enabled by default.",
-        "提交信息附加 Co-Authored-By": "是否在提交信息中附加 Co-Authored-By。",
-        "Include Co-Authored-By": "Whether to append Co-Authored-By to commit messages.",
-        默认权限模式: "Claude Code 默认权限模式。可选值：default / acceptEdits / plan / dontAsk",
-        "Default permission mode": "Default Claude Code permission mode. Options: default / acceptEdits / plan / dontAsk",
+        "自动压缩 autoCompactEnabled": "是否自动压缩上下文。",
+        "Automatic compaction": "Whether to compact context automatically.",
+        "自动记忆 autoMemoryEnabled": "是否自动保存和使用 Claude Code 记忆。",
+        "Automatic memory": "Whether Claude Code memory is saved and used automatically.",
+        "文件检查点 fileCheckpointingEnabled": "是否启用文件检查点与回滚工作流。",
+        "File checkpointing": "Whether file checkpoints and rollback workflows are enabled.",
+        "编辑模式 editorMode": "选择 normal 或 vim 编辑模式。",
+        "Editor mode": "Selects normal or vim editing behavior.",
+        "视图模式 viewMode": "选择 default、verbose 或 focus 视图模式。",
+        "View mode": "Selects the default, verbose, or focus view mode.",
+        "终端界面 tui": "选择 default 或 fullscreen 终端界面模式。",
+        "Terminal UI mode": "Selects the default or fullscreen terminal UI mode.",
+        "详细输出 verbose": "是否启用详细 CLI 输出。",
+        "Verbose output": "Whether verbose CLI output is enabled.",
+        默认权限模式: "Claude Code 默认权限模式。bypassPermissions 会跳过权限确认，仅应在受控可信环境中使用。",
+        "Default permission mode": "Default Claude Code permission mode. bypassPermissions skips permission prompts and should only be used in controlled, trusted environments.",
         allow: "始终允许的工具规则，每行一个 Tool 或 Tool(specifier)。",
         ask: "需要确认的工具规则，每行一个 Tool 或 Tool(specifier)。",
         deny: "始终拒绝的工具规则，每行一个 Tool 或 Tool(specifier)。",
         "Provider id": "Provider 唯一标识，会被模型引用使用。",
         名称: "Provider 展示名称，用于配置页列表识别。",
-        npm: "OpenCode 加载的 provider npm 包名。",
+        npm: "OpenCode 加载的 provider npm 包名；可从建议中选择或输入任意包名。",
         "Base URL": "兼容 OpenAI 协议的网关地址，可使用 {env:VAR} 引用环境变量。",
         "API Key": "Provider API Key，可使用 {env:VAR} 引用环境变量。",
         "模型 id": "Provider 下的模型唯一标识，会拼成 provider/model 引用。",
         模型名称: "模型在配置页中显示的人类可读名称。",
-        思考力度: "该模型支持的 reasoning effort，可多选。可选值：low / medium / high / xhigh / max",
+        "主模型 model": "OpenCode 主模型引用。候选仅来自当前配置，仍可输入内置或未声明引用。",
+        "Primary model": "OpenCode primary model reference. Suggestions come only from this config; built-in or undeclared references remain editable.",
+        "小模型 small_model": "OpenCode 小模型引用，可与主模型相同。",
+        "Small model": "OpenCode small model reference; it may be the same as the primary model.",
+        "共享设置 share": "控制会话分享模式。",
+        "Sharing mode": "Controls the session sharing mode.",
+        "自动更新 autoupdate": "控制自动更新：开启、通知或关闭。",
+        "Auto-update": "Controls auto-updates: enabled, notify, or disabled.",
+        "日志级别 logLevel": "OpenCode CLI 日志级别。",
+        "Log level": "OpenCode CLI logging level.",
+        "快照 snapshot": "是否启用快照。未设置时继承 CLI 默认值。",
+        "Snapshot": "Whether snapshots are enabled. When unset, the CLI default applies.",
+        思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。",
         model: "Codex CLI 默认模型名称。",
         model_provider: "Codex 使用的默认模型供应商。",
-        approval_policy: "控制命令执行前的审批策略。",
+        approval_policy: "控制命令执行前的审批策略。复杂 granular table 仅在 TOML 源码中保留。",
         sandbox_mode: "控制 Codex CLI 文件系统沙箱范围。",
         model_reasoning_effort: "控制模型推理强度。",
         model_reasoning_summary: "控制推理摘要展示方式。",
-        model_verbosity: "控制模型输出详略程度。",
-        web_search: "是否启用 web_search。",
-        "tools.web_search": "是否启用 tools.web_search。",
-        "features.web_search": "是否启用 features.web_search。",
+        model_verbosity: "控制模型输出详略程度；仅适用于支持该能力的模型与 Responses 模式。",
+        developer_instructions: "为 Codex 追加 developer instructions；多行内容会按 TOML 字符串往返保存。",
+        web_search: "选择 web_search mode。旧 boolean 或复杂值会保留在 TOML，直到明确迁移。",
         disable_response_storage: "是否禁用响应存储。",
         hide_agent_reasoning: "是否隐藏 agent reasoning。",
         model_supports_reasoning_summaries: "声明当前模型是否支持 reasoning summaries。",
         name: "Provider 展示名称。",
         base_url: "Provider API Base URL。",
         env_key: "从 .env 读取 API Key 的环境变量名。",
-        wire_api: "Provider 使用的 wire API。可选值：responses / chat",
+        wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。",
         requires_openai_auth: "Provider 是否需要 OpenAI auth。",
         OPENAI_API_KEY: "OpenAI 或兼容服务 API Key。",
         OPENAI_BASE_URL: "通过环境变量覆盖 OpenAI Base URL。",
@@ -4970,6 +5227,17 @@ const ConfigEditorPanel = () => {
           ],
         }),
       formatConfigEnumHelp = (W, H) => `${W}${W ? " " : ""}可选值：${H.join(" / ")}`,
+      insertLegacyMaxCompatibilityOption = (options, selectedValue, compatibilityOption) => {
+        if (selectedValue !== "max") return [...options, compatibilityOption];
+        const ultraIndex = options.findIndex((option) => option.value === "ultra");
+        return ultraIndex === -1
+          ? [...options, compatibilityOption]
+          : [
+              ...options.slice(0, ultraIndex),
+              compatibilityOption,
+              ...options.slice(ultraIndex),
+            ];
+      },
       updateClaudeVisualState = (W) =>
         setClaudeVisualState((H) => (H ? claudeVisualUpdateState(H, W) : H)),
       updateClaudeVisualEnv = (W, H) =>
@@ -4991,13 +5259,23 @@ const ConfigEditorPanel = () => {
             }),
           ],
         }),
-      renderClaudeSelect = (W, H, k, L, U = {}) =>
-        be.jsxs("label", {
+      renderClaudeSelect = (W, H, k, L, U = {}) => {
+        const T = L.some((Z) => Z.value === H)
+          ? L
+          : H
+            ? insertLegacyMaxCompatibilityOption(L, H, {
+                value: H,
+                label: claudeVisualIsCompatibilityValue(H)
+                  ? claudeText("当前旧值（仅保留 JSON 源码）", "Legacy value (preserved in JSON)")
+                  : H,
+              })
+            : L;
+        return be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
             renderConfigFieldLabel(
               W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), L.map((T) => T.value || T.label)),
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value || Z.label)),
             ),
             be.jsx("select", {
               value: H || "",
@@ -5011,12 +5289,13 @@ const ConfigEditorPanel = () => {
                 color: "var(--text-color)",
                 background: "var(--background-color)",
               },
-              children: L.map((U) =>
-                be.jsx("option", { value: U.value, children: U.label }, U.value || "__default"),
+              children: T.map((Z) =>
+                be.jsx("option", { value: Z.value, children: Z.label }, Z.value || "__default"),
               ),
             }),
           ],
-        }),
+        });
+      },
       renderClaudeListField = (W, H, k, L, U = 3, T = {}) =>
         be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
@@ -5118,7 +5397,7 @@ const ConfigEditorPanel = () => {
                     (W) => updateClaudeVisualState({ effortLevel: W }),
                     [
                       { value: "", label: claudeText("跟随默认", "Use default") },
-                      ...["low", "medium", "high", "xhigh", "max"].map((W) => ({ value: W, label: W })),
+                      ...["low", "medium", "high", "xhigh", "ultra"].map((W) => ({ value: W, label: W })),
                     ],
                   ),
                   renderClaudeListField(
@@ -5240,9 +5519,56 @@ const ConfigEditorPanel = () => {
                     booleanOptions,
                   ),
                   renderClaudeSelect(
-                    claudeText("提交信息附加 Co-Authored-By", "Include Co-Authored-By"),
-                    claudeVisualState.includeCoAuthoredBy,
-                    (W) => updateClaudeVisualState({ includeCoAuthoredBy: W }),
+                    claudeText("自动压缩 autoCompactEnabled", "Automatic compaction"),
+                    claudeVisualState.autoCompactEnabled,
+                    (W) => updateClaudeVisualState({ autoCompactEnabled: W }),
+                    booleanOptions,
+                  ),
+                  renderClaudeSelect(
+                    claudeText("自动记忆 autoMemoryEnabled", "Automatic memory"),
+                    claudeVisualState.autoMemoryEnabled,
+                    (W) => updateClaudeVisualState({ autoMemoryEnabled: W }),
+                    booleanOptions,
+                  ),
+                  renderClaudeSelect(
+                    claudeText("文件检查点 fileCheckpointingEnabled", "File checkpointing"),
+                    claudeVisualState.fileCheckpointingEnabled,
+                    (W) => updateClaudeVisualState({ fileCheckpointingEnabled: W }),
+                    booleanOptions,
+                  ),
+                  renderClaudeSelect(
+                    claudeText("编辑模式 editorMode", "Editor mode"),
+                    claudeVisualState.editorMode,
+                    (W) => updateClaudeVisualState({ editorMode: W }),
+                    [
+                      { value: "", label: claudeText("跟随默认", "Use default") },
+                      { value: "normal", label: "normal" },
+                      { value: "vim", label: "vim" },
+                    ],
+                  ),
+                  renderClaudeSelect(
+                    claudeText("视图模式 viewMode", "View mode"),
+                    claudeVisualState.viewMode,
+                    (W) => updateClaudeVisualState({ viewMode: W }),
+                    [
+                      { value: "", label: claudeText("跟随默认", "Use default") },
+                      ...["default", "verbose", "focus"].map((W) => ({ value: W, label: W })),
+                    ],
+                  ),
+                  renderClaudeSelect(
+                    claudeText("终端界面 tui", "Terminal UI mode"),
+                    claudeVisualState.tui,
+                    (W) => updateClaudeVisualState({ tui: W }),
+                    [
+                      { value: "", label: claudeText("跟随默认", "Use default") },
+                      { value: "default", label: "default" },
+                      { value: "fullscreen", label: "fullscreen" },
+                    ],
+                  ),
+                  renderClaudeSelect(
+                    claudeText("详细输出 verbose", "Verbose output"),
+                    claudeVisualState.verbose,
+                    (W) => updateClaudeVisualState({ verbose: W }),
                     booleanOptions,
                   ),
                 ],
@@ -5257,11 +5583,23 @@ const ConfigEditorPanel = () => {
               be.jsxs("div", {
                 style: gridStyle,
                 children: [
-                  renderClaudeField(
+                  renderClaudeSelect(
                     claudeText("默认权限模式", "Default permission mode"),
                     claudeVisualState.permissions.defaultMode,
                     (W) => updateClaudeVisualPermissions({ defaultMode: W }),
-                    "default / acceptEdits / plan / dontAsk",
+                    [
+                      { value: "", label: claudeText("跟随默认", "Use default") },
+                      ...["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"].map((W) => ({
+                        value: W,
+                        label: W,
+                      })),
+                    ],
+                    {
+                      help: claudeText(
+                        "bypassPermissions 会跳过权限确认，仅应在受控且可信的环境中使用。",
+                        "bypassPermissions skips permission prompts; use it only in controlled, trusted environments.",
+                      ),
+                    },
                   ),
                   renderClaudeListField(
                     "allow",
@@ -5369,7 +5707,15 @@ const ConfigEditorPanel = () => {
         const T = L.some((Z) => Z.value === H)
           ? L
           : H
-            ? [...L, { value: H, label: H }]
+            ? [
+                ...L,
+                {
+                  value: H,
+                  label: openCodeVisualIsCompatibilityValue(H)
+                    ? claudeText("当前旧值（仅保留 JSON 源码）", "Legacy value (preserved in JSON)")
+                    : H,
+                },
+              ]
             : L;
         return be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
@@ -5391,6 +5737,27 @@ const ConfigEditorPanel = () => {
           ],
         });
       },
+      renderOpenCodeCombobox = (W, H, k, L, U = {}) => {
+        const T = openCodeVisualUniqueStrings([...(L || []), H]),
+          Z = U.listId || `opencode-combobox-${String(W).replace(/[^a-z0-9]+/gi, "-")}`;
+        return be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(W, U.help),
+            be.jsx(zi, {
+              value: H || "",
+              onChange: (ee) => k(ee.target.value),
+              placeholder: U.placeholder,
+              list: Z,
+              "aria-label": typeof W === "string" ? W : String(W || ""),
+            }),
+            be.jsx("datalist", {
+              id: Z,
+              children: T.map((ee) => be.jsx("option", { value: ee }, ee)),
+            }),
+          ],
+        });
+      },
       renderOpenCodeMultiSelect = (W, H, k, L, U = {}) => {
         const T = openCodeVisualNormalizeEfforts(H),
           Z = new Set(L.map((Q) => Q.value)),
@@ -5403,11 +5770,14 @@ const ConfigEditorPanel = () => {
               formatConfigEnumHelp(getConfigFieldHelp(W, U.help), ee.map((Q) => Q.value)),
             ),
             be.jsx($l, {
-              mode: "multiple",
+              mode: "tags",
               value: T,
               onChange: (Q) => k(openCodeVisualNormalizeEfforts(Q).join(", ")),
               options: ee,
               allowClear: !0,
+              showSearch: !0,
+              optionFilterProp: "label",
+              tokenSeparators: [","],
               maxTagCount: "responsive",
               placeholder: U.placeholder,
               style: { width: "100%" },
@@ -5428,7 +5798,7 @@ const ConfigEditorPanel = () => {
           });
         const W = selectedOpenCodeProvider,
           H = selectedOpenCodeModel,
-          k = W && H ? openCodeVisualModelRef(W.id, H.id) : "";
+          k = openCodeVisualModelSuggestions(openCodeVisualState);
         return be.jsxs("div", {
           style: {
             display: "flex",
@@ -5438,6 +5808,100 @@ const ConfigEditorPanel = () => {
             minHeight: 420,
           },
           children: [
+            be.jsxs("section", {
+              style: {
+                flex: "1 1 100%",
+                border: "1px solid var(--border-color)",
+                borderRadius: "6px",
+                padding: "6px",
+              },
+              children: [
+                be.jsx("div", {
+                  style: { fontWeight: 600, marginBottom: "2px" },
+                  children: claudeText("运行与模型", "Runtime and models"),
+                }),
+                be.jsx("div", {
+                  style: {
+                    color: "var(--text-color-secondary)",
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                    marginBottom: "6px",
+                  },
+                  children: claudeText(
+                    "模型候选仅来自当前配置；可输入内置、未声明或旧的 provider/model 引用。",
+                    "Model suggestions come only from this config. Built-in, undeclared, and legacy provider/model references remain editable.",
+                  ),
+                }),
+                be.jsxs("div", {
+                  style: {
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+                    gap: "5px",
+                  },
+                  children: [
+                    renderOpenCodeCombobox(
+                      claudeText("主模型 model", "Primary model"),
+                      openCodeVisualState.primaryModel,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, primaryModel: L } : U)),
+                      k,
+                      {
+                        listId: "opencode-primary-model-options",
+                        placeholder: "provider/model",
+                      },
+                    ),
+                    renderOpenCodeCombobox(
+                      claudeText("小模型 small_model", "Small model"),
+                      openCodeVisualState.smallModel,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, smallModel: L } : U)),
+                      k,
+                      {
+                        listId: "opencode-small-model-options",
+                        placeholder: "provider/model",
+                      },
+                    ),
+                    renderOpenCodeSelect(
+                      claudeText("共享设置 share", "Sharing mode"),
+                      openCodeVisualState.share,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, share: L } : U)),
+                      [
+                        { value: "", label: claudeText("跟随默认", "Use default") },
+                        ...["manual", "auto", "disabled"].map((L) => ({ value: L, label: L })),
+                      ],
+                    ),
+                    renderOpenCodeSelect(
+                      claudeText("自动更新 autoupdate", "Auto-update"),
+                      openCodeVisualState.autoupdate,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, autoupdate: L } : U)),
+                      [
+                        { value: "", label: claudeText("跟随默认", "Use default") },
+                        { value: "true", label: claudeText("开启", "Enabled") },
+                        { value: "notify", label: "notify" },
+                        { value: "false", label: claudeText("禁用", "Disabled") },
+                      ],
+                    ),
+                    renderOpenCodeSelect(
+                      claudeText("日志级别 logLevel", "Log level"),
+                      openCodeVisualState.logLevel,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, logLevel: L } : U)),
+                      [
+                        { value: "", label: claudeText("跟随默认", "Use default") },
+                        ...["DEBUG", "INFO", "WARN", "ERROR"].map((L) => ({ value: L, label: L })),
+                      ],
+                    ),
+                    renderOpenCodeSelect(
+                      claudeText("快照 snapshot", "Snapshot"),
+                      openCodeVisualState.snapshot,
+                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, snapshot: L } : U)),
+                      [
+                        { value: "", label: claudeText("跟随默认", "Use default") },
+                        { value: "true", label: "true" },
+                        { value: "false", label: "false" },
+                      ],
+                    ),
+                  ],
+                }),
+              ],
+            }),
             be.jsxs("div", {
               style: {
                 width: `${CONFIG_PROVIDER_CARD_WIDTH_PX}px`,
@@ -5533,12 +5997,13 @@ const ConfigEditorPanel = () => {
                           children: [
                             renderOpenCodeField("Provider id", W.id, (L) => updateSelectedOpenCodeProvider({ id: L }), "例如 myAPI"),
                             renderOpenCodeField("名称", W.name, (L) => updateSelectedOpenCodeProvider({ name: L }), "Provider 名称"),
-                            renderOpenCodeSelect(
+                            renderOpenCodeCombobox(
                               "npm",
                               W.npm,
                               (L) => updateSelectedOpenCodeProvider({ npm: L }),
-                              OPEN_CODE_PROVIDER_NPM_OPTIONS,
+                              openCodeVisualNpmSuggestions(openCodeVisualState),
                               {
+                                listId: "opencode-provider-npm-options",
                                 placeholder: claudeText("选择 Provider npm 包", "Select a provider npm package"),
                               },
                             ),
@@ -5653,7 +6118,7 @@ const ConfigEditorPanel = () => {
                                       "思考力度",
                                       H.efforts,
                                       (L) => updateSelectedOpenCodeModel({ efforts: L }),
-                                      OPEN_CODE_REASONING_EFFORT_OPTIONS.map((L) => ({ value: L, label: L })),
+                                      openCodeVisualEffortSuggestions(H).map((L) => ({ value: L, label: L })),
                                       {
                                         placeholder: claudeText("选择一个或多个思考力度", "Select one or more efforts"),
                                       },
@@ -5679,34 +6144,6 @@ const ConfigEditorPanel = () => {
                                         "启用 reasoning",
                                       ],
                                     }),
-                                    be.jsxs("label", {
-                                      style: { display: "inline-flex", alignItems: "center", gap: 3 },
-                                      children: [
-                                        be.jsx("input", {
-                                          type: "checkbox",
-                                          checked: openCodeVisualState.primaryModel === k,
-                                          onChange: (L) =>
-                                            setOpenCodeVisualState((U) =>
-                                              U ? openCodeVisualSetRole(U, W.id, H.id, "primary", L.target.checked) : U,
-                                            ),
-                                        }),
-                                        "主模型",
-                                      ],
-                                    }),
-                                    be.jsxs("label", {
-                                      style: { display: "inline-flex", alignItems: "center", gap: 3 },
-                                      children: [
-                                        be.jsx("input", {
-                                          type: "checkbox",
-                                          checked: openCodeVisualState.smallModel === k,
-                                          onChange: (L) =>
-                                            setOpenCodeVisualState((U) =>
-                                              U ? openCodeVisualSetRole(U, W.id, H.id, "small", L.target.checked) : U,
-                                            ),
-                                        }),
-                                        "小模型",
-                                      ],
-                                    }),
                                   ],
                                 }),
                                 be.jsx("div", {
@@ -5716,8 +6153,8 @@ const ConfigEditorPanel = () => {
                                     fontSize: "12px",
                                   },
                                   children: claudeText(
-                                    "可多选思考力度；首项作为默认 reasoningEffort。",
-                                    "Select multiple efforts; the first is the default reasoningEffort.",
+                                    "可输入或多选当前 provider/model 的思考力度；首项作为默认 reasoningEffort。",
+                                    "Enter or select multiple efforts from the current provider/model; the first is the default reasoningEffort.",
                                   ),
                                 }),
                               ]
@@ -5792,13 +6229,23 @@ const ConfigEditorPanel = () => {
             }),
           ],
         }),
-      renderCodexSelect = (W, H, k, L, U = {}) =>
-        be.jsxs("label", {
+      renderCodexSelect = (W, H, k, L, U = {}) => {
+        const T = L.some((Z) => Z.value === H)
+          ? L
+          : H
+            ? insertLegacyMaxCompatibilityOption(L, H, {
+                value: H,
+                label: codexVisualIsCompatibilityValue(H)
+                  ? claudeText("复杂旧值（仅保留 TOML 源码）", "Complex legacy value (preserved in TOML)")
+                  : H,
+              })
+            : L;
+        return be.jsxs("label", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
             renderConfigFieldLabel(
               W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), L.map((T) => T.value || T.label)),
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value || Z.label)),
             ),
             be.jsx("select", {
               value: H || "",
@@ -5812,9 +6259,24 @@ const ConfigEditorPanel = () => {
                 color: "var(--text-color)",
                 background: "var(--background-color)",
               },
-              children: L.map((U) =>
-                be.jsx("option", { value: U.value, children: U.label }, U.value || "__default"),
+              children: T.map((Z) =>
+                be.jsx("option", { value: Z.value, children: Z.label }, Z.value || "__default"),
               ),
+            }),
+          ],
+        });
+      },
+      renderCodexTextArea = (W, H, k, L, U = {}) =>
+        be.jsxs("label", {
+          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          children: [
+            renderConfigFieldLabel(W, U.help),
+            be.jsx(Qa, {
+              value: H || "",
+              onChange: (T) => k(T.target.value),
+              placeholder: L,
+              rows: U.rows || 4,
+              style: { fontFamily: "monospace", fontSize: "12px", resize: "vertical" },
             }),
           ],
         }),
@@ -5951,7 +6413,7 @@ const ConfigEditorPanel = () => {
                         "approval_policy",
                         codexVisualState.approvalPolicy,
                         (L) => updateCodexVisualState({ approvalPolicy: L }),
-                        ["", "untrusted", "on-request", "on-failure", "never"].map((L) => ({
+                        ["", "untrusted", "on-request", "never"].map((L) => ({
                           value: L,
                           label: L || "跟随默认",
                         })),
@@ -5969,7 +6431,7 @@ const ConfigEditorPanel = () => {
                         "model_reasoning_effort",
                         codexVisualState.reasoningEffort,
                         (L) => updateCodexVisualState({ reasoningEffort: L }),
-                        ["", "minimal", "low", "medium", "high", "xhigh", "max"].map((L) => ({
+                        ["", "minimal", "low", "medium", "high", "xhigh", "ultra"].map((L) => ({
                           value: L,
                           label: L || "跟随默认",
                         })),
@@ -5983,6 +6445,22 @@ const ConfigEditorPanel = () => {
                           label: L || "跟随默认",
                         })),
                       ),
+                      renderCodexSelect(
+                        "model_verbosity",
+                        codexVisualState.verbosity,
+                        (L) => updateCodexVisualState({ verbosity: L }),
+                        ["", "low", "medium", "high"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
+                      renderCodexTextArea(
+                        "developer_instructions",
+                        codexVisualState.developerInstructions,
+                        (L) => updateCodexVisualState({ developerInstructions: L }),
+                        "为 Codex 追加 developer instructions",
+                        { rows: 4 },
+                      ),
                     ],
                   }),
                 ),
@@ -5992,9 +6470,15 @@ const ConfigEditorPanel = () => {
                   be.jsxs("div", {
                     style: k,
                     children: [
-                      renderCodexSelect("web_search", codexVisualState.webSearch, (L) => updateCodexVisualState({ webSearch: L }), H),
-                      renderCodexSelect("tools.web_search", codexVisualState.toolsWebSearch, (L) => updateCodexVisualState({ toolsWebSearch: L }), H),
-                      renderCodexSelect("features.web_search", codexVisualState.featuresWebSearch, (L) => updateCodexVisualState({ featuresWebSearch: L }), H),
+                      renderCodexSelect(
+                        "web_search",
+                        codexVisualState.webSearch,
+                        (L) => updateCodexVisualState({ webSearch: L }),
+                        ["", "disabled", "cached", "indexed", "live"].map((L) => ({
+                          value: L,
+                          label: L || "跟随默认",
+                        })),
+                      ),
                       renderCodexSelect("disable_response_storage", codexVisualState.disableResponseStorage, (L) => updateCodexVisualState({ disableResponseStorage: L }), H),
                       renderCodexSelect("hide_agent_reasoning", codexVisualState.hideAgentReasoning, (L) => updateCodexVisualState({ hideAgentReasoning: L }), H),
                       renderCodexSelect("model_supports_reasoning_summaries", codexVisualState.supportsReasoningSummaries, (L) => updateCodexVisualState({ supportsReasoningSummaries: L }), H),
@@ -6033,7 +6517,15 @@ const ConfigEditorPanel = () => {
                               renderCodexField("name", W.name, (L) => updateSelectedCodexProvider({ name: L }), "OpenAI"),
                               renderCodexField("base_url", W.baseUrl, (L) => updateSelectedCodexProvider({ baseUrl: L }), "https://api.openai.com/v1"),
                               renderCodexField("env_key", W.envKey, (L) => updateSelectedCodexProvider({ envKey: L }), "OPENAI_API_KEY"),
-                              renderCodexField("wire_api", W.wireApi, (L) => updateSelectedCodexProvider({ wireApi: L }), "responses"),
+                              renderCodexSelect(
+                                "wire_api",
+                                W.wireApi,
+                                (L) => updateSelectedCodexProvider({ wireApi: L }),
+                                [
+                                  { value: "", label: "跟随默认" },
+                                  { value: "responses", label: "responses" },
+                                ],
+                              ),
                               renderCodexSelect("requires_openai_auth", W.requiresOpenaiAuth, (L) => updateSelectedCodexProvider({ requiresOpenaiAuth: L }), H),
                             ],
                           }),

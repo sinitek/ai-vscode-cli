@@ -165,7 +165,8 @@
             "medium",
             "high",
             "xhigh",
-            "max"
+            "max",
+            "ultra"
           ],
           "default": "medium",
           "description": "%config.thinkingMode.description%"
@@ -178,7 +179,8 @@
             "medium",
             "high",
             "xhigh",
-            "max"
+            "max",
+            "ultra"
           ],
           "default": "medium",
           "description": "%config.thinkingModeCodex.description%"
@@ -192,7 +194,8 @@
             "medium",
             "high",
             "xhigh",
-            "max"
+            "max",
+            "ultra"
           ],
           "default": "medium",
           "description": "%config.thinkingModeClaude.description%"
@@ -244,6 +247,14 @@
           },
           "default": [],
           "description": "%config.thinkingArgs.codex.max.description%"
+        },
+        "sinitek-cli-tools.thinkingArgs.codex.ultra": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.thinkingArgs.codex.ultra.description%"
         },
         "sinitek-cli-tools.thinkingArgs.claude.on": {
           "type": "array",
@@ -319,6 +330,17 @@
           ],
           "description": "%config.thinkingArgs.claude.max.description%"
         },
+        "sinitek-cli-tools.thinkingArgs.claude.ultra": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--effort",
+            "ultra"
+          ],
+          "description": "%config.thinkingArgs.claude.ultra.description%"
+        },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.off": {
           "type": "string",
           "default": "",
@@ -353,6 +375,11 @@
           "type": "string",
           "default": "",
           "description": "%config.thinkingPromptPrefix.codex.max.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptPrefix.codex.ultra": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptPrefix.codex.ultra.description%"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.off": {
           "type": "string",
@@ -414,6 +441,11 @@
           "default": "",
           "description": "%config.thinkingPromptPrefix.opencode.max.description%"
         },
+        "sinitek-cli-tools.thinkingPromptPrefix.opencode.ultra": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptPrefix.opencode.ultra.description%"
+        },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.off": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
@@ -448,6 +480,11 @@
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
           "description": "%config.thinkingPromptSuffix.codex.max.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.codex.ultra": {
+          "type": "string",
+          "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
+          "description": "%config.thinkingPromptSuffix.codex.ultra.description%"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.off": {
           "type": "string",
@@ -508,6 +545,11 @@
           "type": "string",
           "default": "",
           "description": "%config.thinkingPromptSuffix.opencode.max.description%"
+        },
+        "sinitek-cli-tools.thinkingPromptSuffix.opencode.ultra": {
+          "type": "string",
+          "default": "",
+          "description": "%config.thinkingPromptSuffix.opencode.ultra.description%"
         },
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.off": {
           "type": "array",
@@ -645,6 +687,28 @@
           "type": "array",
           "default": [],
           "description": "%config.thinkingWorkspaceFiles.codex.max.description%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "%config.workspaceFile.path.description%"
+              },
+              "content": {
+                "type": "string",
+                "description": "%config.workspaceFile.content.description%"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.codex.ultra": {
+          "type": "array",
+          "default": [],
+          "description": "%config.thinkingWorkspaceFiles.codex.ultra.description%",
           "items": {
             "type": "object",
             "properties": {
@@ -909,6 +973,28 @@
           "type": "array",
           "default": [],
           "description": "%config.thinkingWorkspaceFiles.opencode.max.description%",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "%config.workspaceFile.path.description%"
+              },
+              "content": {
+                "type": "string",
+                "description": "%config.workspaceFile.content.description%"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ]
+          }
+        },
+        "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.ultra": {
+          "type": "array",
+          "default": [],
+          "description": "%config.thinkingWorkspaceFiles.opencode.ultra.description%",
           "items": {
             "type": "object",
             "properties": {

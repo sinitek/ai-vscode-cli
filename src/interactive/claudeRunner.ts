@@ -86,17 +86,26 @@ function clampThinkingTokens(mode: ThinkingMode): number | null {
   if (mode === "medium") {
     return 2048;
   }
-  if (mode === "high" || mode === "xhigh" || mode === "max" || mode === "on") {
+  if (mode === "high" || mode === "xhigh" || mode === "ultra" || mode === "max" || mode === "on") {
     return 8192;
   }
   return null;
 }
 
-function mapClaudeThinkingEffort(mode: ThinkingMode): "low" | "medium" | "high" | "xhigh" | "max" | null {
+export function mapClaudeThinkingEffort(
+  mode: ThinkingMode
+): "low" | "medium" | "high" | "xhigh" | "ultra" | "max" | null {
   if (mode === "off") {
     return null;
   }
-  if (mode === "low" || mode === "medium" || mode === "high" || mode === "xhigh" || mode === "max") {
+  if (
+    mode === "low"
+    || mode === "medium"
+    || mode === "high"
+    || mode === "xhigh"
+    || mode === "ultra"
+    || mode === "max"
+  ) {
     return mode;
   }
   if (mode === "on") {

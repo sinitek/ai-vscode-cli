@@ -125,6 +125,7 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
     || value === "medium"
     || value === "high"
     || value === "xhigh"
+    || value === "ultra"
     || value === "max";
 }
 

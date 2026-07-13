@@ -168,6 +168,7 @@ ${webviewStyles}    </style>
                   <option value="high">${i18n.thinkingOptionHigh}</option>
                   <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
                   <option value="max">${i18n.thinkingOptionMax}</option>
+                  <option value="ultra">${i18n.thinkingOptionUltra}</option>
                 </select>
               </label>
               <label class="open-code-model-row" for="openCodeSmallModelSelect">
@@ -188,6 +189,7 @@ ${webviewStyles}    </style>
               <option value="high">${i18n.thinkingOptionHigh}</option>
               <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
               <option value="max">${i18n.thinkingOptionMax}</option>
+              <option value="ultra">${i18n.thinkingOptionUltra}</option>
             </select>
           </div>
           <div class="input-actions">

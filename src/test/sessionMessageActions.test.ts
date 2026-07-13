@@ -1,5 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { installVscodeMock } from "./vscodeMock";
 
 installVscodeMock();
@@ -213,7 +215,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     writeCliRules: async () => undefined,
     normalizeRuleTargets: (targets) => targets ?? [],
     isThinkingMode: (value: unknown): value is ThinkingMode => (
-      value === "off" || value === "on" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max"
+      value === "off" || value === "on" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "ultra" || value === "max"
     ),
     normalizeThinkingModeForCli: (_cli, mode) => mode,
     setCliModelThinkingMode: () => undefined,
@@ -416,6 +418,38 @@ test("persists the OpenCode Loop execution mode by CLI", async () => {
   ]);
   assert.equal(state.workspaceSettings.lobsterExecutionModeByCli?.opencode, "debate_multi_agent");
   assert.equal(calls.postPanelState, 1);
+});
+
+test("persists ultra and declares it in the VS Code thinking settings schema", async () => {
+  const { deps, calls, state } = createSendPromptHarness("codex");
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "thinkingMode",
+    value: "ultra",
+  }, deps);
+
+  assert.equal(state.workspaceSettings.thinkingMode, "ultra");
+  assert.deepEqual(calls.savedSettings, [{ thinkingMode: "ultra" }]);
+  assert.equal(calls.postPanelState, 1);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+  const properties = manifest.contributes.configuration.properties as Record<string, { enum?: string[] }>;
+  const expectedThinkingEnums: Record<string, string[]> = {
+    "sinitek-cli-tools.thinkingMode": ["off", "low", "medium", "high", "xhigh", "max", "ultra"],
+    "sinitek-cli-tools.thinkingModeCodex": ["on", "low", "medium", "high", "xhigh", "max", "ultra"],
+    "sinitek-cli-tools.thinkingModeClaude": ["off", "on", "low", "medium", "high", "xhigh", "max", "ultra"],
+  };
+  Object.entries(expectedThinkingEnums).forEach(([key, expectedValues]) => {
+    assert.deepEqual(properties[key].enum, expectedValues, `${key} should end with max then ultra`);
+  });
+
+  const englishNls = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"));
+  const chineseNls = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.nls.zh-cn.json"), "utf8"));
+  assert.match(englishNls["config.thinkingModeClaude.description"], /xhigh, max, and ultra/);
+  assert.match(chineseNls["config.thinkingModeClaude.description"], /xhigh、max、ultra/);
+  assert.match(chineseNls["config.thinkingArgs.codex.ultra.description"], /ultra/);
+  assert.match(chineseNls["config.thinkingArgs.claude.ultra.description"], /ultra/);
 });
 
 test("persists the normalized global final-answer policy", async () => {

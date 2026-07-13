@@ -8,7 +8,7 @@ export function isOpenCodeCli(value: unknown): boolean {
   return value === "opencode";
 }
 
-export type ThinkingMode = "off" | "on" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingMode = "off" | "on" | "low" | "medium" | "high" | "xhigh" | "ultra" | "max";
 
 export type OpenCodeVariantOption = {
   value: string;

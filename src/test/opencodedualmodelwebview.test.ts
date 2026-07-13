@@ -219,16 +219,25 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
   assert.match(group, /id="openCodeSmallThinkingMode"[^>]*class="thinking-select"/);
-  assert.match(group, /<option value="xhigh">X-High<\/option>/);
-  assert.match(group, /<option value="max">Max<\/option>/);
+  assert.match(group, /<option value="xhigh">xhigh<\/option>/);
+  assert.match(group, /<option value="max">max<\/option>/);
+  const primaryThinking = html.match(/<select id="openCodePrimaryThinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
+  assert.match(
+    primaryThinking,
+    /<option value="xhigh">xhigh<\/option>\s*<option value="max">max<\/option>\s*<option value="ultra">ultra<\/option>/,
+  );
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode small model selection"/);
   assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode small model thinking mode"[^>]*title="OpenCode small model thinking mode"/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|open-code-model-hint|lightweight internal tasks|reasoning effort/);
   assert.doesNotMatch(html, /lobsterMainModelSelect|lobsterSubtaskModelSelect|Loop main-task model|Loop subtask model/);
   const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
-  assert.match(genericThinking, /<option value="xhigh">X-High<\/option>/);
-  assert.match(genericThinking, /<option value="max">Max<\/option>/);
+  assert.match(genericThinking, /<option value="xhigh">xhigh<\/option>/);
+  assert.match(genericThinking, /<option value="max">max<\/option>/);
+  assert.match(
+    genericThinking,
+    /<option value="xhigh">xhigh<\/option>\s*<option value="max">max<\/option>\s*<option value="ultra">ultra<\/option>/,
+  );
 });
 
 test("lays out OpenCode selectors as two full-width model rows", () => {

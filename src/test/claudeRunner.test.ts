@@ -1,11 +1,18 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { installVscodeMock } from "./vscodeMock";
+
+installVscodeMock();
 
 import {
   isClaudeCompactBoundaryMessage,
   isClaudeCompactingStatusMessage,
   isClaudeNativeCompactUnsupportedError,
 } from "../interactive/claudeCompaction";
+
+const {
+  mapClaudeThinkingEffort,
+} = require("../interactive/claudeRunner") as typeof import("../interactive/claudeRunner");
 
 test("detects Claude compacting status messages", () => {
   assert.equal(
@@ -61,4 +68,10 @@ test("detects unsupported native Claude compact errors", () => {
     isClaudeNativeCompactUnsupportedError(new Error("No conversation found with session ID: abc")),
     false
   );
+});
+
+test("preserves ultra in the Claude --effort path", () => {
+  assert.equal(mapClaudeThinkingEffort("ultra"), "ultra");
+  assert.equal(mapClaudeThinkingEffort("max"), "max");
+  assert.equal(mapClaudeThinkingEffort("off"), null);
 });

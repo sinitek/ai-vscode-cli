@@ -650,17 +650,33 @@ function renderTimeline(
   segments: LobsterDebateChatSegment[],
   strings: LobsterDebateChatPanelStrings,
 ): string {
+  const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
   if (state.error) {
-    return `<div class="timeline"><div class="notice">${escapeHtml(strings.loadingError)} ${escapeHtml(state.error)}</div></div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.loadingError)} ${escapeHtml(state.error)}</div></div>`;
   }
   if (state.rounds.length === 0) {
-    return `<div class="timeline"><div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
   }
   const thinkingBubble = renderThinkingBubble(state, strings);
   if (!state.chatMarkdown.trim() || segments.length === 0) {
-    return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubble}</div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubble}</div>`;
   }
-  return `<div class="timeline">${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubble}</div>`;
+  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubble}</div>`;
+}
+
+function renderInitialTaskPromptBubble(
+  rootPrompt: string,
+  strings: LobsterDebateChatPanelStrings,
+): string {
+  if (!rootPrompt.trim()) {
+    return "";
+  }
+  return renderSegment({
+    kind: "user-message",
+    heading: strings.initialTaskPrompt,
+    body: rootPrompt,
+    actorId: "user",
+  }, strings, strings.initialTaskPrompt);
 }
 
 function renderThinkingBubble(
@@ -769,9 +785,13 @@ function getThinkingText(
   return formatTemplate(strings.thinking, { speaker: speaker.title });
 }
 
-function renderSegment(segment: LobsterDebateChatSegment, strings: LobsterDebateChatPanelStrings): string {
+function renderSegment(
+  segment: LobsterDebateChatSegment,
+  strings: LobsterDebateChatPanelStrings,
+  tagOverride?: string,
+): string {
   const speaker = getSegmentSpeaker(segment, strings);
-  const tag = getSegmentTag(segment, strings);
+  const tag = tagOverride ?? getSegmentTag(segment, strings);
   const hasAvatar = segment.kind === "main-turn"
     || segment.kind === "subtask-joined"
     || segment.kind === "subtask-turn"

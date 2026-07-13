@@ -9,7 +9,7 @@ const {
   buildLobsterDebateChatPanelHtml,
 } = require("../webview/lobsterDebatePanel") as typeof import("../webview/lobsterDebatePanel");
 
-test("renders submitted Loop supplemental requirements as user message bubbles", () => {
+test("renders the Loop task prompt before submitted supplemental requirements", () => {
   const html = buildLobsterDebateChatPanelHtml(
     { cspSource: "self" } as any,
     {
@@ -53,6 +53,45 @@ test("renders submitted Loop supplemental requirements as user message bubbles",
   assert.match(html, /class="message user-message no-avatar"/u);
   assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
   assert.match(html, /<span class="speaker">我<\/span>/u);
+  assert.match(html, /<span class="tag">任务发起<\/span>/u);
+  assert.match(html, /<pre class="message-text">完成任务<\/pre>/u);
   assert.match(html, /<pre class="message-text">请补充提交失败场景。<\/pre>/u);
+  assert.ok(
+    html.indexOf("<pre class=\"message-text\">完成任务</pre>")
+      < html.indexOf("<pre class=\"message-text\">请补充提交失败场景。</pre>"),
+  );
   assert.doesNotMatch(html, /<pre class="message-text">[^<]*主任务轮次/u);
+});
+
+test("renders the Loop task prompt before chat records exist", () => {
+  const html = buildLobsterDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    {
+      mode: "main_sub",
+      task: {
+        id: "task-2",
+        cli: "codex",
+        status: "running",
+        rootPrompt: "请先完成任务初始化。",
+        taskStoreFile: "/tmp/lobster-tasks.json",
+        mainCommunicationFile: "/tmp/main-task.md",
+        currentRound: 0,
+        updatedAt: Date.now(),
+        canSupplement: true,
+        canContinue: false,
+        canStop: true,
+      },
+      rounds: [],
+      chatMarkdown: "",
+    },
+    "zh-CN",
+  );
+
+  assert.match(html, /<span class="tag">任务发起<\/span>/u);
+  assert.match(html, /<pre class="message-text">请先完成任务初始化。<\/pre>/u);
+  assert.match(html, /暂无群聊记录。/u);
+  assert.ok(
+    html.indexOf("<pre class=\"message-text\">请先完成任务初始化。</pre>")
+      < html.indexOf("暂无群聊记录。"),
+  );
 });

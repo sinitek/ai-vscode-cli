@@ -173,9 +173,9 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
   harness.syncThinkingOptions();
 
   assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [
-    ["none", "None"],
-    ["low", "Low"],
-    ["turbo", "Turbo++"],
+    ["none", "none"],
+    ["low", "low"],
+    ["turbo", "turbo"],
   ]);
   assert.equal(harness.openCodePrimaryThinkingMode.value, "turbo");
   assert.equal(harness.openCodePrimaryThinkingMode.disabled, false);
@@ -189,7 +189,7 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
   };
   harness.syncThinkingOptions();
 
-  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["eco", "Eco"]]);
+  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["eco", "eco"]]);
   assert.equal(harness.openCodePrimaryThinkingMode.value, "eco");
 });
 
@@ -202,7 +202,7 @@ test("shows only the configured real default variant without an explicit overrid
   };
   harness.syncThinkingOptions();
 
-  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["xhigh", "超高"]]);
+  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["xhigh", "xhigh"]]);
   assert.equal(harness.openCodePrimaryThinkingMode.value, "xhigh");
   assert.deepEqual(harness.messages, []);
 });
@@ -216,7 +216,7 @@ test("keeps no selection when OpenCode has no mapped default variant", () => {
   };
   harness.syncThinkingOptions();
 
-  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["xhigh", "X-High"]]);
+  assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [["xhigh", "xhigh"]]);
   assert.equal(harness.openCodePrimaryThinkingMode.value, "");
   assert.deepEqual(harness.messages, []);
 });
@@ -316,76 +316,72 @@ test("localizes OpenCode status message keys and safely ignores legacy diagnosti
   assert.doesNotMatch(fallbackHarness.openCodePrimaryThinkingMode.title, /Raw English|internal diagnostic/);
 });
 
-test("localizes every standard OpenCode variant in English and Chinese", () => {
-  const options = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "thinking"]
+test("renders every standard OpenCode variant as its raw value in English and Chinese", () => {
+  const options = ["off", "none", "minimal", "low", "medium", "high", "xhigh", "ultra", "max", "thinking"]
     .map((value) => ({ value, label: "ignored" }));
-  const cases = [
-    {
-      locale: "en" as const,
-      labels: ["None", "Minimal", "Low", "Medium", "High", "X-High", "Max", "Thinking"],
-    },
-    {
-      locale: "zh-CN" as const,
-      labels: ["无", "最小", "低", "中", "高", "超高", "最高", "思考"],
-    },
-  ];
-
-  cases.forEach(({ locale, labels }) => {
+  (["en", "zh-CN"] as const).forEach((locale) => {
     const harness = buildThinkingSync(locale);
     harness.state.openCodeThinking = { selectedVariant: "thinking", options };
     harness.syncThinkingOptions();
     assert.deepEqual(
       optionPairs(harness.openCodePrimaryThinkingMode),
-      options.map((option, index) => [option.value, labels[index]]),
+      options.map((option) => [option.value, option.value]),
     );
   });
 });
 
-test("preserves custom OpenCode labels and falls back to the variant name", () => {
+test("preserves custom OpenCode dynamic value order while using raw values", () => {
   const harness = buildThinkingSync("zh-CN");
   harness.state.openCodeThinking = {
-    selectedVariant: "custom",
+    selectedVariant: "custom-after",
     options: [
-      { value: "custom", label: "自定义档" },
-      { value: "raw-name", label: " " },
+      { value: "custom-before", label: "自定义档" },
+      { value: "ultra", label: "Provider ultra" },
+      { value: "max", label: "Provider max" },
+      { value: "custom-after", label: " " },
     ],
   };
   harness.syncThinkingOptions();
 
   assert.deepEqual(optionPairs(harness.openCodePrimaryThinkingMode), [
-    ["custom", "自定义档"],
-    ["raw-name", "raw-name"],
+    ["custom-before", "custom-before"],
+    ["ultra", "ultra"],
+    ["max", "max"],
+    ["custom-after", "custom-after"],
   ]);
+  assert.equal(harness.openCodePrimaryThinkingMode.value, "custom-after");
 });
 
-test("keeps fixed Codex and Claude thinking mode behavior", () => {
-  const codex = buildThinkingSync("en");
+test("keeps fixed Codex and Claude thinking modes raw while retaining legacy max", () => {
+  const codex = buildThinkingSync("zh-CN");
   codex.state.currentCli = "codex";
   codex.state.thinkingMode = "off";
   codex.syncThinkingOptions();
-  assert.deepEqual(optionPairs(codex.thinkingMode).map(([value]) => value), [
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
+  assert.deepEqual(optionPairs(codex.thinkingMode), [
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+    ["ultra", "ultra"],
   ]);
   assert.equal(codex.thinkingMode.value, "low");
   assert.deepEqual(codex.messages, [
     { type: "updateSetting", key: "thinkingMode", value: "low" },
   ]);
 
-  const claude = buildThinkingSync("en");
+  const claude = buildThinkingSync("zh-CN");
   claude.state.currentCli = "claude";
   claude.state.thinkingMode = "max";
   claude.syncThinkingOptions();
-  assert.deepEqual(optionPairs(claude.thinkingMode).map(([value]) => value), [
-    "off",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
+  assert.deepEqual(optionPairs(claude.thinkingMode), [
+    ["off", "off"],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+    ["ultra", "ultra"],
   ]);
   assert.equal(claude.thinkingMode.value, "max");
   assert.deepEqual(claude.messages, []);
@@ -404,10 +400,12 @@ test("routes OpenCode variant changes separately from generic thinking settings"
 
   const codex = buildThinkingChangeHandler("codex");
   codex.handler("xhigh");
+  codex.handler("ultra");
   assert.deepEqual(codex.messages, [
     { type: "updateSetting", key: "thinkingMode", value: "xhigh" },
+    { type: "updateSetting", key: "thinkingMode", value: "ultra" },
   ]);
-  assert.equal(codex.state.thinkingMode, "xhigh");
+  assert.equal(codex.state.thinkingMode, "ultra");
 });
 
 test("applies the latest OpenCode thinking payload on every panel state", () => {

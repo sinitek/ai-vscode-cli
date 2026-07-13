@@ -198,6 +198,9 @@ export function mapCodexReasoningEffort(mode: ThinkingMode): string {
   if (mode === "xhigh") {
     return "xhigh";
   }
+  if (mode === "ultra") {
+    return "ultra";
+  }
   if (mode === "high") {
     return "high";
   }

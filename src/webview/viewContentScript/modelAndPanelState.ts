@@ -416,18 +416,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function getOpenCodeThinkingOptionLabel(option) {
-        const standardLabelKeys = {
-          none: "openCodeThinkingOptionNone",
-          minimal: "openCodeThinkingOptionMinimal",
-          low: "thinkingOptionLabelLow",
-          medium: "thinkingOptionLabelMedium",
-          high: "thinkingOptionLabelHigh",
-          xhigh: "thinkingOptionLabelXHigh",
-          max: "thinkingOptionLabelMax",
-          thinking: "openCodeThinkingOptionThinking",
-        };
-        const labelKey = standardLabelKeys[option.value];
-        return labelKey ? t(labelKey) : option.label || option.value;
+        return option.value;
       }
 
       function getOpenCodeThinkingMessage(messageKey) {
@@ -498,16 +487,19 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         elements.thinkingMode.disabled = false;
         elements.thinkingMode.title = t("thinkingModeAria");
         if (!isCodex) {
-          appendThinkingOption(elements.thinkingMode, "off", t("thinkingOptionLabelOff"));
+          appendThinkingOption(elements.thinkingMode, "off", "off");
         }
-        appendThinkingOption(elements.thinkingMode, "low", t("thinkingOptionLabelLow"));
-        appendThinkingOption(elements.thinkingMode, "medium", t("thinkingOptionLabelMedium"));
-        appendThinkingOption(elements.thinkingMode, "high", t("thinkingOptionLabelHigh"));
+        appendThinkingOption(elements.thinkingMode, "low", "low");
+        appendThinkingOption(elements.thinkingMode, "medium", "medium");
+        appendThinkingOption(elements.thinkingMode, "high", "high");
         if (isCodex || isClaude) {
-          appendThinkingOption(elements.thinkingMode, "xhigh", t("thinkingOptionLabelXHigh"));
+          appendThinkingOption(elements.thinkingMode, "xhigh", "xhigh");
         }
         if (isCodex || isClaude) {
-          appendThinkingOption(elements.thinkingMode, "max", t("thinkingOptionLabelMax"));
+          appendThinkingOption(elements.thinkingMode, "max", "max");
+        }
+        if (isCodex || isClaude) {
+          appendThinkingOption(elements.thinkingMode, "ultra", "ultra");
         }
         if (isCodex && state.thinkingMode === "off") {
           updateThinkingMode("low");

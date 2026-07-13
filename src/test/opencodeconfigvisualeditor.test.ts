@@ -56,7 +56,7 @@ test("visual parser loads current myAPI example and roles", () => {
   assert.equal(parsed.state.smallModel, "myAPI/small-task-model");
 });
 
-test("visual editor exposes official provider adapters and full reasoning efforts", () => {
+test("visual editor keeps provider npm suggestions while effort candidates stay dynamic", () => {
   const utils = loadVisualUtils();
   assert.deepEqual(
     Array.from(utils.providerNpmOptions, (option: any) => option.value),
@@ -67,15 +67,14 @@ test("visual editor exposes official provider adapters and full reasoning effort
       "@ai-sdk/google",
     ],
   );
-  assert.deepEqual(
-    Array.from(utils.reasoningEffortOptions),
-    ["low", "medium", "high", "xhigh", "max"],
-  );
+  assert.deepEqual(Array.from(utils.effortSuggestions({ efforts: "none, custom" })), ["none", "custom", "ultra"]);
 
   const source = loadUiSource();
-  assert.match(source, /renderOpenCodeSelect\([\s\S]*?"npm"[\s\S]*?OPEN_CODE_PROVIDER_NPM_OPTIONS/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "multiple"/);
-  assert.match(source, /renderOpenCodeMultiSelect\([\s\S]*?OPEN_CODE_REASONING_EFFORT_OPTIONS\.map/);
+  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"npm"[\s\S]*?openCodeVisualNpmSuggestions/);
+  assert.match(source, /renderOpenCodeCombobox = \([\s\S]*?be\.jsx\("datalist"/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "tags"/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?tokenSeparators: \[","\]/);
+  assert.doesNotMatch(source, /OPEN_CODE_REASONING_EFFORT_OPTIONS/);
   assert.match(source, /Google \(@ai-sdk\/google\)/);
 });
 
@@ -152,6 +151,36 @@ test("comma efforts deduplicate and generate options plus variants", () => {
   assert.equal(cleared.variants.custom.reasoningEffort, "legacy");
 });
 
+test("OpenCode visual configuration serializes ultra without replacing provider-specific efforts", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState({
+    provider: {
+      custom: {
+        models: {
+          alpha: {
+            options: { reasoningEffort: "legacy", temperature: 0.2 },
+            variants: {
+              providerOnly: { reasoningEffort: "provider-custom", temperature: 0.8 },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  state = utils.updateModel(state, "custom", "alpha", { efforts: "ultra, provider-added" });
+  const serialized = utils.serializeState(state);
+
+  assert.equal(serialized.ok, true);
+  const model = serialized.config.provider.custom.models.alpha;
+  assert.equal(model.options.reasoningEffort, "ultra");
+  assert.equal(model.options.temperature, 0.2);
+  assert.equal(model.variants.ultra.reasoningEffort, "ultra");
+  assert.equal(model.variants["provider-added"].reasoningEffort, "provider-added");
+  assert.equal(model.variants.providerOnly.reasoningEffort, "provider-custom");
+  assert.equal(model.variants.providerOnly.temperature, 0.8);
+});
+
 test("serialization preserves unknown top provider and model fields", () => {
   const utils = loadVisualUtils();
   const original = {
@@ -192,20 +221,124 @@ test("serialization preserves unknown top provider and model fields", () => {
   assert.equal(provider.models.alpha.options.reasoningEffort, "high");
 });
 
-test("dangling model roles block serialization after deletion", () => {
+test("OpenCode visual state manages stable top-level fields with inherit and legacy preservation", () => {
   const utils = loadVisualUtils();
   let state = utils.createState({
-    model: "myAPI/main",
-    small_model: "myAPI/small",
+    share: "auto",
+    autoupdate: "notify",
+    logLevel: "WARN",
+    snapshot: false,
+  });
+  assert.equal(state.share, "auto");
+  assert.equal(state.autoupdate, "notify");
+  assert.equal(state.logLevel, "WARN");
+  assert.equal(state.snapshot, "false");
+
+  state.share = "disabled";
+  state.autoupdate = "true";
+  state.logLevel = "DEBUG";
+  state.snapshot = "true";
+  let serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.share, "disabled");
+  assert.equal(serialized.config.autoupdate, true);
+  assert.equal(serialized.config.logLevel, "DEBUG");
+  assert.equal(serialized.config.snapshot, true);
+
+  state.share = "";
+  state.autoupdate = "";
+  state.logLevel = "";
+  state.snapshot = "";
+  serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.share, undefined);
+  assert.equal(serialized.config.autoupdate, undefined);
+  assert.equal(serialized.config.logLevel, undefined);
+  assert.equal(serialized.config.snapshot, undefined);
+
+  let legacyState = utils.createState({
+    share: "future-share-mode",
+    autoupdate: "future-update-mode",
+    logLevel: "TRACE",
+    snapshot: { providerSpecific: true },
+  });
+  legacyState.logLevel = "TRACE";
+  const legacy = utils.serializeState(legacyState);
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.config.share, "future-share-mode");
+  assert.equal(legacy.config.autoupdate, "future-update-mode");
+  assert.equal(legacy.config.logLevel, "TRACE");
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.config.snapshot)), { providerSpecific: true });
+});
+
+test("OpenCode editable comboboxes retain undeclared model refs and arbitrary npm packages", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState({
+    model: "builtin/primary",
+    small_model: "vendor/legacy-small",
     provider: {
-      myAPI: { models: { main: { name: "Main" }, small: { name: "Small" } } },
+      custom: {
+        npm: "@company/opencode-adapter",
+        models: { declared: { name: "Declared" } },
+      },
     },
   });
-  state = utils.deleteModel(state, "myAPI", "main");
+  assert.deepEqual(Array.from(utils.modelSuggestions(state)), [
+    "custom/declared",
+    "builtin/primary",
+    "vendor/legacy-small",
+  ]);
+  assert.ok(Array.from(utils.npmSuggestions(state)).includes("@company/opencode-adapter"));
+
+  state.providers[0].npm = "@company/private-adapter";
   const serialized = utils.serializeState(state);
-  assert.equal(serialized.ok, false);
-  assert.match(serialized.error, /主模型引用/);
-  assert.match(serialized.error, /请重新选择模型/);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.model, "builtin/primary");
+  assert.equal(serialized.config.small_model, "vendor/legacy-small");
+  assert.equal(serialized.config.provider.custom.npm, "@company/private-adapter");
+});
+
+test("OpenCode leaves provider-specific reasoning variants unchanged until users edit efforts", () => {
+  const utils = loadVisualUtils();
+  const source = {
+    provider: {
+      custom: {
+        models: {
+          model: {
+            options: { reasoningEffort: "none", temperature: 0.2 },
+            variants: {
+              providerSpecific: { reasoningEffort: "custom-effort", temperature: 0.8 },
+              special: { labels: ["keep"] },
+            },
+          },
+        },
+      },
+    },
+  };
+  const state = utils.createState(source);
+  const serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(serialized.config.provider.custom.models.model.options)),
+    source.provider.custom.models.model.options,
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(serialized.config.provider.custom.models.model.variants)),
+    source.provider.custom.models.model.variants,
+  );
+});
+
+test("undeclared model roles remain valid visual configuration references", () => {
+  const utils = loadVisualUtils();
+  const state = utils.createState({
+    model: "builtin/main",
+    small_model: "other/small",
+    provider: {},
+  });
+  const serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.model, "builtin/main");
+  assert.equal(serialized.config.small_model, "other/small");
 });
 
 test("invalid JSON cannot become an empty visual save", () => {
@@ -276,7 +409,12 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   );
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
-  assert.match(source, /思考力度: "该模型支持的 reasoning effort，可多选。可选值：low \/ medium \/ high \/ xhigh \/ max"/);
+  assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
+  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"opencode-primary-model-options"/);
+  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"opencode-small-model-options"/);
+  assert.match(source, /openCodeVisualModelSuggestions\(openCodeVisualState\)/);
+  assert.doesNotMatch(openCodeVisualSource, /role: "primary"/);
+  assert.doesNotMatch(openCodeVisualSource, /role: "small"/);
   assert.match(
     source,
     /display: "flex",\s+gap: "6px",\s+flexWrap: "wrap",\s+flex: 1,\s+minHeight: 260/,

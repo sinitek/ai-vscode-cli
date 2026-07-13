@@ -26,6 +26,22 @@ function loadVisualUtils(): any {
   return sandbox.__utils;
 }
 
+function loadLegacyMaxCompatibilityOptionOrderer(): any {
+  const source = loadUiSource();
+  const startMarker = "insertLegacyMaxCompatibilityOption = ";
+  const endMarker = ",\n      renderClaudeSelect";
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  assert.notEqual(start, -1, "legacy max compatibility orderer should exist");
+  assert.notEqual(end, -1, "legacy max compatibility orderer should terminate before select rendering");
+  const sandbox: Record<string, unknown> = {};
+  vm.runInNewContext(
+    `globalThis.__orderer = ${source.slice(start + startMarker.length, end)};`,
+    sandbox,
+  );
+  return sandbox.__orderer;
+}
+
 function extractCodexConfigExample(): string {
   const source = loadUiSource();
   const marker = "codex: {\n      config: `";
@@ -57,6 +73,8 @@ test("official Codex example uses config.toml with .env instead of JSON", () => 
   assert.match(configExample, /model = "gpt-5\.1-codex"/);
   assert.match(configExample, /\[model_providers\.codex\]/);
   assert.match(configExample, /env_key = "OPENAI_API_KEY"/);
+  assert.match(configExample, /web_search = "cached"/);
+  assert.doesNotMatch(configExample, /\[features\]/);
   assert.match(envExample, /# ~\/\.codex\/\.env/);
   assert.match(envExample, /OPENAI_API_KEY=<你的 api key>/);
   assert.match(source, /"codex-config": \{ title: "Codex config\.toml 与 \.env"/);
@@ -68,7 +86,7 @@ test("visual parser loads TOML fields, provider mapping, and .env values", () =>
   const utils = loadVisualUtils();
   const configWithRootFields = extractCodexConfigExample().replace(
     "\n[model_providers.codex]",
-    '\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\n[model_providers.codex]',
+    '\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\nweb_search = true\n[model_providers.codex]',
   );
   const parsed = utils.parseContent(
     `${configWithRootFields}\n[tools]\nweb_search = true\n[features]\nweb_search = false\n`,
@@ -82,9 +100,9 @@ test("visual parser loads TOML fields, provider mapping, and .env values", () =>
   assert.equal(parsed.state.sandboxMode, "workspace-write");
   assert.equal(parsed.state.reasoningEffort, "medium");
   assert.equal(parsed.state.reasoningSummary, "detailed");
-  assert.equal(parsed.state.webSearch, "true");
-  assert.equal(parsed.state.toolsWebSearch, "true");
-  assert.equal(parsed.state.featuresWebSearch, "false");
+  assert.match(parsed.state.webSearch, /__sinitek_codex_compatibility__/);
+  assert.equal(parsed.state.toolsWebSearch, undefined);
+  assert.equal(parsed.state.featuresWebSearch, undefined);
   assert.equal(parsed.state.providers.length, 1);
   assert.equal(parsed.state.providers[0].id, "codex");
   assert.equal(parsed.state.providers[0].envKey, "OPENAI_API_KEY");
@@ -104,7 +122,7 @@ test("serializes visual edits while preserving unknown TOML and .env fields", ()
     approvalPolicy: "never",
     sandboxMode: "danger-full-access",
     reasoningEffort: "medium",
-    webSearch: "true",
+    webSearch: "cached",
   });
   state = utils.updateProvider(state, "gateway", {
     baseUrl: "https://new.example/v1",
@@ -127,6 +145,147 @@ test("serializes visual edits while preserving unknown TOML and .env fields", ()
   assert.match(serialized.envContent, /CUSTOM_ENV=keep/);
   assert.match(serialized.envContent, /OPENAI_API_KEY=new-key/);
   assert.match(serialized.envContent, /OPENAI_BASE_URL=https:\/\/new\.example\/v1/);
+});
+
+test("Codex visual state round-trips developer instructions, verbosity, and web search modes", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState(
+    'model_verbosity = "high"\ndeveloper_instructions = "Keep responses concise."\nweb_search = "indexed"\n',
+    "",
+  );
+
+  assert.equal(state.verbosity, "high");
+  assert.equal(state.developerInstructions, "Keep responses concise.");
+  assert.equal(state.webSearch, "indexed");
+
+  state = utils.updateState(state, {
+    verbosity: "low",
+    developerInstructions: "Use the repository conventions.\nKeep explanations focused.",
+    webSearch: "live",
+  });
+  const serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  const reparsed = utils.parseToml(serialized.content);
+  assert.equal(reparsed.model_verbosity, "low");
+  assert.equal(
+    reparsed.developer_instructions,
+    "Use the repository conventions.\nKeep explanations focused.",
+  );
+  assert.equal(reparsed.web_search, "live");
+
+  state = utils.updateState(state, {
+    verbosity: "",
+    developerInstructions: "",
+    webSearch: "",
+  });
+  const cleared = utils.parseToml(utils.serializeState(state).content);
+  assert.equal(cleared.model_verbosity, undefined);
+  assert.equal(cleared.developer_instructions, undefined);
+  assert.equal(cleared.web_search, undefined);
+});
+
+test("Codex visual state accepts and serializes the product ultra reasoning value", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState('model_reasoning_effort = "ultra"\n', "");
+
+  assert.equal(state.reasoningEffort, "ultra");
+  let serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(utils.parseToml(serialized.content).model_reasoning_effort, "ultra");
+
+  state = utils.updateState(utils.createState("", ""), { reasoningEffort: "ultra" });
+  serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(utils.parseToml(serialized.content).model_reasoning_effort, "ultra");
+});
+
+test("Codex visual legacy max select keeps max immediately before ultra", () => {
+  const orderer = loadLegacyMaxCompatibilityOptionOrderer();
+  const fixedOptions = ["", "minimal", "low", "medium", "high", "xhigh", "ultra"].map((value) => ({
+    value,
+    label: value || "Use default",
+  }));
+
+  assert.deepEqual(
+    Array.from(orderer(fixedOptions, "max", { value: "max", label: "max" }), (option: any) => option.value),
+    ["", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+  );
+  assert.deepEqual(
+    Array.from(orderer(fixedOptions, "future-effort", { value: "future-effort", label: "future-effort" }), (option: any) => option.value),
+    ["", "minimal", "low", "medium", "high", "xhigh", "ultra", "future-effort"],
+  );
+
+  const source = loadUiSource();
+  const selectStart = source.indexOf("renderCodexSelect =");
+  const selectEnd = source.indexOf(",\n      renderCodexTextArea", selectStart);
+  assert.notEqual(selectStart, -1, "Codex select renderer should exist");
+  assert.notEqual(selectEnd, -1, "Codex select renderer should terminate before text area rendering");
+  assert.match(source.slice(selectStart, selectEnd), /insertLegacyMaxCompatibilityOption\(L, H,/);
+});
+
+test("Codex visual saves preserve legacy values and complex approval or web-search objects", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState(
+    `model = "gpt-5"
+approval_policy = "on-failure"
+model_reasoning_effort = "max"
+web_search = true
+
+[tools.web_search]
+max_context_size_bytes = 2048
+allowed_domains = ["docs.example.com"]
+
+[features]
+web_search = false
+
+[model_providers.gateway]
+name = "Gateway"
+wire_api = "chat"
+`,
+    "",
+  );
+
+  assert.equal(state.approvalPolicy, "on-failure");
+  assert.equal(state.reasoningEffort, "max");
+  assert.match(state.webSearch, /__sinitek_codex_compatibility__/);
+  assert.equal(state.providers[0].wireApi, "chat");
+
+  state = utils.updateState(state, { model: "gpt-5.1-codex" });
+  const serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  const config = utils.parseToml(serialized.content);
+  assert.equal(config.approval_policy, "on-failure");
+  assert.equal(config.model_reasoning_effort, "max");
+  assert.equal(config.web_search, true);
+  assert.equal(config.tools.web_search.max_context_size_bytes, 2048);
+  assert.deepEqual(JSON.parse(JSON.stringify(config.tools.web_search.allowed_domains)), ["docs.example.com"]);
+  assert.equal(config.features.web_search, false);
+  assert.equal(config.model_providers.gateway.wire_api, "chat");
+
+  const newState = utils.updateState(utils.createState("", ""), {
+    approvalPolicy: "on-failure",
+    reasoningEffort: "max",
+  });
+  const rejected = utils.serializeState(newState);
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.error, /approval_policy/);
+
+  let complexState = utils.createState(
+    `[approval_policy]
+default = "on-request"
+
+[tools.web_search]
+max_context_size_bytes = 2048
+allowed_domains = ["docs.example.com"]
+`,
+    "",
+  );
+  assert.match(complexState.approvalPolicy, /__sinitek_codex_compatibility__/);
+  complexState = utils.updateState(complexState, { model: "gpt-5.1-codex" });
+  const complex = utils.parseToml(utils.serializeState(complexState).content);
+  assert.equal(complex.approval_policy.default, "on-request");
+  assert.equal(complex.tools.web_search.max_context_size_bytes, 2048);
+  assert.deepEqual(JSON.parse(JSON.stringify(complex.tools.web_search.allowed_domains)), ["docs.example.com"]);
 });
 
 test("invalid TOML cannot replace the last valid visual state", () => {
@@ -180,9 +339,8 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /title: getConfigFieldHelp\(W, H\)/);
   assert.match(source, /role: "tooltip"/);
   assert.match(source, /formatConfigEnumHelp\(getConfigFieldHelp\(W, U\.help\)/);
-  assert.match(source, /approval_policy: "控制命令执行前的审批策略。"/);
+  assert.match(source, /approval_policy: "控制命令执行前的审批策略。复杂 granular table 仅在 TOML 源码中保留。"/);
   assert.match(source, /"untrusted"/);
-  assert.match(source, /"on-failure"/);
   assert.match(source, /"on-request"/);
   assert.match(source, /"never"/);
   assert.match(source, /sandbox_mode: "控制 Codex CLI 文件系统沙箱范围。"/);
@@ -191,9 +349,17 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /"danger-full-access"/);
   assert.match(
     source,
-    /"model_reasoning_effort"[\s\S]*?\["", "minimal", "low", "medium", "high", "xhigh", "max"\]\.map/,
+    /"model_reasoning_effort"[\s\S]*?\["", "minimal", "low", "medium", "high", "xhigh", "ultra"\]\.map/,
   );
-  assert.match(source, /wire_api: "Provider 使用的 wire API。可选值：responses \/ chat"/);
+  assert.match(source, /"model_verbosity"[\s\S]*?\["", "low", "medium", "high"\]\.map/);
+  assert.match(source, /renderCodexTextArea\([\s\S]*?"developer_instructions"/);
+  assert.match(source, /web_search[\s\S]*?\["", "disabled", "cached", "indexed", "live"\]\.map/);
+  assert.match(source, /wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。"/);
+  const codexStart = source.indexOf("renderCodexVisualEditor = () =>");
+  const codexEnd = source.indexOf("\n    return O", codexStart);
+  const codexVisualSource = source.slice(codexStart, codexEnd);
+  assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("features\.web_search"/);
+  assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("tools\.web_search"/);
 });
 
 test("Codex provider list uses reduced shared card width", () => {
