@@ -664,6 +664,37 @@
 - `src/test/lobsterTaskStore.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
+## Loop 子任务手动恢复必须复用自动重试的完成收尾
+
+- 状态：已规避
+- 首次发现：2026-07-13
+- 适用范围：Loop 主从子任务、子任务 Tab、自动重试、用户手动恢复和主任务自动唤醒
+
+### 现象
+- 子任务在运行中被用户中止后，用户在该子任务 Tab 手动继续并成功完成，主任务可以被唤醒，但子任务 Tab 没有按全局自动关闭设置关闭。
+- 相同子任务因执行错误触发自动重试并成功时，状态、Tab 关闭和主任务后续编排均正常，导致两种恢复方式的体验和资源清理不一致。
+
+### 根因
+- 自动重试在 `runLobsterSubtaskWithRetry` 中直接执行子任务状态收尾和 Tab 自动关闭。
+- 手动恢复在 `maybeWakeLobsterMainAfterSubtaskContinuation` 中单独更新状态并唤醒主任务，遗漏了同一 Tab 生命周期收尾。
+
+### 长期规避
+- 自动重试和手动恢复成功都必须调用同一个子任务完成生命周期函数；先更新子任务记录和沟通记录，再判断是否关闭 Tab。
+- 只在 `TaskRunStatus === "end"` 且“Loop 子任务自动关标签”开启时关闭子任务 Tab；错误、停止、未找到目标 Tab 或设置关闭时不得关闭。
+- 主任务是否继续仍由既有可恢复状态和主任务连续 AI 失败上限决定；Tab 收尾不得绕过或放宽这些守卫。
+
+### 验证方式
+- 单测覆盖成功结束时的状态更新先于 Tab 关闭、关闭设置关闭、错误/停止不关闭三种边界。
+- 断言 `runLobsterSubtaskWithRetry` 与 `maybeWakeLobsterMainAfterSubtaskContinuation` 都接入共享收尾函数，且既有手动子任务 coding 路由仍会调用恢复唤醒。
+- 运行 `npm run build && node --test dist/test/lobsterSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
+
+### 关联资料
+- `src/lobsterSubtaskLifecycle.ts`
+- `src/extension.ts`
+- `src/test/lobsterSubtaskLifecycle.test.ts`
+- `src/test/sessionMessageActions.test.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
 ## OpenCode 的 spawn cwd 正确但会话仍可能落到 `/`
 
 - 状态：已规避

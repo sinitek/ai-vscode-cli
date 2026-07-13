@@ -140,6 +140,8 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁以持�
 
 `src/lobsterDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、裁判主持人决策类型、红蓝角色常量、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。AI 对话历史记录弹窗的“Loop 群聊” tab 只下发任务摘要并按 `taskId` 打开对应任务的内容区群聊面板，不直接加载普通 session 或自动继续任务。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、裁判主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被裁判主持人追问、蓝队修正或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
 
+自动重试成功和用户在子任务 Tab 中手动恢复后成功结束，均必须先完成同一子任务状态/沟通记录收尾；若全局“Loop 子任务自动关标签”设置开启，再关闭该子任务 Tab。手动恢复再次错误或停止，以及关闭该设置时不自动关闭 Tab；主任务继续唤醒仍受任务可恢复状态和主任务连续 AI 失败上限约束。
+
 #### 4.3.1 开发级 Workflow Skill 选择与注入
 
 `media/loop-workflow-skills/` 是扩展内置的只读执行快照，`src/lobsterSkillGuidance.ts` 是唯一 loader、分类和选择模块。生产路径由 `createLobsterSkillRuntimeContext` 把 `extensionUri.fsPath` 传给 `loadLobsterSkillPack`，再解析固定相对目录 `media/loop-workflow-skills`；运行时不扫描 cwd、工作区同名目录、用户 Home、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。

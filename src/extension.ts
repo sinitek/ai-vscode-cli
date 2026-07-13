@@ -253,6 +253,10 @@ import {
   type LobsterTaskStore,
 } from "./lobsterTaskStore";
 import {
+  finalizeLobsterSubtaskRun as finalizeLobsterSubtaskRunWithDeps,
+  type LobsterSubtaskCompletionOptions,
+} from "./lobsterSubtaskLifecycle";
+import {
   FINAL_ANSWER_POLICY_STRICT,
   normalizeFinalAnswerPolicy,
   readToolSettings,
@@ -5966,21 +5970,26 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
 
     if (status !== "error") {
       const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-      markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
-      if (status === "end" && getGlobalLobsterAutoCloseSubtaskTabs()) {
-        await closeConversationTabAndRefreshPanel(subtaskTarget.tabId);
-        void logInfo("lobster-subtask-tab-auto-closed", {
-          taskId: task.id,
-          round,
-          subtaskId: subtask.id,
-          tabId: subtaskTarget.tabId,
-        });
-      }
+      await finalizeLobsterSubtaskRun({
+        taskId: task.id,
+        round,
+        subtaskId: subtask.id,
+        runStatus: status,
+        assistantContent: summary,
+        tabId: subtaskTarget.tabId,
+      });
       return status;
     }
     if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
       const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-      markLobsterSubtaskRunFinished(task.id, subtask.id, status, summary);
+      await finalizeLobsterSubtaskRun({
+        taskId: task.id,
+        round,
+        subtaskId: subtask.id,
+        runStatus: status,
+        assistantContent: summary,
+        tabId: subtaskTarget.tabId,
+      });
       return status;
     }
 
@@ -7008,6 +7017,22 @@ function markLobsterSubtaskRunFinished(
   }
 }
 
+async function finalizeLobsterSubtaskRun(options: LobsterSubtaskCompletionOptions): Promise<void> {
+  await finalizeLobsterSubtaskRunWithDeps(options, {
+    markSubtaskRunFinished: markLobsterSubtaskRunFinished,
+    shouldAutoCloseSubtaskTab: getGlobalLobsterAutoCloseSubtaskTabs,
+    closeSubtaskTab: closeConversationTabAndRefreshPanel,
+    logSubtaskTabAutoClosed: ({ taskId, round, subtaskId, tabId }) => {
+      void logInfo("lobster-subtask-tab-auto-closed", {
+        taskId,
+        round,
+        subtaskId,
+        tabId,
+      });
+    },
+  });
+}
+
 function buildLobsterSubtaskCompletionSummary(content: string | null): string | undefined {
   const normalized = String(content ?? "").trim().replace(/\s+/g, " ");
   if (!normalized) {
@@ -7245,7 +7270,14 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
   const summary = subtaskTarget
     ? getLastLobsterAssistantContent(subtaskTarget, context.taskId, context.round, "subtask")
     : null;
-  markLobsterSubtaskRunFinished(context.taskId, context.subtaskId, "end", summary);
+  await finalizeLobsterSubtaskRun({
+    taskId: context.taskId,
+    round: context.round,
+    subtaskId: context.subtaskId,
+    runStatus: "end",
+    assistantContent: summary,
+    tabId: subtaskTarget?.tabId ?? null,
+  });
 
   const latestTask = readLobsterTaskRecord(context.taskId);
   if (
