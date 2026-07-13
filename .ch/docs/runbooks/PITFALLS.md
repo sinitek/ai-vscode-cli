@@ -57,25 +57,29 @@
 
 - 状态：已规避，需随 OpenCode / Codex 协议版本复核
 - 首次发现：2026-07-13
-- 适用范围：OpenCode 1.17.18 run server、Codex App Server 0.144.1、多子代理对话气泡与父任务收口
+- 适用范围：OpenCode 1.17.18 本地服务、Codex App Server 0.144.1、Loop 独立子任务、多子代理对话气泡与父任务收口
 
 ### 现象
 - OpenCode 父 `run --format json` 等待内部子代理时可以长时间没有新 JSONL，子代理实际仍在读文件、调用工具和输出文本；只显示一次“请等待”仍会让用户误判卡死。
+- Loop 主从模式的子任务是扩展启动的独立 CLI 进程和 conversation tab，不是 OpenCode/Codex provider 内部 child session。只监控 provider 的 parent/child API 时，Loop 主任务 tab 在整个子任务执行期间仍不会出现新气泡。
 - Codex App Server 的子代理通知与父通知共用一个连接。若忽略 `params.threadId`，子代理正文会并入父 assistant 气泡，子线程 `thread/started` 会覆盖父 threadId，子线程 `turn/completed` 甚至会提前结束父任务。
 
 ### 触发条件与根因
 - OpenCode 子代理有独立 session，父 CLI stdout 不承担子 session 事件转发；本机 1.17.18 对较大 session 执行 `opencode export` 还观察到 JSON 在字符串中途截断，不能把活跃任务轮询建立在该命令输出上。
-- OpenCode run 自带本地 HTTP 服务，并公开 children/message/status 与 SSE event；父子关系由 child `parentID` 表达。
+- OpenCode 1.17.18 的 `run --help` 虽声明 `--port`，实际执行 `run --port <port>` 后该端口可持续 `ECONNREFUSED`，不能把“参数被接受”当作服务已经监听。`opencode serve` 才提供经过 `/global/health` 验证的 HTTP 服务，并公开 children/message/status 与 SSE event；父子关系由 child `parentID` 表达。
+- Loop 子任务的可见输出已经进入插件自身的子任务 tab 消息存储；继续从 OpenCode child API 查找它们属于身份模型错误，应从插件拥有的消息流生成主任务进度快照。
 - Codex `item/agentMessage/delta`、`item/started|completed`、`turn/completed` 都携带 `threadId`，初始化连接还会自动订阅新建子线程。把连接等同于单线程是错误假设。
 
 ### 长期规避
-- OpenCode 每次 run 使用可定位的本地服务端口；SSE 只作为低延迟刷新触发器，正文始终读取 child message 完整快照并做前缀增量，另以 60 秒 children/status/messages 全量轮询兜底。禁止直接读取私有 SQLite。
+- OpenCode 由插件先启动受管 `opencode serve`，健康检查通过后再用 `run --attach`；不得恢复为未经监听验证的 `run --port`。SSE 只作为低延迟刷新触发器，正文始终读取 child message 完整快照并做前缀增量，另以 60 秒 children/status/messages 全量轮询兜底。服务、订阅与轮询必须由单次尝试统一释放；连接失败使用指数退避且只周期性记录错误。禁止直接读取私有 SQLite。
 - OpenCode 只接纳当前运行尝试中新建的直接 child session，避免恢复旧父会话时把历史子代理正文重新插入当前回合。
+- Loop 子任务启动后立即在主任务 tab 建立稳定 `taskId + round + subtaskId` 进度气泡，并从子任务 tab 的非 thinking、非内部子代理 assistant 消息做快照同步；子任务自己的完整消息流继续留在原 tab。
 - Codex 所有 assistant delta、item、plan 和 turn 完成事件先比较主 `threadId`；子线程生命周期和正文走独立 handler，只有主 threadId 且 active turnId 匹配的完成通知可以收口父 turn。
 - 子代理气泡必须带稳定 `subagentId`、禁止自动合并，并从父任务 final-answer 与 successful-reply fallback 中排除。
 
 ### 验证方式
-- OpenCode 用模拟 children/status/messages 与分片 SSE 覆盖：60 秒 interval、当前尝试过滤、快照增量、无用户 prompt/tool output 泄漏、dispose 后不再更新。
+- OpenCode 用模拟 serve 健康检查、children/status/messages 与分片 SSE 覆盖：`run --attach` 参数、60 秒 interval、当前尝试过滤、快照增量、重连退避、无用户 prompt/tool output 泄漏、dispose 后不再更新。
+- Loop 用多条匹配/不匹配消息覆盖：启动即有等待气泡、每秒快照去重、过滤 thinking/内部子代理/其他轮次、完成/失败/中断状态映射和主 tab 定向接线。
 - Codex 用 parent/child threadId 覆盖：child delta 不进入 `onAssistantDelta`，child completion 不通过父 turn settle，collab/subAgentActivity 状态能映射到独立气泡。
 - Webview 用两个交错子代理断言旧气泡仍按原 message ID 原位更新，不重定向成新的末尾 assistant 气泡。
 

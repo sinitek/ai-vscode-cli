@@ -1,6 +1,6 @@
 import type { ChatMessage } from "./webview/types";
 
-export type SubagentProvider = "opencode" | "codex";
+export type SubagentProvider = "opencode" | "codex" | "loop";
 export type SubagentProgressStatus = "running" | "completed" | "failed" | "interrupted";
 
 export type SubagentProgressUpdate = {

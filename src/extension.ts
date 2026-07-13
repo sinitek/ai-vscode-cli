@@ -27,6 +27,7 @@ import {
   resolveCliCommand,
   runCli,
   runCliStream,
+  startOpenCodeServer,
   isCliCommandAvailable,
   type OpenCodeVisibleStreamEvent,
   type RunProcess,
@@ -57,6 +58,9 @@ import {
   createOpenCodeSubagentMonitor,
   OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
   resolveOpenCodeSubagentConnection,
+  waitForOpenCodeServerReady,
+  type OpenCodeSubagentConnection,
+  type OpenCodeSubagentMonitor,
 } from "./cli/openCodeSubagentMonitor";
 import {
   appendOpenCodeFinalTextToTabStream,
@@ -117,8 +121,13 @@ import {
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
 import {
   createSubagentProgressController,
+  type SubagentProgressController,
   type SubagentProgressLabels,
 } from "./subagentProgress";
+import {
+  createLobsterSubtaskProgressMonitor,
+  mapLobsterRunStatusToSubagentStatus,
+} from "./lobsterSubtaskProgress";
 import {
   buildNextLobsterMainAiFailureState,
   buildResetLobsterMainAiFailureState,
@@ -2970,6 +2979,7 @@ function buildSubagentProgressLabels(): SubagentProgressLabels {
     provider: {
       opencode: "OpenCode",
       codex: "Codex",
+      loop: "Loop",
     },
     subagent: t("run.subagent.label"),
     status: {
@@ -2980,6 +2990,141 @@ function buildSubagentProgressLabels(): SubagentProgressLabels {
     },
     errorPrefix: t("run.subagent.errorPrefix"),
   };
+}
+
+type PreparedOpenCodeSubagentRuntime = {
+  connection: OpenCodeSubagentConnection | null;
+  endpointSource: "managed-server" | "configured-attach" | "unavailable";
+  error: Error | null;
+  dispose: () => void;
+};
+
+function createDisabledOpenCodeSubagentMonitor(): OpenCodeSubagentMonitor {
+  return {
+    setParentSessionId: () => undefined,
+    pollNow: async () => undefined,
+    finish: () => undefined,
+    dispose: () => undefined,
+  };
+}
+
+async function prepareOpenCodeSubagentRuntime(options: {
+  cwd: string | undefined;
+  runId: string;
+  runtime: OpenCodeRuntimePreparation;
+}): Promise<PreparedOpenCodeSubagentRuntime> {
+  const directory = options.cwd ?? process.cwd();
+  let managedServerProcess: RunProcess | null = null;
+  try {
+    const connection = await resolveOpenCodeSubagentConnection(getCliArgs("opencode"), {
+      env: options.runtime.envOverrides,
+    });
+    if (!connection.serverPort) {
+      return {
+        connection,
+        endpointSource: "configured-attach",
+        error: null,
+        dispose: () => undefined,
+      };
+    }
+
+    const managedServerEnvOverrides = { ...options.runtime.envOverrides };
+    if (connection.authorization?.startsWith("Basic ")) {
+      const credentials = Buffer.from(connection.authorization.slice("Basic ".length), "base64").toString("utf8");
+      const separatorIndex = credentials.indexOf(":");
+      if (separatorIndex >= 0) {
+        managedServerEnvOverrides.OPENCODE_SERVER_USERNAME = credentials.slice(0, separatorIndex);
+        managedServerEnvOverrides.OPENCODE_SERVER_PASSWORD = credentials.slice(separatorIndex + 1);
+      }
+    }
+
+    let disposed = false;
+    let serverReady = false;
+    let rejectServerLifecycle: ((error: Error) => void) | null = null;
+    const serverLifecycleFailure = new Promise<never>((_resolve, reject) => {
+      rejectServerLifecycle = reject;
+    });
+    const serverProcess = startOpenCodeServer(connection.serverPort, {
+      onStderr: (content) => {
+        if (content.trim()) {
+          void logDebug("opencode-subagent-server-stderr", {
+            runId: options.runId,
+            port: connection.serverPort,
+            contentLength: content.length,
+          });
+        }
+      },
+      onError: (error) => {
+        void logError("opencode-subagent-server-error", {
+          runId: options.runId,
+          port: connection.serverPort,
+          error: error.message,
+        });
+        if (!serverReady) {
+          rejectServerLifecycle?.(error);
+        }
+      },
+      onExit: (code) => {
+        void logInfo("opencode-subagent-server-exit", {
+          runId: options.runId,
+          port: connection.serverPort,
+          code,
+        });
+        if (!serverReady) {
+          rejectServerLifecycle?.(new Error(`OpenCode server exited before readiness with code ${code ?? "unknown"}.`));
+        }
+      },
+    }, {
+      cwd: options.cwd,
+      model: options.runtime.primaryModel,
+      openCodeSmallModel: options.runtime.smallModel,
+      openCodeVariant: options.runtime.primaryVariant,
+      openCodeSmallVariant: options.runtime.smallVariant,
+      openCodeConfigContent: options.runtime.configContent,
+      envOverrides: managedServerEnvOverrides,
+      processLabel: `${buildProcessLabel("opencode", options.runId)}-server`,
+    });
+    managedServerProcess = serverProcess;
+    if (!serverProcess.pid) {
+      throw new Error("OpenCode server process did not start.");
+    }
+
+    await Promise.race([
+      waitForOpenCodeServerReady(connection, directory),
+      serverLifecycleFailure,
+    ]);
+    serverReady = true;
+    void logInfo("opencode-subagent-server-ready", {
+      runId: options.runId,
+      port: connection.serverPort,
+      pid: serverProcess.pid ?? null,
+    });
+    return {
+      connection,
+      endpointSource: "managed-server",
+      error: null,
+      dispose: () => {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        serverProcess.kill();
+      },
+    };
+  } catch (error) {
+    managedServerProcess?.kill();
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+    void logError("opencode-subagent-server-unavailable", {
+      runId: options.runId,
+      error: normalizedError.message,
+    });
+    return {
+      connection: null,
+      endpointSource: "unavailable",
+      error: normalizedError,
+      dispose: () => undefined,
+    };
+  }
 }
 
 async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
@@ -3029,6 +3174,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const startedAt = Date.now();
   let hiddenRetryCount = 0;
   let silentProgressNoticeShown = false;
+  let monitorUnavailableNoticeShown = false;
   let openCodeTabStreamState = createOpenCodeTabStreamState();
   const openCodeTabStreamContext = {
     createMessageId,
@@ -3255,16 +3401,29 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     let rawStdout = "";
     let rawStderr = "";
-    const subagentConnection = await resolveOpenCodeSubagentConnection(getCliArgs(runCli), {
-      env: runtimeEnvOverrides,
+    const subagentRuntime = await prepareOpenCodeSubagentRuntime({
+      cwd,
+      runId,
+      runtime: runtimePreparation,
     });
+    if (subagentRuntime.error && !monitorUnavailableNoticeShown) {
+      monitorUnavailableNoticeShown = true;
+      const message: ChatMessage = {
+        id: createMessageId(),
+        role: "system",
+        content: t("run.openCodeSubagentMonitorUnavailable"),
+        createdAt: Date.now(),
+      };
+      appendMessageToStore(resolveParallelMessageTarget(), message);
+      sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+    }
     void logInfo("runPrompt-parallel-subagent-monitor-start", {
       cli: runCli,
       runId,
       tabId: target.tabId,
       sessionId: runtimeSessionId,
-      endpointSource: subagentConnection.serverPort ? "reserved-local-port" : "configured",
-      reservedPort: subagentConnection.serverPort ?? null,
+      endpointSource: subagentRuntime.endpointSource,
+      serverPort: subagentRuntime.connection?.serverPort ?? null,
       pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
     });
     const attemptResult = await new Promise<
@@ -3272,54 +3431,56 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       | { type: "error"; error: Error }
     >((resolve) => {
       let settled = false;
-      const subagentMonitor = createOpenCodeSubagentMonitor({
-        connection: subagentConnection,
-        directory: cwd ?? process.cwd(),
-        onUpdate: (update) => {
-          const current = parallelRunsByTabId.get(target.tabId);
-          if (!current || current.runId !== runId) {
-            return;
-          }
-          subagentProgress.update(update);
-        },
-        onNoChildren: () => {
-          if (silentProgressNoticeShown || !isParallelRunActive()) {
-            return;
-          }
-          silentProgressNoticeShown = true;
-          openCodeTabStreamState = {
-            ...openCodeTabStreamState,
-            activeAssistantMessageId: null,
-            activeAssistantKind: null,
-          };
-          const message: ChatMessage = {
-            id: createMessageId(),
-            role: "system",
-            content: t("run.openCodeSubagentPollEmpty"),
-            createdAt: Date.now(),
-          };
-          appendMessageToStore(resolveParallelMessageTarget(), message);
-          sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-          void logInfo("runPrompt-parallel-subagent-poll-empty", {
-            cli: runCli,
-            runId,
-            tabId: target.tabId,
-            sessionId,
-            attempt: attemptNumber,
-            pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-          });
-        },
-        onError: (error) => {
-          void logDebug("runPrompt-parallel-subagent-monitor-error", {
-            cli: runCli,
-            runId,
-            tabId: target.tabId,
-            sessionId,
-            attempt: attemptNumber,
-            error: error.message,
-          });
-        },
-      });
+      const subagentMonitor = subagentRuntime.connection
+        ? createOpenCodeSubagentMonitor({
+            connection: subagentRuntime.connection,
+            directory: cwd ?? process.cwd(),
+            onUpdate: (update) => {
+              const current = parallelRunsByTabId.get(target.tabId);
+              if (!current || current.runId !== runId) {
+                return;
+              }
+              subagentProgress.update(update);
+            },
+            onNoChildren: () => {
+              if (silentProgressNoticeShown || !isParallelRunActive()) {
+                return;
+              }
+              silentProgressNoticeShown = true;
+              openCodeTabStreamState = {
+                ...openCodeTabStreamState,
+                activeAssistantMessageId: null,
+                activeAssistantKind: null,
+              };
+              const message: ChatMessage = {
+                id: createMessageId(),
+                role: "system",
+                content: t("run.openCodeSubagentPollEmpty"),
+                createdAt: Date.now(),
+              };
+              appendMessageToStore(resolveParallelMessageTarget(), message);
+              sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+              void logInfo("runPrompt-parallel-subagent-poll-empty", {
+                cli: runCli,
+                runId,
+                tabId: target.tabId,
+                sessionId,
+                attempt: attemptNumber,
+                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+              });
+            },
+            onError: (error) => {
+              void logDebug("runPrompt-parallel-subagent-monitor-error", {
+                cli: runCli,
+                runId,
+                tabId: target.tabId,
+                sessionId,
+                attempt: attemptNumber,
+                error: error.message,
+              });
+            },
+          })
+        : createDisabledOpenCodeSubagentMonitor();
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
@@ -3328,6 +3489,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         subagentMonitor.finish(
           result.type === "exit" && result.code === 0 ? "completed" : "failed",
         );
+        subagentRuntime.dispose();
         resolve(result);
       };
       const runProcess = runCliStream(
@@ -3379,7 +3541,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
-          openCodeServerPort: subagentConnection.serverPort,
+          openCodeServerUrl: subagentRuntime.connection?.serverUrl,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
       );
@@ -6044,88 +6206,156 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
   const { input, target, task, round, subtask } = options;
   const shouldSwitchVisible = options.switchVisible !== false;
   const mainTabId = target.tabId;
-  let retryCount = 0;
-  while (true) {
-    const communicationFile = prepareLobsterSubtaskCommunicationFile(task, subtask, round, retryCount);
-    const subtaskTarget = createLobsterSubtaskRunTarget(target.cli);
-    appendSystemMessageForLobster(
-      target,
-      buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
-    );
-    appendSystemMessageForLobster(
-      subtaskTarget,
-      buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
-    );
-    appendLobsterMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
-    if (shouldSwitchVisible) {
-      await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
-    }
+  const progressId = `${task.id}:${round}:${subtask.id}`;
+  let currentSubtaskTarget: PromptRunTarget | null = null;
+  let terminalProgressStatus: "completed" | "failed" | "interrupted" | null = null;
+  let parentProgress: SubagentProgressController | null = null;
 
-    let status: TaskRunStatus = "error";
-    try {
-      status = await runLobsterRound({
-        input,
-        target: subtaskTarget,
-        task,
-        round,
-        role: "subtask",
-        subtaskId: subtask.id,
-        displayPrompt: buildLobsterSubtaskDisplayPrompt(round, subtask, retryCount),
-        modelPrompt: buildLobsterSubtaskModelPrompt(
-          input.modelPrompt || input.displayPrompt,
+  const persistParentProgressMessage = (message: ChatMessage): void => {
+    const messages = getLobsterMessagesForTarget(target);
+    const index = messages.findIndex((item) => item.id === message.id);
+    if (index >= 0) {
+      messages[index] = message;
+    } else {
+      appendMessageToStore(messages, message);
+    }
+    persistLobsterMessagesForTarget(target, messages);
+  };
+
+  parentProgress = createSubagentProgressController({
+    labels: buildSubagentProgressLabels(),
+    createMessageId,
+    messageMetadata: {
+      taskRole: "main",
+      lobsterTaskId: task.id,
+      lobsterRound: round,
+      lobsterSubtaskId: subtask.id,
+    },
+    appendMessage: (message) => {
+      persistParentProgressMessage(message);
+      sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+    },
+    replaceMessage: (message) => {
+      persistParentProgressMessage(message);
+      sendPanelMessage({ type: "replaceMessage", message, tabId: target.tabId });
+    },
+    appendDelta: (messageId, content) => {
+      const message = parentProgress?.getMessage("loop", progressId);
+      if (message) {
+        persistParentProgressMessage(message);
+      }
+      sendPanelMessage({
+        type: "assistantDelta",
+        id: messageId,
+        content,
+        tabId: target.tabId,
+      });
+    },
+  });
+
+  const progressMonitor = createLobsterSubtaskProgressMonitor({
+    taskId: task.id,
+    round,
+    subtaskId: subtask.id,
+    subtaskTitle: subtask.title,
+    waitingText: t("run.lobsterSubtaskWaiting"),
+    readMessages: () => currentSubtaskTarget
+      ? getLobsterMessagesForTarget(currentSubtaskTarget)
+      : [],
+    onUpdate: (update) => parentProgress?.update(update),
+  });
+  progressMonitor.start();
+
+  let retryCount = 0;
+  try {
+    while (true) {
+      const communicationFile = prepareLobsterSubtaskCommunicationFile(task, subtask, round, retryCount);
+      const subtaskTarget = createLobsterSubtaskRunTarget(target.cli);
+      currentSubtaskTarget = subtaskTarget;
+      appendSystemMessageForLobster(
+        target,
+        buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
+      );
+      appendSystemMessageForLobster(
+        subtaskTarget,
+        buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
+      );
+      appendLobsterMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
+      if (shouldSwitchVisible) {
+        await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
+      }
+
+      let status: TaskRunStatus = "error";
+      try {
+        status = await runLobsterRound({
+          input,
+          target: subtaskTarget,
           task,
           round,
-          subtask,
+          role: "subtask",
+          subtaskId: subtask.id,
+          displayPrompt: buildLobsterSubtaskDisplayPrompt(round, subtask, retryCount),
+          modelPrompt: buildLobsterSubtaskModelPrompt(
+            input.modelPrompt || input.displayPrompt,
+            task,
+            round,
+            subtask,
+            retryCount,
+            communicationFile
+          ),
+        });
+      } catch (error) {
+        status = "error";
+        void logError("lobster-subtask-run-error", {
+          taskId: task.id,
+          round,
+          subtaskId: subtask.id,
           retryCount,
-          communicationFile
-        ),
-      });
-    } catch (error) {
-      status = "error";
-      void logError("lobster-subtask-run-error", {
-        taskId: task.id,
-        round,
-        subtaskId: subtask.id,
-        retryCount,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      if (shouldSwitchVisible) {
-        await switchVisibleConversationTabForLobster(mainTabId);
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        progressMonitor.sync();
+        if (shouldSwitchVisible) {
+          await switchVisibleConversationTabForLobster(mainTabId);
+        }
       }
-    }
 
-    if (status !== "error") {
-      const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-      await finalizeLobsterSubtaskRun({
-        taskId: task.id,
-        round,
-        subtaskId: subtask.id,
-        runStatus: status,
-        assistantContent: summary,
-        tabId: subtaskTarget.tabId,
-      });
-      return status;
-    }
-    if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
-      const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-      await finalizeLobsterSubtaskRun({
-        taskId: task.id,
-        round,
-        subtaskId: subtask.id,
-        runStatus: status,
-        assistantContent: summary,
-        tabId: subtaskTarget.tabId,
-      });
-      return status;
-    }
+      if (status !== "error") {
+        const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
+        await finalizeLobsterSubtaskRun({
+          taskId: task.id,
+          round,
+          subtaskId: subtask.id,
+          runStatus: status,
+          assistantContent: summary,
+          tabId: subtaskTarget.tabId,
+        });
+        terminalProgressStatus = mapLobsterRunStatusToSubagentStatus(status);
+        return status;
+      }
+      if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
+        const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
+        await finalizeLobsterSubtaskRun({
+          taskId: task.id,
+          round,
+          subtaskId: subtask.id,
+          runStatus: status,
+          assistantContent: summary,
+          tabId: subtaskTarget.tabId,
+        });
+        terminalProgressStatus = mapLobsterRunStatusToSubagentStatus(status);
+        return status;
+      }
 
-    retryCount += 1;
-    appendSystemMessageForLobster(
-      target,
-      buildLobsterSubtaskRetryText(task.id, subtask.id, retryCount)
-    );
-    await waitForLobsterSubtaskRetryDelay();
+      retryCount += 1;
+      appendSystemMessageForLobster(
+        target,
+        buildLobsterSubtaskRetryText(task.id, subtask.id, retryCount)
+      );
+      await waitForLobsterSubtaskRetryDelay();
+    }
+  } finally {
+    progressMonitor.finish(terminalProgressStatus ?? "interrupted");
   }
 }
 
@@ -7977,6 +8207,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   sendRunStatus("start");
   let hiddenRetryCount = 0;
   let silentProgressNoticeShown = false;
+  let monitorUnavailableNoticeShown = false;
 
   const isCurrentOneShotRunActive = (): boolean => activeRunId === runId;
   const subagentProgress = createSubagentProgressController({
@@ -8052,16 +8283,24 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     let rawStdout = "";
     let rawStderr = "";
     const runtimeSessionId = resolveCliSessionIdForResume(runCli, activeSessionId);
-    const subagentConnection = await resolveOpenCodeSubagentConnection(getCliArgs(runCli), {
-      env: runtimeEnvOverrides,
+    const subagentRuntime = await prepareOpenCodeSubagentRuntime({
+      cwd,
+      runId,
+      runtime: runtimePreparation,
     });
+    if (subagentRuntime.error && !monitorUnavailableNoticeShown && isCurrentOneShotRunActive()) {
+      monitorUnavailableNoticeShown = true;
+      activeAssistantMessageId = undefined;
+      activeMessageIndex = null;
+      appendSystemMessage(t("run.openCodeSubagentMonitorUnavailable"));
+    }
     void logInfo("runPrompt-one-shot-subagent-monitor-start", {
       cli: runCli,
       runId,
       tabId: activeTabId,
       sessionId: runtimeSessionId,
-      endpointSource: subagentConnection.serverPort ? "reserved-local-port" : "configured",
-      reservedPort: subagentConnection.serverPort ?? null,
+      endpointSource: subagentRuntime.endpointSource,
+      serverPort: subagentRuntime.connection?.serverPort ?? null,
       pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
     });
     const attemptResult = await new Promise<
@@ -8071,44 +8310,46 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       let settled = false;
       let startupTimeoutHandle: NodeJS.Timeout | null = null;
       let sawOpenCodeActivity = false;
-      const subagentMonitor = createOpenCodeSubagentMonitor({
-        connection: subagentConnection,
-        directory: cwd ?? process.cwd(),
-        onUpdate: (update) => {
-          if (isCurrentOneShotRunActive()) {
-            sawOpenCodeActivity = true;
-            refreshStartupTimeout();
-            subagentProgress.update(update);
-          }
-        },
-        onNoChildren: () => {
-          if (silentProgressNoticeShown || !isCurrentOneShotRunActive()) {
-            return;
-          }
-          silentProgressNoticeShown = true;
-          activeAssistantMessageId = undefined;
-          activeMessageIndex = null;
-          appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
-          void logInfo("runPrompt-one-shot-subagent-poll-empty", {
-            cli: runCli,
-            runId,
-            tabId: activeTabId,
-            sessionId: activeSessionId,
-            attempt: attemptNumber,
-            pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-          });
-        },
-        onError: (error) => {
-          void logDebug("runPrompt-one-shot-subagent-monitor-error", {
-            cli: runCli,
-            runId,
-            tabId: activeTabId,
-            sessionId: activeSessionId,
-            attempt: attemptNumber,
-            error: error.message,
-          });
-        },
-      });
+      const subagentMonitor = subagentRuntime.connection
+        ? createOpenCodeSubagentMonitor({
+            connection: subagentRuntime.connection,
+            directory: cwd ?? process.cwd(),
+            onUpdate: (update) => {
+              if (isCurrentOneShotRunActive()) {
+                sawOpenCodeActivity = true;
+                refreshStartupTimeout();
+                subagentProgress.update(update);
+              }
+            },
+            onNoChildren: () => {
+              if (silentProgressNoticeShown || !isCurrentOneShotRunActive()) {
+                return;
+              }
+              silentProgressNoticeShown = true;
+              activeAssistantMessageId = undefined;
+              activeMessageIndex = null;
+              appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
+              void logInfo("runPrompt-one-shot-subagent-poll-empty", {
+                cli: runCli,
+                runId,
+                tabId: activeTabId,
+                sessionId: activeSessionId,
+                attempt: attemptNumber,
+                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+              });
+            },
+            onError: (error) => {
+              void logDebug("runPrompt-one-shot-subagent-monitor-error", {
+                cli: runCli,
+                runId,
+                tabId: activeTabId,
+                sessionId: activeSessionId,
+                attempt: attemptNumber,
+                error: error.message,
+              });
+            },
+          })
+        : createDisabledOpenCodeSubagentMonitor();
       const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
         if (settled) {
           return;
@@ -8117,6 +8358,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         subagentMonitor.finish(
           result.type === "exit" && result.code === 0 ? "completed" : "failed",
         );
+        subagentRuntime.dispose();
         if (startupTimeoutHandle) {
           clearTimeout(startupTimeoutHandle);
           startupTimeoutHandle = null;
@@ -8226,7 +8468,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
-          openCodeServerPort: subagentConnection.serverPort,
+          openCodeServerUrl: subagentRuntime.connection?.serverUrl,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
       );

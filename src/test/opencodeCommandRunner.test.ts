@@ -16,6 +16,7 @@ const {
   parseOpenCodeSessionId,
   parseOpenCodeRunOutput,
   runCliStream,
+  startOpenCodeServer,
 } = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
 const { isInteractiveSupported } = require("../cli/config") as typeof import("../cli/config");
 const {
@@ -160,11 +161,102 @@ test("adds one OpenCode auto flag for one-shot and terminal launches", () => {
   assert.deepEqual(buildCliArgs("opencode", {}), ["--auto"]);
 });
 
-test("exposes a reserved OpenCode server port for subagent monitoring", () => {
+test("attaches OpenCode run to the managed subagent monitoring server", () => {
   assert.deepEqual(
-    buildCliArgs("opencode", { openCodeServerPort: 41873 }, "hello"),
-    ["run", "--auto", "--format", "json", "--port", "41873", "hello"],
+    buildCliArgs("opencode", { openCodeServerUrl: "http://127.0.0.1:41873/" }, "hello"),
+    ["run", "--auto", "--format", "json", "--attach", "http://127.0.0.1:41873", "hello"],
   );
+});
+
+test("replaces a configured OpenCode run port with the managed attach endpoint", () => {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, defaultValue?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, defaultValue?: T): T | undefined => {
+      if (key === "args.opencode") {
+        return ["run", "--port", "4096"] as T;
+      }
+      return defaultValue;
+    },
+  });
+  try {
+    assert.deepEqual(
+      buildCliArgs("opencode", { openCodeServerUrl: "http://127.0.0.1:41873" }, "hello"),
+      ["run", "--auto", "--format", "json", "--attach", "http://127.0.0.1:41873", "hello"],
+    );
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  }
+});
+
+test("starts a dedicated OpenCode serve process and cleans its runtime overlay", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-server-test-"));
+  const markerPath = path.join(tempDir, "server.json");
+  const commandPath = path.join(tempDir, "mock-opencode-server.js");
+  fs.writeFileSync(commandPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "fs.writeFileSync(process.env.TEST_SERVER_MARKER, JSON.stringify({ args: process.argv.slice(2), config: process.env.OPENCODE_CONFIG }));",
+    "setInterval(() => {}, 1000);",
+  ].join("\n"), { mode: 0o755 });
+
+  const vscode = require("vscode") as {
+    workspace: { getConfiguration: () => { get: <T>(key: string, fallback?: T) => T | undefined } };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => {
+      if (key === "commands.opencode") {
+        return commandPath as T;
+      }
+      if (key === "args.opencode") {
+        return [] as T;
+      }
+      return fallback;
+    },
+  });
+
+  try {
+    let processHandle: ReturnType<typeof startOpenCodeServer> | null = null;
+    await new Promise<void>((resolve, reject) => {
+      processHandle = startOpenCodeServer(41873, {
+        onError: reject,
+        onExit: () => resolve(),
+      }, {
+        model: "myAPI/model",
+        openCodeSmallModel: "myAPI/gpt-5.5",
+        openCodeConfigContent: myApiConfig,
+        envOverrides: { TEST_SERVER_MARKER: markerPath },
+      });
+      const deadline = Date.now() + 3000;
+      const stopWhenReady = (): void => {
+        if (fs.existsSync(markerPath)) {
+          processHandle?.kill();
+          return;
+        }
+        if (Date.now() >= deadline) {
+          reject(new Error("managed OpenCode server marker timeout"));
+          return;
+        }
+        setTimeout(stopWhenReady, 10);
+      };
+      stopWhenReady();
+    });
+
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { args: string[]; config: string };
+    assert.deepEqual(marker.args, ["serve", "--hostname", "127.0.0.1", "--port", "41873"]);
+    assert.ok(marker.config);
+    assert.equal(fs.existsSync(marker.config), false);
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("deduplicates an explicit OpenCode auto flag", () => {
@@ -852,17 +944,19 @@ test("forwards parsed OpenCode visible events to the matching conversation tab",
 
 test("wires subagent event monitoring and 60-second polling into both OpenCode run paths", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-  const connectionFactories = extensionSource.match(/resolveOpenCodeSubagentConnection\(getCliArgs\(runCli\)/g) ?? [];
+  const connectionFactories = extensionSource.match(/resolveOpenCodeSubagentConnection\(getCliArgs\("opencode"\)/g) ?? [];
   const monitorFactories = extensionSource.match(/createOpenCodeSubagentMonitor\(\{/g) ?? [];
-  const serverPorts = extensionSource.match(/openCodeServerPort: subagentConnection\.serverPort/g) ?? [];
+  const serverUrls = extensionSource.match(/openCodeServerUrl: subagentRuntime\.connection\?\.serverUrl/g) ?? [];
   const progressUpdates = extensionSource.match(/subagentProgress\.update\(update\)/g) ?? [];
   const localizedMessages = extensionSource.match(/t\("run\.openCodeSubagentPollEmpty"\)/g) ?? [];
 
-  assert.equal(connectionFactories.length, 2);
+  assert.equal(connectionFactories.length, 1);
   assert.equal(monitorFactories.length, 2);
-  assert.equal(serverPorts.length, 2);
+  assert.equal(serverUrls.length, 2);
   assert.equal(progressUpdates.length, 2);
   assert.equal(localizedMessages.length, 2);
+  assert.match(extensionSource, /startOpenCodeServer\(connection\.serverPort/);
+  assert.match(extensionSource, /waitForOpenCodeServerReady\(connection, directory\)/);
   assert.match(extensionSource, /runPrompt-parallel-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
   assert.match(extensionSource, /runPrompt-one-shot-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
   assert.match(

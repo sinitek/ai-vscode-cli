@@ -173,7 +173,7 @@ export type ChatMessage = {
   lobsterAnswerConclusion?: boolean;
   lobsterFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
-  subagentProvider?: "opencode" | "codex";
+  subagentProvider?: "opencode" | "codex" | "loop";
   subagentId?: string;
   subagentName?: string;
   subagentStatus?: "running" | "completed" | "failed" | "interrupted";

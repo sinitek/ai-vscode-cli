@@ -1,0 +1,24 @@
+{
+  "files": [
+    "index.md",
+    "recall-index.md",
+    "observation-registry.md",
+    "observations.jsonl",
+    "claims.jsonl",
+    "claim-registry.md",
+    "timeline.md",
+    "topic-corpus.md",
+    "by-topic.md",
+    "by-source.md",
+    "open-loops.md",
+    "freshness-report.md",
+    "manifest.json",
+    "summary.json"
+  ],
+  "generated_at": "2026-07-13T07:49:17+00:00",
+  "generator": "memory-indexer",
+  "output_dir": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/generated/memory-index",
+  "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+  "stale_days": 30,
+  "version": "0.2.0"
+}

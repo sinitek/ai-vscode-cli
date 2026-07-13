@@ -8,3 +8,4 @@ package-lock.json
 .tmp-lobster-*/
 .tmp-lobster-launch-*/
 .codegraph/
+*.pyc

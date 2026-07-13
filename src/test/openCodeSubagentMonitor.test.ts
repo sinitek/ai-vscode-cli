@@ -5,9 +5,11 @@ import {
   createOpenCodeSubagentMonitor,
   consumeOpenCodeSseChunk,
   extractOpenCodeSubagentMessageSnapshot,
+  getOpenCodeSubagentReconnectDelayMs,
   OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
   parseOpenCodeChildSessions,
   resolveOpenCodeSubagentConnection,
+  waitForOpenCodeServerReady,
 } from "../cli/openCodeSubagentMonitor";
 
 test("polls current-attempt child sessions on a 60-second interval", async () => {
@@ -118,13 +120,50 @@ test("resolves attached, configured-port, and reserved OpenCode monitor endpoint
   );
   assert.deepEqual(
     await resolveOpenCodeSubagentConnection(["run", "--port=4100"]),
-    { serverUrl: "http://127.0.0.1:4100", authorization: undefined },
+    { serverUrl: "http://127.0.0.1:4100", serverPort: 4100, authorization: undefined },
   );
   assert.deepEqual(
     await resolveOpenCodeSubagentConnection([], { reservePort: async () => 4200 }),
     { serverUrl: "http://127.0.0.1:4200", serverPort: 4200, authorization: undefined },
   );
   assert.equal(OPENCODE_SUBAGENT_POLL_INTERVAL_MS, 60_000);
+});
+
+test("waits for the managed OpenCode server health endpoint", async () => {
+  let attempts = 0;
+  let clock = 0;
+  const delays: number[] = [];
+  await waitForOpenCodeServerReady(
+    { serverUrl: "http://127.0.0.1:4200", serverPort: 4200 },
+    "/repo",
+    {
+      timeoutMs: 500,
+      pollIntervalMs: 100,
+      now: () => clock,
+      delay: async (delayMs) => {
+        delays.push(delayMs);
+        clock += delayMs;
+      },
+      requestHealth: async () => {
+        attempts += 1;
+        if (attempts < 3) {
+          throw new Error("connect ECONNREFUSED");
+        }
+        return { healthy: true, version: "1.17.18" };
+      },
+    },
+  );
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [100, 100]);
+});
+
+test("uses bounded exponential backoff for OpenCode event reconnects", () => {
+  assert.equal(getOpenCodeSubagentReconnectDelayMs(1), 1000);
+  assert.equal(getOpenCodeSubagentReconnectDelayMs(2), 2000);
+  assert.equal(getOpenCodeSubagentReconnectDelayMs(6), 32_000);
+  assert.equal(getOpenCodeSubagentReconnectDelayMs(7), 60_000);
+  assert.equal(getOpenCodeSubagentReconnectDelayMs(20), 60_000);
 });
 
 test("parses only direct OpenCode child sessions", () => {

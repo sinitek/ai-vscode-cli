@@ -29,7 +29,7 @@ type RunCliOptions = {
   openCodeConfigContent?: string | null;
   imagePaths?: string[];
   envOverrides?: Record<string, string>;
-  openCodeServerPort?: number;
+  openCodeServerUrl?: string;
 };
 
 const PROCESS_LABEL_PREFIX = "sinitek-ai-vscode-cli";
@@ -723,7 +723,7 @@ export function buildCliArgs(
   }
 
   if (cli === "opencode") {
-    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt, options.openCodeServerPort);
+    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt, options.openCodeServerUrl);
   }
 
   if (sessionId) {
@@ -777,24 +777,25 @@ function buildOpenCodeRunArgs(
   sharedArgs: string[],
   sessionId: string | null,
   prompt: string,
-  serverPort?: number,
+  serverUrl?: string,
 ): string[] {
   const hasRunSubcommand = sharedArgs[0] === "run";
-  const runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
+  let runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
   if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
     const formatInsertIndex = runArgs[1] === "--auto" ? 2 : 1;
     runArgs.splice(formatInsertIndex, 0, "--format", "json");
   }
   const hasAttach = runArgs.some((arg) => arg === "--attach" || arg.startsWith("--attach="));
-  const hasPort = runArgs.some((arg) => arg === "--port" || arg.startsWith("--port="));
-  if (
-    !hasAttach
-    && !hasPort
-    && Number.isInteger(serverPort)
-    && Number(serverPort) > 0
-    && Number(serverPort) <= 65535
-  ) {
-    runArgs.push("--port", String(serverPort));
+  const normalizedServerUrl = typeof serverUrl === "string" ? serverUrl.trim().replace(/\/+$/u, "") : "";
+  if (normalizedServerUrl) {
+    runArgs = runArgs.filter((arg, index, args) => (
+      arg !== "--port"
+      && !arg.startsWith("--port=")
+      && args[index - 1] !== "--port"
+    ));
+    if (!hasAttach) {
+      runArgs.push("--attach", normalizedServerUrl);
+    }
   }
   if (sessionId && !runArgs.includes("--session") && !runArgs.includes("-s")) {
     return [...runArgs, "--session", sessionId, prompt];
@@ -852,6 +853,79 @@ function buildSpawnEnvironment(
   return env;
 }
 
+function createOpenCodeRuntimeOverlayForOptions(options: RunCliOptions) {
+  return options.openCodeConfigContent && options.model
+    ? createOpenCodeRuntimeConfigOverlay({
+        configContent: options.openCodeConfigContent,
+        primaryModel: options.model,
+        smallModel: options.openCodeSmallModel ?? null,
+        primaryVariant: options.openCodeVariant ?? null,
+        smallVariant: options.openCodeSmallVariant ?? null,
+      })
+    : null;
+}
+
+export function startOpenCodeServer(
+  port: number,
+  handlers: Partial<StreamHandlers> = {},
+  options: RunStreamOptions = {},
+): RunProcess {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    const error = new Error(`invalid-opencode-server-port:${port}`);
+    handlers.onError?.(error);
+    handlers.onExit?.(1);
+    return { pid: undefined, resolvedCommand: undefined, kill: () => false };
+  }
+
+  const configuredCommand = getCliCommand("opencode");
+  const runtimeOverlay = createOpenCodeRuntimeOverlayForOptions(options);
+  if (runtimeOverlay && (!runtimeOverlay.ok || !runtimeOverlay.overlay)) {
+    const error = new Error(runtimeOverlay.issues.map((issue) => issue.message).join("\n"));
+    handlers.onError?.(error);
+    handlers.onExit?.(1);
+    return { pid: undefined, resolvedCommand: undefined, kill: () => false };
+  }
+  const overlay = runtimeOverlay?.overlay ?? null;
+  const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
+  const spawnCommand = resolveSpawnCommand(configuredCommand, args);
+  if (!spawnCommand) {
+    overlay?.cleanup();
+    const error = new Error(`spawn ${configuredCommand} ENOENT`) as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    handlers.onError?.(error);
+    handlers.onExit?.(127);
+    return { pid: undefined, resolvedCommand: undefined, kill: () => false };
+  }
+
+  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
+    cwd: options.cwd,
+    env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides),
+    argv0: options.processLabel,
+    detached: process.platform !== "win32",
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (data) => handlers.onStdout?.(data));
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (data) => handlers.onStderr?.(data));
+  child.on("error", (error) => {
+    overlay?.cleanup();
+    handlers.onError?.(error);
+  });
+  child.on("close", (code) => {
+    overlay?.cleanup();
+    handlers.onExit?.(code);
+  });
+
+  return {
+    pid: child.pid,
+    resolvedCommand: spawnCommand.resolvedCommand,
+    kill: (signal) => killProcessTree(child, signal),
+  };
+}
+
 export function runCliStream(
   cli: CliName,
   prompt: string,
@@ -861,14 +935,8 @@ export function runCliStream(
   const configuredCommand = getCliCommand(cli);
   const fullArgs = buildCliArgs(cli, options, prompt);
   const processLabel = options.processLabel;
-  const runtimeOverlay = cli === "opencode" && options.openCodeConfigContent && options.model
-    ? createOpenCodeRuntimeConfigOverlay({
-        configContent: options.openCodeConfigContent,
-        primaryModel: options.model,
-        smallModel: options.openCodeSmallModel ?? null,
-        primaryVariant: options.openCodeVariant ?? null,
-        smallVariant: options.openCodeSmallVariant ?? null,
-      })
+  const runtimeOverlay = cli === "opencode"
+    ? createOpenCodeRuntimeOverlayForOptions(options)
     : null;
   if (runtimeOverlay && (!runtimeOverlay.ok || !runtimeOverlay.overlay)) {
     const error = new Error(runtimeOverlay.issues.map((issue) => issue.message).join("\n"));

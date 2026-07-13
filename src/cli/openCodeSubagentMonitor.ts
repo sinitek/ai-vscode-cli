@@ -4,9 +4,13 @@ import * as net from "net";
 import type { SubagentProgressStatus, SubagentProgressUpdate } from "../subagentProgress";
 
 export const OPENCODE_SUBAGENT_POLL_INTERVAL_MS = 60 * 1000;
+export const OPENCODE_SERVER_STARTUP_TIMEOUT_MS = 10 * 1000;
+export const OPENCODE_SERVER_STARTUP_POLL_INTERVAL_MS = 100;
 const OPENCODE_SUBAGENT_REQUEST_TIMEOUT_MS = 10 * 1000;
 const OPENCODE_SUBAGENT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const OPENCODE_SUBAGENT_SSE_RECONNECT_MS = 1000;
+const OPENCODE_SUBAGENT_SSE_MAX_RECONNECT_MS = 60 * 1000;
+const OPENCODE_SUBAGENT_ERROR_REPORT_INTERVAL_MS = 60 * 1000;
 const OPENCODE_SUBAGENT_EVENT_REFRESH_DELAY_MS = 100;
 
 type UnknownRecord = Record<string, unknown>;
@@ -144,6 +148,7 @@ export async function resolveOpenCodeSubagentConnection(
   if (Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535) {
     return {
       serverUrl: `http://127.0.0.1:${configuredPort}`,
+      serverPort: configuredPort,
       authorization,
     };
   }
@@ -154,6 +159,53 @@ export async function resolveOpenCodeSubagentConnection(
     serverPort: port,
     authorization,
   };
+}
+
+export async function waitForOpenCodeServerReady(
+  connection: OpenCodeSubagentConnection,
+  directory: string,
+  options: {
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+    requestHealth?: () => Promise<unknown>;
+    now?: () => number;
+    delay?: (delayMs: number) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? OPENCODE_SERVER_STARTUP_TIMEOUT_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? OPENCODE_SERVER_STARTUP_POLL_INTERVAL_MS;
+  const now = options.now ?? Date.now;
+  const delay = options.delay ?? ((delayMs: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs);
+  }));
+  const requestHealth = options.requestHealth ?? (() => requestOpenCodeJson({
+    serverUrl: connection.serverUrl,
+    pathname: "/global/health",
+    directory,
+    authorization: connection.authorization,
+  }));
+  const deadline = now() + timeoutMs;
+  let lastError: Error | null = null;
+
+  while (now() <= deadline) {
+    try {
+      const health = toRecord(await requestHealth());
+      if (health?.healthy === true) {
+        return;
+      }
+      lastError = new Error("OpenCode server health response was not healthy.");
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+    if (now() >= deadline) {
+      break;
+    }
+    await delay(pollIntervalMs);
+  }
+
+  throw new Error(
+    `OpenCode server did not become ready within ${timeoutMs}ms: ${lastError?.message ?? "unknown error"}`,
+  );
 }
 
 export function parseOpenCodeChildSessions(value: unknown, parentSessionId: string): OpenCodeChildSession[] {
@@ -235,6 +287,14 @@ export function consumeOpenCodeSseChunk(
     }
   }
   return { buffer, events };
+}
+
+export function getOpenCodeSubagentReconnectDelayMs(consecutiveErrors: number): number {
+  const normalizedErrors = Math.max(1, Math.floor(consecutiveErrors));
+  return Math.min(
+    OPENCODE_SUBAGENT_SSE_RECONNECT_MS * (2 ** Math.min(normalizedErrors - 1, 16)),
+    OPENCODE_SUBAGENT_SSE_MAX_RECONNECT_MS,
+  );
 }
 
 function buildOpenCodeApiUrl(serverUrl: string, pathname: string, directory: string): URL {
@@ -391,6 +451,8 @@ export function createOpenCodeSubagentMonitor(options: {
   let pollPromise: Promise<void> | null = null;
   let disposed = false;
   let noChildrenNotified = false;
+  let consecutiveEventErrors = 0;
+  let lastEventErrorReportedAt = 0;
   const minimumChildCreatedAt = Date.now() - 5000;
 
   const isCurrentAttemptChild = (child: OpenCodeChildSession): boolean => (
@@ -510,6 +572,7 @@ export function createOpenCodeSubagentMonitor(options: {
   };
 
   const handleEvent = (rawEvent: unknown): void => {
+    consecutiveEventErrors = 0;
     const event = toRecord(rawEvent);
     const eventType = normalizeString(event?.type);
     const payload = toRecord(event?.properties) ?? toRecord(event?.data) ?? {};
@@ -562,12 +625,21 @@ export function createOpenCodeSubagentMonitor(options: {
       onError: (error) => {
         eventSubscription?.dispose();
         eventSubscription = null;
-        options.onError?.(error);
+        consecutiveEventErrors += 1;
+        const now = Date.now();
+        if (
+          consecutiveEventErrors === 1
+          || now - lastEventErrorReportedAt >= OPENCODE_SUBAGENT_ERROR_REPORT_INTERVAL_MS
+        ) {
+          lastEventErrorReportedAt = now;
+          options.onError?.(error);
+        }
         if (!disposed && reconnectHandle === null) {
+          const reconnectDelayMs = getOpenCodeSubagentReconnectDelayMs(consecutiveEventErrors);
           reconnectHandle = scheduler.setTimeout(() => {
             reconnectHandle = null;
             startEventSubscription();
-          }, OPENCODE_SUBAGENT_SSE_RECONNECT_MS);
+          }, reconnectDelayMs);
         }
       },
     });
