@@ -241,23 +241,26 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
 });
 
 test("lays out OpenCode selectors as two full-width model rows", () => {
+  const inputThinkingRule = extractCssRule(INPUT_CONTROLS_STYLES, ".input-model-row .thinking-select");
   const openCodeGroupRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-group");
   const openCodeRowRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row");
   const openCodeLabelRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-label");
   const openCodeModelRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row .model-select");
   const openCodeThinkingRule = extractCssRule(INPUT_CONTROLS_STYLES, ".open-code-model-row .thinking-select");
 
+  assert.match(inputThinkingRule, /width:\s*calc\(70px \* 1\.15\);/);
+  assert.match(inputThinkingRule, /min-width:\s*calc\(70px \* 1\.15\);/);
   assert.match(openCodeGroupRule, /display:\s*flex;/);
   assert.match(openCodeGroupRule, /flex:\s*1 1 100%;/);
   assert.match(openCodeGroupRule, /flex-direction:\s*column;/);
   assert.match(openCodeGroupRule, /gap:\s*6px;/);
   assert.match(openCodeGroupRule, /min-width:\s*0;/);
   assert.match(openCodeRowRule, /display:\s*grid;/);
-  assert.match(openCodeRowRule, /grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) 70px;/);
+  assert.match(openCodeRowRule, /grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) calc\(70px \* 1\.15\);/);
   assert.match(openCodeLabelRule, /color:\s*var\(--vscode-descriptionForeground\);/);
   assert.match(openCodeModelRule, /width:\s*100%;/);
   assert.match(openCodeModelRule, /min-width:\s*0;/);
-  assert.match(openCodeThinkingRule, /width:\s*70px;/);
+  assert.match(openCodeThinkingRule, /width:\s*calc\(70px \* 1\.15\);/);
 });
 
 test("rebuilds both OpenCode selects with model names and direct effective selections", () => {

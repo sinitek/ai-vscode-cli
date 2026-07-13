@@ -203,9 +203,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         max-width: 180px;
       }
       .input-model-row .thinking-select {
-        flex: 0 0 70px;
-        width: 70px;
-        min-width: 70px;
+        flex: 0 0 calc(70px * 1.15);
+        width: calc(70px * 1.15);
+        min-width: calc(70px * 1.15);
       }
       .open-code-model-group {
         display: flex;
@@ -216,7 +216,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       }
       .open-code-model-row {
         display: grid;
-        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) 70px;
+        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) calc(70px * 1.15);
         align-items: center;
         gap: 6px;
         min-width: 0;
@@ -233,8 +233,8 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         max-width: none;
       }
       .open-code-model-row .thinking-select {
-        width: 70px;
-        min-width: 70px;
+        width: calc(70px * 1.15);
+        min-width: calc(70px * 1.15);
       }
       .open-code-model-group .open-code-model-issue {
         align-self: flex-start;
