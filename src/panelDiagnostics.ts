@@ -168,8 +168,38 @@ export function isAbortErrorInfo(info: ErrorInfo): boolean {
   return combined.includes("abort");
 }
 
+const NON_RETRYABLE_BILLING_ERROR_CODES = new Set([
+  "402",
+  "HTTP_402",
+  "PAYMENT_REQUIRED",
+  "INSUFFICIENT_CREDITS",
+  "INSUFFICIENT_BALANCE",
+]);
+
+const NON_RETRYABLE_BILLING_ERROR_PATTERNS = [
+  /\b(?:unexpected\s+)?status\s*:?[\s=]*402\b/i,
+  /\bhttp(?:\s+status)?\s*:?[\s=]*402\b/i,
+  /\b402\s+payment required\b/i,
+  /\bpayment required\b/i,
+  /\binsufficient\s+(?:credits?|balance|points?)\b/i,
+  /\b(?:credits?|balance|points?)\s+(?:exhausted|depleted)\b/i,
+  /\brequires?\s+\d+(?:\.\d+)?\s+points?\b[\s\S]*\bremaining\s+0(?![\d.])/i,
+] as const;
+
+export function isNonRetryableBillingErrorInfo(info: ErrorInfo): boolean {
+  const normalizedCode = String(info.code ?? "").trim().toUpperCase();
+  if (NON_RETRYABLE_BILLING_ERROR_CODES.has(normalizedCode)) {
+    return true;
+  }
+  const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message ?? ""}`;
+  return NON_RETRYABLE_BILLING_ERROR_PATTERNS.some((pattern) => pattern.test(combined));
+}
+
 export function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
   if (info.name === "AbortError" || info.code === "RUNNER_DISPOSED" || !info.message || isAbortErrorInfo(info)) {
+    return false;
+  }
+  if (isNonRetryableBillingErrorInfo(info)) {
     return false;
   }
   const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message}`.toLowerCase();
@@ -177,6 +207,17 @@ export function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
     return false;
   }
   return true;
+}
+
+export function isHiddenRetryEligibleAttempt(
+  attemptResult: CliAttemptResult,
+  failureMessage: string,
+): boolean {
+  if (isNonRetryableBillingErrorInfo({ message: failureMessage })) {
+    return false;
+  }
+  return attemptResult.type === "exit"
+    || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error));
 }
 
 export async function waitForHiddenRetryDelay(

@@ -153,6 +153,7 @@ import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
+import { isCodexRetryProgressTraceKind } from "./interactive/codexRunnerRuntime";
 import {
   collectInteractiveSessionKeys,
   collectReferencedInteractiveSessionKeys,
@@ -442,6 +443,7 @@ import {
   HIDDEN_RETRY_MAX_RETRIES,
   isAbortErrorInfo,
   isCompleteLoopFinalSummaryContent,
+  isHiddenRetryEligibleAttempt,
   isHiddenRetryEligibleErrorInfo,
   isLoopAnswerConclusionMessageForTask,
   isLoopFinalSummaryMessageForTask,
@@ -3875,15 +3877,10 @@ ${rawStderr}`);
       return;
     }
 
-    const retryableErrorInfo = attemptResult.type === "error"
-      ? getErrorInfo(attemptResult.error)
-      : null;
     const lastFailureMessage = getAttemptFailureMessage(attemptResult, rawStderr || null);
     hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      attemptResult.type === "exit"
-        || isHiddenRetryEligibleErrorInfo(retryableErrorInfo ?? { message: "" })
-    );
+    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+      && isHiddenRetryEligibleAttempt(attemptResult, lastFailureMessage);
     const failureMessageTarget = resolveParallelMessageTarget();
     if (shouldRetry) {
       appendHiddenRetryErrorTraceMessage(failureMessageTarget, lastFailureMessage, {
@@ -8917,10 +8914,8 @@ ${rawStderr}`);
       openCodeOutput,
       getAttemptFailureMessage(attemptResult, rawStderr || null),
     );
-    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES && (
-      attemptResult.type === "exit"
-        || isHiddenRetryEligibleErrorInfo(getErrorInfo(attemptResult.error))
-    );
+    const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+      && isHiddenRetryEligibleAttempt(attemptResult, retryFailureMessage);
     if (shouldRetry) {
       appendHiddenRetryErrorTraceMessage(activeMessageTarget, retryFailureMessage, {
         taskRole: input.taskRole,
@@ -10054,7 +10049,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             if (!isCurrentRunActive()) {
               return;
             }
-            if (content.trim().length > 0 && kind !== "thinking") {
+            if (content.trim().length > 0 && isCodexRetryProgressTraceKind(kind)) {
               attemptHadNormalReply = true;
             }
             appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal", meta);

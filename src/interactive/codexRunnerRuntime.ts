@@ -17,6 +17,7 @@ import {
   normalizeTodoListItems,
   toExecLikeItem,
 } from "./codexAppServerProtocol";
+import { buildHiddenRetryErrorTraceContent } from "../hiddenRetry";
 import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 
 export type CodexThreadOptions = {
@@ -33,7 +34,7 @@ export type CodexThreadOptions = {
   multiAgentEnabled?: boolean;
 };
 
-export type CodexRuntimeTraceKind = "thinking" | "normal";
+export type CodexRuntimeTraceKind = "thinking" | "normal" | "error";
 
 export type CodexRuntimeTraceMeta = {
   merge?: boolean;
@@ -49,6 +50,21 @@ export type CodexRuntimeItemEventHandlers = {
 export type CodexTurnAssistantObserver = {
   emit: CodexRuntimeItemEventHandlers["onAssistantDelta"];
 };
+
+export function isCodexRetryProgressTraceKind(kind?: CodexRuntimeTraceKind): boolean {
+  return kind !== "thinking" && kind !== "error";
+}
+
+export function emitCodexVisibleErrorTrace(
+  onTrace: CodexRuntimeItemEventHandlers["onTrace"],
+  message: string,
+): void {
+  const normalized = String(message || "").trim();
+  if (!normalized) {
+    return;
+  }
+  onTrace(buildHiddenRetryErrorTraceContent(normalized), "error", { merge: false });
+}
 
 export function createCodexTurnAssistantObserver(
   onAssistantDelta: CodexRuntimeItemEventHandlers["onAssistantDelta"]

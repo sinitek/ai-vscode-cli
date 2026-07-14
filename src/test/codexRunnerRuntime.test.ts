@@ -17,12 +17,35 @@ import {
   buildCodexTurnStartParams,
   collectArgValues,
   createCodexTurnAssistantObserver,
+  emitCodexVisibleErrorTrace,
   handleCodexItemEvent,
+  isCodexRetryProgressTraceKind,
   mapCodexReasoningEffort,
   pickArgValue,
   resolveCodexPackageVersionFromCommand,
   shouldEmitItemTraceCandidate,
 } from "../interactive/codexRunnerRuntime";
+
+test("visible Codex errors use an error trace kind", () => {
+  const traces: Array<{ content: string; kind?: string; merge?: boolean }> = [];
+
+  emitCodexVisibleErrorTrace((content, kind, meta) => {
+    traces.push({ content, kind, merge: meta?.merge });
+  }, "unexpected status 402 Payment Required");
+
+  assert.deepEqual(traces, [{
+    content: "error\nunexpected status 402 Payment Required",
+    kind: "error",
+    merge: false,
+  }]);
+});
+
+test("only non-error Codex traces count as retry recovery progress", () => {
+  assert.equal(isCodexRetryProgressTraceKind("error"), false);
+  assert.equal(isCodexRetryProgressTraceKind("thinking"), false);
+  assert.equal(isCodexRetryProgressTraceKind("normal"), true);
+  assert.equal(isCodexRetryProgressTraceKind(undefined), true);
+});
 
 test("argument helpers parse first values, repeated values, and flags", () => {
   const args = ["--model", "gpt-5", "--add-dir", " a ", "--add-dir", "b", "--image", "img.png"];

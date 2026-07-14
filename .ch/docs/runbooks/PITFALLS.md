@@ -1038,6 +1038,44 @@
 - `src/test/loopTaskStore.test.ts`
 - `.ch/docs/exec-plans/completed/2026-07-14-loop-naming-migration.md`
 
+## 计费终态错误不能进入隐藏重试或充当恢复进度
+
+- 状态：已规避
+- 首次发现：2026-07-14
+- 适用范围：Codex app-server 可见错误、通用 hidden retry、one-shot / 并行 / 交互运行
+
+### 现象
+- LLM proxy 返回 `402 Payment Required: model pool ... requires 1 points, remaining 0` 后，插件不断重试；界面长期停在 `1/5`，不会推进到 `2/5` 或耗尽上限。
+- 同一故障在四个会话约十分钟内排队 110 次，日志反复出现 `failedAttempt=2`、`nextAttempt=3`、`retryCount=1`。
+
+### 触发条件
+- provider 返回 HTTP 402、Payment Required 或明确余额/积分耗尽。
+- Codex Runner 先把错误文本通过普通 trace 展示，随后以失败结束回合。
+- 外层交互重试把所有非 thinking trace 当作正常进度，并在异常处理前据此清零累计次数。
+
+### 根因
+- 通用错误资格判断过去只排除取消、Runner 释放和 ENOENT，未区分不可自行恢复的计费终态错误。
+- 可见错误和正常工具 trace 共用 `normal` 类型；错误文本本身把 `attemptHadNormalReply` 置为 true，第二次失败时先把计数从 1 清零，再重新加到 1，形成无限循环。
+
+### 长期规避
+- Runner 的可见错误必须使用结构化 `error` trace；展示层可以继续使用普通错误气泡，但恢复计数只能消费 assistant 正文或非错误进度。
+- HTTP 402、Payment Required、明确 insufficient credits/balance/points、积分需求大于零且 remaining 为零必须直接收口；不得依赖退避等待余额自行恢复。
+- 429、连接中断和其他暂时性错误仍可按既有上限退避，不能用宽泛的 `remaining 0` 文本匹配误杀并发槽位等非计费错误。
+
+### 验证方式
+- 断言精确样本 `unexpected status 402 Payment Required: llm proxy error: model pool gpt-5.6-sol requires 1 points, remaining 0` 不具备 hidden retry 资格。
+- 断言 Codex 可见错误 trace 的 kind 为 `error`，429、ECONNRESET 和普通网络错误仍可重试。
+- 执行 `npm run build && node --test dist/test/hiddenRetry.test.js dist/test/panelDiagnostics.test.js dist/test/codexRunnerRuntime.test.js`，再运行 `npm run test:unit`。
+
+### 关联资料
+- `src/panelDiagnostics.ts`
+- `src/interactive/codexRunner.ts`
+- `src/interactive/codexRunnerRuntime.ts`
+- `src/extension.ts`
+- `src/test/panelDiagnostics.test.ts`
+- `src/test/codexRunnerRuntime.test.ts`
+- `.ch/docs/exec-plans/completed/2026-07-14-codex-402-terminal-retry.md`
+
 ## 建议模板
 
 ```md

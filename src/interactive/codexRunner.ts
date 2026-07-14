@@ -4,7 +4,6 @@ import * as readline from "readline";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { logInfo } from "../logger";
-import { buildHiddenRetryErrorTraceContent } from "../hiddenRetry";
 import {
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
@@ -36,19 +35,20 @@ import {
   createCodexTurnAssistantObserver,
   createCodexAbortError,
   createCodexRunnerDisposedError,
+  emitCodexVisibleErrorTrace,
   emitCodexTodoListUpdate,
   handleCodexItemEvent,
+  type CodexRuntimeTraceKind,
+  type CodexRuntimeTraceMeta,
 } from "./codexRunnerRuntime";
 import {
   requestChildShutdown,
   resolveSpawnCommand,
 } from "./codexRunnerProcess";
 
-export type CodexTraceKind = "thinking" | "normal";
+export type CodexTraceKind = CodexRuntimeTraceKind;
 
-export type CodexTraceMeta = {
-  merge?: boolean;
-};
+export type CodexTraceMeta = CodexRuntimeTraceMeta;
 
 export type CodexAssistantDeltaMeta = {
   codexFinalAnswer?: boolean;
@@ -77,14 +77,6 @@ type CodexCompactionResult = {
   compacted: boolean;
   threadId: string;
 };
-
-function emitVisibleErrorTrace(handlers: CodexStreamHandlers, message: string): void {
-  const normalized = String(message || "").trim();
-  if (!normalized) {
-    return;
-  }
-  handlers.onTrace(buildHiddenRetryErrorTraceContent(normalized), "normal", { merge: false });
-}
 
 const createAbortError = createCodexAbortError;
 const createRunnerDisposedError = (): Error => createCodexRunnerDisposedError(t("run.disposedExternally"));
@@ -707,7 +699,7 @@ export class CodexInteractiveRunner {
       if (!normalized) {
         return;
       }
-      emitVisibleErrorTrace(handlers, normalized);
+      emitCodexVisibleErrorTrace(handlers.onTrace, normalized);
       failRun(new Error(normalized));
       setTimeout(() => shutdownChild("terminate"), 0);
     };
@@ -1003,7 +995,7 @@ export class CodexInteractiveRunner {
               if (lower.startsWith("reconnecting") || lower.startsWith("retrying")) {
                 handlers.onTrace(`warning ${warning}`);
               } else {
-                emitVisibleErrorTrace(handlers, warning);
+                emitCodexVisibleErrorTrace(handlers.onTrace, warning);
               }
             }
             continue;
