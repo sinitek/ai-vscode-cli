@@ -34,16 +34,15 @@ npm run watch
 npm run sync:official-skills
 ```
 
-默认会刷新 Claude / Codex 的内置官方 Skills 归档，并输出 OpenCode 空平台占位。Gemini 已从当前配置中心支持范围移除；旧 Gemini 快照仅作历史迁移参考。
-如需审计历史 Gemini 官方 extensions 快照，可显式执行：
+默认会刷新 Claude / Codex 的内置官方 Skills 归档，并输出 OpenCode 空平台占位。Gemini 已从当前配置中心支持范围移除，仓库不再保留 Gemini 官方 extensions 的 ZIP 快照或同步参数。
+
+如需审计历史 Gemini catalog 与快照变更，应读取 Git 历史或已归档执行计划，不要把历史资源恢复到当前 VSIX：
 
 ```bash
-python3 scripts/sync_official_skills.py --include-legacy-gemini
+git log -- media/official-skills/gemini media/official_skills_catalog.json
 ```
 
-该命令只用于生成历史审计输出，不会把 Gemini 恢复为当前支持平台。旧 Gemini 刷新路径曾包含 repo 级进度日志、断点续传/重试，以及 tarball 失败时回退 shallow git clone。
-
-> 说明：默认模式优先保证仓库内置 catalog 与配置页可稳定使用；Gemini 相关命令只用于历史快照审计，不代表当前插件继续支持 Gemini。
+> 说明：当前同步脚本只接受 Claude、Codex、OpenCode；历史 Gemini 资料不属于当前 catalog、打包资源或可执行维护路径。
 
 ### 5. 维护 Loop 开发级 Workflow Skills 快照
 

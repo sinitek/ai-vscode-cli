@@ -186,7 +186,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
   - 配置页官方条目会显示“当前版本 / 最新版本”；未安装时显示最新版本，已安装时同时显示当前版本和最新版本
   - 官方最新判断优先基于每个条目的 `contentHash`，缺失时才回退到 `sourceRef`
   - OpenCode 条目的版本展示以当前官方 catalog 元数据为准；Claude / Codex / OpenCode 在上游缺少显式版本号时显示稳定短 `contentHash`
-  - 历史 Gemini catalog 条目仅作迁移参考，不再作为当前配置页官方 Skills 支持口径
+  - Gemini catalog 条目、内置 ZIP 快照及 legacy 同步入口均已移除；历史信息仅保留在 Git 历史和归档计划中，不属于当前配置页官方 Skills 支持口径
 - MCP 市场、安装、卸载、健康检查
 
 ### 3.9 稳定性与可运维性
