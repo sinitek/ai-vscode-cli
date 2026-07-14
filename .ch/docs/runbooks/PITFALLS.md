@@ -290,6 +290,46 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
+## OpenCode Loop 后续轮次不能用历史回答判定当前回合成功
+
+- 状态：有效
+- 首次发现：2026-07-14
+- 适用范围：OpenCode one-shot / parallel、Loop 主任务多轮复核、成功退出判定
+
+### 现象
+- Loop 子任务批次全部 completed 后，主任务确实被下一轮唤醒；OpenCode 运行约几十秒并以 `code=0` 退出，但 JSONL 只有 `step_start`、纯 thinking 和 `step_finish(reason=unknown)`，没有 assistant 正文。
+- 任务随即进入 `needs-review` 并显示 `Main task did not return a valid loop decision JSON.`，看起来像主任务没有被唤醒或卡住。
+
+### 根因
+- Loop 后续轮次复用初始用户消息 ID；旧完成判定只检查“该用户消息之后是否存在任意 assistant 正文”，因此上一轮合法 `LoopMainDecision` 会把当前空响应误判为成功。
+- 轮次级 JSON 解析只读取带当前 `loopTaskId + loopRound + taskRole=main` 的正文，不会读取旧轮次，于是成功判定与决策解析使用了不同时间边界。
+- `code=0` 缺少当前正文的分支此前直接错误收口，没有进入非零退出已使用的 hidden retry。
+
+### 现场判定
+- 同一 provider/model 的新 session 能正常得到 `finish=stop` 和非零 input/output token；旧 session 及其 fork 都持续返回 `step_start -> step_finish(reason=unknown)`，`input=0/output=0`。因此先排除 provider/model 配置，再按会话级故障处理。
+- 旧 session 现场累计约 919k input token、6.7m cache-read token；OpenCode SQLite 中 message/part JSON 有效。`opencode export` 恰在 128 KiB 截断是 CLI stdout 限制，不是持久化 JSON 损坏。
+- 对 disposable fork 发送字面 `/compact` 也返回零 token；`--command compact` 只查找用户自定义 command，不是 OpenCode 原生 compact 调用，不能作为自动恢复依据。
+
+### 长期规避
+- 普通任务可继续使用当前用户消息锚点；Loop 内部回合必须只依据当前 OpenCode 进程尝试是否产生非 thinking assistant 正文。
+- one-shot 与 parallel 的 `code=0` 空正文统一进入既有 hidden retry；重试耗尽后才落可见错误与任务失败记录。
+- 只有已有远端 session、无 provider JSON error 的 Loop 主任务才允许一次 fresh-session retry。恢复尝试不传旧 `--session`、重发完整主任务 prompt；捕获新 `sessionID` 后保留旧 session、复制 UI 消息并用 `bindLoopTaskToSession` 移动任务记录。新 session 再次空响应不得继续 rollover。
+- 可恢复的会话级空响应使用本地化 system 恢复提示，不追加看起来像最终 provider/model 配置错误的 trace；真实 provider JSON error 保持原错误展示和重试语义。
+- 日志只记录 task/round、当前正文布尔值与长度、结构化终态和 stdout/stderr 长度，不记录完整模型正文或提示词。
+
+### 验证方式
+- 当 `conversationHasFinalConclusion=true`、`isLoopRun=true`、`currentAttemptHasAssistantAnswer=false` 时，`resolveOpenCodeSuccessfulExitOutcome` 必须返回 `retry`。
+- 当前尝试出现非 thinking assistant 正文时返回 `complete`；重试计数达到上限后空响应返回 `fail`。
+- 回放只有 `step_start` / thinking / `step_finish(reason=unknown)` 的当前轮 JSONL，即使历史会话已有合法 JSON，也不得把当前轮标记为 `end`。
+- `shouldRecoverOpenCodeLoopMainSessionInFreshSession` 仅对 provider-clean、已有远端 session、未 rollover 的主任务返回 true；Loop 子任务、普通任务、provider error 和二次恢复必须返回 false。
+- `bindLoopTaskToSession` 后源 task store 删除（无其他任务时），目标 session store 保留相同任务和新 `sessionId`。
+
+### 关联资料
+- `src/openCodeRunCompletion.ts`
+- `src/extension.ts`
+- `src/test/openCodeRunCompletion.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`
+
 ## OpenCode 分组/子代理执行不能用父 JSONL 静默判断卡死
 
 - 状态：有效

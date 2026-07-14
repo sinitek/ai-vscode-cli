@@ -122,6 +122,10 @@ import {
 } from "./hiddenRetry";
 import { hasAssistantFinalConclusionAfterMessage } from "./finalConclusion";
 import {
+  resolveOpenCodeSuccessfulExitOutcome,
+  shouldRecoverOpenCodeLoopMainSessionInFreshSession,
+} from "./openCodeRunCompletion";
+import {
   createSubagentProgressController,
   type SubagentProgressController,
   type SubagentProgressLabels,
@@ -3244,6 +3248,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const runId = createMessageId();
   const startedAt = Date.now();
   let hiddenRetryCount = 0;
+  const isLoopMainRun = Boolean(input.loopTaskId && input.taskRole === "main");
+  let freshSessionRecoveryPending = false;
+  let freshSessionRecoveryAttempted = false;
   let silentProgressNoticeShown = false;
   let monitorUnavailableNoticeShown = false;
   let openCodeTabStreamState = createOpenCodeTabStreamState();
@@ -3432,9 +3439,18 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   });
 
   while (true) {
+    const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
+    freshSessionRecoveryPending = false;
+    if (isFreshSessionRecoveryAttempt) {
+      freshSessionRecoveryAttempted = true;
+    }
     const attemptNumber = hiddenRetryCount + 1;
-    const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
-    const runtimeSessionId = resolveCliSessionIdForResume(runCli, sessionId);
+    const attemptPrompt = isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
+      ? thinkingPrompt
+      : hiddenRetryPrompt;
+    const runtimeSessionId = isFreshSessionRecoveryAttempt
+      ? null
+      : resolveCliSessionIdForResume(runCli, sessionId);
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
@@ -3449,6 +3465,17 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         activeAssistantMessageId: null,
         activeAssistantKind: null,
       };
+      if (isFreshSessionRecoveryAttempt) {
+        const recoveryMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: t("run.openCodeLoopFreshSessionRecoveryStarted"),
+          createdAt: Date.now(),
+        };
+        const recoveryMessageTarget = resolveParallelMessageTarget();
+        appendMessageToStore(recoveryMessageTarget, recoveryMessage);
+        sendPanelMessage({ type: "appendMessage", message: recoveryMessage, tabId: target.tabId });
+      }
       const retryStartedMessage: ChatMessage = {
         id: createMessageId(),
         role: "system",
@@ -3467,6 +3494,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
         retryCount: hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
         retryDelayMs,
+        freshSessionRecovery: isFreshSessionRecoveryAttempt,
       });
     }
 
@@ -3636,7 +3664,28 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
     const detectedSessionId = extractSessionId(runCli, `${rawStdout}
 ${rawStderr}`);
-    if ((!sessionId || isLocalSessionId(sessionId)) && detectedSessionId) {
+    if (
+      isFreshSessionRecoveryAttempt
+      && isLoopMainRun
+      && detectedSessionId
+      && detectedSessionId !== sessionId
+      && input.loopTaskId
+    ) {
+      const previousSessionId = sessionId;
+      messageTarget = adoptFreshOpenCodeLoopRecoverySession({
+        sessionId: detectedSessionId,
+        previousSessionId,
+        tabId: target.tabId,
+        messageTarget,
+        loopTaskId: input.loopTaskId,
+      });
+      sessionId = detectedSessionId;
+      const current = parallelRunsByTabId.get(target.tabId);
+      if (current && current.runId === runId) {
+        current.sessionId = sessionId;
+        current.messageTarget = messageTarget;
+      }
+    } else if ((!sessionId || isLocalSessionId(sessionId)) && detectedSessionId) {
       adoptDetectedSessionId(runCli, detectedSessionId, target.tabId, sessionId);
       sessionId = detectedSessionId;
       messageTarget = loadSessionMessages(runCli, detectedSessionId);
@@ -3654,12 +3703,92 @@ ${rawStderr}`);
         openCodeTabStreamState = finalTextResult.state;
         applyOpenCodeTabStreamActions(finalTextResult.actions);
       }
-      if (!hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
+      const conversationHasFinalConclusion = hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
         observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
-      })) {
+      });
+      const currentAttemptHasAssistantAnswer = attemptHadNormalReply || Boolean(openCodeOutput.finalText?.trim());
+      const successfulExitOutcome = resolveOpenCodeSuccessfulExitOutcome({
+        isLoopRun: Boolean(input.loopTaskId),
+        currentAttemptHasAssistantAnswer,
+        conversationHasFinalConclusion,
+        hiddenRetryCount,
+        maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      });
+      if (successfulExitOutcome !== "complete") {
         const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
+        if (successfulExitOutcome === "retry") {
+          const shouldRecoverFreshSession = shouldRecoverOpenCodeLoopMainSessionInFreshSession({
+            isLoopMainRun,
+            hasResumableSession: Boolean(resolveCliSessionIdForResume(runCli, sessionId)),
+            hasProviderError: Boolean(openCodeOutput.errorText),
+            freshSessionRecoveryAttempted,
+          });
+          void logInfo("runPrompt-parallel-missing-final-conclusion-retry", {
+            cli: runCli,
+            runId,
+            tabId: target.tabId,
+            sessionId,
+            taskRole: input.taskRole,
+            loopTaskId: input.loopTaskId,
+            loopRound: input.loopRound,
+            attempt: hiddenRetryCount + 1,
+            retryCount: hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+            conversationHasFinalConclusion,
+            currentAttemptHasAssistantAnswer,
+            structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
+            stdoutLength: rawStdout.length,
+            stderrLength: rawStderr.length,
+            freshSessionRecoveryQueued: shouldRecoverFreshSession,
+          });
+          if (shouldRecoverFreshSession) {
+            freshSessionRecoveryPending = true;
+            const recoveryMessage: ChatMessage = {
+              id: createMessageId(),
+              role: "system",
+              content: t("run.openCodeLoopFreshSessionRecoveryQueued"),
+              createdAt: Date.now(),
+            };
+            appendMessageToStore(currentMessageTarget, recoveryMessage);
+            sendPanelMessage({ type: "appendMessage", message: recoveryMessage, tabId: target.tabId });
+          } else {
+            appendHiddenRetryErrorTraceMessage(currentMessageTarget, missingConclusionMessage, {
+              tabId: target.tabId,
+              taskRole: input.taskRole,
+              loopTaskId: input.loopTaskId,
+              loopRound: input.loopRound,
+              loopSubtaskId: input.loopSubtaskId,
+            }, { createMessageId, sendPanelMessage });
+          }
+          const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
+          const systemMessage: ChatMessage = {
+            id: createMessageId(),
+            role: "system",
+            content: retryMessage,
+            createdAt: Date.now(),
+          };
+          appendMessageToStore(currentMessageTarget, systemMessage);
+          sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+          hiddenRetryCount += 1;
+          continue;
+        }
+        void logError("runPrompt-parallel-missing-final-conclusion", {
+          cli: runCli,
+          runId,
+          tabId: target.tabId,
+          sessionId,
+          taskRole: input.taskRole,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          hiddenRetryCount,
+          conversationHasFinalConclusion,
+          currentAttemptHasAssistantAnswer,
+          structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
+          stdoutLength: rawStdout.length,
+          stderrLength: rawStderr.length,
+        });
         parallelRunsByTabId.delete(target.tabId);
         const taskRecord: TaskRunRecord = {
           id: runId,
@@ -4158,6 +4287,13 @@ async function runClassicLoopMainDecision(options: {
   const mainContent = getLastLoopAssistantContent(target, task.id, round, "main");
   const decision = parseLoopMainDecision(mainContent);
   if (!decision) {
+    void logError("loop-main-decision-invalid", {
+      taskId: task.id,
+      round,
+      cli: target.cli,
+      hasAssistantContent: Boolean(mainContent?.trim()),
+      assistantContentLength: mainContent?.length ?? 0,
+    });
     const failedRecord = updateLoopTaskRecord(task.id, {
       status: "needs-review",
       activeSubtaskId: null,
@@ -8335,6 +8471,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
 
   sendRunStatus("start");
   let hiddenRetryCount = 0;
+  const isLoopMainRun = Boolean(input.loopTaskId && input.taskRole === "main");
+  let freshSessionRecoveryPending = false;
+  let freshSessionRecoveryAttempted = false;
   let silentProgressNoticeShown = false;
   let monitorUnavailableNoticeShown = false;
 
@@ -8384,8 +8523,15 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   });
 
   while (true) {
+    const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
+    freshSessionRecoveryPending = false;
+    if (isFreshSessionRecoveryAttempt) {
+      freshSessionRecoveryAttempted = true;
+    }
     const attemptNumber = hiddenRetryCount + 1;
-    const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+    const attemptPrompt = isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
+      ? thinkingPrompt
+      : hiddenRetryPrompt;
     let attemptHadNormalReply = false;
 
     if (hiddenRetryCount > 0) {
@@ -8394,6 +8540,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isCurrentOneShotRunActive);
       if (!shouldContinue) {
         return;
+      }
+      if (isFreshSessionRecoveryAttempt) {
+        appendSystemMessage(t("run.openCodeLoopFreshSessionRecoveryStarted"));
       }
       appendSystemMessage(buildHiddenRetryStartedMessage(retryNumber));
       void logInfo("runPrompt-one-shot-hidden-retry", {
@@ -8405,13 +8554,16 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         retryCount: hiddenRetryCount,
         maxRetries: HIDDEN_RETRY_MAX_RETRIES,
         retryDelayMs,
+        freshSessionRecovery: isFreshSessionRecoveryAttempt,
       });
     }
 
     let sessionBuffer = "";
     let rawStdout = "";
     let rawStderr = "";
-    const runtimeSessionId = resolveCliSessionIdForResume(runCli, activeSessionId);
+    const runtimeSessionId = isFreshSessionRecoveryAttempt
+      ? null
+      : resolveCliSessionIdForResume(runCli, activeSessionId);
     const subagentRuntime = await prepareOpenCodeSubagentRuntime({
       cwd,
       runId,
@@ -8623,6 +8775,25 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     }
 
     if (attemptResult.type === "exit" && attemptResult.code === 0) {
+      const detectedSessionId = extractSessionId(runCli, `${rawStdout}
+${rawStderr}`);
+      if (
+        isFreshSessionRecoveryAttempt
+        && isLoopMainRun
+        && detectedSessionId
+        && detectedSessionId !== activeSessionId
+        && input.loopTaskId
+      ) {
+        const previousSessionId = activeSessionId;
+        activeMessageTarget = adoptFreshOpenCodeLoopRecoverySession({
+          sessionId: detectedSessionId,
+          previousSessionId,
+          tabId: activeTabId,
+          messageTarget: activeMessageTarget ?? messageTarget,
+          loopTaskId: input.loopTaskId,
+        });
+        activeSessionId = detectedSessionId;
+      }
       const finalSessionId = activeSessionId;
       const durationMs = activeTaskRun?.id === runId
         ? Math.max(0, Date.now() - activeTaskRun.startedAt)
@@ -8635,12 +8806,76 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       if (openCodeOutput.finalText) {
         appendOpenCodeFinalText(openCodeOutput.finalText);
       }
-      if (!hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
+      const conversationHasFinalConclusion = hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
         observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
-      })) {
+      });
+      const currentAttemptHasAssistantAnswer = attemptHadNormalReply || Boolean(openCodeOutput.finalText?.trim());
+      const successfulExitOutcome = resolveOpenCodeSuccessfulExitOutcome({
+        isLoopRun: Boolean(input.loopTaskId),
+        currentAttemptHasAssistantAnswer,
+        conversationHasFinalConclusion,
+        hiddenRetryCount,
+        maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      });
+      if (successfulExitOutcome !== "complete") {
         const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
+        if (successfulExitOutcome === "retry") {
+          const shouldRecoverFreshSession = shouldRecoverOpenCodeLoopMainSessionInFreshSession({
+            isLoopMainRun,
+            hasResumableSession: Boolean(resolveCliSessionIdForResume(runCli, activeSessionId)),
+            hasProviderError: Boolean(openCodeOutput.errorText),
+            freshSessionRecoveryAttempted,
+          });
+          void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", {
+            cli: runCli,
+            runId,
+            tabId: activeTabId,
+            sessionId: activeSessionId,
+            taskRole: input.taskRole,
+            loopTaskId: input.loopTaskId,
+            loopRound: input.loopRound,
+            attempt: hiddenRetryCount + 1,
+            retryCount: hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+            conversationHasFinalConclusion,
+            currentAttemptHasAssistantAnswer,
+            structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
+            stdoutLength: rawStdout.length,
+            stderrLength: rawStderr.length,
+            freshSessionRecoveryQueued: shouldRecoverFreshSession,
+          });
+          if (shouldRecoverFreshSession) {
+            freshSessionRecoveryPending = true;
+            appendSystemMessage(t("run.openCodeLoopFreshSessionRecoveryQueued"));
+          } else {
+            appendHiddenRetryErrorTraceMessage(finalMessageTarget, missingConclusionMessage, {
+              taskRole: input.taskRole,
+              loopTaskId: input.loopTaskId,
+              loopRound: input.loopRound,
+              loopSubtaskId: input.loopSubtaskId,
+            }, { createMessageId, sendPanelMessage });
+          }
+          appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
+          hiddenRetryCount += 1;
+          continue;
+        }
+        void logError("runPrompt-one-shot-missing-final-conclusion", {
+          cli: runCli,
+          runId,
+          tabId: activeTabId,
+          sessionId: activeSessionId,
+          taskRole: input.taskRole,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          hiddenRetryCount,
+          conversationHasFinalConclusion,
+          currentAttemptHasAssistantAnswer,
+          structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
+          stdoutLength: rawStdout.length,
+          stderrLength: rawStderr.length,
+        });
         const userMessageText = buildHiddenRetryFailureMessage({
           hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
@@ -11366,6 +11601,34 @@ function adoptDetectedSessionId(
     migrateLocalSessionToTargetSession(cli, previousSessionId, sessionId, { notifyPanel: false });
   }
   adoptSessionId(cli, sessionId, tabId);
+}
+
+function adoptFreshOpenCodeLoopRecoverySession(options: {
+  sessionId: string;
+  previousSessionId: string | null;
+  tabId: string | null;
+  messageTarget: ChatMessage[];
+  loopTaskId: string;
+}): ChatMessage[] {
+  const sessionId = options.sessionId.trim();
+  if (!sessionId) {
+    return options.messageTarget;
+  }
+
+  // Preserve the UI transcript while the OpenCode provider starts a clean context.
+  saveSessionMessages("opencode", sessionId, options.messageTarget);
+  adoptSessionId("opencode", sessionId, options.tabId);
+  bindLoopTaskToSession(options.loopTaskId, sessionId);
+  if (activeTaskRun?.cli === "opencode" && activeTaskRun.loopTaskId === options.loopTaskId) {
+    activeTaskRun.sessionId = sessionId;
+  }
+  void logInfo("opencode-loop-main-fresh-session-recovered", {
+    taskId: options.loopTaskId,
+    tabId: options.tabId,
+    previousSessionId: options.previousSessionId,
+    sessionId,
+  });
+  return loadSessionMessages("opencode", sessionId);
 }
 
 function touchSession(cli: CliName, sessionId: string): void {

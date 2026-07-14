@@ -974,8 +974,34 @@ test("uses structured OpenCode final events in both successful completion paths"
   const structuredFinalChecks = extensionSource.match(
     /observedFinalAnswer:\s*openCodeOutput\.hasStructuredFinalAnswer/g,
   ) ?? [];
+  const successfulExitOutcomeChecks = extensionSource.match(
+    /resolveOpenCodeSuccessfulExitOutcome\(\{/g,
+  ) ?? [];
 
   assert.equal(structuredFinalChecks.length, 2);
+  assert.equal(successfulExitOutcomeChecks.length, 2);
+});
+
+test("wires one fresh-session recovery into both Loop OpenCode run paths", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const recoverySelectors = extensionSource.match(
+    /shouldRecoverOpenCodeLoopMainSessionInFreshSession\(\{/g,
+  ) ?? [];
+  const queuedRecoveryMessages = extensionSource.match(
+    /run\.openCodeLoopFreshSessionRecoveryQueued/g,
+  ) ?? [];
+  const recoveryAdoptions = extensionSource.match(
+    /adoptFreshOpenCodeLoopRecoverySession\(\{/g,
+  ) ?? [];
+  const freshSessionArguments = extensionSource.match(
+    /isFreshSessionRecoveryAttempt\s*\?\s*null/g,
+  ) ?? [];
+
+  assert.equal(recoverySelectors.length, 2);
+  assert.equal(queuedRecoveryMessages.length, 2);
+  assert.equal(recoveryAdoptions.length, 2);
+  assert.equal(freshSessionArguments.length, 2);
+  assert.match(extensionSource, /bindLoopTaskToSession\(options\.loopTaskId, sessionId\)/);
 });
 
 test("formats OpenCode JSONL text and reasoning events for visible bubbles", () => {

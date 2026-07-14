@@ -119,6 +119,31 @@ test("initializes subtask communication with a structured main-task confirmation
   assert.equal(persisted?.subTasks[0]?.communicationFile, communicationFile);
 });
 
+test("moves a Loop task to the recovered OpenCode session store", () => {
+  const task = {
+    ...createLegacyTask(),
+    cli: "opencode" as const,
+  };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  const recoveredSessionId = `ses-recovered-${recordSequence}`;
+  const rebound = loopTaskStore.bindLoopTaskToSession(task.id, recoveredSessionId);
+  const targetStoreFile = loopTaskStore.getLoopTaskStoreSessionFile(
+    task.workspaceKey,
+    task.cli,
+    recoveredSessionId,
+  );
+
+  assert.ok(rebound);
+  assert.equal(rebound.sessionId, recoveredSessionId);
+  assert.equal(rebound.taskStoreFile, targetStoreFile);
+  assert.equal(fs.existsSync(task.taskStoreFile), false);
+  const persisted = readSkillTask(targetStoreFile);
+  assert.equal(persisted.id, task.id);
+  assert.equal(persisted.sessionId, recoveredSessionId);
+  assert.equal(persisted.taskStoreFile, targetStoreFile);
+});
+
 test("reads and rewrites legacy records without adding skill fields", () => {
   const legacyTask = createLegacyTask();
   fs.mkdirSync(path.dirname(legacyTask.taskStoreFile), { recursive: true });
