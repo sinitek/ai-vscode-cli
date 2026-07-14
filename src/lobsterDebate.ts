@@ -185,6 +185,13 @@ export type LobsterTaskRunControlState = {
   canStop: boolean;
 };
 
+export function isLobsterTaskRunOrphaned(
+  task: { id: string; status: string },
+  runningTaskIds: ReadonlySet<string>,
+): boolean {
+  return task.status === "running" && !runningTaskIds.has(task.id);
+}
+
 export function resolveLobsterTaskRunControlState(
   task: { id: string; status: string; mainAiFailureLimitReached?: boolean | null },
   runningTaskIds: ReadonlySet<string>,

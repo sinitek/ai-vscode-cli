@@ -48,43 +48,13 @@ export type CodexRuntimeItemEventHandlers = {
 
 export type CodexTurnAssistantObserver = {
   emit: CodexRuntimeItemEventHandlers["onAssistantDelta"];
-  promoteCommentaryOnCompletedTurn: (
-    turnStatus: unknown,
-    allowCompletedTurnFallback: boolean
-  ) => boolean;
 };
 
 export function createCodexTurnAssistantObserver(
   onAssistantDelta: CodexRuntimeItemEventHandlers["onAssistantDelta"]
 ): CodexTurnAssistantObserver {
-  let observedNonEmptyText = false;
-  let observedFinalAnswer = false;
-
-  const emit: CodexRuntimeItemEventHandlers["onAssistantDelta"] = (chunk, meta) => {
-    if (chunk.trim()) {
-      observedNonEmptyText = true;
-    }
-    if (meta?.codexFinalAnswer === true) {
-      observedFinalAnswer = true;
-    }
-    onAssistantDelta(chunk, meta);
-  };
-
   return {
-    emit,
-    promoteCommentaryOnCompletedTurn: (turnStatus, allowCompletedTurnFallback) => {
-      if (
-        !allowCompletedTurnFallback
-        || String(turnStatus || "").trim() !== "completed"
-        || !observedNonEmptyText
-        || observedFinalAnswer
-      ) {
-        return false;
-      }
-      observedFinalAnswer = true;
-      onAssistantDelta("", { codexFinalAnswer: true });
-      return true;
-    },
+    emit: onAssistantDelta,
   };
 }
 
@@ -222,7 +192,7 @@ export function buildCodexThreadOptions(
   thinkingMode: ThinkingMode,
   interactiveMode: InteractiveMode,
   modelOverride?: string | null,
-  multiAgentEnabled = true
+  multiAgentEnabled = false
 ): CodexThreadOptions {
   const options: CodexThreadOptions = {
     workingDirectory: cwd,
@@ -309,7 +279,7 @@ export function buildCodexAppServerConfig(options: CodexThreadOptions): Record<s
       job_max_runtime_seconds: CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS,
     },
   };
-  if (options.multiAgentEnabled === false) {
+  if (options.multiAgentEnabled !== true) {
     config.features = {
       multi_agent: false,
     };

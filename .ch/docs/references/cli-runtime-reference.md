@@ -44,8 +44,8 @@
 - 会做 `initialize` / `initialized` 握手
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持项目级“执行后自动压缩上下文”开关（默认开启）；开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
-- 面板“工具设置”的全局页为 Codex / Claude / OpenCode 提供统一最终答复判定策略：`strict_final_answer`（严格 final_answer，默认）和 `successful_reply_fallback`（成功回复兼容）。该值以 `finalAnswerPolicy` 保存在 `~/.sinitek_cli/settings.json`，缺失或非法值按严格策略处理，并在下一次任务回合启动时生效；旧 `codexFinalAnswerPolicy=completed_turn_fallback` 会归一化为兼容策略。
+- 面板“工具设置”支持全局“执行后自动压缩上下文”开关 `autoCompactContextAfterRun`，保存在 `~/.sinitek_cli/settings.json`，默认开启。旧工作区 `autoCompactContextAfterRun` 和 `autoCompactContextBeforeRun` 仅作为迁移输入，全局字段缺失时按 after-run 优先、before-run 回退迁移当前工作区有效值；全局字段已有值时始终优先。开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
+- 面板“工具设置”不提供最终答复判定策略。普通任务固定使用严格 `[final_answer]` 协议；旧 `finalAnswerPolicy`、`codexFinalAnswerPolicy` 与历史兼容值会被忽略，不能放宽运行时终结判定。
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
@@ -54,7 +54,7 @@
   - add-dir
   - web search
   - thinking / reasoning effort
-- 面板“工具设置”支持项目级控制 Codex 官方 `multi_agent` 功能，默认关闭；关闭时扩展会显式禁用 Codex 官方 `multi_agent` 功能；开启时 Codex 可按自身运行时行为使用内置子智能体能力。App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。该设置只影响 Codex。
+- 面板“工具设置”支持全局统一“隐式子代理”开关 `multiAgentEnabled`，保存在 `~/.sinitek_cli/settings.json`，默认关闭。旧工作区 `multiAgentEnabled` 和 `codexMultiAgentEnabled` 仅作为迁移输入；全局值存在时优先级更高。关闭时扩展会显式禁用 Codex 官方 `multi_agent`，并为本次 OpenCode 运行的临时 `OPENCODE_CONFIG` overlay 合并顶层 `permission.task="deny"`；同时通过优先级更高的 `OPENCODE_CONFIG_CONTENT` 内联配置重申该拒绝，使项目配置不能重新放开 task 子代理。开启时不额外写入 OpenCode `permission.task`，以保留用户已有规则和 OpenCode 默认行为。该策略依据 OpenCode 官方 Agents / Config 文档（https://opencode.ai/docs/agents/、https://opencode.ai/docs/config/，2026-07-13 访问）：子代理由 `task` 权限控制，`OPENCODE_CONFIG` 和 `OPENCODE_CONFIG_CONTENT` 可提供运行时配置覆盖。两种覆盖都不写回用户配置文件，也不控制 Loop 的 `main_sub_multi_agent` / `debate_multi_agent` 编排。Codex App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。
 
 ### Claude
 
@@ -63,7 +63,7 @@
 - 同步传入当前模型、工作目录和 `user/project/local` settings
 - 通过 SDK session 做会话续接
 - 面板“常用命令 -> 压缩上下文”在 Claude 下优先直接发送官方 `/compact` slash command，并通过 SDK `status=compacting` / `compact_boundary` 事件判定原生压缩完成；若当前 Claude 环境明确不支持原生 compact，则回退到旧的“生成摘要后切新会话”兼容方案
-- 面板“工具设置”开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束且执行超过 5 分钟后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断、报错或执行不超过 5 分钟不触发
+- 面板“工具设置”全局开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束且执行超过 5 分钟后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断、报错或执行不超过 5 分钟不触发
 - Claude Code 2.1.118 的官方 CLI 帮助已提供 `--effort <level>`，取值为 `low`、`medium`、`high`、`xhigh`、`max`
 - 插件交互 Runner 优先通过 SDK `extraArgs.effort` 传递新版思考力度；若旧 Claude Code/SDK 不支持该参数，则回退到 `maxThinkingTokens`
 - 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
@@ -92,7 +92,7 @@
 - OpenCode 模式展示“主模型（model）”与“小模型（small_model）”两个下拉；候选只从当前 active config 的 `provider.<id>.models` 固定结构加载，值始终为精确 `provider/model`，不提供新增、编辑、删除、排序等模型管理入口。
 - 普通对话、one-shot、并行任务、Loop 主任务和 Loop 子任务的对话请求仍使用主模型。`small_model` 只供 OpenCode 内部标题等轻量请求使用，不等同于 Loop 子任务模型；CLI 没有 `--small-model`，插件若临时切换小模型，只能通过本次运行的 runtime config overlay 覆盖顶层 `small_model`。
 - primary/small 覆盖按 active config id 隔离，空值跟随顶层配置，配置切换或候选变化会清理失效覆盖；OpenCode 不读取通用 selected/options 或 Loop main/subtask 选择。
-- overlay 同时固定 effective `model` / `small_model`，使用随机临时目录、`0700` 目录权限和 `0600` 文件权限，通过 `OPENCODE_CONFIG` 注入，并在 exit/error/timeout/cancel 后清理。
+- overlay 同时固定 effective `model` / `small_model`；“隐式子代理”开关关闭时还会定向合并顶层 `permission.task="deny"`，其余权限和未知字段保持原样，并以 `OPENCODE_CONFIG_CONTENT` 内联覆盖确保项目配置不能推翻该 task 拒绝。它使用随机临时目录、`0700` 目录权限和 `0600` 文件权限，通过 `OPENCODE_CONFIG` 注入，并在 exit/error/timeout/cancel 后清理。
 - OpenCode 角色选择只接受 active config 候选中的精确 `provider/model`；裸模型 id、跨 provider 猜测或不在 `provider.<id>.models` 的引用会在启动前拒绝，不能自动补全。
 - OpenCode 运行前会对 effective primary、effective small 和 overlay 后配置做 preflight：缺少有效 primary、角色引用不是当前配置候选、provider/model 已被过滤或配置仍含占位值时阻止启动；OpenAI-compatible provider 缺少 `baseURL` 等未完成配置同样阻断。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
@@ -118,8 +118,8 @@
 
 ## 3.5 工具设置存储
 
-- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`）写入 `~/.sinitek_cli/settings.json`
-- 工具设置中的项目级项（如 `autoCompactContextAfterRun`、`codexMultiAgentEnabled`、`lobsterExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`；全局项（如 `lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/settings.json`，历史工作区字段仅作为兼容回退读取。
+- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`autoCompactContextAfterRun`、`multiAgentEnabled`、`locale`、`macTaskShell`、`lobsterMaxRounds`、`lobsterAutoCloseSubtaskTabs`）写入 `~/.sinitek_cli/settings.json`。
+- 工具设置中的项目级项（如 `lobsterExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`。旧工作区 `autoCompactContextAfterRun` / `autoCompactContextBeforeRun` 和 `multiAgentEnabled` / `codexMultiAgentEnabled` 分别只作为全局自动压缩、全局隐式子代理开关的迁移输入；全局字段缺失时迁移当前工作区值，成功迁移或用户更新全局设置后移除对应旧字段。
 - 工具设置“工作区”页中的 harness 骨架开关控制当前工作区基于 harness scaffold 的插件侧记忆层，默认关闭，并写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json` 的 `workspaceMemoryEnabled`。配置解析采用“显式 false 防误开优先”：兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。
@@ -197,7 +197,7 @@ Store 边界会丢弃非法类型、重复/非法/超量 ID、超长 guidance �
 
 实现与回归事实来源：`src/lobsterSkillGuidance.ts`、`src/extension.ts`、`src/lobsterTaskStore.ts`、`src/lobsterPromptBuilders.ts`、`src/lobsterDebateRunner.ts`、`src/test/lobsterSkillGuidance.test.ts`、`src/test/lobsterSkillIntegration.test.ts`、`src/test/lobsterTaskStore.test.ts`、`src/test/lobsterPromptBuilders.test.ts`。
 
-运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务只有在本轮用户消息之后产生符合当前策略的非 thinking assistant 最终结论气泡，才会按成功完成收口。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`，优先级最高；OpenCode `--format json` 中，同一 `messageID` 的非 thinking assistant `text` 与 `step_finish.reason="stop"` 配对时同样视为结构化最终答复，允许澄清提问等本轮面向用户的终态回复正常结束。缺少结构化 final 类型时，共享判定会把内容包含 `[final_answer]` 的非 thinking assistant 消息视为显式最终答复。默认 `strict_final_answer` 只接受结构化 final 或文本标记；`successful_reply_fallback` 额外接受成功退出后的普通非空 assistant 文本，其中 Codex 收到 `turn.completed status:"completed"` 时会发送空内容终态标记，把最后一条 assistant 气泡原位提升为最终结论，不复制正文或新增气泡。thinking、trace、system、user、旧回合消息、空回复、`failed`、`interrupted` 和主动停止都不得通过该 fallback 收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；`step_start`、`tool_use`、reasoning 和 `step_finish.reason="tool-calls"` 等 JSONL 事件只算运行活动，不算最终答复；其中 `text`、`reasoning`、`step_start` 和 `tool_use` 会实时转成 assistant / thinking / tool-use 气泡，避免只在结束时显示最终答复。OpenCode 的正文与 `stop` 必须属于同一 `messageID`；跨消息终态、无正文 `stop` 和纯 thinking 文本不得通过结构化判定。启动后 60 秒内若没有 assistant / error / status / progress 任一活动才按启动空输出失败处理；一旦已观察到运行活动就立即解除外层 watchdog，不再以父 stdout/stderr 静默时长判断卡死，因为 OpenCode 分组/子代理可能在内部持续读文件、调用模型和执行工具而父 JSONL 长时间没有新事件。OpenCode 非零退出、JSON error、空 assistant、启动空输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
+运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务的终结判定固定严格：只有本轮用户消息之后的非 thinking assistant 结构化终态，或包含 `[final_answer]` 的文本，才能按成功完成收口。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`，优先级最高；OpenCode `--format json` 中，同一 `messageID` 的非 thinking assistant `text` 与 `step_finish.reason="stop"` 配对时同样视为结构化最终答复。普通非空 assistant 文本、成功退出和 Codex `turn.completed status:"completed"` 都不构成或合成最终答复。thinking、trace、system、user、旧回合消息、空回复、`failed`、`interrupted` 和主动停止也不能收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；`step_start`、`tool_use`、reasoning 和 `step_finish.reason="tool-calls"` 等 JSONL 事件只算运行活动，不算最终答复；其中 `text`、`reasoning`、`step_start` 和 `tool_use` 会实时转成 assistant / thinking / tool-use 气泡，避免只在结束时显示最终答复。OpenCode 的正文与 `stop` 必须属于同一 `messageID`；跨消息终态、无正文 `stop` 和纯 thinking 文本不得通过结构化判定。启动后 60 秒内若没有 assistant / error / status / progress 任一活动才按启动空输出失败处理；一旦已观察到运行活动就立即解除外层 watchdog，不再以父 stdout/stderr 静默时长判断卡死，因为 OpenCode 分组/子代理可能在内部持续读文件、调用模型和执行工具而父 JSONL 长时间没有新事件。OpenCode 非零退出、JSON error、空 assistant、启动空输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
 
 展示层补充：Webview 仅在 assistant 气泡渲染时从展示文本中移除 `[final_answer]`，不改写用于严格判定、会话续接和存档的原始 assistant 内容；user、system 和 trace 消息保持原样。
 
@@ -218,7 +218,7 @@ Store 边界会丢弃非法类型、重复/非法/超量 ID、超长 guidance �
 
 映射数据通过 `src/interactive/metaStore.ts` 落盘，避免切换会话或重启 VS Code 后丢失续接能力。
 
-OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，没有 `--small-model` / `--small-variant`。插件因此把 effective `small_model` 和小模型 reasoning effort 写入随机 `OPENCODE_CONFIG` overlay。OpenCode 当前会把 small model 用于会话标题等内部轻量任务；普通 `build` 回合、Loop 子任务和 `explore` 子代理仍使用 primary。插件日志事件 `opencode-runtime-profile`、`runPrompt-start` 和 `runPrompt-parallel-start` 会记录 primary/small model 与各自 variant，作为运行时诊断依据。
+OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，没有 `--small-model` / `--small-variant`。插件因此把 effective `small_model` 和小模型 reasoning effort 写入随机 `OPENCODE_CONFIG` overlay；“隐式子代理”开关关闭时，同一 overlay 会合并 `permission.task="deny"`，并通过 `OPENCODE_CONFIG_CONTENT` 在项目配置之后再次拒绝 task 子代理。OpenCode 当前会把 small model 用于会话标题等内部轻量任务；普通 `build` 回合、Loop 子任务和 `explore` 子代理仍使用 primary。插件日志事件 `opencode-runtime-profile`、`runPrompt-start` 和 `runPrompt-parallel-start` 会记录 primary/small model、各自 variant 与隐式子代理开关状态，作为运行时诊断依据。
 
 ## 7. 当前平台注意事项
 

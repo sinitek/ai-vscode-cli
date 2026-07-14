@@ -22,9 +22,29 @@ export const TASKLIST_STYLES = `      /* Tasklist Panel */
       .tasklist-panel summary::-webkit-details-marker {
         display: none;
       }
+      .tasklist-summary-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .tasklist-toggle-icon {
+        width: 7px;
+        height: 7px;
+        border: solid currentColor;
+        border-width: 0 1px 1px 0;
+        flex-shrink: 0;
+        transform: rotate(-45deg);
+        transition: transform 120ms ease;
+      }
+      .tasklist-panel details[open] .tasklist-toggle-icon {
+        transform: rotate(45deg);
+      }
       .tasklist-count {
         font-size: 12px;
         opacity: 0.7;
+        flex-shrink: 0;
+        white-space: nowrap;
       }
       .tasklist-items {
         list-style: none;

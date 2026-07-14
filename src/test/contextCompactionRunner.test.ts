@@ -95,7 +95,7 @@ function createSilentCodexCompactionDeps() {
     appendSystemMessage: () => {
       calls.appendSystemMessage += 1;
     },
-    getWorkspaceCodexMultiAgentEnabled: () => false,
+    getGlobalMultiAgentEnabled: () => false,
     upsertInteractiveMapping: () => {},
     sendRawStreamDelta: () => {},
     sendPanelMessage: () => {},
@@ -252,7 +252,7 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
     appendSystemMessage: (content) => {
       calls.appendSystemMessages.push(content);
     },
-    getWorkspaceCodexMultiAgentEnabled: () => false,
+    getGlobalMultiAgentEnabled: () => false,
     upsertInteractiveMapping: () => {},
     sendRawStreamDelta: (content, streamOptions) => {
       calls.rawStreams.push({ stream: streamOptions?.stream, content });

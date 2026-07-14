@@ -81,12 +81,6 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         if (isActiveConversationTabResetLocked()) {
           return;
         }
-        applyAutoInteractiveModeForTab(null);
-        const activeTabId = getActiveConversationTabId();
-        if (activeTabId) {
-          resetConversationRuntimeState(activeTabId);
-        }
-        resetActiveViewForNewConversation();
         armPromptContextForConversationStart();
         vscode.postMessage({ type: "resetConversationTabSession" });
       }

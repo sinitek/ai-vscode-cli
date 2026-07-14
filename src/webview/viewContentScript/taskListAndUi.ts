@@ -30,6 +30,14 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
       }
 
+      function formatTaskListProgress(items) {
+        const total = Array.isArray(items) ? items.length : 0;
+        const completed = Array.isArray(items)
+          ? items.reduce((count, item) => count + (item && item.done ? 1 : 0), 0)
+          : 0;
+        return completed + "/" + total;
+      }
+
       function renderTaskList(taskListState) {
         if (!elements.taskListPanel || !elements.taskListDetails || !elements.taskListBody) {
           return;
@@ -50,7 +58,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         elements.taskListPanel.style.display = "block";
         elements.taskListDetails.open = activeTaskListState ? activeTaskListState.open : true;
         if (elements.taskListCount) {
-          elements.taskListCount.textContent = "(" + items.length + ")";
+          elements.taskListCount.textContent = formatTaskListProgress(items);
         }
         const list = document.createElement("ul");
         list.className = "tasklist-items";

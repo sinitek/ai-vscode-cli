@@ -557,7 +557,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function resolveAutoInteractiveModeForTab(tab) {
         const meta = getLobsterMetaForTabSummary(tab);
-        if (meta && (meta.taskRole === "main" || meta.taskRole === "subtask")) {
+        if (meta && meta.taskRole === "main") {
           return "lobster";
         }
         return "coding";

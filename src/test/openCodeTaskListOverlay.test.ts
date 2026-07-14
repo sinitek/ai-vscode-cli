@@ -1,10 +1,13 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../webview/viewContentI18n";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../webview/viewContentScript/traceRendering";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../webview/viewContentScript/windowMessageDispatch";
+import { TASKLIST_STYLES } from "../webview/viewContentStyles/tasklist";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;
@@ -78,6 +81,7 @@ function createFakeElement(): FakeElement {
 test("renders OpenCode task updates in the active task-list overlay", () => {
   const functionSources = [
     "setTaskListItems",
+    "formatTaskListProgress",
     "renderTaskList",
     "normalizeTaskListItems",
     "applyExternalTaskListUpdate",
@@ -128,19 +132,35 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
   const normalized = applyExternalTaskListUpdate([
     { content: "读取日志", status: "completed" },
     { content: "修复浮层", status: "in_progress" },
+    { content: "补充测试", status: "completed" },
+    { content: "构建扩展", status: "pending" },
   ], "tab-1");
 
   assert.deepEqual(normalized, [
     { text: "读取日志", done: true },
     { text: "修复浮层", done: false },
+    { text: "补充测试", done: true },
+    { text: "构建扩展", done: false },
   ]);
   assert.equal(taskListState.source, "external");
   assert.equal(taskListState.open, true);
   assert.equal(taskListPanel.style.display, "block");
   assert.equal(taskListDetails.open, true);
-  assert.equal(taskListCount.textContent, "(2)");
-  assert.equal(taskListBody.children[0]?.children.length, 2);
+  assert.equal(taskListCount.textContent, "2/4");
+  assert.equal(taskListBody.children[0]?.children.length, 4);
   assert.equal(taskListBody.children[0]?.children[0]?.children[0]?.checked, true);
+
+  taskListState.open = false;
+  taskListDetails.open = false;
+  applyExternalTaskListUpdate([
+    { content: "读取日志", status: "completed" },
+    { content: "修复浮层", status: "in_progress" },
+    { content: "补充测试", status: "completed" },
+    { content: "构建扩展", status: "pending" },
+  ], "tab-1");
+  assert.equal(taskListState.open, false);
+  assert.equal(taskListDetails.open, false);
+  assert.equal(taskListCount.textContent, "2/4");
 
   applyExternalTaskListUpdate([], "tab-1");
 
@@ -148,6 +168,29 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
   assert.equal(taskListState.source, "auto");
   assert.equal(taskListPanel.style.display, "none");
   assert.equal(taskListDetails.open, false);
+});
+
+test("renders a visible collapse icon in the task-list summary", () => {
+  const html = buildWebviewStaticHtml({
+    locale: "en",
+    cspSource: "self",
+    nonce: "nonce",
+    i18n: WEBVIEW_I18N.en,
+    cliOptions: "",
+    markedScript: "",
+    webviewStyles: "",
+    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+  });
+
+  assert.match(
+    html,
+    /<summary>\s*<span class="tasklist-summary-title">\s*<span class="tasklist-toggle-icon" aria-hidden="true"><\/span>\s*<span>Task List<\/span>/,
+  );
+  assert.match(
+    TASKLIST_STYLES,
+    /\.tasklist-panel details\[open\] \.tasklist-toggle-icon\s*\{[\s\S]*transform:\s*rotate\(45deg\)/,
+  );
 });
 
 test("preserves an external task list while its conversation tab is running", () => {

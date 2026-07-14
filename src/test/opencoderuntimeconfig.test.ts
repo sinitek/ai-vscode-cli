@@ -65,3 +65,23 @@ test("writes independent OpenCode reasoning effort overlays for both role models
   assert.equal(parsed.provider.provider.models.tiny.options?.reasoningEffort, "low");
   overlay.cleanup();
 });
+
+test("preserves a unified multi-agent task denial in the temporary config", () => {
+  const result = createOpenCodeRuntimeConfigOverlay({
+    configContent: JSON.stringify({
+      model: "provider/default",
+      permission: { edit: "ask", task: "deny" },
+      provider: { provider: { models: { default: {} } } },
+    }),
+    primaryModel: "provider/default",
+    smallModel: null,
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.overlay);
+  const overlay = result.overlay!;
+  const parsed = JSON.parse(fs.readFileSync(overlay.configPath, "utf8")) as {
+    permission?: Record<string, unknown>;
+  };
+  assert.deepEqual(parsed.permission, { edit: "ask", task: "deny" });
+  overlay.cleanup();
+});

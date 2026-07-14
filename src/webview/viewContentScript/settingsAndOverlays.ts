@@ -82,27 +82,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           });
         });
       }
-      if (elements.codexMultiAgentEnabled) {
-        elements.codexMultiAgentEnabled.addEventListener("change", (event) => {
+      if (elements.multiAgentEnabled) {
+        elements.multiAgentEnabled.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
-          state.codexMultiAgentEnabled = enabled;
+          state.multiAgentEnabled = enabled;
           vscode.postMessage({
             type: "updateSetting",
-            key: "codexMultiAgentEnabled",
+            key: "multiAgentEnabled",
             value: enabled,
-          });
-        });
-      }
-      if (elements.finalAnswerPolicy) {
-        elements.finalAnswerPolicy.addEventListener("change", (event) => {
-          const nextValue = event.target.value === "\${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}"
-            ? "\${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}"
-            : "\${FINAL_ANSWER_POLICY_DEFAULT}";
-          state.finalAnswerPolicy = nextValue;
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "finalAnswerPolicy",
-            value: nextValue,
           });
         });
       }

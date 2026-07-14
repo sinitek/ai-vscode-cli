@@ -13,8 +13,6 @@ export type BuildWebviewStaticHtmlInput = {
   webviewStyles: string;
   lobsterExecutionModeMainSubMultiAgent: string;
   lobsterExecutionModeDebateMultiAgent: string;
-  finalAnswerPolicySuccessfulReplyFallback: string;
-  finalAnswerPolicyStrict: string;
 };
 
 export function buildWebviewStaticHtml(
@@ -30,8 +28,6 @@ export function buildWebviewStaticHtml(
     webviewStyles,
     lobsterExecutionModeMainSubMultiAgent,
     lobsterExecutionModeDebateMultiAgent,
-    finalAnswerPolicySuccessfulReplyFallback,
-    finalAnswerPolicyStrict,
   } = input;
   const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT =
     lobsterExecutionModeMainSubMultiAgent;
@@ -128,7 +124,10 @@ ${webviewStyles}    </style>
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
         <details id="taskListDetails">
           <summary>
-            <span>${i18n.taskListTitle}</span>
+            <span class="tasklist-summary-title">
+              <span class="tasklist-toggle-icon" aria-hidden="true"></span>
+              <span>${i18n.taskListTitle}</span>
+            </span>
             <span id="taskListCount" class="tasklist-count"></span>
           </summary>
           <div id="taskListBody"></div>
@@ -355,12 +354,20 @@ ${webviewStyles}    </style>
                   <span>${i18n.toolSettingsAutoContextToggle}</span>
                 </label>
               </div>
-              <div class="tool-settings-row tool-settings-policy-row">
-                <div class="tool-settings-label">${i18n.toolSettingsFinalAnswerPolicyLabel}</div>
-                <select id="finalAnswerPolicy" class="tool-settings-select" title="${i18n.toolSettingsFinalAnswerPolicyTitle}" aria-label="${i18n.toolSettingsFinalAnswerPolicyAria}">
-                  <option value="${finalAnswerPolicyStrict}">${i18n.toolSettingsFinalAnswerPolicyStrict}</option>
-                  <option value="${finalAnswerPolicySuccessfulReplyFallback}">${i18n.toolSettingsFinalAnswerPolicyCompletedTurn}</option>
-                </select>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsImplicitSubagentsLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsImplicitSubagentsTitle}">
+                  <input type="checkbox" id="multiAgentEnabled" />
+                  <span>${i18n.toolSettingsImplicitSubagentsToggle}</span>
+                </label>
+              </div>
+              <div class="tool-settings-note">${i18n.toolSettingsImplicitSubagentsHint}</div>
+              <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
+                  <input type="checkbox" id="autoCompactContextAfterRun" />
+                  <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
+                </label>
               </div>
               <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
@@ -399,21 +406,6 @@ ${webviewStyles}    </style>
               </div>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
-                  <input type="checkbox" id="autoCompactContextAfterRun" />
-                  <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsCodexMultiAgentLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsCodexMultiAgentTitle}">
-                  <input type="checkbox" id="codexMultiAgentEnabled" />
-                  <span>${i18n.toolSettingsCodexMultiAgentToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-note">${i18n.toolSettingsCodexMultiAgentHint}</div>
               <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
                 <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">

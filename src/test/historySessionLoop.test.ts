@@ -125,8 +125,6 @@ test("removes the standalone Loop group chat recovery tab", () => {
     webviewStyles: "",
     lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
-    finalAnswerPolicySuccessfulReplyFallback: "successful_reply_fallback",
-    finalAnswerPolicyStrict: "strict_final_answer",
   });
 
   assert.doesNotMatch(html, /historyTabLobsterGroupChats/);

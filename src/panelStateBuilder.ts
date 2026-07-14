@@ -79,9 +79,8 @@ export type PanelStateBuilderDeps = {
   getWorkspaceConfiguration: () => PanelConfiguration;
   getAutoAddEditorContextTags: typeof getAutoAddEditorContextTags;
   getEffectiveLongTermMemoryEnabled: () => boolean;
-  getWorkspaceAutoCompactContextAfterRun: () => boolean;
-  getWorkspaceCodexMultiAgentEnabled: () => boolean;
-  getGlobalFinalAnswerPolicy: () => PanelState["finalAnswerPolicy"];
+  getGlobalAutoCompactContextAfterRun: () => boolean;
+  getGlobalMultiAgentEnabled: () => boolean;
   getGlobalLobsterMaxRounds: () => number;
   getGlobalLobsterAutoCloseSubtaskTabs: () => boolean;
   buildWorkspaceLobsterExecutionModeByCli: () => PanelState["lobsterExecutionModeByCli"];
@@ -119,9 +118,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     autoAddEditorContextTags: deps.getAutoAddEditorContextTags(),
     longTermMemoryEnabled: deps.getEffectiveLongTermMemoryEnabled(),
     workspaceMemoryEnabled: deps.workspaceSettings.workspaceMemoryEnabled === true,
-    autoCompactContextAfterRun: deps.getWorkspaceAutoCompactContextAfterRun(),
-    codexMultiAgentEnabled: deps.getWorkspaceCodexMultiAgentEnabled(),
-    finalAnswerPolicy: deps.getGlobalFinalAnswerPolicy(),
+    autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
+    multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
     lobsterMaxRounds: deps.getGlobalLobsterMaxRounds(),
     lobsterAutoCloseSubtaskTabs: deps.getGlobalLobsterAutoCloseSubtaskTabs(),
     lobsterExecutionModeByCli: deps.buildWorkspaceLobsterExecutionModeByCli(),

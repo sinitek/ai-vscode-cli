@@ -63,10 +63,6 @@ export type CodexStreamHandlers = {
   onEvent?: (event: unknown) => void;
 };
 
-export type CodexStreamRunOptions = {
-  allowCompletedTurnFinalAnswerFallback?: boolean;
-};
-
 type JsonRpcPendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -505,8 +501,7 @@ export class CodexInteractiveRunner {
 
   public async runStreamed(
     prompt: string,
-    handlers: CodexStreamHandlers,
-    runOptions: CodexStreamRunOptions = {}
+    handlers: CodexStreamHandlers
   ): Promise<void> {
     await this.ensureReady();
 
@@ -970,15 +965,6 @@ export class CodexInteractiveRunner {
             if (turnStatus === "failed") {
               settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
             } else {
-              if (turnAssistantObserver.promoteCommentaryOnCompletedTurn(
-                turnStatus,
-                runOptions.allowCompletedTurnFinalAnswerFallback !== false
-              )) {
-                void logInfo("codex-app-server-commentary-promoted-final-answer", {
-                  threadId: this.options.threadId,
-                  turnStatus,
-                });
-              }
               settleTurnCompletion();
             }
             setTimeout(() => shutdownChild("graceful"), 0);

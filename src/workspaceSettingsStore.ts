@@ -27,9 +27,14 @@ export type WorkspaceSettings = {
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
   lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
+  /** @deprecated After-run context compaction is global; keep only for migration reads. */
   autoCompactContextAfterRun?: boolean;
+  /** @deprecated Before-run context compaction is a legacy global migration input. */
   autoCompactContextBeforeRun?: boolean;
   workspaceMemoryEnabled?: boolean;
+  /** @deprecated Implicit subagents are global; keep only for migration reads. */
+  multiAgentEnabled?: boolean;
+  /** @deprecated Implicit subagents are global; keep only for legacy migration reads. */
   codexMultiAgentEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
   lobsterMaxRounds?: number;
@@ -95,9 +100,14 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       });
       result.lobsterExecutionModeByCli = normalized;
     }
-    const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
-    if (typeof codexMultiAgentEnabled === "boolean") {
-      result.codexMultiAgentEnabled = codexMultiAgentEnabled;
+    const multiAgentEnabled = (parsed as WorkspaceSettings).multiAgentEnabled;
+    if (typeof multiAgentEnabled === "boolean") {
+      result.multiAgentEnabled = multiAgentEnabled;
+    } else {
+      const codexMultiAgentEnabled = (parsed as WorkspaceSettings).codexMultiAgentEnabled;
+      if (typeof codexMultiAgentEnabled === "boolean") {
+        result.multiAgentEnabled = codexMultiAgentEnabled;
+      }
     }
     const autoCompactContextAfterRun = (parsed as WorkspaceSettings).autoCompactContextAfterRun;
     if (typeof autoCompactContextAfterRun === "boolean") {

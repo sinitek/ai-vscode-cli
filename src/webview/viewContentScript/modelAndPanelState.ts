@@ -291,10 +291,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.longTermMemoryEnabled = panelState.longTermMemoryEnabled === true;
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
-        state.codexMultiAgentEnabled = Boolean(panelState.codexMultiAgentEnabled);
-        state.finalAnswerPolicy = panelState.finalAnswerPolicy === "\${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}"
-          ? "\${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}"
-          : "\${FINAL_ANSWER_POLICY_DEFAULT}";
+        state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
         state.lobsterAutoCloseSubtaskTabs = Boolean(panelState.lobsterAutoCloseSubtaskTabs);
         state.lobsterExecutionModeByCli = normalizeLobsterExecutionModeByCli(
@@ -346,11 +343,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
         }
-        if (elements.codexMultiAgentEnabled) {
-          elements.codexMultiAgentEnabled.checked = state.codexMultiAgentEnabled;
-        }
-        if (elements.finalAnswerPolicy) {
-          elements.finalAnswerPolicy.value = state.finalAnswerPolicy;
+        if (elements.multiAgentEnabled) {
+          elements.multiAgentEnabled.checked = state.multiAgentEnabled;
         }
         if (elements.lobsterMaxRounds) {
           elements.lobsterMaxRounds.value = String(state.lobsterMaxRounds);

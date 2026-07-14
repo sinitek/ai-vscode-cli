@@ -2,6 +2,8 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  applyOpenCodeRuntimeMultiAgentEnvOverrides,
+  applyOpenCodeRuntimeMultiAgentPermission,
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
   validateOpenCodeModelOverride,
@@ -209,4 +211,64 @@ test("creates a runtime overlay without mutating the source config", () => {
   });
   assert.deepEqual(followingConfig.config, source);
   assert.notEqual(followingConfig.config, source);
+});
+
+test("keeps OpenCode task permissions unchanged when multi-agent is enabled", () => {
+  const source = {
+    model: "one/main",
+    permission: {
+      edit: "ask",
+      task: { "review-*": "deny" },
+    },
+  };
+  const snapshot = JSON.parse(JSON.stringify(source));
+
+  const overlay = applyOpenCodeRuntimeMultiAgentPermission(source, true);
+
+  assert.deepEqual(overlay, source);
+  assert.notEqual(overlay, source);
+  assert.deepEqual(source, snapshot);
+});
+
+test("denies only OpenCode task subagents when multi-agent is disabled", () => {
+  const source = {
+    model: "one/main",
+    permission: {
+      edit: "ask",
+      task: { "review-*": "allow" },
+    },
+    custom: { preserved: true },
+  };
+  const snapshot = JSON.parse(JSON.stringify(source));
+
+  const overlay = applyOpenCodeRuntimeMultiAgentPermission(source, false);
+
+  assert.deepEqual(overlay, {
+    ...source,
+    permission: {
+      edit: "ask",
+      task: "deny",
+    },
+  });
+  assert.deepEqual(source, snapshot);
+});
+
+test("uses a higher-precedence inline OpenCode config only when multi-agent is disabled", () => {
+  const source = {
+    KEEP: "value",
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
+  };
+
+  const enabled = applyOpenCodeRuntimeMultiAgentEnvOverrides(source, true);
+  const disabled = applyOpenCodeRuntimeMultiAgentEnvOverrides(source, false);
+
+  assert.deepEqual(enabled, source);
+  assert.deepEqual(JSON.parse(disabled.OPENCODE_CONFIG_CONTENT), {
+    permission: { task: "deny" },
+  });
+  assert.equal(disabled.KEEP, "value");
+  assert.deepEqual(source, {
+    KEEP: "value",
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
+  });
 });

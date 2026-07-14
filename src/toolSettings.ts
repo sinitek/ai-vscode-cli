@@ -5,24 +5,15 @@ import { MacTaskShell } from "./cli/types";
 
 export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 
-export const FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK = "successful_reply_fallback" as const;
-export const FINAL_ANSWER_POLICY_STRICT = "strict_final_answer" as const;
-export const FINAL_ANSWER_POLICY_DEFAULT = FINAL_ANSWER_POLICY_STRICT;
-
-const LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK = "completed_turn_fallback";
-
-export type FinalAnswerPolicy =
-  | typeof FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
-  | typeof FINAL_ANSWER_POLICY_STRICT;
-
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
+  autoCompactContextAfterRun?: boolean;
+  multiAgentEnabled?: boolean;
   lobsterMaxRounds?: number;
   lobsterAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
-  finalAnswerPolicy?: FinalAnswerPolicy;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   longTermMemoryEnabled?: boolean;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -52,17 +43,6 @@ export type ResolveLongTermMemoryEnabledInput = LongTermMemorySettingsInput & {
   workspaceSettings?: LongTermMemorySettingsInput | null;
 };
 
-export function normalizeFinalAnswerPolicy(value: unknown): FinalAnswerPolicy {
-  if (value === FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
-    || value === LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK) {
-    return FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK;
-  }
-  if (value === FINAL_ANSWER_POLICY_STRICT) {
-    return FINAL_ANSWER_POLICY_STRICT;
-  }
-  return FINAL_ANSWER_POLICY_DEFAULT;
-}
-
 export function normalizeToolSettings(value: unknown): ToolSettingsState {
   const normalized: ToolSettingsState = {};
   if (!value || typeof value !== "object") {
@@ -74,6 +54,12 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.autoAddEditorContextTags === "boolean") {
     normalized.autoAddEditorContextTags = record.autoAddEditorContextTags;
+  }
+  if (typeof record.autoCompactContextAfterRun === "boolean") {
+    normalized.autoCompactContextAfterRun = record.autoCompactContextAfterRun;
+  }
+  if (typeof record.multiAgentEnabled === "boolean") {
+    normalized.multiAgentEnabled = record.multiAgentEnabled;
   }
   if (typeof record.lobsterMaxRounds === "number" || typeof record.lobsterMaxRounds === "string") {
     const parsed = typeof record.lobsterMaxRounds === "number"
@@ -92,14 +78,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (record.macTaskShell === "zsh" || record.macTaskShell === "bash") {
     normalized.macTaskShell = record.macTaskShell;
   }
-  const finalAnswerPolicy = record.finalAnswerPolicy ?? record.codexFinalAnswerPolicy;
-  if (
-    finalAnswerPolicy === FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK
-    || finalAnswerPolicy === FINAL_ANSWER_POLICY_STRICT
-    || finalAnswerPolicy === LEGACY_CODEX_FINAL_ANSWER_POLICY_COMPLETED_TURN_FALLBACK
-  ) {
-    normalized.finalAnswerPolicy = normalizeFinalAnswerPolicy(finalAnswerPolicy);
-  }
   if (typeof record.longTermMemoryEnabled === "boolean") {
     normalized.longTermMemoryEnabled = record.longTermMemoryEnabled;
   }
@@ -116,6 +94,41 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     normalized.memoryAutoExtractAfterLobsterTask = record.memoryAutoExtractAfterLobsterTask;
   }
   return normalized;
+}
+
+export function resolveGlobalMultiAgentEnabled(
+  globalSettings?: Pick<ToolSettingsState, "multiAgentEnabled"> | null,
+  legacyWorkspaceSettings?: {
+    multiAgentEnabled?: boolean;
+    codexMultiAgentEnabled?: boolean;
+  } | null,
+): boolean {
+  if (typeof globalSettings?.multiAgentEnabled === "boolean") {
+    return globalSettings.multiAgentEnabled;
+  }
+  if (typeof legacyWorkspaceSettings?.multiAgentEnabled === "boolean") {
+    return legacyWorkspaceSettings.multiAgentEnabled;
+  }
+  return legacyWorkspaceSettings?.codexMultiAgentEnabled === true;
+}
+
+export function resolveGlobalAutoCompactContextAfterRun(
+  globalSettings?: Pick<ToolSettingsState, "autoCompactContextAfterRun"> | null,
+  legacyWorkspaceSettings?: {
+    autoCompactContextAfterRun?: boolean;
+    autoCompactContextBeforeRun?: boolean;
+  } | null,
+): boolean {
+  if (typeof globalSettings?.autoCompactContextAfterRun === "boolean") {
+    return globalSettings.autoCompactContextAfterRun;
+  }
+  if (typeof legacyWorkspaceSettings?.autoCompactContextAfterRun === "boolean") {
+    return legacyWorkspaceSettings.autoCompactContextAfterRun;
+  }
+  if (typeof legacyWorkspaceSettings?.autoCompactContextBeforeRun === "boolean") {
+    return legacyWorkspaceSettings.autoCompactContextBeforeRun;
+  }
+  return true;
 }
 
 export function resolveLongTermMemoryEnabled(input?: ResolveLongTermMemoryEnabledInput | null): boolean {

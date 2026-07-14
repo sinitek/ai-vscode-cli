@@ -80,7 +80,7 @@ test("buildCodexThreadOptions preserves CLI behavior and plan overrides", () => 
       workingDirectory: "/repo",
       skipGitRepoCheck: true,
       modelReasoningEffort: "medium",
-      multiAgentEnabled: true,
+      multiAgentEnabled: false,
       approvalPolicy: "untrusted",
       sandboxMode: "read-only",
     }
@@ -169,6 +169,7 @@ test("request builders produce initialize, thread, and turn params", () => {
     sandbox: "workspace-write",
     config: {
       agents: { job_max_runtime_seconds: 86400 },
+      features: { multi_agent: false },
       web_search: "live",
     },
     experimentalRawEvents: false,
@@ -335,40 +336,20 @@ test("item event helper keeps child-thread output out of the parent assistant st
   assert.equal(assistantBuffers.has("child-1:msg-1"), false);
 });
 
-test("completed Codex turns promote commentary text to a final answer exactly once", () => {
+test("Codex assistant observer forwards only explicit final-answer metadata", () => {
   const emitted: Array<{ chunk: string; final?: boolean }> = [];
   const observer = createCodexTurnAssistantObserver((chunk, meta) => {
     emitted.push({ chunk, final: meta?.codexFinalAnswer });
   });
 
   observer.emit("Commentary answer");
+  observer.emit("Explicit final", { codexFinalAnswer: true });
 
-  assert.equal(observer.promoteCommentaryOnCompletedTurn("completed", true), true);
-  assert.equal(observer.promoteCommentaryOnCompletedTurn("completed", true), false);
+  assert.equal("promoteCommentaryOnCompletedTurn" in observer, false);
   assert.deepEqual(emitted, [
     { chunk: "Commentary answer", final: undefined },
-    { chunk: "", final: true },
+    { chunk: "Explicit final", final: true },
   ]);
-});
-
-test("Codex turn fallback preserves explicit finals and rejects empty or unsuccessful turns", () => {
-  const explicitFinal = createCodexTurnAssistantObserver(() => {});
-  explicitFinal.emit("Done", { codexFinalAnswer: true });
-  assert.equal(explicitFinal.promoteCommentaryOnCompletedTurn("completed", true), false);
-
-  const emptyTurn = createCodexTurnAssistantObserver(() => {});
-  emptyTurn.emit("   ");
-  assert.equal(emptyTurn.promoteCommentaryOnCompletedTurn("completed", true), false);
-
-  const strictTurn = createCodexTurnAssistantObserver(() => {});
-  strictTurn.emit("Process update");
-  assert.equal(strictTurn.promoteCommentaryOnCompletedTurn("completed", false), false);
-
-  for (const status of ["failed", "interrupted", ""] as const) {
-    const unsuccessfulTurn = createCodexTurnAssistantObserver(() => {});
-    unsuccessfulTurn.emit("Process update");
-    assert.equal(unsuccessfulTurn.promoteCommentaryOnCompletedTurn(status, true), false);
-  }
 });
 
 test("trace candidate helper rejects blanks and repeated item content", () => {

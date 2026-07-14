@@ -26,10 +26,7 @@ import type {
   PromptRunInputForPanel,
 } from "../sessionMessageHandlers";
 import type { CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell, ThinkingMode } from "../cli/types";
-import {
-  normalizeFinalAnswerPolicy,
-  type ToolSettingsState,
-} from "../toolSettings";
+import type { ToolSettingsState } from "../toolSettings";
 import type { ChatMessage, PanelMessage } from "../webview/types";
 import type { WorkspaceSettings } from "../workspaceSettingsStore";
 
@@ -235,12 +232,12 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     loadModelStore: () => undefined,
     normalizeLobsterMaxRounds: () => 20,
     normalizeToolSettingsLocale: () => null,
-    normalizeFinalAnswerPolicy,
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),
     updateStoredToolSettings: (patch) => {
       calls.toolSettingsPatches.push(patch);
+      return true;
     },
     isMacTaskShell: (value: unknown): value is MacTaskShell => value === "zsh" || value === "bash",
     confirmAndInitializeWorkspaceHarness: async () => true,
@@ -420,6 +417,76 @@ test("persists the OpenCode Loop execution mode by CLI", async () => {
   assert.equal(calls.postPanelState, 1);
 });
 
+test("persists implicit subagents globally and removes legacy workspace fields", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  state.workspaceSettings = {
+    multiAgentEnabled: true,
+    codexMultiAgentEnabled: true,
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "multiAgentEnabled",
+    value: false,
+  }, deps);
+
+  assert.deepEqual(calls.toolSettingsPatches, [{ multiAgentEnabled: false }]);
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.savedSettings, [{}]);
+  assert.equal(calls.postPanelState, 1);
+});
+
+test("keeps legacy workspace values when the global implicit-subagents save fails", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  state.workspaceSettings = { multiAgentEnabled: true };
+  deps.updateStoredToolSettings = () => false;
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "multiAgentEnabled",
+    value: false,
+  }, deps);
+
+  assert.deepEqual(state.workspaceSettings, { multiAgentEnabled: true });
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 1);
+});
+
+test("persists automatic compaction globally and removes legacy workspace fields", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  state.workspaceSettings = {
+    autoCompactContextAfterRun: true,
+    autoCompactContextBeforeRun: true,
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "autoCompactContextAfterRun",
+    value: false,
+  }, deps);
+
+  assert.deepEqual(calls.toolSettingsPatches, [{ autoCompactContextAfterRun: false }]);
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.savedSettings, [{}]);
+  assert.equal(calls.postPanelState, 1);
+});
+
+test("keeps legacy automatic-compaction values when the global save fails", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  state.workspaceSettings = { autoCompactContextAfterRun: false };
+  deps.updateStoredToolSettings = () => false;
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "autoCompactContextAfterRun",
+    value: true,
+  }, deps);
+
+  assert.deepEqual(state.workspaceSettings, { autoCompactContextAfterRun: false });
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 1);
+});
+
 test("persists ultra and declares it in the VS Code thinking settings schema", async () => {
   const { deps, calls, state } = createSendPromptHarness("codex");
 
@@ -452,31 +519,22 @@ test("persists ultra and declares it in the VS Code thinking settings schema", a
   assert.match(chineseNls["config.thinkingArgs.claude.ultra.description"], /ultra/);
 });
 
-test("persists the normalized global final-answer policy", async () => {
+test("ignores retired final-answer policy setting messages", async () => {
   const { deps, calls } = createSendPromptHarness();
 
   await handlePanelMessageWithDeps({
     type: "updateSetting",
     key: "finalAnswerPolicy",
-    value: "strict_final_answer",
-  }, deps);
-  await handlePanelMessageWithDeps({
-    type: "updateSetting",
-    key: "finalAnswerPolicy",
-    value: "invalid",
-  }, deps);
-  await handlePanelMessageWithDeps({
-    type: "updateSetting",
-    key: "finalAnswerPolicy",
     value: "successful_reply_fallback",
   }, deps);
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "codexFinalAnswerPolicy",
+    value: "completed_turn_fallback",
+  }, deps);
 
-  assert.deepEqual(calls.toolSettingsPatches, [
-    { finalAnswerPolicy: "strict_final_answer" },
-    { finalAnswerPolicy: "strict_final_answer" },
-    { finalAnswerPolicy: "successful_reply_fallback" },
-  ]);
-  assert.equal(calls.postPanelState, 3);
+  assert.deepEqual(calls.toolSettingsPatches, []);
+  assert.equal(calls.postPanelState, 0);
 });
 
 test("forces a manual OpenCode Loop subtask continuation through coding runPrompt", async () => {

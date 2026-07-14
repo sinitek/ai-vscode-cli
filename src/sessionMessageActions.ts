@@ -66,16 +66,28 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "codexMultiAgentEnabled") {
-    workspaceSettings.codexMultiAgentEnabled = Boolean(message.value);
-    deps.saveWorkspaceSettings(workspaceSettings);
+  if (message.key === "multiAgentEnabled" || message.key === "codexMultiAgentEnabled") {
+    const savedGlobally = deps.updateStoredToolSettings({ multiAgentEnabled: Boolean(message.value) });
+    if (savedGlobally
+      && ("multiAgentEnabled" in workspaceSettings || "codexMultiAgentEnabled" in workspaceSettings)) {
+      delete workspaceSettings.multiAgentEnabled;
+      delete workspaceSettings.codexMultiAgentEnabled;
+      deps.saveWorkspaceSettings(workspaceSettings);
+    }
     await deps.postPanelState();
     return;
   }
   if (message.key === "autoCompactContextAfterRun" || message.key === "autoCompactContextBeforeRun") {
-    workspaceSettings.autoCompactContextAfterRun = Boolean(message.value);
-    delete workspaceSettings.autoCompactContextBeforeRun;
-    deps.saveWorkspaceSettings(workspaceSettings);
+    const savedGlobally = deps.updateStoredToolSettings({
+      autoCompactContextAfterRun: Boolean(message.value),
+    });
+    if (savedGlobally
+      && ("autoCompactContextAfterRun" in workspaceSettings
+        || "autoCompactContextBeforeRun" in workspaceSettings)) {
+      delete workspaceSettings.autoCompactContextAfterRun;
+      delete workspaceSettings.autoCompactContextBeforeRun;
+      deps.saveWorkspaceSettings(workspaceSettings);
+    }
     await deps.postPanelState();
     return;
   }
@@ -105,13 +117,6 @@ export async function handleUpdateSettingMessage(
   }
   if (message.key === "autoAddEditorContextTags") {
     deps.updateStoredToolSettings({ autoAddEditorContextTags: Boolean(message.value) });
-    await deps.postPanelState();
-    return;
-  }
-  if (message.key === "finalAnswerPolicy") {
-    deps.updateStoredToolSettings({
-      finalAnswerPolicy: deps.normalizeFinalAnswerPolicy(message.value),
-    });
     await deps.postPanelState();
     return;
   }

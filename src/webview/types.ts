@@ -8,7 +8,6 @@ import {
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 import type { LobsterTaskStatus } from "../lobsterTaskStore";
-import type { FinalAnswerPolicy } from "../toolSettings";
 
 export type ConfigSummary = {
   id: string;
@@ -208,8 +207,7 @@ export type PanelState = {
   longTermMemoryEnabled: boolean;
   workspaceMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
-  codexMultiAgentEnabled: boolean;
-  finalAnswerPolicy: FinalAnswerPolicy;
+  multiAgentEnabled: boolean;
   lobsterMaxRounds: number;
   lobsterAutoCloseSubtaskTabs: boolean;
   lobsterExecutionModeByCli?: Record<CliName, LobsterExecutionMode>;

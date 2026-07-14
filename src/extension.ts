@@ -69,6 +69,8 @@ import {
   type OpenCodeTabStreamAction,
 } from "./openCodeTabStream";
 import {
+  applyOpenCodeRuntimeMultiAgentEnvOverrides,
+  applyOpenCodeRuntimeMultiAgentPermission,
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
   validateOpenCodeModelOverride,
@@ -205,6 +207,7 @@ import {
   normalizeLobsterDebateParticipantStance,
   parseLobsterDebateChatTranscript,
   resolveLobsterAnswerConclusion,
+  isLobsterTaskRunOrphaned,
   resolveLobsterTaskRunControlState,
   selectDefaultLobsterDebateOpeningSpeakerIds,
   validateLobsterDebateConsensus,
@@ -275,10 +278,9 @@ import {
   type LobsterSubtaskCompletionOptions,
 } from "./lobsterSubtaskLifecycle";
 import {
-  FINAL_ANSWER_POLICY_STRICT,
-  normalizeFinalAnswerPolicy,
   readToolSettings,
-  type FinalAnswerPolicy,
+  resolveGlobalAutoCompactContextAfterRun,
+  resolveGlobalMultiAgentEnabled,
   type ToolSettingsLocale,
   type ToolSettingsState,
   writeToolSettings,
@@ -328,6 +330,7 @@ import {
   buildConversationTabSessionLookupKey,
   createSessionTabsController,
   getConversationTabSessionIdForCli,
+  resolveAutoInteractiveModeForLobsterTask,
   sanitizeConversationTabRecordForWorkspaceSettings,
   sanitizeConversationTabSessionIdMap,
   setConversationTabSessionIdForCli,
@@ -571,6 +574,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const activeLobsterOrchestrationTaskIds = new Set<string>();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -831,6 +835,8 @@ export function activate(context: vscode.ExtensionContext): void {
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
+  migrateLegacyMultiAgentSettingFromWorkspace();
+  migrateLegacyAutoCompactContextAfterRunFromWorkspace();
   // Restore currentCli from workspace settings, or use default
   currentCli = workspaceSettings.currentCli || getDefaultCli();
   modelStore = loadModelStore();
@@ -1067,7 +1073,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     loadModelStore: () => { modelStore = loadModelStore(); },
     normalizeLobsterMaxRounds,
     normalizeToolSettingsLocale,
-    normalizeFinalAnswerPolicy,
     isCliName,
     updateStoredToolSettings,
     isMacTaskShell,
@@ -1127,9 +1132,8 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getWorkspaceConfiguration: () => vscode.workspace.getConfiguration("sinitek-cli-tools"),
     getAutoAddEditorContextTags,
     getEffectiveLongTermMemoryEnabled,
-    getWorkspaceAutoCompactContextAfterRun,
-    getWorkspaceCodexMultiAgentEnabled,
-    getGlobalFinalAnswerPolicy,
+    getGlobalAutoCompactContextAfterRun,
+    getGlobalMultiAgentEnabled,
     getGlobalLobsterMaxRounds,
     getGlobalLobsterAutoCloseSubtaskTabs,
     buildWorkspaceLobsterExecutionModeByCli,
@@ -1521,6 +1525,8 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
+  migrateLegacyMultiAgentSettingFromWorkspace();
+  migrateLegacyAutoCompactContextAfterRunFromWorkspace();
   // Restore currentCli from workspace settings, or keep current if not set
   if (workspaceSettings.currentCli) {
     currentCli = workspaceSettings.currentCli;
@@ -1548,19 +1554,70 @@ function getExplicitGlobalConfigValue<T>(key: string): T | undefined {
   return inspected?.globalValue;
 }
 
-function saveStoredToolSettings(next: ToolSettingsState): void {
+function saveStoredToolSettings(next: ToolSettingsState): boolean {
   try {
     writeToolSettings(next);
+    return true;
   } catch (error) {
     void logError("tool-settings-write-error", { error: String(error) });
+    return false;
   }
 }
 
-function updateStoredToolSettings(patch: Partial<ToolSettingsState>): void {
-  saveStoredToolSettings({
+function updateStoredToolSettings(patch: Partial<ToolSettingsState>): boolean {
+  return saveStoredToolSettings({
     ...readToolSettings(),
     ...patch,
   });
+}
+
+function migrateLegacyMultiAgentSettingFromWorkspace(): void {
+  const hasLegacyWorkspaceValue = typeof workspaceSettings.multiAgentEnabled === "boolean"
+    || typeof workspaceSettings.codexMultiAgentEnabled === "boolean";
+  if (!hasLegacyWorkspaceValue) {
+    return;
+  }
+
+  const globalSettings = readToolSettings();
+  if (typeof globalSettings.multiAgentEnabled !== "boolean") {
+    const migrated = saveStoredToolSettings({
+      ...globalSettings,
+      multiAgentEnabled: resolveGlobalMultiAgentEnabled(globalSettings, workspaceSettings),
+    });
+    if (!migrated) {
+      return;
+    }
+  }
+
+  delete workspaceSettings.multiAgentEnabled;
+  delete workspaceSettings.codexMultiAgentEnabled;
+  saveWorkspaceSettings(workspaceSettings);
+}
+
+function migrateLegacyAutoCompactContextAfterRunFromWorkspace(): void {
+  const hasLegacyWorkspaceValue = typeof workspaceSettings.autoCompactContextAfterRun === "boolean"
+    || typeof workspaceSettings.autoCompactContextBeforeRun === "boolean";
+  if (!hasLegacyWorkspaceValue) {
+    return;
+  }
+
+  const globalSettings = readToolSettings();
+  if (typeof globalSettings.autoCompactContextAfterRun !== "boolean") {
+    const migrated = saveStoredToolSettings({
+      ...globalSettings,
+      autoCompactContextAfterRun: resolveGlobalAutoCompactContextAfterRun(
+        globalSettings,
+        workspaceSettings,
+      ),
+    });
+    if (!migrated) {
+      return;
+    }
+  }
+
+  delete workspaceSettings.autoCompactContextAfterRun;
+  delete workspaceSettings.autoCompactContextBeforeRun;
+  saveWorkspaceSettings(workspaceSettings);
 }
 
 function migrateLegacyToolSettingsFromVsCodeConfig(): void {
@@ -1929,8 +1986,14 @@ async function prepareOpenCodeRuntime(
   if (!overlay.ok || !overlay.config) {
     throw new Error(overlay.issues.map((issue) => issue.message).join("\n"));
   }
+  const multiAgentEnabled = getGlobalMultiAgentEnabled();
+  const runtimeConfig = applyOpenCodeRuntimeMultiAgentPermission(
+    overlay.config,
+    multiAgentEnabled,
+  );
+  const runtimeConfigContent = JSON.stringify(runtimeConfig);
   const validation = configService.validateOpenCodeConfigForRun(
-    JSON.stringify(overlay.config),
+    runtimeConfigContent,
     current.envContent
   );
   if (!validation.ok) {
@@ -1942,11 +2005,15 @@ async function prepareOpenCodeRuntime(
     smallModel: roles.small,
     primaryVariant,
     smallVariant,
+    multiAgentEnabled,
     smallModelUsage: "opencode-internal-lightweight",
   });
   return {
-    envOverrides: configService.parseEnvText(current.envContent ?? ""),
-    configContent,
+    envOverrides: applyOpenCodeRuntimeMultiAgentEnvOverrides(
+      configService.parseEnvText(current.envContent ?? ""),
+      multiAgentEnabled,
+    ),
+    configContent: runtimeConfigContent,
     primaryModel: roles.primary,
     smallModel: roles.small,
     primaryVariant,
@@ -2540,6 +2607,8 @@ function collectRunningLobsterTaskIds(): Set<string> {
     }
   };
 
+  activeLobsterOrchestrationTaskIds.forEach(addTaskId);
+
   if (isPrimaryRunActive()) {
     const primaryTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
       ?? (Array.isArray(activeMessageTarget)
@@ -2571,6 +2640,10 @@ function isLobsterTaskRunning(
   if (!task) {
     return runningTaskIds.has(taskId);
   }
+  if (isLobsterTaskRunOrphaned(task, runningTaskIds)) {
+    markLobsterTaskStoppedAfterRuntimeEnded(taskId);
+    return false;
+  }
   return resolveLobsterTaskRunControlState(task, runningTaskIds).isRunning;
 }
 
@@ -2581,9 +2654,7 @@ function resolveAutoInteractiveModeForConversationTab(
     return "coding";
   }
   const context = resolveConversationTabLobsterContext(tab);
-  return context.taskRole === "main" || context.taskRole === "subtask"
-    ? "lobster"
-    : "coding";
+  return resolveAutoInteractiveModeForLobsterTask(context.taskRole, context.lobsterTaskId);
 }
 
 function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
@@ -3769,16 +3840,41 @@ async function runLobsterPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
 ): Promise<void> {
+  const ownership: { taskId: string | null; target: PromptRunTarget | null } = {
+    taskId: null,
+    target: null,
+  };
   try {
-    await runLobsterPromptOrchestration(input, options);
+    await runLobsterPromptOrchestration(input, options, (taskId, target) => {
+      ownership.taskId = taskId;
+      ownership.target = target;
+      activeLobsterOrchestrationTaskIds.add(taskId);
+    });
+  } catch (error) {
+    const failureMessage = errorToMessage(error);
+    void logError("lobster-orchestration-unhandled-error", {
+      taskId: ownership.taskId,
+      tabId: ownership.target?.tabId ?? null,
+      error: failureMessage,
+    });
+    if (ownership.taskId && ownership.target && readLobsterTaskRecord(ownership.taskId)?.status === "running") {
+      markLobsterTaskInterrupted(ownership.taskId, "error", ownership.target, {
+        source: "main",
+        failureMessage,
+      });
+    }
   } finally {
+    if (ownership.taskId) {
+      activeLobsterOrchestrationTaskIds.delete(ownership.taskId);
+    }
     await postPanelState();
   }
 }
 
 async function runLobsterPromptOrchestration(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
+  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {},
+  onTaskOwnershipAcquired?: (taskId: string, target: PromptRunTarget) => void,
 ): Promise<void> {
   const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
   if (!target || !input.displayPrompt.trim()) {
@@ -3869,9 +3965,13 @@ async function runLobsterPromptOrchestration(
     ));
   }
 
+  if (!task) {
+    return;
+  }
+  onTaskOwnershipAcquired?.(task.id, target);
   await postPanelState();
 
-  while (task && round <= task.maxRounds) {
+  while (round <= task.maxRounds) {
     const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
     task = latest;
     if (isLobsterTaskBlockedByMainAiFailureLimit(latest)) {
@@ -7497,15 +7597,20 @@ function markLobsterTaskInterrupted(
   }
 }
 
-function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null {
+function markLobsterTaskStopped(
+  taskId: string,
+  options: {
+    finalSummary?: string;
+    subtaskSummary?: string;
+    participantSummary?: string;
+  } = {},
+): LobsterTaskRecord | null {
   const task = readLobsterTaskRecord(taskId);
   if (!task || isLobsterTaskCompleted(task)) {
     return task;
   }
 
   const now = Date.now();
-  const stopSummary = "用户已从 Loop 群聊中止任务。";
-  const subtaskStopSummary = "用户已从 Loop 群聊中止该子任务。";
   const activeSubtaskIds = new Set(getActiveLobsterSubtaskIds(task));
   const subTasks = task.subTasks.map((subtask) => {
     const shouldStopSubtask = activeSubtaskIds.has(subtask.id)
@@ -7517,7 +7622,9 @@ function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null 
     return {
       ...subtask,
       status: "blocked" as const,
-      summary: subtask.summary || subtaskStopSummary,
+      ...(subtask.summary || options.subtaskSummary
+        ? { summary: subtask.summary || options.subtaskSummary }
+        : {}),
       updatedAt: now,
     };
   });
@@ -7529,7 +7636,9 @@ function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null 
       return {
         ...participant,
         status: "stopped" as const,
-        summary: participant.summary || "用户已从 Loop 群聊中止该参与者任务。",
+        ...(participant.summary || options.participantSummary
+          ? { summary: participant.summary || options.participantSummary }
+          : {}),
         updatedAt: now,
       };
     });
@@ -7554,10 +7663,30 @@ function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null 
     activeSubtaskIds: [],
     subTasks,
     ...(debateRounds ? { debateRounds } : {}),
-    finalSummary: stopSummary,
+    ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
     updatedAt: now,
   });
   refreshOpenLobsterDebateChatPanelForTask(taskId);
+  return record;
+}
+
+function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null {
+  return markLobsterTaskStopped(taskId, {
+    finalSummary: "用户已从 Loop 群聊中止任务。",
+    subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
+    participantSummary: "用户已从 Loop 群聊中止该参与者任务。",
+  });
+}
+
+function markLobsterTaskStoppedAfterRuntimeEnded(taskId: string): LobsterTaskRecord | null {
+  const record = markLobsterTaskStopped(taskId);
+  if (record) {
+    void logInfo("lobster-task-runtime-state-reconciled", {
+      taskId,
+      previousStatus: "running",
+      nextStatus: record.status,
+    });
+  }
   return record;
 }
 
@@ -8902,7 +9031,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     interactiveRunnerManager,
     resolveInteractiveMappedId,
     appendSystemMessage,
-    getWorkspaceCodexMultiAgentEnabled,
+    getGlobalMultiAgentEnabled,
     upsertInteractiveMapping,
     sendRawStreamDelta,
     sendPanelMessage: (message) => sendPanelMessage(message),
@@ -8932,7 +9061,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
 }
 
 function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boolean {
-  if (!getWorkspaceAutoCompactContextAfterRun()) {
+  if (!getGlobalAutoCompactContextAfterRun()) {
     return false;
   }
   if (!isAutoContextCompactionCli(target.cli)) {
@@ -9642,7 +9771,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               thinkingMode,
               interactiveMode,
               model: selectedModel,
-              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+              multiAgentEnabled: getGlobalMultiAgentEnabled(),
             })
           : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
               command,
@@ -9652,7 +9781,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               interactiveMode,
               model: selectedModel,
               threadId: null,
-              multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+              multiAgentEnabled: getGlobalMultiAgentEnabled(),
             });
 
         stopCurrentTurn = () => runner.stopAndRebuild();
@@ -9718,14 +9847,11 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
             });
             if (uiSessionId) {
               interactiveRunnerManager.setRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-                multiAgentEnabled: getWorkspaceCodexMultiAgentEnabled(),
+                multiAgentEnabled: getGlobalMultiAgentEnabled(),
               });
             }
             syncInteractiveRunEntry();
           },
-        }, {
-          allowCompletedTurnFinalAnswerFallback:
-            !shouldRequireExplicitFinalAnswerForRun(input),
         });
         const finalConclusionState = handleMissingFinalConclusionForTab("codex");
         if (finalConclusionState.action === "stopped") {
@@ -10519,17 +10645,12 @@ function buildWorkspaceLobsterExecutionModeByCli(): Record<CliName, LobsterExecu
   return result;
 }
 
-function getWorkspaceCodexMultiAgentEnabled(): boolean {
-  return workspaceSettings.codexMultiAgentEnabled === true;
-}
-
-function getGlobalFinalAnswerPolicy(): FinalAnswerPolicy {
-  return normalizeFinalAnswerPolicy(readToolSettings().finalAnswerPolicy);
+function getGlobalMultiAgentEnabled(): boolean {
+  return resolveGlobalMultiAgentEnabled(readToolSettings(), workspaceSettings);
 }
 
 function shouldRequireExplicitFinalAnswerForRun(input: { lobsterTaskId?: string }): boolean {
-  return !input.lobsterTaskId
-    && getGlobalFinalAnswerPolicy() === FINAL_ANSWER_POLICY_STRICT;
+  return !input.lobsterTaskId;
 }
 
 function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
@@ -10684,14 +10805,8 @@ async function maybePromptInitializeArchitectureWithAi(workspaceRoot: string): P
   void runPrompt(preparedInput, { targetTabId });
 }
 
-function getWorkspaceAutoCompactContextAfterRun(): boolean {
-  if (typeof workspaceSettings.autoCompactContextAfterRun === "boolean") {
-    return workspaceSettings.autoCompactContextAfterRun;
-  }
-  if (typeof workspaceSettings.autoCompactContextBeforeRun === "boolean") {
-    return workspaceSettings.autoCompactContextBeforeRun;
-  }
-  return true;
+function getGlobalAutoCompactContextAfterRun(): boolean {
+  return resolveGlobalAutoCompactContextAfterRun(readToolSettings(), workspaceSettings);
 }
 
 function normalizeLobsterMaxRounds(value: unknown): number {
@@ -11143,6 +11258,7 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 
 async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
   if (isTabRunActive(tabId) || isLobsterMainTabCloseLocked(tabId)) {
+    await postPanelState();
     return;
   }
   const closingTab = getConversationTabById(tabId);
@@ -11211,6 +11327,7 @@ async function resetConversationTabSession(): Promise<void> {
     return;
   }
   if (isTabRunActive(activeTab.id) || isLobsterMainTabCloseLocked(activeTab.id)) {
+    await postPanelState();
     return;
   }
   const previousTabId = activeTab.id;

@@ -20,6 +20,7 @@ import {
   findLatestLobsterDebateModeratorSessionId,
   findLatestLobsterDebateParticipantSessionId,
   isLobsterDebateAdversarialParticipantRole,
+  isLobsterTaskRunOrphaned,
   LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES,
   LOBSTER_DEBATE_BLUE_TEAM_ROLE,
   LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
@@ -97,6 +98,12 @@ test("resolves lobster task run controls from persisted running status", () => {
   assert.equal(controlState.canSupplement, true);
   assert.equal(controlState.canStop, true);
   assert.equal(controlState.canContinue, false);
+});
+
+test("identifies a persisted running Loop task without runtime ownership as orphaned", () => {
+  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
+  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);
+  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "stopped" }, new Set()), false);
 });
 
 test("keeps lobster continue available only for incomplete non-running tasks", () => {

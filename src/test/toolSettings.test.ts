@@ -2,55 +2,73 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
-  FINAL_ANSWER_POLICY_STRICT,
-  normalizeFinalAnswerPolicy,
   normalizeToolSettings,
+  resolveGlobalAutoCompactContextAfterRun,
+  resolveGlobalMultiAgentEnabled,
   resolveLongTermMemoryEnabled,
   type ToolSettingsState,
 } from "../toolSettings";
 
-test("defaults the global final-answer policy to strict mode", () => {
-  assert.equal(
-    normalizeFinalAnswerPolicy(undefined),
-    FINAL_ANSWER_POLICY_STRICT,
-  );
-  assert.equal(
-    normalizeFinalAnswerPolicy("unknown"),
-    FINAL_ANSWER_POLICY_STRICT,
-  );
-  assert.equal(
-    normalizeFinalAnswerPolicy(FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK),
-    FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+test("ignores retired final-answer policy fields", () => {
+  assert.deepEqual(
+    normalizeToolSettings({
+      debug: true,
+      finalAnswerPolicy: "successful_reply_fallback",
+      codexFinalAnswerPolicy: "completed_turn_fallback",
+    }),
+    { debug: true },
   );
 });
 
-test("persists only known global final-answer policies", () => {
+test("normalizes the global implicit-subagents setting", () => {
   assert.deepEqual(
-    normalizeToolSettings({
-      finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT,
-    }),
-    { finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT },
+    normalizeToolSettings({ multiAgentEnabled: true }),
+    { multiAgentEnabled: true },
   );
   assert.deepEqual(
-    normalizeToolSettings({ finalAnswerPolicy: "unknown" }),
+    normalizeToolSettings({ multiAgentEnabled: "true" }),
     {},
   );
 });
 
-test("migrates the legacy Codex completed-turn policy to the global compatibility policy", () => {
-  assert.equal(
-    normalizeFinalAnswerPolicy("completed_turn_fallback"),
-    FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK,
+test("resolves the global implicit-subagents setting before legacy workspace values", () => {
+  assert.equal(resolveGlobalMultiAgentEnabled({}, {}), false);
+  assert.equal(resolveGlobalMultiAgentEnabled({ multiAgentEnabled: false }, {
+    multiAgentEnabled: true,
+  }), false);
+  assert.equal(resolveGlobalMultiAgentEnabled({ multiAgentEnabled: true }, {
+    multiAgentEnabled: false,
+  }), true);
+  assert.equal(resolveGlobalMultiAgentEnabled({}, { multiAgentEnabled: true }), true);
+  assert.equal(resolveGlobalMultiAgentEnabled({}, { codexMultiAgentEnabled: true }), true);
+});
+
+test("normalizes the global automatic-compaction setting", () => {
+  assert.deepEqual(
+    normalizeToolSettings({ autoCompactContextAfterRun: false }),
+    { autoCompactContextAfterRun: false },
   );
   assert.deepEqual(
-    normalizeToolSettings({ codexFinalAnswerPolicy: "completed_turn_fallback" }),
-    { finalAnswerPolicy: FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK },
+    normalizeToolSettings({ autoCompactContextAfterRun: "false" }),
+    {},
   );
-  assert.deepEqual(
-    normalizeToolSettings({ codexFinalAnswerPolicy: "strict_final_answer" }),
-    { finalAnswerPolicy: FINAL_ANSWER_POLICY_STRICT },
-  );
+});
+
+test("resolves global automatic compaction before legacy workspace values", () => {
+  assert.equal(resolveGlobalAutoCompactContextAfterRun({}, {}), true);
+  assert.equal(resolveGlobalAutoCompactContextAfterRun({ autoCompactContextAfterRun: false }, {
+    autoCompactContextAfterRun: true,
+  }), false);
+  assert.equal(resolveGlobalAutoCompactContextAfterRun({ autoCompactContextAfterRun: true }, {
+    autoCompactContextAfterRun: false,
+  }), true);
+  assert.equal(resolveGlobalAutoCompactContextAfterRun({}, {
+    autoCompactContextAfterRun: false,
+    autoCompactContextBeforeRun: true,
+  }), false);
+  assert.equal(resolveGlobalAutoCompactContextAfterRun({}, {
+    autoCompactContextBeforeRun: false,
+  }), false);
 });
 
 test("resolves long-term memory disabled by default without requiring persisted settings", () => {

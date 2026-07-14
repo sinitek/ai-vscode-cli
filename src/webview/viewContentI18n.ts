@@ -132,22 +132,16 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextTitle:
       "Automatically add the current file/selection as input context tags",
     toolSettingsAutoContextToggle: "On",
-    toolSettingsFinalAnswerPolicyLabel: "Final Reply Detection",
-    toolSettingsFinalAnswerPolicyAria: "Final reply detection policy for all CLI tools",
-    toolSettingsFinalAnswerPolicyTitle:
-      "Global setting for all CLI tools. Strict mode accepts a structured final_answer or assistant text containing [final_answer]. Compatibility mode also accepts an ordinary assistant reply after a successful run.",
-    toolSettingsFinalAnswerPolicyCompletedTurn: "Successful reply compatibility",
-    toolSettingsFinalAnswerPolicyStrict: "Strict final_answer (Default)",
     toolSettingsAutoCompactAfterRunLabel: "Auto Compact After Run",
     toolSettingsAutoCompactAfterRunTitle:
-      "Workspace setting for Codex, Claude, and OpenCode. Automatically compact context after a successful task finishes.",
+      "Global setting for Codex, Claude, and OpenCode. Automatically compact context after a successful task finishes.",
     toolSettingsAutoCompactAfterRunToggle: "On",
-    toolSettingsCodexMultiAgentLabel: "Codex Multi-Agent",
-    toolSettingsCodexMultiAgentTitle:
-      "Workspace setting. Allow Codex's official multi_agent sub-agent capability.",
-    toolSettingsCodexMultiAgentToggle: "On",
-    toolSettingsCodexMultiAgentHint:
-      "Off by default. When disabled, the extension explicitly disables Codex's official multi_agent feature. When enabled, Codex may use its built-in sub-agent capability according to Codex's own runtime behavior. This setting only affects Codex.",
+    toolSettingsImplicitSubagentsLabel: "Implicit Subagents",
+    toolSettingsImplicitSubagentsTitle:
+      "Global setting for implicit subagent capabilities in Codex and OpenCode.",
+    toolSettingsImplicitSubagentsToggle: "On",
+    toolSettingsImplicitSubagentsHint:
+      "Global and off by default. When disabled, the extension disables Codex multi_agent and denies OpenCode task subagents for this run. When enabled, it preserves each CLI's available implicit subagent capabilities and OpenCode task permissions. This setting does not affect Loop orchestration.",
     toolSettingsLobsterMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLobsterMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
@@ -495,22 +489,16 @@ export const WEBVIEW_I18N = {
     toolSettingsAutoContextLabel: "自动文件标签",
     toolSettingsAutoContextTitle: "自动将当前文件/选区加入输入框上下文标签",
     toolSettingsAutoContextToggle: "开启",
-    toolSettingsFinalAnswerPolicyLabel: "最终答复判定",
-    toolSettingsFinalAnswerPolicyAria: "所有 CLI 的最终答复判定策略",
-    toolSettingsFinalAnswerPolicyTitle:
-      "所有 CLI 的全局设置。严格模式接受结构化 final_answer 或包含 [final_answer] 的助手文本；兼容模式还接受任务成功退出后的普通助手答复。",
-    toolSettingsFinalAnswerPolicyCompletedTurn: "成功回复兼容",
-    toolSettingsFinalAnswerPolicyStrict: "严格 final_answer（默认）",
     toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩上下文",
     toolSettingsAutoCompactAfterRunTitle:
-      "Codex、Claude、OpenCode 的工作区设置。任务成功结束后自动压缩上下文。",
+      "Codex、Claude、OpenCode 的全局设置。任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
-    toolSettingsCodexMultiAgentLabel: "Codex 多智能体",
-    toolSettingsCodexMultiAgentTitle:
-      "工作区设置。允许 Codex 官方 multi_agent 子智能体能力。",
-    toolSettingsCodexMultiAgentToggle: "开启",
-    toolSettingsCodexMultiAgentHint:
-      "默认关闭。关闭时，扩展会显式禁用 Codex 官方 multi_agent 功能。开启后，Codex 可按自身运行时行为使用内置子智能体能力。该设置只影响 Codex。",
+    toolSettingsImplicitSubagentsLabel: "隐式子代理",
+    toolSettingsImplicitSubagentsTitle:
+      "Codex 和 OpenCode 隐式子代理能力的全局设置。",
+    toolSettingsImplicitSubagentsToggle: "开启",
+    toolSettingsImplicitSubagentsHint:
+      "全局配置，默认关闭。关闭时，扩展会禁用 Codex multi_agent，并在本次 OpenCode 运行中拒绝 task 子代理。开启后，扩展保留各 CLI 自身可用的隐式子代理能力和 OpenCode task 权限。此设置不影响 Loop 编排。",
     toolSettingsLobsterMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLobsterMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",

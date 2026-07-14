@@ -77,6 +77,37 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+export function applyOpenCodeRuntimeMultiAgentPermission(
+  config: Readonly<Record<string, unknown>>,
+  multiAgentEnabled: boolean
+): Record<string, unknown> {
+  const overlay: Record<string, unknown> = { ...config };
+  if (multiAgentEnabled) {
+    return overlay;
+  }
+
+  const permission = isPlainObject(config.permission)
+    ? { ...config.permission }
+    : {};
+  overlay.permission = {
+    ...permission,
+    task: "deny",
+  };
+  return overlay;
+}
+
+export function applyOpenCodeRuntimeMultiAgentEnvOverrides(
+  envOverrides: Readonly<Record<string, string>>,
+  multiAgentEnabled: boolean
+): Record<string, string> {
+  const next = { ...envOverrides };
+  if (!multiAgentEnabled) {
+    // Inline config has higher OpenCode precedence than a project config.
+    next.OPENCODE_CONFIG_CONTENT = JSON.stringify({ permission: { task: "deny" } });
+  }
+  return next;
+}
+
 function addIssue(issues: OpenCodeConfigModelIssue[], issue: OpenCodeConfigModelIssue): void {
   if (!issues.some((current) => (
     current.code === issue.code

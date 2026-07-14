@@ -522,7 +522,7 @@ export type ContextCompactionRunDeps = {
   interactiveRunnerManager: ContextCompactionRunnerManager;
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
   appendSystemMessage: (content: string) => void;
-  getWorkspaceCodexMultiAgentEnabled: () => boolean;
+  getGlobalMultiAgentEnabled: () => boolean;
   upsertInteractiveMapping: (
     cli: CliName,
     localSessionId: string,
@@ -658,7 +658,7 @@ export async function runContextCompactionWithDeps(
         thinkingMode,
         interactiveMode,
         model: selectedModel,
-        multiAgentEnabled: deps.getWorkspaceCodexMultiAgentEnabled(),
+        multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
       deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
@@ -673,7 +673,7 @@ export async function runContextCompactionWithDeps(
           compacted: result.compacted,
         });
         deps.interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-          multiAgentEnabled: deps.getWorkspaceCodexMultiAgentEnabled(),
+          multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
         });
       } finally {
         deps.interactiveRunnerManager.endActiveRun(cli, sessionId);

@@ -32,6 +32,15 @@ type LobsterConversationTabContext = {
 
 export type SessionTabsController = ReturnType<typeof createSessionTabsController>;
 
+export function resolveAutoInteractiveModeForLobsterTask(
+  taskRole: LobsterConversationTabContext["taskRole"],
+  lobsterTaskId: LobsterConversationTabContext["lobsterTaskId"],
+): InteractiveMode {
+  return taskRole === "main" && typeof lobsterTaskId === "string" && lobsterTaskId.trim()
+    ? "lobster"
+    : "coding";
+}
+
 export function buildConversationTabSessionLookupKey(cli: CliName, sessionId: string): string {
   return `${cli}:${sessionId}`;
 }
@@ -382,13 +391,13 @@ export function createSessionTabsController(deps: {
       tabs: state.tabs.map((tab) => {
         const lobsterContext = deps.resolveConversationTabLobsterContext(tab);
         const lobsterTaskId = lobsterContext.lobsterTaskId;
-        const lobsterTaskStatus = typeof lobsterTaskId === "string"
-          ? deps.getLobsterTaskStatus(lobsterTaskId)
-          : null;
         const lobsterTaskRunning = (
           typeof lobsterTaskId === "string"
           && deps.isLobsterTaskRunning(lobsterTaskId, runningLobsterTaskIds)
         );
+        const lobsterTaskStatus = typeof lobsterTaskId === "string"
+          ? deps.getLobsterTaskStatus(lobsterTaskId)
+          : null;
         const lobsterMainTabCloseLocked = (
           lobsterContext.taskRole === "main"
           && lobsterTaskRunning

@@ -20,8 +20,6 @@ export type BuildWebviewRuntimeScriptInput = {
   lobsterMaxRoundsMax: number;
   lobsterExecutionModeMainSubMultiAgent: string;
   lobsterExecutionModeDebateMultiAgent: string;
-  finalAnswerPolicyDefault: string;
-  finalAnswerPolicySuccessfulReplyFallback: string;
   finalAnswerTextMarker: string;
 };
 
@@ -54,8 +52,6 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOBSTER_MAX_ROUNDS_SETTING_MAX}", String(input.lobsterMaxRoundsMax)],
     ["${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.lobsterExecutionModeMainSubMultiAgent],
     ["${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.lobsterExecutionModeDebateMultiAgent],
-    ["${FINAL_ANSWER_POLICY_DEFAULT}", input.finalAnswerPolicyDefault],
-    ["${FINAL_ANSWER_POLICY_SUCCESSFUL_REPLY_FALLBACK}", input.finalAnswerPolicySuccessfulReplyFallback],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(

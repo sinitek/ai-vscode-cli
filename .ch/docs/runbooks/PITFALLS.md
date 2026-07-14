@@ -22,27 +22,27 @@
 
 ### 现象
 - Codex 已在 AI 对话中输出非空 assistant 答复，并以 `turn.completed status:"completed"` 正常结束，但该回合所有 `agent_message` 都是 `phase:"commentary"`，没有 `phase:"final_answer"`。
-- 如果插件只接受显式 `final_answer`，会显示“任务已退出，但没有产生最终结论气泡，自动继续”，对同一已结束回合重复发送“继续”。
+- 固定严格协议下，这类回合不能被视为最终答复，必须显示“任务已退出，但没有产生最终结论气泡，自动继续”，并按 hidden retry 约定请求显式终态。
 
 ### 触发条件与根因
 - 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。
 - `phase` 描述消息阶段，`turn.completed status:"completed"` 描述结构化回合终态。不同 Codex 模型或版本可能成功结束一个没有显式 final phase 的回合，不能假设两者永远同时出现；Claude / OpenCode 也没有统一等价的 `final_answer` phase 可供插件依赖。
-- 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义。
+- 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义；因此不再保留成功回复兼容回退。
 
 ### 长期规避
 - 所有普通任务和 hidden retry 的实际模型 prompt 都追加统一约定：任务完成后的最终回复必须以 `[final_answer]` 开头，过程更新不得使用该标记；不要改写界面里的原始用户消息。
 - Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
 - 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化类型时，只从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
-- `[final_answer]` 只能在 Webview assistant 气泡的展示文本中移除；不能提前改写 `message.content` 或会话存档，否则默认严格策略、历史恢复和 hidden retry 会丢失兜底终态信号。
-- 全局默认 `strict_final_answer`，只接受结构化 final 或文本标记。可选 `successful_reply_fallback` 才额外接受成功退出后的普通 assistant 文本；Codex completed-turn 原位提升仅在该兼容策略生效。
-- 空回复、failed、interrupted 和主动停止不得提升。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
+- `[final_answer]` 只能在 Webview assistant 气泡的展示文本中移除；不能提前改写 `message.content` 或会话存档，否则固定严格协议、历史恢复和 hidden retry 会丢失兜底终态信号。
+- 普通任务固定只接受结构化 final 或文本标记；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。Codex `turn.completed status:"completed"` 不得把 commentary 原位提升为最终答复。
+- 空回复、failed、interrupted、主动停止和 commentary-only completed turn 都不得收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
 
 ### 验证方式
 - 对 Codex / Claude / OpenCode 的首轮和 hidden retry prompt 断言都含最终回复标记约定。
-- 对 Loop 机器协议断言首轮和 hidden retry prompt 都不含 `[final_answer]`，且全局严格策略不会覆盖其专用终态规则。
-- 严格模式断言结构化 final 和 `[final_answer]` assistant 文本通过；普通正文、thinking 中的标记和当前用户锚点之前的旧标记不通过。
-- 兼容模式用 `commentary agent_message -> turn.completed completed` 断言 Codex 只提升一次且不复制正文；显式 final 不重复提升，空文本、failed、interrupted 和缺失状态都不提升。
-- 工具设置缺失或非法策略值时应显示并使用“严格 final_answer（默认）”；切换兼容策略后下一次任务立即生效；旧 Codex 设置能迁移为新兼容值。
+- 对 Loop 机器协议断言首轮和 hidden retry prompt 都不含 `[final_answer]`，且普通任务的固定严格协议不会覆盖其专用终态规则。
+- 断言结构化 final 和 `[final_answer]` assistant 文本通过；普通正文、thinking 中的标记和当前用户锚点之前的旧标记不通过。
+- 用 `commentary agent_message -> turn.completed completed` 断言 Codex 不会产生合成的 `codexFinalAnswer`；显式 final 仍按上游元数据转发。
+- 断言工具设置中的遗留策略字段和旧消息键都不会改变运行时行为。
 
 ### 关联资料
 - `src/toolSettings.ts`
@@ -567,6 +567,46 @@
 - `.gitignore`
 - `dist/test/lobsterBoundaryRecord.test.js`（已清理的历史生成物）
 
+## Loop `running` 状态不能脱离当前运行所有权永久锁定 Tab
+
+- 状态：已规避
+- 首次发现：2026-07-13
+- 适用范围：Loop 主任务 conversation tab、关闭 Tab、重置当前会话、任务队列、Extension Host 异常或重载后的任务记录
+
+### 现象
+
+- 任务 tab 已不再有主任务、子任务、裁判或参与者 CLI 进程，但任务记录仍为 `running`，关闭和重置会被静默拒绝。
+- 旧 Webview 在重置请求发出时先清空本地消息；扩展端随后因同一锁定条件拒绝操作，用户切回原 tab 后又看到原会话，形成“重置无效”的假成功体验。
+
+### 触发条件与根因
+
+- Loop 的持久化 `running` 状态原本用于保护主任务与子任务、裁判主持人与参与者之间没有单个 CLI 进程的编排空档。
+- 如果编排路径出现未捕获异常，或 Extension Host 已不再拥有该任务的执行上下文，记录没有被写入 `error` / `stopped`，仅用持久化状态判断会把残留记录永久视为运行中。
+- 前端乐观清空会话并不能证明“新建空白 Tab + 关闭旧 Tab”已经在扩展端成功完成；前后端锁定状态短暂不同步时会放大这个问题。
+
+### 长期规避
+
+- 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLobsterPrompt` 从任务创建/恢复到收尾期间维护 `activeLobsterOrchestrationTaskIds`，并与主、并行和交互 CLI 运行集合合并；该集合存在时仍要保护编排空档。
+- 任务记录为 `running` 但没有任何当前运行所有权时，收敛为 `stopped`，清空活跃子任务 ID，并把仍为 `pending` / `running` 的子任务和辩论参与者写入终态；不要继续保留关闭锁。
+- `runLobsterPrompt` 的未捕获异常必须把仍为 `running` 的任务写成 `error`，然后再释放运行所有权。
+- 重置当前会话只能由扩展端成功完成新建空白 Tab、关闭旧 Tab 后通过 PanelState 和 `setMessages` 更新 Webview；请求发送前不得清空旧 Tab 消息或强制切换交互模式。编辑器上下文的下一次提示意图可以保留，但不能替代成功确认。
+
+### 验证方式
+
+- 构造 `status="running"` 且运行所有权集合为空的任务，确认状态收敛为 `stopped`，主任务 Tab 解除关闭和重置锁；同一任务存在主/并行/交互运行或编排所有权时仍保持锁定。
+- 断言 SessionTabs 在运行态判定后再读取任务状态，避免本轮已经收敛为 `stopped` 却把旧 `running` 回传给 Webview。
+- 断言 Webview 的重置请求只发送消息并保留旧视图，Extension Host 拒绝时不会出现空白会话；成功时由回推状态切换到空白 Tab。
+- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/lobsterDebate.test.js dist/test/sessionMessageActions.test.js`。
+
+### 关联资料
+
+- `src/extension.ts`
+- `src/lobsterDebate.ts`
+- `src/sessionTabs.ts`
+- `src/webview/viewContentScript/eventBindings.ts`
+- `src/test/conversationTabLock.test.ts`
+- `src/test/lobsterDebate.test.ts`
+
 ## Loop 编排角色不能复用为模型角色
 
 - 状态：已规避
@@ -636,14 +676,14 @@
 
 - 状态：已规避
 - 首次发现：2026-07-12
-- 适用范围：OpenCode `run --format json`、严格最终答复策略、one-shot / 并行 conversation tab
+- 适用范围：OpenCode `run --format json`、固定严格最终答复协议、one-shot / 并行 conversation tab
 
 ### 现象
 - OpenCode 已返回非空助手答复并正常退出，界面仍追加“正文未包含 `[final_answer]`，严格最终答复判定拒绝”的 system 错误和任务失败气泡。
 - 真实会话 `ses_0aaa0f435ffenK9Zu7ID3cpsL3` 的最终助手消息是在等待用户选择项目序号；OpenCode 导出显示该消息 `finish="stop"`，对应 parts 同时包含非空 `text` 与 `step-finish reason="stop"`。
 
 ### 触发条件
-- 全局 `finalAnswerPolicy=strict_final_answer`。
+- 普通 OpenCode 任务使用固定严格最终答复协议。
 - OpenCode 返回面向用户的最终回复，但没有遵循插件追加的 `[final_answer]` 文本约定。
 - 运行时只检查正文标记，没有消费 OpenCode 自带的结构化终态。
 
