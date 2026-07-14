@@ -192,7 +192,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
       }
 
-      function getNewlyCompletedLobsterTabIds(previousConversationTabs, nextConversationTabs) {
+      function getNewlyCompletedLoopTabIds(previousConversationTabs, nextConversationTabs) {
         const previousTabs = previousConversationTabs && Array.isArray(previousConversationTabs.tabs)
           ? previousConversationTabs.tabs
           : [];
@@ -205,9 +205,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             const previous = tab && previousById.get(tab.id);
             const wasRunning = Boolean(
               previous
-              && (previous.lobsterTaskRunning === true || previous.lobsterTaskStatus === "running")
+              && (previous.loopTaskRunning === true || previous.loopTaskStatus === "running")
             );
-            return wasRunning && tab.lobsterTaskStatus === "completed";
+            return wasRunning && tab.loopTaskStatus === "completed";
           })
           .map((tab) => tab.id);
       }
@@ -221,7 +221,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.currentCli = panelState.currentCli;
         state.sessionState = panelState.sessionState;
         const nextConversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
-        const newlyCompletedLobsterTabIds = getNewlyCompletedLobsterTabIds(
+        const newlyCompletedLoopTabIds = getNewlyCompletedLoopTabIds(
           previousConversationTabs,
           nextConversationTabs
         );
@@ -238,7 +238,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         pruneConversationRuntimeStates(tabIds);
         if (Array.isArray(state.conversationTabs.tabs)) {
           state.conversationTabs.tabs.forEach((tab) => {
-            updateLobsterMetaForTabFromSummary(tab);
+            updateLoopMetaForTabFromSummary(tab);
           });
         }
         syncActiveMessagesFromRuntime();
@@ -292,11 +292,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
-        state.lobsterMaxRounds = normalizeLobsterMaxRounds(panelState.lobsterMaxRounds);
-        state.lobsterAutoCloseSubtaskTabs = Boolean(panelState.lobsterAutoCloseSubtaskTabs);
-        state.lobsterExecutionModeByCli = normalizeLobsterExecutionModeByCli(
-          panelState.lobsterExecutionModeByCli,
-          state.lobsterExecutionModeByCli
+        state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
+        state.loopAutoCloseSubtaskTabs = Boolean(panelState.loopAutoCloseSubtaskTabs);
+        state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
+          panelState.loopExecutionModeByCli,
+          state.loopExecutionModeByCli
         );
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
@@ -346,11 +346,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.multiAgentEnabled) {
           elements.multiAgentEnabled.checked = state.multiAgentEnabled;
         }
-        if (elements.lobsterMaxRounds) {
-          elements.lobsterMaxRounds.value = String(state.lobsterMaxRounds);
+        if (elements.loopMaxRounds) {
+          elements.loopMaxRounds.value = String(state.loopMaxRounds);
         }
-        if (elements.lobsterAutoCloseSubtaskTabs) {
-          elements.lobsterAutoCloseSubtaskTabs.checked = state.lobsterAutoCloseSubtaskTabs;
+        if (elements.loopAutoCloseSubtaskTabs) {
+          elements.loopAutoCloseSubtaskTabs.checked = state.loopAutoCloseSubtaskTabs;
         }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
@@ -371,11 +371,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         renderConfigOptions();
         syncRunningStateForActiveTab();
         renderConversationTabs();
-        syncOpenCurrentLobsterGroupChatButton();
+        syncOpenCurrentLoopGroupChatButton();
         renderSessionList();
         renderPromptHistoryList();
         applyEditorContext(panelState.editorContext);
-        newlyCompletedLobsterTabIds.forEach((tabId) => {
+        newlyCompletedLoopTabIds.forEach((tabId) => {
           flushPendingPromptQueue(tabId);
         });
       }

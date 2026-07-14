@@ -75,7 +75,7 @@
 
 - 单元测试新增/更新：新增 `promptRuntime.test.ts`；把策略测试泛化为 `finalAnswerPolicy.test.ts`；更新 `finalConclusion`、工具设置、消息设置持久化、PanelState 和 Codex completed-turn 回归。
 - 单元自测结果：`npm run build` 通过；加入 Webview 展示过滤回归后的最小相关回归 47/47 通过，补充 Webview 回归 31/31 通过；排除两个已知失败文件后的上一轮扩展回归 336/336 通过。
-- 失败处理记录：首次扩展回归被重命名前遗留的 `dist/test/codexFinalAnswerPolicy.test.js` 重复执行，产生 2 个过期断言失败；删除该生成产物后通过。加入展示过滤测试后的最终全量为 392 项、369 通过、23 失败，仍集中在未改动的 `configService.test.js` 1 项和 `lobsterBoundaryRecord.test.js` 22 项，归类为范围外历史失败。
+- 失败处理记录：首次扩展回归被重命名前遗留的 `dist/test/codexFinalAnswerPolicy.test.js` 重复执行，产生 2 个过期断言失败；删除该生成产物后通过。加入展示过滤测试后的最终全量为 392 项、369 通过、23 失败，仍集中在未改动的 `configService.test.js` 1 项和 `loopBoundaryRecord.test.js` 22 项，归类为范围外历史失败。
 - 功能清单：已把 Codex 专属条目泛化为所有 CLI 的显式最终答复协议与策略。
 - 相关文档同步：已更新能力规格、CLI runtime reference 和 `PITFALLS.md`；`media/official_skills_catalog.json` 未修改，全部 description 中文检查通过。
 - 记忆金字塔检查：通用行为已进入产品规格，复发根因与机器协议豁免已进入 `PITFALLS.md`；无需在热区记忆重复维护同一事实。

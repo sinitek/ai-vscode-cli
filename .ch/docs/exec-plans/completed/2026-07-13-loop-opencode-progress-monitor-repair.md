@@ -42,7 +42,7 @@
 
 ## 影响面
 
-- 代码目录：`src/cli/`、`src/lobster*`、`src/extension.ts`、`src/subagentProgress.ts`、`src/i18n.ts`
+- 代码目录：`src/cli/`、`src/loop*`、`src/extension.ts`、`src/subagentProgress.ts`、`src/i18n.ts`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/product-specs/`、`.ch/docs/runbooks/`
 - 配置与脚本：沿用 Node 子进程、HTTP 与现有消息持久化，不新增依赖或技术栈
 
@@ -63,7 +63,7 @@
 
 ## 测试与清单同步
 
-- 单元测试新增/更新：新增 `lobsterSubtaskProgress.test.ts`；更新通用子代理、OpenCode monitor 与 command runner 回归，覆盖主 tab 接线、快照过滤、生命周期、serve 启动、运行时 overlay 清理、健康检查、attach 参数和重连退避。
+- 单元测试新增/更新：新增 `loopSubtaskProgress.test.ts`；更新通用子代理、OpenCode monitor 与 command runner 回归，覆盖主 tab 接线、快照过滤、生命周期、serve 启动、运行时 overlay 清理、健康检查、attach 参数和重连退避。
 - 单元自测结果：`npm run build` 通过；10 个相关测试文件共 100/100 通过；`git diff --check` 通过。
 - 失败处理记录：首轮仅有新测试回调变量被 TypeScript 推断为 `never`，归类为测试夹具类型问题，改为回调数组后重跑通过。真实 CLI 冒烟确认 `/global/health` 与 `run --attach` JSONL 传输可用；手工服务未注入插件私有配置环境，模型请求返回 OpenCode `UnknownError`，未将其误判为 attach 传输失败。
 - 功能清单：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。

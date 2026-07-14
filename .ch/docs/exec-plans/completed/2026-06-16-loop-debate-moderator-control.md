@@ -1,4 +1,4 @@
-# 龙虾辩论主持人控场
+# Loop辩论主持人控场
 
 - 日期：2026-06-16
 - 状态：completed
@@ -10,18 +10,18 @@
 
 ## 目标
 
-让龙虾辩论模式在每轮角色发言后由主持人读取完整群聊并输出控制决策，在运行时根据主持人决策决定继续讨论、进入最终立场收集、或阻塞人工复核。
+让Loop辩论模式在每轮角色发言后由主持人读取完整群聊并输出控制决策，在运行时根据主持人决策决定继续讨论、进入最终立场收集、或阻塞人工复核。
 
 ## 范围
 
-- `src/lobsterDebate.ts`：补充主持人 artifact 路径、主持人决策类型和最大安全轮数含义。
+- `src/loopDebate.ts`：补充主持人 artifact 路径、主持人决策类型和最大安全轮数含义。
 - `src/extension.ts`：把固定两轮循环改为主持人动态控场循环，保留最大轮数兜底；更新提示词、日志、恢复校验和共识汇总输入。
-- `src/test/lobsterDebate.test.ts`：覆盖主持人 artifact 路径和新的最大轮数语义。
+- `src/test/loopDebate.test.ts`：覆盖主持人 artifact 路径和新的最大轮数语义。
 - `.ch/docs/` 相关设计、运行时参考和功能清单：同步用户可见行为。
 
 ## 非目标
 
-- 不改变顶层 `interactiveMode=lobster`。
+- 不改变顶层 `interactiveMode=loop`。
 - 不改变子任务派发、重试、并发执行和主任务最终 JSON 协议。
 - 不新增 UI 配置项；本轮只把固定两轮改成主持人动态判断加运行时硬上限。
 
@@ -32,11 +32,11 @@
 - [x] 达到最大安全轮数时自动收束，避免无限循环。
 - [x] 恢复校验要求 `chat.md` 有主持人收束标记，旧两轮产物会重跑。
 - [x] `npm run build` 通过。
-- [x] `node --test dist/test/lobsterDebate.test.js` 通过。
+- [x] `node --test dist/test/loopDebate.test.js` 通过。
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/product-specs/`
 - 配置与脚本：无新增配置或脚本
 
@@ -51,12 +51,12 @@
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`node --test dist/test/loopDebate.test.js`
 - 扩展验证：`npm run build`
 
 ## 测试与清单同步
 
-- 单元测试：更新 lobster debate 纯函数测试。
+- 单元测试：更新 loop debate 纯函数测试。
 - 功能清单：同步 `FEATURE_INVENTORY.md`。
 - 相关文档同步：同步设计文档、运行时参考、产品规格。
 
@@ -76,4 +76,4 @@
 
 ## 当前结论
 
-已完成。辩论模式改为主持人动态控场，验证通过 `npm run build` 与 `node --test dist/test/lobsterDebate.test.js`。
+已完成。辩论模式改为主持人动态控场，验证通过 `npm run build` 与 `node --test dist/test/loopDebate.test.js`。

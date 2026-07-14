@@ -119,9 +119,9 @@ function buildHarness() {
     openCodePrimaryModelSelect: createControl(),
     openCodeSmallModelSelect: createControl(),
     modelSelect: createControl(),
-    lobsterExecutionModeSelect: createControl(),
+    loopExecutionModeSelect: createControl(),
   };
-  const normalizeInteractiveMode = (value: string) => value === "lobster" ? "lobster" : "coding";
+  const normalizeInteractiveMode = (value: string) => value === "loop" ? "loop" : "coding";
   const modelFunctionSource = ["cliSupportsManagedModelSelection", "syncModelSelectorByInteractiveMode"]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
     .join("\n");
@@ -129,7 +129,7 @@ function buildHarness() {
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLobsterExecutionModeForCli",
+    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${modelFunctionSource}; return syncModelSelectorByInteractiveMode;`,
   )(
@@ -252,20 +252,20 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
 
-  harness.elements.interactiveModeSelect.dispatchChange("lobster");
-  assert.equal(harness.state.interactiveMode, "lobster");
+  harness.elements.interactiveModeSelect.dispatchChange("loop");
+  assert.equal(harness.state.interactiveMode, "loop");
   assert.deepEqual(harness.postedMessages[0], {
     type: "updateSetting",
     key: "interactiveMode.opencode",
-    value: "lobster",
+    value: "loop",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, false);
-  assert.equal(harness.elements.lobsterExecutionModeSelect.value, "main-sub-multi-agent");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.disabled, false);
+  assert.equal(harness.elements.loopExecutionModeSelect.value, "main-sub-multi-agent");
 
   harness.elements.interactiveModeSelect.dispatchChange("coding");
   assert.equal(harness.state.interactiveMode, "coding");
@@ -275,8 +275,8 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "coding",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.disabled, true);
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });
 

@@ -8,7 +8,7 @@ export type MemoryRuntimeOperation =
   | "inject"
   | "generateCandidate"
   | "autoExtractAfterCompact"
-  | "autoExtractAfterLobsterTask"
+  | "autoExtractAfterLoopTask"
   | "create"
   | "update"
   | "manualSave"
@@ -20,7 +20,7 @@ export type MemoryRuntimeOperation =
 
 export type MemoryRuntimeGateSettings = ResolveLongTermMemoryEnabledInput & {
   memoryAutoExtractAfterCompact?: boolean;
-  memoryAutoExtractAfterLobsterTask?: boolean;
+  memoryAutoExtractAfterLoopTask?: boolean;
 };
 
 export type LongTermMemoryRuntimeDisableReason =
@@ -31,7 +31,7 @@ const READ_WRITE_RUNTIME_OPERATIONS: ReadonlySet<MemoryRuntimeOperation> = new S
   "inject",
   "generateCandidate",
   "autoExtractAfterCompact",
-  "autoExtractAfterLobsterTask",
+  "autoExtractAfterLoopTask",
   "create",
   "update",
   "manualSave",
@@ -66,8 +66,8 @@ export function isMemoryRuntimeOperationAllowed(
   if (operation === "autoExtractAfterCompact") {
     return settings?.memoryAutoExtractAfterCompact === true;
   }
-  if (operation === "autoExtractAfterLobsterTask") {
-    return settings?.memoryAutoExtractAfterLobsterTask === true;
+  if (operation === "autoExtractAfterLoopTask") {
+    return settings?.memoryAutoExtractAfterLoopTask === true;
   }
 
   return READ_WRITE_RUNTIME_OPERATIONS.has(operation) || MANAGEMENT_OPERATIONS_ALLOWED_WHEN_DISABLED.has(operation);

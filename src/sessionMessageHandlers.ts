@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { CLI_LIST, CliName, InteractiveMode, LobsterExecutionMode, MacTaskShell, ThinkingMode, normalizeLobsterExecutionMode } from "./cli/types";
+import { CLI_LIST, CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode, normalizeLoopExecutionMode } from "./cli/types";
 import { t } from "./i18n";
 import { logDebug, logError } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
@@ -11,7 +11,7 @@ import {
   type ToolSettingsLocale,
   type ToolSettingsState,
 } from "./toolSettings";
-import { type LobsterTaskRecord } from "./lobsterTaskStore";
+import { type LoopTaskRecord } from "./loopTaskStore";
 import { type ConfigManagerPanel } from "./webview/configPanel";
 import { handleSendPromptMessage, handleUpdateSettingMessage } from "./sessionMessageActions";
 import { isPanelMessageType } from "./sessionMessageRouter";
@@ -22,13 +22,13 @@ export type PromptRunInputForPanel = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   model?: string;
-  lobsterExecutionMode?: LobsterExecutionMode;
-  lobsterContinuePrompt?: string;
+  loopExecutionMode?: LoopExecutionMode;
+  loopContinuePrompt?: string;
   imagePaths?: string[];
   taskRole?: "main" | "subtask";
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 export type PromptRunTargetForPanel = {
@@ -37,7 +37,7 @@ export type PromptRunTargetForPanel = {
   sessionId: string | null;
 };
 
-export type LobsterSubtaskConversationContextForPanel = {
+export type LoopSubtaskConversationContextForPanel = {
   taskId: string;
   subtaskId: string;
   round: number;
@@ -110,9 +110,9 @@ export type PanelMessageHandlerDeps = {
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
-  setWorkspaceLobsterExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLobsterExecutionMode>) => void;
+  setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLoopExecutionMode>) => void;
   loadModelStore: () => void;
-  normalizeLobsterMaxRounds: (value: unknown) => number;
+  normalizeLoopMaxRounds: (value: unknown) => number;
   normalizeToolSettingsLocale: (value: unknown) => ToolSettingsLocale | null;
   isCliName: (value: string) => value is CliName;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
@@ -120,23 +120,23 @@ export type PanelMessageHandlerDeps = {
   confirmAndInitializeWorkspaceHarness: () => Promise<boolean>;
   appendUserMessageForCli: (cli: CliName, sessionId: string | null, content: string, options?: { merge?: boolean }) => void;
   runContextCompactionCommand: () => Promise<void>;
-  openLobsterDebateChatPanel: (arg?: unknown) => Promise<void>;
+  openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
   getActiveConversationTabId: () => string | null;
   getActiveConversationTab: () => ConversationTabRecordForPanel | null;
-  resolveLobsterSubtaskConversationContext: (cli: CliName, tabId: string | null) => LobsterSubtaskConversationContextForPanel | null;
-  getWorkspaceLobsterExecutionMode: (cli: CliName) => ReturnType<typeof normalizeLobsterExecutionMode>;
+  resolveLoopSubtaskConversationContext: (cli: CliName, tabId: string | null) => LoopSubtaskConversationContextForPanel | null;
+  getWorkspaceLoopExecutionMode: (cli: CliName) => ReturnType<typeof normalizeLoopExecutionMode>;
   buildPromptWithAutoContext: (prompt: string, options?: PromptContextOptions) => { modelPrompt: string; contextTags: string[] };
   maybeInjectLongTermMemoryForPrompt: (displayPrompt: string, modelPrompt: string, contextTags: string[]) => string;
   resolveCodexImagePathsForPrompt: (prompt: string) => Promise<string[]>;
-  getLatestLobsterRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string) => { endedAt: number } | null;
+  getLatestLoopRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string) => { endedAt: number } | null;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
   preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
-  runLobsterPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean }) => Promise<void>;
+  runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
-  maybeWakeLobsterMainAfterSubtaskContinuation: (context: LobsterSubtaskConversationContextForPanel, options: { tabId: string; previousRunEndedAt: number; model?: string }) => Promise<void>;
-  resolveLobsterResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LobsterTaskRecord | null;
-  isLobsterResumePrompt: (prompt: string) => boolean;
+  maybeWakeLoopMainAfterSubtaskContinuation: (context: LoopSubtaskConversationContextForPanel, options: { tabId: string; previousRunEndedAt: number; model?: string }) => Promise<void>;
+  resolveLoopResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LoopTaskRecord | null;
+  isLoopResumePrompt: (prompt: string) => boolean;
   stopRunForTab: (tabId: string | null) => void;
 };
 
@@ -196,9 +196,9 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     getSelectedCliModel,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
-    setWorkspaceLobsterExecutionModeForCli,
+    setWorkspaceLoopExecutionModeForCli,
     loadModelStore,
-    normalizeLobsterMaxRounds,
+    normalizeLoopMaxRounds,
     normalizeToolSettingsLocale,
     isCliName,
     updateStoredToolSettings,
@@ -206,23 +206,23 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     confirmAndInitializeWorkspaceHarness,
     appendUserMessageForCli,
     runContextCompactionCommand,
-    openLobsterDebateChatPanel,
+    openLoopGroupChatPanel,
     getActiveConversationTabId,
     getActiveConversationTab,
-    resolveLobsterSubtaskConversationContext,
-    getWorkspaceLobsterExecutionMode,
+    resolveLoopSubtaskConversationContext,
+    getWorkspaceLoopExecutionMode,
     buildPromptWithAutoContext,
     maybeInjectLongTermMemoryForPrompt,
     resolveCodexImagePathsForPrompt,
-    getLatestLobsterRoundRunRecord,
+    getLatestLoopRoundRunRecord,
     recordPromptHistory,
     resolvePromptRunTarget,
     preloadUserMessageForPrompt,
-    runLobsterPrompt,
+    runLoopPrompt,
     runPrompt,
-    maybeWakeLobsterMainAfterSubtaskContinuation,
-    resolveLobsterResumeTaskFromPrompt,
-    isLobsterResumePrompt,
+    maybeWakeLoopMainAfterSubtaskContinuation,
+    resolveLoopResumeTaskFromPrompt,
+    isLoopResumePrompt,
     stopRunForTab,
   } = deps;
   const currentCliRef = { get value(): CliName { return getCurrentCli(); }, set value(cli: CliName) { setCurrentCliValue(cli); } };
@@ -777,8 +777,8 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     return;
   }
 
-  if (message.type === "openLobsterDebateChat") {
-    await openLobsterDebateChatPanel({
+  if (message.type === "openLoopGroupChat") {
+    await openLoopGroupChatPanel({
       taskId: typeof message.taskId === "string" ? message.taskId : undefined,
       roundKey: typeof message.roundKey === "string" ? message.roundKey : undefined,
     });

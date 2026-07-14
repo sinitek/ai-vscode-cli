@@ -10,9 +10,9 @@ export type PromptRunMemoryCaptureInput = {
   cli: string;
   status?: PromptRunMemoryCaptureStatus;
   taskRole?: "main" | "subtask";
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
   capturedAt?: Date;
 };
 
@@ -34,7 +34,7 @@ function shorten(value: string, maxLength: number): string {
 }
 
 function shouldRecordEvent(input: PromptRunMemoryCaptureInput, response: string): boolean {
-  if (input.taskRole || input.lobsterTaskId) {
+  if (input.taskRole || input.loopTaskId) {
     return true;
   }
   return /(?:decision|risk|blocked|resolved|migrat|rollback|incident|结论|风险|阻塞|决定|迁移|回滚|事故)/iu.test(response);
@@ -62,9 +62,9 @@ function shouldRecordPitfall(input: PromptRunMemoryCaptureInput, response: strin
 }
 
 function buildEntryTitle(input: PromptRunMemoryCaptureInput): string {
-  if (input.lobsterTaskId) {
-    const role = input.taskRole === "subtask" ? "lobster-subtask" : "lobster-main";
-    return `${role}:${input.lobsterTaskId}`;
+  if (input.loopTaskId) {
+    const role = input.taskRole === "subtask" ? "loop-subtask" : "loop-main";
+    return `${role}:${input.loopTaskId}`;
   }
   return `${input.cli}-prompt`;
 }
@@ -91,25 +91,25 @@ function pickRelevantLines(value: string, pattern: RegExp, maxItems: number): st
 
 function buildPitfallScope(input: PromptRunMemoryCaptureInput): string {
   const parts = [input.cli];
-  if (input.lobsterTaskId) {
-    parts.push(`loop:${input.lobsterTaskId}`);
+  if (input.loopTaskId) {
+    parts.push(`loop:${input.loopTaskId}`);
   }
-  if (input.lobsterSubtaskId) {
-    parts.push(`subtask:${input.lobsterSubtaskId}`);
+  if (input.loopSubtaskId) {
+    parts.push(`subtask:${input.loopSubtaskId}`);
   }
   return parts.join(" / ");
 }
 
 function buildPitfallRelatedInfo(input: PromptRunMemoryCaptureInput): string[] {
   const lines = [`CLI: ${input.cli}`];
-  if (input.lobsterTaskId) {
-    lines.push(`Loop task: ${input.lobsterTaskId}`);
+  if (input.loopTaskId) {
+    lines.push(`Loop task: ${input.loopTaskId}`);
   }
-  if (typeof input.lobsterRound === "number") {
-    lines.push(`Loop round: ${input.lobsterRound}`);
+  if (typeof input.loopRound === "number") {
+    lines.push(`Loop round: ${input.loopRound}`);
   }
-  if (input.lobsterSubtaskId) {
-    lines.push(`Loop subtask: ${input.lobsterSubtaskId}`);
+  if (input.loopSubtaskId) {
+    lines.push(`Loop subtask: ${input.loopSubtaskId}`);
   }
   return lines;
 }
@@ -159,14 +159,14 @@ export function persistPromptRunSummary(
         `CLI: ${input.cli}`,
         `Summary: ${shorten(assistantResponse, 480)}`,
       ];
-      if (input.lobsterTaskId) {
-        eventLines.push(`Loop task: ${input.lobsterTaskId}`);
+      if (input.loopTaskId) {
+        eventLines.push(`Loop task: ${input.loopTaskId}`);
       }
-      if (typeof input.lobsterRound === "number") {
-        eventLines.push(`Loop round: ${input.lobsterRound}`);
+      if (typeof input.loopRound === "number") {
+        eventLines.push(`Loop round: ${input.loopRound}`);
       }
-      if (input.lobsterSubtaskId) {
-        eventLines.push(`Loop subtask: ${input.lobsterSubtaskId}`);
+      if (input.loopSubtaskId) {
+        eventLines.push(`Loop subtask: ${input.loopSubtaskId}`);
       }
       updatedFiles.push(
         appendMemoryEntry(paths, "eventMemory", {

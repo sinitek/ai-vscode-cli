@@ -1,6 +1,6 @@
 import { CliName, CLI_LIST, InteractiveMode } from "./cli/types";
 import { ConversationTabSummary, ChatMessage } from "./webview/types";
-import { type LobsterTaskStatus } from "./lobsterTaskStore";
+import { type LoopTaskStatus } from "./loopTaskStore";
 import { type SessionStore } from "./sessionStore";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
@@ -25,19 +25,19 @@ export type PendingSessionDraft = {
 
 export type ConversationTabSwitchResult = { cli: CliName; sessionId: string | null };
 
-type LobsterConversationTabContext = {
+type LoopConversationTabContext = {
   taskRole?: "main" | "subtask" | null;
-  lobsterTaskId?: string | null;
+  loopTaskId?: string | null;
 };
 
 export type SessionTabsController = ReturnType<typeof createSessionTabsController>;
 
-export function resolveAutoInteractiveModeForLobsterTask(
-  taskRole: LobsterConversationTabContext["taskRole"],
-  lobsterTaskId: LobsterConversationTabContext["lobsterTaskId"],
+export function resolveAutoInteractiveModeForLoopTask(
+  taskRole: LoopConversationTabContext["taskRole"],
+  loopTaskId: LoopConversationTabContext["loopTaskId"],
 ): InteractiveMode {
-  return taskRole === "main" && typeof lobsterTaskId === "string" && lobsterTaskId.trim()
-    ? "lobster"
+  return taskRole === "main" && typeof loopTaskId === "string" && loopTaskId.trim()
+    ? "loop"
     : "coding";
 }
 
@@ -125,10 +125,10 @@ export function createSessionTabsController(deps: {
   setCurrentSession: (cli: CliName, sessionId: string | null, options?: { syncConversationTab?: boolean }) => void;
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
-  collectRunningLobsterTaskIds: () => Set<string>;
-  isLobsterTaskRunning: (taskId: string, runningTaskIds: ReadonlySet<string>) => boolean;
-  getLobsterTaskStatus: (taskId: string) => LobsterTaskStatus | null;
-  resolveConversationTabLobsterContext: (tab: ConversationTabRecord) => LobsterConversationTabContext;
+  collectRunningLoopTaskIds: () => Set<string>;
+  isLoopTaskRunning: (taskId: string, runningTaskIds: ReadonlySet<string>) => boolean;
+  getLoopTaskStatus: (taskId: string) => LoopTaskStatus | null;
+  resolveConversationTabLoopContext: (tab: ConversationTabRecord) => LoopConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
 }): {
   addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
@@ -385,33 +385,33 @@ export function createSessionTabsController(deps: {
 
   const buildTabsState = (): { activeTabId: string | null; tabs: ConversationTabSummary[] } => {
     const state = ensureTabs();
-    const runningLobsterTaskIds = deps.collectRunningLobsterTaskIds();
+    const runningLoopTaskIds = deps.collectRunningLoopTaskIds();
     return {
       activeTabId: state.activeTabId,
       tabs: state.tabs.map((tab) => {
-        const lobsterContext = deps.resolveConversationTabLobsterContext(tab);
-        const lobsterTaskId = lobsterContext.lobsterTaskId;
-        const lobsterTaskRunning = (
-          typeof lobsterTaskId === "string"
-          && deps.isLobsterTaskRunning(lobsterTaskId, runningLobsterTaskIds)
+        const loopContext = deps.resolveConversationTabLoopContext(tab);
+        const loopTaskId = loopContext.loopTaskId;
+        const loopTaskRunning = (
+          typeof loopTaskId === "string"
+          && deps.isLoopTaskRunning(loopTaskId, runningLoopTaskIds)
         );
-        const lobsterTaskStatus = typeof lobsterTaskId === "string"
-          ? deps.getLobsterTaskStatus(lobsterTaskId)
+        const loopTaskStatus = typeof loopTaskId === "string"
+          ? deps.getLoopTaskStatus(loopTaskId)
           : null;
-        const lobsterMainTabCloseLocked = (
-          lobsterContext.taskRole === "main"
-          && lobsterTaskRunning
+        const loopMainTabCloseLocked = (
+          loopContext.taskRole === "main"
+          && loopTaskRunning
         );
         return {
           id: tab.id,
           cli: tab.cli,
           sessionId: tab.sessionId,
           createdAt: tab.createdAt,
-          lobsterTaskRole: lobsterContext.taskRole ?? undefined,
-          lobsterTaskId: lobsterTaskId ?? undefined,
-          lobsterTaskRunning,
-          lobsterTaskStatus: lobsterTaskStatus ?? undefined,
-          lobsterMainTabCloseLocked,
+          loopTaskRole: loopContext.taskRole ?? undefined,
+          loopTaskId: loopTaskId ?? undefined,
+          loopTaskRunning,
+          loopTaskStatus: loopTaskStatus ?? undefined,
+          loopMainTabCloseLocked,
         };
       }),
     };

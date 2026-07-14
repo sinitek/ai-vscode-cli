@@ -470,7 +470,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .history-panel.sessions {
         overflow: hidden;
       }
-      .history-panel.lobster {
+      .history-panel.loop {
         overflow: hidden;
       }
       .history-modal {

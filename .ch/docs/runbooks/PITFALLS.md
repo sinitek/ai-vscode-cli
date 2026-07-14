@@ -540,9 +540,9 @@
 - 适用范围：`npm run build`、`node --test dist/test/*.test.js`、已删除或重命名的 `src/test/*.ts`
 
 ### 现象
-- 仓库根目录出现多个未跟踪的 `.tmp-lobster-launch-*` 空目录。
-- 当前源码已没有 `lobsterBoundaryRecord.test.ts`，但 `dist/test/lobsterBoundaryRecord.test.js` 仍存在并可被全量 `node --test dist/test/*.test.js` 执行。
-- 旧测试使用 `fs.mkdtempSync(path.join(process.cwd(), ".tmp-lobster-launch-"))`，测试进程异常退出或被中止时会把空目录留在仓库根目录。
+- 仓库根目录出现多个未跟踪的 `.tmp-loop-launch-*` 空目录。
+- 当前源码已没有 `loopBoundaryRecord.test.ts`，但 `dist/test/loopBoundaryRecord.test.js` 仍存在并可被全量 `node --test dist/test/*.test.js` 执行。
+- 旧测试使用 `fs.mkdtempSync(path.join(process.cwd(), ".tmp-loop-launch-"))`，测试进程异常退出或被中止时会把空目录留在仓库根目录。
 
 ### 触发条件
 - 测试源码被删除或重命名后，只运行 `tsc -p ./` 增量覆盖输出，不先清理 `dist`。
@@ -551,7 +551,7 @@
 
 ### 根因
 - `tsc` 不负责删除 `outDir` 里已经没有源文件对应的旧输出。
-- 旧 `dist/test/lobsterBoundaryRecord.test.js` 保留了仓库根目录临时目录创建逻辑。
+- 旧 `dist/test/loopBoundaryRecord.test.js` 保留了仓库根目录临时目录创建逻辑。
 
 ### 长期规避
 - `npm run build` 必须先清理 `dist`，再执行 `tsc -p ./`。
@@ -559,13 +559,13 @@
 - 发现无对应 `src/test` 的 `dist/test/*.test.js` 时，优先清理 `dist` 后重建，不要按旧产物继续解释失败。
 
 ### 验证方式
-- 运行 `npm run build` 后确认 `dist/test/lobsterBoundaryRecord.test.js` 不再存在。
-- 运行 `find . -maxdepth 1 -type d -name '.tmp-lobster-launch-*'`，确认仓库根目录没有残留临时目录。
+- 运行 `npm run build` 后确认 `dist/test/loopBoundaryRecord.test.js` 不再存在。
+- 运行 `find . -maxdepth 1 -type d -name '.tmp-loop-launch-*'`，确认仓库根目录没有残留临时目录。
 
 ### 关联资料
 - `package.json`
 - `.gitignore`
-- `dist/test/lobsterBoundaryRecord.test.js`（已清理的历史生成物）
+- `dist/test/loopBoundaryRecord.test.js`（已清理的历史生成物）
 
 ## Loop `running` 状态不能脱离当前运行所有权永久锁定 Tab
 
@@ -586,9 +586,9 @@
 
 ### 长期规避
 
-- 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLobsterPrompt` 从任务创建/恢复到收尾期间维护 `activeLobsterOrchestrationTaskIds`，并与主、并行和交互 CLI 运行集合合并；该集合存在时仍要保护编排空档。
+- 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLoopPrompt` 从任务创建/恢复到收尾期间维护 `activeLoopOrchestrationTaskIds`，并与主、并行和交互 CLI 运行集合合并；该集合存在时仍要保护编排空档。
 - 任务记录为 `running` 但没有任何当前运行所有权时，收敛为 `stopped`，清空活跃子任务 ID，并把仍为 `pending` / `running` 的子任务和辩论参与者写入终态；不要继续保留关闭锁。
-- `runLobsterPrompt` 的未捕获异常必须把仍为 `running` 的任务写成 `error`，然后再释放运行所有权。
+- `runLoopPrompt` 的未捕获异常必须把仍为 `running` 的任务写成 `error`，然后再释放运行所有权。
 - 重置当前会话只能由扩展端成功完成新建空白 Tab、关闭旧 Tab 后通过 PanelState 和 `setMessages` 更新 Webview；请求发送前不得清空旧 Tab 消息或强制切换交互模式。编辑器上下文的下一次提示意图可以保留，但不能替代成功确认。
 
 ### 验证方式
@@ -596,16 +596,16 @@
 - 构造 `status="running"` 且运行所有权集合为空的任务，确认状态收敛为 `stopped`，主任务 Tab 解除关闭和重置锁；同一任务存在主/并行/交互运行或编排所有权时仍保持锁定。
 - 断言 SessionTabs 在运行态判定后再读取任务状态，避免本轮已经收敛为 `stopped` 却把旧 `running` 回传给 Webview。
 - 断言 Webview 的重置请求只发送消息并保留旧视图，Extension Host 拒绝时不会出现空白会话；成功时由回推状态切换到空白 Tab。
-- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/lobsterDebate.test.js dist/test/sessionMessageActions.test.js`。
+- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/sessionMessageActions.test.js`。
 
 ### 关联资料
 
 - `src/extension.ts`
-- `src/lobsterDebate.ts`
+- `src/loopDebate.ts`
 - `src/sessionTabs.ts`
 - `src/webview/viewContentScript/eventBindings.ts`
 - `src/test/conversationTabLock.test.ts`
-- `src/test/lobsterDebate.test.ts`
+- `src/test/loopDebate.test.ts`
 
 ## Loop 编排角色不能复用为模型角色
 
@@ -626,18 +626,18 @@
 - Claude 在 Coding/Loop 均不展示插件侧模型选择。
 - Codex 在 Coding/Loop 复用同一个模型下拉，消息只传 `model`；普通轮次、子任务、裁判、参与者、共识汇总、续跑和唤醒全部沿用该值。
 - OpenCode 在 Coding/Loop 均保留 primary/small 和各自思考力度；所有 Loop 对话角色使用 effective primary，small 只用于 OpenCode 内部请求。
-- 历史 `selectedLobsterByConfigId` / `lobsterRolesByConfigId` 可以继续归一化读取，避免旧文件崩溃，但不得进入 PanelState、Webview payload 或运行时选择。
+- 历史 `selectedLoopByConfigId` / `loopRolesByConfigId` 可以继续归一化读取，避免旧文件崩溃，但不得进入 PanelState、Webview payload 或运行时选择。
 
 ### 验证方式
 - Webview 覆盖 OpenCode 双模型、Codex 单模型、Claude 无模型三种 Coding/Loop 组合。
-- 用带旧 `lobsterMainModel` / `lobsterSubtaskModel` 的兼容消息回放，确认运行输入只保留统一 `model`。
+- 用带旧 `loopMainModel` / `loopSubtaskModel` 的兼容消息回放，确认运行输入只保留统一 `model`。
 - 构造包含旧主/子选择的模型存储，确认 PanelState 只暴露通用 Codex 选择。
 
 ### 关联资料
 - `src/webview/viewContentScript/modelManager.ts`
 - `src/sessionMessageActions.ts`
 - `src/extension.ts`
-- `src/lobsterDebateRunner.ts`
+- `src/loopDebateRunner.ts`
 - `src/test/opencodedualmodelwebview.test.ts`
 - `src/test/sessionMessageActions.test.ts`
 
@@ -735,13 +735,13 @@
 - 断言子任务 model prompt 同时包含触发条件、沟通章节、任务记录更新、禁止提问和固定收口文本。
 - 断言主任务 model prompt 必须处理待确认章节，并在确需人工确认时返回 blocked。
 - 新建子任务沟通文件，确认默认包含状态为“无”的结构化 `## 待主任务确认` 章节。
-- 运行 `npm run build && node --test dist/test/lobsterSkillIntegration.test.js dist/test/lobsterTaskStore.test.js`。
+- 运行 `npm run build && node --test dist/test/loopSkillIntegration.test.js dist/test/loopTaskStore.test.js`。
 
 ### 关联资料
 - `src/extension.ts`
-- `src/lobsterTaskStore.ts`
-- `src/test/lobsterSkillIntegration.test.ts`
-- `src/test/lobsterTaskStore.test.ts`
+- `src/loopTaskStore.ts`
+- `src/test/loopSkillIntegration.test.ts`
+- `src/test/loopTaskStore.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## Loop 子任务手动恢复必须复用自动重试的完成收尾
@@ -755,8 +755,8 @@
 - 相同子任务因执行错误触发自动重试并成功时，状态、Tab 关闭和主任务后续编排均正常，导致两种恢复方式的体验和资源清理不一致。
 
 ### 根因
-- 自动重试在 `runLobsterSubtaskWithRetry` 中直接执行子任务状态收尾和 Tab 自动关闭。
-- 手动恢复在 `maybeWakeLobsterMainAfterSubtaskContinuation` 中单独更新状态并唤醒主任务，遗漏了同一 Tab 生命周期收尾。
+- 自动重试在 `runLoopSubtaskWithRetry` 中直接执行子任务状态收尾和 Tab 自动关闭。
+- 手动恢复在 `maybeWakeLoopMainAfterSubtaskContinuation` 中单独更新状态并唤醒主任务，遗漏了同一 Tab 生命周期收尾。
 
 ### 长期规避
 - 自动重试和手动恢复成功都必须调用同一个子任务完成生命周期函数；先更新子任务记录和沟通记录，再判断是否关闭 Tab。
@@ -765,13 +765,13 @@
 
 ### 验证方式
 - 单测覆盖成功结束时的状态更新先于 Tab 关闭、关闭设置关闭、错误/停止不关闭三种边界。
-- 断言 `runLobsterSubtaskWithRetry` 与 `maybeWakeLobsterMainAfterSubtaskContinuation` 都接入共享收尾函数，且既有手动子任务 coding 路由仍会调用恢复唤醒。
-- 运行 `npm run build && node --test dist/test/lobsterSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
+- 断言 `runLoopSubtaskWithRetry` 与 `maybeWakeLoopMainAfterSubtaskContinuation` 都接入共享收尾函数，且既有手动子任务 coding 路由仍会调用恢复唤醒。
+- 运行 `npm run build && node --test dist/test/loopSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
 
 ### 关联资料
-- `src/lobsterSubtaskLifecycle.ts`
+- `src/loopSubtaskLifecycle.ts`
 - `src/extension.ts`
-- `src/test/lobsterSubtaskLifecycle.test.ts`
+- `src/test/loopSubtaskLifecycle.test.ts`
 - `src/test/sessionMessageActions.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
@@ -841,11 +841,11 @@
 - 断言 non-development / legacy runtime context 不调用 loader；资源缺失时主 prompt 与无 catalog 基线一致，且不会达到主任务 AI 失败上限。
 
 ### 关联资料
-- `src/lobsterSkillGuidance.ts`
+- `src/loopSkillGuidance.ts`
 - `src/extension.ts`
 - `src/test/loopPromptQueue.test.ts`
-- `src/test/lobsterSkillIntegration.test.ts`
-- `src/test/lobsterMainFailure.test.ts`
+- `src/test/loopSkillIntegration.test.ts`
+- `src/test/loopMainFailure.test.ts`
 
 ## Loop Workflow Skill 选择不能让模型自报能力、路径或正文
 
@@ -880,10 +880,10 @@
 
 ### 关联资料
 - `media/loop-workflow-skills/manifest.json`
-- `src/lobsterSkillGuidance.ts`
+- `src/loopSkillGuidance.ts`
 - `src/extension.ts`
-- `src/test/lobsterSkillGuidance.test.ts`
-- `src/test/lobsterSkillIntegration.test.ts`
+- `src/test/loopSkillGuidance.test.ts`
+- `src/test/loopSkillIntegration.test.ts`
 
 ## Loop Workflow Skill 的红蓝共识与自动重试不能绕过 runner / Store 快照
 
@@ -896,7 +896,7 @@
 - 自动重试如果只保存 Skill ID 并重新读取 pack，插件升级、资源变化或文件删除会让同一子任务前后收到不同执行要求。
 
 ### 触发条件
-- 把红蓝首轮共识误认为普通主任务 prompt 的调用方，遗漏 `src/lobsterDebateRunner.ts` 内部直接构造 consensus model prompt 的真实 seam。
+- 把红蓝首轮共识误认为普通主任务 prompt 的调用方，遗漏 `src/loopDebateRunner.ts` 内部直接构造 consensus model prompt 的真实 seam。
 - retry 再次加载 pack、重新选择 ID 或重新生成 guidance，而不是使用任务 Store 中已经持久化的 `skillGuidance`。
 
 ### 根因
@@ -904,7 +904,7 @@
 - ID 只能定位某一版资源，不能冻结已执行子任务的具体正文；可重复重试需要保存宿主确认后的内容快照。
 
 ### 长期规避
-- 每个主任务轮次只创建一次 Skill runtime context；红蓝 brief 与 runner consensus 必须透传同一个 `compactCatalogSection`，普通主从和红蓝 decision 再共同经过 `applyLobsterMainDecisionForRun`。
+- 每个主任务轮次只创建一次 Skill runtime context；红蓝 brief 与 runner consensus 必须透传同一个 `compactCatalogSection`，普通主从和红蓝 decision 再共同经过 `applyLoopMainDecisionForRun`。
 - 中央 apply 在写 Store 前生成稳定 `skillIds + skillGuidance` 快照；模型原始正文没有持久化路径。
 - 子任务正文固定注入到“子任务职责”之后、“当前子任务”之前；首跑和自动 retry 都只读取已持久化 `subtask.skillGuidance`，不得重新加载或重新选择。
 - Store 没有可用快照时保持无正文的原 Loop，不从已变化的 pack、外部目录或历史模型输出补造 guidance。
@@ -914,13 +914,13 @@
 - 先持久化宿主 guidance，再删除扩展 pack 副本，确认首跑与 retry model prompt 仍逐字包含同一快照一次，display prompt 始终不含正文。
 
 ### 关联资料
-- `src/lobsterDebateRunner.ts`
-- `src/lobsterPromptBuilders.ts`
+- `src/loopDebateRunner.ts`
+- `src/loopPromptBuilders.ts`
 - `src/extension.ts`
-- `src/lobsterTaskStore.ts`
-- `src/test/lobsterPromptBuilders.test.ts`
-- `src/test/lobsterSkillIntegration.test.ts`
-- `src/test/lobsterTaskStore.test.ts`
+- `src/loopTaskStore.ts`
+- `src/test/loopPromptBuilders.test.ts`
+- `src/test/loopSkillIntegration.test.ts`
+- `src/test/loopTaskStore.test.ts`
 
 ## OpenCode 已解析 `todowrite` 但任务浮层仍可能被消息刷新覆盖
 
@@ -960,6 +960,43 @@
 - `src/webview/viewContentScript/coreRuntimeState.ts`
 - `src/webview/viewContentScript/traceRendering.ts`
 - `src/test/openCodeTaskListOverlay.test.ts`
+
+## 产品改名不能只机械替换持久化键和本地目录
+
+- 状态：已规避
+- 首次发现：2026-07-14
+- 适用范围：Loop 任务存储、通信 artifact、设置、模型选择、任务运行记录、会话消息与公开命令
+
+### 现象
+- UI 已经显示 Loop，但新旧版本分别使用 `loop-*` 与 `lobster-*` 目录，直接改常量会让历史任务从列表消失、沟通 artifact 断链。
+- TypeScript 全量改名仍可顺利编译，但旧 JSON 中的 `lobsterTaskId`、模式值、设置键和模型字段不会自动变成新的 `loop*` 字段。
+
+### 触发条件
+- 只做标识符、文件名和字符串的全仓替换，没有先枚举所有 JSON/本地文件读取边界。
+- 只让新路径可写，没有在任务列表、恢复和清理之前迁移旧任务存储与通信树。
+- 删除旧公开命令 ID，导致用户已有快捷键或外部调用失效。
+
+### 根因
+- 本地目录、JSON key、枚举值和命令 ID 都是跨版本契约，不是纯内部实现名。
+- 编译器只能验证新源码内部一致，无法证明历史磁盘数据仍能被发现和规范化。
+
+### 长期规避
+- 新写入统一使用 Loop；旧 Lobster 字面量只集中在 `src/loopLegacyMigration.ts` 和迁移事实文档，不允许散回业务模块。
+- 读取 JSON 时先递归迁移旧前缀键，新键与旧键同时存在时始终以新键为准；仅对已知协议值迁移旧模式与群聊动作，不改写用户正文。
+- 首次枚举任务时先迁移通信目录，再按 workspace、CLI、session 将旧任务写入新 Store；目标冲突时保留 `.pre-loop-migration` artifact，验证新记录可读后才删除旧 Store 文件。
+- 新命令进入 `package.json` 和命令面板，旧命令只在运行时注册隐藏别名。
+
+### 验证方式
+- 构造旧目录、旧 Store、旧通信文件和旧 JSON 字段，执行迁移后确认新路径存在、旧路径消失、任务可恢复且新写回不再包含旧键。
+- 扫描全仓旧术语，结果只允许命中集中兼容模块与说明迁移边界的事实文档。
+- 执行 `npm run build` 和 `node --test dist/test/loopLegacyMigration.test.js dist/test/loopTaskStore.test.js dist/test/toolSettings.test.js dist/test/workspaceSettingsStore.test.js dist/test/opencoderolemodelruntime.test.js dist/test/codexReasoningContent.test.js`。
+
+### 关联资料
+- `src/loopLegacyMigration.ts`
+- `src/loopTaskStore.ts`
+- `src/test/loopLegacyMigration.test.ts`
+- `src/test/loopTaskStore.test.ts`
+- `.ch/docs/exec-plans/completed/2026-07-14-loop-naming-migration.md`
 
 ## 建议模板
 

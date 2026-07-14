@@ -126,10 +126,10 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             && last.role === "assistant"
             && message.merge !== false
             && last.merge !== false
-            && message.lobsterAnswerConclusion !== true
-            && last.lobsterAnswerConclusion !== true
-            && message.lobsterFinalSummary !== true
-            && last.lobsterFinalSummary !== true
+            && message.loopAnswerConclusion !== true
+            && last.loopAnswerConclusion !== true
+            && message.loopFinalSummary !== true
+            && last.loopFinalSummary !== true
             && message.codexFinalAnswer !== true
             && last.codexFinalAnswer !== true
             && isSameAssistantKind(last, message)

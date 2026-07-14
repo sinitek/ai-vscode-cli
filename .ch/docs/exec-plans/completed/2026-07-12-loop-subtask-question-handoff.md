@@ -44,8 +44,8 @@ Loop 子任务运行在独立对话标签页中，现有提示词只要求子任
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterTaskStore.ts`
-- 测试目录：`src/test/lobsterSkillIntegration.test.ts`、`src/test/lobsterTaskStore.test.ts`
+- 代码目录：`src/extension.ts`、`src/loopTaskStore.ts`
+- 测试目录：`src/test/loopSkillIntegration.test.ts`、`src/test/loopTaskStore.test.ts`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/runbooks/`
 - 配置与脚本：无
 
@@ -60,8 +60,8 @@ Loop 子任务运行在独立对话标签页中，现有提示词只要求子任
 
 ## 验证计划
 
-- 最小相关验证：编译后运行 `lobsterSkillIntegration` 与 `lobsterTaskStore` 测试。
-- 单元自测命令：`npm run build`；`node --test dist/test/lobsterSkillIntegration.test.js dist/test/lobsterTaskStore.test.js`
+- 最小相关验证：编译后运行 `loopSkillIntegration` 与 `loopTaskStore` 测试。
+- 单元自测命令：`npm run build`；`node --test dist/test/loopSkillIntegration.test.js dist/test/loopTaskStore.test.js`
 - 扩展验证：`node --test dist/test/*.test.js`；`git diff --check`
 
 ## 测试与清单同步

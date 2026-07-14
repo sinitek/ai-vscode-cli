@@ -9,11 +9,11 @@ import { WEBVIEW_STYLES } from "./viewContentStyles";
 import { buildWebviewRuntimeScript } from "./viewContentScript";
 import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
 
-const LOBSTER_MAX_ROUNDS_SETTING_DEFAULT = 20;
-const LOBSTER_MAX_ROUNDS_SETTING_MIN = 1;
-const LOBSTER_MAX_ROUNDS_SETTING_MAX = 100;
-const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
-const LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
+const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
+const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
+const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
+const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
+const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 let cachedMarkedScript: string | undefined;
 
@@ -34,23 +34,23 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     cliOptions,
     markedScript,
     webviewStyles: WEBVIEW_STYLES,
-    lobsterExecutionModeMainSubMultiAgent:
-      LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    lobsterExecutionModeDebateMultiAgent:
-      LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT,
+    loopExecutionModeMainSubMultiAgent:
+      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
+    loopExecutionModeDebateMultiAgent:
+      LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
   });
 
   return `${staticHtml}
 ${buildWebviewRuntimeScript({
     i18n,
     cliList: CLI_LIST,
-    lobsterMaxRoundsDefault: LOBSTER_MAX_ROUNDS_SETTING_DEFAULT,
-    lobsterMaxRoundsMin: LOBSTER_MAX_ROUNDS_SETTING_MIN,
-    lobsterMaxRoundsMax: LOBSTER_MAX_ROUNDS_SETTING_MAX,
-    lobsterExecutionModeMainSubMultiAgent:
-      LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    lobsterExecutionModeDebateMultiAgent:
-      LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT,
+    loopMaxRoundsDefault: LOOP_MAX_ROUNDS_SETTING_DEFAULT,
+    loopMaxRoundsMin: LOOP_MAX_ROUNDS_SETTING_MIN,
+    loopMaxRoundsMax: LOOP_MAX_ROUNDS_SETTING_MAX,
+    loopExecutionModeMainSubMultiAgent:
+      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
+    loopExecutionModeDebateMultiAgent:
+      LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   })}
     </script>

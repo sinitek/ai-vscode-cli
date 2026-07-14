@@ -46,8 +46,8 @@ test("does not migrate legacy ThinkingMode values into OpenCode variants", () =>
     selectedByConfigId: {},
     optionsByConfigId: {},
     thinkingByCliAndModel: { opencode: { "gateway/model": "high" } },
-    selectedLobsterByConfigId: {},
-    lobsterRolesByConfigId: {},
+    selectedLoopByConfigId: {},
+    loopRolesByConfigId: {},
   } as unknown as ReturnType<typeof ensureCliModelStore>);
 
   assert.deepEqual(normalized.openCodeVariantByConfigAndModel, {});
@@ -77,9 +77,9 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getEffectiveLongTermMemoryEnabled: () => false,
     getGlobalAutoCompactContextAfterRun: () => false,
     getGlobalMultiAgentEnabled: () => false,
-    getGlobalLobsterMaxRounds: () => 1,
-    getGlobalLobsterAutoCloseSubtaskTabs: () => false,
-    buildWorkspaceLobsterExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent" }),
+    getGlobalLoopMaxRounds: () => 1,
+    getGlobalLoopAutoCloseSubtaskTabs: () => false,
+    buildWorkspaceLoopExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent" }),
     getDebugLogging: () => false,
     getLocaleSetting: () => "en",
     getMacTaskShell: () => "zsh",

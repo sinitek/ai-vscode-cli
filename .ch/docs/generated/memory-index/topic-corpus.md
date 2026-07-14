@@ -4,18 +4,16 @@
 
 ## plan
 
-- Entries: 9
-- Estimated read cost: ~589 tokens
+- Entries: 7
+- Estimated read cost: ~445 tokens
 
 - `mem-0b64dd15aa` `plan` Trace Error Bubble Dedupe -> `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md`
-- `mem-59fc0394ed` `plan` Loop Group Chat UI Follow-ups -> `.ch/docs/exec-plans/active/2026-06-25-lobster-group-chat-ui-followups.md`
-- `mem-0066ad05c4` `plan` Loop 主任务失败终止护栏 -> `.ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md`
-- `mem-7ca8709ffe` `plan` Loop 红蓝辩论主持人轮流点名调度 -> `.ch/docs/exec-plans/active/2026-06-29-lobster-debate-moderator-turn-taking.md`
+- `mem-bbc18d3434` `plan` Loop 主任务失败终止护栏 -> `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md`
 - `mem-b7b003c3a1` `plan` 官方 skills 版本刷新与最新判断修复 -> `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md`
 - `mem-4b483bd801` `plan` MCP 市场全量检测与权威刷新 -> `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`
 - `mem-5233a00937` `plan` Codex、Claude、OpenCode CLI 配置可视化扩展 -> `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md`
-- `mem-f311ad1ffa` `plan` VS Code 插件性能与内存风险审计 -> `.ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md`
-- `mem-477fc324b5` `plan` Loop 与 OpenCode 实时进度监控修复 -> `.ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md`
+- `mem-e2fabd8a2e` `plan` Loop Group Chat UI Follow-ups -> `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md`
+- `mem-fe60588b95` `plan` Loop 红蓝辩论主持人轮流点名调度 -> `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`
 
 ## gotcha
 

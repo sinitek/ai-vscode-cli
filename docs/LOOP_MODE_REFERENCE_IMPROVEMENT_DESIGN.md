@@ -4,19 +4,19 @@
 - 日期：2026-07-08
 - 参考系统：`~/work/loop-engineering`
 - 适用范围：本插件现有 Loop 模式的局部增强设计，不代表立即实施
-- 相关现状：`docs/LOBSTER_BOUNDARY_CONTROLS.md`、`.ch/docs/design-docs/lobster-debate-multi-agent-mode.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+- 相关现状：`docs/LOOP_BOUNDARY_CONTROLS.md`、`.ch/docs/design-docs/loop-debate-multi-agent-mode.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## 1. 背景
 
 本插件已经具备较强的 Loop 模式基础：
 
-- `coding / lobster` 顶层模式区分。
+- `coding / loop` 顶层模式区分。
 - `main_sub_multi_agent` 主从多智能体执行。
 - `debate_multi_agent` 红蓝辩论规划，再复用主从执行链路。
 - 主任务可以拆分子任务，按 `writeFiles` / `conflictGroup` 做并发冲突规划。
 - 子任务失败自动重试，主任务连续失败后进入 `needs-review`。
 - Loop 群聊面板可以查看过程、继续执行、补充需求和中止任务。
-- 本地任务记录和沟通文件已经落在 `~/.sinitek_cli/lobster-tasks/` 与 `~/.sinitek_cli/lobster-communications/`。
+- 本地任务记录和沟通文件已经落在 `~/.sinitek_cli/loop-tasks/` 与 `~/.sinitek_cli/loop-communications/`。
 
 目标系统 `loop-engineering` 的先进点不在某个单一功能，而在它把“让 AI 做任务”提升为一套可运行、可预算、可观测、可暂停、可分级放权的控制系统。它强调的核心不是更强提示词，而是把 Loop 设计成长期运行的工程机制。
 
@@ -73,7 +73,7 @@
 建议新增每个任务的轻量状态摘要文件：
 
 ```text
-~/.sinitek_cli/lobster-communications/<taskId>/state.md
+~/.sinitek_cli/loop-communications/<taskId>/state.md
 ```
 
 第一版内容：
@@ -106,7 +106,7 @@
 - ...
 ```
 
-这个文件不替代 `lobster-tasks.json`，而是作为可读状态面，供恢复、群聊展示、人工复核和后续记忆提炼使用。
+这个文件不替代 `loop-tasks.json`，而是作为可读状态面，供恢复、群聊展示、人工复核和后续记忆提炼使用。
 
 ### 2.4 预算和成本是运行前置条件
 
@@ -122,7 +122,7 @@
 这些已经是预算雏形，但还分散在设置和实现里。可以参考目标系统把预算集中展示并写入任务记录：
 
 ```ts
-interface LobsterLoopBudget {
+interface LoopLoopBudget {
   maxMainRounds: number;
   maxSubtasksPerRound: number;
   maxSubtaskRetries: number;
@@ -177,7 +177,7 @@ interface LobsterLoopBudget {
 建议新增：
 
 ```text
-~/.sinitek_cli/lobster-communications/<taskId>/run-log.jsonl
+~/.sinitek_cli/loop-communications/<taskId>/run-log.jsonl
 ```
 
 每轮追加一行：
@@ -231,7 +231,7 @@ interface LobsterLoopBudget {
 本插件现在是本地用户主动发起，冲突规模较小，但已有多 tab、多子任务和群聊并发能力。可局部增加“任务级占用声明”：
 
 ```ts
-interface LobsterTaskLock {
+interface LoopTaskLock {
   taskId: string;
   scope: "workspace" | "files";
   files: string[];
@@ -276,14 +276,14 @@ interface LobsterTaskLock {
 新增任务创建时的结构化元数据：
 
 ```ts
-type LobsterLoopLevel = "report" | "assisted";
+type LoopLoopLevel = "report" | "assisted";
 
-interface LobsterLoopReadiness {
-  level: LobsterLoopLevel;
+interface LoopLoopReadiness {
+  level: LoopLoopLevel;
   goal: string;
   nonGoals: string[];
   successCriteria: string[];
-  budget: LobsterLoopBudget;
+  budget: LoopLoopBudget;
   safety: {
     writeDenylist: string[];
     askBefore: string[];
@@ -307,7 +307,7 @@ interface LobsterLoopReadiness {
 
 落点建议：
 
-- 新增纯函数模块：`src/lobsterRunLog.ts`
+- 新增纯函数模块：`src/loopRunLog.ts`
 - 写入时机：
   - 任务创建。
   - 主任务决策完成。
@@ -327,14 +327,14 @@ interface LobsterLoopReadiness {
 
 落点建议：
 
-- 新增模块：`src/lobsterStateSummary.ts`
-- 从 `LobsterTaskRecord`、`run-log.jsonl`、最后一次主任务决策生成。
+- 新增模块：`src/loopStateSummary.ts`
+- 从 `LoopTaskRecord`、`run-log.jsonl`、最后一次主任务决策生成。
 - 每次主任务或子任务状态变化后覆盖写入。
 
 注意：
 
 - `state.md` 是派生物，不作为唯一事实来源。
-- 真实状态仍以 `lobster-tasks.json` 为准。
+- 真实状态仍以 `loop-tasks.json` 为准。
 - 如果派生失败，不应阻断任务执行，只写 debug 日志。
 
 ### 4.4 Phase 4：Verifier 子任务协议
@@ -344,9 +344,9 @@ interface LobsterLoopReadiness {
 协议示例：
 
 ```ts
-type LobsterSubtaskKind = "implementation" | "verification";
+type LoopSubtaskKind = "implementation" | "verification";
 
-interface LobsterVerificationEvidence {
+interface LoopVerificationEvidence {
   commandsRun: string[];
   passed: boolean;
   failures: string[];
@@ -428,12 +428,12 @@ interface LobsterVerificationEvidence {
 
 ## 6. 数据模型增量建议
 
-在 `LobsterTaskRecord` 中增量加入可选字段，保持旧任务兼容：
+在 `LoopTaskRecord` 中增量加入可选字段，保持旧任务兼容：
 
 ```ts
-type LobsterLoopLevel = "report" | "assisted";
+type LoopLoopLevel = "report" | "assisted";
 
-type LobsterNeedsReviewReason =
+type LoopNeedsReviewReason =
   | "main_ai_failure_limit"
   | "subtask_retry_limit"
   | "boundary_violation"
@@ -442,10 +442,10 @@ type LobsterNeedsReviewReason =
   | "ambiguous_scope"
   | "budget_exceeded";
 
-interface LobsterTaskRecord {
-  loopLevel?: LobsterLoopLevel;
-  loopBudget?: LobsterLoopBudget;
-  needsReviewReason?: LobsterNeedsReviewReason;
+interface LoopTaskRecord {
+  loopLevel?: LoopLoopLevel;
+  loopBudget?: LoopLoopBudget;
+  needsReviewReason?: LoopNeedsReviewReason;
   needsReviewDetail?: string;
   stateSummaryFile?: string;
   runLogFile?: string;
@@ -490,7 +490,7 @@ Verifier 约束：
 
 ## 8. 与现有边界契约设计的关系
 
-`docs/LOBSTER_BOUNDARY_CONTROLS.md` 已经提出 `boundaryContract`，本设计不替代它，而是把目标系统的 Loop 运行思想补充进去：
+`docs/LOOP_BOUNDARY_CONTROLS.md` 已经提出 `boundaryContract`，本设计不替代它，而是把目标系统的 Loop 运行思想补充进去：
 
 - `boundaryContract` 解决“能做什么、不能做什么、何时问用户”。
 - `loopLevel` 解决“当前 Loop 被授权到什么成熟度和动作级别”。
@@ -521,14 +521,14 @@ Verifier 约束：
 
 ```bash
 npm run build
-node --test dist/test/lobsterParallel.test.js dist/test/lobsterDebate.test.js dist/test/lobsterMainFailure.test.js
+node --test dist/test/loopParallel.test.js dist/test/loopDebate.test.js dist/test/loopMainFailure.test.js
 ```
 
 若新增纯函数模块，应补充对应单测，例如：
 
-- `lobsterLoopBudget.test.ts`
-- `lobsterRunLog.test.ts`
-- `lobsterStateSummary.test.ts`
+- `loopLoopBudget.test.ts`
+- `loopRunLog.test.ts`
+- `loopStateSummary.test.ts`
 
 ## 10. 结论
 
@@ -543,4 +543,4 @@ node --test dist/test/lobsterParallel.test.js dist/test/lobsterDebate.test.js di
 - 多 Loop 冲突可协调。
 - 失败原因可分类、可复盘。
 
-本插件已经有较强的多智能体 Loop 执行基础，最适合局部借鉴的方向是：在现有 `lobster` 任务记录和群聊体系上补齐 `运行级别 + 预算 + 状态摘要 + run log + 标准化 needs-review`。这能明显提升 Loop 的可控性和可复盘性，同时避免过早引入定时后台运行、自动 PR、自动合并或强制 worktree 等高风险能力。
+本插件已经有较强的多智能体 Loop 执行基础，最适合局部借鉴的方向是：在现有 `loop` 任务记录和群聊体系上补齐 `运行级别 + 预算 + 状态摘要 + run log + 标准化 needs-review`。这能明显提升 Loop 的可控性和可复盘性，同时避免过早引入定时后台运行、自动 PR、自动合并或强制 worktree 等高风险能力。

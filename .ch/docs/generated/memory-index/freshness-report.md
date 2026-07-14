@@ -17,11 +17,9 @@
 ## Active Plan Activity
 
 - `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md` 最后修改于 2026-06-25T01:59:58+00:00，读取成本约 588 tokens
-- `.ch/docs/exec-plans/active/2026-06-25-lobster-group-chat-ui-followups.md` 最后修改于 2026-07-07T01:50:50+00:00，读取成本约 927 tokens
-- `.ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md` 最后修改于 2026-07-07T01:50:50+00:00，读取成本约 338 tokens
+- `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` 最后修改于 2026-07-14T01:27:53+00:00，读取成本约 916 tokens
+- `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` 最后修改于 2026-07-07T01:50:50+00:00，读取成本约 338 tokens
 - `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` 最后修改于 2026-07-08T07:36:23+00:00，读取成本约 1385 tokens
-- `.ch/docs/exec-plans/active/2026-06-29-lobster-debate-moderator-turn-taking.md` 最后修改于 2026-07-07T01:50:50+00:00，读取成本约 469 tokens
+- `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` 最后修改于 2026-07-14T01:27:53+00:00，读取成本约 463 tokens
 - `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` 最后修改于 2026-07-11T03:33:13+00:00，读取成本约 1645 tokens
 - `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` 最后修改于 2026-07-13T04:55:42+00:00，读取成本约 5599 tokens
-- `.ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md` 最后修改于 2026-07-13T07:48:28+00:00，读取成本约 617 tokens
-- `.ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md` 最后修改于 2026-07-13T06:11:32+00:00，读取成本约 337 tokens

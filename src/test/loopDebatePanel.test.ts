@@ -6,11 +6,11 @@ import { installVscodeMock } from "./vscodeMock";
 installVscodeMock();
 
 const {
-  buildLobsterDebateChatPanelHtml,
-} = require("../webview/lobsterDebatePanel") as typeof import("../webview/lobsterDebatePanel");
+  buildLoopDebateChatPanelHtml,
+} = require("../webview/loopDebatePanel") as typeof import("../webview/loopDebatePanel");
 
 test("renders the Loop task prompt before submitted supplemental requirements", () => {
-  const html = buildLobsterDebateChatPanelHtml(
+  const html = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,
     {
       mode: "main_sub",
@@ -19,7 +19,7 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
         cli: "codex",
         status: "running",
         rootPrompt: "完成任务",
-        taskStoreFile: "/tmp/lobster-tasks.json",
+        taskStoreFile: "/tmp/loop-tasks.json",
         mainCommunicationFile: "/tmp/main-task.md",
         currentRound: 2,
         updatedAt: Date.now(),
@@ -30,7 +30,7 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
       rounds: [{
         key: "execution-2",
         kind: "execution",
-        lobsterRound: 2,
+        loopRound: 2,
         debateRound: 0,
         status: "running",
         startedAt: Date.now(),
@@ -64,7 +64,7 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
 });
 
 test("renders the Loop task prompt before chat records exist", () => {
-  const html = buildLobsterDebateChatPanelHtml(
+  const html = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,
     {
       mode: "main_sub",
@@ -73,7 +73,7 @@ test("renders the Loop task prompt before chat records exist", () => {
         cli: "codex",
         status: "running",
         rootPrompt: "请先完成任务初始化。",
-        taskStoreFile: "/tmp/lobster-tasks.json",
+        taskStoreFile: "/tmp/loop-tasks.json",
         mainCommunicationFile: "/tmp/main-task.md",
         currentRound: 0,
         updatedAt: Date.now(),

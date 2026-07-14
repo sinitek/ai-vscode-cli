@@ -1,40 +1,40 @@
-export const LOBSTER_DEBATE_DIR_NAME = "debates";
-export const LOBSTER_DEBATE_PARTICIPANTS_DIR_NAME = "participants";
-export const LOBSTER_DEBATE_BRIEF_FILENAME = "brief.md";
-export const LOBSTER_DEBATE_CHAT_TRANSCRIPT_FILENAME = "chat.md";
-export const LOBSTER_DEBATE_PARTICIPANT_ROSTER_FILENAME = "moderator-participants.md";
-export const LOBSTER_DEBATE_CROSS_REVIEW_FILENAME = "cross-review.md";
-export const LOBSTER_DEBATE_CONSENSUS_FILENAME = "consensus.md";
-export const LOBSTER_DEBATE_DECISION_FILENAME = "decision.json";
-export const LOBSTER_MAIN_SUB_CHAT_TRANSCRIPT_FILENAME = "group-chat.md";
-export const LOBSTER_MAIN_SUB_CHAT_ROUND_KEY = "main-sub";
-export const DEFAULT_LOBSTER_DEBATE_ROUND = 1;
-export const LOBSTER_DEBATE_MAX_DIALOGUE_TURNS = 6;
-export const LOBSTER_DEBATE_MAX_BATCH_SPEAKERS = 3;
-export const LOBSTER_DEBATE_MODERATOR_ID = "moderator";
-export const LOBSTER_DEBATE_MODERATOR_TITLE = "裁判主持人";
-export const LOBSTER_DEBATE_BLUE_TEAM_ROLE = "blue_team";
-export const LOBSTER_DEBATE_RED_TEAM_ROLE = "red_team";
-export const LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES = [
-  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-  LOBSTER_DEBATE_RED_TEAM_ROLE,
+export const LOOP_DEBATE_DIR_NAME = "debates";
+export const LOOP_DEBATE_PARTICIPANTS_DIR_NAME = "participants";
+export const LOOP_DEBATE_BRIEF_FILENAME = "brief.md";
+export const LOOP_DEBATE_CHAT_TRANSCRIPT_FILENAME = "chat.md";
+export const LOOP_DEBATE_PARTICIPANT_ROSTER_FILENAME = "moderator-participants.md";
+export const LOOP_DEBATE_CROSS_REVIEW_FILENAME = "cross-review.md";
+export const LOOP_DEBATE_CONSENSUS_FILENAME = "consensus.md";
+export const LOOP_DEBATE_DECISION_FILENAME = "decision.json";
+export const LOOP_MAIN_SUB_CHAT_TRANSCRIPT_FILENAME = "group-chat.md";
+export const LOOP_MAIN_SUB_CHAT_ROUND_KEY = "main-sub";
+export const DEFAULT_LOOP_DEBATE_ROUND = 1;
+export const LOOP_DEBATE_MAX_DIALOGUE_TURNS = 6;
+export const LOOP_DEBATE_MAX_BATCH_SPEAKERS = 3;
+export const LOOP_DEBATE_MODERATOR_ID = "moderator";
+export const LOOP_DEBATE_MODERATOR_TITLE = "裁判主持人";
+export const LOOP_DEBATE_BLUE_TEAM_ROLE = "blue_team";
+export const LOOP_DEBATE_RED_TEAM_ROLE = "red_team";
+export const LOOP_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES = [
+  LOOP_DEBATE_BLUE_TEAM_ROLE,
+  LOOP_DEBATE_RED_TEAM_ROLE,
 ] as const;
 
 export {
-  buildLobsterAnswerConclusionMarkdown,
-  buildLobsterFinalSummaryMarkdown,
-  buildLobsterGroupChatFinalStatusSection,
-  resolveLobsterAnswerConclusion,
-  type LobsterFinalSummaryAcceptanceCheck,
-  type LobsterFinalSummaryDecision,
-  type LobsterFinalSummaryRoundSummary,
-  type LobsterFinalSummaryTask,
-  type LobsterGroupChatFinalStatusSection,
-} from "./lobsterDebateFinalSummary";
+  buildLoopAnswerConclusionMarkdown,
+  buildLoopFinalSummaryMarkdown,
+  buildLoopGroupChatFinalStatusSection,
+  resolveLoopAnswerConclusion,
+  type LoopFinalSummaryAcceptanceCheck,
+  type LoopFinalSummaryDecision,
+  type LoopFinalSummaryRoundSummary,
+  type LoopFinalSummaryTask,
+  type LoopGroupChatFinalStatusSection,
+} from "./loopDebateFinalSummary";
 
-export const LOBSTER_DEBATE_PARTICIPANT_ROLES = [
-  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-  LOBSTER_DEBATE_RED_TEAM_ROLE,
+export const LOOP_DEBATE_PARTICIPANT_ROLES = [
+  LOOP_DEBATE_BLUE_TEAM_ROLE,
+  LOOP_DEBATE_RED_TEAM_ROLE,
   "architecture",
   "implementation",
   "testing",
@@ -47,30 +47,30 @@ export const LOBSTER_DEBATE_PARTICIPANT_ROLES = [
   "custom",
 ] as const;
 
-export type LobsterDebateParticipantRole = (typeof LOBSTER_DEBATE_PARTICIPANT_ROLES)[number];
+export type LoopDebateParticipantRole = (typeof LOOP_DEBATE_PARTICIPANT_ROLES)[number];
 
-export const LOBSTER_DEBATE_PARTICIPANT_STANCES = [
+export const LOOP_DEBATE_PARTICIPANT_STANCES = [
   "agree",
   "agree_with_reservations",
   "block",
 ] as const;
 
-export type LobsterDebateParticipantStance = (typeof LOBSTER_DEBATE_PARTICIPANT_STANCES)[number];
+export type LoopDebateParticipantStance = (typeof LOOP_DEBATE_PARTICIPANT_STANCES)[number];
 
-export type LobsterDebateParticipantStatus = "pending" | "running" | "completed" | "error" | "stopped";
+export type LoopDebateParticipantStatus = "pending" | "running" | "completed" | "error" | "stopped";
 
-export const LOBSTER_DEBATE_MODERATOR_ACTIONS = [
+export const LOOP_DEBATE_MODERATOR_ACTIONS = [
   "continue",
   "finalize",
   "block",
 ] as const;
 
-export type LobsterDebateModeratorAction = (typeof LOBSTER_DEBATE_MODERATOR_ACTIONS)[number];
+export type LoopDebateModeratorAction = (typeof LOOP_DEBATE_MODERATOR_ACTIONS)[number];
 
-export type LobsterDebateModeratorDecisionRecord = {
+export type LoopDebateModeratorDecisionRecord = {
   artifactFile: string;
   dialogueTurn: number;
-  action: LobsterDebateModeratorAction;
+  action: LoopDebateModeratorAction;
   reason: string;
   nextSpeakerIds: string[];
   nextFocus: string[];
@@ -78,7 +78,7 @@ export type LobsterDebateModeratorDecisionRecord = {
   updatedAt: number;
 };
 
-export type LobsterDebateActiveSpeakerRecord = {
+export type LoopDebateActiveSpeakerRecord = {
   kind: "participant" | "moderator" | "consensus";
   id: string;
   title: string;
@@ -87,52 +87,52 @@ export type LobsterDebateActiveSpeakerRecord = {
   updatedAt: number;
 };
 
-export type LobsterDebateParticipantRecord = {
+export type LoopDebateParticipantRecord = {
   id: string;
-  role: LobsterDebateParticipantRole;
+  role: LoopDebateParticipantRole;
   title: string;
   model?: string | null;
-  status: LobsterDebateParticipantStatus;
+  status: LoopDebateParticipantStatus;
   artifactFile: string;
   sessionId?: string | null;
   summary?: string;
-  stance?: LobsterDebateParticipantStance;
+  stance?: LoopDebateParticipantStance;
   blockingIssues?: string[];
   updatedAt: number;
 };
 
-export type LobsterDebateDisagreementSeverity = "blocking" | "non_blocking";
+export type LoopDebateDisagreementSeverity = "blocking" | "non_blocking";
 
-export type LobsterDebateDisagreementRecord = {
+export type LoopDebateDisagreementRecord = {
   id: string;
   title: string;
   participants: string[];
-  severity: LobsterDebateDisagreementSeverity;
+  severity: LoopDebateDisagreementSeverity;
   resolution?: string;
 };
 
-export type LobsterDebateParticipantStanceRecord = {
+export type LoopDebateParticipantStanceRecord = {
   participantId: string;
-  stance: LobsterDebateParticipantStance;
+  stance: LoopDebateParticipantStance;
   note?: string;
 };
 
-export type LobsterDebateConsensusRecord<TDecision = unknown> = {
+export type LoopDebateConsensusRecord<TDecision = unknown> = {
   artifactFile: string;
   reached: boolean;
   summary: string;
-  participantStances: LobsterDebateParticipantStanceRecord[];
-  resolvedDisagreements: LobsterDebateDisagreementRecord[];
-  openDisagreements: LobsterDebateDisagreementRecord[];
+  participantStances: LoopDebateParticipantStanceRecord[];
+  resolvedDisagreements: LoopDebateDisagreementRecord[];
+  openDisagreements: LoopDebateDisagreementRecord[];
   decision?: TDecision;
 };
 
-export type LobsterDebateRoundStatus = "running" | "consensus" | "blocked" | "error" | "stopped";
+export type LoopDebateRoundStatus = "running" | "consensus" | "blocked" | "error" | "stopped";
 
-export type LobsterDebateRoundRecord<TDecision = unknown> = {
-  lobsterRound: number;
+export type LoopDebateRoundRecord<TDecision = unknown> = {
+  loopRound: number;
   debateRound: number;
-  status: LobsterDebateRoundStatus;
+  status: LoopDebateRoundStatus;
   startedAt: number;
   completedAt?: number;
   briefFile: string;
@@ -140,13 +140,13 @@ export type LobsterDebateRoundRecord<TDecision = unknown> = {
   participantRosterFile?: string;
   participantRosterSessionId?: string | null;
   dialogueTurns?: number;
-  activeSpeaker?: LobsterDebateActiveSpeakerRecord;
-  participants: LobsterDebateParticipantRecord[];
-  moderatorDecisions?: LobsterDebateModeratorDecisionRecord[];
-  consensus?: LobsterDebateConsensusRecord<TDecision>;
+  activeSpeaker?: LoopDebateActiveSpeakerRecord;
+  participants: LoopDebateParticipantRecord[];
+  moderatorDecisions?: LoopDebateModeratorDecisionRecord[];
+  consensus?: LoopDebateConsensusRecord<TDecision>;
 };
 
-export type LobsterDebateChatSegmentKind =
+export type LoopDebateChatSegmentKind =
   | "preamble"
   | "rules"
   | "task-event"
@@ -163,8 +163,8 @@ export type LobsterDebateChatSegmentKind =
   | "error"
   | "section";
 
-export type LobsterDebateChatSegment = {
-  kind: LobsterDebateChatSegmentKind;
+export type LoopDebateChatSegment = {
+  kind: LoopDebateChatSegmentKind;
   heading: string;
   body: string;
   dialogueTurn?: number;
@@ -172,30 +172,30 @@ export type LobsterDebateChatSegment = {
   actorTitle?: string;
 };
 
-export type LobsterDebateChatTranscript = {
+export type LoopDebateChatTranscript = {
   title: string | null;
-  segments: LobsterDebateChatSegment[];
+  segments: LoopDebateChatSegment[];
   closed: boolean;
 };
 
-export type LobsterTaskRunControlState = {
+export type LoopTaskRunControlState = {
   isRunning: boolean;
   canSupplement: boolean;
   canContinue: boolean;
   canStop: boolean;
 };
 
-export function isLobsterTaskRunOrphaned(
+export function isLoopTaskRunOrphaned(
   task: { id: string; status: string },
   runningTaskIds: ReadonlySet<string>,
 ): boolean {
   return task.status === "running" && !runningTaskIds.has(task.id);
 }
 
-export function resolveLobsterTaskRunControlState(
+export function resolveLoopTaskRunControlState(
   task: { id: string; status: string; mainAiFailureLimitReached?: boolean | null },
   runningTaskIds: ReadonlySet<string>,
-): LobsterTaskRunControlState {
+): LoopTaskRunControlState {
   const hasRunningProcess = runningTaskIds.has(task.id);
   const isCompleted = task.status === "completed";
   const isRunning = hasRunningProcess || (!isCompleted && task.status === "running");
@@ -208,10 +208,10 @@ export function resolveLobsterTaskRunControlState(
   };
 }
 
-export type LobsterDebatePaths = {
+export type LoopDebatePaths = {
   communicationDir: string;
   debatesDir: string;
-  lobsterRoundDir: string;
+  loopRoundDir: string;
   roundDir: string;
   participantsDir: string;
   briefFile: string;
@@ -222,14 +222,14 @@ export type LobsterDebatePaths = {
   decisionFile: string;
 };
 
-export function buildLobsterMainSubChatTranscriptFile(communicationDir: string): string {
-  return joinLobsterDebatePath(
-    normalizeLobsterDebateBaseDir(communicationDir),
-    LOBSTER_MAIN_SUB_CHAT_TRANSCRIPT_FILENAME,
+export function buildLoopMainSubChatTranscriptFile(communicationDir: string): string {
+  return joinLoopDebatePath(
+    normalizeLoopDebateBaseDir(communicationDir),
+    LOOP_MAIN_SUB_CHAT_TRANSCRIPT_FILENAME,
   );
 }
 
-export function formatLobsterGroupChatMemberName(value: string | null | undefined): string {
+export function formatLoopGroupChatMemberName(value: string | null | undefined): string {
   const normalized = typeof value === "string" ? value.trim() : "";
   const title = normalized || "未知成员";
   if (/^【.+】$/u.test(title)) {
@@ -238,12 +238,12 @@ export function formatLobsterGroupChatMemberName(value: string | null | undefine
   return `【${title}】`;
 }
 
-export function buildLobsterMainSubSubtaskTurnBody(options: {
+export function buildLoopMainSubSubtaskTurnBody(options: {
   runStatus: string;
   assistantContent?: string | null;
   communicationFile?: string | null;
 }): string {
-  const content = normalizeLobsterMainSubAssistantContent(options.assistantContent);
+  const content = normalizeLoopMainSubAssistantContent(options.assistantContent);
   const runStatus = String(options.runStatus || "").trim() || "unknown";
   const result = runStatus === "end" ? "completed" : runStatus;
   if (runStatus === "end" && content) {
@@ -262,7 +262,7 @@ export function buildLobsterMainSubSubtaskTurnBody(options: {
   return lines.join("\n");
 }
 
-export type LobsterDebateConsensusValidationResult = {
+export type LoopDebateConsensusValidationResult = {
   canProceed: boolean;
   consensusReached: boolean;
   blockingParticipantIds: string[];
@@ -270,126 +270,126 @@ export type LobsterDebateConsensusValidationResult = {
   reasons: string[];
 };
 
-export type LobsterDebateNeedsReviewSummary = {
+export type LoopDebateNeedsReviewSummary = {
   title: string;
   finalSummary: string;
   details: string[];
   estimatedRemainingRounds?: number;
 };
 
-export function buildLobsterDebatePaths(
+export function buildLoopDebatePaths(
   communicationDir: string,
-  lobsterRound: number,
-  debateRound: number = DEFAULT_LOBSTER_DEBATE_ROUND,
-): LobsterDebatePaths {
-  const normalizedCommunicationDir = normalizeLobsterDebateBaseDir(communicationDir);
-  const normalizedLobsterRound = normalizeLobsterDebateRoundNumber(lobsterRound);
-  const normalizedDebateRound = normalizeLobsterDebateRoundNumber(debateRound);
-  const debatesDir = joinLobsterDebatePath(normalizedCommunicationDir, LOBSTER_DEBATE_DIR_NAME);
-  const lobsterRoundDir = joinLobsterDebatePath(debatesDir, `round-${normalizedLobsterRound}`);
-  const roundDir = normalizedDebateRound === DEFAULT_LOBSTER_DEBATE_ROUND
-    ? lobsterRoundDir
-    : joinLobsterDebatePath(lobsterRoundDir, `debate-${normalizedDebateRound}`);
-  const participantsDir = joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_PARTICIPANTS_DIR_NAME);
+  loopRound: number,
+  debateRound: number = DEFAULT_LOOP_DEBATE_ROUND,
+): LoopDebatePaths {
+  const normalizedCommunicationDir = normalizeLoopDebateBaseDir(communicationDir);
+  const normalizedLoopRound = normalizeLoopDebateRoundNumber(loopRound);
+  const normalizedDebateRound = normalizeLoopDebateRoundNumber(debateRound);
+  const debatesDir = joinLoopDebatePath(normalizedCommunicationDir, LOOP_DEBATE_DIR_NAME);
+  const loopRoundDir = joinLoopDebatePath(debatesDir, `round-${normalizedLoopRound}`);
+  const roundDir = normalizedDebateRound === DEFAULT_LOOP_DEBATE_ROUND
+    ? loopRoundDir
+    : joinLoopDebatePath(loopRoundDir, `debate-${normalizedDebateRound}`);
+  const participantsDir = joinLoopDebatePath(roundDir, LOOP_DEBATE_PARTICIPANTS_DIR_NAME);
 
   return {
     communicationDir: normalizedCommunicationDir,
     debatesDir,
-    lobsterRoundDir,
+    loopRoundDir,
     roundDir,
     participantsDir,
-    briefFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_BRIEF_FILENAME),
-    chatFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_CHAT_TRANSCRIPT_FILENAME),
-    participantRosterFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_PARTICIPANT_ROSTER_FILENAME),
-    crossReviewFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_CROSS_REVIEW_FILENAME),
-    consensusFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_CONSENSUS_FILENAME),
-    decisionFile: joinLobsterDebatePath(roundDir, LOBSTER_DEBATE_DECISION_FILENAME),
+    briefFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_BRIEF_FILENAME),
+    chatFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_CHAT_TRANSCRIPT_FILENAME),
+    participantRosterFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_PARTICIPANT_ROSTER_FILENAME),
+    crossReviewFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_CROSS_REVIEW_FILENAME),
+    consensusFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_CONSENSUS_FILENAME),
+    decisionFile: joinLoopDebatePath(roundDir, LOOP_DEBATE_DECISION_FILENAME),
   };
 }
 
-export function buildLobsterDebateParticipantArtifactFile(
-  paths: Pick<LobsterDebatePaths, "participantsDir">,
+export function buildLoopDebateParticipantArtifactFile(
+  paths: Pick<LoopDebatePaths, "participantsDir">,
   participantId: string,
 ): string {
-  return joinLobsterDebatePath(
+  return joinLoopDebatePath(
     paths.participantsDir,
-    `${sanitizeLobsterDebatePathSegment(participantId, "participant")}.md`,
+    `${sanitizeLoopDebatePathSegment(participantId, "participant")}.md`,
   );
 }
 
-export function buildLobsterDebateParticipantTurnArtifactFile(
-  paths: Pick<LobsterDebatePaths, "participantsDir">,
+export function buildLoopDebateParticipantTurnArtifactFile(
+  paths: Pick<LoopDebatePaths, "participantsDir">,
   participantId: string,
   dialogueTurn: number,
 ): string {
-  const normalizedTurn = normalizeLobsterDebateRoundNumber(dialogueTurn);
-  return joinLobsterDebatePath(
+  const normalizedTurn = normalizeLoopDebateRoundNumber(dialogueTurn);
+  return joinLoopDebatePath(
     paths.participantsDir,
-    `${sanitizeLobsterDebatePathSegment(participantId, "participant")}-turn-${normalizedTurn}.md`,
+    `${sanitizeLoopDebatePathSegment(participantId, "participant")}-turn-${normalizedTurn}.md`,
   );
 }
 
-export function buildLobsterDebateModeratorArtifactFile(
-  paths: Pick<LobsterDebatePaths, "participantsDir">,
+export function buildLoopDebateModeratorArtifactFile(
+  paths: Pick<LoopDebatePaths, "participantsDir">,
   dialogueTurn: number,
 ): string {
-  const normalizedTurn = normalizeLobsterDebateRoundNumber(dialogueTurn);
-  return joinLobsterDebatePath(
+  const normalizedTurn = normalizeLoopDebateRoundNumber(dialogueTurn);
+  return joinLoopDebatePath(
     paths.participantsDir,
-    `${LOBSTER_DEBATE_MODERATOR_ID}-turn-${normalizedTurn}.md`,
+    `${LOOP_DEBATE_MODERATOR_ID}-turn-${normalizedTurn}.md`,
   );
 }
 
-export function isLobsterDebateParticipantStance(value: unknown): value is LobsterDebateParticipantStance {
-  return normalizeLobsterDebateParticipantStance(value) !== null;
+export function isLoopDebateParticipantStance(value: unknown): value is LoopDebateParticipantStance {
+  return normalizeLoopDebateParticipantStance(value) !== null;
 }
 
-export function normalizeLobsterDebateParticipantStance(
+export function normalizeLoopDebateParticipantStance(
   value: unknown,
-): LobsterDebateParticipantStance | null {
+): LoopDebateParticipantStance | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim();
-  return LOBSTER_DEBATE_PARTICIPANT_STANCES.some((stance) => stance === normalized)
-    ? normalized as LobsterDebateParticipantStance
+  return LOOP_DEBATE_PARTICIPANT_STANCES.some((stance) => stance === normalized)
+    ? normalized as LoopDebateParticipantStance
     : null;
 }
 
-export function isLobsterDebateAdversarialParticipantRole(
+export function isLoopDebateAdversarialParticipantRole(
   value: unknown,
-): value is (typeof LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES)[number] {
+): value is (typeof LOOP_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES)[number] {
   if (typeof value !== "string") {
     return false;
   }
   const normalized = value.trim();
-  return LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES.some((role) => role === normalized);
+  return LOOP_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES.some((role) => role === normalized);
 }
 
-export function isLobsterDebateBlockingStance(value: unknown): boolean {
-  return normalizeLobsterDebateParticipantStance(value) === "block";
+export function isLoopDebateBlockingStance(value: unknown): boolean {
+  return normalizeLoopDebateParticipantStance(value) === "block";
 }
 
-export function isLobsterDebateModeratorAction(value: unknown): value is LobsterDebateModeratorAction {
-  return normalizeLobsterDebateModeratorAction(value) !== null;
+export function isLoopDebateModeratorAction(value: unknown): value is LoopDebateModeratorAction {
+  return normalizeLoopDebateModeratorAction(value) !== null;
 }
 
-export function normalizeLobsterDebateModeratorAction(
+export function normalizeLoopDebateModeratorAction(
   value: unknown,
-): LobsterDebateModeratorAction | null {
+): LoopDebateModeratorAction | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim();
-  return LOBSTER_DEBATE_MODERATOR_ACTIONS.some((action) => action === normalized)
-    ? normalized as LobsterDebateModeratorAction
+  return LOOP_DEBATE_MODERATOR_ACTIONS.some((action) => action === normalized)
+    ? normalized as LoopDebateModeratorAction
     : null;
 }
 
-export function normalizeLobsterDebateSpeakerIds(
+export function normalizeLoopDebateSpeakerIds(
   value: unknown,
   allowedIds: readonly string[],
-  maxItems: number = LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+  maxItems: number = LOOP_DEBATE_MAX_BATCH_SPEAKERS,
 ): string[] {
   if (!Array.isArray(value) || !Array.isArray(allowedIds) || allowedIds.length === 0) {
     return [];
@@ -404,7 +404,7 @@ export function normalizeLobsterDebateSpeakerIds(
   }
   const normalizedMaxItems = Number.isFinite(maxItems) && maxItems > 0
     ? Math.max(1, Math.trunc(maxItems))
-    : LOBSTER_DEBATE_MAX_BATCH_SPEAKERS;
+    : LOOP_DEBATE_MAX_BATCH_SPEAKERS;
   const result: string[] = [];
   value.forEach((item) => {
     if (typeof item !== "string") {
@@ -421,13 +421,13 @@ export function normalizeLobsterDebateSpeakerIds(
   return result;
 }
 
-export function selectDefaultLobsterDebateOpeningSpeakerIds(
+export function selectDefaultLoopDebateOpeningSpeakerIds(
   participants: ReadonlyArray<{ id: string; role?: string | null }>,
 ): string[] {
   if (!Array.isArray(participants) || participants.length === 0) {
     return [];
   }
-  const firstBlue = participants.find((participant) => participant?.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE);
+  const firstBlue = participants.find((participant) => participant?.role === LOOP_DEBATE_BLUE_TEAM_ROLE);
   const fallback = participants.find((participant) => typeof participant?.id === "string" && Boolean(participant.id.trim()));
   const id = typeof firstBlue?.id === "string" && firstBlue.id.trim()
     ? firstBlue.id.trim()
@@ -435,7 +435,7 @@ export function selectDefaultLobsterDebateOpeningSpeakerIds(
   return id ? [id] : [];
 }
 
-export function validateLobsterDebateConsensus(consensus: unknown): LobsterDebateConsensusValidationResult {
+export function validateLoopDebateConsensus(consensus: unknown): LoopDebateConsensusValidationResult {
   if (!isObjectRecord(consensus)) {
     return {
       canProceed: false,
@@ -447,8 +447,8 @@ export function validateLobsterDebateConsensus(consensus: unknown): LobsterDebat
   }
 
   const consensusReached = consensus.reached === true;
-  const blockingParticipantIds = collectBlockingLobsterDebateParticipantIds(consensus.participantStances);
-  const blockingDisagreementIds = collectOpenBlockingLobsterDebateDisagreementIds(consensus.openDisagreements);
+  const blockingParticipantIds = collectBlockingLoopDebateParticipantIds(consensus.participantStances);
+  const blockingDisagreementIds = collectOpenBlockingLoopDebateDisagreementIds(consensus.openDisagreements);
   const reasons: string[] = [];
 
   if (!consensusReached) {
@@ -470,20 +470,20 @@ export function validateLobsterDebateConsensus(consensus: unknown): LobsterDebat
   };
 }
 
-export function canProceedWithLobsterDebateConsensus(consensus: unknown): boolean {
-  return validateLobsterDebateConsensus(consensus).canProceed;
+export function canProceedWithLoopDebateConsensus(consensus: unknown): boolean {
+  return validateLoopDebateConsensus(consensus).canProceed;
 }
 
-export function buildLobsterDebateNeedsReviewSummary(options: {
+export function buildLoopDebateNeedsReviewSummary(options: {
   reasons?: readonly string[] | null;
-  consensus?: LobsterDebateConsensusRecord | null;
-}): LobsterDebateNeedsReviewSummary {
-  const reasons = normalizeLobsterDebateNeedsReviewReasons(options.reasons);
+  consensus?: LoopDebateConsensusRecord | null;
+}): LoopDebateNeedsReviewSummary {
+  const reasons = normalizeLoopDebateNeedsReviewReasons(options.reasons);
   const consensus = options.consensus ?? null;
   const consensusSummary = typeof consensus?.summary === "string" ? consensus.summary.trim() : "";
   const decision = isObjectRecord(consensus?.decision) ? consensus.decision : null;
   const decisionSummary = typeof decision?.finalSummary === "string" ? decision.finalSummary.trim() : "";
-  const estimatedRemainingRounds = normalizeLobsterDebateEstimatedRemainingRounds(decision?.estimatedRemainingRounds);
+  const estimatedRemainingRounds = normalizeLoopDebateEstimatedRemainingRounds(decision?.estimatedRemainingRounds);
   const title = consensus?.reached === true ? "红蓝对抗达成阻塞共识" : "红蓝对抗未达成一致";
   const details: string[] = [];
   if (consensusSummary) {
@@ -506,12 +506,12 @@ export function buildLobsterDebateNeedsReviewSummary(options: {
   };
 }
 
-export function normalizeLobsterDebateSessionId(value: unknown): string | null {
+export function normalizeLoopDebateSessionId(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-export function findLatestLobsterDebateParticipantSessionId(
-  participants: readonly LobsterDebateParticipantRecord[] | null | undefined,
+export function findLatestLoopDebateParticipantSessionId(
+  participants: readonly LoopDebateParticipantRecord[] | null | undefined,
   participantId: string,
 ): string | null {
   if (!Array.isArray(participants) || !participantId.trim()) {
@@ -520,7 +520,7 @@ export function findLatestLobsterDebateParticipantSessionId(
   for (let index = participants.length - 1; index >= 0; index -= 1) {
     const participant = participants[index];
     if (participant?.id === participantId) {
-      const sessionId = normalizeLobsterDebateSessionId(participant.sessionId);
+      const sessionId = normalizeLoopDebateSessionId(participant.sessionId);
       if (sessionId) {
         return sessionId;
       }
@@ -529,14 +529,14 @@ export function findLatestLobsterDebateParticipantSessionId(
   return null;
 }
 
-export function findLatestLobsterDebateModeratorSessionId(
-  decisions: readonly LobsterDebateModeratorDecisionRecord[] | null | undefined,
+export function findLatestLoopDebateModeratorSessionId(
+  decisions: readonly LoopDebateModeratorDecisionRecord[] | null | undefined,
 ): string | null {
   if (!Array.isArray(decisions)) {
     return null;
   }
   for (let index = decisions.length - 1; index >= 0; index -= 1) {
-    const sessionId = normalizeLobsterDebateSessionId(decisions[index]?.sessionId);
+    const sessionId = normalizeLoopDebateSessionId(decisions[index]?.sessionId);
     if (sessionId) {
       return sessionId;
     }
@@ -544,7 +544,7 @@ export function findLatestLobsterDebateModeratorSessionId(
   return null;
 }
 
-export function parseLobsterDebateChatTranscript(content: string): LobsterDebateChatTranscript {
+export function parseLoopDebateChatTranscript(content: string): LoopDebateChatTranscript {
   const normalized = typeof content === "string" ? content.replace(/\r\n/g, "\n") : "";
   const lines = normalized.split("\n");
   let title: string | null = null;
@@ -561,7 +561,7 @@ export function parseLobsterDebateChatTranscript(content: string): LobsterDebate
     }
 
     const h2 = line.match(/^##\s+(.+?)\s*$/u);
-    if (h2 && (isLobsterDebateChatBoundaryHeading(h2[1]?.trim() ?? "") || !current)) {
+    if (h2 && (isLoopDebateChatBoundaryHeading(h2[1]?.trim() ?? "") || !current)) {
       if (current) {
         sections.push(current);
       }
@@ -583,8 +583,8 @@ export function parseLobsterDebateChatTranscript(content: string): LobsterDebate
     sections.push(current);
   }
 
-  const segments: LobsterDebateChatSegment[] = [];
-  const preamble = normalizeLobsterDebateChatBody(preambleLines);
+  const segments: LoopDebateChatSegment[] = [];
+  const preamble = normalizeLoopDebateChatBody(preambleLines);
   if (preamble) {
     segments.push({
       kind: "preamble",
@@ -594,11 +594,11 @@ export function parseLobsterDebateChatTranscript(content: string): LobsterDebate
   }
 
   sections.forEach((section) => {
-    const body = normalizeLobsterDebateChatBody(section.bodyLines);
+    const body = normalizeLoopDebateChatBody(section.bodyLines);
     if (!section.heading && !body) {
       return;
     }
-    segments.push(classifyLobsterDebateChatSection(section.heading, body));
+    segments.push(classifyLoopDebateChatSection(section.heading, body));
   });
 
   return {
@@ -608,67 +608,67 @@ export function parseLobsterDebateChatTranscript(content: string): LobsterDebate
   };
 }
 
-function collectBlockingLobsterDebateParticipantIds(value: unknown): string[] {
+function collectBlockingLoopDebateParticipantIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
     .filter((item): item is Record<string, unknown> => isObjectRecord(item))
-    .filter((item) => isLobsterDebateBlockingStance(item.stance))
-    .map((item) => normalizeLobsterDebateIdentifier(item.participantId, "unknown-participant"));
+    .filter((item) => isLoopDebateBlockingStance(item.stance))
+    .map((item) => normalizeLoopDebateIdentifier(item.participantId, "unknown-participant"));
 }
 
-function collectOpenBlockingLobsterDebateDisagreementIds(value: unknown): string[] {
+function collectOpenBlockingLoopDebateDisagreementIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
     .filter((item): item is Record<string, unknown> => isObjectRecord(item))
     .filter((item) => item.severity === "blocking")
-    .map((item) => normalizeLobsterDebateIdentifier(item.id, "unknown-disagreement"));
+    .map((item) => normalizeLoopDebateIdentifier(item.id, "unknown-disagreement"));
 }
 
-function normalizeLobsterDebateNeedsReviewReasons(value: readonly string[] | null | undefined): string[] {
+function normalizeLoopDebateNeedsReviewReasons(value: readonly string[] | null | undefined): string[] {
   return Array.isArray(value)
     ? value.map((reason) => String(reason).trim()).filter(Boolean)
     : [];
 }
 
-function normalizeLobsterDebateEstimatedRemainingRounds(value: unknown): number | undefined {
+function normalizeLoopDebateEstimatedRemainingRounds(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return undefined;
   }
   return Math.max(0, Math.floor(value));
 }
 
-function normalizeLobsterDebateRoundNumber(value: unknown): number {
+function normalizeLoopDebateRoundNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
-    : DEFAULT_LOBSTER_DEBATE_ROUND;
+    : DEFAULT_LOOP_DEBATE_ROUND;
 }
 
-function normalizeLobsterDebateBaseDir(value: string): string {
+function normalizeLoopDebateBaseDir(value: string): string {
   const normalized = String(value ?? "").trim();
   return normalized.replace(/[\\/]+$/, "") || ".";
 }
 
-function normalizeLobsterDebateIdentifier(value: unknown, fallback: string): string {
+function normalizeLoopDebateIdentifier(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function sanitizeLobsterDebatePathSegment(value: string, fallback: string): string {
-  const normalized = normalizeLobsterDebateIdentifier(value, fallback).replace(/[^a-zA-Z0-9_.-]/g, "_");
+function sanitizeLoopDebatePathSegment(value: string, fallback: string): string {
+  const normalized = normalizeLoopDebateIdentifier(value, fallback).replace(/[^a-zA-Z0-9_.-]/g, "_");
   return normalized || fallback;
 }
 
-function classifyLobsterDebateChatSection(heading: string, body: string): LobsterDebateChatSegment {
-  const metadataActorId = extractLobsterGroupChatMetadataValue(body, ["成员 ID", "参与者 ID", "子任务 ID"]);
-  const metadataDialogueTurn = extractLobsterGroupChatDialogueTurn(body);
+function classifyLoopDebateChatSection(heading: string, body: string): LoopDebateChatSegment {
+  const metadataActorId = extractLoopGroupChatMetadataValue(body, ["成员 ID", "参与者 ID", "子任务 ID"]);
+  const metadataDialogueTurn = extractLoopGroupChatDialogueTurn(body);
   if (heading === "补充需求") {
     return {
       kind: "user-message",
       heading,
-      body: normalizeLobsterSupplementalRequirementBody(body),
+      body: normalizeLoopSupplementalRequirementBody(body),
       actorId: "user",
     };
   }
@@ -679,7 +679,7 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "main-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(mainTurn[1]),
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(mainTurn[1]),
       actorTitle: "主任务",
       actorId: mainTurn[2]?.trim() || "main",
     };
@@ -691,7 +691,7 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "main-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(mainTurnWithDisplayName[1]),
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(mainTurnWithDisplayName[1]),
       actorTitle: mainTurnWithDisplayName[2]?.trim() || "主任务",
       actorId: metadataActorId || "main",
     };
@@ -772,7 +772,7 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "participant-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(participantTurn[1]),
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(participantTurn[1]),
       actorTitle: participantTurn[2]?.trim(),
       actorId: participantTurn[3]?.trim(),
     };
@@ -785,7 +785,7 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "participant-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(participantTurnWithRoundAndDisplayName[1]),
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(participantTurnWithRoundAndDisplayName[1]),
       actorTitle,
       actorId: metadataActorId || actorTitle,
     };
@@ -821,9 +821,9 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "moderator-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(moderatorTurn[1]),
-      actorTitle: moderatorTurn[2]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(moderatorTurn[1]),
+      actorTitle: moderatorTurn[2]?.trim() || LOOP_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
     };
   }
 
@@ -833,9 +833,9 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "moderator-turn",
       heading,
       body,
-      dialogueTurn: normalizeOptionalLobsterDebateRoundNumber(moderatorTurnWithRoundAndDisplayName[1]),
-      actorTitle: moderatorTurnWithRoundAndDisplayName[2]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
-      actorId: metadataActorId || LOBSTER_DEBATE_MODERATOR_ID,
+      dialogueTurn: normalizeOptionalLoopDebateRoundNumber(moderatorTurnWithRoundAndDisplayName[1]),
+      actorTitle: moderatorTurnWithRoundAndDisplayName[2]?.trim() || LOOP_DEBATE_MODERATOR_TITLE,
+      actorId: metadataActorId || LOOP_DEBATE_MODERATOR_ID,
     };
   }
 
@@ -845,8 +845,8 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "moderator-turn",
       heading,
       body,
-      actorTitle: moderatorTurnWithoutRound[1]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
+      actorTitle: moderatorTurnWithoutRound[1]?.trim() || LOOP_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
     };
   }
 
@@ -857,8 +857,8 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       heading,
       body,
       dialogueTurn: metadataDialogueTurn,
-      actorTitle: moderatorTurnWithoutRoundWithDisplayName[1]?.trim() || LOBSTER_DEBATE_MODERATOR_TITLE,
-      actorId: metadataActorId || LOBSTER_DEBATE_MODERATOR_ID,
+      actorTitle: moderatorTurnWithoutRoundWithDisplayName[1]?.trim() || LOOP_DEBATE_MODERATOR_TITLE,
+      actorId: metadataActorId || LOOP_DEBATE_MODERATOR_ID,
     };
   }
 
@@ -896,8 +896,8 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "forced-finalize",
       heading,
       body,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
-      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
+      actorTitle: LOOP_DEBATE_MODERATOR_TITLE,
     };
   }
   if (heading === "任务成功完成") {
@@ -914,8 +914,8 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "error",
       heading,
       body,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
-      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
+      actorTitle: LOOP_DEBATE_MODERATOR_TITLE,
     };
   }
   if (heading === "群聊收束") {
@@ -923,8 +923,8 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "closed",
       heading,
       body,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
-      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
+      actorTitle: LOOP_DEBATE_MODERATOR_TITLE,
     };
   }
   if (heading === "主持人停止说明") {
@@ -932,14 +932,14 @@ function classifyLobsterDebateChatSection(heading: string, body: string): Lobste
       kind: "error",
       heading,
       body,
-      actorId: LOBSTER_DEBATE_MODERATOR_ID,
-      actorTitle: LOBSTER_DEBATE_MODERATOR_TITLE,
+      actorId: LOOP_DEBATE_MODERATOR_ID,
+      actorTitle: LOOP_DEBATE_MODERATOR_TITLE,
     };
   }
   return { kind: "section", heading, body };
 }
 
-function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
+function isLoopDebateChatBoundaryHeading(heading: string): boolean {
   return heading === "群聊规则"
     || heading === "任务事件"
     || heading === "补充需求"
@@ -968,11 +968,11 @@ function isLobsterDebateChatBoundaryHeading(heading: string): boolean {
     || /^最终立场：【.+?】$/u.test(heading);
 }
 
-function normalizeLobsterDebateChatBody(lines: string[]): string {
+function normalizeLoopDebateChatBody(lines: string[]): string {
   return lines.join("\n").replace(/^\s+|\s+$/g, "");
 }
 
-function normalizeLobsterSupplementalRequirementBody(body: string): string {
+function normalizeLoopSupplementalRequirementBody(body: string): string {
   const lines = body.split("\n");
   while (/^-\s*(?:时间|主任务轮次)：/u.test(lines[0] ?? "")) {
     lines.shift();
@@ -980,11 +980,11 @@ function normalizeLobsterSupplementalRequirementBody(body: string): string {
   return lines.join("\n").trim();
 }
 
-function normalizeLobsterMainSubAssistantContent(content: unknown): string {
+function normalizeLoopMainSubAssistantContent(content: unknown): string {
   return String(content ?? "").replace(/\r\n/g, "\n").trim();
 }
 
-function normalizeOptionalLobsterDebateRoundNumber(value: unknown): number | undefined {
+function normalizeOptionalLoopDebateRoundNumber(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") {
     return undefined;
   }
@@ -995,7 +995,7 @@ function normalizeOptionalLobsterDebateRoundNumber(value: unknown): number | und
   return Math.trunc(numeric);
 }
 
-function extractLobsterGroupChatMetadataValue(body: string, labels: readonly string[]): string | undefined {
+function extractLoopGroupChatMetadataValue(body: string, labels: readonly string[]): string | undefined {
   const normalizedLabels = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const labelPattern = normalizedLabels.join("|");
   const pattern = new RegExp(`(?:^|\\n)\\s*-?\\s*(?:${labelPattern})\\s*[：:]\\s*(.+?)\\s*(?:\\n|$)`, "u");
@@ -1003,13 +1003,13 @@ function extractLobsterGroupChatMetadataValue(body: string, labels: readonly str
   return match?.[1]?.trim() || undefined;
 }
 
-function extractLobsterGroupChatDialogueTurn(body: string): number | undefined {
+function extractLoopGroupChatDialogueTurn(body: string): number | undefined {
   const match = body.match(/(?:^|\n)\s*-?\s*群聊发言批次\s*[：:]\s*(\d+)(?:\s*\/\s*\d+)?\s*(?:\n|$)/u);
-  return normalizeOptionalLobsterDebateRoundNumber(match?.[1]);
+  return normalizeOptionalLoopDebateRoundNumber(match?.[1]);
 }
 
-function joinLobsterDebatePath(baseDir: string, ...segments: string[]): string {
-  const separator = getLobsterDebatePathSeparator(baseDir);
+function joinLoopDebatePath(baseDir: string, ...segments: string[]): string {
+  const separator = getLoopDebatePathSeparator(baseDir);
   const normalizedBase = baseDir.replace(/[\\/]+$/, "") || ".";
   const normalizedSegments = segments
     .map((segment) => segment.replace(/^[\\/]+|[\\/]+$/g, ""))
@@ -1017,7 +1017,7 @@ function joinLobsterDebatePath(baseDir: string, ...segments: string[]): string {
   return [normalizedBase, ...normalizedSegments].join(separator);
 }
 
-function getLobsterDebatePathSeparator(filePath: string): "/" | "\\" {
+function getLoopDebatePathSeparator(filePath: string): "/" | "\\" {
   return filePath.includes("\\") && !filePath.includes("/") ? "\\" : "/";
 }
 

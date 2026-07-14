@@ -4,7 +4,7 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
         align-items: center;
         gap: 8px;
       }
-      .run-wait.has-current-lobster-group-chat {
+      .run-wait.has-current-loop-group-chat {
         display: flex !important;
       }
       .typing {

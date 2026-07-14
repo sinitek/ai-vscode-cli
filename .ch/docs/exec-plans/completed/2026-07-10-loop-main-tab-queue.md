@@ -50,7 +50,7 @@ Loop 主任务 tab 已按持久化任务状态持续展示运行态，但提示�
 - 风险：任务失败后错误自动继续队列。
 - 缓解：tab 状态显式携带 Loop 任务状态，仅 `running -> completed` 触发自动继续。
 - 风险：完成状态刷新晚于最后一个 CLI 进程结束。
-- 缓解：`runLobsterPrompt` 返回后强制刷新 PanelState。
+- 缓解：`runLoopPrompt` 返回后强制刷新 PanelState。
 
 ## 验证计划
 
@@ -62,7 +62,7 @@ Loop 主任务 tab 已按持久化任务状态持续展示运行态，但提示�
 
 - 单元测试新增/更新：新增 `src/test/loopPromptQueue.test.ts`，覆盖 Loop 主 tab 自动入队、忙碌门禁、后台模式保留、完成终态自动出队和编排终态刷新；更新 tab 运行态测试。
 - 单元自测结果：`node --test dist/test/conversationTabLock.test.js dist/test/loopPromptQueue.test.js dist/test/sessionMessageActions.test.js` 26/26 通过；`npm run build` 通过。
-- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 378/401 通过。22 个失败来自没有对应 `src/test` 的陈旧 `dist/test/lobsterBoundaryRecord.test.js`；另 1 个失败来自 `dist/test/configService.test.js` 对配置页旧标题“OpenAI-compatible 网关范例”的历史断言。失败集合与本次修改前的仓库基线一致，未为通过测试改动范围外代码。
+- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 378/401 通过。22 个失败来自没有对应 `src/test` 的陈旧 `dist/test/loopBoundaryRecord.test.js`；另 1 个失败来自 `dist/test/configService.test.js` 对配置页旧标题“OpenAI-compatible 网关范例”的历史断言。失败集合与本次修改前的仓库基线一致，未为通过测试改动范围外代码。
 - 功能清单：已更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。
 - 相关文档同步：已更新能力事实来源和 VS Code 扩展运行时设计。
 
@@ -78,7 +78,7 @@ Loop 主任务 tab 已按持久化任务状态持续展示运行态，但提示�
 - 2026-07-10：Loop 主任务生命周期运行中时，新提示词直接入队，不允许通过“暂停并发送”启动并行的新 Loop 任务。
 - 2026-07-10：自动继续队列只接受明确的 `completed` 终态，其他终态保留队列。
 - 2026-07-10：队列条目保存入队时的 coding / Loop 模式，避免后台 tab 自动出队时错误降为 coding。
-- 2026-07-10：PanelState 的终态刷新放在 `runLobsterPrompt` 编排边界，覆盖对话提交、群聊继续和子任务续跑唤醒主任务等全部入口。
+- 2026-07-10：PanelState 的终态刷新放在 `runLoopPrompt` 编排边界，覆盖对话提交、群聊继续和子任务续跑唤醒主任务等全部入口。
 
 ## 当前结论
 

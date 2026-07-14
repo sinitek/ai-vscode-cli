@@ -1,4 +1,4 @@
-# 龙虾主从群聊子任务最终回复修复
+# Loop主从群聊子任务最终回复修复
 
 - 日期：2026-06-17
 - 状态：completed
@@ -6,7 +6,7 @@
 
 ## 背景
 
-主从智能体模式已经复用龙虾群聊 UI。用户反馈子任务结束后的“子任务发言”气泡仍显示运行状态、时间和沟通文件等结构化状态，实际应该像群聊成员回复一样展示该子任务的最终回答。
+主从智能体模式已经复用Loop群聊 UI。用户反馈子任务结束后的“子任务发言”气泡仍显示运行状态、时间和沟通文件等结构化状态，实际应该像群聊成员回复一样展示该子任务的最终回答。
 
 ## 目标
 
@@ -34,7 +34,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/test/lobsterDebate.test.ts`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/loopDebate.test.ts`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/design-docs/`、`.ch/docs/references/`
 - 配置与脚本：无
 
@@ -47,8 +47,8 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`，`node --test dist/test/lobsterDebate.test.js`
-- 扩展验证：手动启动主从龙虾任务，确认子任务完成后群聊气泡为最终回复。
+- 最小相关验证：`npm run build`，`node --test dist/test/loopDebate.test.js`
+- 扩展验证：手动启动主从Loop任务，确认子任务完成后群聊气泡为最终回复。
 
 ## 测试与清单同步
 
@@ -70,4 +70,4 @@
 
 ## 当前结论
 
-已完成。`appendLobsterMainSubChatSubtaskFinished` 现在对成功完成的子任务写入最终 assistant 回复原文；异常、停止或缺失回复时才显示状态和沟通文件提示。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、`git diff --check`。
+已完成。`appendLoopMainSubChatSubtaskFinished` 现在对成功完成的子任务写入最终 assistant 回复原文；异常、停止或缺失回复时才显示状态和沟通文件提示。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。

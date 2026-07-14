@@ -28,7 +28,7 @@ src/
 ├── webview/                  # 侧边栏聊天面板、配置中心面板、前后端协议
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
 ├── trace/                    # trace/tool 事件格式化
-├── lobsterDebate.ts          # Loop 辩论记录、路径、群聊解析和共识校验纯函数
+├── loopDebate.ts          # Loop 辩论记录、路径、群聊解析和共识校验纯函数
 ├── logger.ts                 # 本地日志与脱敏
 ├── i18n.ts                   # 扩展侧国际化
 └── errorDisplay.ts           # 统一错误展示
@@ -135,38 +135,38 @@ Loop 的主任务、子任务、裁判主持人和参与者是编排角色，不
 
 Loop 子任务是插件创建的独立 CLI 会话，不属于 OpenCode/Codex 的内部 child session。每个子任务启动时，主任务 tab 立即创建一个按 `taskId + round + subtaskId` 隔离的 Loop 子代理 assistant 气泡；运行中每秒从对应子任务 tab 的消息存储读取非 thinking、非内部子代理的可见 assistant 快照，并将新增正文或修正快照定向更新到原气泡。完成、失败和中断更新同一气泡状态；子任务 tab 自身的 assistant/thinking/trace 事件保持不变。主任务进度气泡带稳定 `subagentId`，不会进入父任务 final-answer 或 successful-reply fallback。
 
-- `main_sub_multi_agent`：经典主从多智能体，主任务直接返回 `LobsterMainDecision`，再复用现有子任务批次、冲突规划、重试、沟通文件和最终总结链路。运行时在 `~/.sinitek_cli/lobster-communications/<taskId>/group-chat.md` 维护主从群聊 transcript，任务开始/恢复气泡会显示“打开 Loop 群聊”动作；内容区群聊面板把“主任务”和动态加入的“子任务 1~N”作为成员展示，成员区标题统一使用“成员”，不沿用红蓝文案；子任务成功完成后的发言气泡展示该子任务最终回复，运行状态与验证依据继续写入任务记录和子任务沟通文件，并在主任务或当前子任务运行时显示“思考中”气泡。未完成且未触发主任务 AI 连续失败上限的 Loop 任务都会在群聊面板显示“补充需求”按钮，把新增需求写入任务记录与主任务沟通文件，供下一轮主任务/裁判主持人读取；当同一 Loop 任务当前没有运行进程且仍可继续时，群聊面板额外显示“继续执行”按钮，点击后先弹出可编辑确认框（默认“继续”），确认后复用同一 `resumeTaskId`，把该继续消息作为本次继续指令交给主任务/裁判主持人判断下一步；同一 Loop 任务存在运行进程时，群聊面板显示“中止”按钮并按 `lobsterTaskId` 停止主任务、子任务和相关运行，把任务记录标记为 stopped。AI 对话面板中的 Loop 主任务 tab 在主任务或同一 Loop 任务任一子任务仍在运行时强制跟随最新消息；用户手动滚离底部时仍显示置底按钮，点击后回到最新消息。普通 Vibe tab 与 Loop 子任务 tab 保持原有按用户滚动位置决定的策略。
-- `debate_multi_agent`：只替代主任务规划/复核阶段，并以红蓝对抗作为辩论语义。每个主任务复核轮先通过临时普通对话 tab 启动裁判主持人组队，裁判主持人写入 `moderator-participants.md` 并动态设计 2-6 个红蓝参与者；新清单的 `role` 只能是 `blue_team` 或 `red_team`，且必须至少包含 1 个蓝队和 1 个红队。蓝队负责提出、捍卫和修正方案，红队负责攻击方案假设、目标覆盖、证据链、边界场景、可行性、成本收益和可验证性；只有任务涉及代码、文件、权限、部署或流程执行时，红队才额外检查并发冲突、越权修改、回滚/恢复失败等工程风险。扩展校验后把这些成员作为 `## 参与者加入：...` 写入 `chat.md`。每个发言批次内参与者并行运行，各自只写独立的 `participants/<participantId>-turn-<n>.md`，扩展等待本批次全部 artifact 完成后按裁判主持人清单顺序追加到 `chat.md`，再启动裁判主持人写 `participants/moderator-turn-<n>.md` 并输出 `continue / finalize / block`；`continue` 表示红队攻击尚未被蓝队充分回应或蓝队新方案尚未被攻击，`finalize` 并行收集最终 `participants/<participantId>.md` 和 `## 立场` 后交给共识汇总器生成 `decision.json`，`block` 进入人工复核。参与者和裁判主持人的临时 tab 在回答完成后可按“Loop 子任务自动关标签”设置关闭，后续同一角色优先用 `debateRounds` 中记录的 sessionId 新建临时 tab 续接。最大发言批次数只作为防无限循环安全上限，达到上限后运行时强制收束。红蓝辩论任务也复用“打开 Loop 群聊”动作；通用面板把 `debates/round-*/chat.md` 与根部 `group-chat.md` 合并为单条时间线，主任务轮次、发言批次和执行阶段以系统消息呈现，不再提供轮次切换，并根据 `debateRounds.activeSpeaker` 显示当前裁判主持人/参与者/共识汇总器的“思考中”等待气泡。群聊面板的“中止”入口同样按 `lobsterTaskId` 停止裁判主持人、参与者、共识汇总器以及共识通过后的主从执行子任务，并把运行中的辩论轮和参与者标记为 stopped。共识通过后仍交给现有 `applyLobsterMainDecision`，子任务执行链路不分叉，但主任务决策、子任务加入、子任务完成和批次完成会继续写入根部 `group-chat.md`，同一任务页面继续在同一时间线展示后续“任务执行群聊”消息，并根据 activeSubtaskId / activeSubtaskIds 显示当前主任务或子任务“思考中”。两种模式的群聊面板都会在状态落盘后主动刷新，5 秒自动刷新仅作兜底；若刷新前群聊滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时保留手动刷新；当任务尚未完成且未触发主任务 AI 连续失败上限时，面板都提供“补充需求”以把新增要求持久化到任务记录和主沟通文件，供下一轮主持人或主任务读取。不同 `taskId` 的 Loop 群聊页面由扩展侧按任务隔离管理，可同时打开；同一 `taskId` 重复打开时复用该任务已有页面并刷新状态。
+- `main_sub_multi_agent`：经典主从多智能体，主任务直接返回 `LoopMainDecision`，再复用现有子任务批次、冲突规划、重试、沟通文件和最终总结链路。运行时在 `~/.sinitek_cli/loop-communications/<taskId>/group-chat.md` 维护主从群聊 transcript，任务开始/恢复气泡会显示“打开 Loop 群聊”动作；内容区群聊面板把“主任务”和动态加入的“子任务 1~N”作为成员展示，成员区标题统一使用“成员”，不沿用红蓝文案；子任务成功完成后的发言气泡展示该子任务最终回复，运行状态与验证依据继续写入任务记录和子任务沟通文件，并在主任务或当前子任务运行时显示“思考中”气泡。未完成且未触发主任务 AI 连续失败上限的 Loop 任务都会在群聊面板显示“补充需求”按钮，把新增需求写入任务记录与主任务沟通文件，供下一轮主任务/裁判主持人读取；当同一 Loop 任务当前没有运行进程且仍可继续时，群聊面板额外显示“继续执行”按钮，点击后先弹出可编辑确认框（默认“继续”），确认后复用同一 `resumeTaskId`，把该继续消息作为本次继续指令交给主任务/裁判主持人判断下一步；同一 Loop 任务存在运行进程时，群聊面板显示“中止”按钮并按 `loopTaskId` 停止主任务、子任务和相关运行，把任务记录标记为 stopped。AI 对话面板中的 Loop 主任务 tab 在主任务或同一 Loop 任务任一子任务仍在运行时强制跟随最新消息；用户手动滚离底部时仍显示置底按钮，点击后回到最新消息。普通 Vibe tab 与 Loop 子任务 tab 保持原有按用户滚动位置决定的策略。
+- `debate_multi_agent`：只替代主任务规划/复核阶段，并以红蓝对抗作为辩论语义。每个主任务复核轮先通过临时普通对话 tab 启动裁判主持人组队，裁判主持人写入 `moderator-participants.md` 并动态设计 2-6 个红蓝参与者；新清单的 `role` 只能是 `blue_team` 或 `red_team`，且必须至少包含 1 个蓝队和 1 个红队。蓝队负责提出、捍卫和修正方案，红队负责攻击方案假设、目标覆盖、证据链、边界场景、可行性、成本收益和可验证性；只有任务涉及代码、文件、权限、部署或流程执行时，红队才额外检查并发冲突、越权修改、回滚/恢复失败等工程风险。扩展校验后把这些成员作为 `## 参与者加入：...` 写入 `chat.md`。每个发言批次内参与者并行运行，各自只写独立的 `participants/<participantId>-turn-<n>.md`，扩展等待本批次全部 artifact 完成后按裁判主持人清单顺序追加到 `chat.md`，再启动裁判主持人写 `participants/moderator-turn-<n>.md` 并输出 `continue / finalize / block`；`continue` 表示红队攻击尚未被蓝队充分回应或蓝队新方案尚未被攻击，`finalize` 并行收集最终 `participants/<participantId>.md` 和 `## 立场` 后交给共识汇总器生成 `decision.json`，`block` 进入人工复核。参与者和裁判主持人的临时 tab 在回答完成后可按“Loop 子任务自动关标签”设置关闭，后续同一角色优先用 `debateRounds` 中记录的 sessionId 新建临时 tab 续接。最大发言批次数只作为防无限循环安全上限，达到上限后运行时强制收束。红蓝辩论任务也复用“打开 Loop 群聊”动作；通用面板把 `debates/round-*/chat.md` 与根部 `group-chat.md` 合并为单条时间线，主任务轮次、发言批次和执行阶段以系统消息呈现，不再提供轮次切换，并根据 `debateRounds.activeSpeaker` 显示当前裁判主持人/参与者/共识汇总器的“思考中”等待气泡。群聊面板的“中止”入口同样按 `loopTaskId` 停止裁判主持人、参与者、共识汇总器以及共识通过后的主从执行子任务，并把运行中的辩论轮和参与者标记为 stopped。共识通过后仍交给现有 `applyLoopMainDecision`，子任务执行链路不分叉，但主任务决策、子任务加入、子任务完成和批次完成会继续写入根部 `group-chat.md`，同一任务页面继续在同一时间线展示后续“任务执行群聊”消息，并根据 activeSubtaskId / activeSubtaskIds 显示当前主任务或子任务“思考中”。两种模式的群聊面板都会在状态落盘后主动刷新，5 秒自动刷新仅作兜底；若刷新前群聊滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮，同时保留手动刷新；当任务尚未完成且未触发主任务 AI 连续失败上限时，面板都提供“补充需求”以把新增要求持久化到任务记录和主沟通文件，供下一轮主持人或主任务读取。不同 `taskId` 的 Loop 群聊页面由扩展侧按任务隔离管理，可同时打开；同一 `taskId` 重复打开时复用该任务已有页面并刷新状态。
 
-Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁由持久化任务状态加当前扩展实例的运行所有权共同决定。当前实例会跟踪从 `runLobsterPrompt` 取得任务到编排收尾的主任务所有权，并把它与主/并行/交互 CLI 运行集合合并；因此任务记录为 `running` 且该集合仍包含同一 `taskId` 时，即使正处于主任务与子任务、裁判主持人与参与者之间的编排空档，主 tab 仍保持运行态和不可关闭。此时在主 tab 提交的新提示词直接加入该 tab 队列，不能通过阶段性进程空档启动新任务，手动继续和自动出队也会被阻止。若任务记录遗留 `running`、但当前实例已不拥有任何对应编排或 CLI 运行时，则将其收敛为 `stopped`，清理活跃子任务/辩论状态并解除关闭与重置锁；编排中未捕获的异常也必须写入 `error` 终态，不能留下永久锁。队列条目保留入队时的 coding / Loop 模式，因此 tab 切到后台后自动出队也不会把 Loop 请求错误降为 coding。任务进入 `completed` 后自动发送队首提示词；进入 `needs-review`、`error` 或 `stopped` 后解除 tab 锁定但保留队列，等待用户手动继续。普通 Vibe tab 与 Loop 子任务 tab 继续按实际执行进程显示运行态和使用原有冲突弹窗。会话重置由扩展端先完成新建空白 Tab 和关闭旧 Tab，再回推 PanelState/消息；Webview 不得在该操作确认前清空旧 Tab 的运行时消息。
+Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁由持久化任务状态加当前扩展实例的运行所有权共同决定。当前实例会跟踪从 `runLoopPrompt` 取得任务到编排收尾的主任务所有权，并把它与主/并行/交互 CLI 运行集合合并；因此任务记录为 `running` 且该集合仍包含同一 `taskId` 时，即使正处于主任务与子任务、裁判主持人与参与者之间的编排空档，主 tab 仍保持运行态和不可关闭。此时在主 tab 提交的新提示词直接加入该 tab 队列，不能通过阶段性进程空档启动新任务，手动继续和自动出队也会被阻止。若任务记录遗留 `running`、但当前实例已不拥有任何对应编排或 CLI 运行时，则将其收敛为 `stopped`，清理活跃子任务/辩论状态并解除关闭与重置锁；编排中未捕获的异常也必须写入 `error` 终态，不能留下永久锁。队列条目保留入队时的 coding / Loop 模式，因此 tab 切到后台后自动出队也不会把 Loop 请求错误降为 coding。任务进入 `completed` 后自动发送队首提示词；进入 `needs-review`、`error` 或 `stopped` 后解除 tab 锁定但保留队列，等待用户手动继续。普通 Vibe tab 与 Loop 子任务 tab 继续按实际执行进程显示运行态和使用原有冲突弹窗。会话重置由扩展端先完成新建空白 Tab 和关闭旧 Tab，再回推 PanelState/消息；Webview 不得在该操作确认前清空旧 Tab 的运行时消息。
 
-`src/lobsterDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、裁判主持人决策类型、红蓝角色常量、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。AI 对话历史记录弹窗的“Loop 群聊” tab 只下发任务摘要并按 `taskId` 打开对应任务的内容区群聊面板，不直接加载普通 session 或自动继续任务。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、裁判主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被裁判主持人追问、蓝队修正或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
+`src/loopDebate.ts` 只保存辩论路径、主从 `group-chat.md` 路径、记录类型、群聊回合 artifact 路径、裁判主持人决策类型、红蓝角色常量、群聊 transcript 标题解析、主从子任务发言正文格式化和共识校验纯函数，不访问 VS Code API 或文件系统。实际文件读写、`chat.md` / `group-chat.md` 追加、任务记录更新、tab 创建、内容区 WebviewPanel 创建和失败降级都留在 `extension.ts` 编排层。AI 对话历史记录弹窗的“Loop 群聊” tab 只下发任务摘要并按 `taskId` 打开对应任务的内容区群聊面板，不直接加载普通 session 或自动继续任务。`debate_multi_agent` 发生 `chat.md` 缺失或未收束、裁判主持人 artifact 缺失或无法解析、参与者 artifact 缺失、共识后仍有未解决阻塞、非法 `consensus.md` / `decision.json` 或无法派发合法子任务时，会把任务更新为 `needs-review`，不静默回落到经典主任务规划。参与者 artifact 的原始 `block` 如果被裁判主持人追问、蓝队修正或共识汇总器明确转化为前置子任务、验收标准或风险说明，并写入 `resolvedDisagreements`，运行时允许按 consensus 的最终 `participantStances` 继续。
 
 自动重试成功和用户在子任务 Tab 中手动恢复后成功结束，均必须先完成同一子任务状态/沟通记录收尾；若全局“Loop 子任务自动关标签”设置开启，再关闭该子任务 Tab。手动恢复再次错误或停止，以及关闭该设置时不自动关闭 Tab；主任务继续唤醒仍受任务可恢复状态和主任务连续 AI 失败上限约束。
 
 #### 4.3.1 开发级 Workflow Skill 选择与注入
 
-`media/loop-workflow-skills/` 是扩展内置的只读执行快照，`src/lobsterSkillGuidance.ts` 是唯一 loader、分类和选择模块。生产路径由 `createLobsterSkillRuntimeContext` 把 `extensionUri.fsPath` 传给 `loadLobsterSkillPack`，再解析固定相对目录 `media/loop-workflow-skills`；运行时不扫描 cwd、工作区同名目录、用户 Home、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。
+`media/loop-workflow-skills/` 是扩展内置的只读执行快照，`src/loopSkillGuidance.ts` 是唯一 loader、分类和选择模块。生产路径由 `createLoopSkillRuntimeContext` 把 `extensionUri.fsPath` 传给 `loadLoopSkillPack`，再解析固定相对目录 `media/loop-workflow-skills`；运行时不扫描 cwd、工作区同名目录、用户 Home、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。
 
 ```text
 可信原始 displayPrompt / contextTags + 宿主 workspace/active-editor 路径
-  -> resolveNewLobsterTaskKind
+  -> resolveNewLoopTaskKind
   -> taskKind: development | non_development | 缺失(unknown/legacy)
-  -> createLobsterSkillRuntimeContext（仅 development 加载 pack 与 compact catalog）
+  -> createLoopSkillRuntimeContext（仅 development 加载 pack 与 compact catalog）
   -> 普通主任务 / 红蓝首轮 brief + consensus / 红蓝后续主持人
   -> 主模型每个子任务只返回 skillIds
-  -> applyLobsterMainDecisionForRun 中央复核
+  -> applyLoopMainDecisionForRun 中央复核
   -> Store 持久化宿主 skillIds + skillGuidance 快照
-  -> buildLobsterSubtaskModelPrompt 注入；自动 retry 复用同一快照
+  -> buildLoopSubtaskModelPrompt 注入；自动 retry 复用同一快照
 ```
 
-- **可信粗分类**：新任务只使用原始 `displayPrompt`、原始 `contextTags` 和宿主采集的 workspace folder / active editor `fsPath` 调用 `classifyLobsterRootTask`；`modelPrompt`、长期记忆、模型输出和 Skill 正文不参与分类。明确开发任务持久化 `taskKind="development"`，明确非开发任务持久化 `taskKind="non_development"`，不确定任务不写该字段；旧记录不猜测迁移。
-- **单轮同源 catalog**：每个主任务轮次在普通/红蓝分流前只创建一次 `LobsterSkillRuntimeContext`。普通主任务和红蓝后续主持人复用 `buildLobsterMainModelPrompt`；红蓝首轮把同一个 `compactCatalogSection` 写入 `brief.md`，并经 `runLobsterDebateConsensusSummary` 原样传给 consensus prompt。模型只看到 `id/name/description/phases/taskKinds/roles/requiredCapabilities/priority/positiveTriggers/negativeTriggers`，看不到 path、hash、bytes、supportFiles、source 或正文。
-- **ID-only 决策**：主模型唯一新增的 Skill 字段是每个子任务可选的 `skillIds?: string[]`，最多 3 个。`normalizeSingleLobsterSubtaskDecision` 只保留字符串 ID；模型返回的 path、hash、正文、`skillGuidance`、CLI、model、command 和其他未知字段不会进入任务记录。
-- **中央精门禁**：普通主从和红蓝共识都经过 `applyLobsterMainDecisionForRun`。宿主对每个子任务使用 `title/prompt/writeFiles/conflictGroup` 重新分类，并按根任务类型、子任务 phase、task kind、role、宿主 capability、当轮候选 allowlist、负向 trigger、资源完整性和预算逐项复核；被拒 ID 不会被替换。当前普通子任务的 `availableCapabilities` 固定为空数组，因此需要 `interactive-user` 或 `chrome-devtools-mcp` 的 Skill 会被拒绝。
+- **可信粗分类**：新任务只使用原始 `displayPrompt`、原始 `contextTags` 和宿主采集的 workspace folder / active editor `fsPath` 调用 `classifyLoopRootTask`；`modelPrompt`、长期记忆、模型输出和 Skill 正文不参与分类。明确开发任务持久化 `taskKind="development"`，明确非开发任务持久化 `taskKind="non_development"`，不确定任务不写该字段；旧记录不猜测迁移。
+- **单轮同源 catalog**：每个主任务轮次在普通/红蓝分流前只创建一次 `LoopSkillRuntimeContext`。普通主任务和红蓝后续主持人复用 `buildLoopMainModelPrompt`；红蓝首轮把同一个 `compactCatalogSection` 写入 `brief.md`，并经 `runLoopDebateConsensusSummary` 原样传给 consensus prompt。模型只看到 `id/name/description/phases/taskKinds/roles/requiredCapabilities/priority/positiveTriggers/negativeTriggers`，看不到 path、hash、bytes、supportFiles、source 或正文。
+- **ID-only 决策**：主模型唯一新增的 Skill 字段是每个子任务可选的 `skillIds?: string[]`，最多 3 个。`normalizeSingleLoopSubtaskDecision` 只保留字符串 ID；模型返回的 path、hash、正文、`skillGuidance`、CLI、model、command 和其他未知字段不会进入任务记录。
+- **中央精门禁**：普通主从和红蓝共识都经过 `applyLoopMainDecisionForRun`。宿主对每个子任务使用 `title/prompt/writeFiles/conflictGroup` 重新分类，并按根任务类型、子任务 phase、task kind、role、宿主 capability、当轮候选 allowlist、负向 trigger、资源完整性和预算逐项复核；被拒 ID 不会被替换。当前普通子任务的 `availableCapabilities` 固定为空数组，因此需要 `interactive-user` 或 `chrome-devtools-mcp` 的 Skill 会被拒绝。
 - **有界快照**：compact catalog 最多 32 项、单项 description 最多 240 个 JavaScript 字符单元、总长最多 12,000；每子任务最多 3 个 ID，单篇清洗后 guidance 最多 24,000，总 guidance 最多 32,000。排序固定为 `priority ASC, id ASC`，超预算按整项/整篇及其后续项跳过，不截断规则正文；supportFiles 只做完整性校验，首版不递归注入。
-- **Store 与 prompt**：`upsertLobsterSubtask` 只写宿主确认后的稳定 `skillIds` 和宿主生成的 `skillGuidance`。正文只进入 `buildLobsterSubtaskModelPrompt`，位置固定在“子任务职责”之后、“当前子任务”之前，并再次声明系统/用户、AGENTS、职责、`writeFiles`、验收和沟通要求优先；`buildLobsterSubtaskDisplayPrompt` 不包含正文。
-- **重试稳定性**：自动重试继续使用首次中央 apply 后已持久化的同一 `LobsterSubtaskRecord`，不会重新加载 pack、重新选择 ID 或按升级后的资源重建正文；因此同一子任务的新会话获得逐字相同的 Skill 快照。
+- **Store 与 prompt**：`upsertLoopSubtask` 只写宿主确认后的稳定 `skillIds` 和宿主生成的 `skillGuidance`。正文只进入 `buildLoopSubtaskModelPrompt`，位置固定在“子任务职责”之后、“当前子任务”之前，并再次声明系统/用户、AGENTS、职责、`writeFiles`、验收和沟通要求优先；`buildLoopSubtaskDisplayPrompt` 不包含正文。
+- **重试稳定性**：自动重试继续使用首次中央 apply 后已持久化的同一 `LoopSubtaskRecord`，不会重新加载 pack、重新选择 ID 或按升级后的资源重建正文；因此同一子任务的新会话获得逐字相同的 Skill 快照。
 
 #### 4.3.2 降级与首版边界
 
@@ -205,8 +205,9 @@ Loop 主任务 tab 的视觉运行态、关闭锁和提示词队列门禁由持�
 - `workspace-settings/`：工作区级 UI/CLI 偏好与项目级工具设置；旧 `autoCompactContextAfterRun` / `autoCompactContextBeforeRun` 和 `multiAgentEnabled` / `codexMultiAgentEnabled` 分别只作为全局自动压缩、全局隐式子代理开关的迁移输入，成功迁移或用户更新后移除
 - `models.json`：各 CLI 的模型列表与选择
 - `tasks.json`：任务相关状态
-- `lobster-tasks/`：按工作区、CLI 和会话隔离的 Loop 任务记录；新任务写入 `executionMode`，老任务缺字段时按 `main_sub_multi_agent` 兼容，辩论模式额外保留 `debateRounds`；开发级新任务可保存宿主 `taskKind`，子任务可保存宿主确认的 `skillIds/skillGuidance` 快照，旧记录缺少这些可选字段时继续按原 Loop 读取和运行
-- `lobster-communications/`：Loop 主任务、子任务和辩论沟通文件；`debate_multi_agent` 在 `<taskId>/debates/round-<n>/` 下生成 `brief.md`、`chat.md`、`moderator-participants.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/*.md`、`cross-review.md`、`consensus.md`、`decision.json`
+- `loop-tasks/`：按工作区、CLI 和会话隔离的 Loop 任务记录；新任务写入 `executionMode`，老任务缺字段时按 `main_sub_multi_agent` 兼容，辩论模式额外保留 `debateRounds`；开发级新任务可保存宿主 `taskKind`，子任务可保存宿主确认的 `skillIds/skillGuidance` 快照，旧记录缺少这些可选字段时继续按原 Loop 读取和运行
+- `loop-communications/`：Loop 主任务、子任务和辩论沟通文件；`debate_multi_agent` 在 `<taskId>/debates/round-<n>/` 下生成 `brief.md`、`chat.md`、`moderator-participants.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/*.md`、`cross-review.md`、`consensus.md`、`decision.json`
+- 旧 Lobster 版本的 `lobster-tasks`、`lobster-tasks.json` 与 `lobster-communications` 仅作为迁移输入。任务枚举会先将通信树移动/合并到 Loop 目录，再按任务的 workspace、CLI 与 session 写入规范化的 `loop-tasks.json`；相同目标文件内容冲突时保留 `.pre-loop-migration` 副本。设置、工作区、模型、任务运行记录和会话消息中的旧前缀键也由 `src/loopLegacyMigration.ts` 统一迁移，新键优先
 - `temp/`：临时附件文件
 - `logs/`：运行日志
 

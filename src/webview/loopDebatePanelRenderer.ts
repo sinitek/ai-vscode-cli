@@ -1,5 +1,5 @@
 import type { AppLocale } from "../i18n";
-import type { LobsterDebateChatPanelState } from "./lobsterDebatePanelTypes";
+import type { LoopDebateChatPanelState } from "./loopDebatePanelTypes";
 
 const STRINGS = {
   en: {
@@ -122,15 +122,15 @@ const STRINGS = {
   },
 } as const;
 
-export type LobsterDebateChatPanelStrings = Record<keyof typeof STRINGS.en, string>;
+export type LoopDebateChatPanelStrings = Record<keyof typeof STRINGS.en, string>;
 
-export function getStrings(locale: AppLocale): LobsterDebateChatPanelStrings {
+export function getStrings(locale: AppLocale): LoopDebateChatPanelStrings {
   return locale === "zh-CN" ? STRINGS["zh-CN"] : STRINGS.en;
 }
 
-export function buildLobsterDebateChatPanelTitle(
-  state: LobsterDebateChatPanelState,
-  strings: LobsterDebateChatPanelStrings,
+export function buildLoopDebateChatPanelTitle(
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   const taskId = state.task.id.trim();
   if (!taskId) {

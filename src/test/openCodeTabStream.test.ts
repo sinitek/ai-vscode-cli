@@ -17,9 +17,9 @@ function createContext() {
     now: () => 123,
     metadata: {
       taskRole: "subtask" as const,
-      lobsterTaskId: "loop-1",
-      lobsterRound: 2,
-      lobsterSubtaskId: "subtask-1",
+      loopTaskId: "loop-1",
+      loopRound: 2,
+      loopSubtaskId: "subtask-1",
     },
   };
 }
@@ -55,9 +55,9 @@ test("turns parallel OpenCode JSONL text into tab-scoped assistant bubble action
         content: "",
         createdAt: 123,
         taskRole: "subtask",
-        lobsterTaskId: "loop-1",
-        lobsterRound: 2,
-        lobsterSubtaskId: "subtask-1",
+        loopTaskId: "loop-1",
+        loopRound: 2,
+        loopSubtaskId: "subtask-1",
       },
     },
     {
@@ -116,9 +116,9 @@ test("keeps thinking, tool traces, and task lists separate from normal assistant
         createdAt: 123,
         kind: "thinking",
         taskRole: "subtask",
-        lobsterTaskId: "loop-1",
-        lobsterRound: 2,
-        lobsterSubtaskId: "subtask-1",
+        loopTaskId: "loop-1",
+        loopRound: 2,
+        loopSubtaskId: "subtask-1",
       },
     },
     {
@@ -150,9 +150,9 @@ test("keeps thinking, tool traces, and task lists separate from normal assistant
         content: "",
         createdAt: 123,
         taskRole: "subtask",
-        lobsterTaskId: "loop-1",
-        lobsterRound: 2,
-        lobsterSubtaskId: "subtask-1",
+        loopTaskId: "loop-1",
+        loopRound: 2,
+        loopSubtaskId: "subtask-1",
       },
     },
     {

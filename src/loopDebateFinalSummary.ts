@@ -1,44 +1,44 @@
-export type LobsterGroupChatFinalStatusSection = {
+export type LoopGroupChatFinalStatusSection = {
   heading: "任务成功完成" | "任务中断";
   body: string;
   terminalStatus: "completed" | "interrupted";
 };
 
-export type LobsterFinalSummaryAcceptanceCheck = {
+export type LoopFinalSummaryAcceptanceCheck = {
   name: string;
   passed: boolean;
   detail?: string;
 };
 
-export type LobsterFinalSummaryRoundSummary = {
+export type LoopFinalSummaryRoundSummary = {
   round: number;
   subtaskId?: string;
   title: string;
   summary: string;
 };
 
-export type LobsterFinalSummaryTask = {
+export type LoopFinalSummaryTask = {
   id: string;
   sessionId?: string | null;
   finalSummary?: string | null;
   answerConclusion?: string | null;
-  completionRoundSummaries?: LobsterFinalSummaryRoundSummary[] | null;
-  completionRequirementCoverage?: LobsterFinalSummaryAcceptanceCheck[] | null;
+  completionRoundSummaries?: LoopFinalSummaryRoundSummary[] | null;
+  completionRequirementCoverage?: LoopFinalSummaryAcceptanceCheck[] | null;
 };
 
-export type LobsterFinalSummaryDecision = {
+export type LoopFinalSummaryDecision = {
   finalSummary?: string | null;
   answerConclusion?: string | null;
-  roundSummaries?: LobsterFinalSummaryRoundSummary[] | null;
-  requirementCoverage?: LobsterFinalSummaryAcceptanceCheck[] | null;
+  roundSummaries?: LoopFinalSummaryRoundSummary[] | null;
+  requirementCoverage?: LoopFinalSummaryAcceptanceCheck[] | null;
   acceptance?: {
     passed?: boolean | null;
     summary?: string | null;
-    checks?: LobsterFinalSummaryAcceptanceCheck[] | null;
+    checks?: LoopFinalSummaryAcceptanceCheck[] | null;
   } | null;
 };
 
-export function buildLobsterGroupChatFinalStatusSection(task: {
+export function buildLoopGroupChatFinalStatusSection(task: {
   id: string;
   status: string;
   currentRound?: number | null;
@@ -46,15 +46,15 @@ export function buildLobsterGroupChatFinalStatusSection(task: {
   finalSummary?: string | null;
   answerConclusion?: string | null;
   estimatedRemainingRounds?: number | null;
-}): LobsterGroupChatFinalStatusSection | null {
+}): LoopGroupChatFinalStatusSection | null {
   const status = String(task.status || "").trim();
   if (status === "completed") {
-    const finalSummary = normalizeLobsterGroupChatFinalSummary(task.finalSummary, "主任务已完成。");
-    const answerConclusion = normalizeLobsterGroupChatFinalSummary(task.answerConclusion, finalSummary);
+    const finalSummary = normalizeLoopGroupChatFinalSummary(task.finalSummary, "主任务已完成。");
+    const answerConclusion = normalizeLoopGroupChatFinalSummary(task.answerConclusion, finalSummary);
     return {
       heading: "任务成功完成",
       terminalStatus: "completed",
-      body: buildLobsterGroupChatFinalStatusBody(
+      body: buildLoopGroupChatFinalStatusBody(
         task,
         "任务已成功完成。",
         "### 问题回答结论",
@@ -67,18 +67,18 @@ export function buildLobsterGroupChatFinalStatusSection(task: {
     return {
       heading: "任务中断",
       terminalStatus: "interrupted",
-      body: buildLobsterGroupChatFinalStatusBody(
+      body: buildLoopGroupChatFinalStatusBody(
         task,
         "任务已中断，需要人工复核或继续。",
         "### 中断说明",
-        normalizeLobsterGroupChatFinalSummary(task.finalSummary, getDefaultLobsterInterruptedSummary(status)),
+        normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status)),
       ),
     };
   }
   return null;
 }
 
-function buildLobsterGroupChatFinalStatusBody(
+function buildLoopGroupChatFinalStatusBody(
   task: {
     id: string;
     status: string;
@@ -107,8 +107,8 @@ function buildLobsterGroupChatFinalStatusBody(
   }
   lines.push("", summaryHeading, summary);
   extraSections.forEach((section) => {
-    const heading = normalizeLobsterPlainText(section.heading);
-    const body = normalizeLobsterPlainText(section.body);
+    const heading = normalizeLoopPlainText(section.heading);
+    const body = normalizeLoopPlainText(section.body);
     if (heading && body) {
       lines.push("", heading, body);
     }
@@ -116,49 +116,49 @@ function buildLobsterGroupChatFinalStatusBody(
   return lines.join("\n");
 }
 
-function normalizeLobsterGroupChatFinalSummary(value: string | null | undefined, fallback: string): string {
+function normalizeLoopGroupChatFinalSummary(value: string | null | undefined, fallback: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
   return normalized || fallback;
 }
 
-function normalizeLobsterPlainText(value: string | null | undefined): string {
+function normalizeLoopPlainText(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function resolveLobsterAnswerConclusion(
-  task: Pick<LobsterFinalSummaryTask, "answerConclusion" | "finalSummary">,
-  decision?: Pick<LobsterFinalSummaryDecision, "answerConclusion" | "finalSummary"> | null,
+export function resolveLoopAnswerConclusion(
+  task: Pick<LoopFinalSummaryTask, "answerConclusion" | "finalSummary">,
+  decision?: Pick<LoopFinalSummaryDecision, "answerConclusion" | "finalSummary"> | null,
 ): string {
-  return normalizeLobsterPlainText(decision?.answerConclusion)
-    || normalizeLobsterPlainText(task.answerConclusion)
-    || normalizeLobsterPlainText(decision?.finalSummary)
-    || normalizeLobsterPlainText(task.finalSummary)
+  return normalizeLoopPlainText(decision?.answerConclusion)
+    || normalizeLoopPlainText(task.answerConclusion)
+    || normalizeLoopPlainText(decision?.finalSummary)
+    || normalizeLoopPlainText(task.finalSummary)
     || "无";
 }
 
-export function buildLobsterAnswerConclusionMarkdown(
-  task: Pick<LobsterFinalSummaryTask, "answerConclusion" | "finalSummary">,
-  decision?: Pick<LobsterFinalSummaryDecision, "answerConclusion" | "finalSummary"> | null,
+export function buildLoopAnswerConclusionMarkdown(
+  task: Pick<LoopFinalSummaryTask, "answerConclusion" | "finalSummary">,
+  decision?: Pick<LoopFinalSummaryDecision, "answerConclusion" | "finalSummary"> | null,
 ): string {
   return [
     "## 问题回答结论",
     "",
-    resolveLobsterAnswerConclusion(task, decision),
+    resolveLoopAnswerConclusion(task, decision),
   ].join("\n");
 }
 
-function resolveLobsterOverallFinalSummary(
-  task: Pick<LobsterFinalSummaryTask, "finalSummary">,
-  decision?: Pick<LobsterFinalSummaryDecision, "finalSummary"> | null,
+function resolveLoopOverallFinalSummary(
+  task: Pick<LoopFinalSummaryTask, "finalSummary">,
+  decision?: Pick<LoopFinalSummaryDecision, "finalSummary"> | null,
 ): string {
-  return normalizeLobsterPlainText(decision?.finalSummary)
-    || normalizeLobsterPlainText(task.finalSummary)
+  return normalizeLoopPlainText(decision?.finalSummary)
+    || normalizeLoopPlainText(task.finalSummary)
     || "无";
 }
 
-export function buildLobsterFinalSummaryMarkdown(
-  task: LobsterFinalSummaryTask,
-  decision?: LobsterFinalSummaryDecision | null,
+export function buildLoopFinalSummaryMarkdown(
+  task: LoopFinalSummaryTask,
+  decision?: LoopFinalSummaryDecision | null,
 ): string {
   const roundSummaries = Array.isArray(decision?.roundSummaries)
     ? decision.roundSummaries.slice().sort((left, right) => left.round - right.round)
@@ -169,8 +169,8 @@ export function buildLobsterFinalSummaryMarkdown(
     ? decision.requirementCoverage
     : (Array.isArray(task.completionRequirementCoverage) ? task.completionRequirementCoverage : []);
   const acceptanceChecks = Array.isArray(decision?.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
-  const answerConclusion = resolveLobsterAnswerConclusion(task, decision);
-  const finalSummary = resolveLobsterOverallFinalSummary(task, decision);
+  const answerConclusion = resolveLoopAnswerConclusion(task, decision);
+  const finalSummary = resolveLoopOverallFinalSummary(task, decision);
   const lines: string[] = [
     "# Loop 任务最终总结",
     "",
@@ -224,7 +224,7 @@ export function buildLobsterFinalSummaryMarkdown(
   return `${lines.join("\n")}\n`;
 }
 
-function getDefaultLobsterInterruptedSummary(status: string): string {
+function getDefaultLoopInterruptedSummary(status: string): string {
   if (status === "needs-review") {
     return "任务已进入人工复核，自动执行中断。";
   }

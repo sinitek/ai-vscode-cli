@@ -30,8 +30,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           }
           if (data.type === "appendMessage") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
-            const lobsterMetaChanged = updateLobsterMetaForTabFromMessage(eventTabId, data.message);
-            if (lobsterMetaChanged) {
+            const loopMetaChanged = updateLoopMetaForTabFromMessage(eventTabId, data.message);
+            if (loopMetaChanged) {
               renderConversationTabs();
             }
             const runtimeState = getConversationRuntimeState(eventTabId, { create: false });

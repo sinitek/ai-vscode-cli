@@ -161,8 +161,8 @@ test("persists successful prompt summaries back into workspace-local memory file
       prompt: "Implement workspace local harness scaffold memory.",
       assistantResponse: "Updated the memory modules, wired prompt injection, and added tests.",
       taskRole: "main",
-      lobsterTaskId: "lobster-123",
-      lobsterRound: 2,
+      loopTaskId: "loop-123",
+      loopRound: 2,
     });
 
     assert.equal(result.skipped, false);
@@ -171,7 +171,7 @@ test("persists successful prompt summaries back into workspace-local memory file
     const rollingSummaryPath = getMemoryHotFilePath(paths, "rollingSummary");
     const eventMemoryPath = getMemoryHotFilePath(paths, "eventMemory");
     assert.match(fs.readFileSync(rollingSummaryPath, "utf8"), /Implement workspace local harness scaffold memory/);
-    assert.match(fs.readFileSync(eventMemoryPath, "utf8"), /lobster-123/);
+    assert.match(fs.readFileSync(eventMemoryPath, "utf8"), /loop-123/);
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "manifest.json")));
   });
 });

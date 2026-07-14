@@ -36,17 +36,17 @@ export type OpenCodeThinkingState = {
   messageKey?: OpenCodeThinkingMessageKey;
 };
 
-export type InteractiveMode = "coding" | "plan" | "lobster";
+export type InteractiveMode = "coding" | "plan" | "loop";
 
-export type LobsterExecutionMode = "main_sub_multi_agent" | "debate_multi_agent";
+export type LoopExecutionMode = "main_sub_multi_agent" | "debate_multi_agent";
 
-export const DEFAULT_LOBSTER_EXECUTION_MODE: LobsterExecutionMode = "main_sub_multi_agent";
+export const DEFAULT_LOOP_EXECUTION_MODE: LoopExecutionMode = "main_sub_multi_agent";
 
-export function normalizeLobsterExecutionMode(value: unknown): LobsterExecutionMode {
+export function normalizeLoopExecutionMode(value: unknown): LoopExecutionMode {
   if (value === "debate_multi_agent") {
     return "debate_multi_agent";
   }
-  return DEFAULT_LOBSTER_EXECUTION_MODE;
+  return DEFAULT_LOOP_EXECUTION_MODE;
 }
 
 export type MacTaskShell = "zsh" | "bash";

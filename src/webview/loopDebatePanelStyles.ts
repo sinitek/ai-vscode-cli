@@ -1,4 +1,4 @@
-export const LOBSTER_DEBATE_PANEL_STYLES = `      :root {
+export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
       }

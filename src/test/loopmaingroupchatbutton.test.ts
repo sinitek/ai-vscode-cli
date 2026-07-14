@@ -27,9 +27,9 @@ function extractFunctionSource(script: string, name: string): string {
 
 function buildHarness() {
   const functionSource = [
-    "getActiveLobsterMainTaskId",
-    "syncOpenCurrentLobsterGroupChatButton",
-    "openCurrentLobsterGroupChat",
+    "getActiveLoopMainTaskId",
+    "syncOpenCurrentLoopGroupChatButton",
+    "openCurrentLoopGroupChat",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, name)).join("\n");
   const classes = new Set<string>();
   const state: any = {
@@ -37,7 +37,7 @@ function buildHarness() {
     conversationTabs: { activeTabId: null, tabs: [] },
   };
   const elements = {
-    openCurrentLobsterGroupChat: { style: { display: "none" }, disabled: true },
+    openCurrentLoopGroupChat: { style: { display: "none" }, disabled: true },
     runWait: {
       classList: {
         toggle(name: string, enabled: boolean) {
@@ -56,10 +56,10 @@ function buildHarness() {
     "state",
     "elements",
     "vscode",
-    `${functionSource}; return { syncOpenCurrentLobsterGroupChatButton, openCurrentLobsterGroupChat };`,
+    `${functionSource}; return { syncOpenCurrentLoopGroupChatButton, openCurrentLoopGroupChat };`,
   )(state, elements, vscode) as {
-    syncOpenCurrentLobsterGroupChatButton(): void;
-    openCurrentLobsterGroupChat(): void;
+    syncOpenCurrentLoopGroupChatButton(): void;
+    openCurrentLoopGroupChat(): void;
   };
   return { state, elements, classes, messages, ...runtime };
 }
@@ -73,11 +73,11 @@ test("places the persistent group-chat button immediately after the prompt butto
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
+    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
+    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
   const promptIndex = html.indexOf('id="runPromptButton"');
-  const groupChatIndex = html.indexOf('id="openCurrentLobsterGroupChat"');
+  const groupChatIndex = html.indexOf('id="openCurrentLoopGroupChat"');
   const queueIndex = html.indexOf('id="queueIndicator"');
   assert.ok(promptIndex >= 0);
   assert.ok(groupChatIndex > promptIndex);
@@ -90,8 +90,8 @@ test("shows only for the active Loop main tab and survives every task status", (
   harness.state.conversationTabs = {
     activeTabId: "main-tab",
     tabs: [
-      { id: "main-tab", lobsterTaskRole: "main", lobsterTaskId: "task-123" },
-      { id: "sub-tab", lobsterTaskRole: "subtask", lobsterTaskId: "task-123" },
+      { id: "main-tab", loopTaskRole: "main", loopTaskId: "task-123" },
+      { id: "sub-tab", loopTaskRole: "subtask", loopTaskId: "task-123" },
       { id: "normal-tab" },
     ],
   };
@@ -99,32 +99,32 @@ test("shows only for the active Loop main tab and survives every task status", (
   for (const status of ["running", "waiting", "completed", "failed"]) {
     harness.state.isRunning = status === "running";
     harness.state.taskStatus = status;
-    harness.syncOpenCurrentLobsterGroupChatButton();
-    assert.equal(harness.elements.openCurrentLobsterGroupChat.style.display, "inline-flex");
-    assert.equal(harness.elements.openCurrentLobsterGroupChat.disabled, false);
-    assert.equal(harness.classes.has("has-current-lobster-group-chat"), true);
+    harness.syncOpenCurrentLoopGroupChatButton();
+    assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "inline-flex");
+    assert.equal(harness.elements.openCurrentLoopGroupChat.disabled, false);
+    assert.equal(harness.classes.has("has-current-loop-group-chat"), true);
   }
 
   harness.state.conversationTabs.activeTabId = "sub-tab";
-  harness.syncOpenCurrentLobsterGroupChatButton();
-  assert.equal(harness.elements.openCurrentLobsterGroupChat.style.display, "none");
+  harness.syncOpenCurrentLoopGroupChatButton();
+  assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "none");
 
   harness.state.conversationTabs.activeTabId = "normal-tab";
-  harness.syncOpenCurrentLobsterGroupChatButton();
-  assert.equal(harness.elements.openCurrentLobsterGroupChat.style.display, "none");
-  assert.equal(harness.classes.has("has-current-lobster-group-chat"), false);
+  harness.syncOpenCurrentLoopGroupChatButton();
+  assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "none");
+  assert.equal(harness.classes.has("has-current-loop-group-chat"), false);
 });
 
 test("opens the existing Loop group chat with the active main task id", () => {
   const harness = buildHarness();
   harness.state.conversationTabs = {
     activeTabId: "main-tab",
-    tabs: [{ id: "main-tab", lobsterTaskRole: "main", lobsterTaskId: " task-456 " }],
+    tabs: [{ id: "main-tab", loopTaskRole: "main", loopTaskId: " task-456 " }],
   };
-  harness.openCurrentLobsterGroupChat();
-  assert.deepEqual(harness.messages, [{ type: "openLobsterDebateChat", taskId: "task-456" }]);
+  harness.openCurrentLoopGroupChat();
+  assert.deepEqual(harness.messages, [{ type: "openLoopGroupChat", taskId: "task-456" }]);
 
-  harness.state.conversationTabs.tabs[0].lobsterTaskRole = "subtask";
-  harness.openCurrentLobsterGroupChat();
+  harness.state.conversationTabs.tabs[0].loopTaskRole = "subtask";
+  harness.openCurrentLoopGroupChat();
   assert.equal(harness.messages.length, 1);
 });

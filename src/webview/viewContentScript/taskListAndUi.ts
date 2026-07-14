@@ -458,8 +458,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           : "";
         const targetInteractiveMode = normalizedPayload.interactiveMode
           || (isBackgroundDispatch ? undefined : state.interactiveMode);
-        const targetLobsterExecutionMode = targetInteractiveMode === "lobster"
-          ? getLobsterExecutionModeForCli(targetCli)
+        const targetLoopExecutionMode = targetInteractiveMode === "loop"
+          ? getLoopExecutionModeForCli(targetCli)
           : undefined;
         const sendPromptMessage = {
           type: "sendPrompt",
@@ -471,8 +471,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           model: targetModel || undefined,
           preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
         };
-        if (targetLobsterExecutionMode) {
-          sendPromptMessage.lobsterExecutionMode = targetLobsterExecutionMode;
+        if (targetLoopExecutionMode) {
+          sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;
         }
         vscode.postMessage(sendPromptMessage);
         return true;

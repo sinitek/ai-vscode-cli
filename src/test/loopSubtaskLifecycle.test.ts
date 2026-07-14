@@ -4,12 +4,12 @@ import fs = require("node:fs");
 import path = require("node:path");
 
 import {
-  finalizeLobsterSubtaskRun,
-  type LobsterSubtaskCompletionDeps,
-} from "../lobsterSubtaskLifecycle";
+  finalizeLoopSubtaskRun,
+  type LoopSubtaskCompletionDeps,
+} from "../loopSubtaskLifecycle";
 
 type CompletionHarness = {
-  deps: LobsterSubtaskCompletionDeps;
+  deps: LoopSubtaskCompletionDeps;
   calls: string[];
 };
 
@@ -43,7 +43,7 @@ function extractAsyncFunctionSection(source: string, name: string, nextFunctionN
 test("records a successful Loop subtask before automatically closing its tab", async () => {
   const harness = createCompletionHarness(true);
 
-  await finalizeLobsterSubtaskRun({
+  await finalizeLoopSubtaskRun({
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-1",
@@ -62,7 +62,7 @@ test("records a successful Loop subtask before automatically closing its tab", a
 test("keeps a successfully completed subtask tab open when automatic closing is disabled", async () => {
   const harness = createCompletionHarness(false);
 
-  await finalizeLobsterSubtaskRun({
+  await finalizeLoopSubtaskRun({
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-1",
@@ -78,7 +78,7 @@ test("does not automatically close stopped or failed Loop subtask tabs", async (
   const stopped = createCompletionHarness(true);
   const failed = createCompletionHarness(true);
 
-  await finalizeLobsterSubtaskRun({
+  await finalizeLoopSubtaskRun({
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-stopped",
@@ -86,7 +86,7 @@ test("does not automatically close stopped or failed Loop subtask tabs", async (
     assistantContent: null,
     tabId: "subtask-tab-stopped",
   }, stopped.deps);
-  await finalizeLobsterSubtaskRun({
+  await finalizeLoopSubtaskRun({
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-failed",
@@ -103,15 +103,15 @@ test("uses the same completion lifecycle for automatic retries and manual subtas
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
   const automaticRetrySource = extractAsyncFunctionSection(
     extensionSource,
-    "runLobsterSubtaskWithRetry",
-    "waitForLobsterSubtaskRetryDelay",
+    "runLoopSubtaskWithRetry",
+    "waitForLoopSubtaskRetryDelay",
   );
   const manualResumeSource = extractAsyncFunctionSection(
     extensionSource,
-    "maybeWakeLobsterMainAfterSubtaskContinuation",
-    "getLobsterTargetSessionId",
+    "maybeWakeLoopMainAfterSubtaskContinuation",
+    "getLoopTargetSessionId",
   );
 
-  assert.match(automaticRetrySource, /await finalizeLobsterSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\.tabId/);
-  assert.match(manualResumeSource, /await finalizeLobsterSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\?\.tabId \?\? null/);
+  assert.match(automaticRetrySource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\.tabId/);
+  assert.match(manualResumeSource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\?\.tabId \?\? null/);
 });

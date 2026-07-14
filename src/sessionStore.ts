@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { CliName } from "./cli/types";
 import { sanitizeCodexReasoningContent } from "./codexReasoningContent";
+import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { stripThinkingWrapperTags } from "./thinkingMarkup";
 import { ChatMessage } from "./webview/types";
 
@@ -389,7 +390,10 @@ export function sanitizeMessages(
   }
   const cleaned: ChatMessage[] = [];
   let changed = false;
-  for (const message of messages) {
+  for (const storedMessage of messages) {
+    const migrated = migrateLegacyLoopJson(storedMessage);
+    const message = migrated.value as ChatMessage;
+    changed = changed || migrated.changed;
     const content = typeof message.content === "string" ? message.content : "";
     const isThinkingMessage = message.kind === "thinking"
       && (message.role === "assistant" || message.role === "trace");

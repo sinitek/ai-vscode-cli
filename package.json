@@ -21,7 +21,7 @@
     "onCommand:sinitek-cli-tools.runCliThinkingOn",
     "onCommand:sinitek-cli-tools.runCliThinkingOff",
     "onCommand:sinitek-cli-tools.openPanel",
-    "onCommand:sinitek-cli-tools.openLobsterDebateChat",
+    "onCommand:sinitek-cli-tools.openLoopGroupChat",
     "onView:sinitek-cli-tools.panelView",
     "onStartupFinished"
   ],
@@ -49,8 +49,8 @@
         "title": "%command.openPanel%"
       },
       {
-        "command": "sinitek-cli-tools.openLobsterDebateChat",
-        "title": "%command.openLobsterDebateChat%"
+        "command": "sinitek-cli-tools.openLoopGroupChat",
+        "title": "%command.openLoopGroupChat%"
       }
     ],
     "configuration": {

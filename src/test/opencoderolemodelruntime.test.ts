@@ -12,6 +12,35 @@ import {
   setOpenCodeRoleModelInStore,
   setOpenCodeRoleVariantInStore,
 } from "../modelSelectionStore";
+import { getLegacyLoopPropertyKey } from "../loopLegacyMigration";
+
+test("migrates legacy Loop model-selection keys", () => {
+  const store = ensureCliModelStore({
+    selectedByConfigId: {},
+    optionsByConfigId: {},
+    thinkingByCliAndModel: {},
+    openCodeVariantByConfigAndModel: {},
+    openCodeVariantByConfigModelAndRole: {},
+    openCodeRoleModelsByConfigId: {},
+    [getLegacyLoopPropertyKey("selectedLoopByConfigId")]: {
+      "config-a": { main: "loop-main", subtask: "loop-subtask" },
+    },
+    [getLegacyLoopPropertyKey("loopRolesByConfigId")]: {
+      "config-a": {
+        "loop-main": { main: true, subtask: false },
+      },
+    },
+  } as unknown as Parameters<typeof ensureCliModelStore>[0]);
+
+  assert.deepEqual(store.selectedLoopByConfigId, {
+    "config-a": { main: "loop-main", subtask: "loop-subtask" },
+  });
+  assert.deepEqual(store.loopRolesByConfigId, {
+    "config-a": {
+      "loop-main": { main: true, subtask: false },
+    },
+  });
+});
 
 test("isolates OpenCode primary and small overrides by active config", () => {
   let store = ensureCliModelStore();
@@ -49,16 +78,16 @@ test("does not expose legacy generic or Loop selections for OpenCode", () => {
     thinkingByCliAndModel: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
-    selectedLobsterByConfigId: { opencode: { main: "legacy/main", subtask: "legacy/sub" } },
-    lobsterRolesByConfigId: {},
+    selectedLoopByConfigId: { opencode: { main: "legacy/main", subtask: "legacy/sub" } },
+    loopRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
   });
   const state = buildModelState(store, () => "opencode", { opencode: "opencode" });
   assert.equal(state.selectedByCli.opencode, null);
   assert.deepEqual(state.optionsByCli.opencode, []);
-  assert.equal("selectedLobsterByCli" in state, false);
-  assert.equal("lobsterOptionsByCli" in state, false);
-  assert.equal("managedLobsterRolesByCli" in state, false);
+  assert.equal("selectedLoopByCli" in state, false);
+  assert.equal("loopOptionsByCli" in state, false);
+  assert.equal("managedLoopRolesByCli" in state, false);
 });
 
 test("keeps legacy Codex Loop role selections stored but exposes only the unified model", () => {
@@ -68,10 +97,10 @@ test("keeps legacy Codex Loop role selections stored but exposes only the unifie
     thinkingByCliAndModel: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
-    selectedLobsterByConfigId: {
+    selectedLoopByConfigId: {
       "config-a": { main: "legacy-main", subtask: "legacy-subtask" },
     },
-    lobsterRolesByConfigId: {
+    loopRolesByConfigId: {
       "config-a": {
         "legacy-main": { main: true, subtask: false },
         "legacy-subtask": { main: false, subtask: true },
@@ -83,5 +112,5 @@ test("keeps legacy Codex Loop role selections stored but exposes only the unifie
   const state = buildModelState(store, () => "config-a", { codex: "config-a" });
   assert.equal(state.selectedByCli.codex, "codex-unified");
   assert.deepEqual(state.optionsByCli.codex, ["codex-unified", "legacy-main", "legacy-subtask"]);
-  assert.equal("selectedLobsterByCli" in state, false);
+  assert.equal("selectedLoopByCli" in state, false);
 });

@@ -74,9 +74,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
             erroredTabIds.delete(tabId);
           }
         });
-        Object.keys(lobsterMetaByTabId).forEach((key) => {
+        Object.keys(loopMetaByTabId).forEach((key) => {
           if (!validKeys.has(key)) {
-            delete lobsterMetaByTabId[key];
+            delete loopMetaByTabId[key];
           }
         });
       }
@@ -147,7 +147,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         try {
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
-          const lobsterMetaChanged = updateLobsterMetaForTabFromMessages(tabId, runtimeState.messages);
+          const loopMetaChanged = updateLoopMetaForTabFromMessages(tabId, runtimeState.messages);
           const taskListState = ensureRuntimeTaskList(runtimeState);
           const shouldPreserveExternalTaskList = Boolean(
             taskListState
@@ -164,7 +164,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
               renderMessages();
             }
           }
-          if (lobsterMetaChanged) {
+          if (loopMetaChanged) {
             renderConversationTabs();
           }
         } catch (error) {
@@ -213,10 +213,10 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         if (!current || current.role !== "assistant") {
           return false;
         }
-        if (current.lobsterAnswerConclusion === true) {
+        if (current.loopAnswerConclusion === true) {
           return true;
         }
-        if (current.lobsterFinalSummary === true) {
+        if (current.loopFinalSummary === true) {
           return true;
         }
         if (current.codexFinalAnswer === true) {
@@ -541,7 +541,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           return null;
         }
         const contextOptions = payload.contextOptions || {};
-        const interactiveMode = payload.interactiveMode === "lobster" || payload.interactiveMode === "coding"
+        const interactiveMode = payload.interactiveMode === "loop" || payload.interactiveMode === "coding"
           ? payload.interactiveMode
           : undefined;
         return {

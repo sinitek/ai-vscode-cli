@@ -3,11 +3,15 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import {
+  getLegacyLoopPropertyKey,
+  getLegacyLoopStoragePaths,
+} from "../loopLegacyMigration";
 
 const originalHome = process.env.HOME;
-const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-lobster-task-store-"));
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-"));
 process.env.HOME = testHome;
-const lobsterTaskStore = require("../lobsterTaskStore") as typeof import("../lobsterTaskStore");
+const loopTaskStore = require("../loopTaskStore") as typeof import("../loopTaskStore");
 if (originalHome === undefined) {
   delete process.env.HOME;
 } else {
@@ -16,8 +20,8 @@ if (originalHome === undefined) {
 
 let recordSequence = 0;
 
-type SkillTaskRecord = import("../lobsterTaskStore").LobsterTaskRecord;
-type SkillSubtaskDecision = import("../lobsterTaskStore").LobsterSubtaskDecision;
+type SkillTaskRecord = import("../loopTaskStore").LoopTaskRecord;
+type SkillSubtaskDecision = import("../loopTaskStore").LoopSubtaskDecision;
 
 test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
@@ -27,20 +31,20 @@ function hasOwnProperty(value: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }
 
-function createLegacyTask(): import("../lobsterTaskStore").LobsterTaskRecord {
+function createLegacyTask(): import("../loopTaskStore").LoopTaskRecord {
   recordSequence += 1;
   const now = Date.now();
   const id = `legacy-task-${recordSequence}`;
-  const taskStoreFile = lobsterTaskStore.buildLobsterTaskStoreFile(
+  const taskStoreFile = loopTaskStore.buildLoopTaskStoreFile(
     "codex",
-    "lobster-task-store-test",
+    "loop-task-store-test",
     `session-${recordSequence}`,
     id,
   );
   return {
     id,
     cli: "codex",
-    workspaceKey: "lobster-task-store-test",
+    workspaceKey: "loop-task-store-test",
     taskStoreFile,
     rootPrompt: "Preserve legacy Loop task behavior.",
     status: "running",
@@ -68,7 +72,7 @@ function createLegacyTask(): import("../lobsterTaskStore").LobsterTaskRecord {
 }
 
 function readSkillTask(filePath: string): SkillTaskRecord {
-  const task = lobsterTaskStore.readLobsterTaskStore(filePath).tasks[0];
+  const task = loopTaskStore.readLoopTaskStore(filePath).tasks[0];
   assert.ok(task);
   return task;
 }
@@ -93,16 +97,16 @@ test("accepts optional skill IDs on subtask decisions without changing legacy de
 
 test("initializes subtask communication with a structured main-task confirmation section", () => {
   const task = createLegacyTask();
-  lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, { tasks: [task] });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  const communicationFile = lobsterTaskStore.prepareLobsterSubtaskCommunicationFile(
+  const communicationFile = loopTaskStore.prepareLoopSubtaskCommunicationFile(
     task,
     task.subTasks[0],
     1,
     0,
   );
   const content = fs.readFileSync(communicationFile, "utf8");
-  const persisted = lobsterTaskStore.readLobsterTaskRecord(task.id);
+  const persisted = loopTaskStore.readLoopTaskRecord(task.id);
 
   assert.match(content, /## 待主任务确认/u);
   assert.match(content, /- 当前状态：无/u);
@@ -120,13 +124,13 @@ test("reads and rewrites legacy records without adding skill fields", () => {
   fs.mkdirSync(path.dirname(legacyTask.taskStoreFile), { recursive: true });
   fs.writeFileSync(legacyTask.taskStoreFile, JSON.stringify({ tasks: [legacyTask] }, null, 2), "utf8");
 
-  const loaded = lobsterTaskStore.readLobsterTaskStore(legacyTask.taskStoreFile);
+  const loaded = loopTaskStore.readLoopTaskStore(legacyTask.taskStoreFile);
   assert.equal(loaded.tasks.length, 1);
   assert.equal(hasOwnProperty(loaded.tasks[0], "taskKind"), false);
   assert.equal(hasOwnProperty(loaded.tasks[0].subTasks[0], "skillIds"), false);
   assert.equal(hasOwnProperty(loaded.tasks[0].subTasks[0], "skillGuidance"), false);
 
-  lobsterTaskStore.writeLobsterTaskStore(legacyTask.taskStoreFile, loaded);
+  loopTaskStore.writeLoopTaskStore(legacyTask.taskStoreFile, loaded);
   const persisted = JSON.parse(fs.readFileSync(legacyTask.taskStoreFile, "utf8")) as {
     tasks: Array<{ taskKind?: unknown; subTasks: Array<{ skillIds?: unknown; skillGuidance?: unknown }> }>;
   };
@@ -137,9 +141,9 @@ test("reads and rewrites legacy records without adding skill fields", () => {
 
 test("keeps legacy records skill-free through resume and completion updates", () => {
   const legacyTask = createLegacyTask();
-  lobsterTaskStore.writeLobsterTaskStore(legacyTask.taskStoreFile, { tasks: [legacyTask] });
+  loopTaskStore.writeLoopTaskStore(legacyTask.taskStoreFile, { tasks: [legacyTask] });
 
-  const resumed = lobsterTaskStore.readLobsterTaskRecord(legacyTask.id);
+  const resumed = loopTaskStore.readLoopTaskRecord(legacyTask.id);
   assert.ok(resumed);
   assert.equal(hasOwnProperty(resumed, "taskKind"), false);
   assert.equal(hasOwnProperty(resumed.subTasks[0], "skillIds"), false);
@@ -152,7 +156,7 @@ test("keeps legacy records skill-free through resume and completion updates", ()
     communicationFile: path.join(resumed.communicationDir, "legacy-subtask.md"),
     updatedAt: Date.now(),
   }));
-  const completed = lobsterTaskStore.updateLobsterTaskRecord(legacyTask.id, {
+  const completed = loopTaskStore.updateLoopTaskRecord(legacyTask.id, {
     status: "completed",
     subTasks: completedSubtasks,
     finalSummary: "Legacy task completed.",
@@ -165,7 +169,7 @@ test("keeps legacy records skill-free through resume and completion updates", ()
   assert.equal(hasOwnProperty(completed, "taskKind"), false);
   assert.equal(hasOwnProperty(completed.subTasks[0], "skillIds"), false);
   assert.equal(hasOwnProperty(completed.subTasks[0], "skillGuidance"), false);
-  const persisted = lobsterTaskStore.readLobsterTaskStore(legacyTask.taskStoreFile).tasks[0];
+  const persisted = loopTaskStore.readLoopTaskStore(legacyTask.taskStoreFile).tasks[0];
   assert.equal(persisted.status, "completed");
   assert.equal(persisted.subTasks[0].status, "completed");
   assert.equal(persisted.subTasks[0].summary, "Legacy subtask completed.");
@@ -187,7 +191,7 @@ test("round-trips confirmed task kind and bounded subtask skill snapshots", () =
     }],
   };
 
-  lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, { tasks: [task] });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   const loaded = readSkillTask(task.taskStoreFile);
   assert.equal(loaded.taskKind, "development");
   assert.deepEqual(loaded.subTasks[0].skillIds, [
@@ -196,7 +200,7 @@ test("round-trips confirmed task kind and bounded subtask skill snapshots", () =
   ]);
   assert.equal(loaded.subTasks[0].skillGuidance, skillGuidance);
 
-  lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, { tasks: [loaded] });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [loaded] });
   const persisted = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")) as {
     tasks: Array<{
       taskKind?: unknown;
@@ -262,8 +266,8 @@ test("normalizes bounded snapshots and drops invalid or half-present skill field
     ],
   };
 
-  lobsterTaskStore.writeLobsterTaskStore(rawTask.taskStoreFile, {
-    tasks: [rawTask as unknown as import("../lobsterTaskStore").LobsterTaskRecord],
+  loopTaskStore.writeLoopTaskStore(rawTask.taskStoreFile, {
+    tasks: [rawTask as unknown as import("../loopTaskStore").LoopTaskRecord],
   });
   const loaded = readSkillTask(rawTask.taskStoreFile);
   assert.equal(hasOwnProperty(loaded, "taskKind"), false);
@@ -290,7 +294,7 @@ test("round-trips non-development task kind without adding subtask skill fields"
     subTasks: [...baseTask.subTasks],
   };
 
-  lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, { tasks: [task] });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   const loaded = readSkillTask(task.taskStoreFile);
   assert.equal(loaded.taskKind, "non_development");
   assert.equal(hasOwnProperty(loaded.subTasks[0], "skillIds"), false);
@@ -309,11 +313,11 @@ test("preserves confirmed skill fields through communication, retry, and complet
       skillGuidance,
     }],
   };
-  lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, { tasks: [task] });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  const resumed = lobsterTaskStore.readLobsterTaskRecord(task.id) as SkillTaskRecord | null;
+  const resumed = loopTaskStore.readLoopTaskRecord(task.id) as SkillTaskRecord | null;
   assert.ok(resumed);
-  const retried = lobsterTaskStore.updateLobsterTaskRecord(task.id, {
+  const retried = loopTaskStore.updateLoopTaskRecord(task.id, {
     subTasks: resumed.subTasks.map((subtask) => ({
       ...subtask,
       status: "running" as const,
@@ -329,7 +333,7 @@ test("preserves confirmed skill fields through communication, retry, and complet
   assert.equal(retried.subTasks[0].skillGuidance, skillGuidance);
   assert.equal(retried.subTasks[0].communicationFile, path.join(resumed.communicationDir, "retry.md"));
 
-  const completed = lobsterTaskStore.updateLobsterTaskRecord(task.id, {
+  const completed = loopTaskStore.updateLoopTaskRecord(task.id, {
     status: "completed",
     subTasks: retried.subTasks.map((subtask) => ({
       ...subtask,
@@ -353,4 +357,111 @@ test("preserves confirmed skill fields through communication, retry, and complet
   assert.equal(persisted.taskKind, "development");
   assert.deepEqual(persisted.subTasks[0].skillIds, ["incremental-implementation"]);
   assert.equal(persisted.subTasks[0].skillGuidance, skillGuidance);
+});
+
+test("moves legacy task stores and communication artifacts into Loop storage", () => {
+  const dataDir = path.join(testHome, ".sinitek_cli");
+  const legacyPaths = getLegacyLoopStoragePaths(dataDir);
+  const task = createLegacyTask();
+  const legacyStoreFile = path.join(
+    legacyPaths.taskStoreDir,
+    task.workspaceKey,
+    task.cli,
+    task.sessionId ?? "session",
+    path.basename(legacyPaths.taskStoreFlatFile),
+  );
+  const legacyCommunicationDir = path.join(legacyPaths.communicationDir, task.id);
+  const legacyMainFile = path.join(legacyCommunicationDir, "main-task.md");
+  const legacySubtaskFile = path.join(legacyCommunicationDir, "subtasks", "round-1-legacy-subtask.md");
+  const rawTask = {
+    ...task,
+    taskStoreFile: legacyStoreFile,
+    communicationDir: legacyCommunicationDir,
+    mainCommunicationFile: legacyMainFile,
+    subTasks: [{
+      ...task.subTasks[0],
+      communicationFile: legacySubtaskFile,
+    }],
+    debateRounds: [{
+      [getLegacyLoopPropertyKey("loopRound")]: 1,
+      debateRound: 1,
+      status: "completed",
+    }],
+  };
+
+  fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
+  fs.mkdirSync(path.dirname(legacySubtaskFile), { recursive: true });
+  fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
+  fs.writeFileSync(legacyMainFile, "# Existing Loop communication\n", "utf8");
+  fs.writeFileSync(legacySubtaskFile, "# Existing subtask artifact\n", "utf8");
+
+  const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
+  const expectedStoreFile = loopTaskStore.buildLoopTaskStoreFile(
+    task.cli,
+    task.workspaceKey,
+    task.sessionId ?? null,
+    task.id,
+  );
+  const expectedCommunicationDir = path.join(dataDir, "loop-communications", task.id);
+  const migrated = loopTaskStore.readLoopTaskRecord(task.id);
+
+  assert.equal(listedFiles.includes(expectedStoreFile), true);
+  assert.equal(fs.existsSync(legacyStoreFile), false);
+  assert.equal(fs.existsSync(legacyCommunicationDir), false);
+  assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "main-task.md"), "utf8"), "# Existing Loop communication\n");
+  assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"), "utf8"), "# Existing subtask artifact\n");
+  assert.equal(migrated?.taskStoreFile, expectedStoreFile);
+  assert.equal(migrated?.communicationDir, expectedCommunicationDir);
+  assert.equal(
+    migrated?.subTasks[0]?.communicationFile,
+    path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"),
+  );
+  assert.equal((migrated?.debateRounds?.[0] as { loopRound?: number } | undefined)?.loopRound, 1);
+});
+
+test("keeps legacy task paths intact when the communication root is unsafe to migrate", () => {
+  const dataDir = path.join(testHome, ".sinitek_cli");
+  const legacyPaths = getLegacyLoopStoragePaths(dataDir);
+  const task = createLegacyTask();
+  const legacyStoreFile = path.join(
+    legacyPaths.taskStoreDir,
+    task.workspaceKey,
+    task.cli,
+    task.sessionId ?? "session",
+    path.basename(legacyPaths.taskStoreFlatFile),
+  );
+  const externalCommunicationDir = path.join(testHome, "pre-loop-communication-target");
+  const legacyTaskCommunicationDir = path.join(legacyPaths.communicationDir, task.id);
+  const legacyMainFile = path.join(legacyTaskCommunicationDir, "main-task.md");
+  const rawTask = {
+    ...task,
+    taskStoreFile: legacyStoreFile,
+    communicationDir: legacyTaskCommunicationDir,
+    mainCommunicationFile: legacyMainFile,
+  };
+
+  fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
+  fs.mkdirSync(path.join(externalCommunicationDir, task.id), { recursive: true });
+  fs.writeFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "# Unsafe migration source\n", "utf8");
+  fs.symlinkSync(
+    externalCommunicationDir,
+    legacyPaths.communicationDir,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
+
+  const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
+  const loaded = loopTaskStore.readLoopTaskStore(legacyStoreFile).tasks[0];
+
+  assert.equal(listedFiles.includes(legacyStoreFile), true);
+  assert.equal(fs.existsSync(legacyStoreFile), true);
+  assert.equal(loaded.taskStoreFile, legacyStoreFile);
+  assert.equal(loaded.communicationDir, legacyTaskCommunicationDir);
+  assert.equal(loaded.mainCommunicationFile, legacyMainFile);
+  assert.equal(
+    fs.existsSync(loopTaskStore.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id)),
+    false,
+  );
+
+  fs.unlinkSync(legacyPaths.communicationDir);
 });

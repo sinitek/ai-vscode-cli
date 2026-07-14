@@ -1,4 +1,4 @@
-# Lobster Debate Parallel Participants
+# Loop Debate Parallel Participants
 
 - 日期：2026-06-17
 - 状态：completed
@@ -49,7 +49,7 @@
 ## 验证计划
 
 - 最小相关验证：`npm run build`
-- 扩展验证：`node --test dist/test/lobsterDebate.test.js`、`git diff --check`
+- 扩展验证：`node --test dist/test/loopDebate.test.js`、`git diff --check`
 
 ## 任务列表
 
@@ -65,4 +65,4 @@
 
 ## 当前结论
 
-已完成。同一发言批次内参与者和最终立场收集改为并行启动，扩展等待全部 artifact 完成后再按清单顺序追加 `chat.md`。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、`git diff --check`。
+已完成。同一发言批次内参与者和最终立场收集改为并行启动，扩展等待全部 artifact 完成后再按清单顺序追加 `chat.md`。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。

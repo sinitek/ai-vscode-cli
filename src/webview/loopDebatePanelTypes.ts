@@ -1,4 +1,4 @@
-export type LobsterDebateChatPanelParticipant = {
+export type LoopDebateChatPanelParticipant = {
   id: string;
   title: string;
   role: string;
@@ -9,7 +9,7 @@ export type LobsterDebateChatPanelParticipant = {
   updatedAt?: number;
 };
 
-export type LobsterDebateChatPanelModeratorDecision = {
+export type LoopDebateChatPanelModeratorDecision = {
   dialogueTurn: number;
   action: string;
   reason: string;
@@ -17,7 +17,7 @@ export type LobsterDebateChatPanelModeratorDecision = {
   updatedAt?: number;
 };
 
-export type LobsterDebateChatPanelActiveSpeaker = {
+export type LoopDebateChatPanelActiveSpeaker = {
   kind: "main" | "subtask" | "participant" | "moderator" | "consensus";
   id: string;
   title: string;
@@ -26,27 +26,27 @@ export type LobsterDebateChatPanelActiveSpeaker = {
   updatedAt?: number;
 };
 
-export type LobsterDebateChatPanelRound = {
+export type LoopDebateChatPanelRound = {
   key: string;
   kind?: "debate" | "execution";
   label?: string;
-  lobsterRound: number;
+  loopRound: number;
   debateRound: number;
   status: string;
   chatFile?: string;
   participantRosterSessionId?: string | null;
   dialogueTurns?: number;
-  activeSpeaker?: LobsterDebateChatPanelActiveSpeaker;
+  activeSpeaker?: LoopDebateChatPanelActiveSpeaker;
   startedAt: number;
   completedAt?: number;
-  participants: LobsterDebateChatPanelParticipant[];
-  moderatorDecisions: LobsterDebateChatPanelModeratorDecision[];
+  participants: LoopDebateChatPanelParticipant[];
+  moderatorDecisions: LoopDebateChatPanelModeratorDecision[];
   consensusSummary?: string;
   consensusReached?: boolean;
   openDisagreementCount?: number;
 };
 
-export type LobsterDebateChatPanelState = {
+export type LoopDebateChatPanelState = {
   mode: "main_sub" | "debate";
   task: {
     id: string;
@@ -61,13 +61,13 @@ export type LobsterDebateChatPanelState = {
     canContinue: boolean;
     canStop: boolean;
   };
-  rounds: LobsterDebateChatPanelRound[];
+  rounds: LoopDebateChatPanelRound[];
   chatMarkdown: string;
   error?: string | null;
 };
 
-export type LobsterDebateChatPanelMessage =
-  | { type: "lobsterDebateChat:refresh" }
-  | { type: "lobsterDebateChat:continueTask"; prompt?: string }
-  | { type: "lobsterDebateChat:supplementTask"; prompt?: string }
-  | { type: "lobsterDebateChat:stopTask" };
+export type LoopDebateChatPanelMessage =
+  | { type: "loopDebateChat:refresh" }
+  | { type: "loopDebateChat:continueTask"; prompt?: string }
+  | { type: "loopDebateChat:supplementTask"; prompt?: string }
+  | { type: "loopDebateChat:stopTask" };

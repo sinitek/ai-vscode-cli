@@ -11,8 +11,8 @@ export type BuildWebviewStaticHtmlInput = {
   cliOptions: string;
   markedScript: string;
   webviewStyles: string;
-  lobsterExecutionModeMainSubMultiAgent: string;
-  lobsterExecutionModeDebateMultiAgent: string;
+  loopExecutionModeMainSubMultiAgent: string;
+  loopExecutionModeDebateMultiAgent: string;
 };
 
 export function buildWebviewStaticHtml(
@@ -26,13 +26,13 @@ export function buildWebviewStaticHtml(
     cliOptions,
     markedScript,
     webviewStyles,
-    lobsterExecutionModeMainSubMultiAgent,
-    lobsterExecutionModeDebateMultiAgent,
+    loopExecutionModeMainSubMultiAgent,
+    loopExecutionModeDebateMultiAgent,
   } = input;
-  const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT =
-    lobsterExecutionModeMainSubMultiAgent;
-  const LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT =
-    lobsterExecutionModeDebateMultiAgent;
+  const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT =
+    loopExecutionModeMainSubMultiAgent;
+  const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT =
+    loopExecutionModeDebateMultiAgent;
 
   return `<!DOCTYPE html>
 <html lang="${locale}">
@@ -103,8 +103,8 @@ ${webviewStyles}    </style>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}
         </button>
-        <button id="openCurrentLobsterGroupChat" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentLobsterGroupChatAria}" title="${i18n.openCurrentLobsterGroupChatAria}">
-          ${i18n.openCurrentLobsterGroupChatLabel}
+        <button id="openCurrentLoopGroupChat" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentLoopGroupChatAria}" title="${i18n.openCurrentLoopGroupChatAria}">
+          ${i18n.openCurrentLoopGroupChatLabel}
         </button>
         <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
           ${i18n.queueIndicatorLabel}
@@ -146,7 +146,7 @@ ${webviewStyles}    </style>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
           <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
-            <option value="lobster">${i18n.interactiveModeLobster}</option>
+            <option value="loop">${i18n.interactiveModeLoop}</option>
           </select>
         </div>
         <div class="input-box">
@@ -193,14 +193,14 @@ ${webviewStyles}    </style>
           </div>
           <div class="input-actions">
             <select
-              id="lobsterExecutionModeSelect"
-              class="lobster-execution-mode-select"
-              aria-label="${i18n.lobsterExecutionModeSelectAria}"
-              title="${i18n.lobsterExecutionModeSelectAria}"
+              id="loopExecutionModeSelect"
+              class="loop-execution-mode-select"
+              aria-label="${i18n.loopExecutionModeSelectAria}"
+              title="${i18n.loopExecutionModeSelectAria}"
               style="display: none;"
             >
-              <option value="${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.lobsterExecutionModeOptionMainSubMultiAgent}</option>
-              <option value="${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.lobsterExecutionModeOptionDebateMultiAgent}</option>
+              <option value="${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.loopExecutionModeOptionMainSubMultiAgent}</option>
+              <option value="${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.loopExecutionModeOptionDebateMultiAgent}</option>
             </select>
             <svg id="commonCommandButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}" viewBox="0 0 24 24" fill="currentColor">
               <text x="12" y="17" text-anchor="middle" font-size="15.6" font-family="monospace" font-weight="700">&gt;_</text>
@@ -370,23 +370,23 @@ ${webviewStyles}    </style>
                 </label>
               </div>
               <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLobsterMaxRoundsLabel}</div>
+                <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
                 <input
                   type="number"
-                  id="lobsterMaxRounds"
+                  id="loopMaxRounds"
                   class="tool-settings-number"
                   min="1"
                   max="100"
                   step="1"
-                  title="${i18n.toolSettingsLobsterMaxRoundsTitle}"
-                  aria-label="${i18n.toolSettingsLobsterMaxRoundsLabel}"
+                  title="${i18n.toolSettingsLoopMaxRoundsTitle}"
+                  aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
                 />
               </div>
               <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLobsterAutoCloseSubtaskTabsLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsLobsterAutoCloseSubtaskTabsTitle}">
-                  <input type="checkbox" id="lobsterAutoCloseSubtaskTabs" />
-                  <span>${i18n.toolSettingsLobsterAutoCloseSubtaskTabsToggle}</span>
+                <div class="tool-settings-label">${i18n.toolSettingsLoopAutoCloseSubtaskTabsLabel}</div>
+                <label class="debug-toggle" title="${i18n.toolSettingsLoopAutoCloseSubtaskTabsTitle}">
+                  <input type="checkbox" id="loopAutoCloseSubtaskTabs" />
+                  <span>${i18n.toolSettingsLoopAutoCloseSubtaskTabsToggle}</span>
                 </label>
               </div>
               <div class="tool-settings-row">

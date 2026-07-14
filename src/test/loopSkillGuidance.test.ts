@@ -6,17 +6,17 @@ import * as os from "os";
 import * as path from "path";
 
 import {
-  buildLobsterSkillCatalog,
-  buildLobsterSkillGuidance,
-  classifyLobsterRootTask,
-  classifyLobsterSubtask,
-  loadLobsterSkillPack,
-  LOBSTER_SKILL_MAX_CATALOG_CHARS,
-  LOBSTER_SKILL_MAX_CATALOG_ITEMS,
-  LOBSTER_SKILL_MAX_GUIDANCE_CHARS,
-  LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS,
-  LOBSTER_SKILL_MAX_SELECTED_IDS,
-} from "../lobsterSkillGuidance";
+  buildLoopSkillCatalog,
+  buildLoopSkillGuidance,
+  classifyLoopRootTask,
+  classifyLoopSubtask,
+  loadLoopSkillPack,
+  LOOP_SKILL_MAX_CATALOG_CHARS,
+  LOOP_SKILL_MAX_CATALOG_ITEMS,
+  LOOP_SKILL_MAX_GUIDANCE_CHARS,
+  LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS,
+  LOOP_SKILL_MAX_SELECTED_IDS,
+} from "../loopSkillGuidance";
 
 type TestManifestFile = {
   path: string;
@@ -194,7 +194,7 @@ async function withPackFixture(
   skills: SkillFixture[],
   run: (fixture: PackFixture) => Promise<void>,
 ): Promise<void> {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-lobster-skill-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-loop-skill-"));
   try {
     await run(await createPackFixture(tempRoot, skills));
   } finally {
@@ -204,7 +204,7 @@ async function withPackFixture(
 
 test("loads a valid skill pack from the explicit extension root", async () => {
   await withPackFixture([{ id: "implementation-guide" }], async ({ extensionRoot, packRoot }) => {
-    const result = await loadLobsterSkillPack(extensionRoot);
+    const result = await loadLoopSkillPack(extensionRoot);
 
     assert.ok(result.pack);
     assert.equal(result.pack.root, await fs.realpath(packRoot));
@@ -223,7 +223,7 @@ test("rejects invalid extension roots without consulting cwd", async (t) => {
 
   for (const scenario of cases) {
     await t.test(scenario.name, async () => {
-      const result = await loadLobsterSkillPack(scenario.value);
+      const result = await loadLoopSkillPack(scenario.value);
       assert.equal(result.pack, null);
       assert.equal(result.diagnostics[0]?.code, "invalid_extension_root");
     });
@@ -305,7 +305,7 @@ test("strictly rejects malformed manifest schemas", async (t) => {
         scenario.mutate(manifest);
         await writeManifest(packRoot, manifest);
 
-        const result = await loadLobsterSkillPack(extensionRoot);
+        const result = await loadLoopSkillPack(extensionRoot);
         assert.equal(result.pack, null);
         assert.equal(result.diagnostics[0]?.code, scenario.expectedCode ?? "invalid_manifest");
       });
@@ -332,7 +332,7 @@ test("rejects unsafe manifest paths before reading them", async (t) => {
         manifest.skills[0]!.path = unsafePath;
         await writeManifest(packRoot, manifest);
 
-        const result = await loadLobsterSkillPack(extensionRoot);
+        const result = await loadLoopSkillPack(extensionRoot);
         assert.equal(result.pack, null);
         assert.equal(result.diagnostics[0]?.code, "invalid_manifest");
       });
@@ -349,7 +349,7 @@ test("rejects symlinked skill files even when their target content matches", asy
     await fs.rm(skillPath);
     await fs.symlink(outsidePath, skillPath);
 
-    const result = await loadLobsterSkillPack(extensionRoot);
+    const result = await loadLoopSkillPack(extensionRoot);
     assert.equal(result.pack, null);
     assert.equal(result.diagnostics[0]?.code, "resource_symlink");
   });
@@ -387,7 +387,7 @@ test("rejects file byte and sha256 mismatches", async (t) => {
         scenario.mutate(file, manifest.skills[0]!);
         await writeManifest(packRoot, manifest);
 
-        const result = await loadLobsterSkillPack(extensionRoot);
+        const result = await loadLoopSkillPack(extensionRoot);
         assert.equal(result.pack, null);
         assert.equal(result.diagnostics[0]?.code, scenario.expectedCode);
       });
@@ -404,7 +404,7 @@ test("rejects snapshot mismatches and missing indexed resources", async () => {
       "utf8",
     );
 
-    const result = await loadLobsterSkillPack(extensionRoot);
+    const result = await loadLoopSkillPack(extensionRoot);
     assert.equal(result.pack, null);
     assert.equal(result.diagnostics[0]?.code, "snapshot_hash_mismatch");
   });
@@ -412,7 +412,7 @@ test("rejects snapshot mismatches and missing indexed resources", async () => {
   await withPackFixture([{ id: "implementation-guide" }], async ({ extensionRoot, packRoot }) => {
     await fs.rm(path.join(packRoot, "skills", "implementation-guide", "SKILL.md"));
 
-    const result = await loadLobsterSkillPack(extensionRoot);
+    const result = await loadLoopSkillPack(extensionRoot);
     assert.equal(result.pack, null);
     assert.equal(result.diagnostics[0]?.code, "resource_missing");
   });
@@ -427,7 +427,7 @@ test("enforces the 64 KiB file and 1 MiB pack byte budgets", async () => {
       },
     }],
     async ({ extensionRoot }) => {
-      const result = await loadLobsterSkillPack(extensionRoot);
+      const result = await loadLoopSkillPack(extensionRoot);
       assert.equal(result.pack, null);
       assert.equal(result.diagnostics[0]?.code, "invalid_manifest");
     },
@@ -442,7 +442,7 @@ test("enforces the 64 KiB file and 1 MiB pack byte budgets", async () => {
   await withPackFixture(
     [{ id: "implementation-guide", supportFiles: oversizedPackSupport }],
     async ({ extensionRoot }) => {
-      const result = await loadLobsterSkillPack(extensionRoot);
+      const result = await loadLoopSkillPack(extensionRoot);
       assert.equal(result.pack, null);
       assert.equal(result.diagnostics[0]?.code, "invalid_manifest");
     },
@@ -497,7 +497,7 @@ test("rejects invalid UTF-8, NUL, malformed frontmatter, and delimiter collision
       await withPackFixture(
         [{ id: "implementation-guide", rawContent: scenario.content }],
         async ({ extensionRoot }) => {
-          const result = await loadLobsterSkillPack(extensionRoot);
+          const result = await loadLoopSkillPack(extensionRoot);
           assert.equal(result.pack, null);
           assert.equal(result.diagnostics[0]?.code, scenario.expectedCode);
         },
@@ -515,7 +515,7 @@ test("validates support files even though they are not entry guidance", async ()
       },
     }],
     async ({ extensionRoot }) => {
-      const result = await loadLobsterSkillPack(extensionRoot);
+      const result = await loadLoopSkillPack(extensionRoot);
       assert.equal(result.pack, null);
       assert.equal(result.diagnostics[0]?.code, "resource_nul");
     },
@@ -562,7 +562,7 @@ test("classifies root tasks with development-safe defaults", () => {
   ] as const;
 
   for (const scenario of cases) {
-    assert.equal(classifyLobsterRootTask(scenario.input), scenario.expected, scenario.name);
+    assert.equal(classifyLoopRootTask(scenario.input), scenario.expected, scenario.name);
   }
 });
 
@@ -583,12 +583,12 @@ test("keeps explicit non-development intents closed even with trusted technical 
   ] as const;
 
   for (const scenario of cases) {
-    assert.equal(classifyLobsterRootTask({
+    assert.equal(classifyLoopRootTask({
       displayPrompt: scenario.prompt,
       contextTags: ["file: src/extension.ts"],
-      workspacePaths: ["/workspace/src/lobsterSkillGuidance.ts"],
+      workspacePaths: ["/workspace/src/loopSkillGuidance.ts"],
     }), "non_development", `${scenario.name} root classification`);
-    assert.equal(classifyLobsterSubtask({
+    assert.equal(classifyLoopSubtask({
       title: scenario.prompt,
       prompt: scenario.prompt,
       writeFiles: ["src/extension.ts"],
@@ -610,11 +610,11 @@ test("keeps explicit software-delivery requests classified as development", () =
   ] as const;
 
   for (const prompt of prompts) {
-    assert.equal(classifyLobsterRootTask({
+    assert.equal(classifyLoopRootTask({
       displayPrompt: prompt,
       contextTags: ["file: src/extension.ts"],
     }), "development", `${prompt} root classification`);
-    assert.equal(classifyLobsterSubtask({
+    assert.equal(classifyLoopSubtask({
       title: prompt,
       prompt,
       writeFiles: ["src/extension.ts"],
@@ -623,7 +623,7 @@ test("keeps explicit software-delivery requests classified as development", () =
 });
 
 test("classifies each subtask from title, prompt, writeFiles, and conflictGroup", () => {
-  const implementation = classifyLobsterSubtask({
+  const implementation = classifyLoopSubtask({
     title: "实现用户 API",
     prompt: "新增 REST endpoint，并重构请求校验逻辑。",
     writeFiles: ["src/api/users.ts"],
@@ -635,7 +635,7 @@ test("classifies each subtask from title, prompt, writeFiles, and conflictGroup"
   assert.ok(implementation.taskKinds.includes("implementation"));
   assert.ok(implementation.taskKinds.includes("refactor"));
 
-  const testing = classifyLobsterSubtask({
+  const testing = classifyLoopSubtask({
     title: "补充单元测试",
     prompt: "为失败恢复路径增加 node:test 回归用例。",
     writeFiles: ["src/test/recovery.test.ts"],
@@ -644,7 +644,7 @@ test("classifies each subtask from title, prompt, writeFiles, and conflictGroup"
   assert.deepEqual(testing.phases, ["verify"]);
   assert.ok(testing.taskKinds.includes("test"));
 
-  const securityReview = classifyLobsterSubtask({
+  const securityReview = classifyLoopSubtask({
     title: "安全评审",
     prompt: "审查路径穿越和符号链接逃逸风险。",
     conflictGroup: "security-review",
@@ -654,7 +654,7 @@ test("classifies each subtask from title, prompt, writeFiles, and conflictGroup"
   assert.ok(securityReview.taskKinds.includes("review"));
   assert.ok(securityReview.taskKinds.includes("security"));
 
-  const untrustedInput = classifyLobsterSubtask({
+  const untrustedInput = classifyLoopSubtask({
     title: "实现输入边界校验",
     prompt: "验证不可信输入并在失败时降级。",
     writeFiles: ["src/inputBoundary.ts"],
@@ -663,7 +663,7 @@ test("classifies each subtask from title, prompt, writeFiles, and conflictGroup"
   assert.ok(untrustedInput.phases.includes("review"));
   assert.ok(untrustedInput.taskKinds.includes("security"));
 
-  const documentation = classifyLobsterSubtask({
+  const documentation = classifyLoopSubtask({
     title: "更新运行文档",
     prompt: "同步本地开发 runbook。",
     writeFiles: [".ch/docs/runbooks/local-development.md"],
@@ -672,8 +672,8 @@ test("classifies each subtask from title, prompt, writeFiles, and conflictGroup"
   assert.equal(documentation.classification, "development");
   assert.ok(documentation.taskKinds.includes("documentation"));
 
-  assert.equal(classifyLobsterSubtask({ title: "翻译说明", prompt: "翻译成英文" }).classification, "non_development");
-  assert.equal(classifyLobsterSubtask({ title: "整理一下", prompt: "请处理" }).classification, "unknown");
+  assert.equal(classifyLoopSubtask({ title: "翻译说明", prompt: "翻译成英文" }).classification, "non_development");
+  assert.equal(classifyLoopSubtask({ title: "整理一下", prompt: "请处理" }).classification, "unknown");
 });
 
 test("builds a stable compact catalog only for development root tasks", async () => {
@@ -699,27 +699,27 @@ test("builds a stable compact catalog only for development root tasks", async ()
       },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
 
-      const catalog = buildLobsterSkillCatalog(loaded.pack, "development");
+      const catalog = buildLoopSkillCatalog(loaded.pack, "development");
       assert.deepEqual(catalog.candidateIds, ["alpha-skill", "zeta-skill", "later-skill"]);
       assert.ok(catalog.section);
       assert.ok(catalog.section.indexOf('"id":"alpha-skill"') < catalog.section.indexOf('"id":"zeta-skill"'));
       assert.ok(catalog.section.includes('"roles":["main"]'));
       assert.ok(catalog.section.includes('"requiredCapabilities":["interactive-user"]'));
 
-      assert.deepEqual(buildLobsterSkillCatalog(loaded.pack, "non_development"), {
+      assert.deepEqual(buildLoopSkillCatalog(loaded.pack, "non_development"), {
         section: undefined,
         candidateIds: [],
         diagnostics: [],
       });
-      assert.deepEqual(buildLobsterSkillCatalog(loaded.pack, "unknown"), {
+      assert.deepEqual(buildLoopSkillCatalog(loaded.pack, "unknown"), {
         section: undefined,
         candidateIds: [],
         diagnostics: [],
       });
-      assert.deepEqual(buildLobsterSkillCatalog(null, "development"), {
+      assert.deepEqual(buildLoopSkillCatalog(null, "development"), {
         section: undefined,
         candidateIds: [],
         diagnostics: [],
@@ -729,22 +729,22 @@ test("builds a stable compact catalog only for development root tasks", async ()
 });
 
 test("limits compact catalogs to 32 complete, stably sorted entries", async () => {
-  const skills = Array.from({ length: LOBSTER_SKILL_MAX_CATALOG_ITEMS + 3 }, (_, index): SkillFixture => ({
+  const skills = Array.from({ length: LOOP_SKILL_MAX_CATALOG_ITEMS + 3 }, (_, index): SkillFixture => ({
     id: `skill-${String(index).padStart(2, "0")}`,
-    priority: LOBSTER_SKILL_MAX_CATALOG_ITEMS + 3 - index,
+    priority: LOOP_SKILL_MAX_CATALOG_ITEMS + 3 - index,
   }));
 
   await withPackFixture(skills, async ({ extensionRoot }) => {
-    const loaded = await loadLobsterSkillPack(extensionRoot);
+    const loaded = await loadLoopSkillPack(extensionRoot);
     assert.ok(loaded.pack);
-    const catalog = buildLobsterSkillCatalog(loaded.pack, "development");
+    const catalog = buildLoopSkillCatalog(loaded.pack, "development");
 
-    assert.equal(catalog.candidateIds.length, LOBSTER_SKILL_MAX_CATALOG_ITEMS);
+    assert.equal(catalog.candidateIds.length, LOOP_SKILL_MAX_CATALOG_ITEMS);
     assert.deepEqual(
       catalog.candidateIds,
       [...loaded.pack.skills]
         .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
-        .slice(0, LOBSTER_SKILL_MAX_CATALOG_ITEMS)
+        .slice(0, LOOP_SKILL_MAX_CATALOG_ITEMS)
         .map((skill) => skill.id),
     );
   });
@@ -766,12 +766,12 @@ test("stops before the 12,000-character catalog budget without truncating entrie
   }));
 
   await withPackFixture(skills, async ({ extensionRoot }) => {
-    const loaded = await loadLobsterSkillPack(extensionRoot);
+    const loaded = await loadLoopSkillPack(extensionRoot);
     assert.ok(loaded.pack);
-    const catalog = buildLobsterSkillCatalog(loaded.pack, "development");
+    const catalog = buildLoopSkillCatalog(loaded.pack, "development");
 
     assert.ok(catalog.section);
-    assert.ok(catalog.section.length <= LOBSTER_SKILL_MAX_CATALOG_CHARS);
+    assert.ok(catalog.section.length <= LOOP_SKILL_MAX_CATALOG_CHARS);
     assert.ok(catalog.candidateIds.length > 0);
     assert.ok(catalog.candidateIds.length < skills.length);
     const parsedEntries = catalog.section
@@ -784,7 +784,7 @@ test("stops before the 12,000-character catalog budget without truncating entrie
 });
 
 test("cleans entry Markdown, preserves literal text, and never injects support files", async () => {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-lobster-skill-clean-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-loop-skill-clean-"));
   try {
     const markerPath = path.join(tempRoot, "must-not-exist");
     const rawContent = Buffer.from(
@@ -811,17 +811,17 @@ test("cleans entry Markdown, preserves literal text, and never injects support f
         "references/shared-guidance.md": "SUPPORT_SECRET_MUST_NOT_BE_INJECTED",
       },
     }]);
-    const loaded = await loadLobsterSkillPack(fixture.extensionRoot);
+    const loaded = await loadLoopSkillPack(fixture.extensionRoot);
     assert.ok(loaded.pack);
 
-    const result = buildLobsterSkillGuidance(loaded.pack, {
+    const result = buildLoopSkillGuidance(loaded.pack, {
       rootTaskKind: "development",
       allowedSkillIds: ["implementation-guide"],
       requestedSkillIds: ["implementation-guide"],
       subtask: {
         title: "Implement the loader",
         prompt: "Implement the requested TypeScript module.",
-        writeFiles: ["src/lobsterSkillGuidance.ts"],
+        writeFiles: ["src/loopSkillGuidance.ts"],
       },
       role: "subtask",
       availableCapabilities: [],
@@ -892,7 +892,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
       const allowedSkillIds = loaded.pack.skills.map((skill) => skill.id);
       const implementationSubtask = {
@@ -901,7 +901,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
         writeFiles: ["src/service.ts"],
       };
 
-      const mixed = buildLobsterSkillGuidance(loaded.pack, {
+      const mixed = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds,
         requestedSkillIds: [
@@ -919,7 +919,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       assert.equal(mixed.diagnostics.find((item) => item.skillId === "planning-guide")?.code, "skill_phase_mismatch");
       assert.equal(mixed.diagnostics.find((item) => item.skillId === "doubt-driven-development")?.code, "skill_role_mismatch");
 
-      const notAllowed = buildLobsterSkillGuidance(loaded.pack, {
+      const notAllowed = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds: [],
         requestedSkillIds: ["implementation-guide"],
@@ -929,7 +929,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       assert.deepEqual(notAllowed.skillIds, []);
       assert.equal(notAllowed.diagnostics[0]?.code, "skill_not_allowed");
 
-      const positiveTriggerHintOnly = buildLobsterSkillGuidance(loaded.pack, {
+      const positiveTriggerHintOnly = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds,
         requestedSkillIds: ["triggered-guide"],
@@ -939,7 +939,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       assert.deepEqual(positiveTriggerHintOnly.skillIds, ["triggered-guide"]);
       assert.equal(positiveTriggerHintOnly.diagnostics.length, 0);
 
-      const negativeTrigger = buildLobsterSkillGuidance(loaded.pack, {
+      const negativeTrigger = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds,
         requestedSkillIds: ["triggered-guide"],
@@ -952,7 +952,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       assert.deepEqual(negativeTrigger.skillIds, []);
       assert.equal(negativeTrigger.diagnostics[0]?.code, "skill_negative_trigger");
 
-      const browserWithoutCapability = buildLobsterSkillGuidance(loaded.pack, {
+      const browserWithoutCapability = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds,
         requestedSkillIds: ["browser-testing-with-devtools"],
@@ -967,7 +967,7 @@ test("filters requested IDs by allowlist, phase, task kind, role, capability, an
       assert.deepEqual(browserWithoutCapability.skillIds, []);
       assert.equal(browserWithoutCapability.diagnostics[0]?.code, "skill_capability_missing");
 
-      const browserWithCapability = buildLobsterSkillGuidance(loaded.pack, {
+      const browserWithCapability = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds,
         requestedSkillIds: ["browser-testing-with-devtools"],
@@ -1007,7 +1007,7 @@ test("keeps interview-me and idea-refine interactive main-only", async () => {
       },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
       const ids = loaded.pack.skills.map((skill) => skill.id);
       const planningSubtask = {
@@ -1017,7 +1017,7 @@ test("keeps interview-me and idea-refine interactive main-only", async () => {
       };
 
       for (const id of ids) {
-        const subtaskResult = buildLobsterSkillGuidance(loaded.pack, {
+        const subtaskResult = buildLoopSkillGuidance(loaded.pack, {
           rootTaskKind: "development",
           allowedSkillIds: ids,
           requestedSkillIds: [id],
@@ -1028,7 +1028,7 @@ test("keeps interview-me and idea-refine interactive main-only", async () => {
         assert.deepEqual(subtaskResult.skillIds, []);
         assert.equal(subtaskResult.diagnostics[0]?.code, "skill_role_mismatch");
 
-        const mainWithoutCapability = buildLobsterSkillGuidance(loaded.pack, {
+        const mainWithoutCapability = buildLoopSkillGuidance(loaded.pack, {
           rootTaskKind: "development",
           allowedSkillIds: ids,
           requestedSkillIds: [id],
@@ -1039,7 +1039,7 @@ test("keeps interview-me and idea-refine interactive main-only", async () => {
         assert.deepEqual(mainWithoutCapability.skillIds, []);
         assert.equal(mainWithoutCapability.diagnostics[0]?.code, "skill_capability_missing");
 
-        const interactiveMain = buildLobsterSkillGuidance(loaded.pack, {
+        const interactiveMain = buildLoopSkillGuidance(loaded.pack, {
           rootTaskKind: "development",
           allowedSkillIds: ids,
           requestedSkillIds: [id],
@@ -1055,7 +1055,7 @@ test("keeps interview-me and idea-refine interactive main-only", async () => {
 
 test("returns no guidance for non-development, unknown, malformed selection, or missing packs", async () => {
   await withPackFixture([{ id: "implementation-guide" }], async ({ extensionRoot }) => {
-    const loaded = await loadLobsterSkillPack(extensionRoot);
+    const loaded = await loadLoopSkillPack(extensionRoot);
     assert.ok(loaded.pack);
     const base = {
       allowedSkillIds: ["implementation-guide"],
@@ -1068,30 +1068,30 @@ test("returns no guidance for non-development, unknown, malformed selection, or 
       role: "subtask" as const,
     };
 
-    assert.deepEqual(buildLobsterSkillGuidance(loaded.pack, {
+    assert.deepEqual(buildLoopSkillGuidance(loaded.pack, {
       ...base,
       rootTaskKind: "non_development",
     }).skillIds, []);
-    assert.deepEqual(buildLobsterSkillGuidance(loaded.pack, {
+    assert.deepEqual(buildLoopSkillGuidance(loaded.pack, {
       ...base,
       rootTaskKind: "unknown",
     }).skillIds, []);
-    assert.deepEqual(buildLobsterSkillGuidance(loaded.pack, {
+    assert.deepEqual(buildLoopSkillGuidance(loaded.pack, {
       ...base,
       rootTaskKind: "development",
       subtask: { title: "Translate", prompt: "Translate this paragraph." },
     }).skillIds, []);
-    assert.deepEqual(buildLobsterSkillGuidance(loaded.pack, {
+    assert.deepEqual(buildLoopSkillGuidance(loaded.pack, {
       ...base,
       rootTaskKind: "development",
       subtask: { title: "Handle it", prompt: "Please handle this." },
     }).skillIds, []);
-    assert.deepEqual(buildLobsterSkillGuidance(loaded.pack, {
+    assert.deepEqual(buildLoopSkillGuidance(loaded.pack, {
       ...base,
       rootTaskKind: "development",
       requestedSkillIds: "implementation-guide",
     }).skillIds, []);
-    assert.deepEqual(buildLobsterSkillGuidance(null, {
+    assert.deepEqual(buildLoopSkillGuidance(null, {
       ...base,
       rootTaskKind: "development",
     }), {
@@ -1111,10 +1111,10 @@ test("deduplicates, stably sorts, and accepts at most three selected IDs", async
       { id: "gamma-skill", priority: 2 },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
       const allIds = loaded.pack.skills.map((skill) => skill.id);
-      const result = buildLobsterSkillGuidance(loaded.pack, {
+      const result = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds: allIds,
         requestedSkillIds: [
@@ -1132,7 +1132,7 @@ test("deduplicates, stably sorts, and accepts at most three selected IDs", async
         role: "subtask",
       });
 
-      assert.equal(LOBSTER_SKILL_MAX_SELECTED_IDS, 3);
+      assert.equal(LOOP_SKILL_MAX_SELECTED_IDS, 3);
       assert.deepEqual(result.skillIds, ["alpha-skill", "beta-skill", "gamma-skill"]);
       assert.ok(result.skillGuidance);
       assert.ok(result.skillGuidance.indexOf('id="alpha-skill"') < result.skillGuidance.indexOf('id="beta-skill"'));
@@ -1146,12 +1146,12 @@ test("deduplicates, stably sorts, and accepts at most three selected IDs", async
 test("enforces the 24,000-character per-file budget without truncation", async () => {
   await withPackFixture(
     [
-      { id: "exact-limit", body: "x".repeat(LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS), priority: 1 },
+      { id: "exact-limit", body: "x".repeat(LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS), priority: 1 },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
-      const result = buildLobsterSkillGuidance(loaded.pack, {
+      const result = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds: ["exact-limit"],
         requestedSkillIds: ["exact-limit"],
@@ -1163,19 +1163,19 @@ test("enforces the 24,000-character per-file budget without truncation", async (
         role: "subtask",
       });
       assert.deepEqual(result.skillIds, ["exact-limit"]);
-      assert.ok(result.skillGuidance?.includes("x".repeat(LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS)));
+      assert.ok(result.skillGuidance?.includes("x".repeat(LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS)));
     },
   );
 
   await withPackFixture(
     [
-      { id: "too-large", body: "x".repeat(LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS + 1), priority: 1 },
+      { id: "too-large", body: "x".repeat(LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS + 1), priority: 1 },
       { id: "later-small", body: "small", priority: 2 },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
-      const result = buildLobsterSkillGuidance(loaded.pack, {
+      const result = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds: ["too-large", "later-small"],
         requestedSkillIds: ["later-small", "too-large"],
@@ -1201,9 +1201,9 @@ test("enforces the 32,000-character total budget and skips the overflowing item 
       { id: "third-small", body: "c".repeat(100), priority: 3 },
     ],
     async ({ extensionRoot }) => {
-      const loaded = await loadLobsterSkillPack(extensionRoot);
+      const loaded = await loadLoopSkillPack(extensionRoot);
       assert.ok(loaded.pack);
-      const result = buildLobsterSkillGuidance(loaded.pack, {
+      const result = buildLoopSkillGuidance(loaded.pack, {
         rootTaskKind: "development",
         allowedSkillIds: loaded.pack.skills.map((skill) => skill.id),
         requestedSkillIds: ["third-small", "second-overflow", "first-large"],
@@ -1217,7 +1217,7 @@ test("enforces the 32,000-character total budget and skips the overflowing item 
 
       assert.deepEqual(result.skillIds, ["first-large"]);
       assert.ok(result.skillGuidance);
-      assert.ok(result.skillGuidance.length <= LOBSTER_SKILL_MAX_GUIDANCE_CHARS);
+      assert.ok(result.skillGuidance.length <= LOOP_SKILL_MAX_GUIDANCE_CHARS);
       assert.ok(result.skillGuidance.includes("a".repeat(20_000)));
       assert.ok(!result.skillGuidance.includes("b".repeat(1_000)));
       assert.ok(!result.skillGuidance.includes("c".repeat(100)));

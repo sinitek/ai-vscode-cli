@@ -38,7 +38,7 @@
 - [x] 并行 OpenCode `text` JSONL 事件在进程退出前定向产生 `appendMessage` / `assistantDelta`，对应 tab 可实时看到正常对话气泡。
 - [x] thinking、tool trace 和 `taskListUpdate` 保持按 tab 定向展示。
 - [x] 最终完整 stdout 与已展示文本去重，不产生重复完整回答。
-- [x] 流式消息保留 `taskRole`、`lobsterTaskId`、`lobsterRound`、`lobsterSubtaskId`。
+- [x] 流式消息保留 `taskRole`、`loopTaskId`、`loopRound`、`loopSubtaskId`。
 - [x] 定向单测和 `npm run build` 通过。
 
 ## 影响面

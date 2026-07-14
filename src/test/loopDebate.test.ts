@@ -2,53 +2,53 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  DEFAULT_LOBSTER_EXECUTION_MODE,
-  normalizeLobsterExecutionMode,
+  DEFAULT_LOOP_EXECUTION_MODE,
+  normalizeLoopExecutionMode,
 } from "../cli/types";
 import {
-  buildLobsterAnswerConclusionMarkdown,
-  buildLobsterMainSubChatTranscriptFile,
-  buildLobsterMainSubSubtaskTurnBody,
-  buildLobsterDebateNeedsReviewSummary,
-  buildLobsterFinalSummaryMarkdown,
-  buildLobsterDebateModeratorArtifactFile,
-  buildLobsterDebatePaths,
-  buildLobsterDebateParticipantTurnArtifactFile,
-  buildLobsterGroupChatFinalStatusSection,
-  canProceedWithLobsterDebateConsensus,
-  formatLobsterGroupChatMemberName,
-  findLatestLobsterDebateModeratorSessionId,
-  findLatestLobsterDebateParticipantSessionId,
-  isLobsterDebateAdversarialParticipantRole,
-  isLobsterTaskRunOrphaned,
-  LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES,
-  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-  LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
-  LOBSTER_DEBATE_MODERATOR_TITLE,
-  LOBSTER_DEBATE_PARTICIPANT_ROLES,
-  LOBSTER_DEBATE_RED_TEAM_ROLE,
-  normalizeLobsterDebateSessionId,
-  normalizeLobsterDebateModeratorAction,
-  normalizeLobsterDebateSpeakerIds,
-  parseLobsterDebateChatTranscript,
-  resolveLobsterTaskRunControlState,
-  selectDefaultLobsterDebateOpeningSpeakerIds,
-  validateLobsterDebateConsensus,
-  type LobsterDebateModeratorDecisionRecord,
-  type LobsterDebateParticipantRecord,
-  type LobsterDebateConsensusRecord,
-} from "../lobsterDebate";
-import type { LobsterMainDecision } from "../lobsterTaskStore";
-import { getStrings } from "../webview/lobsterDebatePanelRenderer";
+  buildLoopAnswerConclusionMarkdown,
+  buildLoopMainSubChatTranscriptFile,
+  buildLoopMainSubSubtaskTurnBody,
+  buildLoopDebateNeedsReviewSummary,
+  buildLoopFinalSummaryMarkdown,
+  buildLoopDebateModeratorArtifactFile,
+  buildLoopDebatePaths,
+  buildLoopDebateParticipantTurnArtifactFile,
+  buildLoopGroupChatFinalStatusSection,
+  canProceedWithLoopDebateConsensus,
+  formatLoopGroupChatMemberName,
+  findLatestLoopDebateModeratorSessionId,
+  findLatestLoopDebateParticipantSessionId,
+  isLoopDebateAdversarialParticipantRole,
+  isLoopTaskRunOrphaned,
+  LOOP_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES,
+  LOOP_DEBATE_BLUE_TEAM_ROLE,
+  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
+  LOOP_DEBATE_MODERATOR_TITLE,
+  LOOP_DEBATE_PARTICIPANT_ROLES,
+  LOOP_DEBATE_RED_TEAM_ROLE,
+  normalizeLoopDebateSessionId,
+  normalizeLoopDebateModeratorAction,
+  normalizeLoopDebateSpeakerIds,
+  parseLoopDebateChatTranscript,
+  resolveLoopTaskRunControlState,
+  selectDefaultLoopDebateOpeningSpeakerIds,
+  validateLoopDebateConsensus,
+  type LoopDebateModeratorDecisionRecord,
+  type LoopDebateParticipantRecord,
+  type LoopDebateConsensusRecord,
+} from "../loopDebate";
+import type { LoopMainDecision } from "../loopTaskStore";
+import { getStrings } from "../webview/loopDebatePanelRenderer";
 
-test("normalizes lobster execution mode with legacy-compatible default", () => {
-  assert.equal(DEFAULT_LOBSTER_EXECUTION_MODE, "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode(undefined), "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode(null), "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode(""), "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode("main_sub"), "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode("main_sub_multi_agent"), "main_sub_multi_agent");
-  assert.equal(normalizeLobsterExecutionMode("debate_multi_agent"), "debate_multi_agent");
+test("normalizes loop execution mode with legacy-compatible default", () => {
+  assert.equal(DEFAULT_LOOP_EXECUTION_MODE, "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode(undefined), "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode(null), "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode(""), "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode("main_sub"), "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode("main_sub_multi_agent"), "main_sub_multi_agent");
+  assert.equal(normalizeLoopExecutionMode("debate_multi_agent"), "debate_multi_agent");
 });
 
 test("uses speaking action labels for Loop supplemental requirements", () => {
@@ -74,7 +74,7 @@ test("parses supplemental requirements as user chat messages", () => {
     "同时更新中英文文案。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
   const userMessages = parsed.segments.filter((segment) => segment.kind === "user-message");
 
   assert.deepEqual(
@@ -88,8 +88,8 @@ test("parses supplemental requirements as user chat messages", () => {
   assert.deepEqual(userMessages.map((segment) => segment.actorId), ["user", "user"]);
 });
 
-test("resolves lobster task run controls from persisted running status", () => {
-  const controlState = resolveLobsterTaskRunControlState(
+test("resolves loop task run controls from persisted running status", () => {
+  const controlState = resolveLoopTaskRunControlState(
     { id: "task-1", status: "running" },
     new Set(),
   );
@@ -101,40 +101,40 @@ test("resolves lobster task run controls from persisted running status", () => {
 });
 
 test("identifies a persisted running Loop task without runtime ownership as orphaned", () => {
-  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
-  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);
-  assert.equal(isLobsterTaskRunOrphaned({ id: "task-1", status: "stopped" }, new Set()), false);
+  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
+  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);
+  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "stopped" }, new Set()), false);
 });
 
-test("keeps lobster continue available only for incomplete non-running tasks", () => {
+test("keeps loop continue available only for incomplete non-running tasks", () => {
   assert.deepEqual(
-    resolveLobsterTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set()),
+    resolveLoopTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set()),
     { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
   assert.deepEqual(
-    resolveLobsterTaskRunControlState({ id: "task-1", status: "stopped" }, new Set()),
+    resolveLoopTaskRunControlState({ id: "task-1", status: "stopped" }, new Set()),
     { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
   assert.deepEqual(
-    resolveLobsterTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set(["task-1"])),
+    resolveLoopTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set(["task-1"])),
     { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
   );
   assert.deepEqual(
-    resolveLobsterTaskRunControlState({ id: "task-1", status: "completed" }, new Set(["task-1"])),
+    resolveLoopTaskRunControlState({ id: "task-1", status: "completed" }, new Set(["task-1"])),
     { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
   );
 });
 
-test("keeps lobster speaking available whenever the task still has a running process", () => {
+test("keeps loop speaking available whenever the task still has a running process", () => {
   assert.deepEqual(
-    resolveLobsterTaskRunControlState(
+    resolveLoopTaskRunControlState(
       { id: "task-1", status: "running", mainAiFailureLimitReached: true },
       new Set(["task-1"]),
     ),
     { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
   );
   assert.deepEqual(
-    resolveLobsterTaskRunControlState(
+    resolveLoopTaskRunControlState(
       { id: "task-1", status: "completed", mainAiFailureLimitReached: true },
       new Set(["task-1"]),
     ),
@@ -142,9 +142,9 @@ test("keeps lobster speaking available whenever the task still has a running pro
   );
 });
 
-test("blocks lobster continue when main AI failure limit has already been reached", () => {
+test("blocks loop continue when main AI failure limit has already been reached", () => {
   assert.deepEqual(
-    resolveLobsterTaskRunControlState(
+    resolveLoopTaskRunControlState(
       { id: "task-1", status: "needs-review", mainAiFailureLimitReached: true },
       new Set(),
     ),
@@ -152,8 +152,8 @@ test("blocks lobster continue when main AI failure limit has already been reache
   );
 });
 
-test("builds terminal lobster group chat status sections", () => {
-  const completed = buildLobsterGroupChatFinalStatusSection({
+test("builds terminal loop group chat status sections", () => {
+  const completed = buildLoopGroupChatFinalStatusSection({
     id: "task-1",
     status: "completed",
     currentRound: 3,
@@ -170,7 +170,7 @@ test("builds terminal lobster group chat status sections", () => {
   assert.match(completed?.body ?? "", /全部验收通过/u);
   assert.match(completed?.body ?? "", /预计剩余轮次：0 轮/u);
 
-  const interrupted = buildLobsterGroupChatFinalStatusSection({
+  const interrupted = buildLoopGroupChatFinalStatusSection({
     id: "task-2",
     status: "stopped",
     currentRound: 2,
@@ -182,11 +182,11 @@ test("builds terminal lobster group chat status sections", () => {
   assert.match(interrupted?.body ?? "", /任务已中断/u);
   assert.match(interrupted?.body ?? "", /用户已中止任务/u);
 
-  assert.equal(buildLobsterGroupChatFinalStatusSection({ id: "task-3", status: "running" }), null);
+  assert.equal(buildLoopGroupChatFinalStatusSection({ id: "task-3", status: "running" }), null);
 });
 
-test("builds lobster final summary with question conclusion and overall summary", () => {
-  const markdown = buildLobsterFinalSummaryMarkdown({
+test("builds loop final summary with question conclusion and overall summary", () => {
+  const markdown = buildLoopFinalSummaryMarkdown({
     id: "task-1",
     sessionId: "session-1",
     finalSummary: "任务记录中的旧总结。",
@@ -217,8 +217,8 @@ test("builds lobster final summary with question conclusion and overall summary"
   assert.match(markdown, /## 整体任务总结\n整体总结：已完成展示链路调整/u);
 });
 
-test("builds standalone lobster answer conclusion for AI conversation stream", () => {
-  const markdown = buildLobsterAnswerConclusionMarkdown({
+test("builds standalone loop answer conclusion for AI conversation stream", () => {
+  const markdown = buildLoopAnswerConclusionMarkdown({
     finalSummary: "任务已完成整体总结。",
     answerConclusion: "任务记录中的直接答案。",
   }, {
@@ -233,8 +233,8 @@ test("builds standalone lobster answer conclusion for AI conversation stream", (
   ].join("\n"));
 });
 
-test("falls back to final summary when lobster answer conclusion is missing", () => {
-  const markdown = buildLobsterFinalSummaryMarkdown({
+test("falls back to final summary when loop answer conclusion is missing", () => {
+  const markdown = buildLoopFinalSummaryMarkdown({
     id: "task-2",
     sessionId: null,
     finalSummary: "最终总结兜底为直接结论。",
@@ -246,8 +246,8 @@ test("falls back to final summary when lobster answer conclusion is missing", ()
   assert.match(markdown, /## 整体任务总结\n最终总结兜底为直接结论/u);
 });
 
-test("falls back to final summary for standalone lobster answer conclusion", () => {
-  const markdown = buildLobsterAnswerConclusionMarkdown({
+test("falls back to final summary for standalone loop answer conclusion", () => {
+  const markdown = buildLoopAnswerConclusionMarkdown({
     finalSummary: "最终总结兜底为独立直接结论。",
   });
 
@@ -259,68 +259,68 @@ test("falls back to final summary for standalone lobster answer conclusion", () 
 });
 
 test("builds stable debate communication paths for the first debate round", () => {
-  const paths = buildLobsterDebatePaths("/tmp/lobster-communications/task-1/", 2);
+  const paths = buildLoopDebatePaths("/tmp/loop-communications/task-1/", 2);
 
-  assert.equal(paths.communicationDir, "/tmp/lobster-communications/task-1");
-  assert.equal(paths.debatesDir, "/tmp/lobster-communications/task-1/debates");
-  assert.equal(paths.lobsterRoundDir, "/tmp/lobster-communications/task-1/debates/round-2");
-  assert.equal(paths.roundDir, "/tmp/lobster-communications/task-1/debates/round-2");
-  assert.equal(paths.participantsDir, "/tmp/lobster-communications/task-1/debates/round-2/participants");
-  assert.equal(paths.briefFile, "/tmp/lobster-communications/task-1/debates/round-2/brief.md");
-  assert.equal(paths.chatFile, "/tmp/lobster-communications/task-1/debates/round-2/chat.md");
-  assert.equal(paths.participantRosterFile, "/tmp/lobster-communications/task-1/debates/round-2/moderator-participants.md");
-  assert.equal(paths.crossReviewFile, "/tmp/lobster-communications/task-1/debates/round-2/cross-review.md");
-  assert.equal(paths.consensusFile, "/tmp/lobster-communications/task-1/debates/round-2/consensus.md");
-  assert.equal(paths.decisionFile, "/tmp/lobster-communications/task-1/debates/round-2/decision.json");
+  assert.equal(paths.communicationDir, "/tmp/loop-communications/task-1");
+  assert.equal(paths.debatesDir, "/tmp/loop-communications/task-1/debates");
+  assert.equal(paths.loopRoundDir, "/tmp/loop-communications/task-1/debates/round-2");
+  assert.equal(paths.roundDir, "/tmp/loop-communications/task-1/debates/round-2");
+  assert.equal(paths.participantsDir, "/tmp/loop-communications/task-1/debates/round-2/participants");
+  assert.equal(paths.briefFile, "/tmp/loop-communications/task-1/debates/round-2/brief.md");
+  assert.equal(paths.chatFile, "/tmp/loop-communications/task-1/debates/round-2/chat.md");
+  assert.equal(paths.participantRosterFile, "/tmp/loop-communications/task-1/debates/round-2/moderator-participants.md");
+  assert.equal(paths.crossReviewFile, "/tmp/loop-communications/task-1/debates/round-2/cross-review.md");
+  assert.equal(paths.consensusFile, "/tmp/loop-communications/task-1/debates/round-2/consensus.md");
+  assert.equal(paths.decisionFile, "/tmp/loop-communications/task-1/debates/round-2/decision.json");
 });
 
 test("builds stable main-sub group chat transcript path", () => {
   assert.equal(
-    buildLobsterMainSubChatTranscriptFile("/tmp/lobster-communications/task-1/"),
-    "/tmp/lobster-communications/task-1/group-chat.md",
+    buildLoopMainSubChatTranscriptFile("/tmp/loop-communications/task-1/"),
+    "/tmp/loop-communications/task-1/group-chat.md",
   );
 });
 
 test("keeps debate mode roles red-blue while preserving legacy role compatibility", () => {
   assert.deepEqual(
-    Array.from(LOBSTER_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES),
-    [LOBSTER_DEBATE_BLUE_TEAM_ROLE, LOBSTER_DEBATE_RED_TEAM_ROLE],
+    Array.from(LOOP_DEBATE_ADVERSARIAL_PARTICIPANT_ROLES),
+    [LOOP_DEBATE_BLUE_TEAM_ROLE, LOOP_DEBATE_RED_TEAM_ROLE],
   );
-  assert.equal(isLobsterDebateAdversarialParticipantRole("blue_team"), true);
-  assert.equal(isLobsterDebateAdversarialParticipantRole("red_team"), true);
-  assert.equal(isLobsterDebateAdversarialParticipantRole("architecture"), false);
-  assert.equal(LOBSTER_DEBATE_PARTICIPANT_ROLES.includes("architecture"), true);
-  assert.equal(LOBSTER_DEBATE_MODERATOR_TITLE, "裁判主持人");
+  assert.equal(isLoopDebateAdversarialParticipantRole("blue_team"), true);
+  assert.equal(isLoopDebateAdversarialParticipantRole("red_team"), true);
+  assert.equal(isLoopDebateAdversarialParticipantRole("architecture"), false);
+  assert.equal(LOOP_DEBATE_PARTICIPANT_ROLES.includes("architecture"), true);
+  assert.equal(LOOP_DEBATE_MODERATOR_TITLE, "裁判主持人");
 });
 
-test("builds nested paths for additional debate rounds within the same lobster round", () => {
-  const paths = buildLobsterDebatePaths("/tmp/lobster-communications/task-1", 2, 3);
+test("builds nested paths for additional debate rounds within the same loop round", () => {
+  const paths = buildLoopDebatePaths("/tmp/loop-communications/task-1", 2, 3);
 
-  assert.equal(paths.lobsterRoundDir, "/tmp/lobster-communications/task-1/debates/round-2");
-  assert.equal(paths.roundDir, "/tmp/lobster-communications/task-1/debates/round-2/debate-3");
-  assert.equal(paths.consensusFile, "/tmp/lobster-communications/task-1/debates/round-2/debate-3/consensus.md");
+  assert.equal(paths.loopRoundDir, "/tmp/loop-communications/task-1/debates/round-2");
+  assert.equal(paths.roundDir, "/tmp/loop-communications/task-1/debates/round-2/debate-3");
+  assert.equal(paths.consensusFile, "/tmp/loop-communications/task-1/debates/round-2/debate-3/consensus.md");
 });
 
 test("builds stable participant and moderator artifact paths for bounded chat turns", () => {
-  const paths = buildLobsterDebatePaths("/tmp/lobster-communications/task-1", 2);
+  const paths = buildLoopDebatePaths("/tmp/loop-communications/task-1", 2);
 
-  assert.ok(LOBSTER_DEBATE_MAX_DIALOGUE_TURNS > 2);
+  assert.ok(LOOP_DEBATE_MAX_DIALOGUE_TURNS > 2);
   assert.equal(
-    buildLobsterDebateParticipantTurnArtifactFile(paths, "risk/review", 1),
-    "/tmp/lobster-communications/task-1/debates/round-2/participants/risk_review-turn-1.md",
+    buildLoopDebateParticipantTurnArtifactFile(paths, "risk/review", 1),
+    "/tmp/loop-communications/task-1/debates/round-2/participants/risk_review-turn-1.md",
   );
   assert.equal(
-    buildLobsterDebateModeratorArtifactFile(paths, 3),
-    "/tmp/lobster-communications/task-1/debates/round-2/participants/moderator-turn-3.md",
+    buildLoopDebateModeratorArtifactFile(paths, 3),
+    "/tmp/loop-communications/task-1/debates/round-2/participants/moderator-turn-3.md",
   );
-  assert.equal(normalizeLobsterDebateModeratorAction("continue"), "continue");
-  assert.equal(normalizeLobsterDebateModeratorAction("finalize"), "finalize");
-  assert.equal(normalizeLobsterDebateModeratorAction("block"), "block");
-  assert.equal(normalizeLobsterDebateModeratorAction("wait"), null);
+  assert.equal(normalizeLoopDebateModeratorAction("continue"), "continue");
+  assert.equal(normalizeLoopDebateModeratorAction("finalize"), "finalize");
+  assert.equal(normalizeLoopDebateModeratorAction("block"), "block");
+  assert.equal(normalizeLoopDebateModeratorAction("wait"), null);
 });
 
 test("tracks latest debate actor session ids for closed temporary tabs", () => {
-  const participants: LobsterDebateParticipantRecord[] = [
+  const participants: LoopDebateParticipantRecord[] = [
     {
       id: "architecture",
       role: "architecture",
@@ -349,7 +349,7 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
       updatedAt: 3,
     },
   ];
-  const moderatorDecisions: LobsterDebateModeratorDecisionRecord[] = [
+  const moderatorDecisions: LoopDebateModeratorDecisionRecord[] = [
     {
       artifactFile: "/tmp/moderator-turn-1.md",
       dialogueTurn: 1,
@@ -372,17 +372,17 @@ test("tracks latest debate actor session ids for closed temporary tabs", () => {
     },
   ];
 
-  assert.equal(normalizeLobsterDebateSessionId(" session-1 "), "session-1");
-  assert.equal(normalizeLobsterDebateSessionId(" "), null);
-  assert.equal(findLatestLobsterDebateParticipantSessionId(participants, "architecture"), "session-arch-2");
-  assert.equal(findLatestLobsterDebateParticipantSessionId(participants, "risk"), "session-risk-1");
-  assert.equal(findLatestLobsterDebateParticipantSessionId(participants, "testing"), null);
-  assert.equal(findLatestLobsterDebateModeratorSessionId(moderatorDecisions), "moderator-session-2");
+  assert.equal(normalizeLoopDebateSessionId(" session-1 "), "session-1");
+  assert.equal(normalizeLoopDebateSessionId(" "), null);
+  assert.equal(findLatestLoopDebateParticipantSessionId(participants, "architecture"), "session-arch-2");
+  assert.equal(findLatestLoopDebateParticipantSessionId(participants, "risk"), "session-risk-1");
+  assert.equal(findLatestLoopDebateParticipantSessionId(participants, "testing"), null);
+  assert.equal(findLatestLoopDebateModeratorSessionId(moderatorDecisions), "moderator-session-2");
 });
 
 test("normalizes moderator-selected speaker ids and chooses a blue opening speaker by default", () => {
   assert.deepEqual(
-    normalizeLobsterDebateSpeakerIds(
+    normalizeLoopDebateSpeakerIds(
       ["red-attacker", "blue-planner", "red-attacker", "unknown"],
       ["blue-planner", "red-attacker"],
       2,
@@ -391,7 +391,7 @@ test("normalizes moderator-selected speaker ids and chooses a blue opening speak
   );
 
   assert.deepEqual(
-    selectDefaultLobsterDebateOpeningSpeakerIds([
+    selectDefaultLoopDebateOpeningSpeakerIds([
       { id: "red-attacker", role: "red_team" },
       { id: "blue-planner", role: "blue_team" },
       { id: "blue-reviewer", role: "blue_team" },
@@ -400,10 +400,10 @@ test("normalizes moderator-selected speaker ids and chooses a blue opening speak
   );
 });
 
-test("formats lobster group chat member names with bracketed display names", () => {
-  assert.equal(formatLobsterGroupChatMemberName("裁判主持人"), "【裁判主持人】");
-  assert.equal(formatLobsterGroupChatMemberName("【蓝队方案方】"), "【蓝队方案方】");
-  assert.equal(formatLobsterGroupChatMemberName("  红队攻击方  "), "【红队攻击方】");
+test("formats loop group chat member names with bracketed display names", () => {
+  assert.equal(formatLoopGroupChatMemberName("裁判主持人"), "【裁判主持人】");
+  assert.equal(formatLoopGroupChatMemberName("【蓝队方案方】"), "【蓝队方案方】");
+  assert.equal(formatLoopGroupChatMemberName("  红队攻击方  "), "【红队攻击方】");
 });
 
 test("parses debate chat transcript into role-oriented segments", () => {
@@ -438,7 +438,7 @@ test("parses debate chat transcript into role-oriented segments", () => {
     "存在阻塞性异议，停止自动执行。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.equal(parsed.title, "Loop 红蓝对抗群聊记录");
   assert.equal(parsed.closed, true);
@@ -501,7 +501,7 @@ test("parses bracketed debate group chat member names with metadata ids", () => 
     "【裁判主持人】最终动作：finalize",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -523,7 +523,7 @@ test("parses bracketed debate group chat member names with metadata ids", () => 
   assert.equal(finalStance?.actorId, "red-attacker");
 });
 
-test("parses terminal lobster group chat status sections as final bubbles", () => {
+test("parses terminal loop group chat status sections as final bubbles", () => {
   const transcript = [
     "# Loop 群聊记录",
     "",
@@ -536,7 +536,7 @@ test("parses terminal lobster group chat status sections as final bubbles", () =
     "任务已中断，需要人工复核或继续。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -569,7 +569,7 @@ test("parses bracketed main-sub group chat member names with metadata ids", () =
     "已完成 UI 修改。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -612,7 +612,7 @@ test("parses debate chat transcript without UI round section headings", () => {
     "finalize",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
@@ -652,7 +652,7 @@ test("parses main-sub group chat transcript into role-oriented segments", () => 
     "主任务验收通过。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.equal(parsed.title, "Loop 主从群聊记录");
   assert.equal(parsed.closed, true);
@@ -693,7 +693,7 @@ test("parses debate task execution group chat transcript after consensus dispatc
     "子任务批次已全部完成。",
   ].join("\n");
 
-  const parsed = parseLobsterDebateChatTranscript(transcript);
+  const parsed = parseLoopDebateChatTranscript(transcript);
 
   assert.equal(parsed.title, "Loop 主从群聊记录");
   assert.equal(parsed.closed, false);
@@ -708,7 +708,7 @@ test("parses debate task execution group chat transcript after consensus dispatc
 });
 
 test("formats completed main-sub subtask chat turn as the final reply", () => {
-  const body = buildLobsterMainSubSubtaskTurnBody({
+  const body = buildLoopMainSubSubtaskTurnBody({
     runStatus: "end",
     assistantContent: "\n已完成修复。\n\n- build 通过\n",
     communicationFile: "/tmp/subtask.md",
@@ -720,7 +720,7 @@ test("formats completed main-sub subtask chat turn as the final reply", () => {
 });
 
 test("formats incomplete main-sub subtask chat turn with troubleshooting context", () => {
-  const body = buildLobsterMainSubSubtaskTurnBody({
+  const body = buildLoopMainSubSubtaskTurnBody({
     runStatus: "error",
     assistantContent: null,
     communicationFile: "/tmp/subtask.md",
@@ -732,7 +732,7 @@ test("formats incomplete main-sub subtask chat turn with troubleshooting context
 });
 
 test("allows proceeding when consensus is reached and all participants agree", () => {
-  const consensus: LobsterDebateConsensusRecord = {
+  const consensus: LoopDebateConsensusRecord = {
     artifactFile: "/tmp/consensus.md",
     reached: true,
     summary: "All default participants agree to continue.",
@@ -746,18 +746,18 @@ test("allows proceeding when consensus is reached and all participants agree", (
     openDisagreements: [],
   };
 
-  const validation = validateLobsterDebateConsensus(consensus);
+  const validation = validateLoopDebateConsensus(consensus);
 
   assert.equal(validation.canProceed, true);
   assert.equal(validation.consensusReached, true);
   assert.deepEqual(validation.blockingParticipantIds, []);
   assert.deepEqual(validation.blockingDisagreementIds, []);
   assert.deepEqual(validation.reasons, []);
-  assert.equal(canProceedWithLobsterDebateConsensus(consensus), true);
+  assert.equal(canProceedWithLoopDebateConsensus(consensus), true);
 });
 
 test("accepts legacy debate continue decisions whose subtasks omit skillIds", () => {
-  const legacyDecision: LobsterMainDecision = {
+  const legacyDecision: LoopMainDecision = {
     status: "continue",
     estimatedRemainingRounds: 1,
     acceptance: {
@@ -772,7 +772,7 @@ test("accepts legacy debate continue decisions whose subtasks omit skillIds", ()
       writeFiles: ["src/legacy.ts"],
     }],
   };
-  const consensus: LobsterDebateConsensusRecord = {
+  const consensus: LoopDebateConsensusRecord = {
     artifactFile: "/tmp/consensus.md",
     reached: true,
     summary: "The legacy decision remains executable.",
@@ -786,12 +786,12 @@ test("accepts legacy debate continue decisions whose subtasks omit skillIds", ()
   };
 
   assert.equal(Object.prototype.hasOwnProperty.call(legacyDecision.subtasks?.[0] ?? {}, "skillIds"), false);
-  assert.equal(validateLobsterDebateConsensus(consensus).canProceed, true);
-  assert.equal(canProceedWithLobsterDebateConsensus(consensus), true);
+  assert.equal(validateLoopDebateConsensus(consensus).canProceed, true);
+  assert.equal(canProceedWithLoopDebateConsensus(consensus), true);
 });
 
 test("allows proceeding when a prior risk block is resolved into final reservations", () => {
-  const consensus: LobsterDebateConsensusRecord = {
+  const consensus: LoopDebateConsensusRecord = {
     artifactFile: "/tmp/consensus.md",
     reached: true,
     summary: "Risk concerns were converted into source-scope subtasks and acceptance checks.",
@@ -813,7 +813,7 @@ test("allows proceeding when a prior risk block is resolved into final reservati
     openDisagreements: [],
   };
 
-  const validation = validateLobsterDebateConsensus(consensus);
+  const validation = validateLoopDebateConsensus(consensus);
 
   assert.equal(validation.canProceed, true);
   assert.equal(validation.consensusReached, true);
@@ -823,7 +823,7 @@ test("allows proceeding when a prior risk block is resolved into final reservati
 });
 
 test("blocks proceeding when an unresolved blocking disagreement remains open", () => {
-  const consensus: LobsterDebateConsensusRecord = {
+  const consensus: LoopDebateConsensusRecord = {
     artifactFile: "/tmp/consensus.md",
     reached: true,
     summary: "One blocking disagreement remains unresolved.",
@@ -842,7 +842,7 @@ test("blocks proceeding when an unresolved blocking disagreement remains open", 
     ],
   };
 
-  const validation = validateLobsterDebateConsensus(consensus);
+  const validation = validateLoopDebateConsensus(consensus);
 
   assert.equal(validation.canProceed, false);
   assert.deepEqual(validation.blockingParticipantIds, []);
@@ -850,7 +850,7 @@ test("blocks proceeding when an unresolved blocking disagreement remains open", 
 });
 
 test("blocks proceeding when any participant stance is block", () => {
-  const consensus: LobsterDebateConsensusRecord = {
+  const consensus: LoopDebateConsensusRecord = {
     artifactFile: "/tmp/consensus.md",
     reached: true,
     summary: "Risk reviewer blocks the plan.",
@@ -862,7 +862,7 @@ test("blocks proceeding when any participant stance is block", () => {
     openDisagreements: [],
   };
 
-  const validation = validateLobsterDebateConsensus(consensus);
+  const validation = validateLoopDebateConsensus(consensus);
 
   assert.equal(validation.canProceed, false);
   assert.deepEqual(validation.blockingParticipantIds, ["red_attacker"]);
@@ -870,7 +870,7 @@ test("blocks proceeding when any participant stance is block", () => {
 });
 
 test("summarizes a reached but blocked consensus as manual review with decision details", () => {
-  const summary = buildLobsterDebateNeedsReviewSummary({
+  const summary = buildLoopDebateNeedsReviewSummary({
     reasons: [
       "Blocking participant stance: security.",
       "Open blocking disagreement: credential-chain.",
@@ -908,7 +908,7 @@ test("summarizes a reached but blocked consensus as manual review with decision 
 });
 
 test("summarizes missing consensus as no consensus reached", () => {
-  const summary = buildLobsterDebateNeedsReviewSummary({
+  const summary = buildLoopDebateNeedsReviewSummary({
     reasons: ["Consensus has not been reached."],
   });
 

@@ -6,7 +6,7 @@ Loop 模式已经很接近当前主流的 Agentic Coding Loop：用户给目标�
 
 当前工程已经具备不少循环能力：
 
-- `coding / lobster` 顶层模式区分。
+- `coding / loop` 顶层模式区分。
 - Loop 内部支持 `main_sub_multi_agent` 和 `debate_multi_agent`。
 - 主任务可以拆分子任务，子任务可并行执行，按 `writeFiles` / `conflictGroup` 做冲突规划。
 - 子任务失败可自动重试，主任务连续失败会进入 `needs-review`。
@@ -42,7 +42,7 @@ Loop 模式已经很接近当前主流的 Agentic Coding Loop：用户给目标�
 示例结构：
 
 ```ts
-interface LobsterBoundaryContract {
+interface LoopBoundaryContract {
   version: 1;
   objective: {
     goal: string;
@@ -164,7 +164,7 @@ Loop 群聊面板应显示当前任务的边界摘要，而不是只显示对话
 - 如果用户选择“只读调研”，则 `writeAllowlist` 必须为空。
 - 如果允许修改依赖文件，例如 `package.json`、lockfile，需要同时把 `modifyDependencies` 设置为 `ask` 或 `allow`。
 
-建议把这部分做成纯函数，落点可以是新的 `src/lobsterBoundary.ts`，避免继续扩大 `extension.ts`。
+建议把这部分做成纯函数，落点可以是新的 `src/loopBoundary.ts`，避免继续扩大 `extension.ts`。
 
 ### 5.2 派发前校验：子任务不能超出边界
 
@@ -304,7 +304,7 @@ Agentic coding loop 的另一个常见问题是“AI 自己觉得完成了”。
 建议在任务记录中新增两个与边界相关的持久化结构：
 
 ```ts
-interface LobsterBoundaryEvent {
+interface LoopBoundaryEvent {
   id: string;
   type:
     | "created"
@@ -420,12 +420,12 @@ interface LobsterBoundaryEvent {
 
 | 能力 | 推荐落点 |
 | --- | --- |
-| 边界类型、规范化、路径匹配、校验纯函数 | 新增 `src/lobsterBoundary.ts` |
+| 边界类型、规范化、路径匹配、校验纯函数 | 新增 `src/loopBoundary.ts` |
 | 任务记录新增字段、创建/恢复/补充需求编排 | `src/extension.ts` |
 | Webview 协议类型 | `src/webview/types.ts` |
-| 输入区边界卡片、群聊边界摘要、gate 操作 | `src/webview/viewContent.ts`、`src/webview/lobsterDebatePanel.ts` |
+| 输入区边界卡片、群聊边界摘要、gate 操作 | `src/webview/viewContent.ts`、`src/webview/loopDebatePanel.ts` |
 | 国际化文案 | `src/i18n.ts` 和 Webview 内置词典 |
-| 红蓝辩论共识校验扩展 | `src/lobsterDebate.ts` 或新增纯函数模块 |
+| 红蓝辩论共识校验扩展 | `src/loopDebate.ts` 或新增纯函数模块 |
 | 产品规格同步 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md` |
 | 运行时设计同步 | `.ch/docs/design-docs/vscode-cli-extension-runtime.md` |
 

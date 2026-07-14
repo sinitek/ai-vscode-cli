@@ -1,4 +1,4 @@
-// Session, lobster group chat, and prompt history overlays.
+// Session, loop group chat, and prompt history overlays.
 export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySessionKey(cli, sessionId) {
         return String(cli || "") + ":" + String(sessionId || "");
       }
@@ -282,7 +282,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           }
 
           titleRow.appendChild(label);
-          if (session.isLobsterSession) {
+          if (session.isLoopSession) {
             const badge = document.createElement("span");
             badge.className = "session-status-badge";
             badge.textContent = t("sessionLoopLabel");

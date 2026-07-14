@@ -64,9 +64,9 @@
 
 | 审计报告 | 已回填事实 | 状态 |
 | --- | --- | --- |
-| `/Users/fangjiawei/.sinitek_cli/lobster-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-source-agent-skills.md` | 24/27 inventory、7 个根 reference、MIT/来源缺口、重名/重叠、角色/能力限制、依赖闭包 | completed |
-| `/Users/fangjiawei/.sinitek_cli/lobster-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-loop-skill-injection-seams.md` | 精确调用链、普通/红蓝接缝、决策/Store 字段剥离、重试快照、双层门禁、预算和测试 seam | completed |
-| `/Users/fangjiawei/.sinitek_cli/lobster-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-skill-packaging-docs-tests.md` | `media`/VSIX 边界、extension root 定位、官方/scaffold 隔离、同步/校验、安全、文档和打包测试 | completed |
+| `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-source-agent-skills.md` | 24/27 inventory、7 个根 reference、MIT/来源缺口、重名/重叠、角色/能力限制、依赖闭包 | completed |
+| `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-loop-skill-injection-seams.md` | 精确调用链、普通/红蓝接缝、决策/Store 字段剥离、重试快照、双层门禁、预算和测试 seam | completed |
+| `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783832394276_99722f39c6a9/subtasks/round-1-audit-skill-packaging-docs-tests.md` | `media`/VSIX 边界、extension root 定位、官方/scaffold 隔离、同步/校验、安全、文档和打包测试 | completed |
 
 阶段 1 退出条件：
 
@@ -107,44 +107,44 @@
 Webview sendPrompt
   -> sessionMessageHandlers.handlePanelMessageWithDeps
   -> sessionMessageActions.handleSendPromptMessage
-     -> runLobsterPrompt
-  -> extension.runLobsterPromptOrchestration
-     -> create/read LobsterTaskRecord
+     -> runLoopPrompt
+  -> extension.runLoopPromptOrchestration
+     -> create/read LoopTaskRecord
      -> 普通主从:
-          buildLobsterMainModelPrompt
+          buildLoopMainModelPrompt
         红蓝首轮:
-          runLobsterDebateRound
-          -> buildLobsterDebateBriefMarkdown
-          -> buildLobsterDebateConsensusModelPrompt
+          runLoopDebateRound
+          -> buildLoopDebateBriefMarkdown
+          -> buildLoopDebateConsensusModelPrompt
           -> decision.json
         红蓝后续轮:
-          buildLobsterModeratorMainModelPrompt
-          -> buildLobsterMainModelPrompt
-     -> parseLobsterMainDecision
-     -> normalizeLobsterMainDecision
-     -> normalizeSingleLobsterSubtaskDecision
-     -> applyLobsterMainDecisionForRun  <-- 普通主从与红蓝共识共同中央校验点
-     -> applyLobsterMainDecision
-     -> upsertLobsterSubtask
-     -> writeLobsterTaskStore
-     -> runLobsterSubtasksBatchWithRetry
-        -> buildLobsterSubtaskExecutionPlan
-        -> runLobsterSubtaskWithRetry
-           -> createLobsterSubtaskRunTarget
-           -> buildLobsterSubtaskModelPrompt  <-- 宿主 guidance 最终注入点
-           -> runLobsterRound(role=subtask)
-           -> markLobsterSubtaskRunFinished
+          buildLoopModeratorMainModelPrompt
+          -> buildLoopMainModelPrompt
+     -> parseLoopMainDecision
+     -> normalizeLoopMainDecision
+     -> normalizeSingleLoopSubtaskDecision
+     -> applyLoopMainDecisionForRun  <-- 普通主从与红蓝共识共同中央校验点
+     -> applyLoopMainDecision
+     -> upsertLoopSubtask
+     -> writeLoopTaskStore
+     -> runLoopSubtasksBatchWithRetry
+        -> buildLoopSubtaskExecutionPlan
+        -> runLoopSubtaskWithRetry
+           -> createLoopSubtaskRunTarget
+           -> buildLoopSubtaskModelPrompt  <-- 宿主 guidance 最终注入点
+           -> runLoopRound(role=subtask)
+           -> markLoopSubtaskRunFinished
 ```
 
-- 普通主任务 prompt 在 `src/extension.ts` 的 `buildLobsterMainModelPrompt`；红蓝后续轮复用它。
-- 红蓝首轮绕过普通主任务 prompt，必须同时修改 `src/lobsterPromptBuilders.ts` 的 debate brief 和 consensus JSON 合约。
-- `src/lobsterDebateRunner.ts` 的 `runLobsterDebateConsensusSummary` 直接调用 `buildLobsterDebateConsensusModelPrompt`；因此 2B 必须由 `src/extension.ts` 将与 brief 同源的 catalog section 传入 runner，再由 runner 以末尾可选参数最小透传到 consensus builder。仅修改 `src/extension.ts` 无法完成该同源约束。
-- `normalizeSingleLobsterSubtaskDecision` 目前只保留 `id/title/prompt/conflictGroup/writeFiles`；不显式加入 `skillIds` 就会丢失模型选择。
-- `applyLobsterMainDecisionForRun` 是普通主从与红蓝共识共同经过的中央宿主校验点。
-- `upsertLobsterSubtask` 和 `normalizeLobsterSubtaskRecord` 都必须显式保留新增字段；Store 每次写入前会再次归一化，手工往 JSON 加字段无效。
-- `buildLobsterSubtaskModelPrompt` 是新子会话唯一实际 prompt 注入点；display prompt 不承载大段 guidance。
+- 普通主任务 prompt 在 `src/extension.ts` 的 `buildLoopMainModelPrompt`；红蓝后续轮复用它。
+- 红蓝首轮绕过普通主任务 prompt，必须同时修改 `src/loopPromptBuilders.ts` 的 debate brief 和 consensus JSON 合约。
+- `src/loopDebateRunner.ts` 的 `runLoopDebateConsensusSummary` 直接调用 `buildLoopDebateConsensusModelPrompt`；因此 2B 必须由 `src/extension.ts` 将与 brief 同源的 catalog section 传入 runner，再由 runner 以末尾可选参数最小透传到 consensus builder。仅修改 `src/extension.ts` 无法完成该同源约束。
+- `normalizeSingleLoopSubtaskDecision` 目前只保留 `id/title/prompt/conflictGroup/writeFiles`；不显式加入 `skillIds` 就会丢失模型选择。
+- `applyLoopMainDecisionForRun` 是普通主从与红蓝共识共同经过的中央宿主校验点。
+- `upsertLoopSubtask` 和 `normalizeLoopSubtaskRecord` 都必须显式保留新增字段；Store 每次写入前会再次归一化，手工往 JSON 加字段无效。
+- `buildLoopSubtaskModelPrompt` 是新子会话唯一实际 prompt 注入点；display prompt 不承载大段 guidance。
 - 自动重试每次创建新子会话，因此必须在首次执行前持久化宿主生成的 `skillGuidance` 快照；重试不得重新读取可能已变化的资源生成不同指导。
-- `src/lobsterParallel.ts` 仍只按 `writeFiles/conflictGroup` 分组，不因 skill 字段改变并发。
+- `src/loopParallel.ts` 仍只按 `writeFiles/conflictGroup` 分组，不因 skill 字段改变并发。
 - CLI/model 仍由父任务与现有 runner 继承；skill 合约无权改变它们。
 
 ## 冻结资源契约
@@ -264,12 +264,12 @@ type LoopWorkflowSkillManifest = {
 ## 冻结运行时契约
 
 ```ts
-type LobsterTaskRecord = {
+type LoopTaskRecord = {
   taskKind?: "development" | "non_development";
   // existing fields...
 };
 
-type LobsterSubtaskDecision = {
+type LoopSubtaskDecision = {
   id?: string;
   title: string;
   prompt: string;
@@ -278,7 +278,7 @@ type LobsterSubtaskDecision = {
   skillIds?: string[];
 };
 
-type LobsterSubtaskRecord = {
+type LoopSubtaskRecord = {
   // existing fields...
   skillIds?: string[];
   skillGuidance?: string;
@@ -289,11 +289,11 @@ type LobsterSubtaskRecord = {
 
 - `taskKind` 是任务级可选字段，由宿主根门禁生成/持久化；主模型不能通过子任务 JSON 改写它。
 - `skillIds` 是子任务决策唯一新增的模型可选字段。
-- `normalizeSingleLobsterSubtaskDecision` 只接受字符串 ID 数组；模型返回的 `skillGuidance`、path、CLI、model、command 或未知字段全部忽略。
-- `applyLobsterMainDecisionForRun` 在写 Store 前读取当前任务、可信 manifest 和本轮候选 allowlist，对每个子任务执行精门禁并生成最终快照。
-- `LobsterSubtaskRecord.skillIds` 只保存宿主确认后的稳定、去重、排序 ID。
-- `LobsterSubtaskRecord.skillGuidance` 只保存宿主从已校验资源生成的有界正文快照；不保存模型原文。
-- `upsertLobsterSubtask` 和 `normalizeLobsterSubtaskRecord` 必须保留这两个可选字段；旧记录缺失字段时保持 `undefined`。
+- `normalizeSingleLoopSubtaskDecision` 只接受字符串 ID 数组；模型返回的 `skillGuidance`、path、CLI、model、command 或未知字段全部忽略。
+- `applyLoopMainDecisionForRun` 在写 Store 前读取当前任务、可信 manifest 和本轮候选 allowlist，对每个子任务执行精门禁并生成最终快照。
+- `LoopSubtaskRecord.skillIds` 只保存宿主确认后的稳定、去重、排序 ID。
+- `LoopSubtaskRecord.skillGuidance` 只保存宿主从已校验资源生成的有界正文快照；不保存模型原文。
+- `upsertLoopSubtask` 和 `normalizeLoopSubtaskRecord` 必须保留这两个可选字段；旧记录缺失字段时保持 `undefined`。
 - 自动重试优先使用已持久化快照，不重新选择或重新读包生成不同正文。
 - 手动继续发生在已有子会话，不重复拼接 guidance；完成/summary/communicationFile 更新不得丢失快照。
 
@@ -380,7 +380,7 @@ type LobsterSubtaskRecord = {
 - 验证正文不包含宿主 delimiter，或使用稳定转义；同一 ID 只出现一次。
 - 不把正文写入日志、shell command、文件路径、JSON key 或 Webview `innerHTML`。
 
-注入位置固定在 `buildLobsterSubtaskModelPrompt` 的“子任务职责”之后、“当前子任务”之前。每段使用稳定来源 ID 分隔；skill block 后再次声明系统/用户、AGENTS、当前职责、`writeFiles`、验收和沟通文件要求优先。`buildLobsterSubtaskDisplayPrompt` 不包含正文。
+注入位置固定在 `buildLoopSubtaskModelPrompt` 的“子任务职责”之后、“当前子任务”之前。每段使用稳定来源 ID 分隔；skill block 后再次声明系统/用户、AGENTS、当前职责、`writeFiles`、验收和沟通文件要求优先。`buildLoopSubtaskDisplayPrompt` 不包含正文。
 
 ## 决策记录与替代项
 
@@ -394,7 +394,7 @@ type LobsterSubtaskRecord = {
 - 2026-07-12：supportFiles 保留和校验但首版不自动注入；避免递归扩张 prompt。若未来需要 support 内容，必须另行扩展 schema/预算并更新本计划或新建 ADR。
 - 2026-07-12：首版无 UI，不新增 i18n；资源损坏只做内部诊断并 legacy 降级。
 - 2026-07-12：不修改 `package.json` 增加命令；直接运行两个固定 Node 脚本，避免与当前并发版本号改动混杂。
-- 2026-07-12：主任务复核批准 2B 增加 `src/lobsterDebateRunner.ts` 最小 seam。原因是 consensus prompt 在 runner 内构造；runner 只增加末尾可选 catalog 参数并原样透传，不改变参与者、裁判、模型、会话或 artifact 逻辑。
+- 2026-07-12：主任务复核批准 2B 增加 `src/loopDebateRunner.ts` 最小 seam。原因是 consensus prompt 在 runner 内构造；runner 只增加末尾可选 catalog 参数并原样透传，不改变参与者、裁判、模型、会话或 artifact 逻辑。
 
 ## 依赖图与实施顺序
 
@@ -403,8 +403,8 @@ type LobsterSubtaskRecord = {
     -> 本计划冻结契约（当前任务）
         -> 实施批次 1（3 个互不重叠任务，可并行）
             A. 资源快照 + sync/validator
-            B. lobsterSkillGuidance 纯模块 + 单测
-            C. lobsterTaskStore 可选字段 + 兼容单测
+            B. loopSkillGuidance 纯模块 + 单测
+            C. loopTaskStore 可选字段 + 兼容单测
         -> 批次 1 合并检查点
             -> 实施批次 2（按 2A -> 2B 串行）
                 2A. 红蓝 brief/consensus 协议
@@ -439,12 +439,12 @@ node scripts/validate_loop_workflow_skills.js
 git diff --check -- media/loop-workflow-skills scripts/sync_loop_workflow_skills.js scripts/validate_loop_workflow_skills.js
 ```
 
-#### 任务 1B：实现 `lobsterSkillGuidance` 纯模块
+#### 任务 1B：实现 `loopSkillGuidance` 纯模块
 
 - writeFiles：
-  - `src/lobsterSkillGuidance.ts`
-  - `src/test/lobsterSkillGuidance.test.ts`
-- 禁止触碰：资源包、Store、`src/extension.ts`、`src/lobsterPromptBuilders.ts`、官方 catalog/scaffold。
+  - `src/loopSkillGuidance.ts`
+  - `src/test/loopSkillGuidance.test.ts`
+- 禁止触碰：资源包、Store、`src/extension.ts`、`src/loopPromptBuilders.ts`、官方 catalog/scaffold。
 - 模块职责：资源根解析、manifest 严格解析、粗/精门禁纯函数、阶段/task kind/角色/能力过滤、allowlist、路径 containment/realpath、hash/bytes、清洗、排序、预算、compact catalog 和 guidance section 构建。
 - 测试使用临时目录/fixture，不写共享资源，保证可与 1A 并行。
 - 验收：开发/非开发/unknown、非法 ID/路径/symlink/hash、特殊角色/能力、稳定排序、3/24k/32k/32/240/12k 预算、整篇跳过和无 guidance 等价均有表驱动测试。
@@ -452,22 +452,22 @@ git diff --check -- media/loop-workflow-skills scripts/sync_loop_workflow_skills
 
 ```bash
 npm run build
-node --test dist/test/lobsterSkillGuidance.test.js
+node --test dist/test/loopSkillGuidance.test.js
 ```
 
 #### 任务 1C：扩展任务记录可选字段
 
 - writeFiles：
-  - `src/lobsterTaskStore.ts`
-  - `src/test/lobsterTaskStore.test.ts`
-- 禁止触碰：资源包、纯模块、`src/extension.ts`、`src/lobsterPromptBuilders.ts`、官方 catalog/scaffold。
-- 变更：`LobsterTaskRecord.taskKind?`、`LobsterSubtaskRecord.skillIds?`、`skillGuidance?`；所有字段可选并集中 normalize。
+  - `src/loopTaskStore.ts`
+  - `src/test/loopTaskStore.test.ts`
+- 禁止触碰：资源包、纯模块、`src/extension.ts`、`src/loopPromptBuilders.ts`、官方 catalog/scaffold。
+- 变更：`LoopTaskRecord.taskKind?`、`LoopSubtaskRecord.skillIds?`、`skillGuidance?`；所有字段可选并集中 normalize。
 - 验收：旧记录无字段可读写；错误类型归一化为空；新字段 round-trip；完成/重试/status/summary/communicationFile 更新不丢字段；未知模型字段不被持久化。
 - 定向验证：
 
 ```bash
 npm run build
-node --test dist/test/lobsterTaskStore.test.js
+node --test dist/test/loopTaskStore.test.js
 ```
 
 #### 批次 1 合并检查点
@@ -483,17 +483,17 @@ node --test dist/test/lobsterTaskStore.test.js
 
 - 依赖：批次 1 合并检查点。
 - writeFiles：
-  - `src/lobsterPromptBuilders.ts`
-  - `src/test/lobsterPromptBuilders.test.ts`
-  - `src/test/lobsterDebate.test.ts`
+  - `src/loopPromptBuilders.ts`
+  - `src/test/loopPromptBuilders.test.ts`
+  - `src/test/loopDebate.test.ts`
 - 禁止触碰：`src/extension.ts`、Store、资源、官方 catalog/scaffold。
-- 变更：`buildLobsterDebateBriefMarkdown` 接收可选 compact catalog section；`buildLobsterDebateConsensusModelPrompt` 的子任务 JSON 合约允许可选 `skillIds`；非开发/无 catalog 参数时输出保持旧基线。
+- 变更：`buildLoopDebateBriefMarkdown` 接收可选 compact catalog section；`buildLoopDebateConsensusModelPrompt` 的子任务 JSON 合约允许可选 `skillIds`；非开发/无 catalog 参数时输出保持旧基线。
 - 验收：红蓝首轮看到与普通主任务同源有界 catalog；只允许 ID；旧 `decision.json` 无 `skillIds` 兼容；非开发 brief 无 catalog；main-only/interactive-only metadata 明示角色限制。
 - 定向验证：
 
 ```bash
 npm run build
-node --test dist/test/lobsterPromptBuilders.test.js dist/test/lobsterDebate.test.js
+node --test dist/test/loopPromptBuilders.test.js dist/test/loopDebate.test.js
 ```
 
 #### 任务 2B：接入普通主任务、中央校验与子任务 prompt
@@ -501,19 +501,19 @@ node --test dist/test/lobsterPromptBuilders.test.js dist/test/lobsterDebate.test
 - 依赖：任务 2A 完成。
 - writeFiles：
   - `src/extension.ts`
-  - `src/lobsterDebateRunner.ts`
-  - `src/test/lobsterSkillIntegration.test.ts`
-  - `src/test/lobsterMainFailure.test.ts`
+  - `src/loopDebateRunner.ts`
+  - `src/test/loopSkillIntegration.test.ts`
+  - `src/test/loopMainFailure.test.ts`
   - `src/test/loopPromptQueue.test.ts`
-- 禁止触碰：`src/lobsterPromptBuilders.ts`、Store、资源、官方 catalog/scaffold。
+- 禁止触碰：`src/loopPromptBuilders.ts`、Store、资源、官方 catalog/scaffold。
 - 变更：
   - 根门禁生成/保存 `taskKind`。
-  - `buildLobsterMainModelPrompt` 仅在 development 时附加 compact catalog 和 `skillIds` 合约。
+  - `buildLoopMainModelPrompt` 仅在 development 时附加 compact catalog 和 `skillIds` 合约。
   - 红蓝首轮 brief 与 runner 内 consensus 调用接收同一个 catalog section；红蓝后续轮复用普通主任务目录。
-  - `normalizeSingleLobsterSubtaskDecision` 只归一化 `skillIds`。
-  - `applyLobsterMainDecisionForRun` 做中央精门禁并生成宿主快照。
-  - `upsertLobsterSubtask` 持久化确认后的 `skillIds/skillGuidance`。
-  - `buildLobsterSubtaskModelPrompt` 按冻结位置注入；display prompt 不注入。
+  - `normalizeSingleLoopSubtaskDecision` 只归一化 `skillIds`。
+  - `applyLoopMainDecisionForRun` 做中央精门禁并生成宿主快照。
+  - `upsertLoopSubtask` 持久化确认后的 `skillIds/skillGuidance`。
+  - `buildLoopSubtaskModelPrompt` 按冻结位置注入；display prompt 不注入。
   - 自动重试复用 Store 快照。
 - 验收：普通主从、红蓝首轮/后续轮、并发子任务各自选择、非开发等价、旧协议、未知 ID、资源损坏、重试快照、CLI/model/writeFiles 不变均有集成证据。
 - 定向验证：
@@ -521,10 +521,10 @@ node --test dist/test/lobsterPromptBuilders.test.js dist/test/lobsterDebate.test
 ```bash
 npm run build
 node --test \
-  dist/test/lobsterSkillIntegration.test.js \
-  dist/test/lobsterMainFailure.test.js \
+  dist/test/loopSkillIntegration.test.js \
+  dist/test/loopMainFailure.test.js \
   dist/test/loopPromptQueue.test.js \
-  dist/test/lobsterParallel.test.js \
+  dist/test/loopParallel.test.js \
   dist/test/sessionMessageActions.test.js
 ```
 
@@ -534,7 +534,7 @@ node --test \
 - [x] 普通主从和红蓝首轮/后续轮都覆盖。
 - [x] non-development、unknown 和 legacy 无 catalog/正文，行为保持原 Loop。
 - [x] 自动重试使用原快照；资源更新不改变已开始子任务的 guidance。
-- [x] 本功能未修改 `src/lobsterParallel.ts`、CLI runner、UI/i18n；工作区中的相关并发改动不属于本批次。
+- [x] 本功能未修改 `src/loopParallel.ts`、CLI runner、UI/i18n；工作区中的相关并发改动不属于本批次。
 
 2B 定向验证结果：
 
@@ -575,14 +575,14 @@ node scripts/sync_loop_workflow_skills.js --check
 node scripts/validate_loop_workflow_skills.js
 npm run build
 node --test \
-  dist/test/lobsterSkillGuidance.test.js \
-  dist/test/lobsterTaskStore.test.js \
-  dist/test/lobsterPromptBuilders.test.js \
-  dist/test/lobsterSkillIntegration.test.js \
+  dist/test/loopSkillGuidance.test.js \
+  dist/test/loopTaskStore.test.js \
+  dist/test/loopPromptBuilders.test.js \
+  dist/test/loopSkillIntegration.test.js \
   dist/test/sessionMessageActions.test.js \
-  dist/test/lobsterParallel.test.js \
-  dist/test/lobsterDebate.test.js \
-  dist/test/lobsterMainFailure.test.js \
+  dist/test/loopParallel.test.js \
+  dist/test/loopDebate.test.js \
+  dist/test/loopMainFailure.test.js \
   dist/test/loopPromptQueue.test.js \
   dist/test/officialSkillService.test.js \
   dist/test/officialSkillsVersioning.test.js \
@@ -697,7 +697,7 @@ git diff --check
 
 1. 给模型返回的 raw Skill ID 数量和单轮诊断数量增加显式上限及聚合 overflow 诊断。
 2. 按 extension root/manifest 指纹缓存静态已校验 pack 的成功或失败结果，减少每个 development 主轮重复读取 35 个 payload 的 I/O。
-3. 后续在不改变行为的前提下拆分 `src/lobsterSkillGuidance.ts` 或共享 Store/loader 的冻结边界常量，降低规则漂移风险。
+3. 后续在不改变行为的前提下拆分 `src/loopSkillGuidance.ts` 或共享 Store/loader 的冻结边界常量，降低规则漂移风险。
 4. 另立发布优化任务处理约 71.2 MB、1505 个 ZIP regular-file entry 的既有 VSIX 体量；该项不影响本功能正确性、完整性或本次归档。
 
 ## 文档同步检查表

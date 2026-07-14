@@ -7,7 +7,7 @@ import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewConten
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../webview/viewContentScript/runStreamAndQueue";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
-import { classifyLobsterRootTask } from "../lobsterSkillGuidance";
+import { classifyLoopRootTask } from "../loopSkillGuidance";
 
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);
@@ -42,7 +42,7 @@ function createSendPromptHarness(options: {
     "elements",
     "buildPromptPayload",
     "getActiveConversationTabId",
-    "isLobsterMainConversationTabRunning",
+    "isLoopMainConversationTabRunning",
     "queuePromptForLater",
     "resetPromptContextForNextPrompt",
     "isConversationTabBusy",
@@ -130,8 +130,8 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
   )(
     (payload: unknown) => payload,
     () => runtimeState,
-    (mode: unknown) => mode === "lobster" ? "lobster" : "coding",
-    { interactiveMode: "lobster" },
+    (mode: unknown) => mode === "loop" ? "loop" : "coding",
+    { interactiveMode: "loop" },
     () => undefined,
     () => undefined,
     () => "queued",
@@ -142,7 +142,7 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
   assert.deepEqual(runtimeState.pendingPromptQueue, [{
     prompt: "next task",
     contextOptions: {},
-    interactiveMode: "lobster",
+    interactiveMode: "loop",
   }]);
   assert.match(
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
@@ -153,52 +153,55 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
 test("prevents the conflict overlay from bypassing a running Loop main tab", () => {
   assert.match(
     VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
-    /isLobsterMainConversationTabRunning\(getActiveConversationTabId\(\)\)[\s\S]*queuePromptForLater\(promptPayload\)[\s\S]*return;[\s\S]*dispatchPrompt\(promptPayload\)/,
+    /isLoopMainConversationTabRunning\(getActiveConversationTabId\(\)\)[\s\S]*queuePromptForLater\(promptPayload\)[\s\S]*return;[\s\S]*dispatchPrompt\(promptPayload\)/,
   );
 });
 
 test("auto-continues only a Loop queue that transitions from running to completed", () => {
   const functionSource = extractFunctionSource(
     VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE,
-    "getNewlyCompletedLobsterTabIds",
+    "getNewlyCompletedLoopTabIds",
   );
-  const getNewlyCompletedLobsterTabIds = new Function(
-    `${functionSource}; return getNewlyCompletedLobsterTabIds;`,
+  const getNewlyCompletedLoopTabIds = new Function(
+    `${functionSource}; return getNewlyCompletedLoopTabIds;`,
   )() as (
     previous: { tabs: Array<Record<string, unknown>> },
     next: { tabs: Array<Record<string, unknown>> },
   ) => string[];
   const previous = {
     tabs: [
-      { id: "completed-task", lobsterTaskStatus: "running", lobsterTaskRunning: true },
-      { id: "failed-task", lobsterTaskStatus: "running", lobsterTaskRunning: true },
-      { id: "already-completed", lobsterTaskStatus: "completed" },
+      { id: "completed-task", loopTaskStatus: "running", loopTaskRunning: true },
+      { id: "failed-task", loopTaskStatus: "running", loopTaskRunning: true },
+      { id: "already-completed", loopTaskStatus: "completed" },
     ],
   };
   const next = {
     tabs: [
-      { id: "completed-task", lobsterTaskStatus: "completed", lobsterTaskRunning: false },
-      { id: "failed-task", lobsterTaskStatus: "error", lobsterTaskRunning: false },
-      { id: "already-completed", lobsterTaskStatus: "completed", lobsterTaskRunning: false },
+      { id: "completed-task", loopTaskStatus: "completed", loopTaskRunning: false },
+      { id: "failed-task", loopTaskStatus: "error", loopTaskRunning: false },
+      { id: "already-completed", loopTaskStatus: "completed", loopTaskRunning: false },
     ],
   };
 
-  assert.deepEqual(getNewlyCompletedLobsterTabIds(previous, next), ["completed-task"]);
+  assert.deepEqual(getNewlyCompletedLoopTabIds(previous, next), ["completed-task"]);
   assert.match(
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "applyState"),
-    /newlyCompletedLobsterTabIds\.forEach[\s\S]*flushPendingPromptQueue\(tabId\)/,
+    /newlyCompletedLoopTabIds\.forEach[\s\S]*flushPendingPromptQueue\(tabId\)/,
   );
 });
 
 test("refreshes the panel task status whenever Loop orchestration exits", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-  const wrapperStart = extensionSource.indexOf("async function runLobsterPrompt(");
-  const orchestrationStart = extensionSource.indexOf("async function runLobsterPromptOrchestration(");
+  const wrapperStart = extensionSource.indexOf("async function runLoopPrompt(");
+  const orchestrationStart = extensionSource.indexOf("async function runLoopPromptOrchestration(");
   assert.ok(wrapperStart >= 0);
   assert.ok(orchestrationStart > wrapperStart);
   const functionSource = extensionSource.slice(wrapperStart, orchestrationStart);
 
-  assert.match(functionSource, /try\s*{[\s\S]*runLobsterPromptOrchestration\(input, options\)/);
+  assert.match(
+    functionSource,
+    /try\s*{[\s\S]*runLoopPromptOrchestration\(input,\s*options,\s*\(taskId,\s*target\)\s*=>/,
+  );
   assert.match(functionSource, /finally\s*{[\s\S]*await postPanelState\(\)/);
 });
 
@@ -210,12 +213,12 @@ test("classifies queued Loop work from original display/context data rather than
     modelPrompt: "实现、测试并发布一个 TypeScript 功能",
   };
 
-  assert.equal(classifyLobsterRootTask(input), "unknown");
-  assert.equal(classifyLobsterRootTask({
+  assert.equal(classifyLoopRootTask(input), "unknown");
+  assert.equal(classifyLoopRootTask({
     ...input,
     contextTags: ["file: src/extension.ts"],
   }), "development");
-  assert.equal(classifyLobsterRootTask({
+  assert.equal(classifyLoopRootTask({
     ...input,
     displayPrompt: "翻译这篇文章",
     contextTags: ["file: src/extension.ts"],

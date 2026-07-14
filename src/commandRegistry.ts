@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import { CLI_LIST, CliName } from "./cli/types";
 import { t } from "./i18n";
+import {
+  LEGACY_LOOP_GROUP_CHAT_COMMAND_ID,
+  LOOP_GROUP_CHAT_COMMAND_ID,
+} from "./loopLegacyMigration";
 
 export type ExtensionCommandRegistryDeps = {
   isCliName: (value: string) => value is CliName;
@@ -9,7 +13,7 @@ export type ExtensionCommandRegistryDeps = {
   runCli: (cli: CliName, options?: { thinkingMode?: "on" | "off" }) => Promise<void>;
   revealPanelView: () => Promise<void>;
   postPanelState: () => Promise<void>;
-  openLobsterDebateChatPanel: (arg?: unknown) => Promise<void>;
+  openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
   showInformationMessage?: typeof vscode.window.showInformationMessage;
 };
 
@@ -66,9 +70,11 @@ export function registerExtensionCommands(
     })
   );
 
+  const openLoopGroupChat = async (arg?: unknown): Promise<void> => {
+    await deps.openLoopGroupChatPanel(arg);
+  };
   context.subscriptions.push(
-    vscode.commands.registerCommand("sinitek-cli-tools.openLobsterDebateChat", async (arg?: unknown) => {
-      await deps.openLobsterDebateChatPanel(arg);
-    })
+    vscode.commands.registerCommand(LOOP_GROUP_CHAT_COMMAND_ID, openLoopGroupChat),
+    vscode.commands.registerCommand(LEGACY_LOOP_GROUP_CHAT_COMMAND_ID, openLoopGroupChat),
   );
 }

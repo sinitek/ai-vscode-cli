@@ -15,8 +15,8 @@ function buildStaticHtml(locale: "en" | "zh-CN"): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
 }
 
@@ -24,11 +24,11 @@ function buildRuntimeScript(): string {
   return buildWebviewRuntimeScript({
     i18n: WEBVIEW_I18N.en,
     cliList: ["codex", "claude", "opencode"],
-    lobsterMaxRoundsDefault: 20,
-    lobsterMaxRoundsMin: 1,
-    lobsterMaxRoundsMax: 100,
-    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+    loopMaxRoundsDefault: 20,
+    loopMaxRoundsMin: 1,
+    loopMaxRoundsMax: 100,
+    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
 }

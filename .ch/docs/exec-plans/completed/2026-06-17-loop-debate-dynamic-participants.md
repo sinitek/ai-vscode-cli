@@ -1,4 +1,4 @@
-# 龙虾辩论动态参与者
+# Loop辩论动态参与者
 
 - 日期：2026-06-17
 - 状态：completed
@@ -15,9 +15,9 @@
 ## 范围
 
 - `src/extension.ts`：辩论运行流、主持人选角 prompt、参与者记录构建、artifact 读取校验、系统消息。
-- `src/lobsterDebate.ts`：选角 artifact 路径、可解析 transcript heading、必要类型。
-- `src/webview/lobsterDebatePanel.ts`：动态加入事件展示。
-- `src/test/lobsterDebate.test.ts`：路径和 transcript 解析测试。
+- `src/loopDebate.ts`：选角 artifact 路径、可解析 transcript heading、必要类型。
+- `src/webview/loopDebatePanel.ts`：动态加入事件展示。
+- `src/test/loopDebate.test.ts`：路径和 transcript 解析测试。
 - `.ch/docs/`：同步辩论设计和产品事实来源。
 
 ## 非目标
@@ -36,7 +36,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/webview/lobsterDebatePanel.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/webview/loopDebatePanel.ts`、`src/test/`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/references/`
 - 配置与脚本：无
 
@@ -49,7 +49,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`node --test dist/test/loopDebate.test.js`
 - 扩展验证：`npm run build`
 
 ## 测试与清单同步
@@ -75,4 +75,4 @@
 
 ## 当前结论
 
-已完成动态参与者改造。辩论轮会先由主持人生成 `moderator-participants.md`，校验通过后把参与者加入 `chat.md` 并按动态清单推进；主持人选角 sessionId 会进入任务记录以便恢复，旧版固定参与者 transcript 不再被当作完整动态群聊复用。`npm run build`、`node --test dist/test/lobsterDebate.test.js` 和 `git diff --check` 均通过。尚未做真实 VS Code Extension Host 端到端手工验收。
+已完成动态参与者改造。辩论轮会先由主持人生成 `moderator-participants.md`，校验通过后把参与者加入 `chat.md` 并按动态清单推进；主持人选角 sessionId 会进入任务记录以便恢复，旧版固定参与者 transcript 不再被当作完整动态群聊复用。`npm run build`、`node --test dist/test/loopDebate.test.js` 和 `git diff --check` 均通过。尚未做真实 VS Code Extension Host 端到端手工验收。

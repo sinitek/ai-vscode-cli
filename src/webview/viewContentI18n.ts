@@ -26,15 +26,15 @@ export const WEBVIEW_I18N = {
     commonUnknownError: "Unknown error",
     interactiveModeSelectAria: "Interactive response mode",
     interactiveModeCoding: "Vibe",
-    interactiveModeLobster: "Loop",
+    interactiveModeLoop: "Loop",
     taskRoleMain: "Loop",
     taskRoleSubtask: "Subtask",
     taskRoleSubtaskWithRound: "Subtask · Round {round}",
-    openLobsterDebateChatAction: "Open Loop group chat",
-    openLobsterDebateChatActionTitle:
+    openLoopGroupChatAction: "Open Loop group chat",
+    openLoopGroupChatActionTitle:
       "Open the Loop group chat for this task",
-    openCurrentLobsterGroupChatLabel: "Open group chat",
-    openCurrentLobsterGroupChatAria: "Open the active Loop main task group chat",
+    openCurrentLoopGroupChatLabel: "Open group chat",
+    openCurrentLoopGroupChatAria: "Open the active Loop main task group chat",
     openConfigButton: "Config",
     promptPlaceholder:
       "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
@@ -142,13 +142,13 @@ export const WEBVIEW_I18N = {
     toolSettingsImplicitSubagentsToggle: "On",
     toolSettingsImplicitSubagentsHint:
       "Global and off by default. When disabled, the extension disables Codex multi_agent and denies OpenCode task subagents for this run. When enabled, it preserves each CLI's available implicit subagent capabilities and OpenCode task permissions. This setting does not affect Loop orchestration.",
-    toolSettingsLobsterMaxRoundsLabel: "Loop Max Rounds",
-    toolSettingsLobsterMaxRoundsTitle:
+    toolSettingsLoopMaxRoundsLabel: "Loop Max Rounds",
+    toolSettingsLoopMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
-    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
-    toolSettingsLobsterAutoCloseSubtaskTabsTitle:
+    toolSettingsLoopAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
+    toolSettingsLoopAutoCloseSubtaskTabsTitle:
       "Global setting. Automatically close Loop subtask tabs after they finish.",
-    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "On",
+    toolSettingsLoopAutoCloseSubtaskTabsToggle: "On",
     toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
     toolSettingsLongTermMemoryTitle:
       "Workspace setting. Provides a repo-local AI collaboration scaffold with memory, pitfalls, handoffs, skills, and CodeGraph-assisted code navigation.",
@@ -344,9 +344,9 @@ export const WEBVIEW_I18N = {
     thinkingOptionLabelUltra: "ultra",
     modelSelectAria: "Model selection",
     modelOptionDefault: "Model: Follow Config",
-    lobsterExecutionModeSelectAria: "Loop execution mode",
-    lobsterExecutionModeOptionMainSubMultiAgent: "Main/Sub Multi-Agent",
-    lobsterExecutionModeOptionDebateMultiAgent: "Red/Blue Debate Multi-Agent",
+    loopExecutionModeSelectAria: "Loop execution mode",
+    loopExecutionModeOptionMainSubMultiAgent: "Main/Sub Multi-Agent",
+    loopExecutionModeOptionDebateMultiAgent: "Red/Blue Debate Multi-Agent",
     modelOptionManage: "Manage",
     modelAddPrompt: "Enter model name:",
     modelAddTitle: "Manage Models",
@@ -390,14 +390,14 @@ export const WEBVIEW_I18N = {
     commonUnknownError: "未知错误",
     interactiveModeSelectAria: "交互回复模式",
     interactiveModeCoding: "Vibe",
-    interactiveModeLobster: "Loop",
+    interactiveModeLoop: "Loop",
     taskRoleMain: "Loop",
     taskRoleSubtask: "子任务",
     taskRoleSubtaskWithRound: "子任务·第{round}轮",
-    openLobsterDebateChatAction: "打开 Loop 群聊",
-    openLobsterDebateChatActionTitle: "打开当前 Loop 任务的群聊页面",
-    openCurrentLobsterGroupChatLabel: "打开群聊",
-    openCurrentLobsterGroupChatAria: "打开当前 Loop 主任务群聊",
+    openLoopGroupChatAction: "打开 Loop 群聊",
+    openLoopGroupChatActionTitle: "打开当前 Loop 任务的群聊页面",
+    openCurrentLoopGroupChatLabel: "打开群聊",
+    openCurrentLoopGroupChatAria: "打开当前 Loop 主任务群聊",
     openConfigButton: "配置",
     promptPlaceholder:
       "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
@@ -499,13 +499,13 @@ export const WEBVIEW_I18N = {
     toolSettingsImplicitSubagentsToggle: "开启",
     toolSettingsImplicitSubagentsHint:
       "全局配置，默认关闭。关闭时，扩展会禁用 Codex multi_agent，并在本次 OpenCode 运行中拒绝 task 子代理。开启后，扩展保留各 CLI 自身可用的隐式子代理能力和 OpenCode task 权限。此设置不影响 Loop 编排。",
-    toolSettingsLobsterMaxRoundsLabel: "Loop 最大轮次",
-    toolSettingsLobsterMaxRoundsTitle:
+    toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
+    toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
-    toolSettingsLobsterAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
-    toolSettingsLobsterAutoCloseSubtaskTabsTitle:
+    toolSettingsLoopAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
+    toolSettingsLoopAutoCloseSubtaskTabsTitle:
       "全局设置。Loop 子任务完成后自动关闭对应子任务标签页。",
-    toolSettingsLobsterAutoCloseSubtaskTabsToggle: "开启",
+    toolSettingsLoopAutoCloseSubtaskTabsToggle: "开启",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",
@@ -692,9 +692,9 @@ export const WEBVIEW_I18N = {
     thinkingOptionLabelUltra: "ultra",
     modelSelectAria: "模型选择",
     modelOptionDefault: "默认",
-    lobsterExecutionModeSelectAria: "Loop 执行模式",
-    lobsterExecutionModeOptionMainSubMultiAgent: "主从多智能体",
-    lobsterExecutionModeOptionDebateMultiAgent: "红蓝辩论多智能体",
+    loopExecutionModeSelectAria: "Loop 执行模式",
+    loopExecutionModeOptionMainSubMultiAgent: "主从多智能体",
+    loopExecutionModeOptionDebateMultiAgent: "红蓝辩论多智能体",
     modelOptionManage: "管理",
     modelAddPrompt: "输入模型名称：",
     modelAddTitle: "管理模型",

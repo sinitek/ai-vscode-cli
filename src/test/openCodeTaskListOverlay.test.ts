@@ -179,8 +179,8 @@ test("renders a visible collapse icon in the task-list summary", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
 
   assert.match(
@@ -212,7 +212,7 @@ test("preserves an external task list while its conversation tab is running", ()
   let resetCount = 0;
   const setMessagesForTab = new Function(
     "getConversationRuntimeState",
-    "updateLobsterMetaForTabFromMessages",
+    "updateLoopMetaForTabFromMessages",
     "ensureRuntimeTaskList",
     "isConversationTabBusy",
     "resetTaskListState",

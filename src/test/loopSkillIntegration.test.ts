@@ -6,123 +6,123 @@ import path = require("node:path");
 import ts = require("typescript");
 
 import {
-  buildLobsterDebatePaths,
-  type LobsterDebateParticipantRecord,
-} from "../lobsterDebate";
+  buildLoopDebatePaths,
+  type LoopDebateParticipantRecord,
+} from "../loopDebate";
 import {
-  buildLobsterDebateBriefMarkdown,
-} from "../lobsterPromptBuilders";
+  buildLoopDebateBriefMarkdown,
+} from "../loopPromptBuilders";
 import {
-  runLobsterDebateConsensusSummary,
-  type LobsterDebateRunnerDeps,
-} from "../lobsterDebateRunner";
+  runLoopDebateConsensusSummary,
+  type LoopDebateRunnerDeps,
+} from "../loopDebateRunner";
 import {
-  buildLobsterSubtaskExecutionPlan,
-} from "../lobsterParallel";
+  buildLoopSubtaskExecutionPlan,
+} from "../loopParallel";
 import {
-  loadLobsterSkillPack,
-  type LobsterSkillDiagnostic,
-  type LobsterSkillPackLoadResult,
-} from "../lobsterSkillGuidance";
+  loadLoopSkillPack,
+  type LoopSkillDiagnostic,
+  type LoopSkillPackLoadResult,
+} from "../loopSkillGuidance";
 import type {
-  LobsterSubtaskDecision,
-  LobsterSubtaskRecord,
-  LobsterTaskKind,
-  LobsterTaskRecord,
-} from "../lobsterTaskStore";
+  LoopSubtaskDecision,
+  LoopSubtaskRecord,
+  LoopTaskKind,
+  LoopTaskRecord,
+} from "../loopTaskStore";
 
-type LobsterSkillRuntimeContext = {
+type LoopSkillRuntimeContext = {
   taskId: string;
   rootTaskKind: "development" | "non_development" | "unknown";
-  pack: import("../lobsterSkillGuidance").LobsterSkillPack | null;
+  pack: import("../loopSkillGuidance").LoopSkillPack | null;
   compactCatalogSection?: string;
   candidateIds: string[];
 };
 
-type LobsterSubtaskSkillSnapshot = {
+type LoopSubtaskSkillSnapshot = {
   skillIds: string[];
   skillGuidance: string;
 };
 
-type LobsterSkillIntegrationTestApi = {
-  resolveNewLobsterTaskKind: (
+type LoopSkillIntegrationTestApi = {
+  resolveNewLoopTaskKind: (
     input: { displayPrompt?: unknown; contextTags?: unknown; modelPrompt?: unknown },
     workspacePaths?: unknown,
-  ) => LobsterTaskKind | undefined;
-  createLobsterTaskRecord: (
+  ) => LoopTaskKind | undefined;
+  createLoopTaskRecord: (
     cli: "codex",
     rootPrompt: string,
     options?: {
       sessionId?: string | null;
       executionMode?: "main_sub_multi_agent" | "debate_multi_agent";
-      taskKind?: LobsterTaskKind;
+      taskKind?: LoopTaskKind;
     },
-  ) => LobsterTaskRecord;
-  buildLobsterSkillRuntimeContext: (
-    task: LobsterTaskRecord,
+  ) => LoopTaskRecord;
+  buildLoopSkillRuntimeContext: (
+    task: LoopTaskRecord,
     round: number,
     options: {
       extensionRoot: string;
-      loadSkillPack?: (extensionRoot: unknown) => Promise<LobsterSkillPackLoadResult>;
-      reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void;
+      loadSkillPack?: (extensionRoot: unknown) => Promise<LoopSkillPackLoadResult>;
+      reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void;
     },
-  ) => Promise<LobsterSkillRuntimeContext>;
-  buildLobsterSubtaskSkillSnapshots: (
-    task: LobsterTaskRecord,
-    subtasks: LobsterSubtaskDecision[],
-    runtimeContext: LobsterSkillRuntimeContext,
-    reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void,
-  ) => Map<string, LobsterSubtaskSkillSnapshot>;
-  buildLobsterMainModelPrompt: (
+  ) => Promise<LoopSkillRuntimeContext>;
+  buildLoopSubtaskSkillSnapshots: (
+    task: LoopTaskRecord,
+    subtasks: LoopSubtaskDecision[],
+    runtimeContext: LoopSkillRuntimeContext,
+    reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void,
+  ) => Map<string, LoopSubtaskSkillSnapshot>;
+  buildLoopMainModelPrompt: (
     rootPrompt: string,
-    task: LobsterTaskRecord,
+    task: LoopTaskRecord,
     round: number,
     continuePrompt?: string,
     compactSkillCatalogSection?: string,
   ) => string;
-  buildLobsterModeratorMainModelPrompt: (
+  buildLoopModeratorMainModelPrompt: (
     rootPrompt: string,
-    task: LobsterTaskRecord,
+    task: LoopTaskRecord,
     round: number,
     continuePrompt?: string,
     compactSkillCatalogSection?: string,
   ) => string;
-  buildLobsterSubtaskDisplayPrompt: (
+  buildLoopSubtaskDisplayPrompt: (
     round: number,
-    subtask: LobsterSubtaskRecord,
+    subtask: LoopSubtaskRecord,
     retryCount?: number,
   ) => string;
-  buildLobsterSubtaskModelPrompt: (
+  buildLoopSubtaskModelPrompt: (
     rootPrompt: string,
-    task: LobsterTaskRecord,
+    task: LoopTaskRecord,
     round: number,
-    subtask: LobsterSubtaskRecord,
+    subtask: LoopSubtaskRecord,
     retryCount?: number,
     communicationFile?: string,
   ) => string;
-  normalizeSingleLobsterSubtaskDecision: (value: unknown) => LobsterSubtaskDecision | null;
-  applyLobsterMainDecisionForRun: (
+  normalizeSingleLoopSubtaskDecision: (value: unknown) => LoopSubtaskDecision | null;
+  applyLoopMainDecisionForRun: (
     taskId: string,
-    decision: import("../lobsterTaskStore").LobsterMainDecision,
-    runtimeContext?: LobsterSkillRuntimeContext,
+    decision: import("../loopTaskStore").LoopMainDecision,
+    runtimeContext?: LoopSkillRuntimeContext,
   ) => {
     status: "completed" | "continue" | "needs-review" | "interrupted";
-    task: LobsterTaskRecord;
-    subtasks?: LobsterSubtaskRecord[];
+    task: LoopTaskRecord;
+    subtasks?: LoopSubtaskRecord[];
   };
-  upsertLobsterSubtasks: (
-    task: LobsterTaskRecord,
-    subtasks: LobsterSubtaskDecision[],
-    skillSnapshots?: ReadonlyMap<string, LobsterSubtaskSkillSnapshot>,
-  ) => { records: LobsterSubtaskRecord[]; nextSubtasks: LobsterSubtaskRecord[] };
+  upsertLoopSubtasks: (
+    task: LoopTaskRecord,
+    subtasks: LoopSubtaskDecision[],
+    skillSnapshots?: ReadonlyMap<string, LoopSubtaskSkillSnapshot>,
+  ) => { records: LoopSubtaskRecord[]; nextSubtasks: LoopSubtaskRecord[] };
 };
 
 const originalHome = process.env.HOME;
-const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-lobster-skill-integration-home-"));
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-skill-integration-home-"));
 process.env.HOME = testHome;
 
-const lobsterTaskStore = require("../lobsterTaskStore") as typeof import("../lobsterTaskStore");
-const integrationApi = loadLobsterSkillIntegrationTestApi();
+const loopTaskStore = require("../loopTaskStore") as typeof import("../loopTaskStore");
+const integrationApi = loadLoopSkillIntegrationTestApi();
 
 test.after(() => {
   if (originalHome === undefined) {
@@ -133,7 +133,7 @@ test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
 });
 
-function loadLobsterSkillIntegrationTestApi(): LobsterSkillIntegrationTestApi | null {
+function loadLoopSkillIntegrationTestApi(): LoopSkillIntegrationTestApi | null {
   const Module = require("node:module") as {
     _load: (request: string, parent: unknown, isMain: boolean) => unknown;
   };
@@ -167,20 +167,20 @@ function loadLobsterSkillIntegrationTestApi(): LobsterSkillIntegrationTestApi | 
   };
   try {
     const extension = require("../extension") as {
-      __lobsterSkillIntegrationTestApi?: LobsterSkillIntegrationTestApi;
+      __loopSkillIntegrationTestApi?: LoopSkillIntegrationTestApi;
     };
-    return extension.__lobsterSkillIntegrationTestApi ?? null;
+    return extension.__loopSkillIntegrationTestApi ?? null;
   } finally {
     Module._load = originalLoad;
   }
 }
 
-function requireIntegrationApi(): LobsterSkillIntegrationTestApi {
-  assert.ok(integrationApi, "extension should expose the narrow Lobster Skill integration test seam");
+function requireIntegrationApi(): LoopSkillIntegrationTestApi {
+  assert.ok(integrationApi, "extension should expose the narrow Loop Skill integration test seam");
   return integrationApi;
 }
 
-function createTask(taskKind?: LobsterTaskKind, id = "skill-integration-task"): LobsterTaskRecord {
+function createTask(taskKind?: LoopTaskKind, id = "skill-integration-task"): LoopTaskRecord {
   const now = Date.UTC(2026, 6, 12, 9, 0, 0);
   return {
     id,
@@ -208,7 +208,7 @@ function createTask(taskKind?: LobsterTaskKind, id = "skill-integration-task"): 
   };
 }
 
-function createParticipants(): LobsterDebateParticipantRecord[] {
+function createParticipants(): LoopDebateParticipantRecord[] {
   return [
     {
       id: "blue_planner",
@@ -250,27 +250,27 @@ function buildDetailedSubtaskPrompt(summary: string): string {
   ].join("\n");
 }
 
-async function captureLobsterDebateConsensusPrompt(
-  task: LobsterTaskRecord,
+async function captureLoopDebateConsensusPrompt(
+  task: LoopTaskRecord,
   compactSkillCatalogSection?: string,
 ): Promise<string> {
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
   let consensusPrompt = "";
   const deps = {
-    createLobsterSubtaskRunTarget: () => ({ tabId: "consensus-tab", cli: "codex", sessionId: null }),
-    updateLobsterDebateActiveSpeakerRecord: () => undefined,
-    getExistingLobsterDebateRoundStartedAt: () => 1,
-    appendSystemMessageForLobster: () => undefined,
-    buildLobsterDebateConsensusStartedText: () => "started",
+    createLoopSubtaskRunTarget: () => ({ tabId: "consensus-tab", cli: "codex", sessionId: null }),
+    updateLoopDebateActiveSpeakerRecord: () => undefined,
+    getExistingLoopDebateRoundStartedAt: () => 1,
+    appendSystemMessageForLoop: () => undefined,
+    buildLoopDebateConsensusStartedText: () => "started",
     runPrompt: async (input: { modelPrompt: string }) => {
       consensusPrompt = input.modelPrompt;
     },
     resolvePromptRunTargetSessionId: () => null,
     logError: () => undefined,
     errorToMessage: (error: unknown) => String(error),
-  } as unknown as LobsterDebateRunnerDeps;
-  const runConsensus = runLobsterDebateConsensusSummary as unknown as (
-    options: Parameters<typeof runLobsterDebateConsensusSummary>[0] & {
+  } as unknown as LoopDebateRunnerDeps;
+  const runConsensus = runLoopDebateConsensusSummary as unknown as (
+    options: Parameters<typeof runLoopDebateConsensusSummary>[0] & {
       compactSkillCatalogSection?: string;
     },
   ) => Promise<unknown>;
@@ -315,23 +315,23 @@ function compileExtensionFunction<T>(name: string, dependencies: Record<string, 
   return moduleRecord.exports as T;
 }
 
-test("RED boundary: new Lobster task creation persists the trusted root classification", () => {
-  const writes: LobsterTaskRecord[][] = [];
+test("RED boundary: new Loop task creation persists the trusted root classification", () => {
+  const writes: LoopTaskRecord[][] = [];
   const createRecord = compileExtensionFunction<(
     cli: "codex",
     rootPrompt: string,
-    options: { taskKind?: LobsterTaskKind },
-  ) => LobsterTaskRecord>("createLobsterTaskRecord", {
+    options: { taskKind?: LoopTaskKind },
+  ) => LoopTaskRecord>("createLoopTaskRecord", {
     createMessageId: () => "classified-task",
-    getLobsterCommunicationPaths: () => ({ dir: "/tmp/comm", mainFile: "/tmp/comm/main.md" }),
-    normalizeLobsterExecutionMode: () => "main_sub_multi_agent",
-    buildLobsterTaskStoreFile: () => "/tmp/classified-task.json",
+    getLoopCommunicationPaths: () => ({ dir: "/tmp/comm", mainFile: "/tmp/comm/main.md" }),
+    normalizeLoopExecutionMode: () => "main_sub_multi_agent",
+    buildLoopTaskStoreFile: () => "/tmp/classified-task.json",
     activeWorkspaceKey: "workspace",
-    ensureLobsterCommunicationFiles: () => undefined,
-    getGlobalLobsterMaxRounds: () => 20,
-    buildResetLobsterMainAiFailureState: () => ({}),
-    readLobsterTaskStore: () => ({ tasks: [] }),
-    writeLobsterTaskStore: (_file: string, store: { tasks: LobsterTaskRecord[] }) => {
+    ensureLoopCommunicationFiles: () => undefined,
+    getGlobalLoopMaxRounds: () => 20,
+    buildResetLoopMainAiFailureState: () => ({}),
+    readLoopTaskStore: () => ({ tasks: [] }),
+    writeLoopTaskStore: (_file: string, store: { tasks: LoopTaskRecord[] }) => {
       writes.push(store.tasks);
     },
   });
@@ -345,19 +345,19 @@ test("RED boundary: new Lobster task creation persists the trusted root classifi
 test("RED boundary: ordinary main prompt accepts one compact catalog and an ID-only contract", () => {
   const buildMainPrompt = compileExtensionFunction<(
     rootPrompt: string,
-    task: LobsterTaskRecord,
+    task: LoopTaskRecord,
     round: number,
     continuePrompt?: string,
     compactSkillCatalogSection?: string,
-  ) => string>("buildLobsterMainModelPrompt", {
-    LOBSTER_PARALLEL_SUBTASK_MAX: 6,
-    getLobsterCommunicationPaths: () => ({
+  ) => string>("buildLoopMainModelPrompt", {
+    LOOP_PARALLEL_SUBTASK_MAX: 6,
+    getLoopCommunicationPaths: () => ({
       dir: "/tmp/comm",
       mainFile: "/tmp/comm/main.md",
       subtasksDir: "/tmp/comm/subtasks",
     }),
-    normalizeLobsterContinuePromptForPrompt: () => undefined,
-    buildLobsterSupplementalRequirementsLines: () => [],
+    normalizeLoopContinuePromptForPrompt: () => undefined,
+    buildLoopSupplementalRequirementsLines: () => [],
   });
   const catalog = "高级开发 Skill 候选目录（宿主已校验，仅 development Loop 可用）：\n- {\"id\":\"test-driven-development\"}";
 
@@ -370,22 +370,22 @@ test("RED boundary: ordinary main prompt accepts one compact catalog and an ID-o
 });
 
 test("RED boundary: decision normalization and upsert preserve only host-confirmed Skill fields", () => {
-  const normalizeDecision = compileExtensionFunction<(value: unknown) => LobsterSubtaskDecision | null>(
-    "normalizeSingleLobsterSubtaskDecision",
+  const normalizeDecision = compileExtensionFunction<(value: unknown) => LoopSubtaskDecision | null>(
+    "normalizeSingleLoopSubtaskDecision",
     {
-      LOBSTER_SUBTASK_PROMPT_MIN_LENGTH: 20,
-      buildLobsterSubtaskId: () => "generated-id",
-      normalizeLobsterWriteFiles: (value: unknown) => Array.isArray(value)
+      LOOP_SUBTASK_PROMPT_MIN_LENGTH: 20,
+      buildLoopSubtaskId: () => "generated-id",
+      normalizeLoopWriteFiles: (value: unknown) => Array.isArray(value)
         ? value.filter((item): item is string => typeof item === "string")
         : [],
     },
   );
   const upsertSubtask = compileExtensionFunction<(
-    task: LobsterTaskRecord,
-    subtask: LobsterSubtaskDecision,
-    snapshot?: LobsterSubtaskSkillSnapshot,
-  ) => { record: LobsterSubtaskRecord }>("upsertLobsterSubtask", {
-    buildLobsterSubtaskId: () => "generated-id",
+    task: LoopTaskRecord,
+    subtask: LoopSubtaskDecision,
+    snapshot?: LoopSubtaskSkillSnapshot,
+  ) => { record: LoopSubtaskRecord }>("upsertLoopSubtask", {
+    buildLoopSubtaskId: () => "generated-id",
   });
   const normalized = normalizeDecision({
     id: "subtask-a",
@@ -430,14 +430,14 @@ test("fresh upsert atomically removes a stale host snapshot when no replacement 
     skillIds: ["test-driven-development"],
     skillGuidance: "STALE_HOST_GUIDANCE",
   }];
-  const decision = api.normalizeSingleLobsterSubtaskDecision({
+  const decision = api.normalizeSingleLoopSubtaskDecision({
     id: "same-subtask",
     title: "继续执行但本轮不选择 Skill",
     prompt: buildDetailedSubtaskPrompt("继续执行现有任务，但本轮主决策没有选择任何 Skill"),
   });
   assert.ok(decision);
 
-  const batch = api.upsertLobsterSubtasks(task, [decision], new Map());
+  const batch = api.upsertLoopSubtasks(task, [decision], new Map());
   const record = batch.records[0];
   const persistedRecord = batch.nextSubtasks.find((item) => item.id === decision.id);
 
@@ -447,7 +447,7 @@ test("fresh upsert atomically removes a stale host snapshot when no replacement 
     assert.equal(hasOwnProperty(value, "skillIds"), false);
     assert.equal(hasOwnProperty(value, "skillGuidance"), false);
   }
-  assert.doesNotMatch(api.buildLobsterSubtaskModelPrompt(
+  assert.doesNotMatch(api.buildLoopSubtaskModelPrompt(
     task.rootPrompt,
     task,
     2,
@@ -458,16 +458,16 @@ test("fresh upsert atomically removes a stale host snapshot when no replacement 
 test("RED boundary: persisted guidance is injected between responsibilities and current task on every retry", () => {
   const buildSubtaskPrompt = compileExtensionFunction<(
     rootPrompt: string,
-    task: LobsterTaskRecord,
+    task: LoopTaskRecord,
     round: number,
-    subtask: LobsterSubtaskRecord,
+    subtask: LoopSubtaskRecord,
     retryCount?: number,
     communicationFile?: string,
-  ) => string>("buildLobsterSubtaskModelPrompt", {
-    getLobsterCommunicationPaths: () => ({ dir: "/tmp/comm" }),
-    buildLobsterSubtaskCommunicationFile: () => "/tmp/comm/subtask.md",
+  ) => string>("buildLoopSubtaskModelPrompt", {
+    getLoopCommunicationPaths: () => ({ dir: "/tmp/comm" }),
+    buildLoopSubtaskCommunicationFile: () => "/tmp/comm/subtask.md",
   });
-  const subtask: LobsterSubtaskRecord = {
+  const subtask: LoopSubtaskRecord = {
     id: "subtask-a",
     title: "实现测试",
     prompt: "实现并验证测试闭环。",
@@ -496,28 +496,28 @@ test("RED boundary: persisted guidance is injected between responsibilities and 
 test("passes the same development catalog gate into debate brief and runner consensus", async () => {
   const task = createTask("development", "debate-skill-task");
   task.executionMode = "debate_multi_agent";
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
   const catalog = [
     "高级开发 Skill 候选目录（宿主已校验，仅 development Loop 可用）：",
     '- {"id":"test-driven-development","roles":["subtask"],"requiredCapabilities":[]}',
   ].join("\n");
-  const brief = buildLobsterDebateBriefMarkdown(task, { cli: "codex" }, 1, paths, undefined, catalog);
+  const brief = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths, undefined, catalog);
   let consensusPrompt = "";
   const deps = {
-    createLobsterSubtaskRunTarget: () => ({ tabId: "consensus-tab", cli: "codex", sessionId: null }),
-    updateLobsterDebateActiveSpeakerRecord: () => undefined,
-    getExistingLobsterDebateRoundStartedAt: () => 1,
-    appendSystemMessageForLobster: () => undefined,
-    buildLobsterDebateConsensusStartedText: () => "started",
+    createLoopSubtaskRunTarget: () => ({ tabId: "consensus-tab", cli: "codex", sessionId: null }),
+    updateLoopDebateActiveSpeakerRecord: () => undefined,
+    getExistingLoopDebateRoundStartedAt: () => 1,
+    appendSystemMessageForLoop: () => undefined,
+    buildLoopDebateConsensusStartedText: () => "started",
     runPrompt: async (input: { modelPrompt: string }) => {
       consensusPrompt = input.modelPrompt;
     },
     resolvePromptRunTargetSessionId: () => null,
     logError: () => undefined,
     errorToMessage: (error: unknown) => String(error),
-  } as unknown as LobsterDebateRunnerDeps;
-  const runConsensus = runLobsterDebateConsensusSummary as unknown as (
-    options: Parameters<typeof runLobsterDebateConsensusSummary>[0] & {
+  } as unknown as LoopDebateRunnerDeps;
+  const runConsensus = runLoopDebateConsensusSummary as unknown as (
+    options: Parameters<typeof runLoopDebateConsensusSummary>[0] & {
       compactSkillCatalogSection?: string;
     },
   ) => Promise<unknown>;
@@ -542,11 +542,11 @@ test("passes the same development catalog gate into debate brief and runner cons
 test("builds a development runtime catalog while non-development and legacy tasks never load resources", async () => {
   const api = requireIntegrationApi();
   let loadCount = 0;
-  const load = async (extensionRoot: unknown): Promise<LobsterSkillPackLoadResult> => {
+  const load = async (extensionRoot: unknown): Promise<LoopSkillPackLoadResult> => {
     loadCount += 1;
-    return loadLobsterSkillPack(extensionRoot);
+    return loadLoopSkillPack(extensionRoot);
   };
-  const development = await api.buildLobsterSkillRuntimeContext(createTask("development"), 1, {
+  const development = await api.buildLoopSkillRuntimeContext(createTask("development"), 1, {
     extensionRoot: process.cwd(),
     loadSkillPack: load,
   });
@@ -556,7 +556,7 @@ test("builds a development runtime catalog while non-development and legacy task
   assert.ok(development.candidateIds.includes("test-driven-development"));
 
   for (const task of [createTask("non_development", "non-development"), createTask(undefined, "legacy")]) {
-    const context = await api.buildLobsterSkillRuntimeContext(task, 1, {
+    const context = await api.buildLoopSkillRuntimeContext(task, 1, {
       extensionRoot: "/path/that/must/not/be-read",
       loadSkillPack: load,
     });
@@ -587,17 +587,17 @@ test("explicit non-development requests with technical context keep ordinary and
   let loadCount = 0;
 
   for (const [index, scenario] of samples.entries()) {
-    const taskKind = api.resolveNewLobsterTaskKind({
+    const taskKind = api.resolveNewLoopTaskKind({
       displayPrompt: scenario.prompt,
       modelPrompt: "实现、修复并发布 TypeScript 代码",
       contextTags: ["file: src/extension.ts"],
-    }, ["/workspace/src/lobsterSkillGuidance.ts"]);
+    }, ["/workspace/src/loopSkillGuidance.ts"]);
     assert.equal(taskKind, "non_development", scenario.name);
 
     const task = createTask(taskKind, `non-development-${index}`);
     task.rootPrompt = scenario.prompt;
     task.executionMode = "debate_multi_agent";
-    const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, {
+    const runtime = await api.buildLoopSkillRuntimeContext(task, 1, {
       extensionRoot: "/path/that/must/not/be-read",
       loadSkillPack: async () => {
         loadCount += 1;
@@ -607,8 +607,8 @@ test("explicit non-development requests with technical context keep ordinary and
     assert.equal(runtime.compactCatalogSection, undefined);
     assert.deepEqual(runtime.candidateIds, []);
 
-    const ordinaryBaseline = api.buildLobsterMainModelPrompt(task.rootPrompt, task, 1);
-    const ordinaryWithCatalog = api.buildLobsterMainModelPrompt(
+    const ordinaryBaseline = api.buildLoopMainModelPrompt(task.rootPrompt, task, 1);
+    const ordinaryWithCatalog = api.buildLoopMainModelPrompt(
       task.rootPrompt,
       task,
       1,
@@ -617,9 +617,9 @@ test("explicit non-development requests with technical context keep ordinary and
     );
     assert.equal(ordinaryWithCatalog, ordinaryBaseline);
 
-    const paths = buildLobsterDebatePaths(task.communicationDir, 1);
-    const briefBaseline = buildLobsterDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
-    const briefWithCatalog = buildLobsterDebateBriefMarkdown(
+    const paths = buildLoopDebatePaths(task.communicationDir, 1);
+    const briefBaseline = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
+    const briefWithCatalog = buildLoopDebateBriefMarkdown(
       task,
       { cli: "codex" },
       1,
@@ -632,8 +632,8 @@ test("explicit non-development requests with technical context keep ordinary and
       normalizeDebateBriefTimestamp(briefBaseline),
     );
 
-    const consensusBaseline = await captureLobsterDebateConsensusPrompt(task);
-    const consensusWithCatalog = await captureLobsterDebateConsensusPrompt(task, catalogMarker);
+    const consensusBaseline = await captureLoopDebateConsensusPrompt(task);
+    const consensusWithCatalog = await captureLoopDebateConsensusPrompt(task, catalogMarker);
     assert.equal(consensusWithCatalog, consensusBaseline);
 
     for (const prompt of [ordinaryWithCatalog, briefWithCatalog, consensusWithCatalog]) {
@@ -650,22 +650,22 @@ test("explicit non-development requests with technical context keep ordinary and
 
 test("persists only trusted new-task classifications and ignores injected model text", () => {
   const api = requireIntegrationApi();
-  const developmentKind = api.resolveNewLobsterTaskKind({
+  const developmentKind = api.resolveNewLoopTaskKind({
     displayPrompt: "实现 TypeScript API 并补充测试",
     modelPrompt: "翻译一篇文章",
     contextTags: [],
   }, []);
-  const contextKind = api.resolveNewLobsterTaskKind({
+  const contextKind = api.resolveNewLoopTaskKind({
     displayPrompt: "处理这个问题",
     modelPrompt: "旅行建议",
     contextTags: ["file: src/extension.ts"],
   }, []);
-  const nonDevelopmentKind = api.resolveNewLobsterTaskKind({
+  const nonDevelopmentKind = api.resolveNewLoopTaskKind({
     displayPrompt: "翻译这篇文章",
     modelPrompt: "实现一个 API",
     contextTags: ["file: src/extension.ts"],
   }, []);
-  const unknownKind = api.resolveNewLobsterTaskKind({
+  const unknownKind = api.resolveNewLoopTaskKind({
     displayPrompt: "帮我处理一下",
     modelPrompt: "实现、测试并发布代码",
     contextTags: [],
@@ -676,17 +676,17 @@ test("persists only trusted new-task classifications and ignores injected model 
   assert.equal(nonDevelopmentKind, "non_development");
   assert.equal(unknownKind, undefined);
 
-  const developmentRecord = api.createLobsterTaskRecord("codex", "实现 TypeScript API", {
+  const developmentRecord = api.createLoopTaskRecord("codex", "实现 TypeScript API", {
     sessionId: "classification-session",
     taskKind: developmentKind,
   });
-  const unknownRecord = api.createLobsterTaskRecord("codex", "帮我处理一下", {
+  const unknownRecord = api.createLoopTaskRecord("codex", "帮我处理一下", {
     sessionId: "classification-session",
     taskKind: unknownKind,
   });
-  const persistedDevelopment = lobsterTaskStore.readLobsterTaskStore(developmentRecord.taskStoreFile)
+  const persistedDevelopment = loopTaskStore.readLoopTaskStore(developmentRecord.taskStoreFile)
     .tasks.find((item) => item.id === developmentRecord.id);
-  const persistedUnknown = lobsterTaskStore.readLobsterTaskStore(unknownRecord.taskStoreFile)
+  const persistedUnknown = loopTaskStore.readLoopTaskStore(unknownRecord.taskStoreFile)
     .tasks.find((item) => item.id === unknownRecord.id);
 
   assert.equal(persistedDevelopment?.taskKind, "development");
@@ -697,19 +697,19 @@ test("persists only trusted new-task classifications and ignores injected model 
 test("keeps main and moderator prompts baseline-compatible unless a development catalog exists", async () => {
   const api = requireIntegrationApi();
   const developmentTask = createTask("development");
-  const runtime = await api.buildLobsterSkillRuntimeContext(developmentTask, 1, {
+  const runtime = await api.buildLoopSkillRuntimeContext(developmentTask, 1, {
     extensionRoot: process.cwd(),
   });
   assert.ok(runtime.compactCatalogSection);
 
-  const mainPrompt = api.buildLobsterMainModelPrompt(
+  const mainPrompt = api.buildLoopMainModelPrompt(
     developmentTask.rootPrompt,
     developmentTask,
     1,
     undefined,
     runtime.compactCatalogSection,
   );
-  const moderatorPrompt = api.buildLobsterModeratorMainModelPrompt(
+  const moderatorPrompt = api.buildLoopModeratorMainModelPrompt(
     developmentTask.rootPrompt,
     developmentTask,
     2,
@@ -723,8 +723,8 @@ test("keeps main and moderator prompts baseline-compatible unless a development 
   assert.doesNotMatch(mainPrompt, /The TDD Cycle|SKILL\.md|"path":/u);
 
   for (const task of [createTask("non_development"), createTask(undefined, "legacy-prompt")]) {
-    const baseline = api.buildLobsterMainModelPrompt(task.rootPrompt, task, 1);
-    const withCatalog = api.buildLobsterMainModelPrompt(
+    const baseline = api.buildLoopMainModelPrompt(task.rootPrompt, task, 1);
+    const withCatalog = api.buildLoopMainModelPrompt(
       task.rootPrompt,
       task,
       1,
@@ -739,10 +739,10 @@ test("keeps main and moderator prompts baseline-compatible unless a development 
 test("centrally filters each parallel subtask and preserves scheduling fields", async () => {
   const api = requireIntegrationApi();
   const task = createTask("development", "central-gate-task");
-  const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, {
+  const runtime = await api.buildLoopSkillRuntimeContext(task, 1, {
     extensionRoot: process.cwd(),
   });
-  const implementation = api.normalizeSingleLobsterSubtaskDecision({
+  const implementation = api.normalizeSingleLoopSubtaskDecision({
     id: "implementation",
     title: "实现并安全审查 API 与集成测试",
     prompt: buildDetailedSubtaskPrompt("实现 TypeScript API，添加集成测试，并审查不可信输入和信任边界，完成验证"),
@@ -763,7 +763,7 @@ test("centrally filters each parallel subtask and preserves scheduling fields", 
     cli: "claude",
     model: "forged-model",
   });
-  const security = api.normalizeSingleLobsterSubtaskDecision({
+  const security = api.normalizeSingleLoopSubtaskDecision({
     id: "security",
     title: "审查不可信输入边界",
     prompt: buildDetailedSubtaskPrompt("执行安全审查，检查不可信输入、路径穿越和信任边界，并给出验证证据"),
@@ -775,13 +775,13 @@ test("centrally filters each parallel subtask and preserves scheduling fields", 
   assert.ok(security);
   const decisions = [implementation, security];
   const diagnosticCodes: string[] = [];
-  const snapshots = api.buildLobsterSubtaskSkillSnapshots(
+  const snapshots = api.buildLoopSubtaskSkillSnapshots(
     task,
     decisions,
     runtime,
     (_scope, diagnostics) => diagnosticCodes.push(...diagnostics.map((item) => item.code)),
   );
-  const batch = api.upsertLobsterSubtasks(task, decisions, snapshots);
+  const batch = api.upsertLoopSubtasks(task, decisions, snapshots);
 
   assert.deepEqual(batch.records[0]?.skillIds, [
     "incremental-implementation",
@@ -804,8 +804,8 @@ test("centrally filters each parallel subtask and preserves scheduling fields", 
   assert.deepEqual(batch.records[0]?.writeFiles, implementation.writeFiles);
   assert.equal(task.cli, "codex");
 
-  const beforePlan = buildLobsterSubtaskExecutionPlan(decisions as LobsterSubtaskRecord[]);
-  const afterPlan = buildLobsterSubtaskExecutionPlan(batch.records);
+  const beforePlan = buildLoopSubtaskExecutionPlan(decisions as LoopSubtaskRecord[]);
+  const afterPlan = buildLoopSubtaskExecutionPlan(batch.records);
   assert.deepEqual(
     afterPlan.groups.map((group) => group.map((item) => item.id)),
     beforePlan.groups.map((group) => group.map((item) => item.id)),
@@ -814,20 +814,20 @@ test("centrally filters each parallel subtask and preserves scheduling fields", 
 
 test("applies host Skill snapshots through the shared decision path and resets main AI failure state", async () => {
   const api = requireIntegrationApi();
-  const task = api.createLobsterTaskRecord("codex", "实现中央 Skill 校验和 Store 快照", {
+  const task = api.createLoopTaskRecord("codex", "实现中央 Skill 校验和 Store 快照", {
     sessionId: "central-apply-session",
     taskKind: "development",
   });
-  lobsterTaskStore.updateLobsterTaskRecord(task.id, {
+  loopTaskStore.updateLoopTaskRecord(task.id, {
     mainAiFailureCount: 4,
     mainAiFailureLimitReached: false,
     mainAiLastFailureAt: 123,
     mainAiLastFailureMessage: "previous failure",
   });
-  const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, {
+  const runtime = await api.buildLoopSkillRuntimeContext(task, 1, {
     extensionRoot: process.cwd(),
   });
-  const subtask = api.normalizeSingleLobsterSubtaskDecision({
+  const subtask = api.normalizeSingleLoopSubtaskDecision({
     id: "central-apply-subtask",
     title: "实现并测试中央 apply",
     prompt: buildDetailedSubtaskPrompt("实现中央 apply 的 Skill 校验、Store 快照和自动重试复用"),
@@ -838,7 +838,7 @@ test("applies host Skill snapshots through the shared decision path and resets m
   });
   assert.ok(subtask);
 
-  const result = api.applyLobsterMainDecisionForRun(task.id, {
+  const result = api.applyLoopMainDecisionForRun(task.id, {
     status: "continue",
     estimatedRemainingRounds: 1,
     acceptance: {
@@ -849,7 +849,7 @@ test("applies host Skill snapshots through the shared decision path and resets m
     subtask,
     subtasks: [subtask],
   }, runtime);
-  const persisted = lobsterTaskStore.readLobsterTaskStore(task.taskStoreFile)
+  const persisted = loopTaskStore.readLoopTaskStore(task.taskStoreFile)
     .tasks.find((item) => item.id === task.id);
   const persistedSubtask = persisted?.subTasks.find((item) => item.id === subtask.id);
 
@@ -866,7 +866,7 @@ test("applies host Skill snapshots through the shared decision path and resets m
 
 test("fresh central decisions clear stale snapshots for every no-snapshot outcome", async () => {
   const api = requireIntegrationApi();
-  const loadedPack = await loadLobsterSkillPack(process.cwd());
+  const loadedPack = await loadLoopSkillPack(process.cwd());
   assert.ok(loadedPack.pack);
   const scenarios = [
     {
@@ -942,12 +942,12 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
   ] as const;
 
   for (const [index, scenario] of scenarios.entries()) {
-    const task = api.createLobsterTaskRecord("codex", `实现 fresh snapshot replacement：${scenario.name}`, {
+    const task = api.createLoopTaskRecord("codex", `实现 fresh snapshot replacement：${scenario.name}`, {
       sessionId: `fresh-snapshot-${index}`,
       taskKind: "development",
     });
     const staleGuidance = `STALE_HOST_GUIDANCE_${index}`;
-    lobsterTaskStore.updateLobsterTaskRecord(task.id, {
+    loopTaskStore.updateLoopTaskRecord(task.id, {
       activeSubtaskId: "same-subtask",
       activeSubtaskIds: ["same-subtask"],
       subTasks: [{
@@ -960,7 +960,7 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
       }],
       updatedAt: Date.now(),
     });
-    const decision = api.normalizeSingleLobsterSubtaskDecision({
+    const decision = api.normalizeSingleLoopSubtaskDecision({
       id: "same-subtask",
       title: scenario.title,
       prompt: scenario.prompt,
@@ -968,7 +968,7 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
     });
     assert.ok(decision, scenario.name);
 
-    const runtime = await api.buildLobsterSkillRuntimeContext(task, 2, {
+    const runtime = await api.buildLoopSkillRuntimeContext(task, 2, {
       extensionRoot: process.cwd(),
       loadSkillPack: scenario.runtime === "pack-unavailable"
         ? async () => ({
@@ -980,13 +980,13 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
     const runtimeForDecision = scenario.runtime === "catalog-unavailable"
       ? { ...runtime, compactCatalogSection: undefined, candidateIds: [] }
       : runtime;
-    const result = api.applyLobsterMainDecisionForRun(task.id, {
+    const result = api.applyLoopMainDecisionForRun(task.id, {
       status: "continue",
       estimatedRemainingRounds: 1,
       subtask: decision,
       subtasks: [decision],
     }, runtimeForDecision);
-    const persisted = lobsterTaskStore.readLobsterTaskStore(task.taskStoreFile)
+    const persisted = loopTaskStore.readLoopTaskStore(task.taskStoreFile)
       .tasks.find((item) => item.id === task.id)
       ?.subTasks.find((item) => item.id === "same-subtask");
 
@@ -994,7 +994,7 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
     assert.ok(persisted, scenario.name);
     assert.equal(hasOwnProperty(persisted, "skillIds"), false, scenario.name);
     assert.equal(hasOwnProperty(persisted, "skillGuidance"), false, scenario.name);
-    assert.doesNotMatch(api.buildLobsterSubtaskModelPrompt(
+    assert.doesNotMatch(api.buildLoopSubtaskModelPrompt(
       task.rootPrompt,
       task,
       2,
@@ -1006,7 +1006,7 @@ test("fresh central decisions clear stale snapshots for every no-snapshot outcom
 test("rejects non-allowlisted, main-only, interactive-only and missing-capability Skills without substitution", async () => {
   const api = requireIntegrationApi();
   const task = createTask("development", "restricted-skills-task");
-  const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, {
+  const runtime = await api.buildLoopSkillRuntimeContext(task, 1, {
     extensionRoot: process.cwd(),
   });
   const restrictedRuntime = {
@@ -1019,33 +1019,33 @@ test("rejects non-allowlisted, main-only, interactive-only and missing-capabilit
     ],
   };
   const decisions = [
-    api.normalizeSingleLobsterSubtaskDecision({
+    api.normalizeSingleLoopSubtaskDecision({
       id: "allowlist",
       title: "实现并测试功能",
       prompt: buildDetailedSubtaskPrompt("实现 TypeScript 功能并添加测试，验证最终行为"),
       skillIds: ["incremental-implementation", "test-driven-development"],
     }),
-    api.normalizeSingleLobsterSubtaskDecision({
+    api.normalizeSingleLoopSubtaskDecision({
       id: "main-only",
       title: "实现架构规划",
       prompt: buildDetailedSubtaskPrompt("规划并实现架构调整，然后进行代码审查"),
       skillIds: ["doubt-driven-development"],
     }),
-    api.normalizeSingleLobsterSubtaskDecision({
+    api.normalizeSingleLoopSubtaskDecision({
       id: "interactive",
       title: "规划 API 架构",
       prompt: buildDetailedSubtaskPrompt("通过需求访谈规划 API 架构和任务拆分"),
       skillIds: ["interview-me"],
     }),
-    api.normalizeSingleLobsterSubtaskDecision({
+    api.normalizeSingleLoopSubtaskDecision({
       id: "browser",
       title: "调试前端 UI 浏览器测试",
       prompt: buildDetailedSubtaskPrompt("调试前端 UI，并执行浏览器集成测试和性能验证"),
       skillIds: ["browser-testing-with-devtools"],
     }),
-  ].filter((item): item is LobsterSubtaskDecision => Boolean(item));
+  ].filter((item): item is LoopSubtaskDecision => Boolean(item));
   const diagnosticCodes: string[] = [];
-  const snapshots = api.buildLobsterSubtaskSkillSnapshots(
+  const snapshots = api.buildLoopSubtaskSkillSnapshots(
     task,
     decisions,
     restrictedRuntime,
@@ -1063,11 +1063,11 @@ test("rejects non-allowlisted, main-only, interactive-only and missing-capabilit
 
 test("degrades missing resources to legacy behavior without catalog or snapshots", async () => {
   const api = requireIntegrationApi();
-  const emptyExtensionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-lobster-empty-extension-"));
+  const emptyExtensionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-empty-extension-"));
   const task = createTask("development", "missing-pack-task");
   const diagnosticCodes: string[] = [];
   try {
-    const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, {
+    const runtime = await api.buildLoopSkillRuntimeContext(task, 1, {
       extensionRoot: emptyExtensionRoot,
       reportDiagnostics: (_scope, diagnostics) => diagnosticCodes.push(...diagnostics.map((item) => item.code)),
     });
@@ -1076,18 +1076,18 @@ test("degrades missing resources to legacy behavior without catalog or snapshots
     assert.deepEqual(runtime.candidateIds, []);
     assert.ok(diagnosticCodes.includes("resource_missing") || diagnosticCodes.includes("pack_unavailable"));
 
-    const decision = api.normalizeSingleLobsterSubtaskDecision({
+    const decision = api.normalizeSingleLoopSubtaskDecision({
       id: "safe-degrade",
       title: "实现测试",
       prompt: buildDetailedSubtaskPrompt("实现 TypeScript 功能并补充集成测试，确保行为正确"),
       skillIds: ["test-driven-development"],
     });
     assert.ok(decision);
-    const snapshots = api.buildLobsterSubtaskSkillSnapshots(task, [decision], runtime);
+    const snapshots = api.buildLoopSubtaskSkillSnapshots(task, [decision], runtime);
     assert.equal(snapshots.size, 0);
 
-    const baseline = api.buildLobsterMainModelPrompt(task.rootPrompt, task, 1);
-    const degraded = api.buildLobsterMainModelPrompt(
+    const baseline = api.buildLoopMainModelPrompt(task.rootPrompt, task, 1);
+    const degraded = api.buildLoopMainModelPrompt(
       task.rootPrompt,
       task,
       1,
@@ -1103,14 +1103,14 @@ test("degrades missing resources to legacy behavior without catalog or snapshots
 
 test("round-trips host guidance and reuses the exact snapshot after pack removal on retry", async () => {
   const api = requireIntegrationApi();
-  const extensionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-lobster-pack-copy-"));
+  const extensionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-pack-copy-"));
   const copiedPack = path.join(extensionRoot, "media", "loop-workflow-skills");
   fs.mkdirSync(path.dirname(copiedPack), { recursive: true });
   fs.cpSync(path.join(process.cwd(), "media", "loop-workflow-skills"), copiedPack, { recursive: true });
   try {
     const task = createTask("development", "snapshot-retry-task");
-    const runtime = await api.buildLobsterSkillRuntimeContext(task, 1, { extensionRoot });
-    const decision = api.normalizeSingleLobsterSubtaskDecision({
+    const runtime = await api.buildLoopSkillRuntimeContext(task, 1, { extensionRoot });
+    const decision = api.normalizeSingleLoopSubtaskDecision({
       id: "retry-subtask",
       title: "实现并测试重试快照",
       prompt: buildDetailedSubtaskPrompt("实现 TypeScript 重试逻辑并添加集成测试，验证资源变化后仍保持同一快照"),
@@ -1119,21 +1119,21 @@ test("round-trips host guidance and reuses the exact snapshot after pack removal
       skillIds: ["test-driven-development"],
     });
     assert.ok(decision);
-    const snapshots = api.buildLobsterSubtaskSkillSnapshots(task, [decision], runtime);
-    const batch = api.upsertLobsterSubtasks(task, [decision], snapshots);
+    const snapshots = api.buildLoopSubtaskSkillSnapshots(task, [decision], runtime);
+    const batch = api.upsertLoopSubtasks(task, [decision], snapshots);
     const record = batch.records[0];
     assert.ok(record?.skillGuidance);
 
-    lobsterTaskStore.writeLobsterTaskStore(task.taskStoreFile, {
+    loopTaskStore.writeLoopTaskStore(task.taskStoreFile, {
       tasks: [{ ...task, subTasks: batch.nextSubtasks }],
     });
-    const persisted = lobsterTaskStore.readLobsterTaskStore(task.taskStoreFile)
+    const persisted = loopTaskStore.readLoopTaskStore(task.taskStoreFile)
       .tasks[0]?.subTasks.find((item) => item.id === record.id);
     assert.deepEqual(persisted?.skillIds, record.skillIds);
     assert.equal(persisted?.skillGuidance, record.skillGuidance);
 
     fs.rmSync(copiedPack, { recursive: true, force: true });
-    const firstPrompt = api.buildLobsterSubtaskModelPrompt(
+    const firstPrompt = api.buildLoopSubtaskModelPrompt(
       task.rootPrompt,
       task,
       1,
@@ -1141,7 +1141,7 @@ test("round-trips host guidance and reuses the exact snapshot after pack removal
       0,
       "/tmp/retry-0.md",
     );
-    const retryPrompt = api.buildLobsterSubtaskModelPrompt(
+    const retryPrompt = api.buildLoopSubtaskModelPrompt(
       task.rootPrompt,
       task,
       1,
@@ -1149,7 +1149,7 @@ test("round-trips host guidance and reuses the exact snapshot after pack removal
       1,
       "/tmp/retry-1.md",
     );
-    const displayPrompt = api.buildLobsterSubtaskDisplayPrompt(1, persisted!, 1);
+    const displayPrompt = api.buildLoopSubtaskDisplayPrompt(1, persisted!, 1);
 
     for (const prompt of [firstPrompt, retryPrompt]) {
       assert.equal(countOccurrences(prompt, persisted!.skillGuidance!), 1);

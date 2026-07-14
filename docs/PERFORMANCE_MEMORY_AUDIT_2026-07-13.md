@@ -377,9 +377,9 @@
 
 证据：
 
-- `src/webview/lobsterDebatePanel.ts:68-76`，`update()` 每次设置 `panel.webview.html`。
-- `src/webview/lobsterDebatePanel.ts:83-90`，每次解析完整 `chatMarkdown`。
-- `src/webview/lobsterDebatePanel.ts:153-155,412-420`，可见时每 5 秒请求刷新。
+- `src/webview/loopDebatePanel.ts:68-76`，`update()` 每次设置 `panel.webview.html`。
+- `src/webview/loopDebatePanel.ts:83-90`，每次解析完整 `chatMarkdown`。
+- `src/webview/loopDebatePanel.ts:153-155,412-420`，可见时每 5 秒请求刷新。
 - `src/panelStateBuilder.ts` 和 `src/extension.ts` 的群聊 state/transcript 读取链路。
 
 触发链：
@@ -435,7 +435,7 @@
 - `src/extension.ts:814-843`，激活时同步加载多个 store 并立即启动维护任务。
 - `src/extension.ts:1742-1770`，启动即执行一次历史清理，之后每 12 小时重复。
 - `src/sessionStore.ts`、`src/promptHistoryStore.ts`、`src/workspaceSettingsStore.ts`、`src/modelSelectionStore.ts` 的同步 JSON 读写。
-- `src/lobsterTaskStore.ts:196-253,676-805`，同步递归扫描、JSON 读取、全量写回和 communication tree stat。
+- `src/loopTaskStore.ts:196-253,676-805`，同步递归扫描、JSON 读取、全量写回和 communication tree stat。
 
 问题：
 
@@ -443,7 +443,7 @@
 - `loadPromptHistoryStore()` 和部分其他 loader 即使规范化结果无变化也立即写回。
 - retention 对非空文件可能无变化仍全量重写。
 - Loop communication 清理为计算最新 mtime 会递归 stat 整棵目录树。
-- Lobster task cache miss 会递归找出所有 store，再逐个读取和解析；单次更新还可能重复读取同一个 store 后全量覆盖。
+- Loop task cache miss 会递归找出所有 store，再逐个读取和解析；单次更新还可能重复读取同一个 store 后全量覆盖。
 
 影响：
 
@@ -455,7 +455,7 @@
 - 启动只做最小状态加载，维护任务延迟到 idle 窗口。
 - 清理任务分批异步执行，设置单轮文件数和耗时预算并主动让出事件循环。
 - 仅在数据实际变化时写回。
-- 为 Lobster task 建立 `taskId -> storeFile` 持久索引，并在清理时重建/校验。
+- 为 Loop task 建立 `taskId -> storeFile` 持久索引，并在清理时重建/校验。
 
 ## 4. 次级问题与待压测风险
 
@@ -528,7 +528,7 @@
 2. 配置心跳改为 watcher/mtime + 可见性 gating。
 3. Loop 群聊改为 snapshot + patch，不再每 5 秒替换完整 HTML。
 4. 启动维护任务延迟、分批、异步化，并只写实际变化的文件。
-5. Lobster task 增加索引、读缓存和 per-store 写队列。
+5. Loop task 增加索引、读缓存和 per-store 写队列。
 6. 配置中心 bootstrap 合并请求，Observer 改为局部增量处理。
 
 ## 6. 动态验证方案
@@ -574,7 +574,7 @@
 
 - 会话文件 1 MiB、10 MiB、50 MiB，持续流式输出 10 分钟。
 - debug 开启并以不同 chunk 尺寸输出 100 MiB。
-- 1,000/10,000 个 Lobster task store 和 communication 目录。
+- 1,000/10,000 个 Loop task store 和 communication 目录。
 - 配置目录包含 100/1,000 个配置，面板隐藏 10 分钟。
 
 指标：

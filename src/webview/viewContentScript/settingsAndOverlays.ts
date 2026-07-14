@@ -17,35 +17,35 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
       }
 
-      function getActiveLobsterMainTaskId() {
+      function getActiveLoopMainTaskId() {
         const conversationTabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs
           : { activeTabId: null, tabs: [] };
         const activeTab = conversationTabs.tabs.find((tab) => tab && tab.id === conversationTabs.activeTabId);
-        if (!activeTab || activeTab.lobsterTaskRole !== "main") {
+        if (!activeTab || activeTab.loopTaskRole !== "main") {
           return "";
         }
-        return typeof activeTab.lobsterTaskId === "string" ? activeTab.lobsterTaskId.trim() : "";
+        return typeof activeTab.loopTaskId === "string" ? activeTab.loopTaskId.trim() : "";
       }
 
-      function syncOpenCurrentLobsterGroupChatButton() {
-        if (!elements.openCurrentLobsterGroupChat) {
+      function syncOpenCurrentLoopGroupChatButton() {
+        if (!elements.openCurrentLoopGroupChat) {
           return;
         }
-        const taskId = getActiveLobsterMainTaskId();
-        elements.openCurrentLobsterGroupChat.style.display = taskId ? "inline-flex" : "none";
-        elements.openCurrentLobsterGroupChat.disabled = !taskId;
+        const taskId = getActiveLoopMainTaskId();
+        elements.openCurrentLoopGroupChat.style.display = taskId ? "inline-flex" : "none";
+        elements.openCurrentLoopGroupChat.disabled = !taskId;
         if (elements.runWait) {
-          elements.runWait.classList.toggle("has-current-lobster-group-chat", Boolean(taskId));
+          elements.runWait.classList.toggle("has-current-loop-group-chat", Boolean(taskId));
         }
       }
 
-      function openCurrentLobsterGroupChat() {
-        const taskId = getActiveLobsterMainTaskId();
+      function openCurrentLoopGroupChat() {
+        const taskId = getActiveLoopMainTaskId();
         if (!taskId) {
           return;
         }
-        vscode.postMessage({ type: "openLobsterDebateChat", taskId });
+        vscode.postMessage({ type: "openLoopGroupChat", taskId });
       }
 
       function syncCommonCommandOptions() {
@@ -93,27 +93,27 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           });
         });
       }
-      if (elements.lobsterMaxRounds) {
-        const commitLobsterMaxRounds = () => {
-          const nextValue = normalizeLobsterMaxRounds(elements.lobsterMaxRounds.value);
-          state.lobsterMaxRounds = nextValue;
-          elements.lobsterMaxRounds.value = String(nextValue);
+      if (elements.loopMaxRounds) {
+        const commitLoopMaxRounds = () => {
+          const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);
+          state.loopMaxRounds = nextValue;
+          elements.loopMaxRounds.value = String(nextValue);
           vscode.postMessage({
             type: "updateSetting",
-            key: "lobsterMaxRounds",
+            key: "loopMaxRounds",
             value: nextValue,
           });
         };
-        elements.lobsterMaxRounds.addEventListener("change", commitLobsterMaxRounds);
-        elements.lobsterMaxRounds.addEventListener("blur", commitLobsterMaxRounds);
+        elements.loopMaxRounds.addEventListener("change", commitLoopMaxRounds);
+        elements.loopMaxRounds.addEventListener("blur", commitLoopMaxRounds);
       }
-      if (elements.lobsterAutoCloseSubtaskTabs) {
-        elements.lobsterAutoCloseSubtaskTabs.addEventListener("change", (event) => {
+      if (elements.loopAutoCloseSubtaskTabs) {
+        elements.loopAutoCloseSubtaskTabs.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
-          state.lobsterAutoCloseSubtaskTabs = enabled;
+          state.loopAutoCloseSubtaskTabs = enabled;
           vscode.postMessage({
             type: "updateSetting",
-            key: "lobsterAutoCloseSubtaskTabs",
+            key: "loopAutoCloseSubtaskTabs",
             value: enabled,
           });
         });
@@ -452,7 +452,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         elements.promptInput.value = "";
         closeRunConflictOverlay();
-        if (isLobsterMainConversationTabRunning(getActiveConversationTabId())) {
+        if (isLoopMainConversationTabRunning(getActiveConversationTabId())) {
           queuePromptForLater(promptPayload);
           resetPromptContextForNextPrompt();
           return;
@@ -475,15 +475,15 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         openRunPromptOverlay();
       });
 
-      if (elements.openCurrentLobsterGroupChat) {
-        elements.openCurrentLobsterGroupChat.addEventListener("click", () => {
-          openCurrentLobsterGroupChat();
+      if (elements.openCurrentLoopGroupChat) {
+        elements.openCurrentLoopGroupChat.addEventListener("click", () => {
+          openCurrentLoopGroupChat();
         });
       }
 
       if (elements.conversationTabs) {
         elements.conversationTabs.addEventListener("click", () => {
-          window.setTimeout(syncOpenCurrentLobsterGroupChatButton, 0);
+          window.setTimeout(syncOpenCurrentLoopGroupChatButton, 0);
         });
       }
 

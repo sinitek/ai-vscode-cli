@@ -3,10 +3,10 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as path from "path";
 import {
-  createLobsterSubtaskProgressMonitor,
-  extractLobsterSubtaskVisibleText,
-  mapLobsterRunStatusToSubagentStatus,
-} from "../lobsterSubtaskProgress";
+  createLoopSubtaskProgressMonitor,
+  extractLoopSubtaskVisibleText,
+  mapLoopRunStatusToSubagentStatus,
+} from "../loopSubtaskProgress";
 import type { SubagentProgressUpdate } from "../subagentProgress";
 import type { ChatMessage } from "../webview/types";
 
@@ -16,9 +16,9 @@ function assistant(content: string, overrides: Partial<ChatMessage> = {}): ChatM
     role: "assistant",
     content,
     taskRole: "subtask",
-    lobsterTaskId: "task-1",
-    lobsterRound: 2,
-    lobsterSubtaskId: "subtask-a",
+    loopTaskId: "task-1",
+    loopRound: 2,
+    loopSubtaskId: "subtask-a",
     ...overrides,
   };
 }
@@ -28,12 +28,12 @@ test("extracts only visible assistant text for the matching Loop subtask", () =>
     assistant("first"),
     assistant("hidden reasoning", { kind: "thinking" }),
     assistant("nested child", { subagentId: "child-1", subagentProvider: "opencode" }),
-    assistant("other round", { lobsterRound: 1 }),
+    assistant("other round", { loopRound: 1 }),
     assistant("second"),
     { id: "trace", role: "trace", content: "tool input" },
   ];
 
-  assert.equal(extractLobsterSubtaskVisibleText(messages, {
+  assert.equal(extractLoopSubtaskVisibleText(messages, {
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-a",
@@ -45,7 +45,7 @@ test("emits an immediate waiting update, deduplicates snapshots, and finishes", 
   const updates: SubagentProgressUpdate[] = [];
   const intervalCallbacks: Array<() => void> = [];
   let cleared = false;
-  const monitor = createLobsterSubtaskProgressMonitor({
+  const monitor = createLoopSubtaskProgressMonitor({
     taskId: "task-1",
     round: 2,
     subtaskId: "subtask-a",
@@ -92,20 +92,20 @@ test("emits an immediate waiting update, deduplicates snapshots, and finishes", 
 });
 
 test("maps Loop run terminal states to subagent bubble states", () => {
-  assert.equal(mapLobsterRunStatusToSubagentStatus("end"), "completed");
-  assert.equal(mapLobsterRunStatusToSubagentStatus("error"), "failed");
-  assert.equal(mapLobsterRunStatusToSubagentStatus("stopped"), "interrupted");
+  assert.equal(mapLoopRunStatusToSubagentStatus("end"), "completed");
+  assert.equal(mapLoopRunStatusToSubagentStatus("error"), "failed");
+  assert.equal(mapLoopRunStatusToSubagentStatus("stopped"), "interrupted");
 });
 
 test("wires Loop subtask progress snapshots into the main conversation bubble", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-  const runnerStart = extensionSource.indexOf("async function runLobsterSubtaskWithRetry");
-  const runnerEnd = extensionSource.indexOf("async function waitForLobsterSubtaskRetryDelay", runnerStart);
+  const runnerStart = extensionSource.indexOf("async function runLoopSubtaskWithRetry");
+  const runnerEnd = extensionSource.indexOf("async function waitForLoopSubtaskRetryDelay", runnerStart);
   assert.ok(runnerStart >= 0 && runnerEnd > runnerStart);
   const runnerSource = extensionSource.slice(runnerStart, runnerEnd);
 
   assert.match(runnerSource, /createSubagentProgressController\(\{/u);
-  assert.match(runnerSource, /createLobsterSubtaskProgressMonitor\(\{/u);
+  assert.match(runnerSource, /createLoopSubtaskProgressMonitor\(\{/u);
   assert.match(runnerSource, /readMessages: \(\) => currentSubtaskTarget/u);
   assert.match(runnerSource, /sendPanelMessage\(\{ type: "appendMessage", message, tabId: target\.tabId \}\)/u);
   assert.match(runnerSource, /progressMonitor\.finish\(terminalProgressStatus \?\? "interrupted"\)/u);

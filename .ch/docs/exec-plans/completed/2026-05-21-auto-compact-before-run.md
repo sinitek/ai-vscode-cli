@@ -24,7 +24,7 @@
 ## 非目标
 
 - 不改现有“常用指令 -> 压缩上下文”的手动行为。
-- 不调整龙虾模式协议和多任务调度策略。
+- 不调整Loop模式协议和多任务调度策略。
 
 ## 验收标准
 
@@ -50,7 +50,7 @@
 ## 验证计划
 
 - 最小相关验证：`npm run build`
-- 扩展验证：静态检查 sendPrompt -> 自动压缩 -> runPrompt / runLobsterPrompt 的编排链路
+- 扩展验证：静态检查 sendPrompt -> 自动压缩 -> runPrompt / runLoopPrompt 的编排链路
 
 ## 测试与清单同步
 

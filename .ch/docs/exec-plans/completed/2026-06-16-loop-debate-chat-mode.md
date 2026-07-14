@@ -1,4 +1,4 @@
-# 龙虾辩论群聊式编排优化
+# Loop辩论群聊式编排优化
 
 - 日期：2026-06-16
 - 状态：completed
@@ -10,13 +10,13 @@
 
 ## 目标
 
-把辩论模式改成受控群聊式编排：每个龙虾主任务复核轮生成共享 `chat.md` transcript，4 个默认角色按固定顺序进行有限轮发言，后续角色可以读取和回应前文，最后由共识汇总器基于完整群聊记录生成现有 `LobsterMainDecision`。
+把辩论模式改成受控群聊式编排：每个Loop主任务复核轮生成共享 `chat.md` transcript，4 个默认角色按固定顺序进行有限轮发言，后续角色可以读取和回应前文，最后由共识汇总器基于完整群聊记录生成现有 `LoopMainDecision`。
 
 ## 范围
 
-- `src/lobsterDebate.ts`：新增群聊 transcript 路径和参与者回合 artifact 路径纯函数。
-- `src/extension.ts`：重构 `runLobsterDebateRound` 的参与者阶段，生成共享 `chat.md`，固定两轮轮流发言，第二轮输出最终立场。
-- `src/test/lobsterDebate.test.ts`：补充路径和防循环边界相关纯函数验证。
+- `src/loopDebate.ts`：新增群聊 transcript 路径和参与者回合 artifact 路径纯函数。
+- `src/extension.ts`：重构 `runLoopDebateRound` 的参与者阶段，生成共享 `chat.md`，固定两轮轮流发言，第二轮输出最终立场。
+- `src/test/loopDebate.test.ts`：补充路径和防循环边界相关纯函数验证。
 - `.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/product-specs/`：同步真实行为。
 
 ## 非目标
@@ -36,7 +36,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/test/lobsterDebate.test.ts`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/loopDebate.test.ts`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/product-specs/`
 - 配置与脚本：无新增配置
 
@@ -51,7 +51,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/lobsterDebate.test.js`，8/8 通过。
+- 最小相关验证：`node --test dist/test/loopDebate.test.js`，8/8 通过。
 - 扩展验证：`npm run build` 通过；`git diff --check` 通过。
 
 ## 测试与清单同步

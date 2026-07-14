@@ -2,12 +2,16 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   CLI_LIST,
-  normalizeLobsterExecutionMode,
+  normalizeLoopExecutionMode,
   type CliName,
   type InteractiveMode,
-  type LobsterExecutionMode,
+  type LoopExecutionMode,
   type ThinkingMode,
 } from "./cli/types";
+import {
+  isLegacyLoopInteractiveMode,
+  migrateLegacyLoopJson,
+} from "./loopLegacyMigration";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   id: string;
@@ -26,7 +30,7 @@ export type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
-  lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
+  loopExecutionModeByCli?: Partial<Record<CliName, LoopExecutionMode>>;
   /** @deprecated After-run context compaction is global; keep only for migration reads. */
   autoCompactContextAfterRun?: boolean;
   /** @deprecated Before-run context compaction is a legacy global migration input. */
@@ -37,9 +41,9 @@ export type WorkspaceSettings = {
   /** @deprecated Implicit subagents are global; keep only for legacy migration reads. */
   codexMultiAgentEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
-  lobsterMaxRounds?: number;
+  loopMaxRounds?: number;
   /** @deprecated Loop subtask tab auto-close is global; keep only for legacy reads. */
-  lobsterAutoCloseSubtaskTabs?: boolean;
+  loopAutoCloseSubtaskTabs?: boolean;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
 };
@@ -53,7 +57,7 @@ export type WorkspaceSettingsStoreOptions = {
   isThinkingMode: (value: unknown) => value is ThinkingMode;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (value: unknown) => InteractiveMode;
-  normalizeLobsterMaxRounds: (value: unknown) => number;
+  normalizeLoopMaxRounds: (value: unknown) => number;
   sanitizeConversationTabRecord: (value: unknown) => ConversationTabRecordForWorkspaceSettings | null;
   logError?: WorkspaceSettingsStoreLogger;
 };
@@ -65,7 +69,7 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
   }
   try {
     const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = migrateLegacyLoopJson(JSON.parse(raw)).value;
     if (!parsed || typeof parsed !== "object") {
       return {};
     }
@@ -83,22 +87,24 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       const normalized: Partial<Record<CliName, InteractiveMode>> = {};
       CLI_LIST.forEach((cli) => {
         const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
-        if (options.isInteractiveMode(mode)) {
-          normalized[cli] = options.normalizeVisibleInteractiveMode(mode);
+        if (options.isInteractiveMode(mode) || isLegacyLoopInteractiveMode(mode)) {
+          normalized[cli] = isLegacyLoopInteractiveMode(mode)
+            ? "loop"
+            : options.normalizeVisibleInteractiveMode(mode);
         }
       });
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
       }
     }
-    const lobsterExecutionModeByCli = (parsed as WorkspaceSettings).lobsterExecutionModeByCli;
-    if (lobsterExecutionModeByCli && typeof lobsterExecutionModeByCli === "object") {
-      const normalized: Partial<Record<CliName, LobsterExecutionMode>> = {};
+    const loopExecutionModeByCli = (parsed as WorkspaceSettings).loopExecutionModeByCli;
+    if (loopExecutionModeByCli && typeof loopExecutionModeByCli === "object") {
+      const normalized: Partial<Record<CliName, LoopExecutionMode>> = {};
       CLI_LIST.forEach((cli) => {
-        const mode = (lobsterExecutionModeByCli as Record<string, unknown>)[cli];
-        normalized[cli] = normalizeLobsterExecutionMode(mode);
+        const mode = (loopExecutionModeByCli as Record<string, unknown>)[cli];
+        normalized[cli] = normalizeLoopExecutionMode(mode);
       });
-      result.lobsterExecutionModeByCli = normalized;
+      result.loopExecutionModeByCli = normalized;
     }
     const multiAgentEnabled = (parsed as WorkspaceSettings).multiAgentEnabled;
     if (typeof multiAgentEnabled === "boolean") {
@@ -122,13 +128,13 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     if (typeof workspaceMemoryEnabled === "boolean") {
       result.workspaceMemoryEnabled = workspaceMemoryEnabled;
     }
-    const lobsterMaxRounds = (parsed as WorkspaceSettings).lobsterMaxRounds;
-    if (typeof lobsterMaxRounds === "number" || typeof lobsterMaxRounds === "string") {
-      result.lobsterMaxRounds = options.normalizeLobsterMaxRounds(lobsterMaxRounds);
+    const loopMaxRounds = (parsed as WorkspaceSettings).loopMaxRounds;
+    if (typeof loopMaxRounds === "number" || typeof loopMaxRounds === "string") {
+      result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
     }
-    const lobsterAutoCloseSubtaskTabs = (parsed as WorkspaceSettings).lobsterAutoCloseSubtaskTabs;
-    if (typeof lobsterAutoCloseSubtaskTabs === "boolean") {
-      result.lobsterAutoCloseSubtaskTabs = lobsterAutoCloseSubtaskTabs;
+    const loopAutoCloseSubtaskTabs = (parsed as WorkspaceSettings).loopAutoCloseSubtaskTabs;
+    if (typeof loopAutoCloseSubtaskTabs === "boolean") {
+      result.loopAutoCloseSubtaskTabs = loopAutoCloseSubtaskTabs;
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {

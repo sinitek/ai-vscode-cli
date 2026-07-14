@@ -317,9 +317,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
         const supportsModelSelection = cliSupportsManagedModelSelection(cli);
         const isOpenCode = cli === "opencode";
-        const isLobster = normalizeInteractiveMode(state.interactiveMode) === "lobster";
+        const isLoop = normalizeInteractiveMode(state.interactiveMode) === "loop";
         const showSingleModelSelect = supportsModelSelection;
-        const showLobsterExecutionModeSelect = isLobster;
+        const showLoopExecutionModeSelect = isLoop;
         if (elements.openCodeModelGroup) {
           elements.openCodeModelGroup.style.display = isOpenCode ? "" : "none";
         }
@@ -333,10 +333,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
           elements.modelSelect.disabled = !showSingleModelSelect;
         }
-        if (elements.lobsterExecutionModeSelect) {
-          elements.lobsterExecutionModeSelect.style.display = showLobsterExecutionModeSelect ? "" : "none";
-          elements.lobsterExecutionModeSelect.disabled = !showLobsterExecutionModeSelect;
-          elements.lobsterExecutionModeSelect.value = getLobsterExecutionModeForCli();
+        if (elements.loopExecutionModeSelect) {
+          elements.loopExecutionModeSelect.style.display = showLoopExecutionModeSelect ? "" : "none";
+          elements.loopExecutionModeSelect.disabled = !showLoopExecutionModeSelect;
+          elements.loopExecutionModeSelect.value = getLoopExecutionModeForCli();
         }
         if (!supportsModelSelection) {
           hideAddModelDialog();
@@ -450,13 +450,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
       syncModelSelectorByInteractiveMode();
 
-      if (elements.lobsterExecutionModeSelect) {
-        elements.lobsterExecutionModeSelect.addEventListener("change", (event) => {
-          const nextMode = setLobsterExecutionModeForCli(state.currentCli, event.target.value);
-          elements.lobsterExecutionModeSelect.value = nextMode;
+      if (elements.loopExecutionModeSelect) {
+        elements.loopExecutionModeSelect.addEventListener("change", (event) => {
+          const nextMode = setLoopExecutionModeForCli(state.currentCli, event.target.value);
+          elements.loopExecutionModeSelect.value = nextMode;
           vscode.postMessage({
             type: "updateSetting",
-            key: "lobsterExecutionMode." + state.currentCli,
+            key: "loopExecutionMode." + state.currentCli,
             value: nextMode,
           });
         });

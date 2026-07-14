@@ -482,7 +482,7 @@ src/memory/
 - `memoryRecall.ts`
   - 按当前 focus 选择相关 observation，构建 recall pack
 - `memoryConsolidator.ts`
-  - 把 compact / lobster / 手动候选上提到正确层级
+  - 把 compact / loop / 手动候选上提到正确层级
 - `memoryPrompt.ts`
   - 把 recall pack 变成最终注入 prompt 的补充块
 - `runtimeGate.ts`

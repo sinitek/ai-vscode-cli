@@ -1,12 +1,16 @@
 import * as fs from "fs";
 import * as path from "path";
 import { CliName, InteractiveMode, MacTaskShell, ThinkingMode } from "./cli/types";
+import {
+  isLegacyLoopInteractiveMode,
+  migrateLegacyLoopJson,
+} from "./loopLegacyMigration";
 import { ChatMessage } from "./webview/types";
 
 export type TaskRunStatus = "end" | "error" | "stopped";
 export type RunActivity = "contextCompaction";
-export type LobsterTaskRole = "main" | "subtask";
-export type LobsterTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
+export type LoopTaskRole = "main" | "subtask";
+export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
 
 export type PromptRunTargetLike = {
   tabId: string;
@@ -14,7 +18,7 @@ export type PromptRunTargetLike = {
   sessionId: string | null;
 };
 
-export type LobsterTaskCompletionStateLike = {
+export type LoopTaskCompletionStateLike = {
   status: string;
   mainAiFailureCount?: number;
   mainAiFailureLimitReached?: boolean;
@@ -26,10 +30,10 @@ export type TaskRunDraft = {
   sessionId: string | null;
   prompt: string;
   startedAt: number;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 export type TaskRunRecord = TaskRunDraft & {
@@ -45,7 +49,7 @@ export type TaskStore = {
 type TaskStoreDeps = {
   taskStoreFile: string;
   isCliName: (value: string) => value is CliName;
-  isLobsterTaskRole: (value: unknown) => value is LobsterTaskRole;
+  isLoopTaskRole: (value: unknown) => value is LoopTaskRole;
   isTimestampWithinHistoryRetention: (timestamp: number, now?: number) => boolean;
   logError: (event: string, payload?: unknown) => void;
 };
@@ -130,14 +134,14 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
 }
 
 export function isInteractiveMode(value: unknown): value is InteractiveMode {
-  return value === "coding" || value === "plan" || value === "lobster";
+  return value === "coding" || value === "plan" || value === "loop";
 }
 
 export function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
-  return value === "lobster" ? "lobster" : "coding";
+  return value === "loop" || isLegacyLoopInteractiveMode(value) ? "loop" : "coding";
 }
 
-export function isLobsterTaskRole(value: unknown): value is LobsterTaskRole {
+export function isLoopTaskRole(value: unknown): value is LoopTaskRole {
   return value === "main" || value === "subtask";
 }
 
@@ -152,19 +156,19 @@ export function resolvePromptRunTargetSessionId(
   return getConversationTabSessionId(target) ?? target.sessionId;
 }
 
-export function resolveLobsterTaskSessionId(
+export function resolveLoopTaskSessionId(
   target: PromptRunTargetLike,
   getConversationTabSessionId: (target: PromptRunTargetLike) => string | null
 ): string | null {
   return resolvePromptRunTargetSessionId(target, getConversationTabSessionId);
 }
 
-export function isLobsterTaskCompleted(task: { status: string }): boolean {
+export function isLoopTaskCompleted(task: { status: string }): boolean {
   return task.status === "completed";
 }
 
-export function isLobsterTaskBlockedByMainAiFailureLimit(
-  task: Pick<LobsterTaskCompletionStateLike, "mainAiFailureCount" | "mainAiFailureLimitReached">,
+export function isLoopTaskBlockedByMainAiFailureLimit(
+  task: Pick<LoopTaskCompletionStateLike, "mainAiFailureCount" | "mainAiFailureLimitReached">,
   limit: number
 ): boolean {
   const count = typeof task.mainAiFailureCount === "number" && Number.isFinite(task.mainAiFailureCount)
@@ -173,11 +177,11 @@ export function isLobsterTaskBlockedByMainAiFailureLimit(
   return task.mainAiFailureLimitReached === true || count >= limit;
 }
 
-export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps, "isCliName" | "isLobsterTaskRole">): TaskRunRecord | null {
+export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps, "isCliName" | "isLoopTaskRole">): TaskRunRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
-  const raw = record as Partial<TaskRunRecord>;
+  const raw = migrateLegacyLoopJson(record).value as Partial<TaskRunRecord>;
   const cli = typeof raw.cli === "string" && deps.isCliName(raw.cli) ? raw.cli : null;
   if (typeof raw.id !== "string" || !raw.id.trim() || !cli) {
     return null;
@@ -200,14 +204,14 @@ export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps
     endedAt: raw.endedAt,
     durationMs: raw.durationMs,
     status: raw.status,
-    taskRole: deps.isLobsterTaskRole(raw.taskRole) ? raw.taskRole : undefined,
-    lobsterTaskId: typeof raw.lobsterTaskId === "string" ? raw.lobsterTaskId : undefined,
-    lobsterRound: typeof raw.lobsterRound === "number" ? raw.lobsterRound : undefined,
-    lobsterSubtaskId: typeof raw.lobsterSubtaskId === "string" ? raw.lobsterSubtaskId : undefined,
+    taskRole: deps.isLoopTaskRole(raw.taskRole) ? raw.taskRole : undefined,
+    loopTaskId: typeof raw.loopTaskId === "string" ? raw.loopTaskId : undefined,
+    loopRound: typeof raw.loopRound === "number" ? raw.loopRound : undefined,
+    loopSubtaskId: typeof raw.loopSubtaskId === "string" ? raw.loopSubtaskId : undefined,
   };
 }
 
-export function ensureTaskStore(store: TaskStore | undefined, deps: Pick<TaskStoreDeps, "isCliName" | "isLobsterTaskRole" | "isTimestampWithinHistoryRetention">): TaskStore {
+export function ensureTaskStore(store: TaskStore | undefined, deps: Pick<TaskStoreDeps, "isCliName" | "isLoopTaskRole" | "isTimestampWithinHistoryRetention">): TaskStore {
   const now = Date.now();
   const runs = Array.isArray(store?.runs)
     ? store.runs
@@ -224,7 +228,7 @@ export function readTaskStore(deps: TaskStoreDeps): TaskStore {
       return { runs: [] };
     }
     const raw = fs.readFileSync(deps.taskStoreFile, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = migrateLegacyLoopJson(JSON.parse(raw)).value;
     if (!parsed || !Array.isArray(parsed.runs)) {
       return { runs: [] };
     }

@@ -1,43 +1,43 @@
-export type LobsterParallelCandidate = {
+export type LoopParallelCandidate = {
   id: string;
   title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
 };
 
-export type LobsterParallelConflictReason = "conflictGroup" | "writeFiles";
+export type LoopParallelConflictReason = "conflictGroup" | "writeFiles";
 
-export type LobsterParallelConflict = {
+export type LoopParallelConflict = {
   leftId: string;
   rightId: string;
-  reason: LobsterParallelConflictReason;
+  reason: LoopParallelConflictReason;
   value: string;
 };
 
-export type LobsterSubtaskExecutionPlan<T extends LobsterParallelCandidate> = {
+export type LoopSubtaskExecutionPlan<T extends LoopParallelCandidate> = {
   groups: T[][];
-  conflicts: LobsterParallelConflict[];
+  conflicts: LoopParallelConflict[];
 };
 
-export function normalizeLobsterWriteFiles(value: unknown): string[] {
+export function normalizeLoopWriteFiles(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
   const normalized = value
-    .map((item) => normalizeLobsterWriteFilePath(item))
+    .map((item) => normalizeLoopWriteFilePath(item))
     .filter((item): item is string => Boolean(item));
   return Array.from(new Set(normalized));
 }
 
-export function buildLobsterSubtaskExecutionPlan<T extends LobsterParallelCandidate>(
+export function buildLoopSubtaskExecutionPlan<T extends LoopParallelCandidate>(
   subtasks: T[],
-): LobsterSubtaskExecutionPlan<T> {
+): LoopSubtaskExecutionPlan<T> {
   const groups: T[][] = [];
-  const conflicts: LobsterParallelConflict[] = [];
+  const conflicts: LoopParallelConflict[] = [];
 
   subtasks.forEach((subtask) => {
     for (const group of groups) {
-      const groupConflict = findFirstLobsterSubtaskConflict(subtask, group);
+      const groupConflict = findFirstLoopSubtaskConflict(subtask, group);
       if (!groupConflict) {
         group.push(subtask);
         return;
@@ -53,7 +53,7 @@ export function buildLobsterSubtaskExecutionPlan<T extends LobsterParallelCandid
       if (!left || !right) {
         continue;
       }
-      const conflict = getLobsterSubtaskConflict(left, right);
+      const conflict = getLoopSubtaskConflict(left, right);
       if (conflict) {
         conflicts.push(conflict);
       }
@@ -63,8 +63,8 @@ export function buildLobsterSubtaskExecutionPlan<T extends LobsterParallelCandid
   return { groups, conflicts };
 }
 
-export function describeLobsterExecutionPlan<T extends LobsterParallelCandidate>(
-  plan: LobsterSubtaskExecutionPlan<T>,
+export function describeLoopExecutionPlan<T extends LoopParallelCandidate>(
+  plan: LoopSubtaskExecutionPlan<T>,
 ): string[] {
   return plan.groups.map((group, index) => {
     const titles = group.map((item) => item.title || item.id).join("、");
@@ -72,12 +72,12 @@ export function describeLobsterExecutionPlan<T extends LobsterParallelCandidate>
   });
 }
 
-function findFirstLobsterSubtaskConflict<T extends LobsterParallelCandidate>(
+function findFirstLoopSubtaskConflict<T extends LoopParallelCandidate>(
   subtask: T,
   group: T[],
-): LobsterParallelConflict | null {
+): LoopParallelConflict | null {
   for (const existing of group) {
-    const conflict = getLobsterSubtaskConflict(subtask, existing);
+    const conflict = getLoopSubtaskConflict(subtask, existing);
     if (conflict) {
       return conflict;
     }
@@ -85,12 +85,12 @@ function findFirstLobsterSubtaskConflict<T extends LobsterParallelCandidate>(
   return null;
 }
 
-function getLobsterSubtaskConflict(
-  left: LobsterParallelCandidate,
-  right: LobsterParallelCandidate,
-): LobsterParallelConflict | null {
-  const leftConflictGroup = normalizeLobsterConflictGroup(left.conflictGroup);
-  const rightConflictGroup = normalizeLobsterConflictGroup(right.conflictGroup);
+function getLoopSubtaskConflict(
+  left: LoopParallelCandidate,
+  right: LoopParallelCandidate,
+): LoopParallelConflict | null {
+  const leftConflictGroup = normalizeLoopConflictGroup(left.conflictGroup);
+  const rightConflictGroup = normalizeLoopConflictGroup(right.conflictGroup);
   if (leftConflictGroup && rightConflictGroup && leftConflictGroup === rightConflictGroup) {
     return {
       leftId: left.id,
@@ -100,11 +100,11 @@ function getLobsterSubtaskConflict(
     };
   }
 
-  const leftFiles = normalizeLobsterWriteFiles(left.writeFiles);
-  const rightFiles = normalizeLobsterWriteFiles(right.writeFiles);
+  const leftFiles = normalizeLoopWriteFiles(left.writeFiles);
+  const rightFiles = normalizeLoopWriteFiles(right.writeFiles);
   for (const leftFile of leftFiles) {
     for (const rightFile of rightFiles) {
-      if (lobsterWriteFilePathsOverlap(leftFile, rightFile)) {
+      if (loopWriteFilePathsOverlap(leftFile, rightFile)) {
         return {
           leftId: left.id,
           rightId: right.id,
@@ -118,7 +118,7 @@ function getLobsterSubtaskConflict(
   return null;
 }
 
-function normalizeLobsterConflictGroup(value: unknown): string | null {
+function normalizeLoopConflictGroup(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -126,7 +126,7 @@ function normalizeLobsterConflictGroup(value: unknown): string | null {
   return normalized || null;
 }
 
-function normalizeLobsterWriteFilePath(value: unknown): string | null {
+function normalizeLoopWriteFilePath(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -144,13 +144,13 @@ function normalizeLobsterWriteFilePath(value: unknown): string | null {
   return normalized || null;
 }
 
-function lobsterWriteFilePathsOverlap(left: string, right: string): boolean {
+function loopWriteFilePathsOverlap(left: string, right: string): boolean {
   if (left === right) {
     return true;
   }
-  return isLobsterPathAncestor(left, right) || isLobsterPathAncestor(right, left);
+  return isLoopPathAncestor(left, right) || isLoopPathAncestor(right, left);
 }
 
-function isLobsterPathAncestor(parent: string, child: string): boolean {
+function isLoopPathAncestor(parent: string, child: string): boolean {
   return Boolean(parent && child.startsWith(`${parent}/`));
 }

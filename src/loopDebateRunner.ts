@@ -1,107 +1,107 @@
 import type { CliName } from "./cli/types";
 import {
-  buildLobsterDebateModeratorArtifactFile,
-  buildLobsterDebateParticipantArtifactFile,
-  buildLobsterDebateParticipantTurnArtifactFile,
-  LOBSTER_DEBATE_MODERATOR_ID,
-  LOBSTER_DEBATE_MODERATOR_TITLE,
-  type LobsterDebateActiveSpeakerRecord,
-  type LobsterDebateModeratorDecisionRecord,
-  type LobsterDebateParticipantRecord,
-  type LobsterDebatePaths,
-} from "./lobsterDebate";
-import type { LobsterTaskRecord } from "./lobsterTaskStore";
+  buildLoopDebateModeratorArtifactFile,
+  buildLoopDebateParticipantArtifactFile,
+  buildLoopDebateParticipantTurnArtifactFile,
+  LOOP_DEBATE_MODERATOR_ID,
+  LOOP_DEBATE_MODERATOR_TITLE,
+  type LoopDebateActiveSpeakerRecord,
+  type LoopDebateModeratorDecisionRecord,
+  type LoopDebateParticipantRecord,
+  type LoopDebatePaths,
+} from "./loopDebate";
+import type { LoopTaskRecord } from "./loopTaskStore";
 import {
-  buildLobsterDebateConsensusModelPrompt,
-  buildLobsterDebateModeratorDisplayPrompt,
-  buildLobsterDebateModeratorModelPrompt,
-  buildLobsterDebateParticipantDisplayPrompt,
-  buildLobsterDebateParticipantModelPrompt,
-  buildLobsterDebateParticipantRosterModelPrompt,
-  type LobsterDebateParticipantDefinition,
-} from "./lobsterPromptBuilders";
+  buildLoopDebateConsensusModelPrompt,
+  buildLoopDebateModeratorDisplayPrompt,
+  buildLoopDebateModeratorModelPrompt,
+  buildLoopDebateParticipantDisplayPrompt,
+  buildLoopDebateParticipantModelPrompt,
+  buildLoopDebateParticipantRosterModelPrompt,
+  type LoopDebateParticipantDefinition,
+} from "./loopPromptBuilders";
 
-export type LobsterDebateRunInput = {
+export type LoopDebateRunInput = {
   model?: string;
 };
 
-export type LobsterDebateRunPromptInput = {
+export type LoopDebateRunPromptInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
   model?: string;
 };
 
-export type LobsterDebateRunTarget = {
+export type LoopDebateRunTarget = {
   tabId: string;
   cli: CliName;
   sessionId: string | null;
 };
 
-export type LobsterDebateSessionState = {
+export type LoopDebateSessionState = {
   participants: Partial<Record<string, string>>;
   moderator: string | null;
 };
 
-export type LobsterDebateParticipantRosterResult = {
-  participants: LobsterDebateParticipantDefinition[];
+export type LoopDebateParticipantRosterResult = {
+  participants: LoopDebateParticipantDefinition[];
   summary: string;
   openingSpeakerIds: string[];
   tabId: string;
   sessionId: string | null;
 };
 
-export type LobsterDebateParticipantRunResult = {
-  participant: LobsterDebateParticipantRecord;
+export type LoopDebateParticipantRunResult = {
+  participant: LoopDebateParticipantRecord;
   tabId: string;
   sessionId: string | null;
 };
 
-export type LobsterDebateParticipantBatchRunItem = {
-  participant: LobsterDebateParticipantDefinition;
+export type LoopDebateParticipantBatchRunItem = {
+  participant: LoopDebateParticipantDefinition;
   artifactFile: string;
   artifactText: string | null;
-  result: LobsterDebateParticipantRunResult;
+  result: LoopDebateParticipantRunResult;
 };
 
-export type LobsterDebateModeratorRunResult = {
-  decision: LobsterDebateModeratorDecisionRecord | null;
+export type LoopDebateModeratorRunResult = {
+  decision: LoopDebateModeratorDecisionRecord | null;
   tabId: string;
   sessionId: string | null;
 };
 
-export type LobsterDebateConsensusRunResult = {
+export type LoopDebateConsensusRunResult = {
   tabId: string;
   sessionId: string | null;
 };
 
-export type LobsterDebateRunnerDeps = {
-  appendSystemMessageForLobster: (target: LobsterDebateRunTarget, content: string) => void;
-  buildLobsterDebateConsensusStartedText: (taskId: string, round: number, paths: LobsterDebatePaths) => string;
-  buildLobsterDebateModeratorFinishedText: (
+export type LoopDebateRunnerDeps = {
+  appendSystemMessageForLoop: (target: LoopDebateRunTarget, content: string) => void;
+  buildLoopDebateConsensusStartedText: (taskId: string, round: number, paths: LoopDebatePaths) => string;
+  buildLoopDebateModeratorFinishedText: (
     taskId: string,
     round: number,
-    decision: LobsterDebateModeratorDecisionRecord,
+    decision: LoopDebateModeratorDecisionRecord,
     maxDialogueTurns: number,
-    participants: readonly LobsterDebateParticipantDefinition[],
+    participants: readonly LoopDebateParticipantDefinition[],
   ) => string;
-  buildLobsterDebateModeratorStartedText: (taskId: string, round: number, dialogueTurn: number, artifactFile: string) => string;
-  buildLobsterDebateParticipantFinishedText: (
+  buildLoopDebateModeratorStartedText: (taskId: string, round: number, dialogueTurn: number, artifactFile: string) => string;
+  buildLoopDebateParticipantFinishedText: (
     taskId: string,
     round: number,
     dialogueTurn: number,
-    participant: LobsterDebateParticipantRecord,
+    participant: LoopDebateParticipantRecord,
     finalPass: boolean,
   ) => string;
-  buildLobsterDebateParticipantRosterFailedText: (taskId: string, round: number, reasons: string[], paths: LobsterDebatePaths) => string;
-  buildLobsterDebateParticipantRosterFinishedText: (
+  buildLoopDebateParticipantRosterFailedText: (taskId: string, round: number, reasons: string[], paths: LoopDebatePaths) => string;
+  buildLoopDebateParticipantRosterFinishedText: (
     taskId: string,
     round: number,
-    participants: readonly LobsterDebateParticipantDefinition[],
-    paths: LobsterDebatePaths,
+    participants: readonly LoopDebateParticipantDefinition[],
+    paths: LoopDebatePaths,
   ) => string;
-  buildLobsterDebateParticipantRosterStartedText: (taskId: string, round: number, paths: LobsterDebatePaths) => string;
-  buildLobsterDebateParticipantStartedText: (
+  buildLoopDebateParticipantRosterStartedText: (taskId: string, round: number, paths: LoopDebatePaths) => string;
+  buildLoopDebateParticipantStartedText: (
     taskId: string,
     round: number,
     dialogueTurn: number,
@@ -109,110 +109,110 @@ export type LobsterDebateRunnerDeps = {
     artifactFile: string,
     finalPass: boolean,
   ) => string;
-  createLobsterSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null }) => LobsterDebateRunTarget;
+  createLoopSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null }) => LoopDebateRunTarget;
   errorToMessage: (error: unknown) => string;
-  getExistingLobsterDebateRoundStartedAt: (task: LobsterTaskRecord, round: number, debateRound: number) => number | null;
+  getExistingLoopDebateRoundStartedAt: (task: LoopTaskRecord, round: number, debateRound: number) => number | null;
   logError: (event: string, payload?: unknown) => Promise<void>;
-  readLobsterDebateModeratorDecisionArtifact: (
+  readLoopDebateModeratorDecisionArtifact: (
     artifactFile: string,
     dialogueTurn: number,
     participantIds: readonly string[],
-  ) => LobsterDebateModeratorDecisionRecord | null;
-  readLobsterDebateParticipantArtifact: (
-    paths: LobsterDebatePaths,
-    participant: LobsterDebateParticipantDefinition,
+  ) => LoopDebateModeratorDecisionRecord | null;
+  readLoopDebateParticipantArtifact: (
+    paths: LoopDebatePaths,
+    participant: LoopDebateParticipantDefinition,
     model: string | undefined,
-  ) => LobsterDebateParticipantRecord;
-  readLobsterDebateParticipantRosterArtifact: (
+  ) => LoopDebateParticipantRecord;
+  readLoopDebateParticipantRosterArtifact: (
     artifactFile: string,
-  ) => { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] };
-  readLobsterDebateParticipantTurnArtifact: (
-    participant: LobsterDebateParticipantDefinition,
+  ) => { valid: true; participants: LoopDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] };
+  readLoopDebateParticipantTurnArtifact: (
+    participant: LoopDebateParticipantDefinition,
     artifactFile: string,
     model: string | undefined,
-  ) => LobsterDebateParticipantRecord;
+  ) => LoopDebateParticipantRecord;
   readTextFileIfNonEmpty: (filePath: string) => string | null;
-  refreshOpenLobsterDebateChatPanelForTask: (taskId: string) => void;
-  resolvePromptRunTargetSessionId: (target: LobsterDebateRunTarget) => string | null;
-  runPrompt: (input: LobsterDebateRunPromptInput, options: { targetTabId?: string | null }) => Promise<void>;
-  updateLobsterDebateActiveSpeakerRecord: (
+  refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
+  resolvePromptRunTargetSessionId: (target: LoopDebateRunTarget) => string | null;
+  runPrompt: (input: LoopDebateRunPromptInput, options: { targetTabId?: string | null }) => Promise<void>;
+  updateLoopDebateActiveSpeakerRecord: (
     taskId: string,
     round: number,
     debateRound: number,
     startedAt: number,
-    paths: LobsterDebatePaths,
-    activeSpeaker: LobsterDebateActiveSpeakerRecord,
+    paths: LoopDebatePaths,
+    activeSpeaker: LoopDebateActiveSpeakerRecord,
   ) => void;
-  updateLobsterDebateModeratorDecisionRecord: (
+  updateLoopDebateModeratorDecisionRecord: (
     taskId: string,
     round: number,
     debateRound: number,
-    decision: LobsterDebateModeratorDecisionRecord,
+    decision: LoopDebateModeratorDecisionRecord,
     startedAt: number,
-    paths: LobsterDebatePaths,
+    paths: LoopDebatePaths,
   ) => void;
-  updateLobsterDebateParticipantRecord: (
+  updateLoopDebateParticipantRecord: (
     taskId: string,
     round: number,
     debateRound: number,
-    participant: LobsterDebateParticipantRecord,
+    participant: LoopDebateParticipantRecord,
     startedAt: number,
     briefFile: string,
     chatFile: string,
-    activeSpeaker?: LobsterDebateActiveSpeakerRecord,
+    activeSpeaker?: LoopDebateActiveSpeakerRecord,
   ) => void;
-  updateLobsterDebateParticipantRosterSessionRecord: (
+  updateLoopDebateParticipantRosterSessionRecord: (
     taskId: string,
     round: number,
     debateRound: number,
     sessionId: string | null,
     startedAt: number,
-    paths: LobsterDebatePaths,
+    paths: LoopDebatePaths,
   ) => void;
 };
 
-function resolveLobsterDebateModel(input: LobsterDebateRunInput): string | undefined {
+function resolveLoopDebateModel(input: LoopDebateRunInput): string | undefined {
   return input.model;
 }
 
-export async function runLobsterDebateParticipantRoster(options: {
-  deps: LobsterDebateRunnerDeps;
-  input: LobsterDebateRunInput;
-  mainTarget: LobsterDebateRunTarget;
-  task: LobsterTaskRecord;
+export async function runLoopDebateParticipantRoster(options: {
+  deps: LoopDebateRunnerDeps;
+  input: LoopDebateRunInput;
+  mainTarget: LoopDebateRunTarget;
+  task: LoopTaskRecord;
   round: number;
   debateRound: number;
-  paths: LobsterDebatePaths;
+  paths: LoopDebatePaths;
   sessionId: string | null;
   startedAt: number;
-}): Promise<(LobsterDebateParticipantRosterResult & { valid: true }) | {
+}): Promise<(LoopDebateParticipantRosterResult & { valid: true }) | {
   valid: false;
   reasons: string[];
   tabId: string;
   sessionId: string | null;
 }> {
   const { deps, input, mainTarget, task, round, debateRound, paths, sessionId, startedAt } = options;
-  const moderatorTarget = deps.createLobsterSubtaskRunTarget(task.cli, { sessionId });
-  deps.updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
+  const moderatorTarget = deps.createLoopSubtaskRunTarget(task.cli, { sessionId });
+  deps.updateLoopDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
     kind: "moderator",
-    id: LOBSTER_DEBATE_MODERATOR_ID,
+    id: LOOP_DEBATE_MODERATOR_ID,
     title: "裁判主持人组队",
     updatedAt: Date.now(),
   });
-  deps.appendSystemMessageForLobster(
+  deps.appendSystemMessageForLoop(
     moderatorTarget,
-    deps.buildLobsterDebateParticipantRosterStartedText(task.id, round, paths)
+    deps.buildLoopDebateParticipantRosterStartedText(task.id, round, paths)
   );
 
   try {
     await deps.runPrompt({
       displayPrompt: `Loop 红蓝对抗第 ${round} 轮裁判主持人组队`,
-      modelPrompt: buildLobsterDebateParticipantRosterModelPrompt(task, round, paths),
+      modelPrompt: buildLoopDebateParticipantRosterModelPrompt(task, round, paths),
       contextTags: [],
-      model: resolveLobsterDebateModel(input),
+      model: resolveLoopDebateModel(input),
     }, { targetTabId: moderatorTarget.tabId });
   } catch (error) {
-    void deps.logError("lobster-debate-participant-roster-run-error", {
+    void deps.logError("loop-debate-participant-roster-run-error", {
       taskId: task.id,
       round,
       error: deps.errorToMessage(error),
@@ -220,8 +220,8 @@ export async function runLobsterDebateParticipantRoster(options: {
   }
 
   const completedSessionId = deps.resolvePromptRunTargetSessionId(moderatorTarget);
-  const parsed = deps.readLobsterDebateParticipantRosterArtifact(paths.participantRosterFile);
-  deps.updateLobsterDebateParticipantRosterSessionRecord(
+  const parsed = deps.readLoopDebateParticipantRosterArtifact(paths.participantRosterFile);
+  deps.updateLoopDebateParticipantRosterSessionRecord(
     task.id,
     round,
     debateRound,
@@ -230,7 +230,7 @@ export async function runLobsterDebateParticipantRoster(options: {
     paths
   );
   if (!parsed.valid) {
-    deps.appendSystemMessageForLobster(mainTarget, deps.buildLobsterDebateParticipantRosterFailedText(task.id, round, parsed.reasons, paths));
+    deps.appendSystemMessageForLoop(mainTarget, deps.buildLoopDebateParticipantRosterFailedText(task.id, round, parsed.reasons, paths));
     return {
       valid: false,
       reasons: parsed.reasons,
@@ -238,9 +238,9 @@ export async function runLobsterDebateParticipantRoster(options: {
       sessionId: completedSessionId,
     };
   }
-  deps.appendSystemMessageForLobster(
+  deps.appendSystemMessageForLoop(
     mainTarget,
-    deps.buildLobsterDebateParticipantRosterFinishedText(task.id, round, parsed.participants, paths)
+    deps.buildLoopDebateParticipantRosterFinishedText(task.id, round, parsed.participants, paths)
   );
   return {
     valid: true,
@@ -252,23 +252,23 @@ export async function runLobsterDebateParticipantRoster(options: {
   };
 }
 
-async function runLobsterDebateParticipant(options: {
-  deps: LobsterDebateRunnerDeps;
-  input: LobsterDebateRunInput;
-  mainTarget: LobsterDebateRunTarget;
-  task: LobsterTaskRecord;
+async function runLoopDebateParticipant(options: {
+  deps: LoopDebateRunnerDeps;
+  input: LoopDebateRunInput;
+  mainTarget: LoopDebateRunTarget;
+  task: LoopTaskRecord;
   round: number;
   debateRound: number;
   dialogueTurn: number;
   maxDialogueTurns: number;
   finalPass: boolean;
-  paths: LobsterDebatePaths;
-  participant: LobsterDebateParticipantDefinition;
+  paths: LoopDebatePaths;
+  participant: LoopDebateParticipantDefinition;
   artifactFile: string;
   sessionId: string | null;
-  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
+  moderatorDecision: LoopDebateModeratorDecisionRecord | null;
   startedAt: number;
-}): Promise<LobsterDebateParticipantRunResult> {
+}): Promise<LoopDebateParticipantRunResult> {
   const {
     deps,
     input,
@@ -286,18 +286,18 @@ async function runLobsterDebateParticipant(options: {
     moderatorDecision,
     startedAt,
   } = options;
-  const participantTarget = deps.createLobsterSubtaskRunTarget(task.cli, { sessionId });
-  const runningRecord: LobsterDebateParticipantRecord = {
+  const participantTarget = deps.createLoopSubtaskRunTarget(task.cli, { sessionId });
+  const runningRecord: LoopDebateParticipantRecord = {
     id: participant.id,
     role: participant.role,
     title: participant.title,
-    model: resolveLobsterDebateModel(input) ?? null,
+    model: resolveLoopDebateModel(input) ?? null,
     status: "running",
     artifactFile,
     sessionId,
     updatedAt: Date.now(),
   };
-  deps.updateLobsterDebateParticipantRecord(
+  deps.updateLoopDebateParticipantRecord(
     task.id,
     round,
     debateRound,
@@ -314,16 +314,16 @@ async function runLobsterDebateParticipant(options: {
       updatedAt: Date.now(),
     }
   );
-  deps.refreshOpenLobsterDebateChatPanelForTask(task.id);
-  deps.appendSystemMessageForLobster(
+  deps.refreshOpenLoopGroupChatPanelForTask(task.id);
+  deps.appendSystemMessageForLoop(
     participantTarget,
-    deps.buildLobsterDebateParticipantStartedText(task.id, round, dialogueTurn, participant.title, artifactFile, finalPass)
+    deps.buildLoopDebateParticipantStartedText(task.id, round, dialogueTurn, participant.title, artifactFile, finalPass)
   );
 
   try {
     await deps.runPrompt({
-      displayPrompt: buildLobsterDebateParticipantDisplayPrompt(round, dialogueTurn, participant.title, finalPass),
-      modelPrompt: buildLobsterDebateParticipantModelPrompt(
+      displayPrompt: buildLoopDebateParticipantDisplayPrompt(round, dialogueTurn, participant.title, finalPass),
+      modelPrompt: buildLoopDebateParticipantModelPrompt(
         task,
         round,
         dialogueTurn,
@@ -335,10 +335,10 @@ async function runLobsterDebateParticipant(options: {
         moderatorDecision
       ),
       contextTags: [],
-      model: resolveLobsterDebateModel(input),
+      model: resolveLoopDebateModel(input),
     }, { targetTabId: participantTarget.tabId });
   } catch (error) {
-    void deps.logError("lobster-debate-participant-run-error", {
+    void deps.logError("loop-debate-participant-run-error", {
       taskId: task.id,
       round,
       participantId: participant.id,
@@ -350,37 +350,37 @@ async function runLobsterDebateParticipant(options: {
   const completedSessionId = deps.resolvePromptRunTargetSessionId(participantTarget);
   const completedRecord = finalPass
     ? {
-        ...deps.readLobsterDebateParticipantArtifact(paths, participant, resolveLobsterDebateModel(input)),
+        ...deps.readLoopDebateParticipantArtifact(paths, participant, resolveLoopDebateModel(input)),
         sessionId: completedSessionId,
       }
     : {
-        ...deps.readLobsterDebateParticipantTurnArtifact(participant, artifactFile, resolveLobsterDebateModel(input)),
+        ...deps.readLoopDebateParticipantTurnArtifact(participant, artifactFile, resolveLoopDebateModel(input)),
         sessionId: completedSessionId,
       };
-  deps.updateLobsterDebateParticipantRecord(task.id, round, debateRound, completedRecord, startedAt, paths.briefFile, paths.chatFile);
-  deps.appendSystemMessageForLobster(
+  deps.updateLoopDebateParticipantRecord(task.id, round, debateRound, completedRecord, startedAt, paths.briefFile, paths.chatFile);
+  deps.appendSystemMessageForLoop(
     mainTarget,
-    deps.buildLobsterDebateParticipantFinishedText(task.id, round, dialogueTurn, completedRecord, finalPass)
+    deps.buildLoopDebateParticipantFinishedText(task.id, round, dialogueTurn, completedRecord, finalPass)
   );
   return { participant: completedRecord, tabId: participantTarget.tabId, sessionId: completedSessionId };
 }
 
-export async function runLobsterDebateParticipantBatch(options: {
-  deps: LobsterDebateRunnerDeps;
-  input: LobsterDebateRunInput;
-  mainTarget: LobsterDebateRunTarget;
-  task: LobsterTaskRecord;
+export async function runLoopDebateParticipantBatch(options: {
+  deps: LoopDebateRunnerDeps;
+  input: LoopDebateRunInput;
+  mainTarget: LoopDebateRunTarget;
+  task: LoopTaskRecord;
   round: number;
   debateRound: number;
   dialogueTurn: number;
   maxDialogueTurns: number;
   finalPass: boolean;
-  paths: LobsterDebatePaths;
-  participants: readonly LobsterDebateParticipantDefinition[];
-  debateSessions: LobsterDebateSessionState;
-  moderatorDecision: LobsterDebateModeratorDecisionRecord | null;
+  paths: LoopDebatePaths;
+  participants: readonly LoopDebateParticipantDefinition[];
+  debateSessions: LoopDebateSessionState;
+  moderatorDecision: LoopDebateModeratorDecisionRecord | null;
   startedAt: number;
-}): Promise<LobsterDebateParticipantBatchRunItem[]> {
+}): Promise<LoopDebateParticipantBatchRunItem[]> {
   const {
     deps,
     input,
@@ -397,11 +397,11 @@ export async function runLobsterDebateParticipantBatch(options: {
     moderatorDecision,
     startedAt,
   } = options;
-  const batchResults = await Promise.all(participants.map(async (participant): Promise<LobsterDebateParticipantBatchRunItem> => {
+  const batchResults = await Promise.all(participants.map(async (participant): Promise<LoopDebateParticipantBatchRunItem> => {
     const artifactFile = finalPass
-      ? buildLobsterDebateParticipantArtifactFile(paths, participant.id)
-      : buildLobsterDebateParticipantTurnArtifactFile(paths, participant.id, dialogueTurn);
-    const result = await runLobsterDebateParticipant({
+      ? buildLoopDebateParticipantArtifactFile(paths, participant.id)
+      : buildLoopDebateParticipantTurnArtifactFile(paths, participant.id, dialogueTurn);
+    const result = await runLoopDebateParticipant({
       deps,
       input,
       mainTarget,
@@ -428,20 +428,20 @@ export async function runLobsterDebateParticipantBatch(options: {
   return batchResults;
 }
 
-export async function runLobsterDebateModerator(options: {
-  deps: LobsterDebateRunnerDeps;
-  input: LobsterDebateRunInput;
-  mainTarget: LobsterDebateRunTarget;
-  task: LobsterTaskRecord;
+export async function runLoopDebateModerator(options: {
+  deps: LoopDebateRunnerDeps;
+  input: LoopDebateRunInput;
+  mainTarget: LoopDebateRunTarget;
+  task: LoopTaskRecord;
   round: number;
   debateRound: number;
   dialogueTurn: number;
   maxDialogueTurns: number;
-  paths: LobsterDebatePaths;
-  participants: readonly LobsterDebateParticipantDefinition[];
+  paths: LoopDebatePaths;
+  participants: readonly LoopDebateParticipantDefinition[];
   sessionId: string | null;
   startedAt: number;
-}): Promise<LobsterDebateModeratorRunResult> {
+}): Promise<LoopDebateModeratorRunResult> {
   const {
     deps,
     input,
@@ -456,24 +456,24 @@ export async function runLobsterDebateModerator(options: {
     sessionId,
     startedAt,
   } = options;
-  const moderatorTarget = deps.createLobsterSubtaskRunTarget(task.cli, { sessionId });
-  const artifactFile = buildLobsterDebateModeratorArtifactFile(paths, dialogueTurn);
-  deps.updateLobsterDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
+  const moderatorTarget = deps.createLoopSubtaskRunTarget(task.cli, { sessionId });
+  const artifactFile = buildLoopDebateModeratorArtifactFile(paths, dialogueTurn);
+  deps.updateLoopDebateActiveSpeakerRecord(task.id, round, debateRound, startedAt, paths, {
     kind: "moderator",
-    id: LOBSTER_DEBATE_MODERATOR_ID,
-    title: LOBSTER_DEBATE_MODERATOR_TITLE,
+    id: LOOP_DEBATE_MODERATOR_ID,
+    title: LOOP_DEBATE_MODERATOR_TITLE,
     dialogueTurn,
     updatedAt: Date.now(),
   });
-  deps.appendSystemMessageForLobster(
+  deps.appendSystemMessageForLoop(
     moderatorTarget,
-    deps.buildLobsterDebateModeratorStartedText(task.id, round, dialogueTurn, artifactFile)
+    deps.buildLoopDebateModeratorStartedText(task.id, round, dialogueTurn, artifactFile)
   );
 
   try {
     await deps.runPrompt({
-      displayPrompt: buildLobsterDebateModeratorDisplayPrompt(round, dialogueTurn, maxDialogueTurns),
-      modelPrompt: buildLobsterDebateModeratorModelPrompt(
+      displayPrompt: buildLoopDebateModeratorDisplayPrompt(round, dialogueTurn, maxDialogueTurns),
+      modelPrompt: buildLoopDebateModeratorModelPrompt(
         task,
         round,
         dialogueTurn,
@@ -482,10 +482,10 @@ export async function runLobsterDebateModerator(options: {
         artifactFile
       ),
       contextTags: [],
-      model: resolveLobsterDebateModel(input),
+      model: resolveLoopDebateModel(input),
     }, { targetTabId: moderatorTarget.tabId });
   } catch (error) {
-    void deps.logError("lobster-debate-moderator-run-error", {
+    void deps.logError("loop-debate-moderator-run-error", {
       taskId: task.id,
       round,
       dialogueTurn,
@@ -494,7 +494,7 @@ export async function runLobsterDebateModerator(options: {
   }
 
   const completedSessionId = deps.resolvePromptRunTargetSessionId(moderatorTarget);
-  const parsedDecision = deps.readLobsterDebateModeratorDecisionArtifact(
+  const parsedDecision = deps.readLoopDebateModeratorDecisionArtifact(
     artifactFile,
     dialogueTurn,
     participants.map((participant) => participant.id),
@@ -503,26 +503,26 @@ export async function runLobsterDebateModerator(options: {
     ? { ...parsedDecision, sessionId: completedSessionId }
     : null;
   if (decision) {
-    deps.updateLobsterDebateModeratorDecisionRecord(task.id, round, debateRound, decision, startedAt, paths);
-    deps.appendSystemMessageForLobster(
+    deps.updateLoopDebateModeratorDecisionRecord(task.id, round, debateRound, decision, startedAt, paths);
+    deps.appendSystemMessageForLoop(
       mainTarget,
-      deps.buildLobsterDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns, participants)
+      deps.buildLoopDebateModeratorFinishedText(task.id, round, decision, maxDialogueTurns, participants)
     );
   }
   return { decision, tabId: moderatorTarget.tabId, sessionId: completedSessionId };
 }
 
-export async function runLobsterDebateConsensusSummary(options: {
-  deps: LobsterDebateRunnerDeps;
-  input: LobsterDebateRunInput;
-  target: LobsterDebateRunTarget;
-  task: LobsterTaskRecord;
+export async function runLoopDebateConsensusSummary(options: {
+  deps: LoopDebateRunnerDeps;
+  input: LoopDebateRunInput;
+  target: LoopDebateRunTarget;
+  task: LoopTaskRecord;
   round: number;
   debateRound: number;
-  paths: LobsterDebatePaths;
-  participants: LobsterDebateParticipantRecord[];
+  paths: LoopDebatePaths;
+  participants: LoopDebateParticipantRecord[];
   compactSkillCatalogSection?: string;
-}): Promise<LobsterDebateConsensusRunResult> {
+}): Promise<LoopDebateConsensusRunResult> {
   const {
     deps,
     input,
@@ -533,12 +533,12 @@ export async function runLobsterDebateConsensusSummary(options: {
     participants,
     compactSkillCatalogSection,
   } = options;
-  const consensusTarget = deps.createLobsterSubtaskRunTarget(task.cli);
-  deps.updateLobsterDebateActiveSpeakerRecord(
+  const consensusTarget = deps.createLoopSubtaskRunTarget(task.cli);
+  deps.updateLoopDebateActiveSpeakerRecord(
     task.id,
     round,
     debateRound,
-    deps.getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
+    deps.getExistingLoopDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
     paths,
     {
       kind: "consensus",
@@ -547,11 +547,11 @@ export async function runLobsterDebateConsensusSummary(options: {
       updatedAt: Date.now(),
     }
   );
-  deps.appendSystemMessageForLobster(consensusTarget, deps.buildLobsterDebateConsensusStartedText(task.id, round, paths));
+  deps.appendSystemMessageForLoop(consensusTarget, deps.buildLoopDebateConsensusStartedText(task.id, round, paths));
   try {
     await deps.runPrompt({
       displayPrompt: `Loop 红蓝对抗共识汇总：第 ${round} 轮`,
-      modelPrompt: buildLobsterDebateConsensusModelPrompt(
+      modelPrompt: buildLoopDebateConsensusModelPrompt(
         task,
         round,
         paths,
@@ -559,10 +559,10 @@ export async function runLobsterDebateConsensusSummary(options: {
         compactSkillCatalogSection,
       ),
       contextTags: [],
-      model: resolveLobsterDebateModel(input),
+      model: resolveLoopDebateModel(input),
     }, { targetTabId: consensusTarget.tabId });
   } catch (error) {
-    void deps.logError("lobster-debate-consensus-run-error", {
+    void deps.logError("loop-debate-consensus-run-error", {
       taskId: task.id,
       round,
       error: deps.errorToMessage(error),

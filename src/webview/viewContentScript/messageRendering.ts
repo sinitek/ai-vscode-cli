@@ -122,7 +122,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function normalizeInteractiveMode(value) {
-        if (value === "lobster") {
+        if (value === "loop") {
           return value;
         }
         return "coding";
@@ -135,8 +135,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (message.taskRole === "main") {
           return t("taskRoleMain");
         }
-        const round = typeof message.lobsterRound === "number" && Number.isFinite(message.lobsterRound)
-          ? Math.floor(message.lobsterRound)
+        const round = typeof message.loopRound === "number" && Number.isFinite(message.loopRound)
+          ? Math.floor(message.loopRound)
           : 0;
         if (round > 0) {
           return t("taskRoleSubtaskWithRound", { round });
@@ -179,8 +179,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!action || typeof action !== "object") {
           return null;
         }
-        if (action.type === "openLobsterDebateChat") {
-          const taskId = normalizeLobsterTaskId(action.taskId);
+        if (action.type === "openLoopGroupChat") {
+          const taskId = normalizeLoopTaskId(action.taskId);
           if (!taskId) {
             return null;
           }
@@ -189,9 +189,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             : "";
           const label = typeof action.label === "string" && action.label.trim()
             ? action.label.trim()
-            : t("openLobsterDebateChatAction");
+            : t("openLoopGroupChatAction");
           return {
-            type: "openLobsterDebateChat",
+            type: "openLoopGroupChat",
             taskId,
             roundKey,
             label,
@@ -208,11 +208,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function handleMessageAction(action) {
-        if (!action || action.type !== "openLobsterDebateChat" || !action.taskId) {
+        if (!action || action.type !== "openLoopGroupChat" || !action.taskId) {
           return;
         }
         vscode.postMessage({
-          type: "openLobsterDebateChat",
+          type: "openLoopGroupChat",
           taskId: action.taskId,
           roundKey: action.roundKey || undefined,
         });
@@ -230,8 +230,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           button.type = "button";
           button.className = "message-action-link";
           button.textContent = action.label;
-          button.title = action.type === "openLobsterDebateChat"
-            ? t("openLobsterDebateChatActionTitle")
+          button.title = action.type === "openLoopGroupChat"
+            ? t("openLoopGroupChatActionTitle")
             : action.label;
           button.addEventListener("click", () => {
             handleMessageAction(action);
@@ -369,143 +369,143 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return isConversationTabBusy(activeTabId);
       }
 
-      function normalizeLobsterTaskRole(value) {
+      function normalizeLoopTaskRole(value) {
         return value === "main" || value === "subtask" ? value : "";
       }
 
-      function normalizeLobsterTaskId(value) {
+      function normalizeLoopTaskId(value) {
         if (typeof value !== "string") {
           return "";
         }
         return value.trim();
       }
 
-      function setLobsterMetaForTab(tabId, role, taskId) {
+      function setLoopMetaForTab(tabId, role, taskId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
         }
-        const normalizedRole = normalizeLobsterTaskRole(role);
-        const normalizedTaskId = normalizeLobsterTaskId(taskId);
-        const hadMeta = Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId);
-        const previous = hadMeta ? lobsterMetaByTabId[tabId] : undefined;
+        const normalizedRole = normalizeLoopTaskRole(role);
+        const normalizedTaskId = normalizeLoopTaskId(taskId);
+        const hadMeta = Object.prototype.hasOwnProperty.call(loopMetaByTabId, tabId);
+        const previous = hadMeta ? loopMetaByTabId[tabId] : undefined;
         if (!normalizedRole || !normalizedTaskId) {
           if (!hadMeta) {
             return false;
           }
-          delete lobsterMetaByTabId[tabId];
+          delete loopMetaByTabId[tabId];
           return true;
         }
         if (
           previous
           && previous !== null
           && previous.taskRole === normalizedRole
-          && previous.lobsterTaskId === normalizedTaskId
+          && previous.loopTaskId === normalizedTaskId
         ) {
           return false;
         }
-        lobsterMetaByTabId[tabId] = {
+        loopMetaByTabId[tabId] = {
           taskRole: normalizedRole,
-          lobsterTaskId: normalizedTaskId,
+          loopTaskId: normalizedTaskId,
         };
         return true;
       }
 
-      function overrideLobsterMetaAsCleared(tabId) {
+      function overrideLoopMetaAsCleared(tabId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
         }
-        if (Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId) && lobsterMetaByTabId[tabId] === null) {
+        if (Object.prototype.hasOwnProperty.call(loopMetaByTabId, tabId) && loopMetaByTabId[tabId] === null) {
           return false;
         }
-        lobsterMetaByTabId[tabId] = null;
+        loopMetaByTabId[tabId] = null;
         return true;
       }
 
-      function updateLobsterMetaForTabFromSummary(tab) {
+      function updateLoopMetaForTabFromSummary(tab) {
         if (!tab || !tab.id) {
           return false;
         }
         if (
-          Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tab.id)
-          && lobsterMetaByTabId[tab.id] === null
+          Object.prototype.hasOwnProperty.call(loopMetaByTabId, tab.id)
+          && loopMetaByTabId[tab.id] === null
         ) {
           // Keep local explicit clear marker to avoid stale backend state re-adding prefix.
           return false;
         }
-        const taskRole = normalizeLobsterTaskRole(tab.lobsterTaskRole);
-        const lobsterTaskId = normalizeLobsterTaskId(tab.lobsterTaskId);
-        if (!taskRole || !lobsterTaskId) {
+        const taskRole = normalizeLoopTaskRole(tab.loopTaskRole);
+        const loopTaskId = normalizeLoopTaskId(tab.loopTaskId);
+        if (!taskRole || !loopTaskId) {
           return false;
         }
-        return setLobsterMetaForTab(tab.id, taskRole, lobsterTaskId);
+        return setLoopMetaForTab(tab.id, taskRole, loopTaskId);
       }
 
-      function updateLobsterMetaForTabFromMessage(tabId, message) {
+      function updateLoopMetaForTabFromMessage(tabId, message) {
         if (!tabId || !message || typeof message !== "object") {
           return false;
         }
-        const taskRole = normalizeLobsterTaskRole(message.taskRole);
-        const lobsterTaskId = normalizeLobsterTaskId(message.lobsterTaskId);
-        if (!taskRole || !lobsterTaskId) {
+        const taskRole = normalizeLoopTaskRole(message.taskRole);
+        const loopTaskId = normalizeLoopTaskId(message.loopTaskId);
+        if (!taskRole || !loopTaskId) {
           if (message.role === "user" && String(message.content || "").trim()) {
-            return overrideLobsterMetaAsCleared(tabId);
+            return overrideLoopMetaAsCleared(tabId);
           }
           return false;
         }
-        return setLobsterMetaForTab(tabId, taskRole, lobsterTaskId);
+        return setLoopMetaForTab(tabId, taskRole, loopTaskId);
       }
 
-      function updateLobsterMetaForTabFromMessages(tabId, messages) {
+      function updateLoopMetaForTabFromMessages(tabId, messages) {
         if (!tabId || !Array.isArray(messages)) {
           return false;
         }
         for (let index = messages.length - 1; index >= 0; index -= 1) {
           const message = messages[index];
-          const role = normalizeLobsterTaskRole(message && message.taskRole);
-          const taskId = normalizeLobsterTaskId(message && message.lobsterTaskId);
+          const role = normalizeLoopTaskRole(message && message.taskRole);
+          const taskId = normalizeLoopTaskId(message && message.loopTaskId);
           if (!role || !taskId) {
             if (message && message.role === "user" && String(message.content || "").trim()) {
-              return overrideLobsterMetaAsCleared(tabId);
+              return overrideLoopMetaAsCleared(tabId);
             }
             continue;
           }
-          return setLobsterMetaForTab(tabId, role, taskId);
+          return setLoopMetaForTab(tabId, role, taskId);
         }
-        if (!Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId)) {
+        if (!Object.prototype.hasOwnProperty.call(loopMetaByTabId, tabId)) {
           return false;
         }
-        delete lobsterMetaByTabId[tabId];
+        delete loopMetaByTabId[tabId];
         return true;
       }
 
-      function getLobsterMetaForTabSummary(tab) {
+      function getLoopMetaForTabSummary(tab) {
         const tabId = tab && typeof tab.id === "string" ? tab.id : "";
-        if (tabId && Object.prototype.hasOwnProperty.call(lobsterMetaByTabId, tabId)) {
-          const fromRuntime = lobsterMetaByTabId[tabId];
+        if (tabId && Object.prototype.hasOwnProperty.call(loopMetaByTabId, tabId)) {
+          const fromRuntime = loopMetaByTabId[tabId];
           if (fromRuntime === null) {
             return null;
           }
-          if (fromRuntime && fromRuntime.taskRole && fromRuntime.lobsterTaskId) {
+          if (fromRuntime && fromRuntime.taskRole && fromRuntime.loopTaskId) {
             return fromRuntime;
           }
         }
-        const taskRole = normalizeLobsterTaskRole(tab && tab.lobsterTaskRole);
-        const lobsterTaskId = normalizeLobsterTaskId(tab && tab.lobsterTaskId);
-        if (!taskRole || !lobsterTaskId) {
+        const taskRole = normalizeLoopTaskRole(tab && tab.loopTaskRole);
+        const loopTaskId = normalizeLoopTaskId(tab && tab.loopTaskId);
+        if (!taskRole || !loopTaskId) {
           return null;
         }
         return {
           taskRole,
-          lobsterTaskId,
+          loopTaskId,
         };
       }
 
-      function isLobsterMainTabCloseLocked(tab) {
-        const meta = getLobsterMetaForTabSummary(tab);
-        if (!meta || meta.taskRole !== "main" || !meta.lobsterTaskId) {
+      function isLoopMainTabCloseLocked(tab) {
+        const meta = getLoopMetaForTabSummary(tab);
+        if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
           return false;
         }
-        if (tab && tab.lobsterTaskRunning === true) {
+        if (tab && tab.loopTaskRunning === true) {
           return true;
         }
         if (tab && isTabRunning(tab.id)) {
@@ -519,21 +519,21 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           if (!candidate || !isTabRunning(candidate.id)) {
             continue;
           }
-          const candidateMeta = getLobsterMetaForTabSummary(candidate);
-          if (candidateMeta && candidateMeta.lobsterTaskId === meta.lobsterTaskId) {
+          const candidateMeta = getLoopMetaForTabSummary(candidate);
+          if (candidateMeta && candidateMeta.loopTaskId === meta.loopTaskId) {
             return true;
           }
         }
         return false;
       }
 
-      function isLobsterMainTab(tab) {
-        const meta = getLobsterMetaForTabSummary(tab);
+      function isLoopMainTab(tab) {
+        const meta = getLoopMetaForTabSummary(tab);
         return Boolean(meta && meta.taskRole === "main");
       }
 
       function formatConversationTabLabel(tab, baseLabel) {
-        const meta = getLobsterMetaForTabSummary(tab);
+        const meta = getLoopMetaForTabSummary(tab);
         if (!meta) {
           return baseLabel;
         }
@@ -548,7 +548,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function shouldForceFollowLatestMessagesForActiveTab() {
         const activeTab = getConversationTabSummary(getActiveConversationTabId());
-        return isLobsterMainTab(activeTab) && isLobsterMainTabCloseLocked(activeTab);
+        return isLoopMainTab(activeTab) && isLoopMainTabCloseLocked(activeTab);
       }
 
       function shouldFollowLatestMessagesForActiveTab() {
@@ -556,9 +556,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function resolveAutoInteractiveModeForTab(tab) {
-        const meta = getLobsterMetaForTabSummary(tab);
+        const meta = getLoopMetaForTabSummary(tab);
         if (meta && meta.taskRole === "main") {
-          return "lobster";
+          return "loop";
         }
         return "coding";
       }
@@ -589,8 +589,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           && (
             isTabRunning(tab.id)
             || (
-              isLobsterMainTab(tab)
-              && (tab.lobsterTaskRunning === true || tab.lobsterTaskStatus === "running")
+              isLoopMainTab(tab)
+              && (tab.loopTaskRunning === true || tab.loopTaskStatus === "running")
             )
           )
         );
@@ -598,12 +598,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function isConversationTabBusy(tabId) {
         const tab = getConversationTabSummary(tabId);
-        return isConversationTabRunning(tab) || isLobsterMainTabCloseLocked(tab);
+        return isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
       }
 
-      function isLobsterMainConversationTabRunning(tabId) {
+      function isLoopMainConversationTabRunning(tabId) {
         const tab = getConversationTabSummary(tabId);
-        return isLobsterMainTab(tab) && isConversationTabBusy(tabId);
+        return isLoopMainTab(tab) && isConversationTabBusy(tabId);
       }
 
       function isTabErrored(tabId) {
@@ -819,7 +819,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             closeButton.textContent = "×";
             closeButton.title = t("conversationTabCloseAria", { label: labelText });
             closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-            closeButton.disabled = isConversationTabRunning(tab) || isLobsterMainTabCloseLocked(tab);
+            closeButton.disabled = isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
             closeButton.addEventListener("click", (event) => {
               event.preventDefault();
               event.stopPropagation();

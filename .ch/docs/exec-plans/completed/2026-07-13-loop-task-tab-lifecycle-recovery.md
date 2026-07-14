@@ -58,8 +58,8 @@ Loop 任务 Tab 在部分终止或状态不同步场景下仍会被关闭锁定�
 
 ## 测试与清单同步
 
-- 单元测试新增/更新：更新 `conversationTabLock.test.ts`，覆盖运行状态收敛后的 Tab 摘要与重置请求不再乐观清空；更新 `lobsterDebate.test.ts`，覆盖无运行所有权的持久化 `running` 记录识别。
-- 单元自测结果：`npm run build` 通过；`node --test dist/test/conversationTabLock.test.js dist/test/lobsterDebate.test.js dist/test/sessionMessageActions.test.js` 63/63 通过；`git diff --check` 通过。
+- 单元测试新增/更新：更新 `conversationTabLock.test.ts`，覆盖运行状态收敛后的 Tab 摘要与重置请求不再乐观清空；更新 `loopDebate.test.ts`，覆盖无运行所有权的持久化 `running` 记录识别。
+- 单元自测结果：`npm run build` 通过；`node --test dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/sessionMessageActions.test.js` 63/63 通过；`git diff --check` 通过。
 - 失败处理记录：首次最小测试命令在构建产物尚未可见时报告缺少 `dist/test/conversationTabLock.test.js`；确认当前构建目录后重跑通过，未发现实现或测试断言缺陷。
 - 功能清单：已新增“Loop 任务 Tab 状态收敛与会话重置一致性”条目。
 - 相关文档同步：已更新 Loop 运行时设计、能力规格与 `PITFALLS.md`；CodeGraph 已同步并复核关键调用链。
@@ -79,4 +79,4 @@ Loop 任务 Tab 在部分终止或状态不同步场景下仍会被关闭锁定�
 
 ## 当前结论
 
-修复完成。`runLobsterPrompt` 现在显式维护 Loop 主编排所有权并在未捕获异常时将仍在运行的任务写入错误终态；Tab 状态构建发现持久化 `running` 已无任何当前运行所有权时，会将任务及其活跃子任务/辩论状态收敛为 `stopped`，从而解除关闭和重置锁。Webview 重置只发送请求，真实的新空白 Tab 和消息状态由扩展端成功后的回推建立，不再出现旧会话被暂时隐藏后又恢复的假成功。构建、63 条相关测试、差异检查和 CodeGraph 调用链复核均通过。
+修复完成。`runLoopPrompt` 现在显式维护 Loop 主编排所有权并在未捕获异常时将仍在运行的任务写入错误终态；Tab 状态构建发现持久化 `running` 已无任何当前运行所有权时，会将任务及其活跃子任务/辩论状态收敛为 `stopped`，从而解除关闭和重置锁。Webview 重置只发送请求，真实的新空白 Tab 和消息状态由扩展端成功后的回推建立，不再出现旧会话被暂时隐藏后又恢复的假成功。构建、63 条相关测试、差异检查和 CodeGraph 调用链复核均通过。

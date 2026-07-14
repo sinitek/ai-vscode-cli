@@ -1,5 +1,5 @@
 import { supportsCliManagedModelSelection } from "./cli/modelArgs";
-import { normalizeLobsterExecutionMode } from "./cli/types";
+import { normalizeLoopExecutionMode } from "./cli/types";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { PanelMessage } from "./webview/types";
@@ -48,10 +48,10 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key.startsWith("lobsterExecutionMode.")) {
-    const cliValue = message.key.slice("lobsterExecutionMode.".length);
+  if (message.key.startsWith("loopExecutionMode.")) {
+    const cliValue = message.key.slice("loopExecutionMode.".length);
     if (deps.isCliName(cliValue)) {
-      deps.setWorkspaceLobsterExecutionModeForCli(cliValue, normalizeLobsterExecutionMode(message.value));
+      deps.setWorkspaceLoopExecutionModeForCli(cliValue, normalizeLoopExecutionMode(message.value));
     }
     await deps.postPanelState();
     return;
@@ -91,19 +91,19 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "lobsterMaxRounds") {
-    deps.updateStoredToolSettings({ lobsterMaxRounds: deps.normalizeLobsterMaxRounds(message.value) });
-    if ("lobsterMaxRounds" in workspaceSettings) {
-      delete workspaceSettings.lobsterMaxRounds;
+  if (message.key === "loopMaxRounds") {
+    deps.updateStoredToolSettings({ loopMaxRounds: deps.normalizeLoopMaxRounds(message.value) });
+    if ("loopMaxRounds" in workspaceSettings) {
+      delete workspaceSettings.loopMaxRounds;
       deps.saveWorkspaceSettings(workspaceSettings);
     }
     await deps.postPanelState();
     return;
   }
-  if (message.key === "lobsterAutoCloseSubtaskTabs") {
-    deps.updateStoredToolSettings({ lobsterAutoCloseSubtaskTabs: Boolean(message.value) });
-    if ("lobsterAutoCloseSubtaskTabs" in workspaceSettings) {
-      delete workspaceSettings.lobsterAutoCloseSubtaskTabs;
+  if (message.key === "loopAutoCloseSubtaskTabs") {
+    deps.updateStoredToolSettings({ loopAutoCloseSubtaskTabs: Boolean(message.value) });
+    if ("loopAutoCloseSubtaskTabs" in workspaceSettings) {
+      delete workspaceSettings.loopAutoCloseSubtaskTabs;
       deps.saveWorkspaceSettings(workspaceSettings);
     }
     await deps.postPanelState();
@@ -184,23 +184,23 @@ export async function handleSendPromptMessage(
   }
 
   const promptTargetTabId = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
-  const lobsterSubtaskContext = deps.resolveLobsterSubtaskConversationContext(targetCli, promptTargetTabId);
-  const isLobsterSubtaskContinuation = Boolean(lobsterSubtaskContext);
+  const loopSubtaskContext = deps.resolveLoopSubtaskConversationContext(targetCli, promptTargetTabId);
+  const isLoopSubtaskContinuation = Boolean(loopSubtaskContext);
   const requestedInteractiveMode = deps.isInteractiveMode(message.interactiveMode)
     ? deps.normalizeVisibleInteractiveMode(message.interactiveMode)
     : undefined;
-  const effectiveInteractiveMode = isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster"
+  const effectiveInteractiveMode = isLoopSubtaskContinuation && requestedInteractiveMode === "loop"
     ? "coding"
     : requestedInteractiveMode;
 
   if (deps.isInteractiveMode(effectiveInteractiveMode)) {
     deps.setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
   }
-  const lobsterExecutionMode = effectiveInteractiveMode === "lobster"
-    ? normalizeLobsterExecutionMode(
-        Object.prototype.hasOwnProperty.call(message, "lobsterExecutionMode")
-          ? message.lobsterExecutionMode
-          : deps.getWorkspaceLobsterExecutionMode(targetCli)
+  const loopExecutionMode = effectiveInteractiveMode === "loop"
+    ? normalizeLoopExecutionMode(
+        Object.prototype.hasOwnProperty.call(message, "loopExecutionMode")
+          ? message.loopExecutionMode
+          : deps.getWorkspaceLoopExecutionMode(targetCli)
       )
     : undefined;
   const contextBuild = deps.buildPromptWithAutoContext(trimmed, message.contextOptions);
@@ -222,30 +222,30 @@ export async function handleSendPromptMessage(
     model: requestedModel || undefined,
     imagePaths: imagePaths.length ? imagePaths : undefined,
   };
-  if (lobsterExecutionMode) {
-    promptInput.lobsterExecutionMode = lobsterExecutionMode;
+  if (loopExecutionMode) {
+    promptInput.loopExecutionMode = loopExecutionMode;
   }
-  if (lobsterSubtaskContext) {
+  if (loopSubtaskContext) {
     promptInput.taskRole = "subtask";
-    promptInput.lobsterTaskId = lobsterSubtaskContext.taskId;
-    promptInput.lobsterRound = lobsterSubtaskContext.round;
-    promptInput.lobsterSubtaskId = lobsterSubtaskContext.subtaskId;
+    promptInput.loopTaskId = loopSubtaskContext.taskId;
+    promptInput.loopRound = loopSubtaskContext.round;
+    promptInput.loopSubtaskId = loopSubtaskContext.subtaskId;
   }
-  const shouldRunLobster = effectiveInteractiveMode === "lobster";
-  const lobsterResumeTask = shouldRunLobster
-    ? deps.resolveLobsterResumeTaskFromPrompt(trimmed, promptTargetTabId)
+  const shouldRunLoop = effectiveInteractiveMode === "loop";
+  const loopResumeTask = shouldRunLoop
+    ? deps.resolveLoopResumeTaskFromPrompt(trimmed, promptTargetTabId)
     : null;
-  const lobsterResumeRequested = shouldRunLobster && deps.isLobsterResumePrompt(trimmed);
-  const previousSubtaskRunEndedAt = lobsterSubtaskContext
-    ? (deps.getLatestLobsterRoundRunRecord(
-        lobsterSubtaskContext.taskId,
-        lobsterSubtaskContext.round,
+  const loopResumeRequested = shouldRunLoop && deps.isLoopResumePrompt(trimmed);
+  const previousSubtaskRunEndedAt = loopSubtaskContext
+    ? (deps.getLatestLoopRoundRunRecord(
+        loopSubtaskContext.taskId,
+        loopSubtaskContext.round,
         "subtask",
-        lobsterSubtaskContext.subtaskId
+        loopSubtaskContext.subtaskId
       )?.endedAt ?? 0)
     : 0;
-  if (isLobsterSubtaskContinuation && requestedInteractiveMode === "lobster") {
-    void logInfo("lobster-subtask-manual-continue-forced-coding", {
+  if (isLoopSubtaskContinuation && requestedInteractiveMode === "loop") {
+    void logInfo("loop-subtask-manual-continue-forced-coding", {
       cli: targetCli,
       tabId: promptTargetTabId,
     });
@@ -256,16 +256,16 @@ export async function handleSendPromptMessage(
   const preparedPromptInput = promptRunTarget
     ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget)
     : promptInput;
-  if (shouldRunLobster) {
-    await deps.runLobsterPrompt(preparedPromptInput, {
+  if (shouldRunLoop) {
+    await deps.runLoopPrompt(preparedPromptInput, {
       targetTabId: promptTargetTabId,
-      resumeTaskId: lobsterResumeTask?.id ?? null,
-      resumeRequested: lobsterResumeRequested,
+      resumeTaskId: loopResumeTask?.id ?? null,
+      resumeRequested: loopResumeRequested,
     });
   } else {
     await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
-    if (lobsterSubtaskContext && promptTargetTabId) {
-      await deps.maybeWakeLobsterMainAfterSubtaskContinuation(lobsterSubtaskContext, {
+    if (loopSubtaskContext && promptTargetTabId) {
+      await deps.maybeWakeLoopMainAfterSubtaskContinuation(loopSubtaskContext, {
         tabId: promptTargetTabId,
         previousRunEndedAt: previousSubtaskRunEndedAt,
         model: preparedPromptInput.model,

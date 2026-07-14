@@ -9,7 +9,7 @@ type OpenCodeAssistantKind = "normal" | "thinking";
 
 export type OpenCodeTabStreamMetadata = Pick<
   ChatMessage,
-  "taskRole" | "lobsterTaskId" | "lobsterRound" | "lobsterSubtaskId"
+  "taskRole" | "loopTaskId" | "loopRound" | "loopSubtaskId"
 >;
 
 export type OpenCodeTabStreamState = {

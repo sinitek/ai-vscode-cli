@@ -48,7 +48,7 @@ Loop 当前沿用“主任务模型 / 子任务模型”双选择，但用户确
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/sessionMessageActions.ts`、`src/modelSelectionStore.ts`、`src/webview/`、`src/lobster*`、`src/interactive/`、`src/cli/`
+- 代码目录：`src/extension.ts`、`src/sessionMessageActions.ts`、`src/modelSelectionStore.ts`、`src/webview/`、`src/loop*`、`src/interactive/`、`src/cli/`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/references/`、`.ch/docs/design-docs/`、`.ch/docs/runbooks/`
 - 配置与脚本：兼容现有 `~/.sinitek_cli/` 模型状态，不迁移外部 CLI 配置
 

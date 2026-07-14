@@ -74,7 +74,7 @@
 
 - 单元测试新增/更新：为设置默认值/归一化/消息回写、Webview 控件、successful commentary fallback、严格模式、显式 final、空回复、失败/非完成状态增加断言。
 - 单元自测结果：`npm run build` 通过；定向测试 46/46 通过；排除两个已知失败文件后的扩展回归 329/329 通过。
-- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 381 项、358 通过、23 失败。失败全部集中在未改动的 `configService.test.js`（1 项，配置中心静态资源缺少既有断言文案）和 `lobsterBoundaryRecord.test.js`（22 项，待实现/导出的 boundary API 与源码契约），归类为范围外历史失败；排除这两个文件后其余 329 项全部通过。
+- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 381 项、358 通过、23 失败。失败全部集中在未改动的 `configService.test.js`（1 项，配置中心静态资源缺少既有断言文案）和 `loopBoundaryRecord.test.js`（22 项，待实现/导出的 boundary API 与源码契约），归类为范围外历史失败；排除这两个文件后其余 329 项全部通过。
 - 功能清单：已在 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 增加“最终答复判定策略”条目。
 - 相关文档同步：已更新能力规格、CLI runtime reference 和 `PITFALLS.md`。
 

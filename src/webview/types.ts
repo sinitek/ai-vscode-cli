@@ -1,13 +1,13 @@
 import {
   CliName,
   InteractiveMode,
-  LobsterExecutionMode,
+  LoopExecutionMode,
   MacTaskShell,
   OpenCodeThinkingState,
   ThinkingMode,
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
-import type { LobsterTaskStatus } from "../lobsterTaskStore";
+import type { LoopTaskStatus } from "../loopTaskStore";
 
 export type ConfigSummary = {
   id: string;
@@ -51,12 +51,12 @@ export type PanelMessage =
       tabId?: string;
       cli?: CliName;
       model?: string;
-      lobsterExecutionMode?: LobsterExecutionMode;
+      loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
-  | { type: "openLobsterDebateChat"; taskId?: string | null; roundKey?: string | null }
+  | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
   | { type: "openConfig" }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
@@ -123,7 +123,7 @@ export type SessionSummary = {
   createdAt: number;
   lastUsedAt: number;
   cli: CliName;
-  isLobsterSession: boolean;
+  isLoopSession: boolean;
   isOpenInConversationTabs: boolean;
   openConversationTabId: string | null;
   firstPrompt?: string;
@@ -134,11 +134,11 @@ export type ConversationTabSummary = {
   cli: CliName;
   sessionId: string | null;
   createdAt: number;
-  lobsterTaskRole?: "main" | "subtask";
-  lobsterTaskId?: string;
-  lobsterTaskRunning?: boolean;
-  lobsterTaskStatus?: LobsterTaskStatus;
-  lobsterMainTabCloseLocked?: boolean;
+  loopTaskRole?: "main" | "subtask";
+  loopTaskId?: string;
+  loopTaskRunning?: boolean;
+  loopTaskStatus?: LoopTaskStatus;
+  loopMainTabCloseLocked?: boolean;
 };
 
 export type PromptHistoryItem = {
@@ -150,7 +150,7 @@ export type PromptHistoryItem = {
 
 export type ChatMessageAction =
   | {
-      type: "openLobsterDebateChat";
+      type: "openLoopGroupChat";
       taskId: string;
       roundKey?: string | null;
       label?: string;
@@ -166,11 +166,11 @@ export type ChatMessage = {
   merge?: boolean;
   contextTags?: string[];
   taskRole?: "main" | "subtask";
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
-  lobsterAnswerConclusion?: boolean;
-  lobsterFinalSummary?: boolean;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
+  loopAnswerConclusion?: boolean;
+  loopFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
   subagentProvider?: "opencode" | "codex" | "loop";
   subagentId?: string;
@@ -208,9 +208,9 @@ export type PanelState = {
   workspaceMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
-  lobsterMaxRounds: number;
-  lobsterAutoCloseSubtaskTabs: boolean;
-  lobsterExecutionModeByCli?: Record<CliName, LobsterExecutionMode>;
+  loopMaxRounds: number;
+  loopAutoCloseSubtaskTabs: boolean;
+  loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;
   locale: string;
   isMac: boolean;

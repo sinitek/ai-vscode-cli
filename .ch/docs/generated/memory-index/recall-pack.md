@@ -2,21 +2,21 @@
 
 ## Summary
 
-- Generated at: 2026-07-13T07:49:17Z
-- Focus: 继续当前未完成任务 performance memory audit loop opencode progress monitor repair
+- Generated at: 2026-07-14T01:52:16Z
+- Focus: Loop naming storage migration compatibility
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Available observation entries: 11
-- Available read cost: ~674 tokens
-- Selected index entries: 2 (~226 tokens if fully expanded)
-- Expanded entries in this pack: 2 (~226 tokens)
+- Available observation entries: 9
+- Available read cost: ~530 tokens
+- Selected index entries: 5 (~353 tokens if fully expanded)
+- Expanded entries in this pack: 3 (~127 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
 - Recent handoffs: 0
 - Active plans: 4
-- Related design docs: 3
+- Related design docs: 2
 - Related runbooks: 1
-- Source diversity: 2 unique sources / 2 selected observations
+- Source diversity: 5 unique sources / 5 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -28,56 +28,79 @@
 
 ## Focus Match Summary
 
-- Matched terms: `当前`, `完成`
+- Matched terms: `loop`
 
 ## Observation Index
 
 | ID | Type | Title | Read | Source | Why |
 | --- | --- | --- | --- | --- | --- |
-| `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | 命中 focus：当前。 |
-| `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | 命中 focus：完成。 |
+| `mem-bbc18d3434` | `plan` | Loop 主任务失败终止护栏 | ~39 | `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` | 命中 focus：loop。 |
+| `mem-fe60588b95` | `plan` | Loop 红蓝辩论主持人轮流点名调度 | ~40 | `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | 命中 focus：loop。 |
+| `mem-e2fabd8a2e` | `plan` | Loop Group Chat UI Follow-ups | ~48 | `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | 命中 focus：loop。 |
+| `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | 命中 focus：loop。 |
+| `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | 命中 focus：loop。 |
 
 ## Expanded Observation Details
 
-### mem-5233a00937 - Codex、Claude、OpenCode CLI 配置可视化扩展
+### mem-bbc18d3434 - Loop 主任务失败终止护栏
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~107 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md`
-- Score: `93` (base `91`)
-- Matches: `当前`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
-- Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/references/cli-runtime-reference.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/config/`, `src/test/`, `src/test/claudeConfigVisualEditor.test.ts`
+- Read: ~39 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md`
+- Score: `96` (base `94`)
+- Matches: `loop`
+- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=2, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`, `problem-solution`
+- Files: `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extension.ts`, `src/test/`
 
 Facts:
-- 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
-- Modified at: 2026-07-13T04:55:42+00:00
+- 日期：2026-06-27 状态：in-progress 负责人：Codex
+- Modified at: 2026-07-07T01:50:50+00:00
 
 Narrative:
 
-日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
+日期：2026-06-27 状态：in-progress 负责人：Codex
 
-### mem-4b483bd801 - MCP 市场全量检测与权威刷新
+### mem-fe60588b95 - Loop 红蓝辩论主持人轮流点名调度
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~119 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`
-- Score: `93` (base `91`)
-- Matches: `完成`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Read: ~40 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`
+- Score: `95` (base `93`)
+- Matches: `loop`
+- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
 - Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/exec-plans/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/references/`, `.ch/docs/references/cli-runtime-reference.md`, `.ch/docs/runbooks/`, `.ch/docs/runbooks/PITFALLS.md`
+- Files: `.ch/docs/design-docs/`, `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/loopDebate.ts`, `src/test/loopDebate.test.ts`
 
 Facts:
-- 日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
-- Modified at: 2026-07-11T03:33:13+00:00
+- 日期：2026-06-29 状态：in-progress 负责人：Codex
+- Modified at: 2026-07-14T01:27:53+00:00
 
 Narrative:
 
-日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
+日期：2026-06-29 状态：in-progress 负责人：Codex
+
+### mem-e2fabd8a2e - Loop Group Chat UI Follow-ups
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~48 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md`
+- Score: `95` (base `93`)
+- Matches: `loop`
+- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`
+- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/webview/loopDebatePanel.ts`
+
+Facts:
+- Date: 2026-06-25 Status: in-progress Owner: Codex
+- Modified at: 2026-07-14T01:27:53+00:00
+
+Narrative:
+
+Date: 2026-06-25 Status: in-progress Owner: Codex
 
 ## Recommended Reading Order
 
@@ -132,7 +155,7 @@ Narrative:
   Why: 热区边界和阅读顺序入口。
   Summary: 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
 
-- `.ch/docs/MEMORY.md` | 记忆流转规则 | matches=当前
+- `.ch/docs/MEMORY.md` | 记忆流转规则
   Why: 记忆分层与流转规则入口。
   Summary: 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
 
@@ -142,45 +165,41 @@ Narrative:
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | Codex、Claude、OpenCode CLI 配置可视化扩展 | matches=当前
+- `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | Loop Group Chat UI Follow-ups | matches=loop
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: Date: 2026-06-25 Status: in-progress Owner: Codex
+
+- `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | Loop 红蓝辩论主持人轮流点名调度 | matches=loop
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-06-29 状态：in-progress 负责人：Codex
+
+- `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | Codex、Claude、OpenCode CLI 配置可视化扩展 | matches=loop
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
 
-- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | MCP 市场全量检测与权威刷新 | matches=完成
+- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | MCP 市场全量检测与权威刷新 | matches=loop
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
 
-- `.ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md` | Loop 与 OpenCode 实时进度监控修复
-  Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：
-
-- `.ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md` | VS Code 插件性能与内存风险审计
-  Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：
-
 ## Related Design Docs
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=当前, 完成
-  Why: 与当前 focus 相关的设计决策入口，命中：当前 / 完成。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop
+  Why: 与当前 focus 相关的设计决策入口，命中：loop。
+  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
+
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop
+  Why: 与当前 focus 相关的设计决策入口，命中：loop。
   Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 相关计划：`.ch/docs/exec-plans/completed/2026-04-02-docs-migration-to-ch.md`（完成后归档） 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
-
-- `.ch/docs/design-docs/lobster-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=继续, 当前, 完成
-  Why: 与当前 focus 相关的设计决策入口，命中：继续 / 当前 / 完成。
-  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
-
-- `.ch/docs/design-docs/core-beliefs.md` | 核心信念 | matches=完成
-  Why: 与当前 focus 相关的设计决策入口，命中：完成。
-  Summary: 这些信念不是宣传语，而是为了让仓库长期对代理和人类都保持可读、可维护、可演化。
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=继续, 当前
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：继续 / 当前。
+- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop
+  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop。
   Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
 
 ## Watch Items
 
-- 当前有 9 份 active plans。
+- 当前有 7 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。
 

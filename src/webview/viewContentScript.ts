@@ -15,11 +15,11 @@ import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "./viewContentScript
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
   cliList: unknown;
-  lobsterMaxRoundsDefault: number;
-  lobsterMaxRoundsMin: number;
-  lobsterMaxRoundsMax: number;
-  lobsterExecutionModeMainSubMultiAgent: string;
-  lobsterExecutionModeDebateMultiAgent: string;
+  loopMaxRoundsDefault: number;
+  loopMaxRoundsMin: number;
+  loopMaxRoundsMax: number;
+  loopExecutionModeMainSubMultiAgent: string;
+  loopExecutionModeDebateMultiAgent: string;
   finalAnswerTextMarker: string;
 };
 
@@ -47,11 +47,11 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
   const replacements: Array<[string, string]> = [
     ["${JSON.stringify(i18n)}", JSON.stringify(input.i18n)],
     ["${JSON.stringify(CLI_LIST)}", JSON.stringify(input.cliList)],
-    ["${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT}", String(input.lobsterMaxRoundsDefault)],
-    ["${LOBSTER_MAX_ROUNDS_SETTING_MIN}", String(input.lobsterMaxRoundsMin)],
-    ["${LOBSTER_MAX_ROUNDS_SETTING_MAX}", String(input.lobsterMaxRoundsMax)],
-    ["${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.lobsterExecutionModeMainSubMultiAgent],
-    ["${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.lobsterExecutionModeDebateMultiAgent],
+    ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
+    ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
+    ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],
+    ["${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.loopExecutionModeMainSubMultiAgent],
+    ["${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.loopExecutionModeDebateMultiAgent],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(

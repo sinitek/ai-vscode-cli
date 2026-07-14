@@ -850,7 +850,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         }
         const promptPayload = buildPromptPayload(prompt);
         const activeTabId = getActiveConversationTabId();
-        if (isLobsterMainConversationTabRunning(activeTabId)) {
+        if (isLoopMainConversationTabRunning(activeTabId)) {
           queuePromptForLater(promptPayload);
           elements.promptInput.value = "";
           resetPromptContextForNextPrompt();

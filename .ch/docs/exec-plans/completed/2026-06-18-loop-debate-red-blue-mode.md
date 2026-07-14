@@ -1,4 +1,4 @@
-# 龙虾辩论升级为红蓝对抗模式
+# Loop辩论升级为红蓝对抗模式
 
 - 日期：2026-06-18
 - 状态：completed
@@ -20,7 +20,7 @@
 ## 范围
 
 - 修改辩论模式的角色定义、提示词、运行文案和共识/收束语义。
-- 更新 `src/lobsterDebate.ts`、`src/extension.ts`、`src/webview/*` 中辩论相关文本和协议字段。
+- 更新 `src/loopDebate.ts`、`src/extension.ts`、`src/webview/*` 中辩论相关文本和协议字段。
 - 更新中英文国际化文案与产品/设计/能力事实来源文档。
 - 补充或调整单元测试，覆盖红蓝角色归一化、文案、收束与 needs-review 语义。
 
@@ -40,7 +40,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/webview/viewContent.ts`、`src/webview/lobsterDebatePanel.ts`、`src/webview/types.ts`、`src/cli/types.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/webview/viewContent.ts`、`src/webview/loopDebatePanel.ts`、`src/webview/types.ts`、`src/cli/types.ts`、`src/test/`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/references/`、`docs/`
 - 配置与脚本：无新增脚本；如需调整文案，更新 i18n 资源
 
@@ -59,7 +59,7 @@
 验证结果：
 
 - `npm run build` 通过。
-- `node --test dist/test/lobsterDebate.test.js` 通过，23 个用例全绿。
+- `node --test dist/test/loopDebate.test.js` 通过，23 个用例全绿。
 - `git diff --check` 通过。
 - 针对旧代码特定红队定义做残留扫描，剩余工程风险描述均带有“仅任务涉及代码/文件/权限/部署/流程执行时”的条件语境，或属于原有主从子任务执行链路。
 

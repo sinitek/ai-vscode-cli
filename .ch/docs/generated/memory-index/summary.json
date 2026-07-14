@@ -13,23 +13,23 @@
       "title": "Trace Error Bubble Dedupe"
     },
     {
-      "modified_at": "2026-07-07T01:50:50+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-06-25-lobster-group-chat-ui-followups.md",
+      "modified_at": "2026-07-14T01:27:53+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 927,
+      "read_tokens": 916,
       "references": [
         ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
         ".ch/docs/product-specs/FEATURE_INVENTORY.md",
         ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
         "src/extension.ts",
-        "src/webview/lobsterDebatePanel.ts"
+        "src/webview/loopDebatePanel.ts"
       ],
       "summary": "Date: 2026-06-25 Status: in-progress Owner: Codex",
       "title": "Loop Group Chat UI Follow-ups"
     },
     {
       "modified_at": "2026-07-07T01:50:50+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md",
+      "path": ".ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md",
       "privacy_stripped_count": 0,
       "read_tokens": 338,
       "references": [
@@ -61,19 +61,19 @@
       "title": "官方 skills 版本刷新与最新判断修复"
     },
     {
-      "modified_at": "2026-07-07T01:50:50+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-06-29-lobster-debate-moderator-turn-taking.md",
+      "modified_at": "2026-07-14T01:27:53+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 469,
+      "read_tokens": 463,
       "references": [
         ".ch/docs/design-docs/",
-        ".ch/docs/design-docs/lobster-debate-multi-agent-mode.md",
+        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
         ".ch/docs/product-specs/",
         ".ch/docs/product-specs/FEATURE_INVENTORY.md",
         ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
         "src/extension.ts",
-        "src/lobsterDebate.ts",
-        "src/test/lobsterDebate.test.ts"
+        "src/loopDebate.ts",
+        "src/test/loopDebate.test.ts"
       ],
       "summary": "日期：2026-06-29 状态：in-progress 负责人：Codex",
       "title": "Loop 红蓝辩论主持人轮流点名调度"
@@ -123,37 +123,6 @@
       ],
       "summary": "日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档",
       "title": "Codex、Claude、OpenCode CLI 配置可视化扩展"
-    },
-    {
-      "modified_at": "2026-07-13T07:48:28+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md",
-      "privacy_stripped_count": 0,
-      "read_tokens": 617,
-      "references": [
-        ".ch/docs/design-docs/",
-        ".ch/docs/product-specs/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/references/",
-        ".ch/docs/runbooks/",
-        "src/cli/",
-        "src/extension.ts",
-        "src/i18n.ts",
-        "src/lobster*",
-        "src/subagentProgress.ts"
-      ],
-      "summary": "日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：",
-      "title": "Loop 与 OpenCode 实时进度监控修复"
-    },
-    {
-      "modified_at": "2026-07-13T06:11:32+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md",
-      "privacy_stripped_count": 0,
-      "read_tokens": 337,
-      "references": [
-        "src/"
-      ],
-      "summary": "日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：",
-      "title": "VS Code 插件性能与内存风险审计"
     }
   ],
   "claim_count": 123,
@@ -1898,7 +1867,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-07-13T07:49:17+00:00",
+  "generated_at": "2026-07-14T01:52:16+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2145,7 +2114,7 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 11,
+  "observation_count": 9,
   "observations": [
     {
       "concepts": [
@@ -2176,40 +2145,10 @@
     },
     {
       "concepts": [
-        "open-loop"
-      ],
-      "content_hash": "59fc0394ed8fbfad81a777b9be68d6ce0c01e61e8e9161be4bbe8bf67a1a2477",
-      "facts": [
-        "Date: 2026-06-25 Status: in-progress Owner: Codex",
-        "Modified at: 2026-07-07T01:50:50+00:00"
-      ],
-      "files": [
-        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
-        "src/extension.ts",
-        "src/webview/lobsterDebatePanel.ts"
-      ],
-      "id": "mem-59fc0394ed",
-      "modified_at": "2026-07-07T01:50:50+00:00",
-      "narrative": "Date: 2026-06-25 Status: in-progress Owner: Codex",
-      "private_stripped": false,
-      "read_tokens": 48,
-      "source_anchor": "Loop Group Chat UI Follow-ups",
-      "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-06-25-lobster-group-chat-ui-followups.md",
-      "source_title": "Loop Group Chat UI Follow-ups",
-      "subtitle": "Active execution plan",
-      "title": "Loop Group Chat UI Follow-ups",
-      "topic": "plan",
-      "type": "plan"
-    },
-    {
-      "concepts": [
         "open-loop",
         "problem-solution"
       ],
-      "content_hash": "0066ad05c474dc820fbdf53f8866aad67c84337a911d466e86b2a8364e681879",
+      "content_hash": "bbc18d3434d7512f3eb0c93d9c2adf449e28d6a96c9dc996ae685892ffcb33d7",
       "facts": [
         "日期：2026-06-27 状态：in-progress 负责人：Codex",
         "Modified at: 2026-07-07T01:50:50+00:00"
@@ -2221,50 +2160,17 @@
         "src/extension.ts",
         "src/test/"
       ],
-      "id": "mem-0066ad05c4",
+      "id": "mem-bbc18d3434",
       "modified_at": "2026-07-07T01:50:50+00:00",
       "narrative": "日期：2026-06-27 状态：in-progress 负责人：Codex",
       "private_stripped": false,
       "read_tokens": 39,
       "source_anchor": "Loop 主任务失败终止护栏",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md",
+      "source_path": ".ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md",
       "source_title": "Loop 主任务失败终止护栏",
       "subtitle": "Active execution plan",
       "title": "Loop 主任务失败终止护栏",
-      "topic": "plan",
-      "type": "plan"
-    },
-    {
-      "concepts": [
-        "open-loop"
-      ],
-      "content_hash": "7ca8709ffede2acf739e130dae944530b4af5629756542d5046e1279b66310f3",
-      "facts": [
-        "日期：2026-06-29 状态：in-progress 负责人：Codex",
-        "Modified at: 2026-07-07T01:50:50+00:00"
-      ],
-      "files": [
-        ".ch/docs/design-docs/",
-        ".ch/docs/design-docs/lobster-debate-multi-agent-mode.md",
-        ".ch/docs/product-specs/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
-        "src/extension.ts",
-        "src/lobsterDebate.ts",
-        "src/test/lobsterDebate.test.ts"
-      ],
-      "id": "mem-7ca8709ffe",
-      "modified_at": "2026-07-07T01:50:50+00:00",
-      "narrative": "日期：2026-06-29 状态：in-progress 负责人：Codex",
-      "private_stripped": false,
-      "read_tokens": 40,
-      "source_anchor": "Loop 红蓝辩论主持人轮流点名调度",
-      "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-06-29-lobster-debate-moderator-turn-taking.md",
-      "source_title": "Loop 红蓝辩论主持人轮流点名调度",
-      "subtitle": "Active execution plan",
-      "title": "Loop 红蓝辩论主持人轮流点名调度",
       "topic": "plan",
       "type": "plan"
     },
@@ -2379,64 +2285,64 @@
     },
     {
       "concepts": [
-        "active-risk",
         "open-loop"
       ],
-      "content_hash": "f311ad1ffa000facdc3769ba278d005020a668e398f8b2bbb7aad9c5ece77a1f",
+      "content_hash": "e2fabd8a2e079318239f28c2e60733001e60452007cce0b46bb6284fc164a78e",
       "facts": [
-        "日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：",
-        "Modified at: 2026-07-13T06:11:32+00:00"
+        "Date: 2026-06-25 Status: in-progress Owner: Codex",
+        "Modified at: 2026-07-14T01:27:53+00:00"
       ],
       "files": [
-        "src/"
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+        "src/extension.ts",
+        "src/webview/loopDebatePanel.ts"
       ],
-      "id": "mem-f311ad1ffa",
-      "modified_at": "2026-07-13T06:11:32+00:00",
-      "narrative": "日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：",
+      "id": "mem-e2fabd8a2e",
+      "modified_at": "2026-07-14T01:27:53+00:00",
+      "narrative": "Date: 2026-06-25 Status: in-progress Owner: Codex",
       "private_stripped": false,
-      "read_tokens": 72,
-      "source_anchor": "VS Code 插件性能与内存风险审计",
+      "read_tokens": 48,
+      "source_anchor": "Loop Group Chat UI Follow-ups",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md",
-      "source_title": "VS Code 插件性能与内存风险审计",
+      "source_path": ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md",
+      "source_title": "Loop Group Chat UI Follow-ups",
       "subtitle": "Active execution plan",
-      "title": "VS Code 插件性能与内存风险审计",
+      "title": "Loop Group Chat UI Follow-ups",
       "topic": "plan",
       "type": "plan"
     },
     {
       "concepts": [
-        "open-loop",
-        "problem-solution"
+        "open-loop"
       ],
-      "content_hash": "477fc324b5981f9a059a9b7d7aac0c5f6fe4897db0dace216aad84b4d9a81f6a",
+      "content_hash": "fe60588b951c52f0e1bee5a2c9aef5a0f26a777545c67d7a6602ad3c3442d729",
       "facts": [
-        "日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：",
-        "Modified at: 2026-07-13T07:48:28+00:00"
+        "日期：2026-06-29 状态：in-progress 负责人：Codex",
+        "Modified at: 2026-07-14T01:27:53+00:00"
       ],
       "files": [
         ".ch/docs/design-docs/",
+        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
         ".ch/docs/product-specs/",
         ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/references/",
-        ".ch/docs/runbooks/",
-        "src/cli/",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
         "src/extension.ts",
-        "src/i18n.ts",
-        "src/lobster*",
-        "src/subagentProgress.ts"
+        "src/loopDebate.ts",
+        "src/test/loopDebate.test.ts"
       ],
-      "id": "mem-477fc324b5",
-      "modified_at": "2026-07-13T07:48:28+00:00",
-      "narrative": "日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：",
+      "id": "mem-fe60588b95",
+      "modified_at": "2026-07-14T01:27:53+00:00",
+      "narrative": "日期：2026-06-29 状态：in-progress 负责人：Codex",
       "private_stripped": false,
-      "read_tokens": 72,
-      "source_anchor": "Loop 与 OpenCode 实时进度监控修复",
+      "read_tokens": 40,
+      "source_anchor": "Loop 红蓝辩论主持人轮流点名调度",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md",
-      "source_title": "Loop 与 OpenCode 实时进度监控修复",
+      "source_path": ".ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md",
+      "source_title": "Loop 红蓝辩论主持人轮流点名调度",
       "subtitle": "Active execution plan",
-      "title": "Loop 与 OpenCode 实时进度监控修复",
+      "title": "Loop 红蓝辩论主持人轮流点名调度",
       "topic": "plan",
       "type": "plan"
     },
@@ -2496,7 +2402,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 9,
+    "active_plan_count": 7,
     "active_risks": [],
     "pending_items": []
   },
@@ -2524,19 +2430,17 @@
       "read_tokens": 46
     },
     "plan": {
-      "count": 9,
+      "count": 7,
       "ids": [
         "mem-0b64dd15aa",
-        "mem-59fc0394ed",
-        "mem-0066ad05c4",
-        "mem-7ca8709ffe",
+        "mem-bbc18d3434",
         "mem-b7b003c3a1",
         "mem-4b483bd801",
         "mem-5233a00937",
-        "mem-f311ad1ffa",
-        "mem-477fc324b5"
+        "mem-e2fabd8a2e",
+        "mem-fe60588b95"
       ],
-      "read_tokens": 589
+      "read_tokens": 445
     },
     "rule": {
       "count": 1,
@@ -2546,6 +2450,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 674,
+  "total_read_tokens": 530,
   "version": "0.2.0"
 }

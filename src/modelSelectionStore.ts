@@ -9,8 +9,9 @@ import {
 } from "./cli/types";
 import type { PanelState } from "./webview/types";
 import type { OpenCodeModelRole } from "./cli/opencodeconfigmodels";
+import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 
-export type LobsterTaskRoleForModelSelection = "main" | "subtask";
+export type LoopTaskRoleForModelSelection = "main" | "subtask";
 
 export type CliModelStore = {
   selectedByConfigId: Record<string, string>;
@@ -18,8 +19,8 @@ export type CliModelStore = {
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
   openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeModelRole, string>>>>;
-  selectedLobsterByConfigId: Record<string, Partial<Record<LobsterTaskRoleForModelSelection, string>>>;
-  lobsterRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
+  selectedLoopByConfigId: Record<string, Partial<Record<LoopTaskRoleForModelSelection, string>>>;
+  loopRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
   openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeModelRole, string>>>;
 };
 
@@ -75,7 +76,7 @@ export function mergeUniqueModelNames(...groups: Array<readonly string[]>): stri
   return result;
 }
 
-export function normalizeLobsterModelRoleFlags(value: unknown): { main: boolean; subtask: boolean } {
+export function normalizeLoopModelRoleFlags(value: unknown): { main: boolean; subtask: boolean } {
   if (!value || typeof value !== "object") {
     return { main: true, subtask: true };
   }
@@ -88,7 +89,7 @@ export function normalizeLobsterModelRoleFlags(value: unknown): { main: boolean;
   return { main, subtask };
 }
 
-export function isLobsterTaskRoleValue(value: unknown): value is LobsterTaskRoleForModelSelection {
+export function isLoopTaskRoleValue(value: unknown): value is LoopTaskRoleForModelSelection {
   return value === "main" || value === "subtask";
 }
 
@@ -96,14 +97,15 @@ export function ensureCliModelStore(
   store?: CliModelStore,
   options?: Pick<ModelSelectionStoreOptions, "defaultModelStoreKey" | "isThinkingMode" | "normalizeThinkingModeForCli">
 ): CliModelStore {
+  store = store ? migrateLegacyLoopJson(store).value : store;
   const normalized: CliModelStore = {
     selectedByConfigId: {},
     optionsByConfigId: {},
     thinkingByCliAndModel: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
-    selectedLobsterByConfigId: {},
-    lobsterRolesByConfigId: {},
+    selectedLoopByConfigId: {},
+    loopRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
   };
   const storedOptionsByConfigId = store?.optionsByConfigId;
@@ -124,15 +126,15 @@ export function ensureCliModelStore(
       }
     }
   }
-  const storedSelectedLobsterByConfigId = store?.selectedLobsterByConfigId;
-  if (storedSelectedLobsterByConfigId && typeof storedSelectedLobsterByConfigId === "object") {
-    for (const [configId, rawSelection] of Object.entries(storedSelectedLobsterByConfigId)) {
+  const storedSelectedLoopByConfigId = store?.selectedLoopByConfigId;
+  if (storedSelectedLoopByConfigId && typeof storedSelectedLoopByConfigId === "object") {
+    for (const [configId, rawSelection] of Object.entries(storedSelectedLoopByConfigId)) {
       if (!configId || !rawSelection || typeof rawSelection !== "object") {
         continue;
       }
-      const nextSelection: Partial<Record<LobsterTaskRoleForModelSelection, string>> = {};
+      const nextSelection: Partial<Record<LoopTaskRoleForModelSelection, string>> = {};
       for (const [rawRole, rawModel] of Object.entries(rawSelection)) {
-        if (!isLobsterTaskRoleValue(rawRole)) {
+        if (!isLoopTaskRoleValue(rawRole)) {
           continue;
         }
         const normalizedModel = normalizeCliModelName(rawModel);
@@ -142,7 +144,7 @@ export function ensureCliModelStore(
         nextSelection[rawRole] = normalizedModel;
       }
       if (Object.keys(nextSelection).length > 0) {
-        normalized.selectedLobsterByConfigId[configId] = nextSelection;
+        normalized.selectedLoopByConfigId[configId] = nextSelection;
       }
     }
   }
@@ -211,9 +213,9 @@ export function ensureCliModelStore(
       }
     }
   }
-  const storedLobsterRolesByConfigId = store?.lobsterRolesByConfigId;
-  if (storedLobsterRolesByConfigId && typeof storedLobsterRolesByConfigId === "object") {
-    for (const [configId, rawRolesByModel] of Object.entries(storedLobsterRolesByConfigId)) {
+  const storedLoopRolesByConfigId = store?.loopRolesByConfigId;
+  if (storedLoopRolesByConfigId && typeof storedLoopRolesByConfigId === "object") {
+    for (const [configId, rawRolesByModel] of Object.entries(storedLoopRolesByConfigId)) {
       if (!configId || !rawRolesByModel || typeof rawRolesByModel !== "object") {
         continue;
       }
@@ -223,10 +225,10 @@ export function ensureCliModelStore(
         if (!normalizedModel) {
           continue;
         }
-        nextRolesByModel[normalizedModel] = normalizeLobsterModelRoleFlags(rawRoleFlags);
+        nextRolesByModel[normalizedModel] = normalizeLoopModelRoleFlags(rawRoleFlags);
       }
       if (Object.keys(nextRolesByModel).length > 0) {
-        normalized.lobsterRolesByConfigId[configId] = nextRolesByModel;
+        normalized.loopRolesByConfigId[configId] = nextRolesByModel;
       }
     }
   }
@@ -485,7 +487,7 @@ export function getManagedModelOptionsForCliFromStore(
   return mergeUniqueModelNames(storedOptions);
 }
 
-export function getCliModelLobsterRoleFlagsFromStore(
+export function getCliModelLoopRoleFlagsFromStore(
   store: CliModelStore,
   cli: CliName,
   model: string,
@@ -495,7 +497,7 @@ export function getCliModelLobsterRoleFlagsFromStore(
   if (!configId || !normalizedModel || cli !== "codex") {
     return { main: true, subtask: true };
   }
-  const rolesByModel = store?.lobsterRolesByConfigId?.[configId];
+  const rolesByModel = store?.loopRolesByConfigId?.[configId];
   if (!rolesByModel || typeof rolesByModel !== "object") {
     return { main: true, subtask: true };
   }
@@ -503,7 +505,7 @@ export function getCliModelLobsterRoleFlagsFromStore(
   if (!matchedKey) {
     return { main: true, subtask: true };
   }
-  return normalizeLobsterModelRoleFlags(rolesByModel[matchedKey]);
+  return normalizeLoopModelRoleFlags(rolesByModel[matchedKey]);
 }
 
 export function getModelOptionsForCliFromStore(
@@ -524,10 +526,10 @@ export function getModelOptionsForCliFromStore(
   );
 }
 
-export function getLobsterModelOptionsForCliFromStore(
+export function getLoopModelOptionsForCliFromStore(
   store: CliModelStore,
   cli: CliName,
-  role: LobsterTaskRoleForModelSelection,
+  role: LoopTaskRoleForModelSelection,
   configId: string | null
 ): string[] {
   if (!configId || cli !== "codex") {
@@ -535,25 +537,25 @@ export function getLobsterModelOptionsForCliFromStore(
   }
   const options = getModelOptionsForCliFromStore(store, cli, configId);
   return options.filter((modelName) => {
-    const roleFlags = getCliModelLobsterRoleFlagsFromStore(store, cli, modelName, configId);
+    const roleFlags = getCliModelLoopRoleFlagsFromStore(store, cli, modelName, configId);
     return role === "main" ? roleFlags.main : roleFlags.subtask;
   });
 }
 
-export function getSelectedLobsterCliModelFromStore(
+export function getSelectedLoopCliModelFromStore(
   store: CliModelStore,
   cli: CliName,
-  role: LobsterTaskRoleForModelSelection,
+  role: LoopTaskRoleForModelSelection,
   configId: string | null
 ): string | null {
   if (!configId || cli !== "codex") {
     return null;
   }
-  const optionsForRole = getLobsterModelOptionsForCliFromStore(store, cli, role, configId);
+  const optionsForRole = getLoopModelOptionsForCliFromStore(store, cli, role, configId);
   if (optionsForRole.length === 0) {
     return null;
   }
-  const selectedByRole = store?.selectedLobsterByConfigId?.[configId]?.[role];
+  const selectedByRole = store?.selectedLoopByConfigId?.[configId]?.[role];
   const normalizedSelectedByRole = normalizeCliModelName(selectedByRole);
   if (
     normalizedSelectedByRole
@@ -591,10 +593,10 @@ export function selectCliModelInStore(
   return ensureCliModelStore(nextStore);
 }
 
-export function selectCliLobsterModelInStore(
+export function selectCliLoopModelInStore(
   store: CliModelStore,
   cli: CliName,
-  role: LobsterTaskRoleForModelSelection,
+  role: LoopTaskRoleForModelSelection,
   model: string | null,
   configId: string | null,
 ): CliModelStore {
@@ -602,33 +604,33 @@ export function selectCliLobsterModelInStore(
     return ensureCliModelStore(store);
   }
   const nextStore = ensureCliModelStore(store);
-  const existingSelection = nextStore.selectedLobsterByConfigId[configId] ?? {};
-  const nextSelection: Partial<Record<LobsterTaskRoleForModelSelection, string>> = { ...existingSelection };
+  const existingSelection = nextStore.selectedLoopByConfigId[configId] ?? {};
+  const nextSelection: Partial<Record<LoopTaskRoleForModelSelection, string>> = { ...existingSelection };
   const normalizedModel = normalizeCliModelName(model);
   if (!normalizedModel) {
     delete nextSelection[role];
     if (Object.keys(nextSelection).length === 0) {
-      delete nextStore.selectedLobsterByConfigId[configId];
+      delete nextStore.selectedLoopByConfigId[configId];
     } else {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelection;
+      nextStore.selectedLoopByConfigId[configId] = nextSelection;
     }
     return ensureCliModelStore(nextStore);
   }
-  const roleOptions = getLobsterModelOptionsForCliFromStore(store, cli, role, configId);
+  const roleOptions = getLoopModelOptionsForCliFromStore(store, cli, role, configId);
   const existsInRoleOptions = roleOptions.some((option) => option.toLowerCase() === normalizedModel.toLowerCase());
   if (!existsInRoleOptions) {
     return ensureCliModelStore(store);
   }
   nextSelection[role] = normalizedModel;
-  nextStore.selectedLobsterByConfigId[configId] = nextSelection;
+  nextStore.selectedLoopByConfigId[configId] = nextSelection;
   return ensureCliModelStore(nextStore);
 }
 
-export function setCliModelLobsterRoleInStore(
+export function setCliModelLoopRoleInStore(
   store: CliModelStore,
   cli: CliName,
   model: string,
-  role: LobsterTaskRoleForModelSelection,
+  role: LoopTaskRoleForModelSelection,
   enabled: boolean,
   configId: string | null
 ): { store: CliModelStore; updated: boolean } {
@@ -642,7 +644,7 @@ export function setCliModelLobsterRoleInStore(
     return { store: ensureCliModelStore(store), updated: false };
   }
   const nextStore = ensureCliModelStore(store);
-  const existingFlags = getCliModelLobsterRoleFlagsFromStore(store, cli, normalizedModel, configId);
+  const existingFlags = getCliModelLoopRoleFlagsFromStore(store, cli, normalizedModel, configId);
   const nextFlags = {
     main: existingFlags.main,
     subtask: existingFlags.subtask,
@@ -656,18 +658,18 @@ export function setCliModelLobsterRoleInStore(
     return { store: nextStore, updated: false };
   }
   const rolesByModel = {
-    ...(nextStore.lobsterRolesByConfigId[configId] ?? {}),
+    ...(nextStore.loopRolesByConfigId[configId] ?? {}),
   };
   rolesByModel[normalizedModel] = nextFlags;
-  nextStore.lobsterRolesByConfigId[configId] = rolesByModel;
+  nextStore.loopRolesByConfigId[configId] = rolesByModel;
 
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  const selectedByRole = nextStore.selectedLoopByConfigId[configId];
   if (selectedByRole) {
     const selectedModel = selectedByRole[role];
     if (selectedModel && selectedModel.toLowerCase() === normalizedModel.toLowerCase() && !enabled) {
       delete selectedByRole[role];
       if (Object.keys(selectedByRole).length === 0) {
-        delete nextStore.selectedLobsterByConfigId[configId];
+        delete nextStore.selectedLoopByConfigId[configId];
       }
     }
   }
@@ -723,21 +725,21 @@ export function renameCliModelInStore(
     }
   }
 
-  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
+  const rolesByModel = nextStore.loopRolesByConfigId[configId];
   if (rolesByModel) {
     const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
     if (matchedRoleKey) {
       const nextRolesByModel = { ...rolesByModel };
-      nextRolesByModel[nextNormalized] = normalizeLobsterModelRoleFlags(nextRolesByModel[matchedRoleKey]);
+      nextRolesByModel[nextNormalized] = normalizeLoopModelRoleFlags(nextRolesByModel[matchedRoleKey]);
       delete nextRolesByModel[matchedRoleKey];
-      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
+      nextStore.loopRolesByConfigId[configId] = nextRolesByModel;
     }
   }
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  const selectedByRole = nextStore.selectedLoopByConfigId[configId];
   if (selectedByRole) {
-    const nextSelectedByRole: Partial<Record<LobsterTaskRoleForModelSelection, string>> = { ...selectedByRole };
+    const nextSelectedByRole: Partial<Record<LoopTaskRoleForModelSelection, string>> = { ...selectedByRole };
     let changed = false;
-    (["main", "subtask"] as LobsterTaskRoleForModelSelection[]).forEach((role) => {
+    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
       const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
       if (roleModel && roleModel.toLowerCase() === previousKey) {
         nextSelectedByRole[role] = nextNormalized;
@@ -745,7 +747,7 @@ export function renameCliModelInStore(
       }
     });
     if (changed) {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
+      nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
     }
   }
 
@@ -774,7 +776,7 @@ export function deleteCliModelFromStore(
     delete nextStore.selectedByConfigId[configId];
   }
 
-  const rolesByModel = nextStore.lobsterRolesByConfigId[configId];
+  const rolesByModel = nextStore.loopRolesByConfigId[configId];
   if (rolesByModel) {
     const nextRolesByModel = { ...rolesByModel };
     Object.keys(nextRolesByModel).forEach((key) => {
@@ -783,24 +785,24 @@ export function deleteCliModelFromStore(
       }
     });
     if (Object.keys(nextRolesByModel).length > 0) {
-      nextStore.lobsterRolesByConfigId[configId] = nextRolesByModel;
+      nextStore.loopRolesByConfigId[configId] = nextRolesByModel;
     } else {
-      delete nextStore.lobsterRolesByConfigId[configId];
+      delete nextStore.loopRolesByConfigId[configId];
     }
   }
-  const selectedByRole = nextStore.selectedLobsterByConfigId[configId];
+  const selectedByRole = nextStore.selectedLoopByConfigId[configId];
   if (selectedByRole) {
-    const nextSelectedByRole: Partial<Record<LobsterTaskRoleForModelSelection, string>> = { ...selectedByRole };
-    (["main", "subtask"] as LobsterTaskRoleForModelSelection[]).forEach((role) => {
+    const nextSelectedByRole: Partial<Record<LoopTaskRoleForModelSelection, string>> = { ...selectedByRole };
+    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
       const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
       if (roleModel && roleModel.toLowerCase() === targetKey) {
         delete nextSelectedByRole[role];
       }
     });
     if (Object.keys(nextSelectedByRole).length > 0) {
-      nextStore.selectedLobsterByConfigId[configId] = nextSelectedByRole;
+      nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
     } else {
-      delete nextStore.selectedLobsterByConfigId[configId];
+      delete nextStore.selectedLoopByConfigId[configId];
     }
   }
 

@@ -23,9 +23,9 @@
 │   ├── webview/              # 聊天面板、配置中心、前后端协议
 │   ├── config/               # 本地配置档案、Skills、MCP 管理
 │   ├── trace/                # trace/tool 输出格式化
-│   ├── lobsterDebate.ts      # Loop 辩论路径、记录与共识校验纯函数
-│   ├── lobsterSkillGuidance.ts # Loop 开发级 Skill 静态资源校验、分类与门禁
-│   ├── lobsterTaskStore.ts   # Loop 任务记录与宿主 Skill 快照持久化
+│   ├── loopDebate.ts      # Loop 辩论路径、记录与共识校验纯函数
+│   ├── loopSkillGuidance.ts # Loop 开发级 Skill 静态资源校验、分类与门禁
+│   ├── loopTaskStore.ts   # Loop 任务记录与宿主 Skill 快照持久化
 │   ├── i18n.ts               # 国际化
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
@@ -76,14 +76,15 @@ cli / interactive / config 服务层
 #### 基础本地资源层
 
 - 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.gemini/`
-- Loop 模式的任务记录位于 `~/.sinitek_cli/lobster-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/lobster-communications/`
+- Loop 模式的任务记录位于 `~/.sinitek_cli/loop-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/loop-communications/`
+- 首次枚举 Loop 任务时，`src/loopLegacyMigration.ts` 与 `src/loopTaskStore.ts` 会把旧 Lobster 任务存储和通信目录迁入上述 Loop 路径；新写入不再使用旧命名，冲突 artifact 以 `.pre-loop-migration` 后缀保留
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
 
 #### Loop 内置 Workflow Skill 资源层
 
 - `media/loop-workflow-skills/` 是随扩展分发的静态执行快照；生产运行时只通过 `context.extensionUri.fsPath` 下的固定相对目录读取，不以 `process.cwd()`、工作区或用户 Home 作为加载根。
 - 该快照与仓库 `.agents/skills/`、`media/workspace-scaffold/.agents/skills/`、`media/official_skills_catalog.json` / `media/official-skills/` 以及官方 Skills 安装、更新、卸载服务相互隔离，不进入用户 Home 的 CLI Skill 安装链路。
-- `src/lobsterSkillGuidance.ts` 负责严格 manifest/资源校验、开发任务分类、compact catalog、中央门禁和有界正文生成；只有 `taskKind="development"` 的 Loop 任务可进入该链路，非开发、未知分类和旧记录继续使用原 Loop 直接派发。
+- `src/loopSkillGuidance.ts` 负责严格 manifest/资源校验、开发任务分类、compact catalog、中央门禁和有界正文生成；只有 `taskKind="development"` 的 Loop 任务可进入该链路，非开发、未知分类和旧记录继续使用原 Loop 直接派发。
 - 该能力首版仅是内部运行时增强，不新增用户配置、UI 或 i18n 文案；详细调用链与安全边界分别见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 和 `.ch/docs/SECURITY.md`。
 
 ## 3. 扩展规则
@@ -95,7 +96,7 @@ cli / interactive / config 服务层
 3. 需要管理外部 CLI 配置、Skills、MCP：放 `src/config/`
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，再在 `src/extension.ts` 接线
-6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/lobsterDebate.ts`，不要反向依赖 VS Code API 或 Webview
+6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/loopDebate.ts`，不要反向依赖 VS Code API 或 Webview
 
 ### 新增文档时怎么放
 

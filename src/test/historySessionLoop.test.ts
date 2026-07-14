@@ -1,7 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildLobsterSessionIdsByCli } from "../lobsterTaskStore";
+import { buildLoopSessionIdsByCli } from "../loopTaskStore";
 import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
 import { WEBVIEW_I18N } from "../webview/viewContentI18n";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../webview/viewContentScript/historyPanels";
@@ -43,7 +43,7 @@ function createElement(): any {
   };
 }
 
-function renderSessionTitleBadges(isLobsterSession: boolean, isOpenInConversationTabs: boolean): string[] {
+function renderSessionTitleBadges(isLoopSession: boolean, isOpenInConversationTabs: boolean): string[] {
   const renderSessionListSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, "renderSessionList");
   const sessionList = createElement();
   const state = {
@@ -54,7 +54,7 @@ function renderSessionTitleBadges(isLobsterSession: boolean, isOpenInConversatio
         firstPrompt: "Build the feature",
         createdAt: 1,
         cli: "codex",
-        isLobsterSession,
+        isLoopSession,
         isOpenInConversationTabs,
         openConversationTabId: isOpenInConversationTabs ? "tab-1" : null,
       }],
@@ -97,7 +97,7 @@ function renderSessionTitleBadges(isLobsterSession: boolean, isOpenInConversatio
 }
 
 test("collects bound Loop session ids by CLI and ignores pending tasks", () => {
-  const sessionIdsByCli = buildLobsterSessionIdsByCli([
+  const sessionIdsByCli = buildLoopSessionIdsByCli([
     { cli: "codex", sessionId: " session-codex " },
     { cli: "claude", sessionId: "session-claude" },
     { cli: "opencode", sessionId: null },
@@ -123,12 +123,12 @@ test("removes the standalone Loop group chat recovery tab", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
+    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
+    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
 
-  assert.doesNotMatch(html, /historyTabLobsterGroupChats/);
-  assert.doesNotMatch(html, /historyPanelLobsterGroupChats/);
-  assert.doesNotMatch(html, /lobsterGroupChatHistoryList/);
-  assert.doesNotMatch(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /renderLobsterGroupChatHistoryList/);
+  assert.doesNotMatch(html, /historyTabLoopGroupChats/);
+  assert.doesNotMatch(html, /historyPanelLoopGroupChats/);
+  assert.doesNotMatch(html, /loopGroupChatHistoryList/);
+  assert.doesNotMatch(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /renderLoopGroupChatHistoryList/);
 });

@@ -14,7 +14,7 @@ const blockedWhenDisabled: MemoryRuntimeOperation[] = [
   "inject",
   "generateCandidate",
   "autoExtractAfterCompact",
-  "autoExtractAfterLobsterTask",
+  "autoExtractAfterLoopTask",
   "create",
   "update",
   "manualSave",
@@ -50,7 +50,7 @@ test("still allows viewing exporting and deleting existing memories when disable
 
 test("keeps auto extraction as a secondary opt-in after the total switch", () => {
   assert.equal(isMemoryRuntimeOperationAllowed("autoExtractAfterCompact", {}), false);
-  assert.equal(isMemoryRuntimeOperationAllowed("autoExtractAfterLobsterTask", {}), false);
+  assert.equal(isMemoryRuntimeOperationAllowed("autoExtractAfterLoopTask", {}), false);
   assert.equal(
     isMemoryRuntimeOperationAllowed("autoExtractAfterCompact", {
       workspaceSettings: { workspaceMemoryEnabled: true },

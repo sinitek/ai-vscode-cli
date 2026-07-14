@@ -5,7 +5,7 @@ dist/
 logs
 package-lock.json
 .vscode/
-.tmp-lobster-*/
-.tmp-lobster-launch-*/
+.tmp-loop-*/
+.tmp-loop-launch-*/
 .codegraph/
 *.pyc

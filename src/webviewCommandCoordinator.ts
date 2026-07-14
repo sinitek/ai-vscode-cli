@@ -9,16 +9,16 @@ import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import {
-  formatLobsterGroupChatMemberName,
-  LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
-  resolveLobsterAnswerConclusion,
-  type LobsterDebateModeratorDecisionRecord,
-  type LobsterDebateNeedsReviewSummary,
-  type LobsterDebateParticipantRecord,
-  type LobsterDebatePaths,
-} from "./lobsterDebate";
-import { type LobsterDebateParticipantDefinition } from "./lobsterPromptBuilders";
-import { type LobsterMainDecision, type LobsterSubtaskDecision, type LobsterTaskRecord } from "./lobsterTaskStore";
+  formatLoopGroupChatMemberName,
+  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
+  resolveLoopAnswerConclusion,
+  type LoopDebateModeratorDecisionRecord,
+  type LoopDebateNeedsReviewSummary,
+  type LoopDebateParticipantRecord,
+  type LoopDebatePaths,
+} from "./loopDebate";
+import { type LoopDebateParticipantDefinition } from "./loopPromptBuilders";
+import { type LoopMainDecision, type LoopSubtaskDecision, type LoopTaskRecord } from "./loopTaskStore";
 
 export type ConfigHeartbeatSnapshot = {
   cli: CliName;
@@ -674,30 +674,30 @@ export function buildCodexImageSupportWarningKey(status: CodexImageSupportStatus
   ].join("|");
 }
 
-export function buildLobsterDebateStartedText(
+export function buildLoopDebateStartedText(
   taskId: string,
   round: number,
-  participants: LobsterDebateParticipantRecord[],
-  paths: LobsterDebatePaths,
+  participants: LoopDebateParticipantRecord[],
+  paths: LoopDebatePaths,
 ): string {
   return [
-    `Loop 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
+    `Loop 红蓝对抗群聊已启动：主任务第 ${round} 轮，${participants.length} 个红蓝参与者，裁判主持，最多 ${LOOP_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次安全上限`,
     `Loop 任务：${taskId}`,
     `brief：${paths.briefFile}`,
     `chat：${paths.chatFile}`,
   ].join("\n");
 }
 
-export function buildLobsterDebateDialogueTurnStartedText(
+export function buildLoopDebateDialogueTurnStartedText(
   taskId: string,
   round: number,
   dialogueTurn: number,
   maxDialogueTurns: number,
-  speakers: readonly LobsterDebateParticipantDefinition[],
-  paths: LobsterDebatePaths,
+  speakers: readonly LoopDebateParticipantDefinition[],
+  paths: LoopDebatePaths,
 ): string {
   const speakersLine = speakers.length > 0
-    ? `点名发言者：${speakers.map((speaker) => formatLobsterGroupChatMemberName(speaker.title)).join("、")}`
+    ? `点名发言者：${speakers.map((speaker) => formatLoopGroupChatMemberName(speaker.title)).join("、")}`
     : "点名发言者：未指定";
   return [
     `Loop 红蓝对抗发言开始：主任务第 ${round} 轮，发言批次 ${dialogueTurn}/${maxDialogueTurns}，本批次结束后由裁判主持人判断是否继续`,
@@ -707,7 +707,7 @@ export function buildLobsterDebateDialogueTurnStartedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateRerunText(taskId: string, round: number, reasons: string[]): string {
+export function buildLoopDebateRerunText(taskId: string, round: number, reasons: string[]): string {
   return [
     `Loop 红蓝对抗恢复校验未通过，将重跑第 ${round} 轮辩论。`,
     `Loop 任务：${taskId}`,
@@ -715,7 +715,7 @@ export function buildLobsterDebateRerunText(taskId: string, round: number, reaso
   ].join("\n");
 }
 
-export function buildLobsterDebateReuseText(taskId: string, round: number, paths: LobsterDebatePaths): string {
+export function buildLoopDebateReuseText(taskId: string, round: number, paths: LoopDebatePaths): string {
   return [
     `Loop 已复用第 ${round} 轮红蓝对抗共识。`,
     `Loop 任务：${taskId}`,
@@ -724,10 +724,10 @@ export function buildLobsterDebateReuseText(taskId: string, round: number, paths
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantRosterStartedText(
+export function buildLoopDebateParticipantRosterStartedText(
   taskId: string,
   round: number,
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
 ): string {
   return [
     `Loop 裁判主持人正在设计红蓝参与者：第 ${round} 轮`,
@@ -737,25 +737,25 @@ export function buildLobsterDebateParticipantRosterStartedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantRosterFinishedText(
+export function buildLoopDebateParticipantRosterFinishedText(
   taskId: string,
   round: number,
-  participants: readonly LobsterDebateParticipantDefinition[],
-  paths: LobsterDebatePaths,
+  participants: readonly LoopDebateParticipantDefinition[],
+  paths: LoopDebatePaths,
 ): string {
   return [
     `Loop 红蓝参与者已动态加入：第 ${round} 轮，${participants.length} 个参与者`,
     `Loop 任务：${taskId}`,
-    `参与者：${participants.map((participant) => formatLobsterGroupChatMemberName(participant.title)).join("、")}`,
+    `参与者：${participants.map((participant) => formatLoopGroupChatMemberName(participant.title)).join("、")}`,
     `roster：${paths.participantRosterFile}`,
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantRosterFailedText(
+export function buildLoopDebateParticipantRosterFailedText(
   taskId: string,
   round: number,
   reasons: string[],
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
 ): string {
   return [
     `Loop 裁判主持人红蓝组队无效：第 ${round} 轮`,
@@ -765,7 +765,7 @@ export function buildLobsterDebateParticipantRosterFailedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantStartedText(
+export function buildLoopDebateParticipantStartedText(
   taskId: string,
   round: number,
   dialogueTurn: number,
@@ -776,24 +776,24 @@ export function buildLobsterDebateParticipantStartedText(
   return [
     finalPass
       ? `Loop 红蓝参与者已启动最终立场收集：${title}`
-      : `Loop 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+      : `Loop 红蓝参与者已启动：${title}（发言批次 ${dialogueTurn}/${LOOP_DEBATE_MAX_DIALOGUE_TURNS}）`,
     `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `artifact：${artifactFile}`,
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantFinishedText(
+export function buildLoopDebateParticipantFinishedText(
   taskId: string,
   round: number,
   dialogueTurn: number,
-  participant: LobsterDebateParticipantRecord,
+  participant: LoopDebateParticipantRecord,
   finalPass: boolean,
 ): string {
   return [
     finalPass
       ? `Loop 红蓝最终立场已收集：${participant.title}`
-      : `Loop 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}）`,
+      : `Loop 红蓝发言已收集：${participant.title}（发言批次 ${dialogueTurn}/${LOOP_DEBATE_MAX_DIALOGUE_TURNS}）`,
     `Loop 任务：${taskId}`,
     `轮次：${round}`,
     `状态：${participant.status}`,
@@ -801,10 +801,10 @@ export function buildLobsterDebateParticipantFinishedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateParticipantsCollectedText(
+export function buildLoopDebateParticipantsCollectedText(
   taskId: string,
   round: number,
-  participants: LobsterDebateParticipantRecord[],
+  participants: LoopDebateParticipantRecord[],
 ): string {
   const titles = participants.map((participant) => `${participant.title}=${participant.stance ?? "unknown"}`).join("、");
   return [
@@ -815,7 +815,7 @@ export function buildLobsterDebateParticipantsCollectedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateConsensusStartedText(taskId: string, round: number, paths: LobsterDebatePaths): string {
+export function buildLoopDebateConsensusStartedText(taskId: string, round: number, paths: LoopDebatePaths): string {
   return [
     `Loop 红蓝对抗共识汇总已启动：第 ${round} 轮`,
     `Loop 任务：${taskId}`,
@@ -826,7 +826,7 @@ export function buildLobsterDebateConsensusStartedText(taskId: string, round: nu
   ].join("\n");
 }
 
-export function buildLobsterDebateModeratorStartedText(
+export function buildLoopDebateModeratorStartedText(
   taskId: string,
   round: number,
   dialogueTurn: number,
@@ -839,17 +839,17 @@ export function buildLobsterDebateModeratorStartedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateModeratorFinishedText(
+export function buildLoopDebateModeratorFinishedText(
   taskId: string,
   round: number,
-  decision: LobsterDebateModeratorDecisionRecord,
+  decision: LoopDebateModeratorDecisionRecord,
   maxDialogueTurns: number,
-  participants: readonly LobsterDebateParticipantDefinition[],
+  participants: readonly LoopDebateParticipantDefinition[],
 ): string {
   const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
   const nextSpeakerNames = decision.nextSpeakerIds
     .map((speakerId) => participantById.get(speakerId)?.title ?? speakerId)
-    .map(formatLobsterGroupChatMemberName);
+    .map(formatLoopGroupChatMemberName);
   return [
     `Loop 裁判主持人控场已收束：${decision.action}`,
     `Loop 任务：${taskId}`,
@@ -865,11 +865,11 @@ export function buildLobsterDebateModeratorFinishedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateFinalStanceStartedText(
+export function buildLoopDebateFinalStanceStartedText(
   taskId: string,
   round: number,
-  decision: LobsterDebateModeratorDecisionRecord,
-  paths: LobsterDebatePaths,
+  decision: LoopDebateModeratorDecisionRecord,
+  paths: LoopDebatePaths,
 ): string {
   return [
     `Loop 红蓝对抗进入最终立场收集：裁判动作 ${decision.action}`,
@@ -879,12 +879,12 @@ export function buildLobsterDebateFinalStanceStartedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateConsensusReachedText(
+export function buildLoopDebateConsensusReachedText(
   taskId: string,
   round: number,
-  decision: LobsterMainDecision,
-  paths: LobsterDebatePaths,
-  getDecisionSubtasks: (decision: LobsterMainDecision) => LobsterSubtaskDecision[],
+  decision: LoopMainDecision,
+  paths: LoopDebatePaths,
+  getDecisionSubtasks: (decision: LoopMainDecision) => LoopSubtaskDecision[],
   formatEstimatedRemainingRounds: (value?: number) => string | null,
 ): string {
   const decisionSummary = decision.status === "continue"
@@ -899,11 +899,11 @@ export function buildLobsterDebateConsensusReachedText(
   ].join("\n");
 }
 
-export function buildLobsterDebateNeedsReviewText(
+export function buildLoopDebateNeedsReviewText(
   taskId: string,
   round: number,
-  reviewSummary: LobsterDebateNeedsReviewSummary,
-  paths: LobsterDebatePaths,
+  reviewSummary: LoopDebateNeedsReviewSummary,
+  paths: LoopDebatePaths,
 ): string {
   return [
     `Loop ${reviewSummary.title}，已进入人工复核：第 ${round} 轮`,
@@ -913,7 +913,7 @@ export function buildLobsterDebateNeedsReviewText(
   ].join("\n");
 }
 
-export function normalizeLobsterSupplementalRequirement(value: unknown): string | null {
+export function normalizeLoopSupplementalRequirement(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -921,8 +921,8 @@ export function normalizeLobsterSupplementalRequirement(value: unknown): string 
   return normalized ? normalized : null;
 }
 
-export function buildLobsterSupplementalRequirementsLines(
-  task: Pick<LobsterTaskRecord, "supplementalRequirements">,
+export function buildLoopSupplementalRequirementsLines(
+  task: Pick<LoopTaskRecord, "supplementalRequirements">,
 ): string[] {
   const requirements = Array.isArray(task.supplementalRequirements)
     ? task.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
@@ -937,23 +937,23 @@ export function buildLobsterSupplementalRequirementsLines(
   ];
 }
 
-export function buildLobsterCompletedConclusionAndSummaryMarkdown(
-  task: LobsterTaskRecord,
-  decision?: LobsterMainDecision | null,
+export function buildLoopCompletedConclusionAndSummaryMarkdown(
+  task: LoopTaskRecord,
+  decision?: LoopMainDecision | null,
 ): string {
   const finalSummary = typeof decision?.finalSummary === "string" && decision.finalSummary.trim()
     ? decision.finalSummary.trim()
     : (typeof task.finalSummary === "string" && task.finalSummary.trim() ? task.finalSummary.trim() : "主任务已完成。");
   return [
     "### 问题回答结论",
-    resolveLobsterAnswerConclusion(task, decision),
+    resolveLoopAnswerConclusion(task, decision),
     "",
     "### 完成摘要",
     finalSummary,
   ].join("\n");
 }
 
-export function resolveLobsterResumeRound(task: LobsterTaskRecord): number {
+export function resolveLoopResumeRound(task: LoopTaskRecord): number {
   const recordedRound = typeof task.currentRound === "number" && Number.isFinite(task.currentRound)
     ? Math.floor(task.currentRound)
     : 0;
@@ -967,7 +967,7 @@ export function resolveLobsterResumeRound(task: LobsterTaskRecord): number {
   return Math.min(resolved, task.maxRounds);
 }
 
-export function buildLobsterRoundSummary(round: number, role: "main" | "subtask", subtaskId?: string): string {
+export function buildLoopRoundSummary(round: number, role: "main" | "subtask", subtaskId?: string): string {
   const subtaskSuffix = role === "subtask" && subtaskId ? ` (${subtaskId})` : "";
   return `${role === "main" ? "Main task" : "Subtask"}${subtaskSuffix} round ${round} finished from extension observation.`;
 }

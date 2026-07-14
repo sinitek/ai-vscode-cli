@@ -1,4 +1,4 @@
-# Lobster Debate Single Timeline
+# Loop Debate Single Timeline
 
 - 日期：2026-06-17
 - 状态：completed
@@ -17,13 +17,13 @@
 ## 范围
 
 - `src/extension.ts`：构建群聊面板状态时合并辩论 chat 与执行 `group-chat.md`。
-- `src/webview/lobsterDebatePanel.ts`：移除轮次选择交互，改为单时间线与成员概览。
-- `src/lobsterDebate.ts` / 测试：补充系统轮次消息解析能力。
+- `src/webview/loopDebatePanel.ts`：移除轮次选择交互，改为单时间线与成员概览。
+- `src/loopDebate.ts` / 测试：补充系统轮次消息解析能力。
 - `.ch/docs/`：同步辩论群聊行为说明。
 
 ## 非目标
 
-- 不重写龙虾主从任务 JSON 协议。
+- 不重写Loop主从任务 JSON 协议。
 - 不改变真实任务记录中 `rounds` / `debateRounds` 的持久化结构。
 - 不替换现有 CLI 会话恢复机制。
 
@@ -37,7 +37,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/webview/`、`src/lobsterDebate.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/webview/`、`src/loopDebate.ts`、`src/test/`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/references/`
 - 配置与脚本：无
 
@@ -48,12 +48,12 @@
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`node --test dist/test/loopDebate.test.js`
 - 扩展验证：`npm run build`、`git diff --check`
 
 ## 测试与清单同步
 
-- 单元测试：更新 `lobsterDebate.test.ts`。
+- 单元测试：更新 `loopDebate.test.ts`。
 - 功能清单：同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 和 `sinitek-cli-plugin-capabilities.md`。
 - 相关文档同步：同步运行时设计和 CLI runtime reference。
 
@@ -72,4 +72,4 @@
 
 ## 当前结论
 
-已完成。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、`git diff --check`。
+已完成。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。

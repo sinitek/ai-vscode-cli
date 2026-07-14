@@ -4,36 +4,42 @@ import * as path from "path";
 import {
   CLI_LIST,
   type CliName,
-  type LobsterExecutionMode,
-  normalizeLobsterExecutionMode,
+  type LoopExecutionMode,
+  normalizeLoopExecutionMode,
 } from "./cli/types";
 import { isTimestampWithinHistoryRetention } from "./historyRetention";
 import { logError } from "./logger";
-import { normalizeLobsterMainAiFailureCount } from "./lobsterMainFailure";
-import { normalizeLobsterWriteFiles } from "./lobsterParallel";
-import type { LobsterDebateRoundRecord } from "./lobsterDebate";
+import {
+  getLegacyLoopStoragePaths,
+  isLegacyLoopTaskStorePath,
+  migrateLegacyLoopJson,
+} from "./loopLegacyMigration";
+import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
+import { normalizeLoopWriteFiles } from "./loopParallel";
+import type { LoopDebateRoundRecord } from "./loopDebate";
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
-const LOBSTER_TASK_STORE_DIR = path.join(DATA_DIR, "lobster-tasks");
-const LOBSTER_TASK_STORE_FILENAME = "lobster-tasks.json";
-const LOBSTER_TASK_STORE_LEGACY_FILE = path.join(DATA_DIR, LOBSTER_TASK_STORE_FILENAME);
-const LOBSTER_COMMUNICATION_DIR = path.join(DATA_DIR, "lobster-communications");
-const LOBSTER_DEFAULT_MAX_ROUNDS = 20;
-const LOBSTER_MIN_MAX_ROUNDS = 1;
-const LOBSTER_MAX_MAX_ROUNDS = 100;
-const LOBSTER_MAX_SKILL_IDS_PER_SUBTASK = 3;
-const LOBSTER_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
-const LOBSTER_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const LOOP_TASK_STORE_DIR = path.join(DATA_DIR, "loop-tasks");
+const LOOP_TASK_STORE_FILENAME = "loop-tasks.json";
+const LOOP_TASK_STORE_FLAT_FILE = path.join(DATA_DIR, LOOP_TASK_STORE_FILENAME);
+const LOOP_COMMUNICATION_DIR = path.join(DATA_DIR, "loop-communications");
+const LEGACY_LOOP_STORAGE_PATHS = getLegacyLoopStoragePaths(DATA_DIR);
+const LOOP_DEFAULT_MAX_ROUNDS = 20;
+const LOOP_MIN_MAX_ROUNDS = 1;
+const LOOP_MAX_MAX_ROUNDS = 100;
+const LOOP_MAX_SKILL_IDS_PER_SUBTASK = 3;
+const LOOP_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
+const LOOP_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-const lobsterTaskStoreFileCache = new Map<string, string>();
+const loopTaskStoreFileCache = new Map<string, string>();
 
-export type LobsterTaskRole = "main" | "subtask";
-export type LobsterTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
-export type LobsterRunStatus = "end" | "error" | "stopped";
-export type LobsterTaskKind = "development" | "non_development";
+export type LoopTaskRole = "main" | "subtask";
+export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
+export type LoopRunStatus = "end" | "error" | "stopped";
+export type LoopTaskKind = "development" | "non_development";
 
-export type LobsterSubtaskRecord = {
+export type LoopSubtaskRecord = {
   id: string;
   title: string;
   prompt?: string;
@@ -47,26 +53,26 @@ export type LobsterSubtaskRecord = {
   updatedAt?: number;
 };
 
-export type LobsterAcceptanceCheck = {
+export type LoopAcceptanceCheck = {
   name: string;
   passed: boolean;
   detail?: string;
 };
 
-export type LobsterAcceptance = {
+export type LoopAcceptance = {
   passed: boolean;
   summary?: string;
-  checks: LobsterAcceptanceCheck[];
+  checks: LoopAcceptanceCheck[];
 };
 
-export type LobsterRoundSummary = {
+export type LoopRoundSummary = {
   round: number;
   subtaskId?: string;
   title: string;
   summary: string;
 };
 
-export type LobsterSubtaskDecision = {
+export type LoopSubtaskDecision = {
   id?: string;
   title: string;
   prompt: string;
@@ -75,38 +81,38 @@ export type LobsterSubtaskDecision = {
   skillIds?: string[];
 };
 
-export type LobsterMainDecision = {
+export type LoopMainDecision = {
   status: "completed" | "continue" | "blocked";
   answerConclusion?: string;
   finalSummary?: string;
-  roundSummaries?: LobsterRoundSummary[];
-  requirementCoverage?: LobsterAcceptanceCheck[];
-  acceptance?: LobsterAcceptance;
-  subtask?: LobsterSubtaskDecision;
-  subtasks?: LobsterSubtaskDecision[];
+  roundSummaries?: LoopRoundSummary[];
+  requirementCoverage?: LoopAcceptanceCheck[];
+  acceptance?: LoopAcceptance;
+  subtask?: LoopSubtaskDecision;
+  subtasks?: LoopSubtaskDecision[];
   parallelReason?: string;
   estimatedRemainingRounds?: number;
 };
 
-export type LobsterRoundRecord = {
+export type LoopRoundRecord = {
   round: number;
-  role: LobsterTaskRole;
+  role: LoopTaskRole;
   subtaskId?: string;
-  status: LobsterRunStatus;
+  status: LoopRunStatus;
   startedAt: number;
   endedAt: number;
   summary?: string;
 };
 
-export type LobsterTaskRecord = {
+export type LoopTaskRecord = {
   id: string;
   cli: CliName;
   workspaceKey: string;
   taskStoreFile: string;
   rootPrompt: string;
-  taskKind?: LobsterTaskKind;
-  executionMode?: LobsterExecutionMode;
-  status: LobsterTaskStatus;
+  taskKind?: LoopTaskKind;
+  executionMode?: LoopExecutionMode;
+  status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
   maxRounds: number;
@@ -116,8 +122,8 @@ export type LobsterTaskRecord = {
   sessionId?: string | null;
   activeSubtaskId?: string | null;
   activeSubtaskIds?: string[];
-  subTasks: LobsterSubtaskRecord[];
-  rounds: LobsterRoundRecord[];
+  subTasks: LoopSubtaskRecord[];
+  rounds: LoopRoundRecord[];
   answerConclusion?: string;
   finalSummary?: string;
   estimatedRemainingRounds?: number;
@@ -126,17 +132,17 @@ export type LobsterTaskRecord = {
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
   supplementalRequirements?: string[];
-  debateRounds?: LobsterDebateRoundRecord<LobsterMainDecision>[];
-  completionRoundSummaries: LobsterRoundSummary[];
-  completionRequirementCoverage: LobsterAcceptanceCheck[];
+  debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
+  completionRoundSummaries: LoopRoundSummary[];
+  completionRequirementCoverage: LoopAcceptanceCheck[];
 };
 
-export type LobsterTaskStore = {
-  tasks: LobsterTaskRecord[];
+export type LoopTaskStore = {
+  tasks: LoopTaskRecord[];
 };
 
-export function buildLobsterSessionIdsByCli(
-  tasks: readonly Pick<LobsterTaskRecord, "cli" | "sessionId">[]
+export function buildLoopSessionIdsByCli(
+  tasks: readonly Pick<LoopTaskRecord, "cli" | "sessionId">[]
 ): Record<CliName, Set<string>> {
   const sessionIdsByCli: Record<CliName, Set<string>> = {
     codex: new Set<string>(),
@@ -152,7 +158,7 @@ export function buildLobsterSessionIdsByCli(
   return sessionIdsByCli;
 }
 
-export type LobsterCommunicationPaths = {
+export type LoopCommunicationPaths = {
   dir: string;
   mainFile: string;
   subtasksDir: string;
@@ -162,38 +168,41 @@ function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
 
-function sanitizeLobsterPathSegment(value: string, fallback: string): string {
+function sanitizeLoopPathSegment(value: string, fallback: string): string {
   const normalized = String(value ?? "").trim().replace(/[^a-zA-Z0-9_.-]/g, "_");
   return normalized || fallback;
 }
 
-export function getLobsterTaskStoreSessionFile(workspaceKey: string, cli: CliName, sessionId: string): string {
-  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
-  const sessionSegment = sanitizeLobsterPathSegment(sessionId, "session");
-  return path.join(LOBSTER_TASK_STORE_DIR, workspaceSegment, cli, sessionSegment, LOBSTER_TASK_STORE_FILENAME);
+export function getLoopTaskStoreSessionFile(workspaceKey: string, cli: CliName, sessionId: string): string {
+  const workspaceSegment = sanitizeLoopPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
+  const sessionSegment = sanitizeLoopPathSegment(sessionId, "session");
+  return path.join(LOOP_TASK_STORE_DIR, workspaceSegment, cli, sessionSegment, LOOP_TASK_STORE_FILENAME);
 }
 
-function getLobsterTaskStorePendingFile(workspaceKey: string, cli: CliName, taskId: string): string {
-  const workspaceSegment = sanitizeLobsterPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
-  const taskSegment = sanitizeLobsterPathSegment(taskId, "task");
+function getLoopTaskStorePendingFile(workspaceKey: string, cli: CliName, taskId: string): string {
+  const workspaceSegment = sanitizeLoopPathSegment(workspaceKey, WORKSPACE_KEY_FALLBACK);
+  const taskSegment = sanitizeLoopPathSegment(taskId, "task");
   return path.join(
-    LOBSTER_TASK_STORE_DIR,
+    LOOP_TASK_STORE_DIR,
     workspaceSegment,
     cli,
     "__pending__",
     taskSegment,
-    LOBSTER_TASK_STORE_FILENAME
+    LOOP_TASK_STORE_FILENAME
   );
 }
 
-export function buildLobsterTaskStoreFile(cli: CliName, workspaceKey: string, sessionId: string | null, taskId: string): string {
+export function buildLoopTaskStoreFile(cli: CliName, workspaceKey: string, sessionId: string | null, taskId: string): string {
   if (sessionId && sessionId.trim()) {
-    return getLobsterTaskStoreSessionFile(workspaceKey, cli, sessionId);
+    return getLoopTaskStoreSessionFile(workspaceKey, cli, sessionId);
   }
-  return getLobsterTaskStorePendingFile(workspaceKey, cli, taskId);
+  return getLoopTaskStorePendingFile(workspaceKey, cli, taskId);
 }
 
-function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
+function collectLoopTaskStoreFilesFromDir(
+  dirPath: string,
+  filename: string = LOOP_TASK_STORE_FILENAME,
+): string[] {
   if (!fs.existsSync(dirPath)) {
     return [];
   }
@@ -208,7 +217,7 @@ function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
     } catch (error) {
-      void logError("lobster-task-store-readdir-error", { dirPath: current, error: String(error) });
+      void logError("loop-task-store-readdir-error", { dirPath: current, error: String(error) });
       continue;
     }
     entries.forEach((entry) => {
@@ -217,7 +226,7 @@ function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
         stack.push(fullPath);
         return;
       }
-      if (entry.isFile() && entry.name === LOBSTER_TASK_STORE_FILENAME) {
+      if (entry.isFile() && entry.name === filename) {
         collected.push(fullPath);
       }
     });
@@ -225,36 +234,239 @@ function collectLobsterTaskStoreFilesFromDir(dirPath: string): string[] {
   return collected;
 }
 
-export function listLobsterTaskStoreFiles(): string[] {
-  const files = collectLobsterTaskStoreFilesFromDir(LOBSTER_TASK_STORE_DIR);
-  if (fs.existsSync(LOBSTER_TASK_STORE_LEGACY_FILE)) {
-    files.push(LOBSTER_TASK_STORE_LEGACY_FILE);
+export function listLoopTaskStoreFiles(): string[] {
+  const unmigratedLegacyFiles = migrateLegacyLoopStorage();
+  const files = collectLoopTaskStoreFilesFromDir(LOOP_TASK_STORE_DIR);
+  if (fs.existsSync(LOOP_TASK_STORE_FLAT_FILE)) {
+    files.push(LOOP_TASK_STORE_FLAT_FILE);
   }
+  files.push(...unmigratedLegacyFiles);
   return Array.from(new Set(files));
 }
 
-function resolveLobsterTaskStoreFileForTask(taskId: string): string | null {
-  const cached = lobsterTaskStoreFileCache.get(taskId);
+function migrateLegacyLoopStorage(): string[] {
+  const legacyFiles = collectLoopTaskStoreFilesFromDir(
+    LEGACY_LOOP_STORAGE_PATHS.taskStoreDir,
+    path.basename(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile),
+  );
+  if (fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile)) {
+    legacyFiles.push(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile);
+  }
+  if (!migrateLegacyLoopCommunicationStorage()) {
+    return Array.from(new Set(legacyFiles));
+  }
+  Array.from(new Set(legacyFiles)).forEach(migrateLegacyLoopTaskStoreFile);
+  removeEmptyDirectories(LEGACY_LOOP_STORAGE_PATHS.taskStoreDir);
+  return Array.from(new Set(legacyFiles)).filter((filePath) => fs.existsSync(filePath));
+}
+
+function migrateLegacyLoopTaskStoreFile(filePath: string): void {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.tasks)) {
+      throw new Error("legacy Loop task store format invalid");
+    }
+    const migratedJson = migrateLegacyLoopJson(parsed, DATA_DIR).value as LoopTaskStore;
+    const migratedStore = ensureLoopTaskStore(migratedJson, { sourceFile: filePath });
+    for (const task of migratedStore.tasks) {
+      const targetFile = buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id);
+      const migratedTask: LoopTaskRecord = {
+        ...task,
+        taskStoreFile: targetFile,
+      };
+      const targetStore = readLoopTaskStore(targetFile);
+      const existingIndex = targetStore.tasks.findIndex((item) => item.id === task.id);
+      let expectedUpdatedAt = migratedTask.updatedAt;
+      if (existingIndex < 0) {
+        targetStore.tasks.push(migratedTask);
+      } else if (targetStore.tasks[existingIndex].updatedAt <= migratedTask.updatedAt) {
+        targetStore.tasks[existingIndex] = migratedTask;
+      } else {
+        expectedUpdatedAt = targetStore.tasks[existingIndex].updatedAt;
+      }
+      writeLoopTaskStore(targetFile, targetStore);
+      const persistedTask = readLoopTaskStore(targetFile).tasks.find((item) => item.id === task.id);
+      if (!persistedTask || persistedTask.updatedAt < expectedUpdatedAt || persistedTask.taskStoreFile !== targetFile) {
+        throw new Error(`Loop task migration verification failed: ${task.id}`);
+      }
+      loopTaskStoreFileCache.set(task.id, targetFile);
+    }
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    void logError("loop-legacy-task-store-migration-error", {
+      filePath,
+      error: String(error),
+    });
+  }
+}
+
+function migrateLegacyLoopCommunicationStorage(): boolean {
+  const sourceDir = LEGACY_LOOP_STORAGE_PATHS.communicationDir;
+  if (!fs.existsSync(sourceDir)) {
+    return true;
+  }
+  try {
+    const sourceStats = fs.lstatSync(sourceDir);
+    if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
+      throw new Error("legacy Loop communication root must be a real directory");
+    }
+    assertLoopMigrationTreeHasNoSymlinks(sourceDir);
+    if (!fs.existsSync(LOOP_COMMUNICATION_DIR)) {
+      fs.mkdirSync(path.dirname(LOOP_COMMUNICATION_DIR), { recursive: true });
+      fs.renameSync(sourceDir, LOOP_COMMUNICATION_DIR);
+      return true;
+    }
+    const targetStats = fs.lstatSync(LOOP_COMMUNICATION_DIR);
+    if (!targetStats.isDirectory() || targetStats.isSymbolicLink()) {
+      throw new Error("Loop communication root must be a real directory");
+    }
+    mergeLegacyLoopDirectory(sourceDir, LOOP_COMMUNICATION_DIR);
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+    return !fs.existsSync(sourceDir);
+  } catch (error) {
+    void logError("loop-legacy-communication-migration-error", {
+      sourceDir,
+      targetDir: LOOP_COMMUNICATION_DIR,
+      error: String(error),
+    });
+    return false;
+  }
+}
+
+function mergeLegacyLoopDirectory(sourceDir: string, targetDir: string): void {
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    const sourceStats = fs.lstatSync(sourcePath);
+    if (sourceStats.isSymbolicLink()) {
+      throw new Error(`Loop communication migration refuses symlink: ${sourcePath}`);
+    }
+    if (!fs.existsSync(targetPath)) {
+      copyLoopMigrationEntry(sourcePath, targetPath, sourceStats);
+      continue;
+    }
+    const targetStats = fs.lstatSync(targetPath);
+    if (targetStats.isSymbolicLink()) {
+      throw new Error(`Loop communication migration refuses target symlink: ${targetPath}`);
+    }
+    if (sourceStats.isDirectory() && targetStats.isDirectory()) {
+      mergeLegacyLoopDirectory(sourcePath, targetPath);
+      continue;
+    }
+    if (sourceStats.isFile() && targetStats.isFile() && filesHaveEqualContent(sourcePath, targetPath)) {
+      continue;
+    }
+    copyLoopMigrationConflict(sourcePath, targetPath, sourceStats);
+  }
+}
+
+function copyLoopMigrationEntry(sourcePath: string, targetPath: string, sourceStats: fs.Stats): void {
+  if (sourceStats.isDirectory()) {
+    mergeLegacyLoopDirectory(sourcePath, targetPath);
+    return;
+  }
+  if (sourceStats.isFile()) {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+    return;
+  }
+  throw new Error(`Loop communication migration refuses special file: ${sourcePath}`);
+}
+
+function assertLoopMigrationTreeHasNoSymlinks(rootDir: string): void {
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    if (!currentDir) {
+      continue;
+    }
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = path.join(currentDir, entry.name);
+      const stats = fs.lstatSync(entryPath);
+      if (stats.isSymbolicLink()) {
+        throw new Error(`Loop communication migration refuses symlink: ${entryPath}`);
+      }
+      if (stats.isDirectory()) {
+        stack.push(entryPath);
+      }
+    }
+  }
+}
+
+function filesHaveEqualContent(left: string, right: string): boolean {
+  const leftStats = fs.statSync(left);
+  const rightStats = fs.statSync(right);
+  return leftStats.size === rightStats.size && fs.readFileSync(left).equals(fs.readFileSync(right));
+}
+
+function copyLoopMigrationConflict(sourcePath: string, targetPath: string, sourceStats: fs.Stats): void {
+  const extension = path.extname(targetPath);
+  const base = targetPath.slice(0, targetPath.length - extension.length);
+  let sequence = 0;
+  while (true) {
+    const suffix = sequence === 0 ? ".pre-loop-migration" : `.pre-loop-migration-${sequence}`;
+    const candidate = `${base}${suffix}${extension}`;
+    if (!fs.existsSync(candidate)) {
+      copyLoopMigrationEntry(sourcePath, candidate, sourceStats);
+      return;
+    }
+    const candidateStats = fs.lstatSync(candidate);
+    if (candidateStats.isSymbolicLink()) {
+      throw new Error(`Loop communication migration refuses conflict symlink: ${candidate}`);
+    }
+    if (sourceStats.isFile() && candidateStats.isFile() && filesHaveEqualContent(sourcePath, candidate)) {
+      return;
+    }
+    if (sourceStats.isDirectory() && candidateStats.isDirectory()) {
+      mergeLegacyLoopDirectory(sourcePath, candidate);
+      return;
+    }
+    sequence += 1;
+  }
+}
+
+function removeEmptyDirectories(rootDir: string): void {
+  if (!fs.existsSync(rootDir)) {
+    return;
+  }
+  const rootStats = fs.lstatSync(rootDir);
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+    return;
+  }
+  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      removeEmptyDirectories(path.join(rootDir, entry.name));
+    }
+  }
+  if (fs.existsSync(rootDir) && fs.readdirSync(rootDir).length === 0) {
+    fs.rmdirSync(rootDir);
+  }
+}
+
+function resolveLoopTaskStoreFileForTask(taskId: string): string | null {
+  const cached = loopTaskStoreFileCache.get(taskId);
   if (cached && fs.existsSync(cached)) {
-    const cachedStore = readLobsterTaskStore(cached);
+    const cachedStore = readLoopTaskStore(cached);
     if (cachedStore.tasks.some((task) => task.id === taskId)) {
       return cached;
     }
-    lobsterTaskStoreFileCache.delete(taskId);
+    loopTaskStoreFileCache.delete(taskId);
   }
-  const candidateFiles = listLobsterTaskStoreFiles();
+  const candidateFiles = listLoopTaskStoreFiles();
   for (const filePath of candidateFiles) {
-    const store = readLobsterTaskStore(filePath);
+    const store = readLoopTaskStore(filePath);
     if (store.tasks.some((task) => task.id === taskId)) {
-      lobsterTaskStoreFileCache.set(taskId, filePath);
+      loopTaskStoreFileCache.set(taskId, filePath);
       return filePath;
     }
   }
   return null;
 }
 
-export function getLobsterCommunicationPaths(taskId: string): LobsterCommunicationPaths {
-  const dir = path.join(LOBSTER_COMMUNICATION_DIR, taskId);
+export function getLoopCommunicationPaths(taskId: string): LoopCommunicationPaths {
+  const dir = path.join(LOOP_COMMUNICATION_DIR, taskId);
   return {
     dir,
     mainFile: path.join(dir, "main-task.md"),
@@ -262,8 +474,8 @@ export function getLobsterCommunicationPaths(taskId: string): LobsterCommunicati
   };
 }
 
-export function ensureLobsterCommunicationFiles(taskId: string, rootPrompt: string): LobsterCommunicationPaths {
-  const paths = getLobsterCommunicationPaths(taskId);
+export function ensureLoopCommunicationFiles(taskId: string, rootPrompt: string): LoopCommunicationPaths {
+  const paths = getLoopCommunicationPaths(taskId);
   try {
     fs.mkdirSync(paths.subtasksDir, { recursive: true });
     if (!fs.existsSync(paths.mainFile)) {
@@ -280,24 +492,24 @@ export function ensureLobsterCommunicationFiles(taskId: string, rootPrompt: stri
       ].join("\n"), "utf8");
     }
   } catch (error) {
-    void logError("lobster-communication-init-error", { taskId, error: String(error) });
+    void logError("loop-communication-init-error", { taskId, error: String(error) });
   }
   return paths;
 }
 
-export function buildLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string, round: number, retryCount: number): string {
+export function buildLoopSubtaskCommunicationFile(taskId: string, subtaskId: string, round: number, retryCount: number): string {
   const safeSubtaskId = subtaskId.replace(/[^a-zA-Z0-9_.-]/g, "_");
   const retrySuffix = retryCount > 0 ? `-retry-${retryCount}` : "";
-  return path.join(getLobsterCommunicationPaths(taskId).subtasksDir, `round-${round}-${safeSubtaskId}${retrySuffix}.md`);
+  return path.join(getLoopCommunicationPaths(taskId).subtasksDir, `round-${round}-${safeSubtaskId}${retrySuffix}.md`);
 }
 
-export function prepareLobsterSubtaskCommunicationFile(
-  task: LobsterTaskRecord,
-  subtask: LobsterSubtaskRecord,
+export function prepareLoopSubtaskCommunicationFile(
+  task: LoopTaskRecord,
+  subtask: LoopSubtaskRecord,
   round: number,
   retryCount: number
 ): string {
-  const filePath = buildLobsterSubtaskCommunicationFile(task.id, subtask.id, round, retryCount);
+  const filePath = buildLoopSubtaskCommunicationFile(task.id, subtask.id, round, retryCount);
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     if (!fs.existsSync(filePath)) {
@@ -307,7 +519,7 @@ export function prepareLobsterSubtaskCommunicationFile(
         `- Loop 任务 ID：${task.id}`,
         `- 子任务 ID：${subtask.id}`,
         `- 子任务标题：${subtask.title}`,
-        `- 授权写入文件/范围：${formatLobsterWriteFiles(subtask.writeFiles) ?? "未声明；以子任务指令为准"}`,
+        `- 授权写入文件/范围：${formatLoopWriteFiles(subtask.writeFiles) ?? "未声明；以子任务指令为准"}`,
         `- 轮次：${round}`,
         `- 重试次数：${retryCount}`,
         `- 创建时间：${new Date().toISOString()}`,
@@ -327,27 +539,27 @@ export function prepareLobsterSubtaskCommunicationFile(
       ].join("\n"), "utf8");
     }
   } catch (error) {
-    void logError("lobster-subtask-communication-init-error", { taskId: task.id, subtaskId: subtask.id, filePath, error: String(error) });
+    void logError("loop-subtask-communication-init-error", { taskId: task.id, subtaskId: subtask.id, filePath, error: String(error) });
   }
-  updateLobsterSubtaskCommunicationFile(task.id, subtask.id, filePath);
+  updateLoopSubtaskCommunicationFile(task.id, subtask.id, filePath);
   return filePath;
 }
 
-function updateLobsterSubtaskCommunicationFile(taskId: string, subtaskId: string, filePath: string): void {
-  const task = readLobsterTaskRecord(taskId);
+function updateLoopSubtaskCommunicationFile(taskId: string, subtaskId: string, filePath: string): void {
+  const task = readLoopTaskRecord(taskId);
   if (!task) {
     return;
   }
   const subTasks = task.subTasks.map((item) => item.id === subtaskId ? { ...item, communicationFile: filePath, updatedAt: Date.now() } : item);
-  updateLobsterTaskRecord(taskId, { subTasks, updatedAt: Date.now() });
+  updateLoopTaskRecord(taskId, { subTasks, updatedAt: Date.now() });
 }
 
-export function readLobsterTaskRecord(taskId: string): LobsterTaskRecord | null {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+export function readLoopTaskRecord(taskId: string): LoopTaskRecord | null {
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
   if (!storeFile) {
     return null;
   }
-  const task = readLobsterTaskStore(storeFile).tasks.find((item) => item.id === taskId) ?? null;
+  const task = readLoopTaskStore(storeFile).tasks.find((item) => item.id === taskId) ?? null;
   if (!task) {
     return null;
   }
@@ -357,16 +569,16 @@ export function readLobsterTaskRecord(taskId: string): LobsterTaskRecord | null 
   return task;
 }
 
-export function updateLobsterTaskRecord(
+export function updateLoopTaskRecord(
   taskId: string,
-  patch: Partial<LobsterTaskRecord>,
+  patch: Partial<LoopTaskRecord>,
   options: { allowCompletedToRunning?: boolean } = {}
-): LobsterTaskRecord | null {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+): LoopTaskRecord | null {
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
   if (!storeFile) {
     return null;
   }
-  const store = readLobsterTaskStore(storeFile);
+  const store = readLoopTaskStore(storeFile);
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return null;
@@ -375,7 +587,7 @@ export function updateLobsterTaskRecord(
   const nextStatus = existing.status === "completed" && patch.status === "running" && options.allowCompletedToRunning !== true
     ? existing.status
     : patch.status ?? existing.status;
-  const next: LobsterTaskRecord = {
+  const next: LoopTaskRecord = {
     ...existing,
     ...patch,
     taskStoreFile: typeof patch.taskStoreFile === "string" && patch.taskStoreFile.trim()
@@ -400,37 +612,37 @@ export function updateLobsterTaskRecord(
   if (targetStoreFile !== storeFile) {
     store.tasks.splice(index, 1);
     if (store.tasks.length > 0) {
-      writeLobsterTaskStore(storeFile, store);
+      writeLoopTaskStore(storeFile, store);
     } else if (fs.existsSync(storeFile)) {
       try {
         fs.unlinkSync(storeFile);
       } catch (error) {
-        void logError("lobster-task-store-delete-error", { filePath: storeFile, error: String(error) });
+        void logError("loop-task-store-delete-error", { filePath: storeFile, error: String(error) });
       }
     }
-    const targetStore = readLobsterTaskStore(targetStoreFile);
+    const targetStore = readLoopTaskStore(targetStoreFile);
     const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
     if (targetIndex >= 0) {
       targetStore.tasks[targetIndex] = next;
     } else {
       targetStore.tasks.push(next);
     }
-    writeLobsterTaskStore(targetStoreFile, targetStore);
-    lobsterTaskStoreFileCache.set(taskId, targetStoreFile);
+    writeLoopTaskStore(targetStoreFile, targetStore);
+    loopTaskStoreFileCache.set(taskId, targetStoreFile);
     return next;
   }
   store.tasks[index] = next;
-  writeLobsterTaskStore(storeFile, store);
-  lobsterTaskStoreFileCache.set(taskId, storeFile);
+  writeLoopTaskStore(storeFile, store);
+  loopTaskStoreFileCache.set(taskId, storeFile);
   return next;
 }
 
-export function appendLobsterRound(taskId: string, round: LobsterRoundRecord): void {
-  const storeFile = resolveLobsterTaskStoreFileForTask(taskId);
+export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
   if (!storeFile) {
     return;
   }
-  const store = readLobsterTaskStore(storeFile);
+  const store = readLoopTaskStore(storeFile);
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return;
@@ -453,56 +665,60 @@ export function appendLobsterRound(taskId: string, round: LobsterRoundRecord): v
     currentRound: Math.max(task.currentRound, round.round),
     updatedAt: Date.now(),
   };
-  writeLobsterTaskStore(storeFile, store);
+  writeLoopTaskStore(storeFile, store);
 }
 
-export function bindLobsterTaskToSession(taskId: string, sessionId: string): LobsterTaskRecord | null {
+export function bindLoopTaskToSession(taskId: string, sessionId: string): LoopTaskRecord | null {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
     return null;
   }
-  const task = readLobsterTaskRecord(taskId);
+  const task = readLoopTaskRecord(taskId);
   if (!task) {
     return null;
   }
-  const targetStoreFile = getLobsterTaskStoreSessionFile(task.workspaceKey, task.cli, normalizedSessionId);
+  const targetStoreFile = getLoopTaskStoreSessionFile(task.workspaceKey, task.cli, normalizedSessionId);
   if (task.sessionId === normalizedSessionId && task.taskStoreFile === targetStoreFile) {
     return task;
   }
-  return updateLobsterTaskRecord(taskId, {
+  return updateLoopTaskRecord(taskId, {
     sessionId: normalizedSessionId,
     taskStoreFile: targetStoreFile,
     updatedAt: Date.now(),
   });
 }
 
-function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): LobsterTaskRecord | null {
+function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
-  const raw = record as Partial<LobsterTaskRecord>;
+  const raw = record as Partial<LoopTaskRecord>;
   const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
   if (typeof raw.id !== "string" || !raw.id.trim() || !cli || typeof raw.rootPrompt !== "string") {
     return null;
   }
   const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Date.now();
   const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : createdAt;
-  const status = isLobsterTaskStatus(raw.status) ? raw.status : "running";
+  const status = isLoopTaskStatus(raw.status) ? raw.status : "running";
   const workspaceKey = typeof raw.workspaceKey === "string" ? raw.workspaceKey : WORKSPACE_KEY_FALLBACK;
   const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : null;
+  const normalizedSourceFile = sourceFile && (
+    !isLegacyLoopTaskStorePath(sourceFile, DATA_DIR)
+    || fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir)
+  ) ? sourceFile : undefined;
   const taskStoreFile = typeof raw.taskStoreFile === "string" && raw.taskStoreFile.trim()
     ? raw.taskStoreFile
-    : (sourceFile ?? buildLobsterTaskStoreFile(cli, workspaceKey, sessionId, raw.id));
+    : (normalizedSourceFile ?? buildLoopTaskStoreFile(cli, workspaceKey, sessionId, raw.id));
   const subTasks = Array.isArray(raw.subTasks)
-    ? raw.subTasks.map(normalizeLobsterSubtaskRecord).filter((item): item is LobsterSubtaskRecord => Boolean(item))
+    ? raw.subTasks.map(normalizeLoopSubtaskRecord).filter((item): item is LoopSubtaskRecord => Boolean(item))
     : [];
   const rounds = Array.isArray(raw.rounds)
-    ? raw.rounds.map(normalizeLobsterRoundRecord).filter((item): item is LobsterRoundRecord => Boolean(item))
+    ? raw.rounds.map(normalizeLoopRoundRecord).filter((item): item is LoopRoundRecord => Boolean(item))
     : [];
   const completionRoundSummaries = Array.isArray(raw.completionRoundSummaries)
-    ? raw.completionRoundSummaries.map(normalizeSingleLobsterRoundSummary).filter((item): item is LobsterRoundSummary => Boolean(item))
+    ? raw.completionRoundSummaries.map(normalizeSingleLoopRoundSummary).filter((item): item is LoopRoundSummary => Boolean(item))
     : [];
-  const completionRequirementCoverage = normalizeLobsterAcceptanceChecks(
+  const completionRequirementCoverage = normalizeLoopAcceptanceChecks(
     (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
   );
   const supplementalRequirements = Array.isArray((raw as { supplementalRequirements?: unknown }).supplementalRequirements)
@@ -510,8 +726,8 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
       .map((item) => String(item).trim())
       .filter(Boolean)
     : [];
-  const debateRounds = normalizeLobsterDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
-  const taskKind = normalizeLobsterTaskKind((raw as { taskKind?: unknown }).taskKind);
+  const debateRounds = normalizeLoopDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
+  const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   return {
     id: raw.id,
     cli,
@@ -519,14 +735,14 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     taskStoreFile,
     rootPrompt: raw.rootPrompt,
     ...(taskKind ? { taskKind } : {}),
-    executionMode: normalizeLobsterExecutionMode((raw as { executionMode?: unknown }).executionMode),
+    executionMode: normalizeLoopExecutionMode((raw as { executionMode?: unknown }).executionMode),
     status,
     createdAt,
     updatedAt,
-    maxRounds: normalizeStoredLobsterMaxRounds(raw.maxRounds),
+    maxRounds: normalizeStoredLoopMaxRounds(raw.maxRounds),
     currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
-    communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLobsterCommunicationPaths(raw.id).dir,
-    mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLobsterCommunicationPaths(raw.id).mainFile,
+    communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLoopCommunicationPaths(raw.id).dir,
+    mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLoopCommunicationPaths(raw.id).mainFile,
     sessionId,
     activeSubtaskId: typeof raw.activeSubtaskId === "string" ? raw.activeSubtaskId : null,
     activeSubtaskIds: Array.isArray((raw as { activeSubtaskIds?: unknown }).activeSubtaskIds)
@@ -537,10 +753,10 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
     rounds,
     answerConclusion: typeof raw.answerConclusion === "string" ? raw.answerConclusion : undefined,
     finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
-    estimatedRemainingRounds: normalizeLobsterEstimatedRemainingRounds(
+    estimatedRemainingRounds: normalizeLoopEstimatedRemainingRounds(
       (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
     ),
-    mainAiFailureCount: normalizeLobsterMainAiFailureCount(
+    mainAiFailureCount: normalizeLoopMainAiFailureCount(
       (raw as { mainAiFailureCount?: unknown }).mainAiFailureCount
     ),
     mainAiFailureLimitReached: Boolean((raw as { mainAiFailureLimitReached?: unknown }).mainAiFailureLimitReached),
@@ -557,34 +773,34 @@ function normalizeLobsterTaskRecord(record: unknown, sourceFile?: string): Lobst
   };
 }
 
-function normalizeLobsterDebateRounds(value: unknown): LobsterDebateRoundRecord<LobsterMainDecision>[] | undefined {
+function normalizeLoopDebateRounds(value: unknown): LoopDebateRoundRecord<LoopMainDecision>[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return value.filter((item): item is LobsterDebateRoundRecord<LobsterMainDecision> => (
+  return value.filter((item): item is LoopDebateRoundRecord<LoopMainDecision> => (
     Boolean(item && typeof item === "object" && !Array.isArray(item))
   ));
 }
 
-function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | null {
+function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
-  const raw = record as Partial<LobsterSubtaskRecord>;
+  const raw = record as Partial<LoopSubtaskRecord>;
   if (typeof raw.id !== "string" || !raw.id.trim() || typeof raw.title !== "string") {
     return null;
   }
   const status = raw.status === "pending" || raw.status === "running" || raw.status === "completed" || raw.status === "skipped" || raw.status === "blocked"
     ? raw.status
     : "pending";
-  const skillIds = normalizeLobsterSkillIds((raw as { skillIds?: unknown }).skillIds);
-  const skillGuidance = normalizeLobsterSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
+  const skillIds = normalizeLoopSkillIds((raw as { skillIds?: unknown }).skillIds);
+  const skillGuidance = normalizeLoopSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
   return {
     id: raw.id,
     title: raw.title,
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
-    writeFiles: normalizeLobsterWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
+    writeFiles: normalizeLoopWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
     ...(skillIds && skillGuidance ? { skillIds, skillGuidance } : {}),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
@@ -593,11 +809,11 @@ function normalizeLobsterSubtaskRecord(record: unknown): LobsterSubtaskRecord | 
   };
 }
 
-function normalizeLobsterTaskKind(value: unknown): LobsterTaskKind | undefined {
+function normalizeLoopTaskKind(value: unknown): LoopTaskKind | undefined {
   return value === "development" || value === "non_development" ? value : undefined;
 }
 
-function normalizeLobsterSkillIds(value: unknown): string[] | undefined {
+function normalizeLoopSkillIds(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -607,34 +823,34 @@ function normalizeLobsterSkillIds(value: unknown): string[] | undefined {
       continue;
     }
     const skillId = item.trim();
-    if (!skillId || !LOBSTER_SKILL_ID_PATTERN.test(skillId) || skillIds.includes(skillId)) {
+    if (!skillId || !LOOP_SKILL_ID_PATTERN.test(skillId) || skillIds.includes(skillId)) {
       continue;
     }
     skillIds.push(skillId);
-    if (skillIds.length >= LOBSTER_MAX_SKILL_IDS_PER_SUBTASK) {
+    if (skillIds.length >= LOOP_MAX_SKILL_IDS_PER_SUBTASK) {
       break;
     }
   }
   return skillIds.length > 0 ? skillIds : undefined;
 }
 
-function normalizeLobsterSkillGuidance(value: unknown): string | undefined {
+function normalizeLoopSkillGuidance(value: unknown): string | undefined {
   if (
     typeof value !== "string"
     || !value.trim()
-    || value.length > LOBSTER_MAX_SKILL_GUIDANCE_LENGTH
+    || value.length > LOOP_MAX_SKILL_GUIDANCE_LENGTH
   ) {
     return undefined;
   }
   return value;
 }
 
-function normalizeLobsterRoundRecord(record: unknown): LobsterRoundRecord | null {
+function normalizeLoopRoundRecord(record: unknown): LoopRoundRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
-  const raw = record as Partial<LobsterRoundRecord>;
-  if (typeof raw.round !== "number" || !isLobsterTaskRole(raw.role)) {
+  const raw = record as Partial<LoopRoundRecord>;
+  if (typeof raw.round !== "number" || !isLoopTaskRole(raw.role)) {
     return null;
   }
   if (raw.status !== "end" && raw.status !== "error" && raw.status !== "stopped") {
@@ -651,67 +867,78 @@ function normalizeLobsterRoundRecord(record: unknown): LobsterRoundRecord | null
   };
 }
 
-function isLobsterTaskStatus(value: unknown): value is LobsterTaskStatus {
+function isLoopTaskStatus(value: unknown): value is LoopTaskStatus {
   return value === "running" || value === "completed" || value === "needs-review" || value === "error" || value === "stopped";
 }
 
-function isLobsterTaskRole(value: unknown): value is LobsterTaskRole {
+function isLoopTaskRole(value: unknown): value is LoopTaskRole {
   return value === "main" || value === "subtask";
 }
 
-function ensureLobsterTaskStore(
-  store?: LobsterTaskStore,
+function ensureLoopTaskStore(
+  store?: LoopTaskStore,
   options: { sourceFile?: string } = {}
-): LobsterTaskStore {
+): LoopTaskStore {
   const now = Date.now();
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
-      .map((record) => normalizeLobsterTaskRecord(record, options.sourceFile))
-      .filter((record): record is LobsterTaskRecord => Boolean(record))
+      .map((record) => normalizeLoopTaskRecord(record, options.sourceFile))
+      .filter((record): record is LoopTaskRecord => Boolean(record))
       .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
     : [];
   return { tasks };
 }
 
-export function readLobsterTaskStore(filePath: string): LobsterTaskStore {
+export function readLoopTaskStore(filePath: string): LoopTaskStore {
   try {
     if (!fs.existsSync(filePath)) {
       return { tasks: [] };
     }
     const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
+    const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
+      && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
+    const parsed = migrateLegacyLoopJson(
+      JSON.parse(raw),
+      retainLegacyStoragePaths ? undefined : DATA_DIR,
+    ).value;
     if (!parsed || !Array.isArray(parsed.tasks)) {
       return { tasks: [] };
     }
-    return ensureLobsterTaskStore({ tasks: parsed.tasks as LobsterTaskRecord[] }, { sourceFile: filePath });
+    return ensureLoopTaskStore({ tasks: parsed.tasks as LoopTaskRecord[] }, { sourceFile: filePath });
   } catch (error) {
-    void logError("lobster-task-store-read-error", { filePath, error: String(error) });
+    void logError("loop-task-store-read-error", { filePath, error: String(error) });
     return { tasks: [] };
   }
 }
 
-export function writeLobsterTaskStore(filePath: string, store: LobsterTaskStore): void {
+export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void {
   try {
+    const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
+      && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
+    const migratedStore = migrateLegacyLoopJson(
+      store,
+      retainLegacyStoragePaths ? undefined : DATA_DIR,
+    ).value;
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(
       filePath,
-      JSON.stringify(ensureLobsterTaskStore(store, { sourceFile: filePath }), null, 2),
+      JSON.stringify(ensureLoopTaskStore(migratedStore, { sourceFile: filePath }), null, 2),
       "utf8"
     );
   } catch (error) {
-    void logError("lobster-task-store-write-error", { filePath, error: String(error) });
+    void logError("loop-task-store-write-error", { filePath, error: String(error) });
   }
 }
 
-export function cleanupLobsterTaskStoreRetention(): void {
+export function cleanupLoopTaskStoreRetention(): void {
   try {
-    const filePaths = listLobsterTaskStoreFiles();
+    const filePaths = listLoopTaskStoreFiles();
     filePaths.forEach((filePath) => {
-      const normalized = readLobsterTaskStore(filePath);
+      const normalized = readLoopTaskStore(filePath);
       if (normalized.tasks.length > 0) {
-        writeLobsterTaskStore(filePath, normalized);
+        writeLoopTaskStore(filePath, normalized);
         normalized.tasks.forEach((task) => {
-          lobsterTaskStoreFileCache.set(task.id, filePath);
+          loopTaskStoreFileCache.set(task.id, filePath);
         });
         return;
       }
@@ -720,15 +947,15 @@ export function cleanupLobsterTaskStoreRetention(): void {
       }
     });
   } catch (error) {
-    void logError("lobster-task-store-retention-cleanup-error", { error: String(error) });
+    void logError("loop-task-store-retention-cleanup-error", { error: String(error) });
   }
 }
 
-function collectRetainedLobsterTaskIds(): Set<string> {
+function collectRetainedLoopTaskIds(): Set<string> {
   const retainedTaskIds = new Set<string>();
-  const filePaths = listLobsterTaskStoreFiles();
+  const filePaths = listLoopTaskStoreFiles();
   filePaths.forEach((filePath) => {
-    const store = readLobsterTaskStore(filePath);
+    const store = readLoopTaskStore(filePath);
     store.tasks.forEach((task) => {
       retainedTaskIds.add(task.id);
     });
@@ -769,14 +996,14 @@ function getLatestMtimeMsInTree(rootPath: string): number {
   return latestMtimeMs;
 }
 
-export function cleanupLobsterCommunicationRetention(): void {
+export function cleanupLoopCommunicationRetention(): void {
   try {
-    if (!fs.existsSync(LOBSTER_COMMUNICATION_DIR)) {
+    if (!fs.existsSync(LOOP_COMMUNICATION_DIR)) {
       return;
     }
     const now = Date.now();
-    const retainedTaskIds = collectRetainedLobsterTaskIds();
-    const entries = fs.readdirSync(LOBSTER_COMMUNICATION_DIR, { withFileTypes: true });
+    const retainedTaskIds = collectRetainedLoopTaskIds();
+    const entries = fs.readdirSync(LOOP_COMMUNICATION_DIR, { withFileTypes: true });
     entries.forEach((entry) => {
       if (!entry.isDirectory()) {
         return;
@@ -785,7 +1012,7 @@ export function cleanupLobsterCommunicationRetention(): void {
       if (retainedTaskIds.has(taskId)) {
         return;
       }
-      const dirPath = path.join(LOBSTER_COMMUNICATION_DIR, taskId);
+      const dirPath = path.join(LOOP_COMMUNICATION_DIR, taskId);
       const latestTouchedAt = getLatestMtimeMsInTree(dirPath);
       if (isTimestampWithinHistoryRetention(latestTouchedAt, now)) {
         return;
@@ -793,50 +1020,50 @@ export function cleanupLobsterCommunicationRetention(): void {
       try {
         fs.rmSync(dirPath, { recursive: true, force: true });
       } catch (error) {
-        void logError("lobster-communication-retention-delete-error", {
+        void logError("loop-communication-retention-delete-error", {
           taskId,
           dirPath,
           error: String(error),
         });
       }
     });
-    if (fs.existsSync(LOBSTER_COMMUNICATION_DIR) && fs.readdirSync(LOBSTER_COMMUNICATION_DIR).length === 0) {
-      fs.rmSync(LOBSTER_COMMUNICATION_DIR, { recursive: true, force: true });
+    if (fs.existsSync(LOOP_COMMUNICATION_DIR) && fs.readdirSync(LOOP_COMMUNICATION_DIR).length === 0) {
+      fs.rmSync(LOOP_COMMUNICATION_DIR, { recursive: true, force: true });
     }
   } catch (error) {
-    void logError("lobster-communication-retention-cleanup-error", { error: String(error) });
+    void logError("loop-communication-retention-cleanup-error", { error: String(error) });
   }
 }
 
-function normalizeLobsterEstimatedRemainingRounds(value: unknown): number | undefined {
+function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
   const numeric = typeof value === "number"
     ? value
     : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
   if (!Number.isFinite(numeric)) {
     return undefined;
   }
-  return Math.min(Math.max(Math.floor(numeric), 0), LOBSTER_MAX_MAX_ROUNDS);
+  return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
 }
 
-function normalizeStoredLobsterMaxRounds(value: unknown): number {
-  const rawValue = parseLobsterMaxRoundsValue(value);
+function normalizeStoredLoopMaxRounds(value: unknown): number {
+  const rawValue = parseLoopMaxRoundsValue(value);
   if (rawValue === null) {
-    return LOBSTER_DEFAULT_MAX_ROUNDS;
+    return LOOP_DEFAULT_MAX_ROUNDS;
   }
   return rawValue;
 }
 
-function parseLobsterMaxRoundsValue(value: unknown): number | null {
+function parseLoopMaxRoundsValue(value: unknown): number | null {
   const numeric = typeof value === "number"
     ? value
     : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
   if (!Number.isFinite(numeric)) {
     return null;
   }
-  return Math.min(Math.max(Math.floor(numeric), LOBSTER_MIN_MAX_ROUNDS), LOBSTER_MAX_MAX_ROUNDS);
+  return Math.min(Math.max(Math.floor(numeric), LOOP_MIN_MAX_ROUNDS), LOOP_MAX_MAX_ROUNDS);
 }
 
-function normalizeSingleLobsterRoundSummary(value: unknown): LobsterRoundSummary | null {
+function normalizeSingleLoopRoundSummary(value: unknown): LoopRoundSummary | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -864,12 +1091,12 @@ function normalizeSingleLobsterRoundSummary(value: unknown): LobsterRoundSummary
   };
 }
 
-function normalizeLobsterAcceptanceChecks(value: unknown): LobsterAcceptanceCheck[] {
+function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
-    .map((item): LobsterAcceptanceCheck | null => {
+    .map((item): LoopAcceptanceCheck | null => {
       if (!item || typeof item !== "object") {
         return null;
       }
@@ -881,10 +1108,10 @@ function normalizeLobsterAcceptanceChecks(value: unknown): LobsterAcceptanceChec
         detail: typeof check.detail === "string" ? check.detail : undefined,
       };
     })
-    .filter((item): item is LobsterAcceptanceCheck => Boolean(item));
+    .filter((item): item is LoopAcceptanceCheck => Boolean(item));
 }
 
-function formatLobsterWriteFiles(writeFiles?: string[]): string | null {
+function formatLoopWriteFiles(writeFiles?: string[]): string | null {
   if (!Array.isArray(writeFiles) || writeFiles.length === 0) {
     return null;
   }

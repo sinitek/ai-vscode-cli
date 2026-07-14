@@ -16,8 +16,8 @@ function buildStaticHtml(locale: "en" | "zh-CN"): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    lobsterExecutionModeDebateMultiAgent: "debate_multi_agent",
+    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
 }
 

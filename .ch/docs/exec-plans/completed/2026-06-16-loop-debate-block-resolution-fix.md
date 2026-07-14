@@ -1,4 +1,4 @@
-# 龙虾辩论阻塞共识解析修复
+# Loop辩论阻塞共识解析修复
 
 - 日期：2026-06-16
 - 状态：completed
@@ -25,7 +25,7 @@
 ## 范围
 
 - `src/extension.ts`：调整共识汇总提示词和 stance 合并逻辑。
-- `src/test/lobsterDebate.test.ts`：补充已解决风险阻塞可继续的回归测试。
+- `src/test/loopDebate.test.ts`：补充已解决风险阻塞可继续的回归测试。
 - `.ch/docs/` 事实来源：同步“未解决 block 才阻塞”的规则。
 
 ## 非目标
@@ -38,14 +38,14 @@
 
 - [x] 共识汇总提示词不再要求“任一 participant artifact block 必须 blocked”，而是要求区分可解决/未解决阻塞。
 - [x] consensus 中明确给出的最终 participant stance 不会被原始 artifact stance 覆盖。
-- [x] `validateLobsterDebateConsensus` 仍会阻止最终 stance=block 或 open blocking disagreement。
+- [x] `validateLoopDebateConsensus` 仍会阻止最终 stance=block 或 open blocking disagreement。
 - [x] `npm run build` 通过。
-- [x] `node --test dist/test/lobsterDebate.test.js` 通过。
+- [x] `node --test dist/test/loopDebate.test.js` 通过。
 - [x] 指定 `git diff --check` 通过。
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/test/lobsterDebate.test.ts`。
+- 代码目录：`src/extension.ts`、`src/test/loopDebate.test.ts`。
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/product-specs/`。
 - 配置与脚本：不新增依赖或脚本。
 
@@ -59,7 +59,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、指定 `git diff --check`。
+- 最小相关验证：`npm run build`、`node --test dist/test/loopDebate.test.js`、指定 `git diff --check`。
 - 扩展验证：用用户提供的真实产物核对本次根因，确认修复后同类阻塞可由共识器派发口径定义/证据收集类子任务。
 
 ## 测试与清单同步
@@ -82,4 +82,4 @@
 
 ## 当前结论
 
-修复完成。`npm run build`、`node --test dist/test/lobsterDebate.test.js`（7/7 pass）和指定 `git diff --check` 均通过。
+修复完成。`npm run build`、`node --test dist/test/loopDebate.test.js`（7/7 pass）和指定 `git diff --check` 均通过。

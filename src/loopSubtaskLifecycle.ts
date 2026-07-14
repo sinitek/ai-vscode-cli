@@ -1,6 +1,6 @@
 import type { TaskRunStatus } from "./promptRunState";
 
-export type LobsterSubtaskCompletionOptions = {
+export type LoopSubtaskCompletionOptions = {
   taskId: string;
   round: number;
   subtaskId: string;
@@ -9,14 +9,14 @@ export type LobsterSubtaskCompletionOptions = {
   tabId: string | null;
 };
 
-export type LobsterSubtaskTabAutoClosedEvent = {
+export type LoopSubtaskTabAutoClosedEvent = {
   taskId: string;
   round: number;
   subtaskId: string;
   tabId: string;
 };
 
-export type LobsterSubtaskCompletionDeps = {
+export type LoopSubtaskCompletionDeps = {
   markSubtaskRunFinished: (
     taskId: string,
     subtaskId: string,
@@ -25,15 +25,15 @@ export type LobsterSubtaskCompletionDeps = {
   ) => void;
   shouldAutoCloseSubtaskTab: () => boolean;
   closeSubtaskTab: (tabId: string) => Promise<void>;
-  logSubtaskTabAutoClosed: (event: LobsterSubtaskTabAutoClosedEvent) => void;
+  logSubtaskTabAutoClosed: (event: LoopSubtaskTabAutoClosedEvent) => void;
 };
 
 /**
  * Applies the shared terminal cleanup for automatic retries and manual resumes.
  */
-export async function finalizeLobsterSubtaskRun(
-  options: LobsterSubtaskCompletionOptions,
-  deps: LobsterSubtaskCompletionDeps,
+export async function finalizeLoopSubtaskRun(
+  options: LoopSubtaskCompletionOptions,
+  deps: LoopSubtaskCompletionDeps,
 ): Promise<void> {
   const {
     taskId,

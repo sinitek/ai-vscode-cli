@@ -35,9 +35,9 @@ export type PromptRunInputBase = {
   model?: string;
   imagePaths?: string[];
   taskRole?: string;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 export function normalizePromptContextTags(input: { contextTags?: unknown }): string[] {

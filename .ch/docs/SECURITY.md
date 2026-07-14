@@ -15,7 +15,7 @@
 
 ### 静态供应链与加载根
 
-- `media/loop-workflow-skills/` 是随扩展分发的静态快照，不是运行时下载源。生产代码只从 `context.extensionUri.fsPath` 下的固定 `LOBSTER_SKILL_PACK_RELATIVE_PATH="media/loop-workflow-skills"` 读取；不会扫描 cwd、workspace、用户 Home、外部源、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。
+- `media/loop-workflow-skills/` 是随扩展分发的静态快照，不是运行时下载源。生产代码只从 `context.extensionUri.fsPath` 下的固定 `LOOP_SKILL_PACK_RELATIVE_PATH="media/loop-workflow-skills"` 读取；不会扫描 cwd、workspace、用户 Home、外部源、仓库 `.agents/skills`、workspace scaffold 或官方 Skills 安装目录。
 - `manifest.json` 只接受 `schemaVersion=1` 和精确键集合：顶层 `schemaVersion/source/files/skills`；`source` 为 `name/url/version/license/snapshotSha256`；`files[]` 为 `path/bytes/sha256`；`skills[]` 为 `id/name/description/path/bytes/sha256/supportFiles/developmentOnly/phases/taskKinds/roles/requiredCapabilities/priority/positiveTriggers/negativeTriggers`。缺字段、未知字段、重复 ID/路径、未知 schema、入口与 `files[]` 不一致或 supportFiles 未索引都会使整包不可用。
 - `files[].path`、`skills[].path` 和 supportFiles 必须是规范化的相对 POSIX Markdown 路径；拒绝绝对路径、反斜杠、drive/UNC、NUL、`.`、`..`、隐藏路径段和非 `.md` 文件。loader 对扩展根、pack 根和最终资源执行 `realpath` containment，并对每个路径段执行 `lstat`；符号链接、目录/普通文件类型不符、特殊文件、缺失文件或逃逸到根目录外均失败。
 - 完整性校验同时检查规范化 inventory 的 `snapshotSha256`、每个文件的 `bytes` 和 SHA-256。manifest 最大 1 MiB，单个资源最大 64 KiB，manifest 声明的 pack payload 总量最大 1 MiB；资源必须是严格 UTF-8 且不含 NUL，入口 Markdown 还必须通过 frontmatter、控制字符和保留 delimiter 清洗。
@@ -23,7 +23,7 @@
 
 ### 模型与运行时边界
 
-- 模型输出、manifest 路径、Markdown 正文和 Skill 自报能力一律按不可信输入处理；提示词中的“不得越权”不是安全边界，真正的边界是严格 loader、ID-only 决策归一化和 `applyLobsterMainDecisionForRun` 中央复核。
+- 模型输出、manifest 路径、Markdown 正文和 Skill 自报能力一律按不可信输入处理；提示词中的“不得越权”不是安全边界，真正的边界是严格 loader、ID-only 决策归一化和 `applyLoopMainDecisionForRun` 中央复核。
 - 主模型只能请求稳定 `skillIds`。路径、hash、bytes、正文和 `skillGuidance` 只能由宿主从已校验快照生成；模型伪造的这些字段以及 CLI、model、command 和未知字段不会进入 Store。capability 只由宿主声明，当前普通子任务固定为空集合，模型或 Markdown 自报无效。
 - Skill 选择器不得改写 CLI/model、`writeFiles`、`conflictGroup`、并发计划或任务授权。主模型提出的 `writeFiles` 仍是既有、需要归一化的不可信调度输入，不是 capability 或额外权限证明；Skill 正文不能追加文件范围，也不能把自身声明提升为宿主权限。
 - 宿主只持久化中央校验后的 `skillIds/skillGuidance` 快照。正文唯一消费点是子任务 `modelPrompt`；它不进入 display prompt、Webview HTML、日志，也不作为 shell 命令、可执行路径、文件路径或 JSON key。诊断日志只包含 `code` 和可选 `skillId/resourcePath`。

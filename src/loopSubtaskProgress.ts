@@ -1,19 +1,19 @@
 import type { SubagentProgressStatus, SubagentProgressUpdate } from "./subagentProgress";
 import type { ChatMessage } from "./webview/types";
 
-export const LOBSTER_SUBTASK_PROGRESS_POLL_INTERVAL_MS = 1000;
+export const LOOP_SUBTASK_PROGRESS_POLL_INTERVAL_MS = 1000;
 
-type LobsterSubtaskProgressScheduler = {
+type LoopSubtaskProgressScheduler = {
   setInterval: (callback: () => void, delayMs: number) => unknown;
   clearInterval: (handle: unknown) => void;
 };
 
-const DEFAULT_SCHEDULER: LobsterSubtaskProgressScheduler = {
+const DEFAULT_SCHEDULER: LoopSubtaskProgressScheduler = {
   setInterval: (callback, delayMs) => setInterval(callback, delayMs),
   clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout),
 };
 
-export function extractLobsterSubtaskVisibleText(
+export function extractLoopSubtaskVisibleText(
   messages: readonly ChatMessage[],
   context: {
     taskId: string;
@@ -27,16 +27,16 @@ export function extractLobsterSubtaskVisibleText(
       && message.kind !== "thinking"
       && !message.subagentId
       && message.taskRole === "subtask"
-      && message.lobsterTaskId === context.taskId
-      && message.lobsterRound === context.round
-      && message.lobsterSubtaskId === context.subtaskId
+      && message.loopTaskId === context.taskId
+      && message.loopRound === context.round
+      && message.loopSubtaskId === context.subtaskId
       && message.content.trim().length > 0
     ))
     .map((message) => message.content.trim())
     .join("\n\n");
 }
 
-export function mapLobsterRunStatusToSubagentStatus(
+export function mapLoopRunStatusToSubagentStatus(
   status: "end" | "error" | "stopped",
 ): Exclude<SubagentProgressStatus, "running"> {
   if (status === "end") {
@@ -45,7 +45,7 @@ export function mapLobsterRunStatusToSubagentStatus(
   return status === "stopped" ? "interrupted" : "failed";
 }
 
-export function createLobsterSubtaskProgressMonitor(options: {
+export function createLoopSubtaskProgressMonitor(options: {
   taskId: string;
   round: number;
   subtaskId: string;
@@ -54,7 +54,7 @@ export function createLobsterSubtaskProgressMonitor(options: {
   readMessages: () => readonly ChatMessage[];
   onUpdate: (update: SubagentProgressUpdate) => void;
   intervalMs?: number;
-  scheduler?: LobsterSubtaskProgressScheduler;
+  scheduler?: LoopSubtaskProgressScheduler;
 }): {
   start: () => void;
   sync: () => void;
@@ -62,13 +62,13 @@ export function createLobsterSubtaskProgressMonitor(options: {
   dispose: () => void;
 } {
   const scheduler = options.scheduler ?? DEFAULT_SCHEDULER;
-  const intervalMs = options.intervalMs ?? LOBSTER_SUBTASK_PROGRESS_POLL_INTERVAL_MS;
+  const intervalMs = options.intervalMs ?? LOOP_SUBTASK_PROGRESS_POLL_INTERVAL_MS;
   const progressId = `${options.taskId}:${options.round}:${options.subtaskId}`;
   let intervalHandle: unknown = null;
   let lastText: string | null = null;
   let disposed = false;
 
-  const readVisibleText = (): string => extractLobsterSubtaskVisibleText(
+  const readVisibleText = (): string => extractLoopSubtaskVisibleText(
     options.readMessages(),
     {
       taskId: options.taskId,

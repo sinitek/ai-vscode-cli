@@ -10,6 +10,10 @@ import {
   type WorkspaceSettingsStoreOptions,
 } from "../workspaceSettingsStore";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+import {
+  LEGACY_LOOP_INTERACTIVE_MODE,
+  getLegacyLoopPropertyKey,
+} from "../loopLegacyMigration";
 
 function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOptions {
   return {
@@ -23,12 +27,12 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
       || value === "high" || value === "xhigh" || value === "max" || value === "ultra"
     ),
     isInteractiveMode: (value): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "lobster"
+      value === "coding" || value === "plan" || value === "loop"
     ),
     normalizeVisibleInteractiveMode: (value) => (
-      value === "plan" || value === "lobster" ? value : "coding"
+      value === "plan" || value === "loop" ? value : "coding"
     ),
-    normalizeLobsterMaxRounds: () => 20,
+    normalizeLoopMaxRounds: () => 20,
     sanitizeConversationTabRecord: () => null,
   };
 }
@@ -83,6 +87,39 @@ test("loads after-run automatic compaction before the legacy before-run candidat
       JSON.parse(fs.readFileSync(filePath, "utf8")),
       { autoCompactContextAfterRun: false },
     );
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("migrates legacy Loop workspace keys and interactive mode", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = createOptions(workspaceSettingsDir);
+  const filePath = path.join(workspaceSettingsDir, "workspace.json");
+  const legacyExecutionModeKey = getLegacyLoopPropertyKey("loopExecutionModeByCli");
+  const legacyMaxRoundsKey = getLegacyLoopPropertyKey("loopMaxRounds");
+  const legacyAutoCloseKey = getLegacyLoopPropertyKey("loopAutoCloseSubtaskTabs");
+  try {
+    fs.writeFileSync(filePath, JSON.stringify({
+      interactiveModeByCli: { codex: LEGACY_LOOP_INTERACTIVE_MODE },
+      [legacyExecutionModeKey]: { codex: "debate_multi_agent" },
+      [legacyMaxRoundsKey]: 30,
+      [legacyAutoCloseKey]: false,
+    }), "utf8");
+
+    const loaded = loadWorkspaceSettings(options);
+
+    assert.equal(loaded.interactiveModeByCli?.codex, "loop");
+    assert.equal(loaded.loopExecutionModeByCli?.codex, "debate_multi_agent");
+    assert.equal(loaded.loopMaxRounds, 20);
+    assert.equal(loaded.loopAutoCloseSubtaskTabs, false);
+
+    saveWorkspaceSettings(loaded, options);
+    const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyExecutionModeKey), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyMaxRoundsKey), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyAutoCloseKey), false);
+    assert.deepEqual(persisted.interactiveModeByCli, { codex: "loop" });
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
   }

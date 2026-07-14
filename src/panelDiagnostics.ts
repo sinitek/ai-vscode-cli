@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { CliName, normalizeLobsterExecutionMode } from "./cli/types";
+import { CliName, normalizeLoopExecutionMode } from "./cli/types";
 import {
   buildHiddenRetryAttemptInfo,
   buildHiddenRetryErrorTraceContent,
@@ -15,31 +15,31 @@ import { type ConfigItem } from "./config/types";
 import { type CliModelStore } from "./modelSelectionStore";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import {
-  LobsterDebateChatPanel,
-  type LobsterDebateChatPanelMessage,
-  type LobsterDebateChatPanelState,
-} from "./webview/lobsterDebatePanel";
+  LoopDebateChatPanel,
+  type LoopDebateChatPanelMessage,
+  type LoopDebateChatPanelState,
+} from "./webview/loopDebatePanel";
 import {
-  buildLobsterDebateChatMessageActionWithRoundKey,
-  buildLobsterDebateChatPanelStateWithDeps,
+  buildLoopDebateChatMessageActionWithRoundKey,
+  buildLoopDebateChatPanelStateWithDeps,
 } from "./panelStateBuilder";
-import { resolveLobsterTaskRunControlState } from "./lobsterDebate";
+import { resolveLoopTaskRunControlState } from "./loopDebate";
 import {
-  type LobsterTaskRecord,
-} from "./lobsterTaskStore";
-import { isLobsterMainAiFailureLimitReached } from "./lobsterMainFailure";
-import { appendMessageToStore, type LobsterTaskRole } from "./promptRunState";
+  type LoopTaskRecord,
+} from "./loopTaskStore";
+import { isLoopMainAiFailureLimitReached } from "./loopMainFailure";
+import { appendMessageToStore, type LoopTaskRole } from "./promptRunState";
 
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
 
 export const HIDDEN_RETRY_MAX_RETRIES = HIDDEN_RETRY_DELAY_SEQUENCE_MS.length;
-const LOBSTER_RESUME_PROMPT_MAX_LENGTH = 48;
-const LOBSTER_RESUME_PROMPT_PATTERNS: RegExp[] = [
+const LOOP_RESUME_PROMPT_MAX_LENGTH = 48;
+const LOOP_RESUME_PROMPT_PATTERNS: RegExp[] = [
   /^继续(?:执行|进行|下去|一下|一下子|任务|主任务|这个任务|当前任务|上一轮|上轮|吧)?$/u,
   /^接着(?:执行|做|继续|下去|往下)?$/u,
   /^续上$/u,
-  /^continue(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
-  /^resume(?:\s+(?:please|task|run|lobster|main|main\s+task))?$/i,
+  /^continue(?:\s+(?:please|task|run|loop|main|main\s+task))?$/i,
+  /^resume(?:\s+(?:please|task|run|loop|main|main\s+task))?$/i,
   /^go\s*on$/i,
   /^carry\s*on$/i,
   /^keep\s*going$/i,
@@ -59,22 +59,22 @@ export type CliAttemptResult =
 
 export type RetryErrorTraceMessageOptions = {
   tabId?: string;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
-export type LobsterVerificationState = "yes" | "no" | "unknown";
+export type LoopVerificationState = "yes" | "no" | "unknown";
 
-export type LobsterVerificationSignals = {
-  unitTest: LobsterVerificationState;
-  build: LobsterVerificationState;
+export type LoopVerificationSignals = {
+  unitTest: LoopVerificationState;
+  build: LoopVerificationState;
   unitTestEvidence?: string;
   buildEvidence?: string;
 };
 
-export type LobsterTaskCompletionMessagesState = {
+export type LoopTaskCompletionMessagesState = {
   hasAnswerConclusion: boolean;
   hasFinalSummary: boolean;
 };
@@ -135,9 +135,9 @@ export function createHiddenRetryErrorTraceMessage(
     kind: "normal",
     merge: false,
     taskRole: options.taskRole,
-    lobsterTaskId: options.lobsterTaskId,
-    lobsterRound: options.lobsterRound,
-    lobsterSubtaskId: options.lobsterSubtaskId,
+    loopTaskId: options.loopTaskId,
+    loopRound: options.loopRound,
+    loopSubtaskId: options.loopSubtaskId,
   };
 }
 
@@ -232,7 +232,7 @@ function formatHiddenRetryDelay(retryDelayMs: number): string {
   return `${Math.max(0, Math.ceil(retryDelayMs / 1000))} ${t("duration.seconds")}`;
 }
 
-export function normalizeLobsterResumePrompt(prompt: string): string {
+export function normalizeLoopResumePrompt(prompt: string): string {
   const trimmed = prompt.trim();
   if (!trimmed) {
     return "";
@@ -243,20 +243,20 @@ export function normalizeLobsterResumePrompt(prompt: string): string {
     .trim();
 }
 
-export function isLobsterResumePrompt(prompt: string): boolean {
-  const normalized = normalizeLobsterResumePrompt(prompt);
-  if (!normalized || normalized.length > LOBSTER_RESUME_PROMPT_MAX_LENGTH) {
+export function isLoopResumePrompt(prompt: string): boolean {
+  const normalized = normalizeLoopResumePrompt(prompt);
+  if (!normalized || normalized.length > LOOP_RESUME_PROMPT_MAX_LENGTH) {
     return false;
   }
-  return LOBSTER_RESUME_PROMPT_PATTERNS.some((pattern) => pattern.test(normalized));
+  return LOOP_RESUME_PROMPT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-export function collectRecentLobsterTaskIdsFromMessages(messages: readonly ChatMessage[], limit = 12): string[] {
+export function collectRecentLoopTaskIdsFromMessages(messages: readonly ChatMessage[], limit = 12): string[] {
   const seen = new Set<string>();
   const ids: string[] = [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const taskId = typeof messages[index]?.lobsterTaskId === "string"
-      ? messages[index]?.lobsterTaskId?.trim()
+    const taskId = typeof messages[index]?.loopTaskId === "string"
+      ? messages[index]?.loopTaskId?.trim()
       : "";
     if (!taskId || seen.has(taskId)) {
       continue;
@@ -270,13 +270,13 @@ export function collectRecentLobsterTaskIdsFromMessages(messages: readonly ChatM
   return ids;
 }
 
-export function isLobsterTaskResumable(task: LobsterTaskRecord): boolean {
-  return !isLobsterMainAiFailureLimitReached(task)
+export function isLoopTaskResumable(task: LoopTaskRecord): boolean {
+  return !isLoopMainAiFailureLimitReached(task)
     && (task.status === "error" || task.status === "stopped" || task.status === "running");
 }
 
-export function isLobsterTaskSessionCompatible(
-  task: LobsterTaskRecord,
+export function isLoopTaskSessionCompatible(
+  task: LoopTaskRecord,
   targetSessionId: string | null,
   options: { allowMissingTaskSessionId?: boolean } = {}
 ): boolean {
@@ -289,7 +289,7 @@ export function isLobsterTaskSessionCompatible(
   return options.allowMissingTaskSessionId === true && !task.sessionId;
 }
 
-export function formatLobsterVerificationState(state: LobsterVerificationState): string {
+export function formatLoopVerificationState(state: LoopVerificationState): string {
   if (state === "yes") {
     return "已完成";
   }
@@ -299,9 +299,9 @@ export function formatLobsterVerificationState(state: LobsterVerificationState):
   return "未明确";
 }
 
-export function detectLobsterVerificationSignals(content: string): LobsterVerificationSignals {
-  const unitTest = detectLobsterVerificationState(content, "unitTest");
-  const build = detectLobsterVerificationState(content, "build");
+export function detectLoopVerificationSignals(content: string): LoopVerificationSignals {
+  const unitTest = detectLoopVerificationState(content, "unitTest");
+  const build = detectLoopVerificationState(content, "build");
   return {
     unitTest: unitTest.state,
     build: build.state,
@@ -310,10 +310,10 @@ export function detectLobsterVerificationSignals(content: string): LobsterVerifi
   };
 }
 
-function detectLobsterVerificationState(
+function detectLoopVerificationState(
   content: string,
   kind: "unitTest" | "build"
-): { state: LobsterVerificationState; evidence?: string } {
+): { state: LoopVerificationState; evidence?: string } {
   const normalized = String(content || "").trim();
   if (!normalized) {
     return { state: "unknown" };
@@ -370,45 +370,45 @@ function findFirstEvidenceLine(lines: string[], patterns: RegExp[]): string | un
   return undefined;
 }
 
-export function getLobsterCompletionMessagesState(
+export function getLoopCompletionMessagesState(
   messages: readonly ChatMessage[],
   taskId: string,
-): LobsterTaskCompletionMessagesState {
-  return messages.reduce<LobsterTaskCompletionMessagesState>((state, message) => {
-    if (isLobsterAnswerConclusionMessageForTask(message, taskId)) {
+): LoopTaskCompletionMessagesState {
+  return messages.reduce<LoopTaskCompletionMessagesState>((state, message) => {
+    if (isLoopAnswerConclusionMessageForTask(message, taskId)) {
       state.hasAnswerConclusion = true;
     }
-    if (isLobsterFinalSummaryMessageForTask(message, taskId) && isCompleteLobsterFinalSummaryContent(message.content)) {
+    if (isLoopFinalSummaryMessageForTask(message, taskId) && isCompleteLoopFinalSummaryContent(message.content)) {
       state.hasFinalSummary = true;
     }
     return state;
   }, { hasAnswerConclusion: false, hasFinalSummary: false });
 }
 
-export function hasCompleteLobsterCompletionMessages(messages: readonly ChatMessage[], taskId: string): boolean {
-  const state = getLobsterCompletionMessagesState(messages, taskId);
+export function hasCompleteLoopCompletionMessages(messages: readonly ChatMessage[], taskId: string): boolean {
+  const state = getLoopCompletionMessagesState(messages, taskId);
   return state.hasAnswerConclusion && state.hasFinalSummary;
 }
 
-export function isLobsterAnswerConclusionMessageForTask(message: ChatMessage, taskId: string): boolean {
+export function isLoopAnswerConclusionMessageForTask(message: ChatMessage, taskId: string): boolean {
   return message.role === "assistant"
     && message.taskRole === "main"
-    && message.lobsterTaskId === taskId
-    && message.lobsterAnswerConclusion === true
+    && message.loopTaskId === taskId
+    && message.loopAnswerConclusion === true
     && typeof message.content === "string"
     && message.content.trim().length > 0;
 }
 
-export function isLobsterFinalSummaryMessageForTask(message: ChatMessage, taskId: string): boolean {
+export function isLoopFinalSummaryMessageForTask(message: ChatMessage, taskId: string): boolean {
   return message.role === "assistant"
     && message.taskRole === "main"
-    && message.lobsterTaskId === taskId
-    && message.lobsterFinalSummary === true
+    && message.loopTaskId === taskId
+    && message.loopFinalSummary === true
     && typeof message.content === "string"
     && message.content.trim().length > 0;
 }
 
-export function isCompleteLobsterFinalSummaryContent(content: string): boolean {
+export function isCompleteLoopFinalSummaryContent(content: string): boolean {
   return /(?:^|\n)##\s+问题回答结论(?:\n|$)/u.test(content)
     && /(?:^|\n)##\s+整体任务总结(?:\n|$)/u.test(content);
 }
@@ -598,78 +598,78 @@ export function createPanelDiagnosticsInspector(deps: PanelDiagnosticsDeps) {
   };
 }
 
-type LobsterPromptRunInput = {
+type LoopPromptRunInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
   model?: string;
-  lobsterExecutionMode: ReturnType<typeof normalizeLobsterExecutionMode>;
-  lobsterContinuePrompt: string;
+  loopExecutionMode: ReturnType<typeof normalizeLoopExecutionMode>;
+  loopContinuePrompt: string;
 };
 
-type LobsterPromptRunOptions = {
+type LoopPromptRunOptions = {
   targetTabId: string | null;
   resumeTaskId: string;
   resumeRequested: boolean;
 };
 
-type LobsterPromptTarget = {
+type LoopPromptTarget = {
   tabId: string | null;
 };
 
-type LobsterDebateChatPanelDeps = {
+type LoopDebateChatPanelDeps = {
   getExtensionUri: () => vscode.Uri;
-  panelsByTaskId: Map<string, LobsterDebateChatPanel>;
+  panelsByTaskId: Map<string, LoopDebateChatPanel>;
   defaultDebateRound: number;
   normalizeTaskId: (value: unknown) => string | null;
   normalizeSupplementalRequirement: (value: unknown) => string | null;
   appendSupplementalRequirement: (existing: readonly string[] | undefined, nextItem: string) => string[];
-  appendSupplementalRequirementToCommunication: (task: LobsterTaskRecord, requirement: string) => void;
-  readTaskRecord: (taskId: string) => LobsterTaskRecord | null;
-  updateTaskRecord: (taskId: string, patch: Partial<LobsterTaskRecord>) => LobsterTaskRecord | null;
+  appendSupplementalRequirementToCommunication: (task: LoopTaskRecord, requirement: string) => void;
+  readTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  updateTaskRecord: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   listTaskStoreFiles: () => string[];
-  readTaskStoreTasks: (filePath: string) => LobsterTaskRecord[];
+  readTaskStoreTasks: (filePath: string) => LoopTaskRecord[];
   collectRunningTaskIds: () => Set<string>;
   readTextFileIfNonEmpty: (filePath: string) => string | null;
   fileExists: (filePath: string) => boolean;
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
-  getActiveSubtaskIds: (task: LobsterTaskRecord) => string[];
-  buildCompletedConclusionAndSummaryMarkdown: (task: LobsterTaskRecord) => string;
-  resolveMainPromptTarget: (task: LobsterTaskRecord) => LobsterPromptTarget | null;
+  getActiveSubtaskIds: (task: LoopTaskRecord) => string[];
+  buildCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
+  resolveMainPromptTarget: (task: LoopTaskRecord) => LoopPromptTarget | null;
   revealPanelView: () => Promise<void>;
-  switchVisibleConversationTabForLobster: (tabId: string | null) => Promise<void>;
+  switchVisibleConversationTabForLoop: (tabId: string | null) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
-  runLobsterPrompt: (input: LobsterPromptRunInput, options: LobsterPromptRunOptions) => Promise<void>;
+  runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
-  markTaskStoppedByUser: (taskId: string) => LobsterTaskRecord | null;
+  markTaskStoppedByUser: (taskId: string) => LoopTaskRecord | null;
   postPanelState: () => Promise<void>;
   getActiveConversationTaskId: () => string | null;
   showInformationMessage: (message: string) => void;
   showWarningMessage: (message: string) => void;
-  pickTask: (tasks: LobsterTaskRecord[]) => Promise<LobsterTaskRecord | null>;
+  pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   t: typeof import("./i18n").t;
 };
 
-function buildLobsterDebateChatPanelState(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelDeps,
-): LobsterDebateChatPanelState {
-  return buildLobsterDebateChatPanelStateWithDeps(task, {
-    collectRunningLobsterTaskIds: deps.collectRunningTaskIds,
+function buildLoopDebateChatPanelState(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelDeps,
+): LoopDebateChatPanelState {
+  return buildLoopDebateChatPanelStateWithDeps(task, {
+    collectRunningLoopTaskIds: deps.collectRunningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
     fileExists: deps.fileExists,
     writeTextFileEnsuringDir: deps.writeTextFileEnsuringDir,
-    getActiveLobsterSubtaskIds: deps.getActiveSubtaskIds,
-    buildLobsterCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
+    getActiveLoopSubtaskIds: deps.getActiveSubtaskIds,
+    buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
 }
 
-function extractLobsterDebateChatPanelTaskId(
+function extractLoopDebateChatPanelTaskId(
   arg: unknown,
-  deps: LobsterDebateChatPanelDeps,
+  deps: LoopDebateChatPanelDeps,
 ): string | null {
   if (typeof arg === "string") {
     return deps.normalizeTaskId(arg);
@@ -680,13 +680,13 @@ function extractLobsterDebateChatPanelTaskId(
   return null;
 }
 
-function normalizeLobsterContinuePrompt(value: unknown, deps: LobsterDebateChatPanelDeps): string {
+function normalizeLoopContinuePrompt(value: unknown, deps: LoopDebateChatPanelDeps): string {
   const normalized = typeof value === "string" ? value.trim() : "";
   return normalized || deps.t("run.hiddenContinuePrompt");
 }
 
-function listLobsterGroupChatTasks(deps: LobsterDebateChatPanelDeps): LobsterTaskRecord[] {
-  const tasksById = new Map<string, LobsterTaskRecord>();
+function listLoopGroupChatTasks(deps: LoopDebateChatPanelDeps): LoopTaskRecord[] {
+  const tasksById = new Map<string, LoopTaskRecord>();
   deps.listTaskStoreFiles().forEach((filePath) => {
     deps.readTaskStoreTasks(filePath).forEach((task) => {
       const existing = tasksById.get(task.id);
@@ -698,20 +698,20 @@ function listLobsterGroupChatTasks(deps: LobsterDebateChatPanelDeps): LobsterTas
   return Array.from(tasksById.values());
 }
 
-function listRecentLobsterGroupChatTasks(limit: number, deps: LobsterDebateChatPanelDeps): LobsterTaskRecord[] {
-  return listLobsterGroupChatTasks(deps)
+function listRecentLoopGroupChatTasks(limit: number, deps: LoopDebateChatPanelDeps): LoopTaskRecord[] {
+  return listLoopGroupChatTasks(deps)
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, Math.max(1, limit));
 }
 
-function canStopLobsterTaskWithRunningTaskIds(
-  task: LobsterTaskRecord,
+function canStopLoopTaskWithRunningTaskIds(
+  task: LoopTaskRecord,
   runningTaskIds: ReadonlySet<string>,
 ): boolean {
-  return resolveLobsterTaskRunControlState(task, runningTaskIds).canStop;
+  return resolveLoopTaskRunControlState(task, runningTaskIds).canStop;
 }
 
-export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatPanelDeps) {
+export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDeps) {
   const refresh = async (taskId: string): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId);
     if (!normalizedTaskId) {
@@ -723,58 +723,58 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     }
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
-      deps.showWarningMessage(deps.t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
-    panel.update(buildLobsterDebateChatPanelState(task, deps));
+    panel.update(buildLoopDebateChatPanelState(task, deps));
   };
 
   const continueTask = async (taskId: string, prompt?: unknown): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.noTask"));
+      deps.showInformationMessage(deps.t("loopDebateChat.noTask"));
       return;
     }
 
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
-      deps.showWarningMessage(deps.t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
-    const controlState = resolveLobsterTaskRunControlState(task, deps.collectRunningTaskIds());
+    const controlState = resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds());
     if (!controlState.canContinue) {
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
         controlState.isRunning
-          ? deps.t("lobsterDebateChat.continueAlreadyRunning")
-          : deps.t("lobsterDebateChat.continueUnavailable")
+          ? deps.t("loopDebateChat.continueAlreadyRunning")
+          : deps.t("loopDebateChat.continueUnavailable")
       );
       return;
     }
 
     const target = deps.resolveMainPromptTarget(task);
     if (!target) {
-      deps.showWarningMessage(deps.t("lobsterDebateChat.continueUnavailable"));
+      deps.showWarningMessage(deps.t("loopDebateChat.continueUnavailable"));
       return;
     }
 
     await deps.revealPanelView();
-    await deps.switchVisibleConversationTabForLobster(target.tabId);
+    await deps.switchVisibleConversationTabForLoop(target.tabId);
     if (deps.isTabRunActive(target.tabId)) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.continueAlreadyRunning"));
+      deps.showInformationMessage(deps.t("loopDebateChat.continueAlreadyRunning"));
       return;
     }
 
     const activeConfigId = deps.getActiveConfigIdForCli(task.cli);
-    const resumePrompt = normalizeLobsterContinuePrompt(prompt, deps);
-    await deps.runLobsterPrompt({
+    const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
+    await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
       contextTags: [],
       model: deps.getSelectedCliModel(task.cli, activeConfigId) ?? undefined,
-      lobsterExecutionMode: normalizeLobsterExecutionMode(task.executionMode),
-      lobsterContinuePrompt: resumePrompt,
+      loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
+      loopContinuePrompt: resumePrompt,
     }, {
       targetTabId: target.tabId,
       resumeTaskId: task.id,
@@ -787,19 +787,19 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.noTask"));
+      deps.showInformationMessage(deps.t("loopDebateChat.noTask"));
       return;
     }
 
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
-      deps.showWarningMessage(deps.t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
 
     const supplementalRequirement = deps.normalizeSupplementalRequirement(prompt);
     if (!supplementalRequirement) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.continueUnavailable"));
+      deps.showInformationMessage(deps.t("loopDebateChat.continueUnavailable"));
       return;
     }
 
@@ -816,19 +816,19 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.noTask"));
+      deps.showInformationMessage(deps.t("loopDebateChat.noTask"));
       return;
     }
 
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
-      deps.showWarningMessage(deps.t("lobsterDebateChat.taskMissing", { taskId: normalizedTaskId }));
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
 
-    if (!canStopLobsterTaskWithRunningTaskIds(task, deps.collectRunningTaskIds())) {
+    if (!canStopLoopTaskWithRunningTaskIds(task, deps.collectRunningTaskIds())) {
       await refresh(normalizedTaskId);
-      deps.showInformationMessage(deps.t("lobsterDebateChat.stopUnavailable"));
+      deps.showInformationMessage(deps.t("loopDebateChat.stopUnavailable"));
       return;
     }
 
@@ -838,35 +838,35 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     await refresh(normalizedTaskId);
   };
 
-  const handleMessage = async (taskId: string, message: LobsterDebateChatPanelMessage): Promise<void> => {
+  const handleMessage = async (taskId: string, message: LoopDebateChatPanelMessage): Promise<void> => {
     if (!message || typeof message.type !== "string") {
       return;
     }
-    if (message.type === "lobsterDebateChat:refresh") {
+    if (message.type === "loopDebateChat:refresh") {
       await refresh(taskId);
       return;
     }
-    if (message.type === "lobsterDebateChat:continueTask") {
+    if (message.type === "loopDebateChat:continueTask") {
       await continueTask(taskId, message.prompt);
       return;
     }
-    if (message.type === "lobsterDebateChat:supplementTask") {
+    if (message.type === "loopDebateChat:supplementTask") {
       await supplementTask(taskId, message.prompt);
       return;
     }
-    if (message.type === "lobsterDebateChat:stopTask") {
+    if (message.type === "loopDebateChat:stopTask") {
       await stopTask(taskId);
     }
   };
 
-  const resolveTask = async (arg?: unknown): Promise<LobsterTaskRecord | null> => {
-    const explicitTaskId = extractLobsterDebateChatPanelTaskId(arg, deps);
+  const resolveTask = async (arg?: unknown): Promise<LoopTaskRecord | null> => {
+    const explicitTaskId = extractLoopDebateChatPanelTaskId(arg, deps);
     if (explicitTaskId) {
       const task = deps.readTaskRecord(explicitTaskId);
       if (task) {
         return task;
       }
-      deps.showWarningMessage(deps.t("lobsterDebateChat.taskMissing", { taskId: explicitTaskId }));
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: explicitTaskId }));
     }
 
     const activeTaskId = deps.getActiveConversationTaskId();
@@ -877,7 +877,7 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
       }
     }
 
-    const recentTasks = listRecentLobsterGroupChatTasks(24, deps);
+    const recentTasks = listRecentLoopGroupChatTasks(24, deps);
     if (recentTasks.length === 0) {
       return null;
     }
@@ -890,14 +890,14 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
   const open = async (arg?: unknown): Promise<void> => {
     const task = await resolveTask(arg);
     if (!task) {
-      deps.showInformationMessage(deps.t("lobsterDebateChat.noTask"));
+      deps.showInformationMessage(deps.t("loopDebateChat.noTask"));
       return;
     }
-    const state = buildLobsterDebateChatPanelState(task, deps);
+    const state = buildLoopDebateChatPanelState(task, deps);
     let panel = deps.panelsByTaskId.get(task.id);
     if (!panel) {
       const taskId = task.id;
-      panel = new LobsterDebateChatPanel(deps.getExtensionUri(), {
+      panel = new LoopDebateChatPanel(deps.getExtensionUri(), {
         onMessage: (message) => {
           void handleMessage(taskId, message);
         },
@@ -921,7 +921,7 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
   };
 
   const buildMessageAction = (taskId: string, round?: number): ChatMessageAction => {
-    return buildLobsterDebateChatMessageActionWithRoundKey(
+    return buildLoopDebateChatMessageActionWithRoundKey(
       taskId,
       deps.defaultDebateRound,
       round,
@@ -933,6 +933,6 @@ export function createLobsterDebateChatPanelCoordinator(deps: LobsterDebateChatP
     refresh,
     refreshOpenPanelForTask,
     buildMessageAction,
-    listGroupChatTasks: () => listLobsterGroupChatTasks(deps),
+    listGroupChatTasks: () => listLoopGroupChatTasks(deps),
   };
 }

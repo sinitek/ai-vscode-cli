@@ -2,12 +2,12 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  buildLobsterSubtaskExecutionPlan,
-  normalizeLobsterWriteFiles,
-} from "../lobsterParallel";
+  buildLoopSubtaskExecutionPlan,
+  normalizeLoopWriteFiles,
+} from "../loopParallel";
 
 test("keeps independent write files in one parallel group", () => {
-  const plan = buildLobsterSubtaskExecutionPlan([
+  const plan = buildLoopSubtaskExecutionPlan([
     { id: "a", title: "A", writeFiles: ["src/a.ts"] },
     { id: "b", title: "B", writeFiles: ["src/b.ts"] },
     { id: "c", title: "C", conflictGroup: "docs", writeFiles: ["docs/README.md"] },
@@ -19,7 +19,7 @@ test("keeps independent write files in one parallel group", () => {
 });
 
 test("serializes subtasks that declare the same write file", () => {
-  const plan = buildLobsterSubtaskExecutionPlan([
+  const plan = buildLoopSubtaskExecutionPlan([
     { id: "a", title: "A", writeFiles: ["src/extension.ts"] },
     { id: "b", title: "B", writeFiles: ["./src/extension.ts"] },
     { id: "c", title: "C", writeFiles: ["src/webview/viewContent.ts"] },
@@ -31,7 +31,7 @@ test("serializes subtasks that declare the same write file", () => {
 });
 
 test("serializes subtasks that share a conflict group", () => {
-  const plan = buildLobsterSubtaskExecutionPlan([
+  const plan = buildLoopSubtaskExecutionPlan([
     { id: "a", title: "A", conflictGroup: "model-store" },
     { id: "b", title: "B", conflictGroup: "MODEL-store" },
     { id: "c", title: "C", conflictGroup: "i18n" },
@@ -44,7 +44,7 @@ test("serializes subtasks that share a conflict group", () => {
 
 test("normalizes write file metadata for stable conflict checks", () => {
   assert.deepEqual(
-    normalizeLobsterWriteFiles([" ./SRC/Extension.ts ", "src//extension.ts", "", 123]),
+    normalizeLoopWriteFiles([" ./SRC/Extension.ts ", "src//extension.ts", "", 123]),
     ["src/extension.ts"],
   );
 });

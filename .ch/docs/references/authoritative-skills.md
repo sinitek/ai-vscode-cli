@@ -62,7 +62,7 @@ node scripts/validate_loop_workflow_skills.js
 3. 刷新后审查 manifest、许可和资源 diff，再按 `.ch/docs/runbooks/local-development.md` 执行 build、定向测试、`vsce ls` 与实际 VSIX 解包逐项比对。
 4. 任一 manifest 或资源完整性失败都使整包 catalog 不可用；运行时安全降级为无 catalog/guidance 的原 Loop，不扫描替代目录。
 
-事实来源：`media/loop-workflow-skills/manifest.json`、`media/loop-workflow-skills/THIRD_PARTY_LICENSE.md`、`scripts/sync_loop_workflow_skills.js`、`scripts/validate_loop_workflow_skills.js`、`src/lobsterSkillGuidance.ts`、`src/test/lobsterSkillGuidance.test.ts`。
+事实来源：`media/loop-workflow-skills/manifest.json`、`media/loop-workflow-skills/THIRD_PARTY_LICENSE.md`、`scripts/sync_loop_workflow_skills.js`、`scripts/validate_loop_workflow_skills.js`、`src/loopSkillGuidance.ts`、`src/test/loopSkillGuidance.test.ts`。
 
 ## 已登记的权威来源
 

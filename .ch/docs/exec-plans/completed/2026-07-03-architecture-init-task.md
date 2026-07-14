@@ -47,7 +47,7 @@
 
 ## 风险与缓解
 
-- 风险：从设置面板发起任务时误用 lobster 模式。
+- 风险：从设置面板发起任务时误用 loop 模式。
 - 缓解：扩展侧显式调用 `setWorkspaceInteractiveModeForCli(cli, "coding")` 并直接走 `runPrompt`。
 - 风险：用户取消二次弹窗导致前端开关状态错误。
 - 缓解：二次弹窗只控制 `ARCHITECTURE.md` 初始化任务，不影响 scaffold 初始化返回值。

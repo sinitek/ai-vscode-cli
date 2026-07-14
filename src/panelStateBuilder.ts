@@ -6,8 +6,8 @@ import {
 } from "./cli/config";
 import { isInteractiveSupported } from "./cli/config";
 import { getLocaleSetting, t, type AppLocale } from "./i18n";
-import { CLI_LIST, CliName, MacTaskShell, normalizeLobsterExecutionMode } from "./cli/types";
-import { type LobsterTaskRole } from "./promptRunState";
+import { CLI_LIST, CliName, MacTaskShell, normalizeLoopExecutionMode } from "./cli/types";
+import { type LoopTaskRole } from "./promptRunState";
 import {
   buildPromptWithAutoContextFromEditor,
   maybeInjectLongTermMemoryForPromptWithDeps,
@@ -25,46 +25,46 @@ import {
   SessionSummary,
 } from "./webview/types";
 import {
-  type LobsterDebateChatPanelRound,
-  type LobsterDebateChatPanelState,
-} from "./webview/lobsterDebatePanel";
+  type LoopDebateChatPanelRound,
+  type LoopDebateChatPanelState,
+} from "./webview/loopDebatePanel";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import {
-  buildLobsterGroupChatFinalStatusSection,
-  buildLobsterMainSubChatTranscriptFile,
-  buildLobsterMainSubSubtaskTurnBody,
-  formatLobsterGroupChatMemberName,
-  LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
-  LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
-  parseLobsterDebateChatTranscript,
-  resolveLobsterTaskRunControlState,
-} from "./lobsterDebate";
+  buildLoopGroupChatFinalStatusSection,
+  buildLoopMainSubChatTranscriptFile,
+  buildLoopMainSubSubtaskTurnBody,
+  formatLoopGroupChatMemberName,
+  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
+  LOOP_MAIN_SUB_CHAT_ROUND_KEY,
+  parseLoopDebateChatTranscript,
+  resolveLoopTaskRunControlState,
+} from "./loopDebate";
 import {
-  type LobsterRoundRecord,
-  type LobsterSubtaskRecord,
-  type LobsterTaskRecord,
-} from "./lobsterTaskStore";
+  type LoopRoundRecord,
+  type LoopSubtaskRecord,
+  type LoopTaskRecord,
+} from "./loopTaskStore";
 import {
-  LOBSTER_MAIN_AI_FAILURE_LIMIT,
-  normalizeLobsterMainAiFailureCount,
-} from "./lobsterMainFailure";
+  LOOP_MAIN_AI_FAILURE_LIMIT,
+  normalizeLoopMainAiFailureCount,
+} from "./loopMainFailure";
 import {
-  describeLobsterExecutionPlan,
-  type LobsterSubtaskExecutionPlan,
-} from "./lobsterParallel";
+  describeLoopExecutionPlan,
+  type LoopSubtaskExecutionPlan,
+} from "./loopParallel";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
 const SESSION_LABEL_LIMIT = 16;
 
-export type LobsterConversationTabContext = {
-  taskRole: LobsterTaskRole | null;
-  lobsterTaskId: string | null;
+export type LoopConversationTabContext = {
+  taskRole: LoopTaskRole | null;
+  loopTaskId: string | null;
 };
 
-export type LobsterSubtaskConversationContext = {
+export type LoopSubtaskConversationContext = {
   taskId: string;
   subtaskId: string;
   round: number;
@@ -81,9 +81,9 @@ export type PanelStateBuilderDeps = {
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
   getGlobalMultiAgentEnabled: () => boolean;
-  getGlobalLobsterMaxRounds: () => number;
-  getGlobalLobsterAutoCloseSubtaskTabs: () => boolean;
-  buildWorkspaceLobsterExecutionModeByCli: () => PanelState["lobsterExecutionModeByCli"];
+  getGlobalLoopMaxRounds: () => number;
+  getGlobalLoopAutoCloseSubtaskTabs: () => boolean;
+  buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
   getDebugLogging: typeof getDebugLogging;
   getLocaleSetting: typeof getLocaleSetting;
   getMacTaskShell: typeof getMacTaskShell;
@@ -120,9 +120,9 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     workspaceMemoryEnabled: deps.workspaceSettings.workspaceMemoryEnabled === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
-    lobsterMaxRounds: deps.getGlobalLobsterMaxRounds(),
-    lobsterAutoCloseSubtaskTabs: deps.getGlobalLobsterAutoCloseSubtaskTabs(),
-    lobsterExecutionModeByCli: deps.buildWorkspaceLobsterExecutionModeByCli(),
+    loopMaxRounds: deps.getGlobalLoopMaxRounds(),
+    loopAutoCloseSubtaskTabs: deps.getGlobalLoopAutoCloseSubtaskTabs(),
+    loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),
     debug: deps.getDebugLogging(),
     locale: deps.getLocaleSetting(),
     isMac: deps.processPlatform === "darwin",
@@ -261,32 +261,32 @@ export function maybeInjectLongTermMemoryForPromptWithEditorContext(
   });
 }
 
-export type LobsterDebateChatPanelStateBuilderDeps = {
-  collectRunningLobsterTaskIds: () => ReadonlySet<string>;
+export type LoopDebateChatPanelStateBuilderDeps = {
+  collectRunningLoopTaskIds: () => ReadonlySet<string>;
   readTextFileIfNonEmpty: (filePath: string) => string | null;
   fileExists: (filePath: string) => boolean;
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
-  getActiveLobsterSubtaskIds: (task: LobsterTaskRecord) => string[];
-  buildLobsterCompletedConclusionAndSummaryMarkdown: (task: LobsterTaskRecord) => string;
+  getActiveLoopSubtaskIds: (task: LoopTaskRecord) => string[];
+  buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
 
-export function buildLobsterDebateChatPanelStateWithDeps(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
-): LobsterDebateChatPanelState {
-  const runningTaskIds = deps.collectRunningLobsterTaskIds();
-  const controlState = resolveLobsterTaskRunControlState(task, runningTaskIds);
-  const mode = isLobsterDebateGroupChatTask(task) ? "debate" : "main_sub";
+export function buildLoopDebateChatPanelStateWithDeps(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): LoopDebateChatPanelState {
+  const runningTaskIds = deps.collectRunningLoopTaskIds();
+  const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
+  const mode = isLoopDebateGroupChatTask(task) ? "debate" : "main_sub";
   const rounds = mode === "debate"
-    ? buildLobsterDebateWithExecutionChatPanelRounds(task, deps)
-    : buildLobsterMainSubChatPanelRounds(task, deps);
-  const chatMarkdown = buildLobsterCombinedGroupChatMarkdown(task, rounds, mode, deps);
+    ? buildLoopDebateWithExecutionChatPanelRounds(task, deps)
+    : buildLoopMainSubChatPanelRounds(task, deps);
+  const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, mode, deps);
   const missingChatFiles = rounds
     .map((round) => round.chatFile)
     .filter((filePath): filePath is string => Boolean(filePath && !deps.readTextFileIfNonEmpty(filePath)));
   const error = missingChatFiles.length > 0 && !chatMarkdown.trim()
-    ? deps.t("lobsterDebateChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
+    ? deps.t("loopDebateChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
     : null;
   return {
     mode,
@@ -309,23 +309,23 @@ export function buildLobsterDebateChatPanelStateWithDeps(
   };
 }
 
-function buildLobsterCombinedGroupChatMarkdown(
-  task: LobsterTaskRecord,
-  rounds: LobsterDebateChatPanelRound[],
+function buildLoopCombinedGroupChatMarkdown(
+  task: LoopTaskRecord,
+  rounds: LoopDebateChatPanelRound[],
   mode: "main_sub" | "debate",
-  deps: LobsterDebateChatPanelStateBuilderDeps,
+  deps: LoopDebateChatPanelStateBuilderDeps,
 ): string {
   const sources = rounds
     .map((round) => {
       const content = round.chatFile ? deps.readTextFileIfNonEmpty(round.chatFile) : null;
       return content ? { round, content } : null;
     })
-    .filter((source): source is { round: LobsterDebateChatPanelRound; content: string } => Boolean(source));
+    .filter((source): source is { round: LoopDebateChatPanelRound; content: string } => Boolean(source));
   if (sources.length === 0) {
-    return renderLobsterGroupChatFinalStatusMarkdown(task);
+    return renderLoopGroupChatFinalStatusMarkdown(task);
   }
   if (mode === "main_sub" && sources.length === 1) {
-    return appendLobsterGroupChatFinalStatusMarkdown(sources[0]?.content ?? "", task);
+    return appendLoopGroupChatFinalStatusMarkdown(sources[0]?.content ?? "", task);
   }
 
   const lines: string[] = [
@@ -344,11 +344,11 @@ function buildLobsterCombinedGroupChatMarkdown(
   ];
 
   sources.forEach(({ round, content }) => {
-    lines.push("", "## 任务事件", buildLobsterCombinedChatSourceEvent(round));
-    const transcript = parseLobsterDebateChatTranscript(content);
+    lines.push("", "## 任务事件", buildLoopCombinedChatSourceEvent(round));
+    const transcript = parseLoopDebateChatTranscript(content);
     transcript.segments.forEach((segment) => {
       if (segment.kind === "preamble") {
-        const preamble = stripLobsterChatPreambleTitle(segment.body);
+        const preamble = stripLoopChatPreambleTitle(segment.body);
         if (preamble) {
           lines.push("", "## 任务事件", preamble);
         }
@@ -358,7 +358,7 @@ function buildLobsterCombinedGroupChatMarkdown(
     });
   });
 
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
+  const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
   if (finalStatusSection) {
     lines.push("", `## ${finalStatusSection.heading}`, finalStatusSection.body);
   }
@@ -366,20 +366,20 @@ function buildLobsterCombinedGroupChatMarkdown(
   return `${lines.join("\n")}\n`;
 }
 
-function renderLobsterGroupChatFinalStatusMarkdown(task: LobsterTaskRecord): string {
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
+function renderLoopGroupChatFinalStatusMarkdown(task: LoopTaskRecord): string {
+  const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
   if (!finalStatusSection) {
     return "";
   }
   return `## ${finalStatusSection.heading}\n${finalStatusSection.body}\n`;
 }
 
-function appendLobsterGroupChatFinalStatusMarkdown(markdown: string, task: LobsterTaskRecord): string {
-  const finalStatusSection = buildLobsterGroupChatFinalStatusSection(task);
+function appendLoopGroupChatFinalStatusMarkdown(markdown: string, task: LoopTaskRecord): string {
+  const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
   if (!finalStatusSection) {
     return markdown;
   }
-  if (hasLobsterGroupChatFinalStatusSection(markdown, finalStatusSection.heading)) {
+  if (hasLoopGroupChatFinalStatusSection(markdown, finalStatusSection.heading)) {
     return markdown.endsWith("\n") ? markdown : `${markdown}\n`;
   }
   const prefix = markdown.trimEnd();
@@ -387,12 +387,12 @@ function appendLobsterGroupChatFinalStatusMarkdown(markdown: string, task: Lobst
   return prefix ? `${prefix}\n\n${section}\n` : `${section}\n`;
 }
 
-function hasLobsterGroupChatFinalStatusSection(markdown: string, heading: string): boolean {
+function hasLoopGroupChatFinalStatusSection(markdown: string, heading: string): boolean {
   const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|\\n)##\\s+${escapedHeading}\\s*(?:\\n|$)`, "u").test(markdown);
 }
 
-function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound): string {
+function buildLoopCombinedChatSourceEvent(round: LoopDebateChatPanelRound): string {
   const lines = [
     `- 来源：${round.label || (round.kind === "debate" ? "红蓝对抗群聊" : "任务执行群聊")}`,
     `- 状态：${round.status}`,
@@ -400,19 +400,19 @@ function buildLobsterCombinedChatSourceEvent(round: LobsterDebateChatPanelRound)
   ];
   if (round.kind === "debate") {
     lines.push(
-      `- 主任务复核轮次：${round.lobsterRound}`,
+      `- 主任务复核轮次：${round.loopRound}`,
       `- 已完成发言批次数：${round.dialogueTurns ?? 0}`,
-      `- 最大安全发言批次数：${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS}`,
+      `- 最大安全发言批次数：${LOOP_DEBATE_MAX_DIALOGUE_TURNS}`,
       "- 裁判主持人会在每轮发言后决定 continue / finalize / block。",
     );
   }
   if (round.kind === "execution") {
-    lines.push(`- 当前主任务轮次：${round.lobsterRound}`);
+    lines.push(`- 当前主任务轮次：${round.loopRound}`);
   }
   return lines.filter((line): line is string => Boolean(line)).join("\n");
 }
 
-function stripLobsterChatPreambleTitle(body: string): string {
+function stripLoopChatPreambleTitle(body: string): string {
   return body
     .split(/\r?\n/g)
     .filter((line, index) => !(index === 0 && /^#\s+/u.test(line.trim())))
@@ -420,18 +420,18 @@ function stripLobsterChatPreambleTitle(body: string): string {
     .trim();
 }
 
-export function isLobsterDebateGroupChatTask(task: LobsterTaskRecord): boolean {
-  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+export function isLoopDebateGroupChatTask(task: LoopTaskRecord): boolean {
+  return normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
     || Boolean(task.debateRounds?.length);
 }
 
-function buildLobsterDebateChatPanelRounds(task: LobsterTaskRecord): LobsterDebateChatPanelRound[] {
+function buildLoopDebateChatPanelRounds(task: LoopTaskRecord): LoopDebateChatPanelRound[] {
   const debateRounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
   return debateRounds
-    .map((round): LobsterDebateChatPanelRound => ({
-      key: buildLobsterDebateChatRoundKey(round.lobsterRound, round.debateRound),
+    .map((round): LoopDebateChatPanelRound => ({
+      key: buildLoopDebateChatRoundKey(round.loopRound, round.debateRound),
       kind: "debate",
-      lobsterRound: round.lobsterRound,
+      loopRound: round.loopRound,
       debateRound: round.debateRound,
       status: round.status,
       chatFile: round.chatFile,
@@ -470,51 +470,51 @@ function buildLobsterDebateChatPanelRounds(task: LobsterTaskRecord): LobsterDeba
     }))
     .sort((left, right) => (
       (left.startedAt || 0) - (right.startedAt || 0)
-      || left.lobsterRound - right.lobsterRound
+      || left.loopRound - right.loopRound
       || left.debateRound - right.debateRound
     ));
 }
 
-function buildLobsterDebateWithExecutionChatPanelRounds(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
-): LobsterDebateChatPanelRound[] {
-  const debateRounds = buildLobsterDebateChatPanelRounds(task);
-  const executionChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
+function buildLoopDebateWithExecutionChatPanelRounds(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): LoopDebateChatPanelRound[] {
+  const debateRounds = buildLoopDebateChatPanelRounds(task);
+  const executionChatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
   const shouldIncludeExecution = deps.fileExists(executionChatFile)
-    || shouldPrioritizeLobsterExecutionChatRound(task, deps);
+    || shouldPrioritizeLoopExecutionChatRound(task, deps);
   if (!shouldIncludeExecution) {
     return debateRounds;
   }
-  return [...debateRounds, buildLobsterMainSubChatPanelRound(task, "任务执行群聊", deps)];
+  return [...debateRounds, buildLoopMainSubChatPanelRound(task, "任务执行群聊", deps)];
 }
 
-function shouldPrioritizeLobsterExecutionChatRound(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
+function shouldPrioritizeLoopExecutionChatRound(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
 ): boolean {
   return task.subTasks.length > 0
-    || deps.getActiveLobsterSubtaskIds(task).length > 0
+    || deps.getActiveLoopSubtaskIds(task).length > 0
     || task.rounds.some((round) => round.role === "subtask");
 }
 
-function buildLobsterMainSubChatPanelRounds(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
-): LobsterDebateChatPanelRound[] {
-  return [buildLobsterMainSubChatPanelRound(task, "主从群聊", deps)];
+function buildLoopMainSubChatPanelRounds(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): LoopDebateChatPanelRound[] {
+  return [buildLoopMainSubChatPanelRound(task, "主从群聊", deps)];
 }
 
-function buildLobsterMainSubChatPanelRound(
-  task: LobsterTaskRecord,
+function buildLoopMainSubChatPanelRound(
+  task: LoopTaskRecord,
   label: string,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
-): LobsterDebateChatPanelRound {
-  const chatFile = ensureLobsterMainSubChatTranscriptWithDeps(task, deps);
-  const activeSubtaskIds = deps.getActiveLobsterSubtaskIds(task);
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): LoopDebateChatPanelRound {
+  const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
+  const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
-  const mainTitle = getLobsterMainSubChatMainTitle(task);
-  const mainParticipant: LobsterDebateChatPanelRound["participants"][number] = {
+  const mainTitle = getLoopMainSubChatMainTitle(task);
+  const mainParticipant: LoopDebateChatPanelRound["participants"][number] = {
     id: "main",
     title: mainTitle,
     role: "main",
@@ -525,7 +525,7 @@ function buildLobsterMainSubChatPanelRound(
   };
   const subtaskParticipants = task.subTasks.map((subtask, index) => ({
     id: subtask.id,
-    title: getLobsterSubtaskDisplayTitle(index, subtask),
+    title: getLoopSubtaskDisplayTitle(index, subtask),
     role: "subtask",
     status: subtask.status,
     sessionId: null,
@@ -533,14 +533,14 @@ function buildLobsterMainSubChatPanelRound(
     updatedAt: subtask.updatedAt,
   }));
   return {
-    key: LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
+    key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
     kind: "execution",
     label,
-    lobsterRound: Math.max(1, task.currentRound || 1),
+    loopRound: Math.max(1, task.currentRound || 1),
     debateRound: 0,
     status: task.status,
     chatFile,
-    activeSpeaker: buildLobsterMainSubChatActiveSpeaker(task, deps),
+    activeSpeaker: buildLoopMainSubChatActiveSpeaker(task, deps),
     startedAt: task.createdAt,
     completedAt: task.status === "completed" ? task.updatedAt : undefined,
     participants: [mainParticipant, ...subtaskParticipants],
@@ -548,14 +548,14 @@ function buildLobsterMainSubChatPanelRound(
   };
 }
 
-function buildLobsterMainSubChatActiveSpeaker(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
-): LobsterDebateChatPanelRound["activeSpeaker"] {
+function buildLoopMainSubChatActiveSpeaker(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): LoopDebateChatPanelRound["activeSpeaker"] {
   if (task.status !== "running") {
     return undefined;
   }
-  const activeSubtaskIds = deps.getActiveLobsterSubtaskIds(task);
+  const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const activeSubtask = task.subTasks.find((subtask) => (
     activeSubtaskIds.includes(subtask.id)
     && subtask.status === "running"
@@ -565,7 +565,7 @@ function buildLobsterMainSubChatActiveSpeaker(
     return {
       kind: "subtask",
       id: activeSubtask.id,
-      title: getLobsterSubtaskDisplayTitle(index, activeSubtask),
+      title: getLoopSubtaskDisplayTitle(index, activeSubtask),
       dialogueTurn: Math.max(1, task.currentRound || 1),
       updatedAt: activeSubtask.updatedAt ?? task.updatedAt,
     };
@@ -574,7 +574,7 @@ function buildLobsterMainSubChatActiveSpeaker(
     return {
       kind: "main",
       id: "main",
-      title: getLobsterMainSubChatMainTitle(task),
+      title: getLoopMainSubChatMainTitle(task),
       dialogueTurn: Math.max(1, task.currentRound || 1),
       updatedAt: task.updatedAt,
     };
@@ -582,29 +582,29 @@ function buildLobsterMainSubChatActiveSpeaker(
   return undefined;
 }
 
-export function getLobsterMainSubChatMainTitle(task: Pick<LobsterTaskRecord, "executionMode">): string {
-  return normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+export function getLoopMainSubChatMainTitle(task: Pick<LoopTaskRecord, "executionMode">): string {
+  return normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
     ? "主持人主智能体"
     : "主任务";
 }
 
-export function ensureLobsterMainSubChatTranscriptWithDeps(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
+export function ensureLoopMainSubChatTranscriptWithDeps(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
 ): string {
-  const chatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
+  const chatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
   if (deps.fileExists(chatFile)) {
     return chatFile;
   }
-  deps.writeTextFileEnsuringDir(chatFile, buildInitialLobsterMainSubChatTranscript(task, deps));
+  deps.writeTextFileEnsuringDir(chatFile, buildInitialLoopMainSubChatTranscript(task, deps));
   return chatFile;
 }
 
-function buildInitialLobsterMainSubChatTranscript(
-  task: LobsterTaskRecord,
-  deps: LobsterDebateChatPanelStateBuilderDeps,
+function buildInitialLoopMainSubChatTranscript(
+  task: LoopTaskRecord,
+  deps: LoopDebateChatPanelStateBuilderDeps,
 ): string {
-  const mainTitle = getLobsterMainSubChatMainTitle(task);
+  const mainTitle = getLoopMainSubChatMainTitle(task);
   const lines: string[] = [
     "# Loop 主从群聊记录",
     "",
@@ -616,7 +616,7 @@ function buildInitialLobsterMainSubChatTranscript(
     `- 主任务沟通文件：${task.mainCommunicationFile}`,
     "",
     "## 群聊规则",
-    normalizeLobsterExecutionMode(task.executionMode) === "debate_multi_agent"
+    normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
       ? "- 主持人主智能体负责继承红蓝规划共识，拆分、派发、复核和最终验收。"
       : "- 主任务负责拆分、派发、复核和最终验收。",
     "- 子任务会在派发和执行时动态加入群聊，并以“子任务 1~N”标记。",
@@ -633,21 +633,21 @@ function buildInitialLobsterMainSubChatTranscript(
       if (round.role === "main") {
         lines.push(
           "",
-          `## 主任务发言：第 ${round.round} 轮${formatLobsterGroupChatMemberName(mainTitle)}`,
-          ["- 成员 ID：main", "", formatLobsterRoundRecordForChat(round)].join("\n"),
+          `## 主任务发言：第 ${round.round} 轮${formatLoopGroupChatMemberName(mainTitle)}`,
+          ["- 成员 ID：main", "", formatLoopRoundRecordForChat(round)].join("\n"),
         );
         return;
       }
       const subtask = task.subTasks.find((item) => item.id === round.subtaskId);
       const index = subtask ? task.subTasks.findIndex((item) => item.id === subtask.id) : -1;
-      const title = subtask ? getLobsterSubtaskDisplayTitle(index, subtask) : `子任务 ${round.subtaskId ?? "unknown"}`;
+      const title = subtask ? getLoopSubtaskDisplayTitle(index, subtask) : `子任务 ${round.subtaskId ?? "unknown"}`;
       lines.push(
         "",
-        `## 子任务发言：${formatLobsterGroupChatMemberName(title)}`,
+        `## 子任务发言：${formatLoopGroupChatMemberName(title)}`,
         [
           `- 成员 ID：${round.subtaskId ?? "unknown"}`,
           "",
-          buildLobsterMainSubSubtaskTurnBody({
+          buildLoopMainSubSubtaskTurnBody({
             runStatus: round.status,
             assistantContent: subtask?.summary,
             communicationFile: subtask?.communicationFile,
@@ -657,12 +657,12 @@ function buildInitialLobsterMainSubChatTranscript(
     });
 
   if (task.status === "completed") {
-    lines.push("", "## 群聊收束", deps.buildLobsterCompletedConclusionAndSummaryMarkdown(task));
+    lines.push("", "## 群聊收束", deps.buildLoopCompletedConclusionAndSummaryMarkdown(task));
   }
   return `${lines.join("\n")}\n`;
 }
 
-function formatLobsterRoundRecordForChat(round: LobsterRoundRecord): string {
+function formatLoopRoundRecordForChat(round: LoopRoundRecord): string {
   return [
     `- 状态：${round.status}`,
     `- 开始：${new Date(round.startedAt).toISOString()}`,
@@ -671,22 +671,22 @@ function formatLobsterRoundRecordForChat(round: LobsterRoundRecord): string {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
-export function buildLobsterDebateChatRoundKey(lobsterRound: number, debateRound: number): string {
-  return `${lobsterRound}:${debateRound}`;
+export function buildLoopDebateChatRoundKey(loopRound: number, debateRound: number): string {
+  return `${loopRound}:${debateRound}`;
 }
 
-export function buildLobsterDebateChatMessageActionWithRoundKey(
+export function buildLoopDebateChatMessageActionWithRoundKey(
   taskId: string,
   defaultDebateRound: number,
   round?: number,
 ): ChatMessageAction {
   const action: ChatMessageAction = {
-    type: "openLobsterDebateChat",
+    type: "openLoopGroupChat",
     taskId,
     label: "打开 Loop 群聊",
   };
   if (typeof round === "number" && Number.isFinite(round)) {
-    action.roundKey = buildLobsterDebateChatRoundKey(round, defaultDebateRound);
+    action.roundKey = buildLoopDebateChatRoundKey(round, defaultDebateRound);
   }
   return action;
 }
@@ -695,9 +695,9 @@ export type UserChatMessageInput = {
   displayPrompt: string;
   contextTags: string[];
   taskRole?: ChatMessage["taskRole"];
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 export function buildUserChatMessage(input: UserChatMessageInput, createdAt: number, messageId: string): ChatMessage {
@@ -709,9 +709,9 @@ export function buildUserChatMessage(input: UserChatMessageInput, createdAt: num
     merge: false,
     contextTags: input.contextTags,
     taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
+    loopTaskId: input.loopTaskId,
+    loopRound: input.loopRound,
+    loopSubtaskId: input.loopSubtaskId,
   };
 }
 
@@ -736,41 +736,41 @@ export function getLatestAssistantResponseForLongTermMemory(messages: readonly C
   return fallback;
 }
 
-export function getLobsterSubtaskDisplayTitle(index: number, subtask: Pick<LobsterSubtaskRecord, "title">): string {
+export function getLoopSubtaskDisplayTitle(index: number, subtask: Pick<LoopSubtaskRecord, "title">): string {
   const displayIndex = Number.isFinite(index) && index >= 0 ? index + 1 : 0;
   const prefix = displayIndex > 0 ? `子任务 ${displayIndex}` : "子任务";
   return subtask.title ? `${prefix}：${subtask.title}` : prefix;
 }
 
-export function buildLobsterTaskStartedText(task: LobsterTaskRecord): string {
+export function buildLoopTaskStartedText(task: LoopTaskRecord): string {
   return `Loop 任务已启动：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
-export function buildLobsterTaskResumedText(task: LobsterTaskRecord, round: number): string {
-  return t("run.lobsterResumed", { taskId: task.id, round, file: task.taskStoreFile });
+export function buildLoopTaskResumedText(task: LoopTaskRecord, round: number): string {
+  return t("run.loopResumed", { taskId: task.id, round, file: task.taskStoreFile });
 }
 
-export function buildLobsterTaskCompletedText(task: LobsterTaskRecord): string {
+export function buildLoopTaskCompletedText(task: LoopTaskRecord): string {
   return [
     `Loop 任务已完成：${task.id}`,
     `记录文件：${task.taskStoreFile}`,
   ].join("\n");
 }
 
-export function buildLobsterTaskNeedsReviewText(
-  task: LobsterTaskRecord,
-  isBlockedByMainAiFailureLimit: (task: Pick<LobsterTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean,
+export function buildLoopTaskNeedsReviewText(
+  task: LoopTaskRecord,
+  isBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean,
 ): string {
   const failureSuffix = isBlockedByMainAiFailureLimit(task)
-    ? `\n主任务 AI 调用已连续失败 ${normalizeLobsterMainAiFailureCount(task.mainAiFailureCount)}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
+    ? `\n主任务 AI 调用已连续失败 ${normalizeLoopMainAiFailureCount(task.mainAiFailureCount)}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
     : "";
   return `Loop 任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
 }
 
-export function buildLobsterMainResumeText(
+export function buildLoopMainResumeText(
   taskId: string,
   round: number,
-  subtasks: LobsterSubtaskRecord[],
+  subtasks: LoopSubtaskRecord[],
 ): string {
   const subtaskTitles = subtasks.map((subtask) => subtask.title).join("、");
   return [
@@ -780,11 +780,11 @@ export function buildLobsterMainResumeText(
   ].join("\n");
 }
 
-export function buildLobsterSubtaskBatchStartedText(
+export function buildLoopSubtaskBatchStartedText(
   taskId: string,
   round: number,
-  subtasks: LobsterSubtaskRecord[],
-  executionPlan: LobsterSubtaskExecutionPlan<LobsterSubtaskRecord>,
+  subtasks: LoopSubtaskRecord[],
+  executionPlan: LoopSubtaskExecutionPlan<LoopSubtaskRecord>,
 ): string {
   const isSingleParallelGroup = executionPlan.groups.length <= 1;
   const lines = [
@@ -796,7 +796,7 @@ export function buildLobsterSubtaskBatchStartedText(
     `子任务：${subtasks.map((subtask) => subtask.title).join("、")}`,
   ];
   if (!isSingleParallelGroup) {
-    lines.push(`执行计划：${describeLobsterExecutionPlan(executionPlan).join("；")}`);
+    lines.push(`执行计划：${describeLoopExecutionPlan(executionPlan).join("；")}`);
   }
   if (executionPlan.conflicts.length > 0) {
     const conflictSummaries = executionPlan.conflicts.slice(0, 3).map((conflict) => {
@@ -808,12 +808,12 @@ export function buildLobsterSubtaskBatchStartedText(
   return lines.join("\n");
 }
 
-export function buildLobsterSubtaskExecutionGroupStartedText(
+export function buildLoopSubtaskExecutionGroupStartedText(
   taskId: string,
   round: number,
   groupIndex: number,
   groupCount: number,
-  subtasks: LobsterSubtaskRecord[],
+  subtasks: LoopSubtaskRecord[],
 ): string {
   return [
     `Loop 子任务执行组已启动：第 ${groupIndex + 1}/${groupCount} 组，${subtasks.length} 个`,
@@ -823,10 +823,10 @@ export function buildLobsterSubtaskExecutionGroupStartedText(
   ].join("\n");
 }
 
-export function buildLobsterSubtaskBatchCompletedText(
+export function buildLoopSubtaskBatchCompletedText(
   taskId: string,
   round: number,
-  subtasks: LobsterSubtaskRecord[],
+  subtasks: LoopSubtaskRecord[],
 ): string {
   return [
     `Loop 子任务批次已全部完成：${subtasks.length} 个`,
@@ -836,7 +836,7 @@ export function buildLobsterSubtaskBatchCompletedText(
   ].join("\n");
 }
 
-export function buildLobsterSubtaskRetryText(
+export function buildLoopSubtaskRetryText(
   taskId: string,
   subtaskId: string,
   retryCount: number,
@@ -849,9 +849,9 @@ export function buildLobsterSubtaskRetryText(
   ].join("\n");
 }
 
-export function buildLobsterSubtaskStartedText(
+export function buildLoopSubtaskStartedText(
   taskId: string,
-  subtask: LobsterSubtaskRecord,
+  subtask: LoopSubtaskRecord,
   round: number,
   communicationFile: string,
   retryCount: number,
@@ -865,14 +865,14 @@ export function buildLobsterSubtaskStartedText(
   ].join("\n");
 }
 
-export function formatLobsterEstimatedRemainingRounds(value?: number): string | null {
+export function formatLoopEstimatedRemainingRounds(value?: number): string | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
   return `${Math.max(0, Math.floor(value))} 轮`;
 }
 
-export function formatLobsterWriteFiles(writeFiles?: string[]): string | null {
+export function formatLoopWriteFiles(writeFiles?: string[]): string | null {
   if (!Array.isArray(writeFiles) || writeFiles.length === 0) {
     return null;
   }
@@ -898,7 +898,7 @@ export function shouldUseFallbackSessionLabel(
   return !trimmed || unnamedSessionLabels.has(trimmed);
 }
 
-export function normalizeLobsterTaskId(value: unknown): string | null {
+export function normalizeLoopTaskId(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -910,7 +910,7 @@ export function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
 }
 
-export function normalizeLobsterSubtaskId(value: unknown): string | null {
+export function normalizeLoopSubtaskId(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -918,7 +918,7 @@ export function normalizeLobsterSubtaskId(value: unknown): string | null {
   return normalized || null;
 }
 
-export function normalizeLobsterRound(value: unknown): number | null {
+export function normalizeLoopRound(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
@@ -926,57 +926,57 @@ export function normalizeLobsterRound(value: unknown): number | null {
   return round > 0 ? round : null;
 }
 
-export function resolveLobsterConversationTabContextFromMessages(
+export function resolveLoopConversationTabContextFromMessages(
   messages: readonly ChatMessage[],
-): LobsterConversationTabContext {
+): LoopConversationTabContext {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     const taskRole = message?.taskRole;
-    const lobsterTaskId = normalizeLobsterTaskId(message?.lobsterTaskId);
-    if (!lobsterTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
+    const loopTaskId = normalizeLoopTaskId(message?.loopTaskId);
+    if (!loopTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
       if (message?.role === "user" && String(message.content || "").trim()) {
         return {
           taskRole: null,
-          lobsterTaskId: null,
+          loopTaskId: null,
         };
       }
       continue;
     }
     return {
       taskRole,
-      lobsterTaskId,
+      loopTaskId,
     };
   }
   return {
     taskRole: null,
-    lobsterTaskId: null,
+    loopTaskId: null,
   };
 }
 
-export function resolveLobsterRunConversationTabContext(
-  run: { taskRole?: LobsterTaskRole; lobsterTaskId?: string; messageTarget: ChatMessage[] } | undefined,
-): LobsterConversationTabContext {
+export function resolveLoopRunConversationTabContext(
+  run: { taskRole?: LoopTaskRole; loopTaskId?: string; messageTarget: ChatMessage[] } | undefined,
+): LoopConversationTabContext {
   if (!run) {
-    return { taskRole: null, lobsterTaskId: null };
+    return { taskRole: null, loopTaskId: null };
   }
   const taskRole = run.taskRole === "main" || run.taskRole === "subtask"
     ? run.taskRole
     : null;
-  const lobsterTaskId = normalizeLobsterTaskId(run.lobsterTaskId);
-  if (taskRole && lobsterTaskId) {
-    return { taskRole, lobsterTaskId };
+  const loopTaskId = normalizeLoopTaskId(run.loopTaskId);
+  if (taskRole && loopTaskId) {
+    return { taskRole, loopTaskId };
   }
-  return resolveLobsterConversationTabContextFromMessages(run.messageTarget);
+  return resolveLoopConversationTabContextFromMessages(run.messageTarget);
 }
 
-export function resolveLobsterSubtaskConversationContextFromMessages(
+export function resolveLoopSubtaskConversationContextFromMessages(
   messages: readonly ChatMessage[],
-): LobsterSubtaskConversationContext | null {
+): LoopSubtaskConversationContext | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    const taskId = normalizeLobsterTaskId(message?.lobsterTaskId);
-    const subtaskId = normalizeLobsterSubtaskId(message?.lobsterSubtaskId);
-    const round = normalizeLobsterRound(message?.lobsterRound);
+    const taskId = normalizeLoopTaskId(message?.loopTaskId);
+    const subtaskId = normalizeLoopSubtaskId(message?.loopSubtaskId);
+    const round = normalizeLoopRound(message?.loopRound);
     if (message?.taskRole === "subtask" && taskId && subtaskId && round) {
       return {
         taskId,

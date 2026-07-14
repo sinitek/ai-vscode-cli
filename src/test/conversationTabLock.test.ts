@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import { type CliName } from "../cli/types";
 import {
   createSessionTabsController,
-  resolveAutoInteractiveModeForLobsterTask,
+  resolveAutoInteractiveModeForLoopTask,
   type ConversationTabsState,
 } from "../sessionTabs";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../webview/viewContentScript/eventBindings";
@@ -12,11 +12,11 @@ import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../webview/viewContentScr
 
 type TabSummary = {
   id: string;
-  lobsterTaskRole?: string;
-  lobsterTaskId?: string;
-  lobsterTaskRunning?: boolean;
-  lobsterTaskStatus?: string;
-  lobsterMainTabCloseLocked?: boolean;
+  loopTaskRole?: string;
+  loopTaskId?: string;
+  loopTaskRunning?: boolean;
+  loopTaskStatus?: string;
+  loopMainTabCloseLocked?: boolean;
 };
 
 function extractFunctionSource(script: string, name: string): string {
@@ -42,30 +42,30 @@ function extractFunctionSource(script: string, name: string): string {
   throw new Error(`${name} body was not terminated`);
 }
 
-function buildIsLobsterMainTabCloseLocked(
+function buildIsLoopMainTabCloseLocked(
   tabs: TabSummary[],
   runningTabIds: readonly string[],
 ): (tab: TabSummary | null) => boolean {
-  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLobsterMainTabCloseLocked");
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLoopMainTabCloseLocked");
   const state = { conversationTabs: { tabs } };
   const running = new Set(runningTabIds);
   const isTabRunning = (tabId: string | undefined): boolean => Boolean(tabId && running.has(tabId));
-  const getLobsterMetaForTabSummary = (tab: TabSummary | null): { taskRole: string; lobsterTaskId: string } | null => {
-    if (!tab || !tab.lobsterTaskRole || !tab.lobsterTaskId) {
+  const getLoopMetaForTabSummary = (tab: TabSummary | null): { taskRole: string; loopTaskId: string } | null => {
+    if (!tab || !tab.loopTaskRole || !tab.loopTaskId) {
       return null;
     }
     return {
-      taskRole: tab.lobsterTaskRole,
-      lobsterTaskId: tab.lobsterTaskId,
+      taskRole: tab.loopTaskRole,
+      loopTaskId: tab.loopTaskId,
     };
   };
 
   return new Function(
     "state",
     "isTabRunning",
-    "getLobsterMetaForTabSummary",
-    `${functionSource}; return isLobsterMainTabCloseLocked;`,
-  )(state, isTabRunning, getLobsterMetaForTabSummary) as (tab: TabSummary | null) => boolean;
+    "getLoopMetaForTabSummary",
+    `${functionSource}; return isLoopMainTabCloseLocked;`,
+  )(state, isTabRunning, getLoopMetaForTabSummary) as (tab: TabSummary | null) => boolean;
 }
 
 function buildIsConversationTabRunning(
@@ -74,53 +74,53 @@ function buildIsConversationTabRunning(
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isConversationTabRunning");
   const running = new Set(runningTabIds);
   const isTabRunning = (tabId: string | undefined): boolean => Boolean(tabId && running.has(tabId));
-  const isLobsterMainTab = (tab: TabSummary | null): boolean => tab?.lobsterTaskRole === "main";
+  const isLoopMainTab = (tab: TabSummary | null): boolean => tab?.loopTaskRole === "main";
 
   return new Function(
     "isTabRunning",
-    "isLobsterMainTab",
+    "isLoopMainTab",
     `${functionSource}; return isConversationTabRunning;`,
-  )(isTabRunning, isLobsterMainTab) as (tab: TabSummary | null) => boolean;
+  )(isTabRunning, isLoopMainTab) as (tab: TabSummary | null) => boolean;
 }
 
 function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: string) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabLabel");
-  const getLobsterMetaForTabSummary = (
+  const getLoopMetaForTabSummary = (
     tab: TabSummary | null,
-  ): { taskRole: string; lobsterTaskId: string } | null => {
-    if (!tab || !tab.lobsterTaskRole || !tab.lobsterTaskId) {
+  ): { taskRole: string; loopTaskId: string } | null => {
+    if (!tab || !tab.loopTaskRole || !tab.loopTaskId) {
       return null;
     }
     return {
-      taskRole: tab.lobsterTaskRole,
-      lobsterTaskId: tab.lobsterTaskId,
+      taskRole: tab.loopTaskRole,
+      loopTaskId: tab.loopTaskId,
     };
   };
 
   return new Function(
-    "getLobsterMetaForTabSummary",
+    "getLoopMetaForTabSummary",
     `${functionSource}; return formatConversationTabLabel;`,
-  )(getLobsterMetaForTabSummary) as (tab: TabSummary | null, baseLabel: string) => string;
+  )(getLoopMetaForTabSummary) as (tab: TabSummary | null, baseLabel: string) => string;
 }
 
 function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab");
-  const getLobsterMetaForTabSummary = (
+  const getLoopMetaForTabSummary = (
     tab: TabSummary | null,
-  ): { taskRole: string; lobsterTaskId: string } | null => {
-    if (!tab || !tab.lobsterTaskRole || !tab.lobsterTaskId) {
+  ): { taskRole: string; loopTaskId: string } | null => {
+    if (!tab || !tab.loopTaskRole || !tab.loopTaskId) {
       return null;
     }
     return {
-      taskRole: tab.lobsterTaskRole,
-      lobsterTaskId: tab.lobsterTaskId,
+      taskRole: tab.loopTaskRole,
+      loopTaskId: tab.loopTaskId,
     };
   };
 
   return new Function(
-    "getLobsterMetaForTabSummary",
+    "getLoopMetaForTabSummary",
     `${functionSource}; return resolveAutoInteractiveModeForTab;`,
-  )(getLobsterMetaForTabSummary) as (tab: TabSummary | null) => string;
+  )(getLoopMetaForTabSummary) as (tab: TabSummary | null) => string;
 }
 
 function buildResetConversationTabSessionRequest(
@@ -148,15 +148,15 @@ test("uses sun and moon icons to identify Loop task tabs", () => {
   const formatLabel = buildFormatConversationTabLabel();
 
   assert.equal(
-    formatLabel({ id: "main-tab", lobsterTaskRole: "main", lobsterTaskId: "task-1" }, "codex"),
+    formatLabel({ id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" }, "codex"),
     "☀️ codex",
   );
   assert.equal(
-    formatLabel({ id: "main-tab-2", lobsterTaskRole: "main", lobsterTaskId: "task-2" }, "codex2"),
+    formatLabel({ id: "main-tab-2", loopTaskRole: "main", loopTaskId: "task-2" }, "codex2"),
     "☀️ codex2",
   );
   assert.equal(
-    formatLabel({ id: "subtask-tab", lobsterTaskRole: "subtask", lobsterTaskId: "task-1" }, "codex2"),
+    formatLabel({ id: "subtask-tab", loopTaskRole: "subtask", loopTaskId: "task-1" }, "codex2"),
     "🌛 codex2",
   );
   assert.equal(formatLabel({ id: "ordinary-tab" }, "claude"), "claude");
@@ -164,19 +164,19 @@ test("uses sun and moon icons to identify Loop task tabs", () => {
 
 test("automatically selects Loop mode only for a Loop main task tab", () => {
   const resolveWebviewMode = buildWebviewAutoInteractiveModeResolver();
-  const mainTab = { id: "main-tab", lobsterTaskRole: "main", lobsterTaskId: "task-1" };
-  const subtaskTab = { id: "subtask-tab", lobsterTaskRole: "subtask", lobsterTaskId: "task-1" };
-  const incompleteMainTab = { id: "incomplete-main-tab", lobsterTaskRole: "main" };
+  const mainTab = { id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" };
+  const subtaskTab = { id: "subtask-tab", loopTaskRole: "subtask", loopTaskId: "task-1" };
+  const incompleteMainTab = { id: "incomplete-main-tab", loopTaskRole: "main" };
   const ordinaryTab = { id: "ordinary-tab" };
 
-  assert.equal(resolveWebviewMode(mainTab), "lobster");
-  assert.equal(resolveAutoInteractiveModeForLobsterTask("main", "task-1"), "lobster");
+  assert.equal(resolveWebviewMode(mainTab), "loop");
+  assert.equal(resolveAutoInteractiveModeForLoopTask("main", "task-1"), "loop");
   assert.equal(resolveWebviewMode(subtaskTab), "coding");
-  assert.equal(resolveAutoInteractiveModeForLobsterTask("subtask", "task-1"), "coding");
+  assert.equal(resolveAutoInteractiveModeForLoopTask("subtask", "task-1"), "coding");
   assert.equal(resolveWebviewMode(incompleteMainTab), "coding");
-  assert.equal(resolveAutoInteractiveModeForLobsterTask("main", null), "coding");
+  assert.equal(resolveAutoInteractiveModeForLoopTask("main", null), "coding");
   assert.equal(resolveWebviewMode(ordinaryTab), "coding");
-  assert.equal(resolveAutoInteractiveModeForLobsterTask(undefined, undefined), "coding");
+  assert.equal(resolveAutoInteractiveModeForLoopTask(undefined, undefined), "coding");
 });
 
 test("rebuilds a Loop tab after its running status has been reconciled", () => {
@@ -207,21 +207,21 @@ test("rebuilds a Loop tab after its running status has been reconciled", () => {
     setCurrentSession: () => undefined,
     setWorkspaceInteractiveModeForCli: () => false,
     resolveAutoInteractiveModeForConversationTab: () => "coding",
-    collectRunningLobsterTaskIds: () => new Set(),
-    isLobsterTaskRunning: () => {
+    collectRunningLoopTaskIds: () => new Set(),
+    isLoopTaskRunning: () => {
       taskStatus = "stopped";
       return false;
     },
-    getLobsterTaskStatus: () => taskStatus,
-    resolveConversationTabLobsterContext: () => ({ taskRole: "main", lobsterTaskId: "task-1" }),
+    getLoopTaskStatus: () => taskStatus,
+    resolveConversationTabLoopContext: () => ({ taskRole: "main", loopTaskId: "task-1" }),
     buildSessionLabelFromPrompt: () => null,
   });
 
   const [tab] = controller.buildConversationTabsState().tabs;
 
-  assert.equal(tab?.lobsterTaskRunning, false);
-  assert.equal(tab?.lobsterTaskStatus, "stopped");
-  assert.equal(tab?.lobsterMainTabCloseLocked, false);
+  assert.equal(tab?.loopTaskRunning, false);
+  assert.equal(tab?.loopTaskStatus, "stopped");
+  assert.equal(tab?.loopMainTabCloseLocked, false);
 });
 
 test("waits for extension reset success before clearing the current Tab view", () => {
@@ -239,11 +239,11 @@ test("waits for extension reset success before clearing the current Tab view", (
 test("does not keep completed Loop main tab locked from stale backend state", () => {
   const mainTab = {
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterMainTabCloseLocked: true,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopMainTabCloseLocked: true,
   };
-  const isLocked = buildIsLobsterMainTabCloseLocked([mainTab], []);
+  const isLocked = buildIsLoopMainTabCloseLocked([mainTab], []);
 
   assert.equal(isLocked(mainTab), false);
 });
@@ -251,29 +251,29 @@ test("does not keep completed Loop main tab locked from stale backend state", ()
 test("keeps Loop main tab locked while it or a same-task child tab is running", () => {
   const mainTab = {
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterMainTabCloseLocked: false,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopMainTabCloseLocked: false,
   };
   const subtaskTab = {
     id: "subtask-tab",
-    lobsterTaskRole: "subtask",
-    lobsterTaskId: "task-1",
+    loopTaskRole: "subtask",
+    loopTaskId: "task-1",
   };
 
-  assert.equal(buildIsLobsterMainTabCloseLocked([mainTab], ["main-tab"])(mainTab), true);
-  assert.equal(buildIsLobsterMainTabCloseLocked([mainTab, subtaskTab], ["subtask-tab"])(mainTab), true);
+  assert.equal(buildIsLoopMainTabCloseLocked([mainTab], ["main-tab"])(mainTab), true);
+  assert.equal(buildIsLoopMainTabCloseLocked([mainTab, subtaskTab], ["subtask-tab"])(mainTab), true);
 });
 
 test("keeps Loop main tab locked while the persisted task is still running", () => {
   const mainTab = {
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterTaskRunning: true,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopTaskRunning: true,
   };
 
-  assert.equal(buildIsLobsterMainTabCloseLocked([mainTab], [])(mainTab), true);
+  assert.equal(buildIsLoopMainTabCloseLocked([mainTab], [])(mainTab), true);
 });
 
 test("keeps only the Loop main tab visually running from persisted task state", () => {
@@ -281,15 +281,15 @@ test("keeps only the Loop main tab visually running from persisted task state", 
 
   assert.equal(isRunning({
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterTaskRunning: true,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopTaskRunning: true,
   }), true);
   assert.equal(isRunning({
     id: "subtask-tab",
-    lobsterTaskRole: "subtask",
-    lobsterTaskId: "task-1",
-    lobsterTaskRunning: true,
+    loopTaskRole: "subtask",
+    loopTaskId: "task-1",
+    loopTaskRunning: true,
   }), false);
   assert.equal(isRunning({ id: "ordinary-running-tab" }), false);
   assert.equal(buildIsConversationTabRunning(["ordinary-running-tab"])({ id: "ordinary-running-tab" }), true);
@@ -300,31 +300,31 @@ test("treats explicit Loop task running status as a visual running fallback", ()
 
   assert.equal(isRunning({
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterTaskStatus: "running",
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopTaskStatus: "running",
   }), true);
   assert.equal(isRunning({
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterTaskStatus: "completed",
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopTaskStatus: "completed",
   }), false);
 });
 
 test("does not lock Loop main tab for unrelated running tasks", () => {
   const mainTab = {
     id: "main-tab",
-    lobsterTaskRole: "main",
-    lobsterTaskId: "task-1",
-    lobsterMainTabCloseLocked: false,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+    loopMainTabCloseLocked: false,
   };
   const unrelatedTab = {
     id: "other-tab",
-    lobsterTaskRole: "subtask",
-    lobsterTaskId: "task-2",
+    loopTaskRole: "subtask",
+    loopTaskId: "task-2",
   };
-  const isLocked = buildIsLobsterMainTabCloseLocked([mainTab, unrelatedTab], ["other-tab"]);
+  const isLocked = buildIsLoopMainTabCloseLocked([mainTab, unrelatedTab], ["other-tab"]);
 
   assert.equal(isLocked(mainTab), false);
 });

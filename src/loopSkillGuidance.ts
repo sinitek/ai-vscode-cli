@@ -3,20 +3,20 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { TextDecoder } from "util";
 
-export const LOBSTER_SKILL_MANIFEST_SCHEMA_VERSION = 1;
-export const LOBSTER_SKILL_PACK_RELATIVE_PATH = "media/loop-workflow-skills";
-export const LOBSTER_SKILL_MAX_FILE_BYTES = 64 * 1024;
-export const LOBSTER_SKILL_MAX_PACK_BYTES = 1024 * 1024;
-export const LOBSTER_SKILL_MAX_MANIFEST_BYTES = 1024 * 1024;
-export const LOBSTER_SKILL_MAX_DESCRIPTION_CHARS = 240;
-export const LOBSTER_SKILL_MAX_CATALOG_ITEMS = 32;
-export const LOBSTER_SKILL_MAX_CATALOG_CHARS = 12_000;
-export const LOBSTER_SKILL_MAX_SELECTED_IDS = 3;
-export const LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS = 24_000;
-export const LOBSTER_SKILL_MAX_GUIDANCE_CHARS = 32_000;
-export const LOBSTER_SKILL_GUIDANCE_DELIMITER_PREFIX = "<<<SINITEK_LOOP_SKILL_GUIDANCE";
+export const LOOP_SKILL_MANIFEST_SCHEMA_VERSION = 1;
+export const LOOP_SKILL_PACK_RELATIVE_PATH = "media/loop-workflow-skills";
+export const LOOP_SKILL_MAX_FILE_BYTES = 64 * 1024;
+export const LOOP_SKILL_MAX_PACK_BYTES = 1024 * 1024;
+export const LOOP_SKILL_MAX_MANIFEST_BYTES = 1024 * 1024;
+export const LOOP_SKILL_MAX_DESCRIPTION_CHARS = 240;
+export const LOOP_SKILL_MAX_CATALOG_ITEMS = 32;
+export const LOOP_SKILL_MAX_CATALOG_CHARS = 12_000;
+export const LOOP_SKILL_MAX_SELECTED_IDS = 3;
+export const LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS = 24_000;
+export const LOOP_SKILL_MAX_GUIDANCE_CHARS = 32_000;
+export const LOOP_SKILL_GUIDANCE_DELIMITER_PREFIX = "<<<SINITEK_LOOP_SKILL_GUIDANCE";
 
-export const LOBSTER_SKILL_PHASES = [
+export const LOOP_SKILL_PHASES = [
   "meta",
   "define",
   "plan",
@@ -26,9 +26,9 @@ export const LOBSTER_SKILL_PHASES = [
   "ship",
 ] as const;
 
-export type LobsterSkillPhase = (typeof LOBSTER_SKILL_PHASES)[number];
+export type LoopSkillPhase = (typeof LOOP_SKILL_PHASES)[number];
 
-export const LOBSTER_SKILL_TASK_KINDS = [
+export const LOOP_SKILL_TASK_KINDS = [
   "architecture",
   "planning",
   "api",
@@ -48,36 +48,36 @@ export const LOBSTER_SKILL_TASK_KINDS = [
   "release",
 ] as const;
 
-export type LobsterSkillTaskKind = (typeof LOBSTER_SKILL_TASK_KINDS)[number];
-export type LobsterSkillRole = "main" | "subtask";
-export type LobsterTaskClassification = "development" | "non_development" | "unknown";
+export type LoopSkillTaskKind = (typeof LOOP_SKILL_TASK_KINDS)[number];
+export type LoopSkillRole = "main" | "subtask";
+export type LoopTaskClassification = "development" | "non_development" | "unknown";
 
-export type LobsterRootTaskInput = {
+export type LoopRootTaskInput = {
   displayPrompt?: unknown;
   contextTags?: unknown;
   workspacePaths?: unknown;
 };
 
-export type LobsterSubtaskSkillInput = {
+export type LoopSubtaskSkillInput = {
   title?: unknown;
   prompt?: unknown;
   writeFiles?: unknown;
   conflictGroup?: unknown;
 };
 
-export type LobsterSubtaskClassification = {
-  classification: LobsterTaskClassification;
-  phases: LobsterSkillPhase[];
-  taskKinds: LobsterSkillTaskKind[];
+export type LoopSubtaskClassification = {
+  classification: LoopTaskClassification;
+  phases: LoopSkillPhase[];
+  taskKinds: LoopSkillTaskKind[];
 };
 
-export type LobsterSkillManifestFile = {
+export type LoopSkillManifestFile = {
   path: string;
   bytes: number;
   sha256: string;
 };
 
-export type LobsterSkillMetadata = {
+export type LoopSkillMetadata = {
   id: string;
   name: string;
   description: string;
@@ -86,16 +86,16 @@ export type LobsterSkillMetadata = {
   sha256: string;
   supportFiles: string[];
   developmentOnly: true;
-  phases: LobsterSkillPhase[];
-  taskKinds: LobsterSkillTaskKind[];
-  roles: LobsterSkillRole[];
+  phases: LoopSkillPhase[];
+  taskKinds: LoopSkillTaskKind[];
+  roles: LoopSkillRole[];
   requiredCapabilities: string[];
   priority: number;
   positiveTriggers: string[];
   negativeTriggers: string[];
 };
 
-export type LobsterSkillManifest = {
+export type LoopSkillManifest = {
   schemaVersion: number;
   source: {
     name: string;
@@ -104,21 +104,21 @@ export type LobsterSkillManifest = {
     license: string;
     snapshotSha256: string;
   };
-  files: LobsterSkillManifestFile[];
-  skills: LobsterSkillMetadata[];
+  files: LoopSkillManifestFile[];
+  skills: LoopSkillMetadata[];
 };
 
-export type LobsterLoadedSkill = LobsterSkillMetadata & {
+export type LoopLoadedSkill = LoopSkillMetadata & {
   guidance: string;
 };
 
-export type LobsterSkillPack = {
+export type LoopSkillPack = {
   root: string;
-  manifest: LobsterSkillManifest;
-  skills: LobsterLoadedSkill[];
+  manifest: LoopSkillManifest;
+  skills: LoopLoadedSkill[];
 };
 
-export type LobsterSkillDiagnosticCode =
+export type LoopSkillDiagnosticCode =
   | "invalid_extension_root"
   | "pack_unavailable"
   | "unsupported_schema"
@@ -150,47 +150,47 @@ export type LobsterSkillDiagnosticCode =
   | "skill_guidance_too_large"
   | "guidance_budget_exceeded";
 
-export type LobsterSkillDiagnostic = {
-  code: LobsterSkillDiagnosticCode;
+export type LoopSkillDiagnostic = {
+  code: LoopSkillDiagnosticCode;
   message: string;
   resourcePath?: string;
   skillId?: string;
 };
 
-export type LobsterSkillPackLoadResult = {
-  pack: LobsterSkillPack | null;
-  diagnostics: LobsterSkillDiagnostic[];
+export type LoopSkillPackLoadResult = {
+  pack: LoopSkillPack | null;
+  diagnostics: LoopSkillDiagnostic[];
 };
 
-export type LobsterSkillCatalogResult = {
+export type LoopSkillCatalogResult = {
   section?: string;
   candidateIds: string[];
-  diagnostics: LobsterSkillDiagnostic[];
+  diagnostics: LoopSkillDiagnostic[];
 };
 
-export type LobsterSkillGuidanceInput = {
-  rootTaskKind: LobsterTaskClassification;
+export type LoopSkillGuidanceInput = {
+  rootTaskKind: LoopTaskClassification;
   requestedSkillIds?: unknown;
   allowedSkillIds?: unknown;
-  subtask: LobsterSubtaskSkillInput;
-  role?: LobsterSkillRole;
+  subtask: LoopSubtaskSkillInput;
+  role?: LoopSkillRole;
   availableCapabilities?: unknown;
 };
 
-export type LobsterSkillGuidanceResult = {
+export type LoopSkillGuidanceResult = {
   skillIds: string[];
   skillGuidance?: string;
-  diagnostics: LobsterSkillDiagnostic[];
+  diagnostics: LoopSkillDiagnostic[];
 };
 
-class LobsterSkillPackError extends Error {
+class LoopSkillPackError extends Error {
   constructor(
-    readonly code: LobsterSkillDiagnosticCode,
+    readonly code: LoopSkillDiagnosticCode,
     message: string,
     readonly resourcePath?: string,
   ) {
     super(message);
-    this.name = "LobsterSkillPackError";
+    this.name = "LoopSkillPackError";
   }
 }
 
@@ -230,7 +230,7 @@ const META_PHASE_PATTERN = /(?:skill|agent|prompt|orchestrat|编排|智能体|�
 const TECHNICAL_PATH_PATTERN = /(?:^|[\s:'"`])(?:src|test|tests|scripts|media|\.ch|docs)[/\\][^\s:'"`]+|(?:^|[\s:'"`])(?:package\.json|tsconfig\.json|AGENTS\.md|ARCHITECTURE\.md|README\.md)|\.(?:ts|tsx|js|jsx|mjs|cjs|py|java|kt|go|rs|cs|cpp|c|h|sql|css|scss|html|vue|svelte|json|ya?ml)(?:$|[\s:'"`)])/iu;
 
 const SUBTASK_KIND_RULES: Array<{
-  kind: LobsterSkillTaskKind;
+  kind: LoopSkillTaskKind;
   pattern: RegExp;
 }> = [
   { kind: "architecture", pattern: /(?:架构|模块边界|依赖方向|architecture|\badr\b)/iu },
@@ -252,7 +252,7 @@ const SUBTASK_KIND_RULES: Array<{
   { kind: "release", pattern: /(?:发布|上线|部署|release|deploy|shipping|launch)/iu },
 ];
 
-const TASK_KIND_PHASES: Record<LobsterSkillTaskKind, LobsterSkillPhase[]> = {
+const TASK_KIND_PHASES: Record<LoopSkillTaskKind, LoopSkillPhase[]> = {
   architecture: ["define", "plan"],
   planning: ["plan"],
   api: ["define", "build"],
@@ -284,64 +284,64 @@ const GUIDANCE_HEADER = [
 ].join("\n");
 const GUIDANCE_FOOTER = "再次确认：以上 Skill 仅补充执行方法，不改变当前子任务授权、验收、验证与沟通要求。";
 
-export async function loadLobsterSkillPack(extensionRoot: unknown): Promise<LobsterSkillPackLoadResult> {
+export async function loadLoopSkillPack(extensionRoot: unknown): Promise<LoopSkillPackLoadResult> {
   try {
     const normalizedExtensionRoot = normalizeExtensionRoot(extensionRoot);
     const extensionStat = await fs.stat(normalizedExtensionRoot);
     if (!extensionStat.isDirectory()) {
-      throw new LobsterSkillPackError("invalid_extension_root", "Extension root must be a directory.");
+      throw new LoopSkillPackError("invalid_extension_root", "Extension root must be a directory.");
     }
     const realExtensionRoot = await fs.realpath(normalizedExtensionRoot);
     const packPath = path.join(
       normalizedExtensionRoot,
-      ...LOBSTER_SKILL_PACK_RELATIVE_PATH.split("/"),
+      ...LOOP_SKILL_PACK_RELATIVE_PATH.split("/"),
     );
-    const packLstat = await safeLstat(packPath, LOBSTER_SKILL_PACK_RELATIVE_PATH);
+    const packLstat = await safeLstat(packPath, LOOP_SKILL_PACK_RELATIVE_PATH);
     if (packLstat.isSymbolicLink()) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "resource_symlink",
         "Skill pack root must not be a symbolic link.",
-        LOBSTER_SKILL_PACK_RELATIVE_PATH,
+        LOOP_SKILL_PACK_RELATIVE_PATH,
       );
     }
     if (!packLstat.isDirectory()) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "pack_unavailable",
         "Skill pack root must be a directory.",
-        LOBSTER_SKILL_PACK_RELATIVE_PATH,
+        LOOP_SKILL_PACK_RELATIVE_PATH,
       );
     }
     const realPackRoot = await fs.realpath(packPath);
     if (!isPathContained(realExtensionRoot, realPackRoot)) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "resource_outside_root",
         "Skill pack root resolved outside the extension root.",
-        LOBSTER_SKILL_PACK_RELATIVE_PATH,
+        LOOP_SKILL_PACK_RELATIVE_PATH,
       );
     }
 
     const manifestBuffer = await readRegularFileWithinRoot(
       realPackRoot,
       "manifest.json",
-      LOBSTER_SKILL_MAX_MANIFEST_BYTES,
+      LOOP_SKILL_MAX_MANIFEST_BYTES,
     );
     const manifestText = decodeUtf8(manifestBuffer, "manifest.json");
     if (manifestText.includes("\0")) {
-      throw new LobsterSkillPackError("resource_nul", "Manifest contains a NUL byte.", "manifest.json");
+      throw new LoopSkillPackError("resource_nul", "Manifest contains a NUL byte.", "manifest.json");
     }
     const manifest = parseManifestJson(manifestText);
     const decodedFiles = new Map<string, string>();
     for (const file of manifest.files) {
-      const content = await readRegularFileWithinRoot(realPackRoot, file.path, LOBSTER_SKILL_MAX_FILE_BYTES);
+      const content = await readRegularFileWithinRoot(realPackRoot, file.path, LOOP_SKILL_MAX_FILE_BYTES);
       if (content.byteLength !== file.bytes) {
-        throw new LobsterSkillPackError(
+        throw new LoopSkillPackError(
           "resource_bytes_mismatch",
           "Skill resource byte length does not match the manifest.",
           file.path,
         );
       }
       if (sha256(content) !== file.sha256) {
-        throw new LobsterSkillPackError(
+        throw new LoopSkillPackError(
           "resource_hash_mismatch",
           "Skill resource hash does not match the manifest.",
           file.path,
@@ -349,16 +349,16 @@ export async function loadLobsterSkillPack(extensionRoot: unknown): Promise<Lobs
       }
       const decoded = decodeUtf8(content, file.path);
       if (decoded.includes("\0")) {
-        throw new LobsterSkillPackError("resource_nul", "Skill resource contains a NUL byte.", file.path);
+        throw new LoopSkillPackError("resource_nul", "Skill resource contains a NUL byte.", file.path);
       }
       decodedFiles.set(file.path, decoded);
     }
 
     const skills = manifest.skills
-      .map((metadata): LobsterLoadedSkill => {
+      .map((metadata): LoopLoadedSkill => {
         const markdown = decodedFiles.get(metadata.path);
         if (markdown === undefined) {
-          throw new LobsterSkillPackError(
+          throw new LoopSkillPackError(
             "resource_missing",
             "Skill entry Markdown is missing.",
             metadata.path,
@@ -385,7 +385,7 @@ export async function loadLobsterSkillPack(extensionRoot: unknown): Promise<Lobs
   }
 }
 
-export function classifyLobsterRootTask(input: LobsterRootTaskInput): LobsterTaskClassification {
+export function classifyLoopRootTask(input: LoopRootTaskInput): LoopTaskClassification {
   const prompt = normalizeUnknownText(input?.displayPrompt);
   const trustedContext = [
     ...normalizeUnknownStringArray(input?.contextTags),
@@ -405,7 +405,7 @@ export function classifyLobsterRootTask(input: LobsterRootTaskInput): LobsterTas
   return "unknown";
 }
 
-export function classifyLobsterSubtask(input: LobsterSubtaskSkillInput): LobsterSubtaskClassification {
+export function classifyLoopSubtask(input: LoopSubtaskSkillInput): LoopSubtaskClassification {
   const primaryText = [normalizeUnknownText(input?.title), normalizeUnknownText(input?.prompt)]
     .filter(Boolean)
     .join("\n");
@@ -424,7 +424,7 @@ export function classifyLobsterSubtask(input: LobsterSubtaskSkillInput): Lobster
     return { classification: "non_development", phases: [], taskKinds: [] };
   }
 
-  const taskKinds = new Set<LobsterSkillTaskKind>();
+  const taskKinds = new Set<LoopSkillTaskKind>();
   for (const rule of SUBTASK_KIND_RULES) {
     if (rule.pattern.test(allText)) {
       taskKinds.add(rule.kind);
@@ -438,7 +438,7 @@ export function classifyLobsterSubtask(input: LobsterSubtaskSkillInput): Lobster
     return { classification: "unknown", phases: [], taskKinds: [] };
   }
 
-  const phases = new Set<LobsterSkillPhase>();
+  const phases = new Set<LoopSkillPhase>();
   for (const taskKind of taskKinds) {
     for (const phase of TASK_KIND_PHASES[taskKind]) {
       phases.add(phase);
@@ -449,24 +449,24 @@ export function classifyLobsterSubtask(input: LobsterSubtaskSkillInput): Lobster
   }
   return {
     classification: "development",
-    phases: LOBSTER_SKILL_PHASES.filter((phase) => phases.has(phase)),
-    taskKinds: LOBSTER_SKILL_TASK_KINDS.filter((taskKind) => taskKinds.has(taskKind)),
+    phases: LOOP_SKILL_PHASES.filter((phase) => phases.has(phase)),
+    taskKinds: LOOP_SKILL_TASK_KINDS.filter((taskKind) => taskKinds.has(taskKind)),
   };
 }
 
-export function buildLobsterSkillCatalog(
-  pack: LobsterSkillPack | null,
-  rootTaskKind: LobsterTaskClassification,
-): LobsterSkillCatalogResult {
+export function buildLoopSkillCatalog(
+  pack: LoopSkillPack | null,
+  rootTaskKind: LoopTaskClassification,
+): LoopSkillCatalogResult {
   if (!pack || rootTaskKind !== "development") {
     return { section: undefined, candidateIds: [], diagnostics: [] };
   }
-  const diagnostics: LobsterSkillDiagnostic[] = [];
+  const diagnostics: LoopSkillDiagnostic[] = [];
   const lines: string[] = [];
   const candidateIds: string[] = [];
   const sortedSkills = [...pack.skills].sort(compareSkills);
   for (const skill of sortedSkills) {
-    if (candidateIds.length >= LOBSTER_SKILL_MAX_CATALOG_ITEMS) {
+    if (candidateIds.length >= LOOP_SKILL_MAX_CATALOG_ITEMS) {
       diagnostics.push({
         code: "catalog_item_limit_exceeded",
         message: "Additional Skill catalog entries were skipped by the item limit.",
@@ -475,7 +475,7 @@ export function buildLobsterSkillCatalog(
     }
     const line = `- ${JSON.stringify(toCompactMetadata(skill))}`;
     const nextSection = [CATALOG_HEADER, ...lines, line].join("\n");
-    if (nextSection.length > LOBSTER_SKILL_MAX_CATALOG_CHARS) {
+    if (nextSection.length > LOOP_SKILL_MAX_CATALOG_CHARS) {
       diagnostics.push({
         code: "catalog_budget_exceeded",
         message: "This Skill and all later catalog entries were skipped by the catalog budget.",
@@ -493,19 +493,19 @@ export function buildLobsterSkillCatalog(
   };
 }
 
-export function buildLobsterSkillGuidance(
-  pack: LobsterSkillPack | null,
-  input: LobsterSkillGuidanceInput,
-): LobsterSkillGuidanceResult {
+export function buildLoopSkillGuidance(
+  pack: LoopSkillPack | null,
+  input: LoopSkillGuidanceInput,
+): LoopSkillGuidanceResult {
   if (!pack || input.rootTaskKind !== "development") {
     return { skillIds: [], skillGuidance: undefined, diagnostics: [] };
   }
-  const subtaskClassification = classifyLobsterSubtask(input.subtask);
+  const subtaskClassification = classifyLoopSubtask(input.subtask);
   if (subtaskClassification.classification !== "development") {
     return { skillIds: [], skillGuidance: undefined, diagnostics: [] };
   }
 
-  const diagnostics: LobsterSkillDiagnostic[] = [];
+  const diagnostics: LoopSkillDiagnostic[] = [];
   const requestedIds = normalizeSelectedSkillIds(input.requestedSkillIds, diagnostics);
   if (requestedIds.length === 0) {
     return { skillIds: [], skillGuidance: undefined, diagnostics };
@@ -515,7 +515,7 @@ export function buildLobsterSkillGuidance(
   const role = input.role === "main" ? "main" : "subtask";
   const skillById = new Map(pack.skills.map((skill) => [skill.id, skill]));
   const triggerText = buildSubtaskEvidenceText(input.subtask).toLowerCase();
-  const eligibleSkills: LobsterLoadedSkill[] = [];
+  const eligibleSkills: LoopLoadedSkill[] = [];
 
   for (const id of requestedIds) {
     const skill = skillById.get(id);
@@ -582,19 +582,19 @@ export function buildLobsterSkillGuidance(
   }
 
   eligibleSkills.sort(compareSkills);
-  if (eligibleSkills.length > LOBSTER_SKILL_MAX_SELECTED_IDS) {
+  if (eligibleSkills.length > LOOP_SKILL_MAX_SELECTED_IDS) {
     diagnostics.push({
       code: "skill_selection_limit_exceeded",
       message: "Additional requested Skills were skipped by the per-subtask selection limit.",
-      skillId: eligibleSkills[LOBSTER_SKILL_MAX_SELECTED_IDS]?.id,
+      skillId: eligibleSkills[LOOP_SKILL_MAX_SELECTED_IDS]?.id,
     });
   }
 
-  const selectedSkills = eligibleSkills.slice(0, LOBSTER_SKILL_MAX_SELECTED_IDS);
+  const selectedSkills = eligibleSkills.slice(0, LOOP_SKILL_MAX_SELECTED_IDS);
   const includedIds: string[] = [];
   const blocks: string[] = [];
   for (const skill of selectedSkills) {
-    if (skill.guidance.length > LOBSTER_SKILL_MAX_GUIDANCE_FILE_CHARS) {
+    if (skill.guidance.length > LOOP_SKILL_MAX_GUIDANCE_FILE_CHARS) {
       diagnostics.push({
         code: "skill_guidance_too_large",
         message: "This Skill and all later Skills were skipped because its guidance exceeded the file budget.",
@@ -604,7 +604,7 @@ export function buildLobsterSkillGuidance(
     }
     const block = renderGuidanceBlock(skill);
     const nextGuidance = [GUIDANCE_HEADER, ...blocks, block, GUIDANCE_FOOTER].join("\n\n");
-    if (nextGuidance.length > LOBSTER_SKILL_MAX_GUIDANCE_CHARS) {
+    if (nextGuidance.length > LOOP_SKILL_MAX_GUIDANCE_CHARS) {
       diagnostics.push({
         code: "guidance_budget_exceeded",
         message: "This Skill and all later Skills were skipped by the total guidance budget.",
@@ -627,7 +627,7 @@ export function buildLobsterSkillGuidance(
 
 function normalizeSelectedSkillIds(
   value: unknown,
-  diagnostics: LobsterSkillDiagnostic[],
+  diagnostics: LoopSkillDiagnostic[],
 ): string[] {
   if (!Array.isArray(value)) {
     if (value !== undefined) {
@@ -682,7 +682,7 @@ function normalizeAllowlistedSkillIds(value: unknown): string[] {
   return [...result];
 }
 
-function buildSubtaskEvidenceText(input: LobsterSubtaskSkillInput): string {
+function buildSubtaskEvidenceText(input: LoopSubtaskSkillInput): string {
   return [
     normalizeUnknownText(input.title),
     normalizeUnknownText(input.prompt),
@@ -691,16 +691,16 @@ function buildSubtaskEvidenceText(input: LobsterSubtaskSkillInput): string {
   ].filter(Boolean).join("\n");
 }
 
-function renderGuidanceBlock(skill: LobsterLoadedSkill): string {
+function renderGuidanceBlock(skill: LoopLoadedSkill): string {
   return [
-    `${LOBSTER_SKILL_GUIDANCE_DELIMITER_PREFIX} id="${skill.id}" BEGIN>>>`,
+    `${LOOP_SKILL_GUIDANCE_DELIMITER_PREFIX} id="${skill.id}" BEGIN>>>`,
     skill.guidance,
-    `${LOBSTER_SKILL_GUIDANCE_DELIMITER_PREFIX} id="${skill.id}" END>>>`,
+    `${LOOP_SKILL_GUIDANCE_DELIMITER_PREFIX} id="${skill.id}" END>>>`,
   ].join("\n");
 }
 
-function toCompactMetadata(skill: LobsterSkillMetadata): Pick<
-  LobsterSkillMetadata,
+function toCompactMetadata(skill: LoopSkillMetadata): Pick<
+  LoopSkillMetadata,
   | "id"
   | "name"
   | "description"
@@ -727,7 +727,7 @@ function toCompactMetadata(skill: LobsterSkillMetadata): Pick<
 }
 
 function addTaskKindsFromWriteFiles(
-  taskKinds: Set<LobsterSkillTaskKind>,
+  taskKinds: Set<LoopSkillTaskKind>,
   writeFiles: string[],
 ): void {
   let hasTechnicalFile = false;
@@ -783,27 +783,27 @@ function matchesAny(value: string, patterns: RegExp[]): boolean {
 
 function normalizeExtensionRoot(value: unknown): string {
   if (typeof value !== "string") {
-    throw new LobsterSkillPackError("invalid_extension_root", "Extension root must be an absolute path.");
+    throw new LoopSkillPackError("invalid_extension_root", "Extension root must be an absolute path.");
   }
   const normalized = value.trim();
   if (!normalized || normalized.includes("\0") || !path.isAbsolute(normalized)) {
-    throw new LobsterSkillPackError("invalid_extension_root", "Extension root must be an absolute path.");
+    throw new LoopSkillPackError("invalid_extension_root", "Extension root must be an absolute path.");
   }
   return normalized;
 }
 
-function parseManifestJson(content: string): LobsterSkillManifest {
+function parseManifestJson(content: string): LoopSkillManifest {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripBom(content));
   } catch {
-    throw new LobsterSkillPackError("invalid_manifest", "Skill manifest is not valid JSON.", "manifest.json");
+    throw new LoopSkillPackError("invalid_manifest", "Skill manifest is not valid JSON.", "manifest.json");
   }
   const record = requireRecord(parsed, "manifest");
   requireExactKeys(record, MANIFEST_TOP_LEVEL_KEYS, "manifest");
   const schemaVersion = requireSafeInteger(record.schemaVersion, "schemaVersion");
-  if (schemaVersion !== LOBSTER_SKILL_MANIFEST_SCHEMA_VERSION) {
-    throw new LobsterSkillPackError(
+  if (schemaVersion !== LOOP_SKILL_MANIFEST_SCHEMA_VERSION) {
+    throw new LoopSkillPackError(
       "unsupported_schema",
       "Skill manifest schema version is unsupported.",
       "manifest.json",
@@ -823,7 +823,7 @@ function parseManifestJson(content: string): LobsterSkillManifest {
   if (!Array.isArray(record.files) || record.files.length === 0) {
     throw invalidManifest("files must be a non-empty array.");
   }
-  const files = record.files.map((value, index): LobsterSkillManifestFile => {
+  const files = record.files.map((value, index): LoopSkillManifestFile => {
     const fileRecord = requireRecord(value, `files[${index}]`);
     requireExactKeys(fileRecord, MANIFEST_FILE_KEYS, `files[${index}]`);
     return {
@@ -844,11 +844,11 @@ function parseManifestJson(content: string): LobsterSkillManifest {
     filePaths.add(file.path);
     totalBytes += file.bytes;
   }
-  if (totalBytes > LOBSTER_SKILL_MAX_PACK_BYTES) {
+  if (totalBytes > LOOP_SKILL_MAX_PACK_BYTES) {
     throw invalidManifest("Skill pack exceeds the maximum payload size.");
   }
   if (computeSnapshotSha256(files) !== source.snapshotSha256) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "snapshot_hash_mismatch",
       "Skill manifest snapshot hash does not match its file inventory.",
       "manifest.json",
@@ -861,7 +861,7 @@ function parseManifestJson(content: string): LobsterSkillManifest {
   const fileByPath = new Map(files.map((file) => [file.path, file]));
   const skillIds = new Set<string>();
   const skillPaths = new Set<string>();
-  const skills = record.skills.map((value, index): LobsterSkillMetadata => {
+  const skills = record.skills.map((value, index): LoopSkillMetadata => {
     const skill = parseManifestSkill(value, index);
     if (skillIds.has(skill.id)) {
       throw invalidManifest(`Duplicate skill id: ${skill.id}`);
@@ -905,7 +905,7 @@ function parseManifestJson(content: string): LobsterSkillManifest {
   };
 }
 
-function parseManifestSkill(value: unknown, index: number): LobsterSkillMetadata {
+function parseManifestSkill(value: unknown, index: number): LoopSkillMetadata {
   const label = `skills[${index}]`;
   const record = requireRecord(value, label);
   requireExactKeys(record, MANIFEST_SKILL_KEYS, label);
@@ -922,15 +922,15 @@ function parseManifestSkill(value: unknown, index: number): LobsterSkillMetadata
     description: requireBoundedText(
       record.description,
       `${label}.description`,
-      LOBSTER_SKILL_MAX_DESCRIPTION_CHARS,
+      LOOP_SKILL_MAX_DESCRIPTION_CHARS,
     ),
     path: requireResourcePath(record.path, `${label}.path`),
     bytes: requireFileBytes(record.bytes, `${label}.bytes`),
     sha256: requireSha256(record.sha256, `${label}.sha256`),
     supportFiles: requireResourcePathArray(record.supportFiles, `${label}.supportFiles`),
     developmentOnly: true,
-    phases: requireEnumArray(record.phases, `${label}.phases`, LOBSTER_SKILL_PHASES),
-    taskKinds: requireEnumArray(record.taskKinds, `${label}.taskKinds`, LOBSTER_SKILL_TASK_KINDS),
+    phases: requireEnumArray(record.phases, `${label}.phases`, LOOP_SKILL_PHASES),
+    taskKinds: requireEnumArray(record.taskKinds, `${label}.taskKinds`, LOOP_SKILL_TASK_KINDS),
     roles: requireEnumArray(record.roles, `${label}.roles`, ["main", "subtask"] as const),
     requiredCapabilities: requireTextArray(record.requiredCapabilities, `${label}.requiredCapabilities`, 120),
     priority: requireSafeInteger(record.priority, `${label}.priority`),
@@ -939,7 +939,7 @@ function parseManifestSkill(value: unknown, index: number): LobsterSkillMetadata
   };
 }
 
-function validateSpecialSkillPolicy(skill: LobsterSkillMetadata): void {
+function validateSpecialSkillPolicy(skill: LoopSkillMetadata): void {
   if (skill.id === "doubt-driven-development" && skill.roles.includes("subtask")) {
     throw invalidManifest("doubt-driven-development must remain main-only.");
   }
@@ -998,7 +998,7 @@ function requireSafeInteger(value: unknown, label: string): number {
 
 function requireFileBytes(value: unknown, label: string): number {
   const bytes = requireSafeInteger(value, label);
-  if (bytes < 0 || bytes > LOBSTER_SKILL_MAX_FILE_BYTES) {
+  if (bytes < 0 || bytes > LOOP_SKILL_MAX_FILE_BYTES) {
     throw invalidManifest(`${label} exceeds the file size limit.`);
   }
   return bytes;
@@ -1085,7 +1085,7 @@ async function readRegularFileWithinRoot(
     currentPath = path.join(currentPath, segments[index]!);
     const stat = await safeLstat(currentPath, relativePath);
     if (stat.isSymbolicLink()) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "resource_symlink",
         "Skill resources must not contain symbolic links.",
         relativePath,
@@ -1093,7 +1093,7 @@ async function readRegularFileWithinRoot(
     }
     const isFinalSegment = index === segments.length - 1;
     if (isFinalSegment ? !stat.isFile() : !stat.isDirectory()) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "resource_not_file",
         "Skill resource path has an unexpected file type.",
         relativePath,
@@ -1102,7 +1102,7 @@ async function readRegularFileWithinRoot(
   }
   const realTarget = await fs.realpath(currentPath);
   if (!isPathContained(realRoot, realTarget)) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "resource_outside_root",
       "Skill resource resolved outside the pack root.",
       relativePath,
@@ -1110,7 +1110,7 @@ async function readRegularFileWithinRoot(
   }
   const stat = await fs.stat(realTarget);
   if (stat.size > maxBytes) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "resource_too_large",
       "Skill resource exceeds its size limit.",
       relativePath,
@@ -1123,7 +1123,7 @@ async function safeLstat(targetPath: string, resourcePath: string): Promise<Awai
   try {
     return await fs.lstat(targetPath);
   } catch {
-    throw new LobsterSkillPackError("resource_missing", "Skill resource is missing.", resourcePath);
+    throw new LoopSkillPackError("resource_missing", "Skill resource is missing.", resourcePath);
   }
 }
 
@@ -1131,7 +1131,7 @@ function decodeUtf8(content: Buffer, resourcePath: string): string {
   try {
     return UTF8_DECODER.decode(content);
   } catch {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "resource_invalid_utf8",
       "Skill resource is not valid UTF-8.",
       resourcePath,
@@ -1143,7 +1143,7 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
   const normalized = stripBom(content).replace(/\r\n?/gu, "\n");
   const lines = normalized.split("\n");
   if (lines[0] !== "---") {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "invalid_frontmatter",
       "Skill Markdown must start with YAML frontmatter.",
       resourcePath,
@@ -1151,7 +1151,7 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
   }
   const closingIndex = lines.indexOf("---", 1);
   if (closingIndex < 2) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "invalid_frontmatter",
       "Skill Markdown frontmatter is incomplete.",
       resourcePath,
@@ -1164,7 +1164,7 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
     }
     const match = /^([A-Za-z][A-Za-z0-9_-]*):(?:\s+(.*))?$/u.exec(line);
     if (!match || !match[2]?.trim() || frontmatterKeys.has(match[1]!)) {
-      throw new LobsterSkillPackError(
+      throw new LoopSkillPackError(
         "invalid_frontmatter",
         "Skill Markdown frontmatter is invalid.",
         resourcePath,
@@ -1173,7 +1173,7 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
     frontmatterKeys.add(match[1]!);
   }
   if (!frontmatterKeys.has("name") || !frontmatterKeys.has("description")) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "invalid_frontmatter",
       "Skill Markdown frontmatter requires name and description.",
       resourcePath,
@@ -1188,14 +1188,14 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
     .join("\n")
     .trim();
   if (!body) {
-    throw new LobsterSkillPackError(
+    throw new LoopSkillPackError(
       "invalid_frontmatter",
       "Skill Markdown body must not be empty.",
       resourcePath,
     );
   }
-  if (body.includes(LOBSTER_SKILL_GUIDANCE_DELIMITER_PREFIX)) {
-    throw new LobsterSkillPackError(
+  if (body.includes(LOOP_SKILL_GUIDANCE_DELIMITER_PREFIX)) {
+    throw new LoopSkillPackError(
       "guidance_delimiter_conflict",
       "Skill Markdown contains the reserved guidance delimiter.",
       resourcePath,
@@ -1204,7 +1204,7 @@ function cleanSkillMarkdown(content: string, resourcePath: string): string {
   return body;
 }
 
-function computeSnapshotSha256(files: LobsterSkillManifestFile[]): string {
+function computeSnapshotSha256(files: LoopSkillManifestFile[]): string {
   const canonical = [...files]
     .sort((left, right) => compareText(left.path, right.path))
     .map((file) => `${file.path}\t${file.bytes}\t${file.sha256}\n`)
@@ -1225,7 +1225,7 @@ function isPathContained(root: string, candidate: string): boolean {
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
-function compareSkills(left: Pick<LobsterSkillMetadata, "priority" | "id">, right: Pick<LobsterSkillMetadata, "priority" | "id">): number {
+function compareSkills(left: Pick<LoopSkillMetadata, "priority" | "id">, right: Pick<LoopSkillMetadata, "priority" | "id">): number {
   return left.priority - right.priority || compareText(left.id, right.id);
 }
 
@@ -1233,12 +1233,12 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function invalidManifest(message: string): LobsterSkillPackError {
-  return new LobsterSkillPackError("invalid_manifest", message, "manifest.json");
+function invalidManifest(message: string): LoopSkillPackError {
+  return new LoopSkillPackError("invalid_manifest", message, "manifest.json");
 }
 
-function toDiagnostic(error: unknown): LobsterSkillDiagnostic {
-  if (error instanceof LobsterSkillPackError) {
+function toDiagnostic(error: unknown): LoopSkillDiagnostic {
+  if (error instanceof LoopSkillPackError) {
     return {
       code: error.code,
       message: error.message,

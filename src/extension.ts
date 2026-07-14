@@ -36,15 +36,15 @@ import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from 
 import {
   CliName,
   CLI_LIST,
-  DEFAULT_LOBSTER_EXECUTION_MODE,
+  DEFAULT_LOOP_EXECUTION_MODE,
   InteractiveMode,
-  LobsterExecutionMode,
+  LoopExecutionMode,
   MacTaskShell,
   OpenCodeThinkingMessageKey,
   OpenCodeThinkingState,
   ThinkingMode,
   ThinkingWorkspaceFile,
-  normalizeLobsterExecutionMode,
+  normalizeLoopExecutionMode,
 } from "./cli/types";
 import {
   resolveOpenCodeThinkingCapability,
@@ -127,21 +127,21 @@ import {
   type SubagentProgressLabels,
 } from "./subagentProgress";
 import {
-  createLobsterSubtaskProgressMonitor,
-  mapLobsterRunStatusToSubagentStatus,
-} from "./lobsterSubtaskProgress";
+  createLoopSubtaskProgressMonitor,
+  mapLoopRunStatusToSubagentStatus,
+} from "./loopSubtaskProgress";
 import {
-  buildNextLobsterMainAiFailureState,
-  buildResetLobsterMainAiFailureState,
-  isLobsterMainAiFailureLimitReached,
-  LOBSTER_MAIN_AI_FAILURE_LIMIT,
-  normalizeLobsterMainAiFailureCount,
-} from "./lobsterMainFailure";
+  buildNextLoopMainAiFailureState,
+  buildResetLoopMainAiFailureState,
+  isLoopMainAiFailureLimitReached,
+  LOOP_MAIN_AI_FAILURE_LIMIT,
+  normalizeLoopMainAiFailureCount,
+} from "./loopMainFailure";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import {
-  LobsterDebateChatPanel,
-  type LobsterDebateChatPanelRound,
-} from "./webview/lobsterDebatePanel";
+  LoopDebateChatPanel,
+  type LoopDebateChatPanelRound,
+} from "./webview/loopDebatePanel";
 import * as configService from "./config/configService";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
@@ -163,120 +163,120 @@ import {
 import { HISTORY_RETENTION_DAYS, isTimestampWithinHistoryRetention } from "./historyRetention";
 import { isLocalSessionId } from "./interactive/sessionHistoryRepair";
 import {
-  buildLobsterSubtaskExecutionPlan,
-  describeLobsterExecutionPlan,
-  normalizeLobsterWriteFiles,
-  type LobsterSubtaskExecutionPlan,
-} from "./lobsterParallel";
+  buildLoopSubtaskExecutionPlan,
+  describeLoopExecutionPlan,
+  normalizeLoopWriteFiles,
+  type LoopSubtaskExecutionPlan,
+} from "./loopParallel";
 import {
-  buildLobsterSkillCatalog,
-  buildLobsterSkillGuidance,
-  classifyLobsterRootTask,
-  loadLobsterSkillPack,
-  type LobsterSkillDiagnostic,
-  type LobsterSkillPack,
-  type LobsterSkillPackLoadResult,
-  type LobsterTaskClassification,
-} from "./lobsterSkillGuidance";
+  buildLoopSkillCatalog,
+  buildLoopSkillGuidance,
+  classifyLoopRootTask,
+  loadLoopSkillPack,
+  type LoopSkillDiagnostic,
+  type LoopSkillPack,
+  type LoopSkillPackLoadResult,
+  type LoopTaskClassification,
+} from "./loopSkillGuidance";
 import {
-  buildLobsterAnswerConclusionMarkdown,
-  buildLobsterDebateNeedsReviewSummary,
-  buildLobsterDebateModeratorArtifactFile,
-  buildLobsterFinalSummaryMarkdown,
-  buildLobsterGroupChatFinalStatusSection,
-  buildLobsterMainSubChatTranscriptFile,
-  buildLobsterMainSubSubtaskTurnBody,
-  buildLobsterDebateParticipantArtifactFile,
-  buildLobsterDebateParticipantTurnArtifactFile,
-  buildLobsterDebatePaths,
-  formatLobsterGroupChatMemberName,
-  findLatestLobsterDebateModeratorSessionId,
-  findLatestLobsterDebateParticipantSessionId,
-  LOBSTER_MAIN_SUB_CHAT_ROUND_KEY,
-  LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
-  LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
-  LOBSTER_DEBATE_MODERATOR_ID,
-  LOBSTER_DEBATE_MODERATOR_TITLE,
-  LOBSTER_DEBATE_BLUE_TEAM_ROLE,
-  LOBSTER_DEBATE_PARTICIPANT_ROLES,
-  LOBSTER_DEBATE_RED_TEAM_ROLE,
-  isLobsterDebateAdversarialParticipantRole,
-  normalizeLobsterDebateSessionId,
-  normalizeLobsterDebateModeratorAction,
-  normalizeLobsterDebateSpeakerIds,
-  normalizeLobsterDebateParticipantStance,
-  parseLobsterDebateChatTranscript,
-  resolveLobsterAnswerConclusion,
-  isLobsterTaskRunOrphaned,
-  resolveLobsterTaskRunControlState,
-  selectDefaultLobsterDebateOpeningSpeakerIds,
-  validateLobsterDebateConsensus,
-  type LobsterDebateActiveSpeakerRecord,
-  type LobsterDebateConsensusRecord,
-  type LobsterDebateDisagreementRecord,
-  type LobsterDebateModeratorDecisionRecord,
-  type LobsterDebateParticipantRecord,
-  type LobsterDebateParticipantRole,
-  type LobsterDebateParticipantStance,
-  type LobsterDebatePaths,
-  type LobsterDebateRoundRecord,
-  type LobsterDebateRoundStatus,
-} from "./lobsterDebate";
+  buildLoopAnswerConclusionMarkdown,
+  buildLoopDebateNeedsReviewSummary,
+  buildLoopDebateModeratorArtifactFile,
+  buildLoopFinalSummaryMarkdown,
+  buildLoopGroupChatFinalStatusSection,
+  buildLoopMainSubChatTranscriptFile,
+  buildLoopMainSubSubtaskTurnBody,
+  buildLoopDebateParticipantArtifactFile,
+  buildLoopDebateParticipantTurnArtifactFile,
+  buildLoopDebatePaths,
+  formatLoopGroupChatMemberName,
+  findLatestLoopDebateModeratorSessionId,
+  findLatestLoopDebateParticipantSessionId,
+  LOOP_MAIN_SUB_CHAT_ROUND_KEY,
+  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
+  LOOP_DEBATE_MAX_BATCH_SPEAKERS,
+  LOOP_DEBATE_MODERATOR_ID,
+  LOOP_DEBATE_MODERATOR_TITLE,
+  LOOP_DEBATE_BLUE_TEAM_ROLE,
+  LOOP_DEBATE_PARTICIPANT_ROLES,
+  LOOP_DEBATE_RED_TEAM_ROLE,
+  isLoopDebateAdversarialParticipantRole,
+  normalizeLoopDebateSessionId,
+  normalizeLoopDebateModeratorAction,
+  normalizeLoopDebateSpeakerIds,
+  normalizeLoopDebateParticipantStance,
+  parseLoopDebateChatTranscript,
+  resolveLoopAnswerConclusion,
+  isLoopTaskRunOrphaned,
+  resolveLoopTaskRunControlState,
+  selectDefaultLoopDebateOpeningSpeakerIds,
+  validateLoopDebateConsensus,
+  type LoopDebateActiveSpeakerRecord,
+  type LoopDebateConsensusRecord,
+  type LoopDebateDisagreementRecord,
+  type LoopDebateModeratorDecisionRecord,
+  type LoopDebateParticipantRecord,
+  type LoopDebateParticipantRole,
+  type LoopDebateParticipantStance,
+  type LoopDebatePaths,
+  type LoopDebateRoundRecord,
+  type LoopDebateRoundStatus,
+} from "./loopDebate";
 import {
-  LOBSTER_DEBATE_MAX_PARTICIPANTS,
-  LOBSTER_DEBATE_MIN_PARTICIPANTS,
-  buildLobsterDebateBriefMarkdown,
-  buildLobsterDebateChatTurnMarkdown,
-  buildLobsterDebateDialogueClosedMarkdown,
-  buildLobsterDebateDialogueTurnChatEventMarkdown,
-  buildLobsterDebateFinalParticipantMarkdown,
-  buildLobsterDebateInitialChatMarkdown,
-  buildLobsterDebateModeratorTurnMarkdown,
-  buildLobsterDebateParticipantRosterChatMarkdown,
-  buildLobsterDebateRuntimeForcedFinalizeMarkdown,
-  type LobsterDebateParticipantDefinition,
-} from "./lobsterPromptBuilders";
+  LOOP_DEBATE_MAX_PARTICIPANTS,
+  LOOP_DEBATE_MIN_PARTICIPANTS,
+  buildLoopDebateBriefMarkdown,
+  buildLoopDebateChatTurnMarkdown,
+  buildLoopDebateDialogueClosedMarkdown,
+  buildLoopDebateDialogueTurnChatEventMarkdown,
+  buildLoopDebateFinalParticipantMarkdown,
+  buildLoopDebateInitialChatMarkdown,
+  buildLoopDebateModeratorTurnMarkdown,
+  buildLoopDebateParticipantRosterChatMarkdown,
+  buildLoopDebateRuntimeForcedFinalizeMarkdown,
+  type LoopDebateParticipantDefinition,
+} from "./loopPromptBuilders";
 import {
-  runLobsterDebateConsensusSummary,
-  runLobsterDebateModerator,
-  runLobsterDebateParticipantBatch,
-  runLobsterDebateParticipantRoster,
-  type LobsterDebateParticipantBatchRunItem,
-  type LobsterDebateRunnerDeps,
-  type LobsterDebateSessionState,
-} from "./lobsterDebateRunner";
+  runLoopDebateConsensusSummary,
+  runLoopDebateModerator,
+  runLoopDebateParticipantBatch,
+  runLoopDebateParticipantRoster,
+  type LoopDebateParticipantBatchRunItem,
+  type LoopDebateRunnerDeps,
+  type LoopDebateSessionState,
+} from "./loopDebateRunner";
 import {
-  appendLobsterRound,
-  bindLobsterTaskToSession,
-  buildLobsterSessionIdsByCli,
-  buildLobsterTaskStoreFile,
-  buildLobsterSubtaskCommunicationFile,
-  cleanupLobsterCommunicationRetention,
-  cleanupLobsterTaskStoreRetention,
-  ensureLobsterCommunicationFiles,
-  getLobsterCommunicationPaths,
-  getLobsterTaskStoreSessionFile,
-  listLobsterTaskStoreFiles,
-  prepareLobsterSubtaskCommunicationFile,
-  readLobsterTaskRecord,
-  readLobsterTaskStore,
-  updateLobsterTaskRecord,
-  writeLobsterTaskStore,
-  type LobsterAcceptance,
-  type LobsterAcceptanceCheck,
-  type LobsterMainDecision,
-  type LobsterRoundRecord,
-  type LobsterRoundSummary,
-  type LobsterSubtaskDecision,
-  type LobsterSubtaskRecord,
-  type LobsterTaskKind,
-  type LobsterTaskRecord,
-  type LobsterTaskStore,
-} from "./lobsterTaskStore";
+  appendLoopRound,
+  bindLoopTaskToSession,
+  buildLoopSessionIdsByCli,
+  buildLoopTaskStoreFile,
+  buildLoopSubtaskCommunicationFile,
+  cleanupLoopCommunicationRetention,
+  cleanupLoopTaskStoreRetention,
+  ensureLoopCommunicationFiles,
+  getLoopCommunicationPaths,
+  getLoopTaskStoreSessionFile,
+  listLoopTaskStoreFiles,
+  prepareLoopSubtaskCommunicationFile,
+  readLoopTaskRecord,
+  readLoopTaskStore,
+  updateLoopTaskRecord,
+  writeLoopTaskStore,
+  type LoopAcceptance,
+  type LoopAcceptanceCheck,
+  type LoopMainDecision,
+  type LoopRoundRecord,
+  type LoopRoundSummary,
+  type LoopSubtaskDecision,
+  type LoopSubtaskRecord,
+  type LoopTaskKind,
+  type LoopTaskRecord,
+  type LoopTaskStore,
+} from "./loopTaskStore";
 import {
-  finalizeLobsterSubtaskRun as finalizeLobsterSubtaskRunWithDeps,
-  type LobsterSubtaskCompletionOptions,
-} from "./lobsterSubtaskLifecycle";
+  finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps,
+  type LoopSubtaskCompletionOptions,
+} from "./loopSubtaskLifecycle";
 import {
   readToolSettings,
   resolveGlobalAutoCompactContextAfterRun,
@@ -330,7 +330,7 @@ import {
   buildConversationTabSessionLookupKey,
   createSessionTabsController,
   getConversationTabSessionIdForCli,
-  resolveAutoInteractiveModeForLobsterTask,
+  resolveAutoInteractiveModeForLoopTask,
   sanitizeConversationTabRecordForWorkspaceSettings,
   sanitizeConversationTabSessionIdMap,
   setConversationTabSessionIdForCli,
@@ -388,62 +388,62 @@ import { registerExtensionCommands } from "./commandRegistry";
 import {
   buildEditorContextState,
   isOpenCodeThinkingRequestCurrent,
-  buildLobsterMainResumeText,
-  buildLobsterSubtaskBatchCompletedText,
-  buildLobsterSubtaskBatchStartedText,
-  buildLobsterSubtaskExecutionGroupStartedText,
-  buildLobsterSubtaskRetryText as buildLobsterSubtaskRetryTextWithLimit,
-  buildLobsterSubtaskStartedText,
-  buildLobsterTaskCompletedText,
-  buildLobsterTaskNeedsReviewText as buildLobsterTaskNeedsReviewTextWithLimit,
-  buildLobsterTaskResumedText,
-  buildLobsterTaskStartedText,
+  buildLoopMainResumeText,
+  buildLoopSubtaskBatchCompletedText,
+  buildLoopSubtaskBatchStartedText,
+  buildLoopSubtaskExecutionGroupStartedText,
+  buildLoopSubtaskRetryText as buildLoopSubtaskRetryTextWithLimit,
+  buildLoopSubtaskStartedText,
+  buildLoopTaskCompletedText,
+  buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit,
+  buildLoopTaskResumedText,
+  buildLoopTaskStartedText,
   buildPanelStateWithDeps,
   buildSessionLabelFromPrompt,
   buildUserChatMessage,
-  ensureLobsterMainSubChatTranscriptWithDeps,
-  formatLobsterEstimatedRemainingRounds,
-  formatLobsterWriteFiles,
+  ensureLoopMainSubChatTranscriptWithDeps,
+  formatLoopEstimatedRemainingRounds,
+  formatLoopWriteFiles,
   buildPromptWithAutoContext as buildPromptWithAutoContextFromPanelStateBuilder,
   getLatestAssistantResponseForLongTermMemory,
-  getLobsterMainSubChatMainTitle,
-  getLobsterSubtaskDisplayTitle,
+  getLoopMainSubChatMainTitle,
+  getLoopSubtaskDisplayTitle,
   isCliName,
-  isLobsterDebateGroupChatTask,
+  isLoopDebateGroupChatTask,
   maybeInjectLongTermMemoryForPromptWithEditorContext,
-  normalizeLobsterRound,
-  normalizeLobsterSubtaskId,
-  normalizeLobsterTaskId,
-  resolveLobsterConversationTabContextFromMessages,
-  resolveLobsterRunConversationTabContext,
-  resolveLobsterSubtaskConversationContextFromMessages,
+  normalizeLoopRound,
+  normalizeLoopSubtaskId,
+  normalizeLoopTaskId,
+  resolveLoopConversationTabContextFromMessages,
+  resolveLoopRunConversationTabContext,
+  resolveLoopSubtaskConversationContextFromMessages,
   shouldUseFallbackSessionLabel as shouldUseFallbackSessionLabelWithSet,
-  type LobsterConversationTabContext,
-  type LobsterSubtaskConversationContext,
+  type LoopConversationTabContext,
+  type LoopSubtaskConversationContext,
 } from "./panelStateBuilder";
 import {
   appendHiddenRetryErrorTraceMessage,
   buildHiddenRetryLimitMessage,
   buildHiddenRetryQueuedMessage,
   buildHiddenRetryStartedMessage,
-  collectRecentLobsterTaskIdsFromMessages,
+  collectRecentLoopTaskIdsFromMessages,
   createHiddenRetryErrorTraceMessage,
-  createLobsterDebateChatPanelCoordinator,
+  createLoopDebateChatPanelCoordinator,
   createPanelDiagnosticsInspector,
-  detectLobsterVerificationSignals,
-  formatLobsterVerificationState,
+  detectLoopVerificationSignals,
+  formatLoopVerificationState,
   getAttemptFailureMessage,
   getErrorInfo,
-  hasCompleteLobsterCompletionMessages,
+  hasCompleteLoopCompletionMessages,
   HIDDEN_RETRY_MAX_RETRIES,
   isAbortErrorInfo,
-  isCompleteLobsterFinalSummaryContent,
+  isCompleteLoopFinalSummaryContent,
   isHiddenRetryEligibleErrorInfo,
-  isLobsterAnswerConclusionMessageForTask,
-  isLobsterFinalSummaryMessageForTask,
-  isLobsterResumePrompt,
-  isLobsterTaskResumable,
-  isLobsterTaskSessionCompatible,
+  isLoopAnswerConclusionMessageForTask,
+  isLoopFinalSummaryMessageForTask,
+  isLoopResumePrompt,
+  isLoopTaskResumable,
+  isLoopTaskSessionCompatible,
   waitForHiddenRetryDelay,
   type ErrorInfo,
 } from "./panelDiagnostics";
@@ -451,34 +451,34 @@ import {
   applyConfigOrder,
   buildCliCommandNotFoundMessage,
   buildCodexImageSupportWarningKey,
-  buildLobsterCompletedConclusionAndSummaryMarkdown,
-  buildLobsterDebateConsensusReachedText,
-  buildLobsterDebateConsensusStartedText,
-  buildLobsterDebateDialogueTurnStartedText,
-  buildLobsterDebateFinalStanceStartedText,
-  buildLobsterDebateModeratorFinishedText,
-  buildLobsterDebateModeratorStartedText,
-  buildLobsterDebateNeedsReviewText,
-  buildLobsterDebateParticipantFinishedText,
-  buildLobsterDebateParticipantRosterFailedText,
-  buildLobsterDebateParticipantRosterFinishedText,
-  buildLobsterDebateParticipantRosterStartedText,
-  buildLobsterDebateParticipantStartedText,
-  buildLobsterDebateParticipantsCollectedText,
-  buildLobsterDebateRerunText,
-  buildLobsterDebateReuseText,
-  buildLobsterDebateStartedText,
-  buildLobsterRoundSummary,
-  buildLobsterSupplementalRequirementsLines,
+  buildLoopCompletedConclusionAndSummaryMarkdown,
+  buildLoopDebateConsensusReachedText,
+  buildLoopDebateConsensusStartedText,
+  buildLoopDebateDialogueTurnStartedText,
+  buildLoopDebateFinalStanceStartedText,
+  buildLoopDebateModeratorFinishedText,
+  buildLoopDebateModeratorStartedText,
+  buildLoopDebateNeedsReviewText,
+  buildLoopDebateParticipantFinishedText,
+  buildLoopDebateParticipantRosterFailedText,
+  buildLoopDebateParticipantRosterFinishedText,
+  buildLoopDebateParticipantRosterStartedText,
+  buildLoopDebateParticipantStartedText,
+  buildLoopDebateParticipantsCollectedText,
+  buildLoopDebateRerunText,
+  buildLoopDebateReuseText,
+  buildLoopDebateStartedText,
+  buildLoopRoundSummary,
+  buildLoopSupplementalRequirementsLines,
   createConfigHeartbeatCoordinator,
   getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings,
   loadConfigStateWithDeps,
   matchesActiveConfig,
   normalizeCliInstallStatus,
   normalizeJson,
-  normalizeLobsterSupplementalRequirement,
+  normalizeLoopSupplementalRequirement,
   probeCodexImageSupportStatus,
-  resolveLobsterResumeRound,
+  resolveLoopResumeRound,
   resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState,
   type CodexImageSupportStatus,
   type ConfigHeartbeatSnapshot,
@@ -504,20 +504,20 @@ import {
   cleanupTaskStoreRetention as cleanupTaskStoreRetentionWithDeps,
   getActiveAssistantContent as getActiveAssistantContentFromStore,
   isInteractiveMode,
-  isLobsterTaskRole,
+  isLoopTaskRole,
   isMacTaskShell,
   isThinkingMode,
-  isLobsterTaskBlockedByMainAiFailureLimit as isLobsterTaskBlockedByMainAiFailureLimitWithLimit,
-  isLobsterTaskCompleted,
+  isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit,
+  isLoopTaskCompleted,
   normalizeVisibleInteractiveMode,
   normalizeRawStreamContent,
   readTaskStore as readTaskStoreWithDeps,
-  resolveLobsterTaskSessionId as resolveLobsterTaskSessionIdWithDeps,
+  resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps,
   resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps,
   sendPanelMessageWithActiveTab,
   writeTaskStore as writeTaskStoreWithDeps,
-  type LobsterTaskRole,
-  type LobsterTaskStatus,
+  type LoopTaskRole,
+  type LoopTaskStatus,
   type RunActivity,
   type TaskRunDraft,
   type TaskRunRecord,
@@ -555,7 +555,7 @@ let promptHistoryStore: PromptHistoryStore;
 let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
-const lobsterDebateChatPanelsByTaskId = new Map<string, LobsterDebateChatPanel>();
+const loopDebateChatPanelsByTaskId = new Map<string, LoopDebateChatPanel>();
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
 let lastResolvedWorkspaceCwd: string | undefined;
@@ -574,7 +574,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
-const activeLobsterOrchestrationTaskIds = new Set<string>();
+const activeLoopOrchestrationTaskIds = new Set<string>();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -597,15 +597,15 @@ const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
-const LOBSTER_DEFAULT_MAX_ROUNDS = 20;
-const LOBSTER_MIN_MAX_ROUNDS = 1;
-const LOBSTER_MAX_MAX_ROUNDS = 100;
-const LOBSTER_PARALLEL_SUBTASK_MAX = 6;
-const LOBSTER_SUBTASK_RETRY_MAX_RETRIES = 5;
-const LOBSTER_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
-const LOBSTER_SUBTASK_PROMPT_MIN_LENGTH = 80;
-const LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND = 1;
-const LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
+const LOOP_DEFAULT_MAX_ROUNDS = 20;
+const LOOP_MIN_MAX_ROUNDS = 1;
+const LOOP_MAX_MAX_ROUNDS = 100;
+const LOOP_PARALLEL_SUBTASK_MAX = 6;
+const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
+const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
+const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
+const LOOP_DEBATE_DEFAULT_DEBATE_ROUND = 1;
+const LOOP_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
 const HISTORY_RETENTION_CLEAN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const CODEX_IMAGE_MIN_VERSION = "0.2.0";
 const CODEX_IMAGE_SUPPORT_CACHE_MS = 5 * 60 * 1000;
@@ -654,10 +654,10 @@ type ParallelTabRun = {
   process: RunProcess;
   messageTarget: ChatMessage[];
   stopped: boolean;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 type InteractiveTabRun = {
@@ -670,10 +670,10 @@ type InteractiveTabRun = {
   stop: () => void;
   messageTarget: ChatMessage[];
   stopped: boolean;
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
@@ -719,10 +719,10 @@ function initializeSessionControllers(): void {
     setCurrentSession,
     setWorkspaceInteractiveModeForCli,
     resolveAutoInteractiveModeForConversationTab,
-    collectRunningLobsterTaskIds,
-    isLobsterTaskRunning,
-    getLobsterTaskStatus: (taskId) => readLobsterTaskRecord(taskId)?.status ?? null,
-    resolveConversationTabLobsterContext,
+    collectRunningLoopTaskIds,
+    isLoopTaskRunning,
+    getLoopTaskStatus: (taskId) => readLoopTaskRecord(taskId)?.status ?? null,
+    resolveConversationTabLoopContext,
     buildSessionLabelFromPrompt,
   });
   sessionLifecycleController = createSessionLifecycleController({
@@ -881,7 +881,7 @@ export function activate(context: vscode.ExtensionContext): void {
     runCli,
     revealPanelView,
     postPanelState,
-    openLobsterDebateChatPanel,
+    openLoopGroupChatPanel,
   });
 
   context.subscriptions.push(
@@ -1069,9 +1069,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getSelectedCliModel,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
-    setWorkspaceLobsterExecutionModeForCli,
+    setWorkspaceLoopExecutionModeForCli,
     loadModelStore: () => { modelStore = loadModelStore(); },
-    normalizeLobsterMaxRounds,
+    normalizeLoopMaxRounds,
     normalizeToolSettingsLocale,
     isCliName,
     updateStoredToolSettings,
@@ -1079,11 +1079,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     confirmAndInitializeWorkspaceHarness,
     appendUserMessageForCli,
     runContextCompactionCommand,
-    openLobsterDebateChatPanel,
+    openLoopGroupChatPanel,
     getActiveConversationTabId,
     getActiveConversationTab,
-    resolveLobsterSubtaskConversationContext,
-    getWorkspaceLobsterExecutionMode,
+    resolveLoopSubtaskConversationContext,
+    getWorkspaceLoopExecutionMode,
     buildPromptWithAutoContext: buildPromptWithAutoContextFromPanelStateBuilder,
     maybeInjectLongTermMemoryForPrompt: (displayPrompt, modelPrompt, contextTags) => (
       maybeInjectLongTermMemoryForPromptWithEditorContext(displayPrompt, modelPrompt, contextTags, {
@@ -1094,15 +1094,15 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       })
     ),
     resolveCodexImagePathsForPrompt,
-    getLatestLobsterRoundRunRecord,
+    getLatestLoopRoundRunRecord,
     recordPromptHistory,
     resolvePromptRunTarget,
     preloadUserMessageForPrompt,
-    runLobsterPrompt,
+    runLoopPrompt,
     runPrompt,
-    maybeWakeLobsterMainAfterSubtaskContinuation,
-    resolveLobsterResumeTaskFromPrompt,
-    isLobsterResumePrompt,
+    maybeWakeLoopMainAfterSubtaskContinuation,
+    resolveLoopResumeTaskFromPrompt,
+    isLoopResumePrompt,
     stopRunForTab,
   });
 }
@@ -1134,9 +1134,9 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getEffectiveLongTermMemoryEnabled,
     getGlobalAutoCompactContextAfterRun,
     getGlobalMultiAgentEnabled,
-    getGlobalLobsterMaxRounds,
-    getGlobalLobsterAutoCloseSubtaskTabs,
-    buildWorkspaceLobsterExecutionModeByCli,
+    getGlobalLoopMaxRounds,
+    getGlobalLoopAutoCloseSubtaskTabs,
+    buildWorkspaceLoopExecutionModeByCli,
     getDebugLogging,
     getLocaleSetting,
     getMacTaskShell,
@@ -1247,14 +1247,14 @@ function resolveOpenCodeRoleModelsForConfig(
     if (
       modelStore.selectedByConfigId?.[configId]
       || modelStore.optionsByConfigId?.[configId]
-      || modelStore.selectedLobsterByConfigId?.[configId]
-      || modelStore.lobsterRolesByConfigId?.[configId]
+      || modelStore.selectedLoopByConfigId?.[configId]
+      || modelStore.loopRolesByConfigId?.[configId]
     ) {
       nextStore = ensureCliModelSelectionStore(nextStore);
       delete nextStore.selectedByConfigId[configId];
       delete nextStore.optionsByConfigId[configId];
-      delete nextStore.selectedLobsterByConfigId[configId];
-      delete nextStore.lobsterRolesByConfigId[configId];
+      delete nextStore.selectedLoopByConfigId[configId];
+      delete nextStore.loopRolesByConfigId[configId];
     }
   }
 
@@ -1812,8 +1812,8 @@ function scheduleHistoryArtifactRetentionCleanup(): void {
     .then(async () => {
       scheduleLogRetentionCleanup();
       cleanupTaskStoreRetention();
-      cleanupLobsterTaskStoreRetention();
-      cleanupLobsterCommunicationRetention();
+      cleanupLoopTaskStoreRetention();
+      cleanupLoopCommunicationRetention();
       cleanupPromptHistoryRetentionAcrossWorkspaces();
       await cleanupSessionRetentionAcrossWorkspaces();
     })
@@ -2160,75 +2160,75 @@ async function revealPanelView(): Promise<void> {
   viewProvider?.reveal();
 }
 
-const lobsterDebateChatPanelCoordinator = createLobsterDebateChatPanelCoordinator({
+const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   getExtensionUri: () => extensionUri,
-  panelsByTaskId: lobsterDebateChatPanelsByTaskId,
-  defaultDebateRound: LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND,
-  normalizeTaskId: normalizeLobsterTaskId,
-  normalizeSupplementalRequirement: normalizeLobsterSupplementalRequirement,
-  appendSupplementalRequirement: appendLobsterSupplementalRequirement,
-  appendSupplementalRequirementToCommunication: appendLobsterSupplementalRequirementToCommunication,
-  readTaskRecord: readLobsterTaskRecord,
-  updateTaskRecord: updateLobsterTaskRecord,
-  listTaskStoreFiles: listLobsterTaskStoreFiles,
-  readTaskStoreTasks: (filePath) => readLobsterTaskStore(filePath).tasks,
-  collectRunningTaskIds: collectRunningLobsterTaskIds,
+  panelsByTaskId: loopDebateChatPanelsByTaskId,
+  defaultDebateRound: LOOP_DEBATE_DEFAULT_DEBATE_ROUND,
+  normalizeTaskId: normalizeLoopTaskId,
+  normalizeSupplementalRequirement: normalizeLoopSupplementalRequirement,
+  appendSupplementalRequirement: appendLoopSupplementalRequirement,
+  appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
+  readTaskRecord: readLoopTaskRecord,
+  updateTaskRecord: updateLoopTaskRecord,
+  listTaskStoreFiles: listLoopTaskStoreFiles,
+  readTaskStoreTasks: (filePath) => readLoopTaskStore(filePath).tasks,
+  collectRunningTaskIds: collectRunningLoopTaskIds,
   readTextFileIfNonEmpty,
   fileExists: (filePath) => fs.existsSync(filePath),
   writeTextFileEnsuringDir,
-  getActiveSubtaskIds: getActiveLobsterSubtaskIds,
-  buildCompletedConclusionAndSummaryMarkdown: buildLobsterCompletedConclusionAndSummaryMarkdown,
-  resolveMainPromptTarget: resolveLobsterMainPromptTarget,
+  getActiveSubtaskIds: getActiveLoopSubtaskIds,
+  buildCompletedConclusionAndSummaryMarkdown: buildLoopCompletedConclusionAndSummaryMarkdown,
+  resolveMainPromptTarget: resolveLoopMainPromptTarget,
   revealPanelView,
-  switchVisibleConversationTabForLobster: async (tabId) => {
+  switchVisibleConversationTabForLoop: async (tabId) => {
     if (tabId) {
-      await switchVisibleConversationTabForLobster(tabId);
+      await switchVisibleConversationTabForLoop(tabId);
     }
   },
   isTabRunActive,
   getActiveConfigIdForCli,
   getSelectedCliModel,
-  runLobsterPrompt,
-  stopRunsForTask: stopLobsterRunsForTask,
-  markTaskStoppedByUser: markLobsterTaskStoppedByUser,
+  runLoopPrompt,
+  stopRunsForTask: stopLoopRunsForTask,
+  markTaskStoppedByUser: markLoopTaskStoppedByUser,
   postPanelState,
   getActiveConversationTaskId: () => (
-    normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
-      ?? resolveActiveConversationLobsterTaskId()
+    normalizeLoopTaskId(activeTaskRun?.loopTaskId)
+      ?? resolveActiveConversationLoopTaskId()
   ),
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
-  pickTask: pickLobsterDebateTask,
+  pickTask: pickLoopDebateTask,
   t,
 });
 
-async function openLobsterDebateChatPanel(arg?: unknown): Promise<void> {
-  await lobsterDebateChatPanelCoordinator.open(arg);
+async function openLoopGroupChatPanel(arg?: unknown): Promise<void> {
+  await loopDebateChatPanelCoordinator.open(arg);
 }
 
-function normalizeLobsterContinuePrompt(value: unknown): string {
+function normalizeLoopContinuePrompt(value: unknown): string {
   const normalized = typeof value === "string" ? value.trim() : "";
   return normalized || t("run.hiddenContinuePrompt");
 }
 
-function normalizeLobsterContinuePromptForPrompt(value: unknown): string | null {
+function normalizeLoopContinuePromptForPrompt(value: unknown): string | null {
   const normalized = typeof value === "string" ? value.trim() : "";
   return normalized || null;
 }
 
-function refreshOpenLobsterDebateChatPanelForTask(taskId: string): void {
-  lobsterDebateChatPanelCoordinator.refreshOpenPanelForTask(taskId);
+function refreshOpenLoopGroupChatPanelForTask(taskId: string): void {
+  loopDebateChatPanelCoordinator.refreshOpenPanelForTask(taskId);
 }
 
-function resolveActiveConversationLobsterTaskId(): string | null {
+function resolveActiveConversationLoopTaskId(): string | null {
   const activeTab = getActiveConversationTab();
   if (!activeTab) {
     return null;
   }
-  return resolveConversationTabLobsterContext(activeTab).lobsterTaskId;
+  return resolveConversationTabLoopContext(activeTab).loopTaskId;
 }
 
-async function pickLobsterDebateTask(tasks: LobsterTaskRecord[]): Promise<LobsterTaskRecord | null> {
+async function pickLoopDebateTask(tasks: LoopTaskRecord[]): Promise<LoopTaskRecord | null> {
   const items = tasks.map((task) => ({
     label: task.rootPrompt.split(/\r?\n/g)[0]?.slice(0, 80) || task.id,
     description: `${task.status} · ${task.cli} · ${task.id}`,
@@ -2236,79 +2236,79 @@ async function pickLobsterDebateTask(tasks: LobsterTaskRecord[]): Promise<Lobste
     task,
   }));
   const selection = await vscode.window.showQuickPick(items, {
-    placeHolder: t("lobsterDebateChat.selectTask"),
+    placeHolder: t("loopDebateChat.selectTask"),
     matchOnDescription: true,
     matchOnDetail: true,
   });
   return selection?.task ?? null;
 }
 
-function listLobsterGroupChatTasks(): LobsterTaskRecord[] {
-  return lobsterDebateChatPanelCoordinator.listGroupChatTasks();
+function listLoopGroupChatTasks(): LoopTaskRecord[] {
+  return loopDebateChatPanelCoordinator.listGroupChatTasks();
 }
 
-function stopLobsterRunsForTask(taskId: string): void {
-  const runningTaskIds = collectRunningLobsterTaskIds();
+function stopLoopRunsForTask(taskId: string): void {
+  const runningTaskIds = collectRunningLoopTaskIds();
   if (!runningTaskIds.has(taskId)) {
     return;
   }
 
   const parallelTabIds = Array.from(parallelRunsByTabId.entries())
-    .filter(([, run]) => resolveLobsterConversationTabContextFromParallelRun(run).lobsterTaskId === taskId)
+    .filter(([, run]) => resolveLoopConversationTabContextFromParallelRun(run).loopTaskId === taskId)
     .map(([tabId]) => tabId);
   parallelTabIds.forEach((tabId) => {
     stopParallelRunForTab(tabId);
   });
 
   const interactiveTabIds = Array.from(interactiveRunsByTabId.entries())
-    .filter(([, run]) => resolveLobsterConversationTabContextFromInteractiveRun(run).lobsterTaskId === taskId)
+    .filter(([, run]) => resolveLoopConversationTabContextFromInteractiveRun(run).loopTaskId === taskId)
     .map(([tabId]) => tabId);
   interactiveTabIds.forEach((tabId) => {
     const run = interactiveRunsByTabId.get(tabId);
     run?.stop();
   });
 
-  const primaryTaskId = resolvePrimaryLobsterTaskId();
+  const primaryTaskId = resolvePrimaryLoopTaskId();
   if (primaryTaskId === taskId) {
     stopActiveRun();
   }
 }
 
-function resolvePrimaryLobsterTaskId(): string | null {
+function resolvePrimaryLoopTaskId(): string | null {
   if (!isPrimaryRunActive()) {
     return null;
   }
-  return normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
+  return normalizeLoopTaskId(activeTaskRun?.loopTaskId)
     ?? (Array.isArray(activeMessageTarget)
-      ? resolveLobsterConversationTabContextFromMessages(activeMessageTarget).lobsterTaskId
+      ? resolveLoopConversationTabContextFromMessages(activeMessageTarget).loopTaskId
       : null);
 }
 
-function buildLobsterDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
-  return lobsterDebateChatPanelCoordinator.buildMessageAction(taskId, round);
+function buildLoopDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
+  return loopDebateChatPanelCoordinator.buildMessageAction(taskId, round);
 }
 
-function buildLobsterTaskNeedsReviewText(task: LobsterTaskRecord): string {
-  return buildLobsterTaskNeedsReviewTextWithLimit(task, isLobsterTaskBlockedByMainAiFailureLimit);
+function buildLoopTaskNeedsReviewText(task: LoopTaskRecord): string {
+  return buildLoopTaskNeedsReviewTextWithLimit(task, isLoopTaskBlockedByMainAiFailureLimit);
 }
 
-function buildLobsterSubtaskRetryText(taskId: string, subtaskId: string, retryCount: number): string {
-  return buildLobsterSubtaskRetryTextWithLimit(
+function buildLoopSubtaskRetryText(taskId: string, subtaskId: string, retryCount: number): string {
+  return buildLoopSubtaskRetryTextWithLimit(
     taskId,
     subtaskId,
     retryCount,
-    LOBSTER_SUBTASK_RETRY_MAX_RETRIES,
+    LOOP_SUBTASK_RETRY_MAX_RETRIES,
   );
 }
 
-function ensureLobsterMainSubChatTranscript(task: LobsterTaskRecord): string {
-  return ensureLobsterMainSubChatTranscriptWithDeps(task, {
-    collectRunningLobsterTaskIds,
+function ensureLoopMainSubChatTranscript(task: LoopTaskRecord): string {
+  return ensureLoopMainSubChatTranscriptWithDeps(task, {
+    collectRunningLoopTaskIds,
     readTextFileIfNonEmpty,
     fileExists: (filePath) => fs.existsSync(filePath),
     writeTextFileEnsuringDir,
-    getActiveLobsterSubtaskIds,
-    buildLobsterCompletedConclusionAndSummaryMarkdown,
+    getActiveLoopSubtaskIds,
+    buildLoopCompletedConclusionAndSummaryMarkdown,
     t,
   });
 }
@@ -2319,13 +2319,13 @@ type PromptRunInput = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   model?: string;
-  lobsterExecutionMode?: LobsterExecutionMode;
-  lobsterContinuePrompt?: string;
+  loopExecutionMode?: LoopExecutionMode;
+  loopContinuePrompt?: string;
   imagePaths?: string[];
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 };
 
 type PromptRunTarget = {
@@ -2334,31 +2334,31 @@ type PromptRunTarget = {
   sessionId: string | null;
 };
 
-type LobsterSkillRuntimeContext = {
+type LoopSkillRuntimeContext = {
   taskId: string;
   round: number;
-  rootTaskKind: LobsterTaskClassification;
-  pack: LobsterSkillPack | null;
+  rootTaskKind: LoopTaskClassification;
+  pack: LoopSkillPack | null;
   compactCatalogSection?: string;
   candidateIds: string[];
 };
 
-type LobsterSkillRuntimeContextOptions = {
+type LoopSkillRuntimeContextOptions = {
   extensionRoot: string;
-  loadSkillPack?: (extensionRoot: unknown) => Promise<LobsterSkillPackLoadResult>;
-  reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void;
+  loadSkillPack?: (extensionRoot: unknown) => Promise<LoopSkillPackLoadResult>;
+  reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void;
 };
 
-type LobsterSubtaskSkillSnapshot = {
+type LoopSubtaskSkillSnapshot = {
   skillIds: string[];
   skillGuidance: string;
 };
 
-function resolveNewLobsterTaskKind(
+function resolveNewLoopTaskKind(
   input: Pick<PromptRunInput, "displayPrompt" | "contextTags"> & { modelPrompt?: unknown },
-  workspacePaths: unknown = collectTrustedLobsterWorkspacePaths(),
-): LobsterTaskKind | undefined {
-  const classification = classifyLobsterRootTask({
+  workspacePaths: unknown = collectTrustedLoopWorkspacePaths(),
+): LoopTaskKind | undefined {
+  const classification = classifyLoopRootTask({
     displayPrompt: input.displayPrompt,
     contextTags: input.contextTags,
     workspacePaths,
@@ -2366,7 +2366,7 @@ function resolveNewLobsterTaskKind(
   return classification === "unknown" ? undefined : classification;
 }
 
-function collectTrustedLobsterWorkspacePaths(): string[] {
+function collectTrustedLoopWorkspacePaths(): string[] {
   const workspacePaths = (vscode.workspace.workspaceFolders ?? [])
     .map((folder) => folder.uri.fsPath)
     .filter((filePath): filePath is string => typeof filePath === "string" && filePath.trim().length > 0);
@@ -2377,13 +2377,13 @@ function collectTrustedLobsterWorkspacePaths(): string[] {
   return Array.from(new Set(workspacePaths));
 }
 
-async function buildLobsterSkillRuntimeContext(
-  task: LobsterTaskRecord,
+async function buildLoopSkillRuntimeContext(
+  task: LoopTaskRecord,
   round: number,
-  options: LobsterSkillRuntimeContextOptions,
-): Promise<LobsterSkillRuntimeContext> {
-  const rootTaskKind: LobsterTaskClassification = task.taskKind ?? "unknown";
-  const emptyContext: LobsterSkillRuntimeContext = {
+  options: LoopSkillRuntimeContextOptions,
+): Promise<LoopSkillRuntimeContext> {
+  const rootTaskKind: LoopTaskClassification = task.taskKind ?? "unknown";
+  const emptyContext: LoopSkillRuntimeContext = {
     taskId: task.id,
     round,
     rootTaskKind,
@@ -2395,9 +2395,9 @@ async function buildLobsterSkillRuntimeContext(
     return emptyContext;
   }
 
-  let loadResult: LobsterSkillPackLoadResult;
+  let loadResult: LoopSkillPackLoadResult;
   try {
-    loadResult = await (options.loadSkillPack ?? loadLobsterSkillPack)(options.extensionRoot);
+    loadResult = await (options.loadSkillPack ?? loadLoopSkillPack)(options.extensionRoot);
   } catch {
     loadResult = {
       pack: null,
@@ -2414,7 +2414,7 @@ async function buildLobsterSkillRuntimeContext(
     return emptyContext;
   }
 
-  const catalog = buildLobsterSkillCatalog(loadResult.pack, rootTaskKind);
+  const catalog = buildLoopSkillCatalog(loadResult.pack, rootTaskKind);
   if (catalog.diagnostics.length > 0) {
     options.reportDiagnostics?.("catalog", catalog.diagnostics);
   }
@@ -2431,16 +2431,16 @@ async function buildLobsterSkillRuntimeContext(
   };
 }
 
-function reportLobsterSkillDiagnostics(
+function reportLoopSkillDiagnostics(
   taskId: string,
   round: number,
   scope: string,
-  diagnostics: LobsterSkillDiagnostic[],
+  diagnostics: LoopSkillDiagnostic[],
 ): void {
   if (diagnostics.length === 0) {
     return;
   }
-  void logInfo("lobster-skill-runtime-diagnostics", {
+  void logInfo("loop-skill-runtime-diagnostics", {
     taskId,
     round,
     scope,
@@ -2452,35 +2452,35 @@ function reportLobsterSkillDiagnostics(
   });
 }
 
-async function createLobsterSkillRuntimeContext(
-  task: LobsterTaskRecord,
+async function createLoopSkillRuntimeContext(
+  task: LoopTaskRecord,
   round: number,
-): Promise<LobsterSkillRuntimeContext> {
-  return buildLobsterSkillRuntimeContext(task, round, {
+): Promise<LoopSkillRuntimeContext> {
+  return buildLoopSkillRuntimeContext(task, round, {
     extensionRoot: extensionUri.fsPath,
     reportDiagnostics: (scope, diagnostics) => {
-      reportLobsterSkillDiagnostics(task.id, round, scope, diagnostics);
+      reportLoopSkillDiagnostics(task.id, round, scope, diagnostics);
     },
   });
 }
 
-function buildLobsterSubtaskSkillSnapshots(
-  task: LobsterTaskRecord,
-  subtasks: LobsterSubtaskDecision[],
-  runtimeContext: LobsterSkillRuntimeContext,
-  reportDiagnostics?: (scope: string, diagnostics: LobsterSkillDiagnostic[]) => void,
-): Map<string, LobsterSubtaskSkillSnapshot> {
-  const rootTaskKind: LobsterTaskClassification = task.taskKind ?? "unknown";
+function buildLoopSubtaskSkillSnapshots(
+  task: LoopTaskRecord,
+  subtasks: LoopSubtaskDecision[],
+  runtimeContext: LoopSkillRuntimeContext,
+  reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void,
+): Map<string, LoopSubtaskSkillSnapshot> {
+  const rootTaskKind: LoopTaskClassification = task.taskKind ?? "unknown";
   const trustedRuntime = runtimeContext.taskId === task.id
     && runtimeContext.rootTaskKind === rootTaskKind;
   const pack = trustedRuntime ? runtimeContext.pack : null;
   const candidateIds = trustedRuntime ? runtimeContext.candidateIds : [];
-  const snapshots = new Map<string, LobsterSubtaskSkillSnapshot>();
+  const snapshots = new Map<string, LoopSubtaskSkillSnapshot>();
   for (const subtask of subtasks) {
     const id = subtask.id && subtask.id.trim()
       ? subtask.id.trim()
-      : buildLobsterSubtaskId(subtask.title);
-    const result = buildLobsterSkillGuidance(pack, {
+      : buildLoopSubtaskId(subtask.title);
+    const result = buildLoopSkillGuidance(pack, {
       rootTaskKind,
       requestedSkillIds: subtask.skillIds,
       allowedSkillIds: candidateIds,
@@ -2548,45 +2548,45 @@ function isTabRunActive(tabId: string | null): boolean {
   return getPrimaryRunTabId() === tabId;
 }
 
-function resolveLobsterConversationTabContextFromParallelRun(
+function resolveLoopConversationTabContextFromParallelRun(
   run?: ParallelTabRun
-): LobsterConversationTabContext {
-  return resolveLobsterRunConversationTabContext(run);
+): LoopConversationTabContext {
+  return resolveLoopRunConversationTabContext(run);
 }
 
-function resolveLobsterConversationTabContextFromInteractiveRun(
+function resolveLoopConversationTabContextFromInteractiveRun(
   run?: InteractiveTabRun
-): LobsterConversationTabContext {
-  return resolveLobsterRunConversationTabContext(run);
+): LoopConversationTabContext {
+  return resolveLoopRunConversationTabContext(run);
 }
 
-function resolveConversationTabLobsterContext(tab: ConversationTabRecord): LobsterConversationTabContext {
+function resolveConversationTabLoopContext(tab: ConversationTabRecord): LoopConversationTabContext {
   const primaryTabId = getPrimaryRunTabId();
   if (primaryTabId === tab.id) {
     const taskRole = activeTaskRun?.taskRole;
-    const lobsterTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId);
-    if ((taskRole === "main" || taskRole === "subtask") && lobsterTaskId) {
+    const loopTaskId = normalizeLoopTaskId(activeTaskRun?.loopTaskId);
+    if ((taskRole === "main" || taskRole === "subtask") && loopTaskId) {
       return {
         taskRole,
-        lobsterTaskId,
+        loopTaskId,
       };
     }
   }
 
-  const parallelContext = resolveLobsterConversationTabContextFromParallelRun(parallelRunsByTabId.get(tab.id));
-  if (parallelContext.taskRole && parallelContext.lobsterTaskId) {
+  const parallelContext = resolveLoopConversationTabContextFromParallelRun(parallelRunsByTabId.get(tab.id));
+  if (parallelContext.taskRole && parallelContext.loopTaskId) {
     return parallelContext;
   }
 
-  const interactiveContext = resolveLobsterConversationTabContextFromInteractiveRun(interactiveRunsByTabId.get(tab.id));
-  if (interactiveContext.taskRole && interactiveContext.lobsterTaskId) {
+  const interactiveContext = resolveLoopConversationTabContextFromInteractiveRun(interactiveRunsByTabId.get(tab.id));
+  if (interactiveContext.taskRole && interactiveContext.loopTaskId) {
     return interactiveContext;
   }
 
   const liveMessages = getLiveMessagesForTab(tab.id);
   if (liveMessages) {
-    const liveContext = resolveLobsterConversationTabContextFromMessages(liveMessages);
-    if (liveContext.taskRole && liveContext.lobsterTaskId) {
+    const liveContext = resolveLoopConversationTabContextFromMessages(liveMessages);
+    if (liveContext.taskRole && liveContext.loopTaskId) {
       return liveContext;
     }
   }
@@ -2595,56 +2595,56 @@ function resolveConversationTabLobsterContext(tab: ConversationTabRecord): Lobst
   const messages = sessionId
     ? loadSessionMessages(tab.cli, sessionId)
     : getPendingSessionDraft(tab.id, tab.cli).messages;
-  return resolveLobsterConversationTabContextFromMessages(messages);
+  return resolveLoopConversationTabContextFromMessages(messages);
 }
 
-function collectRunningLobsterTaskIds(): Set<string> {
+function collectRunningLoopTaskIds(): Set<string> {
   const runningTaskIds = new Set<string>();
   const addTaskId = (value: unknown): void => {
-    const taskId = normalizeLobsterTaskId(value);
+    const taskId = normalizeLoopTaskId(value);
     if (taskId) {
       runningTaskIds.add(taskId);
     }
   };
 
-  activeLobsterOrchestrationTaskIds.forEach(addTaskId);
+  activeLoopOrchestrationTaskIds.forEach(addTaskId);
 
   if (isPrimaryRunActive()) {
-    const primaryTaskId = normalizeLobsterTaskId(activeTaskRun?.lobsterTaskId)
+    const primaryTaskId = normalizeLoopTaskId(activeTaskRun?.loopTaskId)
       ?? (Array.isArray(activeMessageTarget)
-        ? resolveLobsterConversationTabContextFromMessages(activeMessageTarget).lobsterTaskId
+        ? resolveLoopConversationTabContextFromMessages(activeMessageTarget).loopTaskId
         : null);
     addTaskId(primaryTaskId);
   }
 
   parallelRunsByTabId.forEach((run) => {
-    const taskId = normalizeLobsterTaskId(run.lobsterTaskId)
-      ?? resolveLobsterConversationTabContextFromMessages(run.messageTarget).lobsterTaskId;
+    const taskId = normalizeLoopTaskId(run.loopTaskId)
+      ?? resolveLoopConversationTabContextFromMessages(run.messageTarget).loopTaskId;
     addTaskId(taskId);
   });
 
   interactiveRunsByTabId.forEach((run) => {
-    const taskId = normalizeLobsterTaskId(run.lobsterTaskId)
-      ?? resolveLobsterConversationTabContextFromMessages(run.messageTarget).lobsterTaskId;
+    const taskId = normalizeLoopTaskId(run.loopTaskId)
+      ?? resolveLoopConversationTabContextFromMessages(run.messageTarget).loopTaskId;
     addTaskId(taskId);
   });
 
   return runningTaskIds;
 }
 
-function isLobsterTaskRunning(
+function isLoopTaskRunning(
   taskId: string,
-  runningTaskIds: ReadonlySet<string> = collectRunningLobsterTaskIds(),
+  runningTaskIds: ReadonlySet<string> = collectRunningLoopTaskIds(),
 ): boolean {
-  const task = readLobsterTaskRecord(taskId);
+  const task = readLoopTaskRecord(taskId);
   if (!task) {
     return runningTaskIds.has(taskId);
   }
-  if (isLobsterTaskRunOrphaned(task, runningTaskIds)) {
-    markLobsterTaskStoppedAfterRuntimeEnded(taskId);
+  if (isLoopTaskRunOrphaned(task, runningTaskIds)) {
+    markLoopTaskStoppedAfterRuntimeEnded(taskId);
     return false;
   }
-  return resolveLobsterTaskRunControlState(task, runningTaskIds).isRunning;
+  return resolveLoopTaskRunControlState(task, runningTaskIds).isRunning;
 }
 
 function resolveAutoInteractiveModeForConversationTab(
@@ -2653,11 +2653,11 @@ function resolveAutoInteractiveModeForConversationTab(
   if (!tab) {
     return "coding";
   }
-  const context = resolveConversationTabLobsterContext(tab);
-  return resolveAutoInteractiveModeForLobsterTask(context.taskRole, context.lobsterTaskId);
+  const context = resolveConversationTabLoopContext(tab);
+  return resolveAutoInteractiveModeForLoopTask(context.taskRole, context.loopTaskId);
 }
 
-function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
+function isLoopMainTabCloseLocked(tabId: string | null): boolean {
   if (!tabId) {
     return false;
   }
@@ -2665,12 +2665,12 @@ function isLobsterMainTabCloseLocked(tabId: string | null): boolean {
   if (!tab) {
     return false;
   }
-  const context = resolveConversationTabLobsterContext(tab);
-  if (context.taskRole !== "main" || !context.lobsterTaskId) {
+  const context = resolveConversationTabLoopContext(tab);
+  if (context.taskRole !== "main" || !context.loopTaskId) {
     return false;
   }
-  const runningTaskIds = collectRunningLobsterTaskIds();
-  return isLobsterTaskRunning(context.lobsterTaskId, runningTaskIds);
+  const runningTaskIds = collectRunningLoopTaskIds();
+  return isLoopTaskRunning(context.loopTaskId, runningTaskIds);
 }
 
 function hasOtherTabRun(activeTabId: string | null): boolean {
@@ -2764,34 +2764,34 @@ function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {
   };
 }
 
-function collectRecentLobsterTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
-  return collectRecentLobsterTaskIdsFromMessages(getLobsterMessagesForTarget(target), limit);
+function collectRecentLoopTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
+  return collectRecentLoopTaskIdsFromMessages(getLoopMessagesForTarget(target), limit);
 }
 
-function isLobsterTaskCompatibleWithTarget(
-  task: LobsterTaskRecord,
+function isLoopTaskCompatibleWithTarget(
+  task: LoopTaskRecord,
   target: PromptRunTarget,
   options: { allowMissingTaskSessionId?: boolean } = {}
 ): boolean {
   if (task.cli !== target.cli || task.workspaceKey !== activeWorkspaceKey) {
     return false;
   }
-  const targetSessionId = resolveLobsterTaskSessionId(target);
-  return isLobsterTaskSessionCompatible(task, targetSessionId, options);
+  const targetSessionId = resolveLoopTaskSessionId(target);
+  return isLoopTaskSessionCompatible(task, targetSessionId, options);
 }
 
-function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTaskRecord | null {
-  const candidates: LobsterTaskRecord[] = [];
+function findResumableLoopTaskForTarget(target: PromptRunTarget): LoopTaskRecord | null {
+  const candidates: LoopTaskRecord[] = [];
   const seenTaskIds = new Set<string>();
 
   const appendCandidate = (
-    task: LobsterTaskRecord | null | undefined,
+    task: LoopTaskRecord | null | undefined,
     options: { allowMissingTaskSessionId?: boolean } = {}
   ): void => {
     if (
       !task
       || seenTaskIds.has(task.id)
-      || !isLobsterTaskCompatibleWithTarget(task, target, {
+      || !isLoopTaskCompatibleWithTarget(task, target, {
         allowMissingTaskSessionId: options.allowMissingTaskSessionId,
       })
     ) {
@@ -2801,15 +2801,15 @@ function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTask
     candidates.push(task);
   };
 
-  const recentTaskIds = collectRecentLobsterTaskIdsForTarget(target);
+  const recentTaskIds = collectRecentLoopTaskIdsForTarget(target);
   recentTaskIds.forEach((taskId) => {
-    appendCandidate(readLobsterTaskRecord(taskId), { allowMissingTaskSessionId: true });
+    appendCandidate(readLoopTaskRecord(taskId), { allowMissingTaskSessionId: true });
   });
 
-  const targetSessionId = resolveLobsterTaskSessionId(target);
+  const targetSessionId = resolveLoopTaskSessionId(target);
   if (targetSessionId) {
-    const sessionStoreFile = getLobsterTaskStoreSessionFile(activeWorkspaceKey, target.cli, targetSessionId);
-    const sessionStore = readLobsterTaskStore(sessionStoreFile);
+    const sessionStoreFile = getLoopTaskStoreSessionFile(activeWorkspaceKey, target.cli, targetSessionId);
+    const sessionStore = readLoopTaskStore(sessionStoreFile);
     sessionStore.tasks
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .forEach((task) => {
@@ -2820,25 +2820,25 @@ function findResumableLobsterTaskForTarget(target: PromptRunTarget): LobsterTask
   }
 
   const resumable = candidates
-    .filter((task) => isLobsterTaskResumable(task) || (
-      task.status === "completed" && !hasCompleteLobsterCompletionMessagesForTask(target, task.id)
+    .filter((task) => isLoopTaskResumable(task) || (
+      task.status === "completed" && !hasCompleteLoopCompletionMessagesForTask(target, task.id)
     ))
     .sort((left, right) => right.updatedAt - left.updatedAt);
   return resumable[0] ?? null;
 }
 
-function resolveLobsterResumeTaskFromPrompt(
+function resolveLoopResumeTaskFromPrompt(
   prompt: string,
   targetTabId: string | null | undefined
-): LobsterTaskRecord | null {
-  if (!isLobsterResumePrompt(prompt)) {
+): LoopTaskRecord | null {
+  if (!isLoopResumePrompt(prompt)) {
     return null;
   }
   const target = resolvePromptRunTarget(targetTabId ?? null);
   if (!target) {
     return null;
   }
-  return findResumableLobsterTaskForTarget(target);
+  return findResumableLoopTaskForTarget(target);
 }
 
 function sendRunStatusForTab(
@@ -2953,9 +2953,9 @@ function stopParallelRunForTab(tabId: string, message?: string): boolean {
     durationMs: Math.max(0, Date.now() - run.startedAt),
     status: "stopped",
     taskRole: run.taskRole,
-    lobsterTaskId: run.lobsterTaskId,
-    lobsterRound: run.lobsterRound,
-    lobsterSubtaskId: run.lobsterSubtaskId,
+    loopTaskId: run.loopTaskId,
+    loopRound: run.loopRound,
+    loopSubtaskId: run.loopSubtaskId,
   };
   appendTaskRun(taskRecord);
   sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
@@ -3222,7 +3222,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
 
   preparePendingLabel(runCli, target.tabId, prompt);
   let sessionId = target.sessionId;
-  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const includeFinalAnswerInstruction = !input.loopTaskId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
     includeFinalAnswerInstruction,
   });
@@ -3251,9 +3251,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
     createMessageId,
     metadata: {
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     },
   };
   void logInfo("runPrompt-parallel-start", {
@@ -3303,9 +3303,9 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       messageTarget: currentMessageTarget,
       stopped: false,
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     });
   };
 
@@ -3671,9 +3671,9 @@ ${rawStderr}`);
           durationMs: Math.max(0, Date.now() - startedAt),
           status: "error",
           taskRole: input.taskRole,
-          lobsterTaskId: input.lobsterTaskId,
-          lobsterRound: input.lobsterRound,
-          lobsterSubtaskId: input.lobsterSubtaskId,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          loopSubtaskId: input.loopSubtaskId,
         };
         appendTaskRun(taskRecord);
         const userMessageText = buildHiddenRetryFailureMessage({
@@ -3715,9 +3715,9 @@ ${rawStderr}`);
         durationMs: Math.max(0, Date.now() - startedAt),
         status: "end",
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       };
       appendTaskRun(taskRecord);
       sendRunStatusForTab(target.tabId, "end");
@@ -3736,9 +3736,9 @@ ${rawStderr}`);
         prompt,
         messages: currentMessageTarget,
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       });
       if (shouldAutoCompactAfterRun) {
         await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
@@ -3760,9 +3760,9 @@ ${rawStderr}`);
       appendHiddenRetryErrorTraceMessage(failureMessageTarget, lastFailureMessage, {
         tabId: target.tabId,
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       }, { createMessageId, sendPanelMessage });
       const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
       const systemMessage: ChatMessage = {
@@ -3799,9 +3799,9 @@ ${rawStderr}`);
       durationMs: Math.max(0, Date.now() - startedAt),
       status: "error",
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     };
     appendTaskRun(taskRecord);
 
@@ -3836,7 +3836,7 @@ ${rawStderr}`);
   }
 }
 
-async function runLobsterPrompt(
+async function runLoopPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
 ): Promise<void> {
@@ -3845,33 +3845,33 @@ async function runLobsterPrompt(
     target: null,
   };
   try {
-    await runLobsterPromptOrchestration(input, options, (taskId, target) => {
+    await runLoopPromptOrchestration(input, options, (taskId, target) => {
       ownership.taskId = taskId;
       ownership.target = target;
-      activeLobsterOrchestrationTaskIds.add(taskId);
+      activeLoopOrchestrationTaskIds.add(taskId);
     });
   } catch (error) {
     const failureMessage = errorToMessage(error);
-    void logError("lobster-orchestration-unhandled-error", {
+    void logError("loop-orchestration-unhandled-error", {
       taskId: ownership.taskId,
       tabId: ownership.target?.tabId ?? null,
       error: failureMessage,
     });
-    if (ownership.taskId && ownership.target && readLobsterTaskRecord(ownership.taskId)?.status === "running") {
-      markLobsterTaskInterrupted(ownership.taskId, "error", ownership.target, {
+    if (ownership.taskId && ownership.target && readLoopTaskRecord(ownership.taskId)?.status === "running") {
+      markLoopTaskInterrupted(ownership.taskId, "error", ownership.target, {
         source: "main",
         failureMessage,
       });
     }
   } finally {
     if (ownership.taskId) {
-      activeLobsterOrchestrationTaskIds.delete(ownership.taskId);
+      activeLoopOrchestrationTaskIds.delete(ownership.taskId);
     }
     await postPanelState();
   }
 }
 
-async function runLobsterPromptOrchestration(
+async function runLoopPromptOrchestration(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {},
   onTaskOwnershipAcquired?: (taskId: string, target: PromptRunTarget) => void,
@@ -3886,52 +3886,52 @@ async function runLobsterPromptOrchestration(
     : null;
   const resumeRequested = options.resumeRequested === true;
 
-  let task: LobsterTaskRecord | null = null;
+  let task: LoopTaskRecord | null = null;
   let round = 1;
 
   if (resumeTaskId) {
-    const existingTask = readLobsterTaskRecord(resumeTaskId);
-    if (existingTask && isLobsterTaskBlockedByMainAiFailureLimit(existingTask)) {
-      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(existingTask));
+    const existingTask = readLoopTaskRecord(resumeTaskId);
+    if (existingTask && isLoopTaskBlockedByMainAiFailureLimit(existingTask)) {
+      appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(existingTask));
       return;
     }
     const shouldResumeCompletedWithoutCompletionMessages = Boolean(
       existingTask
       && existingTask.status === "completed"
-      && !hasCompleteLobsterCompletionMessagesForTask(target, existingTask.id)
+      && !hasCompleteLoopCompletionMessagesForTask(target, existingTask.id)
     );
     if (
       existingTask
-      && isLobsterTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
-      && (!isLobsterTaskCompleted(existingTask) || shouldResumeCompletedWithoutCompletionMessages)
+      && isLoopTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
+      && (!isLoopTaskCompleted(existingTask) || shouldResumeCompletedWithoutCompletionMessages)
     ) {
-      task = updateLobsterTaskRecord(existingTask.id, {
+      task = updateLoopTaskRecord(existingTask.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: shouldResumeCompletedWithoutCompletionMessages }) ?? existingTask;
-      round = resolveLobsterResumeRound(task);
-      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(task, round), (
+      round = resolveLoopResumeRound(task);
+      appendSystemMessageForLoop(target, buildLoopTaskResumedText(task, round), (
         {
           taskRole: "main",
-          lobsterTaskId: task.id,
-          lobsterRound: round,
+          loopTaskId: task.id,
+          loopRound: round,
           merge: false,
-          actions: [buildLobsterDebateChatMessageAction(task.id, round)],
+          actions: [buildLoopDebateChatMessageAction(task.id, round)],
         }
       ));
-      void logInfo("lobster-task-resumed", {
+      void logInfo("loop-task-resumed", {
         taskId: task.id,
         round,
         tabId: target.tabId,
         cli: target.cli,
         completedWithoutCompletionMessages: shouldResumeCompletedWithoutCompletionMessages,
       });
-      if (!input.lobsterContinuePrompt) {
+      if (!input.loopContinuePrompt) {
         input = {
           ...input,
-          lobsterContinuePrompt: normalizeLobsterContinuePrompt(input.displayPrompt || input.modelPrompt),
+          loopContinuePrompt: normalizeLoopContinuePrompt(input.displayPrompt || input.modelPrompt),
         };
       }
     }
@@ -3939,28 +3939,28 @@ async function runLobsterPromptOrchestration(
 
   if (!task) {
     if (resumeRequested) {
-      appendSystemMessageForLobster(target, t("run.lobsterResumeUnavailableStartNew"));
-      void logInfo("lobster-task-resume-not-found", {
+      appendSystemMessageForLoop(target, t("run.loopResumeUnavailableStartNew"));
+      void logInfo("loop-task-resume-not-found", {
         tabId: target.tabId,
         cli: target.cli,
       });
     }
-    const initialSessionId = resolveLobsterTaskSessionId(target);
-    const taskKind = resolveNewLobsterTaskKind(input);
-    task = createLobsterTaskRecord(target.cli, input.displayPrompt, {
+    const initialSessionId = resolveLoopTaskSessionId(target);
+    const taskKind = resolveNewLoopTaskKind(input);
+    task = createLoopTaskRecord(target.cli, input.displayPrompt, {
       sessionId: initialSessionId,
-      executionMode: input.lobsterExecutionMode,
+      executionMode: input.loopExecutionMode,
       taskKind,
     });
-    if (!isLobsterDebateGroupChatTask(task)) {
-      ensureLobsterMainSubChatTranscript(task);
+    if (!isLoopDebateGroupChatTask(task)) {
+      ensureLoopMainSubChatTranscript(task);
     }
-    appendSystemMessageForLobster(target, buildLobsterTaskStartedText(task), (
+    appendSystemMessageForLoop(target, buildLoopTaskStartedText(task), (
       {
         taskRole: "main",
-        lobsterTaskId: task.id,
+        loopTaskId: task.id,
         merge: false,
-        actions: [buildLobsterDebateChatMessageAction(task.id)],
+        actions: [buildLoopDebateChatMessageAction(task.id)],
       }
     ));
   }
@@ -3972,34 +3972,34 @@ async function runLobsterPromptOrchestration(
   await postPanelState();
 
   while (round <= task.maxRounds) {
-    const latest: LobsterTaskRecord = readLobsterTaskRecord(task.id) ?? task;
+    const latest: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
     task = latest;
-    if (isLobsterTaskBlockedByMainAiFailureLimit(latest)) {
-      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(latest));
+    if (isLoopTaskBlockedByMainAiFailureLimit(latest)) {
+      appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(latest));
       return;
     }
-    if (isLobsterTaskCompleted(latest)) {
-      if (hasCompleteLobsterCompletionMessagesForTask(target, latest.id)) {
+    if (isLoopTaskCompleted(latest)) {
+      if (hasCompleteLoopCompletionMessagesForTask(target, latest.id)) {
         return;
       }
-      const resumed = updateLobsterTaskRecord(latest.id, {
+      const resumed = updateLoopTaskRecord(latest.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: true }) ?? latest;
       task = resumed;
-      round = resolveLobsterResumeRound(resumed);
-      appendSystemMessageForLobster(target, buildLobsterTaskResumedText(resumed, round), (
+      round = resolveLoopResumeRound(resumed);
+      appendSystemMessageForLoop(target, buildLoopTaskResumedText(resumed, round), (
         {
           taskRole: "main",
-          lobsterTaskId: resumed.id,
-          lobsterRound: round,
+          loopTaskId: resumed.id,
+          loopRound: round,
           merge: false,
-          actions: [buildLobsterDebateChatMessageAction(resumed.id, round)],
+          actions: [buildLoopDebateChatMessageAction(resumed.id, round)],
         }
       ));
-      void logInfo("lobster-task-completed-without-final-summary-resumed", {
+      void logInfo("loop-task-completed-without-final-summary-resumed", {
         taskId: resumed.id,
         round,
         tabId: target.tabId,
@@ -4008,21 +4008,21 @@ async function runLobsterPromptOrchestration(
       continue;
     }
 
-    const executionMode = normalizeLobsterExecutionMode(latest.executionMode);
+    const executionMode = normalizeLoopExecutionMode(latest.executionMode);
     const shouldRunPlanningDebate = executionMode === "debate_multi_agent"
-      && shouldRunLobsterPlanningDebate(latest, round);
-    const skillRuntimeContext = await createLobsterSkillRuntimeContext(latest, round);
-    let decisionRunResult: LobsterMainDecisionRunResult;
+      && shouldRunLoopPlanningDebate(latest, round);
+    const skillRuntimeContext = await createLoopSkillRuntimeContext(latest, round);
+    let decisionRunResult: LoopMainDecisionRunResult;
     try {
       decisionRunResult = shouldRunPlanningDebate
-        ? await runLobsterDebateRound({
+        ? await runLoopDebateRound({
             input,
             target,
             task: latest,
             round,
             skillRuntimeContext,
           })
-        : await runClassicLobsterMainDecision({
+        : await runClassicLoopMainDecision({
             input,
             target,
             task: latest,
@@ -4031,14 +4031,14 @@ async function runLobsterPromptOrchestration(
             skillRuntimeContext,
           });
     } catch (error) {
-      void logError("lobster-main-decision-run-error", {
+      void logError("loop-main-decision-run-error", {
         taskId: latest.id,
         round,
         executionMode,
         shouldRunPlanningDebate,
         error: errorToMessage(error),
       });
-      markLobsterTaskInterrupted(latest.id, "error", target, {
+      markLoopTaskInterrupted(latest.id, "error", target, {
         source: "main",
         failureMessage: errorToMessage(error),
       });
@@ -4046,26 +4046,26 @@ async function runLobsterPromptOrchestration(
     }
 
     if (decisionRunResult.status === "interrupted") {
-      markLobsterTaskInterrupted(decisionRunResult.task.id, decisionRunResult.runStatus, target, {
+      markLoopTaskInterrupted(decisionRunResult.task.id, decisionRunResult.runStatus, target, {
         source: "main",
       });
       return;
     }
     if (decisionRunResult.status === "completed") {
-      removeLobsterMainDecisionMessage(target, decisionRunResult.task.id, round);
-      appendSystemMessageForLobster(target, buildLobsterTaskCompletedText(decisionRunResult.task));
-      appendLobsterAnswerConclusionMessage(target, decisionRunResult.task, decisionRunResult.decision);
-      appendLobsterFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
+      removeLoopMainDecisionMessage(target, decisionRunResult.task.id, round);
+      appendSystemMessageForLoop(target, buildLoopTaskCompletedText(decisionRunResult.task));
+      appendLoopAnswerConclusionMessage(target, decisionRunResult.task, decisionRunResult.decision);
+      appendLoopFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
       return;
     }
     if (decisionRunResult.status === "needs-review") {
-      appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(decisionRunResult.task));
+      appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
       return;
     }
 
     const subtasks = decisionRunResult.subtasks;
-    showLobsterSubtaskDecisionMarkdown(target, decisionRunResult.task, round, subtasks, decisionRunResult.decision);
-    const subtaskResults = await runLobsterSubtasksBatchWithRetry({
+    showLoopSubtaskDecisionMarkdown(target, decisionRunResult.task, round, subtasks, decisionRunResult.decision);
+    const subtaskResults = await runLoopSubtasksBatchWithRetry({
       input,
       target,
       task: decisionRunResult.task,
@@ -4075,7 +4075,7 @@ async function runLobsterPromptOrchestration(
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
     if (interrupted) {
       const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
-      markLobsterTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target, {
+      markLoopTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target, {
         source: "subtask",
       });
       return;
@@ -4083,9 +4083,9 @@ async function runLobsterPromptOrchestration(
 
     const nextMainRound = round + 1;
     if (nextMainRound <= decisionRunResult.task.maxRounds) {
-      appendSystemMessageForLobster(
+      appendSystemMessageForLoop(
         target,
-        buildLobsterMainResumeText(decisionRunResult.task.id, nextMainRound, subtasks)
+        buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtasks)
       );
     }
     round = nextMainRound;
@@ -4094,106 +4094,106 @@ async function runLobsterPromptOrchestration(
   if (!task) {
     return;
   }
-  const finalRecord = updateLobsterTaskRecord(task.id, {
+  const finalRecord = updateLoopTaskRecord(task.id, {
     status: "needs-review",
     updatedAt: Date.now(),
-    finalSummary: "Reached the maximum automatic lobster rounds. Manual review is required.",
+    finalSummary: "Reached the maximum automatic loop rounds. Manual review is required.",
   });
-  appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(finalRecord ?? task));
+  appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(finalRecord ?? task));
 }
 
-async function runClassicLobsterMainDecision(options: {
+async function runClassicLoopMainDecision(options: {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
   moderatorLed?: boolean;
-  skillRuntimeContext: LobsterSkillRuntimeContext;
-}): Promise<LobsterMainDecisionRunResult> {
+  skillRuntimeContext: LoopSkillRuntimeContext;
+}): Promise<LoopMainDecisionRunResult> {
   const { input, target, task, round, skillRuntimeContext } = options;
   const moderatorLed = options.moderatorLed === true;
   let mainStatus: TaskRunStatus;
   try {
-    mainStatus = await runLobsterRound({
+    mainStatus = await runLoopRound({
       input,
       target,
       task,
       round,
       role: "main",
       displayPrompt: moderatorLed
-        ? buildLobsterModeratorMainDisplayPrompt(task.rootPrompt, round)
-        : buildLobsterMainDisplayPrompt(task.rootPrompt, round),
+        ? buildLoopModeratorMainDisplayPrompt(task.rootPrompt, round)
+        : buildLoopMainDisplayPrompt(task.rootPrompt, round),
       modelPrompt: moderatorLed
-        ? buildLobsterModeratorMainModelPrompt(
-            input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+        ? buildLoopModeratorMainModelPrompt(
+            input.loopContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
             task,
             round,
-            input.lobsterContinuePrompt,
+            input.loopContinuePrompt,
             skillRuntimeContext.compactCatalogSection,
           )
-        : buildLobsterMainModelPrompt(
-            input.lobsterContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
+        : buildLoopMainModelPrompt(
+            input.loopContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
             task,
             round,
-            input.lobsterContinuePrompt,
+            input.loopContinuePrompt,
             skillRuntimeContext.compactCatalogSection,
           ),
     });
   } catch (error) {
-    void logError("lobster-main-round-run-error", {
+    void logError("loop-main-round-run-error", {
       taskId: task.id,
       round,
       error: errorToMessage(error),
     });
-    markLobsterTaskInterrupted(task.id, "error", target, {
+    markLoopTaskInterrupted(task.id, "error", target, {
       source: "main",
       failureMessage: errorToMessage(error),
     });
-    return { status: "interrupted", task: readLobsterTaskRecord(task.id) ?? task, runStatus: "error" };
+    return { status: "interrupted", task: readLoopTaskRecord(task.id) ?? task, runStatus: "error" };
   }
   if (mainStatus === "error" || mainStatus === "stopped") {
     return { status: "interrupted", task, runStatus: mainStatus };
   }
 
-  const mainContent = getLastLobsterAssistantContent(target, task.id, round, "main");
-  const decision = parseLobsterMainDecision(mainContent);
+  const mainContent = getLastLoopAssistantContent(target, task.id, round, "main");
+  const decision = parseLoopMainDecision(mainContent);
   if (!decision) {
-    const failedRecord = updateLobsterTaskRecord(task.id, {
+    const failedRecord = updateLoopTaskRecord(task.id, {
       status: "needs-review",
       activeSubtaskId: null,
       activeSubtaskIds: [],
       updatedAt: Date.now(),
-      finalSummary: "Main task did not return a valid lobster decision JSON.",
+      finalSummary: "Main task did not return a valid loop decision JSON.",
     }) ?? task;
     return { status: "needs-review", task: failedRecord };
   }
 
-  return applyLobsterMainDecisionForRun(task.id, decision, skillRuntimeContext);
+  return applyLoopMainDecisionForRun(task.id, decision, skillRuntimeContext);
 }
 
-function applyLobsterMainDecisionForRun(
+function applyLoopMainDecisionForRun(
   taskId: string,
-  decision: LobsterMainDecision,
-  skillRuntimeContext?: LobsterSkillRuntimeContext,
-): LobsterMainDecisionRunResult {
-  updateLobsterTaskRecord(taskId, {
-    ...buildResetLobsterMainAiFailureState(),
+  decision: LoopMainDecision,
+  skillRuntimeContext?: LoopSkillRuntimeContext,
+): LoopMainDecisionRunResult {
+  updateLoopTaskRecord(taskId, {
+    ...buildResetLoopMainAiFailureState(),
     updatedAt: Date.now(),
   });
-  const currentTask = readLobsterTaskRecord(taskId);
+  const currentTask = readLoopTaskRecord(taskId);
   const skillSnapshots = currentTask
     && decision.status === "continue"
     && skillRuntimeContext
-    ? buildLobsterSubtaskSkillSnapshots(
+    ? buildLoopSubtaskSkillSnapshots(
         currentTask,
-        getLobsterDecisionSubtasks(decision),
+        getLoopDecisionSubtasks(decision),
         skillRuntimeContext,
         (scope, diagnostics) => {
-          reportLobsterSkillDiagnostics(taskId, skillRuntimeContext.round, scope, diagnostics);
+          reportLoopSkillDiagnostics(taskId, skillRuntimeContext.round, scope, diagnostics);
         },
       )
     : undefined;
-  const decisionResult = applyLobsterMainDecision(taskId, decision, skillSnapshots);
+  const decisionResult = applyLoopMainDecision(taskId, decision, skillSnapshots);
   if (decisionResult.status === "completed") {
     return { status: "completed", task: decisionResult.task, decision };
   }
@@ -4208,66 +4208,66 @@ function applyLobsterMainDecisionForRun(
   };
 }
 
-type LobsterDebateParticipantArtifactValidation = {
+type LoopDebateParticipantArtifactValidation = {
   valid: boolean;
-  participants: LobsterDebateParticipantRecord[];
+  participants: LoopDebateParticipantRecord[];
   reasons: string[];
 };
 
-type LobsterDebateReusableDecisionResult =
+type LoopDebateReusableDecisionResult =
   | {
       status: "reusable";
-      decision: LobsterMainDecision;
-      consensus: LobsterDebateConsensusRecord<LobsterMainDecision>;
-      participants: LobsterDebateParticipantRecord[];
+      decision: LoopMainDecision;
+      consensus: LoopDebateConsensusRecord<LoopMainDecision>;
+      participants: LoopDebateParticipantRecord[];
     }
   | {
       status: "needs-review";
       reasons: string[];
-      consensus?: LobsterDebateConsensusRecord<LobsterMainDecision>;
-      participants: LobsterDebateParticipantRecord[];
+      consensus?: LoopDebateConsensusRecord<LoopMainDecision>;
+      participants: LoopDebateParticipantRecord[];
     }
   | { status: "rerun"; reasons: string[] };
 
-type LobsterDebateSpeakerBatch = {
+type LoopDebateSpeakerBatch = {
   speakerIds: string[];
-  speakers: LobsterDebateParticipantDefinition[];
+  speakers: LoopDebateParticipantDefinition[];
 };
 
-function shouldRunLobsterPlanningDebate(task: LobsterTaskRecord, round: number): boolean {
-  if (normalizeLobsterExecutionMode(task.executionMode) !== "debate_multi_agent") {
+function shouldRunLoopPlanningDebate(task: LoopTaskRecord, round: number): boolean {
+  if (normalizeLoopExecutionMode(task.executionMode) !== "debate_multi_agent") {
     return false;
   }
   void round;
-  return !findReusableLobsterPlanningDebateRound(task);
+  return !findReusableLoopPlanningDebateRound(task);
 }
 
-function findReusableLobsterPlanningDebateRound(
-  task: LobsterTaskRecord,
-): LobsterDebateRoundRecord<LobsterMainDecision> | null {
+function findReusableLoopPlanningDebateRound(
+  task: LoopTaskRecord,
+): LoopDebateRoundRecord<LoopMainDecision> | null {
   const rounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
   const sortedRounds = rounds
     .filter((round) => round.status === "consensus" && Boolean(round.consensus))
     .slice()
     .sort((left, right) => (
-      left.lobsterRound - right.lobsterRound
+      left.loopRound - right.loopRound
       || left.debateRound - right.debateRound
       || left.startedAt - right.startedAt
     ));
 
   for (const round of sortedRounds) {
-    const paths = buildLobsterDebatePaths(task.communicationDir, round.lobsterRound, round.debateRound);
-    const participants = resolveExistingLobsterDebateParticipantRecords(
+    const paths = buildLoopDebatePaths(task.communicationDir, round.loopRound, round.debateRound);
+    const participants = resolveExistingLoopDebateParticipantRecords(
       task,
-      round.lobsterRound,
+      round.loopRound,
       round.debateRound,
       paths,
       undefined,
-      buildLobsterDebateSessionState(task, round.lobsterRound, round.debateRound),
+      buildLoopDebateSessionState(task, round.loopRound, round.debateRound),
     );
-    const reusable = evaluateReusableLobsterDebateDecision(
+    const reusable = evaluateReusableLoopDebateDecision(
       task,
-      round.lobsterRound,
+      round.loopRound,
       round.debateRound,
       paths,
       participants,
@@ -4280,27 +4280,27 @@ function findReusableLobsterPlanningDebateRound(
   return null;
 }
 
-function readLobsterPlanningDebateDecision(
-  task: LobsterTaskRecord,
-  round: Pick<LobsterDebateRoundRecord<LobsterMainDecision>, "lobsterRound" | "debateRound">,
-): LobsterMainDecision | null {
-  const paths = buildLobsterDebatePaths(task.communicationDir, round.lobsterRound, round.debateRound);
-  return parseLobsterMainDecision(readTextFileIfNonEmpty(paths.decisionFile));
+function readLoopPlanningDebateDecision(
+  task: LoopTaskRecord,
+  round: Pick<LoopDebateRoundRecord<LoopMainDecision>, "loopRound" | "debateRound">,
+): LoopMainDecision | null {
+  const paths = buildLoopDebatePaths(task.communicationDir, round.loopRound, round.debateRound);
+  return parseLoopMainDecision(readTextFileIfNonEmpty(paths.decisionFile));
 }
 
-async function runLobsterDebateRound(options: {
+async function runLoopDebateRound(options: {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
-  skillRuntimeContext: LobsterSkillRuntimeContext;
-}): Promise<LobsterMainDecisionRunResult> {
+  skillRuntimeContext: LoopSkillRuntimeContext;
+}): Promise<LoopMainDecisionRunResult> {
   const { input, target, task, round, skillRuntimeContext } = options;
-  const debateRound = LOBSTER_DEBATE_DEFAULT_DEBATE_ROUND;
-  const paths = buildLobsterDebatePaths(task.communicationDir, round, debateRound);
-  const model = resolveLobsterDebateModel(input);
-  const debateSessions = buildLobsterDebateSessionState(task, round, debateRound);
-  const reusableParticipants = resolveExistingLobsterDebateParticipantRecords(
+  const debateRound = LOOP_DEBATE_DEFAULT_DEBATE_ROUND;
+  const paths = buildLoopDebatePaths(task.communicationDir, round, debateRound);
+  const model = resolveLoopDebateModel(input);
+  const debateSessions = buildLoopDebateSessionState(task, round, debateRound);
+  const reusableParticipants = resolveExistingLoopDebateParticipantRecords(
     task,
     round,
     debateRound,
@@ -4308,13 +4308,13 @@ async function runLobsterDebateRound(options: {
     model,
     debateSessions
   );
-  const reusable = evaluateReusableLobsterDebateDecision(task, round, debateRound, paths, reusableParticipants);
+  const reusable = evaluateReusableLoopDebateDecision(task, round, debateRound, paths, reusableParticipants);
   if (reusable.status === "reusable") {
-    upsertLobsterDebateRoundRecord(task.id, {
-      lobsterRound: round,
+    upsertLoopDebateRoundRecord(task.id, {
+      loopRound: round,
       debateRound,
       status: "consensus",
-      startedAt: getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
+      startedAt: getExistingLoopDebateRoundStartedAt(task, round, debateRound) ?? Date.now(),
       completedAt: Date.now(),
       briefFile: paths.briefFile,
       chatFile: paths.chatFile,
@@ -4322,16 +4322,16 @@ async function runLobsterDebateRound(options: {
       participants: reusable.participants,
       consensus: reusable.consensus,
     });
-    refreshOpenLobsterDebateChatPanelForTask(task.id);
-    appendSystemMessageForLobster(target, buildLobsterDebateReuseText(task.id, round, paths));
-    appendLobsterDebateMainCommunicationLog(task, round, paths, "复用红蓝对抗共识", [
+    refreshOpenLoopGroupChatPanelForTask(task.id);
+    appendSystemMessageForLoop(target, buildLoopDebateReuseText(task.id, round, paths));
+    appendLoopDebateMainCommunicationLog(task, round, paths, "复用红蓝对抗共识", [
       `decision.json：${paths.decisionFile}`,
       `consensus.md：${paths.consensusFile}`,
     ]);
-    return applyLobsterMainDecisionForRun(task.id, reusable.decision, skillRuntimeContext);
+    return applyLoopMainDecisionForRun(task.id, reusable.decision, skillRuntimeContext);
   }
   if (reusable.status === "needs-review") {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4344,23 +4344,23 @@ async function runLobsterDebateRound(options: {
     });
   }
   if (reusable.reasons.length > 0) {
-    appendSystemMessageForLobster(target, buildLobsterDebateRerunText(task.id, round, reusable.reasons));
+    appendSystemMessageForLoop(target, buildLoopDebateRerunText(task.id, round, reusable.reasons));
   }
 
   const startedAt = Date.now();
   const briefWritten = writeTextFileEnsuringDir(
     paths.briefFile,
-    buildLobsterDebateBriefMarkdown(
+    buildLoopDebateBriefMarkdown(
       task,
       target,
       round,
       paths,
-      input.lobsterContinuePrompt,
+      input.loopContinuePrompt,
       skillRuntimeContext.compactCatalogSection,
     )
   );
   if (!briefWritten) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4371,9 +4371,9 @@ async function runLobsterDebateRound(options: {
       status: "error",
     });
   }
-  const chatWritten = writeTextFileEnsuringDir(paths.chatFile, buildLobsterDebateInitialChatMarkdown(task, target, round, paths));
+  const chatWritten = writeTextFileEnsuringDir(paths.chatFile, buildLoopDebateInitialChatMarkdown(task, target, round, paths));
   if (!chatWritten) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4385,15 +4385,15 @@ async function runLobsterDebateRound(options: {
     });
   }
 
-  updateLobsterTaskRecord(task.id, {
+  updateLoopTaskRecord(task.id, {
     status: "running",
     currentRound: round,
     activeSubtaskId: null,
     activeSubtaskIds: [],
     updatedAt: startedAt,
   });
-  upsertLobsterDebateRoundRecord(task.id, {
-    lobsterRound: round,
+  upsertLoopDebateRoundRecord(task.id, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -4404,11 +4404,11 @@ async function runLobsterDebateRound(options: {
     participants: [],
     moderatorDecisions: [],
   });
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  refreshOpenLoopGroupChatPanelForTask(task.id);
 
-  const runnerDeps = getLobsterDebateRunnerDeps();
+  const runnerDeps = getLoopDebateRunnerDeps();
   const debateTabIds: string[] = [];
-  const rosterResult = await runLobsterDebateParticipantRoster({
+  const rosterResult = await runLoopDebateParticipantRoster({
     deps: runnerDeps,
     input,
     mainTarget: target,
@@ -4423,10 +4423,10 @@ async function runLobsterDebateRound(options: {
   if (rosterResult.sessionId) {
     debateSessions.moderator = rosterResult.sessionId;
   }
-  await closeCompletedLobsterDebateTabs([rosterResult.tabId]);
+  await closeCompletedLoopDebateTabs([rosterResult.tabId]);
   if (!rosterResult.valid) {
-    await closeCompletedLobsterDebateTabs(debateTabIds);
-    return markLobsterDebateNeedsReview({
+    await closeCompletedLoopDebateTabs(debateTabIds);
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4439,7 +4439,7 @@ async function runLobsterDebateRound(options: {
   }
 
   const participantDefinitions = rosterResult.participants;
-  const participantRecords = buildLobsterDebateParticipantRecords(
+  const participantRecords = buildLoopDebateParticipantRecords(
     paths,
     model,
     "pending",
@@ -4450,15 +4450,15 @@ async function runLobsterDebateRound(options: {
   }));
   const rosterAppended = appendTextFileEnsuringDir(
     paths.chatFile,
-    buildLobsterDebateParticipantRosterChatMarkdown(
+    buildLoopDebateParticipantRosterChatMarkdown(
       participantDefinitions,
       rosterResult.summary,
       rosterResult.openingSpeakerIds,
     )
   );
   if (!rosterAppended) {
-    await closeCompletedLobsterDebateTabs(debateTabIds);
-    return markLobsterDebateNeedsReview({
+    await closeCompletedLoopDebateTabs(debateTabIds);
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4470,8 +4470,8 @@ async function runLobsterDebateRound(options: {
     });
   }
 
-  upsertLobsterDebateRoundRecord(task.id, {
-    lobsterRound: round,
+  upsertLoopDebateRoundRecord(task.id, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -4482,69 +4482,69 @@ async function runLobsterDebateRound(options: {
     participants: participantRecords,
     moderatorDecisions: [],
   });
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
-  appendSystemMessageForLobster(target, buildLobsterDebateStartedText(task.id, round, participantRecords, paths));
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  appendSystemMessageForLoop(target, buildLoopDebateStartedText(task.id, round, participantRecords, paths));
 
-  let finalModeratorDecision: LobsterDebateModeratorDecisionRecord | null = null;
+  let finalModeratorDecision: LoopDebateModeratorDecisionRecord | null = null;
   let completedDialogueTurns = 0;
-  let currentSpeakerBatch = buildLobsterDebateSpeakerBatch(participantDefinitions, rosterResult.openingSpeakerIds);
+  let currentSpeakerBatch = buildLoopDebateSpeakerBatch(participantDefinitions, rosterResult.openingSpeakerIds);
   if (currentSpeakerBatch.speakers.length === 0) {
-    currentSpeakerBatch = buildLobsterDebateSpeakerBatch(
+    currentSpeakerBatch = buildLoopDebateSpeakerBatch(
       participantDefinitions,
-      selectDefaultLobsterDebateOpeningSpeakerIds(participantDefinitions),
+      selectDefaultLoopDebateOpeningSpeakerIds(participantDefinitions),
     );
   }
-  for (let dialogueTurn = 1; dialogueTurn <= LOBSTER_DEBATE_MAX_DIALOGUE_TURNS; dialogueTurn += 1) {
+  for (let dialogueTurn = 1; dialogueTurn <= LOOP_DEBATE_MAX_DIALOGUE_TURNS; dialogueTurn += 1) {
     completedDialogueTurns = dialogueTurn;
     if (currentSpeakerBatch.speakers.length === 0) {
-      await closeCompletedLobsterDebateTabs(debateTabIds);
-      return markLobsterDebateNeedsReview({
+      await closeCompletedLoopDebateTabs(debateTabIds);
+      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`裁判主持人未为第 ${dialogueTurn} 个发言批次指定有效发言者。`],
         status: "error",
       });
     }
-    appendSystemMessageForLobster(
+    appendSystemMessageForLoop(
       target,
-      buildLobsterDebateDialogueTurnStartedText(
+      buildLoopDebateDialogueTurnStartedText(
         task.id,
         round,
         dialogueTurn,
-        LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+        LOOP_DEBATE_MAX_DIALOGUE_TURNS,
         currentSpeakerBatch.speakers,
         paths,
       )
     );
     const dialogueTurnEventAppended = appendTextFileEnsuringDir(
       paths.chatFile,
-      buildLobsterDebateDialogueTurnChatEventMarkdown(
+      buildLoopDebateDialogueTurnChatEventMarkdown(
         round,
         dialogueTurn,
-        LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+        LOOP_DEBATE_MAX_DIALOGUE_TURNS,
         finalModeratorDecision,
         currentSpeakerBatch.speakers,
       )
     );
     if (!dialogueTurnEventAppended) {
-      await closeCompletedLobsterDebateTabs(debateTabIds);
-      return markLobsterDebateNeedsReview({
+      await closeCompletedLoopDebateTabs(debateTabIds);
+      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`无法追加辩论发言批次系统消息：${paths.chatFile}`],
         status: "error",
       });
     }
-    refreshOpenLobsterDebateChatPanelForTask(task.id);
-    const participantBatch = await runLobsterDebateParticipantBatch({
+    refreshOpenLoopGroupChatPanelForTask(task.id);
+    const participantBatch = await runLoopDebateParticipantBatch({
       deps: runnerDeps,
       input,
       mainTarget: target,
@@ -4552,7 +4552,7 @@ async function runLobsterDebateRound(options: {
       round,
       debateRound,
       dialogueTurn,
-      maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      maxDialogueTurns: LOOP_DEBATE_MAX_DIALOGUE_TURNS,
       finalPass: false,
       paths,
       participants: currentSpeakerBatch.speakers,
@@ -4566,17 +4566,17 @@ async function runLobsterDebateRound(options: {
         debateSessions.participants[item.participant.id] = item.result.sessionId;
       }
     });
-    await closeCompletedLobsterDebateTabs(participantBatch.map((item) => item.result.tabId));
+    await closeCompletedLoopDebateTabs(participantBatch.map((item) => item.result.tabId));
     const missingArtifacts = participantBatch.filter((item) => !item.artifactText);
     if (missingArtifacts.length > 0) {
-      await closeCompletedLobsterDebateTabs(debateTabIds);
-      return markLobsterDebateNeedsReview({
+      await closeCompletedLoopDebateTabs(debateTabIds);
+      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: missingArtifacts.map((item) => (
           `红蓝对抗发言批次 ${dialogueTurn} 参与者 ${item.participant.id} 未写入发言 artifact：${item.artifactFile}`
         )),
@@ -4586,7 +4586,7 @@ async function runLobsterDebateRound(options: {
     for (const item of participantBatch) {
       const appended = appendTextFileEnsuringDir(
         paths.chatFile,
-        buildLobsterDebateChatTurnMarkdown(
+        buildLoopDebateChatTurnMarkdown(
           dialogueTurn,
           item.participant.id,
           item.participant.title,
@@ -4594,22 +4594,22 @@ async function runLobsterDebateRound(options: {
         )
       );
 	      if (!appended) {
-	        await closeCompletedLobsterDebateTabs(debateTabIds);
-	        return markLobsterDebateNeedsReview({
+	        await closeCompletedLoopDebateTabs(debateTabIds);
+	        return markLoopDebateNeedsReview({
           task,
           target,
           round,
           debateRound,
           paths,
-          participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+          participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
           reasons: [`无法追加红蓝对抗群聊记录：${paths.chatFile}`],
           status: "error",
         });
       }
-      refreshOpenLobsterDebateChatPanelForTask(task.id);
+      refreshOpenLoopGroupChatPanelForTask(task.id);
     }
 
-    const moderatorResult = await runLobsterDebateModerator({
+    const moderatorResult = await runLoopDebateModerator({
       deps: runnerDeps,
       input,
       mainTarget: target,
@@ -4617,7 +4617,7 @@ async function runLobsterDebateRound(options: {
       round,
       debateRound,
       dialogueTurn,
-      maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      maxDialogueTurns: LOOP_DEBATE_MAX_DIALOGUE_TURNS,
       paths,
       sessionId: debateSessions.moderator,
       participants: participantDefinitions,
@@ -4627,51 +4627,51 @@ async function runLobsterDebateRound(options: {
     if (moderatorResult.sessionId) {
       debateSessions.moderator = moderatorResult.sessionId;
     }
-    await closeCompletedLobsterDebateTabs([moderatorResult.tabId]);
-    const moderatorArtifactFile = buildLobsterDebateModeratorArtifactFile(paths, dialogueTurn);
+    await closeCompletedLoopDebateTabs([moderatorResult.tabId]);
+    const moderatorArtifactFile = buildLoopDebateModeratorArtifactFile(paths, dialogueTurn);
     const moderatorText = readTextFileIfNonEmpty(moderatorArtifactFile);
     if (!moderatorText || !moderatorResult.decision) {
-      await closeCompletedLobsterDebateTabs(debateTabIds);
-      return markLobsterDebateNeedsReview({
+      await closeCompletedLoopDebateTabs(debateTabIds);
+      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`裁判主持人第 ${dialogueTurn} 轮控场 artifact 缺失、为空或无法解析：${moderatorArtifactFile}`],
         status: "error",
       });
     }
     finalModeratorDecision = moderatorResult.decision;
-    const nextSpeakerBatch = buildLobsterDebateSpeakerBatch(participantDefinitions, moderatorResult.decision.nextSpeakerIds);
+    const nextSpeakerBatch = buildLoopDebateSpeakerBatch(participantDefinitions, moderatorResult.decision.nextSpeakerIds);
     const moderatorAppended = appendTextFileEnsuringDir(
       paths.chatFile,
-      buildLobsterDebateModeratorTurnMarkdown(dialogueTurn, moderatorText)
+      buildLoopDebateModeratorTurnMarkdown(dialogueTurn, moderatorText)
     );
 	    if (!moderatorAppended) {
-	      await closeCompletedLobsterDebateTabs(debateTabIds);
-	      return markLobsterDebateNeedsReview({
+	      await closeCompletedLoopDebateTabs(debateTabIds);
+	      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`无法追加裁判主持人控场记录：${paths.chatFile}`],
         status: "error",
       });
     }
-    refreshOpenLobsterDebateChatPanelForTask(task.id);
+    refreshOpenLoopGroupChatPanelForTask(task.id);
     if (moderatorResult.decision.action === "continue" && nextSpeakerBatch.speakers.length === 0) {
-      await closeCompletedLobsterDebateTabs(debateTabIds);
-      return markLobsterDebateNeedsReview({
+      await closeCompletedLoopDebateTabs(debateTabIds);
+      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`裁判主持人第 ${dialogueTurn} 轮选择 continue，但未指定有效的下一批发言者。`],
         status: "error",
       });
@@ -4680,55 +4680,55 @@ async function runLobsterDebateRound(options: {
       break;
     }
     currentSpeakerBatch = nextSpeakerBatch;
-    if (dialogueTurn === LOBSTER_DEBATE_MAX_DIALOGUE_TURNS) {
+    if (dialogueTurn === LOOP_DEBATE_MAX_DIALOGUE_TURNS) {
       finalModeratorDecision = {
         ...moderatorResult.decision,
         action: "finalize",
-        reason: `已达到运行时最大安全上限 ${LOBSTER_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。裁判主持人原始理由：${moderatorResult.decision.reason}`,
+        reason: `已达到运行时最大安全上限 ${LOOP_DEBATE_MAX_DIALOGUE_TURNS} 个发言批次，强制进入最终立场收集。裁判主持人原始理由：${moderatorResult.decision.reason}`,
         nextSpeakerIds: [],
         updatedAt: Date.now(),
       };
       const capAppended = appendTextFileEnsuringDir(
         paths.chatFile,
-        buildLobsterDebateRuntimeForcedFinalizeMarkdown(finalModeratorDecision)
+        buildLoopDebateRuntimeForcedFinalizeMarkdown(finalModeratorDecision)
       );
 	      if (!capAppended) {
-	        await closeCompletedLobsterDebateTabs(debateTabIds);
-	        return markLobsterDebateNeedsReview({
+	        await closeCompletedLoopDebateTabs(debateTabIds);
+	        return markLoopDebateNeedsReview({
           task,
           target,
           round,
           debateRound,
           paths,
-          participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+          participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
           reasons: [`无法追加最大安全发言批次数收束记录：${paths.chatFile}`],
           status: "error",
         });
       }
-      refreshOpenLobsterDebateChatPanelForTask(task.id);
+      refreshOpenLoopGroupChatPanelForTask(task.id);
       break;
     }
   }
 
   if (!finalModeratorDecision) {
-    await closeCompletedLobsterDebateTabs(debateTabIds);
-    return markLobsterDebateNeedsReview({
+    await closeCompletedLoopDebateTabs(debateTabIds);
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
       debateRound,
       paths,
-      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
       reasons: ["裁判主持人未输出任何控场决策。"],
       status: "error",
     });
   }
 
-  appendSystemMessageForLobster(
+  appendSystemMessageForLoop(
     target,
-    buildLobsterDebateFinalStanceStartedText(task.id, round, finalModeratorDecision, paths)
+    buildLoopDebateFinalStanceStartedText(task.id, round, finalModeratorDecision, paths)
   );
-  const finalStanceBatch = await runLobsterDebateParticipantBatch({
+  const finalStanceBatch = await runLoopDebateParticipantBatch({
     deps: runnerDeps,
     input,
     mainTarget: target,
@@ -4736,7 +4736,7 @@ async function runLobsterDebateRound(options: {
     round,
     debateRound,
     dialogueTurn: completedDialogueTurns,
-    maxDialogueTurns: LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+    maxDialogueTurns: LOOP_DEBATE_MAX_DIALOGUE_TURNS,
     finalPass: true,
     paths,
     participants: participantDefinitions,
@@ -4750,17 +4750,17 @@ async function runLobsterDebateRound(options: {
       debateSessions.participants[item.participant.id] = item.result.sessionId;
     }
   });
-  await closeCompletedLobsterDebateTabs(finalStanceBatch.map((item) => item.result.tabId));
+  await closeCompletedLoopDebateTabs(finalStanceBatch.map((item) => item.result.tabId));
   const missingFinalArtifacts = finalStanceBatch.filter((item) => !item.artifactText);
   if (missingFinalArtifacts.length > 0) {
-    await closeCompletedLobsterDebateTabs(debateTabIds);
-    return markLobsterDebateNeedsReview({
+    await closeCompletedLoopDebateTabs(debateTabIds);
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
       debateRound,
       paths,
-      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
       reasons: missingFinalArtifacts.map((item) => (
         `参与者 ${item.participant.id} 未写入最终立场 artifact：${item.artifactFile}`
       )),
@@ -4770,55 +4770,55 @@ async function runLobsterDebateRound(options: {
   for (const item of finalStanceBatch) {
     const appended = appendTextFileEnsuringDir(
       paths.chatFile,
-      buildLobsterDebateFinalParticipantMarkdown(
+      buildLoopDebateFinalParticipantMarkdown(
         item.participant.id,
         item.participant.title,
         item.artifactText ?? "",
       )
     );
 	    if (!appended) {
-	      await closeCompletedLobsterDebateTabs(debateTabIds);
-	      return markLobsterDebateNeedsReview({
+	      await closeCompletedLoopDebateTabs(debateTabIds);
+	      return markLoopDebateNeedsReview({
         task,
         target,
         round,
         debateRound,
         paths,
-        participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+        participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
         reasons: [`无法追加最终立场到红蓝对抗群聊记录：${paths.chatFile}`],
         status: "error",
       });
     }
-    refreshOpenLobsterDebateChatPanelForTask(task.id);
+    refreshOpenLoopGroupChatPanelForTask(task.id);
   }
   const chatClosed = appendTextFileEnsuringDir(
     paths.chatFile,
-    buildLobsterDebateDialogueClosedMarkdown(
+    buildLoopDebateDialogueClosedMarkdown(
       completedDialogueTurns,
-      LOBSTER_DEBATE_MAX_DIALOGUE_TURNS,
+      LOOP_DEBATE_MAX_DIALOGUE_TURNS,
       finalModeratorDecision
     )
   );
 	  if (!chatClosed) {
-	    await closeCompletedLobsterDebateTabs(debateTabIds);
-	    return markLobsterDebateNeedsReview({
+	    await closeCompletedLoopDebateTabs(debateTabIds);
+	    return markLoopDebateNeedsReview({
       task,
       target,
       round,
       debateRound,
       paths,
-      participants: validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
+      participants: validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions).participants,
       reasons: [`无法写入红蓝对抗群聊收束标记：${paths.chatFile}`],
       status: "error",
     });
   }
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
-  await closeCompletedLobsterDebateTabs(debateTabIds);
-  await switchVisibleConversationTabForLobster(target.tabId);
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  await closeCompletedLoopDebateTabs(debateTabIds);
+  await switchVisibleConversationTabForLoop(target.tabId);
 
-  const participantValidation = validateLobsterDebateParticipantArtifacts(paths, participantRecords, model, debateSessions);
-  upsertLobsterDebateRoundRecord(task.id, {
-    lobsterRound: round,
+  const participantValidation = validateLoopDebateParticipantArtifacts(paths, participantRecords, model, debateSessions);
+  upsertLoopDebateRoundRecord(task.id, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -4830,7 +4830,7 @@ async function runLobsterDebateRound(options: {
   });
 
   if (!participantValidation.valid) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4842,10 +4842,10 @@ async function runLobsterDebateRound(options: {
     });
   }
 
-  appendSystemMessageForLobster(target, buildLobsterDebateParticipantsCollectedText(task.id, round, participantValidation.participants));
+  appendSystemMessageForLoop(target, buildLoopDebateParticipantsCollectedText(task.id, round, participantValidation.participants));
 
   if (finalModeratorDecision.action === "block") {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4857,7 +4857,7 @@ async function runLobsterDebateRound(options: {
     });
   }
 
-  const consensusRun = await runLobsterDebateConsensusSummary({
+  const consensusRun = await runLoopDebateConsensusSummary({
     deps: runnerDeps,
     input,
     target,
@@ -4868,12 +4868,12 @@ async function runLobsterDebateRound(options: {
     participants: participantValidation.participants,
     compactSkillCatalogSection: skillRuntimeContext.compactCatalogSection,
   });
-  await closeCompletedLobsterDebateTabs([consensusRun.tabId]);
-  await switchVisibleConversationTabForLobster(target.tabId);
+  await closeCompletedLoopDebateTabs([consensusRun.tabId]);
+  await switchVisibleConversationTabForLoop(target.tabId);
 
   const crossReviewText = readTextFileIfNonEmpty(paths.crossReviewFile);
   if (!crossReviewText) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4886,23 +4886,23 @@ async function runLobsterDebateRound(options: {
   }
 
   const decisionText = readTextFileIfNonEmpty(paths.decisionFile);
-  const decision = parseLobsterMainDecision(decisionText);
+  const decision = parseLoopMainDecision(decisionText);
   if (!decision) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
       debateRound,
       paths,
       participants: participantValidation.participants,
-      reasons: [`decision.json 缺失或不是合法 LobsterMainDecision JSON：${paths.decisionFile}`],
+      reasons: [`decision.json 缺失或不是合法 LoopMainDecision JSON：${paths.decisionFile}`],
       status: "error",
     });
   }
 
-  const consensus = readLobsterDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
+  const consensus = readLoopDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
   if (!consensus) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4913,10 +4913,10 @@ async function runLobsterDebateRound(options: {
       status: "error",
     });
   }
-  const mergedConsensus = mergeLobsterDebateConsensusWithParticipantArtifacts(consensus, participantValidation.participants, decision);
-  const consensusValidation = validateLobsterDebateConsensus(mergedConsensus);
+  const mergedConsensus = mergeLoopDebateConsensusWithParticipantArtifacts(consensus, participantValidation.participants, decision);
+  const consensusValidation = validateLoopDebateConsensus(mergedConsensus);
   if (!consensusValidation.canProceed) {
-    return markLobsterDebateNeedsReview({
+    return markLoopDebateNeedsReview({
       task,
       target,
       round,
@@ -4929,8 +4929,8 @@ async function runLobsterDebateRound(options: {
     });
   }
 
-  upsertLobsterDebateRoundRecord(task.id, {
-    lobsterRound: round,
+  upsertLoopDebateRoundRecord(task.id, {
+    loopRound: round,
     debateRound,
     status: "consensus",
     startedAt,
@@ -4941,66 +4941,66 @@ async function runLobsterDebateRound(options: {
     participants: participantValidation.participants,
     consensus: mergedConsensus,
   });
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
-  appendSystemMessageForLobster(
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  appendSystemMessageForLoop(
     target,
-    buildLobsterDebateConsensusReachedText(
+    buildLoopDebateConsensusReachedText(
       task.id,
       round,
       decision,
       paths,
-      getLobsterDecisionSubtasks,
-      formatLobsterEstimatedRemainingRounds,
+      getLoopDecisionSubtasks,
+      formatLoopEstimatedRemainingRounds,
     )
   );
-  appendLobsterDebateMainCommunicationLog(task, round, paths, "红蓝对抗共识已形成", [
+  appendLoopDebateMainCommunicationLog(task, round, paths, "红蓝对抗共识已形成", [
     `共识摘要：${mergedConsensus.summary}`,
     `决策状态：${decision.status}`,
     `decision.json：${paths.decisionFile}`,
   ]);
-  return applyLobsterMainDecisionForRun(task.id, decision, skillRuntimeContext);
+  return applyLoopMainDecisionForRun(task.id, decision, skillRuntimeContext);
 }
 
-function resolveLobsterDebateModel(input: PromptRunInput): string | undefined {
+function resolveLoopDebateModel(input: PromptRunInput): string | undefined {
   return input.model;
 }
 
-function getLobsterDebateRunnerDeps(): LobsterDebateRunnerDeps {
+function getLoopDebateRunnerDeps(): LoopDebateRunnerDeps {
   return {
-    appendSystemMessageForLobster,
-    buildLobsterDebateConsensusStartedText,
-    buildLobsterDebateModeratorFinishedText,
-    buildLobsterDebateModeratorStartedText,
-    buildLobsterDebateParticipantFinishedText,
-    buildLobsterDebateParticipantRosterFailedText,
-    buildLobsterDebateParticipantRosterFinishedText,
-    buildLobsterDebateParticipantRosterStartedText,
-    buildLobsterDebateParticipantStartedText,
-    createLobsterSubtaskRunTarget,
+    appendSystemMessageForLoop,
+    buildLoopDebateConsensusStartedText,
+    buildLoopDebateModeratorFinishedText,
+    buildLoopDebateModeratorStartedText,
+    buildLoopDebateParticipantFinishedText,
+    buildLoopDebateParticipantRosterFailedText,
+    buildLoopDebateParticipantRosterFinishedText,
+    buildLoopDebateParticipantRosterStartedText,
+    buildLoopDebateParticipantStartedText,
+    createLoopSubtaskRunTarget,
     errorToMessage,
-    getExistingLobsterDebateRoundStartedAt,
+    getExistingLoopDebateRoundStartedAt,
     logError: (event: string, payload?: unknown) => logError(event, payload),
-    readLobsterDebateModeratorDecisionArtifact,
-    readLobsterDebateParticipantArtifact,
-    readLobsterDebateParticipantRosterArtifact,
-    readLobsterDebateParticipantTurnArtifact,
+    readLoopDebateModeratorDecisionArtifact,
+    readLoopDebateParticipantArtifact,
+    readLoopDebateParticipantRosterArtifact,
+    readLoopDebateParticipantTurnArtifact,
     readTextFileIfNonEmpty,
-    refreshOpenLobsterDebateChatPanelForTask,
+    refreshOpenLoopGroupChatPanelForTask,
     resolvePromptRunTargetSessionId,
     runPrompt,
-    updateLobsterDebateActiveSpeakerRecord,
-    updateLobsterDebateModeratorDecisionRecord,
-    updateLobsterDebateParticipantRecord,
-    updateLobsterDebateParticipantRosterSessionRecord,
+    updateLoopDebateActiveSpeakerRecord,
+    updateLoopDebateModeratorDecisionRecord,
+    updateLoopDebateParticipantRecord,
+    updateLoopDebateParticipantRosterSessionRecord,
   };
 }
 
-function buildLobsterDebateParticipantRecords(
-  paths: LobsterDebatePaths,
+function buildLoopDebateParticipantRecords(
+  paths: LoopDebatePaths,
   model: string | undefined,
-  status: LobsterDebateParticipantRecord["status"],
-  participants: readonly LobsterDebateParticipantDefinition[],
-): LobsterDebateParticipantRecord[] {
+  status: LoopDebateParticipantRecord["status"],
+  participants: readonly LoopDebateParticipantDefinition[],
+): LoopDebateParticipantRecord[] {
   const now = Date.now();
   return participants.map((participant) => ({
     id: participant.id,
@@ -5008,44 +5008,44 @@ function buildLobsterDebateParticipantRecords(
     title: participant.title,
     model: model ?? null,
     status,
-    artifactFile: buildLobsterDebateParticipantArtifactFile(paths, participant.id),
+    artifactFile: buildLoopDebateParticipantArtifactFile(paths, participant.id),
     updatedAt: now,
   }));
 }
 
-function buildLobsterDebateSessionState(
-  task: LobsterTaskRecord,
+function buildLoopDebateSessionState(
+  task: LoopTaskRecord,
   round: number,
   debateRound: number,
-): LobsterDebateSessionState {
+): LoopDebateSessionState {
   const existingRound = task.debateRounds?.find((item) => (
-    item.lobsterRound === round
+    item.loopRound === round
     && item.debateRound === debateRound
   ));
   const participants: Partial<Record<string, string>> = {};
   (existingRound?.participants ?? []).forEach((participant) => {
-    const sessionId = findLatestLobsterDebateParticipantSessionId(existingRound?.participants, participant.id);
+    const sessionId = findLatestLoopDebateParticipantSessionId(existingRound?.participants, participant.id);
     if (sessionId) {
       participants[participant.id] = sessionId;
     }
   });
   return {
     participants,
-    moderator: findLatestLobsterDebateModeratorSessionId(existingRound?.moderatorDecisions)
-      ?? normalizeLobsterDebateSessionId(existingRound?.participantRosterSessionId),
+    moderator: findLatestLoopDebateModeratorSessionId(existingRound?.moderatorDecisions)
+      ?? normalizeLoopDebateSessionId(existingRound?.participantRosterSessionId),
   };
 }
 
-function resolveExistingLobsterDebateParticipantRecords(
-  task: LobsterTaskRecord,
+function resolveExistingLoopDebateParticipantRecords(
+  task: LoopTaskRecord,
   round: number,
   debateRound: number,
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
   model: string | undefined,
-  sessionState?: LobsterDebateSessionState,
-): LobsterDebateParticipantRecord[] {
+  sessionState?: LoopDebateSessionState,
+): LoopDebateParticipantRecord[] {
   const existingRound = task.debateRounds?.find((item) => (
-    item.lobsterRound === round
+    item.loopRound === round
     && item.debateRound === debateRound
   ));
   const existingParticipants = existingRound?.participants?.filter((participant) => (
@@ -5060,25 +5060,25 @@ function resolveExistingLobsterDebateParticipantRecords(
   return existingParticipants.map((participant) => ({
     ...participant,
     model: participant.model ?? model ?? null,
-    artifactFile: participant.artifactFile || buildLobsterDebateParticipantArtifactFile(paths, participant.id),
+    artifactFile: participant.artifactFile || buildLoopDebateParticipantArtifactFile(paths, participant.id),
     sessionId: sessionState?.participants[participant.id] ?? participant.sessionId ?? null,
     updatedAt: typeof participant.updatedAt === "number" ? participant.updatedAt : Date.now(),
   }));
 }
 
-function evaluateReusableLobsterDebateDecision(
-  task: LobsterTaskRecord,
+function evaluateReusableLoopDebateDecision(
+  task: LoopTaskRecord,
   round: number,
   debateRound: number,
-  paths: LobsterDebatePaths,
-  participantRecords: LobsterDebateParticipantRecord[],
-): LobsterDebateReusableDecisionResult {
+  paths: LoopDebatePaths,
+  participantRecords: LoopDebateParticipantRecord[],
+): LoopDebateReusableDecisionResult {
   const decisionText = readTextFileIfNonEmpty(paths.decisionFile);
   if (!decisionText) {
     return { status: "rerun", reasons: [] };
   }
   const chatText = readTextFileIfNonEmpty(paths.chatFile);
-  if (!chatText || !isCompleteLobsterDebateChatTranscript(chatText)) {
+  if (!chatText || !isCompleteLoopDebateChatTranscript(chatText)) {
     return { status: "rerun", reasons: [`已有 decision.json，但缺少完整群聊记录 chat.md，将重跑辩论：${paths.chatFile}`] };
   }
   const crossReviewText = readTextFileIfNonEmpty(paths.crossReviewFile);
@@ -5092,7 +5092,7 @@ function evaluateReusableLobsterDebateDecision(
   if (participantRecords.length === 0) {
     return { status: "rerun", reasons: [`已有 decision.json，但缺少裁判主持人红蓝参与者清单：${paths.participantRosterFile}`] };
   }
-  const participantValidation = validateLobsterDebateParticipantArtifacts(
+  const participantValidation = validateLoopDebateParticipantArtifacts(
     paths,
     participantRecords,
     participantRecords[0]?.model ?? undefined
@@ -5100,17 +5100,17 @@ function evaluateReusableLobsterDebateDecision(
   if (!participantValidation.valid) {
     return { status: "rerun", reasons: participantValidation.reasons };
   }
-  const decision = parseLobsterMainDecision(decisionText);
+  const decision = parseLoopMainDecision(decisionText);
   if (!decision) {
     return { status: "rerun", reasons: [`已有 decision.json 非法，将重跑辩论：${paths.decisionFile}`] };
   }
 
-  const fileConsensus = readLobsterDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
+  const fileConsensus = readLoopDebateConsensusRecord(paths.consensusFile, participantValidation.participants, decision);
   if (!fileConsensus) {
     return { status: "rerun", reasons: [`已有 decision.json，但 consensus.md 不含合法共识 JSON：${paths.consensusFile}`] };
   }
-  const consensus = mergeLobsterDebateConsensusWithParticipantArtifacts(fileConsensus, participantValidation.participants, decision);
-  const consensusValidation = validateLobsterDebateConsensus(consensus);
+  const consensus = mergeLoopDebateConsensusWithParticipantArtifacts(fileConsensus, participantValidation.participants, decision);
+  const consensusValidation = validateLoopDebateConsensus(consensus);
   if (!consensusValidation.canProceed) {
     return {
       status: "needs-review",
@@ -5127,15 +5127,15 @@ function evaluateReusableLobsterDebateDecision(
   };
 }
 
-function validateLobsterDebateParticipantArtifacts(
-  paths: LobsterDebatePaths,
-  participantRecords: readonly LobsterDebateParticipantRecord[],
+function validateLoopDebateParticipantArtifacts(
+  paths: LoopDebatePaths,
+  participantRecords: readonly LoopDebateParticipantRecord[],
   model: string | null | undefined,
-  sessionState?: LobsterDebateSessionState,
-): LobsterDebateParticipantArtifactValidation {
+  sessionState?: LoopDebateSessionState,
+): LoopDebateParticipantArtifactValidation {
   const participants = participantRecords.map((participant) => (
     {
-      ...readLobsterDebateParticipantArtifact(paths, {
+      ...readLoopDebateParticipantArtifact(paths, {
         id: participant.id,
         role: participant.role,
         title: participant.title,
@@ -5160,15 +5160,15 @@ function validateLobsterDebateParticipantArtifacts(
   };
 }
 
-function readLobsterDebateParticipantArtifact(
-  paths: LobsterDebatePaths,
-  participant: LobsterDebateParticipantDefinition,
+function readLoopDebateParticipantArtifact(
+  paths: LoopDebatePaths,
+  participant: LoopDebateParticipantDefinition,
   model: string | undefined,
-): LobsterDebateParticipantRecord {
-  const artifactFile = buildLobsterDebateParticipantArtifactFile(paths, participant.id);
+): LoopDebateParticipantRecord {
+  const artifactFile = buildLoopDebateParticipantArtifactFile(paths, participant.id);
   const content = readTextFileIfNonEmpty(artifactFile);
-  const stance = content ? extractLobsterDebateParticipantStance(content) : null;
-  const status: LobsterDebateParticipantRecord["status"] = content && stance ? "completed" : "error";
+  const stance = content ? extractLoopDebateParticipantStance(content) : null;
+  const status: LoopDebateParticipantRecord["status"] = content && stance ? "completed" : "error";
   return {
     id: participant.id,
     role: participant.role,
@@ -5176,18 +5176,18 @@ function readLobsterDebateParticipantArtifact(
     model: model ?? null,
     status,
     artifactFile,
-    summary: content ? summarizeLobsterDebateArtifact(content) : undefined,
+    summary: content ? summarizeLoopDebateArtifact(content) : undefined,
     stance: stance ?? undefined,
-    blockingIssues: content ? extractLobsterDebateBlockingIssues(content, stance ?? undefined) : undefined,
+    blockingIssues: content ? extractLoopDebateBlockingIssues(content, stance ?? undefined) : undefined,
     updatedAt: Date.now(),
   };
 }
 
-function readLobsterDebateParticipantTurnArtifact(
-  participant: LobsterDebateParticipantDefinition,
+function readLoopDebateParticipantTurnArtifact(
+  participant: LoopDebateParticipantDefinition,
   artifactFile: string,
   model: string | undefined,
-): LobsterDebateParticipantRecord {
+): LoopDebateParticipantRecord {
   const content = readTextFileIfNonEmpty(artifactFile);
   return {
     id: participant.id,
@@ -5196,14 +5196,14 @@ function readLobsterDebateParticipantTurnArtifact(
     model: model ?? null,
     status: content ? "completed" : "error",
     artifactFile,
-    summary: content ? summarizeLobsterDebateArtifact(content) : undefined,
+    summary: content ? summarizeLoopDebateArtifact(content) : undefined,
     updatedAt: Date.now(),
   };
 }
 
-function readLobsterDebateParticipantRosterArtifact(
+function readLoopDebateParticipantRosterArtifact(
   artifactFile: string,
-): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
+): { valid: true; participants: LoopDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
   const content = readTextFileIfNonEmpty(artifactFile);
   if (!content) {
     return { valid: false, reasons: [`裁判主持人红蓝参与者清单 artifact 缺失或为空：${artifactFile}`] };
@@ -5214,16 +5214,16 @@ function readLobsterDebateParticipantRosterArtifact(
   }
   try {
     const parsed = JSON.parse(jsonText);
-    return normalizeLobsterDebateParticipantRosterObject(parsed, artifactFile);
+    return normalizeLoopDebateParticipantRosterObject(parsed, artifactFile);
   } catch (error) {
     return { valid: false, reasons: [`裁判主持人红蓝参与者清单 JSON 无法解析：${errorToMessage(error)}`] };
   }
 }
 
-function normalizeLobsterDebateParticipantRosterObject(
+function normalizeLoopDebateParticipantRosterObject(
   value: unknown,
   artifactFile: string,
-): { valid: true; participants: LobsterDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
+): { valid: true; participants: LoopDebateParticipantDefinition[]; summary: string; openingSpeakerIds: string[] } | { valid: false; reasons: string[] } {
   const reasons: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { valid: false, reasons: ["裁判主持人红蓝参与者清单必须是 JSON 对象。"] };
@@ -5251,13 +5251,13 @@ function normalizeLobsterDebateParticipantRosterObject(
     reasons.push("裁判主持人红蓝参与者清单 JSON 必须包含 participants 数组。");
     return { valid: false, reasons };
   }
-  if (raw.participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS || raw.participants.length > LOBSTER_DEBATE_MAX_PARTICIPANTS) {
-    reasons.push(`裁判主持人红蓝参与者数量必须在 ${LOBSTER_DEBATE_MIN_PARTICIPANTS}-${LOBSTER_DEBATE_MAX_PARTICIPANTS} 个之间。`);
+  if (raw.participants.length < LOOP_DEBATE_MIN_PARTICIPANTS || raw.participants.length > LOOP_DEBATE_MAX_PARTICIPANTS) {
+    reasons.push(`裁判主持人红蓝参与者数量必须在 ${LOOP_DEBATE_MIN_PARTICIPANTS}-${LOOP_DEBATE_MAX_PARTICIPANTS} 个之间。`);
   }
 
   const ids = new Set<string>();
   const participants = raw.participants
-    .map((item, index): LobsterDebateParticipantDefinition | null => {
+    .map((item, index): LoopDebateParticipantDefinition | null => {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
         reasons.push(`第 ${index + 1} 个参与者必须是对象。`);
         return null;
@@ -5271,11 +5271,11 @@ function normalizeLobsterDebateParticipantRosterObject(
       const id = typeof participant.id === "string" ? participant.id.trim() : "";
       const title = typeof participant.title === "string" ? participant.title.trim() : "";
       const focus = typeof participant.focus === "string" ? participant.focus.trim() : "";
-      const role = normalizeLobsterDebateParticipantRole(participant.role);
+      const role = normalizeLoopDebateParticipantRole(participant.role);
       if (!id || !/^[a-z0-9][a-z0-9_.-]{1,48}$/u.test(id)) {
         reasons.push(`第 ${index + 1} 个参与者 id 非法：${id || "<empty>"}`);
       }
-      if (id === LOBSTER_DEBATE_MODERATOR_ID || id === "consensus") {
+      if (id === LOOP_DEBATE_MODERATOR_ID || id === "consensus") {
         reasons.push(`参与者 id 不能使用保留值：${id}`);
       }
       if (id && ids.has(id)) {
@@ -5286,8 +5286,8 @@ function normalizeLobsterDebateParticipantRosterObject(
       }
       if (!role) {
         reasons.push(`参与者 ${id || index + 1} role 非法。`);
-      } else if (!isLobsterDebateAdversarialParticipantRole(role)) {
-        reasons.push(`参与者 ${id || index + 1} role 必须是 ${LOBSTER_DEBATE_BLUE_TEAM_ROLE} 或 ${LOBSTER_DEBATE_RED_TEAM_ROLE}；${role} 仅用于兼容旧任务记录，不允许新辩论清单使用。`);
+      } else if (!isLoopDebateAdversarialParticipantRole(role)) {
+        reasons.push(`参与者 ${id || index + 1} role 必须是 ${LOOP_DEBATE_BLUE_TEAM_ROLE} 或 ${LOOP_DEBATE_RED_TEAM_ROLE}；${role} 仅用于兼容旧任务记录，不允许新辩论清单使用。`);
       }
       if (!title) {
         reasons.push(`参与者 ${id || index + 1} title 不能为空。`);
@@ -5300,26 +5300,26 @@ function normalizeLobsterDebateParticipantRosterObject(
       }
       return { id, role, title, focus };
     })
-    .filter((participant): participant is LobsterDebateParticipantDefinition => Boolean(participant));
+    .filter((participant): participant is LoopDebateParticipantDefinition => Boolean(participant));
 
-  if (participants.length < LOBSTER_DEBATE_MIN_PARTICIPANTS) {
-    reasons.push(`可用参与者不足 ${LOBSTER_DEBATE_MIN_PARTICIPANTS} 个。`);
+  if (participants.length < LOOP_DEBATE_MIN_PARTICIPANTS) {
+    reasons.push(`可用参与者不足 ${LOOP_DEBATE_MIN_PARTICIPANTS} 个。`);
   }
-  const hasBlueTeam = participants.some((participant) => participant.role === LOBSTER_DEBATE_BLUE_TEAM_ROLE);
-  const hasRedTeam = participants.some((participant) => participant.role === LOBSTER_DEBATE_RED_TEAM_ROLE);
+  const hasBlueTeam = participants.some((participant) => participant.role === LOOP_DEBATE_BLUE_TEAM_ROLE);
+  const hasRedTeam = participants.some((participant) => participant.role === LOOP_DEBATE_RED_TEAM_ROLE);
   if (!hasBlueTeam) {
-    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个蓝队参与者（role=${LOBSTER_DEBATE_BLUE_TEAM_ROLE}）。`);
+    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个蓝队参与者（role=${LOOP_DEBATE_BLUE_TEAM_ROLE}）。`);
   }
   if (!hasRedTeam) {
-    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个红队参与者（role=${LOBSTER_DEBATE_RED_TEAM_ROLE}）。`);
+    reasons.push(`裁判主持人红蓝参与者清单必须至少包含 1 个红队参与者（role=${LOOP_DEBATE_RED_TEAM_ROLE}）。`);
   }
   if (reasons.length > 0) {
     return { valid: false, reasons };
   }
-  const openingSpeakerIds = normalizeLobsterDebateSpeakerIds(
+  const openingSpeakerIds = normalizeLoopDebateSpeakerIds(
     Array.isArray(raw.openingSpeakerIds) ? raw.openingSpeakerIds : raw.initialSpeakerIds,
     participants.map((participant) => participant.id),
-    LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+    LOOP_DEBATE_MAX_BATCH_SPEAKERS,
   );
   return {
     valid: true,
@@ -5327,25 +5327,25 @@ function normalizeLobsterDebateParticipantRosterObject(
     summary,
     openingSpeakerIds: openingSpeakerIds.length > 0
       ? openingSpeakerIds
-      : selectDefaultLobsterDebateOpeningSpeakerIds(participants),
+      : selectDefaultLoopDebateOpeningSpeakerIds(participants),
   };
 }
 
-function normalizeLobsterDebateParticipantRole(value: unknown): LobsterDebateParticipantRole | null {
+function normalizeLoopDebateParticipantRole(value: unknown): LoopDebateParticipantRole | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim();
-  return LOBSTER_DEBATE_PARTICIPANT_ROLES.some((role) => role === normalized)
-    ? normalized as LobsterDebateParticipantRole
+  return LOOP_DEBATE_PARTICIPANT_ROLES.some((role) => role === normalized)
+    ? normalized as LoopDebateParticipantRole
     : null;
 }
 
-function readLobsterDebateModeratorDecisionArtifact(
+function readLoopDebateModeratorDecisionArtifact(
   artifactFile: string,
   dialogueTurn: number,
   allowedSpeakerIds: readonly string[] = [],
-): LobsterDebateModeratorDecisionRecord | null {
+): LoopDebateModeratorDecisionRecord | null {
   const content = readTextFileIfNonEmpty(artifactFile);
   if (!content) {
     return null;
@@ -5354,7 +5354,7 @@ function readLobsterDebateModeratorDecisionArtifact(
   if (jsonText) {
     try {
       const parsed = JSON.parse(jsonText);
-      const decision = normalizeLobsterDebateModeratorDecisionObject(parsed, artifactFile, dialogueTurn, allowedSpeakerIds);
+      const decision = normalizeLoopDebateModeratorDecisionObject(parsed, artifactFile, dialogueTurn, allowedSpeakerIds);
       if (decision) {
         if (decision.action === "continue" && decision.nextSpeakerIds.length === 0) {
           return null;
@@ -5367,31 +5367,31 @@ function readLobsterDebateModeratorDecisionArtifact(
   }
 
   const decisionSection = extractMarkdownSection(content, "主持人决策") ?? content.slice(0, 1600);
-  const action = extractLobsterDebateModeratorAction(decisionSection);
+  const action = extractLoopDebateModeratorAction(decisionSection);
   if (!action) {
     return null;
   }
   const reason = extractMarkdownSection(content, "理由")
     ?? extractMarkdownSection(content, "主持人理由")
     ?? extractMarkdownSection(content, "收束或继续理由")
-    ?? summarizeLobsterDebateArtifact(content);
+    ?? summarizeLoopDebateArtifact(content);
   return {
     artifactFile,
     dialogueTurn,
     action,
     reason: reason.trim() || "裁判主持人未提供理由。",
-    nextSpeakerIds: extractLobsterDebateModeratorNextSpeakerIds(content, allowedSpeakerIds),
-    nextFocus: extractLobsterDebateModeratorNextFocus(content),
+    nextSpeakerIds: extractLoopDebateModeratorNextSpeakerIds(content, allowedSpeakerIds),
+    nextFocus: extractLoopDebateModeratorNextFocus(content),
     updatedAt: Date.now(),
   };
 }
 
-function normalizeLobsterDebateModeratorDecisionObject(
+function normalizeLoopDebateModeratorDecisionObject(
   value: unknown,
   artifactFile: string,
   dialogueTurn: number,
   allowedSpeakerIds: readonly string[] = [],
-): LobsterDebateModeratorDecisionRecord | null {
+): LoopDebateModeratorDecisionRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -5403,7 +5403,7 @@ function normalizeLobsterDebateModeratorDecisionObject(
     nextFocus?: unknown;
     nextFocusQuestions?: unknown;
   };
-  const action = extractLobsterDebateModeratorAction(raw.action);
+  const action = extractLoopDebateModeratorAction(raw.action);
   if (!action) {
     return null;
   }
@@ -5417,12 +5417,12 @@ function normalizeLobsterDebateModeratorDecisionObject(
       .map((item) => item.trim())
       .slice(0, 8)
     : [];
-  const nextSpeakerIds = normalizeLobsterDebateSpeakerIds(
+  const nextSpeakerIds = normalizeLoopDebateSpeakerIds(
     (value as { nextSpeakerIds?: unknown; nextSpeakers?: unknown; nextParticipants?: unknown }).nextSpeakerIds
       ?? (value as { nextSpeakers?: unknown }).nextSpeakers
       ?? (value as { nextParticipants?: unknown }).nextParticipants,
     allowedSpeakerIds,
-    LOBSTER_DEBATE_MAX_BATCH_SPEAKERS,
+    LOOP_DEBATE_MAX_BATCH_SPEAKERS,
   );
   return {
     artifactFile: typeof raw.artifactFile === "string" && raw.artifactFile.trim()
@@ -5439,13 +5439,13 @@ function normalizeLobsterDebateModeratorDecisionObject(
   };
 }
 
-function extractLobsterDebateModeratorAction(value: unknown): LobsterDebateModeratorDecisionRecord["action"] | null {
+function extractLoopDebateModeratorAction(value: unknown): LoopDebateModeratorDecisionRecord["action"] | null {
   if (typeof value !== "string") {
     return null;
   }
   const explicit = value.match(/\b(continue|finalize|block)\b/i)?.[1];
   if (explicit) {
-    return normalizeLobsterDebateModeratorAction(explicit);
+    return normalizeLoopDebateModeratorAction(explicit);
   }
   if (/阻塞|人工复核|无法继续|不能继续/u.test(value)) {
     return "block";
@@ -5459,7 +5459,7 @@ function extractLobsterDebateModeratorAction(value: unknown): LobsterDebateModer
   return null;
 }
 
-function extractLobsterDebateModeratorNextFocus(content: string): string[] {
+function extractLoopDebateModeratorNextFocus(content: string): string[] {
   const section = extractMarkdownSection(content, "下一轮关注点")
     ?? extractMarkdownSection(content, "继续关注点")
     ?? "";
@@ -5470,7 +5470,7 @@ function extractLobsterDebateModeratorNextFocus(content: string): string[] {
     .slice(0, 8);
 }
 
-function extractLobsterDebateModeratorNextSpeakerIds(
+function extractLoopDebateModeratorNextSpeakerIds(
   content: string,
   allowedSpeakerIds: readonly string[],
 ): string[] {
@@ -5485,14 +5485,14 @@ function extractLobsterDebateModeratorNextSpeakerIds(
     .map((line) => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "").trim())
     .filter(Boolean)
     .flatMap((line) => line.split(/[，,、；;]/g).map((item) => item.trim()).filter(Boolean));
-  return normalizeLobsterDebateSpeakerIds(items, allowedSpeakerIds, LOBSTER_DEBATE_MAX_BATCH_SPEAKERS);
+  return normalizeLoopDebateSpeakerIds(items, allowedSpeakerIds, LOOP_DEBATE_MAX_BATCH_SPEAKERS);
 }
 
-function extractLobsterDebateParticipantStance(content: string): LobsterDebateParticipantStance | null {
+function extractLoopDebateParticipantStance(content: string): LoopDebateParticipantStance | null {
   const stanceSection = extractMarkdownSection(content, "立场") ?? content.slice(0, 1200);
   const explicit = stanceSection.match(/\b(agree_with_reservations|agree|block)\b/i)?.[1];
   if (explicit) {
-    return normalizeLobsterDebateParticipantStance(explicit);
+    return normalizeLoopDebateParticipantStance(explicit);
   }
   if (/阻塞|不同意|不能继续/u.test(stanceSection)) {
     return "block";
@@ -5506,9 +5506,9 @@ function extractLobsterDebateParticipantStance(content: string): LobsterDebatePa
   return null;
 }
 
-function extractLobsterDebateBlockingIssues(
+function extractLoopDebateBlockingIssues(
   content: string,
-  stance: LobsterDebateParticipantStance | undefined,
+  stance: LoopDebateParticipantStance | undefined,
 ): string[] | undefined {
   const section = extractMarkdownSection(content, "阻塞性异议");
   if (!section) {
@@ -5533,25 +5533,25 @@ function extractMarkdownSection(content: string, title: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function summarizeLobsterDebateArtifact(content: string): string {
+function summarizeLoopDebateArtifact(content: string): string {
   const normalized = content.trim().replace(/\s+/g, " ");
-  return normalized.length > LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT
-    ? `${normalized.slice(0, LOBSTER_DEBATE_ARTIFACT_SUMMARY_LIMIT)}...`
+  return normalized.length > LOOP_DEBATE_ARTIFACT_SUMMARY_LIMIT
+    ? `${normalized.slice(0, LOOP_DEBATE_ARTIFACT_SUMMARY_LIMIT)}...`
     : normalized;
 }
 
-function isCompleteLobsterDebateChatTranscript(content: string): boolean {
+function isCompleteLoopDebateChatTranscript(content: string): boolean {
   return /##\s*群聊收束/u.test(content)
     && /##\s*参与者加入：/u.test(content)
     && /(?:【裁判主持人】|裁判主持人|主持人)最终动作：(?:continue|finalize|block)/u.test(content)
     && /##\s*(?:第\s+\d+\s+轮)?主持人控场/u.test(content);
 }
 
-function readLobsterDebateConsensusRecord(
+function readLoopDebateConsensusRecord(
   consensusFile: string,
-  participants: LobsterDebateParticipantRecord[],
-  decision: LobsterMainDecision,
-): LobsterDebateConsensusRecord<LobsterMainDecision> | null {
+  participants: LoopDebateParticipantRecord[],
+  decision: LoopMainDecision,
+): LoopDebateConsensusRecord<LoopMainDecision> | null {
   const content = readTextFileIfNonEmpty(consensusFile);
   if (!content) {
     return null;
@@ -5562,18 +5562,18 @@ function readLobsterDebateConsensusRecord(
   }
   try {
     const parsed = JSON.parse(jsonText);
-    return normalizeLobsterDebateConsensusRecord(parsed, consensusFile, participants, decision);
+    return normalizeLoopDebateConsensusRecord(parsed, consensusFile, participants, decision);
   } catch {
     return null;
   }
 }
 
-function normalizeLobsterDebateConsensusRecord(
+function normalizeLoopDebateConsensusRecord(
   value: unknown,
   artifactFile: string,
-  participants: LobsterDebateParticipantRecord[],
-  decision: LobsterMainDecision,
-): LobsterDebateConsensusRecord<LobsterMainDecision> | null {
+  participants: LoopDebateParticipantRecord[],
+  decision: LoopMainDecision,
+): LoopDebateConsensusRecord<LoopMainDecision> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -5593,9 +5593,9 @@ function normalizeLobsterDebateConsensusRecord(
     || !raw.artifactFile.trim()
     || typeof raw.reached !== "boolean"
     || !summary
-    || !hasValidLobsterDebateConsensusStanceRecords(raw.participantStances)
-    || !hasValidLobsterDebateDisagreementRecords(raw.resolvedDisagreements)
-    || !hasValidLobsterDebateDisagreementRecords(raw.openDisagreements)
+    || !hasValidLoopDebateConsensusStanceRecords(raw.participantStances)
+    || !hasValidLoopDebateDisagreementRecords(raw.resolvedDisagreements)
+    || !hasValidLoopDebateDisagreementRecords(raw.openDisagreements)
   ) {
     return null;
   }
@@ -5603,14 +5603,14 @@ function normalizeLobsterDebateConsensusRecord(
     artifactFile: raw.artifactFile.trim() || artifactFile,
     reached: raw.reached === true,
     summary,
-    participantStances: normalizeLobsterDebateConsensusStances(raw.participantStances, participants),
-    resolvedDisagreements: normalizeLobsterDebateDisagreements(raw.resolvedDisagreements),
-    openDisagreements: normalizeLobsterDebateDisagreements(raw.openDisagreements),
+    participantStances: normalizeLoopDebateConsensusStances(raw.participantStances, participants),
+    resolvedDisagreements: normalizeLoopDebateDisagreements(raw.resolvedDisagreements),
+    openDisagreements: normalizeLoopDebateDisagreements(raw.openDisagreements),
     decision,
   };
 }
 
-function hasValidLobsterDebateConsensusStanceRecords(value: unknown): boolean {
+function hasValidLoopDebateConsensusStanceRecords(value: unknown): boolean {
   if (!Array.isArray(value) || value.length === 0) {
     return false;
   }
@@ -5622,16 +5622,16 @@ function hasValidLobsterDebateConsensusStanceRecords(value: unknown): boolean {
     return (
       typeof raw.participantId === "string"
       && Boolean(raw.participantId.trim())
-      && Boolean(normalizeLobsterDebateParticipantStance(raw.stance))
+      && Boolean(normalizeLoopDebateParticipantStance(raw.stance))
     );
   });
 }
 
-function normalizeLobsterDebateConsensusStances(
+function normalizeLoopDebateConsensusStances(
   value: unknown,
-  participants: LobsterDebateParticipantRecord[],
-): LobsterDebateConsensusRecord<LobsterMainDecision>["participantStances"] {
-  const stances = new Map<string, { participantId: string; stance: LobsterDebateParticipantStance; note?: string }>();
+  participants: LoopDebateParticipantRecord[],
+): LoopDebateConsensusRecord<LoopMainDecision>["participantStances"] {
+  const stances = new Map<string, { participantId: string; stance: LoopDebateParticipantStance; note?: string }>();
   if (Array.isArray(value)) {
     value.forEach((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -5641,7 +5641,7 @@ function normalizeLobsterDebateConsensusStances(
       const participantId = typeof raw.participantId === "string" && raw.participantId.trim()
         ? raw.participantId.trim()
         : "";
-      const stance = normalizeLobsterDebateParticipantStance(raw.stance);
+      const stance = normalizeLoopDebateParticipantStance(raw.stance);
       if (!participantId || !stance) {
         return;
       }
@@ -5665,7 +5665,7 @@ function normalizeLobsterDebateConsensusStances(
   return Array.from(stances.values());
 }
 
-function hasValidLobsterDebateDisagreementRecords(value: unknown): boolean {
+function hasValidLoopDebateDisagreementRecords(value: unknown): boolean {
   if (!Array.isArray(value)) {
     return false;
   }
@@ -5693,12 +5693,12 @@ function hasValidLobsterDebateDisagreementRecords(value: unknown): boolean {
   });
 }
 
-function normalizeLobsterDebateDisagreements(value: unknown): LobsterDebateDisagreementRecord[] {
+function normalizeLoopDebateDisagreements(value: unknown): LoopDebateDisagreementRecord[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
-    .map((item, index): LobsterDebateDisagreementRecord | null => {
+    .map((item, index): LoopDebateDisagreementRecord | null => {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
         return null;
       }
@@ -5726,37 +5726,37 @@ function normalizeLobsterDebateDisagreements(value: unknown): LobsterDebateDisag
         resolution: typeof raw.resolution === "string" ? raw.resolution : undefined,
       };
     })
-    .filter((item): item is LobsterDebateDisagreementRecord => Boolean(item));
+    .filter((item): item is LoopDebateDisagreementRecord => Boolean(item));
 }
 
-function mergeLobsterDebateConsensusWithParticipantArtifacts(
-  consensus: LobsterDebateConsensusRecord<LobsterMainDecision>,
-  participants: LobsterDebateParticipantRecord[],
-  decision: LobsterMainDecision,
-): LobsterDebateConsensusRecord<LobsterMainDecision> {
+function mergeLoopDebateConsensusWithParticipantArtifacts(
+  consensus: LoopDebateConsensusRecord<LoopMainDecision>,
+  participants: LoopDebateParticipantRecord[],
+  decision: LoopMainDecision,
+): LoopDebateConsensusRecord<LoopMainDecision> {
   return {
     ...consensus,
-    participantStances: normalizeLobsterDebateConsensusStances(consensus.participantStances, participants),
+    participantStances: normalizeLoopDebateConsensusStances(consensus.participantStances, participants),
     decision,
   };
 }
 
-function markLobsterDebateNeedsReview(options: {
-  task: LobsterTaskRecord;
+function markLoopDebateNeedsReview(options: {
+  task: LoopTaskRecord;
   target: PromptRunTarget;
   round: number;
   debateRound: number;
-  paths: LobsterDebatePaths;
-  participants: LobsterDebateParticipantRecord[];
+  paths: LoopDebatePaths;
+  participants: LoopDebateParticipantRecord[];
   reasons: string[];
-  consensus?: LobsterDebateConsensusRecord<LobsterMainDecision>;
-  status: Exclude<LobsterDebateRoundStatus, "running" | "consensus">;
-}): LobsterMainDecisionRunResult {
+  consensus?: LoopDebateConsensusRecord<LoopMainDecision>;
+  status: Exclude<LoopDebateRoundStatus, "running" | "consensus">;
+}): LoopMainDecisionRunResult {
   const { task, target, round, debateRound, paths, participants, reasons, consensus, status } = options;
-  const reviewSummary = buildLobsterDebateNeedsReviewSummary({ reasons, consensus });
-  const startedAt = getExistingLobsterDebateRoundStartedAt(task, round, debateRound) ?? Date.now();
-  upsertLobsterDebateRoundRecord(task.id, {
-    lobsterRound: round,
+  const reviewSummary = buildLoopDebateNeedsReviewSummary({ reasons, consensus });
+  const startedAt = getExistingLoopDebateRoundStartedAt(task, round, debateRound) ?? Date.now();
+  upsertLoopDebateRoundRecord(task.id, {
+    loopRound: round,
     debateRound,
     status,
     startedAt,
@@ -5767,7 +5767,7 @@ function markLobsterDebateNeedsReview(options: {
     participants,
     consensus,
   });
-  const failedRecord = updateLobsterTaskRecord(task.id, {
+  const failedRecord = updateLoopTaskRecord(task.id, {
     status: "needs-review",
     activeSubtaskId: null,
     activeSubtaskIds: [],
@@ -5777,9 +5777,9 @@ function markLobsterDebateNeedsReview(options: {
       ? { estimatedRemainingRounds: reviewSummary.estimatedRemainingRounds }
       : {}),
   }) ?? task;
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
-  appendSystemMessageForLobster(target, buildLobsterDebateNeedsReviewText(task.id, round, reviewSummary, paths));
-  appendLobsterDebateMainCommunicationLog(failedRecord, round, paths, reviewSummary.title, [
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  appendSystemMessageForLoop(target, buildLoopDebateNeedsReviewText(task.id, round, reviewSummary, paths));
+  appendLoopDebateMainCommunicationLog(failedRecord, round, paths, reviewSummary.title, [
     ...reviewSummary.details,
     ...(consensus ? [`consensus.md：${paths.consensusFile}`] : []),
     ...(consensus?.decision ? [`decision.json：${paths.decisionFile}`] : []),
@@ -5787,26 +5787,26 @@ function markLobsterDebateNeedsReview(options: {
   return { status: "needs-review", task: failedRecord };
 }
 
-function getExistingLobsterDebateRoundStartedAt(
-  task: LobsterTaskRecord,
+function getExistingLoopDebateRoundStartedAt(
+  task: LoopTaskRecord,
   round: number,
   debateRound: number,
 ): number | null {
-  const record = task.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const record = task.debateRounds?.find((item) => item.loopRound === round && item.debateRound === debateRound);
   return typeof record?.startedAt === "number" ? record.startedAt : null;
 }
 
-function upsertLobsterDebateRoundRecord(
+function upsertLoopDebateRoundRecord(
   taskId: string,
-  roundRecord: LobsterDebateRoundRecord<LobsterMainDecision>,
+  roundRecord: LoopDebateRoundRecord<LoopMainDecision>,
 ): void {
-  const latest = readLobsterTaskRecord(taskId);
+  const latest = readLoopTaskRecord(taskId);
   if (!latest) {
     return;
   }
   const debateRounds = Array.isArray(latest.debateRounds) ? [...latest.debateRounds] : [];
   const existingIndex = debateRounds.findIndex((item) => (
-    item.lobsterRound === roundRecord.lobsterRound
+    item.loopRound === roundRecord.loopRound
     && item.debateRound === roundRecord.debateRound
   ));
 	  if (existingIndex >= 0) {
@@ -5822,24 +5822,24 @@ function upsertLobsterDebateRoundRecord(
   } else {
     debateRounds.push(roundRecord);
   }
-  updateLobsterTaskRecord(taskId, {
+  updateLoopTaskRecord(taskId, {
     debateRounds,
     updatedAt: Date.now(),
   });
 }
 
-function updateLobsterDebateParticipantRecord(
+function updateLoopDebateParticipantRecord(
   taskId: string,
   round: number,
   debateRound: number,
-  participant: LobsterDebateParticipantRecord,
+  participant: LoopDebateParticipantRecord,
   startedAt: number,
   briefFile: string,
   chatFile: string,
-  activeSpeaker?: LobsterDebateActiveSpeakerRecord,
+  activeSpeaker?: LoopDebateActiveSpeakerRecord,
 ): void {
-  const latest = readLobsterTaskRecord(taskId);
-  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const latest = readLoopTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.loopRound === round && item.debateRound === debateRound);
   const participants = existingRound?.participants?.length
     ? [...existingRound.participants]
     : [];
@@ -5849,8 +5849,8 @@ function updateLobsterDebateParticipantRecord(
   } else {
     participants.push(participant);
   }
-	  upsertLobsterDebateRoundRecord(taskId, {
-	    lobsterRound: round,
+	  upsertLoopDebateRoundRecord(taskId, {
+	    loopRound: round,
 	    debateRound,
 	    status: "running",
     startedAt,
@@ -5862,21 +5862,21 @@ function updateLobsterDebateParticipantRecord(
   });
 }
 
-function updateLobsterDebateActiveSpeakerRecord(
+function updateLoopDebateActiveSpeakerRecord(
   taskId: string,
   round: number,
   debateRound: number,
   startedAt: number,
-  paths: LobsterDebatePaths,
-  activeSpeaker: LobsterDebateActiveSpeakerRecord,
+  paths: LoopDebatePaths,
+  activeSpeaker: LoopDebateActiveSpeakerRecord,
 ): void {
-  const latest = readLobsterTaskRecord(taskId);
-  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const latest = readLoopTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.loopRound === round && item.debateRound === debateRound);
   const participants = existingRound?.participants?.length
     ? [...existingRound.participants]
     : [];
-  upsertLobsterDebateRoundRecord(taskId, {
-    lobsterRound: round,
+  upsertLoopDebateRoundRecord(taskId, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -5888,21 +5888,21 @@ function updateLobsterDebateActiveSpeakerRecord(
     moderatorDecisions: existingRound?.moderatorDecisions,
     activeSpeaker,
   });
-  refreshOpenLobsterDebateChatPanelForTask(taskId);
+  refreshOpenLoopGroupChatPanelForTask(taskId);
 }
 
-function updateLobsterDebateParticipantRosterSessionRecord(
+function updateLoopDebateParticipantRosterSessionRecord(
   taskId: string,
   round: number,
   debateRound: number,
   sessionId: string | null,
   startedAt: number,
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
 ): void {
-  const latest = readLobsterTaskRecord(taskId);
-  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
-  upsertLobsterDebateRoundRecord(taskId, {
-    lobsterRound: round,
+  const latest = readLoopTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.loopRound === round && item.debateRound === debateRound);
+  upsertLoopDebateRoundRecord(taskId, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -5917,16 +5917,16 @@ function updateLobsterDebateParticipantRosterSessionRecord(
   });
 }
 
-function updateLobsterDebateModeratorDecisionRecord(
+function updateLoopDebateModeratorDecisionRecord(
   taskId: string,
   round: number,
   debateRound: number,
-  decision: LobsterDebateModeratorDecisionRecord,
+  decision: LoopDebateModeratorDecisionRecord,
   startedAt: number,
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
 ): void {
-  const latest = readLobsterTaskRecord(taskId);
-  const existingRound = latest?.debateRounds?.find((item) => item.lobsterRound === round && item.debateRound === debateRound);
+  const latest = readLoopTaskRecord(taskId);
+  const existingRound = latest?.debateRounds?.find((item) => item.loopRound === round && item.debateRound === debateRound);
   const participants = existingRound?.participants?.length
     ? [...existingRound.participants]
     : [];
@@ -5939,8 +5939,8 @@ function updateLobsterDebateModeratorDecisionRecord(
   } else {
     moderatorDecisions.push(decision);
   }
-  upsertLobsterDebateRoundRecord(taskId, {
-    lobsterRound: round,
+  upsertLoopDebateRoundRecord(taskId, {
+    loopRound: round,
     debateRound,
     status: "running",
     startedAt,
@@ -5953,17 +5953,17 @@ function updateLobsterDebateModeratorDecisionRecord(
   });
 }
 
-function buildLobsterDebateSpeakerBatch(participants: readonly LobsterDebateParticipantDefinition[], speakerIds: readonly string[]): LobsterDebateSpeakerBatch {
+function buildLoopDebateSpeakerBatch(participants: readonly LoopDebateParticipantDefinition[], speakerIds: readonly string[]): LoopDebateSpeakerBatch {
   const participantById = new Map(participants.map((participant) => [participant.id, participant] as const));
   const normalizedSpeakerIds = speakerIds
     .filter((speakerId): speakerId is string => typeof speakerId === "string" && Boolean(speakerId.trim()))
     .map((speakerId) => speakerId.trim())
     .filter((speakerId, index, list) => list.indexOf(speakerId) === index)
-    .slice(0, LOBSTER_DEBATE_MAX_BATCH_SPEAKERS)
+    .slice(0, LOOP_DEBATE_MAX_BATCH_SPEAKERS)
     .filter((speakerId) => participantById.has(speakerId));
   const speakers = normalizedSpeakerIds
     .map((speakerId) => participantById.get(speakerId))
-    .filter((participant): participant is LobsterDebateParticipantDefinition => Boolean(participant));
+    .filter((participant): participant is LoopDebateParticipantDefinition => Boolean(participant));
   return {
     speakerIds: normalizedSpeakerIds,
     speakers,
@@ -6005,8 +6005,8 @@ function appendTextFileEnsuringDir(filePath: string, content: string): boolean {
   }
 }
 
-async function closeCompletedLobsterDebateTabs(tabIds: string[]): Promise<void> {
-  if (!getGlobalLobsterAutoCloseSubtaskTabs()) {
+async function closeCompletedLoopDebateTabs(tabIds: string[]): Promise<void> {
+  if (!getGlobalLoopAutoCloseSubtaskTabs()) {
     return;
   }
   for (const tabId of tabIds) {
@@ -6016,10 +6016,10 @@ async function closeCompletedLobsterDebateTabs(tabIds: string[]): Promise<void> 
   }
 }
 
-function appendLobsterDebateMainCommunicationLog(
-  task: LobsterTaskRecord,
+function appendLoopDebateMainCommunicationLog(
+  task: LoopTaskRecord,
   round: number,
-  paths: LobsterDebatePaths,
+  paths: LoopDebatePaths,
   title: string,
   details: string[],
 ): void {
@@ -6036,7 +6036,7 @@ function appendLobsterDebateMainCommunicationLog(
     ];
     fs.appendFileSync(task.mainCommunicationFile, `${lines.join("\n")}\n`, "utf8");
   } catch (error) {
-    void logError("lobster-debate-main-communication-write-error", {
+    void logError("loop-debate-main-communication-write-error", {
       taskId: task.id,
       filePath: task.mainCommunicationFile,
       error: String(error),
@@ -6044,7 +6044,7 @@ function appendLobsterDebateMainCommunicationLog(
   }
 }
 
-function appendLobsterSupplementalRequirement(
+function appendLoopSupplementalRequirement(
   existing: readonly string[] | undefined,
   nextItem: string,
 ): string[] {
@@ -6054,8 +6054,8 @@ function appendLobsterSupplementalRequirement(
   return [...normalizedExisting, nextItem];
 }
 
-function appendLobsterSupplementalRequirementToCommunication(
-  task: LobsterTaskRecord,
+function appendLoopSupplementalRequirementToCommunication(
+  task: LoopTaskRecord,
   requirement: string,
 ): void {
   const body = [
@@ -6067,30 +6067,30 @@ function appendLobsterSupplementalRequirementToCommunication(
     fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
     fs.appendFileSync(task.mainCommunicationFile, `\n## 补充需求\n${body}\n`, "utf8");
   } catch (error) {
-    void logError("lobster-supplemental-requirement-write-error", {
+    void logError("loop-supplemental-requirement-write-error", {
       taskId: task.id,
       filePath: task.mainCommunicationFile,
       error: String(error),
     });
   }
-  appendLobsterMainSubChatSection(task, "补充需求", body);
+  appendLoopMainSubChatSection(task, "补充需求", body);
 }
 
-function appendLobsterMainSubChatTaskEvent(task: LobsterTaskRecord, body: string): void {
-  appendLobsterMainSubChatSection(task, "任务事件", body);
+function appendLoopMainSubChatTaskEvent(task: LoopTaskRecord, body: string): void {
+  appendLoopMainSubChatSection(task, "任务事件", body);
 }
 
-function appendLobsterMainSubChatMainDecision(
-  task: LobsterTaskRecord,
-  decision: LobsterMainDecision,
-  subtasks: LobsterSubtaskRecord[] = [],
+function appendLoopMainSubChatMainDecision(
+  task: LoopTaskRecord,
+  decision: LoopMainDecision,
+  subtasks: LoopSubtaskRecord[] = [],
 ): void {
   const round = Math.max(1, task.currentRound || 1);
   const bodyLines = [
     `- 时间：${new Date().toISOString()}`,
     `- 决策状态：${decision.status}`,
   ];
-  const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+  const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
   if (remainingRounds) {
     bodyLines.push(`- 预计剩余轮次：${remainingRounds}`);
   }
@@ -6104,13 +6104,13 @@ function appendLobsterMainSubChatMainDecision(
     bodyLines.push("");
     bodyLines.push("### 派发子任务");
     subtasks.forEach((subtask, index) => {
-      bodyLines.push(`- ${getLobsterSubtaskDisplayTitle(index, subtask)}（${subtask.id}）：${subtask.status}`);
+      bodyLines.push(`- ${getLoopSubtaskDisplayTitle(index, subtask)}（${subtask.id}）：${subtask.status}`);
     });
   }
   if (decision.status === "completed") {
     bodyLines.push("");
     bodyLines.push("### 问题回答结论");
-    bodyLines.push(resolveLobsterAnswerConclusion(task, decision));
+    bodyLines.push(resolveLoopAnswerConclusion(task, decision));
   }
   if (decision.finalSummary) {
     bodyLines.push("");
@@ -6118,29 +6118,29 @@ function appendLobsterMainSubChatMainDecision(
     bodyLines.push(decision.finalSummary);
   }
   bodyLines.unshift(`- 成员 ID：main`);
-  const mainTitle = getLobsterMainSubChatMainTitle(task);
-  appendLobsterMainSubChatSection(
+  const mainTitle = getLoopMainSubChatMainTitle(task);
+  appendLoopMainSubChatSection(
     task,
-    `主任务发言：第 ${round} 轮${formatLobsterGroupChatMemberName(mainTitle)}`,
+    `主任务发言：第 ${round} 轮${formatLoopGroupChatMemberName(mainTitle)}`,
     bodyLines.join("\n"),
   );
   if (decision.status === "completed") {
-    appendLobsterMainSubChatSection(task, "群聊收束", buildLobsterCompletedConclusionAndSummaryMarkdown(task, decision));
+    appendLoopMainSubChatSection(task, "群聊收束", buildLoopCompletedConclusionAndSummaryMarkdown(task, decision));
   }
 }
 
-function appendLobsterMainSubChatSubtaskStarted(
-  task: LobsterTaskRecord,
-  subtask: LobsterSubtaskRecord,
+function appendLoopMainSubChatSubtaskStarted(
+  task: LoopTaskRecord,
+  subtask: LoopSubtaskRecord,
   round: number,
   communicationFile: string,
   retryCount: number,
 ): void {
-  const latest = readLobsterTaskRecord(task.id) ?? task;
+  const latest = readLoopTaskRecord(task.id) ?? task;
   const index = latest.subTasks.findIndex((item) => item.id === subtask.id);
-  const title = getLobsterSubtaskDisplayTitle(index, subtask);
+  const title = getLoopSubtaskDisplayTitle(index, subtask);
   const retryLine = retryCount > 0 ? `- 重试：第 ${retryCount} 次` : null;
-  appendLobsterMainSubChatSection(latest, `子任务加入：${formatLobsterGroupChatMemberName(title)}`, [
+  appendLoopMainSubChatSection(latest, `子任务加入：${formatLoopGroupChatMemberName(title)}`, [
     `- 成员 ID：${subtask.id}`,
     `- 时间：${new Date().toISOString()}`,
     `- 轮次：${round}`,
@@ -6150,23 +6150,23 @@ function appendLobsterMainSubChatSubtaskStarted(
   ].filter((line): line is string => Boolean(line)).join("\n"));
 }
 
-function appendLobsterMainSubChatSubtaskFinished(
-  task: LobsterTaskRecord,
-  subtask: LobsterSubtaskRecord,
+function appendLoopMainSubChatSubtaskFinished(
+  task: LoopTaskRecord,
+  subtask: LoopSubtaskRecord,
   runStatus: TaskRunStatus,
   assistantContent?: string | null,
 ): void {
-  const latest = readLobsterTaskRecord(task.id) ?? task;
+  const latest = readLoopTaskRecord(task.id) ?? task;
   const index = latest.subTasks.findIndex((item) => item.id === subtask.id);
   const latestSubtask = latest.subTasks[index] ?? subtask;
-  const title = getLobsterSubtaskDisplayTitle(index, latestSubtask);
-  appendLobsterMainSubChatSection(
+  const title = getLoopSubtaskDisplayTitle(index, latestSubtask);
+  appendLoopMainSubChatSection(
     latest,
-    `子任务发言：${formatLobsterGroupChatMemberName(title)}`,
+    `子任务发言：${formatLoopGroupChatMemberName(title)}`,
     [
       `- 成员 ID：${latestSubtask.id}`,
       "",
-      buildLobsterMainSubSubtaskTurnBody({
+      buildLoopMainSubSubtaskTurnBody({
         runStatus,
         assistantContent,
         communicationFile: latestSubtask.communicationFile,
@@ -6175,54 +6175,54 @@ function appendLobsterMainSubChatSubtaskFinished(
   );
 }
 
-function appendLobsterMainSubChatSection(
-  task: LobsterTaskRecord,
+function appendLoopMainSubChatSection(
+  task: LoopTaskRecord,
   heading: string,
   body: string,
 ): void {
-  const chatFile = ensureLobsterMainSubChatTranscript(task);
+  const chatFile = ensureLoopMainSubChatTranscript(task);
   appendTextFileEnsuringDir(chatFile, `\n## ${heading}\n${body.trim()}\n`);
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  refreshOpenLoopGroupChatPanelForTask(task.id);
 }
 
-type LobsterSubtaskRetryOptions = {
+type LoopSubtaskRetryOptions = {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
-  subtask: LobsterSubtaskRecord;
+  subtask: LoopSubtaskRecord;
   switchVisible?: boolean;
 };
 
-type LobsterSubtaskBatchOptions = {
+type LoopSubtaskBatchOptions = {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
-  subtasks: LobsterSubtaskRecord[];
+  subtasks: LoopSubtaskRecord[];
 };
 
-type LobsterSubtaskRunResult = {
-  subtask: LobsterSubtaskRecord;
+type LoopSubtaskRunResult = {
+  subtask: LoopSubtaskRecord;
   status: TaskRunStatus;
 };
 
-type LobsterMainDecisionRunResult =
-  | { status: "interrupted"; task: LobsterTaskRecord; runStatus: "error" | "stopped" }
-  | { status: "needs-review"; task: LobsterTaskRecord; decision?: LobsterMainDecision | null }
-  | { status: "completed"; task: LobsterTaskRecord; decision: LobsterMainDecision }
-  | { status: "continue"; task: LobsterTaskRecord; decision: LobsterMainDecision; subtasks: LobsterSubtaskRecord[] };
+type LoopMainDecisionRunResult =
+  | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
+  | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
+  | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+  | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 
-async function runLobsterSubtasksBatchWithRetry(
-  options: LobsterSubtaskBatchOptions
-): Promise<LobsterSubtaskRunResult[]> {
+async function runLoopSubtasksBatchWithRetry(
+  options: LoopSubtaskBatchOptions
+): Promise<LoopSubtaskRunResult[]> {
   const { input, target, task, round, subtasks } = options;
   if (subtasks.length <= 1) {
     const subtask = subtasks[0];
     if (!subtask) {
       return [];
     }
-    const status = await runLobsterSubtaskWithRetry({
+    const status = await runLoopSubtaskWithRetry({
       input,
       target,
       task,
@@ -6233,9 +6233,9 @@ async function runLobsterSubtasksBatchWithRetry(
     return [{ subtask, status }];
   }
 
-  const executionPlan = buildLobsterSubtaskExecutionPlan(subtasks);
-  appendSystemMessageForLobster(target, buildLobsterSubtaskBatchStartedText(task.id, round, subtasks, executionPlan));
-  const results: LobsterSubtaskRunResult[] = [];
+  const executionPlan = buildLoopSubtaskExecutionPlan(subtasks);
+  appendSystemMessageForLoop(target, buildLoopSubtaskBatchStartedText(task.id, round, subtasks, executionPlan));
+  const results: LoopSubtaskRunResult[] = [];
 
   for (let groupIndex = 0; groupIndex < executionPlan.groups.length; groupIndex += 1) {
     const group = executionPlan.groups[groupIndex] ?? [];
@@ -6243,15 +6243,15 @@ async function runLobsterSubtasksBatchWithRetry(
       continue;
     }
     if (executionPlan.groups.length > 1) {
-      appendSystemMessageForLobster(
+      appendSystemMessageForLoop(
         target,
-        buildLobsterSubtaskExecutionGroupStartedText(task.id, round, groupIndex, executionPlan.groups.length, group)
+        buildLoopSubtaskExecutionGroupStartedText(task.id, round, groupIndex, executionPlan.groups.length, group)
       );
     }
 
-    const groupResults = await Promise.all(group.map(async (subtask): Promise<LobsterSubtaskRunResult> => {
+    const groupResults = await Promise.all(group.map(async (subtask): Promise<LoopSubtaskRunResult> => {
       try {
-        const status = await runLobsterSubtaskWithRetry({
+        const status = await runLoopSubtaskWithRetry({
           input,
           target,
           task,
@@ -6261,35 +6261,35 @@ async function runLobsterSubtasksBatchWithRetry(
         });
         return { subtask, status };
       } catch (error) {
-        void logError("lobster-subtask-batch-run-error", {
+        void logError("loop-subtask-batch-run-error", {
           taskId: task.id,
           round,
           subtaskId: subtask.id,
           error: error instanceof Error ? error.message : String(error),
         });
-        markLobsterSubtaskRunFinished(task.id, subtask.id, "error", null);
+        markLoopSubtaskRunFinished(task.id, subtask.id, "error", null);
         return { subtask, status: "error" };
       }
     }));
 
     results.push(...groupResults);
     if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
-      await switchVisibleConversationTabForLobster(target.tabId);
+      await switchVisibleConversationTabForLoop(target.tabId);
       return results;
     }
   }
 
-  await switchVisibleConversationTabForLobster(target.tabId);
+  await switchVisibleConversationTabForLoop(target.tabId);
   if (results.every((result) => result.status === "end")) {
-    updateLobsterTaskRecord(task.id, {
+    updateLoopTaskRecord(task.id, {
       activeSubtaskId: null,
       activeSubtaskIds: [],
       updatedAt: Date.now(),
     });
-    refreshOpenLobsterDebateChatPanelForTask(task.id);
-    appendSystemMessageForLobster(target, buildLobsterSubtaskBatchCompletedText(task.id, round, subtasks));
-    const latest = readLobsterTaskRecord(task.id) ?? task;
-    appendLobsterMainSubChatTaskEvent(
+    refreshOpenLoopGroupChatPanelForTask(task.id);
+    appendSystemMessageForLoop(target, buildLoopSubtaskBatchCompletedText(task.id, round, subtasks));
+    const latest = readLoopTaskRecord(task.id) ?? task;
+    appendLoopMainSubChatTaskEvent(
       latest,
       [
         `- 时间：${new Date().toISOString()}`,
@@ -6302,7 +6302,7 @@ async function runLobsterSubtasksBatchWithRetry(
   return results;
 }
 
-async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): Promise<TaskRunStatus> {
+async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, subtask } = options;
   const shouldSwitchVisible = options.switchVisible !== false;
   const mainTabId = target.tabId;
@@ -6312,14 +6312,14 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
   let parentProgress: SubagentProgressController | null = null;
 
   const persistParentProgressMessage = (message: ChatMessage): void => {
-    const messages = getLobsterMessagesForTarget(target);
+    const messages = getLoopMessagesForTarget(target);
     const index = messages.findIndex((item) => item.id === message.id);
     if (index >= 0) {
       messages[index] = message;
     } else {
       appendMessageToStore(messages, message);
     }
-    persistLobsterMessagesForTarget(target, messages);
+    persistLoopMessagesForTarget(target, messages);
   };
 
   parentProgress = createSubagentProgressController({
@@ -6327,9 +6327,9 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
     createMessageId,
     messageMetadata: {
       taskRole: "main",
-      lobsterTaskId: task.id,
-      lobsterRound: round,
-      lobsterSubtaskId: subtask.id,
+      loopTaskId: task.id,
+      loopRound: round,
+      loopSubtaskId: subtask.id,
     },
     appendMessage: (message) => {
       persistParentProgressMessage(message);
@@ -6353,14 +6353,14 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
     },
   });
 
-  const progressMonitor = createLobsterSubtaskProgressMonitor({
+  const progressMonitor = createLoopSubtaskProgressMonitor({
     taskId: task.id,
     round,
     subtaskId: subtask.id,
     subtaskTitle: subtask.title,
-    waitingText: t("run.lobsterSubtaskWaiting"),
+    waitingText: t("run.loopSubtaskWaiting"),
     readMessages: () => currentSubtaskTarget
-      ? getLobsterMessagesForTarget(currentSubtaskTarget)
+      ? getLoopMessagesForTarget(currentSubtaskTarget)
       : [],
     onUpdate: (update) => parentProgress?.update(update),
   });
@@ -6369,33 +6369,33 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
   let retryCount = 0;
   try {
     while (true) {
-      const communicationFile = prepareLobsterSubtaskCommunicationFile(task, subtask, round, retryCount);
-      const subtaskTarget = createLobsterSubtaskRunTarget(target.cli);
+      const communicationFile = prepareLoopSubtaskCommunicationFile(task, subtask, round, retryCount);
+      const subtaskTarget = createLoopSubtaskRunTarget(target.cli);
       currentSubtaskTarget = subtaskTarget;
-      appendSystemMessageForLobster(
+      appendSystemMessageForLoop(
         target,
-        buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
+        buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
       );
-      appendSystemMessageForLobster(
+      appendSystemMessageForLoop(
         subtaskTarget,
-        buildLobsterSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
+        buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
       );
-      appendLobsterMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
+      appendLoopMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
       if (shouldSwitchVisible) {
-        await switchVisibleConversationTabForLobster(subtaskTarget.tabId);
+        await switchVisibleConversationTabForLoop(subtaskTarget.tabId);
       }
 
       let status: TaskRunStatus = "error";
       try {
-        status = await runLobsterRound({
+        status = await runLoopRound({
           input,
           target: subtaskTarget,
           task,
           round,
           role: "subtask",
           subtaskId: subtask.id,
-          displayPrompt: buildLobsterSubtaskDisplayPrompt(round, subtask, retryCount),
-          modelPrompt: buildLobsterSubtaskModelPrompt(
+          displayPrompt: buildLoopSubtaskDisplayPrompt(round, subtask, retryCount),
+          modelPrompt: buildLoopSubtaskModelPrompt(
             input.modelPrompt || input.displayPrompt,
             task,
             round,
@@ -6406,7 +6406,7 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
         });
       } catch (error) {
         status = "error";
-        void logError("lobster-subtask-run-error", {
+        void logError("loop-subtask-run-error", {
           taskId: task.id,
           round,
           subtaskId: subtask.id,
@@ -6416,13 +6416,13 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
       } finally {
         progressMonitor.sync();
         if (shouldSwitchVisible) {
-          await switchVisibleConversationTabForLobster(mainTabId);
+          await switchVisibleConversationTabForLoop(mainTabId);
         }
       }
 
       if (status !== "error") {
-        const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-        await finalizeLobsterSubtaskRun({
+        const summary = getLastLoopAssistantContent(subtaskTarget, task.id, round, "subtask");
+        await finalizeLoopSubtaskRun({
           taskId: task.id,
           round,
           subtaskId: subtask.id,
@@ -6430,12 +6430,12 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
           assistantContent: summary,
           tabId: subtaskTarget.tabId,
         });
-        terminalProgressStatus = mapLobsterRunStatusToSubagentStatus(status);
+        terminalProgressStatus = mapLoopRunStatusToSubagentStatus(status);
         return status;
       }
-      if (retryCount >= LOBSTER_SUBTASK_RETRY_MAX_RETRIES) {
-        const summary = getLastLobsterAssistantContent(subtaskTarget, task.id, round, "subtask");
-        await finalizeLobsterSubtaskRun({
+      if (retryCount >= LOOP_SUBTASK_RETRY_MAX_RETRIES) {
+        const summary = getLastLoopAssistantContent(subtaskTarget, task.id, round, "subtask");
+        await finalizeLoopSubtaskRun({
           taskId: task.id,
           round,
           subtaskId: subtask.id,
@@ -6443,50 +6443,50 @@ async function runLobsterSubtaskWithRetry(options: LobsterSubtaskRetryOptions): 
           assistantContent: summary,
           tabId: subtaskTarget.tabId,
         });
-        terminalProgressStatus = mapLobsterRunStatusToSubagentStatus(status);
+        terminalProgressStatus = mapLoopRunStatusToSubagentStatus(status);
         return status;
       }
 
       retryCount += 1;
-      appendSystemMessageForLobster(
+      appendSystemMessageForLoop(
         target,
-        buildLobsterSubtaskRetryText(task.id, subtask.id, retryCount)
+        buildLoopSubtaskRetryText(task.id, subtask.id, retryCount)
       );
-      await waitForLobsterSubtaskRetryDelay();
+      await waitForLoopSubtaskRetryDelay();
     }
   } finally {
     progressMonitor.finish(terminalProgressStatus ?? "interrupted");
   }
 }
 
-async function waitForLobsterSubtaskRetryDelay(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, LOBSTER_SUBTASK_RETRY_DELAY_MS));
+async function waitForLoopSubtaskRetryDelay(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, LOOP_SUBTASK_RETRY_DELAY_MS));
 }
 
-type LobsterRoundRunOptions = {
+type LoopRoundRunOptions = {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
-  role: LobsterTaskRole;
+  role: LoopTaskRole;
   displayPrompt: string;
   modelPrompt: string;
   subtaskId?: string;
 };
 
-async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRunStatus> {
+async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, role, displayPrompt, modelPrompt, subtaskId } = options;
   const roundStartedAt = Date.now();
   const activeSubtaskPatch = role === "main"
     ? { activeSubtaskId: null, activeSubtaskIds: [] }
-    : buildLobsterActiveSubtaskPatch(task.id, subtaskId);
-  updateLobsterTaskRecord(task.id, {
+    : buildLoopActiveSubtaskPatch(task.id, subtaskId);
+  updateLoopTaskRecord(task.id, {
     status: "running",
     currentRound: round,
     ...activeSubtaskPatch,
     updatedAt: roundStartedAt,
   });
-  refreshOpenLobsterDebateChatPanelForTask(task.id);
+  refreshOpenLoopGroupChatPanelForTask(task.id);
 
   await runPrompt({
     ...input,
@@ -6494,41 +6494,41 @@ async function runLobsterRound(options: LobsterRoundRunOptions): Promise<TaskRun
     modelPrompt,
     model: input.model,
     taskRole: role,
-    lobsterTaskId: task.id,
-    lobsterRound: round,
-    lobsterSubtaskId: subtaskId,
+    loopTaskId: task.id,
+    loopRound: round,
+    loopSubtaskId: subtaskId,
   }, { targetTabId: target.tabId });
 
   if (role === "main") {
-    const mainSessionId = resolveLobsterTaskSessionId(target);
+    const mainSessionId = resolveLoopTaskSessionId(target);
     if (mainSessionId) {
-      bindLobsterTaskToSession(task.id, mainSessionId);
+      bindLoopTaskToSession(task.id, mainSessionId);
     }
   }
 
   const roundEndedAt = Date.now();
-  const roundStatus = getLobsterRoundRunStatus(task.id, round, role, subtaskId) ?? "end";
-  appendLobsterRound(task.id, {
+  const roundStatus = getLoopRoundRunStatus(task.id, round, role, subtaskId) ?? "end";
+  appendLoopRound(task.id, {
     round,
     role,
     subtaskId,
     status: roundStatus,
     startedAt: roundStartedAt,
     endedAt: roundEndedAt,
-    summary: buildLobsterRoundSummary(round, role, subtaskId),
+    summary: buildLoopRoundSummary(round, role, subtaskId),
   });
   return roundStatus;
 }
 
-function buildLobsterActiveSubtaskPatch(
+function buildLoopActiveSubtaskPatch(
   taskId: string,
   subtaskId?: string,
 ): { activeSubtaskId?: string | null; activeSubtaskIds?: string[] } {
   if (!subtaskId) {
     return {};
   }
-  const latest = readLobsterTaskRecord(taskId);
-  const activeSubtaskIds = latest ? getActiveLobsterSubtaskIds(latest) : [];
+  const latest = readLoopTaskRecord(taskId);
+  const activeSubtaskIds = latest ? getActiveLoopSubtaskIds(latest) : [];
   if (!activeSubtaskIds.includes(subtaskId)) {
     activeSubtaskIds.push(subtaskId);
   }
@@ -6538,7 +6538,7 @@ function buildLobsterActiveSubtaskPatch(
   };
 }
 
-function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): string {
+function buildLoopMainDisplayPrompt(rootPrompt: string, round: number): string {
   if (round === 1) {
     return [
       rootPrompt,
@@ -6553,7 +6553,7 @@ function buildLobsterMainDisplayPrompt(rootPrompt: string, round: number): strin
   ].join("\n");
 }
 
-function buildLobsterModeratorMainDisplayPrompt(rootPrompt: string, round: number): string {
+function buildLoopModeratorMainDisplayPrompt(rootPrompt: string, round: number): string {
   if (round === 1) {
     return [
       rootPrompt,
@@ -6568,9 +6568,9 @@ function buildLobsterModeratorMainDisplayPrompt(rootPrompt: string, round: numbe
   ].join("\n");
 }
 
-function buildLobsterSubtaskDisplayPrompt(round: number, subtask: LobsterSubtaskRecord, retryCount = 0): string {
+function buildLoopSubtaskDisplayPrompt(round: number, subtask: LoopSubtaskRecord, retryCount = 0): string {
   const retryLine = retryCount > 0
-    ? `第 ${retryCount} 次重试（最多 ${LOBSTER_SUBTASK_RETRY_MAX_RETRIES} 次）。`
+    ? `第 ${retryCount} 次重试（最多 ${LOOP_SUBTASK_RETRY_MAX_RETRIES} 次）。`
     : "";
   return [
     `Loop 子任务第 ${round} 轮执行：${subtask.title}`,
@@ -6579,17 +6579,17 @@ function buildLobsterSubtaskDisplayPrompt(round: number, subtask: LobsterSubtask
   ].filter(Boolean).join("\n");
 }
 
-function buildLobsterMainModelPrompt(
+function buildLoopMainModelPrompt(
   rootPrompt: string,
-  task: LobsterTaskRecord,
+  task: LoopTaskRecord,
   round: number,
   continuePrompt?: string,
   compactSkillCatalogSection?: string,
 ): string {
   const taskId = task.id;
   const taskFile = task.taskStoreFile;
-  const communication = getLobsterCommunicationPaths(taskId);
-  const normalizedContinuePrompt = normalizeLobsterContinuePromptForPrompt(continuePrompt);
+  const communication = getLoopCommunicationPaths(taskId);
+  const normalizedContinuePrompt = normalizeLoopContinuePromptForPrompt(continuePrompt);
   const normalizedSkillCatalog = task.taskKind === "development"
     && typeof compactSkillCatalogSection === "string"
     && compactSkillCatalogSection.trim()
@@ -6618,7 +6618,7 @@ function buildLobsterMainModelPrompt(
     "",
     "Loop 模式原理（必须遵守）：",
     "1. 主任务每轮只输出一个 JSON 决策，不直接做具体实现。",
-    `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
+    `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOOP_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
     "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
     "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
     "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束。",
@@ -6630,7 +6630,7 @@ function buildLobsterMainModelPrompt(
     "4. 后续轮次按计划滚动更新：完成一个子任务或一批子任务后复核一次，不满足就继续派发下一批尽可能并发的子任务。",
     "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
     "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
-    `7. 每批最多 ${LOBSTER_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
+    `7. 每批最多 ${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
     "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
     "9. 若子任务沟通文件已提供可核验的单测/编译命令与结果，主任务无需重复执行这些验证；优先复核逻辑正确性、改动范围和结果一致性，仅在证据缺失或结果可疑时补充验证。",
     "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；确实必须用户或人工确认时返回 blocked，不得把该子任务误判为已验收。",
@@ -6654,7 +6654,7 @@ function buildLobsterMainModelPrompt(
     "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
-    `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOBSTER_PARALLEL_SUBTASK_MAX}。`,
+    `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}。`,
     "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
     "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
     "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
@@ -6665,7 +6665,7 @@ function buildLobsterMainModelPrompt(
     "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、answerConclusion、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
     ...skillCatalogLines,
     "",
-    ...buildLobsterSupplementalRequirementsLines(task),
+    ...buildLoopSupplementalRequirementsLines(task),
     ...(normalizedContinuePrompt ? [
       "本次继续指令：",
       normalizedContinuePrompt,
@@ -6676,22 +6676,22 @@ function buildLobsterMainModelPrompt(
   ].join("\n");
 }
 
-function buildLobsterModeratorMainModelPrompt(
+function buildLoopModeratorMainModelPrompt(
   rootPrompt: string,
-  task: LobsterTaskRecord,
+  task: LoopTaskRecord,
   round: number,
   continuePrompt?: string,
   compactSkillCatalogSection?: string,
 ): string {
-  const planningDebate = findReusableLobsterPlanningDebateRound(task);
+  const planningDebate = findReusableLoopPlanningDebateRound(task);
   const planningPaths = planningDebate
-    ? buildLobsterDebatePaths(task.communicationDir, planningDebate.lobsterRound, planningDebate.debateRound)
+    ? buildLoopDebatePaths(task.communicationDir, planningDebate.loopRound, planningDebate.debateRound)
     : null;
   const planningDecision = planningDebate?.consensus?.decision
-    ?? (planningDebate ? readLobsterPlanningDebateDecision(task, planningDebate) : null);
+    ?? (planningDebate ? readLoopPlanningDebateDecision(task, planningDebate) : null);
   const planningConsensus = planningDebate?.consensus;
-  const mainSubChatFile = buildLobsterMainSubChatTranscriptFile(task.communicationDir);
-  const basePrompt = buildLobsterMainModelPrompt(
+  const mainSubChatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
+  const basePrompt = buildLoopMainModelPrompt(
     rootPrompt,
     task,
     round,
@@ -6700,7 +6700,7 @@ function buildLobsterModeratorMainModelPrompt(
   );
   const planningLines = planningDebate && planningPaths
     ? [
-        `- 红蓝规划轮次：主任务第 ${planningDebate.lobsterRound} 轮 / 辩论第 ${planningDebate.debateRound} 轮`,
+        `- 红蓝规划轮次：主任务第 ${planningDebate.loopRound} 轮 / 辩论第 ${planningDebate.debateRound} 轮`,
         `- brief 文件：${planningPaths.briefFile}`,
         `- 红蓝群聊记录：${planningPaths.chatFile}`,
         `- 参与者清单：${planningPaths.participantRosterFile}`,
@@ -6725,7 +6725,7 @@ function buildLobsterModeratorMainModelPrompt(
     "2. 你现在是主持人主智能体，负责把首轮红蓝规划共识落到主从多智能体执行链路中。",
     "3. 后续实现、复核、继续派发和最终验收都由你主持；具体实现仍由程序根据你的 JSON 决策启动子任务。",
     "4. 你必须把首轮红蓝共识作为规划基线。只有执行反馈证明共识需要调整时，才可通过新的子任务、验收标准或 blocked 决策调整，不得忽略红队已识别的风险。",
-    "5. 你仍然不能直接修改工作区内容；只能输出一个符合 LobsterMainDecision 的 JSON，由程序派发子任务。",
+    "5. 你仍然不能直接修改工作区内容；只能输出一个符合 LoopMainDecision 的 JSON，由程序派发子任务。",
     "",
     "必须读取的规划与执行上下文：",
     ...planningLines,
@@ -6745,18 +6745,18 @@ function buildLobsterModeratorMainModelPrompt(
   ].join("\n");
 }
 
-function buildLobsterSubtaskModelPrompt(
+function buildLoopSubtaskModelPrompt(
   rootPrompt: string,
-  task: LobsterTaskRecord,
+  task: LoopTaskRecord,
   round: number,
-  subtask: LobsterSubtaskRecord,
+  subtask: LoopSubtaskRecord,
   retryCount = 0,
   communicationFile?: string
 ): string {
   const taskId = task.id;
   const taskFile = task.taskStoreFile;
-  const communication = getLobsterCommunicationPaths(taskId);
-  const reportFile = communicationFile ?? buildLobsterSubtaskCommunicationFile(taskId, subtask.id, round, retryCount);
+  const communication = getLoopCommunicationPaths(taskId);
+  const reportFile = communicationFile ?? buildLoopSubtaskCommunicationFile(taskId, subtask.id, round, retryCount);
   const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
     ? subtask.writeFiles.join("、")
     : "未声明；以当前子任务指令明确授权的文件/范围为准";
@@ -6812,7 +6812,7 @@ function buildLobsterSubtaskModelPrompt(
   ].join("\n");
 }
 
-function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
+function getLoopMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
   const tab = getConversationTabById(target.tabId);
   const sessionId = tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
   return sessionId
@@ -6820,10 +6820,10 @@ function getLobsterMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
     : getPendingSessionDraft(target.tabId, target.cli).messages;
 }
 
-function resolveLobsterSubtaskConversationContext(
+function resolveLoopSubtaskConversationContext(
   cli: CliName,
   tabId: string | null | undefined
-): LobsterSubtaskConversationContext | null {
+): LoopSubtaskConversationContext | null {
   if (!tabId) {
     return null;
   }
@@ -6835,27 +6835,27 @@ function resolveLobsterSubtaskConversationContext(
   const messages = sessionId
     ? loadSessionMessages(cli, sessionId)
     : getPendingSessionDraft(tabId, cli).messages;
-  return resolveLobsterSubtaskConversationContextFromMessages(messages);
+  return resolveLoopSubtaskConversationContextFromMessages(messages);
 }
 
-function isLobsterSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
-  return Boolean(resolveLobsterSubtaskConversationContext(cli, tabId));
+function isLoopSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
+  return Boolean(resolveLoopSubtaskConversationContext(cli, tabId));
 }
 
-function getLastLobsterAssistantContent(
+function getLastLoopAssistantContent(
   target: PromptRunTarget,
   taskId: string,
   round: number,
-  role: LobsterTaskRole
+  role: LoopTaskRole
 ): string | null {
-  const messages = getLobsterMessagesForTarget(target);
+  const messages = getLoopMessagesForTarget(target);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (
       message.role === "assistant"
       && message.taskRole === role
-      && message.lobsterTaskId === taskId
-      && message.lobsterRound === round
+      && message.loopTaskId === taskId
+      && message.loopRound === round
       && message.content.trim()
     ) {
       return message.content;
@@ -6864,7 +6864,7 @@ function getLastLobsterAssistantContent(
   return null;
 }
 
-function parseLobsterMainDecision(content: string | null): LobsterMainDecision | null {
+function parseLoopMainDecision(content: string | null): LoopMainDecision | null {
   if (!content) {
     return null;
   }
@@ -6874,7 +6874,7 @@ function parseLobsterMainDecision(content: string | null): LobsterMainDecision |
   }
   try {
     const parsed = JSON.parse(jsonText);
-    return normalizeLobsterMainDecision(parsed);
+    return normalizeLoopMainDecision(parsed);
   } catch {
     return null;
   }
@@ -6921,24 +6921,24 @@ function extractJsonObjectText(content: string): string | null {
   return null;
 }
 
-function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | null {
+function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   if (!value || typeof value !== "object") {
     return null;
   }
-  const raw = value as Partial<LobsterMainDecision>;
-  const estimatedRemainingRounds = normalizeLobsterEstimatedRemainingRounds(
+  const raw = value as Partial<LoopMainDecision>;
+  const estimatedRemainingRounds = normalizeLoopEstimatedRemainingRounds(
     (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
   );
   if (raw.status === "completed") {
-    const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
-    const requirementCoverage = normalizeLobsterAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
+    const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
+    const requirementCoverage = normalizeLoopAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
     const answerConclusion = typeof raw.answerConclusion === "string" && raw.answerConclusion.trim()
       ? raw.answerConclusion.trim()
       : undefined;
     const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
       ? raw.finalSummary.trim()
       : "";
-    const roundSummaries = normalizeLobsterRoundSummaries((raw as { roundSummaries?: unknown }).roundSummaries);
+    const roundSummaries = normalizeLoopRoundSummaries((raw as { roundSummaries?: unknown }).roundSummaries);
     if (
       !acceptance?.passed
       || !acceptance.checks.every((check) => check.passed)
@@ -6969,11 +6969,11 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
   if (raw.status !== "continue") {
     return null;
   }
-  const subtasks = normalizeLobsterSubtaskDecisions(raw);
+  const subtasks = normalizeLoopSubtaskDecisions(raw);
   if (!subtasks || subtasks.length === 0) {
     return null;
   }
-  const acceptance = normalizeLobsterAcceptance((raw as { acceptance?: unknown }).acceptance);
+  const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
   return {
     status: "continue",
     acceptance: acceptance ?? { passed: false, checks: [] },
@@ -6986,32 +6986,32 @@ function normalizeLobsterMainDecision(value: unknown): LobsterMainDecision | nul
   };
 }
 
-function normalizeLobsterEstimatedRemainingRounds(value: unknown): number | undefined {
+function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
   const numeric = typeof value === "number"
     ? value
     : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
   if (!Number.isFinite(numeric)) {
     return undefined;
   }
-  return Math.min(Math.max(Math.floor(numeric), 0), LOBSTER_MAX_MAX_ROUNDS);
+  return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
 }
 
-function normalizeLobsterSubtaskDecisions(raw: Partial<LobsterMainDecision>): LobsterSubtaskDecision[] | null {
+function normalizeLoopSubtaskDecisions(raw: Partial<LoopMainDecision>): LoopSubtaskDecision[] | null {
   const rawSubtasks = Array.isArray((raw as { subtasks?: unknown }).subtasks)
     ? (raw as { subtasks: unknown[] }).subtasks
     : (raw.subtask ? [raw.subtask] : []);
-  if (rawSubtasks.length === 0 || rawSubtasks.length > LOBSTER_PARALLEL_SUBTASK_MAX) {
+  if (rawSubtasks.length === 0 || rawSubtasks.length > LOOP_PARALLEL_SUBTASK_MAX) {
     return null;
   }
   const normalized = rawSubtasks
-    .map((item): LobsterSubtaskDecision | null => normalizeSingleLobsterSubtaskDecision(item))
-    .filter((item): item is LobsterSubtaskDecision => Boolean(item));
+    .map((item): LoopSubtaskDecision | null => normalizeSingleLoopSubtaskDecision(item))
+    .filter((item): item is LoopSubtaskDecision => Boolean(item));
   if (normalized.length !== rawSubtasks.length) {
     return null;
   }
   const seenIds = new Set<string>();
   for (const subtask of normalized) {
-    const id = subtask.id ?? buildLobsterSubtaskId(subtask.title);
+    const id = subtask.id ?? buildLoopSubtaskId(subtask.title);
     if (seenIds.has(id)) {
       return null;
     }
@@ -7020,7 +7020,7 @@ function normalizeLobsterSubtaskDecisions(raw: Partial<LobsterMainDecision>): Lo
   return normalized;
 }
 
-function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDecision | null {
+function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -7034,16 +7034,16 @@ function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDe
   };
   const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
   const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
-  if (!title || !prompt || prompt.length < LOBSTER_SUBTASK_PROMPT_MIN_LENGTH) {
+  if (!title || !prompt || prompt.length < LOOP_SUBTASK_PROMPT_MIN_LENGTH) {
     return null;
   }
   const id = typeof subtask.id === "string" && subtask.id.trim()
     ? subtask.id.trim()
-    : buildLobsterSubtaskId(title);
+    : buildLoopSubtaskId(title);
   const conflictGroup = typeof subtask.conflictGroup === "string" && subtask.conflictGroup.trim()
     ? subtask.conflictGroup.trim()
     : undefined;
-  const writeFiles = normalizeLobsterWriteFiles(subtask.writeFiles);
+  const writeFiles = normalizeLoopWriteFiles(subtask.writeFiles);
   const skillIds = Array.isArray(subtask.skillIds)
     ? subtask.skillIds
         .filter((item): item is string => typeof item === "string")
@@ -7060,16 +7060,16 @@ function normalizeSingleLobsterSubtaskDecision(value: unknown): LobsterSubtaskDe
   };
 }
 
-function normalizeLobsterRoundSummaries(value: unknown): LobsterRoundSummary[] | null {
+function normalizeLoopRoundSummaries(value: unknown): LoopRoundSummary[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
   return value
-    .map((item): LobsterRoundSummary | null => normalizeSingleLobsterRoundSummary(item))
-    .filter((item): item is LobsterRoundSummary => Boolean(item));
+    .map((item): LoopRoundSummary | null => normalizeSingleLoopRoundSummary(item))
+    .filter((item): item is LoopRoundSummary => Boolean(item));
 }
 
-function normalizeSingleLobsterRoundSummary(value: unknown): LobsterRoundSummary | null {
+function normalizeSingleLoopRoundSummary(value: unknown): LoopRoundSummary | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -7097,12 +7097,12 @@ function normalizeSingleLobsterRoundSummary(value: unknown): LobsterRoundSummary
   };
 }
 
-function normalizeLobsterAcceptance(value: unknown): LobsterAcceptance | null {
+function normalizeLoopAcceptance(value: unknown): LoopAcceptance | null {
   if (!value || typeof value !== "object") {
     return null;
   }
   const raw = value as { passed?: unknown; summary?: unknown; checks?: unknown };
-  const checks = normalizeLobsterAcceptanceChecks(raw.checks);
+  const checks = normalizeLoopAcceptanceChecks(raw.checks);
   return {
     passed: raw.passed === true,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
@@ -7110,12 +7110,12 @@ function normalizeLobsterAcceptance(value: unknown): LobsterAcceptance | null {
   };
 }
 
-function normalizeLobsterAcceptanceChecks(value: unknown): LobsterAcceptanceCheck[] {
+function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
-    .map((item): LobsterAcceptanceCheck | null => {
+    .map((item): LoopAcceptanceCheck | null => {
       if (!item || typeof item !== "object") {
         return null;
       }
@@ -7127,40 +7127,40 @@ function normalizeLobsterAcceptanceChecks(value: unknown): LobsterAcceptanceChec
         detail: typeof check.detail === "string" ? check.detail : undefined,
       };
     })
-    .filter((item): item is LobsterAcceptanceCheck => Boolean(item));
+    .filter((item): item is LoopAcceptanceCheck => Boolean(item));
 }
 
-function buildLobsterSubtaskId(title: string): string {
+function buildLoopSubtaskId(title: string): string {
   return `subtask_${createHash("sha1").update(title).digest("hex").slice(0, 10)}`;
 }
 
-function applyLobsterMainDecision(
+function applyLoopMainDecision(
   taskId: string,
-  decision: LobsterMainDecision,
-  skillSnapshots?: ReadonlyMap<string, LobsterSubtaskSkillSnapshot>,
-): { status: "completed" | "continue" | "blocked"; task: LobsterTaskRecord; subtasks?: LobsterSubtaskRecord[] } {
-  const existing = readLobsterTaskRecord(taskId);
+  decision: LoopMainDecision,
+  skillSnapshots?: ReadonlyMap<string, LoopSubtaskSkillSnapshot>,
+): { status: "completed" | "continue" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
+  const existing = readLoopTaskRecord(taskId);
   if (!existing) {
-    throw new Error(`lobster-task-missing:${taskId}`);
+    throw new Error(`loop-task-missing:${taskId}`);
   }
   if (decision.status === "completed") {
-    const task = updateLobsterTaskRecord(taskId, {
+    const task = updateLoopTaskRecord(taskId, {
       status: "completed",
       activeSubtaskId: null,
       activeSubtaskIds: [],
-      answerConclusion: resolveLobsterAnswerConclusion(existing, decision),
+      answerConclusion: resolveLoopAnswerConclusion(existing, decision),
       finalSummary: decision.finalSummary,
       estimatedRemainingRounds: 0,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
       updatedAt: Date.now(),
     }) ?? existing;
-    appendLobsterMainDecisionSummary(task, decision);
-    appendLobsterMainSubChatMainDecision(task, decision);
+    appendLoopMainDecisionSummary(task, decision);
+    appendLoopMainSubChatMainDecision(task, decision);
     return { status: "completed", task };
   }
   if (decision.status === "blocked") {
-    const task = updateLobsterTaskRecord(taskId, {
+    const task = updateLoopTaskRecord(taskId, {
       status: "needs-review",
       activeSubtaskId: null,
       activeSubtaskIds: [],
@@ -7168,14 +7168,14 @@ function applyLobsterMainDecision(
       ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
       updatedAt: Date.now(),
     }) ?? existing;
-    appendLobsterMainDecisionSummary(task, decision);
-    appendLobsterMainSubChatMainDecision(task, decision);
+    appendLoopMainDecisionSummary(task, decision);
+    appendLoopMainSubChatMainDecision(task, decision);
     return { status: "blocked", task };
   }
 
-  const decisionSubtasks = getLobsterDecisionSubtasks(decision);
+  const decisionSubtasks = getLoopDecisionSubtasks(decision);
   if (decisionSubtasks.length === 0) {
-    const task = updateLobsterTaskRecord(taskId, {
+    const task = updateLoopTaskRecord(taskId, {
       status: "needs-review",
       activeSubtaskId: null,
       activeSubtaskIds: [],
@@ -7185,9 +7185,9 @@ function applyLobsterMainDecision(
     return { status: "blocked", task };
   }
 
-  const subtaskBatch = upsertLobsterSubtasks(existing, decisionSubtasks, skillSnapshots);
+  const subtaskBatch = upsertLoopSubtasks(existing, decisionSubtasks, skillSnapshots);
   const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
-  const task = updateLobsterTaskRecord(taskId, {
+  const task = updateLoopTaskRecord(taskId, {
     status: "running",
     activeSubtaskId: activeSubtaskIds[0] ?? null,
     activeSubtaskIds,
@@ -7195,19 +7195,19 @@ function applyLobsterMainDecision(
     ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
     updatedAt: Date.now(),
   }) ?? existing;
-  appendLobsterMainDecisionSummary(task, decision);
-  appendLobsterMainSubChatMainDecision(task, decision, subtaskBatch.records);
+  appendLoopMainDecisionSummary(task, decision);
+  appendLoopMainSubChatMainDecision(task, decision, subtaskBatch.records);
   return { status: "continue", task, subtasks: subtaskBatch.records };
 }
 
-function getLobsterDecisionSubtasks(decision: LobsterMainDecision): LobsterSubtaskDecision[] {
+function getLoopDecisionSubtasks(decision: LoopMainDecision): LoopSubtaskDecision[] {
   if (Array.isArray(decision.subtasks) && decision.subtasks.length > 0) {
     return decision.subtasks;
   }
   return decision.subtask ? [decision.subtask] : [];
 }
 
-function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: LobsterMainDecision): void {
+function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainDecision): void {
   try {
     fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
     const lines: string[] = [
@@ -7218,21 +7218,21 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
     if (decision.acceptance?.summary) {
       lines.push(`- 验收摘要：${decision.acceptance.summary}`);
     }
-    const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+    const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
     if (remainingRounds) {
       lines.push(`- 预计剩余轮次：${remainingRounds}`);
     }
     if (decision.status === "completed") {
       lines.push("");
       lines.push("### 问题回答结论");
-      lines.push(resolveLobsterAnswerConclusion(task, decision));
+      lines.push(resolveLoopAnswerConclusion(task, decision));
     }
     if (decision.finalSummary) {
       lines.push("");
       lines.push("### 整体总结");
       lines.push(decision.finalSummary);
     }
-    const decisionSubtasks = getLobsterDecisionSubtasks(decision);
+    const decisionSubtasks = getLoopDecisionSubtasks(decision);
     if (decisionSubtasks.length > 0) {
       lines.push("");
       lines.push(decisionSubtasks.length === 1 ? "### 下一步子任务" : "### 下一步并发子任务批次");
@@ -7241,12 +7241,12 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
       }
       decisionSubtasks.forEach((subtask, index) => {
         const prefix = decisionSubtasks.length === 1 ? "" : `${index + 1}. `;
-        lines.push(`- ${prefix}子任务 ID：${subtask.id ?? buildLobsterSubtaskId(subtask.title)}`);
+        lines.push(`- ${prefix}子任务 ID：${subtask.id ?? buildLoopSubtaskId(subtask.title)}`);
         lines.push(`- ${prefix}标题：${subtask.title}`);
         if (subtask.conflictGroup) {
           lines.push(`- ${prefix}冲突组：${subtask.conflictGroup}`);
         }
-        const writeFiles = formatLobsterWriteFiles(subtask.writeFiles);
+        const writeFiles = formatLoopWriteFiles(subtask.writeFiles);
         if (writeFiles) {
           lines.push(`- ${prefix}预计写入：${writeFiles}`);
         }
@@ -7276,7 +7276,7 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
     }
     fs.appendFileSync(task.mainCommunicationFile, `\n\n${lines.join("\n")}\n`, "utf8");
   } catch (error) {
-    void logError("lobster-main-summary-write-error", {
+    void logError("loop-main-summary-write-error", {
       taskId: task.id,
       filePath: task.mainCommunicationFile,
       error: String(error),
@@ -7284,11 +7284,11 @@ function appendLobsterMainDecisionSummary(task: LobsterTaskRecord, decision: Lob
   }
 }
 
-function buildLobsterSubtaskDecisionMarkdown(
-  task: LobsterTaskRecord,
+function buildLoopSubtaskDecisionMarkdown(
+  task: LoopTaskRecord,
   round: number,
-  subtasks: LobsterSubtaskRecord[],
-  decision: LobsterMainDecision,
+  subtasks: LoopSubtaskRecord[],
+  decision: LoopMainDecision,
 ): string {
   const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
   const lines: string[] = [
@@ -7303,7 +7303,7 @@ function buildLobsterSubtaskDecisionMarkdown(
   if (decision.acceptance?.summary) {
     lines.push(`- 本轮复核：${decision.acceptance.summary}`);
   }
-  const remainingRounds = formatLobsterEstimatedRemainingRounds(decision.estimatedRemainingRounds);
+  const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
   if (remainingRounds) {
     lines.push(`- 预计剩余轮次：${remainingRounds}`);
   }
@@ -7316,7 +7316,7 @@ function buildLobsterSubtaskDecisionMarkdown(
     if (subtasks[0].conflictGroup) {
       lines.push(`- 冲突组：${subtasks[0].conflictGroup}`);
     }
-    const writeFiles = formatLobsterWriteFiles(subtasks[0].writeFiles);
+    const writeFiles = formatLoopWriteFiles(subtasks[0].writeFiles);
     if (writeFiles) {
       lines.push(`- 预计写入：${writeFiles}`);
     }
@@ -7341,7 +7341,7 @@ function buildLobsterSubtaskDecisionMarkdown(
       if (subtask.conflictGroup) {
         lines.push(`- 冲突组：${subtask.conflictGroup}`);
       }
-      const writeFiles = formatLobsterWriteFiles(subtask.writeFiles);
+      const writeFiles = formatLoopWriteFiles(subtask.writeFiles);
       if (writeFiles) {
         lines.push(`- 预计写入：${writeFiles}`);
       }
@@ -7352,16 +7352,16 @@ function buildLobsterSubtaskDecisionMarkdown(
   return `${lines.join("\n")}\n`;
 }
 
-function upsertLobsterSubtask(
-  task: LobsterTaskRecord,
-  subtask: NonNullable<LobsterMainDecision["subtask"]>,
-  skillSnapshot?: LobsterSubtaskSkillSnapshot,
-): { record: LobsterSubtaskRecord; nextSubtasks: LobsterSubtaskRecord[] } {
+function upsertLoopSubtask(
+  task: LoopTaskRecord,
+  subtask: NonNullable<LoopMainDecision["subtask"]>,
+  skillSnapshot?: LoopSubtaskSkillSnapshot,
+): { record: LoopSubtaskRecord; nextSubtasks: LoopSubtaskRecord[] } {
   const now = Date.now();
-  const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLobsterSubtaskId(subtask.title);
+  const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
   const nextSubtasks = [...task.subTasks];
   const existingIndex = nextSubtasks.findIndex((item) => item.id === id);
-  const record: LobsterSubtaskRecord = {
+  const record: LoopSubtaskRecord = {
     id,
     title: subtask.title,
     prompt: subtask.prompt,
@@ -7375,7 +7375,7 @@ function upsertLobsterSubtask(
     updatedAt: now,
   };
   if (existingIndex >= 0) {
-    const nextRecord: LobsterSubtaskRecord = {
+    const nextRecord: LoopSubtaskRecord = {
       ...nextSubtasks[existingIndex],
       ...record,
       status: nextSubtasks[existingIndex].status === "completed" ? "completed" : "running",
@@ -7391,16 +7391,16 @@ function upsertLobsterSubtask(
   return { record, nextSubtasks };
 }
 
-function upsertLobsterSubtasks(
-  task: LobsterTaskRecord,
-  subtasks: LobsterSubtaskDecision[],
-  skillSnapshots?: ReadonlyMap<string, LobsterSubtaskSkillSnapshot>,
-): { records: LobsterSubtaskRecord[]; nextSubtasks: LobsterSubtaskRecord[] } {
+function upsertLoopSubtasks(
+  task: LoopTaskRecord,
+  subtasks: LoopSubtaskDecision[],
+  skillSnapshots?: ReadonlyMap<string, LoopSubtaskSkillSnapshot>,
+): { records: LoopSubtaskRecord[]; nextSubtasks: LoopSubtaskRecord[] } {
   let nextSubtasks = [...task.subTasks];
-  const records: LobsterSubtaskRecord[] = [];
+  const records: LoopSubtaskRecord[] = [];
   subtasks.forEach((subtask) => {
-    const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLobsterSubtaskId(subtask.title);
-    const result = upsertLobsterSubtask(
+    const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
+    const result = upsertLoopSubtask(
       { ...task, subTasks: nextSubtasks },
       subtask,
       skillSnapshots?.get(id),
@@ -7411,21 +7411,21 @@ function upsertLobsterSubtasks(
   return { records, nextSubtasks };
 }
 
-export const __lobsterSkillIntegrationTestApi = {
-  resolveNewLobsterTaskKind,
-  createLobsterTaskRecord,
-  buildLobsterSkillRuntimeContext,
-  buildLobsterSubtaskSkillSnapshots,
-  buildLobsterMainModelPrompt,
-  buildLobsterModeratorMainModelPrompt,
-  buildLobsterSubtaskDisplayPrompt,
-  buildLobsterSubtaskModelPrompt,
-  normalizeSingleLobsterSubtaskDecision,
-  applyLobsterMainDecisionForRun,
-  upsertLobsterSubtasks,
+export const __loopSkillIntegrationTestApi = {
+  resolveNewLoopTaskKind,
+  createLoopTaskRecord,
+  buildLoopSkillRuntimeContext,
+  buildLoopSubtaskSkillSnapshots,
+  buildLoopMainModelPrompt,
+  buildLoopModeratorMainModelPrompt,
+  buildLoopSubtaskDisplayPrompt,
+  buildLoopSubtaskModelPrompt,
+  normalizeSingleLoopSubtaskDecision,
+  applyLoopMainDecisionForRun,
+  upsertLoopSubtasks,
 };
 
-function getActiveLobsterSubtaskIds(task: LobsterTaskRecord): string[] {
+function getActiveLoopSubtaskIds(task: LoopTaskRecord): string[] {
   const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
   const normalized = ids.filter((id) => typeof id === "string" && id.trim());
   if (task.activeSubtaskId && !normalized.includes(task.activeSubtaskId)) {
@@ -7434,20 +7434,20 @@ function getActiveLobsterSubtaskIds(task: LobsterTaskRecord): string[] {
   return Array.from(new Set(normalized));
 }
 
-function markLobsterSubtaskRunFinished(
+function markLoopSubtaskRunFinished(
   taskId: string,
   subtaskId: string,
   runStatus: TaskRunStatus,
   assistantContent: string | null,
 ): void {
-  const task = readLobsterTaskRecord(taskId);
+  const task = readLoopTaskRecord(taskId);
   if (!task) {
     return;
   }
   const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
   const now = Date.now();
-  const summary = buildLobsterSubtaskCompletionSummary(assistantContent);
-  const nextStatus: LobsterSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
+  const summary = buildLoopSubtaskCompletionSummary(assistantContent);
+  const nextStatus: LoopSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
   const subTasks = task.subTasks.map((item) => {
     if (item.id !== subtaskId) {
       return item;
@@ -7459,28 +7459,28 @@ function markLobsterSubtaskRunFinished(
       updatedAt: now,
     };
   });
-  const activeSubtaskIds = getActiveLobsterSubtaskIds(task).filter((id) => id !== subtaskId);
-  updateLobsterTaskRecord(taskId, {
+  const activeSubtaskIds = getActiveLoopSubtaskIds(task).filter((id) => id !== subtaskId);
+  updateLoopTaskRecord(taskId, {
     subTasks,
     activeSubtaskId: activeSubtaskIds[0] ?? null,
     activeSubtaskIds,
     updatedAt: now,
   });
-  appendLobsterSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
+  appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
   if (subtaskRecord) {
-    appendLobsterMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, assistantContent);
+    appendLoopMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, assistantContent);
   } else {
-    refreshOpenLobsterDebateChatPanelForTask(taskId);
+    refreshOpenLoopGroupChatPanelForTask(taskId);
   }
 }
 
-async function finalizeLobsterSubtaskRun(options: LobsterSubtaskCompletionOptions): Promise<void> {
-  await finalizeLobsterSubtaskRunWithDeps(options, {
-    markSubtaskRunFinished: markLobsterSubtaskRunFinished,
-    shouldAutoCloseSubtaskTab: getGlobalLobsterAutoCloseSubtaskTabs,
+async function finalizeLoopSubtaskRun(options: LoopSubtaskCompletionOptions): Promise<void> {
+  await finalizeLoopSubtaskRunWithDeps(options, {
+    markSubtaskRunFinished: markLoopSubtaskRunFinished,
+    shouldAutoCloseSubtaskTab: getGlobalLoopAutoCloseSubtaskTabs,
     closeSubtaskTab: closeConversationTabAndRefreshPanel,
     logSubtaskTabAutoClosed: ({ taskId, round, subtaskId, tabId }) => {
-      void logInfo("lobster-subtask-tab-auto-closed", {
+      void logInfo("loop-subtask-tab-auto-closed", {
         taskId,
         round,
         subtaskId,
@@ -7490,7 +7490,7 @@ async function finalizeLobsterSubtaskRun(options: LobsterSubtaskCompletionOption
   });
 }
 
-function buildLobsterSubtaskCompletionSummary(content: string | null): string | undefined {
+function buildLoopSubtaskCompletionSummary(content: string | null): string | undefined {
   const normalized = String(content ?? "").trim().replace(/\s+/g, " ");
   if (!normalized) {
     return undefined;
@@ -7498,9 +7498,9 @@ function buildLobsterSubtaskCompletionSummary(content: string | null): string | 
   return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized;
 }
 
-function appendLobsterSubtaskCompletionAutoLog(
-  task: LobsterTaskRecord,
-  subtask: LobsterSubtaskRecord | undefined,
+function appendLoopSubtaskCompletionAutoLog(
+  task: LoopTaskRecord,
+  subtask: LoopSubtaskRecord | undefined,
   runStatus: TaskRunStatus,
   summary?: string,
   assistantContent?: string | null,
@@ -7518,7 +7518,7 @@ function appendLobsterSubtaskCompletionAutoLog(
       existingContent = fs.readFileSync(filePath, "utf8");
     }
   } catch (error) {
-    void logError("lobster-subtask-communication-read-error", {
+    void logError("loop-subtask-communication-read-error", {
       taskId: task.id,
       subtaskId: subtask.id,
       filePath,
@@ -7526,15 +7526,15 @@ function appendLobsterSubtaskCompletionAutoLog(
     });
   }
 
-  const verification = detectLobsterVerificationSignals(`${existingContent}\n${assistantContent ?? ""}`);
+  const verification = detectLoopVerificationSignals(`${existingContent}\n${assistantContent ?? ""}`);
   const lines = [
     "",
     `## 扩展自动记录（${new Date().toISOString()}）`,
     `- 子任务 ID：${subtask.id}`,
     `- 子任务标题：${subtask.title}`,
     `- 运行状态：${runStatus === "end" ? "completed" : runStatus}`,
-    `- 单测状态：${formatLobsterVerificationState(verification.unitTest)}`,
-    `- 编译状态：${formatLobsterVerificationState(verification.build)}`,
+    `- 单测状态：${formatLoopVerificationState(verification.unitTest)}`,
+    `- 编译状态：${formatLoopVerificationState(verification.build)}`,
   ];
   if (verification.unitTestEvidence) {
     lines.push(`- 单测依据：${verification.unitTestEvidence}`);
@@ -7552,7 +7552,7 @@ function appendLobsterSubtaskCompletionAutoLog(
   try {
     fs.appendFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
   } catch (error) {
-    void logError("lobster-subtask-communication-append-error", {
+    void logError("loop-subtask-communication-append-error", {
       taskId: task.id,
       subtaskId: subtask.id,
       filePath,
@@ -7561,57 +7561,57 @@ function appendLobsterSubtaskCompletionAutoLog(
   }
 }
 
-function markLobsterTaskInterrupted(
+function markLoopTaskInterrupted(
   taskId: string,
   status: "error" | "stopped",
   target: PromptRunTarget,
   options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
 ): void {
-  const existing = readLobsterTaskRecord(taskId);
+  const existing = readLoopTaskRecord(taskId);
   const now = Date.now();
-  const patch: Partial<LobsterTaskRecord> = {
+  const patch: Partial<LoopTaskRecord> = {
     status,
     activeSubtaskId: null,
     activeSubtaskIds: [],
     updatedAt: now,
   };
   if (options.source === "main" && status === "error") {
-    Object.assign(patch, buildNextLobsterMainAiFailureState(existing ?? {}, {
+    Object.assign(patch, buildNextLoopMainAiFailureState(existing ?? {}, {
       now,
       failureMessage: options.failureMessage,
     }));
-    if (isLobsterMainAiFailureLimitReached({
+    if (isLoopMainAiFailureLimitReached({
       mainAiFailureCount: patch.mainAiFailureCount,
       mainAiFailureLimitReached: patch.mainAiFailureLimitReached,
     })) {
       patch.status = "needs-review";
       patch.finalSummary = [
-        `主任务 AI 调用已连续失败 ${patch.mainAiFailureCount}/${LOBSTER_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`,
+        `主任务 AI 调用已连续失败 ${patch.mainAiFailureCount}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`,
         options.failureMessage ? `最近一次失败：${options.failureMessage}` : "",
       ].filter(Boolean).join("\n");
     }
   }
-  const record = updateLobsterTaskRecord(taskId, patch) ?? existing;
+  const record = updateLoopTaskRecord(taskId, patch) ?? existing;
   if (record) {
-    appendSystemMessageForLobster(target, buildLobsterTaskNeedsReviewText(record));
+    appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
   }
 }
 
-function markLobsterTaskStopped(
+function markLoopTaskStopped(
   taskId: string,
   options: {
     finalSummary?: string;
     subtaskSummary?: string;
     participantSummary?: string;
   } = {},
-): LobsterTaskRecord | null {
-  const task = readLobsterTaskRecord(taskId);
-  if (!task || isLobsterTaskCompleted(task)) {
+): LoopTaskRecord | null {
+  const task = readLoopTaskRecord(taskId);
+  if (!task || isLoopTaskCompleted(task)) {
     return task;
   }
 
   const now = Date.now();
-  const activeSubtaskIds = new Set(getActiveLobsterSubtaskIds(task));
+  const activeSubtaskIds = new Set(getActiveLoopSubtaskIds(task));
   const subTasks = task.subTasks.map((subtask) => {
     const shouldStopSubtask = activeSubtaskIds.has(subtask.id)
       || subtask.status === "running"
@@ -7657,7 +7657,7 @@ function markLobsterTaskStopped(
     };
   });
 
-  const record = updateLobsterTaskRecord(taskId, {
+  const record = updateLoopTaskRecord(taskId, {
     status: "stopped",
     activeSubtaskId: null,
     activeSubtaskIds: [],
@@ -7666,22 +7666,22 @@ function markLobsterTaskStopped(
     ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
     updatedAt: now,
   });
-  refreshOpenLobsterDebateChatPanelForTask(taskId);
+  refreshOpenLoopGroupChatPanelForTask(taskId);
   return record;
 }
 
-function markLobsterTaskStoppedByUser(taskId: string): LobsterTaskRecord | null {
-  return markLobsterTaskStopped(taskId, {
+function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
+  return markLoopTaskStopped(taskId, {
     finalSummary: "用户已从 Loop 群聊中止任务。",
     subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
     participantSummary: "用户已从 Loop 群聊中止该参与者任务。",
   });
 }
 
-function markLobsterTaskStoppedAfterRuntimeEnded(taskId: string): LobsterTaskRecord | null {
-  const record = markLobsterTaskStopped(taskId);
+function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | null {
+  const record = markLoopTaskStopped(taskId);
   if (record) {
-    void logInfo("lobster-task-runtime-state-reconciled", {
+    void logInfo("loop-task-runtime-state-reconciled", {
       taskId,
       previousStatus: "running",
       nextStatus: record.status,
@@ -7698,15 +7698,15 @@ function resolvePromptRunTargetFromConversationTab(tab: ConversationTabRecord): 
   };
 }
 
-function resolveLobsterMainPromptTarget(task: LobsterTaskRecord): PromptRunTarget | null {
+function resolveLoopMainPromptTarget(task: LoopTaskRecord): PromptRunTarget | null {
   const state = ensureConversationTabs();
   let sessionFallback: ConversationTabRecord | null = null;
   for (const tab of state.tabs) {
     if (tab.cli !== task.cli) {
       continue;
     }
-    const context = resolveConversationTabLobsterContext(tab);
-    if (context.taskRole === "main" && context.lobsterTaskId === task.id) {
+    const context = resolveConversationTabLoopContext(tab);
+    if (context.taskRole === "main" && context.loopTaskId === task.id) {
       return resolvePromptRunTargetFromConversationTab(tab);
     }
     if (
@@ -7734,15 +7734,15 @@ function resolveLobsterMainPromptTarget(task: LobsterTaskRecord): PromptRunTarge
   return resolvePromptRunTargetFromConversationTab(newTab);
 }
 
-async function maybeWakeLobsterMainAfterSubtaskContinuation(
-  context: LobsterSubtaskConversationContext,
+async function maybeWakeLoopMainAfterSubtaskContinuation(
+  context: LoopSubtaskConversationContext,
   options: {
     tabId: string;
     previousRunEndedAt: number;
     model?: string;
   }
 ): Promise<void> {
-  const latestRun = getLatestLobsterRoundRunRecord(
+  const latestRun = getLatestLoopRoundRunRecord(
     context.taskId,
     context.round,
     "subtask",
@@ -7754,9 +7754,9 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
 
   const subtaskTarget = resolvePromptRunTarget(options.tabId);
   const summary = subtaskTarget
-    ? getLastLobsterAssistantContent(subtaskTarget, context.taskId, context.round, "subtask")
+    ? getLastLoopAssistantContent(subtaskTarget, context.taskId, context.round, "subtask")
     : null;
-  await finalizeLobsterSubtaskRun({
+  await finalizeLoopSubtaskRun({
     taskId: context.taskId,
     round: context.round,
     subtaskId: context.subtaskId,
@@ -7765,28 +7765,28 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
     tabId: subtaskTarget?.tabId ?? null,
   });
 
-  const latestTask = readLobsterTaskRecord(context.taskId);
+  const latestTask = readLoopTaskRecord(context.taskId);
   if (
     !latestTask
-    || isLobsterTaskBlockedByMainAiFailureLimit(latestTask)
+    || isLoopTaskBlockedByMainAiFailureLimit(latestTask)
     || (latestTask.status !== "error" && latestTask.status !== "stopped")
   ) {
     return;
   }
 
-  const mainTarget = resolveLobsterMainPromptTarget(latestTask);
+  const mainTarget = resolveLoopMainPromptTarget(latestTask);
   if (!mainTarget || isTabRunActive(mainTarget.tabId)) {
     return;
   }
 
   const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
-  appendSystemMessageForLobster(
+  appendSystemMessageForLoop(
     mainTarget,
-    buildLobsterMainResumeText(latestTask.id, resolveLobsterResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
+    buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
   );
 
   const resumePrompt = t("run.hiddenContinuePrompt");
-  await runLobsterPrompt({
+  await runLoopPrompt({
     displayPrompt: resumePrompt,
     modelPrompt: resumePrompt,
     contextTags: [],
@@ -7798,52 +7798,52 @@ async function maybeWakeLobsterMainAfterSubtaskContinuation(
   });
 }
 
-function getLobsterTargetSessionId(target: PromptRunTarget): string | null {
+function getLoopTargetSessionId(target: PromptRunTarget): string | null {
   const tab = getConversationTabById(target.tabId);
   return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
 }
 
-function persistLobsterMessagesForTarget(target: PromptRunTarget, messages: ChatMessage[]): void {
-  const sessionId = getLobsterTargetSessionId(target);
+function persistLoopMessagesForTarget(target: PromptRunTarget, messages: ChatMessage[]): void {
+  const sessionId = getLoopTargetSessionId(target);
   persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
 }
 
-function removeLobsterMainDecisionMessage(
+function removeLoopMainDecisionMessage(
   target: PromptRunTarget,
   taskId: string,
   round: number,
 ): void {
-  const messages = getLobsterMessagesForTarget(target);
+  const messages = getLoopMessagesForTarget(target);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (
       message.role === "assistant"
       && message.taskRole === "main"
-      && message.lobsterTaskId === taskId
-      && message.lobsterRound === round
+      && message.loopTaskId === taskId
+      && message.loopRound === round
     ) {
       messages.splice(index, 1);
-      persistLobsterMessagesForTarget(target, messages);
+      persistLoopMessagesForTarget(target, messages);
       sendPanelMessage({ type: "removeMessage", id: message.id, tabId: target.tabId });
       return;
     }
   }
 }
 
-function replaceLobsterMainDecisionMessageWithMarkdown(
+function replaceLoopMainDecisionMessageWithMarkdown(
   target: PromptRunTarget,
   taskId: string,
   round: number,
   content: string,
 ): boolean {
-  const messages = getLobsterMessagesForTarget(target);
+  const messages = getLoopMessagesForTarget(target);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (
       message.role === "assistant"
       && message.taskRole === "main"
-      && message.lobsterTaskId === taskId
-      && message.lobsterRound === round
+      && message.loopTaskId === taskId
+      && message.loopRound === round
     ) {
       const nextMessage: ChatMessage = {
         ...message,
@@ -7851,7 +7851,7 @@ function replaceLobsterMainDecisionMessageWithMarkdown(
         merge: false,
       };
       messages[index] = nextMessage;
-      persistLobsterMessagesForTarget(target, messages);
+      persistLoopMessagesForTarget(target, messages);
       sendPanelMessage({ type: "replaceMessage", message: nextMessage, tabId: target.tabId });
       return true;
     }
@@ -7859,19 +7859,19 @@ function replaceLobsterMainDecisionMessageWithMarkdown(
   return false;
 }
 
-function showLobsterSubtaskDecisionMarkdown(
+function showLoopSubtaskDecisionMarkdown(
   target: PromptRunTarget,
-  task: LobsterTaskRecord,
+  task: LoopTaskRecord,
   round: number,
-  subtasks: LobsterSubtaskRecord[],
-  decision: LobsterMainDecision,
+  subtasks: LoopSubtaskRecord[],
+  decision: LoopMainDecision,
 ): void {
-  const content = buildLobsterSubtaskDecisionMarkdown(task, round, subtasks, decision);
-  if (replaceLobsterMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
+  const content = buildLoopSubtaskDecisionMarkdown(task, round, subtasks, decision);
+  if (replaceLoopMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
     return;
   }
 
-  const messages = getLobsterMessagesForTarget(target);
+  const messages = getLoopMessagesForTarget(target);
   const message: ChatMessage = {
     id: createMessageId(),
     role: "assistant",
@@ -7879,28 +7879,28 @@ function showLobsterSubtaskDecisionMarkdown(
     createdAt: Date.now(),
     merge: false,
     taskRole: "main",
-    lobsterTaskId: task.id,
-    lobsterRound: round,
+    loopTaskId: task.id,
+    loopRound: round,
   };
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLobsterMessagesForTarget(target, messages);
+  persistLoopMessagesForTarget(target, messages);
 }
 
-function hasCompleteLobsterCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
-  return hasCompleteLobsterCompletionMessages(getLobsterMessagesForTarget(target), taskId);
+function hasCompleteLoopCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
+  return hasCompleteLoopCompletionMessages(getLoopMessagesForTarget(target), taskId);
 }
 
-function appendLobsterAnswerConclusionMessage(
+function appendLoopAnswerConclusionMessage(
   target: PromptRunTarget,
-  task: LobsterTaskRecord,
-  decision?: LobsterMainDecision | null,
+  task: LoopTaskRecord,
+  decision?: LoopMainDecision | null,
 ): void {
-  const messages = getLobsterMessagesForTarget(target);
-  const content = buildLobsterAnswerConclusionMarkdown(task, decision);
+  const messages = getLoopMessagesForTarget(target);
+  const content = buildLoopAnswerConclusionMarkdown(task, decision);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const existing = messages[index];
-    if (!existing || !isLobsterAnswerConclusionMessageForTask(existing, task.id)) {
+    if (!existing || !isLoopAnswerConclusionMessageForTask(existing, task.id)) {
       continue;
     }
     if (existing.content.trim() === content.trim()) {
@@ -7911,12 +7911,12 @@ function appendLobsterAnswerConclusionMessage(
       content,
       merge: false,
       taskRole: "main",
-      lobsterTaskId: task.id,
-      lobsterAnswerConclusion: true,
+      loopTaskId: task.id,
+      loopAnswerConclusion: true,
     };
     messages[index] = replacement;
     sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
-    persistLobsterMessagesForTarget(target, messages);
+    persistLoopMessagesForTarget(target, messages);
     return;
   }
   const message: ChatMessage = {
@@ -7926,27 +7926,27 @@ function appendLobsterAnswerConclusionMessage(
     createdAt: Date.now(),
     merge: false,
     taskRole: "main",
-    lobsterTaskId: task.id,
-    lobsterAnswerConclusion: true,
+    loopTaskId: task.id,
+    loopAnswerConclusion: true,
   };
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLobsterMessagesForTarget(target, messages);
+  persistLoopMessagesForTarget(target, messages);
 }
 
-function appendLobsterFinalSummaryMessage(
+function appendLoopFinalSummaryMessage(
   target: PromptRunTarget,
-  task: LobsterTaskRecord,
-  decision?: LobsterMainDecision | null,
+  task: LoopTaskRecord,
+  decision?: LoopMainDecision | null,
 ): void {
-  const messages = getLobsterMessagesForTarget(target);
-  const content = buildLobsterFinalSummaryMarkdown(task, decision);
+  const messages = getLoopMessagesForTarget(target);
+  const content = buildLoopFinalSummaryMarkdown(task, decision);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const existing = messages[index];
-    if (!existing || !isLobsterFinalSummaryMessageForTask(existing, task.id)) {
+    if (!existing || !isLoopFinalSummaryMessageForTask(existing, task.id)) {
       continue;
     }
-    if (isCompleteLobsterFinalSummaryContent(existing.content)) {
+    if (isCompleteLoopFinalSummaryContent(existing.content)) {
       return;
     }
     const replacement: ChatMessage = {
@@ -7954,12 +7954,12 @@ function appendLobsterFinalSummaryMessage(
       content,
       merge: false,
       taskRole: "main",
-      lobsterTaskId: task.id,
-      lobsterFinalSummary: true,
+      loopTaskId: task.id,
+      loopFinalSummary: true,
     };
     messages[index] = replacement;
     sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
-    persistLobsterMessagesForTarget(target, messages);
+    persistLoopMessagesForTarget(target, messages);
     return;
   }
   const message: ChatMessage = {
@@ -7969,22 +7969,22 @@ function appendLobsterFinalSummaryMessage(
     createdAt: Date.now(),
     merge: false,
     taskRole: "main",
-    lobsterTaskId: task.id,
-    lobsterFinalSummary: true,
+    loopTaskId: task.id,
+    loopFinalSummary: true,
   };
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLobsterMessagesForTarget(target, messages);
+  persistLoopMessagesForTarget(target, messages);
 }
 
-function appendSystemMessageForLobster(
+function appendSystemMessageForLoop(
   target: PromptRunTarget,
   content: string,
   options: {
-    taskRole?: LobsterTaskRole;
-    lobsterTaskId?: string;
-    lobsterRound?: number;
-    lobsterSubtaskId?: string;
+    taskRole?: LoopTaskRole;
+    loopTaskId?: string;
+    loopRound?: number;
+    loopSubtaskId?: string;
     actions?: ChatMessageAction[];
     merge?: boolean;
   } = {},
@@ -8001,9 +8001,9 @@ function appendSystemMessageForLobster(
     createdAt: Date.now(),
     ...(options.merge === false ? { merge: false } : {}),
     ...(options.taskRole ? { taskRole: options.taskRole } : {}),
-    ...(options.lobsterTaskId ? { lobsterTaskId: options.lobsterTaskId } : {}),
-    ...(typeof options.lobsterRound === "number" ? { lobsterRound: options.lobsterRound } : {}),
-    ...(options.lobsterSubtaskId ? { lobsterSubtaskId: options.lobsterSubtaskId } : {}),
+    ...(options.loopTaskId ? { loopTaskId: options.loopTaskId } : {}),
+    ...(typeof options.loopRound === "number" ? { loopRound: options.loopRound } : {}),
+    ...(options.loopSubtaskId ? { loopSubtaskId: options.loopSubtaskId } : {}),
     ...(options.actions?.length ? { actions: options.actions } : {}),
   };
   appendMessageToStore(messages, message);
@@ -8012,35 +8012,35 @@ function appendSystemMessageForLobster(
     persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
     return;
   }
-  // Keep lobster pre-run system messages in draft only, so the first real turn can
+  // Keep loop pre-run system messages in draft only, so the first real turn can
   // start a fresh remote session instead of being blocked by a local-only session id.
   updatePendingSessionDraft(target.tabId, { messages }, target.cli);
 }
 
-function getLobsterRoundRunStatus(
+function getLoopRoundRunStatus(
   taskId: string,
   round: number,
-  role: LobsterTaskRole,
+  role: LoopTaskRole,
   subtaskId?: string,
 ): TaskRunStatus | null {
-  const record = getLatestLobsterRoundRunRecord(taskId, round, role, subtaskId);
+  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId);
   return record ? record.status : null;
 }
 
-function getLatestLobsterRoundRunRecord(
+function getLatestLoopRoundRunRecord(
   taskId: string,
   round: number,
-  role: LobsterTaskRole,
+  role: LoopTaskRole,
   subtaskId?: string,
 ): TaskRunRecord | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
     const run = runs[index];
     if (
-      run.lobsterTaskId === taskId
-      && run.lobsterRound === round
+      run.loopTaskId === taskId
+      && run.loopRound === round
       && run.taskRole === role
-      && (role !== "subtask" || run.lobsterSubtaskId === subtaskId)
+      && (role !== "subtask" || run.loopSubtaskId === subtaskId)
     ) {
       return run;
     }
@@ -8105,10 +8105,10 @@ function maybePersistLongTermMemoryFromRun(options: {
   cli: CliName;
   prompt: string;
   messages: readonly ChatMessage[];
-  taskRole?: LobsterTaskRole;
-  lobsterTaskId?: string;
-  lobsterRound?: number;
-  lobsterSubtaskId?: string;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
 }): void {
   const runtimeSettings = buildLongTermMemoryRuntimeSettings();
   if (!isMemoryRuntimeOperationAllowed("update", runtimeSettings)) {
@@ -8129,9 +8129,9 @@ function maybePersistLongTermMemoryFromRun(options: {
       cli: options.cli,
       status: options.status,
       taskRole: options.taskRole,
-      lobsterTaskId: options.lobsterTaskId,
-      lobsterRound: options.lobsterRound,
-      lobsterSubtaskId: options.lobsterSubtaskId,
+      loopTaskId: options.loopTaskId,
+      loopRound: options.loopRound,
+      loopSubtaskId: options.loopSubtaskId,
     });
     if (!result.skipped) {
       void logInfo("long-term-memory-persisted", {
@@ -8251,7 +8251,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   preparePendingLabel(runCli, activeTabId, prompt);
   const initialSessionId = target.sessionId;
   const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, initialSessionId);
-  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const includeFinalAnswerInstruction = !input.loopTaskId;
   const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
     includeFinalAnswerInstruction,
   });
@@ -8308,9 +8308,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   applyProcessTitle(runId, runCli, initialSessionId);
   startTaskRun(runId, runCli, initialSessionId, prompt, {
     taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
+    loopTaskId: input.loopTaskId,
+    loopRound: input.loopRound,
+    loopSubtaskId: input.loopSubtaskId,
   });
   activeMessageTarget = messageTarget;
   activeSessionId = initialSessionId;
@@ -8344,9 +8344,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     createMessageId,
     messageMetadata: {
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     },
     appendMessage: (message) => {
       if (!activeMessageTarget || !isCurrentOneShotRunActive()) {
@@ -8665,9 +8665,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
         prompt,
         messages: activeMessageTarget ?? messageTarget,
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       });
       clearActiveRun();
       if (shouldAutoCompactAfterRun) {
@@ -8689,9 +8689,9 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
     if (shouldRetry) {
       appendHiddenRetryErrorTraceMessage(activeMessageTarget, retryFailureMessage, {
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       }, { createMessageId, sendPanelMessage });
       appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
@@ -9139,7 +9139,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     ? loadSessionMessages(cli, uiSessionId)
     : getPendingSessionDraft(tabId, cli).messages;
 
-  const includeFinalAnswerInstruction = !input.lobsterTaskId;
+  const includeFinalAnswerInstruction = !input.loopTaskId;
   const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
     includeSuffix: false,
     includeFinalAnswerInstruction,
@@ -9345,9 +9345,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     createMessageId,
     messageMetadata: {
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     },
     appendMessage: appendMessageForTab,
     replaceMessage: (message) => {
@@ -9417,9 +9417,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       ...(kind === "thinking" ? { kind: "thinking" } : {}),
       ...(options.codexFinalAnswer === true ? { codexFinalAnswer: true } : {}),
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     };
     appendMessageToStore(messageTarget, message);
     assistantMessageIndex = messageTarget.length - 1;
@@ -9569,9 +9569,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       durationMs: Math.max(0, endedAt - startedAt),
       status,
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     };
     appendTaskRun(taskRecord);
     appendSystemMessageForTab(
@@ -9603,9 +9603,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
       prompt,
       messages: messageTarget,
       taskRole: input.taskRole,
-      lobsterTaskId: input.lobsterTaskId,
-      lobsterRound: input.lobsterRound,
-      lobsterSubtaskId: input.lobsterSubtaskId,
+      loopTaskId: input.loopTaskId,
+      loopRound: input.loopRound,
+      loopSubtaskId: input.loopSubtaskId,
     });
     interactiveRunsByTabId.delete(tabId);
     if (status === "end" && shouldAutoCompactAfterRun) {
@@ -9680,9 +9680,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
       appendMessageForTab(createHiddenRetryErrorTraceMessage(missingConclusionMessage, {
         taskRole: input.taskRole,
-        lobsterTaskId: input.lobsterTaskId,
-        lobsterRound: input.lobsterRound,
-        lobsterSubtaskId: input.lobsterSubtaskId,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
       }, { createMessageId }));
       appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
       hiddenRetryCount += 1;
@@ -9726,9 +9726,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     messageTarget,
     stopped: false,
     taskRole: input.taskRole,
-    lobsterTaskId: input.lobsterTaskId,
-    lobsterRound: input.lobsterRound,
-    lobsterSubtaskId: input.lobsterSubtaskId,
+    loopTaskId: input.loopTaskId,
+    loopRound: input.loopRound,
+    loopSubtaskId: input.loopSubtaskId,
   });
 
   while (true) {
@@ -10022,9 +10022,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
         const retryDelayMs = getHiddenRetryDelayMs(hiddenRetryCount + 1);
         appendMessageForTab(createHiddenRetryErrorTraceMessage(info.message, {
           taskRole: input.taskRole,
-          lobsterTaskId: input.lobsterTaskId,
-          lobsterRound: input.lobsterRound,
-          lobsterSubtaskId: input.lobsterSubtaskId,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          loopSubtaskId: input.loopSubtaskId,
         }, { createMessageId }));
         appendSystemMessageForTab(buildHiddenRetryQueuedMessage(hiddenRetryCount));
         hiddenRetryCount += 1;
@@ -10235,9 +10235,9 @@ function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
     createdAt: Date.now(),
     ...(kind === "thinking" ? { kind: "thinking" } : {}),
     taskRole: activeTaskRun?.taskRole,
-    lobsterTaskId: activeTaskRun?.lobsterTaskId,
-    lobsterRound: activeTaskRun?.lobsterRound,
-    lobsterSubtaskId: activeTaskRun?.lobsterSubtaskId,
+    loopTaskId: activeTaskRun?.loopTaskId,
+    loopRound: activeTaskRun?.loopRound,
+    loopSubtaskId: activeTaskRun?.loopSubtaskId,
   };
   appendMessageToStore(activeMessageTarget, message);
   activeMessageIndex = activeMessageTarget.length - 1;
@@ -10339,7 +10339,7 @@ function startTaskRun(
   cli: CliName,
   sessionId: string | null,
   prompt: string,
-  options: { taskRole?: LobsterTaskRole; lobsterTaskId?: string; lobsterRound?: number; lobsterSubtaskId?: string } = {}
+  options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string } = {}
 ): void {
   activeTaskRun = {
     id: runId,
@@ -10348,9 +10348,9 @@ function startTaskRun(
     prompt,
     startedAt: Date.now(),
     taskRole: options.taskRole,
-    lobsterTaskId: options.lobsterTaskId,
-    lobsterRound: options.lobsterRound,
-    lobsterSubtaskId: options.lobsterSubtaskId,
+    loopTaskId: options.loopTaskId,
+    loopRound: options.loopRound,
+    loopSubtaskId: options.loopSubtaskId,
   };
 }
 
@@ -10451,7 +10451,7 @@ function getTaskStoreDeps() {
   return {
     taskStoreFile: TASK_STORE_FILE,
     isCliName,
-    isLobsterTaskRole,
+    isLoopTaskRole,
     isTimestampWithinHistoryRetention,
     logError: (event: string, payload?: unknown) => void logError(event, payload),
   };
@@ -10469,25 +10469,25 @@ function cleanupTaskStoreRetention(): void {
   cleanupTaskStoreRetentionWithDeps(getTaskStoreDeps());
 }
 
-function createLobsterTaskRecord(
+function createLoopTaskRecord(
   cli: CliName,
   rootPrompt: string,
   options: {
     sessionId?: string | null;
-    executionMode?: LobsterExecutionMode;
-    taskKind?: LobsterTaskKind;
+    executionMode?: LoopExecutionMode;
+    taskKind?: LoopTaskKind;
   } = {}
-): LobsterTaskRecord {
+): LoopTaskRecord {
   const now = Date.now();
   const id = createMessageId();
-  const communication = getLobsterCommunicationPaths(id);
+  const communication = getLoopCommunicationPaths(id);
   const sessionId = typeof options.sessionId === "string" && options.sessionId.trim()
     ? options.sessionId
     : null;
-  const executionMode = normalizeLobsterExecutionMode(options.executionMode);
-  const taskStoreFile = buildLobsterTaskStoreFile(cli, activeWorkspaceKey, sessionId, id);
-  ensureLobsterCommunicationFiles(id, rootPrompt);
-  const record: LobsterTaskRecord = {
+  const executionMode = normalizeLoopExecutionMode(options.executionMode);
+  const taskStoreFile = buildLoopTaskStoreFile(cli, activeWorkspaceKey, sessionId, id);
+  ensureLoopCommunicationFiles(id, rootPrompt);
+  const record: LoopTaskRecord = {
     id,
     cli,
     workspaceKey: activeWorkspaceKey,
@@ -10498,7 +10498,7 @@ function createLobsterTaskRecord(
     status: "running",
     createdAt: now,
     updatedAt: now,
-    maxRounds: getGlobalLobsterMaxRounds(),
+    maxRounds: getGlobalLoopMaxRounds(),
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
@@ -10507,14 +10507,14 @@ function createLobsterTaskRecord(
     activeSubtaskIds: [],
     subTasks: [],
     rounds: [],
-    ...buildResetLobsterMainAiFailureState(),
+    ...buildResetLoopMainAiFailureState(),
     supplementalRequirements: [],
     completionRoundSummaries: [],
     completionRequirementCoverage: [],
   };
-  const store = readLobsterTaskStore(taskStoreFile);
+  const store = readLoopTaskStore(taskStoreFile);
   store.tasks.push(record);
-  writeLobsterTaskStore(taskStoreFile, store);
+  writeLoopTaskStore(taskStoreFile, store);
   return record;
 }
 
@@ -10525,15 +10525,15 @@ function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null
   });
 }
 
-function resolveLobsterTaskSessionId(target: PromptRunTarget): string | null {
-  return resolveLobsterTaskSessionIdWithDeps(target, (candidate) => {
+function resolveLoopTaskSessionId(target: PromptRunTarget): string | null {
+  return resolveLoopTaskSessionIdWithDeps(target, (candidate) => {
     const tab = getConversationTabById(candidate.tabId);
     return tab ? getConversationTabSessionIdForCli(tab, candidate.cli) : null;
   });
 }
 
-function isLobsterTaskBlockedByMainAiFailureLimit(task: Pick<LobsterTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">): boolean {
-  return isLobsterTaskBlockedByMainAiFailureLimitWithLimit(task, LOBSTER_MAIN_AI_FAILURE_LIMIT);
+function isLoopTaskBlockedByMainAiFailureLimit(task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">): boolean {
+  return isLoopTaskBlockedByMainAiFailureLimitWithLimit(task, LOOP_MAIN_AI_FAILURE_LIMIT);
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
@@ -10616,31 +10616,31 @@ function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode):
   return true;
 }
 
-function getWorkspaceLobsterExecutionMode(cli: CliName): LobsterExecutionMode {
-  const perCli = workspaceSettings.lobsterExecutionModeByCli;
+function getWorkspaceLoopExecutionMode(cli: CliName): LoopExecutionMode {
+  const perCli = workspaceSettings.loopExecutionModeByCli;
   if (!perCli) {
-    return DEFAULT_LOBSTER_EXECUTION_MODE;
+    return DEFAULT_LOOP_EXECUTION_MODE;
   }
-  return normalizeLobsterExecutionMode(perCli[cli]);
+  return normalizeLoopExecutionMode(perCli[cli]);
 }
 
-function setWorkspaceLobsterExecutionModeForCli(cli: CliName, mode: LobsterExecutionMode): boolean {
-  const normalizedMode = normalizeLobsterExecutionMode(mode);
-  if (!workspaceSettings.lobsterExecutionModeByCli) {
-    workspaceSettings.lobsterExecutionModeByCli = {};
+function setWorkspaceLoopExecutionModeForCli(cli: CliName, mode: LoopExecutionMode): boolean {
+  const normalizedMode = normalizeLoopExecutionMode(mode);
+  if (!workspaceSettings.loopExecutionModeByCli) {
+    workspaceSettings.loopExecutionModeByCli = {};
   }
-  if (workspaceSettings.lobsterExecutionModeByCli[cli] === normalizedMode) {
+  if (workspaceSettings.loopExecutionModeByCli[cli] === normalizedMode) {
     return false;
   }
-  workspaceSettings.lobsterExecutionModeByCli[cli] = normalizedMode;
+  workspaceSettings.loopExecutionModeByCli[cli] = normalizedMode;
   saveWorkspaceSettings(workspaceSettings);
   return true;
 }
 
-function buildWorkspaceLobsterExecutionModeByCli(): Record<CliName, LobsterExecutionMode> {
-  const result = {} as Record<CliName, LobsterExecutionMode>;
+function buildWorkspaceLoopExecutionModeByCli(): Record<CliName, LoopExecutionMode> {
+  const result = {} as Record<CliName, LoopExecutionMode>;
   CLI_LIST.forEach((cli) => {
-    result[cli] = getWorkspaceLobsterExecutionMode(cli);
+    result[cli] = getWorkspaceLoopExecutionMode(cli);
   });
   return result;
 }
@@ -10649,8 +10649,8 @@ function getGlobalMultiAgentEnabled(): boolean {
   return resolveGlobalMultiAgentEnabled(readToolSettings(), workspaceSettings);
 }
 
-function shouldRequireExplicitFinalAnswerForRun(input: { lobsterTaskId?: string }): boolean {
-  return !input.lobsterTaskId;
+function shouldRequireExplicitFinalAnswerForRun(input: { loopTaskId?: string }): boolean {
+  return !input.loopTaskId;
 }
 
 function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
@@ -10659,7 +10659,7 @@ function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
     memoryEnabled: toolSettings.memoryEnabled,
     globalMemoryEnabled: toolSettings.globalMemoryEnabled,
     memoryAutoExtractAfterCompact: toolSettings.memoryAutoExtractAfterCompact,
-    memoryAutoExtractAfterLobsterTask: toolSettings.memoryAutoExtractAfterLobsterTask,
+    memoryAutoExtractAfterLoopTask: toolSettings.memoryAutoExtractAfterLoopTask,
     workspaceSettings: {
       longTermMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
       workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
@@ -10809,44 +10809,44 @@ function getGlobalAutoCompactContextAfterRun(): boolean {
   return resolveGlobalAutoCompactContextAfterRun(readToolSettings(), workspaceSettings);
 }
 
-function normalizeLobsterMaxRounds(value: unknown): number {
-  const rawValue = parseLobsterMaxRoundsValue(value);
+function normalizeLoopMaxRounds(value: unknown): number {
+  const rawValue = parseLoopMaxRoundsValue(value);
   if (!Number.isFinite(rawValue)) {
-    return LOBSTER_DEFAULT_MAX_ROUNDS;
+    return LOOP_DEFAULT_MAX_ROUNDS;
   }
   const integerValue = Math.floor(rawValue);
-  return Math.min(Math.max(integerValue, LOBSTER_MIN_MAX_ROUNDS), LOBSTER_MAX_MAX_ROUNDS);
+  return Math.min(Math.max(integerValue, LOOP_MIN_MAX_ROUNDS), LOOP_MAX_MAX_ROUNDS);
 }
 
-function normalizeStoredLobsterMaxRounds(value: unknown): number {
-  const rawValue = parseLobsterMaxRoundsValue(value);
+function normalizeStoredLoopMaxRounds(value: unknown): number {
+  const rawValue = parseLoopMaxRoundsValue(value);
   if (!Number.isFinite(rawValue)) {
-    return LOBSTER_DEFAULT_MAX_ROUNDS;
+    return LOOP_DEFAULT_MAX_ROUNDS;
   }
-  return Math.max(Math.floor(rawValue), LOBSTER_MIN_MAX_ROUNDS);
+  return Math.max(Math.floor(rawValue), LOOP_MIN_MAX_ROUNDS);
 }
 
-function parseLobsterMaxRoundsValue(value: unknown): number {
+function parseLoopMaxRoundsValue(value: unknown): number {
   const rawValue = typeof value === "number"
     ? value
     : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
   return rawValue;
 }
 
-function getGlobalLobsterMaxRounds(): number {
+function getGlobalLoopMaxRounds(): number {
   const toolSettings = readToolSettings();
-  if (typeof toolSettings.lobsterMaxRounds === "number") {
-    return normalizeLobsterMaxRounds(toolSettings.lobsterMaxRounds);
+  if (typeof toolSettings.loopMaxRounds === "number") {
+    return normalizeLoopMaxRounds(toolSettings.loopMaxRounds);
   }
-  return normalizeLobsterMaxRounds(workspaceSettings.lobsterMaxRounds);
+  return normalizeLoopMaxRounds(workspaceSettings.loopMaxRounds);
 }
 
-function getGlobalLobsterAutoCloseSubtaskTabs(): boolean {
+function getGlobalLoopAutoCloseSubtaskTabs(): boolean {
   const toolSettings = readToolSettings();
-  if (typeof toolSettings.lobsterAutoCloseSubtaskTabs === "boolean") {
-    return toolSettings.lobsterAutoCloseSubtaskTabs;
+  if (typeof toolSettings.loopAutoCloseSubtaskTabs === "boolean") {
+    return toolSettings.loopAutoCloseSubtaskTabs;
   }
-  return workspaceSettings.lobsterAutoCloseSubtaskTabs !== false;
+  return workspaceSettings.loopAutoCloseSubtaskTabs !== false;
 }
 
 function getModelStoreOptions() {
@@ -10867,7 +10867,7 @@ function getWorkspaceSettingsStoreOptions() {
     isThinkingMode,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
-    normalizeLobsterMaxRounds,
+    normalizeLoopMaxRounds,
     normalizeToolSettingsLocale,
     sanitizeConversationTabRecord: (value: unknown): ConversationTabRecordForWorkspaceSettings | null => sanitizeConversationTabRecord(value),
     logError: (event: string, payload?: unknown) => void logError(event, payload),
@@ -11071,8 +11071,8 @@ async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
-  const lobsterSessionIdsByCli = buildLobsterSessionIdsByCli(
-    lobsterDebateChatPanelCoordinator.listGroupChatTasks()
+  const loopSessionIdsByCli = buildLoopSessionIdsByCli(
+    loopDebateChatPanelCoordinator.listGroupChatTasks()
   );
   let shouldPersist = false;
   for (const item of CLI_LIST) {
@@ -11101,7 +11101,7 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
-        isLobsterSession: lobsterSessionIdsByCli[item].has(record.id),
+        isLoopSession: loopSessionIdsByCli[item].has(record.id),
         isOpenInConversationTabs: Boolean(openConversationTabId),
         openConversationTabId,
         firstPrompt,
@@ -11198,7 +11198,7 @@ function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: str
   return sessionTabsController.setActiveConversationTab(tabId);
 }
 
-async function switchVisibleConversationTabForLobster(
+async function switchVisibleConversationTabForLoop(
   tabId: string
 ): Promise<{ cli: CliName; sessionId: string | null } | null> {
   const previousCli = currentCli;
@@ -11220,11 +11220,11 @@ async function switchVisibleConversationTabForLobster(
   return switched;
 }
 
-function createLobsterSubtaskRunTarget(
+function createLoopSubtaskRunTarget(
   cli: CliName,
   options: { sessionId?: string | null } = {}
 ): PromptRunTarget {
-  const sessionId = normalizeLobsterDebateSessionId(options.sessionId);
+  const sessionId = normalizeLoopDebateSessionId(options.sessionId);
   const state = ensureConversationTabs();
   const tab: ConversationTabRecord = {
     id: createConversationTabId(),
@@ -11235,7 +11235,7 @@ function createLobsterSubtaskRunTarget(
   };
   state.tabs.push(tab);
   persistConversationTabsToWorkspaceSettings();
-  void logInfo("lobster-subtask-session-created", { cli, tabId: tab.id });
+  void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
   void postPanelState();
   return {
     tabId: tab.id,
@@ -11257,7 +11257,7 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 }
 
 async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
-  if (isTabRunActive(tabId) || isLobsterMainTabCloseLocked(tabId)) {
+  if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
     return;
   }
@@ -11326,7 +11326,7 @@ async function resetConversationTabSession(): Promise<void> {
   if (!activeTab) {
     return;
   }
-  if (isTabRunActive(activeTab.id) || isLobsterMainTabCloseLocked(activeTab.id)) {
+  if (isTabRunActive(activeTab.id) || isLoopMainTabCloseLocked(activeTab.id)) {
     await postPanelState();
     return;
   }

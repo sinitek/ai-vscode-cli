@@ -8,6 +8,7 @@ import {
   resolveLongTermMemoryEnabled,
   type ToolSettingsState,
 } from "../toolSettings";
+import { getLegacyLoopPropertyKey } from "../loopLegacyMigration";
 
 test("ignores retired final-answer policy fields", () => {
   assert.deepEqual(
@@ -99,7 +100,7 @@ test("treats memory auto-extract settings as secondary switches only", () => {
     resolveLongTermMemoryEnabled({
       workspaceSettings: { workspaceMemoryEnabled: false },
       memoryAutoExtractAfterCompact: true,
-      memoryAutoExtractAfterLobsterTask: true,
+      memoryAutoExtractAfterLoopTask: true,
     }),
     false,
   );
@@ -129,12 +130,12 @@ test("normalizes known legacy memory fields without accepting non-boolean values
       memoryEnabled: false,
       globalMemoryEnabled: true,
       memoryAutoExtractAfterCompact: "true",
-      memoryAutoExtractAfterLobsterTask: true,
+      memoryAutoExtractAfterLoopTask: true,
     }),
     {
       memoryEnabled: false,
       globalMemoryEnabled: true,
-      memoryAutoExtractAfterLobsterTask: true,
+      memoryAutoExtractAfterLoopTask: true,
     },
   );
 });
@@ -142,19 +143,41 @@ test("normalizes known legacy memory fields without accepting non-boolean values
 test("normalizes global Loop tool settings", () => {
   assert.deepEqual(
     normalizeToolSettings({
-      lobsterMaxRounds: "42.9",
-      lobsterAutoCloseSubtaskTabs: false,
+      loopMaxRounds: "42.9",
+      loopAutoCloseSubtaskTabs: false,
     }),
     {
-      lobsterMaxRounds: 42,
-      lobsterAutoCloseSubtaskTabs: false,
+      loopMaxRounds: 42,
+      loopAutoCloseSubtaskTabs: false,
     },
   );
   assert.deepEqual(
     normalizeToolSettings({
-      lobsterMaxRounds: "",
-      lobsterAutoCloseSubtaskTabs: "false",
+      loopMaxRounds: "",
+      loopAutoCloseSubtaskTabs: "false",
     }),
     {},
+  );
+});
+
+test("migrates legacy Loop tool-setting keys and prefers current values", () => {
+  assert.deepEqual(
+    normalizeToolSettings({
+      [getLegacyLoopPropertyKey("loopMaxRounds")]: "31.8",
+      [getLegacyLoopPropertyKey("loopAutoCloseSubtaskTabs")]: false,
+      [getLegacyLoopPropertyKey("memoryAutoExtractAfterLoopTask")]: true,
+    }),
+    {
+      loopMaxRounds: 31,
+      loopAutoCloseSubtaskTabs: false,
+      memoryAutoExtractAfterLoopTask: true,
+    },
+  );
+  assert.deepEqual(
+    normalizeToolSettings({
+      loopMaxRounds: 12,
+      [getLegacyLoopPropertyKey("loopMaxRounds")]: 99,
+    }),
+    { loopMaxRounds: 12 },
   );
 });

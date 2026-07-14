@@ -1,4 +1,4 @@
-# 龙虾辩论会话续接与临时标签清理
+# Loop辩论会话续接与临时标签清理
 
 - 日期：2026-06-16
 - 状态：completed
@@ -17,9 +17,9 @@
 
 ## 范围
 
-- `src/lobsterDebate.ts`
+- `src/loopDebate.ts`
 - `src/extension.ts`
-- `src/test/lobsterDebate.test.ts`
+- `src/test/loopDebate.test.ts`
 - `.ch/docs/design-docs/*`
 - `.ch/docs/product-specs/*`
 - `.ch/docs/references/*`
@@ -28,7 +28,7 @@
 
 - 本轮不实现完整 VS Code 内容区模拟群聊 Webview。
 - 不改变辩论产物协议中的 `chat.md` / `decision.json` 主路径。
-- 不改变普通龙虾子任务的 tab 创建与重试语义。
+- 不改变普通Loop子任务的 tab 创建与重试语义。
 
 ## 验收标准
 
@@ -39,7 +39,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`, `src/lobsterDebate.ts`, `src/test/lobsterDebate.test.ts`
+- 代码目录：`src/extension.ts`, `src/loopDebate.ts`, `src/test/loopDebate.test.ts`
 - 文档目录：`.ch/docs/design-docs`, `.ch/docs/product-specs`, `.ch/docs/references`
 - 配置与脚本：无
 
@@ -49,11 +49,11 @@
 - 缓解：关闭前把 sessionId 写入 `debateRounds`，Codex/Claude 仍通过 metaStore 映射恢复，Gemini 仍通过 sessionId 参数恢复。
 
 - 风险：自动关闭影响调试。
-- 缓解：复用现有“龙虾子任务自动关标签”开关，关闭后仍可在历史会话中按 sessionId 打开。
+- 缓解：复用现有“Loop子任务自动关标签”开关，关闭后仍可在历史会话中按 sessionId 打开。
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`node --test dist/test/loopDebate.test.js`
 - 扩展验证：`npm run build`
 - 静态检查：`git diff --check -- <changed files>`
 
@@ -76,4 +76,4 @@
 
 ## 当前结论
 
-已完成。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、相关文件 `git diff --check`。
+已完成。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、相关文件 `git diff --check`。

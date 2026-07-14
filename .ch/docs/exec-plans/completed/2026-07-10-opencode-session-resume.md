@@ -61,7 +61,7 @@ OpenCode 会话 tab 首次执行成功后，第二次执行稳定报错 `Error: 
 
 - 单元测试新增/更新：`src/test/opencodeCommandRunner.test.ts` 新增真实 `sessionID` 提取和 `local_*` 过滤回归用例。
 - 单元自测结果：`node --test dist/test/opencodeCommandRunner.test.js` 26/26 通过；OpenCode/会话相关组合测试 48/48 通过；`npm run build` 通过。
-- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 346/369 通过。22 个失败来自无对应 `src/test` 的陈旧 `dist/test/lobsterBoundaryRecord.test.js`；另 1 个失败来自当前工作树已有 `media/config/assets/config-app-ui.js` 标题改动与 `src/test/configService.test.ts` 旧断言不一致。均与本次会话链路无关，未扩大修改范围。
+- 失败处理记录：全量 `node --test dist/test/*.test.js` 为 346/369 通过。22 个失败来自无对应 `src/test` 的陈旧 `dist/test/loopBoundaryRecord.test.js`；另 1 个失败来自当前工作树已有 `media/config/assets/config-app-ui.js` 标题改动与 `src/test/configService.test.ts` 旧断言不一致。均与本次会话链路无关，未扩大修改范围。
 - 功能清单：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。
 - 相关文档同步：已同步运行时参考、设计文档、能力规格与 `PITFALLS.md`；兼容入口文件继续指向 `.ch` 事实来源，无需新增重复正文。
 

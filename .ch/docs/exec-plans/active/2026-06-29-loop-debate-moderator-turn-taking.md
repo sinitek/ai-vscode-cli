@@ -15,9 +15,9 @@
 ## 范围
 
 - `src/extension.ts` 中红蓝辩论调度、主持人 artifact 解析、提示词与 transcript 追加逻辑。
-- `src/lobsterDebate.ts` 中主持人决策类型定义与相关纯函数。
-- `src/test/lobsterDebate.test.ts` 中协议解析与 transcript 兼容测试。
-- `.ch/docs/design-docs/lobster-debate-multi-agent-mode.md`
+- `src/loopDebate.ts` 中主持人决策类型定义与相关纯函数。
+- `src/test/loopDebate.test.ts` 中协议解析与 transcript 兼容测试。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 - `.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
@@ -35,7 +35,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/test/lobsterDebate.test.ts`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/loopDebate.test.ts`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`
 - 配置与脚本：无新增配置；沿用现有 `npm run build`
 
@@ -49,11 +49,11 @@
 ## 验证计划
 
 - 最小相关验证：`npm run build`
-- 扩展验证：`node --test dist/test/lobsterDebate.test.js`
+- 扩展验证：`node --test dist/test/loopDebate.test.js`
 
 ## 测试与清单同步
 
-- 单元测试：已补充主持人点名发言辅助逻辑测试，并保持 `lobsterDebate` 解析测试通过
+- 单元测试：已补充主持人点名发言辅助逻辑测试，并保持 `loopDebate` 解析测试通过
 - 功能清单：已更新红蓝辩论多智能体行为描述
 - 相关文档同步：已更新辩论设计与能力规格
 
@@ -69,4 +69,4 @@
 
 ## 当前结论
 
-已完成。`debate_multi_agent` 现改为主持人驱动的轮流点名调度：组队阶段指定首批发言者，后续每个发言批次都由主持人用 `nextSpeakerIds` 指定 1-3 位下一批发言者；只有被点名的参与者进入该批次。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`。
+已完成。`debate_multi_agent` 现改为主持人驱动的轮流点名调度：组队阶段指定首批发言者，后续每个发言批次都由主持人用 `nextSpeakerIds` 指定 1-3 位下一批发言者；只有被点名的参与者进入该批次。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`。

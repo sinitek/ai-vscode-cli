@@ -1,4 +1,4 @@
-# Lobster Debate Live Refresh Thinking
+# Loop Debate Live Refresh Thinking
 
 - 日期：2026-06-17
 - 状态：completed
@@ -6,7 +6,7 @@
 
 ## 背景
 
-龙虾辩论群聊页面已支持 5 秒自动刷新，但用户希望页面能更接近实时群聊：当前执行中的角色应显示“思考中”气泡，并且角色/主持人一次发言结束后应主动刷新页面，5 秒轮询仅作为兜底。
+Loop辩论群聊页面已支持 5 秒自动刷新，但用户希望页面能更接近实时群聊：当前执行中的角色应显示“思考中”气泡，并且角色/主持人一次发言结束后应主动刷新页面，5 秒轮询仅作为兜底。
 
 ## 目标
 
@@ -16,7 +16,7 @@
 
 ## 范围
 
-- `src/webview/lobsterDebatePanel.ts`
+- `src/webview/loopDebatePanel.ts`
 - `src/extension.ts`
 - 辩论模式设计与功能清单文档
 
@@ -32,12 +32,12 @@
 - [x] 参与者都完成但主持人/共识仍在运行时，显示主持人或系统等待气泡。
 - [x] 参与者或主持人发言产物写入后，已打开的群聊面板无需等待 5 秒即可刷新。
 - [x] `npm run build` 通过。
-- [x] `node --test dist/test/lobsterDebate.test.js` 通过。
+- [x] `node --test dist/test/loopDebate.test.js` 通过。
 - [x] 功能文档同步。
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`, `src/webview/lobsterDebatePanel.ts`
+- 代码目录：`src/extension.ts`, `src/webview/loopDebatePanel.ts`
 - 文档目录：`.ch/docs/design-docs/`, `.ch/docs/product-specs/`
 - 配置与脚本：无
 
@@ -48,7 +48,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`, `node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`npm run build`, `node --test dist/test/loopDebate.test.js`
 - 扩展验证：人工在 Extension Host 中观察等待气泡和主动刷新。
 
 ## 测试与清单同步
@@ -70,4 +70,4 @@
 
 ## 当前结论
 
-已完成。群聊面板会根据 `activeSpeaker` 显示当前参与者、主持人或共识汇总器的“思考中”等待气泡；角色发言、主持人控场、收束和共识状态落盘后会主动刷新已打开面板，5 秒自动刷新保留为兜底。已通过 `npm run build`、`node --test dist/test/lobsterDebate.test.js` 和 `git diff --check`。
+已完成。群聊面板会根据 `activeSpeaker` 显示当前参与者、主持人或共识汇总器的“思考中”等待气泡；角色发言、主持人控场、收束和共识状态落盘后会主动刷新已打开面板，5 秒自动刷新保留为兜底。已通过 `npm run build`、`node --test dist/test/loopDebate.test.js` 和 `git diff --check`。

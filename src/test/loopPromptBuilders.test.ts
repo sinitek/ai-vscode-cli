@@ -2,17 +2,17 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  buildLobsterDebatePaths,
-  type LobsterDebateParticipantRecord,
-} from "../lobsterDebate";
+  buildLoopDebatePaths,
+  type LoopDebateParticipantRecord,
+} from "../loopDebate";
 import {
-  buildLobsterDebateBriefMarkdown,
-  buildLobsterDebateConsensusModelPrompt,
-} from "../lobsterPromptBuilders";
+  buildLoopDebateBriefMarkdown,
+  buildLoopDebateConsensusModelPrompt,
+} from "../loopPromptBuilders";
 import type {
-  LobsterTaskKind,
-  LobsterTaskRecord,
-} from "../lobsterTaskStore";
+  LoopTaskKind,
+  LoopTaskRecord,
+} from "../loopTaskStore";
 
 const compactSkillCatalogSection = [
   "高级开发 Skill 候选目录（宿主已校验，仅 development Loop 可用）：",
@@ -22,13 +22,13 @@ const compactSkillCatalogSection = [
   '- {"id":"interview-me","name":"interview-me","description":"Interactive discovery.","phases":["plan"],"taskKinds":["requirements"],"roles":["main"],"requiredCapabilities":["interactive-user"],"priority":20,"positiveTriggers":["interview"],"negativeTriggers":[]}',
 ].join("\n");
 
-function createTask(taskKind?: LobsterTaskKind): LobsterTaskRecord {
+function createTask(taskKind?: LoopTaskKind): LoopTaskRecord {
   const now = Date.UTC(2026, 6, 12, 8, 0, 0);
   return {
     id: "prompt-builder-task",
     cli: "codex",
     workspaceKey: "prompt-builder-workspace",
-    taskStoreFile: "/tmp/lobster-tasks.json",
+    taskStoreFile: "/tmp/loop-tasks.json",
     rootPrompt: "ROOT_OBJECTIVE_MARKER",
     ...(taskKind ? { taskKind } : {}),
     status: "running",
@@ -36,8 +36,8 @@ function createTask(taskKind?: LobsterTaskKind): LobsterTaskRecord {
     updatedAt: now,
     maxRounds: 20,
     currentRound: 1,
-    communicationDir: "/tmp/lobster-communications/prompt-builder-task",
-    mainCommunicationFile: "/tmp/lobster-communications/prompt-builder-task/main-task.md",
+    communicationDir: "/tmp/loop-communications/prompt-builder-task",
+    mainCommunicationFile: "/tmp/loop-communications/prompt-builder-task/main-task.md",
     subTasks: [{
       id: "existing-subtask",
       title: "Existing subtask",
@@ -52,7 +52,7 @@ function createTask(taskKind?: LobsterTaskKind): LobsterTaskRecord {
   };
 }
 
-function createParticipants(): LobsterDebateParticipantRecord[] {
+function createParticipants(): LoopDebateParticipantRecord[] {
   return [
     {
       id: "blue_planner",
@@ -87,10 +87,10 @@ function hasOwnProperty(value: object, property: string): boolean {
 
 test("keeps legacy debate prompts free of Skill catalog markers", () => {
   const task = createTask();
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
 
-  const brief = buildLobsterDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
-  const consensus = buildLobsterDebateConsensusModelPrompt(task, 1, paths, createParticipants());
+  const brief = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
+  const consensus = buildLoopDebateConsensusModelPrompt(task, 1, paths, createParticipants());
 
   assert.doesNotMatch(brief, /高级开发 Skill 候选目录/u);
   assert.doesNotMatch(brief, /skillIds/u);
@@ -100,9 +100,9 @@ test("keeps legacy debate prompts free of Skill catalog markers", () => {
 
 test("injects one complete compact Skill catalog into development debate briefs", () => {
   const task = createTask("development");
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
 
-  const brief = buildLobsterDebateBriefMarkdown(
+  const brief = buildLoopDebateBriefMarkdown(
     task,
     { cli: "codex" },
     1,
@@ -122,9 +122,9 @@ test("injects one complete compact Skill catalog into development debate briefs"
 test("ignores compact Skill catalogs for non-development and unknown debate briefs", () => {
   for (const taskKind of ["non_development", undefined] as const) {
     const task = createTask(taskKind);
-    const paths = buildLobsterDebatePaths(task.communicationDir, 1);
-    const baseline = buildLobsterDebateBriefMarkdown(task, { cli: "codex" }, 1, paths, "continue");
-    const withCatalog = buildLobsterDebateBriefMarkdown(
+    const paths = buildLoopDebatePaths(task.communicationDir, 1);
+    const baseline = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths, "continue");
+    const withCatalog = buildLoopDebateBriefMarkdown(
       task,
       { cli: "codex" },
       1,
@@ -140,9 +140,9 @@ test("ignores compact Skill catalogs for non-development and unknown debate brie
 
 test("treats a blank development Skill catalog as missing", () => {
   const task = createTask("development");
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
-  const baseline = buildLobsterDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
-  const withBlankCatalog = buildLobsterDebateBriefMarkdown(
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
+  const baseline = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths);
+  const withBlankCatalog = buildLoopDebateBriefMarkdown(
     task,
     { cli: "codex" },
     1,
@@ -157,9 +157,9 @@ test("treats a blank development Skill catalog as missing", () => {
 
 test("limits development consensus decisions to optional catalog Skill IDs", () => {
   const task = createTask("development");
-  const paths = buildLobsterDebatePaths(task.communicationDir, 1);
+  const paths = buildLoopDebatePaths(task.communicationDir, 1);
 
-  const prompt = buildLobsterDebateConsensusModelPrompt(
+  const prompt = buildLoopDebateConsensusModelPrompt(
     task,
     1,
     paths,
@@ -194,10 +194,10 @@ test("limits development consensus decisions to optional catalog Skill IDs", () 
 test("keeps consensus prompts unchanged without an eligible development catalog", () => {
   for (const taskKind of ["development", "non_development", undefined] as const) {
     const task = createTask(taskKind);
-    const paths = buildLobsterDebatePaths(task.communicationDir, 1);
-    const baseline = buildLobsterDebateConsensusModelPrompt(task, 1, paths, createParticipants());
+    const paths = buildLoopDebatePaths(task.communicationDir, 1);
+    const baseline = buildLoopDebateConsensusModelPrompt(task, 1, paths, createParticipants());
     const catalog = taskKind === "development" ? " \n\t " : compactSkillCatalogSection;
-    const withIneligibleCatalog = buildLobsterDebateConsensusModelPrompt(
+    const withIneligibleCatalog = buildLoopDebateConsensusModelPrompt(
       task,
       1,
       paths,

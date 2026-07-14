@@ -140,12 +140,12 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         workspaceMemoryEnabled: false,
         autoCompactContextAfterRun: true,
         multiAgentEnabled: false,
-        lobsterMaxRounds: \${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT},
-        lobsterAutoCloseSubtaskTabs: true,
-        lobsterExecutionModeByCli: {
-          codex: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-          claude: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-          opencode: "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+        loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
+        loopAutoCloseSubtaskTabs: true,
+        loopExecutionModeByCli: {
+          codex: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+          claude: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
+          opencode: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
         },
         locale: "auto",
         isMac: false,
@@ -224,7 +224,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         runStreamStaleBadge: document.getElementById("runStreamStaleBadge"),
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
-        openCurrentLobsterGroupChat: document.getElementById("openCurrentLobsterGroupChat"),
+        openCurrentLoopGroupChat: document.getElementById("openCurrentLoopGroupChat"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
         scrollToBottomWrap: document.getElementById("scrollToBottomWrap"),
@@ -240,7 +240,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         openCodePrimaryModelSelect: document.getElementById("openCodePrimaryModelSelect"),
         openCodeSmallModelSelect: document.getElementById("openCodeSmallModelSelect"),
         openCodeModelIssue: document.getElementById("openCodeModelIssue"),
-        lobsterExecutionModeSelect: document.getElementById("lobsterExecutionModeSelect"),
+        loopExecutionModeSelect: document.getElementById("loopExecutionModeSelect"),
         modelSelect: document.getElementById("modelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
@@ -252,8 +252,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         toolSettingsWorkspacePanel: document.getElementById("toolSettingsWorkspacePanel"),
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         multiAgentEnabled: document.getElementById("multiAgentEnabled"),
-        lobsterMaxRounds: document.getElementById("lobsterMaxRounds"),
-        lobsterAutoCloseSubtaskTabs: document.getElementById("lobsterAutoCloseSubtaskTabs"),
+        loopMaxRounds: document.getElementById("loopMaxRounds"),
+        loopAutoCloseSubtaskTabs: document.getElementById("loopAutoCloseSubtaskTabs"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -377,21 +377,21 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const RUN_STREAM_STALE_CRITICAL_MS = RUN_STREAM_STALE_CRITICAL_BASE_MS * RUN_STREAM_STALE_THRESHOLD_MULTIPLIER;
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
-      const LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "\${LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}";
-      const LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT = "\${LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT}";
+      const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}";
+      const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "\${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}";
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
-      const lobsterMetaByTabId = Object.create(null);
+      const loopMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
 
-      function normalizeLobsterExecutionMode(value) {
-        return value === LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT
-          ? LOBSTER_EXECUTION_MODE_DEBATE_MULTI_AGENT
-          : LOBSTER_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
+      function normalizeLoopExecutionMode(value) {
+        return value === LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT
+          ? LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT
+          : LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
       }
 
-      function normalizeLobsterExecutionModeByCli(value, fallbackByCli) {
+      function normalizeLoopExecutionModeByCli(value, fallbackByCli) {
         const nextByCli = {};
         const hasIncomingByCli = Boolean(value && typeof value === "object");
         CLI_NAMES.forEach((cli) => {
@@ -400,37 +400,37 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           const fallback = !hasIncomingByCli && fallbackByCli && typeof fallbackByCli === "object"
             ? fallbackByCli[cli]
             : undefined;
-          nextByCli[cli] = normalizeLobsterExecutionMode(hasIncomingCli ? candidate : fallback);
+          nextByCli[cli] = normalizeLoopExecutionMode(hasIncomingCli ? candidate : fallback);
         });
         return nextByCli;
       }
 
-      function getLobsterExecutionModeForCli(cli = state.currentCli) {
-        return normalizeLobsterExecutionMode(
-          state.lobsterExecutionModeByCli && state.lobsterExecutionModeByCli[cli]
+      function getLoopExecutionModeForCli(cli = state.currentCli) {
+        return normalizeLoopExecutionMode(
+          state.loopExecutionModeByCli && state.loopExecutionModeByCli[cli]
         );
       }
 
-      function setLobsterExecutionModeForCli(cli, value) {
-        const normalized = normalizeLobsterExecutionMode(value);
-        state.lobsterExecutionModeByCli = normalizeLobsterExecutionModeByCli(
-          state.lobsterExecutionModeByCli,
-          state.lobsterExecutionModeByCli
+      function setLoopExecutionModeForCli(cli, value) {
+        const normalized = normalizeLoopExecutionMode(value);
+        state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
+          state.loopExecutionModeByCli,
+          state.loopExecutionModeByCli
         );
-        state.lobsterExecutionModeByCli[cli] = normalized;
+        state.loopExecutionModeByCli[cli] = normalized;
         return normalized;
       }
 
-      function normalizeLobsterMaxRounds(value) {
+      function normalizeLoopMaxRounds(value) {
         const numeric = typeof value === "number"
           ? value
           : (typeof value === "string" && value.trim() ? Number(value) : NaN);
         if (!Number.isFinite(numeric)) {
-          return \${LOBSTER_MAX_ROUNDS_SETTING_DEFAULT};
+          return \${LOOP_MAX_ROUNDS_SETTING_DEFAULT};
         }
         return Math.min(
-          Math.max(Math.floor(numeric), \${LOBSTER_MAX_ROUNDS_SETTING_MIN}),
-          \${LOBSTER_MAX_ROUNDS_SETTING_MAX}
+          Math.max(Math.floor(numeric), \${LOOP_MAX_ROUNDS_SETTING_MIN}),
+          \${LOOP_MAX_ROUNDS_SETTING_MAX}
         );
       }
 

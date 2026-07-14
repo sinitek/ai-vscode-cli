@@ -49,7 +49,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         flex: 0 1 118px;
         min-width: 92px;
       }
-      .lobster-execution-mode-select {
+      .loop-execution-mode-select {
         flex: 0 1 142px;
         min-width: 122px;
         max-width: 190px;
@@ -186,7 +186,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         justify-content: flex-end;
         min-width: 0;
       }
-      .input-actions .lobster-execution-mode-select {
+      .input-actions .loop-execution-mode-select {
         margin-right: auto;
       }
       .input-model-row {

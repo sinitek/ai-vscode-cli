@@ -23,35 +23,14 @@ Narrative:
 
 Date: 2026-06-04 Status: in-progress Owner: Codex
 
-## mem-59fc0394ed - Loop Group Chat UI Follow-ups
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~48 tokens
-- Source: `.ch/docs/exec-plans/active/2026-06-25-lobster-group-chat-ui-followups.md`
-- Source kind: `active_plan`
-- Content hash: `59fc0394ed8fbfad81a777b9be68d6ce0c01e61e8e9161be4bbe8bf67a1a2477`
-- Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/webview/lobsterDebatePanel.ts`
-
-Subtitle: Active execution plan
-
-Facts:
-- Date: 2026-06-25 Status: in-progress Owner: Codex
-- Modified at: 2026-07-07T01:50:50+00:00
-
-Narrative:
-
-Date: 2026-06-25 Status: in-progress Owner: Codex
-
-## mem-0066ad05c4 - Loop 主任务失败终止护栏
+## mem-bbc18d3434 - Loop 主任务失败终止护栏
 
 - Type: `plan`
 - Topic: `plan`
 - Read: ~39 tokens
-- Source: `.ch/docs/exec-plans/active/2026-06-27-lobster-main-failure-stop.md`
+- Source: `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md`
 - Source kind: `active_plan`
-- Content hash: `0066ad05c474dc820fbdf53f8866aad67c84337a911d466e86b2a8364e681879`
+- Content hash: `bbc18d3434d7512f3eb0c93d9c2adf449e28d6a96c9dc996ae685892ffcb33d7`
 - Concepts: `open-loop`, `problem-solution`
 - Files: `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extension.ts`, `src/test/`
 
@@ -64,27 +43,6 @@ Facts:
 Narrative:
 
 日期：2026-06-27 状态：in-progress 负责人：Codex
-
-## mem-7ca8709ffe - Loop 红蓝辩论主持人轮流点名调度
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~40 tokens
-- Source: `.ch/docs/exec-plans/active/2026-06-29-lobster-debate-moderator-turn-taking.md`
-- Source kind: `active_plan`
-- Content hash: `7ca8709ffede2acf739e130dae944530b4af5629756542d5046e1279b66310f3`
-- Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/`, `.ch/docs/design-docs/lobster-debate-multi-agent-mode.md`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/lobsterDebate.ts`, `src/test/lobsterDebate.test.ts`
-
-Subtitle: Active execution plan
-
-Facts:
-- 日期：2026-06-29 状态：in-progress 负责人：Codex
-- Modified at: 2026-07-07T01:50:50+00:00
-
-Narrative:
-
-日期：2026-06-29 状态：in-progress 负责人：Codex
 
 ## mem-b7b003c3a1 - 官方 skills 版本刷新与最新判断修复
 
@@ -149,47 +107,47 @@ Narrative:
 
 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
 
-## mem-f311ad1ffa - VS Code 插件性能与内存风险审计
+## mem-e2fabd8a2e - Loop Group Chat UI Follow-ups
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~72 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-13-performance-memory-audit.md`
+- Read: ~48 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md`
 - Source kind: `active_plan`
-- Content hash: `f311ad1ffa000facdc3769ba278d005020a668e398f8b2bbb7aad9c5ece77a1f`
-- Concepts: `active-risk`, `open-loop`
-- Files: `src/`
+- Content hash: `e2fabd8a2e079318239f28c2e60733001e60452007cce0b46bb6284fc164a78e`
+- Concepts: `open-loop`
+- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/webview/loopDebatePanel.ts`
 
 Subtitle: Active execution plan
 
 Facts:
-- 日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：
-- Modified at: 2026-07-13T06:11:32+00:00
+- Date: 2026-06-25 Status: in-progress Owner: Codex
+- Modified at: 2026-07-14T01:27:53+00:00
 
 Narrative:
 
-日期：2026-07-13 状态：in-progress 负责人：OpenCode owner：OpenCode claimed_at：2026-07-13 claim_ttl：1d handoff_to：
+Date: 2026-06-25 Status: in-progress Owner: Codex
 
-## mem-477fc324b5 - Loop 与 OpenCode 实时进度监控修复
+## mem-fe60588b95 - Loop 红蓝辩论主持人轮流点名调度
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~72 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-13-loop-opencode-progress-monitor-repair.md`
+- Read: ~40 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`
 - Source kind: `active_plan`
-- Content hash: `477fc324b5981f9a059a9b7d7aac0c5f6fe4897db0dace216aad84b4d9a81f6a`
-- Concepts: `open-loop`, `problem-solution`
-- Files: `.ch/docs/design-docs/`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/references/`, `.ch/docs/runbooks/`, `src/cli/`, `src/extension.ts`, `src/i18n.ts`, `src/lobster*`, `src/subagentProgress.ts`
+- Content hash: `fe60588b951c52f0e1bee5a2c9aef5a0f26a777545c67d7a6602ad3c3442d729`
+- Concepts: `open-loop`
+- Files: `.ch/docs/design-docs/`, `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/loopDebate.ts`, `src/test/loopDebate.test.ts`
 
 Subtitle: Active execution plan
 
 Facts:
-- 日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：
-- Modified at: 2026-07-13T07:48:28+00:00
+- 日期：2026-06-29 状态：in-progress 负责人：Codex
+- Modified at: 2026-07-14T01:27:53+00:00
 
 Narrative:
 
-日期：2026-07-13 状态：in-progress 负责人：Codex owner：Codex claimed_at：2026-07-13 claim_ttl：1 day handoff_to：
+日期：2026-06-29 状态：in-progress 负责人：Codex
 
 ## mem-431f2548e1 - 热区记忆面
 

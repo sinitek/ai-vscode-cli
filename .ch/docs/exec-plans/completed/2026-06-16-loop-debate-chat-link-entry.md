@@ -1,4 +1,4 @@
-# 龙虾辩论群聊气泡入口
+# Loop辩论群聊气泡入口
 
 - 日期：2026-06-16
 - 状态：completed
@@ -6,17 +6,17 @@
 
 ## 背景
 
-龙虾辩论模式已有内容区只读群聊面板和命令入口，但用户希望任务刚开始时就在 AI 对话气泡中看到可点击入口，不需要手动打开命令或从最近任务中选择。
+Loop辩论模式已有内容区只读群聊面板和命令入口，但用户希望任务刚开始时就在 AI 对话气泡中看到可点击入口，不需要手动打开命令或从最近任务中选择。
 
 ## 目标
 
-在辩论多智能体龙虾任务启动时，把“打开辩论群聊”的动作挂到任务开始气泡上，并通过任务 ID 精确打开对应内容区群聊面板。
+在辩论多智能体Loop任务启动时，把“打开辩论群聊”的动作挂到任务开始气泡上，并通过任务 ID 精确打开对应内容区群聊面板。
 
 ## 范围
 
 - 扩展 `ChatMessage`，支持可恢复的消息动作。
 - 在聊天 webview 中渲染气泡动作链接，并把点击事件发回扩展端。
-- 扩展端处理气泡动作，调用现有 `openLobsterDebateChatPanel({ taskId })`。
+- 扩展端处理气泡动作，调用现有 `openLoopGroupChatPanel({ taskId })`。
 - 在 `debate_multi_agent` 任务创建时立即追加带动作的系统气泡。
 - 同步相关设计/产品文档。
 
@@ -31,7 +31,7 @@
 - [x] 辩论任务开始后，主对话气泡立即显示“打开辩论群聊”入口。
 - [x] 点击入口可按气泡内 `taskId` 打开对应内容区群聊面板。
 - [x] 刷新或恢复会话后，入口仍可点击。
-- [x] 非辩论龙虾任务不显示辩论群聊入口。
+- [x] 非辩论Loop任务不显示辩论群聊入口。
 - [x] `npm run build` 通过。
 
 ## 影响面
@@ -51,13 +51,13 @@
 ## 验证计划
 
 - 最小相关验证：`npm run build` 通过。
-- 扩展验证：`node --test dist/test/lobsterDebate.test.js` 通过；`git diff --check` 通过。
+- 扩展验证：`node --test dist/test/loopDebate.test.js` 通过；`git diff --check` 通过。
 
 ## 测试与清单同步
 
-- 单元测试：现有 Lobster debate 纯函数测试保持通过。
+- 单元测试：现有 Loop debate 纯函数测试保持通过。
 - 功能清单：更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 和 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`。
-- 相关文档同步：更新 `.ch/docs/design-docs/lobster-debate-multi-agent-mode.md`。
+- 相关文档同步：更新 `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`。
 
 ## 任务列表
 
@@ -72,4 +72,4 @@
 
 ## 当前结论
 
-已完成。辩论任务新建/恢复气泡会持久化 `openLobsterDebateChat` 消息动作，点击后按消息内 `taskId` 打开对应内容区群聊面板；普通龙虾任务不显示该入口。已通过构建、辩论测试和空白检查。
+已完成。辩论任务新建/恢复气泡会持久化 `openLoopGroupChat` 消息动作，点击后按消息内 `taskId` 打开对应内容区群聊面板；普通Loop任务不显示该入口。已通过构建、辩论测试和空白检查。

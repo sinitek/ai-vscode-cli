@@ -1,4 +1,4 @@
-# 龙虾任务问题结论展示修复
+# Loop任务问题结论展示修复
 
 - 日期：2026-06-22
 - 状态：completed
@@ -6,18 +6,18 @@
 
 ## 背景
 
-用户反馈：龙虾任务如果本质是一个问题，任务结束后 AI 对话只看到“龙虾任务最终总结”，而看不到对问题的直接回答结论。最终总结和问题回答结论都应出现。
+用户反馈：Loop任务如果本质是一个问题，任务结束后 AI 对话只看到“Loop任务最终总结”，而看不到对问题的直接回答结论。最终总结和问题回答结论都应出现。
 
 ## 目标
 
-让龙虾任务完成态同时保留：
+让Loop任务完成态同时保留：
 
 - 面向用户问题的直接回答结论。
-- 龙虾任务的最终总结、子任务摘要、验收结果和需求覆盖信息。
+- Loop任务的最终总结、子任务摘要、验收结果和需求覆盖信息。
 
 ## 范围
 
-- 龙虾主任务完成态 JSON 协议提示。
+- Loop主任务完成态 JSON 协议提示。
 - 完成态决策解析、任务记录和最终总结气泡生成。
 - AI 对话主消息流中的独立问题回答结论气泡生成、恢复判定和 Webview 展示。
 - 主沟通文件与主从群聊完成段的结论展示。
@@ -32,13 +32,13 @@
 ## 验收标准
 
 - [x] 主任务 completed 决策可携带问题回答结论。
-- [x] AI 对话主消息流同时展示独立“问题回答结论”气泡和“龙虾任务最终总结”气泡。
+- [x] AI 对话主消息流同时展示独立“问题回答结论”气泡和“Loop任务最终总结”气泡。
 - [x] 旧任务或模型未返回新字段时不解析失败，并用最终总结兜底。
 - [x] 相关测试与构建通过。
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/lobsterDebate.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/references/`、`.ch/docs/exec-plans/`
 - 配置与脚本：无
 
@@ -52,18 +52,18 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`、`node --test dist/test/lobsterDebate.test.js`
+- 最小相关验证：`npm run build`、`node --test dist/test/loopDebate.test.js`
 - 扩展验证：`git diff --check`
 
 ## 测试与清单同步
 
 - 单元测试：补充最终总结 Markdown 同时展示问题结论与兜底行为。
-- 功能清单：更新龙虾模式完成态说明。
+- 功能清单：更新Loop模式完成态说明。
 - 相关文档同步：更新 CLI runtime reference 与能力规格。
 
 ## 任务列表
 
-- [x] 定位龙虾最终总结与问题结论丢失的代码路径。
+- [x] 定位Loop最终总结与问题结论丢失的代码路径。
 - [x] 补充完成态协议字段和最终气泡展示。
 - [x] 补充回归测试。
 - [x] 同步事实来源文档。
@@ -72,11 +72,11 @@
 ## 决策记录
 
 - 2026-06-22：采用兼容扩展字段 `answerConclusion`，提示词要求 completed 时输出；解析层不强制，旧数据用 `finalSummary` 兜底。
-- 2026-06-22：用户进一步明确“AI 对话里也要有 answerConclusion 展示”，因此主 AI 对话完成态新增 `lobsterAnswerConclusion=true` 的独立 assistant 气泡；完成判定改为同时要求该气泡和 `lobsterFinalSummary=true` 最终总结气泡。
+- 2026-06-22：用户进一步明确“AI 对话里也要有 answerConclusion 展示”，因此主 AI 对话完成态新增 `loopAnswerConclusion=true` 的独立 assistant 气泡；完成判定改为同时要求该气泡和 `loopFinalSummary=true` 最终总结气泡。
 
 ## 当前结论
 
-已完成。完成态协议新增 `answerConclusion`，AI 对话主消息流会先展示独立“问题回答结论” assistant 气泡，再展示“龙虾任务最终总结” assistant 气泡；最终总结气泡、主沟通文件和主从群聊收束段也会同时展示问题回答结论与整体任务总结；旧格式最终总结或缺少独立结论气泡时会被识别为不完整并在后续恢复时补写。
+已完成。完成态协议新增 `answerConclusion`，AI 对话主消息流会先展示独立“问题回答结论” assistant 气泡，再展示“Loop任务最终总结” assistant 气泡；最终总结气泡、主沟通文件和主从群聊收束段也会同时展示问题回答结论与整体任务总结；旧格式最终总结或缺少独立结论气泡时会被识别为不完整并在后续恢复时补写。
 
 验证结果：
 

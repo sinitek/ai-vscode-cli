@@ -1,49 +1,49 @@
 import * as vscode from "vscode";
-import { LOBSTER_DEBATE_PANEL_STYLES } from "./lobsterDebatePanelStyles";
+import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { resolveLocale, type AppLocale } from "../i18n";
-import { parseLobsterDebateChatTranscript, type LobsterDebateChatSegment } from "../lobsterDebate";
+import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
 import {
-  buildLobsterDebateChatPanelTitle,
+  buildLoopDebateChatPanelTitle,
   getStrings,
-  type LobsterDebateChatPanelStrings,
-} from "./lobsterDebatePanelRenderer";
+  type LoopDebateChatPanelStrings,
+} from "./loopDebatePanelRenderer";
 import type {
-  LobsterDebateChatPanelActiveSpeaker,
-  LobsterDebateChatPanelMessage,
-  LobsterDebateChatPanelParticipant,
-  LobsterDebateChatPanelRound,
-  LobsterDebateChatPanelState,
-} from "./lobsterDebatePanelTypes";
+  LoopDebateChatPanelActiveSpeaker,
+  LoopDebateChatPanelMessage,
+  LoopDebateChatPanelParticipant,
+  LoopDebateChatPanelRound,
+  LoopDebateChatPanelState,
+} from "./loopDebatePanelTypes";
 export type {
-  LobsterDebateChatPanelActiveSpeaker,
-  LobsterDebateChatPanelMessage,
-  LobsterDebateChatPanelModeratorDecision,
-  LobsterDebateChatPanelParticipant,
-  LobsterDebateChatPanelRound,
-  LobsterDebateChatPanelState,
-} from "./lobsterDebatePanelTypes";
+  LoopDebateChatPanelActiveSpeaker,
+  LoopDebateChatPanelMessage,
+  LoopDebateChatPanelModeratorDecision,
+  LoopDebateChatPanelParticipant,
+  LoopDebateChatPanelRound,
+  LoopDebateChatPanelState,
+} from "./loopDebatePanelTypes";
 
-type LobsterDebateChatPanelHandlers = {
-  onMessage: (message: LobsterDebateChatPanelMessage) => void;
+type LoopDebateChatPanelHandlers = {
+  onMessage: (message: LoopDebateChatPanelMessage) => void;
   onDispose?: () => void;
 };
 
-export class LobsterDebateChatPanel {
+export class LoopDebateChatPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private state: LobsterDebateChatPanelState | undefined;
+  private state: LoopDebateChatPanelState | undefined;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly handlers: LobsterDebateChatPanelHandlers,
+    private readonly handlers: LoopDebateChatPanelHandlers,
   ) {}
 
-  public show(state: LobsterDebateChatPanelState): void {
+  public show(state: LoopDebateChatPanelState): void {
     const locale = resolveLocale();
     const strings = getStrings(locale);
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        "sinitek-cli-tools.lobsterDebateChat",
-        buildLobsterDebateChatPanelTitle(state, strings),
+        "sinitek-cli-tools.loopDebateChat",
+        buildLoopDebateChatPanelTitle(state, strings),
         vscode.ViewColumn.Active,
         {
           enableScripts: true,
@@ -51,7 +51,7 @@ export class LobsterDebateChatPanel {
           localResourceRoots: [this.extensionUri],
         },
       );
-      this.panel.webview.onDidReceiveMessage((message: LobsterDebateChatPanelMessage) => {
+      this.panel.webview.onDidReceiveMessage((message: LoopDebateChatPanelMessage) => {
         this.handlers.onMessage(message);
       });
       this.panel.onDidDispose(() => {
@@ -65,29 +65,29 @@ export class LobsterDebateChatPanel {
     this.update(state);
   }
 
-  public update(state: LobsterDebateChatPanelState): void {
+  public update(state: LoopDebateChatPanelState): void {
     this.state = state;
     if (!this.panel) {
       return;
     }
     const locale = resolveLocale();
-    this.panel.title = buildLobsterDebateChatPanelTitle(state, getStrings(locale));
-    this.panel.webview.html = buildLobsterDebateChatPanelHtml(this.panel.webview, state, locale);
+    this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings(locale));
+    this.panel.webview.html = buildLoopDebateChatPanelHtml(this.panel.webview, state, locale);
   }
 
-  public getState(): LobsterDebateChatPanelState | undefined {
+  public getState(): LoopDebateChatPanelState | undefined {
     return this.state;
   }
 }
 
-export function buildLobsterDebateChatPanelHtml(
+export function buildLoopDebateChatPanelHtml(
   webview: vscode.Webview,
-  state: LobsterDebateChatPanelState,
+  state: LoopDebateChatPanelState,
   locale: AppLocale,
 ): string {
   const nonce = getNonce();
   const strings = getStrings(locale);
-  const transcript = parseLobsterDebateChatTranscript(state.chatMarkdown);
+  const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
 
   return `<!DOCTYPE html>
 <html lang="${locale}">
@@ -97,7 +97,7 @@ export function buildLobsterDebateChatPanelHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(strings.title)}</title>
     <style>
-${LOBSTER_DEBATE_PANEL_STYLES}
+${LOOP_DEBATE_PANEL_STYLES}
     </style>
   </head>
   <body>
@@ -287,7 +287,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	      function requestRefresh() {
 	        saveScrollState();
 	        saveDialogState();
-	        vscode.postMessage({ type: "lobsterDebateChat:refresh" });
+	        vscode.postMessage({ type: "loopDebateChat:refresh" });
 	      }
 
 	      function setContinueDialogError(message) {
@@ -341,7 +341,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        if (continueTaskButton) {
 	          continueTaskButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "lobsterDebateChat:continueTask", prompt });
+	        vscode.postMessage({ type: "loopDebateChat:continueTask", prompt });
 	      }
 
 	      function submitSupplementDialog() {
@@ -358,7 +358,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	        if (supplementTaskButton) {
 	          supplementTaskButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "lobsterDebateChat:supplementTask", prompt });
+	        vscode.postMessage({ type: "loopDebateChat:supplementTask", prompt });
 	      }
 
 	      function openSupplementDialog() {
@@ -454,7 +454,7 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 	          if (stopTaskButton) {
 	            stopTaskButton.disabled = true;
 	          }
-	          vscode.postMessage({ type: "lobsterDebateChat:stopTask" });
+	          vscode.postMessage({ type: "loopDebateChat:stopTask" });
 	          return;
 	        }
 	        if (action === "scrollToBottom") {
@@ -539,8 +539,8 @@ ${LOBSTER_DEBATE_PANEL_STYLES}
 }
 
 function renderTaskPanel(
-  state: LobsterDebateChatPanelState,
-  strings: LobsterDebateChatPanelStrings,
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
   locale: AppLocale,
 ): string {
   return `<section class="panel">
@@ -555,15 +555,15 @@ function renderTaskPanel(
 }
 
 function getPanelSubtitle(
-  state: LobsterDebateChatPanelState,
-  strings: LobsterDebateChatPanelStrings,
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   return state.mode === "debate" ? strings.debateSubtitle : strings.mainSubSubtitle;
 }
 
 function renderRosterPanel(
-  state: LobsterDebateChatPanelState,
-  strings: LobsterDebateChatPanelStrings,
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   if (state.rounds.length === 0) {
     return "";
@@ -600,9 +600,9 @@ function renderRosterPanel(
 }
 
 function findLatestPanelRound(
-  rounds: readonly LobsterDebateChatPanelRound[],
-  kind: LobsterDebateChatPanelRound["kind"],
-): LobsterDebateChatPanelRound | null {
+  rounds: readonly LoopDebateChatPanelRound[],
+  kind: LoopDebateChatPanelRound["kind"],
+): LoopDebateChatPanelRound | null {
   for (let index = rounds.length - 1; index >= 0; index -= 1) {
     const round = rounds[index];
     if (round?.kind === kind) {
@@ -613,9 +613,9 @@ function findLatestPanelRound(
 }
 
 function collectRosterParticipants(
-  rounds: readonly LobsterDebateChatPanelRound[],
-): LobsterDebateChatPanelParticipant[] {
-  const participantsByKey = new Map<string, LobsterDebateChatPanelParticipant>();
+  rounds: readonly LoopDebateChatPanelRound[],
+): LoopDebateChatPanelParticipant[] {
+  const participantsByKey = new Map<string, LoopDebateChatPanelParticipant>();
   rounds.forEach((round) => {
     round.participants.forEach((participant) => {
       const key = `${participant.role}:${participant.id}`;
@@ -629,8 +629,8 @@ function collectRosterParticipants(
 }
 
 function renderModeratorMember(
-  round: LobsterDebateChatPanelRound,
-  strings: LobsterDebateChatPanelStrings,
+  round: LoopDebateChatPanelRound,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   const moderatorSession = round.moderatorDecisions
     .slice()
@@ -646,9 +646,9 @@ function renderModeratorMember(
 }
 
 function renderTimeline(
-  state: LobsterDebateChatPanelState,
-  segments: LobsterDebateChatSegment[],
-  strings: LobsterDebateChatPanelStrings,
+  state: LoopDebateChatPanelState,
+  segments: LoopDebateChatSegment[],
+  strings: LoopDebateChatPanelStrings,
 ): string {
   const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
   if (state.error) {
@@ -666,7 +666,7 @@ function renderTimeline(
 
 function renderInitialTaskPromptBubble(
   rootPrompt: string,
-  strings: LobsterDebateChatPanelStrings,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   if (!rootPrompt.trim()) {
     return "";
@@ -680,8 +680,8 @@ function renderInitialTaskPromptBubble(
 }
 
 function renderThinkingBubble(
-  state: LobsterDebateChatPanelState,
-  strings: LobsterDebateChatPanelStrings,
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   const speaker = getActiveSpeaker(state);
   if (!speaker) {
@@ -712,7 +712,7 @@ function renderThinkingBubble(
   </article>`;
 }
 
-function getActiveSpeaker(state: LobsterDebateChatPanelState): LobsterDebateChatPanelActiveSpeaker | null {
+function getActiveSpeaker(state: LoopDebateChatPanelState): LoopDebateChatPanelActiveSpeaker | null {
   if (state.task.status !== "running") {
     return null;
   }
@@ -726,8 +726,8 @@ function getActiveSpeaker(state: LobsterDebateChatPanelState): LobsterDebateChat
 }
 
 function getActiveSpeakerFromRound(
-  round: LobsterDebateChatPanelRound | undefined,
-): LobsterDebateChatPanelActiveSpeaker | null {
+  round: LoopDebateChatPanelRound | undefined,
+): LoopDebateChatPanelActiveSpeaker | null {
   if (!round) {
     return null;
   }
@@ -753,8 +753,8 @@ function getActiveSpeakerFromRound(
 }
 
 function getThinkingTag(
-  speaker: LobsterDebateChatPanelActiveSpeaker,
-  strings: LobsterDebateChatPanelStrings,
+  speaker: LoopDebateChatPanelActiveSpeaker,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   if (speaker.finalPass) {
     return strings.finalStance;
@@ -773,8 +773,8 @@ function getThinkingTag(
 }
 
 function getThinkingText(
-  speaker: LobsterDebateChatPanelActiveSpeaker,
-  strings: LobsterDebateChatPanelStrings,
+  speaker: LoopDebateChatPanelActiveSpeaker,
+  strings: LoopDebateChatPanelStrings,
 ): string {
   if (speaker.kind === "consensus") {
     return strings.consensusThinking;
@@ -786,8 +786,8 @@ function getThinkingText(
 }
 
 function renderSegment(
-  segment: LobsterDebateChatSegment,
-  strings: LobsterDebateChatPanelStrings,
+  segment: LoopDebateChatSegment,
+  strings: LoopDebateChatPanelStrings,
   tagOverride?: string,
 ): string {
   const speaker = getSegmentSpeaker(segment, strings);
@@ -816,7 +816,7 @@ function renderSegment(
   </article>`;
 }
 
-function getSegmentSpeaker(segment: LobsterDebateChatSegment, strings: LobsterDebateChatPanelStrings): string {
+function getSegmentSpeaker(segment: LoopDebateChatSegment, strings: LoopDebateChatPanelStrings): string {
   if (segment.kind === "user-message") {
     return strings.user;
   }
@@ -838,7 +838,7 @@ function getSegmentSpeaker(segment: LobsterDebateChatSegment, strings: LobsterDe
   return strings.system;
 }
 
-function getSegmentTag(segment: LobsterDebateChatSegment, strings: LobsterDebateChatPanelStrings): string {
+function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPanelStrings): string {
   if (segment.kind === "user-message") {
     return strings.supplementalRequirement;
   }

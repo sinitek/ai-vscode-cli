@@ -1,4 +1,4 @@
-# 龙虾红蓝辩论仅用于规划阶段
+# Loop红蓝辩论仅用于规划阶段
 
 - 日期：2026-07-01
 - 状态：completed
@@ -11,21 +11,21 @@
 ## 目标
 
 - `debate_multi_agent` 新任务第一个自动规划决策轮仍执行红蓝辩论。
-- 红蓝共识生成首批 `LobsterMainDecision` 后，后续轮次不再反复启动红蓝辩论。
+- 红蓝共识生成首批 `LoopMainDecision` 后，后续轮次不再反复启动红蓝辩论。
 - 后续实现、验收和继续派发由主持人主智能体走现有主从多智能体链路，继续复用子任务批次、并发冲突规划、重试、沟通文件和最终总结。
 - 主持人主智能体必须读取首轮红蓝简报、群聊、共识、决策和执行群聊，再做复核决策。
 
 ## 范围
 
 - `src/extension.ts`：主循环决策分派、主持人主任务提示词、红蓝规划产物注入。
-- `.ch/docs/design-docs/lobster-debate-multi-agent-mode.md`
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 - `.ch/docs/product-specs/FEATURE_INVENTORY.md`
 - 必要测试和验证。
 
 ## 非目标
 
-- 不改变顶层 `interactiveMode` 和 `LobsterExecutionMode` 枚举值。
+- 不改变顶层 `interactiveMode` 和 `LoopExecutionMode` 枚举值。
 - 不重写现有红蓝主持人点名、参与者 artifact、共识汇总器协议。
 - 不改变子任务执行器、冲突分组和重试策略。
 - 不改变群聊面板的基本 UI 结构。
@@ -56,12 +56,12 @@
 ## 验证计划
 
 - 最小相关验证：`npm run build`
-- 扩展验证：`node --test dist/test/lobsterDebate.test.js`
+- 扩展验证：`node --test dist/test/loopDebate.test.js`
 - 静态检查：`git diff --check`
 
 ## 测试与清单同步
 
-- 单元测试：保留并通过现有 `lobsterDebate` 相关测试；本次核心分派判断仍在 `extension.ts` 私有编排中，未新增导出型纯函数单测。
+- 单元测试：保留并通过现有 `loopDebate` 相关测试；本次核心分派判断仍在 `extension.ts` 私有编排中，未新增导出型纯函数单测。
 - 功能清单：已更新 `FEATURE_INVENTORY.md` 中红蓝辩论主决策编排描述。
 - 相关文档同步：已更新能力规格和红蓝辩论设计事实来源。
 
@@ -69,7 +69,7 @@
 
 - [x] 定位当前每轮触发红蓝辩论的主循环分派逻辑
 - [x] 增加规划辩论完成判定与主持人主任务提示词
-- [x] 调整 `runLobsterPrompt` 后续轮次分派
+- [x] 调整 `runLoopPrompt` 后续轮次分派
 - [x] 同步产品规格、功能清单和设计文档
 - [x] 执行构建、相关测试与空白检查
 
@@ -79,4 +79,4 @@
 
 ## 当前结论
 
-已完成。`runLobsterPrompt` 现在仅在 `debate_multi_agent` 且缺少可复用红蓝规划共识时调用 `runLobsterDebateRound`；已有完整规划共识后，后续轮次使用主持人主智能体提示词走主从多智能体复核。验证通过：`npm run build`、`node --test dist/test/lobsterDebate.test.js`、`git diff --check`。真实 VS Code Extension Host 端到端手工验收仍建议执行。
+已完成。`runLoopPrompt` 现在仅在 `debate_multi_agent` 且缺少可复用红蓝规划共识时调用 `runLoopDebateRound`；已有完整规划共识后，后续轮次使用主持人主智能体提示词走主从多智能体复核。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。真实 VS Code Extension Host 端到端手工验收仍建议执行。

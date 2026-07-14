@@ -1,21 +1,21 @@
 # Loop 红蓝辩论多智能体模式详细设计
 
 - 状态：active
-- 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-lobster-debate-session-tabs.md`
+- 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md`
 - 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
-- 相关目录：`src/extension.ts`、`src/lobsterParallel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`、`src/cli/types.ts`
+- 相关目录：`src/extension.ts`、`src/loopParallel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`、`src/cli/types.ts`
 
 ## 背景
 
 当前 Loop 模式已经具备一条稳定的主从多智能体链路：
 
-- 用户在聊天面板选择 `interactiveMode=lobster`。
-- 扩展创建 Loop 任务记录，写入 `~/.sinitek_cli/lobster-tasks/<workspaceKey>/<cli>/<sessionId>/lobster-tasks.json`。
+- 用户在聊天面板选择 `interactiveMode=loop`。
+- 扩展创建 Loop 任务记录，写入 `~/.sinitek_cli/loop-tasks/<workspaceKey>/<cli>/<sessionId>/loop-tasks.json`。
 - 主任务每轮返回一个 JSON 决策，包含 `status`、`estimatedRemainingRounds`、`acceptance`、`subtasks` 等字段。
 - 扩展把 `subtasks` 批次转成子任务记录，并按 `writeFiles` / `conflictGroup` 规划组内并发、组间串行。
-- 子任务在独立会话执行，写入 `~/.sinitek_cli/lobster-communications/<taskId>/subtasks/` 下的沟通文件。
+- 子任务在独立会话执行，写入 `~/.sinitek_cli/loop-communications/<taskId>/subtasks/` 下的沟通文件。
 - 批次内所有子任务完成后，扩展唤醒主任务复核。
-- 只有主任务最终返回 `status=completed`，且 AI 对话主消息流同时存在 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，任务才真正完成；最终总结气泡仍需要同时展示 `answerConclusion` 问题回答结论和整体任务总结。
+- 只有主任务最终返回 `status=completed`，且 AI 对话主消息流同时存在 `loopAnswerConclusion=true` 的问题回答结论气泡和 `loopFinalSummary=true` 的最终总结气泡，任务才真正完成；最终总结气泡仍需要同时展示 `answerConclusion` 问题回答结论和整体任务总结。
 
 这个模式的问题不在子任务执行，而在初始规划仍由一个主任务单点完成。复杂任务里，单个主任务容易出现三个问题：
 
@@ -50,8 +50,8 @@
 
 第一阶段不处理以下内容：
 
-- 不新增顶层交互模式。当前 AI 对话面板顶层只暴露 `coding / lobster`，旧 `plan` 配置按 `coding` 兼容归一化。
-- 不重写子任务执行器。`runLobsterSubtasksBatchWithRetry` 和 `lobsterParallel` 规划规则继续复用。
+- 不新增顶层交互模式。当前 AI 对话面板顶层只暴露 `coding / loop`，旧 `plan` 配置按 `coding` 兼容归一化。
+- 不重写子任务执行器。`runLoopSubtasksBatchWithRetry` 和 `loopParallel` 规划规则继续复用。
 - 不实现真正跨进程、跨机器或远端服务的多智能体系统。
 - 不要求 Claude 分组接入插件侧模型选择。Claude 仍沿用 CLI 默认模型或用户命令参数。
 - 不让辩论参与者直接修改工作区内容、任务记录或非指定沟通文件。辩论参与者只允许读上下文并写指定 artifact。
@@ -77,8 +77,8 @@
 ### 运行时约束
 
 - 当前 Loop 任务记录类型只有 `main` / `subtask` 两类角色。
-- 当前主任务 JSON 解析集中在 `parseLobsterMainDecision`、`normalizeLobsterMainDecision`、`applyLobsterMainDecision`。
-- 当前子任务批次最多 `LOBSTER_PARALLEL_SUBTASK_MAX = 6`。
+- 当前主任务 JSON 解析集中在 `parseLoopMainDecision`、`normalizeLoopMainDecision`、`applyLoopMainDecision`。
+- 当前子任务批次最多 `LOOP_PARALLEL_SUBTASK_MAX = 6`。
 - 当前 Loop 最大主任务复核轮次由项目级设置控制，默认 20。
 - 当前子任务失败会 1 分钟后自动重试，最多 5 次。
 - 任务记录和沟通目录有 30 天保留清理。
@@ -150,8 +150,8 @@
 - 参与者只读取任务记录、沟通文件和工作区上下文，分别写出观点。
 - 至少经过“主持人指定首批发言”和“主持人继续点名/最终立场”两个群聊阶段。
 - 扩展收集辩论产物，再运行一个“共识汇总”步骤。
-- 共识汇总必须输出现有 `LobsterMainDecision` JSON，作为首批执行决策。
-- 后续 `applyLobsterMainDecision`、子任务批次执行、主持人主智能体复核和最终总结全部复用现有主从链路。
+- 共识汇总必须输出现有 `LoopMainDecision` JSON，作为首批执行决策。
+- 后续 `applyLoopMainDecision`、子任务批次执行、主持人主智能体复核和最终总结全部复用现有主从链路。
 
 优点：
 
@@ -241,7 +241,7 @@ Loop 辩论达成阻塞共识，已进入人工复核：第 5 轮
 Loop 辩论未达成一致：存在阻塞性异议，已进入人工复核
 ```
 
-完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开 Loop 群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLobsterDebateChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `lobsterTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
+完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开 Loop 群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLoopGroupChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `loopTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
 
 ## 数据模型设计
 
@@ -250,7 +250,7 @@ Loop 辩论未达成一致：存在阻塞性异议，已进入人工复核
 新增稳定枚举：
 
 ```ts
-type LobsterExecutionMode =
+type LoopExecutionMode =
   | "main_sub_multi_agent"
   | "debate_multi_agent";
 ```
@@ -258,7 +258,7 @@ type LobsterExecutionMode =
 默认值：
 
 ```ts
-const DEFAULT_LOBSTER_EXECUTION_MODE: LobsterExecutionMode = "main_sub_multi_agent";
+const DEFAULT_LOOP_EXECUTION_MODE: LoopExecutionMode = "main_sub_multi_agent";
 ```
 
 兼容规则：
@@ -274,7 +274,7 @@ const DEFAULT_LOBSTER_EXECUTION_MODE: LobsterExecutionMode = "main_sub_multi_age
 ```ts
 type PanelState = {
   // existing fields...
-  lobsterExecutionMode: LobsterExecutionMode;
+  loopExecutionMode: LoopExecutionMode;
 };
 ```
 
@@ -283,7 +283,7 @@ type PanelState = {
 ```ts
 type WorkspaceSettings = {
   // existing fields...
-  lobsterExecutionModeByCli?: Partial<Record<CliName, LobsterExecutionMode>>;
+  loopExecutionModeByCli?: Partial<Record<CliName, LoopExecutionMode>>;
 };
 ```
 
@@ -299,9 +299,9 @@ type PanelMessage =
       type: "sendPrompt";
       prompt: string;
       interactiveMode?: InteractiveMode;
-      lobsterExecutionMode?: LobsterExecutionMode;
-      lobsterMainModel?: string;
-      lobsterSubtaskModel?: string;
+      loopExecutionMode?: LoopExecutionMode;
+      loopMainModel?: string;
+      loopSubtaskModel?: string;
       // existing fields...
     };
 ```
@@ -311,29 +311,29 @@ type PanelMessage =
 ```ts
 | {
     type: "updateSetting";
-    key: `lobsterExecutionMode.${CliName}`;
-    value: LobsterExecutionMode;
+    key: `loopExecutionMode.${CliName}`;
+    value: LoopExecutionMode;
   }
 ```
 
 ### Loop 任务记录
 
-`LobsterTaskRecord` 新增：
+`LoopTaskRecord` 新增：
 
 ```ts
-type LobsterTaskRecord = {
+type LoopTaskRecord = {
   // existing fields...
-  executionMode?: LobsterExecutionMode;
-  debateRounds?: LobsterDebateRoundRecord[];
+  executionMode?: LoopExecutionMode;
+  debateRounds?: LoopDebateRoundRecord[];
 };
 ```
 
-`executionMode` 必须在 `createLobsterTaskRecord` 时写入，后续恢复不随 UI 当前选择改变。
+`executionMode` 必须在 `createLoopTaskRecord` 时写入，后续恢复不随 UI 当前选择改变。
 
 ### 辩论记录
 
 ```ts
-type LobsterDebateParticipantRole =
+type LoopDebateParticipantRole =
   | "architecture"
   | "implementation"
   | "testing"
@@ -341,9 +341,9 @@ type LobsterDebateParticipantRole =
   | "product"
   | "custom";
 
-type LobsterDebateParticipantRecord = {
+type LoopDebateParticipantRecord = {
   id: string;
-  role: LobsterDebateParticipantRole;
+  role: LoopDebateParticipantRole;
   title: string;
   model?: string | null;
   status: "pending" | "running" | "completed" | "error" | "stopped";
@@ -355,7 +355,7 @@ type LobsterDebateParticipantRecord = {
   updatedAt: number;
 };
 
-type LobsterDebateModeratorDecisionRecord = {
+type LoopDebateModeratorDecisionRecord = {
   artifactFile: string;
   dialogueTurn: number;
   action: "continue" | "finalize" | "block";
@@ -365,7 +365,7 @@ type LobsterDebateModeratorDecisionRecord = {
   updatedAt: number;
 };
 
-type LobsterDebateDisagreementRecord = {
+type LoopDebateDisagreementRecord = {
   id: string;
   title: string;
   participants: string[];
@@ -373,7 +373,7 @@ type LobsterDebateDisagreementRecord = {
   resolution?: string;
 };
 
-type LobsterDebateConsensusRecord = {
+type LoopDebateConsensusRecord = {
   artifactFile: string;
   reached: boolean;
   summary: string;
@@ -382,13 +382,13 @@ type LobsterDebateConsensusRecord = {
     stance: "agree" | "agree_with_reservations" | "block";
     note?: string;
   }>;
-  resolvedDisagreements: LobsterDebateDisagreementRecord[];
-  openDisagreements: LobsterDebateDisagreementRecord[];
-  decision?: LobsterMainDecision;
+  resolvedDisagreements: LoopDebateDisagreementRecord[];
+  openDisagreements: LoopDebateDisagreementRecord[];
+  decision?: LoopMainDecision;
 };
 
-type LobsterDebateRoundRecord = {
-  lobsterRound: number;
+type LoopDebateRoundRecord = {
+  loopRound: number;
   debateRound: number;
   status: "running" | "consensus" | "blocked" | "error" | "stopped";
   startedAt: number;
@@ -396,9 +396,9 @@ type LobsterDebateRoundRecord = {
   briefFile: string;
   chatFile?: string;
   dialogueTurns?: number;
-  participants: LobsterDebateParticipantRecord[];
-  moderatorDecisions?: LobsterDebateModeratorDecisionRecord[];
-  consensus?: LobsterDebateConsensusRecord;
+  participants: LoopDebateParticipantRecord[];
+  moderatorDecisions?: LoopDebateModeratorDecisionRecord[];
+  consensus?: LoopDebateConsensusRecord;
 };
 ```
 
@@ -407,7 +407,7 @@ type LobsterDebateRoundRecord = {
 现有沟通目录：
 
 ```text
-~/.sinitek_cli/lobster-communications/<taskId>/
+~/.sinitek_cli/loop-communications/<taskId>/
 ├── main-task.md
 └── subtasks/
 ```
@@ -415,11 +415,11 @@ type LobsterDebateRoundRecord = {
 新增：
 
 ```text
-~/.sinitek_cli/lobster-communications/<taskId>/
+~/.sinitek_cli/loop-communications/<taskId>/
 ├── main-task.md
 ├── group-chat.md
 ├── debates/
-│   └── round-<lobsterRound>/
+│   └── round-<loopRound>/
 │       ├── brief.md
 │       ├── chat.md
 │       ├── participants/
@@ -452,7 +452,7 @@ type LobsterDebateRoundRecord = {
 
 保留策略：
 
-- 与现有 `lobster-communications` 目录共用 30 天保留清理。
+- 与现有 `loop-communications` 目录共用 30 天保留清理。
 - 删除任务沟通目录时，辩论目录一起删除。
 
 ## 辩论参与者设计
@@ -483,10 +483,10 @@ type LobsterDebateRoundRecord = {
 ```text
 用户提交 Loop 任务
   ↓
-创建 LobsterTaskRecord，写入 executionMode
+创建 LoopTaskRecord，写入 executionMode
   ↓
 如果 executionMode=main_sub_multi_agent
-  → 走现有 runLobsterRound 主任务决策
+  → 走现有 runLoopRound 主任务决策
   ↓
 如果 executionMode=debate_multi_agent
   → 如果尚无可复用红蓝规划共识
@@ -499,8 +499,8 @@ type LobsterDebateRoundRecord = {
   → 如 continue 且未达到安全上限，追加下一轮发言
   → 如 finalize，收集动态参与者最终立场
   → 共识汇总
-  → 输出现有 LobsterMainDecision JSON
-  → 复用 applyLobsterMainDecision
+  → 输出现有 LoopMainDecision JSON
+  → 复用 applyLoopMainDecision
   → 复用子任务批次执行
   → 后续轮次读取首轮红蓝规划共识，由主持人主智能体走主从多智能体复核
 ```
@@ -512,7 +512,7 @@ type LobsterDebateRoundRecord = {
 必须包含：
 
 - 原始用户目标。
-- 当前 `taskId`、`lobsterRound`、任务记录文件路径。
+- 当前 `taskId`、`loopRound`、任务记录文件路径。
 - 主任务沟通文件路径。
 - 子任务沟通目录路径。
 - 已完成、运行中、失败、中断的子任务概要。
@@ -581,7 +581,7 @@ agree / agree_with_reservations / block
 
 要求：
 
-- 参与者不能直接返回最终 `LobsterMainDecision`。
+- 参与者不能直接返回最终 `LoopMainDecision`。
 - 参与者不能修改工作区内容、任务记录或非指定沟通文件。
 - 参与者必须写入自己的 artifact 文件。
 - 如果发现不能继续，必须用 `block` 并列出阻塞性异议。
@@ -599,7 +599,7 @@ agree / agree_with_reservations / block
 - 如果存在任何 `stance=block` 且未解决，不能派发子任务。
 - 如果参与者原始 artifact 为 `block`，但阻塞点可以通过前置子任务、验收标准或风险说明解决，共识汇总器必须把该阻塞点写入 `resolvedDisagreements`，并可把该参与者最终立场标为 `agree_with_reservations` 后继续。
 - 如果所有参与者 `agree` 或 `agree_with_reservations`，且保留意见已进入风险说明或验收标准，可以输出 `status=continue` 或 `status=completed`。
-- 输出的 `decision.json` 必须仍符合现有 `LobsterMainDecision` 协议。
+- 输出的 `decision.json` 必须仍符合现有 `LoopMainDecision` 协议。
 - 不允许要求继续辩论；`chat.md` 已由主持人收束后仍不确定时，必须走 `blocked`。
 
 共识达成的最低条件：
@@ -640,7 +640,7 @@ agree / agree_with_reservations / block
   "parallelReason": "UI、协议类型、文档同步的预期写入文件互不重叠，可以并发。",
   "subtasks": [
     {
-      "id": "ui-lobster-execution-mode",
+      "id": "ui-loop-execution-mode",
       "title": "补齐 Loop 执行方式 UI",
       "conflictGroup": "src/webview",
       "writeFiles": ["src/webview/viewContent.ts", "src/webview/types.ts"],
@@ -654,7 +654,7 @@ agree / agree_with_reservations / block
 
 - `debate` 字段作为可选元数据解析和存储。
 - `status`、`estimatedRemainingRounds`、`acceptance`、`subtasks` 继续按现有逻辑执行。
-- `applyLobsterMainDecision` 不应因为存在 `debate` 字段改变子任务派发语义。
+- `applyLoopMainDecision` 不应因为存在 `debate` 字段改变子任务派发语义。
 
 ## Prompt 设计
 
@@ -729,30 +729,30 @@ chat.md 已包含主持人控场与收束标记，不允许要求继续辩论。
 建议新增：
 
 ```ts
-async function runLobsterDebateRound(options: {
+async function runLoopDebateRound(options: {
   input: PromptRunInput;
   target: PromptRunTarget;
-  task: LobsterTaskRecord;
+  task: LoopTaskRecord;
   round: number;
 }): Promise<{
   status: "completed" | "continue" | "blocked" | "error" | "stopped";
-  decision?: LobsterMainDecision;
-  task: LobsterTaskRecord;
+  decision?: LoopMainDecision;
+  task: LoopTaskRecord;
 }>;
 ```
 
-`runLobsterPrompt` 中替换点：
+`runLoopPrompt` 中替换点：
 
 ```ts
-const mainResult = task.executionMode === "debate_multi_agent" && shouldRunLobsterPlanningDebate(task, round)
-  ? await runLobsterDebateRound({ input, target, task: latest, round })
-  : await runClassicLobsterMainDecision({ input, target, task: latest, round, moderatorLed: task.executionMode === "debate_multi_agent" });
+const mainResult = task.executionMode === "debate_multi_agent" && shouldRunLoopPlanningDebate(task, round)
+  ? await runLoopDebateRound({ input, target, task: latest, round })
+  : await runClassicLoopMainDecision({ input, target, task: latest, round, moderatorLed: task.executionMode === "debate_multi_agent" });
 ```
 
 为了降低风险，建议先把当前主任务逻辑抽成：
 
 ```ts
-async function runClassicLobsterMainDecision(...): Promise<LobsterDecisionRunResult>
+async function runClassicLoopMainDecision(...): Promise<LoopDecisionRunResult>
 ```
 
 再接入 debate 分支。
@@ -777,25 +777,25 @@ async function runClassicLobsterMainDecision(...): Promise<LobsterDecisionRunRes
 
 第一阶段复用主任务模型：
 
-- 辩论参与者默认使用 `lobsterMainModel`。
-- 子任务仍使用 `lobsterSubtaskModel`。
+- 辩论参与者默认使用 `loopMainModel`。
+- 子任务仍使用 `loopSubtaskModel`。
 - 不新增“辩论模型”选择，避免 UI 复杂度过高。
 
 后续可以扩展模型角色：
 
 ```ts
-type LobsterModelRole = "main" | "subtask" | "debate";
+type LoopModelRole = "main" | "subtask" | "debate";
 ```
 
 但第一阶段不做。
 
 ## 决策校验设计
 
-`normalizeLobsterMainDecision` 增加对可选 `debate` 字段的容错解析。
+`normalizeLoopMainDecision` 增加对可选 `debate` 字段的容错解析。
 
 当任务 `executionMode=debate_multi_agent` 时额外校验：
 
-- 必须存在当前轮的 `LobsterDebateRoundRecord`。
+- 必须存在当前轮的 `LoopDebateRoundRecord`。
 - 共识记录 `reached=true`。
 - 当前轮存在完整 `chat.md`，且包含主持人控场与 `## 群聊收束` 标记。
 - 至少存在一个合法 `participants/moderator-turn-<n>.md` 控场 artifact。
@@ -845,19 +845,19 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 - 如果规划 debate 已经完成，且存在完整 `chat.md`、主持人控场、最终 participant artifacts、`cross-review.md`、`consensus.md` 和 `decision.json`，恢复和后续轮次优先复用该规划共识，避免重复辩论。
 - 如果规划 debate 缺少共识、主持人控场或任一参与者 artifact，重新执行规划辩论。
 - 如果旧产物来自非群聊版本或固定两轮版本，缺少 `chat.md`、主持人控场或收束标记，恢复时补跑规划辩论。
-- 已完成任务缺失 `lobsterAnswerConclusion=true` 问题回答结论气泡、缺失 `lobsterFinalSummary=true` 最终总结气泡，或最终总结气泡缺少问题回答结论展示时，仍沿用现有自动恢复最终消息机制。
+- 已完成任务缺失 `loopAnswerConclusion=true` 问题回答结论气泡、缺失 `loopFinalSummary=true` 最终总结气泡，或最终总结气泡缺少问题回答结论展示时，仍沿用现有自动恢复最终消息机制。
 
 ## 与现有链路的关系
 
 | 能力 | 主从多智能体 | 辩论多智能体 |
 | --- | --- | --- |
-| 顶层 interactiveMode | `lobster` | `lobster` |
+| 顶层 interactiveMode | `loop` | `loop` |
 | 任务记录目录 | 复用 | 复用 |
 | 沟通目录 | 复用 | 复用并新增 `debates/` |
 | 规划方式 | 主任务单独规划 | 多参与者辩论后共识规划 |
 | 子任务 JSON 协议 | 现有协议 | 现有协议加可选 `debate` 元数据 |
 | 子任务执行 | 现有批次执行 | 完全复用 |
-| 并发冲突规划 | `lobsterParallel` | 完全复用 |
+| 并发冲突规划 | `loopParallel` | 完全复用 |
 | 最终完成判定 | `completed` + 独立问题回答结论气泡 + 含问题回答结论和整体总结的 final summary 气泡 | 相同，且要求共识无阻塞异议 |
 | 清理策略 | 30 天 | 相同 |
 
@@ -873,7 +873,7 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 兼容检查：
 
-- 老的 `lobster-tasks.json` 能继续读取。
+- 老的 `loop-tasks.json` 能继续读取。
 - 老任务恢复不进入辩论模式。
 - 用户切换 UI 到辩论模式后，只有新任务使用辩论。
 
@@ -883,11 +883,11 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 建议抽出纯函数并补测：
 
-- `normalizeLobsterExecutionMode`
-- `normalizeLobsterDebateRoundRecord`
-- `buildLobsterDebatePaths`
-- `validateLobsterDebateConsensus`
-- `normalizeLobsterMainDecision` 对可选 `debate` 字段的兼容解析
+- `normalizeLoopExecutionMode`
+- `normalizeLoopDebateRoundRecord`
+- `buildLoopDebatePaths`
+- `validateLoopDebateConsensus`
+- `normalizeLoopMainDecision` 对可选 `debate` 字段的兼容解析
 
 关键用例：
 
@@ -904,15 +904,15 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 1. 选择 Loop 模式和 `辩论多智能体`。
 2. 发送一个可拆分任务。
 3. 观察主 tab 出现辩论启动消息。
-4. 检查 `lobster-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
+4. 检查 `loop-communications/<taskId>/debates/round-1/` 下生成 `brief.md`、`chat.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/<role>.md`、`cross-review.md`、`consensus.md`、`decision.json`。
 5. 检查共识后仍按现有 `subtasks` 启动子任务。
 6. 子任务完成后唤醒主持人主智能体复核，并检查没有新增 `debates/round-2/`；后续复核只读取首轮红蓝规划共识和主从执行群聊。
-7. 最终完成时 AI 对话主消息流仍出现 `lobsterAnswerConclusion=true` 的问题回答结论气泡和 `lobsterFinalSummary=true` 的最终总结气泡，且最终总结气泡内同时包含问题回答结论和整体任务总结。
+7. 最终完成时 AI 对话主消息流仍出现 `loopAnswerConclusion=true` 的问题回答结论气泡和 `loopFinalSummary=true` 的最终总结气泡，且最终总结气泡内同时包含问题回答结论和整体任务总结。
 
 ### 回归验证
 
 - `npm run build`
-- 现有 `lobsterParallel` 单元测试
+- 现有 `loopParallel` 单元测试
 - 人工验证主从多智能体不受影响
 - 人工验证 Claude 下执行方式可见，但模型选择仍隐藏
 
@@ -931,19 +931,19 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 
 ### 第一阶段：协议和记录
 
-- 新增 `LobsterExecutionMode`。
+- 新增 `LoopExecutionMode`。
 - 新增 UI 选择与 workspace 记忆。
-- `LobsterTaskRecord` 写入 `executionMode`。
+- `LoopTaskRecord` 写入 `executionMode`。
 - 新增辩论目录路径和记录类型。
 - 不改变现有主从逻辑。
 
 ### 第二阶段：辩论编排
 
 - 抽出当前主任务决策函数。
-- 实现 `runLobsterDebateRound`。
+- 实现 `runLoopDebateRound`。
 - 主持人先写入动态参与者清单并指定首批发言者；之后每个发言批次都由主持人显式点名 1-3 位发言者进入本批，扩展按点名顺序追加 `chat.md` 后再启动主持人控场，由主持人决定继续、收束或阻塞。
 - 实现共识汇总，输出 `decision.json`。
-- 成功后复用 `applyLobsterMainDecision`。
+- 成功后复用 `applyLoopMainDecision`。
 
 ### 第三阶段：校验和恢复
 
@@ -971,5 +971,5 @@ type LobsterModelRole = "main" | "subtask" | "debate";
 - 派发子任务前必须存在 `consensus.md` 和 `decision.json`。
 - 存在未解决阻塞性异议时不会派发子任务。
 - 共识通过后，子任务执行仍复用现有批次并发逻辑。
-- 最终完成仍要求 AI 对话主消息流同时存在 `lobsterAnswerConclusion=true` 和 `lobsterFinalSummary=true`。
+- 最终完成仍要求 AI 对话主消息流同时存在 `loopAnswerConclusion=true` 和 `loopFinalSummary=true`。
 - 文档、功能清单、构建验证全部完成。

@@ -176,13 +176,13 @@ function buildVisibilityHarness() {
     openCodePrimaryModelSelect: createVisibilityElement(),
     openCodeSmallModelSelect: createVisibilityElement(),
     modelSelect: createVisibilityElement(),
-    lobsterExecutionModeSelect: createVisibilityElement(),
+    loopExecutionModeSelect: createVisibilityElement(),
   };
   const sync = new Function(
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLobsterExecutionModeForCli",
+    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${functionSource}; return syncModelSelectorByInteractiveMode;`,
   )(
@@ -204,8 +204,8 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    lobsterExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    lobsterExecutionModeDebateMultiAgent: "debate-multi-agent",
+    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
+    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
   const group = html.match(/<div id="openCodeModelGroup"[\s\S]*?<\/div>/)?.[0] || "";
 
@@ -228,7 +228,7 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode small model selection"/);
   assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode small model thinking mode"[^>]*title="OpenCode small model thinking mode"/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|open-code-model-hint|lightweight internal tasks|reasoning effort/);
-  assert.doesNotMatch(html, /lobsterMainModelSelect|lobsterSubtaskModelSelect|Loop main-task model|Loop subtask model/);
+  assert.doesNotMatch(html, /loopMainModelSelect|loopSubtaskModelSelect|Loop main-task model|Loop subtask model/);
   const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
   assert.match(genericThinking, /<option value="xhigh">xhigh<\/option>/);
   assert.match(genericThinking, /<option value="max">max<\/option>/);
@@ -397,10 +397,10 @@ test("keeps OpenCode dual models, Codex one model, and Claude no model across Lo
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.state.interactiveMode = "lobster";
+  harness.state.interactiveMode = "loop";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
@@ -408,9 +408,9 @@ test("keeps OpenCode dual models, Codex one model, and Claude no model across Lo
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "");
 
-  harness.state.interactiveMode = "lobster";
+  harness.state.interactiveMode = "loop";
   harness.sync("codex");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "");
 
   harness.state.interactiveMode = "coding";
@@ -418,8 +418,8 @@ test("keeps OpenCode dual models, Codex one model, and Claude no model across Lo
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.state.interactiveMode = "lobster";
+  harness.state.interactiveMode = "loop";
   harness.sync("claude");
-  assert.equal(harness.elements.lobsterExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });

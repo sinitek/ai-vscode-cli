@@ -51,13 +51,13 @@ Loop 子任务因错误自动重试后成功，会统一更新子任务记录、
 
 ## 验证计划
 
-- 最小相关验证：编译后运行 `node --test dist/test/lobsterSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
-- 单元自测命令：`npm run build`；`node --test dist/test/lobsterSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
+- 最小相关验证：编译后运行 `node --test dist/test/loopSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
+- 单元自测命令：`npm run build`；`node --test dist/test/loopSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
 - 扩展验证：CodeGraph 重新索引后执行其标记的 8 个受影响测试文件，102/102 通过。
 
 ## 测试与清单同步
 
-- 单元测试新增/更新：新增 `src/test/lobsterSubtaskLifecycle.test.ts`，覆盖成功、关闭设置关闭、错误/停止和两条编排路径共享收尾函数；保留并执行 `sessionMessageActions.test.ts` 的手动恢复路由覆盖。
+- 单元测试新增/更新：新增 `src/test/loopSubtaskLifecycle.test.ts`，覆盖成功、关闭设置关闭、错误/停止和两条编排路径共享收尾函数；保留并执行 `sessionMessageActions.test.ts` 的手动恢复路由覆盖。
 - 单元自测结果：`npm run build` 通过；最小相关测试 18/18 通过；CodeGraph 受影响测试集 102/102 通过。
 - 失败处理记录：首次最小测试中，源码断言辅助函数错误把 TypeScript 参数对象类型的 `}` 识别为函数结尾；已改用相邻函数边界截取，产品代码未发生失败，重跑通过。
 - 功能清单：已新增“子任务手动恢复完成收尾一致性”条目。
@@ -73,8 +73,8 @@ Loop 子任务因错误自动重试后成功，会统一更新子任务记录、
 ## 决策记录
 
 - 2026-07-13：以 `TaskRunStatus === "end"` 作为手动恢复成功的唯一关闭条件；保留现有主任务唤醒资格和失败上限检查。
-- 2026-07-13：将自动重试和手动恢复都接入 `finalizeLobsterSubtaskRun`；该函数先更新记录，再按全局设置关闭成功子任务 Tab，避免两条路径继续漂移。
+- 2026-07-13：将自动重试和手动恢复都接入 `finalizeLoopSubtaskRun`；该函数先更新记录，再按全局设置关闭成功子任务 Tab，避免两条路径继续漂移。
 
 ## 当前结论
 
-已完成。`src/lobsterSubtaskLifecycle.ts` 提供可注入且可单测的共享完成收尾规则；`runLobsterSubtaskWithRetry` 与 `maybeWakeLobsterMainAfterSubtaskContinuation` 都调用扩展侧适配器。手动恢复成功现会在记录更新后按全局设置关闭子任务 Tab，再保留既有主任务恢复守卫。所有计划验证均已通过。
+已完成。`src/loopSubtaskLifecycle.ts` 提供可注入且可单测的共享完成收尾规则；`runLoopSubtaskWithRetry` 与 `maybeWakeLoopMainAfterSubtaskContinuation` 都调用扩展侧适配器。手动恢复成功现会在记录更新后按全局设置关闭子任务 Tab，再保留既有主任务恢复守卫。所有计划验证均已通过。

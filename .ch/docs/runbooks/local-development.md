@@ -144,14 +144,15 @@ node scripts/sync_loop_workflow_skills.js --check
 node scripts/validate_loop_workflow_skills.js
 npm run build
 node --test \
-  dist/test/lobsterSkillGuidance.test.js \
-  dist/test/lobsterTaskStore.test.js \
-  dist/test/lobsterPromptBuilders.test.js \
-  dist/test/lobsterSkillIntegration.test.js \
+  dist/test/loopLegacyMigration.test.js \
+  dist/test/loopSkillGuidance.test.js \
+  dist/test/loopTaskStore.test.js \
+  dist/test/loopPromptBuilders.test.js \
+  dist/test/loopSkillIntegration.test.js \
   dist/test/sessionMessageActions.test.js \
-  dist/test/lobsterParallel.test.js \
-  dist/test/lobsterDebate.test.js \
-  dist/test/lobsterMainFailure.test.js \
+  dist/test/loopParallel.test.js \
+  dist/test/loopDebate.test.js \
+  dist/test/loopMainFailure.test.js \
   dist/test/loopPromptQueue.test.js \
   dist/test/officialSkillService.test.js \
   dist/test/officialSkillsVersioning.test.js \

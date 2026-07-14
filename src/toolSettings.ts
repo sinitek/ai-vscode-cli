@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { MacTaskShell } from "./cli/types";
+import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 
 export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 
@@ -10,8 +11,8 @@ export type ToolSettingsState = {
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
   multiAgentEnabled?: boolean;
-  lobsterMaxRounds?: number;
-  lobsterAutoCloseSubtaskTabs?: boolean;
+  loopMaxRounds?: number;
+  loopAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -21,7 +22,7 @@ export type ToolSettingsState = {
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   globalMemoryEnabled?: boolean;
   memoryAutoExtractAfterCompact?: boolean;
-  memoryAutoExtractAfterLobsterTask?: boolean;
+  memoryAutoExtractAfterLoopTask?: boolean;
 };
 
 const TOOL_SETTINGS_FILE = path.join(os.homedir(), ".sinitek_cli", "settings.json");
@@ -34,7 +35,7 @@ export type LongTermMemorySettingsInput = Pick<
   | "memoryEnabled"
   | "globalMemoryEnabled"
   | "memoryAutoExtractAfterCompact"
-  | "memoryAutoExtractAfterLobsterTask"
+  | "memoryAutoExtractAfterLoopTask"
 > & {
   workspaceMemoryEnabled?: boolean;
 };
@@ -48,7 +49,7 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (!value || typeof value !== "object") {
     return normalized;
   }
-  const record = value as Record<string, unknown>;
+  const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
   if (typeof record.debug === "boolean") {
     normalized.debug = record.debug;
   }
@@ -61,16 +62,16 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.multiAgentEnabled === "boolean") {
     normalized.multiAgentEnabled = record.multiAgentEnabled;
   }
-  if (typeof record.lobsterMaxRounds === "number" || typeof record.lobsterMaxRounds === "string") {
-    const parsed = typeof record.lobsterMaxRounds === "number"
-      ? record.lobsterMaxRounds
-      : (record.lobsterMaxRounds.trim() ? Number(record.lobsterMaxRounds) : Number.NaN);
+  if (typeof record.loopMaxRounds === "number" || typeof record.loopMaxRounds === "string") {
+    const parsed = typeof record.loopMaxRounds === "number"
+      ? record.loopMaxRounds
+      : (record.loopMaxRounds.trim() ? Number(record.loopMaxRounds) : Number.NaN);
     if (Number.isFinite(parsed)) {
-      normalized.lobsterMaxRounds = Math.floor(parsed);
+      normalized.loopMaxRounds = Math.floor(parsed);
     }
   }
-  if (typeof record.lobsterAutoCloseSubtaskTabs === "boolean") {
-    normalized.lobsterAutoCloseSubtaskTabs = record.lobsterAutoCloseSubtaskTabs;
+  if (typeof record.loopAutoCloseSubtaskTabs === "boolean") {
+    normalized.loopAutoCloseSubtaskTabs = record.loopAutoCloseSubtaskTabs;
   }
   if (record.locale === "auto" || record.locale === "zh-CN" || record.locale === "en") {
     normalized.locale = record.locale;
@@ -90,8 +91,8 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.memoryAutoExtractAfterCompact === "boolean") {
     normalized.memoryAutoExtractAfterCompact = record.memoryAutoExtractAfterCompact;
   }
-  if (typeof record.memoryAutoExtractAfterLobsterTask === "boolean") {
-    normalized.memoryAutoExtractAfterLobsterTask = record.memoryAutoExtractAfterLobsterTask;
+  if (typeof record.memoryAutoExtractAfterLoopTask === "boolean") {
+    normalized.memoryAutoExtractAfterLoopTask = record.memoryAutoExtractAfterLoopTask;
   }
   return normalized;
 }
