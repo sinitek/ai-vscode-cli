@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import { type CliName } from "../cli/types";
 import {
   createSessionTabsController,
+  findConversationTabForLoopResume,
   resolveAutoInteractiveModeForLoopTask,
   type ConversationTabsState,
 } from "../sessionTabs";
@@ -177,6 +178,30 @@ test("automatically selects Loop mode only for a Loop main task tab", () => {
   assert.equal(resolveAutoInteractiveModeForLoopTask("main", null), "coding");
   assert.equal(resolveWebviewMode(ordinaryTab), "coding");
   assert.equal(resolveAutoInteractiveModeForLoopTask(undefined, undefined), "coding");
+});
+
+test("finds the same Loop main tab after that tab switches to a new CLI group", () => {
+  const tab = {
+    id: "main-tab",
+    cli: "opencode" as const,
+    sessionId: "opencode-session",
+    sessionIdByCli: {
+      codex: "codex-loop-session",
+      opencode: "opencode-session",
+    },
+    createdAt: 1,
+  };
+  const resolved = findConversationTabForLoopResume(
+    [tab],
+    { id: "loop-task-1", cli: "codex", sessionId: "codex-loop-session" },
+    (_candidate, cli) => cli === "codex"
+      ? { taskRole: "main", loopTaskId: "loop-task-1" }
+      : {},
+  );
+
+  assert.equal(resolved, tab);
+  assert.equal(resolved?.cli, "opencode");
+  assert.equal(resolved?.sessionId, "opencode-session");
 });
 
 test("rebuilds a Loop tab after its running status has been reconciled", () => {

@@ -253,6 +253,7 @@ import {
 import {
   appendLoopRound,
   bindLoopTaskToSession,
+  bindLoopTaskToRuntimeTarget,
   buildLoopSessionIdsByCli,
   buildLoopTaskStoreFile,
   buildLoopSubtaskCommunicationFile,
@@ -278,6 +279,7 @@ import {
   type LoopTaskRecord,
   type LoopTaskStore,
 } from "./loopTaskStore";
+import { createLoopOrchestrationOwnershipTracker } from "./loopOrchestrationOwnership";
 import {
   finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps,
   type LoopSubtaskCompletionOptions,
@@ -334,6 +336,7 @@ import {
 import {
   buildConversationTabSessionLookupKey,
   createSessionTabsController,
+  findConversationTabForLoopResume,
   getConversationTabSessionIdForCli,
   resolveAutoInteractiveModeForLoopTask,
   sanitizeConversationTabRecordForWorkspaceSettings,
@@ -580,7 +583,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
-const activeLoopOrchestrationTaskIds = new Set<string>();
+const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -2566,6 +2569,17 @@ function resolveLoopConversationTabContextFromInteractiveRun(
   return resolveLoopRunConversationTabContext(run);
 }
 
+function resolveConversationTabLoopContextForCli(
+  tab: ConversationTabRecord,
+  cli: CliName,
+): LoopConversationTabContext {
+  const sessionId = getConversationTabSessionIdForCli(tab, cli);
+  const messages = sessionId
+    ? loadSessionMessages(cli, sessionId)
+    : getPendingSessionDraft(tab.id, cli).messages;
+  return resolveLoopConversationTabContextFromMessages(messages);
+}
+
 function resolveConversationTabLoopContext(tab: ConversationTabRecord): LoopConversationTabContext {
   const primaryTabId = getPrimaryRunTabId();
   if (primaryTabId === tab.id) {
@@ -2597,11 +2611,7 @@ function resolveConversationTabLoopContext(tab: ConversationTabRecord): LoopConv
     }
   }
 
-  const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
-  const messages = sessionId
-    ? loadSessionMessages(tab.cli, sessionId)
-    : getPendingSessionDraft(tab.id, tab.cli).messages;
-  return resolveLoopConversationTabContextFromMessages(messages);
+  return resolveConversationTabLoopContextForCli(tab, tab.cli);
 }
 
 function collectRunningLoopTaskIds(): Set<string> {
@@ -2613,7 +2623,7 @@ function collectRunningLoopTaskIds(): Set<string> {
     }
   };
 
-  activeLoopOrchestrationTaskIds.forEach(addTaskId);
+  loopOrchestrationOwnership.collectTaskIds().forEach(addTaskId);
 
   if (isPrimaryRunActive()) {
     const primaryTaskId = normalizeLoopTaskId(activeTaskRun?.loopTaskId)
@@ -3966,15 +3976,20 @@ async function runLoopPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean } = {}
 ): Promise<void> {
-  const ownership: { taskId: string | null; target: PromptRunTarget | null } = {
+  const ownership: {
+    taskId: string | null;
+    target: PromptRunTarget | null;
+    release: (() => void) | null;
+  } = {
     taskId: null,
     target: null,
+    release: null,
   };
   try {
     await runLoopPromptOrchestration(input, options, (taskId, target) => {
       ownership.taskId = taskId;
       ownership.target = target;
-      activeLoopOrchestrationTaskIds.add(taskId);
+      ownership.release = loopOrchestrationOwnership.acquire(taskId);
     });
   } catch (error) {
     const failureMessage = errorToMessage(error);
@@ -3990,9 +4005,7 @@ async function runLoopPrompt(
       });
     }
   } finally {
-    if (ownership.taskId) {
-      activeLoopOrchestrationTaskIds.delete(ownership.taskId);
-    }
+    ownership.release?.();
     await postPanelState();
   }
 }
@@ -4016,10 +4029,23 @@ async function runLoopPromptOrchestration(
   let round = 1;
 
   if (resumeTaskId) {
-    const existingTask = readLoopTaskRecord(resumeTaskId);
+    let existingTask = readLoopTaskRecord(resumeTaskId);
     if (existingTask && isLoopTaskBlockedByMainAiFailureLimit(existingTask)) {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(existingTask));
       return;
+    }
+    const targetSessionId = resolveLoopTaskSessionId(target);
+    if (
+      existingTask
+      && resumeRequested
+      && existingTask.workspaceKey === activeWorkspaceKey
+      && (existingTask.cli !== target.cli || existingTask.sessionId !== targetSessionId)
+    ) {
+      existingTask = bindLoopTaskToRuntimeTarget(
+        existingTask.id,
+        target.cli,
+        targetSessionId,
+      ) ?? existingTask;
     }
     const shouldResumeCompletedWithoutCompletionMessages = Boolean(
       existingTask
@@ -4102,6 +4128,9 @@ async function runLoopPromptOrchestration(
     task = latest;
     if (isLoopTaskBlockedByMainAiFailureLimit(latest)) {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(latest));
+      return;
+    }
+    if (latest.status === "needs-review" || latest.status === "error" || latest.status === "stopped") {
       return;
     }
     if (isLoopTaskCompleted(latest)) {
@@ -5886,6 +5915,10 @@ function markLoopDebateNeedsReview(options: {
   status: Exclude<LoopDebateRoundStatus, "running" | "consensus">;
 }): LoopMainDecisionRunResult {
   const { task, target, round, debateRound, paths, participants, reasons, consensus, status } = options;
+  const latestTask = readLoopTaskRecord(task.id);
+  if (latestTask?.status === "stopped") {
+    return { status: "interrupted", task: latestTask, runStatus: "stopped" };
+  }
   const reviewSummary = buildLoopDebateNeedsReviewSummary({ reasons, consensus });
   const startedAt = getExistingLoopDebateRoundStartedAt(task, round, debateRound) ?? Date.now();
   upsertLoopDebateRoundRecord(task.id, {
@@ -6502,6 +6535,10 @@ async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promis
   let retryCount = 0;
   try {
     while (true) {
+      if (isLoopTaskExecutionInterrupted(task.id)) {
+        terminalProgressStatus = "interrupted";
+        return "stopped";
+      }
       const communicationFile = prepareLoopSubtaskCommunicationFile(task, subtask, round, retryCount);
       const subtaskTarget = createLoopSubtaskRunTarget(target.cli);
       currentSubtaskTarget = subtaskTarget;
@@ -6609,6 +6646,9 @@ type LoopRoundRunOptions = {
 
 async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus> {
   const { input, target, task, round, role, displayPrompt, modelPrompt, subtaskId } = options;
+  if (isLoopTaskExecutionInterrupted(task.id)) {
+    return "stopped";
+  }
   const roundStartedAt = Date.now();
   const activeSubtaskPatch = role === "main"
     ? { activeSubtaskId: null, activeSubtaskIds: [] }
@@ -7701,6 +7741,9 @@ function markLoopTaskInterrupted(
   options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
 ): void {
   const existing = readLoopTaskRecord(taskId);
+  if (existing && existing.status !== "running") {
+    return;
+  }
   const now = Date.now();
   const patch: Partial<LoopTaskRecord> = {
     status,
@@ -7728,6 +7771,11 @@ function markLoopTaskInterrupted(
   if (record) {
     appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
   }
+}
+
+function isLoopTaskExecutionInterrupted(taskId: string): boolean {
+  const status = readLoopTaskRecord(taskId)?.status;
+  return status === "needs-review" || status === "error" || status === "stopped";
 }
 
 function markLoopTaskStopped(

@@ -688,6 +688,34 @@ export function bindLoopTaskToSession(taskId: string, sessionId: string): LoopTa
   });
 }
 
+export function bindLoopTaskToRuntimeTarget(
+  taskId: string,
+  cli: CliName,
+  sessionId: string | null,
+): LoopTaskRecord | null {
+  const task = readLoopTaskRecord(taskId);
+  if (!task) {
+    return null;
+  }
+  const normalizedSessionId = typeof sessionId === "string" && sessionId.trim()
+    ? sessionId.trim()
+    : null;
+  const targetStoreFile = buildLoopTaskStoreFile(cli, task.workspaceKey, normalizedSessionId, task.id);
+  if (
+    task.cli === cli
+    && task.sessionId === normalizedSessionId
+    && task.taskStoreFile === targetStoreFile
+  ) {
+    return task;
+  }
+  return updateLoopTaskRecord(taskId, {
+    cli,
+    sessionId: normalizedSessionId,
+    taskStoreFile: targetStoreFile,
+    updatedAt: Date.now(),
+  });
+}
+
 function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;

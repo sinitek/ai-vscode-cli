@@ -656,6 +656,7 @@ type LoopPromptRunOptions = {
 
 type LoopPromptTarget = {
   tabId: string | null;
+  cli: CliName;
 };
 
 type LoopDebateChatPanelDeps = {
@@ -807,13 +808,13 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       return;
     }
 
-    const activeConfigId = deps.getActiveConfigIdForCli(task.cli);
+    const activeConfigId = deps.getActiveConfigIdForCli(target.cli);
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
       contextTags: [],
-      model: deps.getSelectedCliModel(task.cli, activeConfigId) ?? undefined,
+      model: deps.getSelectedCliModel(target.cli, activeConfigId) ?? undefined,
       loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
       loopContinuePrompt: resumePrompt,
     }, {
@@ -971,6 +972,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
 
   return {
     open,
+    continueTask,
     refresh,
     refreshOpenPanelForTask,
     buildMessageAction,

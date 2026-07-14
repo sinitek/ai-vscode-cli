@@ -117,7 +117,7 @@ test("keeps loop continue available only for incomplete non-running tasks", () =
   );
   assert.deepEqual(
     resolveLoopTaskRunControlState({ id: "task-1", status: "needs-review" }, new Set(["task-1"])),
-    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
+    { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
   assert.deepEqual(
     resolveLoopTaskRunControlState({ id: "task-1", status: "completed" }, new Set(["task-1"])),
@@ -125,7 +125,7 @@ test("keeps loop continue available only for incomplete non-running tasks", () =
   );
 });
 
-test("keeps loop speaking available whenever the task still has a running process", () => {
+test("treats persisted interruption as terminal even while stale runtime ownership is being released", () => {
   assert.deepEqual(
     resolveLoopTaskRunControlState(
       { id: "task-1", status: "running", mainAiFailureLimitReached: true },
@@ -135,10 +135,18 @@ test("keeps loop speaking available whenever the task still has a running proces
   );
   assert.deepEqual(
     resolveLoopTaskRunControlState(
-      { id: "task-1", status: "completed", mainAiFailureLimitReached: true },
+      { id: "task-1", status: "needs-review", mainAiFailureLimitReached: true },
       new Set(["task-1"]),
     ),
-    { isRunning: true, canSupplement: true, canContinue: false, canStop: true },
+    { isRunning: false, canSupplement: false, canContinue: false, canStop: false },
+  );
+  assert.deepEqual(
+    resolveLoopTaskRunControlState({ id: "task-1", status: "error" }, new Set(["task-1"])),
+    { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
+  );
+  assert.deepEqual(
+    resolveLoopTaskRunControlState({ id: "task-1", status: "stopped" }, new Set(["task-1"])),
+    { isRunning: false, canSupplement: true, canContinue: true, canStop: false },
   );
 });
 

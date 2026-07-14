@@ -616,17 +616,20 @@
 ### 现象
 
 - 任务 tab 已不再有主任务、子任务、裁判或参与者 CLI 进程，但任务记录仍为 `running`，关闭和重置会被静默拒绝。
+- 任务记录已经是 `needs-review`、`error` 或 `stopped`，群聊已经显示“任务已中断，需要人工复核或继续”，但尚未异步退出的旧编排所有权仍让主 Tab 显示执行中。
 - 旧 Webview 在重置请求发出时先清空本地消息；扩展端随后因同一锁定条件拒绝操作，用户切回原 tab 后又看到原会话，形成“重置无效”的假成功体验。
 
 ### 触发条件与根因
 
 - Loop 的持久化 `running` 状态原本用于保护主任务与子任务、裁判主持人与参与者之间没有单个 CLI 进程的编排空档。
 - 如果编排路径出现未捕获异常，或 Extension Host 已不再拥有该任务的执行上下文，记录没有被写入 `error` / `stopped`，仅用持久化状态判断会把残留记录永久视为运行中。
+- 如果运行所有权能覆盖明确中断终态，或者所有权只用任务 ID Set 表示，终止后立即恢复会出现两类竞态：旧运行仍显示执行中；旧运行的 `finally` 删除同一 task ID 时误删新恢复运行的所有权。子任务处于重试等待期时，缺少派发前终态门禁还会在等待结束后把 stopped 任务重新写回 `running`。
 - 前端乐观清空会话并不能证明“新建空白 Tab + 关闭旧 Tab”已经在扩展端成功完成；前后端锁定状态短暂不同步时会放大这个问题。
 
 ### 长期规避
 
-- 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLoopPrompt` 从任务创建/恢复到收尾期间维护 `activeLoopOrchestrationTaskIds`，并与主、并行和交互 CLI 运行集合合并；该集合存在时仍要保护编排空档。
+- 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLoopPrompt` 从任务创建/恢复到收尾期间通过 `loopOrchestrationOwnership` 引用计数维护所有权，并与主、并行和交互 CLI 运行集合合并；`status=running` 且存在所有权时仍要保护编排空档，每个运行只能释放自己的句柄。
+- `needs-review`、`error`、`stopped` 是明确中断终态，必须优先于残留所有权结束视觉运行态和关闭锁；每次主轮次、子任务轮次和重试派发前重新读取 Store，发现中断终态立即返回，禁止复活任务。
 - 任务记录为 `running` 但没有任何当前运行所有权时，收敛为 `stopped`，清空活跃子任务 ID，并把仍为 `pending` / `running` 的子任务和辩论参与者写入终态；不要继续保留关闭锁。
 - `runLoopPrompt` 的未捕获异常必须把仍为 `running` 的任务写成 `error`，然后再释放运行所有权。
 - 重置当前会话只能由扩展端成功完成新建空白 Tab、关闭旧 Tab 后通过 PanelState 和 `setMessages` 更新 Webview；请求发送前不得清空旧 Tab 消息或强制切换交互模式。编辑器上下文的下一次提示意图可以保留，但不能替代成功确认。
@@ -634,14 +637,16 @@
 ### 验证方式
 
 - 构造 `status="running"` 且运行所有权集合为空的任务，确认状态收敛为 `stopped`，主任务 Tab 解除关闭和重置锁；同一任务存在主/并行/交互运行或编排所有权时仍保持锁定。
+- 构造 `status="stopped" / "error" / "needs-review"` 且仍有旧所有权的任务，确认不再显示运行中；同一 task ID 先后获取两份所有权，释放旧句柄后新句柄仍存在。
 - 断言 SessionTabs 在运行态判定后再读取任务状态，避免本轮已经收敛为 `stopped` 却把旧 `running` 回传给 Webview。
 - 断言 Webview 的重置请求只发送消息并保留旧视图，Extension Host 拒绝时不会出现空白会话；成功时由回推状态切换到空白 Tab。
-- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/sessionMessageActions.test.js`。
+- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/loopOrchestrationOwnership.test.js dist/test/sessionMessageActions.test.js`。
 
 ### 关联资料
 
 - `src/extension.ts`
 - `src/loopDebate.ts`
+- `src/loopOrchestrationOwnership.ts`
 - `src/sessionTabs.ts`
 - `src/webview/viewContentScript/eventBindings.ts`
 - `src/test/conversationTabLock.test.ts`

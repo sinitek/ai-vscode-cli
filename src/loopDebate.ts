@@ -198,7 +198,8 @@ export function resolveLoopTaskRunControlState(
 ): LoopTaskRunControlState {
   const hasRunningProcess = runningTaskIds.has(task.id);
   const isCompleted = task.status === "completed";
-  const isRunning = hasRunningProcess || (!isCompleted && task.status === "running");
+  const isInterrupted = task.status === "needs-review" || task.status === "error" || task.status === "stopped";
+  const isRunning = !isInterrupted && (hasRunningProcess || (!isCompleted && task.status === "running"));
   const blockedByFailureLimit = Boolean(task.mainAiFailureLimitReached);
   return {
     isRunning,

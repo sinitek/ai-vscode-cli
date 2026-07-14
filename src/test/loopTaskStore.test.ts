@@ -144,6 +144,30 @@ test("moves a Loop task to the recovered OpenCode session store", () => {
   assert.equal(persisted.taskStoreFile, targetStoreFile);
 });
 
+test("moves a resumed Loop task to the latest CLI group and session without changing its ID", () => {
+  const task = createLegacyTask();
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  const resumedSessionId = `ses-opencode-resume-${recordSequence}`;
+  const rebound = loopTaskStore.bindLoopTaskToRuntimeTarget(task.id, "opencode", resumedSessionId);
+  const targetStoreFile = loopTaskStore.getLoopTaskStoreSessionFile(
+    task.workspaceKey,
+    "opencode",
+    resumedSessionId,
+  );
+
+  assert.ok(rebound);
+  assert.equal(rebound.id, task.id);
+  assert.equal(rebound.cli, "opencode");
+  assert.equal(rebound.sessionId, resumedSessionId);
+  assert.equal(rebound.taskStoreFile, targetStoreFile);
+  assert.equal(fs.existsSync(task.taskStoreFile), false);
+  const persisted = readSkillTask(targetStoreFile);
+  assert.equal(persisted.id, task.id);
+  assert.equal(persisted.cli, "opencode");
+  assert.equal(persisted.sessionId, resumedSessionId);
+});
+
 test("reads and rewrites legacy records without adding skill fields", () => {
   const legacyTask = createLegacyTask();
   fs.mkdirSync(path.dirname(legacyTask.taskStoreFile), { recursive: true });

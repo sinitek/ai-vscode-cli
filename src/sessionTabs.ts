@@ -30,6 +30,28 @@ type LoopConversationTabContext = {
   loopTaskId?: string | null;
 };
 
+export function findConversationTabForLoopResume(
+  tabs: readonly ConversationTabRecord[],
+  task: { id: string; cli: CliName; sessionId?: string | null },
+  resolveLoopContextForCli: (tab: ConversationTabRecord, cli: CliName) => LoopConversationTabContext,
+): ConversationTabRecord | null {
+  let sessionFallback: ConversationTabRecord | null = null;
+  for (const tab of tabs) {
+    const context = resolveLoopContextForCli(tab, task.cli);
+    if (context.taskRole === "main" && context.loopTaskId === task.id) {
+      return tab;
+    }
+    if (
+      !sessionFallback
+      && task.sessionId
+      && getConversationTabSessionIdForCli(tab, task.cli) === task.sessionId
+    ) {
+      sessionFallback = tab;
+    }
+  }
+  return sessionFallback;
+}
+
 export type SessionTabsController = ReturnType<typeof createSessionTabsController>;
 
 export function resolveAutoInteractiveModeForLoopTask(
