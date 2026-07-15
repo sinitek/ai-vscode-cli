@@ -78,6 +78,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getGlobalAutoCompactContextAfterRun: () => false,
     getGlobalMultiAgentEnabled: () => false,
     getGlobalLoopMaxRounds: () => 1,
+    getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     getGlobalLoopAutoCloseSubtaskTabs: () => false,
     buildWorkspaceLoopExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent" }),
     getDebugLogging: () => false,
@@ -113,6 +114,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.deepEqual(state.openCodeThinking, openCodeThinking);
   assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");
   assert.equal(state.openCodeModels?.selectedSmallRef, "gateway/small");
+  assert.equal(state.loopSubtaskMaxThinkingMode, "xhigh");
 });
 
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {

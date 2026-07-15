@@ -611,9 +611,9 @@ export async function runContextCompactionWithDeps(
   const runId = deps.createMessageId();
   deps.beginActiveRunState({ runId, cli, sessionId, tabId, messageTarget });
 
-  if (!silent) {
-    deps.sendRunStatus("start", undefined, { activity: "contextCompaction" });
-  }
+  // Automatic compaction stays quiet in the transcript, but still drives the
+  // Webview's active compaction indicator until the run has finished.
+  deps.sendRunStatus("start", undefined, { activity: "contextCompaction" });
 
   let stopCurrentTurn: (() => void) | null = null;
   const stopFn = (): void => {
@@ -631,8 +631,8 @@ export async function runContextCompactionWithDeps(
     } catch {
       // ignore
     }
+    deps.sendRunStatus("stopped", silent ? undefined : t("run.stoppedByUser"));
     if (!silent) {
-      deps.sendRunStatus("stopped", t("run.stoppedByUser"));
       deps.appendCompletionMessage("stopped");
       deps.persistActiveMessages();
     }
@@ -896,8 +896,8 @@ export async function runContextCompactionWithDeps(
       status,
       message: userMessage ?? null,
     });
+    deps.sendRunStatus(status === "end" ? "end" : status, silent ? undefined : userMessage);
     if (!silent) {
-      deps.sendRunStatus(status === "end" ? "end" : status, userMessage);
       deps.appendCompletionMessage(status);
     }
     deps.persistActiveMessages();

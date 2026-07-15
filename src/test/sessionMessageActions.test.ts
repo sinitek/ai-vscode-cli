@@ -417,6 +417,20 @@ test("persists the OpenCode Loop execution mode by CLI", async () => {
   assert.equal(calls.postPanelState, 1);
 });
 
+test("persists the Loop subtask thinking cap globally and clamps ultra", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "loopSubtaskMaxThinkingMode",
+    value: "ultra",
+  }, deps);
+
+  assert.deepEqual(calls.toolSettingsPatches, [{ loopSubtaskMaxThinkingMode: "xhigh" }]);
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.equal(calls.postPanelState, 1);
+});
+
 test("persists implicit subagents globally and removes legacy workspace fields", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   state.workspaceSettings = {

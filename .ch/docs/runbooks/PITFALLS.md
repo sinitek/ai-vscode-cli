@@ -857,9 +857,9 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/exec-plans/completed/2026-07-12-opencode-workspace-cwd.md`
 
-## Loop Workflow Skill 根分类不能读取长期记忆拼接后的 `modelPrompt`
+## 历史：已移除的 Loop Workflow Skill 根分类
 
-- 状态：已规避
+- 状态：已于 2026-07-15 下线；以下为历史记录
 - 首次发现：2026-07-12
 - 适用范围：Loop 新任务分类、排队 prompt、非开发任务与旧任务恢复
 
@@ -892,9 +892,9 @@
 - `src/test/loopSkillIntegration.test.ts`
 - `src/test/loopMainFailure.test.ts`
 
-## Loop Workflow Skill 选择不能让模型自报能力、路径或正文
+## 历史：已移除的 Loop Workflow Skill 选择
 
-- 状态：已规避
+- 状态：已于 2026-07-15 下线；以下为历史记录
 - 首次发现：2026-07-12
 - 适用范围：Skill manifest、主模型决策、宿主中央校验、子任务 prompt 与诊断日志
 
@@ -930,9 +930,9 @@
 - `src/test/loopSkillGuidance.test.ts`
 - `src/test/loopSkillIntegration.test.ts`
 
-## Loop Workflow Skill 的红蓝共识与自动重试不能绕过 runner / Store 快照
+## 历史：已移除的 Loop Workflow Skill 红蓝共识与自动重试
 
-- 状态：已规避
+- 状态：已于 2026-07-15 下线；以下为历史记录
 - 首次发现：2026-07-12
 - 适用范围：普通主从、红蓝首轮 consensus、中央 apply、子任务自动重试
 

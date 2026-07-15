@@ -144,19 +144,26 @@ test("normalizes global Loop tool settings", () => {
   assert.deepEqual(
     normalizeToolSettings({
       loopMaxRounds: "42.9",
+      loopSubtaskMaxThinkingMode: "high",
       loopAutoCloseSubtaskTabs: false,
     }),
     {
       loopMaxRounds: 42,
+      loopSubtaskMaxThinkingMode: "high",
       loopAutoCloseSubtaskTabs: false,
     },
   );
   assert.deepEqual(
     normalizeToolSettings({
       loopMaxRounds: "",
+      loopSubtaskMaxThinkingMode: "invalid",
       loopAutoCloseSubtaskTabs: "false",
     }),
     {},
+  );
+  assert.deepEqual(
+    normalizeToolSettings({ loopSubtaskMaxThinkingMode: "ultra" }),
+    { loopSubtaskMaxThinkingMode: "xhigh" },
   );
 });
 
@@ -164,11 +171,13 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
   assert.deepEqual(
     normalizeToolSettings({
       [getLegacyLoopPropertyKey("loopMaxRounds")]: "31.8",
+      [getLegacyLoopPropertyKey("loopSubtaskMaxThinkingMode")]: "max",
       [getLegacyLoopPropertyKey("loopAutoCloseSubtaskTabs")]: false,
       [getLegacyLoopPropertyKey("memoryAutoExtractAfterLoopTask")]: true,
     }),
     {
       loopMaxRounds: 31,
+      loopSubtaskMaxThinkingMode: "xhigh",
       loopAutoCloseSubtaskTabs: false,
       memoryAutoExtractAfterLoopTask: true,
     },

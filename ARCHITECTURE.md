@@ -24,14 +24,13 @@
 │   ├── config/               # 本地配置档案、Skills、MCP 管理
 │   ├── trace/                # trace/tool 输出格式化
 │   ├── loopDebate.ts      # Loop 辩论路径、记录与共识校验纯函数
-│   ├── loopSkillGuidance.ts # Loop 开发级 Skill 静态资源校验、分类与门禁
-│   ├── loopTaskStore.ts   # Loop 任务记录与宿主 Skill 快照持久化
+│   ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
+│   ├── loopTaskStore.ts   # Loop 任务记录持久化
 │   ├── i18n.ts               # 国际化
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
 ├── media/
 │   ├── config/assets/        # 配置中心静态资源
-│   ├── loop-workflow-skills/ # 扩展内置、运行时只读的开发流程 Skill 快照
 │   ├── official_skills_catalog.json
 │   └── mcp_marketplace.json
 ├── docs/                     # 兼容入口文档，详细内容已迁移到 .ch/docs/
@@ -80,12 +79,12 @@ cli / interactive / config 服务层
 - 首次枚举 Loop 任务时，`src/loopLegacyMigration.ts` 与 `src/loopTaskStore.ts` 会把旧 Lobster 任务存储和通信目录迁入上述 Loop 路径；新写入不再使用旧命名，冲突 artifact 以 `.pre-loop-migration` 后缀保留
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
 
-#### Loop 内置 Workflow Skill 资源层
+#### Loop 子任务执行隔离
 
-- `media/loop-workflow-skills/` 是随扩展分发的静态执行快照；生产运行时只通过 `context.extensionUri.fsPath` 下的固定相对目录读取，不以 `process.cwd()`、工作区或用户 Home 作为加载根。
-- 该快照与仓库 `.agents/skills/`、`media/workspace-scaffold/.agents/skills/`、`media/official_skills_catalog.json` / `media/official-skills/` 以及官方 Skills 安装、更新、卸载服务相互隔离，不进入用户 Home 的 CLI Skill 安装链路。
-- `src/loopSkillGuidance.ts` 负责严格 manifest/资源校验、开发任务分类、compact catalog、中央门禁和有界正文生成；只有 `taskKind="development"` 的 Loop 任务可进入该链路，非开发、未知分类和旧记录继续使用原 Loop 直接派发。
-- 该能力首版仅是内部运行时增强，不新增用户配置、UI 或 i18n 文案；详细调用链与安全边界分别见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 和 `.ch/docs/SECURITY.md`。
+- Loop 主任务保持真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则。
+- `src/loopSubtaskExecutionRoot.ts` 为每个 Loop 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区，任务结束后立即删除临时根。
+- 子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 使用空 `settingSources`，OpenCode 使用 `--pure`。子任务只遵循主任务传入的自包含授权、沟通文件与最小必要验证要求。
+- 不再分发、加载或注入 Loop Workflow Skill 快照，也没有对应的工具设置开关。
 
 ## 3. 扩展规则
 

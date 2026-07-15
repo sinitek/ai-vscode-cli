@@ -22,6 +22,7 @@ export type { ResolvedCliCommand } from "./commandResolution";
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
+  isolateProjectInstructions?: boolean;
   openCodeVariant?: string | null;
   model?: string | null;
   openCodeSmallModel?: string | null;
@@ -698,6 +699,9 @@ export function buildCliArgs(
   let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model, {
     openCodeConfigContent: options.openCodeConfigContent,
   });
+  if (options.isolateProjectInstructions) {
+    sharedArgs = applyProjectInstructionIsolationArgs(cli, sharedArgs);
+  }
   if (cli === "codex" && !sharedArgs.includes("--skip-git-repo-check")) {
     sharedArgs = [...sharedArgs, "--skip-git-repo-check"];
   }
@@ -731,6 +735,16 @@ export function buildCliArgs(
   }
 
   return buildPromptArgs(cli, sharedArgs, prompt);
+}
+
+function applyProjectInstructionIsolationArgs(cli: CliName, args: readonly string[]): string[] {
+  if (cli === "codex") {
+    return args.includes("--ignore-rules") ? [...args] : [...args, "--ignore-rules"];
+  }
+  if (cli === "claude") {
+    return args.includes("--safe-mode") ? [...args] : [...args, "--safe-mode"];
+  }
+  return args.includes("--pure") ? [...args] : [...args, "--pure"];
 }
 
 export function applyOpenCodeVariantArg(
@@ -886,7 +900,14 @@ export function startOpenCodeServer(
     return { pid: undefined, resolvedCommand: undefined, kill: () => false };
   }
   const overlay = runtimeOverlay?.overlay ?? null;
-  const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port)];
+  const args = [
+    "serve",
+    ...(options.isolateProjectInstructions ? ["--pure"] : []),
+    "--hostname",
+    "127.0.0.1",
+    "--port",
+    String(port),
+  ];
   const spawnCommand = resolveSpawnCommand(configuredCommand, args);
   if (!spawnCommand) {
     overlay?.cleanup();

@@ -18,6 +18,7 @@ export type BuildWebviewRuntimeScriptInput = {
   loopMaxRoundsDefault: number;
   loopMaxRoundsMin: number;
   loopMaxRoundsMax: number;
+  loopSubtaskMaxThinkingModeDefault: string;
   loopExecutionModeMainSubMultiAgent: string;
   loopExecutionModeDebateMultiAgent: string;
   finalAnswerTextMarker: string;
@@ -50,6 +51,7 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
     ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
     ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],
+    ["${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}", input.loopSubtaskMaxThinkingModeDefault],
     ["${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.loopExecutionModeMainSubMultiAgent],
     ["${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.loopExecutionModeDebateMultiAgent],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],

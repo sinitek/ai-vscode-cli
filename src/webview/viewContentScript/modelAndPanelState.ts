@@ -293,6 +293,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
+        state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
+          panelState.loopSubtaskMaxThinkingMode
+        );
         state.loopAutoCloseSubtaskTabs = Boolean(panelState.loopAutoCloseSubtaskTabs);
         state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
           panelState.loopExecutionModeByCli,
@@ -348,6 +351,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);
+        }
+        if (elements.loopSubtaskMaxThinkingMode) {
+          elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;
         }
         if (elements.loopAutoCloseSubtaskTabs) {
           elements.loopAutoCloseSubtaskTabs.checked = state.loopAutoCloseSubtaskTabs;

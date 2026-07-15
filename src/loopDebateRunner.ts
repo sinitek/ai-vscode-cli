@@ -521,7 +521,6 @@ export async function runLoopDebateConsensusSummary(options: {
   debateRound: number;
   paths: LoopDebatePaths;
   participants: LoopDebateParticipantRecord[];
-  compactSkillCatalogSection?: string;
 }): Promise<LoopDebateConsensusRunResult> {
   const {
     deps,
@@ -531,7 +530,6 @@ export async function runLoopDebateConsensusSummary(options: {
     debateRound,
     paths,
     participants,
-    compactSkillCatalogSection,
   } = options;
   const consensusTarget = deps.createLoopSubtaskRunTarget(task.cli);
   deps.updateLoopDebateActiveSpeakerRecord(
@@ -556,7 +554,6 @@ export async function runLoopDebateConsensusSummary(options: {
         round,
         paths,
         participants,
-        compactSkillCatalogSection,
       ),
       contextTags: [],
       model: resolveLoopDebateModel(input),

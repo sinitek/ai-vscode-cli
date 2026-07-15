@@ -59,7 +59,7 @@
 
 - Codex / Claude：支持交互式会话续接
 - OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动。OpenCode 明确分成两个配置文件：模型/Provider 配置中心只维护 `~/.opencode/config.json`，全局 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不再要求或生成 `~/.opencode/.env`；聊天面板模型区按“大模型 / 小模型”两行展示各自模型与思考力度，模型候选来自 active config 的 `provider.<id>.models` 且没有模型管理入口，正常 option 显示模型 `name`（缺失时回退 model id）；思考力度动态 option 直接显示 raw `value`，按精确 provider/model 的 payload 原顺序渲染，不能以固定等级重排；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
-- OpenCode 普通任务、并行任务和 Loop 子任务都以当前 VS Code 工作区作为权威执行目录。插件除设置 child process 的 spawn cwd 外，还同步覆盖 child env `PWD`，避免 OpenCode `run` 的内部请求继承 extension host 的旧目录并把新会话错误创建到 `/`；因此新会话的模型、文件搜索与工具调用直接面向当前项目，不需要用户再次选择同名仓库。修复前已经绑定 `/` 的历史 OpenCode 会话不会改写原始 CLI 数据，升级后需要新建一次对话会话。
+- OpenCode 普通任务、并行任务和 Loop 主任务都以当前 VS Code 工作区作为权威执行目录。插件除设置 child process 的 spawn cwd 外，还同步覆盖 child env `PWD`，避免 OpenCode `run` 的内部请求继承 extension host 的旧目录并把新会话错误创建到 `/`；因此新会话的模型、文件搜索与工具调用直接面向当前项目，不需要用户再次选择同名仓库。Loop 子任务例外：它们在链接到同一工作区内容的临时隔离根运行，以屏蔽项目规则自动发现。修复前已经绑定 `/` 的历史 OpenCode 会话不会改写原始 CLI 数据，升级后需要新建一次对话会话。
 - OpenCode one-shot 与并行任务在进程 `code=0` 但当前尝试没有非 thinking assistant 正文时，不会把成功退出误当成完成，而是进入既有 hidden retry；重试耗尽后才显示并持久化明确错误。Loop 后续主任务轮次会复用最初用户消息作为会话锚点，但完成判定只认当前进程尝试的正文，历史轮次的 `LoopMainDecision` JSON 不能替当前空响应通过判定。
 - Loop 主任务在已有远端 OpenCode session 的首次无 provider-error 空成功响应后，会在下一次 hidden retry 启动新 session 并重新发送完整主任务 prompt；捕获新 `sessionID` 后保留旧会话历史、同步 tab 和任务记录到新 session。该恢复不会用于普通任务、Loop 子任务、含 provider JSON error 的响应，也不会在同一运行内重复 rollover。
 - OpenCode 所有任务路径默认注入官方 `--auto`，自动批准仍处于 `ask` 的权限请求；默认 `external_directory: ask` 因而支持跨工作目录读写。插件不把 runtime permission 强制覆盖为 `allow`，用户配置、agent 配置及 OpenCode 默认规则中的显式 `deny` 仍优先，包括 `.env` 等受显式拒绝规则保护的文件。
@@ -88,22 +88,20 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 - Loop 模式的执行方式属于 `loop` 内部设置，不新增顶层 `InteractiveMode`。Webview 在 Loop 模式下展示“Loop 执行方式”下拉，包含 `main_sub_multi_agent`（主从多智能体）和 `debate_multi_agent`（红蓝辩论多智能体）；默认值为 `main_sub_multi_agent`，老任务记录缺少 `executionMode` 时也按该值处理。新建任务会把 `executionMode` 固化到 `LoopTaskRecord`，恢复任务时以记录为准，执行中切换下拉只影响新任务。该下拉独立于模型选择能力：Claude 不显示插件侧模型选择；Codex 在 Coding 与 Loop 中复用同一个模型下拉；OpenCode 在两种模式中继续显示自身大模型/小模型与各自思考力度。
 - Loop 编排角色不再映射为通用“主模型 / 子模型”。Codex 的主任务、子任务、裁判主持人、红蓝参与者、共识汇总、续跑与自动唤醒全部使用同一个 `sendPrompt.model`；旧 `selectedLoopByConfigId` / `loopRolesByConfigId` 仅保留兼容读取，不能影响新任务、PanelState、Webview payload 或 CLI 启动参数。OpenCode 的 primary/small 是 CLI 自身模型能力，`small_model` 不等于 Loop 子任务模型。
+- “工具设置 - 全局”提供 `loopSubtaskMaxThinkingMode`，默认 `xhigh`，可选 `low / medium / high / xhigh`。每次 Loop 独立子任务启动时，运行时将当前所选模型的思考力度与该上限取较低值；`max` 和 `ultra` 均会降至 `xhigh`，已有的较低选择保持不变。该限制不改变 Loop 主任务、普通任务或已保存的模型思考力度。
 - Loop 群聊“继续执行”不再固定复用任务创建时的 CLI/model 快照：扩展先定位承载该 `taskId` 的主任务 Tab，即使该 Tab 已切换 CLI 分组也通过原 CLI 的消息/session 绑定识别；随后以该 Tab 当前 CLI 为权威，读取该 CLI 当前激活配置和当前模型。跨 CLI 显式恢复仍复用同一任务 ID，并把 `LoopTaskRecord.cli`、`sessionId` 与 `taskStoreFile` 原子迁移到当前 CLI/session 归属，后续主任务、子任务、裁判、参与者和共识汇总统一使用新的运行配置。
 - `debate_multi_agent` 只替代 Loop 主任务初始规划阶段；首轮红蓝规划共识形成后，后续实现、复核和继续派发由裁判主持人作为主智能体走主从多智能体链路，子任务派发、批次并发、冲突分组、子任务重试、子任务沟通文件、最终总结气泡和 30 天保留清理继续复用现有链路。该模式已升级为红蓝对抗：当任务尚无可复用红蓝规划共识时，先由裁判主持人根据任务目标设计 2-6 个红蓝参与者并写入 `moderator-participants.md`，新清单中 `role` 只能使用 `blue_team` 或 `red_team`，且必须至少包含 1 个蓝队和 1 个红队；主持人还要在清单中指定首批 `openingSpeakerIds`，通常由蓝队先开场。蓝队负责提出、捍卫和修正方案，补足约束、验收口径和证据要求；红队负责攻击方案假设、目标覆盖、证据链、边界场景、可行性、成本收益和可验证性。只有任务涉及代码、文件、权限、部署或流程执行时，红队才额外检查写入范围、并发冲突、越权修改、回滚/恢复失败和工程验收风险。扩展校验后把这些成员作为 `## 参与者加入：...` 追加到共享 `chat.md`；参与者只读可用上下文、仓库、任务记录和沟通文件，只写本次提示词指定的 artifact。每个发言批次开始时扩展向 `chat.md` 追加系统消息说明主任务轮次、当前发言批次、最大安全发言批次数和本批次被主持人点名的发言者；只有被主持人显式点名的 1-3 位参与者会进入该批次，并可在批次内并行写入各自的 `participants/<participantId>-turn-<n>.md`。扩展等待本批次全部 artifact 完成后再按点名顺序以 `## 发言：...` 追加到 `chat.md`，随后裁判主持人写 `participants/moderator-turn-<n>.md`，以 `continue / finalize / block` 判断红队攻击是否已被蓝队化解、是否追加下一个发言批次、收集最终立场或进入人工复核；当 `action=continue` 时，主持人必须同时给出下一批 `nextSpeakerIds`。参与者和裁判主持人的临时对话 tab 回答完成后可按“Loop 子任务自动关标签”设置关闭，下一批次同一角色通过 `debateRounds` 记录的 sessionId 新建临时 tab 续接。最大发言批次数只是防无限循环的安全上限，达到上限后运行时强制收束。红蓝对抗产物写入 `~/.sinitek_cli/loop-communications/<taskId>/debates/round-<n>/`，新任务通常只生成 `round-1`，历史任务或恢复补跑按实际 Loop 轮次记录；产物包括 `brief.md`、`chat.md`、`moderator-participants.md`、`participants/*-turn-<n>.md`、`participants/moderator-turn-<n>.md`、最终 `participants/*.md`、`cross-review.md`、`consensus.md` 和 `decision.json`；共识通过后的执行群聊写入 `~/.sinitek_cli/loop-communications/<taskId>/group-chat.md`。任务记录中的 `debateRounds` 保存红蓝对抗状态、`chatFile`、`participantRosterFile`、`participantRosterSessionId`、当前 `activeSpeaker`、参与者状态、参与者 sessionId、裁判主持人决策、裁判主持人 sessionId 和共识摘要。辩论任务启动气泡同样显示“打开 Loop 群聊”入口；通用群聊面板把 `chat.md`、`debateRounds` 和 `group-chat.md` 合并为一个按消息追加顺序展示的时间线，按角色气泡展示参与者加入、参与者发言、裁判主持人控场、最终立场、主任务决策、子任务动态加入、子任务完成、批次事件、收束状态与 sessionId；当前裁判主持人/参与者/共识汇总器/主任务/子任务运行时会在时间线末尾显示“思考中”等待气泡；角色发言或状态落盘后会主动刷新已打开页面，5 秒自动刷新仅作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新消息，否则保留阅读位置并显示置底按钮；页面继续提供手动刷新；当任务尚未完成且未触发主任务 AI 连续失败上限时，页面都支持“补充需求”把新要求持久化到任务记录和主沟通文件，供后续主持人主智能体读取。
 - `debate_multi_agent` 规划共识通过后会解析 `decision.json` 为现有 `LoopMainDecision`，并复用 `applyLoopMainDecision` 进入原有 `completed / continue / blocked` 处理。恢复任务或进入后续轮次时，如果任务记录中已存在可继续的红蓝规划共识和合法 `decision.json`，扩展会跳过新的红蓝辩论，改由主持人主智能体读取首轮红蓝规划产物、主从执行群聊和子任务沟通文件后继续复核；只有缺少可复用规划共识、旧产物缺少裁判主持人控场、`chat.md`、参与者加入事件、收束标记、产物缺失或不可解析时，才补跑规划辩论。裁判主持人红蓝参与者清单缺失或非法、群聊发言 artifact 缺失、裁判主持人 artifact 缺失或不可解析、最终参与者 artifact 缺失或立场不可解析、裁判主持人输出 `block`、共识后的最终参与者立场仍为 `block`、存在未解决 `blocking` disagreement、缺少 `cross-review.md`、`consensus.md` 不含合法共识 JSON、`decision.json` 非法、或 `status=continue` 但没有可派发 `subtasks` 时，不派发子任务，任务进入 `needs-review` 并在主任务沟通文件和主 tab 系统消息中记录原因。若红队或蓝队参与者原始 `block` 可通过裁判主持人追问、蓝队修正、前置子任务、验收标准或风险说明解决，共识汇总器应将其写入 `resolvedDisagreements`，并可把最终立场降为 `agree_with_reservations` 后继续。内容区群聊页面只读，不直接写任务记录或追加辩论消息；真实 VS Code 面板端到端手工验收仍应以单独验收记录为准。
 
 - Loop 子任务手动中断后在子任务标签继续时，后续成功结束与自动重试成功共用同一收尾流程：先更新子任务记录和沟通记录，再按“子任务成功完成后自动关闭 AI 对话标签页”设置关闭该子任务标签，最后仅在主任务可恢复且未达到连续 AI 失败上限时唤醒主任务。自动关闭设置关闭、手动恢复再次出错或再次中断时均不关闭子任务标签。
 
-### 3.3.1 Loop 开发级子任务高级 Skill 指导
+### 3.3.1 Loop 子任务项目规则隔离
 
-- 启用条件：仅新建 Loop 根任务被宿主基于原始用户提示、上下文标签和真实工作区路径明确分类为 `development` 时启用，覆盖规划、实现、测试、调试、评审、安全、性能、迁移、发布和与软件交付直接相关的文档等阶段。`non_development` 与无法确认的 `unknown` 不启用；旧任务记录缺少 `taskKind` 时不重新猜测分类。
-- 主智能体选择：仅开发级根任务的主智能体 model prompt 会收到由内置 manifest 派生的有界 compact catalog，不新增可见 catalog UI。普通主从 `main_sub_multi_agent`、红蓝首轮 brief / consensus 和红蓝后续主持人主任务使用同源目录；主智能体每个子任务最多只返回 3 个稳定 `skillIds`，不得返回路径、Markdown 正文或 `skillGuidance`。
-- 宿主校验与快照：模型选择不直接可信。宿主按本轮候选 allowlist、根任务与子任务开发分类、阶段、任务类型、角色、所需能力、负向触发、资源完整性和提示词预算逐项校验；被拒 ID 不自动替换。通过后由宿主清洗入口 Markdown，并把最终 `skillIds` 与 `skillGuidance` 快照写入子任务记录。
-- 子任务注入与展示隔离：`skillGuidance` 只进入子任务 model prompt，位置固定在“子任务职责”之后、“当前子任务”之前，并再次声明系统/用户要求、`AGENTS.md`、职责、`writeFiles`、验收和沟通要求优先。子任务 display prompt 不包含 Skill 正文；自动重试复用已持久化的同一快照，不重新加载资源或重新选择。
-- 安全降级：非开发、unknown、legacy 记录、资源缺失或损坏、空 catalog、无合法 ID，以及未知/非法 ID、角色或能力不匹配项均不注入正文；目录与正文超预算时按整项跳过且不截断规则。最终没有合法项时不额外转为 `needs-review`，继续原有 Loop 直接安排和执行流程。普通 coding 模式不经过该逻辑。
-- 内置资源与隔离：运行时资源固定在扩展安装根下的 `media/loop-workflow-skills/`，入口为 `media/loop-workflow-skills/manifest.json`。首版不会扫描当前工作目录、用户 Home、工作区同名目录或外部源作为替代，也不复用或修改官方 Skills catalog、`media/official-skills/`、`.agents/skills/` 或 workspace scaffold。
-- 首版限制：这是不可见的 Loop 编排增强，没有新增 UI、i18n 文案、用户开关或用户可编辑配置；用户不能在界面指定 Skill、预算、来源或宿主能力。首版宿主不声明交互式用户或 Chrome DevTools 等额外能力，因此依赖这些能力或仅限主智能体的 Skill 不会注入普通子任务。
-- 已有验证证据：资源同步检查与严格 validator 均通过；`npm run build` 通过；round-5 指定的 9 组 Node 测试共 143 项，143 pass、0 fail。发布前仍需按 manifest 逐项核对 `vsce ls --no-dependencies` 与实际 VSIX 解包中的 `extension/media/loop-workflow-skills/`，该打包核验属于后续发布验证，不在本能力描述中提前宣称完成。
+- 主任务始终以真实工作区运行，按 Codex、Claude、OpenCode 的正常机制读取项目规则。主任务负责为每个子任务给出自包含的目标、授权范围、写入范围、验收标准和沟通文件路径。
+- 每个子任务会获得临时执行根，其中只有真实工作区可工作内容的链接；根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex` 不会暴露给子 CLI。文件写入会经链接回到真实工作区，执行结束或启动失败后临时根会删除。
+- 调用层进一步降低自动加载：Codex 使用 `--ignore-rules`，Claude SDK 使用空 `settingSources`，OpenCode 使用 `--pure`。这不是工具设置开关，所有 Loop 子任务固定执行该策略。
+- 子任务只听从主任务的派发，在一个连续执行回合内完成当前授权范围；先实施，再只运行能直接证明本次改动的最小必要检查，不为可选调研、额外检查或无关重试增加轮次。遇到必须确认的阻塞时按既有沟通文件协议转交主任务。
+- 已移除 `media/loop-workflow-skills/`、其加载器和同步/校验脚本；不再向主任务或子任务注入任何内置 Workflow Skill，也没有对应 UI、i18n 或用户配置开关。旧任务记录中的兼容字段不触发加载。
 
 ### 3.4 会话与并发
 
@@ -168,6 +166,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - thinking mode 按 CLI 记忆；AI 对话面板与配置中心中的思考力度一律展示 raw value，不显示“低 / 高 / 最高”等中文别名。Codex/Claude 面板的固定列表为 `low`、`medium`、`high`、`xhigh`、`max`、`ultra`，其中 `ultra` 紧跟 `max` 且为末位；`ultra` 是用户要求的产品级扩展，实际 Codex/Claude 接受程度取决于已安装 CLI/模型。配置中心的 Codex 固定候选为 `minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`，其中 `max` 紧跟 `xhigh`；Claude 的新建候选不包含 `max`，加载存量 `max` 时会把兼容选项插在 `ultra` 前并保留未知值。OpenCode 没有全局固定 reasoning effort 枚举，只有精确 provider/model 的动态 variants；它们显示 raw `option.value` 并保持 payload 原顺序，即使其中的 `max`、`ultra` 或自定义值不符合固定列表排序。
 - Global / Project 规则读写
 - 规则目标覆盖 Codex / Claude / OpenCode
+- Loop 主任务沿用项目规则；Loop 子任务固定使用运行时隔离，不受规则读写设置影响
 
 ### 3.8 配置中心
 

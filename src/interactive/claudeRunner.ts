@@ -305,6 +305,7 @@ export class ClaudeInteractiveRunner {
       model?: string | null;
       entrypoint?: string;
       sessionId: string | null;
+      isolateProjectInstructions?: boolean;
     }
   ) {}
 
@@ -406,6 +407,7 @@ export class ClaudeInteractiveRunner {
       maxThinkingTokens,
       interactiveMode: this.options.interactiveMode,
       sessionId: this.options.sessionId,
+      isolateProjectInstructions: this.options.isolateProjectInstructions === true,
       claudeSettingsKeys: Object.keys(claudeSettings),
     });
 
@@ -413,8 +415,8 @@ export class ClaudeInteractiveRunner {
       cwd,
       model,
       permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
-      // 与 Claude Code CLI 对齐：加载用户/项目/本地 settings
-      settingSources: ["user", "project", "local"],
+      // SDK 的空 settingSources 会禁用文件系统设置，包括项目 CLAUDE.md。
+      settingSources: this.options.isolateProjectInstructions ? [] : ["user", "project", "local"],
       // 使用当前配置的 Claude 可执行入口，避免 SDK 退回内置 CLI 导致自定义网关/包装脚本失效
       pathToClaudeCodeExecutable: this.options.entrypoint,
       // 设置较大的 maxTurns 限制，避免复杂任务被过早中断

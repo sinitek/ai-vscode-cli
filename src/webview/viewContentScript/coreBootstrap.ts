@@ -9,6 +9,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       })();
       const i18n = \${JSON.stringify(i18n)};
       const CLI_NAMES = \${JSON.stringify(CLI_LIST)};
+      const LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT = "\${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}";
       const traceMarkers = {
         input: ["Input", "输入"],
         output: ["Output", "输出"],
@@ -141,6 +142,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoCompactContextAfterRun: true,
         multiAgentEnabled: false,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
+        loopSubtaskMaxThinkingMode: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
         loopAutoCloseSubtaskTabs: true,
         loopExecutionModeByCli: {
           codex: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
@@ -253,6 +255,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         multiAgentEnabled: document.getElementById("multiAgentEnabled"),
         loopMaxRounds: document.getElementById("loopMaxRounds"),
+        loopSubtaskMaxThinkingMode: document.getElementById("loopSubtaskMaxThinkingMode"),
         loopAutoCloseSubtaskTabs: document.getElementById("loopAutoCloseSubtaskTabs"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
@@ -419,6 +422,12 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         );
         state.loopExecutionModeByCli[cli] = normalized;
         return normalized;
+      }
+
+      function normalizeLoopSubtaskMaxThinkingMode(value) {
+        return ["low", "medium", "high", "xhigh"].includes(value)
+          ? value
+          : LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT;
       }
 
       function normalizeLoopMaxRounds(value) {

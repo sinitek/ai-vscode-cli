@@ -68,14 +68,6 @@ function normalizeLoopContinuePromptForPrompt(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function normalizeLoopCompactSkillCatalogSection(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
 function formatLoopEstimatedRemainingRounds(value?: number): string | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -96,13 +88,9 @@ export function buildLoopDebateBriefMarkdown(
   round: number,
   paths: LoopDebatePaths,
   continuePrompt?: string,
-  compactSkillCatalogSection?: string,
 ): string {
   const communication = getLoopCommunicationPaths(task.id);
   const normalizedContinuePrompt = normalizeLoopContinuePromptForPrompt(continuePrompt);
-  const normalizedCompactSkillCatalogSection = task.taskKind === "development"
-    ? normalizeLoopCompactSkillCatalogSection(compactSkillCatalogSection)
-    : null;
   const lines: string[] = [
     "# Loop 红蓝对抗简报",
     "",
@@ -136,10 +124,6 @@ export function buildLoopDebateBriefMarkdown(
     "## 子任务概要",
     ...buildLoopDebateSubtaskSummaryLines(task),
     "",
-    ...(normalizedCompactSkillCatalogSection ? [
-      normalizedCompactSkillCatalogSection,
-      "",
-    ] : []),
     "## 红蓝对抗约束",
     `- 新辩论参与者只能属于蓝队（role=${LOOP_DEBATE_BLUE_TEAM_ROLE}）或红队（role=${LOOP_DEBATE_RED_TEAM_ROLE}）。`,
     "- 蓝队负责提出可执行方案、补足验收口径、回应红队攻击并修正计划。",
@@ -622,14 +606,9 @@ export function buildLoopDebateConsensusModelPrompt(
   round: number,
   paths: LoopDebatePaths,
   participants: LoopDebateParticipantRecord[],
-  compactSkillCatalogSection?: string,
 ): string {
   const participantFiles = participants.map((participant) => `- ${participant.id}：${participant.artifactFile}`).join("\n");
-  const skillSelectionEnabled = task.taskKind === "development"
-    && normalizeLoopCompactSkillCatalogSection(compactSkillCatalogSection) !== null;
-  const continueDecisionExample = skillSelectionEnabled
-    ? '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围","skillIds":["test-driven-development"]}]}'
-    : '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}';
+  const continueDecisionExample = '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}';
   return [
     "你正在执行 VS Code 插件的 Loop 模式红蓝对抗共识汇总。",
     "你是受约束的汇总器，不是单独规划者；不得绕过或覆盖红队 artifact 中的阻塞性异议，也不得忽略蓝队已给出的修正方案。",
@@ -653,14 +632,6 @@ export function buildLoopDebateConsensusModelPrompt(
     "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
     "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
     "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
-    ...(skillSelectionEnabled ? [
-      "",
-      "开发 Skill 选择合约：",
-      "- compact Skill catalog 位于 brief.md；每个 subtask 在现有字段之外唯一允许新增的 Skill 字段是可选 `skillIds?: string[]`。",
-      "- skillIds 只能包含 catalog 中列出的稳定 id，每个 subtask 最多 3 个；没有合法匹配时必须省略 skillIds，不得编造、替换或扩展 ID。",
-      "- 选择必须遵守 catalog 的 phases、taskKinds、roles 和 requiredCapabilities 元数据；roles 不包含 subtask 的 main-only Skill 不得选择，interactive/main-only Skill 不得选择，宿主未显式提供所需 capability 时不得选择。",
-      "- 不得返回或复制 Skill path、hash、Markdown 正文、skillGuidance、CLI、model、command；也不得把这些内容塞入 prompt、writeFiles、conflictGroup 或其他字段。",
-    ] : []),
     "",
     "cross-review.md 内容要求：",
     "- 按群聊时间线总结蓝队方案、红队攻击和互相回应。",

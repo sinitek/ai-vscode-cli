@@ -44,22 +44,20 @@ git log -- media/official-skills/gemini media/official_skills_catalog.json
 
 > 说明：当前同步脚本只接受 Claude、Codex、OpenCode；历史 Gemini 资料不属于当前 catalog、打包资源或可执行维护路径。
 
-### 5. 维护 Loop 开发级 Workflow Skills 快照
+### 5. 验证 Loop 子任务规则隔离
 
-批准的开发期上游仓库根为 `/Users/fangjiawei/work/agent-skills`。只有在明确刷新快照时才执行写入模式：
-
-```bash
-node scripts/sync_loop_workflow_skills.js --source /Users/fangjiawei/work/agent-skills
-```
-
-日常检查和发布前检查使用只读模式，不依赖外部目录：
+Loop 主任务保持真实工作区和项目规则。Loop 子任务必须从临时隔离根执行，根 `AGENTS.md`、`CLAUDE.md` 和项目 Skills 目录不得暴露给子 CLI。修改该边界后执行：
 
 ```bash
-node scripts/sync_loop_workflow_skills.js --check
-node scripts/validate_loop_workflow_skills.js
+npm run build
+node --test \
+  dist/test/loopSubtaskExecutionRoot.test.js \
+  dist/test/opencodeCommandRunner.test.js \
+  dist/test/loopPromptBuilders.test.js \
+  dist/test/loopPromptQueue.test.js \
+  dist/test/loopMainFailure.test.js \
+  dist/test/loopSubtaskThinking.test.js
 ```
-
-同步脚本不联网、不 clone/pull；它在 staging 中生成并完整校验后才原子替换 `media/loop-workflow-skills/`。来源、MIT/NOTICE、manifest hash/bytes 和目录隔离规则以 `.ch/docs/references/authoritative-skills.md` 为准。
 
 ### 6. 一键启动开发主机（macOS）
 
@@ -118,7 +116,24 @@ npm i -g @vscode/vsce
 - 调用 `vsce package`
 - 输出到 `dist/sinitek-cli-tools-<version>.vsix`
 
-## Loop Workflow Skills 发布前验证
+## Loop 子任务规则隔离发布前验证
+
+对涉及 Loop 子任务调度、cwd、CLI 参数或项目规则加载的修改，执行以下验证。`npm run build` 会清理共享 `dist/`，因此构建与测试应由同一验证流程顺序运行。
+
+```bash
+set -euo pipefail
+npm run build
+node --test \
+  dist/test/loopSubtaskExecutionRoot.test.js \
+  dist/test/opencodeCommandRunner.test.js \
+  dist/test/loopPromptBuilders.test.js \
+  dist/test/loopPromptQueue.test.js \
+  dist/test/loopMainFailure.test.js \
+  dist/test/loopSubtaskThinking.test.js
+git diff --check
+```
+
+<!-- 已移除的 Loop Workflow Skill 快照发布流程（历史记录，不可执行）
 
 以下命令供完整验证批次顺序执行。`npm run build` 会先清理共享 `dist/`，`vsce package` 也会触发 `vscode:prepublish`；存在并发子任务时，应由单一验证任务占用 build/VSIX 环境，避免互相删除产物。
 
@@ -251,6 +266,7 @@ git diff --check
 ```
 
 Loop workflow pack 的完整运行时语义见 `.ch/docs/references/cli-runtime-reference.md`；来源与维护边界见 `.ch/docs/references/authoritative-skills.md`。
+-->
 
 ## 最小交付前检查
 

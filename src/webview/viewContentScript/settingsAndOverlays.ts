@@ -107,6 +107,18 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.loopMaxRounds.addEventListener("change", commitLoopMaxRounds);
         elements.loopMaxRounds.addEventListener("blur", commitLoopMaxRounds);
       }
+      if (elements.loopSubtaskMaxThinkingMode) {
+        elements.loopSubtaskMaxThinkingMode.addEventListener("change", (event) => {
+          const nextValue = normalizeLoopSubtaskMaxThinkingMode(event.target.value);
+          state.loopSubtaskMaxThinkingMode = nextValue;
+          elements.loopSubtaskMaxThinkingMode.value = nextValue;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "loopSubtaskMaxThinkingMode",
+            value: nextValue,
+          });
+        });
+      }
       if (elements.loopAutoCloseSubtaskTabs) {
         elements.loopAutoCloseSubtaskTabs.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);

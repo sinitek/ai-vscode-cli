@@ -145,6 +145,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLoopMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
+    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop Subtask Max Thinking",
+    toolSettingsLoopSubtaskMaxThinkingModeTitle:
+      "Global setting. Loop subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
     toolSettingsLoopAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
     toolSettingsLoopAutoCloseSubtaskTabsTitle:
       "Global setting. Automatically close Loop subtask tabs after they finish.",
@@ -502,6 +505,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
+    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop 子任务最大思考力度",
+    toolSettingsLoopSubtaskMaxThinkingModeTitle:
+      "全局设置。Loop 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
     toolSettingsLoopAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
     toolSettingsLoopAutoCloseSubtaskTabsTitle:
       "全局设置。Loop 子任务完成后自动关闭对应子任务标签页。",

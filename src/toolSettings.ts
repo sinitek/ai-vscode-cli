@@ -3,6 +3,10 @@ import * as os from "os";
 import * as path from "path";
 import { MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
+import {
+  normalizeLoopSubtaskMaxThinkingMode,
+  type LoopSubtaskMaxThinkingMode,
+} from "./loopSubtaskThinking";
 
 export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 
@@ -12,6 +16,7 @@ export type ToolSettingsState = {
   autoCompactContextAfterRun?: boolean;
   multiAgentEnabled?: boolean;
   loopMaxRounds?: number;
+  loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   loopAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
@@ -69,6 +74,12 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     if (Number.isFinite(parsed)) {
       normalized.loopMaxRounds = Math.floor(parsed);
     }
+  }
+  const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
+    record.loopSubtaskMaxThinkingMode,
+  );
+  if (loopSubtaskMaxThinkingMode) {
+    normalized.loopSubtaskMaxThinkingMode = loopSubtaskMaxThinkingMode;
   }
   if (typeof record.loopAutoCloseSubtaskTabs === "boolean") {
     normalized.loopAutoCloseSubtaskTabs = record.loopAutoCloseSubtaskTabs;

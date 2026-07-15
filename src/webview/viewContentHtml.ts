@@ -383,6 +383,15 @@ ${webviewStyles}    </style>
                 />
               </div>
               <div class="tool-settings-row">
+                <div class="tool-settings-label">${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}</div>
+                <select id="loopSubtaskMaxThinkingMode" class="thinking-select" title="${i18n.toolSettingsLoopSubtaskMaxThinkingModeTitle}" aria-label="${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}">
+                  <option value="low">${i18n.thinkingOptionLow}</option>
+                  <option value="medium">${i18n.thinkingOptionMedium}</option>
+                  <option value="high">${i18n.thinkingOptionHigh}</option>
+                  <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
+                </select>
+              </div>
+              <div class="tool-settings-row">
                 <div class="tool-settings-label">${i18n.toolSettingsLoopAutoCloseSubtaskTabsLabel}</div>
                 <label class="debug-toggle" title="${i18n.toolSettingsLoopAutoCloseSubtaskTabsTitle}">
                   <input type="checkbox" id="loopAutoCloseSubtaskTabs" />

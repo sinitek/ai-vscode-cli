@@ -171,6 +171,34 @@ test("Codex saved profiles preserve content and envContent", async () => {
   });
 });
 
+test("Codex profile saves the edited configContent over stale legacy content", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const config = {
+      id: "codex-edited-profile",
+      name: "Codex Edited Profile",
+      platform: "codex" as const,
+      content: "model = \"stale-model\"\n",
+      configContent: "model = \"updated-model\"\n",
+      envContent: "OPENAI_API_KEY=from-profile\n",
+      codexSkills: [],
+      createdAt: 1,
+      updatedAt: 2,
+    };
+
+    await configService.saveConfig(config);
+
+    const savedPath = path.join(homeDir, ".codex", "__config", "codex-edited-profile.json");
+    const saved = JSON.parse(await fs.readFile(savedPath, "utf-8"));
+    assert.equal(saved.content, "model = \"updated-model\"\n");
+    assert.equal(saved.configContent, "model = \"updated-model\"\n");
+
+    const reopened = await configService.getConfigById("codex", "codex-edited-profile");
+    assert.equal(reopened?.content, "model = \"updated-model\"\n");
+    assert.equal(reopened?.configContent, "model = \"updated-model\"\n");
+  });
+});
+
 test("OpenCode runtime model config writes only ~/.opencode/config.json", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();

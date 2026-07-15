@@ -8,7 +8,6 @@ import {
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
 } from "../loopMainFailure";
-import { buildLoopSkillCatalog } from "../loopSkillGuidance";
 
 test("normalizes invalid loop main AI failure counts to zero", () => {
   assert.equal(normalizeLoopMainAiFailureCount(undefined), 0);
@@ -46,15 +45,4 @@ test("resets loop main AI failure state after a successful main decision", () =>
     mainAiLastFailureAt: undefined,
     mainAiLastFailureMessage: undefined,
   });
-});
-
-test("keeps an unavailable Skill catalog on the safe-degrade path instead of counting a main AI failure", () => {
-  const catalog = buildLoopSkillCatalog(null, "development");
-
-  assert.deepEqual(catalog, {
-    section: undefined,
-    candidateIds: [],
-    diagnostics: [],
-  });
-  assert.equal(isLoopMainAiFailureLimitReached(buildResetLoopMainAiFailureState()), false);
 });

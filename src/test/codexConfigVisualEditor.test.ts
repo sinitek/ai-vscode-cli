@@ -312,6 +312,19 @@ test("editor exposes visual and TOML source modes with .env editor", () => {
   assert.doesNotMatch(codexBranch, /请输入JSON配置[\s\S]*?config\.toml/);
 });
 
+test("Codex editor keeps the legacy profile content in sync when saving", () => {
+  const source = loadUiSource();
+
+  assert.match(
+    source,
+    /await r\(O\.id, \{ content: W, configContent: W, envContent: H, authContent: k \}\);/,
+  );
+  assert.match(
+    source,
+    /await r\(O\.id, \{ content: m, configContent: m, envContent: b, authContent: W \}\);/,
+  );
+});
+
 test("visual labels expose tooltip help and enum values", () => {
   const source = loadUiSource();
   assert.match(source, /renderConfigFieldLabel =/);

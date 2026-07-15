@@ -2,6 +2,7 @@ import { supportsCliManagedModelSelection } from "./cli/modelArgs";
 import { normalizeLoopExecutionMode } from "./cli/types";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
+import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
 import { PanelMessage } from "./webview/types";
 import {
   type PanelMessageHandlerDeps,
@@ -96,6 +97,14 @@ export async function handleUpdateSettingMessage(
     if ("loopMaxRounds" in workspaceSettings) {
       delete workspaceSettings.loopMaxRounds;
       deps.saveWorkspaceSettings(workspaceSettings);
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "loopSubtaskMaxThinkingMode") {
+    const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(message.value);
+    if (loopSubtaskMaxThinkingMode) {
+      deps.updateStoredToolSettings({ loopSubtaskMaxThinkingMode });
     }
     await deps.postPanelState();
     return;

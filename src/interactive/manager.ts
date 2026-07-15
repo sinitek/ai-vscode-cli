@@ -163,6 +163,7 @@ export class InteractiveRunnerManager {
     interactiveMode: InteractiveMode;
     model: string | null;
     entrypoint?: string;
+    isolateProjectInstructions?: boolean;
   }): ClaudeInteractiveRunner {
     const key = this.buildKey("claude", options.sessionId);
     const existing = this.entries.get(key);
@@ -171,6 +172,7 @@ export class InteractiveRunnerManager {
         existing.thinkingMode === options.thinkingMode
         && existing.interactiveMode === options.interactiveMode
         && existing.model === options.model
+        && options.isolateProjectInstructions !== true
       ) {
         const runnerSessionId = existing.runner.getSessionId();
         const expectedSessionId = runnerSessionId || options.mappedSessionId;
@@ -191,6 +193,7 @@ export class InteractiveRunnerManager {
       model: options.model,
       entrypoint: options.entrypoint,
       sessionId: options.mappedSessionId,
+      isolateProjectInstructions: options.isolateProjectInstructions,
     });
     const entry: RunnerEntry = {
       cli: "claude",

@@ -28,7 +28,7 @@ function createSilentCodexCompactionDeps() {
   let activeRunId: string | undefined;
   let activeStop: (() => void) | null = null;
   const calls = {
-    sendRunStatus: 0,
+    sendRunStatuses: [] as Array<{ status: "start" | "end" | "error" | "stopped"; activity?: "contextCompaction" }>,
     appendCompletionMessage: 0,
     persistActiveMessages: 0,
     clearActiveRun: 0,
@@ -69,8 +69,8 @@ function createSilentCodexCompactionDeps() {
     isActiveInteractiveStop: (stop) => activeStop === stop,
     appendStopMessageToStore: () => {},
     killActiveProcess: () => {},
-    sendRunStatus: () => {
-      calls.sendRunStatus += 1;
+    sendRunStatus: (status, _message, options) => {
+      calls.sendRunStatuses.push({ status, activity: options?.activity });
     },
     appendCompletionMessage: () => {
       calls.appendCompletionMessage += 1;
@@ -287,7 +287,7 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
   return { deps, calls };
 }
 
-test("silent context compaction does not emit visible run timing messages", async () => {
+test("silent context compaction emits status events for the active compaction indicator", async () => {
   const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
   const { deps, calls } = createSilentCodexCompactionDeps();
 
@@ -299,7 +299,10 @@ test("silent context compaction does not emit visible run timing messages", asyn
   });
 
   assert.equal(compacted, true);
-  assert.equal(calls.sendRunStatus, 0);
+  assert.deepEqual(calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "end", activity: undefined },
+  ]);
   assert.equal(calls.appendCompletionMessage, 0);
   assert.equal(calls.persistActiveMessages, 1);
   assert.equal(calls.clearActiveRun, 1);
@@ -352,7 +355,7 @@ test("OpenCode silent compaction keeps automatic after-run path quiet", async ()
 
   assert.equal(compacted, true);
   assert.equal(calls.runStreamCalls.length, 1);
-  assert.deepEqual(calls.sendRunStatuses, []);
+  assert.deepEqual(calls.sendRunStatuses, ["start", "end"]);
   assert.deepEqual(calls.appendCompletionStatuses, []);
   assert.deepEqual(calls.adoptedSessions, [{ cli: "opencode", sessionId: "auto-session", tabId: "tab-opencode" }]);
   assert.equal(calls.persistActiveMessages, 1);

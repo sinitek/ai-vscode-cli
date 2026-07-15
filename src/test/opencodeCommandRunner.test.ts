@@ -383,6 +383,21 @@ test("does not add OpenCode auto mode to Codex or Claude", () => {
   assert.deepEqual(buildCliArgs("claude", {}, "hello"), ["hello"]);
 });
 
+test("adds the CLI-specific instruction isolation flags for Loop subtasks", () => {
+  assert.deepEqual(
+    buildCliArgs("codex", { isolateProjectInstructions: true }, "hello"),
+    ["--ignore-rules", "--skip-git-repo-check", "hello"],
+  );
+  assert.deepEqual(
+    buildCliArgs("claude", { isolateProjectInstructions: true }, "hello"),
+    ["--safe-mode", "hello"],
+  );
+  assert.deepEqual(
+    buildCliArgs("opencode", { isolateProjectInstructions: true }, "hello"),
+    ["run", "--auto", "--format", "json", "--pure", "hello"],
+  );
+});
+
 test("cleans runtime overlays after normal exit", async () => {
   await runOverlayLifecycleTest(false);
 });

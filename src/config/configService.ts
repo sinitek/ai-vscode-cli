@@ -560,7 +560,8 @@ function formatJSONString(value: string): string {
 }
 
 function getCodexTomlContent(config: Pick<ConfigItem, "content" | "configContent">): string {
-  return config.content ?? config.configContent ?? "";
+  // configContent is the canonical Codex profile field; content remains for legacy profiles.
+  return config.configContent ?? config.content ?? "";
 }
 
 function normalizeCodexConfigFields(config: ConfigItem): void {

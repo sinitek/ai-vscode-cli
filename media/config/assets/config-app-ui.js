@@ -457,6 +457,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             }),
           }),
           extra: be.jsx(xn, {
+            className: "config-standard-action-button",
             type: "primary",
             size: "small",
             icon: be.jsx(oO, {}),
@@ -4903,7 +4904,7 @@ const ConfigEditorPanel = () => {
             return;
           }
           const k = M(p);
-          await r(O.id, { configContent: W, envContent: H, authContent: k });
+          await r(O.id, { content: W, configContent: W, envContent: H, authContent: k });
           v(W), x(H), h(k);
           const L = codexVisualParseContent(W, H);
           L.ok && setCodexVisualState(L.state);
@@ -4924,7 +4925,7 @@ const ConfigEditorPanel = () => {
         }
         try {
           const W = M(p);
-          await r(O.id, { configContent: m, envContent: b, authContent: W });
+          await r(O.id, { content: m, configContent: m, envContent: b, authContent: W });
           h(W);
           Kt.success("保存成功");
           await A({ configContent: m, envContent: b, authContent: W, codexSkills: C });
@@ -6580,15 +6581,21 @@ const ConfigEditorPanel = () => {
                   style: { display: "flex", gap: "4px" },
                   children: [
                     be.jsx(xn, {
+                      className: "config-standard-action-button",
+                      size: "small",
                       onClick: () => w(!0),
                       children: "MCP(全局)",
                     }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
+	                      size: "small",
 	                      onClick: () => setSkillsModalOpen(!0),
 	                      children: "Skills",
 	                    }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
 	                      type: "primary",
+	                      size: "small",
 	                      icon: be.jsx(Pv, {}),
 	                      onClick: saveClaudeSettingsCard,
 	                      children: "保存",
@@ -6909,15 +6916,21 @@ const ConfigEditorPanel = () => {
                     style: { display: "flex", gap: "4px" },
                     children: [
                       be.jsx(xn, {
+                        className: "config-standard-action-button",
+                        size: "small",
                         onClick: () => w(!0),
                         children: "MCP(全局)",
                       }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
+	                      size: "small",
 	                      onClick: () => setSkillsModalOpen(!0),
 	                      children: "Skills",
 	                    }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
 	                      type: "primary",
+	                      size: "small",
 	                      icon: be.jsx(Pv, {}),
 	                      onClick: saveOpenCodeSettingsCard,
 	                      children: "保存",
@@ -7229,15 +7242,21 @@ const ConfigEditorPanel = () => {
                     style: { display: "flex", gap: "4px" },
                     children: [
                       be.jsx(xn, {
+                        className: "config-standard-action-button",
+                        size: "small",
                         onClick: () => w(!0),
                         children: "MCP(全局)",
                       }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
+	                      size: "small",
 	                      onClick: () => setSkillsModalOpen(!0),
 	                      children: "Skills",
 	                    }),
 	                    be.jsx(xn, {
+	                      className: "config-standard-action-button",
 	                      type: "primary",
+	                      size: "small",
 	                      icon: be.jsx(Pv, {}),
 	                      onClick: saveCodexConfigCard,
 	                      children: "保存",

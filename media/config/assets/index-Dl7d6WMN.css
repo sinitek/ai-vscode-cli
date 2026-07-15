@@ -309,8 +309,8 @@ body,
   padding: 3px !important;
 }
 
-.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn,
-.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn {
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(.config-standard-action-button),
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(.config-standard-action-button) {
   min-width: 0;
   height: 20px;
   padding: 0 6px !important;
@@ -322,10 +322,10 @@ body,
   line-height: 1;
 }
 
-.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(:disabled):hover,
-.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(:disabled):focus-visible,
-.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(:disabled):hover,
-.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(:disabled):focus-visible {
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(.config-standard-action-button):not(:disabled):hover,
+.config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(.config-standard-action-button):not(:disabled):focus-visible,
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(.config-standard-action-button):not(:disabled):hover,
+.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(.config-standard-action-button):not(:disabled):focus-visible {
   border-color: var(--clay-text) !important;
   background: var(--clay-text) !important;
   color: var(--clay-inverse) !important;

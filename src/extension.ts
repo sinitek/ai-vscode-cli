@@ -135,6 +135,10 @@ import {
   mapLoopRunStatusToSubagentStatus,
 } from "./loopSubtaskProgress";
 import {
+  getEffectiveLoopSubtaskMaxThinkingMode,
+  resolveLoopSubtaskThinkingMode,
+} from "./loopSubtaskThinking";
+import {
   buildNextLoopMainAiFailureState,
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
@@ -173,16 +177,7 @@ import {
   normalizeLoopWriteFiles,
   type LoopSubtaskExecutionPlan,
 } from "./loopParallel";
-import {
-  buildLoopSkillCatalog,
-  buildLoopSkillGuidance,
-  classifyLoopRootTask,
-  loadLoopSkillPack,
-  type LoopSkillDiagnostic,
-  type LoopSkillPack,
-  type LoopSkillPackLoadResult,
-  type LoopTaskClassification,
-} from "./loopSkillGuidance";
+import { createLoopSubtaskExecutionRoot } from "./loopSubtaskExecutionRoot";
 import {
   buildLoopAnswerConclusionMarkdown,
   buildLoopDebateNeedsReviewSummary,
@@ -275,7 +270,6 @@ import {
   type LoopRoundSummary,
   type LoopSubtaskDecision,
   type LoopSubtaskRecord,
-  type LoopTaskKind,
   type LoopTaskRecord,
   type LoopTaskStore,
 } from "./loopTaskStore";
@@ -1144,6 +1138,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getGlobalAutoCompactContextAfterRun,
     getGlobalMultiAgentEnabled,
     getGlobalLoopMaxRounds,
+    getGlobalLoopSubtaskMaxThinkingMode,
     getGlobalLoopAutoCloseSubtaskTabs,
     buildWorkspaceLoopExecutionModeByCli,
     getDebugLogging,
@@ -2335,6 +2330,7 @@ type PromptRunInput = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  thinkingModeOverride?: ThinkingMode;
 };
 
 type PromptRunTarget = {
@@ -2342,178 +2338,6 @@ type PromptRunTarget = {
   cli: CliName;
   sessionId: string | null;
 };
-
-type LoopSkillRuntimeContext = {
-  taskId: string;
-  round: number;
-  rootTaskKind: LoopTaskClassification;
-  pack: LoopSkillPack | null;
-  compactCatalogSection?: string;
-  candidateIds: string[];
-};
-
-type LoopSkillRuntimeContextOptions = {
-  extensionRoot: string;
-  loadSkillPack?: (extensionRoot: unknown) => Promise<LoopSkillPackLoadResult>;
-  reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void;
-};
-
-type LoopSubtaskSkillSnapshot = {
-  skillIds: string[];
-  skillGuidance: string;
-};
-
-function resolveNewLoopTaskKind(
-  input: Pick<PromptRunInput, "displayPrompt" | "contextTags"> & { modelPrompt?: unknown },
-  workspacePaths: unknown = collectTrustedLoopWorkspacePaths(),
-): LoopTaskKind | undefined {
-  const classification = classifyLoopRootTask({
-    displayPrompt: input.displayPrompt,
-    contextTags: input.contextTags,
-    workspacePaths,
-  });
-  return classification === "unknown" ? undefined : classification;
-}
-
-function collectTrustedLoopWorkspacePaths(): string[] {
-  const workspacePaths = (vscode.workspace.workspaceFolders ?? [])
-    .map((folder) => folder.uri.fsPath)
-    .filter((filePath): filePath is string => typeof filePath === "string" && filePath.trim().length > 0);
-  const activeEditorPath = vscode.window.activeTextEditor?.document.uri.fsPath;
-  if (typeof activeEditorPath === "string" && activeEditorPath.trim()) {
-    workspacePaths.push(activeEditorPath);
-  }
-  return Array.from(new Set(workspacePaths));
-}
-
-async function buildLoopSkillRuntimeContext(
-  task: LoopTaskRecord,
-  round: number,
-  options: LoopSkillRuntimeContextOptions,
-): Promise<LoopSkillRuntimeContext> {
-  const rootTaskKind: LoopTaskClassification = task.taskKind ?? "unknown";
-  const emptyContext: LoopSkillRuntimeContext = {
-    taskId: task.id,
-    round,
-    rootTaskKind,
-    pack: null,
-    compactCatalogSection: undefined,
-    candidateIds: [],
-  };
-  if (rootTaskKind !== "development") {
-    return emptyContext;
-  }
-
-  let loadResult: LoopSkillPackLoadResult;
-  try {
-    loadResult = await (options.loadSkillPack ?? loadLoopSkillPack)(options.extensionRoot);
-  } catch {
-    loadResult = {
-      pack: null,
-      diagnostics: [{
-        code: "pack_unavailable",
-        message: "Skill pack loading failed before validation completed.",
-      }],
-    };
-  }
-  if (loadResult.diagnostics.length > 0) {
-    options.reportDiagnostics?.("load", loadResult.diagnostics);
-  }
-  if (!loadResult.pack) {
-    return emptyContext;
-  }
-
-  const catalog = buildLoopSkillCatalog(loadResult.pack, rootTaskKind);
-  if (catalog.diagnostics.length > 0) {
-    options.reportDiagnostics?.("catalog", catalog.diagnostics);
-  }
-  if (!catalog.section || catalog.candidateIds.length === 0) {
-    return emptyContext;
-  }
-  return {
-    taskId: task.id,
-    round,
-    rootTaskKind,
-    pack: loadResult.pack,
-    compactCatalogSection: catalog.section,
-    candidateIds: catalog.candidateIds,
-  };
-}
-
-function reportLoopSkillDiagnostics(
-  taskId: string,
-  round: number,
-  scope: string,
-  diagnostics: LoopSkillDiagnostic[],
-): void {
-  if (diagnostics.length === 0) {
-    return;
-  }
-  void logInfo("loop-skill-runtime-diagnostics", {
-    taskId,
-    round,
-    scope,
-    diagnostics: diagnostics.map((diagnostic) => ({
-      code: diagnostic.code,
-      ...(diagnostic.skillId ? { skillId: diagnostic.skillId } : {}),
-      ...(diagnostic.resourcePath ? { resourcePath: diagnostic.resourcePath } : {}),
-    })),
-  });
-}
-
-async function createLoopSkillRuntimeContext(
-  task: LoopTaskRecord,
-  round: number,
-): Promise<LoopSkillRuntimeContext> {
-  return buildLoopSkillRuntimeContext(task, round, {
-    extensionRoot: extensionUri.fsPath,
-    reportDiagnostics: (scope, diagnostics) => {
-      reportLoopSkillDiagnostics(task.id, round, scope, diagnostics);
-    },
-  });
-}
-
-function buildLoopSubtaskSkillSnapshots(
-  task: LoopTaskRecord,
-  subtasks: LoopSubtaskDecision[],
-  runtimeContext: LoopSkillRuntimeContext,
-  reportDiagnostics?: (scope: string, diagnostics: LoopSkillDiagnostic[]) => void,
-): Map<string, LoopSubtaskSkillSnapshot> {
-  const rootTaskKind: LoopTaskClassification = task.taskKind ?? "unknown";
-  const trustedRuntime = runtimeContext.taskId === task.id
-    && runtimeContext.rootTaskKind === rootTaskKind;
-  const pack = trustedRuntime ? runtimeContext.pack : null;
-  const candidateIds = trustedRuntime ? runtimeContext.candidateIds : [];
-  const snapshots = new Map<string, LoopSubtaskSkillSnapshot>();
-  for (const subtask of subtasks) {
-    const id = subtask.id && subtask.id.trim()
-      ? subtask.id.trim()
-      : buildLoopSubtaskId(subtask.title);
-    const result = buildLoopSkillGuidance(pack, {
-      rootTaskKind,
-      requestedSkillIds: subtask.skillIds,
-      allowedSkillIds: candidateIds,
-      subtask: {
-        title: subtask.title,
-        prompt: subtask.prompt,
-        writeFiles: subtask.writeFiles,
-        conflictGroup: subtask.conflictGroup,
-      },
-      role: "subtask",
-      availableCapabilities: [],
-    });
-    if (result.diagnostics.length > 0) {
-      reportDiagnostics?.(`subtask:${id}`, result.diagnostics);
-    }
-    if (result.skillIds.length > 0 && result.skillGuidance) {
-      snapshots.set(id, {
-        skillIds: result.skillIds,
-        skillGuidance: result.skillGuidance,
-      });
-    }
-  }
-  return snapshots;
-}
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
@@ -3099,6 +2923,7 @@ async function prepareOpenCodeSubagentRuntime(options: {
   cwd: string | undefined;
   runId: string;
   runtime: OpenCodeRuntimePreparation;
+  isolateProjectInstructions?: boolean;
 }): Promise<PreparedOpenCodeSubagentRuntime> {
   const directory = options.cwd ?? process.cwd();
   let managedServerProcess: RunProcess | null = null;
@@ -3169,6 +2994,7 @@ async function prepareOpenCodeSubagentRuntime(options: {
       openCodeSmallVariant: options.runtime.smallVariant,
       openCodeConfigContent: options.runtime.configContent,
       envOverrides: managedServerEnvOverrides,
+      isolateProjectInstructions: options.isolateProjectInstructions,
       processLabel: `${buildProcessLabel("opencode", options.runId)}-server`,
     });
     managedServerProcess = serverProcess;
@@ -3214,7 +3040,11 @@ async function prepareOpenCodeSubagentRuntime(options: {
   }
 }
 
-async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
+async function runPromptParallel(
+  input: PromptRunInput,
+  target: PromptRunTarget,
+  executionOptions: { cwd?: string; isolateProjectInstructions?: boolean } = {},
+): Promise<void> {
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
@@ -3227,10 +3057,10 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
   const contextTags = Array.isArray(input.contextTags)
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
     : [];
-  const cwd = resolveWorkspaceCwd();
+  const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
   const runtimePreparation = await prepareOpenCodeRuntime();
   const runtimeModel = runtimePreparation.primaryModel;
-  const thinkingMode = getEffectiveThinkingMode(runCli, runtimeModel);
+  const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
   const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
@@ -3516,6 +3346,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
       cwd,
       runId,
       runtime: runtimePreparation,
+      isolateProjectInstructions: executionOptions.isolateProjectInstructions,
     });
     if (subagentRuntime.error && !monitorUnavailableNoticeShown) {
       monitorUnavailableNoticeShown = true;
@@ -3652,6 +3483,7 @@ async function runPromptParallel(input: PromptRunInput, target: PromptRunTarget)
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
+          isolateProjectInstructions: executionOptions.isolateProjectInstructions,
           openCodeServerUrl: subagentRuntime.connection?.serverUrl,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
@@ -4098,11 +3930,9 @@ async function runLoopPromptOrchestration(
       });
     }
     const initialSessionId = resolveLoopTaskSessionId(target);
-    const taskKind = resolveNewLoopTaskKind(input);
     task = createLoopTaskRecord(target.cli, input.displayPrompt, {
       sessionId: initialSessionId,
       executionMode: input.loopExecutionMode,
-      taskKind,
     });
     if (!isLoopDebateGroupChatTask(task)) {
       ensureLoopMainSubChatTranscript(task);
@@ -4166,7 +3996,6 @@ async function runLoopPromptOrchestration(
     const executionMode = normalizeLoopExecutionMode(latest.executionMode);
     const shouldRunPlanningDebate = executionMode === "debate_multi_agent"
       && shouldRunLoopPlanningDebate(latest, round);
-    const skillRuntimeContext = await createLoopSkillRuntimeContext(latest, round);
     let decisionRunResult: LoopMainDecisionRunResult;
     try {
       decisionRunResult = shouldRunPlanningDebate
@@ -4175,7 +4004,6 @@ async function runLoopPromptOrchestration(
             target,
             task: latest,
             round,
-            skillRuntimeContext,
           })
         : await runClassicLoopMainDecision({
             input,
@@ -4183,7 +4011,6 @@ async function runLoopPromptOrchestration(
             task: latest,
             round,
             moderatorLed: executionMode === "debate_multi_agent",
-            skillRuntimeContext,
           });
     } catch (error) {
       void logError("loop-main-decision-run-error", {
@@ -4263,9 +4090,8 @@ async function runClassicLoopMainDecision(options: {
   task: LoopTaskRecord;
   round: number;
   moderatorLed?: boolean;
-  skillRuntimeContext: LoopSkillRuntimeContext;
 }): Promise<LoopMainDecisionRunResult> {
-  const { input, target, task, round, skillRuntimeContext } = options;
+  const { input, target, task, round } = options;
   const moderatorLed = options.moderatorLed === true;
   let mainStatus: TaskRunStatus;
   try {
@@ -4284,14 +4110,12 @@ async function runClassicLoopMainDecision(options: {
             task,
             round,
             input.loopContinuePrompt,
-            skillRuntimeContext.compactCatalogSection,
           )
         : buildLoopMainModelPrompt(
             input.loopContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
             task,
             round,
             input.loopContinuePrompt,
-            skillRuntimeContext.compactCatalogSection,
           ),
     });
   } catch (error) {
@@ -4330,32 +4154,18 @@ async function runClassicLoopMainDecision(options: {
     return { status: "needs-review", task: failedRecord };
   }
 
-  return applyLoopMainDecisionForRun(task.id, decision, skillRuntimeContext);
+  return applyLoopMainDecisionForRun(task.id, decision);
 }
 
 function applyLoopMainDecisionForRun(
   taskId: string,
   decision: LoopMainDecision,
-  skillRuntimeContext?: LoopSkillRuntimeContext,
 ): LoopMainDecisionRunResult {
   updateLoopTaskRecord(taskId, {
     ...buildResetLoopMainAiFailureState(),
     updatedAt: Date.now(),
   });
-  const currentTask = readLoopTaskRecord(taskId);
-  const skillSnapshots = currentTask
-    && decision.status === "continue"
-    && skillRuntimeContext
-    ? buildLoopSubtaskSkillSnapshots(
-        currentTask,
-        getLoopDecisionSubtasks(decision),
-        skillRuntimeContext,
-        (scope, diagnostics) => {
-          reportLoopSkillDiagnostics(taskId, skillRuntimeContext.round, scope, diagnostics);
-        },
-      )
-    : undefined;
-  const decisionResult = applyLoopMainDecision(taskId, decision, skillSnapshots);
+  const decisionResult = applyLoopMainDecision(taskId, decision);
   if (decisionResult.status === "completed") {
     return { status: "completed", task: decisionResult.task, decision };
   }
@@ -4455,9 +4265,8 @@ async function runLoopDebateRound(options: {
   target: PromptRunTarget;
   task: LoopTaskRecord;
   round: number;
-  skillRuntimeContext: LoopSkillRuntimeContext;
 }): Promise<LoopMainDecisionRunResult> {
-  const { input, target, task, round, skillRuntimeContext } = options;
+  const { input, target, task, round } = options;
   const debateRound = LOOP_DEBATE_DEFAULT_DEBATE_ROUND;
   const paths = buildLoopDebatePaths(task.communicationDir, round, debateRound);
   const model = resolveLoopDebateModel(input);
@@ -4490,7 +4299,7 @@ async function runLoopDebateRound(options: {
       `decision.json：${paths.decisionFile}`,
       `consensus.md：${paths.consensusFile}`,
     ]);
-    return applyLoopMainDecisionForRun(task.id, reusable.decision, skillRuntimeContext);
+    return applyLoopMainDecisionForRun(task.id, reusable.decision);
   }
   if (reusable.status === "needs-review") {
     return markLoopDebateNeedsReview({
@@ -4518,7 +4327,6 @@ async function runLoopDebateRound(options: {
       round,
       paths,
       input.loopContinuePrompt,
-      skillRuntimeContext.compactCatalogSection,
     )
   );
   if (!briefWritten) {
@@ -5028,7 +4836,6 @@ async function runLoopDebateRound(options: {
     debateRound,
     paths,
     participants: participantValidation.participants,
-    compactSkillCatalogSection: skillRuntimeContext.compactCatalogSection,
   });
   await closeCompletedLoopDebateTabs([consensusRun.tabId]);
   await switchVisibleConversationTabForLoop(target.tabId);
@@ -5120,7 +4927,7 @@ async function runLoopDebateRound(options: {
     `决策状态：${decision.status}`,
     `decision.json：${paths.decisionFile}`,
   ]);
-  return applyLoopMainDecisionForRun(task.id, decision, skillRuntimeContext);
+  return applyLoopMainDecisionForRun(task.id, decision);
 }
 
 function resolveLoopDebateModel(input: PromptRunInput): string | undefined {
@@ -6670,6 +6477,12 @@ async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus
     loopTaskId: task.id,
     loopRound: round,
     loopSubtaskId: subtaskId,
+    thinkingModeOverride: role === "subtask"
+      ? resolveLoopSubtaskThinkingMode(
+          getEffectiveThinkingMode(target.cli, input.model ?? getSelectedCliModel(target.cli)),
+          getGlobalLoopSubtaskMaxThinkingMode(),
+        )
+      : undefined,
   }, { targetTabId: target.tabId });
 
   if (role === "main") {
@@ -6757,29 +6570,11 @@ function buildLoopMainModelPrompt(
   task: LoopTaskRecord,
   round: number,
   continuePrompt?: string,
-  compactSkillCatalogSection?: string,
 ): string {
   const taskId = task.id;
   const taskFile = task.taskStoreFile;
   const communication = getLoopCommunicationPaths(taskId);
   const normalizedContinuePrompt = normalizeLoopContinuePromptForPrompt(continuePrompt);
-  const normalizedSkillCatalog = task.taskKind === "development"
-    && typeof compactSkillCatalogSection === "string"
-    && compactSkillCatalogSection.trim()
-    ? compactSkillCatalogSection.trim()
-    : null;
-  const skillCatalogLines = normalizedSkillCatalog
-    ? [
-        "",
-        normalizedSkillCatalog,
-        "",
-        "开发 Skill ID-only 决策合约：",
-        "- subtasks[*] 在现有字段之外唯一允许新增的 Skill 字段是可选 `skillIds?: string[]`。",
-        "- skillIds 只能选择上方 compact catalog 中的稳定 id，每个子任务最多 3 个；没有合法匹配时省略该字段。",
-        "- 必须遵守 catalog 的 phases、taskKinds、roles 与 requiredCapabilities；main-only、interactive/main-only 或宿主未声明 capability 的 Skill 不得选择。",
-        "- 不得返回或复制 Skill path、hash、Markdown 正文、skillGuidance、CLI、model、command，也不得把这些内容伪装进其他字段。",
-      ]
-    : [];
   return [
     "你正在执行 VS Code 插件的 Loop 模式主任务。",
     `Loop 任务 ID：${taskId}`,
@@ -6836,7 +6631,6 @@ function buildLoopMainModelPrompt(
     "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
     "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
     "- 返回 completed 前，同时更新任务记录文件 status=completed、estimatedRemainingRounds=0、answerConclusion、finalSummary、roundSummaries，并保证 acceptance.checks 全部 passed=true。",
-    ...skillCatalogLines,
     "",
     ...buildLoopSupplementalRequirementsLines(task),
     ...(normalizedContinuePrompt ? [
@@ -6854,7 +6648,6 @@ function buildLoopModeratorMainModelPrompt(
   task: LoopTaskRecord,
   round: number,
   continuePrompt?: string,
-  compactSkillCatalogSection?: string,
 ): string {
   const planningDebate = findReusableLoopPlanningDebateRound(task);
   const planningPaths = planningDebate
@@ -6869,7 +6662,6 @@ function buildLoopModeratorMainModelPrompt(
     task,
     round,
     continuePrompt,
-    compactSkillCatalogSection,
   );
   const planningLines = planningDebate && planningPaths
     ? [
@@ -6933,19 +6725,6 @@ function buildLoopSubtaskModelPrompt(
   const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
     ? subtask.writeFiles.join("、")
     : "未声明；以当前子任务指令明确授权的文件/范围为准";
-  const skillGuidance = typeof subtask.skillGuidance === "string" && subtask.skillGuidance.trim()
-    ? subtask.skillGuidance
-    : null;
-  const skillGuidanceLines = skillGuidance
-    ? [
-        "",
-        skillGuidance,
-        "",
-        "Skill 执行要求后的优先级重申：",
-        "- 系统/用户要求、根与局部 AGENTS.md、当前子任务职责、授权 writeFiles、验收与沟通要求始终优先于 Skill。",
-        "- Skill 只能补充执行方法，不得扩大写入范围、改变 CLI/模型、跳过中央校验或创建下级子任务。",
-      ]
-    : [];
   return [
     "你正在执行 VS Code 插件的 Loop 模式子任务。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词和任务记录文件。",
@@ -6966,6 +6745,7 @@ function buildLoopSubtaskModelPrompt(
     "5. 涉及代码改动时，优先在子任务内完成必要单测/编译，并把命令与结果写入沟通文件，供主任务直接复核，不要留给主任务重复执行。",
     "6. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
     "7. 子任务结束后不要继续生成下一个子任务；程序会自动唤醒主任务复核。",
+    "8. 在一个连续执行回合内完成当前授权范围；先实施，再只运行能直接证明本次改动的最小必要检查。不要为了可选调研、额外检查或无关重试增加轮次。",
     "",
     "疑问交接协议（强制）：",
     "1. 只有当需求不明、授权不足、依赖或写入冲突，或存在必须由主任务/用户确认后才能安全继续的问题时，立即停止实施；能依据现有事实和规则自行判断的问题不得上交。",
@@ -6973,7 +6753,6 @@ function buildLoopSubtaskModelPrompt(
     "3. 合并更新任务记录中当前 subTasks 项：status=completed，summary 明确“待主任务确认”，communicationFile 指向本文件；然后结束子任务。",
     "4. 严禁在 assistant 回复中向用户或主任务提问，也不得复述待确认问题；疑问只允许出现在沟通文件中。",
     "5. 疑问交接场景的最终 assistant 回复必须且只能是：`子任务已结束，待主任务确认事项已写入沟通文件。`",
-    ...skillGuidanceLines,
     "",
     "当前子任务：",
     `标题：${subtask.title}`,
@@ -7310,7 +7089,6 @@ function buildLoopSubtaskId(title: string): string {
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
-  skillSnapshots?: ReadonlyMap<string, LoopSubtaskSkillSnapshot>,
 ): { status: "completed" | "continue" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
   const existing = readLoopTaskRecord(taskId);
   if (!existing) {
@@ -7358,7 +7136,7 @@ function applyLoopMainDecision(
     return { status: "blocked", task };
   }
 
-  const subtaskBatch = upsertLoopSubtasks(existing, decisionSubtasks, skillSnapshots);
+  const subtaskBatch = upsertLoopSubtasks(existing, decisionSubtasks);
   const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
   const task = updateLoopTaskRecord(taskId, {
     status: "running",
@@ -7528,7 +7306,6 @@ function buildLoopSubtaskDecisionMarkdown(
 function upsertLoopSubtask(
   task: LoopTaskRecord,
   subtask: NonNullable<LoopMainDecision["subtask"]>,
-  skillSnapshot?: LoopSubtaskSkillSnapshot,
 ): { record: LoopSubtaskRecord; nextSubtasks: LoopSubtaskRecord[] } {
   const now = Date.now();
   const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
@@ -7540,23 +7317,16 @@ function upsertLoopSubtask(
     prompt: subtask.prompt,
     conflictGroup: subtask.conflictGroup,
     writeFiles: subtask.writeFiles,
-    ...(skillSnapshot ? {
-      skillIds: skillSnapshot.skillIds,
-      skillGuidance: skillSnapshot.skillGuidance,
-    } : {}),
     status: "running",
     updatedAt: now,
   };
   if (existingIndex >= 0) {
+    const { skillIds: _skillIds, skillGuidance: _skillGuidance, ...existingRecord } = nextSubtasks[existingIndex];
     const nextRecord: LoopSubtaskRecord = {
-      ...nextSubtasks[existingIndex],
+      ...existingRecord,
       ...record,
-      status: nextSubtasks[existingIndex].status === "completed" ? "completed" : "running",
+      status: existingRecord.status === "completed" ? "completed" : "running",
     };
-    if (!skillSnapshot) {
-      delete nextRecord.skillIds;
-      delete nextRecord.skillGuidance;
-    }
     nextSubtasks[existingIndex] = nextRecord;
     return { record: nextRecord, nextSubtasks };
   }
@@ -7567,7 +7337,6 @@ function upsertLoopSubtask(
 function upsertLoopSubtasks(
   task: LoopTaskRecord,
   subtasks: LoopSubtaskDecision[],
-  skillSnapshots?: ReadonlyMap<string, LoopSubtaskSkillSnapshot>,
 ): { records: LoopSubtaskRecord[]; nextSubtasks: LoopSubtaskRecord[] } {
   let nextSubtasks = [...task.subTasks];
   const records: LoopSubtaskRecord[] = [];
@@ -7576,27 +7345,12 @@ function upsertLoopSubtasks(
     const result = upsertLoopSubtask(
       { ...task, subTasks: nextSubtasks },
       subtask,
-      skillSnapshots?.get(id),
     );
     nextSubtasks = result.nextSubtasks;
     records.push(result.record);
   });
   return { records, nextSubtasks };
 }
-
-export const __loopSkillIntegrationTestApi = {
-  resolveNewLoopTaskKind,
-  createLoopTaskRecord,
-  buildLoopSkillRuntimeContext,
-  buildLoopSubtaskSkillSnapshots,
-  buildLoopMainModelPrompt,
-  buildLoopModeratorMainModelPrompt,
-  buildLoopSubtaskDisplayPrompt,
-  buildLoopSubtaskModelPrompt,
-  normalizeSingleLoopSubtaskDecision,
-  applyLoopMainDecisionForRun,
-  upsertLoopSubtasks,
-};
 
 function getActiveLoopSubtaskIds(task: LoopTaskRecord): string[] {
   const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
@@ -8367,16 +8121,35 @@ async function runPrompt(
     }
   }
 
+  const subtaskExecutionRoot = input.taskRole === "subtask"
+    ? (() => {
+        const workspaceCwd = resolveWorkspaceCwd();
+        return workspaceCwd ? createLoopSubtaskExecutionRoot(workspaceCwd) : null;
+      })()
+    : null;
   const shouldUseInteractive = isInteractiveSupported(target.cli);
-
-  if (shouldUseInteractive) {
-    try {
-      await runPromptInteractive(promptInput, target);
-      return;
-    } catch (error) {
-      const info = getErrorInfo(error);
-      if (isAbortErrorInfo(info)) {
-        void logInfo("runPrompt-interactive-abort-ignored", {
+  try {
+    const executionOptions = {
+      cwd: subtaskExecutionRoot?.cwd,
+      isolateProjectInstructions: Boolean(subtaskExecutionRoot),
+    };
+    if (shouldUseInteractive) {
+      try {
+        await runPromptInteractive(promptInput, target, executionOptions);
+        return;
+      } catch (error) {
+        const info = getErrorInfo(error);
+        if (isAbortErrorInfo(info)) {
+          void logInfo("runPrompt-interactive-abort-ignored", {
+            cli: target.cli,
+            error: info.message,
+            errorName: info.name,
+            errorCode: info.code,
+            errorStack: info.stack,
+          });
+          return;
+        }
+        void logError("runPrompt-interactive-failed", {
           cli: target.cli,
           error: info.message,
           errorName: info.name,
@@ -8385,26 +8158,24 @@ async function runPrompt(
         });
         return;
       }
-      void logError("runPrompt-interactive-failed", {
-        cli: target.cli,
-        error: info.message,
-        errorName: info.name,
-        errorCode: info.code,
-        errorStack: info.stack,
-      });
+    }
+
+    if (hasOtherTabRun(target.tabId)) {
+      await runPromptParallel(promptInput, target, executionOptions);
       return;
     }
-  }
 
-  if (hasOtherTabRun(target.tabId)) {
-    await runPromptParallel(promptInput, target);
-    return;
+    await runPromptOneShot(promptInput, target, executionOptions);
+  } finally {
+    subtaskExecutionRoot?.dispose();
   }
-
-  await runPromptOneShot(promptInput, target);
 }
 
-async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
+async function runPromptOneShot(
+  input: PromptRunInput,
+  target: PromptRunTarget,
+  executionOptions: { cwd?: string; isolateProjectInstructions?: boolean } = {},
+): Promise<void> {
   const prompt = input.displayPrompt;
   const runCli = target.cli;
   if (runCli !== "opencode") {
@@ -8417,13 +8188,13 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
   if (!prompt) {
     return;
   }
-  const cwd = resolveWorkspaceCwd();
+  const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: runCli });
   }
   const runtimePreparation = await prepareOpenCodeRuntime();
   const runtimeModel = runtimePreparation.primaryModel;
-  const thinkingMode = getEffectiveThinkingMode(runCli, runtimeModel);
+  const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
   const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
@@ -8453,6 +8224,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       model: runtimeModel,
       openCodeConfigContent: runtimeOpenCodeConfigContent,
       envOverrides: runtimeEnvOverrides,
+      isolateProjectInstructions: executionOptions.isolateProjectInstructions,
     },
     thinkingPrompt,
   );
@@ -8613,6 +8385,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
       cwd,
       runId,
       runtime: runtimePreparation,
+      isolateProjectInstructions: executionOptions.isolateProjectInstructions,
     });
     if (subagentRuntime.error && !monitorUnavailableNoticeShown && isCurrentOneShotRunActive()) {
       monitorUnavailableNoticeShown = true;
@@ -8794,6 +8567,7 @@ async function runPromptOneShot(input: PromptRunInput, target: PromptRunTarget):
           openCodeSmallModel: runtimePreparation.smallModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
+          isolateProjectInstructions: executionOptions.isolateProjectInstructions,
           openCodeServerUrl: subagentRuntime.connection?.serverUrl,
           processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
         }
@@ -9387,7 +9161,11 @@ async function runContextCompactionCommand(): Promise<void> {
   await runContextCompaction();
 }
 
-async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarget): Promise<void> {
+async function runPromptInteractive(
+  input: PromptRunInput,
+  target: PromptRunTarget,
+  executionOptions: { cwd?: string; isolateProjectInstructions?: boolean } = {},
+): Promise<void> {
   const prompt = input.displayPrompt;
   const modelPrompt = input.modelPrompt || prompt;
   const contextTags = Array.isArray(input.contextTags)
@@ -9398,9 +9176,9 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
   }
 
   const cli = target.cli;
-  const cwd = resolveWorkspaceCwd();
+  const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
   const selectedModel = input.model || getSelectedCliModel(cli);
-  const thinkingMode = getEffectiveThinkingMode(cli, selectedModel);
+  const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
@@ -9426,11 +9204,12 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
     includeFinalAnswerInstruction,
   });
   const debugLogging = getDebugLogging();
-  const args = cli === "codex"
+  const args = cli === "codex" || executionOptions.isolateProjectInstructions
     ? buildCliArgs(cli, {
         thinkingMode,
         model: selectedModel,
         imagePaths: input.imagePaths,
+        isolateProjectInstructions: executionOptions.isolateProjectInstructions,
       })
     : getEffectiveCliArgs(cli, selectedModel);
   const command = getCliCommand(cli);
@@ -10159,6 +9938,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               interactiveMode,
               model: selectedModel,
               entrypoint: claudeEntrypoint,
+              isolateProjectInstructions: executionOptions.isolateProjectInstructions,
             })
           : new (await import("./interactive/claudeRunner")).ClaudeInteractiveRunner({
               command: commandForRunner,
@@ -10169,6 +9949,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               model: selectedModel,
               entrypoint: claudeEntrypoint,
               sessionId: null,
+              isolateProjectInstructions: executionOptions.isolateProjectInstructions,
             });
 
         const runStreamHandlers = {
@@ -10248,6 +10029,7 @@ async function runPromptInteractive(input: PromptRunInput, target: PromptRunTarg
               model: selectedModel,
               entrypoint: claudeEntrypoint,
               sessionId: null,
+              isolateProjectInstructions: executionOptions.isolateProjectInstructions,
             });
             stopCurrentTurn = () => runner.stopAndRebuild();
             syncInteractiveRunEntry(stopFn);
@@ -10753,7 +10535,6 @@ function createLoopTaskRecord(
   options: {
     sessionId?: string | null;
     executionMode?: LoopExecutionMode;
-    taskKind?: LoopTaskKind;
   } = {}
 ): LoopTaskRecord {
   const now = Date.now();
@@ -10771,7 +10552,6 @@ function createLoopTaskRecord(
     workspaceKey: activeWorkspaceKey,
     taskStoreFile,
     rootPrompt,
-    ...(options.taskKind ? { taskKind: options.taskKind } : {}),
     executionMode,
     status: "running",
     createdAt: now,
@@ -11117,6 +10897,10 @@ function getGlobalLoopMaxRounds(): number {
     return normalizeLoopMaxRounds(toolSettings.loopMaxRounds);
   }
   return normalizeLoopMaxRounds(workspaceSettings.loopMaxRounds);
+}
+
+function getGlobalLoopSubtaskMaxThinkingMode() {
+  return getEffectiveLoopSubtaskMaxThinkingMode(readToolSettings().loopSubtaskMaxThinkingMode);
 }
 
 function getGlobalLoopAutoCloseSubtaskTabs(): boolean {

@@ -8,6 +8,7 @@ import {
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
+import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 
 export type ConfigSummary = {
   id: string;
@@ -209,6 +210,7 @@ export type PanelState = {
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
   loopMaxRounds: number;
+  loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopAutoCloseSubtaskTabs: boolean;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;
