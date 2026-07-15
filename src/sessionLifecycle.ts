@@ -241,8 +241,8 @@ export function createSessionLifecycleController(deps: {
   ): boolean => {
     let changed = false;
     const retainedIds = {
-      codex: new Set((retainedStore.codex?.sessions ?? []).map((session) => session.id)),
-      claude: new Set((retainedStore.claude?.sessions ?? []).map((session) => session.id)),
+      codex: new Set(retainedStore.codex.sessions.map((session) => session.id)),
+      claude: new Set(retainedStore.claude.sessions.map((session) => session.id)),
     };
 
     if (meta.byCli?.codex) {
@@ -669,11 +669,11 @@ export function createSessionLifecycleController(deps: {
       if (mappedId && mappedId !== sessionId) {
         return mappedId;
       }
-      const localRecord = deps.sessionStore()[cli]?.sessions.find((session) => session.id === sessionId) ?? null;
+      const localRecord = deps.sessionStore()[cli].sessions.find((session) => session.id === sessionId) ?? null;
       if (!localRecord) {
         return null;
       }
-      return findSupersedingSessionId(localRecord, deps.sessionStore()[cli]?.sessions ?? [], {
+      return findSupersedingSessionId(localRecord, deps.sessionStore()[cli].sessions, {
         getMessages: (candidateSessionId) => loadMessages(cli, candidateSessionId),
       });
     },
@@ -722,7 +722,7 @@ export function createSessionLifecycleController(deps: {
         return;
       }
       const store = deps.sessionStore();
-      const sessions = store[cli]?.sessions ?? [];
+      const sessions = store[cli].sessions;
       const localRecord = sessions.find((session) => session.id === localSessionId) ?? null;
       const targetRecord = sessions.find((session) => session.id === targetSessionId) ?? null;
       if (!localRecord && !targetRecord) {
@@ -776,7 +776,7 @@ export function createSessionLifecycleController(deps: {
     repairSupersededLocalSessions: (options = {}) => {
       const controller = createSessionLifecycleController(deps);
       CLI_LIST.forEach((cli) => {
-        const localSessionIds = (deps.sessionStore()[cli]?.sessions ?? [])
+        const localSessionIds = deps.sessionStore()[cli].sessions
           .map((session: SessionRecord) => session.id)
           .filter((sessionId) => isLocalSessionId(sessionId));
         localSessionIds.forEach((sessionId) => {

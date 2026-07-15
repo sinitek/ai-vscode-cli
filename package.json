@@ -1038,6 +1038,10 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p ./",
     "compile": "npm run build",
+    "test": "npm run test:unit",
+    "test:unit": "npm run build && node --test",
+    "test:core": "npm run build && node --test dist/test/loopTaskStore.test.js dist/test/loopTaskStoreCoreCoverage.test.js dist/test/loopMainFailure.test.js dist/test/loopLegacyMigration.test.js dist/test/opencodeCommandRunner.test.js dist/test/commandRunnerCoreBranches.test.js dist/test/commandRunnerCoverage.test.js dist/test/opencodethinkingintegration.test.js dist/test/sessionStoreCoreCoverage.test.js dist/test/sessionLifecycleCoreCoverage.test.js dist/test/promptRuntime.test.js dist/test/promptRuntimeCoreCoverage.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js",
+    "test:core-coverage": "npm run build && c8 --all --check-coverage --statements 100 --lines 100 --functions 100 --branches 100 --reports-dir=node_modules/.cache/sinitek-cli-core-coverage --temp-directory=node_modules/.cache/sinitek-cli-core-coverage/tmp --include=dist/loopTaskStore.js --include=dist/loopMainFailure.js --include=dist/cli/commandRunner.js --include=dist/sessionStore.js --include=dist/sessionLifecycle.js --include=dist/sessionMessageActions.js --include=dist/sessionMessageHandlers.js --include=dist/sessionMessageRouter.js --include=dist/promptRuntime.js node --test dist/test/loopTaskStore.test.js dist/test/loopTaskStoreCoreCoverage.test.js dist/test/loopMainFailure.test.js dist/test/loopLegacyMigration.test.js dist/test/opencodeCommandRunner.test.js dist/test/commandRunnerCoreBranches.test.js dist/test/commandRunnerCoverage.test.js dist/test/opencodethinkingintegration.test.js dist/test/sessionStoreCoreCoverage.test.js dist/test/sessionLifecycleCoreCoverage.test.js dist/test/promptRuntime.test.js dist/test/promptRuntimeCoreCoverage.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
     "validate:mcp-marketplace": "node scripts/validate_mcp_marketplace.js",
@@ -1047,6 +1051,7 @@
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^18.18.0",
     "@types/vscode": "^1.85.0",
+    "c8": "^10.1.3",
     "typescript": "^5.3.3"
   },
   "dependencies": {

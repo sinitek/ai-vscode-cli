@@ -796,8 +796,7 @@ function buildOpenCodeRunArgs(
   const hasRunSubcommand = sharedArgs[0] === "run";
   let runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
   if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
-    const formatInsertIndex = runArgs[1] === "--auto" ? 2 : 1;
-    runArgs.splice(formatInsertIndex, 0, "--format", "json");
+    runArgs.splice(2, 0, "--format", "json");
   }
   const hasAttach = runArgs.some((arg) => arg === "--attach" || arg.startsWith("--attach="));
   const normalizedServerUrl = typeof serverUrl === "string" ? serverUrl.trim().replace(/\/+$/u, "") : "";

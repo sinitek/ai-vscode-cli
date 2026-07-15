@@ -1,0 +1,285 @@
+{
+  "generator": "work-frontier",
+  "version": "0.1.0",
+  "generated_at": "2026-07-15T08:20:37Z",
+  "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+  "active_plan_count": 9,
+  "plans": [
+    {
+      "path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
+      "title": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "date": "2026-07-14",
+      "status": "in-progress",
+      "responsible": "协作",
+      "owner": "Loop 主任务 `msg_1783998484827_4b2d85596667a`",
+      "claimed_at": "2026-07-14T03:18:27Z",
+      "claim_ttl": "本 Loop 任务完成前；每轮主任务复核时续期",
+      "handoff_to": "由 Loop 主任务派发的审计归并、实施与独立验收代理",
+      "modified_at": "2026-07-15T01:12:08Z",
+      "next_tasks": [
+        "先补 runner 契约与 scaffold 安装回归测试，再实现最小通用化资源和必要安装改动。",
+        "通用化 Skill、scenario 文档、runner 和 metadata，移除所有源项目专属默认。",
+        "落实显式可选、隔离、无项目污染的 Playwright/Chromium 获取策略和强制 headless。",
+        "落实严格 scenario 校验、错误收集、脱敏 result/截图与非零退出。",
+        "保持 `.ch/docs/TESTING.md` 唯一规则源，按审计批准的最小位置补充分层触发规则。"
+      ],
+      "completed_tasks": [
+        "完成源 Chromium Skill/runner/场景与真实经验审计。",
+        "完成 runner 安全、跨平台、隔离安装与测试设计审计。",
+        "完成目标与当前 Harness 单元自测规则差距审计。",
+        "完成 scaffold 安装、镜像、打包与幂等边界审计。",
+        "主任务验收第 2 轮四份补审计报告，确认均无待确认事项。"
+      ],
+      "blockers": [
+        "| 将浏览器 smoke 设为所有项目强制门禁 | 非 Web 项目成本和失败噪音增加 | 只对 Web/UI/浏览器 runtime 风险条件触发；其他任务记录“不适用”；Playwright 不进入业务项目依赖 | `integrate-tiered-testing-policy`；canonical 规则与模板证据槽复核 |",
+        "| 精确 `1.61.1` 在 macOS/Linux/Windows 的 Node/浏览器兼容性未真实验证 | 某些平台无法安装或启动 | 本轮仅作为 exact-semver、隔离默认常量；不自动装系统依赖、不手写 cache；三平台 L2 未跑前保持开放风险 | 下轮独立 Reviewer / 平台验证者；按平台记录 Node/npm/arch/L2 证据 |"
+      ],
+      "dependencies": [
+        "依赖与配置：不修改 `package.json`、lockfile、业务项目 manifest、历史 sync manifest 或官方 Skills catalog；不新增运行时同步机制。"
+      ],
+      "current_conclusions": [
+        "四份第 2 轮审计已验收并归并，批次 0/1 的事实与设计门禁完成，计划当前进入“实现与测试”。已锁定的实施契约包括：现有单元自测主体不重复建设、四文件 root canonical/media mirror、`PW-01` 至 `PW-10` 安全门禁、exact `1.61.1` 的隔离可选安装、默认 loopback/离线、逐文件 partial install、不修改 `src/workspaceScaffold.ts`、L0/L1 默认验证和发布卫生清理。",
+        "当前能力仍为 `in-progress`。本计划归并本身没有实现或验证 Chromium Skill，也没有证明分层政策、自动化测试、真实 Chromium、联网安装、产品事实来源或实际 VSIX 已完成；因此批次 2 至 4 及全部产品验收项保持未勾选。下一步先由主任务复核本轮四个并发子任务及 L0/L1/build 证据，再进入单一串行的文档/打包任务和独立 Reviewer 验收；只有 fresh evidence 全部落盘并关闭或接受开放风险后，才能移入 `completed/`。"
+      ],
+      "validation_summary": [
+        "### 验证分层",
+        "纯 runner 契约：参数/help、scenario schema、路径、headless 强制、错误归一化、结果序列化；无浏览器、无网络。",
+        "本地 stub 集成：临时 HTTP 服务与可控 Playwright/Chromium；覆盖成功和 page/console/request/HTTP 失败、截图与 `result.json`。",
+        "Scaffold 安装：全新、已有文件、部分目录、重复安装、不同路径分隔符；不写真实用户工作区。"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-07-15-core-test-coverage.md",
+      "title": "核心单元测试覆盖率基线",
+      "date": "2026-07-15",
+      "status": "in-progress",
+      "responsible": "Codex",
+      "owner": "核心测试覆盖率改造",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-07-15T07:47:21Z",
+      "next_tasks": [],
+      "completed_tasks": [],
+      "blockers": [
+        "风险：覆盖率命令被无关项目级失败阻塞。缓解：核心测试集显式列出，只运行覆盖核心链路所需的测试；全量失败仍保留在 `npm test` 基线中。",
+        "风险：会话和 CLI 模块包含文件系统、子进程和 VS Code 依赖。缓解：后续测试必须延续现有 `vscodeMock`、临时目录和子进程 mock，不得调用真实 CLI 或网络。"
+      ],
+      "dependencies": [
+        "配置与脚本：`package.json`、`package-lock.json`，新增开发依赖 `c8@^10.1.3`（Node `>=18`）。"
+      ],
+      "current_conclusions": [
+        "覆盖率工具、统一命令、模块白名单和严格 100% 门禁已建立，但核心功能尚未达到 100%。后续应按上述分批策略补充单测，并先修复或隔离项目级 `commandResolution` 的 HOME 泄漏与配置页 CSS 基线失败，再要求 `npm test` 全绿。"
+      ],
+      "validation_summary": [
+        "构建：`npm run build`",
+        "项目级单测：`npm test`",
+        "核心链路单测：`npm run test:core`",
+        "严格覆盖率：`npm run test:core-coverage`"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md",
+      "title": "Loop 主任务失败终止护栏",
+      "date": "2026-06-27",
+      "status": "in-progress",
+      "responsible": "Codex",
+      "owner": "",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-07-07T01:50:50Z",
+      "next_tasks": [
+        "复现并确认主任务失败后仍可继续派发的状态机缺陷",
+        "实现主任务失败上限与恢复阻断修复",
+        "更新测试与文档并完成最小验证"
+      ],
+      "completed_tasks": [
+        "阅读相关文档与代码，确认调查范围"
+      ],
+      "blockers": [],
+      "dependencies": [
+        "配置与脚本：无新增配置"
+      ],
+      "current_conclusions": [
+        "已确认 Loop 主任务当前缺少持久化的连续失败护栏，且恢复链路对 `error/stopped` 任务过于宽松，存在失败后再次唤醒主任务的风险。正在实现失败上限与恢复阻断。"
+      ],
+      "validation_summary": [
+        "最小相关验证：新增/更新 Loop 状态机纯函数测试与必要单测",
+        "扩展验证：执行 `npm test` 与 `npm run build`"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md",
+      "title": "官方 skills 版本刷新与最新判断修复",
+      "date": "2026-06-27",
+      "status": "in-progress",
+      "responsible": "Codex / 人类 / 协作",
+      "owner": "",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-07-14T03:33:01Z",
+      "next_tasks": [],
+      "completed_tasks": [
+        "阶段 1：建立执行计划，锁定背景、目标、范围、阶段和验收标准。",
+        "阶段 2：上游核验与版本字段审计。",
+        "阶段 3：catalog / zip 刷新方案与产物更新。",
+        "阶段 4：版本列表与 schema 实现。",
+        "阶段 5：最新判断修复。"
+      ],
+      "blockers": [],
+      "dependencies": [
+        "配置与脚本："
+      ],
+      "current_conclusions": [
+        "当前已完成本轮刷新、版本字段落库与文档同步。当前支持平台仅为 Claude / Codex / OpenCode；以下 Gemini 内容均为已移除历史 catalog 的审计记录，不代表当前支持目标，也不再对应仓库内置 ZIP 或同步入口。",
+        "`media/official_skills_catalog.json` 已刷新到 `2026-06-27T12:34:44Z`；当前支持口径覆盖 Claude 17、Codex 39，历史 Gemini 记录（已移除）当时计数为 40。",
+        "所有 catalog 条目都已落 `version`、`versionSource`、`contentHash`；`sourceCommit` 对多数条目已落库。",
+        "代表性变化已落地：",
+        "Claude：`claude-api`、`frontend-design` 的 `sourceRef` 与 `contentHash` 已更新。"
+      ],
+      "validation_summary": [
+        "最小相关验证：",
+        "审核当前支持平台的上游来源与本地 catalog/zip 是否一致。",
+        "核验 catalog schema 是否能表达每个条目的版本与来源比较依据。",
+        "验证 installed metadata 与 catalog 之间的状态计算样例。"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md",
+      "title": "Loop 红蓝辩论主持人轮流点名调度",
+      "date": "2026-06-29",
+      "status": "in-progress",
+      "responsible": "Codex",
+      "owner": "",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-07-14T01:27:53Z",
+      "next_tasks": [],
+      "completed_tasks": [
+        "定位现有辩论调度与文档事实来源",
+        "改造主持人决策协议与轮流点名调度实现",
+        "更新测试、规格与设计文档并执行验证"
+      ],
+      "blockers": [],
+      "dependencies": [
+        "配置与脚本：无新增配置；沿用现有 `npm run build`"
+      ],
+      "current_conclusions": [
+        "已完成。`debate_multi_agent` 现改为主持人驱动的轮流点名调度：组队阶段指定首批发言者，后续每个发言批次都由主持人用 `nextSpeakerIds` 指定 1-3 位下一批发言者；只有被点名的参与者进入该批次。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`。"
+      ],
+      "validation_summary": [
+        "最小相关验证：`npm run build`",
+        "扩展验证：`node --test dist/test/loopDebate.test.js`"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md",
+      "title": "MCP 市场全量检测与权威刷新",
+      "date": "2026-07-11",
+      "status": "draft",
+      "responsible": "Codex / 人类 / 协作",
+      "owner": "Loop main task / rolling subtasks",
+      "claimed_at": "2026-07-11",
+      "claim_ttl": "本轮 Loop 任务完成前",
+      "handoff_to": "下一轮 MCP 市场实现/验证子任务",
+      "modified_at": "2026-07-11T03:33:13Z",
+      "next_tasks": [],
+      "completed_tasks": [],
+      "blockers": [
+        "本计划已完成第 2 轮核心实现，等待主任务复核。已修改 `media/mcp_marketplace.json`、`scripts/validate_mcp_marketplace.js`、`package.json`、`src/test/mcpMarketplaceCatalog.test.ts` 和授权文档入口；最终验证结果以 `round-2-mcp-marketplace-refresh-implementation.md` 为准。主任务复核后可决定是否归档到 `completed/`，或追加联网 smoke/OAuth 真实连接验证。"
+      ],
+      "dependencies": [
+        "可能涉及配置页打包产物或静态资源目录",
+        "配置与脚本：",
+        "本计划已完成第 2 轮核心实现，等待主任务复核。已修改 `media/mcp_marketplace.json`、`scripts/validate_mcp_marketplace.js`、`package.json`、`src/test/mcpMarketplaceCatalog.test.ts` 和授权文档入口；最终验证结果以 `round-2-mcp-marketplace-refresh-implementation.md` 为准。主任务复核后可决定是否归档到 `completed/`，或追加联网 smoke/OAuth 真实连接验证。"
+      ],
+      "current_conclusions": [
+        "本计划已完成第 2 轮核心实现，等待主任务复核。已修改 `media/mcp_marketplace.json`、`scripts/validate_mcp_marketplace.js`、`package.json`、`src/test/mcpMarketplaceCatalog.test.ts` 和授权文档入口；最终验证结果以 `round-2-mcp-marketplace-refresh-implementation.md` 为准。主任务复核后可决定是否归档到 `completed/`，或追加联网 smoke/OAuth 真实连接验证。"
+      ],
+      "validation_summary": [
+        "最小相关验证：",
+        "`npm run validate:mcp-marketplace`",
+        "`npx tsc -p ./ --noEmit`",
+        "`npm run build`"
+      ]
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md",
+      "title": "Trace Error Bubble Dedupe",
+      "date": "",
+      "status": "draft",
+      "responsible": "未指定",
+      "owner": "",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-06-25T01:59:58Z",
+      "next_tasks": [],
+      "completed_tasks": [],
+      "blockers": [],
+      "dependencies": [],
+      "current_conclusions": [],
+      "validation_summary": []
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md",
+      "title": "Loop Group Chat UI Follow-ups",
+      "date": "",
+      "status": "draft",
+      "responsible": "未指定",
+      "owner": "",
+      "claimed_at": "",
+      "claim_ttl": "",
+      "handoff_to": "",
+      "modified_at": "2026-07-14T01:27:53Z",
+      "next_tasks": [],
+      "completed_tasks": [],
+      "blockers": [],
+      "dependencies": [],
+      "current_conclusions": [],
+      "validation_summary": []
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md",
+      "title": "Codex、Claude、OpenCode CLI 配置可视化扩展",
+      "date": "2026-07-12",
+      "status": "completed",
+      "responsible": "Codex / 主任务协作",
+      "owner": "Loop 主任务 `msg_1783863365764_c2291c1e371688`",
+      "claimed_at": "2026-07-12",
+      "claim_ttl": "当前 Loop 执行期",
+      "handoff_to": "Loop 主任务最终复核与归档",
+      "modified_at": "2026-07-13T04:55:42Z",
+      "next_tasks": [],
+      "completed_tasks": [
+        "创建本执行计划并明确当前阶段、边界、风险和验证记录位置。",
+        "收集 Codex 官方配置资料并补全 Codex 字段台账。",
+        "收集 Claude 官方配置资料并补全 Claude 字段台账。",
+        "收集 OpenCode 官方配置资料并补全 OpenCode 字段台账。",
+        "读取共享配置 UI 审计结果，确认真实源文件、资产边界、协议和测试入口。"
+      ],
+      "blockers": [],
+      "dependencies": [
+        "`src/config/`：配置档案、原生格式解析/保存、定向合并和外部配置文件边界。",
+        "`src/webview/configPanel.ts`、`src/webview/configView.ts`、`src/webview/configProtocol.ts`：配置中心消息协议、资源装载和错误回传。",
+        "`src/test/`：Codex、Claude、OpenCode 配置可视化、共享控件、配置服务和协议回归测试。",
+        "配置与脚本：",
+        "各 CLI 的用户级原生配置文件和 VS Code 扩展配置档案读写行为。"
+      ],
+      "current_conclusions": [
+        "本计划的实施目标已完成：三组 CLI 都有与原生 TOML/JSON 源码模式并存的可视化编辑器，稳定字段已采用合适的单选、三态、可编辑组合框、多值 tags 或文本控件，未知/复杂配置仍受定向合并与源码回退保护。官方 URL、`2026-07-12` 访问日期和 defer 边界继续保留在台账；`ultra` 的产品扩展、Codex 固定 `max`、Claude legacy `max` 兼容和 OpenCode 动态 variant 不重排已在完成记录中明确。主任务可据此进行最终独立审计并在整个 Loop 任务完成后统一归档本计划。"
+      ],
+      "validation_summary": [
+        "### 分批实施与验证顺序",
+        "**官方文档与现状核对：已完成。** 本计划的字段矩阵、来源、作用域和 include/defer/reject 决定是实施输入；未记录的字段没有随实现便利扩展。",
+        "**三组共享 UI 集成：已完成。** 唯一集成子任务在同一 `config-app-ui.js` 中完成本批 Codex、Claude、OpenCode 字段、英文映射与三份视觉编辑器测试；实际控件和保护见“完成记录”。",
+        "**单一自动化验证：已完成。** 构建、静态检查、视觉编辑器回归、raw value/`ultra` 运行时回归和最终排序回归均已有通过证据。真实 VS Code 点击回归未在本批重复，作为非阻塞风险保留，不倒灌为未验证的产品事实。"
+      ]
+    }
+  ],
+  "blocked_count": 0,
+  "claimed_count": 4
+}

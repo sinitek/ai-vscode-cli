@@ -209,10 +209,7 @@ function collectLoopTaskStoreFilesFromDir(
   const collected: string[] = [];
   const stack = [dirPath];
   while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current) {
-      continue;
-    }
+    const current = stack.pop() as string;
     let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
@@ -378,10 +375,7 @@ function copyLoopMigrationEntry(sourcePath: string, targetPath: string, sourceSt
 function assertLoopMigrationTreeHasNoSymlinks(rootDir: string): void {
   const stack = [rootDir];
   while (stack.length > 0) {
-    const currentDir = stack.pop();
-    if (!currentDir) {
-      continue;
-    }
+    const currentDir = stack.pop() as string;
     for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
       const entryPath = path.join(currentDir, entry.name);
       const stats = fs.lstatSync(entryPath);
@@ -995,10 +989,7 @@ function getLatestMtimeMsInTree(rootPath: string): number {
   let latestMtimeMs = 0;
   const stack = [rootPath];
   while (stack.length > 0) {
-    const currentPath = stack.pop();
-    if (!currentPath) {
-      continue;
-    }
+    const currentPath = stack.pop() as string;
     let stats: fs.Stats;
     try {
       stats = fs.statSync(currentPath);
