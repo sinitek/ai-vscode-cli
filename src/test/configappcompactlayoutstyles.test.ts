@@ -90,7 +90,7 @@ test("configuration activate button has a compact text-safe minimum width", () =
 test("configuration action buttons use compact square shared styling", () => {
   const topActionButton = rule(
     css,
-    ".config-sidebar-panel > .ant-card .ant-card-extra .ant-btn,\n.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn",
+    ".config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(.config-standard-action-button),\n.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(.config-standard-action-button)",
   );
   assert.match(topActionButton, /\bheight:\s*20px;/);
   assert.match(topActionButton, /\bpadding:\s*0 6px !important;/);

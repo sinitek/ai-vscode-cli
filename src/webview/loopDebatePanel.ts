@@ -726,11 +726,8 @@ function getActiveSpeaker(state: LoopDebateChatPanelState): LoopDebateChatPanelA
 }
 
 function getActiveSpeakerFromRound(
-  round: LoopDebateChatPanelRound | undefined,
+  round: LoopDebateChatPanelRound,
 ): LoopDebateChatPanelActiveSpeaker | null {
-  if (!round) {
-    return null;
-  }
   if (round.status !== "running") {
     return null;
   }
@@ -832,10 +829,7 @@ function getSegmentSpeaker(segment: LoopDebateChatSegment, strings: LoopDebateCh
   if (segment.kind === "participant-joined" || segment.kind === "participant-turn" || segment.kind === "final-stance") {
     return segment.actorTitle ?? segment.actorId ?? segment.heading;
   }
-  if (segment.kind === "rules" || segment.kind === "preamble" || segment.kind === "task-event" || segment.kind === "section") {
-    return segment.heading || strings.system;
-  }
-  return strings.system;
+  return segment.heading || strings.system;
 }
 
 function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPanelStrings): string {
@@ -897,7 +891,7 @@ function getAvatarLabel(title: string, fallback: string): string {
   if (!normalized) {
     return "?";
   }
-  const first = Array.from(normalized)[0] ?? "?";
+  const first = Array.from(normalized)[0];
   return first.toUpperCase();
 }
 

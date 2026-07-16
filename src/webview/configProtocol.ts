@@ -1,34 +1,44 @@
-import { ApplyPayload, ConfigItem, ConfigOrder, ConfigPlatform, CopyConfigPayload, OfficialSkillPlatform } from "../config/types";
+import type {
+  ApplyPayload,
+  ConfigItem,
+  ConfigOrder,
+  ConfigPlatform,
+  CopyConfigPayload,
+  OfficialSkillPlatform,
+} from "../config/types";
 
-export type ConfigAction =
-  | "getList"
-  | "getOrder"
-  | "setOrder"
-  | "getById"
-  | "save"
-  | "copy"
-  | "delete"
-  | "getCurrent"
-  | "apply"
-  | "backup"
-  | "getBackups"
-  | "initDefault"
-  | "getMcpMarketplaceList"
-  | "getClaudeSkillsList"
-  | "getCodexSkillsList"
-  | "getOpenCodeSkillsList"
-  | "getOfficialSkillsCatalog"
-  | "installOfficialSkill"
-  | "updateOfficialSkill"
-  | "uninstallOfficialSkill"
-  | "getMcpInstalledServerIds"
-  | "getCodexMcpServerIds"
-  | "getCodexMcpHealth"
-  | "getMcpHealth"
-  | "installMcp"
-  | "installCodexMcp"
-  | "uninstallMcp"
-  | "exportConfigs";
+export const CONFIG_ACTIONS = [
+  "getList",
+  "getOrder",
+  "setOrder",
+  "getById",
+  "save",
+  "copy",
+  "delete",
+  "getCurrent",
+  "apply",
+  "backup",
+  "getBackups",
+  "initDefault",
+  "getMcpMarketplaceList",
+  "getClaudeSkillsList",
+  "getCodexSkillsList",
+  "getOpenCodeSkillsList",
+  "getOfficialSkillsCatalog",
+  "installOfficialSkill",
+  "updateOfficialSkill",
+  "uninstallOfficialSkill",
+  "getMcpInstalledServerIds",
+  "getCodexMcpServerIds",
+  "getCodexMcpHealth",
+  "getMcpHealth",
+  "installMcp",
+  "installCodexMcp",
+  "uninstallMcp",
+  "exportConfigs",
+] as const;
+
+export type ConfigAction = typeof CONFIG_ACTIONS[number];
 
 export type ConfigRequestPayload =
   | { action: "getList"; platform: ConfigPlatform }
