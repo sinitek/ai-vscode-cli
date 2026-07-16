@@ -81,6 +81,8 @@ function createFakeElement(): FakeElement {
 test("renders OpenCode task updates in the active task-list overlay", () => {
   const functionSources = [
     "setTaskListItems",
+    "shouldDisplayTaskListItems",
+    "shouldDisplayTaskListForTab",
     "formatTaskListProgress",
     "renderTaskList",
     "normalizeTaskListItems",
@@ -103,6 +105,7 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
     taskListBody,
   };
   const runtimeState = { messages: [{ role: "user", content: "run" }] };
+  let running = true;
   const applyExternalTaskListUpdate = new Function(
     "elements",
     "document",
@@ -112,6 +115,9 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
     "ensureRuntimeStateMessages",
     "resetTaskListState",
     "isRuntimeStateForActiveTab",
+    "isTabRunning",
+    "isConversationTabBusy",
+    "state",
     `${functionSources.join("\n")}; return applyExternalTaskListUpdate;`,
   )(
     elements,
@@ -127,6 +133,9 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
       state.startIndex = startIndex;
     },
     (tabId: string) => tabId === "tab-1",
+    () => running,
+    () => running,
+    { isRunning: running },
   ) as (items: unknown[], tabId?: string) => Array<{ text: string; done: boolean }>;
 
   const normalized = applyExternalTaskListUpdate([
@@ -166,6 +175,27 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
 
   assert.deepEqual(taskListState.items, []);
   assert.equal(taskListState.source, "auto");
+  assert.equal(taskListPanel.style.display, "none");
+  assert.equal(taskListDetails.open, false);
+
+  applyExternalTaskListUpdate([
+    { content: "读取日志", status: "completed" },
+    { content: "修复浮层", status: "completed" },
+  ], "tab-1");
+
+  assert.deepEqual(taskListState.items, []);
+  assert.equal(taskListState.source, "external");
+  assert.equal(taskListPanel.style.display, "none");
+  assert.equal(taskListDetails.open, false);
+
+  running = false;
+  applyExternalTaskListUpdate([
+    { content: "迟到的待办更新", status: "pending" },
+  ], "tab-1");
+
+  assert.deepEqual(taskListState.items, []);
+  assert.equal(taskListState.source, "auto");
+  assert.equal(taskListState.startIndex, 1);
   assert.equal(taskListPanel.style.display, "none");
   assert.equal(taskListDetails.open, false);
 });

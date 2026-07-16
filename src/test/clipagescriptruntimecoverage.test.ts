@@ -633,8 +633,8 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   });
   assert.equal(api.state.messages[0].id, "m-1");
   assert.equal(document.getElementById("messages").children.length, 2);
-  assert.equal(document.getElementById("taskListPanel").style.display, "block");
-  assert.equal(document.getElementById("taskListCount").textContent, "1/2");
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  assert.equal(document.getElementById("taskListCount").textContent, "");
 
   window.dispatchMessage({
     type: "appendMessage",
@@ -666,8 +666,15 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   window.dispatchMessage({ type: "runStreamExportResult", tabId: "tab-1", path: "/tmp/run-stream.json" });
   assert.match(document.getElementById("toast").textContent, /tmp\/run-stream\.json/);
 
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "external task", completed: false }] });
+  assert.equal(document.getElementById("taskListCount").textContent, "0/1");
+  assert.equal(document.getElementById("taskListPanel").style.display, "block");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "external task", completed: true }] });
-  assert.equal(document.getElementById("taskListCount").textContent, "1/1");
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
+  window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "late task", completed: false }] });
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [] });
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
 

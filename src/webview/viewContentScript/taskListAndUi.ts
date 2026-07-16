@@ -1,5 +1,10 @@
 // Task list, toast, clipboard, running state, and dispatch helpers.
 export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskList() {
+        const activeTabId = getActiveConversationTabId();
+        if (!shouldDisplayTaskListForTab(activeTabId)) {
+          closeTaskListForRunCompletion(activeTabId);
+          return;
+        }
         const taskListState = getActiveTaskListState({ create: true });
         if (!taskListState) {
           renderTaskList();
@@ -20,14 +25,34 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const nextItems = Array.isArray(items) ? items : [];
         const hadItems = Array.isArray(taskListState.items) && taskListState.items.length > 0;
-        taskListState.items = nextItems;
-        if (!nextItems.length) {
+        if (!shouldDisplayTaskListItems(nextItems)) {
+          taskListState.items = [];
           taskListState.open = false;
           return;
         }
+        taskListState.items = nextItems;
         if (!hadItems) {
           taskListState.open = true;
         }
+      }
+
+      function shouldDisplayTaskListItems(items) {
+        return Array.isArray(items) && items.some((item) => item && item.done !== true);
+      }
+
+      function shouldDisplayTaskListForTab(tabId) {
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        const hasRunStateHelper = typeof isTabRunning === "function" || typeof isConversationTabBusy === "function";
+        if (!hasRunStateHelper) {
+          return true;
+        }
+        if (!targetTabId) {
+          return state.isRunning === true;
+        }
+        if (typeof isTabRunning === "function" && isTabRunning(targetTabId)) {
+          return true;
+        }
+        return typeof isConversationTabBusy === "function" && isConversationTabBusy(targetTabId);
       }
 
       function formatTaskListProgress(items) {
@@ -186,6 +211,15 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const normalized = normalizeTaskListItems(items);
         if (normalized.length) {
+          if (!shouldDisplayTaskListForTab(targetTabId)) {
+            const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
+            const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
+            resetTaskListState(taskListState, startIndex);
+            if (isRuntimeStateForActiveTab(targetTabId)) {
+              renderTaskList(taskListState);
+            }
+            return normalized;
+          }
           setTaskListItems(taskListState, normalized);
           taskListState.source = "external";
         } else {
