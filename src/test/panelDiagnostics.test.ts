@@ -7,6 +7,7 @@ installVscodeMock();
 const {
   isHiddenRetryEligibleAttempt,
   isHiddenRetryEligibleErrorInfo,
+  isLoopTaskResumable,
   isNonRetryableBillingErrorInfo,
 } = require("../panelDiagnostics") as typeof import("../panelDiagnostics");
 
@@ -53,4 +54,15 @@ test("rejects a billing failure reported through a nonzero CLI exit", () => {
     { type: "exit", code: 1 },
     "temporary upstream disconnect",
   ), true);
+});
+
+test("keeps interrupted Loop task states resumable from the main tab", () => {
+  const baseTask = { id: "task-1", mainAiFailureLimitReached: false } as Parameters<typeof isLoopTaskResumable>[0];
+
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "needs-review" }), true);
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "error" }), true);
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "stopped" }), true);
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "running" }), true);
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "completed" }), false);
+  assert.equal(isLoopTaskResumable({ ...baseTask, status: "error", mainAiFailureLimitReached: true }), false);
 });

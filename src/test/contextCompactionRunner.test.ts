@@ -49,6 +49,7 @@ function createSilentCodexCompactionDeps() {
     hasActiveProcessOrInteractiveStop: () => false,
     resolveInteractiveSessionForResume: async () => "session-1",
     resolveWorkspaceCwd: () => undefined,
+    getActiveConfigIdForCli: () => "config-codex",
     getSelectedCliModel: () => null,
     getEffectiveThinkingMode: () => "medium" as ThinkingMode,
     getWorkspaceInteractiveMode: () => "coding" as InteractiveMode,
@@ -204,6 +205,7 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
       ? options.resolvedSessionId
       : currentSessionId,
     resolveWorkspaceCwd: () => "/workspace",
+    getActiveConfigIdForCli: () => "config-opencode",
     getSelectedCliModel: () => "stored/model",
     getEffectiveThinkingMode: () => "medium" as ThinkingMode,
     getWorkspaceInteractiveMode: () => "coding" as InteractiveMode,

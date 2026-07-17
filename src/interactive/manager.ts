@@ -1,4 +1,5 @@
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+import { CodexRunSelection, normalizeCodexRunSelection } from "./codexThreadSelection";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 
@@ -12,6 +13,7 @@ type RunnerEntry =
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
       model: string | null;
+      configId: string | null;
       multiAgentEnabled: boolean;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
@@ -66,17 +68,23 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
-    options: { multiAgentEnabled?: boolean } = {}
+    options: { multiAgentEnabled?: boolean; configId?: string | null } = {}
   ): void {
     const key = this.buildKey(cli, sessionId);
     const existing = this.entries.get(key);
+    const codexSelection = cli === "codex"
+      ? normalizeCodexRunSelection({ configId: options.configId, model })
+      : null;
     if (existing && existing.runner === runner) {
       existing.sessionId = sessionId;
       existing.thinkingMode = thinkingMode;
       existing.interactiveMode = interactiveMode;
-      existing.model = model;
       if (existing.cli === "codex") {
+        existing.model = codexSelection?.model ?? null;
+        existing.configId = codexSelection?.configId ?? null;
         existing.multiAgentEnabled = options.multiAgentEnabled === true;
+      } else {
+        existing.model = model;
       }
       this.touch(existing);
       return;
@@ -92,7 +100,8 @@ export class InteractiveRunnerManager {
             runner: runner as CodexInteractiveRunner,
             thinkingMode,
             interactiveMode,
-            model,
+            model: codexSelection?.model ?? null,
+            configId: codexSelection?.configId ?? null,
             multiAgentEnabled: options.multiAgentEnabled === true,
             idleTimer: null,
             lastUsedAt: Date.now(),
@@ -111,15 +120,21 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode;
     interactiveMode: InteractiveMode;
     model: string | null;
+    configId?: string | null;
     multiAgentEnabled: boolean;
   }): CodexInteractiveRunner {
     const key = this.buildKey("codex", options.sessionId);
     const existing = this.entries.get(key);
+    const nextSelection = normalizeCodexRunSelection({
+      configId: options.configId,
+      model: options.model,
+    });
     if (existing && existing.cli === "codex") {
       if (
         existing.thinkingMode === options.thinkingMode
         && existing.interactiveMode === options.interactiveMode
-        && existing.model === options.model
+        && existing.model === nextSelection.model
+        && existing.configId === nextSelection.configId
         && existing.multiAgentEnabled === options.multiAgentEnabled
       ) {
         this.touch(existing);
@@ -133,7 +148,7 @@ export class InteractiveRunnerManager {
       cwd: options.cwd,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
-      model: options.model,
+      model: nextSelection.model,
       threadId: options.threadId,
       multiAgentEnabled: options.multiAgentEnabled,
     });
@@ -143,7 +158,8 @@ export class InteractiveRunnerManager {
       runner,
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
-      model: options.model,
+      model: nextSelection.model,
+      configId: nextSelection.configId,
       multiAgentEnabled: options.multiAgentEnabled,
       idleTimer: null,
       lastUsedAt: Date.now(),
@@ -151,6 +167,17 @@ export class InteractiveRunnerManager {
     this.entries.set(key, entry);
     this.touch(entry);
     return runner;
+  }
+
+  public getCodexRunnerSelection(sessionId: string | null): CodexRunSelection | null {
+    const entry = this.getEntry("codex", sessionId);
+    if (!entry || entry.cli !== "codex") {
+      return null;
+    }
+    return normalizeCodexRunSelection({
+      configId: entry.configId,
+      model: entry.model,
+    });
   }
 
   public getOrCreateClaudeRunner(options: {

@@ -436,6 +436,38 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
   }]);
 });
 
+test("continues an interrupted Loop main task from ordinary main tab input", async () => {
+  const { deps, calls, tabs } = createPromptHarness("codex");
+  tabs.set("loop-main-tab", {
+    id: "loop-main-tab",
+    cli: "codex",
+    sessionId: "loop-session",
+    sessionIdByCli: { codex: "loop-session" },
+    createdAt: 5,
+  });
+  deps.resolveLoopResumeTaskFromPrompt = (prompt, tabId) => {
+    assert.equal(prompt, "add regression coverage before continuing");
+    assert.equal(tabId, "loop-main-tab");
+    return { id: "interrupted-task" } as ReturnType<PanelMessageHandlerDeps["resolveLoopResumeTaskFromPrompt"]>;
+  };
+  deps.isLoopResumePrompt = () => false;
+
+  await handleSendPromptMessage({
+    type: "sendPrompt",
+    prompt: "add regression coverage before continuing",
+    tabId: "loop-main-tab",
+    interactiveMode: "loop",
+  }, deps);
+
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.deepEqual(calls.runLoopPrompt[0]?.options, {
+    targetTabId: "loop-main-tab",
+    resumeTaskId: "interrupted-task",
+    resumeRequested: true,
+  });
+});
+
 test("forces a Loop subtask continuation through coding and wakes the parent after the run", async () => {
   const { deps, calls, tabs } = createPromptHarness("opencode");
   tabs.set("subtask-tab", {

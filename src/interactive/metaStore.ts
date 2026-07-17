@@ -2,11 +2,14 @@ import * as fs from "fs";
 import * as path from "path";
 import { CliName } from "../cli/types";
 import { logError } from "../logger";
+import { CodexRunSelection, normalizeCodexRunSelection } from "./codexThreadSelection";
 
 export type CodexSessionMeta = {
   threadId: string;
   frozenThreadIds: string[];
   updatedAt: number;
+  configId?: string | null;
+  model?: string | null;
 };
 
 export type ClaudeSessionMeta = {
@@ -58,12 +61,27 @@ export function getMappedThreadId(meta: SessionMetaStore, cli: CliName, sessionI
   return null;
 }
 
+export function getCodexMappedSelection(meta: SessionMetaStore, sessionId: string): CodexRunSelection | null {
+  const existing = meta.byCli?.codex?.[sessionId];
+  if (!existing) {
+    return null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(existing, "configId")
+    && !Object.prototype.hasOwnProperty.call(existing, "model")) {
+    return null;
+  }
+  return normalizeCodexRunSelection({
+    configId: existing.configId,
+    model: existing.model,
+  });
+}
+
 export function upsertMapping(
   meta: SessionMetaStore,
   cli: CliName,
   sessionId: string,
   mappedId: string,
-  options: { freezePrevious?: string; maxFrozen?: number } = {}
+  options: { freezePrevious?: string; maxFrozen?: number; codexSelection?: CodexRunSelection | null } = {}
 ): SessionMetaStore {
   const now = Date.now();
   const maxFrozen = options.maxFrozen ?? 5;
@@ -83,11 +101,23 @@ export function upsertMapping(
       }
     }
     const trimmed = frozen.length > maxFrozen ? frozen.slice(frozen.length - maxFrozen) : frozen;
+    const codexSelection = options.codexSelection === undefined
+      ? null
+      : normalizeCodexRunSelection(options.codexSelection ?? {});
+    const shouldWriteSelection = codexSelection !== null
+      || Object.prototype.hasOwnProperty.call(existing, "configId")
+      || Object.prototype.hasOwnProperty.call(existing, "model");
     next.byCli.codex = next.byCli.codex ?? {};
     next.byCli.codex[sessionId] = {
       threadId: mappedId,
       frozenThreadIds: trimmed,
       updatedAt: now,
+      ...(shouldWriteSelection
+        ? {
+            configId: codexSelection?.configId ?? existing.configId ?? null,
+            model: codexSelection?.model ?? existing.model ?? null,
+          }
+        : {}),
     };
     return next;
   }
@@ -116,4 +146,3 @@ export function upsertMapping(
 
   return next;
 }
-

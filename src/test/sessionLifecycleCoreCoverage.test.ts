@@ -368,11 +368,19 @@ test("migrates a local session into its remote target without losing messages or
 test("keeps interactive mappings CLI-specific and recovers from Claude transcript errors", () => {
   const harness = createLifecycleHarness();
   try {
-    harness.controller.upsertInteractiveMapping("codex", "local-codex", "thread-1", { freezePrevious: "thread-0" });
+    harness.controller.upsertInteractiveMapping("codex", "local-codex", "thread-1", {
+      freezePrevious: "thread-0",
+      codexSelection: { configId: "config-a", model: "gpt-5.5" },
+    });
     harness.controller.upsertInteractiveMapping("claude", "local-claude", "session-1");
 
     assert.equal(harness.controller.resolveInteractiveMappedId("codex", "local-codex"), "thread-1");
+    assert.deepEqual(harness.controller.resolveCodexInteractiveSelection("local-codex"), {
+      configId: "config-a",
+      model: "gpt-5.5",
+    });
     assert.equal(harness.controller.resolveInteractiveMappedId("claude", "local-claude"), "session-1");
+    assert.equal(harness.controller.resolveCodexInteractiveSelection("local-claude"), null);
     assert.equal(harness.controller.resolveInteractiveMappedId("opencode", "local-opencode"), "local-opencode");
 
     const claudeDir = path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, "claude");

@@ -157,6 +157,11 @@ import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
+import {
+  decideCodexThreadForSelection,
+  normalizeCodexRunSelection,
+  type CodexRunSelection,
+} from "./interactive/codexThreadSelection";
 import { isCodexRetryProgressTraceKind } from "./interactive/codexRunnerRuntime";
 import {
   collectInteractiveSessionKeys,
@@ -447,6 +452,7 @@ import {
   isLoopResumePrompt,
   isLoopTaskResumable,
   isLoopTaskSessionCompatible,
+  normalizeLoopResumePrompt,
   waitForHiddenRetryDelay,
   type ErrorInfo,
 } from "./panelDiagnostics";
@@ -2671,7 +2677,7 @@ function resolveLoopResumeTaskFromPrompt(
   prompt: string,
   targetTabId: string | null | undefined
 ): LoopTaskRecord | null {
-  if (!isLoopResumePrompt(prompt)) {
+  if (!normalizeLoopResumePrompt(prompt)) {
     return null;
   }
   const target = resolvePromptRunTarget(targetTabId ?? null);
@@ -9048,6 +9054,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     hasActiveProcessOrInteractiveStop: () => Boolean(activeProcess || activeInteractiveStop),
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
+    getActiveConfigIdForCli,
     getSelectedCliModel,
     getEffectiveThinkingMode,
     getWorkspaceInteractiveMode,
@@ -9177,7 +9184,8 @@ async function runPromptInteractive(
 
   const cli = target.cli;
   const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
-  const selectedModel = input.model || getSelectedCliModel(cli);
+  const activeConfigId = getActiveConfigIdForCli(cli);
+  const selectedModel = input.model || getSelectedCliModel(cli, activeConfigId);
   const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
   const interactiveMode = getWorkspaceInteractiveMode(cli);
   applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
@@ -9235,6 +9243,7 @@ async function runPromptInteractive(
     thinkingMode,
     interactiveMode,
     model: selectedModel,
+    configId: activeConfigId,
     cwd,
     promptLength: prompt.length,
     modelPromptLength: modelPrompt.length,
@@ -9670,14 +9679,20 @@ async function runPromptInteractive(
     }
   };
 
-  const updateSessionForNewRun = (newId: string): void => {
+  const updateSessionForNewRun = (
+    newId: string,
+    options: { freezePrevious?: string | null; codexSelection?: CodexRunSelection | null } = {}
+  ): void => {
     const localSessionIdToPromote = !uiSessionId
       ? (getConversationTabById(tabId)?.sessionId ?? null)
       : (isLocalSessionId(uiSessionId) ? uiSessionId : null);
 
     if (!uiSessionId || localSessionIdToPromote) {
       adoptSessionId(cli, newId, tabId);
-      upsertInteractiveMapping(cli, newId, newId);
+      upsertInteractiveMapping(cli, newId, newId, {
+        freezePrevious: options.freezePrevious ?? undefined,
+        codexSelection: options.codexSelection,
+      });
       if (localSessionIdToPromote && localSessionIdToPromote !== newId) {
         migrateLocalSessionToTargetSession(cli, localSessionIdToPromote, newId);
       }
@@ -9685,7 +9700,10 @@ async function runPromptInteractive(
       refreshMessageTargetFromSession();
       return;
     }
-    upsertInteractiveMapping(cli, uiSessionId, newId);
+    upsertInteractiveMapping(cli, uiSessionId, newId, {
+      freezePrevious: options.freezePrevious ?? undefined,
+      codexSelection: options.codexSelection,
+    });
   };
 
   const stopFn = (): void => {
@@ -9818,16 +9836,39 @@ async function runPromptInteractive(
     try {
       if (cli === "codex") {
         const mappedThreadId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
+        const nextSelection = normalizeCodexRunSelection({
+          configId: activeConfigId,
+          model: selectedModel,
+        });
+        const threadDecision = decideCodexThreadForSelection({
+          mappedThreadId,
+          previousSelection: uiSessionId
+            ? interactiveRunnerManager.getCodexRunnerSelection(uiSessionId)
+              ?? resolveCodexInteractiveSelection(uiSessionId)
+            : null,
+          nextSelection,
+        });
+        if (threadDecision.startedFreshForSelectionChange) {
+          void logInfo("runPrompt-interactive-codex-selection-new-thread", {
+            cli,
+            sessionId: uiSessionId,
+            previousThreadId: mappedThreadId,
+            configId: nextSelection.configId,
+            model: nextSelection.model,
+            tabId,
+          });
+        }
         const runner = uiSessionId
           ? interactiveRunnerManager.getOrCreateCodexRunner({
               sessionId: uiSessionId,
-              threadId: mappedThreadId,
+              threadId: threadDecision.threadId,
               command,
               args,
               cwd: cwd ?? undefined,
               thinkingMode,
               interactiveMode,
-              model: selectedModel,
+              model: nextSelection.model,
+              configId: nextSelection.configId,
               multiAgentEnabled: getGlobalMultiAgentEnabled(),
             })
           : new (await import("./interactive/codexRunner")).CodexInteractiveRunner({
@@ -9836,7 +9877,7 @@ async function runPromptInteractive(
               cwd: cwd ?? undefined,
               thinkingMode,
               interactiveMode,
-              model: selectedModel,
+              model: nextSelection.model,
               threadId: null,
               multiAgentEnabled: getGlobalMultiAgentEnabled(),
             });
@@ -9894,17 +9935,24 @@ async function runPromptInteractive(
           },
           onThreadId: (threadId) => {
             updateProcessTitle(cli, threadId);
-            updateSessionForNewRun(threadId);
+            updateSessionForNewRun(threadId, {
+              freezePrevious: threadDecision.freezePrevious,
+              codexSelection: nextSelection,
+            });
             void logInfo("runPrompt-interactive-codex-thread", {
               cli,
               sessionId: uiSessionId,
               threadId,
+              replacedThreadId: threadDecision.freezePrevious,
+              configId: nextSelection.configId,
+              model: nextSelection.model,
               originalSessionId: target.sessionId,
               tabId,
             });
             if (uiSessionId) {
-              interactiveRunnerManager.setRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+              interactiveRunnerManager.setRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, nextSelection.model, {
                 multiAgentEnabled: getGlobalMultiAgentEnabled(),
+                configId: nextSelection.configId,
               });
             }
             syncInteractiveRunEntry();
@@ -11586,11 +11634,15 @@ function resolveInteractiveMappedId(cli: CliName, sessionId: string): string | n
   return sessionLifecycleController.resolveInteractiveMappedId(cli, sessionId);
 }
 
+function resolveCodexInteractiveSelection(sessionId: string): CodexRunSelection | null {
+  return sessionLifecycleController.resolveCodexInteractiveSelection(sessionId);
+}
+
 function upsertInteractiveMapping(
   cli: CliName,
   sessionId: string,
   mappedId: string,
-  options: { freezePrevious?: string } = {}
+  options: { freezePrevious?: string; codexSelection?: CodexRunSelection | null } = {}
 ): void {
   sessionLifecycleController.upsertInteractiveMapping(cli, sessionId, mappedId, options);
 }

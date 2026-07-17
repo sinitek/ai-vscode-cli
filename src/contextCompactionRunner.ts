@@ -18,6 +18,10 @@ import { buildGeminiThinkingRuntimeProfile } from "./cli/geminiThinking";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
 import { ClaudeInteractiveRunner } from "./interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "./interactive/manager";
+import {
+  normalizeCodexRunSelection,
+  type CodexRunSelection,
+} from "./interactive/codexThreadSelection";
 import { t } from "./i18n";
 import { logError, logInfo, sanitizeEnv } from "./logger";
 import { CliName, InteractiveMode, ThinkingMode } from "./cli/types";
@@ -482,7 +486,8 @@ export type ContextCompactionRunDeps = {
     tabId: string | null
   ) => Promise<string | null | undefined>;
   resolveWorkspaceCwd: () => string | undefined;
-  getSelectedCliModel: (cli: CliName) => string | null;
+  getActiveConfigIdForCli: (cli: CliName) => string | null;
+  getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => ThinkingMode;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
@@ -527,7 +532,7 @@ export type ContextCompactionRunDeps = {
     cli: CliName,
     localSessionId: string,
     mappedSessionId: string,
-    options?: { freezePrevious?: string }
+    options?: { freezePrevious?: string; codexSelection?: CodexRunSelection | null }
   ) => void;
   sendRawStreamDelta: (
     content: unknown,
@@ -584,7 +589,8 @@ export async function runContextCompactionWithDeps(
   const sessionId = resolvedSessionId;
 
   const cwd = deps.resolveWorkspaceCwd();
-  const selectedModel = deps.getSelectedCliModel(cli);
+  const activeConfigId = deps.getActiveConfigIdForCli(cli);
+  const selectedModel = deps.getSelectedCliModel(cli, activeConfigId);
   const thinkingMode = deps.getEffectiveThinkingMode(cli, selectedModel);
   const interactiveMode = deps.getWorkspaceInteractiveMode(cli);
   deps.applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
@@ -649,6 +655,10 @@ export async function runContextCompactionWithDeps(
         return false;
       }
 
+      const codexSelection = normalizeCodexRunSelection({
+        configId: activeConfigId,
+        model: selectedModel,
+      });
       const runner = deps.interactiveRunnerManager.getOrCreateCodexRunner({
         sessionId,
         threadId: mappedThreadId,
@@ -657,14 +667,18 @@ export async function runContextCompactionWithDeps(
         cwd: cwd ?? undefined,
         thinkingMode,
         interactiveMode,
-        model: selectedModel,
+        model: codexSelection.model,
+        configId: codexSelection.configId,
         multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
       });
       stopCurrentTurn = () => runner.stopAndRebuild();
       deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
       try {
         const result = await runner.compactThread();
-        deps.upsertInteractiveMapping(cli, sessionId, result.threadId, { freezePrevious: mappedThreadId });
+        deps.upsertInteractiveMapping(cli, sessionId, result.threadId, {
+          freezePrevious: mappedThreadId,
+          codexSelection,
+        });
         deps.appendSystemMessage(t("compact.codexNativeCompressed", { threadId: result.threadId }));
         void logInfo("context-compact-codex-complete", {
           cli,
@@ -672,8 +686,9 @@ export async function runContextCompactionWithDeps(
           threadId: result.threadId,
           compacted: result.compacted,
         });
-        deps.interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+        deps.interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, codexSelection.model, {
           multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
+          configId: codexSelection.configId,
         });
       } finally {
         deps.interactiveRunnerManager.endActiveRun(cli, sessionId);

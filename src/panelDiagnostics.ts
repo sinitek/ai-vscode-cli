@@ -313,7 +313,12 @@ export function collectRecentLoopTaskIdsFromMessages(messages: readonly ChatMess
 
 export function isLoopTaskResumable(task: LoopTaskRecord): boolean {
   return !isLoopMainAiFailureLimitReached(task)
-    && (task.status === "error" || task.status === "stopped" || task.status === "running");
+    && (
+      task.status === "needs-review"
+      || task.status === "error"
+      || task.status === "stopped"
+      || task.status === "running"
+    );
 }
 
 export function isLoopTaskSessionCompatible(

@@ -14,6 +14,38 @@
 
 ## 当前有效条目
 
+## Codex 同一 UI 分组切换模型/配置时不能复用旧 thread
+
+- 状态：已规避，需随 Codex app-server thread 元数据行为复核
+- 首次发现：2026-07-16
+- 适用范围：Codex app-server interactive runner、模型配置切换、conversation tab / group 到 Codex thread 的映射、自动上下文压缩
+
+### 现象
+- 同一个 AI 对话分组中，先用配置 A / 模型 A 完成任务，再不切换分组只切换到配置 B 或模型 B 后继续执行，用户会观察到像是仍在使用旧模型。
+- 插件日志已经显示新回合启动参数含新模型，但 Codex 本地 thread 元数据和某些 resume/compact 路径仍可沿用旧 thread 的原始模型。
+
+### 触发条件与根因
+- 插件的 UI 会话 ID 和 Codex thread ID 是映射关系；同一分组继续运行时会通过 mapping resume 旧 thread。
+- `InteractiveRunnerManager` 因模型变化重建本地 runner 仍不够，因为新 runner 如果拿到旧 mapped thread ID，底层仍会执行 `thread/resume`。
+- 本机 Codex 日志确认：同一 thread 后续回合可收到新的 `thread_settings_applied.model`，但 SQLite `threads.model` 仍保留初始模型，自动 compact 等路径仍可能参考旧 thread 元数据。
+
+### 长期规避
+- Codex runner 缓存身份必须同时包含 active config ID 和 selected model；配置或模型变化时必须启动新 Codex thread，而不是 resume 旧 mapped thread。
+- 切换后新 thread 成功返回时，更新 UI session 到新 thread 的 mapping，并把旧 mapped thread 放入 frozen 历史，保留会话分组和消息连续性。
+- 自动上下文压缩路径也必须带同一 active config identity 更新 runner，否则压缩完成后会把 runner 身份写回不完整状态。
+
+### 验证方式
+- 断言相同 config/model 会继续复用 mapped thread；模型或 config 任一变化时传入 `threadId:null` 并记录旧 thread 用于 freeze。
+- 断言 `InteractiveRunnerManager` 在相同模型但不同 config ID 时会重建 Codex runner，并返回新的 selection identity。
+- 运行 Codex thread selection、context compaction、session lifecycle 和 Codex runtime 相关测试。
+
+### 关联资料
+- `src/interactive/codexThreadSelection.ts`
+- `src/interactive/manager.ts`
+- `src/extension.ts`
+- `src/contextCompactionRunner.ts`
+- `src/test/codexThreadSelection.test.ts`
+
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复
 
 - 状态：已规避，需随 Codex app-server 事件协议复核

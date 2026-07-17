@@ -244,7 +244,10 @@ export async function handleSendPromptMessage(
   const loopResumeTask = shouldRunLoop
     ? deps.resolveLoopResumeTaskFromPrompt(trimmed, promptTargetTabId)
     : null;
-  const loopResumeRequested = shouldRunLoop && deps.isLoopResumePrompt(trimmed);
+  const loopResumeRequested = shouldRunLoop && (
+    Boolean(loopResumeTask)
+    || deps.isLoopResumePrompt(trimmed)
+  );
   const previousSubtaskRunEndedAt = loopSubtaskContext
     ? (deps.getLatestLoopRoundRunRecord(
         loopSubtaskContext.taskId,

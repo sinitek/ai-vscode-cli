@@ -3,11 +3,13 @@ import { buildProcessLabel, parseOpenCodeSessionId } from "./cli/commandRunner";
 import { CliName, CLI_LIST, isOpenCodeCli } from "./cli/types";
 import { buildErrorDetail } from "./errorDisplay";
 import {
+  getCodexMappedSelection,
   getMappedThreadId,
   readSessionMeta,
   upsertMapping,
   writeSessionMeta,
 } from "./interactive/metaStore";
+import type { CodexRunSelection } from "./interactive/codexThreadSelection";
 import {
   findSupersedingSessionId,
   isLocalSessionId,
@@ -183,6 +185,7 @@ export function createSessionLifecycleController(deps: {
   repairSupersededLocalSessions: (options?: { notifyPanel?: boolean }) => void;
   persistActiveMessages: () => void;
   replaceConversationTabSessionReferences: (cli: CliName, fromSessionId: string, toSessionId: string) => void;
+  resolveCodexInteractiveSelection: (sessionId: string) => CodexRunSelection | null;
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
   restoreProcessTitle: () => void;
   saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
@@ -190,7 +193,12 @@ export function createSessionLifecycleController(deps: {
   sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   syncPendingDraftMessagesForSessionAdoption: (cli: CliName, tabId: string | null) => void;
   updateProcessTitle: (cli: CliName, sessionId: string) => void;
-  upsertInteractiveMapping: (cli: CliName, sessionId: string, mappedId: string, options?: { freezePrevious?: string }) => void;
+  upsertInteractiveMapping: (
+    cli: CliName,
+    sessionId: string,
+    mappedId: string,
+    options?: { freezePrevious?: string; codexSelection?: CodexRunSelection | null }
+  ) => void;
 } {
   const messagePathOptions = () => ({
     workspaceKeyFallback: deps.workspaceKeyFallback,
@@ -800,6 +808,10 @@ export function createSessionLifecycleController(deps: {
       saveMessages(primary.cli, primary.sessionId, primary.messageTarget);
     },
     replaceConversationTabSessionReferences: replaceTabSessionReferences,
+    resolveCodexInteractiveSelection: (sessionId) => {
+      const meta = deps.readSessionMetaStore();
+      return getCodexMappedSelection(meta, sessionId);
+    },
     resolveInteractiveMappedId: (cli, sessionId) => {
       const meta = deps.readSessionMetaStore();
       const mapped = getMappedThreadId(meta, cli, sessionId);
@@ -928,6 +940,7 @@ export function createSessionLifecycleController(deps: {
       const next = upsertMapping(meta, cli, sessionId, mappedId, {
         freezePrevious: options.freezePrevious,
         maxFrozen: deps.frozenThreadLimit,
+        codexSelection: options.codexSelection,
       });
       deps.writeSessionMetaStore(next);
     },
