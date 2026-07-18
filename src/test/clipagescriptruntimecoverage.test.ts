@@ -482,11 +482,13 @@ function createRuntimeHarness() {
         formatDateTime,
         formatDateTimeWithMs,
         getActiveConversationRuntimeState,
+        getAssistantMessageContentForDisplay,
         getRunPromptHistory,
         handleFileSelection,
         openHistorySessionMessages,
         openQueueOverlay,
         openRunStreamOverlay,
+        parseTaskListFromText,
         queuePromptForLater,
         removePromptContextTag,
         renderMessages,
@@ -494,6 +496,8 @@ function createRuntimeHarness() {
         resetConversationRuntimeState,
         sendPrompt,
         setMessagesForTab,
+        shouldHideParsedTaskListMessage,
+        stripParsedTaskListContentFromText,
         forceRenderMarkdownFailure: () => {
           renderMarkdown = () => { throw new Error("markdown failed"); };
           renderMessages();
@@ -621,18 +625,89 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("sessionList").children.length, 1);
   assert.equal(document.getElementById("promptHistoryList").children.length, 1);
   assert.equal(document.getElementById("promptContextTags").style.display, "flex");
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist:\n\n[in_progress] Map code\n[pending] Add tests\n[completed] Build"),
+    [
+      { done: false, text: "Map code" },
+      { done: false, text: "Add tests" },
+      { done: true, text: "Build" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist update:\n- [completed] Locate parser\n- [in_progress] Add coverage\n- [pending] Build"),
+    [
+      { done: true, text: "Locate parser" },
+      { done: false, text: "Add coverage" },
+      { done: false, text: "Build" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist: [completed] Locate parser；[in_progress] Add coverage；[pending] Build。"),
+    [
+      { done: true, text: "Locate parser" },
+      { done: false, text: "Add coverage" },
+      { done: false, text: "Build" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist 更新：\n- [已完成] 定位日志格式\n- [进行中] 补解析\n- [待办] 跑验证"),
+    [
+      { done: true, text: "定位日志格式" },
+      { done: false, text: "补解析" },
+      { done: false, text: "跑验证" },
+    ]
+  );
+  assert.equal(
+    api.shouldHideParsedTaskListMessage({
+      role: "assistant",
+      content: "Tasklist:\n\n[in_progress] Map code\n[pending] Add tests",
+    }),
+    true
+  );
+  assert.equal(
+    api.shouldHideParsedTaskListMessage({
+      role: "assistant",
+      content: "Tasklist update:\n- [completed] Locate parser\n- [pending] Build",
+    }),
+    true
+  );
+  assert.equal(
+    api.shouldHideParsedTaskListMessage({
+      role: "assistant",
+      content: "Tasklist:\n[pending] Add tests\n\nFinal response",
+    }),
+    false
+  );
+  assert.equal(
+    api.shouldHideParsedTaskListMessage({
+      role: "assistant",
+      content: "验证通过。Tasklist: [completed] Locate parser；[pending] Build。",
+    }),
+    false
+  );
+  assert.equal(
+    api.stripParsedTaskListContentFromText("验证通过。Tasklist: [completed] Locate parser；[pending] Build。"),
+    "验证通过。"
+  );
+  assert.equal(
+    api.getAssistantMessageContentForDisplay({
+      role: "assistant",
+      content: "验证通过。Tasklist: [completed] Locate parser；[pending] Build。",
+    }),
+    "验证通过。"
+  );
 
   window.dispatchMessage({
     type: "setMessages",
     tabId: "tab-1",
     messages: [
-      { id: "m-2", role: "assistant", sequence: 2, content: "Tasklist:\n- [x] map code\n- [ ] add tests" },
+      { id: "m-2", role: "assistant", sequence: 2, content: "Tasklist update:\n- [in_progress] map code\n- [pending] add tests" },
       { id: "m-1", role: "user", sequence: 1, content: "hello", createdAt: 1_700_000_000_000, contextTags: ["src/index.ts"] },
       { id: "m-3", role: "system", sequence: 3, content: "Task completed" },
     ],
   });
   assert.equal(api.state.messages[0].id, "m-1");
-  assert.equal(document.getElementById("messages").children.length, 2);
+  assert.equal(document.getElementById("messages").children.length, 1);
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
   assert.equal(document.getElementById("taskListCount").textContent, "");
 

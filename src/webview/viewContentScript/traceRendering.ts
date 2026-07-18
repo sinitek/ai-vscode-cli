@@ -308,17 +308,20 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function getAssistantMessageContentForDisplay(message) {
-        const content = String(message && message.content ? message.content : "");
+        let content = String(message && message.content ? message.content : "");
         if (!message || message.role !== "assistant") {
           return content;
         }
         const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
-        if (!content.includes(marker)) {
-          return content;
+        if (content.includes(marker)) {
+          const markerStartsResponse = content.trimStart().startsWith(marker);
+          content = content.split(marker).join("");
+          content = markerStartsResponse ? content.trimStart() : content;
         }
-        const markerStartsResponse = content.trimStart().startsWith(marker);
-        const filteredContent = content.split(marker).join("");
-        return markerStartsResponse ? filteredContent.trimStart() : filteredContent;
+        if (typeof stripParsedTaskListContentFromText === "function") {
+          return stripParsedTaskListContentFromText(content);
+        }
+        return content;
       }
 
       function isToolResultLikeMessage(message) {

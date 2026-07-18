@@ -104,6 +104,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             if (shouldHideSystemRunStatusMessage(message)) {
               return false;
             }
+            if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
+              return false;
+            }
             if (!state.onlyShowFinalResults) {
               return true;
             }
@@ -287,6 +290,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       function updateRenderedAssistantMessage(message, index) {
         if (!message || message.role !== "assistant" || !message.id) {
           return false;
+        }
+        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
+          renderMessages();
+          return true;
         }
         const wrapper = findRenderedMessageElement(message.id);
         if (!wrapper) {

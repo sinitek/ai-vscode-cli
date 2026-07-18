@@ -16,6 +16,33 @@ export type CodexTodoListItem = {
   done: boolean;
 };
 
+function normalizeTodoStatus(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function readTodoDoneFromStatus(value: unknown): boolean | null {
+  const status = normalizeTodoStatus(value);
+  if (!status) {
+    return null;
+  }
+  if (["x", "done", "completed", "complete", "finished", "success", "succeeded"].includes(status)) {
+    return true;
+  }
+  if (["完成", "已完成"].includes(status)) {
+    return true;
+  }
+  if (["pending", "in_progress", "todo", "to_do", "not_started", "open", "running"].includes(status)) {
+    return false;
+  }
+  if (["待办", "进行中", "处理中", "未开始"].includes(status)) {
+    return false;
+  }
+  return null;
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -92,11 +119,20 @@ export function normalizeTodoListItems(items: unknown[]): CodexTodoListItem[] {
         ? record.text.trim()
         : typeof record.step === "string"
           ? record.step.trim()
-          : "";
+          : typeof record.content === "string"
+            ? record.content.trim()
+            : "";
       if (!text) {
         return null;
       }
-      const done = record.completed === true || String(record.status || "").trim() === "completed";
+      const doneFromStatus = readTodoDoneFromStatus(record.status);
+      const done = typeof record.done === "boolean"
+        ? record.done
+        : typeof record.completed === "boolean"
+          ? record.completed
+          : doneFromStatus === null
+            ? false
+            : doneFromStatus;
       return { text, done };
     })
     .filter((item): item is CodexTodoListItem => Boolean(item));

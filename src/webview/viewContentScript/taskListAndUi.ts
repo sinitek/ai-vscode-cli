@@ -124,14 +124,74 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return lastItems;
       }
 
-      function parseTaskListFromText(text) {
+      function normalizeTaskListStatus(value) {
+        return String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[\\s-]+/g, "_");
+      }
+
+      function readTaskListDoneFromStatus(value) {
+        const status = normalizeTaskListStatus(value);
+        if (!status) {
+          return null;
+        }
+        if (["x", "done", "completed", "complete", "finished", "success", "succeeded"].includes(status)) {
+          return true;
+        }
+        if (["完成", "已完成"].includes(status)) {
+          return true;
+        }
+        if (["pending", "in_progress", "todo", "to_do", "not_started", "open", "running"].includes(status)) {
+          return false;
+        }
+        if (["待办", "进行中", "处理中", "未开始"].includes(status)) {
+          return false;
+        }
+        return null;
+      }
+
+      function parseTaskListItemsFromFragment(fragment) {
+        const source = String(fragment || "");
+        const markerRegex = /(?:^|[\\s;；。])(?:[-*]|\\d+[.)])?\\s*\\[([^\\]\\r\\n]*)\\]\\s*/gi;
+        const markers = [];
+        let match;
+        while ((match = markerRegex.exec(source)) !== null) {
+          const rawStatus = match[1] || "";
+          const done = rawStatus.trim() === "" ? false : readTaskListDoneFromStatus(rawStatus);
+          if (done === null) {
+            continue;
+          }
+          markers.push({
+            markerStart: match.index,
+            textStart: markerRegex.lastIndex,
+            done,
+          });
+        }
+        if (!markers.length) {
+          return [];
+        }
+        return markers
+          .map((marker, index) => {
+            const nextMarker = markers[index + 1];
+            const textEnd = nextMarker ? nextMarker.markerStart : source.length;
+            const text = source
+              .slice(marker.textStart, textEnd)
+              .replace(/^[\\s;；。,-]+/, "")
+              .replace(/[\\s;；。,.，。]+$/, "")
+              .trim();
+            return text ? { done: marker.done, text } : null;
+          })
+          .filter(Boolean);
+      }
+
+      function collectTaskListSectionsFromText(text) {
         if (!text) {
           return [];
         }
         const lines = String(text).split(/\\r?\\n/);
-        const headerRegex = /^\\s*(tasklist|todolist)\\s*:\\s*(.*)$/i;
-        const itemRegex = /^\\s*(?:[-*]|\\d+\\.)?\\s*\\[(x|\\s)\\]\\s+(.*)$/i;
-        let items = [];
+        const headerRegex = /(?:^|[\\s;；。])(?:tasklist|todolist)(?:\\s*(?:update|更新))?\\s*[:：]\\s*(.*)$/i;
+        const sections = [];
         for (let i = 0; i < lines.length; i += 1) {
           const line = lines[i];
           const headerMatch = line.match(headerRegex);
@@ -139,38 +199,81 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             continue;
           }
           const sectionItems = [];
-          const inlinePart = (headerMatch[2] || "").trim();
+          let endLine = i;
+          const headerStart = headerMatch.index || 0;
+          const keywordMatch = String(headerMatch[0] || "").match(/(?:tasklist|todolist)/i);
+          const stripStartColumn = keywordMatch ? headerStart + keywordMatch.index : headerStart;
+          const hideStartLine = !line.slice(0, stripStartColumn).trim();
+          const inlinePart = (headerMatch[1] || "").trim();
           if (inlinePart) {
-            const inlineMatch = inlinePart.match(itemRegex);
-            if (inlineMatch) {
-              sectionItems.push({
-                done: inlineMatch[1].toLowerCase() === "x",
-                text: inlineMatch[2].trim(),
-              });
-            }
+            sectionItems.push(...parseTaskListItemsFromFragment(inlinePart));
           }
           for (let j = i + 1; j < lines.length; j += 1) {
             const nextLine = lines[j];
             if (!nextLine.trim()) {
-              break;
-            }
-            const itemMatch = nextLine.match(itemRegex);
-            if (!itemMatch) {
+              endLine = j;
               if (sectionItems.length) {
                 break;
               }
               continue;
             }
-            sectionItems.push({
-              done: itemMatch[1].toLowerCase() === "x",
-              text: itemMatch[2].trim(),
-            });
+            const items = parseTaskListItemsFromFragment(nextLine);
+            if (!items.length) {
+              break;
+            }
+            sectionItems.push(...items);
+            endLine = j;
           }
           if (sectionItems.length) {
-            items = sectionItems;
+            sections.push({ startLine: i, endLine, hideStartLine, stripStartColumn, items: sectionItems });
+            i = endLine;
           }
         }
-        return items;
+        return sections;
+      }
+
+      function parseTaskListFromText(text) {
+        const sections = collectTaskListSectionsFromText(text);
+        if (!sections.length) {
+          return [];
+        }
+        return sections[sections.length - 1].items;
+      }
+
+      function stripParsedTaskListContentFromText(text) {
+        const content = String(text || "");
+        const sections = collectTaskListSectionsFromText(content);
+        if (!sections.length) {
+          return content;
+        }
+        const lines = content.split(/\\r?\\n/);
+        sections.forEach((section) => {
+          if (section.hideStartLine) {
+            for (let lineIndex = section.startLine; lineIndex <= section.endLine; lineIndex += 1) {
+              lines[lineIndex] = "";
+            }
+            return;
+          }
+          lines[section.startLine] = String(lines[section.startLine] || "")
+            .slice(0, section.stripStartColumn)
+            .replace(/[ \\t]+$/, "");
+          for (let lineIndex = section.startLine + 1; lineIndex <= section.endLine; lineIndex += 1) {
+            lines[lineIndex] = "";
+          }
+        });
+        return lines.join("\\n").replace(/(?:[ \\t]*\\n){3,}/g, "\\n\\n").trim();
+      }
+
+      function shouldHideParsedTaskListMessage(message) {
+        if (!message || message.role !== "assistant") {
+          return false;
+        }
+        const content = typeof message.content === "string" ? message.content : "";
+        const sections = collectTaskListSectionsFromText(content);
+        if (!sections.length) {
+          return false;
+        }
+        return stripParsedTaskListContentFromText(content).trim() === "";
       }
 
       function normalizeTaskListItems(items) {
@@ -188,16 +291,21 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
                 ? record.text
                 : typeof record.content === "string"
                   ? record.content
-                  : "";
+                  : typeof record.step === "string"
+                    ? record.step
+                    : "";
             if (!text.trim()) {
               return null;
             }
+            const doneFromStatus = readTaskListDoneFromStatus(record.status);
             const done =
               typeof record.done === "boolean"
                 ? record.done
                 : typeof record.completed === "boolean"
                   ? record.completed
-                  : record.status === "completed";
+                  : doneFromStatus === null
+                    ? false
+                    : doneFromStatus;
             return { text: text.trim(), done: Boolean(done) };
           })
           .filter(Boolean);
