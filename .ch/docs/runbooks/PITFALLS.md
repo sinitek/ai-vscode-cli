@@ -1113,6 +1113,66 @@
 - `src/test/codexRunnerRuntime.test.ts`
 - `.ch/docs/exec-plans/completed/2026-07-14-codex-402-terminal-retry.md`
 
+## Loop 长时间自动睡眠不能只保存内存定时器或普通更新时间
+
+- 状态：已规避
+- 首次发现：2026-07-17
+- 适用范围：Loop 可解析任务决策自动睡眠、Extension Host 重启、任务历史清理、Node 长延迟定时器
+
+### 现象
+- 主任务返回“稍后再看”后当前进程能定时恢复，但重载 VS Code 或 Extension Host 后永远不再唤醒。
+- 等待时间超过 Node 单个 `setTimeout` 安全范围时，定时器被截断或立即触发。
+- 睡眠时间超过普通任务历史保留期时，任务在唤醒前被 Store 规范化或清理链路删除。
+- 用户提前继续或中止后，旧定时回调仍可能再次启动同一任务。
+
+### 触发条件
+- 只把 timer handle 保存在进程内，没有把绝对唤醒时间写入任务记录。
+- 直接把很长的相对毫秒数传给单个 `setTimeout`。
+- 睡眠任务仍只按 `updatedAt` 参与普通历史淘汰。
+- 定时回调不重新读取任务状态，取消动作只清 UI、不清调度状态。
+
+### 根因
+- 相对等待时长不是重启安全的事实；只有绝对墙钟时间才能在新进程中恢复。
+- Node 定时器有单次延迟上限，进程退出也会丢失全部 timer handle。
+- 普通历史记录和仍有未来执行承诺的睡眠任务生命周期不同，不能共用同一淘汰判定。
+
+### 长期规避
+- 模型协议返回 `wakeAfterSeconds`，宿主立即计算并持久化绝对 `autoWakeAt`；任务状态使用独立 `sleeping`，同时记录开始时间和原因。
+- 调度器只把内存定时器视为缓存：长延迟按上限分段，每次触发重新读取任务状态和 `autoWakeAt`；Extension Host 激活时重新枚举并恢复。
+- 带合法 `autoWakeAt` 的睡眠任务绕过普通历史保留淘汰，直到自动唤醒、人工继续或中止改变状态。
+- 人工继续、完成和中止必须取消 timer 并清除睡眠字段；陈旧回调仍要以持久化状态复核作为最后门禁。
+- 不承诺 VS Code 完全退出时由系统后台启动任务；产品文案和文档必须明确“下次扩展激活时补唤醒”。
+
+### 验证方式
+- 使用假时钟覆盖协议上下界、长延迟分段、到期启动、目标忙重试、取消和陈旧状态丢弃。
+- 写入 `updatedAt` 已过普通保留期但 `status=sleeping + autoWakeAt` 合法的任务，确认读写后仍存在。
+- 执行 `npm run build` 和 `node --test dist/test/loopAutoWake.test.js dist/test/loopTaskStoreCoreCoverage.test.js dist/test/loopDebate.test.js dist/test/loopDebatePanel.test.js`。
+
+### 关联资料
+- `src/loopAutoWake.ts`
+- `src/loopTaskStore.ts`
+- `src/extension.ts`
+- `src/webview/loopDebatePanel.ts`
+- `.ch/docs/exec-plans/completed/2026-07-17-loop-auto-sleep-wake.md`
+
+## npm 启动的命令解析测试必须隔离 npm 前缀变量
+
+- 状态：已规避
+- 首次发现：2026-07-17
+- 适用范围：`commandResolution.test.ts`、用户级 npm/pnpm bin 优先级测试
+
+### 现象
+- 直接运行 `node --test` 通过，但 `npm test` 中“优先 npm user bin”和“回退 PATH”的测试解析到开发机器真实的 npm global bin。
+
+### 根因
+- npm 会向子进程注入 `npm_config_prefix`；命令解析器按设计优先它而非 `HOME/.npm-global/bin`。测试只覆写 `HOME` 和 `PATH`，没有清空 `npm_config_prefix`、`NPM_CONFIG_PREFIX`、`PNPM_HOME`，所以夹具不再代表预期环境。
+
+### 长期规避
+- 所有模拟用户级命令路径的测试都必须快照、清空并在 `finally` 恢复 `HOME`、`PATH`、`npm_config_prefix`、`NPM_CONFIG_PREFIX`、`PNPM_HOME`。不要为了测试而降低生产解析器对显式 npm/pnpm 前缀的优先级。
+
+### 验证方式
+- 执行 `npm run build && node --test dist/test/commandResolution.test.js`，再执行 `npm test`。
+
 ## 建议模板
 
 ```md

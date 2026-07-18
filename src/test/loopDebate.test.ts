@@ -100,6 +100,18 @@ test("resolves loop task run controls from persisted running status", () => {
   assert.equal(controlState.canContinue, false);
 });
 
+test("allows a sleeping Loop task to wake early or cancel its scheduled wake-up", () => {
+  assert.deepEqual(
+    resolveLoopTaskRunControlState({ id: "task-sleeping", status: "sleeping" }, new Set()),
+    {
+      isRunning: false,
+      canSupplement: true,
+      canContinue: true,
+      canStop: true,
+    },
+  );
+});
+
 test("identifies a persisted running Loop task without runtime ownership as orphaned", () => {
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);

@@ -248,6 +248,45 @@ test("writes normalized data and contains write failures at the persistence boun
   });
 });
 
+test("persists automatic-sleep state for restart-safe Loop wake-up", () => {
+  resetLoopStorage();
+  const autoSleepStartedAt = Date.UTC(2026, 6, 17, 8, 0, 0);
+  const task = createTask({
+    status: "sleeping",
+    autoSleepStartedAt,
+    autoWakeAt: autoSleepStartedAt + 60_000,
+    autoSleepReason: "Wait for the deployment result.",
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+  });
+
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const persisted = readPersistedTask(task.taskStoreFile, task.id);
+
+  assert.equal(persisted.status, "sleeping");
+  assert.equal(persisted.autoSleepStartedAt, autoSleepStartedAt);
+  assert.equal(persisted.autoWakeAt, autoSleepStartedAt + 60_000);
+  assert.equal(persisted.autoSleepReason, "Wait for the deployment result.");
+  assert.equal(persisted.activeSubtaskId, null);
+  assert.deepEqual(persisted.activeSubtaskIds, []);
+});
+
+test("retains a valid sleeping task beyond ordinary history retention", () => {
+  resetLoopStorage();
+  const task = createTask({
+    status: "sleeping",
+    createdAt: 1,
+    updatedAt: 1,
+    autoSleepStartedAt: 1,
+    autoWakeAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+    autoSleepReason: "Wait for a long-running external process.",
+  });
+
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).status, "sleeping");
+});
+
 test("updates task state, protects completed tasks, and appends rounds idempotently", () => {
   const task = createTask({ status: "completed" });
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });

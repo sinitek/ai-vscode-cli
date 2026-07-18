@@ -44,27 +44,6 @@ Narrative:
 
 日期：2026-06-27 状态：in-progress 负责人：Codex
 
-## mem-b7b003c3a1 - 官方 skills 版本刷新与最新判断修复
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~45 tokens
-- Source: `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md`
-- Source kind: `active_plan`
-- Content hash: `b7b003c3a1401e21dcce016ca0e8e0cbb83ad472996fab65ae8f7a863723118c`
-- Concepts: `open-loop`, `problem-solution`, `procedure`
-- Files: `.ch/docs/exec-plans/`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/references/`, `.ch/docs/references/authoritative-skills.md`, `scripts/`, `src/config/`, `src/webview/`
-
-Subtitle: Active execution plan
-
-Facts:
-- 日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
-- Modified at: 2026-07-08T07:36:23+00:00
-
-Narrative:
-
-日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
-
 ## mem-4b483bd801 - MCP 市场全量检测与权威刷新
 
 - Type: `plan`
@@ -148,6 +127,48 @@ Facts:
 Narrative:
 
 日期：2026-06-29 状态：in-progress 负责人：Codex
+
+## mem-b7b003c3a1 - 官方 skills 版本刷新与最新判断修复
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~45 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md`
+- Source kind: `active_plan`
+- Content hash: `b7b003c3a1401e21dcce016ca0e8e0cbb83ad472996fab65ae8f7a863723118c`
+- Concepts: `open-loop`, `problem-solution`, `procedure`
+- Files: `.ch/docs/exec-plans/`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/references/`, `.ch/docs/references/authoritative-skills.md`, `scripts/`, `src/config/`, `src/webview/`
+
+Subtitle: Active execution plan
+
+Facts:
+- 日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
+- Modified at: 2026-07-14T03:33:01+00:00
+
+Narrative:
+
+日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
+
+## mem-d336cba178 - Harness 单元自测与 Chromium Playwright 能力吸收
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~120 tokens
+- Source: `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md`
+- Source kind: `active_plan`
+- Content hash: `d336cba178809413a4c3417eb4fb6103f92a92ddc99087e82ba42ccbf92a57d0`
+- Concepts: `open-loop`
+- Files: `.ch/docs/SECURITY.md`, `.ch/docs/TESTING.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-playwright-portability-audit.md`, `file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-scaffold-install-audit.md`, `file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-source-playwright-audit.md`, `file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-unit-self-test-audit.md`, `scripts/run_smoke.mjs`, `src/test/chromiumPlaywrightSmoke.test.ts`, `src/test/longTermMemory.test.ts`, `src/workspaceScaffold.ts`
+
+Subtitle: Active execution plan
+
+Facts:
+- 日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
+- Modified at: 2026-07-15T01:12:08+00:00
+
+Narrative:
+
+日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
 
 ## mem-431f2548e1 - 热区记忆面
 

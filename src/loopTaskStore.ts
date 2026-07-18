@@ -35,7 +35,7 @@ const LOOP_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const loopTaskStoreFileCache = new Map<string, string>();
 
 export type LoopTaskRole = "main" | "subtask";
-export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
+export type LoopTaskStatus = "running" | "sleeping" | "completed" | "needs-review" | "error" | "stopped";
 export type LoopRunStatus = "end" | "error" | "stopped";
 export type LoopTaskKind = "development" | "non_development";
 
@@ -82,7 +82,7 @@ export type LoopSubtaskDecision = {
 };
 
 export type LoopMainDecision = {
-  status: "completed" | "continue" | "blocked";
+  status: "completed" | "continue" | "sleep" | "blocked";
   answerConclusion?: string;
   finalSummary?: string;
   roundSummaries?: LoopRoundSummary[];
@@ -92,6 +92,8 @@ export type LoopMainDecision = {
   subtasks?: LoopSubtaskDecision[];
   parallelReason?: string;
   estimatedRemainingRounds?: number;
+  wakeAfterSeconds?: number;
+  sleepReason?: string;
 };
 
 export type LoopRoundRecord = {
@@ -131,6 +133,9 @@ export type LoopTaskRecord = {
   mainAiFailureLimitReached?: boolean;
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
+  autoSleepStartedAt?: number;
+  autoWakeAt?: number;
+  autoSleepReason?: string;
   supplementalRequirements?: string[];
   debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
   completionRoundSummaries: LoopRoundSummary[];
@@ -788,6 +793,15 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     mainAiLastFailureMessage: typeof (raw as { mainAiLastFailureMessage?: unknown }).mainAiLastFailureMessage === "string"
       ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
       : undefined,
+    autoSleepStartedAt: normalizeLoopStoredTimestamp(
+      (raw as { autoSleepStartedAt?: unknown }).autoSleepStartedAt
+    ),
+    autoWakeAt: normalizeLoopStoredTimestamp(
+      (raw as { autoWakeAt?: unknown }).autoWakeAt
+    ),
+    autoSleepReason: typeof (raw as { autoSleepReason?: unknown }).autoSleepReason === "string"
+      ? (raw as { autoSleepReason: string }).autoSleepReason.trim() || undefined
+      : undefined,
     supplementalRequirements,
     debateRounds,
     completionRoundSummaries,
@@ -890,7 +904,18 @@ function normalizeLoopRoundRecord(record: unknown): LoopRoundRecord | null {
 }
 
 function isLoopTaskStatus(value: unknown): value is LoopTaskStatus {
-  return value === "running" || value === "completed" || value === "needs-review" || value === "error" || value === "stopped";
+  return value === "running"
+    || value === "sleeping"
+    || value === "completed"
+    || value === "needs-review"
+    || value === "error"
+    || value === "stopped";
+}
+
+function normalizeLoopStoredTimestamp(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function isLoopTaskRole(value: unknown): value is LoopTaskRole {
@@ -906,9 +931,19 @@ function ensureLoopTaskStore(
     ? store.tasks
       .map((record) => normalizeLoopTaskRecord(record, options.sourceFile))
       .filter((record): record is LoopTaskRecord => Boolean(record))
-      .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
+      .filter((record) => (
+        isPersistedLoopAutoWakePending(record)
+        || isTimestampWithinHistoryRetention(record.updatedAt, now)
+      ))
     : [];
   return { tasks };
+}
+
+function isPersistedLoopAutoWakePending(task: LoopTaskRecord): boolean {
+  return task.status === "sleeping"
+    && typeof task.autoWakeAt === "number"
+    && Number.isFinite(task.autoWakeAt)
+    && task.autoWakeAt > 0;
 }
 
 export function readLoopTaskStore(filePath: string): LoopTaskStore {

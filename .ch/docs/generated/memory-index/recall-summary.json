@@ -1,26 +1,30 @@
 {
   "generator": "memory-recall",
   "version": "0.3.0",
-  "generated_at": "2026-07-14T01:52:16Z",
+  "generated_at": "2026-07-17T03:39:04Z",
   "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
-  "focus": "Loop naming storage migration compatibility",
+  "focus": "Loop mode automatic sleep scheduled wakeup countdown JSON resume execution",
   "focus_terms": [
     "loop",
-    "naming",
-    "storage",
-    "migration",
-    "compatibility"
+    "mode",
+    "automatic",
+    "sleep",
+    "scheduled",
+    "wakeup",
+    "countdown",
+    "json"
   ],
   "anchor_id": "",
   "selection_mode": "focus-filtered",
-  "available_observation_count": 9,
-  "selected_observation_count": 5,
+  "available_observation_count": 10,
+  "selected_observation_count": 6,
   "selected_observation_ids": [
     "mem-bbc18d3434",
     "mem-fe60588b95",
     "mem-e2fabd8a2e",
     "mem-5233a00937",
-    "mem-4b483bd801"
+    "mem-4b483bd801",
+    "mem-d336cba178"
   ],
   "generated_docs": [
     {
@@ -29,7 +33,7 @@
       "kind": "generated",
       "reason": "ID 化 observation 索引，优先扫描标题、类型、来源和读取成本。",
       "score": 100,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "渐进披露第一层：只看有什么和读取成本。"
     },
@@ -39,7 +43,7 @@
       "kind": "generated",
       "reason": "解释 lexical recall 的 matched terms、打分和多样性重排。",
       "score": 99,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "评测和审阅优先看这里，不替代原始事实来源。"
     },
@@ -49,7 +53,7 @@
       "kind": "generated",
       "reason": "按 ID 展开 observation facts / narrative / source。",
       "score": 96,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "渐进披露第二层：只展开已经筛选过的 ID。"
     },
@@ -59,7 +63,7 @@
       "kind": "generated",
       "reason": "当前存在开放事项、活跃风险或 active plans，需要先看 open loops。",
       "score": 95,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "集中看 pending items、active risks 和 active plan 计数。"
     },
@@ -69,7 +73,7 @@
       "kind": "generated",
       "reason": "当前 observation 已经可关联到 claim 级证据，可直接检查状态和来源。",
       "score": 93,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "claim-aware recall 的证据补充层，不替代原始事实来源。"
     },
@@ -79,7 +83,7 @@
       "kind": "generated",
       "reason": "围绕 ID 或时间顺序恢复前后文。",
       "score": 92,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "按 modified/source 顺序排列 observation entries。"
     },
@@ -89,7 +93,7 @@
       "kind": "generated",
       "reason": "当前热区记忆存在 stale 项，需要先确认哪些内容仍可信。",
       "score": 90,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "检查哪些 memory docs 已过期或需要再核验。"
     },
@@ -99,7 +103,7 @@
       "kind": "generated",
       "reason": "按 topic 聚合可复用知识，便于后续 reference pack。",
       "score": 86,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "专题 corpus 起点，不替代原始事实来源。"
     },
@@ -109,7 +113,7 @@
       "kind": "generated",
       "reason": "热区记忆、开放事项和当前计划的低噪音总入口。",
       "score": 84,
-      "modified_at": "2026-07-14T01:52:16Z",
+      "modified_at": "2026-07-17T03:39:04Z",
       "matched_terms": [],
       "summary": "默认先读的 generated 记忆索引入口。"
     }
@@ -362,6 +366,59 @@
       },
       "selection_rank": 5,
       "selected_claim_ids": []
+    },
+    {
+      "id": "mem-d336cba178",
+      "type": "plan",
+      "title": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "reason": "命中 focus：loop。",
+      "score": 93,
+      "read_tokens": 120,
+      "source_path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
+      "source_kind": "active_plan",
+      "modified_at": "2026-07-15T01:12:08+00:00",
+      "matched_terms": [
+        "loop"
+      ],
+      "concepts": [
+        "open-loop"
+      ],
+      "facts": [
+        "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
+        "Modified at: 2026-07-15T01:12:08+00:00"
+      ],
+      "narrative": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
+      "files": [
+        ".ch/docs/SECURITY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-playwright-portability-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-scaffold-install-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-source-playwright-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-unit-self-test-audit.md",
+        "scripts/run_smoke.mjs",
+        "src/test/chromiumPlaywrightSmoke.test.ts",
+        "src/test/longTermMemory.test.ts",
+        "src/workspaceScaffold.ts"
+      ],
+      "topic": "plan",
+      "preliminary_score": 91,
+      "final_score": 93,
+      "score_breakdown": {
+        "type_priority": 68,
+        "focus_terms": 12,
+        "open_loop_bonus": 0,
+        "read_cost_adjustment": 2,
+        "evidence_bonus": 6,
+        "concept_bonus": 1,
+        "topic_bonus": 2,
+        "source_diversity_bonus": 2,
+        "claim_bonus": 0,
+        "same_source_penalty": 0
+      },
+      "selection_rank": 6,
+      "selected_claim_ids": []
     }
   ],
   "expanded_observation_ids": [
@@ -374,7 +431,8 @@
     ".ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md",
     ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md",
     ".ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md",
-    ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md"
+    ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md",
+    ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md"
   ],
   "selected_source_kinds": [
     "active_plan"
@@ -385,7 +443,7 @@
   "score": {
     "max": 96,
     "min": 93,
-    "average": 94.4,
+    "average": 94.17,
     "by_observation": [
       {
         "id": "mem-bbc18d3434",
@@ -464,6 +522,24 @@
         "score": 93,
         "preliminary_score": 91,
         "rank": 5,
+        "score_breakdown": {
+          "type_priority": 68,
+          "focus_terms": 12,
+          "open_loop_bonus": 0,
+          "read_cost_adjustment": 2,
+          "evidence_bonus": 6,
+          "concept_bonus": 1,
+          "topic_bonus": 2,
+          "source_diversity_bonus": 2,
+          "claim_bonus": 0,
+          "same_source_penalty": 0
+        }
+      },
+      {
+        "id": "mem-d336cba178",
+        "score": 93,
+        "preliminary_score": 91,
+        "rank": 6,
         "score_breakdown": {
           "type_priority": 68,
           "focus_terms": 12,
@@ -482,7 +558,7 @@
   "score_summary": {
     "max": 96,
     "min": 93,
-    "average": 94.4,
+    "average": 94.17,
     "by_observation": [
       {
         "id": "mem-bbc18d3434",
@@ -573,28 +649,47 @@
           "claim_bonus": 0,
           "same_source_penalty": 0
         }
+      },
+      {
+        "id": "mem-d336cba178",
+        "score": 93,
+        "preliminary_score": 91,
+        "rank": 6,
+        "score_breakdown": {
+          "type_priority": 68,
+          "focus_terms": 12,
+          "open_loop_bonus": 0,
+          "read_cost_adjustment": 2,
+          "evidence_bonus": 6,
+          "concept_bonus": 1,
+          "topic_bonus": 2,
+          "source_diversity_bonus": 2,
+          "claim_bonus": 0,
+          "same_source_penalty": 0
+        }
       }
     ]
   },
   "source_diversity": {
-    "unique_source_count": 5,
-    "selected_observation_count": 5,
+    "unique_source_count": 6,
+    "selected_observation_count": 6,
     "source_path_counts": {
       ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md": 1,
       ".ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md": 1,
       ".ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md": 1,
       ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md": 1,
-      ".ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md": 1
+      ".ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md": 1,
+      ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md": 1
     },
     "source_kind_counts": {
-      "active_plan": 5
+      "active_plan": 6
     },
     "max_same_source_observations": 1
   },
   "estimated_read_tokens": {
-    "selected_total": 353,
+    "selected_total": 473,
     "expanded_total": 127,
-    "available_total": 530
+    "available_total": 650
   },
   "selected_claim_ids": [],
   "selected_claims": [],
@@ -603,8 +698,8 @@
     {
       "kind": "active_plans",
       "severity": "medium",
-      "count": 7,
-      "message": "当前有 7 份 active plans。"
+      "count": 8,
+      "message": "当前有 8 份 active plans。"
     },
     {
       "kind": "stale_memory_docs",
@@ -631,15 +726,15 @@
     }
   ],
   "watch_item_messages": [
-    "当前有 7 份 active plans。",
+    "当前有 8 份 active plans。",
     "存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。",
     "这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。"
   ],
   "retrieval_debug": {
     "file": ".ch/docs/generated/memory-index/retrieval-debug.md",
-    "candidate_count": 9,
-    "ranked_candidate_count": 5,
-    "focus_match_count": 5,
+    "candidate_count": 10,
+    "ranked_candidate_count": 6,
+    "focus_match_count": 6,
     "focus_excluded_count": 4,
     "heuristics": [
       "type_priority",
@@ -681,6 +776,18 @@
   "handoffs": [],
   "active_plans": [
     {
+      "path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
+      "title": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "kind": "active_plan",
+      "reason": "当前任务推进中的 working-layer 事实来源。",
+      "score": 26,
+      "modified_at": "2026-07-15T01:12:08+00:00",
+      "matched_terms": [
+        "loop"
+      ],
+      "summary": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理"
+    },
+    {
       "path": ".ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md",
       "title": "Loop Group Chat UI Follow-ups",
       "kind": "active_plan",
@@ -715,18 +822,6 @@
         "loop"
       ],
       "summary": "日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档"
-    },
-    {
-      "path": ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md",
-      "title": "MCP 市场全量检测与权威刷新",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 26,
-      "modified_at": "2026-07-11T03:33:13+00:00",
-      "matched_terms": [
-        "loop"
-      ],
-      "summary": "日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务"
     }
   ],
   "design_docs": [
@@ -734,11 +829,12 @@
       "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
       "title": "Loop 红蓝辩论多智能体模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
-      "score": 25,
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop / json。",
+      "score": 26,
       "modified_at": "2026-07-14T01:35:40Z",
       "matched_terms": [
-        "loop"
+        "loop",
+        "json"
       ],
       "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
     },
@@ -748,7 +844,7 @@
       "kind": "design_doc",
       "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
       "score": 6,
-      "modified_at": "2026-07-14T01:41:10Z",
+      "modified_at": "2026-07-17T00:51:21Z",
       "matched_terms": [
         "loop"
       ],
@@ -762,7 +858,7 @@
       "kind": "runbook",
       "reason": "与当前 focus 相关的排障或规避动作入口，命中：loop。",
       "score": 6,
-      "modified_at": "2026-07-14T01:41:10Z",
+      "modified_at": "2026-07-15T01:42:20Z",
       "matched_terms": [
         "loop"
       ],

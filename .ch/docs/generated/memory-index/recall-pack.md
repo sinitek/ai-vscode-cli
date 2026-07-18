@@ -2,13 +2,13 @@
 
 ## Summary
 
-- Generated at: 2026-07-14T01:52:16Z
-- Focus: Loop naming storage migration compatibility
+- Generated at: 2026-07-17T03:39:04Z
+- Focus: Loop mode automatic sleep scheduled wakeup countdown JSON resume execution
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Available observation entries: 9
-- Available read cost: ~530 tokens
-- Selected index entries: 5 (~353 tokens if fully expanded)
+- Available observation entries: 10
+- Available read cost: ~650 tokens
+- Selected index entries: 6 (~473 tokens if fully expanded)
 - Expanded entries in this pack: 3 (~127 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
@@ -16,7 +16,7 @@
 - Active plans: 4
 - Related design docs: 2
 - Related runbooks: 1
-- Source diversity: 5 unique sources / 5 selected observations
+- Source diversity: 6 unique sources / 6 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -39,6 +39,7 @@
 | `mem-e2fabd8a2e` | `plan` | Loop Group Chat UI Follow-ups | ~48 | `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | 命中 focus：loop。 |
 | `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | 命中 focus：loop。 |
 | `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | 命中 focus：loop。 |
+| `mem-d336cba178` | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | ~120 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | 命中 focus：loop。 |
 
 ## Expanded Observation Details
 
@@ -165,6 +166,10 @@ Date: 2026-06-25 Status: in-progress Owner: Codex
 
 ## Active Plans
 
+- `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | Harness 单元自测与 Chromium Playwright 能力吸收 | matches=loop
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
+
 - `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | Loop Group Chat UI Follow-ups | matches=loop
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: Date: 2026-06-25 Status: in-progress Owner: Codex
@@ -177,14 +182,10 @@ Date: 2026-06-25 Status: in-progress Owner: Codex
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
 
-- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | MCP 市场全量检测与权威刷新 | matches=loop
-  Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
-
 ## Related Design Docs
 
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop
-  Why: 与当前 focus 相关的设计决策入口，命中：loop。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, json
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / json。
   Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop
@@ -199,7 +200,7 @@ Date: 2026-06-25 Status: in-progress Owner: Codex
 
 ## Watch Items
 
-- 当前有 7 份 active plans。
+- 当前有 8 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。
 

@@ -10,7 +10,7 @@ import { ChatMessage } from "./webview/types";
 export type TaskRunStatus = "end" | "error" | "stopped";
 export type RunActivity = "contextCompaction";
 export type LoopTaskRole = "main" | "subtask";
-export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
+export type LoopTaskStatus = "running" | "sleeping" | "completed" | "needs-review" | "error" | "stopped";
 
 export type PromptRunTargetLike = {
   tabId: string;

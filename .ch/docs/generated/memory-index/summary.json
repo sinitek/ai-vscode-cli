@@ -43,10 +43,10 @@
       "title": "Loop 主任务失败终止护栏"
     },
     {
-      "modified_at": "2026-07-08T07:36:23+00:00",
+      "modified_at": "2026-07-14T03:33:01+00:00",
       "path": ".ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 1385,
+      "read_tokens": 1597,
       "references": [
         ".ch/docs/exec-plans/",
         ".ch/docs/product-specs/",
@@ -123,6 +123,28 @@
       ],
       "summary": "日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档",
       "title": "Codex、Claude、OpenCode CLI 配置可视化扩展"
+    },
+    {
+      "modified_at": "2026-07-15T01:12:08+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 5964,
+      "references": [
+        ".ch/docs/SECURITY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-playwright-portability-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-scaffold-install-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-source-playwright-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-unit-self-test-audit.md",
+        "scripts/run_smoke.mjs",
+        "src/test/chromiumPlaywrightSmoke.test.ts",
+        "src/test/longTermMemory.test.ts",
+        "src/workspaceScaffold.ts"
+      ],
+      "summary": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
+      "title": "Harness 单元自测与 Chromium Playwright 能力吸收"
     }
   ],
   "claim_count": 123,
@@ -1867,7 +1889,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-07-14T01:52:16+00:00",
+  "generated_at": "2026-07-17T05:19:12+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2114,7 +2136,7 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 9,
+  "observation_count": 10,
   "observations": [
     {
       "concepts": [
@@ -2171,41 +2193,6 @@
       "source_title": "Loop 主任务失败终止护栏",
       "subtitle": "Active execution plan",
       "title": "Loop 主任务失败终止护栏",
-      "topic": "plan",
-      "type": "plan"
-    },
-    {
-      "concepts": [
-        "open-loop",
-        "problem-solution",
-        "procedure"
-      ],
-      "content_hash": "b7b003c3a1401e21dcce016ca0e8e0cbb83ad472996fab65ae8f7a863723118c",
-      "facts": [
-        "日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作",
-        "Modified at: 2026-07-08T07:36:23+00:00"
-      ],
-      "files": [
-        ".ch/docs/exec-plans/",
-        ".ch/docs/product-specs/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/references/",
-        ".ch/docs/references/authoritative-skills.md",
-        "scripts/",
-        "src/config/",
-        "src/webview/"
-      ],
-      "id": "mem-b7b003c3a1",
-      "modified_at": "2026-07-08T07:36:23+00:00",
-      "narrative": "日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作",
-      "private_stripped": false,
-      "read_tokens": 45,
-      "source_anchor": "官方 skills 版本刷新与最新判断修复",
-      "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md",
-      "source_title": "官方 skills 版本刷新与最新判断修复",
-      "subtitle": "Active execution plan",
-      "title": "官方 skills 版本刷新与最新判断修复",
       "topic": "plan",
       "type": "plan"
     },
@@ -2348,6 +2335,78 @@
     },
     {
       "concepts": [
+        "open-loop",
+        "problem-solution",
+        "procedure"
+      ],
+      "content_hash": "b7b003c3a1401e21dcce016ca0e8e0cbb83ad472996fab65ae8f7a863723118c",
+      "facts": [
+        "日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作",
+        "Modified at: 2026-07-14T03:33:01+00:00"
+      ],
+      "files": [
+        ".ch/docs/exec-plans/",
+        ".ch/docs/product-specs/",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/references/",
+        ".ch/docs/references/authoritative-skills.md",
+        "scripts/",
+        "src/config/",
+        "src/webview/"
+      ],
+      "id": "mem-b7b003c3a1",
+      "modified_at": "2026-07-14T03:33:01+00:00",
+      "narrative": "日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作",
+      "private_stripped": false,
+      "read_tokens": 45,
+      "source_anchor": "官方 skills 版本刷新与最新判断修复",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md",
+      "source_title": "官方 skills 版本刷新与最新判断修复",
+      "subtitle": "Active execution plan",
+      "title": "官方 skills 版本刷新与最新判断修复",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "d336cba178809413a4c3417eb4fb6103f92a92ddc99087e82ba42ccbf92a57d0",
+      "facts": [
+        "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
+        "Modified at: 2026-07-15T01:12:08+00:00"
+      ],
+      "files": [
+        ".ch/docs/SECURITY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-playwright-portability-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-scaffold-install-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-source-playwright-audit.md",
+        "file:///Users/fangjiawei/.sinitek_cli/loop-communications/msg_1783998484827_4b2d85596667a/subtasks/round-2-redo-unit-self-test-audit.md",
+        "scripts/run_smoke.mjs",
+        "src/test/chromiumPlaywrightSmoke.test.ts",
+        "src/test/longTermMemory.test.ts",
+        "src/workspaceScaffold.ts"
+      ],
+      "id": "mem-d336cba178",
+      "modified_at": "2026-07-15T01:12:08+00:00",
+      "narrative": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
+      "private_stripped": false,
+      "read_tokens": 120,
+      "source_anchor": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
+      "source_title": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "subtitle": "Active execution plan",
+      "title": "Harness 单元自测与 Chromium Playwright 能力吸收",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
         "gotcha"
       ],
       "content_hash": "431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
@@ -2402,7 +2461,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 7,
+    "active_plan_count": 8,
     "active_risks": [],
     "pending_items": []
   },
@@ -2430,17 +2489,18 @@
       "read_tokens": 46
     },
     "plan": {
-      "count": 7,
+      "count": 8,
       "ids": [
         "mem-0b64dd15aa",
         "mem-bbc18d3434",
-        "mem-b7b003c3a1",
         "mem-4b483bd801",
         "mem-5233a00937",
         "mem-e2fabd8a2e",
-        "mem-fe60588b95"
+        "mem-fe60588b95",
+        "mem-b7b003c3a1",
+        "mem-d336cba178"
       ],
-      "read_tokens": 445
+      "read_tokens": 565
     },
     "rule": {
       "count": 1,
@@ -2450,6 +2510,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 530,
+  "total_read_tokens": 650,
   "version": "0.2.0"
 }

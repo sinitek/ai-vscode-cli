@@ -5,14 +5,14 @@
 
 ## Run Context
 
-- Generated at: 2026-07-14T01:52:16Z
-- Focus: Loop naming storage migration compatibility
-- Focus terms: `loop`, `naming`, `storage`, `migration`, `compatibility`
+- Generated at: 2026-07-17T03:39:04Z
+- Focus: Loop mode automatic sleep scheduled wakeup countdown JSON resume execution
+- Focus terms: `loop`, `mode`, `automatic`, `sleep`, `scheduled`, `wakeup`, `countdown`, `json`
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Candidate count: 9
-- Ranked candidate count: 5
-- Focus match count: 5
+- Candidate count: 10
+- Ranked candidate count: 6
+- Focus match count: 6
 - Focus excluded count: 4
 
 ## Heuristics
@@ -37,6 +37,7 @@
 | 3 | `mem-e2fabd8a2e` | `95` | `93` | loop | `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | `0` |
 | 4 | `mem-5233a00937` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | `0` |
 | 5 | `mem-4b483bd801` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | `0` |
+| 6 | `mem-d336cba178` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | `0` |
 
 ## Score Breakdown
 
@@ -145,14 +146,35 @@
 | `claim_bonus` | `0` |
 | `same_source_penalty` | `0` |
 
+### mem-d336cba178 - Harness 单元自测与 Chromium Playwright 能力吸收
+
+- Final score: `93`
+- Base score: `91`
+- Matched terms: `loop`
+- Source: `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md`
+- Selected claim IDs: -
+
+| Heuristic | Contribution |
+| --- | --- |
+| `type_priority` | `68` |
+| `focus_terms` | `12` |
+| `open_loop_bonus` | `0` |
+| `read_cost_adjustment` | `2` |
+| `evidence_bonus` | `6` |
+| `concept_bonus` | `1` |
+| `topic_bonus` | `2` |
+| `source_diversity_bonus` | `2` |
+| `claim_bonus` | `0` |
+| `same_source_penalty` | `0` |
+
 ## Top Unselected Candidates
 
 - None
 
 ## Source Diversity
 
-- Unique source count: 5
-- Selected observation count: 5
+- Unique source count: 6
+- Selected observation count: 6
 - Max same-source observations: 1
 
 ### Source Path Counts
@@ -162,10 +184,11 @@
 - `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`: 1
 - `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`: 1
 - `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md`: 1
+- `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md`: 1
 
 ### Source Kind Counts
 
-- `active_plan`: 5
+- `active_plan`: 6
 
 ## Claim Status Snapshot
 
@@ -173,6 +196,6 @@
 
 ## Watch Items
 
-- 当前有 7 份 active plans。
+- 当前有 8 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。

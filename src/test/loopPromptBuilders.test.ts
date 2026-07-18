@@ -48,4 +48,10 @@ test("keeps Loop debate prompts free of Workflow Skill catalogs and skill IDs", 
   assert.doesNotMatch(consensus, /Skill|skillIds|catalog/u);
   assert.match(brief, /CONTINUE_PROMPT_MARKER/u);
   assert.match(consensus, /"subtasks"/u);
+  assert.match(consensus, /"status":"sleep"/u);
+  assert.match(consensus, /"wakeAfterSeconds":3600/u);
+  assert.match(consensus, /sleepReason/u);
+  assert.match(consensus, /通用等待能力/u);
+  assert.match(consensus, /不是 Loop 主任务专属/u);
+  assert.match(consensus, /普通自由文本回复不会触发自动睡眠/u);
 });

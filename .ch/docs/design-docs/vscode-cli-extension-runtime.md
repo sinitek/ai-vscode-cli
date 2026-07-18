@@ -29,6 +29,7 @@ src/
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
 ├── trace/                    # trace/tool 事件格式化
 ├── loopDebate.ts          # Loop 辩论记录、路径、群聊解析和共识校验纯函数
+├── loopAutoWake.ts        # Loop 自动睡眠协议校验与可恢复定时唤醒控制器
 ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 ├── logger.ts                 # 本地日志与脱敏
 ├── i18n.ts                   # 扩展侧国际化
@@ -105,6 +106,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 - OpenCode 在对话面板提供 coding / Loop 两种模式；Loop 复用现有主任务、子任务、多轮复核、任务群聊、状态落盘和唤醒链路，每次主任务或子任务仍通过非交互式 one-shot `opencode run` 执行。
 - `isInteractiveSupported(opencode)` 继续为 `false`，只表示 OpenCode 不提供 Codex/Claude interactive runner 与 common command。该标记不能用于隐藏 Loop 模式入口，也不能为了开放入口改成 `true`，否则普通 coding 请求可能错误进入不存在的交互式链路。
 - OpenCode 不读取 Codex 专用的 Loop 主任务/子任务模型分配；对话、并行请求、Loop 主任务、Loop 子任务、续跑和唤醒都使用 active config 解析出的 effective primary，`small_model` 仅供 OpenCode 自身内部轻量请求。
+- 由宿主解析 JSON 决策的 Loop 任务协议支持通用 `status=sleep + wakeAfterSeconds + sleepReason`，不是主任务专属；普通自由文本回复不会触发自动睡眠。`extension.ts` 把相对间隔转换为绝对 `autoWakeAt` 并持久化 `status=sleeping`；`loopAutoWake.ts` 只负责协议边界、长延迟分段定时、状态复核、到期重试和取消。扩展激活时从当前工作区任务 Store 恢复睡眠任务，已到期任务直接复用 `runLoopPrompt`、原 CLI/session 和当前 Loop 轮次继续；VS Code 完全退出期间不运行外部守护进程。带合法 `autoWakeAt` 的睡眠任务跳过普通历史保留淘汰，人工继续、完成或中止后清除睡眠字段，避免陈旧定时器再次启动。
 
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
@@ -283,3 +285,4 @@ cli / interactive / config 服务层
 - `extension.ts` 仍然偏大，属于中心编排文件，后续若继续扩展应逐步下沉非核心细节
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化
+- Loop 自动唤醒依赖 Extension Host 运行；VS Code 退出期间不会按墙钟时间启动 CLI，只会在下一次扩展激活时补唤醒。

@@ -145,6 +145,15 @@ import {
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
 } from "./loopMainFailure";
+import {
+  buildLoopAutoSleepProtocolLines,
+  LOOP_AUTO_WAKE_MAX_SECONDS,
+  LOOP_AUTO_WAKE_MIN_SECONDS,
+  LoopAutoWakeScheduler,
+  normalizeLoopSleepDecision,
+  resolveLoopAutoWakeAt,
+  type LoopAutoWakeAttemptResult,
+} from "./loopAutoWake";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import {
   LoopDebateChatPanel,
@@ -584,6 +593,7 @@ const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
+let loopAutoWakeScheduler: LoopAutoWakeScheduler | null = null;
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -852,6 +862,7 @@ export function activate(context: vscode.ExtensionContext): void {
   initializeConversationTabsFromWorkspaceSettings();
   repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
+  initializeLoopAutoWakeScheduler(context);
   void initLogger().then(() => {
     scheduleLogRetentionCleanup();
   });
@@ -911,6 +922,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       ensureWorkspaceSessionStore();
+      restoreLoopAutoWakeSchedules();
       void postPanelState();
     })
   );
@@ -936,6 +948,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   void restoreMarketplaceUpdateCheck();
+  loopAutoWakeScheduler?.dispose();
+  loopAutoWakeScheduler = null;
   interactiveRunnerManager?.disposeAll();
 }
 
@@ -2211,6 +2225,96 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   pickTask: pickLoopDebateTask,
   t,
 });
+
+function initializeLoopAutoWakeScheduler(context: vscode.ExtensionContext): void {
+  loopAutoWakeScheduler?.dispose();
+  loopAutoWakeScheduler = new LoopAutoWakeScheduler({
+    readTask: readLoopTaskRecord,
+    onWake: attemptLoopTaskAutoWake,
+    onError: (taskId, error) => {
+      void logError("loop-auto-wake-scheduler-error", {
+        taskId,
+        error: errorToMessage(error),
+      });
+    },
+  });
+  context.subscriptions.push(loopAutoWakeScheduler);
+  restoreLoopAutoWakeSchedules();
+}
+
+function restoreLoopAutoWakeSchedules(): void {
+  if (!loopAutoWakeScheduler) {
+    return;
+  }
+  const sleepingTasks = listLoopGroupChatTasks().filter((task) => (
+    task.workspaceKey === activeWorkspaceKey
+    && task.status === "sleeping"
+  ));
+  loopAutoWakeScheduler.restore(sleepingTasks);
+}
+
+function scheduleLoopTaskAutoWake(task: LoopTaskRecord): void {
+  loopAutoWakeScheduler?.schedule(task);
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+}
+
+function cancelLoopTaskAutoWake(taskId: string): void {
+  loopAutoWakeScheduler?.cancel(taskId);
+}
+
+function attemptLoopTaskAutoWake(taskId: string): LoopAutoWakeAttemptResult {
+  const task = readLoopTaskRecord(taskId);
+  if (!task || task.status !== "sleeping") {
+    return "discard";
+  }
+  if (task.workspaceKey !== activeWorkspaceKey) {
+    return "discard";
+  }
+  if (typeof task.autoWakeAt !== "number" || task.autoWakeAt > Date.now()) {
+    return "retry";
+  }
+
+  const target = resolveLoopMainPromptTarget(task);
+  if (!target || isTabRunActive(target.tabId) || collectRunningLoopTaskIds().has(task.id)) {
+    return "retry";
+  }
+
+  const activeConfigId = getActiveConfigIdForCli(target.cli);
+  const resumePrompt = t("run.loopAutoWakePrompt", { taskId: task.id });
+  const claimedTask = updateLoopTaskRecord(task.id, {
+    status: "running",
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+    autoSleepStartedAt: undefined,
+    autoWakeAt: undefined,
+    autoSleepReason: undefined,
+    updatedAt: Date.now(),
+  });
+  if (!claimedTask || claimedTask.status !== "running") {
+    return "retry";
+  }
+
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  void logInfo("loop-auto-wake-started", {
+    taskId: task.id,
+    scheduledWakeAt: task.autoWakeAt,
+    tabId: target.tabId,
+    cli: target.cli,
+  });
+  void runLoopPrompt({
+    displayPrompt: resumePrompt,
+    modelPrompt: resumePrompt,
+    contextTags: [],
+    model: getSelectedCliModel(target.cli, activeConfigId) ?? undefined,
+    loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
+    loopContinuePrompt: resumePrompt,
+  }, {
+    targetTabId: target.tabId,
+    resumeTaskId: task.id,
+    resumeRequested: true,
+  });
+  return "started";
+}
 
 async function openLoopGroupChatPanel(arg?: unknown): Promise<void> {
   await loopDebateChatPanelCoordinator.open(arg);
@@ -3895,10 +3999,14 @@ async function runLoopPromptOrchestration(
       && isLoopTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
       && (!isLoopTaskCompleted(existingTask) || shouldResumeCompletedWithoutCompletionMessages)
     ) {
+      cancelLoopTaskAutoWake(existingTask.id);
       task = updateLoopTaskRecord(existingTask.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
+        autoSleepStartedAt: undefined,
+        autoWakeAt: undefined,
+        autoSleepReason: undefined,
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: shouldResumeCompletedWithoutCompletionMessages }) ?? existingTask;
       round = resolveLoopResumeRound(task);
@@ -4046,6 +4154,17 @@ async function runLoopPromptOrchestration(
       appendLoopFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
       return;
     }
+    if (decisionRunResult.status === "sleeping") {
+      showLoopAutoSleepMessage(target, decisionRunResult.task, round, decisionRunResult.decision);
+      scheduleLoopTaskAutoWake(decisionRunResult.task);
+      void logInfo("loop-auto-sleep-scheduled", {
+        taskId: decisionRunResult.task.id,
+        round,
+        autoWakeAt: decisionRunResult.task.autoWakeAt,
+        wakeAfterSeconds: decisionRunResult.decision.wakeAfterSeconds,
+      });
+      return;
+    }
     if (decisionRunResult.status === "needs-review") {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
       return;
@@ -4174,6 +4293,9 @@ function applyLoopMainDecisionForRun(
   const decisionResult = applyLoopMainDecision(taskId, decision);
   if (decisionResult.status === "completed") {
     return { status: "completed", task: decisionResult.task, decision };
+  }
+  if (decisionResult.status === "sleeping") {
+    return { status: "sleeping", task: decisionResult.task, decision };
   }
   if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
     return { status: "needs-review", task: decisionResult.task, decision };
@@ -6059,6 +6181,12 @@ function appendLoopMainSubChatTaskEvent(task: LoopTaskRecord, body: string): voi
   appendLoopMainSubChatSection(task, "任务事件", body);
 }
 
+function formatLoopAutoWakeAtForRecord(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? new Date(value).toISOString()
+    : "未记录";
+}
+
 function appendLoopMainSubChatMainDecision(
   task: LoopTaskRecord,
   decision: LoopMainDecision,
@@ -6072,6 +6200,11 @@ function appendLoopMainSubChatMainDecision(
   const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
   if (remainingRounds) {
     bodyLines.push(`- 预计剩余轮次：${remainingRounds}`);
+  }
+  if (decision.status === "sleep") {
+    bodyLines.push(`- 自动睡眠原因：${task.autoSleepReason ?? decision.sleepReason ?? "未记录"}`);
+    bodyLines.push(`- 计划唤醒时间：${formatLoopAutoWakeAtForRecord(task.autoWakeAt)}`);
+    bodyLines.push(`- 唤醒间隔秒数：${decision.wakeAfterSeconds ?? "未记录"}`);
   }
   if (decision.acceptance?.summary) {
     bodyLines.push(`- 复核摘要：${decision.acceptance.summary}`);
@@ -6190,6 +6323,7 @@ type LoopMainDecisionRunResult =
   | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
   | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
   | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+  | { status: "sleeping"; task: LoopTaskRecord; decision: LoopMainDecision }
   | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 
 async function runLoopSubtasksBatchWithRetry(
@@ -6595,7 +6729,10 @@ function buildLoopMainModelPrompt(
     `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOOP_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
     "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
     "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
-    "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束。",
+    "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；sleep 只会定时恢复，不代表完成。",
+    "",
+    "自动睡眠协议（适用于任何可解析任务决策）：",
+    ...buildLoopAutoSleepProtocolLines().map((line) => `- ${line}`),
     "",
     "主任务职责：",
     "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、activeSubtaskIds、subTasks 和 rounds 概要。",
@@ -6609,7 +6746,7 @@ function buildLoopMainModelPrompt(
     "9. 若子任务沟通文件已提供可核验的单测/编译命令与结果，主任务无需重复执行这些验证；优先复核逻辑正确性、改动范围和结果一致性，仅在证据缺失或结果可疑时补充验证。",
     "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；确实必须用户或人工确认时返回 blocked，不得把该子任务误判为已验收。",
     "11. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
-    "12. 只有验收全部通过，才能返回 completed；只要有任何不满足，必须返回 continue 并给出下一批修复/补齐子任务。",
+    "12. 只有验收全部通过，才能返回 completed；有可执行补齐工作时必须返回 continue。只有明确等待外部结果且当前没有可执行子任务时，才可返回 sleep。",
     "13. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
     "14. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
     "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
@@ -6618,10 +6755,11 @@ function buildLoopMainModelPrompt(
     '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
     '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
+    '{"status":"sleep","wakeAfterSeconds":3600,"sleepReason":"等待外部构建完成后复核结果","estimatedRemainingRounds":1}',
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
     "",
     "字段要求：",
-    "- status 只能是 completed、continue、blocked。",
+    "- status 只能是 completed、continue、sleep、blocked。",
     "- 每次返回都必须提供 estimatedRemainingRounds；含义是从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed，必须是非负整数。",
     "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、answerConclusion、finalSummary、requirementCoverage 和 roundSummaries。",
     "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
@@ -6629,6 +6767,8 @@ function buildLoopMainModelPrompt(
     "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
     "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
     `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}。`,
+    `- status=sleep 时不得提供 subtasks；必须提供 ${LOOP_AUTO_WAKE_MIN_SECONDS}~${LOOP_AUTO_WAKE_MAX_SECONDS} 范围内的整数 wakeAfterSeconds，以及非空的简短 sleepReason。`,
+    "- sleep 只能用于等待当前进程之外的可观察结果，不得用它替代可立即执行的调研、实现、验证或子任务派发；它是通用等待能力，但只有本 JSON 决策协议会被宿主解析。",
     "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
     "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
     "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
@@ -6887,6 +7027,16 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   const estimatedRemainingRounds = normalizeLoopEstimatedRemainingRounds(
     (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
   );
+  if (raw.status === "sleep") {
+    const sleepDecision = normalizeLoopSleepDecision(value);
+    if (!sleepDecision) {
+      return null;
+    }
+    return {
+      ...sleepDecision,
+      estimatedRemainingRounds,
+    };
+  }
   if (raw.status === "completed") {
     const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
     const requirementCoverage = normalizeLoopAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
@@ -7095,7 +7245,7 @@ function buildLoopSubtaskId(title: string): string {
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
-): { status: "completed" | "continue" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
+): { status: "completed" | "continue" | "sleeping" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
   const existing = readLoopTaskRecord(taskId);
   if (!existing) {
     throw new Error(`loop-task-missing:${taskId}`);
@@ -7110,11 +7260,35 @@ function applyLoopMainDecision(
       estimatedRemainingRounds: 0,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
+      autoSleepStartedAt: undefined,
+      autoWakeAt: undefined,
+      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     appendLoopMainDecisionSummary(task, decision);
     appendLoopMainSubChatMainDecision(task, decision);
     return { status: "completed", task };
+  }
+  if (decision.status === "sleep") {
+    const sleepDecision = normalizeLoopSleepDecision(decision);
+    if (!sleepDecision) {
+      throw new Error(`loop-task-invalid-sleep-decision:${taskId}`);
+    }
+    const autoSleepStartedAt = Date.now();
+    const autoWakeAt = resolveLoopAutoWakeAt(autoSleepStartedAt, sleepDecision.wakeAfterSeconds);
+    const task = updateLoopTaskRecord(taskId, {
+      status: "sleeping",
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      autoSleepStartedAt,
+      autoWakeAt,
+      autoSleepReason: sleepDecision.sleepReason,
+      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
+      updatedAt: autoSleepStartedAt,
+    }) ?? existing;
+    appendLoopMainDecisionSummary(task, decision);
+    appendLoopMainSubChatMainDecision(task, decision);
+    return { status: "sleeping", task };
   }
   if (decision.status === "blocked") {
     const task = updateLoopTaskRecord(taskId, {
@@ -7123,6 +7297,9 @@ function applyLoopMainDecision(
       activeSubtaskIds: [],
       finalSummary: decision.finalSummary ?? "Main task reported blocked.",
       ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
+      autoSleepStartedAt: undefined,
+      autoWakeAt: undefined,
+      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     appendLoopMainDecisionSummary(task, decision);
@@ -7137,6 +7314,9 @@ function applyLoopMainDecision(
       activeSubtaskId: null,
       activeSubtaskIds: [],
       finalSummary: "Main task returned continue without subtasks.",
+      autoSleepStartedAt: undefined,
+      autoWakeAt: undefined,
+      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     return { status: "blocked", task };
@@ -7150,6 +7330,9 @@ function applyLoopMainDecision(
     activeSubtaskIds,
     subTasks: subtaskBatch.nextSubtasks,
     ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
+    autoSleepStartedAt: undefined,
+    autoWakeAt: undefined,
+    autoSleepReason: undefined,
     updatedAt: Date.now(),
   }) ?? existing;
   appendLoopMainDecisionSummary(task, decision);
@@ -7178,6 +7361,11 @@ function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainD
     const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
     if (remainingRounds) {
       lines.push(`- 预计剩余轮次：${remainingRounds}`);
+    }
+    if (decision.status === "sleep") {
+      lines.push(`- 自动睡眠原因：${task.autoSleepReason ?? decision.sleepReason ?? "未记录"}`);
+      lines.push(`- 计划唤醒时间：${formatLoopAutoWakeAtForRecord(task.autoWakeAt)}`);
+      lines.push(`- 唤醒间隔秒数：${decision.wakeAfterSeconds ?? "未记录"}`);
     }
     if (decision.status === "completed") {
       lines.push("");
@@ -7602,6 +7790,9 @@ function markLoopTaskStopped(
     status: "stopped",
     activeSubtaskId: null,
     activeSubtaskIds: [],
+    autoSleepStartedAt: undefined,
+    autoWakeAt: undefined,
+    autoSleepReason: undefined,
     subTasks,
     ...(debateRounds ? { debateRounds } : {}),
     ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
@@ -7612,6 +7803,7 @@ function markLoopTaskStopped(
 }
 
 function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
+  cancelLoopTaskAutoWake(taskId);
   return markLoopTaskStopped(taskId, {
     finalSummary: "用户已从 Loop 群聊中止任务。",
     subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
@@ -7826,6 +8018,47 @@ function showLoopSubtaskDecisionMarkdown(
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
   persistLoopMessagesForTarget(target, messages);
+}
+
+function showLoopAutoSleepMessage(
+  target: PromptRunTarget,
+  task: LoopTaskRecord,
+  round: number,
+  decision: LoopMainDecision,
+): void {
+  const content = buildLoopAutoSleepMessageMarkdown(task, decision);
+  if (replaceLoopMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
+    return;
+  }
+
+  const messages = getLoopMessagesForTarget(target);
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content,
+    createdAt: Date.now(),
+    merge: false,
+    taskRole: "main",
+    loopTaskId: task.id,
+    loopRound: round,
+    actions: [buildLoopDebateChatMessageAction(task.id, round)],
+  };
+  appendMessageToStore(messages, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistLoopMessagesForTarget(target, messages);
+}
+
+function buildLoopAutoSleepMessageMarkdown(task: LoopTaskRecord, decision: LoopMainDecision): string {
+  const locale = resolveLocale();
+  const wakeAt = typeof task.autoWakeAt === "number"
+    ? new Date(task.autoWakeAt).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US")
+    : t("run.loopAutoWakeTimeUnknown");
+  const reason = task.autoSleepReason ?? decision.sleepReason ?? t("run.loopAutoSleepReasonUnknown");
+  return [
+    `## ${t("run.loopAutoSleepTitle")}`,
+    t("run.loopAutoSleepReason", { reason }),
+    t("run.loopAutoWakeAt", { time: wakeAt }),
+  ].join("\n\n");
 }
 
 function hasCompleteLoopCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
