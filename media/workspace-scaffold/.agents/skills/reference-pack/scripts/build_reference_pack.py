@@ -201,7 +201,7 @@ def main() -> int:
         ),
     )
 
-    print(f"[{GENERATOR_NAME}] built {pack_dir}")
+    print(f"[{GENERATOR_NAME}] built {display_path(root, pack_dir)}")
     print(f"- preset: {args.preset}")
     print(f"- topic: {topic or '(none)'}")
     print(f"- file_count: {len(included_items)}")
@@ -216,6 +216,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def normalize_slug(value: str) -> str:

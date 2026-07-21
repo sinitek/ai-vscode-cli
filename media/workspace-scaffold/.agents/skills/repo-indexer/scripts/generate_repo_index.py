@@ -208,13 +208,14 @@ def main() -> int:
         "focus_paths": focus_paths,
     }
 
+    display_output_dir = display_path(root, output_dir)
     manifest = {
         "generator": GENERATOR_NAME,
         "version": GENERATOR_VERSION,
         "generated_at": generated_at,
         "mode": args.mode,
-        "repo_root": str(root),
-        "output_dir": str(output_dir),
+        "repo_root": ".",
+        "output_dir": display_output_dir,
         "git_head": git_head,
         "focus_paths": focus_paths,
         "sources": sorted(list_sources(root)),
@@ -229,14 +230,14 @@ def main() -> int:
         ],
     }
 
-    write_text(output_dir / "index.md", render_index_markdown(root, args.mode, generated_at, git_head, detected_stacks, focus_paths))
+    write_text(output_dir / "index.md", render_index_markdown(args.mode, generated_at, git_head, detected_stacks, focus_paths))
     write_text(output_dir / "repo-map.md", render_repo_map_markdown(top_level_entries, local_agents))
     write_text(output_dir / "commands.md", render_commands_markdown(commands))
     write_text(output_dir / "context-entrypoints.md", render_context_entrypoints_markdown(entry_docs, local_agents))
     write_json(output_dir / "manifest.json", manifest)
     write_json(output_dir / "summary.json", summary)
 
-    print(f"[{GENERATOR_NAME}] generated artifacts in {output_dir}")
+    print(f"[{GENERATOR_NAME}] generated artifacts in {display_output_dir}")
     for filename in manifest["files"]:
         print(f"- {filename}")
     return 0
@@ -247,6 +248,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def normalize_focus_paths(root: Path, focus_paths: list[str]) -> list[str]:
@@ -561,7 +569,6 @@ def list_sources(root: Path) -> set[str]:
 
 
 def render_index_markdown(
-    root: Path,
     mode: str,
     generated_at: str,
     git_head: str | None,
@@ -580,7 +587,7 @@ def render_index_markdown(
 - generator: `{GENERATOR_NAME}` `{GENERATOR_VERSION}`
 - generated_at: `{generated_at}`
 - mode: `{mode}`
-- repo_root: `{root}`
+- repo_root: `.`
 - git_head: `{git_text}`
 - detected_stacks: {stacks_text}
 

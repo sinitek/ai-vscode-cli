@@ -158,6 +158,12 @@ export const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryToggle: "On",
     toolSettingsLongTermMemoryHint:
       "Off by default. Turn it on to initialize a workspace-local Harness for long-running context, reusable agent guidance, pitfall capture, task handoffs, and code exploration.",
+    toolSettingsInstallCodeGraphLabel: "CodeGraph",
+    toolSettingsInstallCodeGraphTitle:
+      "Install or upgrade the local CodeGraph CLI to the latest version, register the Codex MCP integration, and initialize this workspace when one is open.",
+    toolSettingsInstallCodeGraphButton: "Install CodeGraph",
+    toolSettingsInstallCodeGraphHint:
+      "Runs in a visible terminal. Requires npm on PATH and works on macOS and Windows.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -518,6 +524,12 @@ export const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryToggle: "开启",
     toolSettingsLongTermMemoryHint:
       "默认关闭。开启后可为当前工作区初始化 Harness，用于沉淀长周期上下文、复用代理工作规范、记录踩坑、交接任务并提升代码探索效率。",
+    toolSettingsInstallCodeGraphLabel: "CodeGraph",
+    toolSettingsInstallCodeGraphTitle:
+      "安装或升级本机 CodeGraph CLI 到最新版本，注册 Codex MCP 集成，并在当前打开工作区时初始化索引。",
+    toolSettingsInstallCodeGraphButton: "安装 CodeGraph",
+    toolSettingsInstallCodeGraphHint:
+      "会在可见终端中执行。需要 npm 在 PATH 中可用，兼容 macOS 和 Windows。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",

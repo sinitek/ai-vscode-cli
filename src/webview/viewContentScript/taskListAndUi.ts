@@ -142,18 +142,130 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (["完成", "已完成"].includes(status)) {
           return true;
         }
-        if (["pending", "in_progress", "todo", "to_do", "not_started", "open", "running"].includes(status)) {
+        if (["pending", "in_progress", "inprogress", "todo", "to_do", "not_started", "notstarted", "open", "running"].includes(status)) {
           return false;
         }
-        if (["待办", "进行中", "处理中", "未开始"].includes(status)) {
+        if (["待办", "进行中", "处理中", "未开始", "未完成"].includes(status)) {
           return false;
         }
         return null;
       }
 
+      function normalizeParsedTaskListText(value) {
+        return String(value || "")
+          .replace(/。[\\s\\S]*$/, "")
+          .replace(/^[\\s;；。,.，、:：-]+/, "")
+          .replace(/[\\s;；。,.，、]+$/, "")
+          .trim();
+      }
+
+      function readTaskListDoneFromPlainText(value) {
+        const text = normalizeParsedTaskListText(value);
+        if (!text) {
+          return null;
+        }
+        if (/(?:未完成|尚未完成|待(?:办|执行|确认|完成|跑|更新)|还没|进行中|正在|接下来|下一步|随后|最后|现在|开始|当前进入|进入.*阶段|接近完成)/.test(text)) {
+          return false;
+        }
+        if (/\\b(?:pending|todo|to[_ -]?do|not[_ -]?started|open|running|in[_ -]?progress)\\b/i.test(text)) {
+          return false;
+        }
+        if (/\\b(?:completed|complete|done|finished|success|succeeded)\\b/i.test(text)) {
+          return true;
+        }
+        if (/^已(?:完成|读|确认|定位|补齐|落地|通过|写入|更新|修复|创建|运行|同步|复核)/.test(text)) {
+          return true;
+        }
+        if (/(?:均|都)?已(?:完成|读|确认|定位|补齐|落地|通过|写入|更新|修复|创建|运行|同步|复核)$/.test(text)) {
+          return true;
+        }
+        if (/(?:完成|通过|落地)$/.test(text)) {
+          return true;
+        }
+        return null;
+      }
+
+      function stripPlainTaskListStatusText(value) {
+        return normalizeParsedTaskListText(value)
+          .replace(/^\\s*(?:completed|complete|done|finished|success|succeeded|pending|todo|to[_ -]?do|not[_ -]?started|open|running|in[_ -]?progress)\\s*[:：-]?\\s*/i, "")
+          .replace(/\\s*[:：-]?\\s*(?:completed|complete|done|finished|success|succeeded|pending|todo|to[_ -]?do|not[_ -]?started|open|running|in[_ -]?progress)\\s*$/i, "")
+          .replace(/^(?:正在|接下来(?:会)?|下一步|随后(?:会|只做)?|最后|现在(?:我会)?|开始|当前进入|进入)/, "")
+          .replace(/^已(?:完成|读|确认|定位|补齐|落地|通过|写入|更新|修复|创建|运行|同步|复核)/, "")
+          .replace(/(?:均|都)?已(?:完成|读|确认|定位|补齐|落地|通过|写入|更新|修复|创建|运行|同步|复核)$/, "")
+          .replace(/(?:完成|通过|落地|进行中|待(?:办|执行|确认|完成|跑|更新)|开始)$/, "")
+          .trim();
+      }
+
+      function parsePlainTaskListItemFromText(value) {
+        const rawText = normalizeParsedTaskListText(value);
+        if (!rawText) {
+          return null;
+        }
+        const inferredDone = readTaskListDoneFromPlainText(rawText);
+        const text = normalizeParsedTaskListText(stripPlainTaskListStatusText(rawText));
+        return text ? { done: inferredDone === null ? false : inferredDone, inferredDone, text } : null;
+      }
+
+      function toTaskListItem(parsedItem) {
+        return parsedItem ? { done: parsedItem.done, text: parsedItem.text } : null;
+      }
+
+      function parsePlainTaskListItemsFromNumberedFragment(source) {
+        const markers = [];
+        const numberedRegex = /(?:^|[\\s;；。])\\d+[.)、]\\s*/g;
+        let match;
+        while ((match = numberedRegex.exec(source)) !== null) {
+          markers.push({
+            markerStart: match.index,
+            textStart: numberedRegex.lastIndex,
+          });
+        }
+        if (!markers.length) {
+          return [];
+        }
+        return markers
+          .map((marker, index) => {
+            const nextMarker = markers[index + 1];
+            const textEnd = nextMarker ? nextMarker.markerStart : source.length;
+            return toTaskListItem(parsePlainTaskListItemFromText(source.slice(marker.textStart, textEnd)));
+          })
+          .filter(Boolean);
+      }
+
+      function parsePlainTaskListItemsFromFragment(fragment) {
+        const source = String(fragment || "").trim();
+        if (!source) {
+          return [];
+        }
+
+        const numberedItems = parsePlainTaskListItemsFromNumberedFragment(source);
+        if (numberedItems.length) {
+          return numberedItems;
+        }
+
+        const bulletMatch = source.match(/^\\s*[-*]\\s+(.*)$/);
+        if (bulletMatch) {
+          const item = toTaskListItem(parsePlainTaskListItemFromText(bulletMatch[1]));
+          return item ? [item] : [];
+        }
+
+        const splitParts = source.split(/[;；、，]|,(?=\\s+\\S)/);
+        if (splitParts.length <= 1) {
+          return [];
+        }
+        const parsedParts = splitParts
+          .map((part) => parsePlainTaskListItemFromText(part.replace(/^\\d+[.)、]\\s*/, "").replace(/^[-*]\\s+/, "")))
+          .filter(Boolean);
+        const hasInferredStatus = parsedParts.some((item) => item.inferredDone !== null);
+        return parsedParts
+          .filter((item) => !hasInferredStatus || item.inferredDone !== null)
+          .map(toTaskListItem)
+          .filter(Boolean);
+      }
+
       function parseTaskListItemsFromFragment(fragment) {
         const source = String(fragment || "");
-        const markerRegex = /(?:^|[\\s;；。])(?:[-*]|\\d+[.)])?\\s*\\[([^\\]\\r\\n]*)\\]\\s*/gi;
+        const markerRegex = /(?:^|[\\s;；。])(?:[-*]|\\d+[.)])?\\s*\`?\\[([^\\]\\r\\n]*)\\]\`?\\s*/gi;
         const markers = [];
         let match;
         while ((match = markerRegex.exec(source)) !== null) {
@@ -169,17 +281,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           });
         }
         if (!markers.length) {
-          return [];
+          return parsePlainTaskListItemsFromFragment(source);
         }
         return markers
           .map((marker, index) => {
             const nextMarker = markers[index + 1];
             const textEnd = nextMarker ? nextMarker.markerStart : source.length;
-            const text = source
-              .slice(marker.textStart, textEnd)
-              .replace(/^[\\s;；。,-]+/, "")
-              .replace(/[\\s;；。,.，。]+$/, "")
-              .trim();
+            const text = normalizeParsedTaskListText(source.slice(marker.textStart, textEnd));
             return text ? { done: marker.done, text } : null;
           })
           .filter(Boolean);
@@ -190,7 +298,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return [];
         }
         const lines = String(text).split(/\\r?\\n/);
-        const headerRegex = /(?:^|[\\s;；。])(?:tasklist|todolist)(?:\\s*(?:update|更新))?\\s*[:：]\\s*(.*)$/i;
+        const taskListHeaderKeywordRegex = /(?:task\\s*list|tasklist|todo\\s*list|todolist|任务列表|待办列表|任务清单)/i;
+        const headerRegex = /(?:^|[\\s;；。])(?:task\\s*list|tasklist|todo\\s*list|todolist|任务列表|待办列表|任务清单)(?:\\s*(?:update|更新|状态|当前|继续|最终修正(?:为[^:：]*)?))?\\s*[:：]\\s*(.*)$/i;
         const sections = [];
         for (let i = 0; i < lines.length; i += 1) {
           const line = lines[i];
@@ -201,7 +310,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           const sectionItems = [];
           let endLine = i;
           const headerStart = headerMatch.index || 0;
-          const keywordMatch = String(headerMatch[0] || "").match(/(?:tasklist|todolist)/i);
+          const keywordMatch = String(headerMatch[0] || "").match(taskListHeaderKeywordRegex);
           const stripStartColumn = keywordMatch ? headerStart + keywordMatch.index : headerStart;
           const hideStartLine = !line.slice(0, stripStartColumn).trim();
           const inlinePart = (headerMatch[1] || "").trim();
@@ -468,7 +577,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const hasStreamRecords = Boolean(runtimeState && runtimeState.runStreamRecords.length > 0);
         const hasQueuedPrompts = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
         const hasRunStatusSummary = Boolean(runtimeState && String(runtimeState.lastRunStatusMessage || "").trim().length > 0);
-        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary;
+        const hasCurrentLoopGroupChat = typeof getActiveLoopMainTaskId === "function" && Boolean(getActiveLoopMainTaskId());
+        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary || hasCurrentLoopGroupChat;
 
         elements.runWait.style.display = shouldShowRunRow ? "flex" : "none";
 

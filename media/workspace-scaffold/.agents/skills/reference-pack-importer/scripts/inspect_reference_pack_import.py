@@ -88,10 +88,10 @@ def main() -> int:
     write_text(output_dir / "import-report.md", render_report(manifest, diffs, registry_status, root, pack_dir))
     write_text(output_dir / "COPYLIST.md", render_copylist(diffs))
 
-    print(f"[reference-pack-importer] wrote {output_dir / 'import-report.md'}")
-    print(f"[reference-pack-importer] wrote {output_dir / 'import-summary.json'}")
-    print(f"[reference-pack-importer] wrote {output_dir / 'COPYLIST.md'}")
-    print(f"[reference-pack-importer] wrote {output_dir / 'REFERENCE_MANIFEST.json'}")
+    print(f"[reference-pack-importer] wrote {display_path(root, output_dir / 'import-report.md')}")
+    print(f"[reference-pack-importer] wrote {display_path(root, output_dir / 'import-summary.json')}")
+    print(f"[reference-pack-importer] wrote {display_path(root, output_dir / 'COPYLIST.md')}")
+    print(f"[reference-pack-importer] wrote {display_path(root, output_dir / 'REFERENCE_MANIFEST.json')}")
     print(f"- missing: {sum(1 for item in diffs if item.status == 'missing')}")
     print(f"- different: {sum(1 for item in diffs if item.status == 'different')}")
     print(f"- identical: {sum(1 for item in diffs if item.status == 'identical')}")
@@ -177,10 +177,14 @@ def normalize_relative_path(value: str) -> str:
 
 
 def describe_pack_location(root: Path, pack_dir: Path) -> str:
+    return display_path(root, pack_dir)
+
+
+def display_path(root: Path, path: Path) -> str:
     try:
-        return pack_dir.relative_to(root).as_posix()
+        return path.resolve().relative_to(root).as_posix()
     except ValueError:
-        return pack_dir.name
+        return path.name or "."
 
 
 def inspect_bundle(root: Path, bundle_dir: Path, items: list[object]) -> list[DiffEntry]:

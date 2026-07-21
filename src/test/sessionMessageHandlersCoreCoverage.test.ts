@@ -96,6 +96,7 @@ type Calls = {
   ruleWrites: Array<{ cli: CliName; scope: "global" | "project"; content: string }>;
   interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
   promptedInstalls: CliName[];
+  codeGraphInstalls: number;
   promptRuns: PromptRunInputForPanel[];
   stoppedTabs: Array<string | null>;
 };
@@ -157,6 +158,7 @@ function createHarness(): HandlerHarness {
     ruleWrites: [],
     interactiveModes: [],
     promptedInstalls: [],
+    codeGraphInstalls: 0,
     promptRuns: [],
     stoppedTabs: [],
   };
@@ -309,6 +311,7 @@ function createHarness(): HandlerHarness {
     updateStoredToolSettings: () => true,
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness: async () => state.initializedHarness,
+    installCodeGraphForWorkspace: async () => { calls.codeGraphInstalls += 1; },
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,
@@ -616,11 +619,13 @@ test("covers model, session, workspace, and command routing through isolated ada
 
   await handlePanelMessageWithDeps({ type: "initializeWorkspaceHarness", enabled: false }, harness.deps);
   await handlePanelMessageWithDeps({ type: "initializeWorkspaceHarness", enabled: true }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "installCodeGraph" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "runCommonCommand", command: "compactContext" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "openLoopGroupChat", taskId: "task-1", roundKey: "round-1" }, harness.deps);
 
   assert.equal(closedTabId, "tab-codex");
   assert.equal(compactRuns, 1);
+  assert.equal(harness.calls.codeGraphInstalls, 1);
   assert.deepEqual(openedLoopPanel, { taskId: "task-1", roundKey: "round-1" });
   assert.ok(configShows >= 1);
   assert.ok(configSyncs >= 2);

@@ -89,6 +89,16 @@ ${webviewStyles}    </style>
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
+        <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
+          <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="6" x2="12" y2="18" />
+              <polyline points="7 13 12 18 17 13" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <div id="runWait" class="run-wait" style="display: none;">
         <span class="typing">
           <span class="typing-dot"></span>
@@ -110,15 +120,6 @@ ${webviewStyles}    </style>
           ${i18n.queueIndicatorLabel}
           <span id="queueCount" class="run-queue-count">0</span>
         </button>
-      </div>
-        <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
-          <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="6" x2="12" y2="18" />
-              <polyline points="7 13 12 18 17 13" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <div id="taskListPanel" class="tasklist-panel" style="display: none;">
@@ -340,89 +341,116 @@ ${webviewStyles}    </style>
           </div>
           <div class="tool-settings-body">
             <div id="toolSettingsGlobalPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGlobalTab">
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
-                  <input type="checkbox" id="debugMode" />
-                  <span>${i18n.toolSettingsDebugToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsAutoContextLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsAutoContextTitle}">
-                  <input type="checkbox" id="autoAddEditorContextTags" />
-                  <span>${i18n.toolSettingsAutoContextToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsImplicitSubagentsLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsImplicitSubagentsTitle}">
-                  <input type="checkbox" id="multiAgentEnabled" />
-                  <span>${i18n.toolSettingsImplicitSubagentsToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-note">${i18n.toolSettingsImplicitSubagentsHint}</div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
-                  <input type="checkbox" id="autoCompactContextAfterRun" />
-                  <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
-                <input
-                  type="number"
-                  id="loopMaxRounds"
-                  class="tool-settings-number"
-                  min="1"
-                  max="100"
-                  step="1"
-                  title="${i18n.toolSettingsLoopMaxRoundsTitle}"
-                  aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
-                />
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}</div>
-                <select id="loopSubtaskMaxThinkingMode" class="thinking-select" title="${i18n.toolSettingsLoopSubtaskMaxThinkingModeTitle}" aria-label="${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}">
-                  <option value="low">${i18n.thinkingOptionLow}</option>
-                  <option value="medium">${i18n.thinkingOptionMedium}</option>
-                  <option value="high">${i18n.thinkingOptionHigh}</option>
-                  <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
-                </select>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLoopAutoCloseSubtaskTabsLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsLoopAutoCloseSubtaskTabsTitle}">
-                  <input type="checkbox" id="loopAutoCloseSubtaskTabs" />
-                  <span>${i18n.toolSettingsLoopAutoCloseSubtaskTabsToggle}</span>
-                </label>
-              </div>
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
-                <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
-                  <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
-                  <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
-                  <option value="en">${i18n.toolSettingsLanguageEn}</option>
-                </select>
-              </div>
-              <div id="macTaskShellRow" class="tool-settings-row" style="display: none;">
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsDebugTitle}">
+                    <input type="checkbox" id="debugMode" />
+                    <span>${i18n.toolSettingsDebugToggle}</span>
+                  </label>
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsAutoContextLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsAutoContextTitle}">
+                    <input type="checkbox" id="autoAddEditorContextTags" />
+                    <span>${i18n.toolSettingsAutoContextToggle}</span>
+                  </label>
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsImplicitSubagentsLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsImplicitSubagentsTitle}">
+                    <input type="checkbox" id="multiAgentEnabled" />
+                    <span>${i18n.toolSettingsImplicitSubagentsToggle}</span>
+                  </label>
+                </div>
+                <div class="tool-settings-note">${i18n.toolSettingsImplicitSubagentsHint}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
+                    <input type="checkbox" id="autoCompactContextAfterRun" />
+                    <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
+                  </label>
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
+                  <input
+                    type="number"
+                    id="loopMaxRounds"
+                    class="tool-settings-number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    title="${i18n.toolSettingsLoopMaxRoundsTitle}"
+                    aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
+                  />
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}</div>
+                  <select id="loopSubtaskMaxThinkingMode" class="thinking-select" title="${i18n.toolSettingsLoopSubtaskMaxThinkingModeTitle}" aria-label="${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}">
+                    <option value="low">${i18n.thinkingOptionLow}</option>
+                    <option value="medium">${i18n.thinkingOptionMedium}</option>
+                    <option value="high">${i18n.thinkingOptionHigh}</option>
+                    <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
+                  </select>
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopAutoCloseSubtaskTabsLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsLoopAutoCloseSubtaskTabsTitle}">
+                    <input type="checkbox" id="loopAutoCloseSubtaskTabs" />
+                    <span>${i18n.toolSettingsLoopAutoCloseSubtaskTabsToggle}</span>
+                  </label>
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
+                  <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
+                    <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
+                    <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
+                    <option value="en">${i18n.toolSettingsLanguageEn}</option>
+                  </select>
+                </div>
+              </section>
+              <section id="macTaskShellRow" class="tool-settings-card tool-settings-row" style="display: none;">
                 <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
                 <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
                   <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
                   <option value="bash">${i18n.toolSettingsMacShellBash}</option>
                 </select>
-              </div>
+              </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
-              <div class="tool-settings-row">
-                <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
-                <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
-                  <input type="checkbox" id="longTermMemoryEnabled" />
-                  <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
-                </label>
-              </div>
-              <div id="longTermMemoryNote" class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
+                    <input type="checkbox" id="longTermMemoryEnabled" />
+                    <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
+                  </label>
+                </div>
+                <div id="longTermMemoryNote" class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsInstallCodeGraphLabel}</div>
+                  <button id="installCodeGraph" class="secondary action-button" title="${i18n.toolSettingsInstallCodeGraphTitle}" aria-label="${i18n.toolSettingsInstallCodeGraphButton}">
+                    ${i18n.toolSettingsInstallCodeGraphButton}
+                  </button>
+                </div>
+                <div class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
+              </section>
             </div>
           </div>
         </div>

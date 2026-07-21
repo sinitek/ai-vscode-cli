@@ -1046,6 +1046,26 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   }
 });
 
+test("skills manager renders installed skills as a compact multiselect table", () => {
+  const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
+  const cssSource = readProjectFile(`media/config/assets/${findAsset(".css")}`);
+  const skillRows = extractBetween(uiSource, "const renderSkillRows =", "const renderOfficialSkillRows =");
+
+  assert.match(skillRows, /be\.jsxs\("table", \{\s+className: "skills-manager-table"/);
+  assert.match(skillRows, /className: "skills-manager-table-check"[\s\S]*type: "checkbox"/);
+  assert.match(skillRows, /ref: \(p\) => \{[\s\S]*p\.indeterminate = m/);
+  assert.match(skillRows, /className: "skills-manager-skill-line"/);
+  assert.match(skillRows, /className: "skills-manager-skill-description"/);
+  assert.match(skillRows, /children: p\.description/);
+  assert.doesNotMatch(skillRows, /className: "skills-manager-item"/);
+  assert.match(uiSource, /renderSkillRows\(r, s, f, h, p, b, u\)/);
+
+  assert.match(cssSource, /\.skills-manager-table \{[\s\S]*table-layout: fixed;/);
+  assert.match(cssSource, /\.skills-manager-table-check \{[\s\S]*width: 36px;/);
+  assert.match(cssSource, /\.skills-manager-skill-line \{[\s\S]*display: flex;/);
+  assert.match(cssSource, /\.skills-manager-skill-description \{[\s\S]*white-space: nowrap;/);
+});
+
 test("Codex, Claude, and OpenCode visual editor utilities expose stable observable contracts", () => {
   const codex = loadVisualEditorUtils(
     "// CODEX_VISUAL_EDITOR_UTILS_START",

@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
 import { WEBVIEW_I18N } from "../webview/viewContentI18n";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
+import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
 
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);
@@ -27,18 +28,32 @@ function extractFunctionSource(script: string, name: string): string {
 
 function buildHarness() {
   const functionSource = [
-    "getActiveLoopMainTaskId",
-    "syncOpenCurrentLoopGroupChatButton",
-    "openCurrentLoopGroupChat",
-  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, name)).join("\n");
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "updateRunWait"),
+    ...[
+      "getActiveLoopMainTaskId",
+      "syncOpenCurrentLoopGroupChatButton",
+      "openCurrentLoopGroupChat",
+    ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, name)),
+  ].join("\n");
   const classes = new Set<string>();
+  const typingNode = { style: { display: "" } };
+  const runStatusText = {
+    textContent: "",
+    classList: { toggle() { /* no-op test double */ } },
+    setAttribute() { /* no-op test double */ },
+    removeAttribute() { /* no-op test double */ },
+    style: { display: "" },
+  };
   const state: any = {
     isRunning: false,
     conversationTabs: { activeTabId: null, tabs: [] },
   };
   const elements = {
     openCurrentLoopGroupChat: { style: { display: "none" }, disabled: true },
+    runStatusText,
+    runWaitTime: { style: { display: "" } },
     runWait: {
+      style: { display: "none" },
       classList: {
         toggle(name: string, enabled: boolean) {
           if (enabled) {
@@ -48,6 +63,9 @@ function buildHarness() {
           }
         },
       },
+      querySelector(selector: string) {
+        return selector === ".typing" ? typingNode : null;
+      },
     },
   };
   const messages: unknown[] = [];
@@ -56,7 +74,12 @@ function buildHarness() {
     "state",
     "elements",
     "vscode",
-    `${functionSource}; return { syncOpenCurrentLoopGroupChatButton, openCurrentLoopGroupChat };`,
+    [
+      "const getActiveConversationRuntimeState = () => null;",
+      "const t = (key) => key;",
+      functionSource,
+      "return { syncOpenCurrentLoopGroupChatButton, openCurrentLoopGroupChat };",
+    ].join("\n"),
   )(state, elements, vscode) as {
     syncOpenCurrentLoopGroupChatButton(): void;
     openCurrentLoopGroupChat(): void;
@@ -64,7 +87,7 @@ function buildHarness() {
   return { state, elements, classes, messages, ...runtime };
 }
 
-test("places the persistent group-chat button immediately after the prompt button", () => {
+test("places the persistent group-chat button in the bottom status row", () => {
   const html = buildWebviewStaticHtml({
     locale: "zh-CN",
     cspSource: "self",
@@ -79,9 +102,13 @@ test("places the persistent group-chat button immediately after the prompt butto
   const promptIndex = html.indexOf('id="runPromptButton"');
   const groupChatIndex = html.indexOf('id="openCurrentLoopGroupChat"');
   const queueIndex = html.indexOf('id="queueIndicator"');
+  const chatAreaCloseIndex = html.indexOf('<div id="runWait"');
+  const taskListIndex = html.indexOf('id="taskListPanel"');
   assert.ok(promptIndex >= 0);
   assert.ok(groupChatIndex > promptIndex);
   assert.ok(queueIndex > groupChatIndex);
+  assert.ok(chatAreaCloseIndex > html.indexOf('id="chatArea"'));
+  assert.ok(taskListIndex > chatAreaCloseIndex);
   assert.match(html.slice(groupChatIndex, queueIndex), /打开群聊/);
 });
 
@@ -102,16 +129,19 @@ test("shows only for the active Loop main tab and survives every task status", (
     harness.syncOpenCurrentLoopGroupChatButton();
     assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "inline-flex");
     assert.equal(harness.elements.openCurrentLoopGroupChat.disabled, false);
+    assert.equal(harness.elements.runWait.style.display, "flex");
     assert.equal(harness.classes.has("has-current-loop-group-chat"), true);
   }
 
   harness.state.conversationTabs.activeTabId = "sub-tab";
   harness.syncOpenCurrentLoopGroupChatButton();
   assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "none");
+  assert.equal(harness.elements.runWait.style.display, "none");
 
   harness.state.conversationTabs.activeTabId = "normal-tab";
   harness.syncOpenCurrentLoopGroupChatButton();
   assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "none");
+  assert.equal(harness.elements.runWait.style.display, "none");
   assert.equal(harness.classes.has("has-current-loop-group-chat"), false);
 });
 

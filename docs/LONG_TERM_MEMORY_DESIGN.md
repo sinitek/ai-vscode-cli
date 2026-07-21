@@ -420,7 +420,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 ## 9. 用户可见能力
 
-工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 CodeGraph 设置；用户取消时保持关闭，不写入启用状态。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到 Vibe 模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
+工具设置“工作区”页中的 harness 骨架开关默认关闭，开启时必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动最新版 CodeGraph 安装、Codex MCP 注册和当前工作区索引初始化；用户取消时保持关闭，不写入启用状态。工具设置“工作区”页还提供独立“安装 CodeGraph”按钮，可不启用 harness 骨架而单独安装/升级本机 CodeGraph CLI 到最新版本，打开工作区时会同时初始化索引。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到 Vibe 模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
 
 该开关同时控制“插件侧记忆系统是否参与本次任务”。
 
@@ -446,7 +446,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 - 根级 `.gitignore` 若缺失则创建；若已存在则只补充一次 `.codegraph/`，避免提交 CodeGraph 本地索引缓存。
 - 骨架初始化收尾时会二次确认是否初始化 `ARCHITECTURE.md`；确认后通过当前 AI 对话发起 coding 任务，让 AI 阅读当前项目并更新 `ARCHITECTURE.md` 的真实架构内容。
 - 扩展激活、工作区切换、首次 recall / inject / 持久化都不再无条件安装 scaffold；只有显式开启并确认初始化后才安装。
-- 确认初始化后会在当前工作区终端执行 `codegraph install --target codex --location global && codegraph init`，让 CodeGraph 安装/索引过程对用户可见。
+- 确认初始化后会在当前工作区终端执行 `npm install -g @colbymchenry/codegraph@latest && codegraph install --target codex --location global && codegraph init`，让 CodeGraph 安装/索引过程对用户可见；独立“安装 CodeGraph”按钮复用该链路，未打开工作区时只执行安装/升级和 Codex MCP 注册。
 
 关闭时仍可允许：
 

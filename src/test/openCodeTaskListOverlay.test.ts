@@ -85,6 +85,8 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
     "shouldDisplayTaskListForTab",
     "formatTaskListProgress",
     "renderTaskList",
+    "normalizeTaskListStatus",
+    "readTaskListDoneFromStatus",
     "normalizeTaskListItems",
     "applyExternalTaskListUpdate",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, name));

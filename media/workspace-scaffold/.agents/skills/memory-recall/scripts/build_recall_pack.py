@@ -25,6 +25,7 @@ from memory_recall.constants import (
 from memory_recall.loaders import (
     build_claim_index,
     build_generated_entries,
+    display_path,
     load_json,
     load_optional_claims,
     load_optional_json,
@@ -119,10 +120,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     output_dir = resolve_output_dir(root, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        display_output_dir = output_dir.relative_to(root).as_posix()
-    except ValueError:
-        display_output_dir = str(output_dir)
+    display_output_dir = display_path(root, output_dir)
 
     if not args.skip_indexer or not (output_dir / "summary.json").exists():
         run_memory_indexer(root, output_dir, args.stale_days)
@@ -179,7 +177,8 @@ def main() -> int:
         "generator": GENERATOR_NAME,
         "version": GENERATOR_VERSION,
         "generated_at": iso_now(),
-        "repo_root": str(root),
+        "repo_root": ".",
+        "output_dir": display_output_dir,
         "focus": args.focus.strip(),
         "focus_terms": focus_terms,
         "anchor_id": args.anchor_id.strip(),
@@ -260,9 +259,9 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"[{GENERATOR_NAME}] wrote {report_path}")
-    print(f"[{GENERATOR_NAME}] wrote {summary_path}")
-    print(f"[{GENERATOR_NAME}] wrote {debug_path}")
+    print(f"[{GENERATOR_NAME}] wrote {display_path(root, report_path)}")
+    print(f"[{GENERATOR_NAME}] wrote {display_path(root, summary_path)}")
+    print(f"[{GENERATOR_NAME}] wrote {display_path(root, debug_path)}")
     print(f"- focus: {args.focus.strip() or '(baseline)'}")
     print(f"- generated docs: {len(generated_docs)}")
     print(f"- selected observations: {len(observations)}")

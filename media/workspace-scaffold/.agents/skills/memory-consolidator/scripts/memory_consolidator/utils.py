@@ -26,6 +26,14 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
         return output_dir
     return root / output_dir
 
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
+
+
 def count_suggestions(suggestions: list[Suggestion], kind: str) -> int:
     return sum(1 for item in suggestions if item.kind == kind)
 

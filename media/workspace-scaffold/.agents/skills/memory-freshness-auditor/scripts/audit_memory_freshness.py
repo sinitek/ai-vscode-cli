@@ -71,7 +71,7 @@ def main() -> int:
         report_path = resolve_output_dir(root, args.report_path)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report, encoding="utf-8")
-        print(f"[memory-freshness-auditor] wrote report to {report_path}", file=sys.stderr)
+        print(f"[memory-freshness-auditor] wrote report to {display_path(root, report_path)}", file=sys.stderr)
 
     if args.strict and audit.issues:
         return 1
@@ -83,6 +83,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def run_memory_indexer(root: Path, output_dir: Path, stale_days: int) -> None:

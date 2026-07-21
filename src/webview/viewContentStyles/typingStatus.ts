@@ -1,7 +1,10 @@
 export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
       .run-wait {
+        flex-shrink: 0;
+        margin: 4px var(--panel-content-padding) 0;
         padding-left: 4px;
         align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
       }
       .run-wait.has-current-loop-group-chat {

@@ -8,7 +8,7 @@ from .claims import build_claim_stats, build_claims
 from .collectors import collect_active_plans, collect_memory_docs
 from .constants import GENERATOR_NAME, GENERATOR_VERSION, MEMORY_DIR, PRIVATE_TAG_NAMES
 from .extractors import build_topic_summary, count_by_pyramid_level
-from .io_utils import resolve_output_dir, write_json, write_text
+from .io_utils import display_path, resolve_output_dir, write_json, write_text
 from .observations import build_observations
 from .renderers import (
     render_by_source,
@@ -31,6 +31,7 @@ from .text_utils import dedupe_preserve_order, iso_now
 def run_generation(*, root: Path, output_dir_arg: str, stale_days: int) -> Path:
     output_dir = resolve_output_dir(root, output_dir_arg)
     output_dir.mkdir(parents=True, exist_ok=True)
+    display_output_dir = display_path(root, output_dir)
 
     memory_docs, privacy_skips, claim_source_docs = collect_memory_docs(root, stale_days)
     active_plans, active_plan_privacy_skips = collect_active_plans(root)
@@ -83,7 +84,7 @@ def run_generation(*, root: Path, output_dir_arg: str, stale_days: int) -> Path:
         "generator": GENERATOR_NAME,
         "version": GENERATOR_VERSION,
         "generated_at": now,
-        "repo_root": str(root),
+        "repo_root": ".",
         "memory_docs": [doc.to_dict() for doc in memory_docs],
         "memory_pyramid": pyramid_counts,
         "active_plans": [plan.to_dict() for plan in active_plans],
@@ -111,8 +112,8 @@ def run_generation(*, root: Path, output_dir_arg: str, stale_days: int) -> Path:
         "generator": GENERATOR_NAME,
         "version": GENERATOR_VERSION,
         "generated_at": now,
-        "repo_root": str(root),
-        "output_dir": str(output_dir),
+        "repo_root": ".",
+        "output_dir": display_output_dir,
         "stale_days": stale_days,
         "files": [
             "index.md",
@@ -159,7 +160,7 @@ def run_generation(*, root: Path, output_dir_arg: str, stale_days: int) -> Path:
     write_json(output_dir / "manifest.json", manifest)
     write_json(output_dir / "summary.json", summary)
 
-    print(f"[{GENERATOR_NAME}] generated artifacts in {output_dir}")
+    print(f"[{GENERATOR_NAME}] generated artifacts in {display_output_dir}")
     for filename in manifest["files"]:
         print(f"- {filename}")
     return output_dir

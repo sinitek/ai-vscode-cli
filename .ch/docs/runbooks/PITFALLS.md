@@ -14,6 +14,33 @@
 
 ## 当前有效条目
 
+## Codex 可见 Tasklist 不能只识别括号状态
+
+- 状态：已规避，需随 Codex 日志表达复核
+- 首次发现：2026-07-20
+- 适用范围：Codex `agent_message` commentary、Webview task list overlay、`Tasklist` / `任务列表` 文本解析
+
+### 现象
+- Codex 今天的执行日志中，很多可见任务列表不会写成统一的 `Tasklist: [pending] ...` 格式，而是使用无状态中文分隔、编号、checkbox、反引号包裹状态，或把“已完成 / 正在 / 待执行”等状态词直接嵌在条目文本里。
+- 只识别 `[pending]` / `[in_progress]` / `[completed]` 会导致部分 Tasklist 完全不显示，或已完成项被当成未完成项。
+
+### 触发条件与根因
+- 真实日志里出现过 `Tasklist：事项1、事项2`、`Tasklist: \`[completed]\` ...`、`任务列表：1) ...已完成；2) ...进行中`、`Tasklist 更新：定位完成，开始修改` 等多种写法。
+- Parser 早期把状态视为方括号里的结构化 token，没有从明确 Tasklist section 内的普通文本提炼有限状态词，也没有识别中文 `任务列表` / `任务列表状态` 头。
+
+### 长期规避
+- Tasklist parser 应先锚定明确标题，再在该 section 内兼容少量真实出现的格式：括号/checkbox 状态、反引号括号状态、编号/项目符号、中文/英文分隔符，以及“已/正在/待/最后”等进度短句。
+- 不要把任意正文里的“完成”“待办”全局升级成任务；只有明确 Tasklist 标题后的内容才走兼容解析。
+- 无状态但明确位于 Tasklist 标题后的事项仍按未完成处理；从文本提炼出的完成状态需要清洗掉状态词，避免面板显示“定位完成”这类混合状态文本。
+
+### 验证方式
+- 用当天真实样例覆盖：反引号状态、中文 `任务列表` 标题、编号条目后缀状态、`Tasklist 更新` 进度短句和无状态中文分隔清单。
+- 运行 `npm run build` 和 `node --test dist/test/clipagescriptruntimecoverage.test.js`。
+
+### 关联资料
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/test/clipagescriptruntimecoverage.test.ts`
+
 ## Codex 同一 UI 分组切换模型/配置时不能复用旧 thread
 
 - 状态：已规避，需随 Codex app-server thread 元数据行为复核

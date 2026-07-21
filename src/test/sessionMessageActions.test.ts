@@ -241,6 +241,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     },
     isMacTaskShell: (value: unknown): value is MacTaskShell => value === "zsh" || value === "bash",
     confirmAndInitializeWorkspaceHarness: async () => true,
+    installCodeGraphForWorkspace: async () => undefined,
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,

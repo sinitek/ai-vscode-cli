@@ -38,6 +38,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.runWait) {
           elements.runWait.classList.toggle("has-current-loop-group-chat", Boolean(taskId));
         }
+        if (typeof updateRunWait === "function") {
+          updateRunWait();
+        }
       }
 
       function openCurrentLoopGroupChat() {

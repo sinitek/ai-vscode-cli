@@ -89,7 +89,7 @@ def main() -> int:
     write_json(output_dir / "task-board.json", payload)
     write_text(output_dir / "task-board.md", render_markdown(payload))
 
-    print(f"[{GENERATOR_NAME}] generated task board artifacts in {output_dir}")
+    print(f"[{GENERATOR_NAME}] generated task board artifacts in {display_path(root, output_dir)}")
     print("- task-board.md")
     print("- task-board.json")
     return 0
@@ -100,6 +100,13 @@ def resolve_path(root: Path, value: str) -> Path:
     if path.is_absolute():
         return path
     return root / path
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def collect_tasks(root: Path) -> list[BoardTask]:

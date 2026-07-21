@@ -13,6 +13,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     return root / output_dir
 
 
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
+
+
 def write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 

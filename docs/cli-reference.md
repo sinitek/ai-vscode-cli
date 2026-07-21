@@ -15,7 +15,7 @@ OpenCode 全局 MCP 通过官方 XDG `opencode.json` 顶层 `mcp` 直接安装/�
 
 内置 MCP 市场目录已刷新为官方/权威候选，并通过 `npm run validate:mcp-marketplace` 校验中文描述、官方来源、安装配置和旧来源黑名单；目录口径以 `.ch/docs/references/cli-runtime-reference.md` 为准。
 
-工具设置“工作区”页中的 harness 骨架开关默认关闭。用户开启时会先弹窗确认；确认后才会安装当前工作区 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 创建或追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动 CodeGraph 设置。初始化收尾阶段会再弹窗询问是否让 AI 初始化 `ARCHITECTURE.md`；用户确认后，插件把当前 AI 对话切到 Vibe 模式，并复用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。该开关同时控制插件侧长期记忆召回/写入：热区写入 `.ch/docs/memory/`，踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。不控制 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩或配置。
+工具设置“工作区”页中的 harness 骨架开关默认关闭。用户开启时会先弹窗确认；确认后才会安装当前工作区 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 创建或追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`，随后在终端启动最新版 CodeGraph 安装、Codex MCP 注册和当前工作区索引初始化。该页还提供独立“安装 CodeGraph”按钮，可单独执行本机 CodeGraph CLI 安装/升级到最新版本；Windows 使用 `cmd.exe`，macOS 使用默认 shell。初始化收尾阶段会再弹窗询问是否让 AI 初始化 `ARCHITECTURE.md`；用户确认后，插件把当前 AI 对话切到 Vibe 模式，并复用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。该开关同时控制插件侧长期记忆召回/写入：热区写入 `.ch/docs/memory/`，踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。不控制 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩或配置。
 
 Claude 配置中心管理 `~/.claude/settings.json`，支持可视化与 JSON 高级模式。可视化覆盖官方常用核心字段，并可分别设置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL`；未展示字段、额外 `env`、hooks 和权限扩展会保留，非法 JSON 不覆盖有效可视化状态。Claude / OpenCode / Codex 三组可视化参数 label 右侧都有问号 tooltip，枚举参数提示可选值；三组“查看范例”统一放在配置文件名右侧。完整口径以 `.ch/docs/references/cli-runtime-reference.md` 为准。
 

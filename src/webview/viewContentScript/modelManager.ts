@@ -521,4 +521,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           });
         });
       }
+      if (elements.installCodeGraph) {
+        elements.installCodeGraph.addEventListener("click", () => {
+          vscode.postMessage({
+            type: "installCodeGraph",
+          });
+        });
+      }
 `;

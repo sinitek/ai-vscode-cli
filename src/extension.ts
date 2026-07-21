@@ -76,7 +76,7 @@ import {
   validateOpenCodeModelOverride,
   type OpenCodeModelRole,
 } from "./cli/opencodeconfigmodels";
-import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
+import { getCliDisplayName, getCliInstallCommand, getCodeGraphInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import {
@@ -634,8 +634,9 @@ const COMMON_COMMAND_LABELS: Record<"compactContext", string> = {
   compactContext: t("common.compactContext"),
 };
 const CLI_INSTALL_TERMINAL_PREFIX = "CLI Install";
+const CODEGRAPH_INSTALL_TERMINAL_NAME = "CodeGraph Install";
 const WORKSPACE_HARNESS_TERMINAL_NAME = "Workspace Harness Setup";
-const CODEGRAPH_SETUP_COMMAND = "codegraph install --target codex --location global && codegraph init";
+const CODEGRAPH_SETUP_COMMAND = getCodeGraphInstallCommand({ initializeWorkspace: true });
 const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARCHITECTURE.md";
 const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
@@ -1100,6 +1101,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     updateStoredToolSettings,
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness,
+    installCodeGraphForWorkspace,
     appendUserMessageForCli,
     runContextCompactionCommand,
     openLoopGroupChatPanel,
@@ -11062,16 +11064,58 @@ async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
 }
 
 function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
-  const terminal = vscode.window.createTerminal({
-    name: WORKSPACE_HARNESS_TERMINAL_NAME,
-    cwd: workspaceRoot,
-  });
+  const terminal = createCodeGraphTerminal(WORKSPACE_HARNESS_TERMINAL_NAME, workspaceRoot);
   terminal.show();
   terminal.sendText(CODEGRAPH_SETUP_COMMAND);
   void logInfo("workspace-harness-codegraph-setup-triggered", {
     workspace: workspaceRoot,
     command: CODEGRAPH_SETUP_COMMAND,
   });
+}
+
+function createCodeGraphTerminal(name: string, cwd: string): vscode.Terminal {
+  const terminalOptions: vscode.TerminalOptions = {
+    name,
+    cwd,
+  };
+  if (process.platform === "win32") {
+    terminalOptions.shellPath = process.env.ComSpec || "cmd.exe";
+  }
+  return vscode.window.createTerminal(terminalOptions);
+}
+
+async function installCodeGraphForWorkspace(): Promise<void> {
+  const workspaceRoot = resolveWorkspaceCwd();
+  const initializeWorkspace = Boolean(workspaceRoot);
+  const installCommand = getCodeGraphInstallCommand({ initializeWorkspace });
+  const confirmLabel = t("codegraph.installAction");
+  const confirmMessage = workspaceRoot
+    ? t("codegraph.installConfirm", { workspace: workspaceRoot, command: installCommand })
+    : t("codegraph.installConfirmNoWorkspace", { command: installCommand });
+  const selection = await vscode.window.showWarningMessage(
+    confirmMessage,
+    { modal: true },
+    confirmLabel,
+  );
+  if (selection !== confirmLabel) {
+    return;
+  }
+
+  const terminal = createCodeGraphTerminal(
+    CODEGRAPH_INSTALL_TERMINAL_NAME,
+    workspaceRoot ?? os.homedir(),
+  );
+  terminal.show();
+  terminal.sendText(installCommand);
+  void logInfo("codegraph-install-triggered", {
+    workspace: workspaceRoot ?? null,
+    command: installCommand,
+    initializeWorkspace,
+    platform: process.platform,
+  });
+  void vscode.window.showInformationMessage(
+    t("codegraph.installStarted", { command: installCommand }),
+  );
 }
 
 function buildArchitectureInitializationModelPrompt(workspaceRoot: string): string {

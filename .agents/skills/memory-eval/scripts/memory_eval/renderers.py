@@ -60,8 +60,8 @@ def write_empty_run(
     report_path.write_text(render_report(summary_payload), encoding="utf-8")
     summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"[{GENERATOR_NAME}] wrote {report_path}")
-    print(f"[{GENERATOR_NAME}] wrote {summary_path}")
+    print(f"[{GENERATOR_NAME}] wrote {path_for_report(report_path, root)}")
+    print(f"[{GENERATOR_NAME}] wrote {path_for_report(summary_path, root)}")
     print("- no golden questions found")
     return 0
 

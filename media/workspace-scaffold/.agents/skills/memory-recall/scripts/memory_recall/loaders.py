@@ -18,6 +18,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     return root / output_dir
 
 
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
+
+
 def run_memory_indexer(root: Path, output_dir: Path, stale_days: int) -> None:
     script_path = (
         Path(__file__).resolve().parents[3]

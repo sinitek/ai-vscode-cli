@@ -85,7 +85,7 @@ def build_status(root: Path) -> dict[str, object]:
     )
     return {
         "generated_at": datetime.now(UTC).astimezone().isoformat(timespec="seconds"),
-        "root": str(root),
+        "root": ".",
         "git_changed_paths": git_changed_paths(root),
         "active_plans": active_plans,
         "task_board": task_board,
@@ -235,7 +235,7 @@ def render_page(root: Path) -> str:
 <body>
   <header>
     <h1>Harness Workbench</h1>
-    <div class="muted">Root: <code>{escape(str(root))}</code></div>
+    <div class="muted">Root: <code>{escape(str(status["root"]))}</code></div>
     <div class="muted">Generated: {escape(str(status["generated_at"]))}</div>
   </header>
   <main>

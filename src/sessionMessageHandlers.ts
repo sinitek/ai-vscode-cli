@@ -118,6 +118,7 @@ export type PanelMessageHandlerDeps = {
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   isMacTaskShell: (value: unknown) => value is MacTaskShell;
   confirmAndInitializeWorkspaceHarness: () => Promise<boolean>;
+  installCodeGraphForWorkspace: () => Promise<void>;
   appendUserMessageForCli: (cli: CliName, sessionId: string | null, content: string, options?: { merge?: boolean }) => void;
   runContextCompactionCommand: () => Promise<void>;
   openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
@@ -204,6 +205,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     updateStoredToolSettings,
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness,
+    installCodeGraphForWorkspace,
     appendUserMessageForCli,
     runContextCompactionCommand,
     openLoopGroupChatPanel,
@@ -762,6 +764,11 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     workspaceSettingsRef.value.workspaceMemoryEnabled = initialized;
     saveWorkspaceSettings(workspaceSettingsRef.value);
     await postPanelState();
+    return;
+  }
+
+  if (message.type === "installCodeGraph") {
+    await installCodeGraphForWorkspace();
     return;
   }
 

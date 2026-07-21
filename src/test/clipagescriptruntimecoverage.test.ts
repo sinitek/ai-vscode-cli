@@ -657,6 +657,79 @@ test("boots the runtime and dispatches state, message, stream, history, settings
       { done: false, text: "跑验证" },
     ]
   );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist：定位接口实现、核对前端调用、确认分页方向与触发场景。"),
+    [
+      { done: false, text: "定位接口实现" },
+      { done: false, text: "核对前端调用" },
+      { done: false, text: "确认分页方向与触发场景" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist：定位接口实现、核对前端调用、确认分页方向与触发场景。CodeGraph 索引已存在。"),
+    [
+      { done: false, text: "定位接口实现" },
+      { done: false, text: "核对前端调用" },
+      { done: false, text: "确认分页方向与触发场景" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist：1) 确认现有消息渲染和滚动容器 2) 改后端支持倒序分页并返回 hasMore 3) 改前端首屏分页与顶部加载 4) 补最小测试并跑构建/相关测试。"),
+    [
+      { done: false, text: "确认现有消息渲染和滚动容器" },
+      { done: false, text: "改后端支持倒序分页并返回 hasMore" },
+      { done: false, text: "改前端首屏分页与顶部加载" },
+      { done: false, text: "补最小测试并跑构建/相关测试" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist:\n- 读取上下文与现状\n- 接入 writer pump fanout\n- 运行指定验证"),
+    [
+      { done: false, text: "读取上下文与现状" },
+      { done: false, text: "接入 writer pump fanout" },
+      { done: false, text: "运行指定验证" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist: `[completed]` inspect current git state; `[in_progress]` run targeted tests; `[pending]` build."),
+    [
+      { done: true, text: "inspect current git state" },
+      { done: false, text: "run targeted tests" },
+      { done: false, text: "build" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("任务列表：1) 读取约束与现状已完成；2) 补 resume 写入/积压边界进行中；3) 更新测试与验证待执行；4) 写沟通与任务记录待执行。"),
+    [
+      { done: true, text: "读取约束与现状" },
+      { done: false, text: "补 resume 写入/积压边界" },
+      { done: false, text: "更新测试与验证" },
+      { done: false, text: "写沟通与任务记录" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist 更新：定位完成，开始修改。目标是让导航管理右侧只渲染表格区域。"),
+    [
+      { done: true, text: "定位" },
+      { done: false, text: "修改" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("任务列表状态：前端调用点已定位；后端实现还没被 CodeGraph 直接列出。接下来用精确文本检索补齐路由位置。"),
+    [
+      { done: true, text: "前端调用点" },
+      { done: false, text: "后端实现还没被 CodeGraph 直接列出" },
+    ]
+  );
+  assert.deepEqual(
+    api.parseTaskListFromText("Tasklist: 1) 已确认仓库与 CodeGraph 存在；2) 正在读取规范、方案和目标 utils；3) 随后补边界与测试；4) 最后跑最小验证并写回子任务记录。"),
+    [
+      { done: true, text: "仓库与 CodeGraph 存在" },
+      { done: false, text: "读取规范、方案和目标 utils" },
+      { done: false, text: "补边界与测试" },
+      { done: false, text: "跑最小验证并写回子任务记录" },
+    ]
+  );
   assert.equal(
     api.shouldHideParsedTaskListMessage({
       role: "assistant",
@@ -776,6 +849,8 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("toolSettingsOverlay").classList.contains("visible"), true);
   document.getElementById("toolSettingsWorkspaceTab").click();
   assert.equal(document.getElementById("toolSettingsWorkspacePanel").classList.contains("active"), true);
+  document.getElementById("installCodeGraph").click();
+  assert.deepEqual(posted.at(-1), { type: "installCodeGraph" });
   document.getElementById("loopMaxRounds").value = "0";
   document.getElementById("loopMaxRounds").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopMaxRounds", value: 1 });

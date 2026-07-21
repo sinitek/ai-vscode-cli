@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 
 import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
 import { WEBVIEW_I18N } from "../webview/viewContentI18n";
+import { TOAST_MISC_STYLES } from "../webview/viewContentStyles/toastMisc";
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../webview/viewContentScript/coreBootstrap";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
@@ -62,4 +63,22 @@ test("renders default-on automatic compaction in the global settings panel", () 
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /autoCompactContextAfterRun: true/u);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /key: "autoCompactContextAfterRun"/u);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.autoCompactContextAfterRun/u);
+});
+
+test("lays out tool settings as compact masonry cards", () => {
+  const html = buildStaticHtml("zh-CN");
+  const globalPanelStart = html.indexOf('id="toolSettingsGlobalPanel"');
+  const workspacePanelStart = html.indexOf('id="toolSettingsWorkspacePanel"');
+  const firstCardStart = html.indexOf('class="tool-settings-card"', globalPanelStart);
+
+  assert.notEqual(globalPanelStart, -1);
+  assert.notEqual(workspacePanelStart, -1);
+  assert.ok(firstCardStart > globalPanelStart && firstCardStart < workspacePanelStart);
+  assert.match(
+    html,
+    /class="tool-settings-card"[\s\S]*id="multiAgentEnabled"[\s\S]*class="tool-settings-note"/u,
+  );
+  assert.match(TOAST_MISC_STYLES, /\.tool-settings-panel\.active \{\s+display: block;\s+column-count: 2;/u);
+  assert.match(TOAST_MISC_STYLES, /\.tool-settings-card \{[\s\S]*break-inside: avoid;/u);
+  assert.match(TOAST_MISC_STYLES, /@media \(max-width: 560px\) \{[\s\S]*\.tool-settings-panel\.active \{\s+column-count: 1;/u);
 });

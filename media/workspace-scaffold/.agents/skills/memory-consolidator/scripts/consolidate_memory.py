@@ -36,7 +36,7 @@ from memory_consolidator.suggestions import (
     collect_profile_suggestions,
     collect_rolling_summary_suggestions,
 )
-from memory_consolidator.utils import iso_now, normalize_key, resolve_output_dir
+from memory_consolidator.utils import display_path, iso_now, normalize_key, resolve_output_dir
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +61,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     output_dir = resolve_output_dir(root, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    display_output_dir = display_path(root, output_dir)
 
     privacy = PrivacyStats(private_docs_skipped=[])
 
@@ -110,7 +111,8 @@ def main() -> int:
         "generator": GENERATOR_NAME,
         "version": GENERATOR_VERSION,
         "generated_at": iso_now(),
-        "repo_root": str(root),
+        "repo_root": ".",
+        "output_dir": display_output_dir,
         "sources": {
             "handoffs": [doc.to_dict() for doc in handoffs],
             "active_plans": [doc.to_dict() for doc in active_plans],
@@ -149,8 +151,8 @@ def main() -> int:
     )
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"[{GENERATOR_NAME}] wrote {report_path}")
-    print(f"[{GENERATOR_NAME}] wrote {summary_path}")
+    print(f"[{GENERATOR_NAME}] wrote {display_path(root, report_path)}")
+    print(f"[{GENERATOR_NAME}] wrote {display_path(root, summary_path)}")
     print(f"- handoffs scanned: {len(handoffs)}")
     print(f"- active plans scanned: {len(active_plans)}")
     print(f"- pitfall entries scanned: {len(pitfall_entries)}")

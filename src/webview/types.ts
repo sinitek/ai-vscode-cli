@@ -44,6 +44,7 @@ export type PanelMessage =
   | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small" }
   | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
+  | { type: "installCodeGraph" }
   | {
       type: "sendPrompt";
       prompt: string;

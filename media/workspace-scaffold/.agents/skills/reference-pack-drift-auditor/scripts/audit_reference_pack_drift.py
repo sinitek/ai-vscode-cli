@@ -49,6 +49,8 @@ def main() -> int:
     output_dir = resolve_output_dir(root, args.output_dir)
     manifest_dir = resolve_output_dir(root, args.manifest_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    display_output_dir = display_path(root, output_dir)
+    display_manifest_dir = display_path(root, manifest_dir)
 
     manifests = collect_manifests(manifest_dir)
     registry_status = load_registry(root)
@@ -63,7 +65,7 @@ def main() -> int:
         manifest_summaries.append(
             {
                 "pack_name": pack_name,
-                "manifest_path": manifest_path.relative_to(root).as_posix() if manifest_path.is_relative_to(root) else str(manifest_path),
+                "manifest_path": display_path(root, manifest_path),
                 "source_repo": manifest.get("source_repo", ""),
                 "source_ref": manifest.get("source_ref", ""),
                 "pack_version": manifest.get("pack_version", ""),
@@ -75,8 +77,9 @@ def main() -> int:
     summary = {
         "generator": "reference-pack-drift-auditor",
         "generated_at": iso_now(),
-        "repo_root": str(root),
-        "manifest_dir": str(manifest_dir),
+        "repo_root": ".",
+        "output_dir": display_output_dir,
+        "manifest_dir": display_manifest_dir,
         "manifest_count": len(manifests),
         "registry_path": REGISTRY_PATH,
         "pack_summaries": manifest_summaries,
@@ -85,10 +88,10 @@ def main() -> int:
     }
 
     write_json(output_dir / "drift-summary.json", summary)
-    write_text(output_dir / "drift-report.md", render_report(manifest_summaries, drift_entries, manifests, manifest_dir, registry_status))
+    write_text(output_dir / "drift-report.md", render_report(manifest_summaries, drift_entries, manifests, display_manifest_dir, registry_status))
 
-    print(f"[reference-pack-drift-auditor] wrote {output_dir / 'drift-report.md'}")
-    print(f"[reference-pack-drift-auditor] wrote {output_dir / 'drift-summary.json'}")
+    print(f"[reference-pack-drift-auditor] wrote {display_path(root, output_dir / 'drift-report.md')}")
+    print(f"[reference-pack-drift-auditor] wrote {display_path(root, output_dir / 'drift-summary.json')}")
     print(f"- manifest_count: {len(manifests)}")
     print(f"- drifted: {sum(1 for item in drift_entries if item.status == 'drifted')}")
     print(f"- missing: {sum(1 for item in drift_entries if item.status == 'missing')}")
@@ -101,6 +104,13 @@ def resolve_output_dir(root: Path, path_arg: str) -> Path:
     if path.is_absolute():
         return path
     return root / path
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def collect_manifests(manifest_dir: Path) -> list[Path]:
@@ -197,7 +207,7 @@ def render_report(
     manifest_summaries: list[dict[str, object]],
     drift_entries: list[DriftEntry],
     manifests: list[Path],
-    manifest_dir: Path,
+    manifest_dir: str,
     registry_status: dict[str, object],
 ) -> str:
     totals = count_entries(drift_entries)

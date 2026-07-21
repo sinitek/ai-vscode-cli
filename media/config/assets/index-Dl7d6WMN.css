@@ -1075,6 +1075,100 @@ input[type="file"]::file-selector-button {
   background: var(--clay-surface) !important;
 }
 
+.skills-manager-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--clay-border) !important;
+  border-radius: var(--clay-radius-card) !important;
+  background: var(--clay-canvas) !important;
+  color: var(--clay-text) !important;
+  box-shadow: var(--clay-shadow);
+  table-layout: fixed;
+}
+
+.skills-manager-table th,
+.skills-manager-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--clay-border) !important;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.skills-manager-table tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+.skills-manager-table-header th {
+  background: var(--clay-surface-muted) !important;
+  color: var(--clay-text-secondary) !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.skills-manager-table-row:hover td {
+  background: var(--clay-surface) !important;
+}
+
+.skills-manager-table-check {
+  width: 36px;
+  text-align: center !important;
+}
+
+.skills-manager-table-status {
+  width: 76px;
+  white-space: nowrap;
+}
+
+.skills-manager-table-actions {
+  width: 124px;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.skills-manager-table-actions .ant-btn + .ant-btn {
+  margin-left: 6px;
+}
+
+.skills-manager-table-path,
+.skills-manager-skill-line,
+.skills-manager-skill-title,
+.skills-manager-skill-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-manager-skill-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-manager-skill-title {
+  flex: 0 0 auto;
+  max-width: 42%;
+  font-weight: 600;
+}
+
+.skills-manager-skill-description {
+  flex: 1 1 auto;
+  color: var(--clay-text-secondary) !important;
+  font-size: 12px;
+}
+
+.skills-manager-table .skills-manager-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .skills-manager-badge {
   border: 1px solid var(--clay-info-border) !important;
   background: var(--clay-badge-bg) !important;

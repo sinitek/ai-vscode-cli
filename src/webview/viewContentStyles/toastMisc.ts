@@ -63,7 +63,7 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
 
       .tool-settings-modal {
-        width: 420px;
+        width: min(680px, 92vw);
       }
       .tool-settings-body {
         padding: 16px;
@@ -91,11 +91,24 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
       .tool-settings-panel {
         display: none;
-        flex-direction: column;
-        gap: 12px;
       }
       .tool-settings-panel.active {
-        display: flex;
+        display: block;
+        column-count: 2;
+        column-gap: 12px;
+      }
+      .tool-settings-card {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0 0 12px;
+        padding: 10px;
+        break-inside: avoid;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        background: var(--vscode-editor-background);
       }
       .tool-settings-row {
         display: flex;
@@ -103,15 +116,20 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         justify-content: space-between;
         gap: 12px;
       }
+      .tool-settings-row.tool-settings-card {
+        flex-direction: row;
+      }
       .tool-settings-label {
         font-size: 12px;
         color: var(--vscode-foreground);
       }
       .tool-settings-note {
-        margin-top: -6px;
         font-size: 11px;
         line-height: 1.4;
         color: var(--vscode-descriptionForeground);
+      }
+      .tool-settings-card > .tool-settings-note {
+        margin-top: -2px;
       }
       .tool-settings-number {
         width: 92px;
@@ -126,6 +144,14 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       .tool-settings-number:focus {
         outline: none;
         border-color: var(--vscode-focusBorder);
+      }
+      @media (max-width: 560px) {
+        .tool-settings-modal {
+          width: 420px;
+        }
+        .tool-settings-panel.active {
+          column-count: 1;
+        }
       }
 
       .common-commands-modal {

@@ -248,6 +248,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
         longTermMemoryEnabled: document.getElementById("longTermMemoryEnabled"),
         longTermMemoryNote: document.getElementById("longTermMemoryNote"),
+        installCodeGraph: document.getElementById("installCodeGraph"),
         toolSettingsGlobalTab: document.getElementById("toolSettingsGlobalTab"),
         toolSettingsWorkspaceTab: document.getElementById("toolSettingsWorkspaceTab"),
         toolSettingsGlobalPanel: document.getElementById("toolSettingsGlobalPanel"),

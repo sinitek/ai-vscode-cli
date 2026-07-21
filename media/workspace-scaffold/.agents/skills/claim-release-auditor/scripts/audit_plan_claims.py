@@ -49,6 +49,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     output_dir = resolve_output_dir(root, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    display_output_dir = display_path(root, output_dir)
 
     refresh_work_frontier(root, output_dir)
     summary = load_json(output_dir / "work-frontier-summary.json")
@@ -75,7 +76,8 @@ def main() -> int:
             {
                 "generator": "claim-release-auditor",
                 "generated_at": now.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "repo_root": str(root),
+                "repo_root": ".",
+                "output_dir": display_output_dir,
                 "active_plan_count": len(plans),
                 "issue_count": len(issues),
                 "warning_count": len(warnings),
@@ -91,8 +93,8 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"[claim-release-auditor] wrote {report_path}")
-    print(f"[claim-release-auditor] wrote {summary_path}")
+    print(f"[claim-release-auditor] wrote {display_path(root, report_path)}")
+    print(f"[claim-release-auditor] wrote {display_path(root, summary_path)}")
     print(f"- issues: {len(issues)}")
     print(f"- warnings: {len(warnings)}")
     print(f"- expiring soon: {len(expiring)}")
@@ -106,6 +108,13 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
+
+
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.name or "."
 
 
 def refresh_work_frontier(root: Path, output_dir: Path) -> None:

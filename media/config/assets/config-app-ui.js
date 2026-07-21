@@ -2397,111 +2397,128 @@ function officialSkillVersionLines(e) {
   return n;
 }
 
-const renderSkillRows = (e, t, n, r, o, l) =>
-  e.map((s) => {
-    const u = (n || []).find((f) => f.installed && f.installedPath === s.path),
-      m = u ? officialSkillStatusText(u.installState || (u.installed ? "unknown_source" : "not_installed")) : "",
-      v = u && l && l.skillId === u.id ? l.action : "";
-    return be.jsx(
-      "div",
-      {
-        className: "skills-manager-item",
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "10px",
-          padding: "8px",
-          borderRadius: "6px",
-          marginBottom: "8px",
-          flexWrap: "wrap",
-        },
-        children: [
-          be.jsxs("div", {
-            style: { display: "flex", gap: "8px", flex: 1, minWidth: 0 },
-            children: [
-              be.jsx("input", {
+const renderSkillRows = (e, t, n, r, o, l, s) => {
+  const u = e.filter((p) => p.enabled !== !1).length,
+    f = e.length > 0 && u === e.length,
+    m = u > 0 && !f;
+  return be.jsxs("table", {
+    className: "skills-manager-table",
+    children: [
+      be.jsx("thead", {
+        children: be.jsxs("tr", {
+          className: "skills-manager-table-header",
+          children: [
+            be.jsx("th", {
+              className: "skills-manager-table-check",
+              scope: "col",
+              children: be.jsx("input", {
                 type: "checkbox",
-                checked: s.enabled !== !1,
-                onChange: (f) => t(s.name, f.target.checked, s.path),
-              }),
-              be.jsxs("div", {
-                style: {
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                  flex: 1,
-                  minWidth: 0,
+                checked: f,
+                ref: (p) => {
+                  p && (p.indeterminate = m);
                 },
-                children: [
-                  be.jsxs("div", {
-                    style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+                onChange: (p) => s && s(p.target.checked),
+                "aria-label": f ? "取消全选 Skills" : "全选 Skills",
+              }),
+            }),
+            be.jsx("th", { className: "skills-manager-table-skill", scope: "col", children: "技能" }),
+            be.jsx("th", { className: "skills-manager-table-path", scope: "col", children: "路径" }),
+            be.jsx("th", { className: "skills-manager-table-status", scope: "col", children: "状态" }),
+            be.jsx("th", { className: "skills-manager-table-actions", scope: "col", children: "操作" }),
+          ],
+        }),
+      }),
+      be.jsx("tbody", {
+        children: e.map((p) => {
+          const h = (n || []).find((S) => S.installed && S.installedPath === p.path),
+            b = h ? officialSkillStatusText(h.installState || (h.installed ? "unknown_source" : "not_installed")) : "",
+            x = h && l && l.skillId === h.id ? l.action : "";
+          return be.jsxs(
+            "tr",
+            {
+              className: "skills-manager-table-row",
+              children: [
+                be.jsx("td", {
+                  className: "skills-manager-table-check",
+                  children: be.jsx("input", {
+                    type: "checkbox",
+                    checked: p.enabled !== !1,
+                    onChange: (S) => t(p.name, S.target.checked, p.path),
+                    "aria-label": `${p.enabled === !1 ? "启用" : "停用"} ${p.name}`,
+                  }),
+                }),
+                be.jsx("td", {
+                  className: "skills-manager-table-skill",
+                  children: be.jsxs("div", {
+                    className: "skills-manager-skill-line",
                     children: [
-                      be.jsx("div", { children: s.name }),
-                      u
+                      be.jsx("span", {
+                        className: "skills-manager-skill-title",
+                        title: p.name,
+                        children: p.name,
+                      }),
+                      p.description
                         ? be.jsx("span", {
-                            className: "skills-manager-badge",
-                            style: {
-                              fontSize: "11px",
-                              lineHeight: 1,
-                              padding: "3px 8px",
-                              borderRadius: "999px",
-                            },
-                            children: m,
+                            className: "skills-manager-skill-description",
+                            title: p.description,
+                            children: p.description,
                           })
                         : null,
                     ],
                   }),
-                  be.jsx("div", {
-                    className: "skills-manager-muted",
-                    style: {
-                      fontSize: "12px",
-                      wordBreak: "break-all",
-                    },
-                    children: s.path,
-                  }),
-                  s.description
-                    ? be.jsx("div", {
+                }),
+                be.jsx("td", {
+                  className: "skills-manager-table-path skills-manager-muted",
+                  title: p.path,
+                  children: p.path,
+                }),
+                be.jsx("td", {
+                  className: "skills-manager-table-status",
+                  children: h
+                    ? be.jsx("span", {
+                        className: "skills-manager-badge",
+                        children: b,
+                      })
+                    : be.jsx("span", {
                         className: "skills-manager-muted",
-                        style: {
-                          fontSize: "12px",
-                        },
-                        children: s.description,
+                        children: "-",
+                      }),
+                }),
+                be.jsx("td", {
+                  className: "skills-manager-table-actions",
+                  children: h
+                    ? be.jsxs(be.Fragment, {
+                        children: [
+                          h.canUpdate
+                            ? be.jsx(xn, {
+                                size: "small",
+                                type: "primary",
+                                loading: x === "update",
+                                onClick: () => r(h),
+                                children: x === "update" ? "更新中..." : "更新",
+                              })
+                            : null,
+                          h.canUninstall
+                            ? be.jsx(xn, {
+                                size: "small",
+                                loading: x === "uninstall",
+                                onClick: () => o(h),
+                                children: x === "uninstall" ? "卸载中..." : "卸载",
+                              })
+                            : null,
+                        ],
                       })
                     : null,
-                ],
-              }),
-            ],
-          }),
-          u
-            ? be.jsxs("div", {
-                style: { display: "flex", gap: "8px", flexWrap: "wrap" },
-                children: [
-                  u.canUpdate
-                    ? be.jsx(xn, {
-                        size: "small",
-                        type: "primary",
-                        loading: v === "update",
-                        onClick: () => r(u),
-                        children: v === "update" ? "更新中..." : "更新",
-                      })
-                    : null,
-                  u.canUninstall
-                    ? be.jsx(xn, {
-                        size: "small",
-                        loading: v === "uninstall",
-                        onClick: () => o(u),
-                        children: v === "uninstall" ? "卸载中..." : "卸载",
-                      })
-                    : null,
-                ],
-              })
-            : null,
-        ],
-      },
-      `${s.name}:${s.path || ""}`,
-    );
+                }),
+              ],
+            },
+            `${p.name}:${p.path || ""}`,
+          );
+        }),
+      }),
+    ],
   });
+};
 
 const renderOfficialSkillRows = (e, t, n, r, o) =>
   e.map((l) => {
@@ -2678,7 +2695,7 @@ const SkillsManagerModal = ({
             },
             children: x,
           })
-        : renderSkillRows(r, s, f, h, p, b)
+        : renderSkillRows(r, s, f, h, p, b, u)
       : m
         ? be.jsx("div", {
             className: "skills-manager-empty",

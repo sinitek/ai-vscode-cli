@@ -15,17 +15,17 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def path_for_report(path: Path, root: Path) -> str:
     try:
-        return path.relative_to(root).as_posix()
+        return path.resolve().relative_to(root).as_posix()
     except ValueError:
-        return str(path)
+        return path.name or "."
 
 def path_for_command(path: Path, root: Path | None = None) -> str:
     if root is None:
-        return str(path)
+        return path.name or "."
     try:
-        return path.relative_to(root).as_posix()
+        return path.resolve().relative_to(root).as_posix()
     except ValueError:
-        return str(path)
+        return path.name or "."
 
 def derive_suite_name(questions: list[EvalQuestion]) -> str:
     suites = {item.suite for item in questions if item.suite}
