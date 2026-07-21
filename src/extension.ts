@@ -172,6 +172,7 @@ import {
   type CodexRunSelection,
 } from "./interactive/codexThreadSelection";
 import { isCodexRetryProgressTraceKind } from "./interactive/codexRunnerRuntime";
+import { extractTaskListItemsFromForwardedCodexEvent } from "./interactive/codexAppServerProtocol";
 import {
   collectInteractiveSessionKeys,
   collectReferencedInteractiveSessionKeys,
@@ -10163,6 +10164,10 @@ async function runPromptInteractive(
               return;
             }
             sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+            const eventTaskListItems = extractTaskListItemsFromForwardedCodexEvent(event, runner.getThreadId());
+            if (eventTaskListItems.length) {
+              sendPanelMessage({ type: "taskListUpdate", items: eventTaskListItems, tabId });
+            }
             appendDebugEvent(event);
           },
           onTaskListUpdate: (items) => {

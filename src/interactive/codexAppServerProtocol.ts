@@ -138,6 +138,39 @@ export function normalizeTodoListItems(items: unknown[]): CodexTodoListItem[] {
     .filter((item): item is CodexTodoListItem => Boolean(item));
 }
 
+function isPrimaryThreadEvent(eventThreadId: unknown, primaryThreadId?: string | null): boolean {
+  const normalizedEventThreadId = String(eventThreadId || "").trim();
+  const normalizedPrimaryThreadId = String(primaryThreadId || "").trim();
+  return !normalizedEventThreadId || !normalizedPrimaryThreadId || normalizedEventThreadId === normalizedPrimaryThreadId;
+}
+
+export function extractTaskListItemsFromForwardedCodexEvent(
+  event: unknown,
+  primaryThreadId?: string | null,
+): CodexTodoListItem[] {
+  const record = event && typeof event === "object"
+    ? event as Record<string, unknown>
+    : {};
+  const type = String(record.type || "").trim();
+  if (type === "turn.plan.updated") {
+    if (!isPrimaryThreadEvent(record.threadId, primaryThreadId)) {
+      return [];
+    }
+    return Array.isArray(record.plan) ? normalizeTodoListItems(record.plan) : [];
+  }
+  if (type !== "item.completed") {
+    return [];
+  }
+  const item = record.item && typeof record.item === "object"
+    ? record.item as Record<string, unknown>
+    : {};
+  const itemType = normalizeRawEventItemType(item.type);
+  if (itemType !== "todo_list") {
+    return [];
+  }
+  return Array.isArray(item.items) ? normalizeTodoListItems(item.items) : [];
+}
+
 export function extractItemErrorMessage(item: Record<string, unknown>): string {
   const error = item.error;
   if (typeof error === "string") {

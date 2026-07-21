@@ -185,10 +185,16 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
     { content: "修复浮层", status: "completed" },
   ], "tab-1");
 
-  assert.deepEqual(taskListState.items, []);
+  assert.deepEqual(taskListState.items, [
+    { text: "读取日志", done: true },
+    { text: "修复浮层", done: true },
+  ]);
   assert.equal(taskListState.source, "external");
-  assert.equal(taskListPanel.style.display, "none");
-  assert.equal(taskListDetails.open, false);
+  assert.equal(taskListPanel.style.display, "block");
+  assert.equal(taskListDetails.open, true);
+  assert.equal(taskListCount.textContent, "2/2");
+  assert.equal(taskListBody.children[0]?.children[0]?.children[0]?.checked, true);
+  assert.equal(taskListBody.children[0]?.children[1]?.children[0]?.checked, true);
 
   running = false;
   applyExternalTaskListUpdate([

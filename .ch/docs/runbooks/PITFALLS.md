@@ -41,6 +41,39 @@
 - `src/webview/viewContentScript/taskListAndUi.ts`
 - `src/test/clipagescriptruntimecoverage.test.ts`
 
+## Codex Tasklist 全完成更新不能立即清空浮层
+
+- 状态：已规避，需随 Codex `turn.plan.updated` / `todo_list` 事件复核
+- 首次发现：2026-07-21
+- 适用范围：Codex App Server plan 事件、Webview task list overlay、外部 taskListUpdate
+
+### 现象
+- 最新 Codex 日志已经收到 `turn.plan.updated`，plan item 会输出 `completed` / `inProgress` / `pending` 的混合状态，长任务中会多次渐进更新。
+- 前端也能把任务列表解析成列表，但用户看不到逐步完成过程；当最后一个任务完成时，也几乎看不到复选框被打勾。
+
+### 触发条件与根因
+- `turn.plan.updated` 已经作为 raw event 进入日志/运行流，但如果只依赖 runner 内部专用 `onTaskListUpdate` 分支，协议形态变化或转发路径差异会让“日志有过程、浮层不刷新”。
+- `setTaskListItems` 曾通过 `shouldDisplayTaskListItems(items.some(done !== true))` 判断显示条件。
+- 当 Codex 发来“全部 completed”的列表时，解析结果正确，但显示条件判定为 false，随后把 `taskListState.items` 清空并关闭浮层，所以完成态没有机会渲染成 checked checkbox。
+
+### 长期规避
+- Codex `turn.plan.updated` / `todo_list` 的转发 raw event 也必须提取 taskList 并发送 Webview `taskListUpdate`，不能只把它写入 raw stream 日志。
+- 任务列表显示条件只能判断是否存在有效条目，不能用“是否还有未完成项”作为显示条件。
+- 全部完成的列表应保留并显示 `N/N` 与已勾选项；运行结束后再由 `closeTaskListForRunCompletion` 统一收起，避免把最终状态吞掉。
+- 空数组或运行结束后的迟到更新仍应重置/隐藏，避免历史任务列表泄漏到下一次运行。
+
+### 验证方式
+- 用真实日志形态 `turn.plan.updated` / taskListUpdate 中的混合状态和全 `completed` 状态覆盖过程刷新与最终勾选。
+- 运行 `npm run build`、`node --test dist/test/codexAppServerProtocol.test.js dist/test/openCodeTaskListOverlay.test.js dist/test/clipagescriptruntimecoverage.test.js`。
+
+### 关联资料
+- `src/interactive/codexAppServerProtocol.ts`
+- `src/extension.ts`
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/test/codexAppServerProtocol.test.ts`
+- `src/test/openCodeTaskListOverlay.test.ts`
+- `src/test/clipagescriptruntimecoverage.test.ts`
+
 ## Codex 同一 UI 分组切换模型/配置时不能复用旧 thread
 
 - 状态：已规避，需随 Codex app-server thread 元数据行为复核

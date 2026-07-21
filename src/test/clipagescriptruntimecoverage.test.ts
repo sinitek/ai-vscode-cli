@@ -819,8 +819,10 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("taskListCount").textContent, "0/1");
   assert.equal(document.getElementById("taskListPanel").style.display, "block");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "external task", completed: true }] });
-  assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  assert.equal(document.getElementById("taskListPanel").style.display, "block");
+  assert.equal(document.getElementById("taskListCount").textContent, "1/1");
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "late task", completed: false }] });
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [] });

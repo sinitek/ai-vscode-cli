@@ -8,6 +8,7 @@ import {
   extractDelta,
   extractItemErrorMessage,
   extractReasoningText,
+  extractTaskListItemsFromForwardedCodexEvent,
   normalizeTodoListItems,
   shouldSuppressRawEvent,
   toExecLikeItem,
@@ -41,6 +42,51 @@ test("normalizeTodoListItems supports text, step, completed, and status fields",
       { text: "Fifth", done: true },
       { text: "Sixth", done: true },
       { text: "Seventh", done: false },
+    ]
+  );
+});
+
+test("extractTaskListItemsFromForwardedCodexEvent reads streaming plan and todo-list events", () => {
+  assert.deepEqual(
+    extractTaskListItemsFromForwardedCodexEvent({
+      type: "turn.plan.updated",
+      threadId: "thread-1",
+      plan: [
+        { step: "读取日志", status: "completed" },
+        { step: "修复 UI", status: "inProgress" },
+        { step: "补测试", status: "pending" },
+        { step: "跑验证", status: "pending" },
+      ],
+    }, "thread-1"),
+    [
+      { text: "读取日志", done: true },
+      { text: "修复 UI", done: false },
+      { text: "补测试", done: false },
+      { text: "跑验证", done: false },
+    ]
+  );
+  assert.deepEqual(
+    extractTaskListItemsFromForwardedCodexEvent({
+      type: "turn.plan.updated",
+      threadId: "child-thread",
+      plan: [{ step: "子任务进度", status: "completed" }],
+    }, "parent-thread"),
+    []
+  );
+  assert.deepEqual(
+    extractTaskListItemsFromForwardedCodexEvent({
+      type: "item.completed",
+      item: {
+        type: "todo_list",
+        items: [
+          { text: "定位", status: "completed" },
+          { text: "实现", status: "in_progress" },
+        ],
+      },
+    }),
+    [
+      { text: "定位", done: true },
+      { text: "实现", done: false },
     ]
   );
 });

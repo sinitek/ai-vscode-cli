@@ -37,7 +37,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function shouldDisplayTaskListItems(items) {
-        return Array.isArray(items) && items.some((item) => item && item.done !== true);
+        return Array.isArray(items) && items.length > 0;
       }
 
       function shouldDisplayTaskListForTab(tabId) {
