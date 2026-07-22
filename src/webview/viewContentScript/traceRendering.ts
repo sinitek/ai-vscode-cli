@@ -231,12 +231,17 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           target.kind = "thinking";
         }
         target.content += content || "";
+        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target)) {
+          renderMessages();
+          return;
+        }
         if (requiresFullRender || !updateRenderedAssistantMessage(target, targetIndex)) {
           renderMessages();
           return;
         }
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
         updateRunWait();
+        updateTaskList();
         if (shouldAutoScroll) {
           stickChatToBottom("auto");
         } else {

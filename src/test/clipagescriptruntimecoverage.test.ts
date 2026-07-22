@@ -815,6 +815,15 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.match(document.getElementById("toast").textContent, /tmp\/run-stream\.json/);
 
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "tasklist-text",
+    content: "Tasklist: [completed] inspect logs；[inProgress] patch parser；[pending] run tests",
+    kind: "normal",
+  });
+  assert.equal(document.getElementById("taskListPanel").style.display, "block");
+  assert.equal(document.getElementById("taskListCount").textContent, "1/3");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "external task", completed: false }] });
   assert.equal(document.getElementById("taskListCount").textContent, "0/1");
   assert.equal(document.getElementById("taskListPanel").style.display, "block");
