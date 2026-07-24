@@ -28,6 +28,29 @@ import {
   type LoopDebateChatPanelRound,
   type LoopDebateChatPanelState,
 } from "./webview/loopDebatePanel";
+import {
+  formatGraphEdgeKind,
+  formatGraphNodeKind,
+  formatGraphNodeStatus,
+  formatGraphOwnerRole,
+  formatGraphRunStatus,
+  type GraphRunPanelStrings,
+} from "./webview/graphRunPanelRenderer";
+import type {
+  GraphRunPanelEvent,
+  GraphRunPanelEdge,
+  GraphRunPanelNode,
+  GraphRunPanelState,
+} from "./webview/graphRunPanelTypes";
+import {
+  GRAPH_NODE_STATUSES,
+  type GraphEdgeRecord,
+  type GraphEventRecord,
+  type GraphNodeRecord,
+  type GraphRunRecord,
+} from "./graph/types";
+import { formatGraphNodeTitleInChinese } from "./graph/graphNodeTitles";
+import { getGraphRunControlState } from "./graph/graphRunControl";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
@@ -83,7 +106,6 @@ export type PanelStateBuilderDeps = {
   getGlobalMultiAgentEnabled: () => boolean;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
-  getGlobalLoopAutoCloseSubtaskTabs: () => boolean;
   buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
   getDebugLogging: typeof getDebugLogging;
   getLocaleSetting: typeof getLocaleSetting;
@@ -123,7 +145,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
-    loopAutoCloseSubtaskTabs: deps.getGlobalLoopAutoCloseSubtaskTabs(),
     loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),
     debug: deps.getDebugLogging(),
     locale: deps.getLocaleSetting(),
@@ -272,6 +293,205 @@ export type LoopDebateChatPanelStateBuilderDeps = {
   buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
+
+export type GraphRunPanelStateBuilderDeps = {
+  strings: GraphRunPanelStrings;
+  error?: string | null;
+  eventLimit?: number;
+  selectedNodeId?: string | null;
+  controls?: {
+    continueRun?: boolean;
+	    supplementRun?: boolean;
+	    retryNode?: boolean;
+	    feedbackNode?: boolean;
+	    approveHumanGate?: boolean;
+	    stopRun?: boolean;
+	  };
+};
+
+export function buildGraphRunPanelStateWithDeps(
+  run: GraphRunRecord,
+  events: readonly GraphEventRecord[],
+  deps: GraphRunPanelStateBuilderDeps,
+): GraphRunPanelState {
+  const strings = deps.strings;
+	  const controlState = getGraphRunControlState(run);
+	  const retryableNodeIds = new Set(controlState.retryableNodeIds);
+	  const feedbackableNodeIds = new Set(controlState.feedbackableNodeIds);
+	  const approvableNodeIds = new Set(controlState.approvableNodeIds);
+	  const nodes = run.nodes.map((node) => buildGraphRunPanelNode(node, strings, {
+	    canRetry: Boolean(deps.controls?.retryNode) && retryableNodeIds.has(node.id),
+	    canFeedback: Boolean(deps.controls?.feedbackNode) && feedbackableNodeIds.has(node.id),
+	    canApprove: Boolean(deps.controls?.approveHumanGate) && approvableNodeIds.has(node.id),
+	  }));
+  const edges = buildGraphRunPanelEdges(run, nodes, strings);
+  const selectedNode = selectGraphRunPanelNode(nodes, deps.selectedNodeId);
+  return {
+    run: {
+      id: run.id,
+      cli: run.cli,
+      status: run.status,
+      statusLabel: formatGraphRunStatus(run.status, strings),
+      rootPrompt: run.rootPrompt,
+      supplementalRequirements: Array.isArray(run.supplementalRequirements)
+        ? run.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
+        : [],
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+      runStoreFile: run.runStoreFile,
+      graphFile: run.graphFile,
+      eventsFile: run.eventsFile,
+      communicationDir: run.communicationDir,
+      mainCommunicationFile: run.mainCommunicationFile,
+      ...(run.finalAnswer ? { finalAnswer: run.finalAnswer } : {}),
+    },
+    runControl: {
+      canContinue: Boolean(deps.controls?.continueRun) && controlState.canContinue,
+      canSupplement: Boolean(deps.controls?.supplementRun) && controlState.canSupplement,
+      canStop: Boolean(deps.controls?.stopRun) && controlState.canStop,
+    },
+    stats: {
+      total: nodes.length,
+      statusCounts: GRAPH_NODE_STATUSES.map((status) => ({
+        status,
+        label: formatGraphNodeStatus(status, strings),
+        count: nodes.filter((node) => node.status === status).length,
+      })).filter((item) => item.count > 0),
+    },
+    nodes,
+    edges,
+    selectedNodeId: selectedNode?.id ?? null,
+    selectedNode: selectedNode ?? null,
+    events: buildGraphRunPanelEvents(events, deps.eventLimit ?? 30),
+    error: deps.error ?? null,
+  };
+}
+
+function buildGraphRunPanelNode(
+	  node: GraphNodeRecord,
+	  strings: GraphRunPanelStrings,
+	  control: GraphRunPanelNode["control"] = { canRetry: false, canFeedback: false, canApprove: false },
+	): GraphRunPanelNode {
+  return {
+    id: node.id,
+    title: formatGraphNodeTitleInChinese(node),
+    kind: node.kind,
+    kindLabel: formatGraphNodeKind(node.kind, strings),
+    status: node.status,
+    statusLabel: formatGraphNodeStatus(node.status, strings),
+    ownerRole: node.ownerRole,
+    ownerRoleLabel: formatGraphOwnerRole(node.ownerRole, strings),
+    attempts: node.attempts,
+    maxAttempts: node.maxAttempts,
+    dependsOn: node.dependsOn,
+    unlocks: node.unlocks,
+    writeFiles: node.writeFiles ?? [],
+    ...(node.conflictGroup ? { conflictGroup: node.conflictGroup } : {}),
+    ...(node.promptRef ? { promptRef: node.promptRef } : {}),
+    ...(node.artifactRef ? { artifactRef: node.artifactRef } : {}),
+    ...(node.communicationFile ? { communicationFile: node.communicationFile } : {}),
+    ...(node.startedAt ? { startedAt: node.startedAt } : {}),
+    ...(node.completedAt ? { completedAt: node.completedAt } : {}),
+    ...(node.wakeAt ? { wakeAt: node.wakeAt } : {}),
+    ...(node.lastError ? { lastError: node.lastError } : {}),
+    acceptance: node.acceptance ?? [],
+    control,
+  };
+}
+
+function buildGraphRunPanelEdges(
+  run: GraphRunRecord,
+  nodes: readonly GraphRunPanelNode[],
+  strings: GraphRunPanelStrings,
+): GraphRunPanelEdge[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const sourceEdges = Array.isArray(run.edges) && run.edges.length > 0
+    ? run.edges
+    : buildDependsOnFallbackEdges(nodes);
+  return sourceEdges
+    .map((edge, index) => buildGraphRunPanelEdge(edge, index, nodesById, strings))
+    .filter((edge): edge is GraphRunPanelEdge => Boolean(edge));
+}
+
+function buildDependsOnFallbackEdges(nodes: readonly GraphRunPanelNode[]): GraphEdgeRecord[] {
+  const edges: GraphEdgeRecord[] = [];
+  nodes.forEach((node) => {
+    node.dependsOn.forEach((from) => {
+      edges.push({
+        id: `depends_on:${from}->${node.id}`,
+        from,
+        to: node.id,
+        kind: "depends_on",
+        active: true,
+      });
+    });
+  });
+  return edges;
+}
+
+function buildGraphRunPanelEdge(
+  edge: GraphEdgeRecord,
+  index: number,
+  nodesById: ReadonlyMap<string, GraphRunPanelNode>,
+  strings: GraphRunPanelStrings,
+): GraphRunPanelEdge | null {
+  const fromNode = nodesById.get(edge.from);
+  const toNode = nodesById.get(edge.to);
+  if (!fromNode || !toNode) {
+    return null;
+  }
+  return {
+    id: edge.id || `${edge.kind}:${edge.from}->${edge.to}:${index}`,
+    from: edge.from,
+    to: edge.to,
+    kind: edge.kind,
+    kindLabel: formatGraphEdgeKind(edge.kind, strings),
+    active: edge.active !== false,
+    fromTitle: fromNode.title,
+    toTitle: toNode.title,
+    ...(edge.condition ? { condition: edge.condition } : {}),
+  };
+}
+
+function selectGraphRunPanelNode(
+  nodes: readonly GraphRunPanelNode[],
+  requestedNodeId?: string | null,
+): GraphRunPanelNode | null {
+  if (requestedNodeId) {
+    const requestedNode = nodes.find((node) => node.id === requestedNodeId);
+    if (requestedNode) {
+      return requestedNode;
+    }
+  }
+  return nodes.find((node) => (
+    node.status === "running"
+    || node.status === "failed"
+    || node.status === "blocked"
+    || node.status === "sleeping"
+    || node.status === "ready"
+  )) ?? nodes[0] ?? null;
+}
+
+function buildGraphRunPanelEvents(
+  events: readonly GraphEventRecord[],
+  limit: number,
+): GraphRunPanelEvent[] {
+  const normalizedLimit = Math.max(1, Math.floor(limit));
+  return events
+    .slice()
+    .sort((left, right) => right.timestamp - left.timestamp)
+    .slice(0, normalizedLimit)
+    .map((event) => ({
+      eventId: event.eventId,
+      runId: event.runId,
+      type: event.type,
+      timestamp: event.timestamp,
+      ...(event.nodeId ? { nodeId: event.nodeId } : {}),
+      ...(event.attempt !== undefined ? { attempt: event.attempt } : {}),
+      ...(event.summary ? { summary: event.summary } : {}),
+      ...(event.error ? { error: event.error } : {}),
+    }));
+}
 
 export function buildLoopDebateChatPanelStateWithDeps(
   task: LoopTaskRecord,

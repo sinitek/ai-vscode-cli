@@ -1,0 +1,157 @@
+import test = require("node:test");
+import assert = require("node:assert/strict");
+import * as childProcess from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+import {
+  commitGraphNodeCheckpoint,
+  createGraphRunWorktree,
+  getGraphWorktreeHeadCommit,
+  mergeGraphRunWorktreeToWorkspace,
+  resetGraphWorktreeToCommit,
+} from "../graph/graphWorktree";
+
+function git(cwd: string, args: string[]): string {
+  return childProcess.execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+function createGitRepo(root: string): string {
+  const repo = path.join(root, "repo");
+  fs.mkdirSync(repo, { recursive: true });
+  git(repo, ["init"]);
+  git(repo, ["config", "user.name", "Test User"]);
+  git(repo, ["config", "user.email", "test@example.com"]);
+  fs.writeFileSync(path.join(repo, "README.md"), "base\n", "utf8");
+  git(repo, ["add", "README.md"]);
+  git(repo, ["commit", "-m", "initial"]);
+  return repo;
+}
+
+test("creates a Graph worktree and records per-node checkpoint commits", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-worktree-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const worktree = createGraphRunWorktree(repo, "graph_run_1", { baseDir, now: () => 1_000 });
+    const baseCommit = getGraphWorktreeHeadCommit(worktree.cwd);
+
+    assert.notEqual(worktree.cwd, repo);
+    assert.equal(worktree.baseCommit, baseCommit);
+    assert.equal(worktree.createdAt, 1_000);
+
+    fs.writeFileSync(path.join(worktree.cwd, "employee.html"), "<main></main>\n", "utf8");
+    const checkpoint = commitGraphNodeCheckpoint({
+      worktreeCwd: worktree.cwd,
+      graphRunId: "graph_run_1",
+      nodeId: "implement",
+      status: "passed",
+      baseCommit,
+      summary: "Created prototype.",
+    });
+
+    assert.equal(checkpoint.baseCommit, baseCommit);
+    assert.notEqual(checkpoint.commit, baseCommit);
+    assert.equal(getGraphWorktreeHeadCommit(worktree.cwd), checkpoint.commit);
+
+    resetGraphWorktreeToCommit(worktree.cwd, baseCommit);
+    assert.equal(getGraphWorktreeHeadCommit(worktree.cwd), baseCommit);
+    assert.equal(fs.existsSync(path.join(worktree.cwd, "employee.html")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("merges a completed Graph worktree back into the workspace without committing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-merge-back-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const worktree = createGraphRunWorktree(repo, "graph_run_merge", { baseDir, now: () => 2_000 });
+    const baseCommit = getGraphWorktreeHeadCommit(worktree.cwd);
+    fs.writeFileSync(path.join(worktree.cwd, "employee.html"), "<main></main>\n", "utf8");
+    const checkpoint = commitGraphNodeCheckpoint({
+      worktreeCwd: worktree.cwd,
+      graphRunId: "graph_run_merge",
+      nodeId: "implement",
+      status: "passed",
+      baseCommit,
+      summary: "Created prototype.",
+    });
+
+    const result = mergeGraphRunWorktreeToWorkspace({ workspaceCwd: repo, worktree });
+
+    assert.equal(fs.realpathSync(result.repoRoot), fs.realpathSync(repo));
+    assert.equal(result.worktreeCwd, worktree.cwd);
+    assert.equal(result.sourceBranch, worktree.branch);
+    assert.equal(result.sourceCommit, checkpoint.commit);
+    assert.equal(result.targetHeadBefore, baseCommit);
+    assert.equal(result.targetHeadAfter, baseCommit);
+    assert.equal(fs.readFileSync(path.join(repo, "employee.html"), "utf8"), "<main></main>\n");
+    assert.match(git(repo, ["status", "--porcelain"]), /A  employee\.html/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("merges a Graph worktree into a dirty workspace when changes do not overlap", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-merge-dirty-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const worktree = createGraphRunWorktree(repo, "graph_run_dirty", { baseDir });
+    const baseCommit = getGraphWorktreeHeadCommit(worktree.cwd);
+    fs.writeFileSync(path.join(worktree.cwd, "employee.html"), "<main></main>\n", "utf8");
+    commitGraphNodeCheckpoint({
+      worktreeCwd: worktree.cwd,
+      graphRunId: "graph_run_dirty",
+      nodeId: "implement",
+      status: "passed",
+      baseCommit,
+    });
+    fs.writeFileSync(path.join(repo, "scratch.txt"), "dirty\n", "utf8");
+
+    const result = mergeGraphRunWorktreeToWorkspace({ workspaceCwd: repo, worktree });
+
+    assert.equal(result.statusBefore, "?? scratch.txt");
+    assert.equal(fs.readFileSync(path.join(repo, "scratch.txt"), "utf8"), "dirty\n");
+    assert.equal(fs.readFileSync(path.join(repo, "employee.html"), "utf8"), "<main></main>\n");
+    const status = git(repo, ["status", "--porcelain"]);
+    assert.match(status, /A  employee\.html/u);
+    assert.match(status, /\?\? scratch\.txt/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("fails to merge a Graph worktree when target changes overlap", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-merge-conflict-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const worktree = createGraphRunWorktree(repo, "graph_run_conflict", { baseDir });
+    const baseCommit = getGraphWorktreeHeadCommit(worktree.cwd);
+    fs.writeFileSync(path.join(worktree.cwd, "README.md"), "graph\n", "utf8");
+    commitGraphNodeCheckpoint({
+      worktreeCwd: worktree.cwd,
+      graphRunId: "graph_run_conflict",
+      nodeId: "implement",
+      status: "passed",
+      baseCommit,
+    });
+    fs.writeFileSync(path.join(repo, "README.md"), "local\n", "utf8");
+
+    assert.throws(
+      () => mergeGraphRunWorktreeToWorkspace({ workspaceCwd: repo, worktree }),
+      /git merge --squash .* failed/u,
+    );
+    assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), "local\n");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

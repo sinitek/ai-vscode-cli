@@ -109,15 +109,6 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "loopAutoCloseSubtaskTabs") {
-    deps.updateStoredToolSettings({ loopAutoCloseSubtaskTabs: Boolean(message.value) });
-    if ("loopAutoCloseSubtaskTabs" in workspaceSettings) {
-      delete workspaceSettings.loopAutoCloseSubtaskTabs;
-      deps.saveWorkspaceSettings(workspaceSettings);
-    }
-    await deps.postPanelState();
-    return;
-  }
   if (message.key === "debug") {
     deps.updateStoredToolSettings({ debug: Boolean(message.value) });
     setDebugLogging(getDebugLogging());
@@ -234,7 +225,8 @@ export async function handleSendPromptMessage(
   if (loopExecutionMode) {
     promptInput.loopExecutionMode = loopExecutionMode;
   }
-  if (loopSubtaskContext) {
+  const shouldRunGraph = effectiveInteractiveMode === "graph";
+  if (loopSubtaskContext && !shouldRunGraph) {
     promptInput.taskRole = "subtask";
     promptInput.loopTaskId = loopSubtaskContext.taskId;
     promptInput.loopRound = loopSubtaskContext.round;
@@ -274,6 +266,11 @@ export async function handleSendPromptMessage(
       resumeTaskId: loopResumeTask?.id ?? null,
       resumeRequested: loopResumeRequested,
     });
+  } else if (shouldRunGraph) {
+    if (!deps.runGraphPrompt) {
+      throw new Error("Graph prompt runner is not available.");
+    }
+    await deps.runGraphPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
   } else {
     await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
     if (loopSubtaskContext && promptTargetTabId) {

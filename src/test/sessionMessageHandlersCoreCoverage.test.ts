@@ -97,6 +97,7 @@ type Calls = {
   interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
   promptedInstalls: CliName[];
   codeGraphInstalls: number;
+  openedGraphPanels: unknown[];
   promptRuns: PromptRunInputForPanel[];
   stoppedTabs: Array<string | null>;
 };
@@ -159,6 +160,7 @@ function createHarness(): HandlerHarness {
     interactiveModes: [],
     promptedInstalls: [],
     codeGraphInstalls: 0,
+    openedGraphPanels: [],
     promptRuns: [],
     stoppedTabs: [],
   };
@@ -315,6 +317,7 @@ function createHarness(): HandlerHarness {
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,
+    openGraphRunPanel: async (options) => { calls.openedGraphPanels.push(options); },
     getActiveConversationTabId: () => state.activeTabId,
     getActiveConversationTab: () => state.activeTabId ? state.tabs.get(state.activeTabId) ?? null : null,
     resolveLoopSubtaskConversationContext: () => null,
@@ -622,11 +625,17 @@ test("covers model, session, workspace, and command routing through isolated ada
   await handlePanelMessageWithDeps({ type: "installCodeGraph" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "runCommonCommand", command: "compactContext" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "openLoopGroupChat", taskId: "task-1", roundKey: "round-1" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "openGraphRun", graphRunId: "graph-1", nodeId: "test" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "openGraphRun" }, harness.deps);
 
   assert.equal(closedTabId, "tab-codex");
   assert.equal(compactRuns, 1);
   assert.equal(harness.calls.codeGraphInstalls, 1);
   assert.deepEqual(openedLoopPanel, { taskId: "task-1", roundKey: "round-1" });
+  assert.deepEqual(harness.calls.openedGraphPanels, [
+    { graphRunId: "graph-1", nodeId: "test" },
+    { graphRunId: undefined, nodeId: undefined },
+  ]);
   assert.ok(configShows >= 1);
   assert.ok(configSyncs >= 2);
   assert.ok(harness.calls.errors.some((entry) => entry.detail === "role update failed"));

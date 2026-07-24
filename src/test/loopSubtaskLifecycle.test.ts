@@ -13,14 +13,13 @@ type CompletionHarness = {
   calls: string[];
 };
 
-function createCompletionHarness(autoCloseEnabled: boolean): CompletionHarness {
+function createCompletionHarness(): CompletionHarness {
   const calls: string[] = [];
   return {
     deps: {
       markSubtaskRunFinished: (_taskId, _subtaskId, status) => {
         calls.push(`mark:${status}`);
       },
-      shouldAutoCloseSubtaskTab: () => autoCloseEnabled,
       closeSubtaskTab: async (tabId) => {
         calls.push(`close:${tabId}`);
       },
@@ -41,7 +40,7 @@ function extractAsyncFunctionSection(source: string, name: string, nextFunctionN
 }
 
 test("records a successful Loop subtask before automatically closing its tab", async () => {
-  const harness = createCompletionHarness(true);
+  const harness = createCompletionHarness();
 
   await finalizeLoopSubtaskRun({
     taskId: "task-1",
@@ -59,8 +58,8 @@ test("records a successful Loop subtask before automatically closing its tab", a
   ]);
 });
 
-test("keeps a successfully completed subtask tab open when automatic closing is disabled", async () => {
-  const harness = createCompletionHarness(false);
+test("does not automatically close a successful Loop subtask without a tab id", async () => {
+  const harness = createCompletionHarness();
 
   await finalizeLoopSubtaskRun({
     taskId: "task-1",
@@ -68,15 +67,15 @@ test("keeps a successfully completed subtask tab open when automatic closing is 
     subtaskId: "subtask-1",
     runStatus: "end",
     assistantContent: "completed result",
-    tabId: "subtask-tab-1",
+    tabId: null,
   }, harness.deps);
 
   assert.deepEqual(harness.calls, ["mark:end"]);
 });
 
 test("does not automatically close stopped or failed Loop subtask tabs", async () => {
-  const stopped = createCompletionHarness(true);
-  const failed = createCompletionHarness(true);
+  const stopped = createCompletionHarness();
+  const failed = createCompletionHarness();
 
   await finalizeLoopSubtaskRun({
     taskId: "task-1",

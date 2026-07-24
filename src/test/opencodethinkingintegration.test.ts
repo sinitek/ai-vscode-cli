@@ -79,7 +79,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getGlobalMultiAgentEnabled: () => false,
     getGlobalLoopMaxRounds: () => 1,
     getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
-    getGlobalLoopAutoCloseSubtaskTabs: () => false,
     buildWorkspaceLoopExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent" }),
     getDebugLogging: () => false,
     getLocaleSetting: () => "en",

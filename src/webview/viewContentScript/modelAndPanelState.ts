@@ -296,7 +296,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
           panelState.loopSubtaskMaxThinkingMode
         );
-        state.loopAutoCloseSubtaskTabs = Boolean(panelState.loopAutoCloseSubtaskTabs);
         state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
           panelState.loopExecutionModeByCli,
           state.loopExecutionModeByCli
@@ -355,9 +354,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.loopSubtaskMaxThinkingMode) {
           elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;
         }
-        if (elements.loopAutoCloseSubtaskTabs) {
-          elements.loopAutoCloseSubtaskTabs.checked = state.loopAutoCloseSubtaskTabs;
-        }
         if (elements.languageSelect) {
           elements.languageSelect.value = state.locale || "auto";
         }
@@ -378,6 +374,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         syncRunningStateForActiveTab();
         renderConversationTabs();
         syncOpenCurrentLoopGroupChatButton();
+        syncOpenCurrentGraphRunButton();
         renderSessionList();
         renderPromptHistoryList();
         applyEditorContext(panelState.editorContext);

@@ -116,6 +116,9 @@ ${webviewStyles}    </style>
         <button id="openCurrentLoopGroupChat" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentLoopGroupChatAria}" title="${i18n.openCurrentLoopGroupChatAria}">
           ${i18n.openCurrentLoopGroupChatLabel}
         </button>
+        <button id="openCurrentGraphRun" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentGraphRunAria}" title="${i18n.openCurrentGraphRunAria}">
+          ${i18n.openCurrentGraphRunLabel}
+        </button>
         <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
           ${i18n.queueIndicatorLabel}
           <span id="queueCount" class="run-queue-count">0</span>
@@ -148,6 +151,7 @@ ${webviewStyles}    </style>
           <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="loop">${i18n.interactiveModeLoop}</option>
+            <option value="graph">${i18n.interactiveModeGraph}</option>
           </select>
         </div>
         <div class="input-box">
@@ -402,15 +406,6 @@ ${webviewStyles}    </style>
                     <option value="high">${i18n.thinkingOptionHigh}</option>
                     <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
                   </select>
-                </div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopAutoCloseSubtaskTabsLabel}</div>
-                  <label class="debug-toggle" title="${i18n.toolSettingsLoopAutoCloseSubtaskTabsTitle}">
-                    <input type="checkbox" id="loopAutoCloseSubtaskTabs" />
-                    <span>${i18n.toolSettingsLoopAutoCloseSubtaskTabsToggle}</span>
-                  </label>
                 </div>
               </section>
               <section class="tool-settings-card">

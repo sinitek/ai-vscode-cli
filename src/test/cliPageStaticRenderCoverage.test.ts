@@ -119,6 +119,7 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="runStreamButton"',
     'id="runPromptButton"',
     'id="openCurrentLoopGroupChat"',
+    'id="openCurrentGraphRun"',
     'id="queueIndicator"',
     'id="queueCount"',
     'id="scrollToBottomButton"',
@@ -145,7 +146,7 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
   ]);
   assert.match(
     html,
-    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>/,
+    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
@@ -328,6 +329,7 @@ test("concatenates all static style modules and keeps key selectors available", 
     ".message.trace",
     ".run-wait {",
     ".run-wait.has-current-loop-group-chat",
+    ".run-wait.has-current-graph-run",
     ".input-area {",
     ".open-code-model-group {",
     ".loop-execution-mode-select {",

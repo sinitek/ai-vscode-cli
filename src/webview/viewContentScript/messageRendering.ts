@@ -125,7 +125,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function normalizeInteractiveMode(value) {
-        if (value === "loop") {
+        if (value === "loop" || value === "graph") {
           return value;
         }
         return "coding";
@@ -200,6 +200,26 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             label,
           };
         }
+        if (action.type === "openGraphRun") {
+          const graphRunId = typeof action.graphRunId === "string" && action.graphRunId.trim()
+            ? action.graphRunId.trim()
+            : "";
+          if (!graphRunId) {
+            return null;
+          }
+          const nodeId = typeof action.nodeId === "string" && action.nodeId.trim()
+            ? action.nodeId.trim()
+            : "";
+          const label = typeof action.label === "string" && action.label.trim()
+            ? action.label.trim()
+            : t("openGraphRunAction");
+          return {
+            type: "openGraphRun",
+            graphRunId,
+            nodeId,
+            label,
+          };
+        }
         return null;
       }
 
@@ -211,14 +231,24 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function handleMessageAction(action) {
-        if (!action || action.type !== "openLoopGroupChat" || !action.taskId) {
+        if (!action) {
           return;
         }
-        vscode.postMessage({
-          type: "openLoopGroupChat",
-          taskId: action.taskId,
-          roundKey: action.roundKey || undefined,
-        });
+        if (action.type === "openLoopGroupChat" && action.taskId) {
+          vscode.postMessage({
+            type: "openLoopGroupChat",
+            taskId: action.taskId,
+            roundKey: action.roundKey || undefined,
+          });
+          return;
+        }
+        if (action.type === "openGraphRun" && action.graphRunId) {
+          vscode.postMessage({
+            type: "openGraphRun",
+            graphRunId: action.graphRunId,
+            nodeId: action.nodeId || undefined,
+          });
+        }
       }
 
       function createMessageActionsElement(message) {
@@ -235,7 +265,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           button.textContent = action.label;
           button.title = action.type === "openLoopGroupChat"
             ? t("openLoopGroupChatActionTitle")
-            : action.label;
+            : action.type === "openGraphRun"
+              ? t("openGraphRunActionTitle")
+              : action.label;
           button.addEventListener("click", () => {
             handleMessageAction(action);
           });
@@ -387,6 +419,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return value.trim();
       }
 
+      function normalizeGraphRunId(value) {
+        if (typeof value !== "string") {
+          return "";
+        }
+        return value.trim();
+      }
+
       function setLoopMetaForTab(tabId, role, taskId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
@@ -507,6 +546,97 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         };
       }
 
+      function findGraphRunIdInMessage(message) {
+        const directGraphRunId = normalizeGraphRunId(message && message.graphRunId);
+        if (directGraphRunId) {
+          return directGraphRunId;
+        }
+        const actions = message && Array.isArray(message.actions) ? message.actions : [];
+        for (let index = actions.length - 1; index >= 0; index -= 1) {
+          const action = actions[index];
+          if (action && action.type === "openGraphRun") {
+            const graphRunId = normalizeGraphRunId(action.graphRunId);
+            if (graphRunId) {
+              return graphRunId;
+            }
+          }
+        }
+        return "";
+      }
+
+      function setGraphMetaForTab(tabId, graphRunId) {
+        if (!tabId || typeof tabId !== "string") {
+          return false;
+        }
+        const normalizedGraphRunId = normalizeGraphRunId(graphRunId);
+        const hadMeta = Object.prototype.hasOwnProperty.call(graphMetaByTabId, tabId);
+        const previous = hadMeta ? graphMetaByTabId[tabId] : undefined;
+        if (!normalizedGraphRunId) {
+          if (!hadMeta) {
+            return false;
+          }
+          delete graphMetaByTabId[tabId];
+          return true;
+        }
+        if (previous && previous.graphRunId === normalizedGraphRunId) {
+          return false;
+        }
+        graphMetaByTabId[tabId] = {
+          graphRunId: normalizedGraphRunId,
+        };
+        return true;
+      }
+
+      function updateGraphMetaForTabFromMessage(tabId, message) {
+        if (!tabId || !message || typeof message !== "object") {
+          return false;
+        }
+        const graphRunId = findGraphRunIdInMessage(message);
+        if (graphRunId) {
+          return setGraphMetaForTab(tabId, graphRunId);
+        }
+        if (message.role === "user" && String(message.content || "").trim()) {
+          return setGraphMetaForTab(tabId, "");
+        }
+        return false;
+      }
+
+      function updateGraphMetaForTabFromMessages(tabId, messages) {
+        if (!tabId || !Array.isArray(messages)) {
+          return false;
+        }
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+          const message = messages[index];
+          const graphRunId = findGraphRunIdInMessage(message);
+          if (graphRunId) {
+            return setGraphMetaForTab(tabId, graphRunId);
+          }
+          if (message && message.role === "user" && String(message.content || "").trim()) {
+            return setGraphMetaForTab(tabId, "");
+          }
+        }
+        return setGraphMetaForTab(tabId, "");
+      }
+
+      function updateGraphMetaForTabFromRunStatus(tabId, runStatus) {
+        if (!tabId || !runStatus || typeof runStatus !== "object" || runStatus.status !== "start") {
+          return false;
+        }
+        return setGraphMetaForTab(tabId, runStatus.graphRunId);
+      }
+
+      function getGraphMetaForTabSummary(tab) {
+        const tabId = tab && typeof tab.id === "string" ? tab.id : "";
+        if (tabId && Object.prototype.hasOwnProperty.call(graphMetaByTabId, tabId)) {
+          const fromRuntime = graphMetaByTabId[tabId];
+          if (fromRuntime && fromRuntime.graphRunId) {
+            return fromRuntime;
+          }
+        }
+        const graphRunId = normalizeGraphRunId(tab && tab.graphRunId);
+        return graphRunId ? { graphRunId } : null;
+      }
+
       function isLoopMainTabCloseLocked(tab) {
         const meta = getLoopMetaForTabSummary(tab);
         if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
@@ -541,14 +671,19 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function formatConversationTabLabel(tab, baseLabel) {
         const meta = getLoopMetaForTabSummary(tab);
-        if (!meta) {
-          return baseLabel;
+        if (meta) {
+          if (meta.taskRole === "main") {
+            return "☀️ " + baseLabel;
+          }
+          if (meta.taskRole === "subtask") {
+            return "🌛 " + baseLabel;
+          }
         }
-        if (meta.taskRole === "main") {
-          return "☀️ " + baseLabel;
-        }
-        if (meta.taskRole === "subtask") {
-          return "🌛 " + baseLabel;
+        const graphMeta = typeof getGraphMetaForTabSummary === "function"
+          ? getGraphMetaForTabSummary(tab)
+          : null;
+        if (graphMeta) {
+          return "🗺️ " + baseLabel;
         }
         return baseLabel;
       }
@@ -563,6 +698,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function resolveAutoInteractiveModeForTab(tab) {
+        const graphMeta = typeof getGraphMetaForTabSummary === "function"
+          ? getGraphMetaForTabSummary(tab)
+          : null;
+        if (graphMeta) {
+          return "graph";
+        }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta && meta.taskRole === "main") {
           return "loop";
@@ -672,6 +813,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         updateQueueIndicator();
         updateRunPromptButton();
         updateRunStreamButton();
+        syncOpenCurrentLoopGroupChatButton();
+        syncOpenCurrentGraphRunButton();
         syncRunConflictOverlay();
         syncQueueOverlay();
         syncRunPromptOverlay();

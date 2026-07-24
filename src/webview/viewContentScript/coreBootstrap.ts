@@ -143,7 +143,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         multiAgentEnabled: false,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopSubtaskMaxThinkingMode: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
-        loopAutoCloseSubtaskTabs: true,
         loopExecutionModeByCli: {
           codex: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
           claude: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
@@ -227,6 +226,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
         openCurrentLoopGroupChat: document.getElementById("openCurrentLoopGroupChat"),
+        openCurrentGraphRun: document.getElementById("openCurrentGraphRun"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
         scrollToBottomWrap: document.getElementById("scrollToBottomWrap"),
@@ -257,7 +257,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         multiAgentEnabled: document.getElementById("multiAgentEnabled"),
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopSubtaskMaxThinkingMode: document.getElementById("loopSubtaskMaxThinkingMode"),
-        loopAutoCloseSubtaskTabs: document.getElementById("loopAutoCloseSubtaskTabs"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
@@ -386,6 +385,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const loopMetaByTabId = Object.create(null);
+      const graphMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
 

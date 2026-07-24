@@ -251,6 +251,7 @@ test("preserves an external task list while its conversation tab is running", ()
   const setMessagesForTab = new Function(
     "getConversationRuntimeState",
     "updateLoopMetaForTabFromMessages",
+    "updateGraphMetaForTabFromMessages",
     "ensureRuntimeTaskList",
     "isConversationTabBusy",
     "resetTaskListState",
@@ -263,6 +264,7 @@ test("preserves an external task list while its conversation tab is running", ()
     `${setMessagesForTabSource}; return setMessagesForTab;`,
   )(
     () => runtimeState,
+    () => false,
     () => false,
     (state: typeof runtimeState) => state.taskList,
     () => busy,

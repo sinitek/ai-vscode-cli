@@ -279,14 +279,12 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
     autoCompactContextAfterRun: true,
     autoCompactContextBeforeRun: true,
     loopMaxRounds: 99,
-    loopAutoCloseSubtaskTabs: false,
   };
   await handleUpdateSettingMessage({ type: "updateSetting", key: "codexMultiAgentEnabled", value: 0 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextBeforeRun", value: true }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopMaxRounds", value: 4.8 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopSubtaskMaxThinkingMode", value: "high" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopSubtaskMaxThinkingMode", value: "invalid" }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopAutoCloseSubtaskTabs", value: true }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "debug", value: 1 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoAddEditorContextTags", value: "yes" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "longTermMemoryEnabled", value: false }, deps);
@@ -300,7 +298,6 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
     { autoCompactContextAfterRun: true },
     { loopMaxRounds: 4 },
     { loopSubtaskMaxThinkingMode: "high" },
-    { loopAutoCloseSubtaskTabs: true },
     { debug: true },
     { autoAddEditorContextTags: true },
     { locale: "auto" },
@@ -309,7 +306,7 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
   assert.equal(calls.statusUpdates, 1);
   assert.deepEqual(calls.webviewMessages, [{ type: "reload" }]);
   assert.equal(calls.configReloads, 1);
-  assert.equal(calls.postPanelState, 11);
+  assert.equal(calls.postPanelState, 10);
 });
 
 test("retains workspace setting fallbacks when global persistence rejects the update", async () => {

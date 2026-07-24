@@ -15,10 +15,10 @@
     "manifest.json",
     "summary.json"
   ],
-  "generated_at": "2026-07-17T05:19:12+00:00",
+  "generated_at": "2026-07-24T09:16:44+00:00",
   "generator": "memory-indexer",
-  "output_dir": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/generated/memory-index",
-  "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+  "output_dir": ".ch/docs/generated/memory-index",
+  "repo_root": ".",
   "stale_days": 30,
   "version": "0.2.0"
 }

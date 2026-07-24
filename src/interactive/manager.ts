@@ -15,6 +15,9 @@ type RunnerEntry =
       model: string | null;
       configId: string | null;
       multiAgentEnabled: boolean;
+      command?: string;
+      args: string[];
+      cwd?: string;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     }
@@ -68,7 +71,13 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
-    options: { multiAgentEnabled?: boolean; configId?: string | null } = {}
+    options: {
+      multiAgentEnabled?: boolean;
+      configId?: string | null;
+      command?: string;
+      args?: string[];
+      cwd?: string;
+    } = {}
   ): void {
     const key = this.buildKey(cli, sessionId);
     const existing = this.entries.get(key);
@@ -83,6 +92,9 @@ export class InteractiveRunnerManager {
         existing.model = codexSelection?.model ?? null;
         existing.configId = codexSelection?.configId ?? null;
         existing.multiAgentEnabled = options.multiAgentEnabled === true;
+        existing.command = options.command;
+        existing.args = [...(options.args ?? [])];
+        existing.cwd = options.cwd;
       } else {
         existing.model = model;
       }
@@ -103,6 +115,9 @@ export class InteractiveRunnerManager {
             model: codexSelection?.model ?? null,
             configId: codexSelection?.configId ?? null,
             multiAgentEnabled: options.multiAgentEnabled === true,
+            command: options.command,
+            args: [...(options.args ?? [])],
+            cwd: options.cwd,
             idleTimer: null,
             lastUsedAt: Date.now(),
           }
@@ -136,6 +151,9 @@ export class InteractiveRunnerManager {
         && existing.model === nextSelection.model
         && existing.configId === nextSelection.configId
         && existing.multiAgentEnabled === options.multiAgentEnabled
+        && existing.command === options.command
+        && existing.cwd === options.cwd
+        && areRunnerArgsEqual(existing.args, options.args)
       ) {
         this.touch(existing);
         return existing.runner;
@@ -161,6 +179,9 @@ export class InteractiveRunnerManager {
       model: nextSelection.model,
       configId: nextSelection.configId,
       multiAgentEnabled: options.multiAgentEnabled,
+      command: options.command,
+      args: [...options.args],
+      cwd: options.cwd,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -318,4 +339,11 @@ export class InteractiveRunnerManager {
     clearTimeout(entry.idleTimer);
     entry.idleTimer = null;
   }
+}
+
+function areRunnerArgsEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
 }

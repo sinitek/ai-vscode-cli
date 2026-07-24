@@ -17,7 +17,6 @@ export type ToolSettingsState = {
   multiAgentEnabled?: boolean;
   loopMaxRounds?: number;
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
-  loopAutoCloseSubtaskTabs?: boolean;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -80,9 +79,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   );
   if (loopSubtaskMaxThinkingMode) {
     normalized.loopSubtaskMaxThinkingMode = loopSubtaskMaxThinkingMode;
-  }
-  if (typeof record.loopAutoCloseSubtaskTabs === "boolean") {
-    normalized.loopAutoCloseSubtaskTabs = record.loopAutoCloseSubtaskTabs;
   }
   if (record.locale === "auto" || record.locale === "zh-CN" || record.locale === "en") {
     normalized.locale = record.locale;

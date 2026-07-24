@@ -1,0 +1,258 @@
+import * as os from "os";
+import * as path from "path";
+
+import type { CliName } from "../cli/types";
+
+export const GRAPH_SCHEMA_VERSION = 1;
+export type GraphSchemaVersion = typeof GRAPH_SCHEMA_VERSION;
+
+export const GRAPH_DEFAULT_MAX_CONCURRENT_NODES = 6;
+export const GRAPH_DATA_DIR_NAME = ".sinitek_cli";
+export const GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN = /[^a-zA-Z0-9_.-]/g;
+export const GRAPH_WORKSPACE_KEY_FALLBACK = "no-workspace";
+export const GRAPH_PENDING_SESSION_SEGMENT = "__pending__";
+
+export const GRAPH_RUN_STATUSES = [
+  "draft",
+  "running",
+  "sleeping",
+  "needs-review",
+  "completed",
+  "error",
+  "stopped",
+] as const;
+export type GraphRunStatus = (typeof GRAPH_RUN_STATUSES)[number];
+
+export const GRAPH_NODE_KINDS = [
+  "intake",
+  "plan",
+  "implement",
+  "test",
+  "review",
+  "debate",
+  "human_gate",
+  "merge",
+  "sleep",
+  "summary",
+] as const;
+export type GraphNodeKind = (typeof GRAPH_NODE_KINDS)[number];
+
+export const GRAPH_NODE_STATUSES = [
+  "pending",
+  "ready",
+  "running",
+  "sleeping",
+  "passed",
+  "failed",
+  "blocked",
+  "skipped",
+  "stopped",
+] as const;
+export type GraphNodeStatus = (typeof GRAPH_NODE_STATUSES)[number];
+
+export const GRAPH_EDGE_KINDS = [
+  "depends_on",
+  "if_pass",
+  "if_fail",
+  "review_feedback",
+  "conflicts_with",
+  "evidence_for",
+  "human_approved",
+] as const;
+export type GraphEdgeKind = (typeof GRAPH_EDGE_KINDS)[number];
+
+export const GRAPH_OWNER_ROLES = [
+  "main",
+  "subtask",
+  "reviewer",
+  "moderator",
+  "human",
+  "system",
+] as const;
+export type GraphOwnerRole = (typeof GRAPH_OWNER_ROLES)[number];
+
+export const GRAPH_EVENT_TYPES = [
+  "run.created",
+  "run.updated",
+  "node.started",
+  "node.completed",
+  "node.failed",
+  "node.blocked",
+  "node.sleeping",
+  "human_gate.waiting",
+  "human_gate.approved",
+  "run.resumed",
+  "node.retry_requested",
+  "node.feedback_requested",
+  "node.stopped",
+  "run.completed",
+  "run.error",
+  "run.stopped",
+] as const;
+export type GraphEventType = (typeof GRAPH_EVENT_TYPES)[number];
+
+export type GraphAcceptanceCheck = {
+  id?: string;
+  name: string;
+  passed?: boolean;
+  required?: boolean;
+  detail?: string;
+  evidenceRef?: string;
+};
+
+export type GraphFinalAnswer = {
+  conclusion: string;
+  summary: string;
+  evidence: string[];
+  unresolved: string[];
+  completedAt?: number;
+};
+
+export type GraphPlannedNodeSpec = {
+  id: string;
+  title: string;
+  kind: GraphNodeKind;
+  ownerRole?: GraphOwnerRole;
+  promptRef?: string;
+  writeFiles?: string[];
+  conflictGroup?: string;
+  maxAttempts?: number;
+  dependsOn?: string[];
+  acceptance?: GraphAcceptanceCheck[];
+  wakeAt?: number;
+};
+
+export type GraphPlannedEdgeSpec = {
+  id?: string;
+  from: string;
+  to: string;
+  kind?: GraphEdgeKind;
+  condition?: string;
+  active?: boolean;
+};
+
+export type GraphPlannedGraphSpec = {
+  maxConcurrent?: number;
+  nodes: GraphPlannedNodeSpec[];
+  edges?: GraphPlannedEdgeSpec[];
+};
+
+export type GraphRunWorktreeRecord = {
+  cwd: string;
+  branch: string;
+  baseCommit: string;
+  createdAt?: number;
+};
+
+export type GraphNodeRecord = {
+  id: string;
+  title: string;
+  kind: GraphNodeKind;
+  status: GraphNodeStatus;
+  ownerRole: GraphOwnerRole;
+  promptRef?: string;
+  artifactRef?: string;
+  communicationFile?: string;
+  writeFiles?: string[];
+  conflictGroup?: string;
+  maxAttempts: number;
+  attempts: number;
+  dependsOn: string[];
+  unlocks: string[];
+  acceptance?: GraphAcceptanceCheck[];
+  startedAt?: number;
+  completedAt?: number;
+  wakeAt?: number;
+  lastError?: string;
+  worktreeCwd?: string;
+  baseCommit?: string;
+  commit?: string;
+};
+
+export type GraphEdgeRecord = {
+  id: string;
+  from: string;
+  to: string;
+  kind: GraphEdgeKind;
+  condition?: string;
+  active: boolean;
+};
+
+export type GraphRunRecord = {
+  id: string;
+  workspaceKey: string;
+  cli: CliName;
+  sessionId: string | null;
+  rootPrompt: string;
+  supplementalRequirements?: string[];
+  status: GraphRunStatus;
+  createdAt: number;
+  updatedAt: number;
+  templateId?: string;
+  templateVersion?: string;
+  graphVersion: GraphSchemaVersion;
+  runStoreFile: string;
+  nodes: GraphNodeRecord[];
+  edges: GraphEdgeRecord[];
+  activeNodeIds: string[];
+  maxConcurrent: number;
+  eventsFile: string;
+  communicationDir: string;
+  mainCommunicationFile: string;
+  graphFile: string;
+  worktree?: GraphRunWorktreeRecord;
+  finalAnswer?: GraphFinalAnswer;
+};
+
+export type GraphRunStore = {
+  runs: GraphRunRecord[];
+};
+
+export type GraphEventRecord = {
+  eventId: string;
+  runId: string;
+  type: GraphEventType;
+  timestamp: number;
+  nodeId?: string;
+  attempt?: number;
+  summary?: string;
+  error?: string;
+  data?: unknown;
+};
+
+export function getGraphDataDir(baseDir?: string): string {
+  return baseDir ?? path.join(os.homedir(), GRAPH_DATA_DIR_NAME);
+}
+
+export function sanitizeGraphPathSegment(value: unknown, fallback: string): string {
+  const normalized = String(value ?? "").trim().replace(GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN, "_");
+  return normalized || fallback;
+}
+
+export function isGraphRunStatus(value: unknown): value is GraphRunStatus {
+  return isGraphValue(GRAPH_RUN_STATUSES, value);
+}
+
+export function isGraphNodeKind(value: unknown): value is GraphNodeKind {
+  return isGraphValue(GRAPH_NODE_KINDS, value);
+}
+
+export function isGraphNodeStatus(value: unknown): value is GraphNodeStatus {
+  return isGraphValue(GRAPH_NODE_STATUSES, value);
+}
+
+export function isGraphEdgeKind(value: unknown): value is GraphEdgeKind {
+  return isGraphValue(GRAPH_EDGE_KINDS, value);
+}
+
+export function isGraphOwnerRole(value: unknown): value is GraphOwnerRole {
+  return isGraphValue(GRAPH_OWNER_ROLES, value);
+}
+
+export function isGraphEventType(value: unknown): value is GraphEventType {
+  return isGraphValue(GRAPH_EVENT_TYPES, value);
+}
+
+function isGraphValue<T extends readonly string[]>(values: T, value: unknown): value is T[number] {
+  return typeof value === "string" && values.includes(value);
+}

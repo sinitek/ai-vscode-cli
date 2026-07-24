@@ -9,7 +9,7 @@ import {
   HIDDEN_RETRY_DELAY_SEQUENCE_MS,
   isSameHiddenRetryErrorTraceContent,
 } from "./hiddenRetry";
-import { t } from "./i18n";
+import { resolveLocale, t } from "./i18n";
 import { ChatMessage, PanelMessage, type ChatMessageAction } from "./webview/types";
 import { type ConfigItem } from "./config/types";
 import { type CliModelStore } from "./modelSelectionStore";
@@ -20,13 +20,24 @@ import {
   type LoopDebateChatPanelState,
 } from "./webview/loopDebatePanel";
 import {
+  GraphRunPanel,
+  type GraphRunPanelMessage,
+  type GraphRunPanelState,
+} from "./webview/graphRunPanel";
+import { getGraphRunPanelStrings } from "./webview/graphRunPanelRenderer";
+import {
   buildLoopDebateChatMessageActionWithRoundKey,
+  buildGraphRunPanelStateWithDeps,
   buildLoopDebateChatPanelStateWithDeps,
 } from "./panelStateBuilder";
 import { resolveLoopTaskRunControlState } from "./loopDebate";
 import {
   type LoopTaskRecord,
 } from "./loopTaskStore";
+import type {
+  GraphEventRecord,
+  GraphRunRecord,
+} from "./graph/types";
 import { isLoopMainAiFailureLimitReached } from "./loopMainFailure";
 import { appendMessageToStore, type LoopTaskRole } from "./promptRunState";
 
@@ -700,6 +711,43 @@ type LoopDebateChatPanelDeps = {
   t: typeof import("./i18n").t;
 };
 
+type GraphRunPanelDeps = {
+  getExtensionUri: () => vscode.Uri;
+  panelsByRunId: Map<string, GraphRunPanel>;
+  readRunRecord: (graphRunId: string) => GraphRunPanelLookupResult;
+  findLatestRun: () => GraphRunPanelLookupResult;
+  readEvents: (eventsFile: string) => GraphEventRecord[];
+	  continueRun?: (graphRunId: string) => Promise<GraphRunPanelControlResult>;
+	  supplementRun?: (graphRunId: string, prompt: string) => Promise<GraphRunPanelControlResult>;
+	  retryNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
+	  feedbackNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
+	  approveHumanGate?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
+	  stopRun?: (graphRunId: string) => Promise<GraphRunPanelControlResult>;
+  showInformationMessage: (message: string) => void;
+  showWarningMessage: (message: string) => void;
+  t: typeof import("./i18n").t;
+};
+
+type GraphRunPanelLookupError = {
+  storeFile: string;
+  error: string;
+};
+
+type GraphRunPanelLookupResult = {
+  run: GraphRunRecord | null;
+  errors?: readonly GraphRunPanelLookupError[];
+  diagnostics?: {
+    unreadableStoreFiles?: number;
+  };
+};
+
+type GraphRunPanelControlResult = {
+  ok: boolean;
+  changed: boolean;
+  message: string;
+  run?: GraphRunRecord | null;
+};
+
 function buildLoopDebateChatPanelState(
   task: LoopTaskRecord,
   deps: LoopDebateChatPanelDeps,
@@ -750,6 +798,306 @@ function listRecentLoopGroupChatTasks(limit: number, deps: LoopDebateChatPanelDe
   return listLoopGroupChatTasks(deps)
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, Math.max(1, limit));
+}
+
+function normalizeGraphRunId(value: unknown): string | null {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || null;
+}
+
+function extractGraphRunPanelRunId(arg: unknown): string | null {
+  if (typeof arg === "string") {
+    return normalizeGraphRunId(arg);
+  }
+  if (arg && typeof arg === "object" && !Array.isArray(arg)) {
+    return normalizeGraphRunId((arg as { graphRunId?: unknown }).graphRunId);
+  }
+  return null;
+}
+
+function extractGraphRunPanelNodeId(arg: unknown): string | null {
+  if (arg && typeof arg === "object" && !Array.isArray(arg)) {
+    return normalizeGraphRunId((arg as { nodeId?: unknown }).nodeId);
+  }
+  return null;
+}
+
+function resolveGraphRunRecord(
+  graphRunId: string,
+  deps: GraphRunPanelDeps,
+): GraphRunPanelLookupResult {
+  return deps.readRunRecord(graphRunId);
+}
+
+function buildGraphRunPanelState(
+  run: GraphRunRecord,
+  deps: GraphRunPanelDeps,
+  selectedNodeId?: string | null,
+  lookupWarning?: string | null,
+): GraphRunPanelState {
+  let events: GraphEventRecord[] = [];
+  let error: string | null = lookupWarning ?? null;
+  try {
+    events = deps.readEvents(run.eventsFile);
+  } catch (eventReadError) {
+    const eventError = deps.t("graphRun.eventsReadFailed", { error: String(eventReadError) });
+    error = error ? `${error}\n${eventError}` : eventError;
+  }
+  return buildGraphRunPanelStateWithDeps(run, events, {
+    strings: getGraphRunPanelStrings(resolveLocale()),
+    error,
+    selectedNodeId,
+    controls: {
+      continueRun: Boolean(deps.continueRun),
+	      supplementRun: Boolean(deps.supplementRun),
+	      retryNode: Boolean(deps.retryNode),
+	      feedbackNode: Boolean(deps.feedbackNode),
+	      approveHumanGate: Boolean(deps.approveHumanGate),
+	      stopRun: Boolean(deps.stopRun),
+    },
+  });
+}
+
+export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
+  const refresh = async (graphRunId: string, selectedNodeId?: string | null): Promise<void> => {
+    const normalizedRunId = normalizeGraphRunId(graphRunId);
+    if (!normalizedRunId) {
+      return;
+    }
+    const panel = deps.panelsByRunId.get(normalizedRunId);
+    if (!panel) {
+      return;
+    }
+    const resolved = resolveGraphRunRecord(normalizedRunId, deps);
+    if (!resolved.run) {
+      const message = graphRunLookupHasErrors(resolved)
+        ? deps.t("graphRun.readFailed", { error: buildGraphRunLookupErrorSummary(resolved) })
+        : deps.t("graphRun.runMissing", { graphRunId: normalizedRunId });
+      deps.showWarningMessage(message);
+      return;
+    }
+    const retainedNodeId = selectedNodeId ?? panel.getState()?.selectedNodeId ?? null;
+    panel.update(buildGraphRunPanelState(
+      resolved.run,
+      deps,
+      retainedNodeId,
+      buildGraphRunLookupWarning(resolved),
+    ));
+  };
+
+  const handleMessage = async (graphRunId: string, message: GraphRunPanelMessage): Promise<void> => {
+    if (!message || typeof message.type !== "string") {
+      return;
+    }
+    if (message.type === "graphRun:refresh") {
+      await refresh(graphRunId, message.selectedNodeId);
+      return;
+    }
+    if (message.type === "graphRun:continue") {
+      await runGraphPanelControl(graphRunId, message.selectedNodeId, deps.continueRun, deps);
+      return;
+    }
+    if (message.type === "graphRun:supplementRun") {
+      await runGraphPanelSupplementControl(graphRunId, message.prompt, message.selectedNodeId, deps.supplementRun, deps);
+      return;
+    }
+	    if (message.type === "graphRun:retryNode") {
+	      await runGraphPanelNodeControl(graphRunId, message.nodeId, message.selectedNodeId, deps.retryNode, deps);
+	      return;
+	    }
+	    if (message.type === "graphRun:feedbackNode") {
+	      await runGraphPanelNodeControl(graphRunId, message.nodeId, message.selectedNodeId, deps.feedbackNode, deps);
+	      return;
+	    }
+	    if (message.type === "graphRun:approveHumanGate") {
+	      await runGraphPanelNodeControl(graphRunId, message.nodeId, message.selectedNodeId, deps.approveHumanGate, deps);
+	      return;
+    }
+    if (message.type === "graphRun:stopRun") {
+      await runGraphPanelControl(graphRunId, message.selectedNodeId, deps.stopRun, deps);
+    }
+  };
+
+  const open = async (arg?: unknown): Promise<void> => {
+    let graphRunId = extractGraphRunPanelRunId(arg);
+    const requestedNodeId = extractGraphRunPanelNodeId(arg);
+    if (!graphRunId) {
+      const latest = deps.findLatestRun();
+      if (!latest.run) {
+        deps.showInformationMessage(graphRunPanelLocalMessage("noLatest"));
+        return;
+      }
+      graphRunId = latest.run.id;
+    }
+    const resolved = resolveGraphRunRecord(graphRunId, deps);
+    if (!resolved.run) {
+      const message = graphRunLookupHasErrors(resolved)
+        ? deps.t("graphRun.readFailed", { error: buildGraphRunLookupErrorSummary(resolved) })
+        : deps.t("graphRun.runMissing", { graphRunId });
+      deps.showWarningMessage(message);
+      return;
+    }
+
+    let panel = deps.panelsByRunId.get(resolved.run.id);
+    const selectedNodeId = requestedNodeId ?? panel?.getState()?.selectedNodeId ?? null;
+    const state = buildGraphRunPanelState(
+      resolved.run,
+      deps,
+      selectedNodeId,
+      buildGraphRunLookupWarning(resolved),
+    );
+    if (!panel) {
+      const runId = resolved.run.id;
+      panel = new GraphRunPanel(deps.getExtensionUri(), {
+        onMessage: (message) => {
+          void handleMessage(runId, message);
+        },
+        onDispose: () => {
+          const currentPanel = deps.panelsByRunId.get(runId);
+          if (currentPanel === panel) {
+            deps.panelsByRunId.delete(runId);
+          }
+        },
+      });
+      deps.panelsByRunId.set(resolved.run.id, panel);
+    }
+    panel.show(state);
+  };
+
+  const refreshOpenPanelForRun = (graphRunId: string): void => {
+    if (!deps.panelsByRunId.has(graphRunId)) {
+      return;
+    }
+    void refresh(graphRunId);
+  };
+
+  return {
+    open,
+    refresh,
+    refreshOpenPanelForRun,
+  };
+}
+
+async function runGraphPanelControl(
+  graphRunId: string,
+  selectedNodeId: string | null | undefined,
+  handler: ((graphRunId: string) => Promise<GraphRunPanelControlResult>) | undefined,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  if (!handler) {
+    deps.showWarningMessage(graphRunPanelLocalMessage("controlUnavailable"));
+    return;
+  }
+  const result = await handler(graphRunId);
+  showGraphPanelControlResult(result, deps);
+  await createGraphRunPanelCoordinatorRefresh(graphRunId, selectedNodeId, deps);
+}
+
+async function runGraphPanelNodeControl(
+  graphRunId: string,
+  nodeId: string,
+  selectedNodeId: string | null | undefined,
+  handler: ((graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>) | undefined,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  const normalizedNodeId = normalizeGraphRunId(nodeId);
+  if (!handler || !normalizedNodeId) {
+    deps.showWarningMessage(graphRunPanelLocalMessage("controlUnavailable"));
+    return;
+  }
+  const result = await handler(graphRunId, normalizedNodeId);
+  showGraphPanelControlResult(result, deps);
+  await createGraphRunPanelCoordinatorRefresh(graphRunId, selectedNodeId ?? normalizedNodeId, deps);
+}
+
+async function runGraphPanelSupplementControl(
+  graphRunId: string,
+  prompt: string,
+  selectedNodeId: string | null | undefined,
+  handler: ((graphRunId: string, prompt: string) => Promise<GraphRunPanelControlResult>) | undefined,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  const normalizedPrompt = typeof prompt === "string" ? prompt.trim() : "";
+  if (!handler || !normalizedPrompt) {
+    deps.showWarningMessage(graphRunPanelLocalMessage("controlUnavailable"));
+    return;
+  }
+  const result = await handler(graphRunId, normalizedPrompt);
+  showGraphPanelControlResult(result, deps);
+  await createGraphRunPanelCoordinatorRefresh(graphRunId, selectedNodeId, deps);
+}
+
+async function createGraphRunPanelCoordinatorRefresh(
+  graphRunId: string,
+  selectedNodeId: string | null | undefined,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  const panel = deps.panelsByRunId.get(graphRunId);
+  if (!panel) {
+    return;
+  }
+  const resolved = resolveGraphRunRecord(graphRunId, deps);
+  if (!resolved.run) {
+    deps.showWarningMessage(deps.t("graphRun.runMissing", { graphRunId }));
+    return;
+  }
+  panel.update(buildGraphRunPanelState(
+    resolved.run,
+    deps,
+    selectedNodeId ?? panel.getState()?.selectedNodeId ?? null,
+    buildGraphRunLookupWarning(resolved),
+  ));
+}
+
+function showGraphPanelControlResult(result: GraphRunPanelControlResult, deps: GraphRunPanelDeps): void {
+  if (result.ok) {
+    deps.showInformationMessage(result.message);
+    return;
+  }
+  deps.showWarningMessage(result.message);
+}
+
+function graphRunLookupHasErrors(result: GraphRunPanelLookupResult): boolean {
+  return Boolean((result.errors?.length ?? 0) > 0 || (result.diagnostics?.unreadableStoreFiles ?? 0) > 0);
+}
+
+function buildGraphRunLookupWarning(result: GraphRunPanelLookupResult): string | null {
+  if (!result.run || !graphRunLookupHasErrors(result)) {
+    return null;
+  }
+  return graphRunPanelLocalMessage("partialRead", { detail: buildGraphRunLookupErrorSummary(result) });
+}
+
+function buildGraphRunLookupErrorSummary(result: GraphRunPanelLookupResult): string {
+  const errors = result.errors ?? [];
+  if (!errors.length) {
+    return String(result.diagnostics?.unreadableStoreFiles ?? 0);
+  }
+  return errors
+    .slice(0, 3)
+    .map((error) => `${error.storeFile}: ${error.error}`)
+    .join("\n");
+}
+
+function graphRunPanelLocalMessage(
+  key: "noLatest" | "controlUnavailable" | "partialRead",
+  params: { detail?: string } = {},
+): string {
+  const zh = resolveLocale() === "zh-CN";
+  if (key === "noLatest") {
+    return zh
+      ? "当前工作区和 CLI 下没有可重新打开的 Graph 运行。"
+      : "No Graph run was found for the current workspace and CLI.";
+  }
+  if (key === "controlUnavailable") {
+    return zh
+      ? "该 Graph 操作当前不可用。"
+      : "This Graph action is not available right now.";
+  }
+  const detail = params.detail ?? "";
+  return zh
+    ? `部分 Graph 运行记录读取失败；已显示可读运行。\n${detail}`.trim()
+    : `Some Graph run records could not be read; showing readable runs.\n${detail}`.trim();
 }
 
 function canStopLoopTaskWithRunningTaskIds(

@@ -107,3 +107,50 @@ test("InteractiveRunnerManager tracks Codex config identity separately from mode
     manager.disposeAll();
   }
 });
+
+test("InteractiveRunnerManager does not reuse Codex runners across execution roots", () => {
+  const manager = new InteractiveRunnerManager();
+  try {
+    const first = manager.getOrCreateCodexRunner({
+      sessionId: "ui-session",
+      threadId: "thread-a",
+      command: "codex",
+      args: ["app-server"],
+      cwd: "/tmp/root-a",
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      model: "gpt-5.5",
+      configId: "config-a",
+      multiAgentEnabled: false,
+    });
+    const second = manager.getOrCreateCodexRunner({
+      sessionId: "ui-session",
+      threadId: "thread-a",
+      command: "codex",
+      args: ["app-server"],
+      cwd: "/tmp/root-a",
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      model: "gpt-5.5",
+      configId: "config-a",
+      multiAgentEnabled: false,
+    });
+    const third = manager.getOrCreateCodexRunner({
+      sessionId: "ui-session",
+      threadId: "thread-a",
+      command: "codex",
+      args: ["app-server"],
+      cwd: "/tmp/root-b",
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      model: "gpt-5.5",
+      configId: "config-a",
+      multiAgentEnabled: false,
+    });
+
+    assert.equal(second, first);
+    assert.notEqual(third, first);
+  } finally {
+    manager.disposeAll();
+  }
+});

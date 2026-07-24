@@ -42,8 +42,6 @@ export type WorkspaceSettings = {
   codexMultiAgentEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
   loopMaxRounds?: number;
-  /** @deprecated Loop subtask tab auto-close is global; keep only for legacy reads. */
-  loopAutoCloseSubtaskTabs?: boolean;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
 };
@@ -131,10 +129,6 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     const loopMaxRounds = (parsed as WorkspaceSettings).loopMaxRounds;
     if (typeof loopMaxRounds === "number" || typeof loopMaxRounds === "string") {
       result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
-    }
-    const loopAutoCloseSubtaskTabs = (parsed as WorkspaceSettings).loopAutoCloseSubtaskTabs;
-    if (typeof loopAutoCloseSubtaskTabs === "boolean") {
-      result.loopAutoCloseSubtaskTabs = loopAutoCloseSubtaskTabs;
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {

@@ -23,7 +23,6 @@ export type LoopSubtaskCompletionDeps = {
     runStatus: TaskRunStatus,
     assistantContent: string | null,
   ) => void;
-  shouldAutoCloseSubtaskTab: () => boolean;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   logSubtaskTabAutoClosed: (event: LoopSubtaskTabAutoClosedEvent) => void;
 };
@@ -45,7 +44,7 @@ export async function finalizeLoopSubtaskRun(
   } = options;
   deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
 
-  if (runStatus !== "end" || !tabId || !deps.shouldAutoCloseSubtaskTab()) {
+  if (runStatus !== "end" || !tabId) {
     return;
   }
 

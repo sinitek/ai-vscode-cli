@@ -110,6 +110,38 @@
 - `src/contextCompactionRunner.ts`
 - `src/test/codexThreadSelection.test.ts`
 
+## Codex Graph 子任务报 `spawn <codex> ENOENT` 不一定是命令丢失
+
+- 状态：已规避，需随 Codex interactive runner 复用策略复核
+- 首次发现：2026-07-24
+- 适用范围：Codex app-server interactive runner、Graph 节点执行、Loop/Graph 子任务临时执行根
+
+### 现象
+- Graph 节点运行日志显示 `spawn /Users/.../.npm-global/bin/codex ENOENT`，但同一终端里 `codex --version` 正常，symlink 和目标 `codex.js` 都存在。
+- 插件日志中同一个 Graph run 的后续节点快速失败，但 Graph store 曾继续把节点记为 passed 并生成 `Graph run completed`。
+
+### 触发条件与根因
+- 早期 Graph 节点通过 `taskRole="subtask"` 创建临时执行根，节点结束后会清理该目录。2026-07-24 起 Graph 节点改为使用 run 级独立 git worktree；Loop 子任务仍可能使用临时执行根。
+- `InteractiveRunnerManager` 只按 session/config/model 等维度复用 Codex runner，未把 `command`、`args`、`cwd` 作为 runner 身份的一部分时，后续 Graph 节点可能复用仍指向已删除临时 `cwd` 的旧 runner。
+- Node `spawn` 在 `cwd` 不存在时也会报 `ENOENT`，错误文本仍形如 `spawn <command> ENOENT`，容易误判为 CLI 可执行文件缺失。
+- Graph executor 如果不要求 `runPrompt` 错误回传，会把已展示到 UI 的节点执行失败吞掉，导致 kernel 收到 passed 结果并继续 summary。
+
+### 长期规避
+- Codex runner 缓存身份必须同时包含 `command`、`args` 和 `cwd`；任何执行根变化都要重建 runner。
+- Graph 节点调用 `runPrompt` 必须使用内部错误回传路径，并在节点结束后解析 communication file 的 `## JSON`；CLI 启动失败、最终答复失败、artifact 缺失/非法或 runner 异常要进入 `failed/blocked/needs-review`，不能继续生成 completed summary。
+- 排查 `spawn <cli> ENOENT` 时同时检查 `cwd` 是否存在，不能只检查 `command -v` 或 symlink。
+
+### 验证方式
+- 断言 `InteractiveRunnerManager` 在相同 session/config/model 但不同 `cwd` 时不会复用 Codex runner。
+- 断言 Graph 节点执行路径设置错误回传，`runPrompt` interactive 失败时会 throw 给 Graph kernel；断言 artifact JSON 的 failed/blocked 不会被 executor 改写成 passed。
+- 用真实日志核对：失败 run 的 `codex-app-server-spawn.cwd` 指向临时执行根，且该根可能已被清理。
+
+### 关联资料
+- `src/interactive/manager.ts`
+- `src/extension.ts`
+- `src/test/codexThreadSelection.test.ts`
+- `src/test/graphExtensionRuntime.test.ts`
+
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复
 
 - 状态：已规避，需随 Codex app-server 事件协议复核
@@ -892,7 +924,7 @@
 - 适用范围：Loop 主从子任务、子任务 Tab、自动重试、用户手动恢复和主任务自动唤醒
 
 ### 现象
-- 子任务在运行中被用户中止后，用户在该子任务 Tab 手动继续并成功完成，主任务可以被唤醒，但子任务 Tab 没有按全局自动关闭设置关闭。
+- 子任务在运行中被用户中止后，用户在该子任务 Tab 手动继续并成功完成，主任务可以被唤醒，但子任务 Tab 没有按统一成功收尾自动关闭。
 - 相同子任务因执行错误触发自动重试并成功时，状态、Tab 关闭和主任务后续编排均正常，导致两种恢复方式的体验和资源清理不一致。
 
 ### 根因
@@ -900,12 +932,12 @@
 - 手动恢复在 `maybeWakeLoopMainAfterSubtaskContinuation` 中单独更新状态并唤醒主任务，遗漏了同一 Tab 生命周期收尾。
 
 ### 长期规避
-- 自动重试和手动恢复成功都必须调用同一个子任务完成生命周期函数；先更新子任务记录和沟通记录，再判断是否关闭 Tab。
-- 只在 `TaskRunStatus === "end"` 且“Loop 子任务自动关标签”开启时关闭子任务 Tab；错误、停止、未找到目标 Tab 或设置关闭时不得关闭。
+- 自动重试和手动恢复成功都必须调用同一个子任务完成生命周期函数；先更新子任务记录和沟通记录，再固定关闭成功结束的子任务 Tab。
+- 只在 `TaskRunStatus === "end"` 且存在目标 Tab 时关闭子任务 Tab；错误、停止或未找到目标 Tab 时不得关闭。
 - 主任务是否继续仍由既有可恢复状态和主任务连续 AI 失败上限决定；Tab 收尾不得绕过或放宽这些守卫。
 
 ### 验证方式
-- 单测覆盖成功结束时的状态更新先于 Tab 关闭、关闭设置关闭、错误/停止不关闭三种边界。
+- 单测覆盖成功结束时的状态更新先于 Tab 关闭、成功但无目标 Tab、错误/停止不关闭三种边界。
 - 断言 `runLoopSubtaskWithRetry` 与 `maybeWakeLoopMainAfterSubtaskContinuation` 都接入共享收尾函数，且既有手动子任务 coding 路由仍会调用恢复唤醒。
 - 运行 `npm run build && node --test dist/test/loopSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
 
@@ -1236,6 +1268,30 @@
 
 ### 验证方式
 - 执行 `npm run build && node --test dist/test/commandResolution.test.js`，再执行 `npm test`。
+
+## Graph tab 识别不能只依赖完成消息
+
+- 状态：已规避
+- 首次发现：2026-07-24
+- 适用范围：Graph runtime、tab 运行状态、Webview Graph 图标和“打开 Graph 图”入口
+
+### 现象
+- Graph 任务开始运行后，conversation tab 仍显示为普通 tab，底部运行状态行没有“打开 Graph 图”按钮；等 Graph run 结束或再次追加带 `openGraphRun` action 的系统消息后，tab 才显示地图图标和 Graph 入口。
+
+### 触发条件
+- Graph run 创建时先通过系统消息写入 `openGraphRun` action，但随后 Graph 节点用现有 `runPrompt` 在同一 tab 运行。
+- 节点启动发出的 `runStatus:start` 没有携带 `graphRunId` / `graphNodeId`，Webview 将该 start 状态视为普通运行并清掉运行时 Graph meta。
+
+### 根因
+- Webview 的 Graph tab 标识依赖 `graphRunId`。Graph started/completed 消息能提供该 id，但运行中的节点 start 状态也会参与 tab 元数据同步；如果 start payload 缺少 Graph id，就会覆盖掉刚识别出的 Graph tab。
+
+### 长期规避
+- 任何 Graph 节点执行路径调用 `runPrompt` 时，都必须把 `graphRunId` / `graphNodeId` 透传到 tab 级 `runStatus:start` 和 assistant message metadata。
+- 新增 Graph 运行状态入口时，不能只验证最终系统消息；必须验证任务运行中 tab label、Graph 图按钮和自动 Graph mode 选择都已经生效。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/graphExtensionRuntime.test.js dist/test/graphMainWebview.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/loopmaingroupchatbutton.test.js`。
 
 ## 建议模板
 

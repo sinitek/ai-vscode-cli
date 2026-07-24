@@ -29,10 +29,14 @@ function extractFunctionSource(script: string, name: string): string {
 function buildHarness() {
   const functionSource = [
     extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "updateRunWait"),
+    "function getGraphMetaForTabSummary(tab) { return tab && tab.graphRunId ? { graphRunId: String(tab.graphRunId).trim() } : null; }",
     ...[
       "getActiveLoopMainTaskId",
       "syncOpenCurrentLoopGroupChatButton",
       "openCurrentLoopGroupChat",
+      "getActiveGraphRunId",
+      "syncOpenCurrentGraphRunButton",
+      "openCurrentGraphRun",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, name)),
   ].join("\n");
   const classes = new Set<string>();
@@ -50,6 +54,7 @@ function buildHarness() {
   };
   const elements = {
     openCurrentLoopGroupChat: { style: { display: "none" }, disabled: true },
+    openCurrentGraphRun: { style: { display: "none" }, disabled: true },
     runStatusText,
     runWaitTime: { style: { display: "" } },
     runWait: {
@@ -78,11 +83,13 @@ function buildHarness() {
       "const getActiveConversationRuntimeState = () => null;",
       "const t = (key) => key;",
       functionSource,
-      "return { syncOpenCurrentLoopGroupChatButton, openCurrentLoopGroupChat };",
+      "return { syncOpenCurrentLoopGroupChatButton, openCurrentLoopGroupChat, syncOpenCurrentGraphRunButton, openCurrentGraphRun };",
     ].join("\n"),
   )(state, elements, vscode) as {
     syncOpenCurrentLoopGroupChatButton(): void;
     openCurrentLoopGroupChat(): void;
+    syncOpenCurrentGraphRunButton(): void;
+    openCurrentGraphRun(): void;
   };
   return { state, elements, classes, messages, ...runtime };
 }
@@ -101,15 +108,18 @@ test("places the persistent group-chat button in the bottom status row", () => {
   });
   const promptIndex = html.indexOf('id="runPromptButton"');
   const groupChatIndex = html.indexOf('id="openCurrentLoopGroupChat"');
+  const graphRunIndex = html.indexOf('id="openCurrentGraphRun"');
   const queueIndex = html.indexOf('id="queueIndicator"');
   const chatAreaCloseIndex = html.indexOf('<div id="runWait"');
   const taskListIndex = html.indexOf('id="taskListPanel"');
   assert.ok(promptIndex >= 0);
   assert.ok(groupChatIndex > promptIndex);
-  assert.ok(queueIndex > groupChatIndex);
+  assert.ok(graphRunIndex > groupChatIndex);
+  assert.ok(queueIndex > graphRunIndex);
   assert.ok(chatAreaCloseIndex > html.indexOf('id="chatArea"'));
   assert.ok(taskListIndex > chatAreaCloseIndex);
   assert.match(html.slice(groupChatIndex, queueIndex), /打开群聊/);
+  assert.match(html.slice(graphRunIndex, queueIndex), /打开 Graph 图/);
 });
 
 test("shows only for the active Loop main tab and survives every task status", () => {
@@ -157,4 +167,30 @@ test("opens the existing Loop group chat with the active main task id", () => {
   harness.state.conversationTabs.tabs[0].loopTaskRole = "subtask";
   harness.openCurrentLoopGroupChat();
   assert.equal(harness.messages.length, 1);
+});
+
+test("shows and opens the current Graph run for the active Graph tab", () => {
+  const harness = buildHarness();
+  harness.state.conversationTabs = {
+    activeTabId: "graph-tab",
+    tabs: [
+      { id: "graph-tab", graphRunId: " graph-789 " },
+      { id: "normal-tab" },
+    ],
+  };
+
+  harness.syncOpenCurrentGraphRunButton();
+  assert.equal(harness.elements.openCurrentGraphRun.style.display, "inline-flex");
+  assert.equal(harness.elements.openCurrentGraphRun.disabled, false);
+  assert.equal(harness.elements.runWait.style.display, "flex");
+  assert.equal(harness.classes.has("has-current-graph-run"), true);
+
+  harness.openCurrentGraphRun();
+  assert.deepEqual(harness.messages, [{ type: "openGraphRun", graphRunId: "graph-789" }]);
+
+  harness.state.conversationTabs.activeTabId = "normal-tab";
+  harness.syncOpenCurrentGraphRunButton();
+  assert.equal(harness.elements.openCurrentGraphRun.style.display, "none");
+  assert.equal(harness.elements.runWait.style.display, "none");
+  assert.equal(harness.classes.has("has-current-graph-run"), false);
 });

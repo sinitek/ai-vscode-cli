@@ -2,21 +2,21 @@
 
 ## Summary
 
-- Generated at: 2026-07-17T03:39:04Z
-- Focus: Loop mode automatic sleep scheduled wakeup countdown JSON resume execution
+- Generated at: 2026-07-24T09:16:44Z
+- Focus: graph ai planned dag
 - Anchor ID: -
-- Selection mode: focus-filtered
+- Selection mode: baseline-fallback
 - Available observation entries: 10
 - Available read cost: ~650 tokens
-- Selected index entries: 6 (~473 tokens if fully expanded)
-- Expanded entries in this pack: 3 (~127 tokens)
+- Selected index entries: 10 (~650 tokens if fully expanded)
+- Expanded entries in this pack: 3 (~124 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
 - Recent handoffs: 0
 - Active plans: 4
 - Related design docs: 2
-- Related runbooks: 1
-- Source diversity: 6 unique sources / 6 selected observations
+- Related runbooks: 0
+- Source diversity: 10 unique sources / 10 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -26,22 +26,41 @@
 3. 如果需要更多细节，再按 ID 打开 `observation-registry.md` 或 `observations.jsonl`。
 4. 如果需要上下文顺序，用 `timeline.md` 或重新运行 `--anchor-id <id>`。
 
-## Focus Match Summary
-
-- Matched terms: `loop`
-
 ## Observation Index
 
 | ID | Type | Title | Read | Source | Why |
 | --- | --- | --- | --- | --- | --- |
-| `mem-bbc18d3434` | `plan` | Loop 主任务失败终止护栏 | ~39 | `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` | 命中 focus：loop。 |
-| `mem-fe60588b95` | `plan` | Loop 红蓝辩论主持人轮流点名调度 | ~40 | `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | 命中 focus：loop。 |
-| `mem-e2fabd8a2e` | `plan` | Loop Group Chat UI Follow-ups | ~48 | `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | 命中 focus：loop。 |
-| `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | 命中 focus：loop。 |
-| `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | 命中 focus：loop。 |
-| `mem-d336cba178` | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | ~120 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | 命中 focus：loop。 |
+| `mem-b7b003c3a1` | `plan` | 官方 skills 版本刷新与最新判断修复 | ~45 | `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | baseline recall entry。 |
+| `mem-bbc18d3434` | `plan` | Loop 主任务失败终止护栏 | ~39 | `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` | baseline recall entry。 |
+| `mem-fe60588b95` | `plan` | Loop 红蓝辩论主持人轮流点名调度 | ~40 | `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | baseline recall entry。 |
+| `mem-e2fabd8a2e` | `plan` | Loop Group Chat UI Follow-ups | ~48 | `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | baseline recall entry。 |
+| `mem-0b64dd15aa` | `plan` | Trace Error Bubble Dedupe | ~47 | `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md` | baseline recall entry。 |
+| `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | baseline recall entry。 |
+| `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | baseline recall entry。 |
+| `mem-d336cba178` | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | ~120 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | baseline recall entry。 |
+| `mem-c1d7e714b7` | `rule` | 记忆流转规则 | ~39 | `.ch/docs/MEMORY.md` | baseline recall entry。 |
+| `mem-431f2548e1` | `rule` | 热区记忆面 | ~46 | `.ch/docs/memory/README.md` | baseline recall entry。 |
 
 ## Expanded Observation Details
+
+### mem-b7b003c3a1 - 官方 skills 版本刷新与最新判断修复
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~45 tokens
+- Source: `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md`
+- Score: `85` (base `83`)
+- Score breakdown: type_priority=68, focus_terms=0, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=3, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`, `problem-solution`, `procedure`
+- Files: `.ch/docs/exec-plans/`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/references/`, `.ch/docs/references/authoritative-skills.md`, `scripts/`, `src/config/`, `src/webview/`
+
+Facts:
+- 日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
+- Modified at: 2026-07-14T03:33:01+00:00
+
+Narrative:
+
+日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
 
 ### mem-bbc18d3434 - Loop 主任务失败终止护栏
 
@@ -49,9 +68,8 @@
 - Topic: `plan`
 - Read: ~39 tokens
 - Source: `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md`
-- Score: `96` (base `94`)
-- Matches: `loop`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=2, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Score: `84` (base `82`)
+- Score breakdown: type_priority=68, focus_terms=0, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=2, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
 - Concepts: `open-loop`, `problem-solution`
 - Files: `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extension.ts`, `src/test/`
 
@@ -69,9 +87,8 @@ Narrative:
 - Topic: `plan`
 - Read: ~40 tokens
 - Source: `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`
-- Score: `95` (base `93`)
-- Matches: `loop`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Score: `83` (base `81`)
+- Score breakdown: type_priority=68, focus_terms=0, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
 - Concepts: `open-loop`
 - Files: `.ch/docs/design-docs/`, `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`, `.ch/docs/product-specs/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/loopDebate.ts`, `src/test/loopDebate.test.ts`
 
@@ -82,26 +99,6 @@ Facts:
 Narrative:
 
 日期：2026-06-29 状态：in-progress 负责人：Codex
-
-### mem-e2fabd8a2e - Loop Group Chat UI Follow-ups
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~48 tokens
-- Source: `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md`
-- Score: `95` (base `93`)
-- Matches: `loop`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
-- Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `src/extension.ts`, `src/webview/loopDebatePanel.ts`
-
-Facts:
-- Date: 2026-06-25 Status: in-progress Owner: Codex
-- Modified at: 2026-07-14T01:27:53+00:00
-
-Narrative:
-
-Date: 2026-06-25 Status: in-progress Owner: Codex
 
 ## Recommended Reading Order
 
@@ -166,37 +163,35 @@ Date: 2026-06-25 Status: in-progress Owner: Codex
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | Harness 单元自测与 Chromium Playwright 能力吸收 | matches=loop
+- `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | Harness 单元自测与 Chromium Playwright 能力吸收
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
 
-- `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | Loop Group Chat UI Follow-ups | matches=loop
+- `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | 官方 skills 版本刷新与最新判断修复
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
+
+- `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` | Loop Group Chat UI Follow-ups
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: Date: 2026-06-25 Status: in-progress Owner: Codex
 
-- `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | Loop 红蓝辩论主持人轮流点名调度 | matches=loop
+- `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | Loop 红蓝辩论主持人轮流点名调度
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-06-29 状态：in-progress 负责人：Codex
 
-- `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | Codex、Claude、OpenCode CLI 配置可视化扩展 | matches=loop
-  Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
-
 ## Related Design Docs
 
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, json
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / json。
-  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=graph, ai, dag
+  Why: 与当前 focus 相关的设计决策入口，命中：graph / ai / dag。
+  Summary: 状态：active（Phase 2 恢复与交互增强已落地） 日期：2026-07-23 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop
-  Why: 与当前 focus 相关的设计决策入口，命中：loop。
-  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 相关计划：`.ch/docs/exec-plans/completed/2026-04-02-docs-migration-to-ch.md`（完成后归档） 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=ai
+  Why: 与当前 focus 相关的设计决策入口，命中：ai。
+  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop。
-  Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
+- None
 
 ## Watch Items
 

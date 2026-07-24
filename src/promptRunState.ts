@@ -34,6 +34,8 @@ export type TaskRunDraft = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  graphRunId?: string;
+  graphNodeId?: string;
 };
 
 export type TaskRunRecord = TaskRunDraft & {
@@ -134,10 +136,13 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
 }
 
 export function isInteractiveMode(value: unknown): value is InteractiveMode {
-  return value === "coding" || value === "plan" || value === "loop";
+  return value === "coding" || value === "plan" || value === "loop" || value === "graph";
 }
 
 export function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
+  if (value === "graph") {
+    return "graph";
+  }
   return value === "loop" || isLegacyLoopInteractiveMode(value) ? "loop" : "coding";
 }
 
@@ -208,6 +213,8 @@ export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps
     loopTaskId: typeof raw.loopTaskId === "string" ? raw.loopTaskId : undefined,
     loopRound: typeof raw.loopRound === "number" ? raw.loopRound : undefined,
     loopSubtaskId: typeof raw.loopSubtaskId === "string" ? raw.loopSubtaskId : undefined,
+    graphRunId: typeof raw.graphRunId === "string" ? raw.graphRunId : undefined,
+    graphNodeId: typeof raw.graphNodeId === "string" ? raw.graphNodeId : undefined,
   };
 }
 

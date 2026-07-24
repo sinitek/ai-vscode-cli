@@ -36,7 +36,7 @@ export type OpenCodeThinkingState = {
   messageKey?: OpenCodeThinkingMessageKey;
 };
 
-export type InteractiveMode = "coding" | "plan" | "loop";
+export type InteractiveMode = "coding" | "plan" | "loop" | "graph";
 
 export type LoopExecutionMode = "main_sub_multi_agent" | "debate_multi_agent";
 

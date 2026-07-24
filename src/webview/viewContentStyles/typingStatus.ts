@@ -7,7 +7,8 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
         flex-wrap: wrap;
         gap: 8px;
       }
-      .run-wait.has-current-loop-group-chat {
+      .run-wait.has-current-loop-group-chat,
+      .run-wait.has-current-graph-run {
         display: flex !important;
       }
       .typing {

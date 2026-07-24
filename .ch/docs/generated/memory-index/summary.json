@@ -1889,7 +1889,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-07-17T05:19:12+00:00",
+  "generated_at": "2026-07-24T09:16:44+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2479,7 +2479,7 @@
       "persisted-output"
     ]
   },
-  "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+  "repo_root": ".",
   "topics": {
     "gotcha": {
       "count": 1,

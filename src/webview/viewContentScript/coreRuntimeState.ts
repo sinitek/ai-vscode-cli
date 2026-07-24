@@ -148,6 +148,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
           const loopMetaChanged = updateLoopMetaForTabFromMessages(tabId, runtimeState.messages);
+          const graphMetaChanged = updateGraphMetaForTabFromMessages(tabId, runtimeState.messages);
           const taskListState = ensureRuntimeTaskList(runtimeState);
           const shouldPreserveExternalTaskList = Boolean(
             taskListState
@@ -164,7 +165,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
               renderMessages();
             }
           }
-          if (loopMetaChanged) {
+          if (loopMetaChanged || graphMetaChanged) {
             renderConversationTabs();
           }
         } catch (error) {
@@ -541,7 +542,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           return null;
         }
         const contextOptions = payload.contextOptions || {};
-        const interactiveMode = payload.interactiveMode === "loop" || payload.interactiveMode === "coding"
+        const interactiveMode = payload.interactiveMode === "loop" || payload.interactiveMode === "coding" || payload.interactiveMode === "graph"
           ? payload.interactiveMode
           : undefined;
         return {

@@ -578,7 +578,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const hasQueuedPrompts = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
         const hasRunStatusSummary = Boolean(runtimeState && String(runtimeState.lastRunStatusMessage || "").trim().length > 0);
         const hasCurrentLoopGroupChat = typeof getActiveLoopMainTaskId === "function" && Boolean(getActiveLoopMainTaskId());
-        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary || hasCurrentLoopGroupChat;
+        const hasCurrentGraphRun = typeof getActiveGraphRunId === "function" && Boolean(getActiveGraphRunId());
+        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary || hasCurrentLoopGroupChat || hasCurrentGraphRun;
 
         elements.runWait.style.display = shouldShowRunRow ? "flex" : "none";
 
@@ -708,8 +709,11 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : "";
-        const targetInteractiveMode = normalizedPayload.interactiveMode
-          || (isBackgroundDispatch ? undefined : state.interactiveMode);
+        const targetInteractiveMode = resolveDispatchInteractiveMode(
+          normalizedPayload.interactiveMode,
+          targetTab,
+          isBackgroundDispatch,
+        );
         const targetLoopExecutionMode = targetInteractiveMode === "loop"
           ? getLoopExecutionModeForCli(targetCli)
           : undefined;
@@ -728,6 +732,19 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         vscode.postMessage(sendPromptMessage);
         return true;
+      }
+
+      function resolveDispatchInteractiveMode(explicitInteractiveMode, targetTab, isBackgroundDispatch) {
+        if (explicitInteractiveMode) {
+          return explicitInteractiveMode;
+        }
+        const autoMode = typeof resolveAutoInteractiveModeForTab === "function"
+          ? resolveAutoInteractiveModeForTab(targetTab)
+          : "";
+        if (autoMode === "graph") {
+          return "graph";
+        }
+        return isBackgroundDispatch ? undefined : state.interactiveMode;
       }
 
       function syncRunConflictOverlay() {

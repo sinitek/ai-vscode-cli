@@ -27,14 +27,19 @@ export const WEBVIEW_I18N = {
     interactiveModeSelectAria: "Interactive response mode",
     interactiveModeCoding: "Vibe",
     interactiveModeLoop: "Loop",
+    interactiveModeGraph: "Graph",
     taskRoleMain: "Loop",
     taskRoleSubtask: "Subtask",
     taskRoleSubtaskWithRound: "Subtask · Round {round}",
     openLoopGroupChatAction: "Open Loop group chat",
     openLoopGroupChatActionTitle:
       "Open the Loop group chat for this task",
+    openGraphRunAction: "Open Graph run",
+    openGraphRunActionTitle: "Open the Graph run panel for this task",
     openCurrentLoopGroupChatLabel: "Open group chat",
     openCurrentLoopGroupChatAria: "Open the active Loop main task group chat",
+    openCurrentGraphRunLabel: "Open Graph",
+    openCurrentGraphRunAria: "Open the active Graph run panel",
     openConfigButton: "Config",
     promptPlaceholder:
       "Shift + Enter for newline, type @ to pick files/folders, hold Shift while dragging files to reference them, supports pasting attachments...",
@@ -148,10 +153,6 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop Subtask Max Thinking",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "Global setting. Loop subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
-    toolSettingsLoopAutoCloseSubtaskTabsLabel: "Auto-Close Loop Subtasks",
-    toolSettingsLoopAutoCloseSubtaskTabsTitle:
-      "Global setting. Automatically close Loop subtask tabs after they finish.",
-    toolSettingsLoopAutoCloseSubtaskTabsToggle: "On",
     toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
     toolSettingsLongTermMemoryTitle:
       "Workspace setting. Provides a repo-local AI collaboration scaffold with memory, pitfalls, handoffs, skills, and CodeGraph-assisted code navigation.",
@@ -400,13 +401,18 @@ export const WEBVIEW_I18N = {
     interactiveModeSelectAria: "交互回复模式",
     interactiveModeCoding: "Vibe",
     interactiveModeLoop: "Loop",
+    interactiveModeGraph: "Graph",
     taskRoleMain: "Loop",
     taskRoleSubtask: "子任务",
     taskRoleSubtaskWithRound: "子任务·第{round}轮",
     openLoopGroupChatAction: "打开 Loop 群聊",
     openLoopGroupChatActionTitle: "打开当前 Loop 任务的群聊页面",
+    openGraphRunAction: "打开 Graph 运行图",
+    openGraphRunActionTitle: "打开当前任务的 Graph 运行图面板",
     openCurrentLoopGroupChatLabel: "打开群聊",
     openCurrentLoopGroupChatAria: "打开当前 Loop 主任务群聊",
+    openCurrentGraphRunLabel: "打开 Graph 图",
+    openCurrentGraphRunAria: "打开当前 Graph 运行图面板",
     openConfigButton: "配置",
     promptPlaceholder:
       "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
@@ -514,10 +520,6 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop 子任务最大思考力度",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "全局设置。Loop 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
-    toolSettingsLoopAutoCloseSubtaskTabsLabel: "Loop 子任务自动关闭",
-    toolSettingsLoopAutoCloseSubtaskTabsTitle:
-      "全局设置。Loop 子任务完成后自动关闭对应子任务标签页。",
-    toolSettingsLoopAutoCloseSubtaskTabsToggle: "开启",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

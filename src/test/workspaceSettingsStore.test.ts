@@ -98,13 +98,11 @@ test("migrates legacy Loop workspace keys and interactive mode", () => {
   const filePath = path.join(workspaceSettingsDir, "workspace.json");
   const legacyExecutionModeKey = getLegacyLoopPropertyKey("loopExecutionModeByCli");
   const legacyMaxRoundsKey = getLegacyLoopPropertyKey("loopMaxRounds");
-  const legacyAutoCloseKey = getLegacyLoopPropertyKey("loopAutoCloseSubtaskTabs");
   try {
     fs.writeFileSync(filePath, JSON.stringify({
       interactiveModeByCli: { codex: LEGACY_LOOP_INTERACTIVE_MODE },
       [legacyExecutionModeKey]: { codex: "debate_multi_agent" },
       [legacyMaxRoundsKey]: 30,
-      [legacyAutoCloseKey]: false,
     }), "utf8");
 
     const loaded = loadWorkspaceSettings(options);
@@ -112,13 +110,11 @@ test("migrates legacy Loop workspace keys and interactive mode", () => {
     assert.equal(loaded.interactiveModeByCli?.codex, "loop");
     assert.equal(loaded.loopExecutionModeByCli?.codex, "debate_multi_agent");
     assert.equal(loaded.loopMaxRounds, 20);
-    assert.equal(loaded.loopAutoCloseSubtaskTabs, false);
 
     saveWorkspaceSettings(loaded, options);
     const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyExecutionModeKey), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyMaxRoundsKey), false);
-    assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyAutoCloseKey), false);
     assert.deepEqual(persisted.interactiveModeByCli, { codex: "loop" });
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });

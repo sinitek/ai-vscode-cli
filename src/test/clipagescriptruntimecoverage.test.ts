@@ -573,7 +573,6 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     multiAgentEnabled: true,
     loopMaxRounds: 99,
     loopSubtaskMaxThinkingMode: "xhigh",
-    loopAutoCloseSubtaskTabs: false,
     loopExecutionModeByCli: { codex: "debate_multi_agent" },
     locale: "en",
     isMac: true,
@@ -891,6 +890,51 @@ test("boots the runtime and dispatches state, message, stream, history, settings
 
   const errors = posted.filter((message) => message && message.type === "webviewError");
   assert.deepEqual(errors, []);
+});
+
+test("dispatches background prompts for Graph tabs as Graph runs", () => {
+  const harness = createRuntimeHarness();
+  const { api, posted, window } = harness;
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      conversationTabs: {
+        activeTabId: "tab-1",
+        tabs: [
+          { id: "tab-1", cli: "codex" },
+          { id: "tab-2", cli: "opencode" },
+        ],
+      },
+      interactiveMode: "coding",
+    }),
+  });
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-2",
+    message: {
+      id: "graph-started",
+      role: "system",
+      content: "Graph run started",
+      createdAt: Date.now(),
+      actions: [{ type: "openGraphRun", graphRunId: "graph-1" }],
+    },
+  });
+
+  const beforeDispatch = posted.length;
+  assert.equal(api.dispatchPrompt({ prompt: "continue graph task" }, {
+    tabId: "tab-2",
+    preserveActiveTab: true,
+  }), true);
+  const sendPromptMessage = posted
+    .slice(beforeDispatch)
+    .find((message) => message && message.type === "sendPrompt");
+
+  assert.ok(sendPromptMessage);
+  assert.equal(sendPromptMessage.tabId, "tab-2");
+  assert.equal(sendPromptMessage.cli, "opencode");
+  assert.equal(sendPromptMessage.interactiveMode, "graph");
+  assert.equal(sendPromptMessage.preserveActiveTab, true);
 });
 
 test("reports runtime render and window-dispatch failures through the vscode bridge", () => {
@@ -1376,6 +1420,8 @@ test("routes window message handler branches without a real webview", () => {
     "syncConversationControlsForActiveTab",
     "renderMessages",
     "updateLoopMetaForTabFromMessage",
+    "updateGraphMetaForTabFromMessage",
+    "updateGraphMetaForTabFromRunStatus",
     "renderConversationTabs",
     "getConversationRuntimeState",
     "isHiddenRetryQueuedMessage",
@@ -1426,6 +1472,8 @@ test("routes window message handler branches without a real webview", () => {
     () => calls.push("syncControls"),
     () => calls.push("render"),
     () => true,
+    () => false,
+    () => false,
     () => calls.push("tabs"),
     () => ({ pendingPromptQueue: [{ prompt: "queued" }], suppressQueueFlushOnce: false, lastRunStatusMessage: "", activeRunActivity: "" }),
     (content: string) => /retry/.test(content),

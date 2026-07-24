@@ -40,6 +40,11 @@ type SentLoopPromptRun = {
   options: Parameters<PanelMessageHandlerDeps["runLoopPrompt"]>[1];
 };
 
+type SentGraphPromptRun = {
+  input: PromptRunInputForPanel;
+  options?: Parameters<NonNullable<PanelMessageHandlerDeps["runGraphPrompt"]>>[1];
+};
+
 type WakeLoopMainCall = {
   context: Parameters<PanelMessageHandlerDeps["maybeWakeLoopMainAfterSubtaskContinuation"]>[0];
   options: Parameters<PanelMessageHandlerDeps["maybeWakeLoopMainAfterSubtaskContinuation"]>[1];
@@ -60,6 +65,7 @@ type SendPromptHarness = {
     preloaded: Array<{ input: PromptRunInputForPanel; target: { tabId: string; cli: CliName; sessionId: string | null } }>;
     runPrompt: SentPromptRun[];
     runLoopPrompt: SentLoopPromptRun[];
+    runGraphPrompt: SentGraphPromptRun[];
     wakeMain: WakeLoopMainCall[];
     stoppedTabs: Array<string | null>;
     toolSettingsPatches: Array<Partial<ToolSettingsState>>;
@@ -123,6 +129,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     preloaded: [],
     runPrompt: [],
     runLoopPrompt: [],
+    runGraphPrompt: [],
     wakeMain: [],
     stoppedTabs: [],
     toolSettingsPatches: [],
@@ -218,7 +225,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     setCliModelThinkingMode: () => undefined,
     getSelectedCliModel: () => null,
     isInteractiveMode: (value: unknown): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "loop"
+      value === "coding" || value === "plan" || value === "loop" || value === "graph"
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
     setWorkspaceLoopExecutionModeForCli: (cli, mode) => {
@@ -245,6 +252,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,
+    openGraphRunPanel: async () => undefined,
     getActiveConversationTabId: () => tab.id,
     getActiveConversationTab: () => tab,
     resolveLoopSubtaskConversationContext: () => null,
@@ -266,6 +274,9 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     },
     runLoopPrompt: async (input, options) => {
       calls.runLoopPrompt.push({ input, options });
+    },
+    runGraphPrompt: async (input, options) => {
+      calls.runGraphPrompt.push({ input, options });
     },
     runPrompt: async (input, options) => {
       calls.runPrompt.push({ input, options });
@@ -367,6 +378,42 @@ test("routes OpenCode Loop through runLoopPrompt while ignoring the generic Code
     model: undefined,
     imagePaths: undefined,
     loopExecutionMode: "debate_multi_agent",
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.equal(calls.wakeMain.length, 0);
+  assert.equal(calls.postPanelState, 1);
+});
+
+test("routes OpenCode Graph through runGraphPrompt without starting Loop or normal prompt", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run the graph",
+    interactiveMode: "graph",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    model: "provider/general-model",
+  }, deps);
+
+  assert.equal(state.currentCli, "opencode");
+  assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "graph");
+  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "graph" }]);
+  assert.deepEqual(calls.promptHistory, [{ prompt: "run the graph", cli: "opencode" }]);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.equal(calls.runGraphPrompt.length, 1);
+  assert.deepEqual(calls.runGraphPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
+  assert.deepEqual(calls.runGraphPrompt[0].input, {
+    displayPrompt: "run the graph",
+    modelPrompt: "run the graph",
+    contextTags: [],
+    model: undefined,
+    imagePaths: undefined,
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);
@@ -599,6 +646,41 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
       model: undefined,
     },
   }]);
+});
+
+test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  deps.resolveLoopSubtaskConversationContext = () => ({
+    taskId: "task-opencode-loop",
+    subtaskId: "subtask-routing",
+    round: 2,
+  });
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "start a graph from here",
+    interactiveMode: "graph",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "graph" }]);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.equal(calls.runGraphPrompt.length, 1);
+  assert.deepEqual(calls.runGraphPrompt[0].input, {
+    displayPrompt: "start a graph from here",
+    modelPrompt: "start a graph from here",
+    contextTags: [],
+    model: undefined,
+    imagePaths: undefined,
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.equal(calls.wakeMain.length, 0);
 });
 
 test("saves and clears OpenCode role models through the active config", async () => {

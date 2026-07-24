@@ -59,6 +59,7 @@ export type PanelMessage =
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
+  | { type: "openGraphRun"; graphRunId?: string | null; nodeId?: string | null }
   | { type: "openConfig" }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
@@ -141,6 +142,7 @@ export type ConversationTabSummary = {
   loopTaskRunning?: boolean;
   loopTaskStatus?: LoopTaskStatus;
   loopMainTabCloseLocked?: boolean;
+  graphRunId?: string;
 };
 
 export type PromptHistoryItem = {
@@ -155,6 +157,12 @@ export type ChatMessageAction =
       type: "openLoopGroupChat";
       taskId: string;
       roundKey?: string | null;
+      label?: string;
+    }
+  | {
+      type: "openGraphRun";
+      graphRunId: string;
+      nodeId?: string | null;
       label?: string;
     };
 
@@ -171,6 +179,8 @@ export type ChatMessage = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  graphRunId?: string;
+  graphNodeId?: string;
   loopAnswerConclusion?: boolean;
   loopFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
@@ -212,7 +222,6 @@ export type PanelState = {
   multiAgentEnabled: boolean;
   loopMaxRounds: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
-  loopAutoCloseSubtaskTabs: boolean;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;
   locale: string;

@@ -121,7 +121,9 @@ function buildHarness() {
     modelSelect: createControl(),
     loopExecutionModeSelect: createControl(),
   };
-  const normalizeInteractiveMode = (value: string) => value === "loop" ? "loop" : "coding";
+  const normalizeInteractiveMode = (value: string) => (
+    value === "loop" || value === "graph" ? value : "coding"
+  );
   const modelFunctionSource = ["cliSupportsManagedModelSelection", "syncModelSelectorByInteractiveMode"]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
     .join("\n");
@@ -273,6 +275,18 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     type: "updateSetting",
     key: "interactiveMode.opencode",
     value: "coding",
+  });
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.elements.interactiveModeSelect.dispatchChange("graph");
+  assert.equal(harness.state.interactiveMode, "graph");
+  assert.deepEqual(harness.postedMessages[2], {
+    type: "updateSetting",
+    key: "interactiveMode.opencode",
+    value: "graph",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
