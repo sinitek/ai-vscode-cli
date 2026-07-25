@@ -613,10 +613,43 @@ ${webviewStyles}    </style>
             </div>
           </div>
           <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
-            <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">${i18n.helpTabInstall}</button>
+            <button id="helpTabModes" class="help-tab active" role="tab" aria-selected="true">${i18n.helpTabModes}</button>
+            <button id="helpTabInstall" class="help-tab" role="tab" aria-selected="false">${i18n.helpTabInstall}</button>
             <button id="helpTabThinking" class="help-tab" role="tab" aria-selected="false">${i18n.helpTabThinking}</button>
           </div>
-          <div id="helpPanelInstall" class="help-panel active" role="tabpanel">
+          <div id="helpPanelModes" class="help-panel active" role="tabpanel">
+            <div class="help-section">
+              <h4>${i18n.helpModesGeneralTitle}</h4>
+              <ul>
+                <li>${i18n.helpModesGeneralItem}</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>${i18n.helpModeVibeTitle}</h4>
+              <ul>
+                <li>${i18n.helpModeVibeBest}</li>
+                <li>${i18n.helpModeVibePros}</li>
+                <li>${i18n.helpModeVibeCons}</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>${i18n.helpModeLoopTitle}</h4>
+              <ul>
+                <li>${i18n.helpModeLoopBest}</li>
+                <li>${i18n.helpModeLoopPros}</li>
+                <li>${i18n.helpModeLoopCons}</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>${i18n.helpModeGraphTitle}</h4>
+              <ul>
+                <li>${i18n.helpModeGraphBest}</li>
+                <li>${i18n.helpModeGraphPros}</li>
+                <li>${i18n.helpModeGraphCons}</li>
+              </ul>
+            </div>
+          </div>
+          <div id="helpPanelInstall" class="help-panel" role="tabpanel">
             <div class="help-section">
               <h4>${i18n.helpInstallWindows}</h4>
               <ul>
