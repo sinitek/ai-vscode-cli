@@ -218,13 +218,11 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="configApplyErrorOverlay"',
     'id="configApplyErrorContent"',
     'id="helpOverlay"',
-    'id="helpTabModes"',
     'id="helpTabInstall"',
-    'id="helpTabThinking"',
-    'id="helpPanelModes"',
+    'id="helpTabModes"',
     'id="helpPanelInstall"',
-    'id="helpPanelThinking"',
-    'id="helpPanelModes" class="help-panel active"',
+    'id="helpPanelModes"',
+    'id="helpPanelInstall" class="help-panel active"',
   ]);
 });
 

@@ -259,17 +259,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function setHelpTab(tab) {
         const isModes = tab === "modes";
-        const isInstall = tab === "install";
-        const isThinking = tab === "thinking";
+        const isInstall = !isModes;
         elements.helpTabModes.classList.toggle("active", isModes);
         elements.helpTabInstall.classList.toggle("active", isInstall);
-        elements.helpTabThinking.classList.toggle("active", isThinking);
         elements.helpTabModes.setAttribute("aria-selected", String(isModes));
         elements.helpTabInstall.setAttribute("aria-selected", String(isInstall));
-        elements.helpTabThinking.setAttribute("aria-selected", String(isThinking));
         elements.helpPanelModes.classList.toggle("active", isModes);
         elements.helpPanelInstall.classList.toggle("active", isInstall);
-        elements.helpPanelThinking.classList.toggle("active", isThinking);
       }
 
       function setRulesHint(message) {
@@ -413,7 +409,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       elements.helpButton.addEventListener("click", () => {
-        setHelpTab("modes");
+        setHelpTab("install");
         openHelp();
       });
 
@@ -601,10 +597,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       elements.helpTabInstall.addEventListener("click", () => {
         setHelpTab("install");
-      });
-
-      elements.helpTabThinking.addEventListener("click", () => {
-        setHelpTab("thinking");
       });
 
       elements.loadRules.addEventListener("click", () => {
