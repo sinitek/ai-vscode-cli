@@ -7,6 +7,7 @@ installVscodeMock();
 const {
   buildHiddenRetryPrompt,
   buildThinkingPrompt,
+  CODEX_TASK_LIST_PROMPT_INSTRUCTION,
 } = require("../promptRuntime") as typeof import("../promptRuntime");
 const {
   FINAL_ANSWER_PROMPT_INSTRUCTION,
@@ -20,6 +21,24 @@ test("adds the final-answer marker instruction to every supported CLI prompt", (
     assert.ok(prompt.endsWith(FINAL_ANSWER_PROMPT_INSTRUCTION));
     assert.equal(prompt.split(FINAL_ANSWER_TEXT_MARKER).length - 1, 2);
   }
+});
+
+test("adds the Codex Tasklist logging format before the final-answer instruction", () => {
+  const prompt = buildThinkingPrompt("codex", "medium", "implement the task");
+
+  assert.match(prompt, /Tasklist:\n- \[completed\] <finished item>\n- \[in_progress\] <current item>\n- \[pending\] <next item>/);
+  assert.ok(prompt.includes(CODEX_TASK_LIST_PROMPT_INSTRUCTION));
+  assert.ok(prompt.indexOf(CODEX_TASK_LIST_PROMPT_INSTRUCTION) < prompt.indexOf(FINAL_ANSWER_PROMPT_INSTRUCTION));
+  assert.ok(prompt.endsWith(FINAL_ANSWER_PROMPT_INSTRUCTION));
+});
+
+test("keeps Codex Tasklist logging format out of non-Codex and opted-out prompts", () => {
+  assert.doesNotMatch(buildThinkingPrompt("claude", "medium", "implement the task"), /Tasklist:/);
+  assert.doesNotMatch(buildThinkingPrompt("opencode", "medium", "implement the task"), /Tasklist:/);
+  assert.doesNotMatch(
+    buildThinkingPrompt("codex", "medium", "implement the task", { includeTaskListInstruction: false }),
+    /Tasklist:/,
+  );
 });
 
 test("adds the final-answer marker instruction to hidden retry prompts", () => {
@@ -38,5 +57,6 @@ test("allows machine-protocol runs to opt out of the human final-answer marker",
   });
 
   assert.doesNotMatch(prompt, /\[final_answer\]/);
+  assert.doesNotMatch(prompt, /Tasklist:/);
   assert.doesNotMatch(retryPrompt, /\[final_answer\]/);
 });

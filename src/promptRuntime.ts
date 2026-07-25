@@ -70,7 +70,20 @@ export type ThinkingPromptOptions = {
   includePrefix?: boolean;
   includeSuffix?: boolean;
   includeFinalAnswerInstruction?: boolean;
+  includeTaskListInstruction?: boolean;
 };
+
+export const CODEX_TASK_LIST_PROMPT_INSTRUCTION = [
+  "TaskList logging requirement for Codex progress updates:",
+  "When sending a progress update that includes task status, use exactly this parseable format:",
+  "Tasklist:",
+  "- [completed] <finished item>",
+  "- [in_progress] <current item>",
+  "- [pending] <next item>",
+  "Allowed statuses are exactly `[pending]`, `[in_progress]`, and `[completed]`.",
+  "Do not use other Tasklist headings, inline prose lists, semicolon-separated lists, localized status words, or checkbox syntax for task status.",
+  "Omit the Tasklist block when there is no meaningful task-list change.",
+].join("\n");
 
 export function buildThinkingPrompt(
   cli: CliName,
@@ -85,10 +98,16 @@ export function buildThinkingPrompt(
   const promptWithThinkingInstructions = !prefix.trim() && !suffix.trim()
     ? prompt
     : mergePromptSections(prefix, prompt, suffix);
+  const includeTaskListInstruction = cli === "codex"
+    && options.includeTaskListInstruction !== false
+    && options.includeFinalAnswerInstruction !== false;
+  const promptWithTaskListInstruction = includeTaskListInstruction
+    ? mergePromptSections("", promptWithThinkingInstructions, CODEX_TASK_LIST_PROMPT_INSTRUCTION)
+    : promptWithThinkingInstructions;
   if (options.includeFinalAnswerInstruction === false) {
-    return promptWithThinkingInstructions;
+    return promptWithTaskListInstruction;
   }
-  return mergePromptSections("", promptWithThinkingInstructions, FINAL_ANSWER_PROMPT_INSTRUCTION);
+  return mergePromptSections("", promptWithTaskListInstruction, FINAL_ANSWER_PROMPT_INSTRUCTION);
 }
 
 export function buildHiddenRetryPrompt(
