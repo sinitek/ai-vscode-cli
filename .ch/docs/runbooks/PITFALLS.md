@@ -14,6 +14,41 @@
 
 ## 当前有效条目
 
+## VSIX 新增运行时依赖必须同步 `.vscodeignore` 放行
+
+- 状态：已规避，需发布时检查
+- 首次发现：2026-07-26
+- 适用范围：VS Code 插件打包、`.vscodeignore`、运行时 `node_modules` 依赖
+
+### 现象
+- 开发态和本地 `dist/` 加载正常，但安装新打出的 VSIX 后插件激活失败。
+- VS Code Extension Host 报错：`Cannot find module '@dagrejs/dagre'`，require stack 指向 `dist/webview/graphRunPanel.js -> dist/panelDiagnostics.js -> dist/extension.js`。
+
+### 触发条件
+- 源码新增了扩展宿主运行时的第三方依赖，并已写入 `package.json` / `package-lock.json`。
+- `.vscodeignore` 先用 `node_modules/**` 排除了全部依赖，但没有同步增加对应 `!node_modules/<scope-or-package>/**` 放行规则。
+
+### 根因
+- `vsce package` 按 `.vscodeignore` 生成安装包；`package.json.dependencies` 只能表达依赖关系，不能覆盖显式 ignore 规则。
+- 因此 `dist/*.js` 中保留的 `require("@dagrejs/dagre")` 在用户安装目录找不到实际包，插件在激活阶段直接失败。
+
+### 长期规避
+- 新增任何扩展宿主运行时依赖时，必须同时检查 `package.json.dependencies`、`.vscodeignore` 放行规则和实际 VSIX ZIP 清单。
+- 对有传递依赖的 scope 包，优先放行整个作用域，例如 `!node_modules/@dagrejs/**`，避免只带主包漏掉子依赖。
+- 单元测试至少覆盖关键依赖的声明和 `.vscodeignore` 放行；发布前仍必须以实际 VSIX 解包验证为准。
+
+### 验证方式
+- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graphRunPanel.test.js`。
+- 执行 `./export_vscode_extension.sh` 后，用 `unzip -l dist/sinitek-cli-tools-<version>.vsix | rg 'extension/node_modules/@dagrejs/(dagre|graphlib)/'` 确认主依赖和传递依赖都进入包。
+- 可进一步解包到临时目录并加载对应 `dist` 模块，确认不会再因缺少依赖抛错。
+
+### 关联资料
+- `.vscodeignore`
+- `package.json`
+- `src/webview/graphRunPanel.ts`
+- `src/test/graphRunPanel.test.ts`
+- `export_vscode_extension.sh`
+
 ## Codex 可见 Tasklist 不能只识别括号状态
 
 - 状态：已规避，需随 Codex 日志表达复核

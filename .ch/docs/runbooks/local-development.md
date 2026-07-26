@@ -114,6 +114,9 @@ npm i -g @vscode/vsce
 
 - 读取 `package.json` 中的版本号
 - 调用 `vsce package`
+- 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、测试产物和 Python 缓存
+- 解包审计 VSIX 清单，若 `.agents/`、`.ch/`、`.codegraph/`、`docs/`、`scripts/`、`dist/test/` 等开发态内容误入包内会直接失败
+- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、本地化文件、`media` 资源、workspace scaffold 和 Graph 面板的 Dagre 依赖
 - 输出到 `dist/sinitek-cli-tools-<version>.vsix`
 
 ## Loop 子任务规则隔离发布前验证

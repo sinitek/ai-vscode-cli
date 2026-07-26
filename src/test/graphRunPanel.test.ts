@@ -1,4 +1,6 @@
 import * as assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { test } from "node:test";
 import { installVscodeMock } from "./vscodeMock";
 
@@ -16,6 +18,8 @@ import type { GraphEventRecord, GraphNodeRecord, GraphRunRecord } from "../graph
 const packageJson = require("../../package.json") as {
   dependencies?: Record<string, string>;
 };
+const repositoryRoot = path.join(__dirname, "..", "..");
+const vscodeIgnoreText = fs.readFileSync(path.join(repositoryRoot, ".vscodeignore"), "utf8");
 
 const STOP_BOUNDARY_COPY_PATTERNS = [
   /Stop boundary/,
@@ -268,7 +272,6 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   const state = buildState(createSerialFiveNodeRun(), "review");
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
 
-  assert.equal(packageJson.dependencies?.["@dagrejs/dagre"], "^3.0.0");
   assert.match(html, /class="content graph-canvas-content"/);
   assert.match(html, /class="section graph-dag"/);
   assert.match(html, /data-layout-engine="@dagrejs\/dagre"/);
@@ -353,6 +356,11 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.doesNotMatch(html, /node-details-section/);
 	  assert.doesNotMatch(html, />\s*(Overview|Status Statistics|Final Answer|Recent Events)\s*</);
 	  assert.doesNotMatch(html, />\s*(Retry|Approve|Continue|Stop)\s*</);
+});
+
+test("packages dagre runtime dependency used by graph run panel layout", () => {
+  assert.equal(packageJson.dependencies?.["@dagrejs/dagre"], "^3.0.0");
+  assert.match(vscodeIgnoreText, /^!node_modules\/@dagrejs\/\*\*$/m);
 });
 
 test("simplifies DAG canvas header while keeping compact zoom and reset controls", () => {
