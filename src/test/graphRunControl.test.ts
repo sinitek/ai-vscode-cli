@@ -309,6 +309,12 @@ test("feedback from failed validation rolls back to upstream checkpoint and rese
       from: "test",
       to: "implement",
       kind: "review_feedback",
+      label: "测试失败返工实现",
+      metadata: {
+        feedbackReason: "Test edge asks implementation rework.",
+        reworkTargetNodeId: "implement",
+        reworkScopeNodeIds: ["implement", "test"],
+      },
       active: true,
     }], {
       worktree,
@@ -327,6 +333,9 @@ test("feedback from failed validation rolls back to upstream checkpoint and rese
     assert.equal(feedback.ok, true);
     assert.equal(feedback.run.status, "running");
     assert.deepEqual(feedback.changedNodeIds, ["implement", "review", "summary", "test"]);
+    assert.equal(feedback.reworkTargetNodeId, "implement");
+    assert.deepEqual(feedback.reworkScopeNodeIds, ["implement", "review", "summary", "test"]);
+    assert.equal(feedback.feedbackReason, "Validation failed; rework implementation.");
     assert.equal(getGraphWorktreeHeadCommit(worktree.cwd), runBaseCommit);
     assert.equal(fs.existsSync(path.join(worktree.cwd, "feature.ts")), false);
     assert.equal(fs.existsSync(path.join(worktree.cwd, "test-output.log")), false);
@@ -339,6 +348,11 @@ test("feedback from failed validation rolls back to upstream checkpoint and rese
       assert.equal(getNode(feedback.run, nodeId).completedAt, undefined);
       assert.equal(getNode(feedback.run, nodeId).lastError, undefined);
       assert.equal(getNode(feedback.run, nodeId).commit, undefined);
+      assert.equal(getNode(feedback.run, nodeId).rework?.sourceNodeId, "test");
+      assert.equal(getNode(feedback.run, nodeId).rework?.targetNodeId, "implement");
+      assert.deepEqual(getNode(feedback.run, nodeId).rework?.resetScopeNodeIds, ["implement", "review", "summary", "test"]);
+      assert.equal(getNode(feedback.run, nodeId).rework?.reason, "Validation failed; rework implementation.");
+      assert.equal(getNode(feedback.run, nodeId).rework?.edgeId, "test-feedback");
     }
     assert.equal(getNode(feedback.run, "implement").maxAttempts, 2);
     assert.equal(getNode(feedback.run, "test").maxAttempts, 2);
@@ -346,8 +360,69 @@ test("feedback from failed validation rolls back to upstream checkpoint and rese
     assert.deepEqual(getNode(feedback.run, "test").acceptance, [{ name: "Unit tests", required: true, detail: "1 failure" }]);
     const [event] = readGraphEvents(feedback.run.eventsFile);
     assert.equal(event?.type, "node.feedback_requested");
-    assert.equal((event?.data as { feedbackNodeId?: string; reworkNodeId?: string } | undefined)?.feedbackNodeId, "test");
-    assert.equal((event?.data as { feedbackNodeId?: string; reworkNodeId?: string } | undefined)?.reworkNodeId, "implement");
+    const eventData = event?.data as {
+      feedbackNodeId?: string;
+      reworkNodeId?: string;
+      reworkTargetSelection?: string;
+      candidateNodeIds?: string[];
+      requestedReworkScopeNodeIds?: string[];
+      changedNodeIds?: string[];
+      reason?: string;
+    } | undefined;
+    assert.equal(eventData?.feedbackNodeId, "test");
+    assert.equal(eventData?.reworkNodeId, "implement");
+    assert.equal(eventData?.reworkTargetSelection, "active review_feedback edge test-feedback");
+    assert.deepEqual(eventData?.candidateNodeIds, ["implement"]);
+    assert.deepEqual(eventData?.requestedReworkScopeNodeIds, ["implement", "test"]);
+    assert.deepEqual(eventData?.changedNodeIds, ["implement", "review", "summary", "test"]);
+    assert.equal(eventData?.reason, "Validation failed; rework implementation.");
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test("feedback reports selected if_fail target when rollback lacks a checkpoint", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const implement = createNode({
+      id: "implement",
+      status: "passed",
+      attempts: 1,
+      maxAttempts: 1,
+      unlocks: ["review"],
+    });
+    const review = createNode({
+      id: "review",
+      kind: "review",
+      status: "failed",
+      ownerRole: "reviewer",
+      attempts: 1,
+      maxAttempts: 1,
+      dependsOn: ["implement"],
+      lastError: "Review found missing rollback checks.",
+    });
+    const run = createRun(baseDir, [implement, review], [{
+      id: "review-if-fail",
+      from: "review",
+      to: "implement",
+      kind: "if_fail",
+      active: true,
+      metadata: {
+        feedbackReason: "Review if_fail edge selected implementation rework.",
+        reworkTargetNodeId: "implement",
+      },
+    }]);
+
+    const result = await feedbackGraphNodeForRun(run, "review");
+
+    assert.equal(result.ok, false);
+    assert.equal(result.changed, false);
+    assert.equal(result.reason, "feedback_not_available");
+    assert.equal(result.reworkTargetNodeId, "implement");
+    assert.deepEqual(result.blockedNodeIds, ["implement"]);
+    assert.deepEqual(result.reworkScopeNodeIds, ["implement", "review"]);
+    assert.equal(result.feedbackReason, "Review if_fail edge selected implementation rework.");
+    assert.match(result.message, /selected rework target implement/u);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }

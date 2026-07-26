@@ -13,15 +13,15 @@
 - `.ch/docs/MEMORY.md`
 - 如果存在，优先看 `.ch/docs/handoffs/` 中最新 handoff
 - `.ch/docs/memory/README.md`
-- 如果存在，优先看 `.ch/docs/generated/memory-index/index.md`
 - 如果存在，优先看 `.ch/docs/generated/task-board/task-board.md`
-- 如果任务范围大、上下文分散，先运行 `memory-recall` 并阅读 `.ch/docs/generated/memory-index/recall-pack.md`
+- 如果任务范围大、上下文分散，先运行受支持的 memory recall 流程，并阅读工具返回的运行态 recall-pack 路径；不要默认把 generated recall 写入仓库。
 - 如果仓库启用了 CodeGraph（MCP 可用或存在 `.codegraph/codegraph.db`），代码探索、调用链和影响面分析优先使用 `codegraph` skill
 - 与当前任务最相关的主题文档，例如 `.ch/docs/SECURITY.md`、`.ch/docs/RELIABILITY.md`、`.ch/docs/PRODUCT_SENSE.md`、`.ch/docs/TESTING.md`
 
 ## 工作方式
 
 - 非平凡任务必须使用任务列表，并保持阶段状态同步。
+- 任务列表必须使用固定格式：`Tasklist:` 标题，逐行 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码为解析协议必须保持英文，任务描述必须用中文表达，代码符号、命令、路径、包名和用户原文术语可保留原文。
 - 需求不清时，先用带选项的问题缩小范围。
 - 多阶段、跨模块、风险较高的工作，先创建或更新 `.ch/docs/exec-plans/active/<YYYY-MM-DD>-<slug>.md`。
 - 非平凡任务收尾时，按 `.ch/docs/MEMORY.md` 的记忆金字塔检查是否需要压缩 L1 滚动摘要、抽取 L2 事件、上提 L3 画像或沉淀 L4 程序性经验。
@@ -60,7 +60,6 @@
 - `.ch/docs/exec-plans/`：执行计划、完成归档、技术债跟踪。
 - `.ch/docs/generated/`：生成类清单与索引。
 - `.ch/docs/generated/task-board/`：任务工作台的 Markdown / JSON 生成物。
-- `.ch/docs/generated/memory-index/`：热区记忆与开放事项的 generated recall 面。
 - `.ch/docs/product-specs/`：业务需求与产品规格。
 - `.ch/docs/references/`：官方对齐和外部参考。
 

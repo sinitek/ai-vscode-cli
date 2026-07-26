@@ -6,6 +6,7 @@ import * as os from "os";
 import * as path from "path";
 
 import {
+  cleanupGraphRunWorktree,
   commitGraphNodeCheckpoint,
   createGraphRunWorktree,
   getGraphWorktreeHeadCommit,
@@ -31,6 +32,10 @@ function createGitRepo(root: string): string {
   git(repo, ["add", "README.md"]);
   git(repo, ["commit", "-m", "initial"]);
   return repo;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 test("creates a Graph worktree and records per-node checkpoint commits", () => {
@@ -62,6 +67,38 @@ test("creates a Graph worktree and records per-node checkpoint commits", () => {
     resetGraphWorktreeToCommit(worktree.cwd, baseCommit);
     assert.equal(getGraphWorktreeHeadCommit(worktree.cwd), baseCommit);
     assert.equal(fs.existsSync(path.join(worktree.cwd, "employee.html")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cleans up a completed Graph worktree directory, registration, and branch after merge-back", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-cleanup-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const worktree = createGraphRunWorktree(repo, "graph_run_cleanup", { baseDir });
+    const baseCommit = getGraphWorktreeHeadCommit(worktree.cwd);
+    fs.writeFileSync(path.join(worktree.cwd, "employee.html"), "<main></main>\n", "utf8");
+    commitGraphNodeCheckpoint({
+      worktreeCwd: worktree.cwd,
+      graphRunId: "graph_run_cleanup",
+      nodeId: "implement",
+      status: "passed",
+      baseCommit,
+    });
+    mergeGraphRunWorktreeToWorkspace({ workspaceCwd: repo, worktree });
+
+    const cleanup = cleanupGraphRunWorktree({ workspaceCwd: repo, worktree });
+
+    assert.equal(cleanup.worktreeRemoved, true);
+    assert.equal(cleanup.worktreePruned, true);
+    assert.equal(cleanup.branchDeleted, true);
+    assert.equal(cleanup.directoryExistsAfter, false);
+    assert.equal(fs.existsSync(worktree.cwd), false);
+    assert.doesNotMatch(git(repo, ["worktree", "list", "--porcelain"]), new RegExp(escapeRegExp(worktree.cwd), "u"));
+    assert.equal(git(repo, ["branch", "--list", worktree.branch]), "");
+    assert.match(git(repo, ["status", "--porcelain"]), /A  employee\.html/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -54,12 +54,14 @@
 ```text
 <workspace>/
   .ch/docs/memory/
-  .ch/docs/generated/memory-index/
   .ch/docs/runbooks/PITFALLS.md
   .agents/
   ARCHITECTURE.md
   AGENTS.md
   CLAUDE.md
+
+~/.sinitek_cli/
+  memory-generated/<workspace>/memory-index/
 ```
 
 而不是首版就把记忆正文放到用户 home 目录下统一聚合。
@@ -74,7 +76,7 @@
 注意：
 
 - 当前实现里，工具设置和会话历史仍然大量使用 `~/.sinitek_cli/`。
-- 当前实现把插件侧长期记忆正文落到工作区 `.ch/docs/memory/`，generated recall 落到 `.ch/docs/generated/memory-index/`，踩坑记录落到 `.ch/docs/runbooks/PITFALLS.md`；普通历史、workspace settings 和会话存档仍保留在 `~/.sinitek_cli/`。
+- 当前实现把插件侧长期记忆正文落到工作区 `.ch/docs/memory/`，generated recall 落到运行态目录 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/`，踩坑记录落到 `.ch/docs/runbooks/PITFALLS.md`；普通历史、workspace settings 和会话存档仍保留在 `~/.sinitek_cli/`。
 
 ## 4. 四层记忆模型
 
@@ -211,7 +213,7 @@ Working 层不是长期记忆正文的最终落盘位置。它的职责是作为
 说明：
 
 - `.ch/docs/memory/*.md` 与 `.ch/docs/runbooks/PITFALLS.md` 是长期记忆的原始事实来源
-- `.ch/docs/generated/memory-index/*` 是可重建的召回产物，不是最终事实来源
+- `~/.sinitek_cli/memory-generated/<workspace>/memory-index/*` 是可重建的召回产物，不是最终事实来源
 
 不建议首版直接把记忆正文做成主存储 JSONL，原因是：
 
@@ -474,7 +476,7 @@ src/memory/
 职责建议：
 
 - `memoryPaths.ts`
-  - 统一解析 `<workspace>/.ch/docs/memory/`、`.ch/docs/generated/memory-index/`、`.ch/docs/runbooks/PITFALLS.md`
+  - 统一解析 `<workspace>/.ch/docs/memory/`、`~/.sinitek_cli/memory-generated/<workspace>/memory-index/`、`.ch/docs/runbooks/PITFALLS.md`
 - `memoryFiles.ts`
   - 读写各个 Markdown 记忆文件
 - `memoryIndexer.ts`
@@ -595,7 +597,7 @@ Loop 主从执行和红蓝辩论会产生很多高价值结构化结论。
 1. 以当前工作区 harness scaffold 作为长期记忆正文目录：热区位于 `.ch/docs/memory/`，踩坑位于 `.ch/docs/runbooks/PITFALLS.md`。
 2. 以目标系统的四层记忆模型组织内容：`Working / Episodic / Semantic / Procedural`。
 3. 以 `ROLLING_SUMMARY / EVENT_MEMORY / PROJECT_CONTEXT / USER_PREFERENCES / LESSONS_LEARNED / PENDING_ITEMS / ACTIVE_RISKS` 作为热区文件，并把 `PITFALLS.md` 归入 runbook。
-4. 以 `.ch/docs/generated/memory-index/*` 作为低成本 recall 层，而不是主事实来源。
+4. 以 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/*` 作为低成本 recall 层，而不是主事实来源。
 5. 以“工作区 scaffold + 运行时补充提示词注入”作为使用入口，不按单次 recall 动态改写规则文件。
 
 这样既能借用目标系统成熟的长期记忆分层思想，又能贴合 VS Code 插件的实际执行链路和边界。

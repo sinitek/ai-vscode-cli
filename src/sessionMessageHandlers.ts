@@ -31,6 +31,7 @@ export type PromptRunInputForPanel = {
   loopSubtaskId?: string;
   graphRunId?: string;
   graphNodeId?: string;
+  skipLongTermMemoryPersist?: boolean;
 };
 
 export type PromptRunTargetForPanel = {

@@ -104,9 +104,29 @@ test("materializes an AI planned non-linear DAG after the planner node passes", 
     }, {
       from: "test-api",
       to: "review-all",
+      kind: "if_pass",
+      label: "API 测试通过后评审",
+      condition: "test-api must pass",
+      conditionExpression: {
+        type: "source_status",
+        operator: "equals",
+        status: "passed",
+        description: "API test node passed.",
+      },
     }, {
       from: "test-ui",
       to: "review-all",
+    }, {
+      id: "review-feedback-api",
+      from: "review-all",
+      to: "implement-api",
+      kind: "review_feedback",
+      label: "评审失败返工 API",
+      metadata: {
+        feedbackReason: "Review failed; rework API branch.",
+        reworkTargetNodeId: "implement-api",
+        reworkScopeNodeIds: ["implement-api", "test-api", "review-all"],
+      },
     }],
   };
 
@@ -114,6 +134,7 @@ test("materializes an AI planned non-linear DAG after the planner node passes", 
 
   assert.equal(result.changed, true);
   assert.equal(result.error, undefined);
+  assert.equal(result.run.status, "running");
   assert.equal(result.run.maxConcurrent, 4);
   assert.deepEqual(result.plannedNodeIds, [
     "implement-api",
@@ -142,6 +163,13 @@ test("materializes an AI planned non-linear DAG after the planner node passes", 
   assert.deepEqual(result.run.nodes.find((node) => node.id === "summary")?.dependsOn, ["review-all"]);
   assert.equal(result.run.edges.some((edge) => edge.from === GRAPH_AI_PLANNER_NODE_ID && edge.to === "implement-api"), true);
   assert.equal(result.run.edges.some((edge) => edge.from === GRAPH_AI_PLANNER_NODE_ID && edge.to === "implement-ui"), true);
+  const conditionalEdge = result.run.edges.find((edge) => edge.from === "test-api" && edge.to === "review-all" && edge.kind === "if_pass");
+  assert.equal(conditionalEdge?.label, "API 测试通过后评审");
+  assert.equal(conditionalEdge?.conditionExpression?.type, "source_status");
+  assert.equal(conditionalEdge?.conditionExpression?.status, "passed");
+  const feedbackEdge = result.run.edges.find((edge) => edge.id === "review-feedback-api");
+  assert.equal(feedbackEdge?.metadata?.feedbackReason, "Review failed; rework API branch.");
+  assert.deepEqual(feedbackEdge?.metadata?.reworkScopeNodeIds, ["implement-api", "test-api", "review-all"]);
 });
 
 test("rejects invalid planner graphs instead of falling back to a fixed linear graph", () => {
@@ -150,6 +178,26 @@ test("rejects invalid planner graphs instead of falling back to a fixed linear g
       id: "bad id with spaces",
       title: "Bad id",
       kind: "implement",
+    }],
+  }), null);
+  assert.equal(normalizeGraphPlannedGraphSpec({
+    nodes: [{
+      id: "source",
+      title: "Source",
+      kind: "implement",
+    }, {
+      id: "target",
+      title: "Target",
+      kind: "test",
+    }],
+    edges: [{
+      from: "source",
+      to: "target",
+      kind: "if_pass",
+      conditionExpression: {
+        type: "source_status",
+        operator: "not-supported",
+      } as never,
     }],
   }), null);
 

@@ -386,6 +386,11 @@ test("routes OpenCode Loop through runLoopPrompt while ignoring the generic Code
 
 test("routes OpenCode Graph through runGraphPrompt without starting Loop or normal prompt", async () => {
   const { deps, calls, state } = createSendPromptHarness();
+  let memoryInjectionCalls = 0;
+  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
+    memoryInjectionCalls += 1;
+    return `${modelPrompt}:memory`;
+  };
 
   await handlePanelMessageWithDeps({
     type: "sendPrompt",
@@ -407,6 +412,7 @@ test("routes OpenCode Graph through runGraphPrompt without starting Loop or norm
   assert.equal(calls.runPrompt.length, 0);
   assert.equal(calls.runLoopPrompt.length, 0);
   assert.equal(calls.runGraphPrompt.length, 1);
+  assert.equal(memoryInjectionCalls, 0);
   assert.deepEqual(calls.runGraphPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
   assert.deepEqual(calls.runGraphPrompt[0].input, {
     displayPrompt: "run the graph",
@@ -414,6 +420,7 @@ test("routes OpenCode Graph through runGraphPrompt without starting Loop or norm
     contextTags: [],
     model: undefined,
     imagePaths: undefined,
+    skipLongTermMemoryPersist: true,
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);
@@ -650,6 +657,11 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
 
 test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata", async () => {
   const { deps, calls } = createSendPromptHarness();
+  let memoryInjectionCalls = 0;
+  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
+    memoryInjectionCalls += 1;
+    return `${modelPrompt}:memory`;
+  };
   deps.resolveLoopSubtaskConversationContext = () => ({
     taskId: "task-opencode-loop",
     subtaskId: "subtask-routing",
@@ -672,12 +684,14 @@ test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata
   assert.equal(calls.runPrompt.length, 0);
   assert.equal(calls.runLoopPrompt.length, 0);
   assert.equal(calls.runGraphPrompt.length, 1);
+  assert.equal(memoryInjectionCalls, 0);
   assert.deepEqual(calls.runGraphPrompt[0].input, {
     displayPrompt: "start a graph from here",
     modelPrompt: "start a graph from here",
     contextTags: [],
     model: undefined,
     imagePaths: undefined,
+    skipLongTermMemoryPersist: true,
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);

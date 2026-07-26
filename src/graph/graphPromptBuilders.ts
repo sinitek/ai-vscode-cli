@@ -7,6 +7,8 @@ import { GRAPH_AI_PLANNER_NODE_ID } from "./graphPlanner";
 import {
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
+  type GraphEdgeConditionExpression,
+  type GraphEdgeRecord,
   type GraphNodeRecord,
   type GraphRunRecord,
 } from "./types";
@@ -78,6 +80,11 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、Graph run 文件、events、节点 artifacts 和授权沟通文件。",
     "注意：同一 Graph run 可能存在其他节点并发执行；必须严格限定在当前节点授权范围内，发现写入范围冲突或越权需求时立即停止并写入节点沟通文件。",
     "",
+    "## 长期记忆边界",
+    "- Graph 模式默认不触发长期记忆写入；本节点不得主动生成、刷新或修改 generated recall 产物。",
+    "- 如需长期记忆上下文，只能读取已有仓库记忆或运行态 recall；没有可用内容时完全跳过 recall，不要把 recall 缺失视为失败。",
+    "- Graph 任务完成后的长期记忆沉淀只由主智能体在收束后专门处理；本节点不得写入 `.ch/docs/memory/`、`.ch/docs/runbooks/PITFALLS.md` 或运行态 memory-generated 目录。",
+    "",
     "## Graph Run",
     `- Graph run id：${run.id}`,
     `- CLI：${run.cli}`,
@@ -107,6 +114,8 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Communication file：${communicationFile}`,
     `- Node base commit：${formatValue(node.baseCommit)}`,
     `- Node checkpoint commit：${formatValue(node.commit)}`,
+    `- Last error：${formatValue(node.lastError)}`,
+    ...formatGraphNodeReworkLines(node),
     "",
     "## 全图拓扑与当前位置",
     ...formatGraphTopologyLines(run, node),
@@ -209,6 +218,7 @@ function buildGraphSummaryPromptTail(run: GraphRunRecord): string[] {
         `  - baseCommit：${formatValue(item.baseCommit)}`,
         `  - commit：${formatValue(item.commit)}`,
         `  - lastError：${formatValue(item.lastError)}`,
+        `  - rework：${formatGraphNodeReworkSummary(item)}`,
       ].join("\n");
     }),
   ];
@@ -239,6 +249,9 @@ function formatGraphTopologyLines(run: GraphRunRecord, node: GraphNodeRecord): s
     "### 节点清单",
     ...formatGraphNodeTopologyLines(run, node),
     "",
+    "### 边语义",
+    ...formatGraphEdgeSemanticsLines(),
+    "",
     "### 边清单",
     ...formatGraphEdgeTopologyLines(run, node),
     "",
@@ -263,6 +276,7 @@ function formatGraphNodeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
       `writeFiles=${formatWriteFiles(item.writeFiles)}`,
       `conflictGroup=${formatValue(item.conflictGroup)}`,
       `attempts=${item.attempts}/${item.maxAttempts}`,
+      `rework=${formatGraphNodeReworkSummary(item)}`,
       `acceptance=${formatAcceptanceSummary(item.acceptance)}`,
     ].join("；");
   });
@@ -274,8 +288,26 @@ function formatGraphEdgeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
   }
   return run.edges.map((edge) => {
     const marker = edge.from === currentNode.id || edge.to === currentNode.id ? "；关联当前节点" : "";
-    return `- ${edge.id}｜${edge.from} -> ${edge.to}；kind=${edge.kind}；active=${edge.active}；condition=${formatValue(edge.condition)}${marker}`;
+    return [
+      `- ${edge.id}｜${edge.from} -> ${edge.to}`,
+      `kind=${edge.kind}`,
+      `active=${edge.active}`,
+      `label=${formatGraphEdgeLabel(edge)}`,
+      `condition=${formatValue(edge.condition)}`,
+      `conditionExpression=${formatGraphEdgeConditionExpression(edge.conditionExpression)}`,
+      `metadata=${formatGraphEdgeMetadata(edge)}`,
+    ].join("；") + marker;
   });
+}
+
+function formatGraphEdgeSemanticsLines(): string[] {
+  return [
+    "- depends_on / human_approved 是结构性前置；上游未 passed 时目标节点不可执行。",
+    "- if_pass / if_fail 是条件路径；scheduler 会按上游状态和受支持的 conditionExpression 判定是否可通行，inactive edge 会阻塞并提示需要重规划或人工处理。",
+    "- review_feedback / if_fail 可作为返工路径；Feedback rollback 会优先选择 active feedback edge 指向的目标，再回退到最近上游 checkpoint。",
+    "- evidence_for 是证据追踪边，不单独解锁调度；summary/review 节点应引用其 metadata.evidenceRef 或相关 artifact。",
+    "- custom conditionExpression 当前只会保守阻塞并说明不可求值，不能伪装为已自动重算复杂谓词。",
+  ];
 }
 
 function formatGraphConcurrencyLines(run: GraphRunRecord, node: GraphNodeRecord): string[] {
@@ -505,14 +537,42 @@ function buildGraphAiPlannerPromptTail(): string[] {
         }, {
           from: "test-api",
           to: "review-api",
-          kind: "depends_on",
+          kind: "if_pass",
+          label: "测试通过后评审",
+          condition: "test-api 必须通过",
+          conditionExpression: {
+            type: "source_status",
+            operator: "equals",
+            status: "passed",
+            description: "测试节点 passed 后才进入评审。",
+          },
+        }, {
+          from: "review-api",
+          to: "implement-api",
+          kind: "review_feedback",
+          label: "评审失败返工实现",
+          metadata: {
+            feedbackReason: "评审或验证失败时只返工 API 实现分支。",
+            reworkTargetNodeId: "implement-api",
+            reworkScopeNodeIds: ["implement-api", "test-api", "review-api"],
+          },
+        }, {
+          from: "test-api",
+          to: "review-api",
+          kind: "evidence_for",
+          metadata: {
+            evidenceRef: "test-api artifact",
+            rationale: "测试结果作为评审和 summary 的证据来源。",
+          },
         }],
       },
       acceptance: [{ name: "plannedGraph 可执行；复杂需求已按需拆成非线形 DAG；结构符合 schema。", passed: true, required: true }],
     }),
     "- 允许的 node.kind：intake、plan、implement、test、review、debate、human_gate、merge、sleep、summary。",
     "- 允许的 edge.kind：depends_on、if_pass、if_fail、review_feedback、conflicts_with、evidence_for、human_approved。",
-    "- 条件边当前只作为调度约束和可视化信号；不要依赖未实现的复杂条件表达式求值。",
+    "- edge.condition 可写人类可读说明；edge.conditionExpression 当前支持 source_status、source_acceptance、manual 的有限求值；custom 表达式会保守阻塞，需后续重规划或人工处理。",
+    "- review_feedback / if_fail 返工边可用 metadata.feedbackReason、metadata.reworkTargetNodeId、metadata.reworkScopeNodeIds 说明返工目标与预期影响范围。",
+    "- evidence_for 边可用 metadata.evidenceRef、metadata.rationale 说明证据来源；它是追踪信号，不替代 depends_on。",
   ];
 }
 
@@ -544,6 +604,71 @@ function formatAcceptanceLines(acceptance: readonly GraphAcceptanceCheck[] | und
     const detail = item.detail ? `；detail=${item.detail}` : "";
     return `- ${index + 1}. ${item.name}（${required}）${detail}${evidence}`;
   });
+}
+
+function formatGraphNodeReworkLines(node: GraphNodeRecord): string[] {
+  if (!node.rework) {
+    return [
+      `- Rework source：${GRAPH_PROMPT_EMPTY_VALUE}`,
+      `- Rework reason：${GRAPH_PROMPT_EMPTY_VALUE}`,
+      `- Rework scope：${GRAPH_PROMPT_EMPTY_VALUE}`,
+    ];
+  }
+  return [
+    `- Rework source：${node.rework.sourceNodeId}`,
+    `- Rework target：${node.rework.targetNodeId}`,
+    `- Rework reset at：${node.rework.resetAt}`,
+    `- Rework scope：${formatList(node.rework.resetScopeNodeIds)}`,
+    `- Rework reason：${formatValue(node.rework.reason)}`,
+    `- Rework edge：${formatValue(node.rework.edgeId)}${node.rework.edgeKind ? `｜${node.rework.edgeKind}` : ""}`,
+  ];
+}
+
+function formatGraphNodeReworkSummary(node: GraphNodeRecord): string {
+  if (!node.rework) {
+    return GRAPH_PROMPT_EMPTY_VALUE;
+  }
+  return [
+    `source=${node.rework.sourceNodeId}`,
+    `target=${node.rework.targetNodeId}`,
+    `scope=${node.rework.resetScopeNodeIds.join(",")}`,
+    `reason=${node.rework.reason ?? GRAPH_PROMPT_EMPTY_VALUE}`,
+  ].join("；");
+}
+
+function formatGraphEdgeLabel(edge: GraphEdgeRecord): string {
+  return formatValue(edge.label ?? edge.metadata?.label);
+}
+
+function formatGraphEdgeConditionExpression(expression: GraphEdgeConditionExpression | undefined): string {
+  if (!expression) {
+    return GRAPH_PROMPT_EMPTY_VALUE;
+  }
+  const parts = [
+    `type=${expression.type}`,
+    expression.operator ? `operator=${expression.operator}` : "",
+    expression.status ? `status=${expression.status}` : "",
+    expression.statuses && expression.statuses.length > 0 ? `statuses=${expression.statuses.join(",")}` : "",
+    expression.acceptanceId ? `acceptanceId=${expression.acceptanceId}` : "",
+    expression.expected !== undefined ? `expected=${String(expression.expected)}` : "",
+    expression.description ? `description=${expression.description}` : "",
+  ].filter(Boolean);
+  return parts.join("；");
+}
+
+function formatGraphEdgeMetadata(edge: GraphEdgeRecord): string {
+  const metadata = edge.metadata;
+  if (!metadata) {
+    return GRAPH_PROMPT_EMPTY_VALUE;
+  }
+  const parts = [
+    metadata.rationale ? `rationale=${metadata.rationale}` : "",
+    metadata.evidenceRef ? `evidenceRef=${metadata.evidenceRef}` : "",
+    metadata.feedbackReason ? `feedbackReason=${metadata.feedbackReason}` : "",
+    metadata.reworkTargetNodeId ? `reworkTargetNodeId=${metadata.reworkTargetNodeId}` : "",
+    metadata.reworkScopeNodeIds && metadata.reworkScopeNodeIds.length > 0 ? `reworkScopeNodeIds=${metadata.reworkScopeNodeIds.join(",")}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("；") : GRAPH_PROMPT_EMPTY_VALUE;
 }
 
 function formatValidationRequirementLines(requirements: readonly string[] | undefined): string[] {

@@ -385,3 +385,79 @@ test("continues after resume by completing due sleep before a dependent CLI tick
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
 });
+
+test("starts the first planned CLI node even when downstream if_fail rework edges point back to it", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const executed: string[] = [];
+    const plan = createNode({
+      id: "plan",
+      title: "Plan",
+      kind: "plan",
+      ownerRole: "main",
+      status: "passed",
+      attempts: 1,
+      unlocks: ["implement-prototype"],
+    });
+    const implement = createNode({
+      id: "implement-prototype",
+      title: "Implement prototype",
+      kind: "implement",
+      ownerRole: "subtask",
+      status: "pending",
+      dependsOn: ["plan"],
+      writeFiles: ["employee-management-prototype/**"],
+    });
+    const testNode = createNode({
+      id: "test-file-structure",
+      title: "Test file structure",
+      kind: "test",
+      ownerRole: "subtask",
+      status: "pending",
+      dependsOn: ["implement-prototype"],
+    });
+    const run = createRun(baseDir, [plan, implement, testNode], [{
+      id: "edge-test-implement-if_fail",
+      from: "test-file-structure",
+      to: "implement-prototype",
+      kind: "if_fail",
+      active: true,
+      conditionExpression: {
+        type: "source_status",
+        operator: "equals",
+        status: "failed",
+      },
+      metadata: {
+        feedbackReason: "File structure failed; rework implementation.",
+        reworkTargetNodeId: "implement-prototype",
+        reworkScopeNodeIds: ["implement-prototype", "test-file-structure"],
+      },
+    }, {
+      id: "edge-plan-implement",
+      from: "plan",
+      to: "implement-prototype",
+      kind: "depends_on",
+      active: true,
+    }]);
+
+    const result = await tickGraphRun(run, {
+      now: () => 2_000,
+      executor: {
+        execute: async (request) => {
+          executed.push(request.node.id);
+          return { status: "passed", summary: `${request.node.id} passed` };
+        },
+      },
+    }, {
+      maxConcurrent: 1,
+    });
+
+    assert.deepEqual(result.batch.selectedNodeIds, ["implement-prototype"]);
+    assert.deepEqual(result.startedNodeIds, ["implement-prototype"]);
+    assert.deepEqual(executed, ["implement-prototype"]);
+    assert.equal(getNode(result.run, "implement-prototype").status, "passed");
+    assert.equal(getNode(result.run, "test-file-structure").status, "pending");
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});

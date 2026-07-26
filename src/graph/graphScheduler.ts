@@ -1,8 +1,11 @@
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
+  type GraphEdgeConditionExpression,
+  type GraphEdgeKind,
   type GraphEdgeRecord,
   type GraphNodeKind,
   type GraphNodeRecord,
+  type GraphNodeStatus,
   type GraphRunRecord,
 } from "./types";
 
@@ -19,6 +22,8 @@ export const GRAPH_SCHEDULER_BLOCKER_REASONS = [
   "conditional_edge_inactive",
   "if_pass_not_satisfied",
   "if_fail_not_satisfied",
+  "edge_condition_not_satisfied",
+  "edge_condition_not_evaluable",
   "sleep_not_due",
   "running_conflict",
   "batch_conflict",
@@ -39,6 +44,9 @@ export type GraphNodeBlocker = {
   message: string;
   dependencyNodeId?: string;
   edgeId?: string;
+  edgeKind?: GraphEdgeKind;
+  condition?: string;
+  conditionExpression?: GraphEdgeConditionExpression;
   conflict?: GraphNodeConflict;
   value?: string;
 };
@@ -102,6 +110,12 @@ const GRAPH_WRITE_CLASS_NODE_KINDS: readonly GraphNodeKind[] = [
   "test",
   "review",
   "merge",
+];
+
+const GRAPH_BLOCKING_EDGE_KINDS: readonly GraphEdgeKind[] = [
+  "if_pass",
+  "if_fail",
+  "human_approved",
 ];
 
 export function computeGraphReadyNodeIds(
@@ -282,9 +296,12 @@ export function getGraphNodeBlockers(
       blockers.push({
         nodeId: node.id,
         reason: "edge_source_missing",
-        message: `Graph node ${node.id} has conditional edge ${edge.id} from missing node ${edge.from}.`,
+        message: `Graph node ${node.id} has ${formatGraphEdgeDescriptor(edge)} from missing node ${edge.from}.`,
         dependencyNodeId: edge.from,
         edgeId: edge.id,
+        edgeKind: edge.kind,
+        condition: edge.condition,
+        conditionExpression: edge.conditionExpression,
       });
       return;
     }
@@ -292,30 +309,40 @@ export function getGraphNodeBlockers(
       blockers.push({
         nodeId: node.id,
         reason: "conditional_edge_inactive",
-        message: `Graph node ${node.id} waits because conditional edge ${edge.id} is inactive.`,
+        message: `Graph node ${node.id} waits because ${formatGraphEdgeDescriptor(edge)} is inactive.`,
         dependencyNodeId: edge.from,
         edgeId: edge.id,
+        edgeKind: edge.kind,
+        condition: edge.condition,
+        conditionExpression: edge.conditionExpression,
       });
       return;
     }
-    if (edge.kind === "if_pass" && source.status !== "passed") {
+    const edgeGate = evaluateGraphEdgeGate(edge, source);
+    if (edgeGate.status === "not_evaluable") {
       blockers.push({
         nodeId: node.id,
-        reason: "if_pass_not_satisfied",
-        message: `Graph node ${node.id} waits for ${edge.from} to pass.`,
+        reason: "edge_condition_not_evaluable",
+        message: `Graph node ${node.id} cannot evaluate ${formatGraphEdgeDescriptor(edge)}: ${edgeGate.message}`,
         dependencyNodeId: edge.from,
         edgeId: edge.id,
-        value: source.status,
+        edgeKind: edge.kind,
+        condition: edge.condition,
+        conditionExpression: edge.conditionExpression,
+        value: edgeGate.value,
       });
       return;
     }
-    if (edge.kind === "if_fail" && source.status !== "failed" && source.status !== "blocked") {
+    if (edgeGate.status === "not_satisfied") {
       blockers.push({
         nodeId: node.id,
-        reason: "if_fail_not_satisfied",
-        message: `Graph node ${node.id} waits for ${edge.from} to fail or block.`,
+        reason: edgeGate.reason,
+        message: `Graph node ${node.id} waits because ${formatGraphEdgeDescriptor(edge)} is not satisfied: ${edgeGate.message}`,
         dependencyNodeId: edge.from,
         edgeId: edge.id,
+        edgeKind: edge.kind,
+        condition: edge.condition,
+        conditionExpression: edge.conditionExpression,
         value: source.status,
       });
     }
@@ -516,7 +543,226 @@ function getGraphConditionalInboundEdges(
   run: GraphRunRecord,
   nodeId: string,
 ): GraphEdgeRecord[] {
-  return run.edges.filter((edge) => edge.to === nodeId && (edge.kind === "if_pass" || edge.kind === "if_fail"));
+  return run.edges.filter((edge) => edge.to === nodeId
+    && !isGraphReworkTriggerEdge(edge)
+    && ((GRAPH_BLOCKING_EDGE_KINDS as readonly string[]).includes(edge.kind) || Boolean(edge.conditionExpression)));
+}
+
+function isGraphReworkTriggerEdge(edge: GraphEdgeRecord): boolean {
+  if (edge.kind === "review_feedback") {
+    return true;
+  }
+  if (edge.kind !== "if_fail") {
+    return false;
+  }
+  return Boolean(
+    edge.metadata?.reworkTargetNodeId
+    || edge.metadata?.feedbackReason
+    || (edge.metadata?.reworkScopeNodeIds && edge.metadata.reworkScopeNodeIds.length > 0),
+  );
+}
+
+type GraphEdgeGateResult =
+  | { status: "satisfied" }
+  | { status: "not_satisfied"; reason: "if_pass_not_satisfied" | "if_fail_not_satisfied" | "edge_condition_not_satisfied"; message: string; value?: string }
+  | { status: "not_evaluable"; message: string; value?: string };
+
+function evaluateGraphEdgeGate(edge: GraphEdgeRecord, source: GraphNodeRecord): GraphEdgeGateResult {
+  const kindGate = evaluateGraphEdgeKindGate(edge, source);
+  if (kindGate.status !== "satisfied") {
+    return kindGate;
+  }
+  return evaluateGraphEdgeCondition(edge, source);
+}
+
+function evaluateGraphEdgeKindGate(edge: GraphEdgeRecord, source: GraphNodeRecord): GraphEdgeGateResult {
+  if (edge.kind === "if_pass" && source.status !== "passed") {
+    return {
+      status: "not_satisfied",
+      reason: "if_pass_not_satisfied",
+      message: `source ${edge.from} status is ${source.status}, expected passed`,
+      value: source.status,
+    };
+  }
+  if (edge.kind === "if_fail" && source.status !== "failed" && source.status !== "blocked") {
+    return {
+      status: "not_satisfied",
+      reason: "if_fail_not_satisfied",
+      message: `source ${edge.from} status is ${source.status}, expected failed or blocked`,
+      value: source.status,
+    };
+  }
+  if (edge.kind === "human_approved" && source.status !== "passed") {
+    return {
+      status: "not_satisfied",
+      reason: "edge_condition_not_satisfied",
+      message: `source ${edge.from} status is ${source.status}, expected approved/passed human gate`,
+      value: source.status,
+    };
+  }
+  return { status: "satisfied" };
+}
+
+function evaluateGraphEdgeCondition(edge: GraphEdgeRecord, source: GraphNodeRecord): GraphEdgeGateResult {
+  const expression = edge.conditionExpression;
+  if (!expression) {
+    return { status: "satisfied" };
+  }
+  if (expression.type === "source_status") {
+    return evaluateSourceStatusCondition(edge, source, expression);
+  }
+  if (expression.type === "source_acceptance") {
+    return evaluateSourceAcceptanceCondition(edge, source, expression);
+  }
+  if (expression.type === "manual") {
+    return source.status === "passed"
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `manual condition waits for source ${edge.from} to pass`,
+        value: source.status,
+      };
+  }
+  return {
+    status: "not_evaluable",
+    message: `custom condition requires graph replanning or a future condition evaluator (${formatGraphEdgeConditionExpression(expression)})`,
+    value: expression.description,
+  };
+}
+
+function evaluateSourceStatusCondition(
+  edge: GraphEdgeRecord,
+  source: GraphNodeRecord,
+  expression: GraphEdgeConditionExpression,
+): GraphEdgeGateResult {
+  const operator = expression.operator ?? (expression.statuses && expression.statuses.length > 0 ? "one_of" : "equals");
+  if (operator === "equals") {
+    if (!expression.status) {
+      return {
+        status: "not_evaluable",
+        message: `source_status equals condition on edge ${edge.id} is missing status`,
+      };
+    }
+    return source.status === expression.status
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `source ${edge.from} status is ${source.status}, expected ${expression.status}`,
+        value: source.status,
+      };
+  }
+  if (operator === "one_of") {
+    const statuses = expression.statuses ?? [];
+    if (statuses.length === 0) {
+      return {
+        status: "not_evaluable",
+        message: `source_status one_of condition on edge ${edge.id} is missing statuses`,
+      };
+    }
+    return statuses.includes(source.status)
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `source ${edge.from} status is ${source.status}, expected one of ${statuses.join(", ")}`,
+        value: source.status,
+      };
+  }
+  return {
+    status: "not_evaluable",
+    message: `source_status condition does not support operator ${operator}`,
+    value: operator,
+  };
+}
+
+function evaluateSourceAcceptanceCondition(
+  edge: GraphEdgeRecord,
+  source: GraphNodeRecord,
+  expression: GraphEdgeConditionExpression,
+): GraphEdgeGateResult {
+  const checks = (source.acceptance ?? [])
+    .filter((item) => item.required !== false)
+    .filter((item) => !expression.acceptanceId || item.id === expression.acceptanceId || item.name === expression.acceptanceId);
+  if (checks.length === 0) {
+    return {
+      status: "not_satisfied",
+      reason: "edge_condition_not_satisfied",
+      message: `source ${edge.from} has no required acceptance checks matching ${expression.acceptanceId ?? "condition"}`,
+      value: "no_acceptance",
+    };
+  }
+
+  const operator = expression.operator ?? "all_required_passed";
+  if (operator === "all_required_passed") {
+    return checks.every((item) => item.passed === true)
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `source ${edge.from} has required acceptance checks not passed`,
+        value: formatAcceptanceStatuses(checks.map((item) => item.passed)),
+      };
+  }
+  if (operator === "any_required_failed") {
+    return checks.some((item) => item.passed === false)
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `source ${edge.from} has no failed required acceptance checks`,
+        value: formatAcceptanceStatuses(checks.map((item) => item.passed)),
+      };
+  }
+  if (operator === "has_evidence") {
+    return checks.some((item) => Boolean(item.evidenceRef?.trim()))
+      ? { status: "satisfied" }
+      : {
+        status: "not_satisfied",
+        reason: "edge_condition_not_satisfied",
+        message: `source ${edge.from} has no matching acceptance evidenceRef`,
+        value: "missing_evidence",
+      };
+  }
+  return {
+    status: "not_evaluable",
+    message: `source_acceptance condition does not support operator ${operator}`,
+    value: operator,
+  };
+}
+
+function formatAcceptanceStatuses(values: readonly (boolean | undefined)[]): string {
+  return values.map((value) => value === undefined ? "unset" : String(value)).join(",");
+}
+
+function formatGraphEdgeDescriptor(edge: GraphEdgeRecord): string {
+  const label = edge.label ?? edge.metadata?.label;
+  const labelPart = label ? ` "${label}"` : "";
+  const conditionPart = edge.condition || edge.conditionExpression
+    ? ` condition=${edge.condition ?? formatGraphEdgeConditionExpression(edge.conditionExpression as GraphEdgeConditionExpression)}`
+    : "";
+  return `edge ${edge.id}${labelPart} (${edge.kind}${conditionPart})`;
+}
+
+function formatGraphEdgeConditionExpression(expression: GraphEdgeConditionExpression): string {
+  const values: string[] = [`type=${expression.type}`];
+  if (expression.operator) {
+    values.push(`operator=${expression.operator}`);
+  }
+  if (expression.status) {
+    values.push(`status=${expression.status}`);
+  }
+  if (expression.statuses && expression.statuses.length > 0) {
+    values.push(`statuses=${expression.statuses.join(",")}`);
+  }
+  if (expression.acceptanceId) {
+    values.push(`acceptanceId=${expression.acceptanceId}`);
+  }
+  if (expression.description) {
+    values.push(`description=${expression.description}`);
+  }
+  return values.join(";");
 }
 
 function getGraphRunningNodes(run: GraphRunRecord): GraphNodeRecord[] {

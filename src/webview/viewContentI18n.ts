@@ -228,7 +228,6 @@ export const WEBVIEW_I18N = {
     helpTabsLabel: "Help",
     helpTabModes: "Modes",
     helpTabInstall: "Install",
-    helpTabThinking: "Thinking Mode",
     helpModesGeneralTitle: "How to Choose",
     helpModesGeneralItem:
       "Use the lightest mode that can safely handle the task: Vibe for direct work, Loop for coordinated multi-agent work, Graph for visible DAG orchestration.",
@@ -257,25 +256,6 @@ export const WEBVIEW_I18N = {
       "macOS: Check and remove related settings in ~/.zprofile, ~/.zshrc, or ~/.bash_profile.",
     helpRemoveEnvItemWin:
       "Windows: Remove CLI-related entries in System Properties > Advanced > Environment Variables.",
-    helpThinkingGeneralTitle: "General",
-    helpThinkingGeneralItem:
-      "Thinking mode controls reasoning intensity. Higher means more reliable but slower and more costly.",
-    helpThinkingCodexTitle: "Codex",
-    helpThinkingCodexItem1: "Control intensity via model_reasoning_effort.",
-    helpThinkingCodexItem2:
-      "Options: low / medium / high / xhigh / max / ultra",
-    helpThinkingOpenCodeTitle: "OpenCode",
-    helpThinkingOpenCodeItem1:
-      "Controlled via OpenCode config and command arguments.",
-    helpThinkingOpenCodeItem2:
-      "Uses this extension's OpenCode thinking mode settings when configured.",
-    helpThinkingOpenCodeItem3:
-      "Common values follow the configured OpenCode model and provider.",
-    helpThinkingClaudeTitle: "Claude",
-    helpThinkingClaudeItem1:
-      "Use --max-thinking-tokens to control thinking tokens.",
-    helpThinkingClaudeItem2:
-      "0 means off; higher values increase reasoning depth.",
     noConfigOption: "No configs",
     historyEmptySessions: "No session history",
     historyEmptyPrompts: "No prompt history",
@@ -609,7 +589,6 @@ export const WEBVIEW_I18N = {
     helpTabsLabel: "使用说明",
     helpTabModes: "模式说明",
     helpTabInstall: "安装",
-    helpTabThinking: "思考模式",
     helpModesGeneralTitle: "如何选择",
     helpModesGeneralItem:
       "优先使用能安全完成任务的最轻模式：Vibe 做直接对话与小改，Loop 做多智能体协作，Graph 做可视 DAG 编排。",
@@ -638,21 +617,6 @@ export const WEBVIEW_I18N = {
       "macOS：检查并移除 ~/.zprofile、~/.zshrc 或 ~/.bash_profile 中相关设置。",
     helpRemoveEnvItemWin:
       "Windows：通过“系统属性 > 高级 > 环境变量”删除为 CLI 手动添加的相关设置。",
-    helpThinkingGeneralTitle: "通用说明",
-    helpThinkingGeneralItem:
-      "思考模式用于调节推理强度，越高通常更稳但更慢、成本更高。",
-    helpThinkingCodexTitle: "Codex",
-    helpThinkingCodexItem1: "通过配置 model_reasoning_effort 控制强度。",
-    helpThinkingCodexItem2:
-      "可选值：low / medium / high / xhigh / max / ultra",
-    helpThinkingOpenCodeTitle: "OpenCode",
-    helpThinkingOpenCodeItem1: "通过 OpenCode 配置和命令参数控制。",
-    helpThinkingOpenCodeItem2: "使用本扩展中的 OpenCode 思考模式配置。",
-    helpThinkingOpenCodeItem3:
-      "常见值取决于当前配置的 OpenCode 模型和供应商。",
-    helpThinkingClaudeTitle: "Claude",
-    helpThinkingClaudeItem1: "使用 --max-thinking-tokens 控制思考 token 数。",
-    helpThinkingClaudeItem2: "0 视为关闭，数值越高推理越深入。",
     noConfigOption: "暂无配置",
     historyEmptySessions: "暂无会话历史",
     historyEmptyPrompts: "暂无历史提示词",

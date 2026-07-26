@@ -129,6 +129,101 @@ test("respects active if_pass and if_fail conditional edges", () => {
   assert.equal(getGraphNodeBlockers(run, "inactive-target")[0]?.reason, "conditional_edge_inactive");
 });
 
+test("evaluates structured edge conditions and reports readable blockers", () => {
+  const source = createNode({
+    id: "source",
+    title: "Source",
+    status: "passed",
+    acceptance: [{
+      id: "unit",
+      name: "Unit tests",
+      required: true,
+      passed: true,
+      evidenceRef: "test.log",
+    }],
+  });
+  const sourceWithoutFailedAcceptance = createNode({
+    id: "source-clean",
+    title: "Source clean",
+    status: "passed",
+    acceptance: [{
+      id: "review",
+      name: "Review",
+      required: true,
+      passed: true,
+    }],
+  });
+  const acceptanceTarget = readyImplement("acceptance-target");
+  const evidenceTarget = readyImplement("evidence-target");
+  const failedAcceptanceTarget = readyImplement("failed-acceptance-target");
+  const customTarget = readyImplement("custom-target");
+  const run = createRun([
+    source,
+    sourceWithoutFailedAcceptance,
+    acceptanceTarget,
+    evidenceTarget,
+    failedAcceptanceTarget,
+    customTarget,
+  ], [
+    {
+      id: "edge-acceptance",
+      from: "source",
+      to: "acceptance-target",
+      kind: "if_pass",
+      label: "验收通过后继续",
+      active: true,
+      conditionExpression: {
+        type: "source_acceptance",
+        operator: "all_required_passed",
+        acceptanceId: "unit",
+      },
+    },
+    {
+      id: "edge-evidence",
+      from: "source",
+      to: "evidence-target",
+      kind: "if_pass",
+      active: true,
+      conditionExpression: {
+        type: "source_acceptance",
+        operator: "has_evidence",
+      },
+    },
+    {
+      id: "edge-no-failure",
+      from: "source-clean",
+      to: "failed-acceptance-target",
+      kind: "if_pass",
+      active: true,
+      conditionExpression: {
+        type: "source_acceptance",
+        operator: "any_required_failed",
+      },
+    },
+    {
+      id: "edge-custom",
+      from: "source",
+      to: "custom-target",
+      kind: "if_pass",
+      active: true,
+      conditionExpression: {
+        type: "custom",
+        description: "coverage > 90%",
+      },
+    },
+  ]);
+
+  assert.deepEqual(computeGraphReadyNodeIds(run), ["acceptance-target", "evidence-target"]);
+  const failedAcceptanceBlocker = getGraphNodeBlockers(run, "failed-acceptance-target")[0];
+  assert.equal(failedAcceptanceBlocker?.reason, "edge_condition_not_satisfied");
+  assert.equal(failedAcceptanceBlocker?.edgeKind, "if_pass");
+  assert.match(failedAcceptanceBlocker?.message ?? "", /edge-no-failure/u);
+  const customBlocker = getGraphNodeBlockers(run, "custom-target")[0];
+  assert.equal(customBlocker?.reason, "edge_condition_not_evaluable");
+  assert.match(customBlocker?.message ?? "", /custom condition/u);
+  assert.equal(customBlocker?.conditionExpression?.description, "coverage > 90%");
+});
+
 test("defers ready nodes that conflict with currently running node writeFiles", () => {
   const running = readyImplement("running", { status: "running", writeFiles: ["src/graph"] });
   const conflicts = readyImplement("conflicts", { writeFiles: ["./src/graph/graphScheduler.ts"] });

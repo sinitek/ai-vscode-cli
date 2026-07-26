@@ -74,6 +74,17 @@ test("normalizes and dispatches openGraphRun message actions", () => {
     label: "Open Graph run",
   });
   assert.equal(normalizeMessageAction({ type: "openGraphRun" }), null);
+  assert.deepEqual(normalizeMessageAction({
+    type: "openGraphRun",
+    graphRunId: " graph-2 ",
+    nodeId: " gate ",
+    label: " 请你审批，点击这里 ",
+  }), {
+    type: "openGraphRun",
+    graphRunId: "graph-2",
+    nodeId: "gate",
+    label: "请你审批，点击这里",
+  });
 
   handleMessageAction({
     type: "openGraphRun",

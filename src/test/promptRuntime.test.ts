@@ -26,7 +26,8 @@ test("adds the final-answer marker instruction to every supported CLI prompt", (
 test("adds the Codex Tasklist logging format before the final-answer instruction", () => {
   const prompt = buildThinkingPrompt("codex", "medium", "implement the task");
 
-  assert.match(prompt, /Tasklist:\n- \[completed\] <finished item>\n- \[in_progress\] <current item>\n- \[pending\] <next item>/);
+  assert.match(prompt, /Tasklist:\n- \[completed\] <已完成事项>\n- \[in_progress\] <当前事项>\n- \[pending\] <下一步事项>/);
+  assert.match(prompt, /Simplified Chinese \(中文\)/);
   assert.ok(prompt.includes(CODEX_TASK_LIST_PROMPT_INSTRUCTION));
   assert.ok(prompt.indexOf(CODEX_TASK_LIST_PROMPT_INSTRUCTION) < prompt.indexOf(FINAL_ANSWER_PROMPT_INSTRUCTION));
   assert.ok(prompt.endsWith(FINAL_ANSWER_PROMPT_INSTRUCTION));

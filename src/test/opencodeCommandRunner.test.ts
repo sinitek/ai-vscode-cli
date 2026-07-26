@@ -953,6 +953,18 @@ test("forwards parsed OpenCode visible events to the matching conversation tab",
   );
   assert.match(
     extensionSource,
+    /function clearTaskListForRunStart\([\s\S]*latestOpenCodeTaskListByTabId\.delete\(normalizedTabId\)[\s\S]*type: "taskListUpdate"[\s\S]*items: \[\][\s\S]*tabId: normalizedTabId/,
+  );
+  assert.match(
+    extensionSource,
+    /function sendRunStatusForTab\([\s\S]*status === "start"[\s\S]*clearTaskListForRunStart\(tabId\)[\s\S]*type: "runStatus"/,
+  );
+  assert.match(
+    extensionSource,
+    /function sendRunStatus\([\s\S]*status === "start"[\s\S]*clearTaskListForRunStart\(activeTabIdForRun\)[\s\S]*type: "runStatus"/,
+  );
+  assert.match(
+    extensionSource,
     /function postPanelState\([\s\S]*viewProvider\?\.postState\(state\);[\s\S]*replayOpenCodeTaskLists\(\)/,
   );
 });

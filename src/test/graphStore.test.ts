@@ -244,6 +244,78 @@ test("rejects unknown Graph run status, node kind, node status, and edge kind", 
   }), null);
 });
 
+test("normalizes structured edge metadata and node rework records", () => {
+  const base = {
+    id: "run-structured",
+    workspaceKey: "workspace-a",
+    cli: "codex",
+    sessionId: null,
+    rootPrompt: "Keep structured Graph semantics.",
+    status: "running",
+    createdAt: 1,
+    updatedAt: 1,
+    graphVersion: GRAPH_SCHEMA_VERSION,
+    runStoreFile: "/tmp/graph-runs.json",
+    nodes: [createNode({
+      id: "implement",
+      rework: {
+        sourceNodeId: "review",
+        targetNodeId: "implement",
+        resetAt: 2,
+        resetScopeNodeIds: ["implement", "test", "review"],
+        reason: "Review feedback.",
+        edgeId: "feedback-edge",
+        edgeKind: "review_feedback",
+      },
+    })],
+    edges: [{
+      id: "edge-pass",
+      from: "test",
+      to: "review",
+      kind: "if_pass",
+      label: "测试通过后评审",
+      condition: "test passed",
+      conditionExpression: {
+        type: "source_status",
+        operator: "equals",
+        status: "passed",
+      },
+      metadata: {
+        feedbackReason: "Review failed.",
+        evidenceRef: "nodes/test.md",
+        reworkTargetNodeId: "implement",
+        reworkScopeNodeIds: ["implement", "test", "review"],
+      },
+      active: true,
+    }],
+    activeNodeIds: [],
+    maxConcurrent: 6,
+    eventsFile: "/tmp/events.jsonl",
+    communicationDir: "/tmp/graph",
+    mainCommunicationFile: "/tmp/graph/main.md",
+    graphFile: "/tmp/graph/graph.json",
+  };
+
+  const normalized = normalizeGraphRunRecord(base);
+  assert.equal(normalized?.nodes[0].rework?.reason, "Review feedback.");
+  assert.deepEqual(normalized?.nodes[0].rework?.resetScopeNodeIds, ["implement", "test", "review"]);
+  assert.equal(normalized?.edges[0].label, "测试通过后评审");
+  assert.equal(normalized?.edges[0].conditionExpression?.type, "source_status");
+  assert.equal(normalized?.edges[0].metadata?.evidenceRef, "nodes/test.md");
+
+  assert.equal(normalizeGraphRunRecord({
+    ...base,
+    edges: [{
+      ...base.edges[0],
+      conditionExpression: { type: "source_status", operator: "invalid" },
+    }],
+  }), null);
+  assert.equal(normalizeGraphRunRecord({
+    ...base,
+    nodes: [{ ...base.nodes[0], rework: { sourceNodeId: "review" } }],
+  }), null);
+});
+
 test("throws on damaged Graph run store JSON instead of silently succeeding", () => {
   const baseDir = createTempBaseDir();
   try {

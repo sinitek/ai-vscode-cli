@@ -331,10 +331,12 @@ import {
 } from "./graph/graphPlanner";
 import { resolveGraphNodeCommunicationFile } from "./graph/graphPromptBuilders";
 import {
+  cleanupGraphRunWorktree,
   commitGraphNodeCheckpoint,
   createGraphRunWorktree,
   getGraphWorktreeHeadCommit,
   mergeGraphRunWorktreeToWorkspace,
+  type GraphWorktreeCleanupResult,
   type GraphWorktreeMergeBackResult,
 } from "./graph/graphWorktree";
 import {
@@ -645,6 +647,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 let loopAutoWakeScheduler: LoopAutoWakeScheduler | null = null;
 let graphAutoWakeScheduler: GraphAutoWakeScheduler | null = null;
@@ -2982,8 +2985,8 @@ function graphRuntimeMessage(
     runReadFailed: `Graph 运行读取失败：${graphRunId}\n${detail}`.trim(),
     stopAccepted: "Graph 停止请求已记录。",
     stopRequested: "Graph 运行已由用户请求停止。",
-    stopStateOnly: `Graph 运行状态已落盘为 stopped：${graphRunId}。未找到活动 CLI 进程映射，真实进程停止需后续映射完善。`,
-    stopWithCli: `Graph 运行已停止：${graphRunId}。已请求停止 ${count} 个活动 CLI 运行。`,
+    stopStateOnly: `Graph 运行状态已落盘为 stopped：${graphRunId}。未找到活动 CLI 进程映射；真实 CLI 进程未被确认停止。`,
+    stopWithCli: `Graph 运行状态已落盘为 stopped：${graphRunId}。已向 ${count} 个已映射活动 CLI 运行发送停止请求；真实进程是否退出取决于底层 CLI 响应。`,
     supplementAccepted: "Graph 补充消息已记录，后续节点会读取。",
     supplementEmpty: "补充消息不能为空。",
     supplementUnavailable: "已完成或已停止的 Graph 运行不能补充消息。",
@@ -3005,8 +3008,8 @@ function graphRuntimeMessage(
     runReadFailed: `Graph run could not be read: ${graphRunId}\n${detail}`.trim(),
     stopAccepted: "The Graph stop request was recorded.",
     stopRequested: "Graph run stop was requested by the user.",
-    stopStateOnly: `Graph run state was persisted as stopped: ${graphRunId}. No active CLI process mapping was found; stopping the real process needs the later mapping path.`,
-    stopWithCli: `Graph run stopped: ${graphRunId}. Requested stop for ${count} active CLI run(s).`,
+    stopStateOnly: `Graph run state was persisted as stopped: ${graphRunId}. No active CLI process mapping was found; no real CLI process stop was confirmed.`,
+    stopWithCli: `Graph run state was persisted as stopped: ${graphRunId}. Sent stop requests to ${count} mapped active CLI run(s); real process exit depends on the underlying CLI response.`,
     supplementAccepted: "The Graph supplemental message was recorded for later nodes.",
     supplementEmpty: "The supplemental message cannot be empty.",
     supplementUnavailable: "Completed or stopped Graph runs cannot accept supplemental messages.",
@@ -3148,6 +3151,7 @@ type PromptRunInput = {
   graphNodeId?: string;
   executionCwd?: string;
   isolateProjectInstructions?: boolean;
+  skipLongTermMemoryPersist?: boolean;
   thinkingModeOverride?: ThinkingMode;
   throwOnError?: boolean;
 };
@@ -3511,7 +3515,11 @@ function sendRunStatusForTab(
     graphNodeId?: string;
   } = {}
 ): void {
-  latestOpenCodeTaskListByTabId.delete(tabId);
+  if (status === "start") {
+    clearTaskListForRunStart(tabId);
+  } else {
+    latestOpenCodeTaskListByTabId.delete(tabId);
+  }
   sendPanelMessage({
     type: "runStatus",
     status,
@@ -3521,6 +3529,19 @@ function sendRunStatusForTab(
     graphRunId: status === "start" ? options.graphRunId : undefined,
     graphNodeId: status === "start" ? options.graphNodeId : undefined,
     tabId,
+  });
+}
+
+function clearTaskListForRunStart(tabId: string | null | undefined): void {
+  const normalizedTabId = typeof tabId === "string" && tabId.trim() ? tabId : null;
+  if (!normalizedTabId) {
+    return;
+  }
+  latestOpenCodeTaskListByTabId.delete(normalizedTabId);
+  sendPanelMessage({
+    type: "taskListUpdate",
+    items: [],
+    tabId: normalizedTabId,
   });
 }
 
@@ -4554,6 +4575,7 @@ ${rawStderr}`);
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        skip: input.skipLongTermMemoryPersist,
       });
       if (shouldAutoCompactAfterRun) {
         await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
@@ -4796,6 +4818,12 @@ async function tickGraphRunToPause(
     run = planMaterialization.run;
     await postPanelState();
 
+    if (planMaterialization.changed && run.status === "running") {
+      madeProgress = true;
+      scheduleGraphRunAutoWake(run);
+      continue;
+    }
+
     if (run.status === "completed") {
       const mergeBack = finalizeCompletedGraphRunWorktreeMergeBack(run);
       run = mergeBack.run;
@@ -4804,14 +4832,28 @@ async function tickGraphRunToPause(
       if (run.status === "completed") {
         appendSystemMessageForGraph(target, buildGraphRunCompletedText(run, mergeBack), run.id);
       } else {
-        appendSystemMessageForGraph(target, buildGraphRunNeedsAttentionText(run, mergeBack), run.id);
+        const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded(run);
+        appendSystemMessageForGraph(
+          target,
+          buildGraphRunNeedsAttentionText(run, mergeBack),
+          run.id,
+          humanGateNode?.id ?? null,
+          humanGateNode ? graphHumanApprovalCtaText() : undefined,
+        );
       }
       return { run, progressed: true };
     }
     if (run.status === "needs-review" || run.status === "sleeping" || run.status === "error" || run.status === "stopped") {
       scheduleGraphRunAutoWake(run);
       sendGraphMainRunTerminalStatus(target, run);
-      appendSystemMessageForGraph(target, buildGraphRunNeedsAttentionText(run), run.id);
+      const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded(run);
+      appendSystemMessageForGraph(
+        target,
+        buildGraphRunNeedsAttentionText(run),
+        run.id,
+        humanGateNode?.id ?? null,
+        humanGateNode ? graphHumanApprovalCtaText() : undefined,
+      );
       return { run, progressed: true };
     }
     const progressed = tickResult.startedNodeIds.length > 0
@@ -4885,6 +4927,7 @@ type GraphRunMergeBackOutcome = {
   status: "merged" | "failed";
   message: string;
   result?: GraphWorktreeMergeBackResult;
+  cleanup?: GraphWorktreeCleanupResult;
   error?: string;
 };
 
@@ -4917,14 +4960,50 @@ function finalizeCompletedGraphRunWorktreeMergeBack(run: GraphRunRecord): GraphR
 
   try {
     const result = mergeGraphRunWorktreeToWorkspace({ workspaceCwd, worktree: run.worktree });
+    let cleanup: GraphWorktreeCleanupResult;
+    try {
+      cleanup = cleanupGraphRunWorktree({ workspaceCwd, worktree: run.worktree });
+    } catch (cleanupError) {
+      const cleanupMessage = errorToMessage(cleanupError);
+      const nextRun = updateGraphRunRecord(run.id, {
+        status: "needs-review",
+        updatedAt: timestamp,
+      }) ?? { ...run, status: "needs-review" as const, updatedAt: timestamp };
+      appendGraphEvent(nextRun.eventsFile, {
+        runId: nextRun.id,
+        type: "run.updated",
+        timestamp,
+        summary: `Graph worktree cleanup failed after merge-back: ${cleanupMessage}`,
+        error: cleanupMessage,
+        data: {
+          workspaceCwd,
+          worktree: run.worktree,
+          mergeBack: {
+            repoRoot: result.repoRoot,
+            worktreeCwd: result.worktreeCwd,
+            sourceBranch: result.sourceBranch,
+            sourceCommit: result.sourceCommit,
+            statusAfter: result.statusAfter,
+          },
+        },
+      });
+      return {
+        run: nextRun,
+        status: "failed",
+        message: `- Merge-back: applied Graph worktree changes to ${result.repoRoot} with git merge --squash; cleanup failed: ${cleanupMessage}`,
+        result,
+        error: cleanupMessage,
+      };
+    }
     const nextRun = updateGraphRunRecord(run.id, {
       updatedAt: timestamp,
-    }) ?? { ...run, updatedAt: timestamp };
+      worktree: undefined,
+    }) ?? { ...run, updatedAt: timestamp, worktree: undefined };
     appendGraphEvent(nextRun.eventsFile, {
       runId: nextRun.id,
       type: "run.updated",
       timestamp,
-      summary: `Graph worktree merged back into workspace without committing: ${result.repoRoot}`,
+      summary: `Graph worktree merged back into workspace and cleaned up without committing: ${result.repoRoot}`,
       data: {
         workspaceCwd: result.workspaceCwd,
         repoRoot: result.repoRoot,
@@ -4935,13 +5014,15 @@ function finalizeCompletedGraphRunWorktreeMergeBack(run: GraphRunRecord): GraphR
         targetHeadAfter: result.targetHeadAfter,
         statusAfter: result.statusAfter,
         mergeOutput: result.mergeOutput,
+        cleanup,
       },
     });
     return {
       run: nextRun,
       status: "merged",
-      message: `- Merge-back: applied Graph worktree changes to ${result.repoRoot} with git merge --squash; no commit was created.`,
+      message: `- Merge-back: applied Graph worktree changes to ${result.repoRoot} with git merge --squash; no commit was created. Cleaned up worktree ${cleanup.worktreeCwd} and branch ${cleanup.sourceBranch}.`,
       result,
+      cleanup,
     };
   } catch (error) {
     const message = errorToMessage(error);
@@ -5108,6 +5189,7 @@ async function executeGraphNodeViaRunPrompt(
       graphNodeId: request.node.id,
       executionCwd: worktreeCwd,
       isolateProjectInstructions: true,
+      skipLongTermMemoryPersist: true,
       throwOnError: true,
     }, {
       targetTabId: graphNodeTarget.tabId,
@@ -5214,21 +5296,88 @@ function resolveGraphRunSessionId(target: PromptRunTarget): string | null {
   return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
 }
 
-function buildGraphRunMessageAction(graphRunId: string): ChatMessageAction {
+function buildGraphRunMessageAction(
+  graphRunId: string,
+  nodeId?: string | null,
+  label?: string | null,
+): ChatMessageAction {
   return {
     type: "openGraphRun",
     graphRunId,
+    ...(nodeId ? { nodeId } : {}),
+    ...(label ? { label } : {}),
   };
+}
+
+function isHumanGateGraphMessageAction(nodeId?: string | null, actionLabel?: string | null): boolean {
+  return Boolean(nodeId && actionLabel?.trim());
+}
+
+function isPlainGraphRunOpenAction(action: ChatMessageAction, graphRunId: string): boolean {
+  return action.type === "openGraphRun"
+    && action.graphRunId === graphRunId
+    && !action.nodeId
+    && !action.label;
+}
+
+function isGraphNodeRunTarget(
+  target: PromptRunTarget,
+  graphRunId: string,
+  messages: readonly ChatMessage[],
+): boolean {
+  const nodeTarget = graphNodeRunTargetsByTabId.get(target.tabId);
+  if (nodeTarget?.graphRunId === graphRunId) {
+    return true;
+  }
+  return messages.some((message) => (
+    message.graphRunId === graphRunId
+    && Boolean(message.graphNodeId)
+  ));
+}
+
+function hasVisibleGraphRunOpenActionForTarget(
+  messages: readonly ChatMessage[],
+  graphRunId: string,
+): boolean {
+  return messages.some((message) => (
+    Array.isArray(message.actions)
+    && message.actions.some((action) => isPlainGraphRunOpenAction(action, graphRunId))
+  ));
+}
+
+function resolveGraphSystemMessageActions(
+  target: PromptRunTarget,
+  graphRunId?: string | null,
+  nodeId?: string | null,
+  actionLabel?: string | null,
+): ChatMessageAction[] {
+  if (!graphRunId) {
+    return [];
+  }
+  if (isHumanGateGraphMessageAction(nodeId, actionLabel)) {
+    return [buildGraphRunMessageAction(graphRunId, nodeId, actionLabel)];
+  }
+  const messages = getLoopMessagesForTarget(target);
+  if (
+    isGraphNodeRunTarget(target, graphRunId, messages)
+    || hasVisibleGraphRunOpenActionForTarget(messages, graphRunId)
+  ) {
+    return [];
+  }
+  return [buildGraphRunMessageAction(graphRunId)];
 }
 
 function appendSystemMessageForGraph(
   target: PromptRunTarget,
   content: string,
   graphRunId?: string | null,
+  nodeId?: string | null,
+  actionLabel?: string | null,
 ): void {
+  const actions = resolveGraphSystemMessageActions(target, graphRunId, nodeId, actionLabel);
   appendSystemMessageForLoop(target, content, {
     merge: false,
-    ...(graphRunId ? { actions: [buildGraphRunMessageAction(graphRunId)] } : {}),
+    ...(actions.length ? { actions } : {}),
   });
 }
 
@@ -5290,14 +5439,40 @@ function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphR
   const blockedNodes = run.nodes
     .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping")
     .map((node) => `${node.id}:${node.status}${node.lastError ? ` (${node.lastError})` : ""}`);
+  const humanGateNode = resolveGraphPendingHumanGateNode(run);
+  const humanGateLines = humanGateNode ? [
+    `- Human gate: ${humanGateNode.id}:${humanGateNode.status}`,
+    `- ${graphHumanApprovalCtaText()}: open the Graph Run panel and approve node ${humanGateNode.id}.`,
+  ] : [];
   return [
     `Graph run needs attention: ${run.id}`,
     "",
     `- Status: ${run.status}`,
+    ...humanGateLines,
     `- Nodes: ${blockedNodes.length ? blockedNodes.join(", ") : "No blocked node details recorded."}`,
     `- Graph file: ${run.graphFile}`,
     ...(mergeBack ? [mergeBack.message] : []),
   ].join("\n");
+}
+
+function openGraphHumanGateApprovalPanelIfNeeded(run: GraphRunRecord): GraphRunRecord["nodes"][number] | null {
+  const humanGateNode = resolveGraphPendingHumanGateNode(run);
+  if (!humanGateNode) {
+    return null;
+  }
+  void openGraphRunPanel({
+    graphRunId: run.id,
+    nodeId: humanGateNode.id,
+  });
+  return humanGateNode;
+}
+
+function resolveGraphPendingHumanGateNode(run: GraphRunRecord): GraphRunRecord["nodes"][number] | null {
+  return run.nodes.find((node) => node.kind === "human_gate" && node.status === "ready") ?? null;
+}
+
+function graphHumanApprovalCtaText(): string {
+  return resolveLocale() === "zh-CN" ? "请你审批，点击这里" : "Please approve, click here";
 }
 
 function buildGraphRunIdleText(run: GraphRunRecord): string {
@@ -9644,7 +9819,11 @@ function maybePersistLongTermMemoryFromRun(options: {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  skip?: boolean;
 }): void {
+  if (options.skip) {
+    return;
+  }
   const runtimeSettings = buildLongTermMemoryRuntimeSettings();
   if (!isMemoryRuntimeOperationAllowed("update", runtimeSettings)) {
     return;
@@ -10327,6 +10506,7 @@ ${rawStderr}`);
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        skip: input.skipLongTermMemoryPersist,
       });
       clearActiveRun();
       if (shouldAutoCompactAfterRun) {
@@ -11273,6 +11453,7 @@ async function runPromptInteractive(
       loopTaskId: input.loopTaskId,
       loopRound: input.loopRound,
       loopSubtaskId: input.loopSubtaskId,
+      skip: input.skipLongTermMemoryPersist,
     });
     interactiveRunsByTabId.delete(tabId);
     if (status === "end" && shouldAutoCompactAfterRun) {
@@ -12105,7 +12286,9 @@ function sendRunStatus(
   message?: string,
   options: { activity?: RunActivity } = {}
 ): void {
-  if (activeCliForRun === "opencode" && activeTabIdForRun) {
+  if (status === "start") {
+    clearTaskListForRunStart(activeTabIdForRun);
+  } else if (activeCliForRun === "opencode" && activeTabIdForRun) {
     latestOpenCodeTaskListByTabId.delete(activeTabIdForRun);
   }
   sendPanelMessage({
@@ -13024,6 +13207,7 @@ function createGraphNodeRunTarget(
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
+  graphNodeRunTargetsByTabId.set(tab.id, { graphRunId, graphNodeId });
   persistConversationTabsToWorkspaceSettings();
   void logInfo("graph-node-session-created", { cli, tabId: tab.id, graphRunId, graphNodeId });
   void postPanelState();
@@ -13055,6 +13239,7 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   if (!closingTab) {
     return;
   }
+  graphNodeRunTargetsByTabId.delete(tabId);
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
   const next = closeConversationTab(tabId);

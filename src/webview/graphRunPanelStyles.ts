@@ -83,6 +83,10 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .button:hover {
         background: var(--vscode-button-secondaryHoverBackground);
       }
+      .button-compact {
+        padding: 3px 8px;
+        font-size: 12px;
+      }
       .button-danger {
         color: var(--vscode-errorForeground);
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
@@ -102,6 +106,10 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       }
       .dialog {
         width: min(520px, 100%);
+        max-height: calc(100vh - 36px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
         border: 1px solid var(--vscode-widget-border);
         border-radius: var(--radius);
         background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
@@ -149,12 +157,35 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         gap: 8px;
         border-top: 1px solid var(--vscode-widget-border);
       }
+      .node-detail-backdrop {
+        z-index: 30;
+      }
+      .node-detail-dialog {
+        width: min(860px, 100%);
+      }
+      .node-detail-dialog-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--gap);
+        border-bottom: 1px solid var(--vscode-widget-border);
+      }
+      .node-detail-dialog-body {
+        min-height: 0;
+        overflow: auto;
+      }
+      .node-detail-dialog .detail-card {
+        margin: 0;
+      }
       .content {
         display: flex;
         flex-direction: column;
         min-height: 0;
         flex: 1;
         overflow: hidden;
+      }
+      .graph-canvas-content {
+        height: 100%;
       }
       .section {
         margin-bottom: 16px;
@@ -193,7 +224,8 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         border-color: var(--vscode-focusBorder);
       }
       .dag-node:focus-visible,
-      .button:focus-visible {
+      .button:focus-visible,
+      .dag-zoom-select:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }
@@ -247,35 +279,51 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       }
       .graph-dag {
         display: flex;
-        flex: 0 0 50%;
+        flex: 1 1 auto;
         flex-direction: column;
-        min-height: 180px;
+        min-height: 0;
         margin: 0;
         border: 0;
-        border-bottom: 1px solid var(--vscode-widget-border);
         border-radius: 0;
         background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
         padding: 12px;
         overflow: hidden;
       }
-      .graph-dag-header {
+      .graph-dag-toolbar {
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: var(--gap);
-        margin-bottom: 10px;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
       }
-      .graph-dag-header h2,
-      .graph-dag-header p {
-        margin: 0;
+      .dag-icon-button {
+        min-width: 28px;
+        padding: 3px 7px;
+        line-height: 18px;
       }
-	      .graph-dag-header p,
-	      .keyboard-hint {
-	        color: var(--vscode-descriptionForeground);
-	        font-size: 12px;
-	      }
+      .dag-zoom-select {
+        min-width: 76px;
+        min-height: 26px;
+        border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-widget-border)));
+        border-radius: 4px;
+        padding: 3px 24px 3px 8px;
+        color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+        background: var(--vscode-dropdown-background, var(--vscode-input-background));
+        font: inherit;
+      }
       .dag-empty {
         margin-bottom: 10px;
+      }
+      .graph-notices {
+        display: grid;
+        gap: 8px;
+        max-height: 96px;
+        margin-bottom: 8px;
+        overflow: auto;
+      }
+      .graph-notice {
+        padding: 8px 10px;
       }
       .dag-viewport {
         position: relative;
@@ -285,8 +333,19 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         border: 1px solid var(--vscode-widget-border);
         border-radius: var(--radius);
         background: var(--vscode-editor-background);
+        cursor: grab;
+        user-select: none;
+      }
+      .dag-viewport.panning {
+        cursor: grabbing;
       }
       .dag-canvas {
+        position: relative;
+        min-width: 100%;
+        min-height: 100%;
+        transform-origin: top left;
+      }
+      .dag-canvas-shell {
         position: relative;
         min-width: 100%;
         min-height: 100%;
@@ -305,23 +364,110 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .dag-edge-path.inactive {
         stroke-dasharray: 5 4;
       }
+      .dag-edge-label {
+        fill: var(--vscode-editor-foreground);
+        stroke: var(--vscode-editor-background);
+        stroke-width: 3px;
+        paint-order: stroke;
+        font-size: 10px;
+        font-weight: 600;
+        pointer-events: none;
+      }
+      .dag-edge-label.inactive {
+        opacity: 0.7;
+      }
       .dag-arrowhead {
         fill: currentColor;
       }
       .dag-node {
         position: absolute;
-	        display: flex;
-	        flex-direction: column;
-	        align-items: flex-start;
-	        justify-content: space-between;
-	        gap: 4px;
-	        padding: 7px 8px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 4px;
+        padding: 7px 9px 7px 14px;
+        --node-tone: var(--vscode-descriptionForeground);
         border: 1px solid var(--vscode-widget-border);
         border-radius: var(--radius);
         color: var(--vscode-editor-foreground);
         background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-        cursor: pointer;
+        cursor: grab;
         overflow: hidden;
+        touch-action: none;
+        user-select: none;
+      }
+      .dag-node.node-tone-info {
+        --node-tone: var(--vscode-focusBorder);
+      }
+      .dag-node.node-tone-accent {
+        --node-tone: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+      }
+      .dag-node.node-tone-warning {
+        --node-tone: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, var(--vscode-focusBorder)));
+      }
+      .dag-node.node-tone-success {
+        --node-tone: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen, var(--vscode-focusBorder)));
+      }
+      .dag-node.node-tone-neutral {
+        --node-tone: var(--vscode-descriptionForeground);
+      }
+      .dag-node.node-tone-danger {
+        --node-tone: var(--vscode-errorForeground);
+      }
+      .dag-tone-stripe {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--node-tone);
+        pointer-events: none;
+      }
+      .dag-node-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+        min-width: 0;
+      }
+      .dag-kind-chip,
+      .semantic-chip {
+        border: 1px solid var(--node-tone);
+        border-radius: 4px;
+        background: var(--vscode-editor-background);
+        color: var(--node-tone);
+        font-size: 10px;
+        line-height: 16px;
+      }
+      .dag-kind-chip,
+      .semantic-chip {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 0 5px;
+      }
+      .dag-kind-chip {
+        max-width: 76px;
+        font-weight: 600;
+      }
+      .semantic-chip {
+        flex: 0 1 auto;
+        max-width: 64px;
+        color: var(--vscode-descriptionForeground);
+        border-color: var(--vscode-widget-border);
+      }
+      .semantic-chip.semantic-normal {
+        opacity: 0.8;
+      }
+      .dag-node.dragging {
+        cursor: grabbing;
+        z-index: 3;
+        box-shadow: 0 8px 20px var(--vscode-widget-shadow);
+      }
+      .dag-node:hover,
+      .dag-node.selected {
+        border-color: var(--node-tone);
+      }
+      .dag-node.selected {
+        box-shadow: 0 0 0 1px var(--node-tone);
       }
       .dag-node.status-running {
         border-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
@@ -355,16 +501,49 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         }
       }
       .dag-node-title {
-	        width: 100%;
-	        font-weight: 600;
-	        line-height: 1.2;
-	        overflow: hidden;
-	        text-overflow: ellipsis;
-	        white-space: normal;
-	        display: -webkit-box;
-	        -webkit-line-clamp: 1;
-	        -webkit-box-orient: vertical;
-	      }
+        width: 100%;
+        min-width: 0;
+        font-weight: 600;
+        line-height: 1.15;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+      .dag-node-footer {
+        display: flex;
+        justify-content: flex-end;
+        width: 100%;
+        min-width: 0;
+      }
+      .dag-node .status-pill {
+        max-width: 100%;
+        min-height: 18px;
+        padding: 0 6px;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .dag-port-dot {
+        position: absolute;
+        z-index: 2;
+        width: 5px;
+        height: 5px;
+        border: 1px solid var(--node-tone);
+        border-radius: 999px;
+        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        opacity: 0.3;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+      }
+      .dag-node:hover .dag-port-dot,
+      .dag-node.selected .dag-port-dot,
+      .dag-node.dragging .dag-port-dot {
+        opacity: 0.9;
+      }
       .detail-heading {
         display: flex;
         align-items: flex-start;
@@ -388,13 +567,6 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 10px;
       }
-      .node-details-section {
-        flex: 1 1 50%;
-        min-height: 0;
-        margin: 0;
-        padding: 14px 16px 24px;
-        overflow: auto;
-      }
       .pre-wrap {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -404,11 +576,21 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
       }
       @media (max-width: 760px) {
-        .graph-dag-header {
-          display: block;
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
         }
-        .keyboard-hint {
-          margin-top: 6px;
+        .actions {
+          justify-content: flex-start;
+        }
+        .graph-dag-toolbar {
+          justify-content: flex-end;
+        }
+        .node-detail-dialog {
+          max-height: calc(100vh - 24px);
+        }
+        .node-detail-dialog-header {
+          flex-direction: column;
         }
       }
 `;

@@ -17,18 +17,20 @@ import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "../m
 import { buildWorkspaceMemoryRecallPack } from "../memory/memoryRecall";
 import { ensureWorkspaceHarnessScaffold, workspaceAgentsAppendMarker } from "../workspaceScaffold";
 
-function withTempWorkspace<T>(run: (workspaceRoot: string) => T): T {
+function withTempWorkspace<T>(run: (workspaceRoot: string, runtimeDataDir: string) => T): T {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-memory-"));
+  const runtimeDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-memory-runtime-"));
   try {
-    return run(workspaceRoot);
+    return run(workspaceRoot, runtimeDataDir);
   } finally {
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    fs.rmSync(runtimeDataDir, { recursive: true, force: true });
   }
 }
 
-test("creates workspace-local long-term memory scaffold", () => {
-  withTempWorkspace((workspaceRoot) => {
-    const paths = resolveWorkspaceMemoryPaths(workspaceRoot);
+test("creates workspace-local long-term memory scaffold with runtime generated recall", () => {
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
     ensureMemoryWorkspaceScaffold(paths);
 
@@ -37,14 +39,18 @@ test("creates workspace-local long-term memory scaffold", () => {
     assert.ok(fs.existsSync(path.join(paths.memoryDir, "README.md")));
     assert.ok(fs.existsSync(paths.runbooksDir));
     assert.equal(paths.memoryDir.endsWith(path.join(".ch", "docs", "memory")), true);
-    assert.equal(paths.generatedDir.endsWith(path.join(".ch", "docs", "generated", "memory-index")), true);
+    assert.equal(paths.runtimeDataDir, path.resolve(runtimeDataDir));
+    const expectedGeneratedRoot = path.join(path.resolve(runtimeDataDir), "memory-generated");
+    assert.equal(paths.generatedDir.startsWith(expectedGeneratedRoot), true);
+    assert.equal(paths.generatedDir.endsWith("memory-index"), true);
+    assert.equal(paths.generatedDir.includes(path.join(".ch", "docs", "generated")), false);
     assert.ok(fs.existsSync(paths.generatedDir));
   });
 });
 
 test("installs workspace harness scaffold and appends AGENTS.md only once", () => {
-  withTempWorkspace((workspaceRoot) => {
-    const paths = resolveWorkspaceMemoryPaths(workspaceRoot);
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
 
     ensureWorkspaceHarnessScaffold(process.cwd(), paths);
@@ -78,9 +84,9 @@ test("installs workspace harness scaffold and appends AGENTS.md only once", () =
   });
 });
 
-test("builds recall pack from workspace-local memory files and injects prompt block", () => {
-  withTempWorkspace((workspaceRoot) => {
-    const paths = resolveWorkspaceMemoryPaths(workspaceRoot);
+test("builds recall pack from workspace-local memory files and writes generated artifacts to runtime dir", () => {
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
     ensureMemoryWorkspaceScaffold(paths);
 
@@ -115,12 +121,14 @@ test("builds recall pack from workspace-local memory files and injects prompt bl
     assert.match(injected, /Plugin Memory Context/);
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "recall-pack.md")));
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "observations.jsonl")));
+    assert.equal(paths.generatedDir.startsWith(path.join(path.resolve(runtimeDataDir), "memory-generated")), true);
+    assert.equal(fs.existsSync(path.join(workspaceRoot, ".ch", "docs", "generated", "memory-index", "recall-pack.md")), false);
   });
 });
 
 test("records pitfall summaries as structured workspace-local memory", () => {
-  withTempWorkspace((workspaceRoot) => {
-    const paths = resolveWorkspaceMemoryPaths(workspaceRoot);
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
 
     const result = persistPromptRunSummary(paths, {
@@ -152,8 +160,8 @@ test("records pitfall summaries as structured workspace-local memory", () => {
 });
 
 test("persists successful prompt summaries back into workspace-local memory files", () => {
-  withTempWorkspace((workspaceRoot) => {
-    const paths = resolveWorkspaceMemoryPaths(workspaceRoot);
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
 
     const result = persistPromptRunSummary(paths, {

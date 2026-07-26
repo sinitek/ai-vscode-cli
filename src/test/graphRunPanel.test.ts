@@ -13,6 +13,54 @@ import { GRAPH_RUN_PANEL_STYLES } from "../webview/graphRunPanelStyles";
 import { WEBVIEW_I18N } from "../webview/viewContentI18n";
 import type { GraphEventRecord, GraphNodeRecord, GraphRunRecord } from "../graph/types";
 
+const packageJson = require("../../package.json") as {
+  dependencies?: Record<string, string>;
+};
+
+const STOP_BOUNDARY_COPY_PATTERNS = [
+  /Stop boundary/,
+  /Stop always persists Graph run\/node state as stopped/,
+  /only attempts to stop real CLI processes that are currently mapped to this Graph run/,
+  /Stop 能力边界/,
+  /Stop 一定会把 Graph 运行\/节点状态落盘为 stopped/,
+  /只有当前存在 Graph 映射的活动 CLI 运行时/,
+] as const;
+
+function assertOmitsStopBoundaryCopy(html: string): void {
+  STOP_BOUNDARY_COPY_PATTERNS.forEach((pattern) => {
+    assert.doesNotMatch(html, pattern);
+  });
+}
+
+type DagEdgePathAttrs = Record<string, string>;
+
+function getVisibleEdgeLabels(html: string): string[] {
+  return Array.from(html.matchAll(/<text class="dag-edge-label [^"]+"[^>]*>([^<]*)<\/text>/g))
+    .map((match) => match[1]);
+}
+
+function getDagEdgeLabelAttrs(html: string): DagEdgePathAttrs[] {
+  return Array.from(html.matchAll(/<text class="dag-edge-label [^"]+"[^>]*>[^<]*<\/text>/g))
+    .map((match) => {
+      const attrs: DagEdgePathAttrs = {};
+      Array.from(match[0].matchAll(/\s([\w-]+)="([^"]*)"/g)).forEach((attrMatch) => {
+        attrs[attrMatch[1]] = attrMatch[2];
+      });
+      return attrs;
+    });
+}
+
+function getDagEdgePathAttrs(html: string): DagEdgePathAttrs[] {
+  return Array.from(html.matchAll(/<path id="dag-edge-[^"]+" class="dag-edge-path[^>]*>/g))
+    .map((match) => {
+      const attrs: DagEdgePathAttrs = {};
+      Array.from(match[0].matchAll(/\s([\w-]+)="([^"]*)"/g)).forEach((attrMatch) => {
+        attrs[attrMatch[1]] = attrMatch[2];
+      });
+      return attrs;
+    });
+}
+
 function createNode(overrides: Partial<GraphNodeRecord> = {}): GraphNodeRecord {
   return {
     id: "plan",
@@ -169,7 +217,17 @@ test("prefers run.edges over dependsOn fallback and honors requested node select
         from: "test",
         to: "implement",
         kind: "review_feedback",
+        label: "Return to implementation",
         condition: "tests failed",
+        conditionExpression: {
+          type: "source_status",
+          status: "failed",
+          description: "source node failed",
+        },
+        metadata: {
+          feedbackReason: "review found missing coverage",
+          reworkTargetNodeId: "implement",
+        },
         active: true,
       }],
     }),
@@ -183,13 +241,26 @@ test("prefers run.edges over dependsOn fallback and honors requested node select
     from: edge.from,
     to: edge.to,
     kind: edge.kind,
+    label: edge.label,
     condition: edge.condition,
+    conditionExpression: edge.conditionExpression,
+    metadata: edge.metadata,
   })), [{
     id: "review-feedback",
     from: "test",
     to: "implement",
     kind: "review_feedback",
+    label: "Return to implementation",
     condition: "tests failed",
+    conditionExpression: {
+      type: "source_status",
+      status: "failed",
+      description: "source node failed",
+    },
+    metadata: {
+      feedbackReason: "review found missing coverage",
+      reworkTargetNodeId: "implement",
+    },
   }]);
 });
 
@@ -197,21 +268,233 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   const state = buildState(createSerialFiveNodeRun(), "review");
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
 
-  assert.match(html, /class="content graph-split"/);
+  assert.equal(packageJson.dependencies?.["@dagrejs/dagre"], "^3.0.0");
+  assert.match(html, /class="content graph-canvas-content"/);
   assert.match(html, /class="section graph-dag"/);
+  assert.match(html, /data-layout-engine="@dagrejs\/dagre"/);
+  assert.match(html, /data-auto-width="\d+"/);
+  assert.match(html, /data-auto-height="\d+"/);
+  assert.match(html, /data-dag-viewport/);
+  assert.match(html, /data-dag-canvas-shell/);
+  assert.match(html, /data-default-zoom="75"/);
+  assert.match(html, /data-zoom-percent="75"/);
+  assert.match(html, /data-zoom-scale="0\.75"/);
+  assert.match(html, /transform: scale\(0\.75\)/);
+  assert.match(html, /data-dag-zoom-select/);
+  assert.match(html, /<option value="25">25%<\/option>/);
+  assert.match(html, /<option value="50">50%<\/option>/);
+  assert.match(html, /<option value="75" selected>75%<\/option>/);
+  assert.match(html, /<option value="100">100%<\/option>/);
+  assert.match(html, /<option value="125">125%<\/option>/);
   assert.match(html, /<svg class="dag-edges"/);
   assert.match(html, /marker id="graph-arrowhead"/);
-  assert.match(html, /class="dag-edge-path active edge-kind-depends_on"/);
+  assert.match(html, /class="dag-edge-path active edge-kind-depends_on" data-edge-id="depends_on:plan-&gt;implement" data-edge-from="plan" data-edge-to="implement" data-from-port="right-50" data-to-port="left-50"/);
+  assert.match(html, /data-edge-label="[^"]*Depends On/);
+  assert.match(html, /data-edge-display-label="Deps"/);
+  assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="depends_on:plan-&gt;implement" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">Deps<\/text>/);
 	  assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
-	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target selected status-passed kind-review"/);
-	  assert.match(html, /height: 58px/);
-	  assert.match(html, /aria-label="Node 评审, status Passed, kind Review/);
+	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target selected status-passed kind-review node-tone-warning semantic-normal"/);
+	  assert.match(html, /data-node-kind-tone="warning"/);
+	  assert.match(html, /data-auto-x="\d+"[\s\S]*data-auto-y="\d+"[\s\S]*data-node-width="192"[\s\S]*data-node-height="78"/);
+  assert.equal((html.match(/class="dag-port-dot/g) ?? []).length, 60);
+  assert.match(html, /data-port-id="top-25"/);
+  assert.match(html, /data-port-id="right-50"/);
+  assert.match(html, /data-port-id="bottom-75"/);
+		  assert.match(html, /data-port-id="left-50"/);
+		  assert.match(html, /height: 78px/);
+		  assert.match(html, /class="dag-tone-stripe"/);
+		  assert.doesNotMatch(html, /class="dag-kind-mark"/);
+		  assert.doesNotMatch(html, /class="dag-kind-mark"[\s\S]*>R<\/span>/);
+		  assert.match(html, /class="dag-kind-chip">Review<\/span>/);
+		  assert.match(html, /class="semantic-chip semantic-normal">Step<\/span>/);
+		  assert.match(html, /aria-label="Node 评审, status Passed, kind Review/);
 	  assert.match(html, /data-node-id="plan"[\s\S]*data-node-id="implement"[\s\S]*data-node-id="test"[\s\S]*data-node-id="review"[\s\S]*data-node-id="summary"/);
 	  assert.match(html, /data-node-detail="review"/);
+	  assert.match(html, /id="nodeDetailDialogBackdrop" class="dialog-backdrop node-detail-backdrop"/);
+	  assert.match(html, /id="nodeDetailDialog" class="dialog node-detail-dialog" role="dialog" aria-modal="true"/);
+	  assert.match(html, /id="nodeDetailDialogClose"[\s\S]*data-node-detail-close[\s\S]*>Close Details</);
+	  assert.match(html, /data-action="resetLayout"[\s\S]*aria-label="Clear saved manual node positions for this Graph run"[\s\S]*>↺</);
+	  assert.doesNotMatch(html, />\s*Reset layout\s*</);
+	  assert.match(html, /graphRunLayouts/);
+	  assert.match(html, /\[graphRunId\]/);
+	  assert.match(html, /vscode\.getState\(\)/);
+	  assert.match(html, /vscode\.setState/);
+	  assert.match(html, /getSavedRunLayout/);
+	  assert.match(html, /getSavedZoomPercent/);
+	  assert.match(html, /persistZoom/);
+	  assert.match(html, /graphRunLayouts\[graphRunId\] = \{/);
+	  assert.match(html, /zoom: normalizeZoomPercent\(zoomPercent\)/);
+	  assert.match(html, /persistManualLayout/);
+	  assert.match(html, /startNodeDrag/);
+	  assert.match(html, /pointermove/);
+	  assert.match(html, /const zoomScale = getCurrentZoomScale\(\);[\s\S]*const dx = rawDx \/ zoomScale;[\s\S]*const dy = rawDy \/ zoomScale;/);
+	  assert.match(html, /openNodeDetailDialog/);
+	  assert.match(html, /addEventListener\("dblclick"/);
+	  assert.match(html, /closeNodeDetailDialog/);
+	  assert.match(html, /event\.key === "Escape" && isNodeDetailDialogOpen\(\)/);
+	  assert.match(html, /startCanvasPan/);
+	  assert.match(html, /isCanvasPanBlockedTarget/);
+	  assert.match(html, /\[data-node-id\], button, select, input, textarea, a/);
+	  assert.match(html, /dagViewport\.scrollLeft = activePan\.startScrollLeft - rawDx/);
+	  assert.match(html, /dagViewport\.scrollTop = activePan\.startScrollTop - rawDy/);
+	  assert.match(html, /syncGraphCanvasAndEdges/);
+	  assert.match(html, /setAttribute\("d", edgePath\.path\)/);
+	  assert.match(html, /const edgeLabelsById = new Map/);
+	  assert.match(html, /edgeLabel\.setAttribute\("x", formatPathNumber\(edgePath\.labelX\)\)/);
+	  assert.match(html, /edgeLabel\.setAttribute\("y", formatPathNumber\(edgePath\.labelY\)\)/);
+	  assert.match(html, /chooseEdgePortPair/);
+	  assert.match(html, /pathElement\.dataset\.fromPort = edgePath\.fromPort/);
+	  assert.match(html, /pathElement\.dataset\.toPort = edgePath\.toPort/);
+	  assert.doesNotMatch(html, /<textPath/);
+	  assert.ok(getVisibleEdgeLabels(html).every((label) => !label.includes("\n")));
 	  assert.doesNotMatch(html, /dag-node-meta/);
 	  assert.doesNotMatch(html, /class="sidebar"|class="node-list"/);
+	  assert.doesNotMatch(html, /class="content graph-split"/);
+	  assert.doesNotMatch(html, /node-details-section/);
 	  assert.doesNotMatch(html, />\s*(Overview|Status Statistics|Final Answer|Recent Events)\s*</);
 	  assert.doesNotMatch(html, />\s*(Retry|Approve|Continue|Stop)\s*</);
+});
+
+test("simplifies DAG canvas header while keeping compact zoom and reset controls", () => {
+  const state = buildState(createSerialFiveNodeRun(), "review");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
+
+  assert.match(html, /class="graph-dag-toolbar"/);
+  assert.match(html, /aria-label="运行图工具"/);
+  assert.match(html, /title="缩放"/);
+  assert.match(html, /data-action="resetLayout"[\s\S]*title="清除当前 Graph 运行保存的手动节点位置"[\s\S]*>↺</);
+  assert.doesNotMatch(html, />\s*可视图\s*</);
+  assert.doesNotMatch(html, /使用 Dagre 分层布局展示节点与依赖，可拖拽调整当前运行。/);
+  assert.doesNotMatch(html, /可拖拽节点调整布局；按 Tab 聚焦，按 Enter 或空格选择。/);
+  assert.doesNotMatch(html, />\s*重置布局\s*</);
+});
+
+test("renders cyclic and feedback edges conservatively without hiding valid edges", () => {
+  const run = createRun({
+    nodes: [
+      createNode({ id: "plan", title: "Plan", unlocks: ["implement"] }),
+      createNode({
+        id: "implement",
+        title: "Implement",
+        kind: "implement",
+        status: "failed",
+        dependsOn: ["plan"],
+        unlocks: ["review"],
+      }),
+      createNode({
+        id: "review",
+        title: "Review",
+        kind: "review",
+        status: "ready",
+        dependsOn: ["implement"],
+        unlocks: [],
+      }),
+    ],
+    edges: [
+      { id: "plan-implement", from: "plan", to: "implement", kind: "depends_on", active: true },
+      { id: "implement-review", from: "implement", to: "review", kind: "depends_on", active: true },
+      { id: "review-implement", from: "review", to: "implement", kind: "review_feedback", active: true, condition: "needs changes" },
+      { id: "review-plan", from: "review", to: "plan", kind: "if_fail", active: false, condition: "reset plan" },
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "review"), "en");
+
+  assert.match(html, /data-layout-engine="@dagrejs\/dagre"/);
+  assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
+  assert.match(html, /edge-kind-review_feedback" data-edge-id="review-implement" data-edge-from="review" data-edge-to="implement"/);
+  assert.match(html, /edge-kind-if_fail" data-edge-id="review-plan" data-edge-from="review" data-edge-to="plan"/);
+  assert.match(html, /needs changes/);
+});
+
+test("dedupes same-direction DAG edges and separates bidirectional connection ports", () => {
+  const run = createRun({
+    nodes: [
+      createNode({ id: "alpha", title: "Alpha", unlocks: ["beta"] }),
+      createNode({
+        id: "beta",
+        title: "Beta",
+        kind: "review",
+        status: "ready",
+        dependsOn: ["alpha"],
+        unlocks: ["alpha"],
+      }),
+    ],
+    edges: [
+      { id: "alpha-beta-default", from: "alpha", to: "beta", kind: "depends_on", active: true },
+      { id: "alpha-beta-purpose", from: "alpha", to: "beta", kind: "if_pass", active: true, label: "Manual override" },
+      { id: "beta-alpha-feedback", from: "beta", to: "alpha", kind: "review_feedback", active: true, condition: "needs change" },
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "beta"), "en");
+  const edges = getDagEdgePathAttrs(html);
+  const alphaToBeta = edges.find((edge) => edge["data-edge-from"] === "alpha" && edge["data-edge-to"] === "beta");
+  const betaToAlpha = edges.find((edge) => edge["data-edge-from"] === "beta" && edge["data-edge-to"] === "alpha");
+
+  assert.equal(edges.length, 2);
+  assert.equal(edges.filter((edge) => edge["data-edge-from"] === "alpha" && edge["data-edge-to"] === "beta").length, 1);
+  assert.equal(alphaToBeta?.["data-edge-id"], "alpha-beta-purpose");
+  assert.equal(alphaToBeta?.["data-edge-port-hint"], "start");
+  assert.equal(betaToAlpha?.["data-edge-port-hint"], "end");
+  assert.notEqual(alphaToBeta?.["data-from-port"], betaToAlpha?.["data-to-port"]);
+  assert.notEqual(alphaToBeta?.["data-to-port"], betaToAlpha?.["data-from-port"]);
+  assert.match(html, /data-edge-display-label="Manu \/ over"/);
+  assert.match(html, /data-edge-display-label="need \/ chan"/);
+  assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="beta-alpha-feedback" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">need \/ chan<\/text>/);
+  assert.ok(getDagEdgeLabelAttrs(html).every((edgeLabel) => Number.isFinite(Number.parseFloat(edgeLabel.x ?? "")) && Number.isFinite(Number.parseFloat(edgeLabel.y ?? ""))));
+  assert.doesNotMatch(html, /<textPath/);
+});
+
+test("renders edge purpose labels, semantic node classes, and twelve ports per node", () => {
+  const run = createRun({
+    nodes: [
+      createNode({ id: "start", title: "Start intake", kind: "intake", dependsOn: [], unlocks: ["decision"] }),
+      createNode({
+        id: "decision",
+        title: "Decide branch",
+        kind: "review",
+        status: "ready",
+        dependsOn: ["start"],
+        unlocks: ["end", "start"],
+      }),
+      createNode({
+        id: "end",
+        title: "Finish summary",
+        kind: "summary",
+        status: "pending",
+        dependsOn: ["decision"],
+        unlocks: [],
+      }),
+    ],
+    edges: [
+      { id: "start-decision", from: "start", to: "decision", kind: "depends_on", active: true, label: "Prepare decision" },
+      { id: "decision-end", from: "decision", to: "end", kind: "if_pass", active: true, condition: "Approved path" },
+      { id: "decision-start", from: "decision", to: "start", kind: "if_fail", active: true, label: "Needs rework" },
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "decision"), "en");
+
+  assert.match(html, /class="dag-node node-select-target status-passed kind-intake node-tone-info semantic-start"[\s\S]*data-node-id="start"[\s\S]*data-node-semantic="start"/);
+  assert.match(html, /class="dag-node node-select-target selected status-ready kind-review node-tone-warning semantic-decision"[\s\S]*data-node-id="decision"[\s\S]*data-node-semantic="decision"/);
+  assert.match(html, /class="dag-node node-select-target status-pending kind-summary node-tone-danger semantic-end"[\s\S]*data-node-id="end"[\s\S]*data-node-semantic="end"/);
+  assert.match(html, /data-node-kind-tone="info"/);
+  assert.match(html, /data-node-kind-tone="warning"/);
+  assert.match(html, /data-node-kind-tone="danger"/);
+  assert.match(html, />Start<\/span>/);
+  assert.match(html, />Decision<\/span>/);
+  assert.match(html, />End<\/span>/);
+  assert.match(html, /class="dag-kind-chip">Intake<\/span>/);
+  assert.match(html, /class="dag-kind-chip">Review<\/span>/);
+  assert.match(html, /class="dag-kind-chip">Summary<\/span>/);
+  assert.equal((html.match(/class="dag-port-dot/g) ?? []).length, 36);
+  assert.match(html, /data-edge-id="start-decision"[\s\S]*data-edge-label="[^"]*Prepare decision"[\s\S]*data-edge-display-label="Prep \/ deci"/);
+  assert.match(html, /data-edge-id="decision-end"[\s\S]*data-edge-label="[^"]*Approved path"[\s\S]*data-edge-display-label="Appr \/ path"/);
+  assert.match(html, /data-edge-id="decision-start"[\s\S]*data-edge-label="[^"]*Needs rework"[\s\S]*data-edge-display-label="Need \/ rewo"/);
+  assert.match(html, /data-from-port="[^"]+" data-to-port="[^"]+"/);
+  assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="decision-end" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">Appr \/ path<\/text>/);
+  assert.doesNotMatch(html, /<text class="dag-edge-label [^"]+"[^>]*>Appr<\/text>[\s\S]*<text class="dag-edge-label [^"]+"[^>]*>path<\/text>/);
+  assert.doesNotMatch(html, /<textPath/);
+  assert.ok(getVisibleEdgeLabels(html).every((label) => !label.includes("\n")));
+  assert.doesNotMatch(html, /class="dag-edge-label [^"]+" dy="(?:-5|8)"/);
 });
 
 test("renders only wired and currently available Graph run and node controls", () => {
@@ -291,33 +574,50 @@ test("renders only wired and currently available Graph run and node controls", (
 	  assert.equal(state.nodes.find((node) => node.id === "failed-test")?.control.canFeedback, true);
 	  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, true);
   assert.match(html, /data-action="continue"[\s\S]*>Continue</);
-  assert.match(html, /data-action="supplement"[\s\S]*>I want to speak</);
-	  assert.match(html, /data-action="stop"[\s\S]*>Stop Run</);
-	  assert.match(html, /data-action="retry" data-control-node-id="fix"[\s\S]*>Retry Failed Node</);
-	  assert.match(html, /data-action="feedback" data-control-node-id="failed-test"[\s\S]*>Rollback Upstream</);
-	  assert.match(html, /data-action="approve" data-control-node-id="gate"[\s\S]*>Approve Human Gate</);
+	  assert.match(html, /data-action="supplement"[\s\S]*>I want to speak</);
+		  assert.match(html, /data-action="stop"[\s\S]*>Stop Run</);
+		  assert.match(html, /title="Persist Graph stopped state and only attempt mapped CLI run stops"/);
+		  assertOmitsStopBoundaryCopy(html);
+		  assert.match(html, /data-action="retry" data-control-node-id="fix"[\s\S]*>Retry Failed Node</);
+		  assert.match(html, /data-action="feedback" data-control-node-id="failed-test"[\s\S]*>Rollback Upstream</);
+		  assert.match(html, /data-action="approve" data-control-node-id="gate"[\s\S]*>Approve Human Gate</);
   assert.match(html, /graphRun:continue/);
 	  assert.match(html, /graphRun:supplementRun/);
 	  assert.match(html, /graphRun:retryNode/);
 	  assert.match(html, /graphRun:feedbackNode/);
 	  assert.match(html, /graphRun:approveHumanGate/);
-  assert.match(html, /graphRun:stopRun/);
+	  assert.match(html, /graphRun:stopRun/);
 
-  const zhState = buildGraphRunPanelStateWithDeps(
-    createRun({ supplementalRequirements: ["请优先验证并行节点。"] }),
+  const zhStopState = buildGraphRunPanelStateWithDeps(
+    createRun(),
     [],
+    {
+      strings: getGraphRunPanelStrings("zh-CN"),
+      controls: { stopRun: true },
+    },
+  );
+  const zhStopHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhStopState, "zh-CN");
+  assert.equal(zhStopState.runControl.canStop, true);
+  assert.match(zhStopHtml, /data-action="stop"[\s\S]*>中止运行</);
+  assert.match(zhStopHtml, /title="落盘停止 Graph 状态，并仅尝试停止已映射的 CLI 运行"/);
+  assertOmitsStopBoundaryCopy(zhStopHtml);
+
+	  const zhState = buildGraphRunPanelStateWithDeps(
+	    createRun({ supplementalRequirements: ["请优先验证并行节点。"] }),
+	    [],
     {
       strings: getGraphRunPanelStrings("zh-CN"),
       controls: { supplementRun: true },
     },
   );
   const zhHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhState, "zh-CN");
-  assert.match(zhHtml, /data-action="supplement"[\s\S]*>我要说话</);
-  assert.match(zhHtml, /补充消息/);
-  assert.match(zhHtml, /请优先验证并行节点。/);
+	  assert.match(zhHtml, /data-action="supplement"[\s\S]*>我要说话</);
+	  assert.match(zhHtml, /补充消息/);
+	  assert.match(zhHtml, /请优先验证并行节点。/);
+  assertOmitsStopBoundaryCopy(zhHtml);
 
-  const hiddenState = buildGraphRunPanelStateWithDeps(
-    createRun({ status: "completed" }),
+	  const hiddenState = buildGraphRunPanelStateWithDeps(
+	    createRun({ status: "completed" }),
     [],
     {
       strings: getGraphRunPanelStrings("en"),
@@ -330,9 +630,105 @@ test("renders only wired and currently available Graph run and node controls", (
 	        stopRun: true,
       },
     },
+	  );
+	  const hiddenHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, hiddenState, "en");
+		  assert.doesNotMatch(hiddenHtml, />\s*(Continue|I want to speak|Stop Run|Retry Failed Node|Rollback Upstream|Approve Human Gate)\s*</);
+  assertOmitsStopBoundaryCopy(hiddenHtml);
+	});
+
+test("selects waiting human gates and renders a visible approval CTA", () => {
+  const state = buildGraphRunPanelStateWithDeps(
+    createRun({
+      status: "needs-review",
+      activeNodeIds: [],
+      nodes: [
+        createNode({ id: "plan", status: "passed", unlocks: ["gate"] }),
+        createNode({
+          id: "gate",
+          title: "Approve production change",
+          kind: "human_gate",
+          status: "ready",
+          ownerRole: "human",
+          attempts: 0,
+          dependsOn: ["plan"],
+          unlocks: [],
+          communicationFile: "/tmp/graph/gate.md",
+          acceptance: [{ name: "Human approval captured", evidenceRef: "/tmp/graph/gate.md" }],
+        }),
+      ],
+    }),
+    [],
+    {
+      strings: getGraphRunPanelStrings("zh-CN"),
+      controls: { approveHumanGate: true },
+    },
   );
-  const hiddenHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, hiddenState, "en");
-	  assert.doesNotMatch(hiddenHtml, />\s*(Continue|I want to speak|Stop Run|Retry Failed Node|Rollback Upstream|Approve Human Gate)\s*</);
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
+
+  assert.equal(state.selectedNodeId, "gate");
+  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, true);
+  assert.match(html, /需要人工审批/);
+  assert.match(html, /请你审批，点击这里/);
+  assert.match(html, /data-action="approve" data-control-node-id="gate"/);
+  assert.match(html, /graphRun:approveHumanGate/);
+});
+
+test("renders first-class evidence for selected node and final answer sources", () => {
+  const state = buildGraphRunPanelStateWithDeps(
+    createRun({
+      nodes: [
+        createNode({
+          id: "evidence-node",
+          title: "Collect evidence",
+          kind: "test",
+          status: "blocked",
+          attempts: 1,
+          maxAttempts: 2,
+          artifactRef: "/tmp/graph/evidence-artifact.md",
+          communicationFile: "/tmp/graph/evidence-chat.md",
+          acceptance: [{
+            name: "Build log attached",
+            required: true,
+            passed: false,
+            evidenceRef: "/tmp/graph/build.log",
+          }],
+          dependsOn: [],
+          unlocks: [],
+        }),
+      ],
+      finalAnswer: {
+        conclusion: "Evidence needs review",
+        summary: "Review the collected evidence.",
+        evidence: ["evidence-node:/tmp/graph/evidence-artifact.md"],
+        unresolved: ["evidence-node:blocked"],
+      },
+    }),
+    [
+      createEvent({
+        eventId: "evidence-event",
+        type: "node.blocked",
+        nodeId: "evidence-node",
+        timestamp: 4_000,
+        summary: "Build log failed validation",
+      }),
+    ],
+    { strings: getGraphRunPanelStrings("en"), selectedNodeId: "evidence-node" },
+  );
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+
+  assert.deepEqual(state.selectedEvidence.map((item) => item.kind), [
+    "artifactRef",
+    "communicationFile",
+    "acceptanceEvidence",
+    "event",
+    "finalAnswer",
+  ]);
+  assert.match(html, />Evidence</);
+  assert.match(html, /Artifact: \/tmp\/graph\/evidence-artifact\.md/);
+  assert.match(html, /Communication: \/tmp\/graph\/evidence-chat\.md/);
+  assert.match(html, /Acceptance Evidence: \/tmp\/graph\/build\.log/);
+  assert.match(html, /Event: node\.blocked - Build log failed validation/);
+  assert.match(html, /Final Answer Evidence: evidence-node:\/tmp\/graph\/evidence-artifact\.md/);
 });
 
 test("renders no-edge state with nodes and omits SVG for empty node state", () => {
@@ -374,11 +770,28 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.match(html, /<svg class="dag-edges"/);
   assert.match(html, /事件读取失败/);
   assert.match(html, /var\(--vscode-editor-foreground\)/);
-  assert.match(GRAPH_RUN_PANEL_STYLES, /flex:\s*0 0 50%/);
-  assert.match(GRAPH_RUN_PANEL_STYLES, /flex:\s*1 1 50%/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.graph-canvas-content[\s\S]*height:\s*100%/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.graph-dag[\s\S]*flex:\s*1 1 auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport[\s\S]*cursor:\s*grab/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport\.panning[\s\S]*cursor:\s*grabbing/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog[\s\S]*width:\s*min\(860px, 100%\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog-body[\s\S]*overflow:\s*auto/);
+  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /flex:\s*0 0 50%/);
+  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /flex:\s*1 1 50%/);
+  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /node-details-section/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /justify-content:\s*space-between/);
-	  assert.match(GRAPH_RUN_PANEL_STYLES, /-webkit-line-clamp:\s*1/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /-webkit-line-clamp:\s*2/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /white-space:\s*normal/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-info[\s\S]*--node-tone:\s*var\(--vscode-focusBorder\)/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-accent[\s\S]*--node-tone:\s*var\(--vscode-progressBar-background/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-warning[\s\S]*--node-tone:\s*var\(--vscode-editorWarning-foreground/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-success[\s\S]*--node-tone:\s*var\(--vscode-testing-iconPassed/);
+		  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-danger[\s\S]*--node-tone:\s*var\(--vscode-errorForeground\)/);
+		  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-tone-stripe[\s\S]*background:\s*var\(--node-tone\)/);
+		  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-kind-chip/);
+		  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /\.dag-kind-mark/);
+		  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.semantic-(?:start|end)[\s\S]*border-radius:\s*999px/);
 	  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /dag-node-meta/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill[\s\S]*flex:\s*0 0 auto/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*animation:\s*graph-running-border-flow/);

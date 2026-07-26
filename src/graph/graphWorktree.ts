@@ -56,6 +56,24 @@ export type GraphWorktreeMergeBackResult = {
   mergeOutput: string;
 };
 
+export type GraphWorktreeCleanupInput = {
+  workspaceCwd: string;
+  worktree: Pick<GraphRunWorktreeRecord, "cwd" | "branch">;
+};
+
+export type GraphWorktreeCleanupResult = {
+  workspaceCwd: string;
+  repoRoot: string;
+  worktreeCwd: string;
+  sourceBranch: string;
+  worktreePathExisted: boolean;
+  worktreeRemoved: boolean;
+  worktreePruned: boolean;
+  branchExisted: boolean;
+  branchDeleted: boolean;
+  directoryExistsAfter: boolean;
+};
+
 export function createGraphRunWorktree(
   workspaceCwd: string,
   graphRunId: string,
@@ -152,6 +170,54 @@ export function mergeGraphRunWorktreeToWorkspace(input: GraphWorktreeMergeBackIn
     statusAfter,
     mergeOutput,
   };
+}
+
+export function cleanupGraphRunWorktree(input: GraphWorktreeCleanupInput): GraphWorktreeCleanupResult {
+  const repoRoot = runGit(["rev-parse", "--show-toplevel"], input.workspaceCwd);
+  const worktreePathExisted = fs.existsSync(input.worktree.cwd);
+  let worktreeRemoved = false;
+  if (worktreePathExisted) {
+    runGit(["worktree", "remove", "--force", input.worktree.cwd], repoRoot);
+    worktreeRemoved = true;
+  }
+  runGit(["worktree", "prune"], repoRoot);
+  const branchExisted = gitBranchExists(repoRoot, input.worktree.branch);
+  let branchDeleted = false;
+  if (branchExisted) {
+    runGit(["branch", "-D", input.worktree.branch], repoRoot);
+    branchDeleted = true;
+  }
+  if (fs.existsSync(input.worktree.cwd)) {
+    fs.rmSync(input.worktree.cwd, { recursive: true, force: true });
+  }
+  const directoryExistsAfter = fs.existsSync(input.worktree.cwd);
+  if (directoryExistsAfter) {
+    throw new Error(`Graph worktree cleanup left a residual directory: ${input.worktree.cwd}`);
+  }
+  return {
+    workspaceCwd: input.workspaceCwd,
+    repoRoot,
+    worktreeCwd: input.worktree.cwd,
+    sourceBranch: input.worktree.branch,
+    worktreePathExisted,
+    worktreeRemoved,
+    worktreePruned: true,
+    branchExisted,
+    branchDeleted,
+    directoryExistsAfter,
+  };
+}
+
+function gitBranchExists(repoRoot: string, branch: string): boolean {
+  try {
+    childProcess.execFileSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
+      cwd: repoRoot,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function runGit(args: readonly string[], cwd: string): string {

@@ -204,11 +204,14 @@ export async function handleSendPromptMessage(
       )
     : undefined;
   const contextBuild = deps.buildPromptWithAutoContext(trimmed, message.contextOptions);
-  const modelPromptWithMemory = deps.maybeInjectLongTermMemoryForPrompt(
-    trimmed,
-    contextBuild.modelPrompt,
-    contextBuild.contextTags,
-  );
+  const shouldRunGraph = effectiveInteractiveMode === "graph";
+  const modelPromptWithMemory = shouldRunGraph
+    ? contextBuild.modelPrompt
+    : deps.maybeInjectLongTermMemoryForPrompt(
+        trimmed,
+        contextBuild.modelPrompt,
+        contextBuild.contextTags,
+      );
   const imagePaths = targetCli === "codex"
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
@@ -222,10 +225,12 @@ export async function handleSendPromptMessage(
     model: requestedModel || undefined,
     imagePaths: imagePaths.length ? imagePaths : undefined,
   };
+  if (shouldRunGraph) {
+    promptInput.skipLongTermMemoryPersist = true;
+  }
   if (loopExecutionMode) {
     promptInput.loopExecutionMode = loopExecutionMode;
   }
-  const shouldRunGraph = effectiveInteractiveMode === "graph";
   if (loopSubtaskContext && !shouldRunGraph) {
     promptInput.taskRole = "subtask";
     promptInput.loopTaskId = loopSubtaskContext.taskId;

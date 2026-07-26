@@ -39,6 +39,7 @@ import {
 import type {
   GraphRunPanelEvent,
   GraphRunPanelEdge,
+  GraphRunPanelEvidenceItem,
   GraphRunPanelNode,
   GraphRunPanelState,
 } from "./webview/graphRunPanelTypes";
@@ -326,6 +327,7 @@ export function buildGraphRunPanelStateWithDeps(
 	  }));
   const edges = buildGraphRunPanelEdges(run, nodes, strings);
   const selectedNode = selectGraphRunPanelNode(nodes, deps.selectedNodeId);
+  const panelEvents = buildGraphRunPanelEvents(events, deps.eventLimit ?? 30);
   return {
     run: {
       id: run.id,
@@ -362,7 +364,8 @@ export function buildGraphRunPanelStateWithDeps(
     edges,
     selectedNodeId: selectedNode?.id ?? null,
     selectedNode: selectedNode ?? null,
-    events: buildGraphRunPanelEvents(events, deps.eventLimit ?? 30),
+    events: panelEvents,
+    selectedEvidence: buildGraphRunPanelEvidence(run, panelEvents, selectedNode),
     error: deps.error ?? null,
   };
 }
@@ -440,6 +443,9 @@ function buildGraphRunPanelEdge(
   if (!fromNode || !toNode) {
     return null;
   }
+  const label = normalizeGraphRunPanelEdgeText(edge.label) ?? normalizeGraphRunPanelEdgeText(edge.metadata?.label);
+  const condition = normalizeGraphRunPanelEdgeText(edge.condition)
+    ?? normalizeGraphRunPanelEdgeText(edge.conditionExpression?.description);
   return {
     id: edge.id || `${edge.kind}:${edge.from}->${edge.to}:${index}`,
     from: edge.from,
@@ -449,8 +455,16 @@ function buildGraphRunPanelEdge(
     active: edge.active !== false,
     fromTitle: fromNode.title,
     toTitle: toNode.title,
-    ...(edge.condition ? { condition: edge.condition } : {}),
+    ...(label ? { label } : {}),
+    ...(condition ? { condition } : {}),
+    ...(edge.conditionExpression ? { conditionExpression: edge.conditionExpression } : {}),
+    ...(edge.metadata ? { metadata: edge.metadata } : {}),
   };
+}
+
+function normalizeGraphRunPanelEdgeText(value: string | null | undefined): string | undefined {
+  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+  return normalized || undefined;
 }
 
 function selectGraphRunPanelNode(
@@ -462,6 +476,14 @@ function selectGraphRunPanelNode(
     if (requestedNode) {
       return requestedNode;
     }
+  }
+  const approvableNode = nodes.find((node) => node.control.canApprove);
+  if (approvableNode) {
+    return approvableNode;
+  }
+  const waitingHumanGateNode = nodes.find((node) => node.kind === "human_gate" && node.status === "ready");
+  if (waitingHumanGateNode) {
+    return waitingHumanGateNode;
   }
   return nodes.find((node) => (
     node.status === "running"
@@ -491,6 +513,74 @@ function buildGraphRunPanelEvents(
       ...(event.summary ? { summary: event.summary } : {}),
       ...(event.error ? { error: event.error } : {}),
     }));
+}
+
+function buildGraphRunPanelEvidence(
+  run: GraphRunRecord,
+  events: readonly GraphRunPanelEvent[],
+  selectedNode: GraphRunPanelNode | null,
+): GraphRunPanelEvidenceItem[] {
+  const evidence: GraphRunPanelEvidenceItem[] = [];
+  const seen = new Set<string>();
+  const addEvidence = (item: GraphRunPanelEvidenceItem): void => {
+    const value = String(item.value ?? "").trim();
+    if (!value) {
+      return;
+    }
+    const key = `${item.kind}:${value}:${item.detail ?? ""}:${item.timestamp ?? ""}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    evidence.push({ ...item, value });
+  };
+
+  if (selectedNode) {
+    if (selectedNode.artifactRef) {
+      addEvidence({
+        kind: "artifactRef",
+        value: selectedNode.artifactRef,
+        detail: selectedNode.title,
+      });
+    }
+    if (selectedNode.communicationFile) {
+      addEvidence({
+        kind: "communicationFile",
+        value: selectedNode.communicationFile,
+        detail: selectedNode.title,
+      });
+    }
+    selectedNode.acceptance.forEach((item) => {
+      if (item.evidenceRef) {
+        addEvidence({
+          kind: "acceptanceEvidence",
+          value: item.evidenceRef,
+          detail: item.name,
+        });
+      }
+    });
+    events
+      .filter((event) => event.nodeId === selectedNode.id)
+      .slice(0, 6)
+      .forEach((event) => {
+        addEvidence({
+          kind: "event",
+          value: event.type,
+          detail: event.error || event.summary || event.eventId,
+          timestamp: event.timestamp,
+        });
+      });
+  }
+
+  (run.finalAnswer?.evidence ?? []).slice(0, 8).forEach((item) => {
+    addEvidence({
+      kind: "finalAnswer",
+      value: item,
+      detail: run.finalAnswer?.conclusion,
+    });
+  });
+
+  return evidence;
 }
 
 export function buildLoopDebateChatPanelStateWithDeps(

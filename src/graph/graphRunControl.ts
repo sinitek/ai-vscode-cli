@@ -8,9 +8,12 @@ import {
 } from "./graphNodeLifecycle";
 import { resetGraphWorktreeToCommit } from "./graphWorktree";
 import type {
+  GraphEdgeKind,
+  GraphEdgeRecord,
   GraphEventRecord,
   GraphNodeKind,
   GraphNodeRecord,
+  GraphNodeReworkRecord,
   GraphRunRecord,
   GraphRunStatus,
 } from "./types";
@@ -65,6 +68,9 @@ export type GraphRunControlResult = {
   nodeId?: string;
   changedNodeIds?: string[];
   blockedNodeIds?: string[];
+  reworkTargetNodeId?: string;
+  reworkScopeNodeIds?: string[];
+  feedbackReason?: string;
 };
 
 export type GraphRunControlState = {
@@ -108,6 +114,14 @@ const GRAPH_REWORK_TARGET_KIND_PRIORITY: Record<GraphNodeKind, number> = {
   human_gate: 7,
   sleep: 8,
   summary: 9,
+};
+
+type GraphFeedbackTargetSelection = {
+  targetNode: GraphNodeRecord;
+  selectionReason: string;
+  candidateNodeIds: string[];
+  edge?: GraphEdgeRecord;
+  requestedReworkScopeNodeIds?: string[];
 };
 
 export async function resumeGraphRunRecord(
@@ -215,6 +229,7 @@ export async function retryGraphNodeForRun(
         startedAt: undefined,
         completedAt: undefined,
         lastError: undefined,
+        rework: undefined,
         worktreeCwd: undefined,
         baseCommit: undefined,
         commit: undefined,
@@ -265,9 +280,24 @@ export async function feedbackGraphNodeForRun(
     return unchangedControlResult(run, false, "feedback_not_available", `Graph node ${nodeId} cannot trigger upstream feedback from status ${sourceNode.status}.`, nodeId);
   }
 
-  const targetNode = findGraphFeedbackTargetNode(run, nodeId);
-  if (!targetNode || !run.worktree?.cwd || !targetNode.baseCommit) {
-    return unchangedControlResult(run, false, "feedback_not_available", `Graph node ${nodeId} has no upstream checkpoint node available for feedback rollback.`, nodeId);
+  const targetSelection = selectGraphFeedbackTarget(run, nodeId);
+  if (!targetSelection) {
+    return unchangedControlResult(run, false, "feedback_not_available", `Graph node ${nodeId} has no upstream rework target available for feedback rollback.`, nodeId);
+  }
+  const targetNode = targetSelection.targetNode;
+  if (!run.worktree?.cwd || !targetNode.baseCommit) {
+    return {
+      run,
+      ok: false,
+      changed: false,
+      message: `Graph node ${nodeId} selected rework target ${targetNode.id}, but feedback rollback requires a Graph worktree and target baseCommit checkpoint.`,
+      reason: "feedback_not_available",
+      nodeId,
+      blockedNodeIds: [targetNode.id],
+      reworkTargetNodeId: targetNode.id,
+      reworkScopeNodeIds: resolveGraphReworkResetNodeIds(run, targetNode.id),
+      feedbackReason: resolveGraphFeedbackReason(sourceNode, targetSelection, options),
+    };
   }
 
   let worktreeReset: { headCommit: string; resetTo: string; worktreeCwd: string } | null = null;
@@ -285,7 +315,17 @@ export async function feedbackGraphNodeForRun(
   }
 
   const timestamp = resolveGraphRunControlTimestamp(options);
-  const resetNodeIds = new Set([targetNode.id, ...findGraphDescendantNodeIds(run, targetNode.id)]);
+  const resetNodeIds = new Set(resolveGraphReworkResetNodeIds(run, targetNode.id));
+  const sortedResetNodeIds = Array.from(resetNodeIds).sort();
+  const feedbackReason = resolveGraphFeedbackReason(sourceNode, targetSelection, options);
+  const reworkRecord: GraphNodeReworkRecord = {
+    sourceNodeId: nodeId,
+    targetNodeId: targetNode.id,
+    resetAt: timestamp,
+    resetScopeNodeIds: sortedResetNodeIds,
+    ...(feedbackReason ? { reason: feedbackReason } : {}),
+    ...(targetSelection.edge ? { edgeId: targetSelection.edge.id, edgeKind: targetSelection.edge.kind as GraphEdgeKind } : {}),
+  };
   const previousStatuses = run.nodes
     .filter((node) => resetNodeIds.has(node.id))
     .map((node) => ({ nodeId: node.id, status: node.status }));
@@ -295,7 +335,7 @@ export async function feedbackGraphNodeForRun(
     updatedAt: timestamp,
     activeNodeIds: run.activeNodeIds.filter((activeNodeId) => !resetNodeIds.has(activeNodeId)),
     nodes: run.nodes.map((node) => resetNodeIds.has(node.id)
-      ? resetGraphNodeForRework(node)
+      ? resetGraphNodeForRework(node, reworkRecord)
       : node),
   };
   await appendGraphRunControlEvent(nextRun, {
@@ -309,9 +349,12 @@ export async function feedbackGraphNodeForRun(
       source: options.source ?? "system",
       feedbackNodeId: nodeId,
       reworkNodeId: targetNode.id,
-      changedNodeIds: Array.from(resetNodeIds).sort(),
+      reworkTargetSelection: targetSelection.selectionReason,
+      candidateNodeIds: targetSelection.candidateNodeIds,
+      requestedReworkScopeNodeIds: targetSelection.requestedReworkScopeNodeIds,
+      changedNodeIds: sortedResetNodeIds,
       previousStatuses,
-      reason: options.reason,
+      reason: feedbackReason,
       worktreeReset,
     },
   }, options);
@@ -319,9 +362,12 @@ export async function feedbackGraphNodeForRun(
     run: nextRun,
     ok: true,
     changed: true,
-    message: `Graph node ${nodeId} feedback requested upstream rework at ${targetNode.id}.`,
+    message: `Graph node ${nodeId} feedback requested upstream rework at ${targetNode.id}; reset scope: ${sortedResetNodeIds.join(", ")}.`,
     nodeId,
-    changedNodeIds: Array.from(resetNodeIds).sort(),
+    changedNodeIds: sortedResetNodeIds,
+    reworkTargetNodeId: targetNode.id,
+    reworkScopeNodeIds: sortedResetNodeIds,
+    feedbackReason,
   };
 }
 
@@ -452,7 +498,11 @@ export function getGraphRunControlState(run: GraphRunRecord): GraphRunControlSta
 	    feedbackableNodeIds: runIsTerminal
 	      ? []
 	      : run.nodes
-	        .filter((node) => isGraphFeedbackSourceNode(node) && Boolean(findGraphFeedbackTargetNode(run, node.id)))
+	        .filter((node) => {
+	          const targetSelection = selectGraphFeedbackTarget(run, node.id);
+	          return isGraphFeedbackSourceNode(node)
+	            && Boolean(targetSelection && run.worktree?.cwd && targetSelection.targetNode.baseCommit);
+	        })
 	        .map((node) => node.id),
 	    approvableNodeIds: runIsTerminal
 	      ? []
@@ -488,9 +538,9 @@ function isGraphFeedbackSourceNode(node: GraphNodeRecord): boolean {
     && (GRAPH_FEEDBACK_SOURCE_NODE_KINDS as readonly string[]).includes(node.kind);
 }
 
-function findGraphFeedbackTargetNode(run: GraphRunRecord, nodeId: string): GraphNodeRecord | null {
+function selectGraphFeedbackTarget(run: GraphRunRecord, nodeId: string): GraphFeedbackTargetSelection | null {
   const sourceNode = run.nodes.find((node) => node.id === nodeId);
-  if (!sourceNode || !run.worktree?.cwd) {
+  if (!sourceNode) {
     return null;
   }
 
@@ -499,14 +549,28 @@ function findGraphFeedbackTargetNode(run: GraphRunRecord, nodeId: string): Graph
     .filter((edge) => edge.active
       && edge.from === nodeId
       && (GRAPH_FEEDBACK_EDGE_KINDS as readonly string[]).includes(edge.kind))
-    .map((edge) => nodeById.get(edge.to))
-    .filter((entry): entry is { node: GraphNodeRecord; index: number } => Boolean(entry?.node.baseCommit));
+    .map((edge) => {
+      const targetNodeId = edge.metadata?.reworkTargetNodeId ?? edge.to;
+      const entry = nodeById.get(targetNodeId);
+      return entry ? { ...entry, edge } : null;
+    })
+    .filter((entry): entry is { node: GraphNodeRecord; index: number; edge: GraphEdgeRecord } => Boolean(entry));
   if (explicitFeedbackTargets.length > 0) {
-    return selectGraphReworkTarget(explicitFeedbackTargets.map((entry) => ({
+    const target = selectGraphReworkTarget(explicitFeedbackTargets.map((entry) => ({
       node: entry.node,
       index: entry.index,
       distance: 0,
     })));
+    const sourceEntry = explicitFeedbackTargets.find((entry) => entry.node.id === target?.id) ?? explicitFeedbackTargets[0];
+    return target
+      ? {
+        targetNode: target,
+        edge: sourceEntry.edge,
+        selectionReason: `active ${sourceEntry.edge.kind} edge ${sourceEntry.edge.id}`,
+        candidateNodeIds: explicitFeedbackTargets.map((entry) => entry.node.id).sort(),
+        requestedReworkScopeNodeIds: sourceEntry.edge.metadata?.reworkScopeNodeIds,
+      }
+      : null;
   }
 
   const reverseAdjacency = buildGraphRunReverseStructuralAdjacency(run);
@@ -523,7 +587,7 @@ function findGraphFeedbackTargetNode(run: GraphRunRecord, nodeId: string): Graph
     }
     visited.add(current.nodeId);
     const entry = nodeById.get(current.nodeId);
-    if (entry?.node.baseCommit) {
+    if (entry) {
       const candidate = {
         node: entry.node,
         index: entry.index,
@@ -542,7 +606,15 @@ function findGraphFeedbackTargetNode(run: GraphRunRecord, nodeId: string): Graph
     });
   }
 
-  return selectGraphReworkTarget(candidates.length > 0 ? candidates : fallbackCandidates);
+  const candidateList = candidates.length > 0 ? candidates : fallbackCandidates;
+  const targetNode = selectGraphReworkTarget(candidateList);
+  return targetNode
+    ? {
+      targetNode,
+      selectionReason: candidates.length > 0 ? "nearest upstream rework-capable checkpoint node" : "nearest upstream checkpoint node",
+      candidateNodeIds: candidateList.map((candidate) => candidate.node.id).sort(),
+    }
+    : null;
 }
 
 function selectGraphReworkTarget(
@@ -581,7 +653,7 @@ function findGraphDescendantNodeIds(run: GraphRunRecord, nodeId: string): string
   return Array.from(visited).sort();
 }
 
-function resetGraphNodeForRework(node: GraphNodeRecord): GraphNodeRecord {
+function resetGraphNodeForRework(node: GraphNodeRecord, rework: GraphNodeReworkRecord): GraphNodeRecord {
   const nextMaxAttempts = node.attempts >= node.maxAttempts
     ? node.attempts + 1
     : node.maxAttempts;
@@ -592,12 +664,30 @@ function resetGraphNodeForRework(node: GraphNodeRecord): GraphNodeRecord {
     startedAt: undefined,
     completedAt: undefined,
     lastError: undefined,
+    rework,
     artifactRef: undefined,
     worktreeCwd: undefined,
     baseCommit: undefined,
     commit: undefined,
     acceptance: resetGraphAcceptanceForRework(node),
   };
+}
+
+function resolveGraphReworkResetNodeIds(run: GraphRunRecord, targetNodeId: string): string[] {
+  return Array.from(new Set([targetNodeId, ...findGraphDescendantNodeIds(run, targetNodeId)])).sort();
+}
+
+function resolveGraphFeedbackReason(
+  sourceNode: GraphNodeRecord,
+  targetSelection: GraphFeedbackTargetSelection,
+  options: GraphRunControlOptions,
+): string | undefined {
+  const values = [
+    options.reason,
+    targetSelection.edge?.metadata?.feedbackReason,
+    sourceNode.lastError,
+  ];
+  return values.map((value) => value?.trim()).find(Boolean);
 }
 
 function resetGraphAcceptanceForRework(node: GraphNodeRecord): GraphNodeRecord["acceptance"] {

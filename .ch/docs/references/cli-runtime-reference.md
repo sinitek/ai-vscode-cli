@@ -47,7 +47,7 @@
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
 - 面板“工具设置”支持全局“执行后自动压缩上下文”开关 `autoCompactContextAfterRun`，保存在 `~/.sinitek_cli/settings.json`，默认开启。旧工作区 `autoCompactContextAfterRun` 和 `autoCompactContextBeforeRun` 仅作为迁移输入，全局字段缺失时按 after-run 优先、before-run 回退迁移当前工作区有效值；全局字段已有值时始终优先。开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
 - 面板“工具设置”不提供最终答复判定策略。普通任务固定使用严格 `[final_answer]` 协议；旧 `finalAnswerPolicy`、`codexFinalAnswerPolicy` 与历史兼容值会被忽略，不能放宽运行时终结判定。
-- 普通 Codex 人类对话 prompt 会同时注入 TaskList 日志格式要求：只有在进度更新需要携带任务状态时，使用 `Tasklist:` 标题，后续逐行输出 `- [pending] ...`、`- [in_progress] ...` 或 `- [completed] ...`；不要输出其它标题、checkbox、中文状态词或同行分号列表。Loop 等内部机器协议不注入该人类可见 TaskList 指令。
+- 普通 Codex 人类对话 prompt 会同时注入 TaskList 日志格式要求：只有在进度更新需要携带任务状态时，使用 `Tasklist:` 标题，后续逐行输出 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码为解析协议必须保持英文，任务描述默认使用中文，代码符号、命令、路径、包名和用户原文术语可保留原文；不要输出其它标题、checkbox、中文状态词或同行分号列表。Loop 等内部机器协议不注入该人类可见 TaskList 指令。
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：
   - model
@@ -128,7 +128,7 @@
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。
 - 骨架安装成功后，扩展会二次弹窗询问是否初始化 `ARCHITECTURE.md`；用户确认后，扩展侧把当前 AI 对话切到 `coding` 模式，并通过现有 `runPrompt` 链路复用当前 CLI 分组、配置和模型发起架构分析任务。用户取消时不影响 harness 开关保存或 CodeGraph 初始化。
 - 长期记忆关闭后，插件只允许查看、导出和删除已有记忆；不得创建、更新、自动提取、召回、注入或更新 memory 目录元数据。关闭插件侧长期记忆不会关闭 Codex / Claude / OpenCode 外部 CLI 自带记忆、历史、压缩、配置或账号侧能力。OpenCode 官方另有上下文压缩能力：TUI slash commands 文档列出 `/compact`，alias `/summarize`，用于 compact current session；配置文档提供 `compaction.auto`（默认 `true`）、`compaction.prune`、`compaction.reserved`，CLI 环境变量列表包含 `OPENCODE_DISABLE_AUTOCOMPACT` 用于关闭自动压缩。插件的“执行后自动压缩上下文”和手动压缩按钮可把 OpenCode 纳入支持范围，但实现口径必须区分 Codex app-server/Claude 交互 Runner 与 OpenCode 非交互 fallback：无法附着既有 OpenCode 会话时，只能发送官方 slash command 或等待 runtime 子任务提供可靠路径。
-- 长期记忆热区位于当前工作区 `.ch/docs/memory/`，generated recall 产物位于 `.ch/docs/generated/memory-index/`。插件侧踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。运行总结或失败回复中出现明确失败、阻塞、回滚、踩坑等信号，并伴随根因、规避或验证线索时，运行时可写入结构化坑点条目；这些条目会进入 generated recall 和 prompt 注入。该写入同样受长期记忆总开关限制。
+- 长期记忆热区位于当前工作区 `.ch/docs/memory/`，generated recall 产物位于运行态目录 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/`。插件侧踩坑记录写入 `.ch/docs/runbooks/PITFALLS.md`。运行总结或失败回复中出现明确失败、阻塞、回滚、踩坑等信号，并伴随根因、规避或验证线索时，运行时可写入结构化坑点条目；这些条目会进入 generated recall 和 prompt 注入。该写入同样受长期记忆总开关限制。
 - 自动提取还有二级条件：`memoryAutoExtractAfterCompact` 只允许 compact 成功后的提取，`memoryAutoExtractAfterLoopTask` 只允许 Loop 任务完成后的提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许新增或更新当前工作区 `.ch/docs/memory/` 与相关 generated recall。
 - 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主
 

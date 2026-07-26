@@ -98,6 +98,9 @@ test("builds a self-contained executable Graph node prompt with scope and accept
   assert.match(prompt, /Build Graph mode from the design document/u);
   assert.match(prompt, /用户补充消息/u);
   assert.match(prompt, /必须保持 Graph 并行调度语义/u);
+  assert.match(prompt, /Graph 模式默认不触发长期记忆写入/u);
+  assert.match(prompt, /只能读取已有仓库记忆或运行态 recall/u);
+  assert.match(prompt, /长期记忆沉淀只由主智能体/u);
   assert.match(prompt, /后续节点必须纳入判断和验收/u);
   assert.match(prompt, /writeFiles：src\/graph\/graphKernel\.ts/u);
   assert.match(prompt, /conflictGroup：graph-kernel/u);
@@ -174,6 +177,15 @@ test("node prompt includes the full graph topology, current position, and downst
     unlocks: ["test-ui"],
     writeFiles: ["src/webview/graphRunPanel*.ts"],
     conflictGroup: "graph-ui",
+    rework: {
+      sourceNodeId: "review-ui",
+      targetNodeId: "implement-ui",
+      resetAt: 6_000,
+      resetScopeNodeIds: ["implement-ui", "test-ui", "review-ui"],
+      reason: "Review feedback rollback.",
+      edgeId: "review-feedback-ui",
+      edgeKind: "review_feedback",
+    },
     acceptance: [{ name: "运行态 UI 改动完成且范围受控", required: true }],
   });
   const parallelDocs = createNode({
@@ -236,12 +248,33 @@ test("node prompt includes the full graph topology, current position, and downst
     to: "review-ui",
     kind: "if_pass",
     condition: "测试通过后评审",
+    conditionExpression: {
+      type: "source_status",
+      operator: "equals",
+      status: "passed",
+      description: "测试通过后评审。",
+    },
     active: true,
   }, {
     id: "edge-review-summary",
     from: "review-ui",
     to: "summary-1",
     kind: "evidence_for",
+    metadata: {
+      evidenceRef: "nodes/review-ui.md",
+      rationale: "评审结论作为 summary 证据。",
+    },
+    active: true,
+  }, {
+    id: "review-feedback-ui",
+    from: "review-ui",
+    to: "implement-ui",
+    kind: "review_feedback",
+    metadata: {
+      feedbackReason: "Review feedback rollback.",
+      reworkTargetNodeId: "implement-ui",
+      reworkScopeNodeIds: ["implement-ui", "test-ui", "review-ui"],
+    },
     active: true,
   }], {
     activeNodeIds: ["implement-ui", "implement-docs"],
@@ -258,7 +291,17 @@ test("node prompt includes the full graph topology, current position, and downst
   assert.match(prompt, /\[当前\] implement-ui｜实现运行图节点态/u);
   assert.match(prompt, /\[全图\] test-ui｜验证运行图节点态/u);
   assert.match(prompt, /edge-ui-test｜implement-ui -> test-ui；kind=depends_on；active=true/u);
-  assert.match(prompt, /edge-test-review｜test-ui -> review-ui；kind=if_pass；active=true；condition=测试通过后评审/u);
+  assert.match(prompt, /### 边语义/u);
+  assert.match(prompt, /review_feedback \/ if_fail 可作为返工路径/u);
+  assert.match(prompt, /evidence_for 是证据追踪边/u);
+  assert.match(prompt, /edge-test-review｜test-ui -> review-ui；kind=if_pass；active=true；label=未声明；condition=测试通过后评审；conditionExpression=type=source_status/u);
+  assert.match(prompt, /edge-review-summary｜review-ui -> summary-1；kind=evidence_for；active=true/u);
+  assert.match(prompt, /metadata=rationale=评审结论作为 summary 证据。；evidenceRef=nodes\/review-ui\.md/u);
+  assert.match(prompt, /review-feedback-ui｜review-ui -> implement-ui；kind=review_feedback/u);
+  assert.match(prompt, /reworkTargetNodeId=implement-ui/u);
+  assert.match(prompt, /Rework source：review-ui/u);
+  assert.match(prompt, /Rework reason：Review feedback rollback/u);
+  assert.match(prompt, /Rework scope：implement-ui、test-ui、review-ui/u);
   assert.match(prompt, /同批\/并发中的其他节点：implement-docs（同步 Graph 文档｜implement｜running）/u);
   assert.match(prompt, /图中已有后续 test 节点：test-ui（验证运行图节点态｜test｜pending）/u);
   assert.match(prompt, /不替代这些测试节点完成完整验证/u);

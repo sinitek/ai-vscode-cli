@@ -813,7 +813,13 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   window.dispatchMessage({ type: "runStreamExportResult", tabId: "tab-1", path: "/tmp/run-stream.json" });
   assert.match(document.getElementById("toast").textContent, /tmp\/run-stream\.json/);
 
+  const staleTaskList = api.getActiveConversationRuntimeState().taskList;
+  staleTaskList.items = [{ text: "stale task", done: false }];
+  staleTaskList.open = true;
+  staleTaskList.source = "external";
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  assert.deepEqual(api.getActiveConversationRuntimeState().taskList.items, []);
   window.dispatchMessage({
     type: "assistantDelta",
     tabId: "tab-1",

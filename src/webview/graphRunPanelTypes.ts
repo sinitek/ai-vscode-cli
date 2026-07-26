@@ -1,8 +1,10 @@
 import type {
   GraphAcceptanceCheck,
+  GraphEdgeConditionExpression,
   GraphEventRecord,
   GraphFinalAnswer,
   GraphEdgeKind,
+  GraphEdgeMetadata,
   GraphNodeKind,
   GraphNodeStatus,
   GraphOwnerRole,
@@ -54,13 +56,30 @@ export type GraphRunPanelEdge = {
   active: boolean;
   fromTitle: string;
   toTitle: string;
+  label?: string;
   condition?: string;
+  conditionExpression?: GraphEdgeConditionExpression;
+  metadata?: GraphEdgeMetadata;
 };
 
 export type GraphRunPanelEvent = Pick<
   GraphEventRecord,
   "eventId" | "runId" | "type" | "timestamp" | "nodeId" | "attempt" | "summary" | "error"
 >;
+
+export type GraphRunPanelEvidenceKind =
+  | "artifactRef"
+  | "communicationFile"
+  | "acceptanceEvidence"
+  | "event"
+  | "finalAnswer";
+
+export type GraphRunPanelEvidenceItem = {
+  kind: GraphRunPanelEvidenceKind;
+  value: string;
+  detail?: string;
+  timestamp?: number;
+};
 
 export type GraphRunPanelState = {
   run: {
@@ -93,6 +112,7 @@ export type GraphRunPanelState = {
   selectedNodeId: string | null;
   selectedNode: GraphRunPanelNode | null;
   events: GraphRunPanelEvent[];
+  selectedEvidence: GraphRunPanelEvidenceItem[];
   error?: string | null;
 };
 

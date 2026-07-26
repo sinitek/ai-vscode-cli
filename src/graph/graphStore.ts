@@ -8,6 +8,8 @@ import {
   GRAPH_SCHEMA_VERSION,
   GRAPH_WORKSPACE_KEY_FALLBACK,
   getGraphDataDir,
+  isGraphEdgeConditionOperator,
+  isGraphEdgeConditionType,
   isGraphEdgeKind,
   isGraphNodeKind,
   isGraphNodeStatus,
@@ -15,9 +17,13 @@ import {
   isGraphRunStatus,
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
+  type GraphEdgeConditionExpression,
+  type GraphEdgeMetadata,
   type GraphEdgeRecord,
   type GraphFinalAnswer,
   type GraphNodeRecord,
+  type GraphNodeReworkRecord,
+  type GraphNodeStatus,
   type GraphRunRecord,
   type GraphRunStatus,
   type GraphRunStore,
@@ -549,6 +555,10 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
   ) {
     return null;
   }
+  const rework = normalizeGraphNodeRework(raw.rework);
+  if (raw.rework !== undefined && !rework) {
+    return null;
+  }
   return {
     id: raw.id,
     title: raw.title,
@@ -569,9 +579,42 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     ...(normalizeOptionalTimestamp(raw.completedAt) !== undefined ? { completedAt: normalizeOptionalTimestamp(raw.completedAt) } : {}),
     ...(normalizeOptionalTimestamp(raw.wakeAt) !== undefined ? { wakeAt: normalizeOptionalTimestamp(raw.wakeAt) } : {}),
     ...(typeof raw.lastError === "string" ? { lastError: raw.lastError } : {}),
+    ...(rework ? { rework } : {}),
     ...(typeof raw.worktreeCwd === "string" && raw.worktreeCwd.trim() ? { worktreeCwd: raw.worktreeCwd.trim() } : {}),
     ...(typeof raw.baseCommit === "string" && raw.baseCommit.trim() ? { baseCommit: raw.baseCommit.trim() } : {}),
     ...(typeof raw.commit === "string" && raw.commit.trim() ? { commit: raw.commit.trim() } : {}),
+  };
+}
+
+function normalizeGraphNodeRework(value: unknown): GraphNodeReworkRecord | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphNodeReworkRecord>;
+  const resetAt = normalizeOptionalTimestamp(raw.resetAt);
+  const resetScopeNodeIds = normalizeStringArray(raw.resetScopeNodeIds);
+  if (
+    typeof raw.sourceNodeId !== "string"
+    || !raw.sourceNodeId.trim()
+    || typeof raw.targetNodeId !== "string"
+    || !raw.targetNodeId.trim()
+    || resetAt === undefined
+    || resetScopeNodeIds.length === 0
+    || (raw.edgeKind !== undefined && !isGraphEdgeKind(raw.edgeKind))
+  ) {
+    return null;
+  }
+  return {
+    sourceNodeId: raw.sourceNodeId.trim(),
+    targetNodeId: raw.targetNodeId.trim(),
+    resetAt,
+    resetScopeNodeIds,
+    ...(typeof raw.reason === "string" && raw.reason.trim() ? { reason: raw.reason.trim() } : {}),
+    ...(typeof raw.edgeId === "string" && raw.edgeId.trim() ? { edgeId: raw.edgeId.trim() } : {}),
+    ...(raw.edgeKind ? { edgeKind: raw.edgeKind } : {}),
   };
 }
 
@@ -629,14 +672,105 @@ function normalizeGraphEdgeRecord(record: unknown): GraphEdgeRecord | null {
   ) {
     return null;
   }
+  const conditionExpression = normalizeGraphEdgeConditionExpression(raw.conditionExpression);
+  if (raw.conditionExpression !== undefined && !conditionExpression) {
+    return null;
+  }
+  const metadata = normalizeGraphEdgeMetadata(raw.metadata);
+  if (raw.metadata !== undefined) {
+    if (!raw.metadata || typeof raw.metadata !== "object" || Array.isArray(raw.metadata)) {
+      return null;
+    }
+    if (!metadata && Object.keys(raw.metadata).length > 0) {
+      return null;
+    }
+  }
   return {
-    id: raw.id,
-    from: raw.from,
-    to: raw.to,
+    id: raw.id.trim(),
+    from: raw.from.trim(),
+    to: raw.to.trim(),
     kind: raw.kind,
+    ...(typeof raw.label === "string" && raw.label.trim() ? { label: raw.label.trim() } : {}),
     ...(typeof raw.condition === "string" && raw.condition.trim() ? { condition: raw.condition.trim() } : {}),
+    ...(conditionExpression ? { conditionExpression } : {}),
+    ...(metadata ? { metadata } : {}),
     active: typeof raw.active === "boolean" ? raw.active : true,
   };
+}
+
+function normalizeGraphEdgeConditionExpression(value: unknown): GraphEdgeConditionExpression | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphEdgeConditionExpression>;
+  if (!isGraphEdgeConditionType(raw.type)) {
+    return null;
+  }
+  const operator = raw.operator === undefined
+    ? undefined
+    : isGraphEdgeConditionOperator(raw.operator) ? raw.operator : null;
+  if (operator === null) {
+    return null;
+  }
+  const statuses = normalizeGraphNodeStatuses(raw.statuses);
+  if (Array.isArray(raw.statuses) && statuses.length !== raw.statuses.length) {
+    return null;
+  }
+  if (raw.status !== undefined && !isGraphNodeStatus(raw.status)) {
+    return null;
+  }
+  const expected = normalizeGraphConditionExpected(raw.expected);
+  if (raw.expected !== undefined && expected === undefined) {
+    return null;
+  }
+  return {
+    type: raw.type,
+    ...(operator ? { operator } : {}),
+    ...(raw.status ? { status: raw.status } : {}),
+    ...(statuses.length > 0 ? { statuses } : {}),
+    ...(typeof raw.acceptanceId === "string" && raw.acceptanceId.trim() ? { acceptanceId: raw.acceptanceId.trim() } : {}),
+    ...(expected !== undefined ? { expected } : {}),
+    ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
+  };
+}
+
+function normalizeGraphEdgeMetadata(value: unknown): GraphEdgeMetadata | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphEdgeMetadata>;
+  const reworkScopeNodeIds = normalizeStringArray(raw.reworkScopeNodeIds);
+  if (Array.isArray(raw.reworkScopeNodeIds) && reworkScopeNodeIds.length !== raw.reworkScopeNodeIds.length) {
+    return null;
+  }
+  const metadata: GraphEdgeMetadata = {
+    ...(typeof raw.label === "string" && raw.label.trim() ? { label: raw.label.trim() } : {}),
+    ...(typeof raw.rationale === "string" && raw.rationale.trim() ? { rationale: raw.rationale.trim() } : {}),
+    ...(typeof raw.evidenceRef === "string" && raw.evidenceRef.trim() ? { evidenceRef: raw.evidenceRef.trim() } : {}),
+    ...(typeof raw.feedbackReason === "string" && raw.feedbackReason.trim() ? { feedbackReason: raw.feedbackReason.trim() } : {}),
+    ...(typeof raw.reworkTargetNodeId === "string" && raw.reworkTargetNodeId.trim() ? { reworkTargetNodeId: raw.reworkTargetNodeId.trim() } : {}),
+    ...(reworkScopeNodeIds.length > 0 ? { reworkScopeNodeIds } : {}),
+  };
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+function normalizeGraphNodeStatuses(value: unknown): GraphNodeStatus[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is GraphNodeStatus => isGraphNodeStatus(item));
+}
+
+function normalizeGraphConditionExpected(value: unknown): GraphEdgeConditionExpression["expected"] | undefined {
+  return typeof value === "string" || typeof value === "boolean" || typeof value === "number"
+    ? value
+    : undefined;
 }
 
 function normalizeGraphAcceptanceChecks(value: unknown): GraphAcceptanceCheck[] {

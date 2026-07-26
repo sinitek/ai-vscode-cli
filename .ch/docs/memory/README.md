@@ -8,7 +8,7 @@ derived_from:
   - .ch/docs/MEMORY.md
 supersedes: []
 related_paths:
-  - .ch/docs/generated/memory-index/
+  - ~/.sinitek_cli/memory-generated/<workspace>/memory-index/
 ---
 
 # 热区记忆面
@@ -70,7 +70,7 @@ related_paths:
 - 这些热区文件本身仍然是 Markdown 事实来源。
 - 围绕它们的 recall、consolidation、freshness check 等流程，允许通过 `skills` 调用 `python3` 脚本来做结构化提取、校验和收口。
 - 脚本的职责是提高效率和准确率，不替代人工可审阅的 Markdown 产物。
-- 对应的默认召回压缩产物应生成到 `.ch/docs/generated/memory-index/`。
+- 对应的默认召回压缩产物应生成到运行态目录 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/`，不作为仓库事实来源落盘。
 - `memory-indexer` 会从热区、active plans、pending items、active risks 和 lessons 生成 ID 化 observation registry，并估算读取成本。
 - `memory-recall` 会先展示 observation index，再少量展开详情；需要前后文时可用 `--anchor-id <mem-id>` 生成 timeline window。
 

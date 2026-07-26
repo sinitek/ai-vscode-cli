@@ -61,6 +61,23 @@ export const GRAPH_EDGE_KINDS = [
 ] as const;
 export type GraphEdgeKind = (typeof GRAPH_EDGE_KINDS)[number];
 
+export const GRAPH_EDGE_CONDITION_TYPES = [
+  "source_status",
+  "source_acceptance",
+  "manual",
+  "custom",
+] as const;
+export type GraphEdgeConditionType = (typeof GRAPH_EDGE_CONDITION_TYPES)[number];
+
+export const GRAPH_EDGE_CONDITION_OPERATORS = [
+  "equals",
+  "one_of",
+  "all_required_passed",
+  "any_required_failed",
+  "has_evidence",
+] as const;
+export type GraphEdgeConditionOperator = (typeof GRAPH_EDGE_CONDITION_OPERATORS)[number];
+
 export const GRAPH_OWNER_ROLES = [
   "main",
   "subtask",
@@ -108,6 +125,35 @@ export type GraphFinalAnswer = {
   completedAt?: number;
 };
 
+export type GraphEdgeConditionExpression = {
+  type: GraphEdgeConditionType;
+  operator?: GraphEdgeConditionOperator;
+  status?: GraphNodeStatus;
+  statuses?: GraphNodeStatus[];
+  acceptanceId?: string;
+  expected?: boolean | string | number;
+  description?: string;
+};
+
+export type GraphEdgeMetadata = {
+  label?: string;
+  rationale?: string;
+  evidenceRef?: string;
+  feedbackReason?: string;
+  reworkTargetNodeId?: string;
+  reworkScopeNodeIds?: string[];
+};
+
+export type GraphNodeReworkRecord = {
+  sourceNodeId: string;
+  targetNodeId: string;
+  resetAt: number;
+  resetScopeNodeIds: string[];
+  reason?: string;
+  edgeId?: string;
+  edgeKind?: GraphEdgeKind;
+};
+
 export type GraphPlannedNodeSpec = {
   id: string;
   title: string;
@@ -127,7 +173,10 @@ export type GraphPlannedEdgeSpec = {
   from: string;
   to: string;
   kind?: GraphEdgeKind;
+  label?: string;
   condition?: string;
+  conditionExpression?: GraphEdgeConditionExpression;
+  metadata?: GraphEdgeMetadata;
   active?: boolean;
 };
 
@@ -164,6 +213,7 @@ export type GraphNodeRecord = {
   completedAt?: number;
   wakeAt?: number;
   lastError?: string;
+  rework?: GraphNodeReworkRecord;
   worktreeCwd?: string;
   baseCommit?: string;
   commit?: string;
@@ -174,7 +224,10 @@ export type GraphEdgeRecord = {
   from: string;
   to: string;
   kind: GraphEdgeKind;
+  label?: string;
   condition?: string;
+  conditionExpression?: GraphEdgeConditionExpression;
+  metadata?: GraphEdgeMetadata;
   active: boolean;
 };
 
@@ -243,6 +296,14 @@ export function isGraphNodeStatus(value: unknown): value is GraphNodeStatus {
 
 export function isGraphEdgeKind(value: unknown): value is GraphEdgeKind {
   return isGraphValue(GRAPH_EDGE_KINDS, value);
+}
+
+export function isGraphEdgeConditionType(value: unknown): value is GraphEdgeConditionType {
+  return isGraphValue(GRAPH_EDGE_CONDITION_TYPES, value);
+}
+
+export function isGraphEdgeConditionOperator(value: unknown): value is GraphEdgeConditionOperator {
+  return isGraphValue(GRAPH_EDGE_CONDITION_OPERATORS, value);
 }
 
 export function isGraphOwnerRole(value: unknown): value is GraphOwnerRole {

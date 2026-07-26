@@ -125,7 +125,7 @@ function buildReadmeTemplate(): string {
     "",
     "Pitfall records live in `../runbooks/PITFALLS.md` so they stay with the runbook system.",
     "",
-    "Generated recall artifacts live under `../generated/memory-index/` and can be rebuilt from the Markdown files above.",
+    "Generated recall artifacts live in the runtime data dir `~/.sinitek_cli/memory-generated/<workspace>/memory-index/` and can be rebuilt from the Markdown files above.",
     "",
   ].join("\n");
 }

@@ -45,6 +45,39 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
   assert.match(extensionSource, /stopActiveCliRunsForGraphRun\(graphRunId\)/);
 });
 
+test("extension surfaces human gate approval entry and precise Stop boundaries", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded\(run\);/);
+  assert.match(extensionSource, /openGraphRunPanel\(\{\s*[\s\S]*graphRunId:\s*run\.id,[\s\S]*nodeId:\s*humanGateNode\.id/);
+  assert.match(extensionSource, /function resolveGraphPendingHumanGateNode\(run:\s*GraphRunRecord\):\s*GraphRunRecord\["nodes"\]\[number\] \| null/);
+  assert.match(extensionSource, /node\.kind === "human_gate" && node\.status === "ready"/);
+  assert.match(extensionSource, /graphHumanApprovalCtaText\(\)/);
+  assert.match(extensionSource, /请你审批，点击这里/);
+  assert.match(extensionSource, /buildGraphRunMessageAction\([\s\S]*nodeId\?: string \| null,[\s\S]*label\?: string \| null/);
+  assert.match(extensionSource, /function isHumanGateGraphMessageAction\(nodeId\?: string \| null,\s*actionLabel\?: string \| null\): boolean/);
+  assert.match(extensionSource, /if\s*\(isHumanGateGraphMessageAction\(nodeId,\s*actionLabel\)\)\s*\{\s*return \[buildGraphRunMessageAction\(graphRunId,\s*nodeId,\s*actionLabel\)\];\s*\}/);
+  assert.match(extensionSource, /const actions = resolveGraphSystemMessageActions\(target,\s*graphRunId,\s*nodeId,\s*actionLabel\);/);
+  assert.match(extensionSource, /\.\.\.\(actions\.length \? \{ actions \} : \{\}\)/);
+  assert.match(extensionSource, /no real CLI process stop was confirmed/);
+  assert.match(extensionSource, /Sent stop requests to \$\{count\} mapped active CLI run\(s\); real process exit depends on the underlying CLI response/);
+  assert.doesNotMatch(extensionSource, /Graph run stopped: \$\{graphRunId\}\. Requested stop/);
+});
+
+test("extension scopes the ordinary Graph run action to the main Graph tab once", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /const graphNodeRunTargetsByTabId = new Map<string,\s*\{ graphRunId: string; graphNodeId: string \}>\(\);/);
+  assert.match(extensionSource, /graphNodeRunTargetsByTabId\.set\(tab\.id,\s*\{ graphRunId,\s*graphNodeId \}\);/);
+  assert.match(extensionSource, /graphNodeRunTargetsByTabId\.delete\(tabId\);/);
+  assert.match(extensionSource, /function isPlainGraphRunOpenAction\(action:\s*ChatMessageAction,\s*graphRunId:\s*string\):\s*boolean\s*\{[\s\S]*action\.type === "openGraphRun"[\s\S]*!action\.nodeId[\s\S]*!action\.label/);
+  assert.match(extensionSource, /function isGraphNodeRunTarget\([\s\S]*messages:\s*readonly ChatMessage\[\],[\s\S]*nodeTarget\?\.graphRunId === graphRunId[\s\S]*message\.graphRunId === graphRunId[\s\S]*Boolean\(message\.graphNodeId\)/);
+  assert.match(extensionSource, /function hasVisibleGraphRunOpenActionForTarget\([\s\S]*message\.actions\.some\(\(action\) => isPlainGraphRunOpenAction\(action,\s*graphRunId\)\)/);
+  assert.match(extensionSource, /if\s*\(\s*isGraphNodeRunTarget\(target,\s*graphRunId,\s*messages\)\s*\|\|\s*hasVisibleGraphRunOpenActionForTarget\(messages,\s*graphRunId\)\s*\)\s*\{\s*return \[\];\s*\}/);
+  assert.match(extensionSource, /return \[buildGraphRunMessageAction\(graphRunId\)\];/);
+  assert.match(extensionSource, /appendSystemMessageForGraph\(\s*graphNodeTarget,\s*buildGraphNodeStartedText\(request\.run,\s*request\.node,\s*communicationFile\),\s*request\.run\.id,\s*\);/);
+});
+
 test("extension keeps Graph tab metadata on runStatus start while nodes are running", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
@@ -83,14 +116,26 @@ test("extension creates a planning-only graph and materializes the AI planned DA
   assert.doesNotMatch(extensionSource, /function buildMinimalGraphRunNodes/u);
 });
 
-test("extension merges completed Graph worktrees back into the workspace without committing", () => {
+test("extension continues the tick loop immediately after successful planner materialization", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
+  assert.match(extensionSource, /if\s*\(\s*planMaterialization\.changed\s*&&\s*run\.status === "running"\s*\)\s*\{\s*[\s\S]*madeProgress = true;[\s\S]*scheduleGraphRunAutoWake\(run\);[\s\S]*continue;[\s\S]*\}[\s\S]*const progressed = tickResult\.startedNodeIds\.length > 0/);
+  assert.match(extensionSource, /const progressed = tickResult\.startedNodeIds\.length > 0[\s\S]*\|\| planMaterialization\.changed;[\s\S]*if\s*\(!progressed\)\s*\{/);
+});
+
+test("extension merges completed Graph worktrees back and cleans up residual worktrees", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /cleanupGraphRunWorktree/);
   assert.match(extensionSource, /mergeGraphRunWorktreeToWorkspace/);
   assert.match(extensionSource, /function finalizeCompletedGraphRunWorktreeMergeBack\(run:\s*GraphRunRecord\):\s*GraphRunMergeBackOutcome/);
   assert.match(extensionSource, /if\s*\(run\.status === "completed"\)\s*\{\s*const mergeBack = finalizeCompletedGraphRunWorktreeMergeBack\(run\)/);
   assert.match(extensionSource, /status:\s*"needs-review"/);
-  assert.match(extensionSource, /Graph worktree merged back into workspace without committing/);
+  assert.match(extensionSource, /cleanupGraphRunWorktree\(\{\s*workspaceCwd,\s*worktree:\s*run\.worktree\s*\}\)/);
+  assert.match(extensionSource, /worktree:\s*undefined/);
+  assert.match(extensionSource, /Graph worktree merged back into workspace and cleaned up without committing/);
+  assert.match(extensionSource, /Graph worktree cleanup failed after merge-back/);
+  assert.match(extensionSource, /Cleaned up worktree \$\{cleanup\.worktreeCwd\} and branch \$\{cleanup\.sourceBranch\}/);
   assert.match(extensionSource, /git merge --squash/);
   assert.match(extensionSource, /buildGraphRunCompletedText\(run,\s*mergeBack\)/);
   assert.match(extensionSource, /buildGraphRunNeedsAttentionText\(run,\s*mergeBack\)/);
