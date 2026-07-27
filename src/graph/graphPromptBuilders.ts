@@ -95,6 +95,9 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Events file：${run.eventsFile}`,
     `- Communication dir：${run.communicationDir}`,
     `- Main communication file：${run.mainCommunicationFile}`,
+    `- Execution mode：${formatGraphExecutionMode(run)}`,
+    `- Execution cwd：${formatGraphExecutionCwd(run)}`,
+    `- Direct fallback reason：${formatValue(run.directExecution?.reason)}`,
     `- Worktree cwd：${formatValue(run.worktree?.cwd)}`,
     `- Worktree branch：${formatValue(run.worktree?.branch)}`,
     `- Worktree base commit：${formatValue(run.worktree?.baseCommit)}`,
@@ -112,6 +115,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Prompt ref：${formatValue(node.promptRef)}`,
     `- Artifact ref：${formatValue(node.artifactRef)}`,
     `- Communication file：${communicationFile}`,
+    `- Node execution cwd：${formatValue(node.executionCwd)}`,
     `- Node base commit：${formatValue(node.baseCommit)}`,
     `- Node checkpoint commit：${formatValue(node.commit)}`,
     `- Last error：${formatValue(node.lastError)}`,
@@ -127,10 +131,9 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     ...formatSupplementalRequirementLines(run.supplementalRequirements),
     "",
     "## 授权范围",
-    `- writeFiles：${formatWriteFiles(node.writeFiles)}`,
+    `- writeFiles：${formatWriteFiles(node.writeFiles, run)}`,
     `- conflictGroup：${formatValue(node.conflictGroup)}`,
-    "- 只能在 Graph worktree 中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
-    "- 不要直接修改主工作区；宿主会在节点结束后为当前 worktree 创建本地 git checkpoint commit。",
+    ...formatGraphExecutionBoundaryLines(run),
     "- 不得修改未授权文件、任务记录、Graph store、其他节点 artifact 或其他节点沟通文件。",
     "- 如果正确完成任务必须修改未授权范围，停止实施，在本节点沟通文件写明待确认事项，并返回 blocked。",
     "",
@@ -273,7 +276,7 @@ function formatGraphNodeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
       `owner=${item.ownerRole}`,
       `dependsOn=${formatList(item.dependsOn)}`,
       `unlocks=${formatList(item.unlocks)}`,
-      `writeFiles=${formatWriteFiles(item.writeFiles)}`,
+      `writeFiles=${formatWriteFiles(item.writeFiles, run)}`,
       `conflictGroup=${formatValue(item.conflictGroup)}`,
       `attempts=${item.attempts}/${item.maxAttempts}`,
       `rework=${formatGraphNodeReworkSummary(item)}`,
@@ -703,10 +706,38 @@ function formatList(values: readonly string[] | undefined): string {
   return normalized.length > 0 ? normalized.join("、") : GRAPH_PROMPT_EMPTY_VALUE;
 }
 
-function formatWriteFiles(values: readonly string[] | undefined): string {
+function formatGraphExecutionMode(run: GraphRunRecord): string {
+  return run.executionMode === "direct" && run.directExecution?.cwd
+    ? "direct workspace fallback"
+    : "isolated git worktree";
+}
+
+function formatGraphExecutionCwd(run: GraphRunRecord): string {
+  return run.executionMode === "direct" && run.directExecution?.cwd
+    ? run.directExecution.cwd
+    : formatValue(run.worktree?.cwd);
+}
+
+function formatGraphExecutionBoundaryLines(run: GraphRunRecord): string[] {
+  if (run.executionMode === "direct" && run.directExecution?.cwd) {
+    return [
+      "- 当前 Graph run 使用 direct workspace fallback：你正在当前工作区直接执行。",
+      "- 只能在当前工作区中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
+      "- direct 模式没有 git worktree 隔离、checkpoint commit、自动 merge-back 或 rollback；必须格外控制改动范围并记录验证结果。",
+    ];
+  }
+  return [
+    "- 只能在 Graph worktree 中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
+    "- 不要直接修改主工作区；宿主会在节点结束后为当前 worktree 创建本地 git checkpoint commit。",
+  ];
+}
+
+function formatWriteFiles(values: readonly string[] | undefined, run?: GraphRunRecord): string {
   const normalized = normalizeStringList(values);
   if (normalized.includes("**")) {
-    return "整个 Graph worktree";
+    return run?.executionMode === "direct" && run.directExecution?.cwd
+      ? "整个当前工作区"
+      : "整个 Graph worktree";
   }
   return normalized.length > 0 ? normalized.join("、") : GRAPH_PROMPT_EMPTY_VALUE;
 }

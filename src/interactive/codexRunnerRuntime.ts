@@ -357,6 +357,7 @@ export function buildCodexAppServerInitializeParams(commandPath: string): Record
     clientInfo: buildCodexAppServerClientInfo(commandPath),
     capabilities: {
       experimentalApi: false,
+      requestAttestation: false,
       optOutNotificationMethods: [],
     },
   };

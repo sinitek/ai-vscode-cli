@@ -131,6 +131,7 @@ type OpenCodeCompactionFixtureOptions = {
   error?: Error;
   currentSessionId?: string | null;
   resolvedSessionId?: string | null | undefined;
+  triggerStopBeforeError?: boolean;
 };
 
 function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions = {}) {
@@ -173,6 +174,9 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
       processLabel: runOptions.processLabel,
     });
     queueMicrotask(() => {
+      if (options.triggerStopBeforeError) {
+        activeStop?.();
+      }
       if (options.error) {
         handlers.onError(options.error);
         return;
@@ -360,6 +364,29 @@ test("OpenCode silent compaction keeps automatic after-run path quiet", async ()
   assert.deepEqual(calls.sendRunStatuses, ["start", "end"]);
   assert.deepEqual(calls.appendCompletionStatuses, []);
   assert.deepEqual(calls.adoptedSessions, [{ cli: "opencode", sessionId: "auto-session", tabId: "tab-opencode" }]);
+  assert.equal(calls.persistActiveMessages, 1);
+  assert.equal(calls.clearActiveRun, 1);
+});
+
+test("OpenCode compaction ignores stale errors after manual stop", async () => {
+  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const abortError = new Error("OpenCode run aborted");
+  abortError.name = "AbortError";
+  const { deps, calls } = createOpenCodeCompactionDeps({
+    error: abortError,
+    triggerStopBeforeError: true,
+  });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "opencode",
+    tabId: "tab-opencode",
+    sessionId: "session-before",
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.sendRunStatuses, ["start", "stopped"]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["stopped"]);
+  assert.deepEqual(calls.appendSystemMessages, []);
   assert.equal(calls.persistActiveMessages, 1);
   assert.equal(calls.clearActiveRun, 1);
 });

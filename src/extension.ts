@@ -116,6 +116,7 @@ import {
   setDebugLogging,
 } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
+import { appendBoundedUtf8Text } from "./boundedText";
 import {
   buildHiddenRetryFailureMessage,
   getHiddenRetryDelayMs,
@@ -333,7 +334,7 @@ import { resolveGraphNodeCommunicationFile } from "./graph/graphPromptBuilders";
 import {
   cleanupGraphRunWorktree,
   commitGraphNodeCheckpoint,
-  createGraphRunWorktree,
+  createGraphRunExecutionSetup,
   getGraphWorktreeHeadCommit,
   mergeGraphRunWorktreeToWorkspace,
   type GraphWorktreeCleanupResult,
@@ -656,6 +657,7 @@ let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
+const AI_TASK_RAW_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
 const LOCAL_SESSION_PREFIX = "local_";
 const CONVERSATION_TAB_PREFIX = "tab_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
@@ -4201,6 +4203,7 @@ async function runPromptParallel(
 
     let rawStdout = "";
     let rawStderr = "";
+    let sessionBuffer = "";
     const subagentRuntime = await prepareOpenCodeSubagentRuntime({
       cwd,
       runId,
@@ -4301,8 +4304,9 @@ async function runPromptParallel(
             if (!isParallelRunActive()) {
               return;
             }
-            rawStdout += chunk;
-            subagentMonitor.setParentSessionId(extractSessionId(runCli, rawStdout));
+            rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
+            sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
+            subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
             const streamResult = consumeOpenCodeTabStreamChunk(
               openCodeTabStreamState,
@@ -4322,7 +4326,8 @@ async function runPromptParallel(
             if (!isParallelRunActive()) {
               return;
             }
-            rawStderr += chunk;
+            rawStderr = appendBoundedUtf8Text(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
+            sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
             sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
           },
           onExit: (code: number | null) => {
@@ -4365,7 +4370,7 @@ async function runPromptParallel(
       return;
     }
 
-    const detectedSessionId = extractSessionId(runCli, `${rawStdout}
+    const detectedSessionId = extractSessionId(runCli, sessionBuffer) ?? extractSessionId(runCli, `${rawStdout}
 ${rawStderr}`);
     if (
       isFreshSessionRecoveryAttempt
@@ -4757,9 +4762,9 @@ async function runGraphPromptOrchestration(
   const graphRunId = `graph_${createMessageId()}`;
   const workspaceCwd = resolveWorkspaceCwd();
   if (!workspaceCwd) {
-    throw new Error("Graph mode requires an active workspace to create an isolated worktree.");
+    throw new Error("Graph mode requires an active workspace.");
   }
-  const worktree = createGraphRunWorktree(workspaceCwd, graphRunId);
+  const executionSetup = createGraphRunExecutionSetup(workspaceCwd, graphRunId);
   let run = createGraphRunRecord({
     id: graphRunId,
     workspaceKey: activeWorkspaceKey,
@@ -4772,17 +4777,24 @@ async function runGraphPromptOrchestration(
     nodes: buildGraphPlanningRunNodes(graphRunId),
     edges: buildGraphPlanningRunEdges(),
     maxConcurrent: GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES,
-    worktree,
+    executionMode: executionSetup.executionMode,
+    ...(executionSetup.directExecution ? { directExecution: executionSetup.directExecution } : {}),
+    ...(executionSetup.worktree ? { worktree: executionSetup.worktree } : {}),
   });
   appendGraphEvent(run.eventsFile, {
     runId: run.id,
     type: "run.created",
-    summary: `Graph run ${run.id} created with ${run.nodes.length} nodes.`,
+    summary: executionSetup.executionMode === "worktree"
+      ? `Graph run ${run.id} created with ${run.nodes.length} nodes.`
+      : `Graph run ${run.id} created in direct workspace fallback mode with ${run.nodes.length} nodes.`,
     data: {
       nodeIds: run.nodes.map((node) => node.id),
       plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
       maxConcurrent: run.maxConcurrent,
-      worktree,
+      executionMode: executionSetup.executionMode,
+      worktree: executionSetup.worktree,
+      directExecution: executionSetup.directExecution,
+      fallbackReason: executionSetup.fallbackReason,
     },
   });
   appendSystemMessageForGraph(target, buildGraphRunStartedText(run), run.id);
@@ -4924,7 +4936,7 @@ function sendGraphMainRunTerminalStatus(target: PromptRunTarget, run: GraphRunRe
 
 type GraphRunMergeBackOutcome = {
   run: GraphRunRecord;
-  status: "merged" | "failed";
+  status: "merged" | "direct" | "failed";
   message: string;
   result?: GraphWorktreeMergeBackResult;
   cleanup?: GraphWorktreeCleanupResult;
@@ -4933,6 +4945,26 @@ type GraphRunMergeBackOutcome = {
 
 function finalizeCompletedGraphRunWorktreeMergeBack(run: GraphRunRecord): GraphRunMergeBackOutcome {
   const timestamp = Date.now();
+  if (run.executionMode === "direct" && run.directExecution?.cwd) {
+    const nextRun = updateGraphRunRecord(run.id, {
+      updatedAt: timestamp,
+    }) ?? { ...run, updatedAt: timestamp };
+    appendGraphEvent(nextRun.eventsFile, {
+      runId: nextRun.id,
+      type: "run.updated",
+      timestamp,
+      summary: `Graph run completed in direct workspace mode without worktree merge-back: ${run.directExecution.cwd}`,
+      data: {
+        executionMode: "direct",
+        directExecution: run.directExecution,
+      },
+    });
+    return {
+      run: nextRun,
+      status: "direct",
+      message: `- Direct workspace: executed directly in ${run.directExecution.cwd}; no git worktree, checkpoint, merge-back, or cleanup was used.`,
+    };
+  }
   const workspaceCwd = resolveWorkspaceCwd();
   if (!workspaceCwd || !run.worktree) {
     const error = !workspaceCwd
@@ -5137,30 +5169,59 @@ function blockGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunReco
   return nextRun;
 }
 
+type GraphNodeExecutionContext = {
+  mode: "worktree";
+  cwd: string;
+  worktreeCwd: string;
+} | {
+  mode: "direct";
+  cwd: string;
+};
+
+function resolveGraphNodeExecutionContext(run: GraphRunRecord): GraphNodeExecutionContext | null {
+  if (run.worktree?.cwd) {
+    return {
+      mode: "worktree",
+      cwd: run.worktree.cwd,
+      worktreeCwd: run.worktree.cwd,
+    };
+  }
+  if (run.directExecution?.cwd) {
+    return {
+      mode: "direct",
+      cwd: run.directExecution.cwd,
+    };
+  }
+  return null;
+}
+
 async function executeGraphNodeViaRunPrompt(
   request: GraphNodeExecutionRequest,
   rootInput: PromptRunInput,
   target: PromptRunTarget,
 ) {
-  const worktreeCwd = request.run.worktree?.cwd;
-  if (!worktreeCwd) {
+  const executionContext = resolveGraphNodeExecutionContext(request.run);
+  if (!executionContext) {
     return {
       status: "failed" as const,
-      summary: `Graph node ${request.node.id} has no isolated worktree.`,
-      error: "Graph run is missing worktree metadata.",
+      summary: `Graph node ${request.node.id} has no execution directory.`,
+      error: "Graph run is missing both worktree and direct execution metadata.",
     };
   }
 
-  let baseCommit: string;
-  try {
-    baseCommit = getGraphWorktreeHeadCommit(worktreeCwd);
-  } catch (error) {
-    return {
-      status: "failed" as const,
-      summary: `Graph node ${request.node.id} could not read worktree HEAD.`,
-      error: errorToMessage(error),
-      worktreeCwd,
-    };
+  let baseCommit: string | undefined;
+  if (executionContext.mode === "worktree") {
+    try {
+      baseCommit = getGraphWorktreeHeadCommit(executionContext.worktreeCwd);
+    } catch (error) {
+      return {
+        status: "failed" as const,
+        summary: `Graph node ${request.node.id} could not read worktree HEAD.`,
+        error: errorToMessage(error),
+        executionCwd: executionContext.cwd,
+        worktreeCwd: executionContext.worktreeCwd,
+      };
+    }
   }
 
   const communicationFile = resolveGraphNodeCommunicationFile(request.run, request.node);
@@ -5187,7 +5248,7 @@ async function executeGraphNodeViaRunPrompt(
       taskRole: "subtask",
       graphRunId: request.run.id,
       graphNodeId: request.node.id,
-      executionCwd: worktreeCwd,
+      executionCwd: executionContext.cwd,
       isolateProjectInstructions: true,
       skipLongTermMemoryPersist: true,
       throwOnError: true,
@@ -5233,44 +5294,49 @@ async function executeGraphNodeViaRunPrompt(
     : executionResult;
 
   let commit: string | undefined;
-  try {
-    const checkpoint = commitGraphNodeCheckpoint({
-      worktreeCwd,
-      graphRunId: request.run.id,
-      nodeId: request.node.id,
-      status: result.status,
-      baseCommit,
-      summary: result.summary,
-    });
-    commit = checkpoint.commit;
-  } catch (error) {
-    return {
-      status: "failed" as const,
-      summary: `Graph node ${request.node.id} could not create a local checkpoint commit.`,
-      error: errorToMessage(error),
-      artifactRef: result.artifactRef ?? communicationFile,
-      acceptance: result.acceptance,
-      worktreeCwd,
-      baseCommit,
-    };
+  if (executionContext.mode === "worktree") {
+    try {
+      const checkpoint = commitGraphNodeCheckpoint({
+        worktreeCwd: executionContext.worktreeCwd,
+        graphRunId: request.run.id,
+        nodeId: request.node.id,
+        status: result.status,
+        baseCommit: baseCommit as string,
+        summary: result.summary,
+      });
+      commit = checkpoint.commit;
+    } catch (error) {
+      return {
+        status: "failed" as const,
+        summary: `Graph node ${request.node.id} could not create a local checkpoint commit.`,
+        error: errorToMessage(error),
+        artifactRef: result.artifactRef ?? communicationFile,
+        acceptance: result.acceptance,
+        executionCwd: executionContext.cwd,
+        worktreeCwd: executionContext.worktreeCwd,
+        baseCommit,
+      };
+    }
   }
 
+  const executionMetadata = {
+    executionCwd: executionContext.cwd,
+    ...(executionContext.mode === "worktree" ? { worktreeCwd: executionContext.worktreeCwd } : {}),
+    ...(baseCommit ? { baseCommit } : {}),
+    ...(commit ? { commit } : {}),
+  };
   if (request.node.kind === "summary" && result.status === "passed" && !result.finalAnswer) {
     return {
       ...result,
       finalAnswer: buildGraphRunFinalAnswer(request.run),
       artifactRef: result.artifactRef ?? communicationFile,
-      worktreeCwd,
-      baseCommit,
-      commit,
+      ...executionMetadata,
     };
   }
   return {
     ...result,
     artifactRef: result.artifactRef ?? communicationFile,
-    worktreeCwd,
-    baseCommit,
-    commit,
+    ...executionMetadata,
   };
 }
 
@@ -5394,6 +5460,8 @@ function buildGraphNodeDispatchedText(
     `- 节点：${node.title}`,
     `- 子任务 tab：${graphNodeTarget.tabId}`,
     `- 并行上限：${run.maxConcurrent}`,
+    `- 执行模式：${formatGraphRunExecutionMode(run)}`,
+    `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
     `- 沟通文件：${communicationFile}`,
   ].join("\n");
 }
@@ -5409,18 +5477,40 @@ function buildGraphNodeStartedText(
     `- 运行：${run.id}`,
     `- 节点标题：${node.title}`,
     `- 节点类型：${node.kind}`,
+    `- 执行模式：${formatGraphRunExecutionMode(run)}`,
+    `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
     `- 授权文件：${node.writeFiles?.length ? node.writeFiles.join("、") : "未声明"}`,
     `- 沟通文件：${communicationFile}`,
   ].join("\n");
 }
 
+function formatGraphRunExecutionMode(run: GraphRunRecord): string {
+  return run.executionMode === "direct" && run.directExecution?.cwd
+    ? "direct workspace fallback"
+    : "isolated git worktree";
+}
+
+function formatGraphRunExecutionCwd(run: GraphRunRecord): string {
+  return run.executionMode === "direct" && run.directExecution?.cwd
+    ? run.directExecution.cwd
+    : (run.worktree?.cwd ?? "unavailable");
+}
+
 function buildGraphRunStartedText(run: GraphRunRecord): string {
+  const directFallbackLines = run.executionMode === "direct" && run.directExecution
+    ? [
+      `- Direct workspace: ${run.directExecution.cwd}`,
+      `- Fallback reason: ${run.directExecution.reason ?? "git worktree was unavailable"}`,
+      "- Direct mode limits: no git worktree isolation, checkpoint commits, merge-back, or rollback.",
+    ]
+    : [];
   return [
     `Graph run created: ${run.id}`,
     "",
     `- Planner: ${GRAPH_AI_PLANNER_NODE_ID} will generate the executable DAG before work nodes run.`,
-    `- Runtime: isolated git worktree via runPrompt, taskRole=subtask`,
+    `- Runtime: ${formatGraphRunExecutionMode(run)} via runPrompt, taskRole=subtask`,
     `- Worktree: ${run.worktree?.cwd ?? "unavailable"}`,
+    ...directFallbackLines,
     `- Scheduler: maxConcurrent=${run.maxConcurrent}`,
     `- Graph file: ${run.graphFile}`,
   ].join("\n");
@@ -10297,7 +10387,7 @@ async function runPromptOneShot(
             if (!isCurrentOneShotRunActive()) {
               return;
             }
-            rawStdout += chunk;
+            rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
             const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
@@ -10319,7 +10409,7 @@ async function runPromptOneShot(
             if (!isCurrentOneShotRunActive()) {
               return;
             }
-            rawStderr += chunk;
+            rawStderr = appendBoundedUtf8Text(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
             const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
@@ -11090,7 +11180,7 @@ async function runPromptInteractive(
     if (!debugLogging) {
       return;
     }
-    rawStdout += chunk;
+    rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
     startInteractiveLog(interactiveInput);
     void logCliInteractiveOutput(cli, uiSessionId, "stdout", chunk);
   };
@@ -11100,7 +11190,7 @@ async function runPromptInteractive(
       return;
     }
     const normalized = content.endsWith("\n") ? content : content + "\n";
-    rawStderr += normalized;
+    rawStderr = appendBoundedUtf8Text(rawStderr, normalized, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
     startInteractiveLog(interactiveInput);
     void logCliInteractiveOutput(cli, uiSessionId, "trace", normalized);
   };

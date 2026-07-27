@@ -14,9 +14,11 @@ import {
   isGraphNodeKind,
   isGraphNodeStatus,
   isGraphOwnerRole,
+  isGraphRunExecutionMode,
   isGraphRunStatus,
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
+  type GraphRunDirectExecutionRecord,
   type GraphEdgeConditionExpression,
   type GraphEdgeMetadata,
   type GraphEdgeRecord,
@@ -96,6 +98,8 @@ export type CreateGraphRunRecordInput = {
   edges?: GraphEdgeRecord[];
   activeNodeIds?: string[];
   maxConcurrent?: number;
+  executionMode?: GraphRunRecord["executionMode"];
+  directExecution?: GraphRunDirectExecutionRecord;
   worktree?: GraphRunWorktreeRecord;
   finalAnswer?: GraphFinalAnswer;
 };
@@ -302,6 +306,8 @@ export function createGraphRunRecord(
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
     graphFile: communication.graphFile,
+    ...(input.executionMode ? { executionMode: input.executionMode } : {}),
+    ...(input.directExecution ? { directExecution: input.directExecution } : {}),
     ...(input.worktree ? { worktree: input.worktree } : {}),
     ...(input.finalAnswer ? { finalAnswer: input.finalAnswer } : {}),
   };
@@ -410,6 +416,11 @@ export function normalizeGraphRunRecord(
   }
   const createdAt = normalizeFiniteTimestamp(raw.createdAt, Date.now());
   const updatedAt = normalizeFiniteTimestamp(raw.updatedAt, createdAt);
+  const worktree = normalizeGraphRunWorktree(raw.worktree);
+  const directExecution = normalizeGraphRunDirectExecution(raw.directExecution);
+  const executionMode = isGraphRunExecutionMode(raw.executionMode)
+    ? raw.executionMode
+    : (directExecution ? "direct" : "worktree");
   return {
     id: raw.id,
     workspaceKey,
@@ -444,7 +455,9 @@ export function normalizeGraphRunRecord(
     graphFile: typeof raw.graphFile === "string" && raw.graphFile.trim()
       ? raw.graphFile
       : communication.graphFile,
-    ...(normalizeGraphRunWorktree(raw.worktree) ? { worktree: normalizeGraphRunWorktree(raw.worktree) as GraphRunWorktreeRecord } : {}),
+    executionMode,
+    ...(directExecution ? { directExecution } : {}),
+    ...(worktree ? { worktree } : {}),
     ...(normalizeGraphFinalAnswer(raw.finalAnswer) ? { finalAnswer: normalizeGraphFinalAnswer(raw.finalAnswer) as GraphFinalAnswer } : {}),
   };
 }
@@ -580,6 +593,7 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     ...(normalizeOptionalTimestamp(raw.wakeAt) !== undefined ? { wakeAt: normalizeOptionalTimestamp(raw.wakeAt) } : {}),
     ...(typeof raw.lastError === "string" ? { lastError: raw.lastError } : {}),
     ...(rework ? { rework } : {}),
+    ...(typeof raw.executionCwd === "string" && raw.executionCwd.trim() ? { executionCwd: raw.executionCwd.trim() } : {}),
     ...(typeof raw.worktreeCwd === "string" && raw.worktreeCwd.trim() ? { worktreeCwd: raw.worktreeCwd.trim() } : {}),
     ...(typeof raw.baseCommit === "string" && raw.baseCommit.trim() ? { baseCommit: raw.baseCommit.trim() } : {}),
     ...(typeof raw.commit === "string" && raw.commit.trim() ? { commit: raw.commit.trim() } : {}),
@@ -637,6 +651,21 @@ function normalizeGraphRunWorktree(value: unknown): GraphRunWorktreeRecord | nul
     cwd: raw.cwd.trim(),
     branch: raw.branch.trim(),
     baseCommit: raw.baseCommit.trim(),
+    ...(normalizeOptionalTimestamp(raw.createdAt) !== undefined ? { createdAt: normalizeOptionalTimestamp(raw.createdAt) } : {}),
+  };
+}
+
+function normalizeGraphRunDirectExecution(value: unknown): GraphRunDirectExecutionRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphRunDirectExecutionRecord>;
+  if (typeof raw.cwd !== "string" || !raw.cwd.trim()) {
+    return null;
+  }
+  return {
+    cwd: raw.cwd.trim(),
+    ...(typeof raw.reason === "string" && raw.reason.trim() ? { reason: raw.reason.trim() } : {}),
     ...(normalizeOptionalTimestamp(raw.createdAt) !== undefined ? { createdAt: normalizeOptionalTimestamp(raw.createdAt) } : {}),
   };
 }

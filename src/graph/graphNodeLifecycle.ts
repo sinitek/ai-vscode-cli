@@ -22,6 +22,7 @@ export type GraphNodeExecutionResult = {
   finalAnswer?: GraphFinalAnswer;
   plannedGraph?: GraphPlannedGraphSpec;
   wakeAt?: number;
+  executionCwd?: string;
   worktreeCwd?: string;
   baseCommit?: string;
   commit?: string;
@@ -105,6 +106,7 @@ export async function markGraphNodeCompleted(
     data: {
       artifactRef: result.artifactRef,
       acceptance: result.acceptance,
+      executionCwd: result.executionCwd,
       worktreeCwd: result.worktreeCwd,
       baseCommit: result.baseCommit,
       commit: result.commit,
@@ -159,6 +161,7 @@ export async function markGraphNodeFailed(
       attempts: node.attempts,
       maxAttempts: node.maxAttempts,
       attemptsExhausted,
+      executionCwd: result.executionCwd,
       worktreeCwd: result.worktreeCwd,
       baseCommit: result.baseCommit,
       commit: result.commit,
@@ -209,6 +212,7 @@ export async function markGraphNodeBlocked(
     summary: reason,
     error: reason,
     data: {
+      executionCwd: result.executionCwd,
       worktreeCwd: result.worktreeCwd,
       baseCommit: result.baseCommit,
       commit: result.commit,
@@ -383,6 +387,7 @@ export async function finalizeGraphNodeResult(
 
 function buildGraphNodeCheckpointPatch(result: Partial<GraphNodeExecutionResult>): Partial<GraphNodeRecord> {
   return {
+    ...(typeof result.executionCwd === "string" && result.executionCwd.trim() ? { executionCwd: result.executionCwd.trim() } : {}),
     ...(typeof result.worktreeCwd === "string" && result.worktreeCwd.trim() ? { worktreeCwd: result.worktreeCwd.trim() } : {}),
     ...(typeof result.baseCommit === "string" && result.baseCommit.trim() ? { baseCommit: result.baseCommit.trim() } : {}),
     ...(typeof result.commit === "string" && result.commit.trim() ? { commit: result.commit.trim() } : {}),

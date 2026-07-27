@@ -183,6 +183,82 @@ test("retries failed and exhausted blocked nodes while preserving attempt histor
   }
 });
 
+test("direct workspace retry skips worktree reset and feedback rollback", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const implement = createNode({
+      id: "implement",
+      status: "passed",
+      attempts: 1,
+      maxAttempts: 1,
+      unlocks: ["review"],
+      executionCwd: "/workspace/project",
+      baseCommit: "not-a-real-commit",
+      commit: "not-a-real-checkpoint",
+    });
+    const review = createNode({
+      id: "review",
+      kind: "review",
+      status: "failed",
+      ownerRole: "reviewer",
+      attempts: 1,
+      maxAttempts: 1,
+      dependsOn: ["implement"],
+      executionCwd: "/workspace/project",
+      baseCommit: "not-a-real-review-base",
+      commit: "not-a-real-review-checkpoint",
+      lastError: "Review failed in direct mode.",
+    });
+    const directFailed = createNode({
+      id: "direct-failed",
+      status: "failed",
+      attempts: 1,
+      maxAttempts: 2,
+      executionCwd: "/workspace/project",
+      baseCommit: "not-a-real-direct-base",
+      commit: "not-a-real-direct-checkpoint",
+      lastError: "Direct node failed.",
+    });
+    const run = createRun(baseDir, [implement, review, directFailed], [{
+      id: "review-if-fail",
+      from: "review",
+      to: "implement",
+      kind: "if_fail",
+      active: true,
+      metadata: {
+        reworkTargetNodeId: "implement",
+      },
+    }], {
+      executionMode: "direct",
+      directExecution: {
+        cwd: "/workspace/project",
+        reason: "git worktree unavailable",
+      },
+    });
+
+    assert.deepEqual(getGraphRunControlState(run).feedbackableNodeIds, []);
+    assert.deepEqual(getGraphRunControlState(run).retryableNodeIds, ["direct-failed"]);
+
+    const feedback = await feedbackGraphNodeForRun(run, "review");
+    assert.equal(feedback.ok, false);
+    assert.equal(feedback.changed, false);
+    assert.equal(feedback.reason, "feedback_not_available");
+    assert.equal(feedback.reworkTargetNodeId, "implement");
+
+    const retry = await retryGraphNodeForRun(run, "direct-failed", { now: () => 2_500 });
+    const retryNode = getNode(retry.run, "direct-failed");
+
+    assert.equal(retry.ok, true);
+    assert.equal(retryNode.status, "pending");
+    assert.equal(retryNode.executionCwd, undefined);
+    assert.equal(retryNode.baseCommit, undefined);
+    assert.equal(retryNode.commit, undefined);
+    assert.equal(retryNode.lastError, undefined);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 test("retry resets the Graph worktree to the node base commit", async () => {
   const baseDir = createTempBaseDir();
   try {

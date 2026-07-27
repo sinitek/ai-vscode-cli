@@ -23,6 +23,12 @@ export const GRAPH_RUN_STATUSES = [
 ] as const;
 export type GraphRunStatus = (typeof GRAPH_RUN_STATUSES)[number];
 
+export const GRAPH_RUN_EXECUTION_MODES = [
+  "worktree",
+  "direct",
+] as const;
+export type GraphRunExecutionMode = (typeof GRAPH_RUN_EXECUTION_MODES)[number];
+
 export const GRAPH_NODE_KINDS = [
   "intake",
   "plan",
@@ -193,6 +199,12 @@ export type GraphRunWorktreeRecord = {
   createdAt?: number;
 };
 
+export type GraphRunDirectExecutionRecord = {
+  cwd: string;
+  reason?: string;
+  createdAt?: number;
+};
+
 export type GraphNodeRecord = {
   id: string;
   title: string;
@@ -214,6 +226,7 @@ export type GraphNodeRecord = {
   wakeAt?: number;
   lastError?: string;
   rework?: GraphNodeReworkRecord;
+  executionCwd?: string;
   worktreeCwd?: string;
   baseCommit?: string;
   commit?: string;
@@ -253,6 +266,8 @@ export type GraphRunRecord = {
   communicationDir: string;
   mainCommunicationFile: string;
   graphFile: string;
+  executionMode?: GraphRunExecutionMode;
+  directExecution?: GraphRunDirectExecutionRecord;
   worktree?: GraphRunWorktreeRecord;
   finalAnswer?: GraphFinalAnswer;
 };
@@ -284,6 +299,10 @@ export function sanitizeGraphPathSegment(value: unknown, fallback: string): stri
 
 export function isGraphRunStatus(value: unknown): value is GraphRunStatus {
   return isGraphValue(GRAPH_RUN_STATUSES, value);
+}
+
+export function isGraphRunExecutionMode(value: unknown): value is GraphRunExecutionMode {
+  return isGraphValue(GRAPH_RUN_EXECUTION_MODES, value);
 }
 
 export function isGraphNodeKind(value: unknown): value is GraphNodeKind {

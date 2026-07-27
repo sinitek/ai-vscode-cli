@@ -21,6 +21,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           activeRunActivity: "",
           runStreamRecordCounter: 0,
           runStreamRecords: [],
+          runStreamRetainedBytes: 0,
+          runStreamDiscardedRecordCount: 0,
+          runStreamDiscardedBytes: 0,
           runStreamOpenRecordIds: new Set(),
           taskList: createTaskListState(),
           overlays: {
@@ -306,6 +309,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         runtimeState.activeRunActivity = "";
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamRecords.length = 0;
+        runtimeState.runStreamRetainedBytes = 0;
+        runtimeState.runStreamDiscardedRecordCount = 0;
+        runtimeState.runStreamDiscardedBytes = 0;
         runtimeState.runStreamOpenRecordIds.clear();
         runtimeState.overlays.runConflict = false;
         runtimeState.overlays.queue = false;

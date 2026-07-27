@@ -120,6 +120,41 @@ rl.on("line", (line) => {
 });
 `;
 
+const MOCK_COMPACTION_APP_SERVER = `#!/usr/bin/env node
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+const keepAlive = setInterval(() => {}, 1000);
+const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    if (message.params?.capabilities?.requestAttestation !== false) {
+      send({ jsonrpc: "2.0", id: message.id, error: { message: "missing requestAttestation capability" } });
+      return;
+    }
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/resume") {
+    send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: message.params.threadId } } });
+    return;
+  }
+  if (message.method === "thread/compact/start") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    setImmediate(() => {
+      send({
+        jsonrpc: "2.0",
+        method: "thread/compacted",
+        params: { threadId: message.params.threadId },
+      });
+    });
+  }
+});
+
+process.on("exit", () => clearInterval(keepAlive));
+`;
+
 test("Codex runner streams child bubbles without completing or replacing the parent thread", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-subagent-runner-"));
   const commandPath = path.join(tempDir, "mock-codex");
@@ -155,6 +190,35 @@ test("Codex runner streams child bubbles without completing or replacing the par
       "child text",
     );
     assert.equal(subagentUpdates.some((update) => update.status === "completed"), true);
+  } finally {
+    runner.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex compact uses app-server compact protocol and accepts intentional SIGTERM shutdown", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-compact-runner-"));
+  const commandPath = path.join(tempDir, "mock-codex");
+  fs.writeFileSync(commandPath, MOCK_COMPACTION_APP_SERVER, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+
+  const runner = new CodexInteractiveRunner({
+    command: commandPath,
+    args: [],
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    threadId: "thread-before-compact",
+    multiAgentEnabled: true,
+  });
+
+  try {
+    const result = await runner.compactThread();
+
+    assert.deepEqual(result, {
+      compacted: true,
+      threadId: "thread-before-compact",
+    });
+    assert.equal(runner.getThreadId(), "thread-before-compact");
   } finally {
     runner.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });

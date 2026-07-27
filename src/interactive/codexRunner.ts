@@ -394,7 +394,7 @@ export class CodexInteractiveRunner {
           if (isCodexContextCompactionCompletedNotification(message, existingThreadId)) {
             threadCompacted = true;
             settleSuccess();
-            setTimeout(() => shutdownChild("graceful"), 0);
+            setTimeout(() => shutdownChild("terminate"), 0);
             continue;
           }
 
@@ -460,10 +460,9 @@ export class CodexInteractiveRunner {
       if (this.abortGeneration !== runGeneration) {
         throw createAbortError();
       }
-      if (code !== 0 || signal) {
+      if (code !== 0 && !signal) {
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
-        const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
-        throw new Error(t("codex.appServerExited", { detail, stderr: stderr || "-" }));
+        throw new Error(t("codex.appServerExited", { detail: `code ${code ?? 1}`, stderr: stderr || "-" }));
       }
       return result;
     } catch (error) {

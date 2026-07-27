@@ -263,6 +263,12 @@ function createRunnerDisposedError(): Error {
   return error;
 }
 
+function createAbortError(): Error {
+  const error = new Error("Claude run aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function loadClaudeSettings(): Promise<Record<string, string>> {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
   try {
@@ -293,6 +299,7 @@ export class ClaudeInteractiveRunner {
   public readonly cli: CliName = "claude";
   private disposed = false;
   private abortController: AbortController | null = null;
+  private abortGeneration = 0;
   private disposeGeneration = 0;
 
   public constructor(
@@ -320,13 +327,14 @@ export class ClaudeInteractiveRunner {
   public dispose(): void {
     this.disposed = true;
     this.disposeGeneration += 1;
-    this.abortController?.abort();
-    this.abortController = null;
+    this.stopAndRebuild();
   }
 
   public stopAndRebuild(): void {
-    this.abortController?.abort();
+    this.abortGeneration += 1;
+    const abortController = this.abortController;
     this.abortController = null;
+    abortController?.abort();
   }
 
   public async runForText(prompt: string): Promise<{ sessionId: string | null; text: string }> {
@@ -380,15 +388,19 @@ export class ClaudeInteractiveRunner {
     }
 
     const runDisposeGeneration = this.disposeGeneration;
+    const runAbortGeneration = this.abortGeneration;
 
     const mod = await dynamicImport<any>("@anthropic-ai/claude-agent-sdk");
     const queryFn = mod?.query;
     if (!queryFn) {
       throw new Error("claude-agent-sdk-missing-export");
     }
+    if (this.abortGeneration !== runAbortGeneration) {
+      throw createAbortError();
+    }
 
-    // 创建新的 AbortController
-    this.abortController = new AbortController();
+    const abortController = new AbortController();
+    this.abortController = abortController;
 
     const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
     const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
@@ -427,6 +439,7 @@ export class ClaudeInteractiveRunner {
         ...process.env,
         ...claudeSettings,
       },
+      abortController,
     };
 
     if (queryOptions.permissionMode === "bypassPermissions") {
@@ -587,11 +600,17 @@ export class ClaudeInteractiveRunner {
     };
 
     const executeQuery = async (options: any): Promise<void> => {
+      if (this.abortGeneration !== runAbortGeneration) {
+        throw createAbortError();
+      }
       const queryResult = queryFn({ prompt, options });
 
       for await (const msg of queryResult as AsyncGenerator<any>) {
         if (this.disposeGeneration !== runDisposeGeneration) {
           throw createRunnerDisposedError();
+        }
+        if (this.abortGeneration !== runAbortGeneration) {
+          throw createAbortError();
         }
         handlers.onEvent?.(msg);
 
@@ -733,11 +752,16 @@ export class ClaudeInteractiveRunner {
     } catch (error) {
       runError = error;
     } finally {
-      this.abortController = null;
+      if (this.abortController === abortController) {
+        this.abortController = null;
+      }
     }
 
     if (this.disposeGeneration !== runDisposeGeneration) {
       throw createRunnerDisposedError();
+    }
+    if (this.abortGeneration !== runAbortGeneration) {
+      throw createAbortError();
     }
     if (runError) {
       throw runError;

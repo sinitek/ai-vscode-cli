@@ -343,6 +343,13 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         flex-direction: column;
         gap: 6px;
       }
+      .run-stream-truncation {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: var(--vscode-descriptionForeground);
+        background: var(--vscode-editorWidget-background);
+      }
       .run-stream-item {
         border: 1px solid var(--vscode-widget-border);
         border-radius: 6px;

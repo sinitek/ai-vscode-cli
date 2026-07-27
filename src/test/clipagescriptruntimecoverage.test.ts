@@ -482,6 +482,7 @@ function createRuntimeHarness() {
         formatDateTime,
         formatDateTimeWithMs,
         getActiveConversationRuntimeState,
+        getConversationRuntimeState,
         getAssistantMessageContentForDisplay,
         getRunPromptHistory,
         handleFileSelection,
@@ -896,6 +897,21 @@ test("boots the runtime and dispatches state, message, stream, history, settings
 
   const errors = posted.filter((message) => message && message.type === "webviewError");
   assert.deepEqual(errors, []);
+});
+
+test("keeps run stream preview bounded per conversation tab", () => {
+  const { api, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+
+  for (let index = 0; index < 2001; index += 1) {
+    api.appendRunRawStream(`record-${index}`, "stdout", "tab-2");
+  }
+
+  const runtimeState = api.getConversationRuntimeState("tab-2");
+  assert.equal(runtimeState.runStreamRecords.length, 2000);
+  assert.equal(runtimeState.runStreamRecords[0].content, "record-1");
+  assert.equal(runtimeState.runStreamDiscardedRecordCount, 1);
+  assert.ok(runtimeState.runStreamRetainedBytes > 0);
 });
 
 test("dispatches background prompts for Graph tabs as Graph runs", () => {

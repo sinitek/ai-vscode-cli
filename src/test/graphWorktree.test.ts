@@ -8,6 +8,7 @@ import * as path from "path";
 import {
   cleanupGraphRunWorktree,
   commitGraphNodeCheckpoint,
+  createGraphRunExecutionSetup,
   createGraphRunWorktree,
   getGraphWorktreeHeadCommit,
   mergeGraphRunWorktreeToWorkspace,
@@ -72,6 +73,27 @@ test("creates a Graph worktree and records per-node checkpoint commits", () => {
   }
 });
 
+test("falls back to direct workspace execution when git worktree setup is unavailable", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-direct-fallback-"));
+  try {
+    const workspace = path.join(root, "not-a-git-repo");
+    fs.mkdirSync(workspace, { recursive: true });
+
+    const setup = createGraphRunExecutionSetup(workspace, "graph_run_direct", {
+      baseDir: path.join(root, "data"),
+      now: () => 3_000,
+    });
+
+    assert.equal(setup.executionMode, "direct");
+    assert.equal(setup.directExecution.cwd, workspace);
+    assert.equal(setup.directExecution.createdAt, 3_000);
+    assert.match(setup.fallbackReason, /git rev-parse --show-toplevel failed/u);
+    assert.equal(fs.existsSync(path.join(root, "data", "graph-worktrees")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("cleans up a completed Graph worktree directory, registration, and branch after merge-back", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-cleanup-"));
   try {
@@ -95,10 +117,33 @@ test("cleans up a completed Graph worktree directory, registration, and branch a
     assert.equal(cleanup.worktreePruned, true);
     assert.equal(cleanup.branchDeleted, true);
     assert.equal(cleanup.directoryExistsAfter, false);
+    assert.equal(cleanup.worktreeRootRemoved, true);
+    assert.equal(cleanup.worktreeRootExistsAfter, false);
     assert.equal(fs.existsSync(worktree.cwd), false);
+    assert.equal(fs.existsSync(path.join(baseDir, "graph-worktrees")), false);
     assert.doesNotMatch(git(repo, ["worktree", "list", "--porcelain"]), new RegExp(escapeRegExp(worktree.cwd), "u"));
     assert.equal(git(repo, ["branch", "--list", worktree.branch]), "");
     assert.match(git(repo, ["status", "--porcelain"]), /A  employee\.html/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps the Graph worktree root when another run worktree still exists", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-cleanup-shared-root-"));
+  try {
+    const repo = createGitRepo(root);
+    const baseDir = path.join(root, "data");
+    const first = createGraphRunWorktree(repo, "graph_run_first", { baseDir });
+    const second = createGraphRunWorktree(repo, "graph_run_second", { baseDir });
+
+    const cleanup = cleanupGraphRunWorktree({ workspaceCwd: repo, worktree: first });
+
+    assert.equal(cleanup.worktreeRootRemoved, false);
+    assert.equal(cleanup.worktreeRootExistsAfter, true);
+    assert.equal(fs.existsSync(first.cwd), false);
+    assert.equal(fs.existsSync(second.cwd), true);
+    assert.match(git(repo, ["worktree", "list", "--porcelain"]), new RegExp(escapeRegExp(second.cwd), "u"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

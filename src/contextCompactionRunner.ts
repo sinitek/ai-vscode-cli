@@ -26,6 +26,7 @@ import { t } from "./i18n";
 import { logError, logInfo, sanitizeEnv } from "./logger";
 import { CliName, InteractiveMode, ThinkingMode } from "./cli/types";
 import { ChatMessage } from "./webview/types";
+import { appendBoundedUtf8Text } from "./boundedText";
 
 type GeminiStreamJsonState = {
   remainder: string;
@@ -56,6 +57,7 @@ type OpenCodeRuntimeOptions = {
 };
 
 const OPENCODE_NATIVE_COMPACT_COMMAND = "/compact";
+const CONTEXT_COMPACTION_RAW_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
 
 function buildOpenCodeCompactSuccessMessage(sessionId: string): string {
   return `OpenCode context compaction completed for current session: ${sessionId}`;
@@ -379,11 +381,19 @@ async function runOpenCodeNativeContextCompactionWithDeps(
       OPENCODE_NATIVE_COMPACT_COMMAND,
       {
         onStdout: (chunk: string) => {
-          rawStdout += chunk;
+          rawStdout = appendBoundedUtf8Text(
+            rawStdout,
+            chunk,
+            CONTEXT_COMPACTION_RAW_OUTPUT_MAX_BYTES
+          ).text;
           deps.sendRawStreamDelta(chunk, { stream: "stdout" });
         },
         onStderr: (chunk: string) => {
-          rawStderr += chunk;
+          rawStderr = appendBoundedUtf8Text(
+            rawStderr,
+            chunk,
+            CONTEXT_COMPACTION_RAW_OUTPUT_MAX_BYTES
+          ).text;
           deps.sendRawStreamDelta(chunk, { stream: "stderr" });
           if (chunk.trim()) {
             deps.appendTraceMessage(chunk.trimEnd());
@@ -876,6 +886,16 @@ export async function runContextCompactionWithDeps(
     cleanupAfterRun("end");
     return true;
   } catch (error) {
+    if (deps.getActiveRunId() !== runId) {
+      void logInfo("context-compact-command-stale-error-ignored", {
+        cli,
+        sessionId,
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+        silent,
+      });
+      return false;
+    }
     if (!silent) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       deps.appendSystemMessage(cli === "opencode" && errorMessage ? errorMessage : t("compact.failException"));

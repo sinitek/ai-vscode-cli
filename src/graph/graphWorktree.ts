@@ -5,6 +5,7 @@ import * as path from "path";
 import {
   getGraphDataDir,
   sanitizeGraphPathSegment,
+  type GraphRunDirectExecutionRecord,
   type GraphRunWorktreeRecord,
 } from "./types";
 
@@ -65,6 +66,7 @@ export type GraphWorktreeCleanupResult = {
   workspaceCwd: string;
   repoRoot: string;
   worktreeCwd: string;
+  worktreeRoot: string;
   sourceBranch: string;
   worktreePathExisted: boolean;
   worktreeRemoved: boolean;
@@ -72,7 +74,45 @@ export type GraphWorktreeCleanupResult = {
   branchExisted: boolean;
   branchDeleted: boolean;
   directoryExistsAfter: boolean;
+  worktreeRootRemoved: boolean;
+  worktreeRootExistsAfter: boolean;
 };
+
+export type GraphRunExecutionSetup = {
+  executionMode: "worktree";
+  worktree: GraphRunWorktreeRecord;
+  directExecution?: undefined;
+  fallbackReason?: undefined;
+} | {
+  executionMode: "direct";
+  worktree?: undefined;
+  directExecution: GraphRunDirectExecutionRecord;
+  fallbackReason: string;
+};
+
+export function createGraphRunExecutionSetup(
+  workspaceCwd: string,
+  graphRunId: string,
+  options: CreateGraphRunWorktreeOptions = {},
+): GraphRunExecutionSetup {
+  try {
+    return {
+      executionMode: "worktree",
+      worktree: createGraphRunWorktree(workspaceCwd, graphRunId, options),
+    };
+  } catch (error) {
+    const fallbackReason = errorToMessage(error);
+    return {
+      executionMode: "direct",
+      directExecution: {
+        cwd: workspaceCwd,
+        reason: fallbackReason,
+        createdAt: options.now?.() ?? Date.now(),
+      },
+      fallbackReason,
+    };
+  }
+}
 
 export function createGraphRunWorktree(
   workspaceCwd: string,
@@ -88,7 +128,15 @@ export function createGraphRunWorktree(
 
   fs.mkdirSync(worktreeRoot, { recursive: true });
   if (!fs.existsSync(cwd)) {
-    runGit(["worktree", "add", "-b", branch, cwd, baseCommit], repoRoot);
+    try {
+      runGit(["worktree", "add", "-b", branch, cwd, baseCommit], repoRoot);
+    } catch (error) {
+      if (fs.existsSync(cwd)) {
+        fs.rmSync(cwd, { recursive: true, force: true });
+      }
+      removeEmptyGraphWorktreeRoot(worktreeRoot);
+      throw error;
+    }
   }
 
   return {
@@ -194,10 +242,14 @@ export function cleanupGraphRunWorktree(input: GraphWorktreeCleanupInput): Graph
   if (directoryExistsAfter) {
     throw new Error(`Graph worktree cleanup left a residual directory: ${input.worktree.cwd}`);
   }
+  const worktreeRoot = path.dirname(input.worktree.cwd);
+  const worktreeRootRemoved = removeEmptyGraphWorktreeRoot(worktreeRoot);
+  const worktreeRootExistsAfter = fs.existsSync(worktreeRoot);
   return {
     workspaceCwd: input.workspaceCwd,
     repoRoot,
     worktreeCwd: input.worktree.cwd,
+    worktreeRoot,
     sourceBranch: input.worktree.branch,
     worktreePathExisted,
     worktreeRemoved,
@@ -205,7 +257,25 @@ export function cleanupGraphRunWorktree(input: GraphWorktreeCleanupInput): Graph
     branchExisted,
     branchDeleted,
     directoryExistsAfter,
+    worktreeRootRemoved,
+    worktreeRootExistsAfter,
   };
+}
+
+function removeEmptyGraphWorktreeRoot(worktreeRoot: string): boolean {
+  if (path.basename(worktreeRoot) !== GRAPH_WORKTREE_DIR_NAME) {
+    return false;
+  }
+  try {
+    fs.rmdirSync(worktreeRoot);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTEMPTY" || code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function gitBranchExists(repoRoot: string, branch: string): boolean {

@@ -184,6 +184,7 @@ test("request builders produce initialize, thread, and turn params", () => {
     },
     capabilities: {
       experimentalApi: false,
+      requestAttestation: false,
       optOutNotificationMethods: [],
     },
   });

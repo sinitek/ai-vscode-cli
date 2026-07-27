@@ -110,6 +110,45 @@ test("creates, reads, and updates a Graph run with v1 defaults and communication
   }
 });
 
+test("persists direct workspace Graph execution metadata", () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const run = createGraphRunRecord({
+      id: "run-direct",
+      workspaceKey: "workspace-a",
+      cli: "codex",
+      sessionId: null,
+      rootPrompt: "Run without git worktree.",
+      status: "running",
+      nodes: [createNode({ executionCwd: "/workspace/project" })],
+      edges: [],
+      executionMode: "direct",
+      directExecution: {
+        cwd: "/workspace/project",
+        reason: "git worktree unavailable",
+        createdAt: 4_000,
+      },
+    }, { baseDir, now: () => 4_000 });
+    const communication = getGraphCommunicationPaths("run-direct", { baseDir });
+    const loaded = readGraphRunStore(run.runStoreFile, { baseDir });
+    const snapshot = JSON.parse(fs.readFileSync(communication.graphFile, "utf8")) as {
+      executionMode?: string;
+      directExecution?: { cwd?: string; reason?: string };
+      nodes?: Array<{ executionCwd?: string }>;
+    };
+
+    assert.equal(run.executionMode, "direct");
+    assert.equal(run.directExecution?.cwd, "/workspace/project");
+    assert.equal(loaded.runs[0].executionMode, "direct");
+    assert.equal(loaded.runs[0].directExecution?.reason, "git worktree unavailable");
+    assert.equal(snapshot.executionMode, "direct");
+    assert.equal(snapshot.directExecution?.cwd, "/workspace/project");
+    assert.equal(snapshot.nodes?.[0].executionCwd, "/workspace/project");
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 test("lists, filters, limits, and reads Graph runs with partial tolerance for damaged stores", () => {
   const baseDir = createTempBaseDir();
   try {

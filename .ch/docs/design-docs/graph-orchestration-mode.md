@@ -1,7 +1,7 @@
 # Graph 编排模式详细设计
 
 - 状态：active（Phase 2 恢复与交互增强已落地）
-- 日期：2026-07-23
+- 日期：2026-07-27
 - 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`
 - 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 - 相关目录：`src/graph/`、`src/extension.ts`、`src/sessionMessageActions.ts`、`src/sessionMessageHandlers.ts`、`src/panelDiagnostics.ts`、`src/webview/`、`src/i18n.ts`
@@ -14,13 +14,13 @@
 
 ## 当前已落地状态
 
-截至 2026-07-25，Graph 已完成 Phase 1 最小运行内核、Phase 2 的可视 DAG / 持久化恢复 / 面板控制 / 睡眠唤醒增强、worktree checkpoint 增强、验证失败反馈回退、结构化条件边与返工记录，以及规划 DAG 的并行节点执行上下文派发；它仍不是完整 workflow 平台或图编辑器。当前能力边界如下：
+截至 2026-07-27，Graph 已完成 Phase 1 最小运行内核、Phase 2 的可视 DAG / 持久化恢复 / 面板控制 / 睡眠唤醒增强、worktree checkpoint 增强、无 worktree 直接工作区降级、验证失败反馈回退、结构化条件边与返工记录，以及规划 DAG 的并行节点执行上下文派发；它仍不是完整 workflow 平台或图编辑器。当前能力边界如下：
 
 - 用户可在主 Webview 输入区选择 `Graph` 模式并发送任务；前端 payload 保留 `interactiveMode=graph`，后端 `handleSendPromptMessage` 会进入独立 `runGraphPrompt` 分支，不走普通 coding 或 Loop 编排。
 - Graph 模式默认不触发插件侧长期记忆 recall 注入，也不会在 Graph 节点结束后自动写入长期记忆；节点 prompt 只允许只读已有仓库记忆或运行态 recall，任务完成后的长期记忆沉淀由主智能体在收束后专门处理。
 - 后端会先创建 planning-only Graph run，只包含保留 `plan` AI planner 节点；planner 必须在节点 `## JSON` 中返回 `plannedGraph.nodes` 和 `plannedGraph.edges`，宿主校验后把后续执行节点替换为 AI 规划的 realized DAG，再使用 `GraphRunStore`、`graph.json`、`events.jsonl` 和 `graph-communications/<graphRunId>/nodes/*.md` 落盘。
 - `src/graph/` 已提供 v1 类型、store、communications、events、scheduler、prompt builders、node lifecycle 和 `tickGraphRun` kernel。Edge 记录已保留 planner 输出的 `label`、`conditionExpression` 和 `metadata`；Scheduler 支持依赖、终态、attempt、结构化 `source_status` / `source_acceptance` / `manual` 条件求值、不可求值 custom 条件保守阻塞、`human_gate` / `sleep` ready action、`writeFiles` 路径重叠、`conflictGroup` 和并发上限计算；扩展侧不再把 executor 固定为 1，而是按 `min(run.maxConcurrent, 6)` 执行 scheduler 选出的同批可运行节点。
-- 扩展侧 Graph runtime 通过现有 `runPrompt` 执行节点，但每个 Graph run 会先创建独立 git worktree（`~/.sinitek_cli/graph-worktrees/<graphRunId>`），每个被调度的 Graph 节点还会创建独立 Graph 子任务 conversation tab。这里的“子任务 tab”只是节点执行容器，不是 Loop 主从智能体里的运行时主/从关系；主 Graph tab 负责记录调度和收束消息，节点 tab 负责运行对应节点。同一批互不冲突节点可并行运行且不会因为复用同一 tab 互相 stop。节点在该 worktree cwd 中运行；宿主在每个节点终止后创建本地 git checkpoint commit，并在 node record 中保存 `worktreeCwd`、`baseCommit`、`commit`。当整个 Graph run 进入 `completed` 时，宿主会把该 worktree 最终 HEAD 通过 `git merge --squash` 合回当前工作区分支，保留为未提交改动；合回成功后立即执行 `git worktree remove --force`、`git worktree prune` 并删除对应 `sinitek-graph-*` 分支，run 记录不再保留可执行 worktree 元数据。目标工作区存在不相关未提交内容时仍让 Git 尝试合回，只有 worktree 缺失、Graph diff 会覆盖本地改动、发生冲突、合并失败或 cleanup 失败时，run 才改为 `needs-review` 并记录失败原因。Graph node 执行记录仍携带 `graphRunId` / `graphNodeId` 元数据，用于可用场景下映射到当前 active CLI run。
+- 扩展侧 Graph runtime 通过现有 `runPrompt` 执行节点。每个 Graph run 优先创建独立 git worktree（`~/.sinitek_cli/graph-worktrees/<graphRunId>`）；如果本机没有 git、当前工作区不是 git repo、git 版本不支持 worktree，或 `git worktree add` 失败，则自动降级为 `executionMode=direct`，节点直接以当前工作区为 cwd 执行。每个被调度的 Graph 节点还会创建独立 Graph 子任务 conversation tab。这里的“子任务 tab”只是节点执行容器，不是 Loop 主从智能体里的运行时主/从关系；主 Graph tab 负责记录调度和收束消息，节点 tab 负责运行对应节点。同一批互不冲突节点可并行运行且不会因为复用同一 tab 互相 stop。worktree 模式下，节点在 worktree cwd 中运行，宿主在每个节点终止后创建本地 git checkpoint commit，并在 node record 中保存 `executionCwd`、`worktreeCwd`、`baseCommit`、`commit`；当整个 Graph run 进入 `completed` 时，宿主会把该 worktree 最终 HEAD 通过 `git merge --squash` 合回当前工作区分支，保留为未提交改动，随后执行 `git worktree remove --force`、`git worktree prune`，删除对应 `sinitek-graph-*` 分支，并在 `graph-worktrees` 父目录为空时一并删除该空目录。direct 模式下，节点只保存 `executionCwd`，不会创建 checkpoint commit，不执行 merge-back 或 cleanup，完成态代表改动已经直接落在当前工作区。目标工作区存在不相关未提交内容时仍让 Git 尝试 worktree 模式合回；只有 worktree 模式下 worktree 缺失、Graph diff 会覆盖本地改动、发生冲突、合并失败或 cleanup 失败时，run 才改为 `needs-review` 并记录失败原因。Graph node 执行记录仍携带 `graphRunId` / `graphNodeId` 元数据，用于可用场景下映射到当前 active CLI run。
 - 每个后续派发的 Graph 节点 prompt 都会注入当前 `graph.json` 的全图拓扑、节点清单、边清单、当前位置、直接上下游、上游/下游链路、同批 active 节点、`writeFiles` / `conflictGroup` 冲突线索和下游 test/review/merge/summary 职责。这样实现节点知道图中已有后续测试或评审节点时，只完成自身 acceptance 和最小必要自检，不替代下游节点的完整验证、评审或最终总结。
 - 普通“打开 Graph 运行图” `openGraphRun` action 只由主 Graph tab / 图级系统消息按同一 run 输出一次，Graph 节点/子任务 conversation tab 不再重复展示；点击后打开独立 `GraphRunPanel`，并仍支持指定 `graphRunId` / `nodeId`。当前 Graph tab 在会话标签上显示 `🗺️` 标识，active Graph tab 的底部运行状态行固定提供“打开 Graph 图”按钮，入口与 Loop 的“打开群聊”按钮同级。
 - Graph 正式开始后，主 Graph tab 的视觉运行态跟随图级生命周期，而不是跟随某个节点 tab 的 CLI 进程生命周期；`running`、`sleeping`、`needs-review` 等未完成状态保持主 tab 运行中，只有图级 `completed`、`error` 或 `stopped` 才释放为非运行态。节点 tab 仍按各自 `runPrompt` 执行流独立开始和结束。
@@ -38,8 +38,8 @@
 
 - 尚无图编辑器、模板库、运行前人工调整、DAG 结构编辑、边/节点编辑或图 diff；当前节点拖拽、背景拖拽平移、12-port 连线、短边目的标签、Start/Decision/End/Step 语义 chip 和按节点类型着色的矩形卡片都仅用于调整/增强 GraphRunPanel 内当前 run 的视觉表达，不修改 DAG 结构、调度语义或节点类型体系。
 - 尚无完整 human gate 表单、审批说明采集、驳回原因、多步骤人工工作流或多人审批；当前只支持已处于可批准状态的 `human_gate` 节点按钮/CTA 推进。
-- Retry 覆盖 failed / blocked 等可恢复节点：若节点记录了 `baseCommit` 且 run 有 worktree，宿主会在该独立 worktree 内 `reset --hard` 到节点执行前 checkpoint 并清理未跟踪文件，然后把节点重置为 pending。验证类节点（test/review/merge/human_gate/summary）failed 或 blocked 时，面板可触发 Feedback rollback：宿主优先按 active `review_feedback` / `if_fail` 边及 edge metadata 选择返工目标，记录 target selection、候选节点、reset scope、feedback reason 和触发 edge；实际 reset 仍保守覆盖目标节点及其下游，并把被重置节点写入 `rework` 记录，后续 prompt 和 summary 可见返工来源、范围和原因。
-- 完成态合回不要求目标工作区完全干净；不相关 dirty 内容可与 Graph diff 同时存在，由 Git 原生 merge 检查决定是否能安全应用。合回不会自动提交或自动解决冲突；成功合回后会清理 Graph worktree 和对应 Graph 分支，清理失败会进入 `needs-review`。
+- Retry 覆盖 failed / blocked 等可恢复节点：worktree 模式下若节点记录了 `baseCommit`，宿主会在该独立 worktree 内 `reset --hard` 到节点执行前 checkpoint 并清理未跟踪文件，然后把节点重置为 pending；direct 模式没有 checkpoint，只能在当前工作区状态上重跑节点。验证类节点（test/review/merge/human_gate/summary）failed 或 blocked 时，面板可在 worktree/baseCommit 可用时触发 Feedback rollback：宿主优先按 active `review_feedback` / `if_fail` 边及 edge metadata 选择返工目标，记录 target selection、候选节点、reset scope、feedback reason 和触发 edge；实际 reset 仍保守覆盖目标节点及其下游，并把被重置节点写入 `rework` 记录，后续 prompt 和 summary 可见返工来源、范围和原因。direct 模式不提供 Feedback rollback。
+- 完成态合回不要求目标工作区完全干净；不相关 dirty 内容可与 Graph diff 同时存在，由 Git 原生 merge 检查决定是否能安全应用。worktree 模式合回不会自动提交或自动解决冲突；成功合回后会清理 Graph worktree、空的 `graph-worktrees` 父目录和对应 Graph 分支，清理失败会进入 `needs-review`。direct 模式没有合回步骤，完成态表示改动已直接写入当前工作区。
 - Stop 至少保证 Graph run / node 状态和事件落盘为 stopped；只有 active CLI run 已携带 `graphRunId` / `graphNodeId` 映射时才会发送真实 CLI 停止请求，且真实进程是否退出取决于底层 CLI 响应；缺少映射时明确提示未确认真实进程停止。该边界是实现和文档事实，不再作为 Graph UI 固定说明常驻展示。
 - 尚未提供模板选择、AI 规划图生成前的用户确认、运行中即时打断重规划、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、证据文件正文读取、自动生成修复分支或可复用流程资产。
 
@@ -54,9 +54,9 @@
 | 并发 | 已完成基础能力 | Scheduler 选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 6)` 并行派发独立节点 tab | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
 | 冲突组 | 已完成基础能力 | `conflictGroup`、`writeFiles` 路径重叠和未声明写入范围可阻止同批/运行中冲突 | 只能做声明式与路径级冲突判断，尚无语义冲突检测、自动合并策略或冲突解释 UI |
 | 人工关卡 | 部分完成 | `human_gate` 节点可进入 waiting/ready，GraphRunPanel 提供 Approve 推进；需要审批时尽量自动打开/刷新面板并选中待审批节点，系统消息和节点详情可显示“请你审批，点击这里” | 尚无审批表单、风险说明采集、驳回原因、多人审批和人工步骤产物采集 |
-| 重试 / 返工 | 部分完成 | failed/blocked 节点可 Retry；有 worktree/baseCommit 时可回滚到节点前 checkpoint 并重新调度；验证类节点可 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点及下游写入 `rework` | 尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
+| 重试 / 返工 | 部分完成 | failed/blocked 节点可 Retry；worktree 模式有 baseCommit 时可回滚到节点前 checkpoint 并重新调度，direct 模式只能在当前工作区状态上重跑；验证类节点可在 worktree/baseCommit 可用时 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点及下游写入 `rework` | direct 模式无自动回滚；尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
 | 睡眠 | 已完成基础能力 | `sleep` 节点支持 `wakeAt`、sleeping 状态、auto wake 恢复和到期继续 tick | 尚无日历式 UI、外部守护进程、跨设备唤醒和复杂等待条件 |
-| 完成证据 | 部分完成 | 节点 `## JSON`、communication file、events.jsonl、artifactRef、checkpoint commit、summary finalAnswer 和完成态 merge-back event 构成证据链；节点详情已有 Evidence/证据区聚合选中节点证据引用、事件和最终证据 | 证据区不读取文件正文；尚无证据边聚合视图、验收覆盖率检查和证据缺失自动阻断矩阵 |
+| 完成证据 | 部分完成 | 节点 `## JSON`、communication file、events.jsonl、artifactRef、summary finalAnswer 和完成态 execution event 构成基础证据链；worktree 模式额外保留 checkpoint commit 与 merge-back event；节点详情已有 Evidence/证据区聚合选中节点证据引用、事件和最终证据 | direct 模式无 checkpoint/merge-back 证据；证据区不读取文件正文；尚无证据边聚合视图、验收覆盖率检查和证据缺失自动阻断矩阵 |
 | 节点全图感知 | 已完成基础能力 | 后续派发节点的 prompt 会包含全图拓扑、当前位置、上下游链路、并发/冲突提示和下游职责边界 | 已运行中的节点不会被即时打断重注入；后续仍可做运行中 replan / prompt diff / 用户确认 |
 
 外部舆论和研究已经出现几条稳定信号：
@@ -166,6 +166,8 @@ type GraphRunRecord = {
   edges: GraphEdgeRecord[];
   eventsFile: string;
   communicationDir: string;
+  executionMode?: "worktree" | "direct";
+  directExecution?: { cwd: string; reason?: string; createdAt?: number };
   worktree?: { cwd: string; branch: string; baseCommit: string; createdAt?: number };
   finalAnswer?: GraphFinalAnswer;
 };
@@ -216,6 +218,7 @@ type GraphNodeRecord = {
   completedAt?: number;
   lastError?: string;
   rework?: GraphNodeReworkRecord;
+  executionCwd?: string;
   worktreeCwd?: string;
   baseCommit?: string;
   commit?: string;
@@ -294,7 +297,7 @@ type GraphEdgeMetadata = {
 ~/.sinitek_cli/graph-worktrees/<graphRunId>/
 ```
 
-`graph.json` 保存 realized graph 快照；`events.jsonl` 保存追加式运行事件；`nodes/<nodeId>.md` 保存节点 prompt、输出、验证证据和人工批注；`graph-worktrees/<graphRunId>/` 保存该 run 的独立 git worktree。文件状态和 git checkpoint 共同构成可回退事实来源，内存 scheduler 只是执行视图。
+`graph.json` 保存 realized graph 快照；`events.jsonl` 保存追加式运行事件；`nodes/<nodeId>.md` 保存节点 prompt、输出、验证证据和人工批注；worktree 模式下 `graph-worktrees/<graphRunId>/` 保存该 run 的独立 git worktree；direct 模式下不会创建该目录，节点直接写当前工作区。文件状态和结构化事件共同构成执行事实来源；worktree 模式额外用 git checkpoint 支撑回退，内存 scheduler 只是执行视图。
 
 ## 调度语义
 
@@ -311,7 +314,7 @@ Scheduler 每次从持久化状态读取图并计算 ready nodes：
 
 节点完成后只允许通过结构化结果更新状态：
 
-- `passed`：产物满足 acceptance，宿主读取节点 communication file 的 `## JSON` 后创建 checkpoint commit，并激活后续 `if_pass` 边。
+- `passed`：产物满足 acceptance，宿主读取节点 communication file 的 `## JSON` 后更新节点状态；worktree 模式会创建 checkpoint commit，direct 模式只记录 execution cwd；随后激活后续 `if_pass` 边。
 - `failed`：运行失败但可重试，激活 retry 或 `if_fail` 边。
 - `blocked`：需要用户或上游设计变更，Graph 进入 `needs-review` 或等待 human gate。
 - `skipped`：条件边未命中。
@@ -320,7 +323,7 @@ Scheduler 每次从持久化状态读取图并计算 ready nodes：
 
 Graph 节点不是新的 CLI 类型。每个可执行节点都转换为当前 runner 能理解的一次任务：
 
-- `implement` 节点：类似 Loop 子任务，但运行 cwd 是 Graph run 的独立 git worktree；基线五节点图默认授权实现、测试、评审节点写入整个 worktree，宿主通过 checkpoint commit 支撑回退。
+- `implement` 节点：类似 Loop 子任务；worktree 模式运行 cwd 是 Graph run 的独立 git worktree，direct fallback 模式运行 cwd 是当前工作区。基线五节点图默认授权实现、测试、评审节点写入整个执行目录；只有 worktree 模式通过 checkpoint commit 支撑回退。
 - `review` / `test` 节点：优先只读，除非模板显式允许写入测试或修复建议。
 - `debate` 节点：可复用现有红蓝辩论 artifact 和共识校验能力。
 - `summary` 节点：读取 Graph events 和 node artifacts，生成最终答复。

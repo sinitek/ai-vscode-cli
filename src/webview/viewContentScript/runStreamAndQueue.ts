@@ -39,6 +39,33 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         return String(content);
       }
 
+      function getRunStreamContentByteLength(content) {
+        const normalized = normalizeRunStreamRecordContent(content);
+        if (!normalized) {
+          return 0;
+        }
+        if (typeof TextEncoder !== "undefined") {
+          return new TextEncoder().encode(normalized).length;
+        }
+        return normalized.length;
+      }
+
+      function trimRunStreamContentToMaxBytes(content, maxBytes) {
+        if (maxBytes <= 0) {
+          return "";
+        }
+        let normalized = normalizeRunStreamRecordContent(content);
+        if (getRunStreamContentByteLength(normalized) <= maxBytes) {
+          return normalized;
+        }
+        while (normalized && getRunStreamContentByteLength(normalized) > maxBytes) {
+          const overflowBytes = getRunStreamContentByteLength(normalized) - maxBytes;
+          const charsToDrop = Math.max(1, Math.ceil(overflowBytes / 4));
+          normalized = normalized.slice(charsToDrop);
+        }
+        return normalized;
+      }
+
       function buildRunStreamPreview(content) {
         const normalized = String(content || "")
           .replace(/\\r\\n/g, "\\n")
@@ -260,6 +287,13 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
 
         const list = document.createElement("div");
         list.className = "run-stream-list";
+        const discardedCount = runtimeState.runStreamDiscardedRecordCount || 0;
+        if (discardedCount > 0) {
+          const notice = document.createElement("div");
+          notice.className = "run-stream-truncation";
+          notice.textContent = t("runStreamTruncated", { count: discardedCount });
+          list.appendChild(notice);
+        }
         runtimeState.runStreamRecords.forEach((record, index) => {
           list.appendChild(renderRunStreamRecord(record, index, runtimeState));
         });
@@ -282,6 +316,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         }
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamRecords.length = 0;
+        runtimeState.runStreamRetainedBytes = 0;
+        runtimeState.runStreamDiscardedRecordCount = 0;
+        runtimeState.runStreamDiscardedBytes = 0;
         runtimeState.runStreamOpenRecordIds.clear();
         runtimeState.overlays.runStream = false;
         runStreamExportPending = false;
@@ -295,7 +332,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function appendRunRawStream(content, source, tabId) {
-        const normalizedContent = normalizeRunStreamRecordContent(content);
+        const normalizedContent = trimRunStreamContentToMaxBytes(content, RUN_STREAM_MAX_BYTES);
         if (!normalizedContent) {
           return;
         }
@@ -303,6 +340,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState) {
           return;
         }
+        const contentBytes = getRunStreamContentByteLength(normalizedContent);
         runtimeState.runStreamRecordCounter += 1;
         runtimeState.runStreamRecords.push({
           id: "stream-record-" + runtimeState.runStreamRecordCounter,
@@ -310,6 +348,22 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           source: normalizeRunStreamSource(source),
           createdAt: Date.now(),
         });
+        runtimeState.runStreamRetainedBytes = (runtimeState.runStreamRetainedBytes || 0) + contentBytes;
+        while (
+          runtimeState.runStreamRecords.length > RUN_STREAM_MAX_RECORDS
+          || runtimeState.runStreamRetainedBytes > RUN_STREAM_MAX_BYTES
+        ) {
+          const removed = runtimeState.runStreamRecords.shift();
+          if (!removed) {
+            runtimeState.runStreamRetainedBytes = 0;
+            break;
+          }
+          const removedBytes = getRunStreamContentByteLength(removed.content);
+          runtimeState.runStreamRetainedBytes = Math.max(0, (runtimeState.runStreamRetainedBytes || 0) - removedBytes);
+          runtimeState.runStreamDiscardedRecordCount = (runtimeState.runStreamDiscardedRecordCount || 0) + 1;
+          runtimeState.runStreamDiscardedBytes = (runtimeState.runStreamDiscardedBytes || 0) + removedBytes;
+          runtimeState.runStreamOpenRecordIds.delete(removed.id);
+        }
         if (isRuntimeStateForActiveTab(tabId)) {
           updateRunStreamContent();
           updateRunStreamButton();
