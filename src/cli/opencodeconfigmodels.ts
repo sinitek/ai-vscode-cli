@@ -1,4 +1,7 @@
-export type OpenCodeModelRole = "primary" | "small";
+export type OpenCodeCanonicalModelRole = "main" | "subtask";
+export type OpenCodeLegacyModelRole = "primary" | "small";
+export type OpenCodeModelRole = OpenCodeCanonicalModelRole | OpenCodeLegacyModelRole;
+export type OpenCodeModelRoleInput = OpenCodeModelRole;
 
 export type OpenCodeConfigModelIssueCode =
   | "invalid-json"
@@ -49,16 +52,24 @@ export type OpenCodeConfigModelCandidate = OpenCodeModelReference & {
 export type ParsedOpenCodeConfigModels = {
   config: Record<string, unknown> | null;
   candidates: OpenCodeConfigModelCandidate[];
+  mainModelRef: string | null;
+  subtaskModelRef: string | null;
+  mainModel: OpenCodeConfigModelCandidate | null;
+  subtaskModel: OpenCodeConfigModelCandidate | null;
+  /** @deprecated OpenCode config `model` compatibility alias for the main role. */
   primaryModelRef: string | null;
+  /** @deprecated OpenCode config `small_model` compatibility alias for the subtask role. */
   smallModelRef: string | null;
+  /** @deprecated OpenCode config `model` compatibility alias for the main role. */
   primaryModel: OpenCodeConfigModelCandidate | null;
+  /** @deprecated OpenCode config `small_model` compatibility alias for the subtask role. */
   smallModel: OpenCodeConfigModelCandidate | null;
   issues: OpenCodeConfigModelIssue[];
 };
 
 export type OpenCodeModelOverrideValidation = {
   ok: boolean;
-  role: OpenCodeModelRole;
+  role: OpenCodeCanonicalModelRole;
   modelRef: string | null;
   issue: OpenCodeConfigModelIssue | null;
 };
@@ -72,6 +83,14 @@ export type OpenCodeRuntimeConfigOverlayResult = {
 type ModelDeclaration = {
   unavailableReason: string | null;
 };
+
+export function normalizeOpenCodeModelRole(role: OpenCodeModelRoleInput): OpenCodeCanonicalModelRole {
+  return role === "small" || role === "subtask" ? "subtask" : "main";
+}
+
+export function toOpenCodeConfigFieldRole(role: OpenCodeModelRoleInput): OpenCodeLegacyModelRole {
+  return normalizeOpenCodeModelRole(role) === "subtask" ? "small" : "primary";
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -166,20 +185,21 @@ function readConfiguredRef(value: unknown): string | null {
 }
 
 function validateConfiguredRole(
-  role: OpenCodeModelRole,
+  rawRole: OpenCodeModelRoleInput,
   rawValue: unknown,
   config: Record<string, unknown>,
   candidatesByRef: Map<string, OpenCodeConfigModelCandidate>,
   declarationsByRef: Map<string, ModelDeclaration>,
   issues: OpenCodeConfigModelIssue[]
 ): OpenCodeConfigModelCandidate | null {
+  const role = normalizeOpenCodeModelRole(rawRole);
   if (rawValue === undefined || rawValue === null || (typeof rawValue === "string" && !rawValue.trim())) {
-    if (role === "primary") {
+    if (role === "main") {
       addIssue(issues, {
         code: "role-model-missing",
         severity: "error",
         role,
-        message: "OpenCode primary model is missing; configure top-level model as an exact provider/model reference.",
+        message: "OpenCode main model is missing; configure top-level model as an exact provider/model reference.",
       });
     }
     return null;
@@ -390,27 +410,35 @@ function parseOpenCodeConfigObject(config: Record<string, unknown>): ParsedOpenC
   }
 
   const candidatesByRef = new Map(candidates.map((candidate) => [candidate.ref, candidate]));
+  const mainModelRef = readConfiguredRef(config.model);
+  const subtaskModelRef = readConfiguredRef(config.small_model);
+  const mainModel = validateConfiguredRole(
+    "main",
+    config.model,
+    config,
+    candidatesByRef,
+    declarationsByRef,
+    issues
+  );
+  const subtaskModel = validateConfiguredRole(
+    "subtask",
+    config.small_model,
+    config,
+    candidatesByRef,
+    declarationsByRef,
+    issues
+  );
   return {
     config,
     candidates,
-    primaryModelRef: readConfiguredRef(config.model),
-    smallModelRef: readConfiguredRef(config.small_model),
-    primaryModel: validateConfiguredRole(
-      "primary",
-      config.model,
-      config,
-      candidatesByRef,
-      declarationsByRef,
-      issues
-    ),
-    smallModel: validateConfiguredRole(
-      "small",
-      config.small_model,
-      config,
-      candidatesByRef,
-      declarationsByRef,
-      issues
-    ),
+    mainModelRef,
+    subtaskModelRef,
+    mainModel,
+    subtaskModel,
+    primaryModelRef: mainModelRef,
+    smallModelRef: subtaskModelRef,
+    primaryModel: mainModel,
+    smallModel: subtaskModel,
     issues,
   };
 }
@@ -435,6 +463,10 @@ function emptyParsedResult(message: string): ParsedOpenCodeConfigModels {
   return {
     config: null,
     candidates: [],
+    mainModelRef: null,
+    subtaskModelRef: null,
+    mainModel: null,
+    subtaskModel: null,
     primaryModelRef: null,
     smallModelRef: null,
     primaryModel: null,
@@ -445,9 +477,10 @@ function emptyParsedResult(message: string): ParsedOpenCodeConfigModels {
 
 export function validateOpenCodeModelOverride(
   parsed: ParsedOpenCodeConfigModels,
-  role: OpenCodeModelRole,
+  rawRole: OpenCodeModelRoleInput,
   value: string | null | undefined
 ): OpenCodeModelOverrideValidation {
+  const role = normalizeOpenCodeModelRole(rawRole);
   if (value === null || value === undefined || !value.trim()) {
     return { ok: true, role, modelRef: null, issue: null };
   }
@@ -480,16 +513,24 @@ export function validateOpenCodeModelOverride(
 export function applyOpenCodeRuntimeModelOverlay(
   config: Readonly<Record<string, unknown>>,
   overrides: {
+    main?: string | null;
+    subtask?: string | null;
+    mainVariant?: string | null;
+    subtaskVariant?: string | null;
+    /** @deprecated Use main. */
     primary?: string | null;
+    /** @deprecated Use subtask. */
     small?: string | null;
+    /** @deprecated Use mainVariant. */
     primaryVariant?: string | null;
+    /** @deprecated Use subtaskVariant. */
     smallVariant?: string | null;
   }
 ): OpenCodeRuntimeConfigOverlayResult {
   const parsed = parseOpenCodeConfigObject(config as Record<string, unknown>);
-  const primary = validateOpenCodeModelOverride(parsed, "primary", overrides.primary);
-  const small = validateOpenCodeModelOverride(parsed, "small", overrides.small);
-  const issues = [primary.issue, small.issue].filter(
+  const main = validateOpenCodeModelOverride(parsed, "main", overrides.main ?? overrides.primary);
+  const subtask = validateOpenCodeModelOverride(parsed, "subtask", overrides.subtask ?? overrides.small);
+  const issues = [main.issue, subtask.issue].filter(
     (issue): issue is OpenCodeConfigModelIssue => issue !== null
   );
   if (issues.length > 0) {
@@ -497,11 +538,12 @@ export function applyOpenCodeRuntimeModelOverlay(
   }
 
   const overlay: Record<string, unknown> = { ...config };
-  if (primary.modelRef !== null) {
-    overlay.model = primary.modelRef;
+  if (main.modelRef !== null) {
+    overlay.model = main.modelRef;
   }
-  if (small.modelRef !== null) {
-    overlay.small_model = small.modelRef;
+  if (subtask.modelRef !== null) {
+    // OpenCode CLI still consumes small_model; the plugin treats it as the subtask-role adapter field.
+    overlay.small_model = subtask.modelRef;
   }
   const applyVariant = (modelRef: string | null, variant: string | null | undefined): void => {
     const normalizedVariant = typeof variant === "string" ? variant.trim() : "";
@@ -540,7 +582,7 @@ export function applyOpenCodeRuntimeModelOverlay(
     providers[reference.providerId] = provider;
     overlay.provider = providers;
   };
-  applyVariant(primary.modelRef, overrides.primaryVariant);
-  applyVariant(small.modelRef, overrides.smallVariant);
+  applyVariant(main.modelRef, overrides.mainVariant ?? overrides.primaryVariant);
+  applyVariant(subtask.modelRef, overrides.subtaskVariant ?? overrides.smallVariant);
   return { ok: true, config: overlay, issues: [] };
 }

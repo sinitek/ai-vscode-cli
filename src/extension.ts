@@ -72,9 +72,12 @@ import {
   applyOpenCodeRuntimeMultiAgentEnvOverrides,
   applyOpenCodeRuntimeMultiAgentPermission,
   applyOpenCodeRuntimeModelOverlay,
+  normalizeOpenCodeModelRole,
   parseOpenCodeConfigModels,
+  toOpenCodeConfigFieldRole,
   validateOpenCodeModelOverride,
-  type OpenCodeModelRole,
+  type OpenCodeCanonicalModelRole,
+  type OpenCodeModelRoleInput,
 } from "./cli/opencodeconfigmodels";
 import { getCliDisplayName, getCliInstallCommand, getCodeGraphInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
@@ -437,6 +440,7 @@ import {
   getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
   getSelectedLoopCliModelFromStore,
+  getSelectedLoopThinkingModeFromStore,
   loadModelStore as loadModelSelectionStore,
   mergeUniqueModelNames,
   moveCliModelInStore,
@@ -445,6 +449,7 @@ import {
   renameCliModelInStore,
   selectCliModelInStore,
   selectCliLoopModelInStore,
+  setSelectedLoopThinkingModeInStore,
   setOpenCodeRoleModelInStore,
   setOpenCodeRoleVariantInStore,
   setOpenCodeVariantInStore,
@@ -655,6 +660,7 @@ const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
+const graphBlockedPromptKeys = new Set<string>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 let loopAutoWakeScheduler: LoopAutoWakeScheduler | null = null;
 let graphAutoWakeScheduler: GraphAutoWakeScheduler | null = null;
@@ -785,7 +791,7 @@ let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeModelsState: PanelState["openCodeModels"] = undefined;
 let openCodeThinkingContextKey = "";
 let openCodeThinkingConfigId: string | null = null;
-let openCodeThinkingExactModels: Record<OpenCodeModelRole, string | null> = { primary: null, small: null };
+let openCodeThinkingExactModels: Record<OpenCodeCanonicalModelRole, string | null> = { main: null, subtask: null };
 let openCodeThinkingRequestId = 0;
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
@@ -1168,6 +1174,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     setCliModelThinkingMode,
     getSelectedCliModel,
     getSelectedLoopCliModel,
+    getSelectedLoopThinkingMode,
+    setSelectedLoopThinkingMode,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
     setWorkspaceLoopExecutionModeForCli,
@@ -1280,15 +1288,17 @@ function buildDefaultOpenCodeThinkingState(
   };
 }
 
-function getOpenCodeThinkingStateForRole(role: OpenCodeModelRole): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
-  return role === "small" ? openCodeSmallThinkingState : openCodeThinkingState;
+function getOpenCodeThinkingStateForRole(
+  role: OpenCodeModelRoleInput
+): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
+  return normalizeOpenCodeModelRole(role) === "subtask" ? openCodeSmallThinkingState : openCodeThinkingState;
 }
 
 function setOpenCodeThinkingStateForRole(
-  role: OpenCodeModelRole,
+  role: OpenCodeModelRoleInput,
   state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">
 ): void {
-  if (role === "small") {
+  if (normalizeOpenCodeModelRole(role) === "subtask") {
     openCodeSmallThinkingState = state;
     return;
   }
@@ -1298,11 +1308,12 @@ function setOpenCodeThinkingStateForRole(
 function persistOpenCodeVariant(
   configId: string | null,
   exactModel: string | null,
-  role: OpenCodeModelRole,
+  role: OpenCodeModelRoleInput,
   variant: string | null
 ): void {
-  let nextStore = setOpenCodeRoleVariantInStore(modelStore, configId, exactModel, role, variant);
-  if (role === "primary") {
+  const normalizedRole = normalizeOpenCodeModelRole(role);
+  let nextStore = setOpenCodeRoleVariantInStore(modelStore, configId, exactModel, normalizedRole, variant);
+  if (normalizedRole === "main") {
     nextStore = setOpenCodeVariantInStore(nextStore, configId, exactModel, variant);
   }
   if (nextStore === modelStore) {
@@ -1312,40 +1323,59 @@ function persistOpenCodeVariant(
   writeModelStore(modelStore);
 }
 
-function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRole, value: string | null): void {
+function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRoleInput, value: string | null): void {
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   if (currentCli !== "opencode" || !openCodeThinkingConfigId) {
     return;
   }
-  const exactModel = openCodeThinkingExactModels[role];
+  const exactModel = openCodeThinkingExactModels[normalizedRole];
   if (!exactModel) {
     return;
   }
-  const currentState = getOpenCodeThinkingStateForRole(role);
+  const currentState = getOpenCodeThinkingStateForRole(normalizedRole);
   const nextVariant = value && currentState.options.some((option) => option.value === value)
     ? value
     : null;
-  persistOpenCodeVariant(openCodeThinkingConfigId, exactModel, role, nextVariant);
-  setOpenCodeThinkingStateForRole(role, {
+  persistOpenCodeVariant(openCodeThinkingConfigId, exactModel, normalizedRole, nextVariant);
+  setOpenCodeThinkingStateForRole(normalizedRole, {
     ...currentState,
     selectedVariant: nextVariant,
   });
 }
 
+type ResolvedOpenCodeRoleModels = {
+  main: string | null;
+  subtask: string | null;
+  fallback: Partial<Record<OpenCodeCanonicalModelRole, string>>;
+};
+
 function resolveOpenCodeRoleModelsForConfig(
   configId: string | null,
   configContent: string
-): { primary: string | null; small: string | null } {
+): ResolvedOpenCodeRoleModels {
   const parsed = parseOpenCodeConfigModels(configContent);
   const issues = [...parsed.issues];
   let nextStore = modelStore;
 
   if (configId) {
-    const legacyPrimary = normalizeCliModelName(modelStore.selectedByConfigId?.[configId]);
-    const storedPrimary = getOpenCodeRoleModelFromStore(modelStore, configId, "primary");
-    if (!storedPrimary && legacyPrimary) {
-      const legacyValidation = validateOpenCodeModelOverride(parsed, "primary", legacyPrimary);
+    const legacyMain = normalizeCliModelName(modelStore.selectedByConfigId?.[configId]);
+    const legacyLoopMain = normalizeCliModelName(modelStore.selectedLoopByConfigId?.[configId]?.main);
+    const legacyLoopSubtask = normalizeCliModelName(modelStore.selectedLoopByConfigId?.[configId]?.subtask);
+    const storedMain = getOpenCodeRoleModelFromStore(modelStore, configId, "main");
+    const storedSubtask = getOpenCodeRoleModelFromStore(modelStore, configId, "subtask");
+    if (!storedMain) {
+      const legacyCandidate = legacyLoopMain ?? legacyMain;
+      if (legacyCandidate) {
+        const legacyValidation = validateOpenCodeModelOverride(parsed, "main", legacyCandidate);
+        if (legacyValidation.ok && legacyValidation.modelRef) {
+          nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "main", legacyValidation.modelRef);
+        }
+      }
+    }
+    if (!storedSubtask && legacyLoopSubtask) {
+      const legacyValidation = validateOpenCodeModelOverride(parsed, "subtask", legacyLoopSubtask);
       if (legacyValidation.ok && legacyValidation.modelRef) {
-        nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "primary", legacyValidation.modelRef);
+        nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "subtask", legacyValidation.modelRef);
       }
     }
     if (
@@ -1362,7 +1392,7 @@ function resolveOpenCodeRoleModelsForConfig(
     }
   }
 
-  const resolveRole = (role: OpenCodeModelRole): string | null => {
+  const resolveRole = (role: OpenCodeCanonicalModelRole): string | null => {
     const override = getOpenCodeRoleModelFromStore(nextStore, configId, role);
     if (override) {
       const validation = validateOpenCodeModelOverride(parsed, role, override);
@@ -1374,13 +1404,18 @@ function resolveOpenCodeRoleModelsForConfig(
       }
       nextStore = setOpenCodeRoleModelInStore(nextStore, configId, role, null);
     }
-    return role === "primary"
-      ? parsed.primaryModel?.ref ?? null
-      : parsed.smallModel?.ref ?? null;
+    return role === "main"
+      ? parsed.mainModel?.ref ?? null
+      : parsed.subtaskModel?.ref ?? null;
   };
 
-  const primary = resolveRole("primary");
-  const small = resolveRole("small");
+  const main = resolveRole("main");
+  const configuredSubtask = resolveRole("subtask");
+  const fallback: Partial<Record<OpenCodeCanonicalModelRole, string>> = {};
+  const subtask = configuredSubtask ?? main;
+  if (!configuredSubtask && main) {
+    fallback.subtask = "subtask model missing; using main model";
+  }
   if (nextStore !== modelStore) {
     modelStore = nextStore;
     writeModelStore(modelStore);
@@ -1392,17 +1427,17 @@ function resolveOpenCodeRoleModelsForConfig(
       providerId: candidate.providerId,
       modelId: candidate.modelId,
     })),
-    configPrimaryRef: parsed.primaryModelRef,
-    configSmallRef: parsed.smallModelRef,
-    selectedPrimaryRef: primary,
-    selectedSmallRef: small,
+    configPrimaryRef: parsed.mainModelRef,
+    configSmallRef: parsed.subtaskModelRef,
+    selectedPrimaryRef: main,
+    selectedSmallRef: subtask,
     issues: issues.map((issue) => ({
-      ...(issue.role ? { role: issue.role } : {}),
+      ...(issue.role ? { role: toOpenCodeConfigFieldRole(issue.role) } : {}),
       code: issue.code,
       messageKey: `opencodeModels.issue.${issue.code}`,
     })),
   };
-  return { primary, small };
+  return { main, subtask, fallback };
 }
 
 async function refreshOpenCodeThinkingState(configState: PanelState["configState"]): Promise<void> {
@@ -1410,7 +1445,7 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     openCodeThinkingRequestId += 1;
     openCodeThinkingContextKey = `inactive:${currentCli}`;
     openCodeThinkingConfigId = null;
-    openCodeThinkingExactModels = { primary: null, small: null };
+    openCodeThinkingExactModels = { main: null, subtask: null };
     openCodeThinkingState = buildDefaultOpenCodeThinkingState();
     openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
     openCodeModelsState = undefined;
@@ -1429,8 +1464,8 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     command,
     configId ?? "current",
     configHash,
-    roleModels.primary ?? "",
-    roleModels.small ?? "",
+    roleModels.main ?? "",
+    roleModels.subtask ?? "",
   ].join("\u0000");
   if (contextKey === openCodeThinkingContextKey) {
     return;
@@ -1438,9 +1473,12 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
 
   openCodeThinkingContextKey = contextKey;
   openCodeThinkingConfigId = configId;
-  openCodeThinkingExactModels = roleModels;
+  openCodeThinkingExactModels = {
+    main: roleModels.main,
+    subtask: roleModels.subtask,
+  };
   const requestId = ++openCodeThinkingRequestId;
-  const refreshRoleThinking = (role: OpenCodeModelRole, exactModel: string | null): void => {
+  const refreshRoleThinking = (role: OpenCodeCanonicalModelRole, exactModel: string | null): void => {
     setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
       exactModel ? "loading" : "select-model",
       exactModel
@@ -1487,8 +1525,8 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
       void postPanelState();
     });
   };
-  refreshRoleThinking("primary", roleModels.primary);
-  refreshRoleThinking("small", roleModels.small);
+  refreshRoleThinking("main", roleModels.main);
+  refreshRoleThinking("subtask", roleModels.subtask);
 }
 
 function getOpenCodeVariantForRun(
@@ -1496,18 +1534,19 @@ function getOpenCodeVariantForRun(
   model: string | null | undefined,
   configId: string | null,
   configContent: string | null | undefined,
-  role: OpenCodeModelRole = "primary"
+  role: OpenCodeModelRoleInput = "main"
 ): string | null {
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   if (cli !== "opencode" || !configId) {
     return null;
   }
   const resolution = resolveOpenCodeModelForConfig(model, configContent);
   const exactModel = resolution.error ? null : resolution.model;
-  if (!exactModel || exactModel !== openCodeThinkingExactModels[role] || configId !== openCodeThinkingConfigId) {
+  if (!exactModel || exactModel !== openCodeThinkingExactModels[normalizedRole] || configId !== openCodeThinkingConfigId) {
     return null;
   }
-  const state = getOpenCodeThinkingStateForRole(role);
-  const variant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role);
+  const state = getOpenCodeThinkingStateForRole(normalizedRole);
+  const variant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, normalizedRole);
   return variant && state.options.some((option) => option.value === variant)
     ? variant
     : null;
@@ -2045,47 +2084,108 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
 type OpenCodeRuntimePreparation = {
   envOverrides: Record<string, string>;
   configContent: string;
+  role: OpenCodeCanonicalModelRole;
+  mainModel: string;
+  subtaskModel: string | null;
+  effectiveModel: string;
+  mainVariant: string | null;
+  subtaskVariant: string | null;
+  effectiveVariant: string | null;
+  modelFallback: string;
+  /** @deprecated Adapter alias for OpenCode CLI config `model`. */
   primaryModel: string;
+  /** @deprecated Adapter alias for OpenCode CLI config `small_model`. */
   smallModel: string | null;
+  /** @deprecated Adapter alias for the main role variant. */
   primaryVariant: string | null;
+  /** @deprecated Adapter alias for the subtask role variant. */
   smallVariant: string | null;
 };
 
+type OpenCodeRuntimePreparationInput = {
+  configId?: string | null;
+  role?: OpenCodeModelRoleInput;
+  model?: string | null;
+};
+
+function normalizeOpenCodeRuntimePreparationInput(
+  input?: string | null | OpenCodeRuntimePreparationInput
+): Required<Pick<OpenCodeRuntimePreparationInput, "configId">> & {
+  role: OpenCodeCanonicalModelRole;
+  model: string | null;
+} {
+  if (typeof input === "string" || input === null) {
+    return {
+      configId: input ?? getActiveConfigIdForCli("opencode"),
+      role: "main",
+      model: null,
+    };
+  }
+  return {
+    configId: input?.configId ?? getActiveConfigIdForCli("opencode"),
+    role: normalizeOpenCodeModelRole(input?.role ?? "main"),
+    model: normalizeCliModelName(input?.model) ?? null,
+  };
+}
+
 async function prepareOpenCodeRuntime(
-  configId: string | null = getActiveConfigIdForCli("opencode")
+  input?: string | null | OpenCodeRuntimePreparationInput
 ): Promise<OpenCodeRuntimePreparation> {
+  const runtimeInput = normalizeOpenCodeRuntimePreparationInput(input);
+  const configId = runtimeInput.configId;
   const activeConfig = configId
     ? await configService.getConfigById("opencode", configId)
     : null;
   const current = activeConfig ?? await configService.getCurrentConfig("opencode");
   const configContent = current.content ?? "{}";
   const roles = resolveOpenCodeRoleModelsForConfig(configId, configContent);
-  if (!roles.primary) {
-    throw new Error("OpenCode primary model is unavailable; select a valid primary model from the active config.");
+  if (!roles.main) {
+    throw new Error("OpenCode main model is unavailable; select a valid main model from the active config.");
   }
-  const parsedConfig = parseOpenCodeConfigModels(configContent).config;
-  if (!parsedConfig) {
+  const parsedModels = parseOpenCodeConfigModels(configContent);
+  if (!parsedModels.config) {
     throw new Error("OpenCode config JSON is invalid.");
   }
-  const primaryVariant = getOpenCodeVariantForRun(
+  let effectiveModel = runtimeInput.role === "subtask"
+    ? roles.subtask ?? roles.main
+    : roles.main;
+  let modelFallback = runtimeInput.role === "subtask"
+    ? roles.fallback.subtask ?? "none"
+    : roles.fallback.main ?? "none";
+  if (runtimeInput.model) {
+    const validation = validateOpenCodeModelOverride(parsedModels, runtimeInput.role, runtimeInput.model);
+    if (!validation.ok || !validation.modelRef) {
+      throw new Error(validation.issue?.message ?? `OpenCode ${runtimeInput.role} model selection is invalid.`);
+    }
+    effectiveModel = validation.modelRef;
+    modelFallback = "none";
+  }
+  const mainVariant = getOpenCodeVariantForRun(
     "opencode",
-    roles.primary,
+    roles.main,
     configId,
     configContent,
-    "primary",
+    "main",
   );
-  const smallVariant = getOpenCodeVariantForRun(
+  const subtaskVariant = getOpenCodeVariantForRun(
     "opencode",
-    roles.small,
+    roles.subtask,
     configId,
     configContent,
-    "small",
+    "subtask",
   );
-  const overlay = applyOpenCodeRuntimeModelOverlay(parsedConfig, {
-    primary: roles.primary,
-    small: roles.small,
-    primaryVariant,
-    smallVariant,
+  const effectiveVariant = getOpenCodeVariantForRun(
+    "opencode",
+    effectiveModel,
+    configId,
+    configContent,
+    runtimeInput.role,
+  );
+  const overlay = applyOpenCodeRuntimeModelOverlay(parsedModels.config, {
+    main: roles.main,
+    subtask: roles.subtask,
+    mainVariant,
+    subtaskVariant,
   });
   if (!overlay.ok || !overlay.config) {
     throw new Error(overlay.issues.map((issue) => issue.message).join("\n"));
@@ -2105,12 +2205,16 @@ async function prepareOpenCodeRuntime(
   }
   void logInfo("opencode-runtime-profile", {
     configId,
-    primaryModel: roles.primary,
-    smallModel: roles.small,
-    primaryVariant,
-    smallVariant,
+    role: runtimeInput.role,
+    mainModel: roles.main,
+    subtaskModel: roles.subtask,
+    effectiveModel,
+    modelFallback,
+    mainVariant,
+    subtaskVariant,
+    effectiveVariant,
     multiAgentEnabled,
-    smallModelUsage: "opencode-internal-lightweight",
+    compatibilityFields: ["model", "small_model"],
   });
   return {
     envOverrides: applyOpenCodeRuntimeMultiAgentEnvOverrides(
@@ -2118,10 +2222,18 @@ async function prepareOpenCodeRuntime(
       multiAgentEnabled,
     ),
     configContent: runtimeConfigContent,
-    primaryModel: roles.primary,
-    smallModel: roles.small,
-    primaryVariant,
-    smallVariant,
+    role: runtimeInput.role,
+    mainModel: roles.main,
+    subtaskModel: roles.subtask,
+    effectiveModel,
+    mainVariant,
+    subtaskVariant,
+    effectiveVariant,
+    modelFallback,
+    primaryModel: roles.main,
+    smallModel: roles.subtask,
+    primaryVariant: mainVariant,
+    smallVariant: subtaskVariant,
   };
 }
 async function refreshCliInstallStatuses(): Promise<void> {
@@ -2770,13 +2882,14 @@ async function tickGraphRunToPauseFromControl(
   const activeConfigId = getActiveConfigIdForCli(target.cli);
   const prompt = graphRuntimeMessage("resumePrompt", { graphRunId: run.id });
   const modelFields = resolveGraphResumePromptModels(run, target.cli, activeConfigId);
-  const outcome = await tickGraphRunToPause(run, {
+  const promptInput = await hydrateOpenCodePromptRoleModels({
     displayPrompt: prompt,
     modelPrompt: run.rootPrompt || prompt,
     contextTags: [],
     ...modelFields,
     graphRunId: run.id,
-  }, target);
+  }, target.cli);
+  const outcome = await tickGraphRunToPause(run, promptInput, target);
   return {
     ok: true,
     changed: true,
@@ -2792,6 +2905,11 @@ function persistGraphRunControlResult(result: GraphRunControlResult): GraphRunRe
 }
 
 function persistGraphRunTickState(nextRun: GraphRunRecord): GraphRunRecord {
+  const latest = readGraphRunRecord(nextRun.id).run;
+  if (latest?.status === "stopped" && nextRun.status !== "stopped") {
+    refreshOpenGraphRunPanelForRun(latest.id);
+    return latest;
+  }
   const persisted = updateGraphRunRecord(nextRun.id, nextRun) ?? nextRun;
   refreshOpenGraphRunPanelForRun(persisted.id);
   return persisted;
@@ -3154,6 +3272,10 @@ type PromptRunInput = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopMainThinkingMode?: ThinkingMode;
+  loopSubtaskThinkingMode?: ThinkingMode;
+  loopMainModelFallback?: string;
+  loopSubtaskModelFallback?: string;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   imagePaths?: string[];
@@ -3190,8 +3312,42 @@ function resolvePromptRunModelForRole(input: PromptRunInput, role: GraphModelRol
     : (mainModel ?? subtaskModel);
 }
 
+function resolvePromptRunThinkingModeForRole(
+  input: PromptRunInput,
+  cli: CliName,
+  role: GraphModelRole,
+  model: string | undefined,
+  options: { applySubtaskCap?: boolean } = {}
+): ThinkingMode | undefined {
+  const roleModel = normalizePromptRunModel(model)
+    ?? resolvePromptRunModelForRole(input, role)
+    ?? getSelectedCliModel(cli)
+    ?? undefined;
+  const explicitThinkingMode = role === "subtask"
+    ? input.loopSubtaskThinkingMode
+    : input.loopMainThinkingMode;
+  const roleThinkingMode = cli === "codex" && isThinkingMode(explicitThinkingMode)
+    ? normalizeThinkingModeForCli(cli, explicitThinkingMode)
+    : cli === "codex"
+      ? getSelectedLoopThinkingMode(cli, role, roleModel) ?? undefined
+      : undefined;
+  const resolvedThinkingMode = roleThinkingMode
+    ?? (options.applySubtaskCap && role === "subtask"
+      ? getEffectiveThinkingMode(cli, roleModel ?? getSelectedCliModel(cli))
+      : undefined);
+  if (!resolvedThinkingMode) {
+    return undefined;
+  }
+  return options.applySubtaskCap && role === "subtask"
+    ? resolveLoopSubtaskThinkingMode(resolvedThinkingMode, getGlobalLoopSubtaskMaxThinkingMode())
+    : resolvedThinkingMode;
+}
+
 function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRole): string {
   if (role === "main") {
+    if (input.loopMainModelFallback) {
+      return input.loopMainModelFallback;
+    }
     if (normalizePromptRunModel(input.loopMainModel)) {
       return "none";
     }
@@ -3202,6 +3358,9 @@ function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRo
       return "loop main model missing; using subtask model";
     }
     return "no explicit model selected; CLI default applies";
+  }
+  if (input.loopSubtaskModelFallback) {
+    return input.loopSubtaskModelFallback;
   }
   if (normalizePromptRunModel(input.loopSubtaskModel)) {
     return "none";
@@ -3259,17 +3418,26 @@ function applyGraphRunModelRouting(run: GraphRunRecord): GraphRunRecord {
     ...run,
     nodes: run.nodes.map((node) => applyGraphNodeModelRoute(
       node,
-      node.id === GRAPH_AI_PLANNER_NODE_ID ? routing.planner : routing.executor,
+      resolveGraphNodeModelRoute(node, routing),
     )),
   };
+}
+
+function resolveGraphNodeModelRoute(
+  node: GraphNodeRecord,
+  routing: GraphRunModelRoutingRecord,
+): GraphRunModelRoutingRecord["planner"] {
+  return node.id === GRAPH_AI_PLANNER_NODE_ID || node.kind === "summary"
+    ? routing.planner
+    : routing.executor;
 }
 
 function resolveGraphResumePromptModels(
   run: GraphRunRecord,
   cli: CliName,
   configId: string | null,
-): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel"> {
-  if (cli !== "codex") {
+): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
+  if (cli !== "codex" && cli !== "opencode") {
     const selectedModel = getSelectedCliModel(cli, configId) ?? undefined;
     return selectedModel ? { model: selectedModel } : {};
   }
@@ -3285,6 +3453,32 @@ function resolveGraphResumePromptModels(
   return {
     ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
     ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+    ...(run.modelRouting?.planner.fallback ? { loopMainModelFallback: run.modelRouting.planner.fallback } : {}),
+    ...(run.modelRouting?.executor.fallback ? { loopSubtaskModelFallback: run.modelRouting.executor.fallback } : {}),
+  };
+}
+
+async function hydrateOpenCodePromptRoleModels(input: PromptRunInput, cli: CliName): Promise<PromptRunInput> {
+  if (cli !== "opencode") {
+    return input;
+  }
+  const configId = getActiveConfigIdForCli("opencode");
+  const activeConfig = configId
+    ? await configService.getConfigById("opencode", configId)
+    : null;
+  const current = activeConfig ?? await configService.getCurrentConfig("opencode");
+  const roles = resolveOpenCodeRoleModelsForConfig(configId, current.content ?? "{}");
+  const explicitMain = normalizePromptRunModel(input.loopMainModel);
+  const explicitSubtask = normalizePromptRunModel(input.loopSubtaskModel);
+  const explicitSingle = normalizePromptRunModel(input.model);
+  const loopMainModel = explicitMain ?? explicitSingle ?? roles.main ?? undefined;
+  const loopSubtaskModel = explicitSubtask ?? roles.subtask ?? explicitSingle ?? loopMainModel ?? undefined;
+  return {
+    ...input,
+    ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
+    ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+    ...(roles.fallback.main ? { loopMainModelFallback: roles.fallback.main } : {}),
+    ...(roles.fallback.subtask ? { loopSubtaskModelFallback: roles.fallback.subtask } : {}),
   };
 }
 
@@ -3796,8 +3990,48 @@ function stopRunForTab(tabId: string | null): void {
     return;
   }
   if (getPrimaryRunTabId() === tabId) {
+    const graphRunId = activeTaskRun?.graphNodeId
+      ? null
+      : normalizeChatGraphRunId(activeTaskRun?.graphRunId);
     stopActiveRun();
+    if (graphRunId) {
+      void stopGraphRunFromConversationTab(graphRunId, tabId);
+    }
+    return;
   }
+  if (stopGraphRunForConversationTab(tabId)) {
+    return;
+  }
+}
+
+function stopGraphRunForConversationTab(tabId: string): boolean {
+  if (graphNodeRunTargetsByTabId.has(tabId)) {
+    return false;
+  }
+  const tab = getConversationTabById(tabId);
+  const graphRunId = resolveConversationTabGraphRunId(tab);
+  if (!graphRunId) {
+    return false;
+  }
+  const lookup = readGraphRunRecord(graphRunId);
+  if (!lookup.run || lookup.run.status === "completed" || lookup.run.status === "stopped") {
+    return false;
+  }
+  void stopGraphRunFromConversationTab(graphRunId, tabId);
+  return true;
+}
+
+async function stopGraphRunFromConversationTab(graphRunId: string, tabId: string): Promise<void> {
+  const result = await stopGraphRunFromPanel(graphRunId);
+  if (!result.ok) {
+    void vscode.window.showWarningMessage(result.message);
+    return;
+  }
+  void logInfo("graph-run-stopped-from-conversation-tab", {
+    graphRunId,
+    tabId,
+    changed: result.changed,
+  });
 }
 
 function stopOtherRunsExceptTab(tabId: string | null): void {
@@ -3967,10 +4201,10 @@ async function prepareOpenCodeSubagentRuntime(options: {
       },
     }, {
       cwd: options.cwd,
-      model: options.runtime.primaryModel,
-      openCodeSmallModel: options.runtime.smallModel,
-      openCodeVariant: options.runtime.primaryVariant,
-      openCodeSmallVariant: options.runtime.smallVariant,
+      model: options.runtime.effectiveModel,
+      openCodeSmallModel: options.runtime.subtaskModel,
+      openCodeVariant: options.runtime.effectiveVariant,
+      openCodeSmallVariant: options.runtime.subtaskVariant,
       openCodeConfigContent: options.runtime.configContent,
       envOverrides: managedServerEnvOverrides,
       isolateProjectInstructions: options.isolateProjectInstructions,
@@ -4037,8 +4271,11 @@ async function runPromptParallel(
     ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
     : [];
   const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
-  const runtimePreparation = await prepareOpenCodeRuntime();
-  const runtimeModel = runtimePreparation.primaryModel;
+  const runtimePreparation = await prepareOpenCodeRuntime({
+    role: input.taskRole === "subtask" ? "subtask" : "main",
+    model: input.model ?? null,
+  });
+  const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
@@ -4091,10 +4328,14 @@ async function runPromptParallel(
     cwd,
     tabId: target.tabId,
     sessionId,
-    primaryModel: runtimePreparation.primaryModel,
-    smallModel: runtimePreparation.smallModel,
-    primaryVariant: runtimePreparation.primaryVariant,
-    smallVariant: runtimePreparation.smallVariant,
+    modelRole: runtimePreparation.role,
+    mainModel: runtimePreparation.mainModel,
+    subtaskModel: runtimePreparation.subtaskModel,
+    effectiveModel: runtimePreparation.effectiveModel,
+    modelFallback: runtimePreparation.modelFallback,
+    mainVariant: runtimePreparation.mainVariant,
+    subtaskVariant: runtimePreparation.subtaskVariant,
+    effectiveVariant: runtimePreparation.effectiveVariant,
   });
   sendRunStatusForTab(target.tabId, "start", {
     prompt,
@@ -4468,10 +4709,10 @@ async function runPromptParallel(
           cwd,
           sessionId: runtimeSessionId,
           thinkingMode,
-          openCodeVariant: runtimePreparation.primaryVariant,
-          openCodeSmallVariant: runtimePreparation.smallVariant,
+          openCodeVariant: runtimePreparation.effectiveVariant,
+          openCodeSmallVariant: runtimePreparation.subtaskVariant,
           model: runtimeModel,
-          openCodeSmallModel: runtimePreparation.smallModel,
+          openCodeSmallModel: runtimePreparation.subtaskModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
@@ -4884,6 +5125,7 @@ async function runGraphPromptOrchestration(
   if (!target || !input.displayPrompt.trim()) {
     return null;
   }
+  input = await hydrateOpenCodePromptRoleModels(input, target.cli);
 
   scheduleLogRetentionCleanup();
   const graphRunId = `graph_${createMessageId()}`;
@@ -4972,6 +5214,7 @@ async function tickGraphRunToPause(
       sendGraphMainRunTerminalStatus(target, run);
       if (run.status === "completed") {
         appendSystemMessageForGraph(target, buildGraphRunCompletedText(run, mergeBack), run.id);
+        appendGraphFinalSummaryMessage(target, run);
       } else {
         const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded(run);
         appendSystemMessageForGraph(
@@ -4981,6 +5224,10 @@ async function tickGraphRunToPause(
           humanGateNode?.id ?? null,
           humanGateNode ? graphHumanApprovalCtaText() : undefined,
         );
+        const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
+        if (blockedPromptRun) {
+          return { run: blockedPromptRun, progressed: true };
+        }
       }
       return { run, progressed: true };
     }
@@ -4995,6 +5242,12 @@ async function tickGraphRunToPause(
         humanGateNode?.id ?? null,
         humanGateNode ? graphHumanApprovalCtaText() : undefined,
       );
+      if (run.status === "needs-review") {
+        const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
+        if (blockedPromptRun) {
+          return { run: blockedPromptRun, progressed: true };
+        }
+      }
       return { run, progressed: true };
     }
     const progressed = tickResult.startedNodeIds.length > 0
@@ -5015,6 +5268,10 @@ async function tickGraphRunToPause(
       scheduleGraphRunAutoWake(run);
       sendGraphMainRunTerminalStatus(target, run);
       appendSystemMessageForGraph(target, buildGraphRunIdleText(run), run.id);
+      const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
+      if (blockedPromptRun) {
+        return { run: blockedPromptRun, progressed: true };
+      }
       return { run, progressed: false };
     }
   }
@@ -5042,25 +5299,265 @@ function sendGraphMainRunStarted(target: PromptRunTarget, run: GraphRunRecord, p
   });
 }
 
-function resolveGraphMainRunStatusEvent(status: GraphRunStatus): "end" | "error" | "stopped" | null {
-  if (status === "completed") {
+function isGraphRunBlockedForMainTab(run: GraphRunRecord): boolean {
+  return run.status === "needs-review" && Boolean(selectGraphBlockedAttentionNode(run));
+}
+
+function resolveGraphMainRunStatusEvent(run: GraphRunRecord): "end" | "error" | "stopped" | null {
+  if (run.status === "completed") {
     return "end";
   }
-  if (status === "error") {
+  if (run.status === "error" || isGraphRunBlockedForMainTab(run)) {
     return "error";
   }
-  if (status === "stopped") {
+  if (run.status === "stopped") {
     return "stopped";
   }
   return null;
 }
 
 function sendGraphMainRunTerminalStatus(target: PromptRunTarget, run: GraphRunRecord): void {
-  const status = resolveGraphMainRunStatusEvent(run.status);
+  const status = resolveGraphMainRunStatusEvent(run);
   if (!status) {
     return;
   }
   sendRunStatusForTab(target.tabId, status);
+}
+
+type GraphBlockedPromptContext = {
+  node: GraphNodeRecord;
+  downstreamNodes: GraphNodeRecord[];
+  promptKey: string;
+  reason: string;
+};
+
+type GraphBlockedPromptAction = "retry_current" | "open_current" | "choose_downstream" | "open_run";
+
+type GraphBlockedDownstreamQuickPickItem = vscode.QuickPickItem & {
+  nodeId: string;
+};
+
+async function maybePromptForGraphBlockedRun(
+  run: GraphRunRecord,
+  target: PromptRunTarget,
+): Promise<GraphRunRecord | null> {
+  const context = resolveGraphBlockedPromptContext(run);
+  if (!context || graphBlockedPromptKeys.has(context.promptKey)) {
+    return null;
+  }
+  graphBlockedPromptKeys.add(context.promptKey);
+
+  const labels = buildGraphBlockedPromptLabels(context);
+  const actions: Array<{ action: GraphBlockedPromptAction; label: string }> = [
+    { action: "retry_current", label: labels.retryCurrent },
+    { action: "open_current", label: labels.openCurrent },
+  ];
+  if (context.downstreamNodes.length > 0) {
+    actions.push({
+      action: "choose_downstream",
+      label: context.downstreamNodes.length > 1 ? labels.chooseDownstream : labels.openOnlyDownstream,
+    });
+  }
+  actions.push({ action: "open_run", label: labels.openRun });
+
+  const selectedLabel = await vscode.window.showWarningMessage(
+    buildGraphBlockedPromptMessage(run, context),
+    { modal: true },
+    ...actions.map((item) => item.label),
+  );
+  const selectedAction = actions.find((item) => item.label === selectedLabel)?.action;
+  if (!selectedAction) {
+    return null;
+  }
+
+  if (selectedAction === "retry_current") {
+    const result = await retryGraphNodeFromPanel(run.id, context.node.id);
+    if (result.ok) {
+      void vscode.window.showInformationMessage(result.message);
+    } else {
+      void vscode.window.showWarningMessage(result.message);
+    }
+    return result.run ?? run;
+  }
+
+  if (selectedAction === "open_current") {
+    await openGraphRunPanel({ graphRunId: run.id, nodeId: context.node.id });
+    return null;
+  }
+
+  if (selectedAction === "choose_downstream") {
+    const downstreamNode = context.downstreamNodes.length === 1
+      ? context.downstreamNodes[0]
+      : await pickGraphBlockedDownstreamNode(run, context.downstreamNodes);
+    if (downstreamNode) {
+      await openGraphRunPanel({ graphRunId: run.id, nodeId: downstreamNode.id });
+    }
+    return null;
+  }
+
+  await openGraphRunPanel({ graphRunId: run.id });
+  return null;
+}
+
+function resolveGraphBlockedPromptContext(run: GraphRunRecord): GraphBlockedPromptContext | null {
+  const node = selectGraphBlockedAttentionNode(run);
+  if (!node) {
+    return null;
+  }
+  const reason = resolveGraphBlockedNodeReason(node);
+  return {
+    node,
+    downstreamNodes: resolveGraphDownstreamNodes(run, node.id),
+    promptKey: [
+      run.id,
+      node.id,
+      node.status,
+      node.attempts,
+      node.completedAt ?? "",
+      reason,
+    ].join("::"),
+    reason,
+  };
+}
+
+function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord | null {
+  const blockedNodes = run.nodes
+    .filter((node) => node.status === "blocked" || node.status === "failed")
+    .sort((left, right) => {
+      const leftTime = left.completedAt ?? left.startedAt ?? 0;
+      const rightTime = right.completedAt ?? right.startedAt ?? 0;
+      if (rightTime !== leftTime) {
+        return rightTime - leftTime;
+      }
+      return run.nodes.indexOf(right) - run.nodes.indexOf(left);
+    });
+  return blockedNodes[0] ?? null;
+}
+
+function resolveGraphBlockedNodeReason(node: GraphNodeRecord): string {
+  const reason = typeof node.lastError === "string" ? node.lastError.trim() : "";
+  if (reason) {
+    return reason;
+  }
+  return `Graph node ${node.id} is ${node.status}.`;
+}
+
+function resolveGraphDownstreamNodes(run: GraphRunRecord, nodeId: string): GraphNodeRecord[] {
+  const downstreamNodeIds = new Set<string>();
+  const appendNodeId = (value: unknown): void => {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    if (normalized && normalized !== nodeId) {
+      downstreamNodeIds.add(normalized);
+    }
+  };
+  const sourceNode = run.nodes.find((node) => node.id === nodeId);
+  sourceNode?.unlocks.forEach(appendNodeId);
+  run.nodes.forEach((node) => {
+    if (node.dependsOn.includes(nodeId)) {
+      appendNodeId(node.id);
+    }
+  });
+  run.edges.forEach((edge) => {
+    if (
+      edge.active
+      && edge.from === nodeId
+      && edge.kind !== "conflicts_with"
+      && edge.kind !== "evidence_for"
+    ) {
+      appendNodeId(edge.to);
+    }
+  });
+  return run.nodes.filter((node) => downstreamNodeIds.has(node.id));
+}
+
+function buildGraphBlockedPromptLabels(
+  context: Pick<GraphBlockedPromptContext, "downstreamNodes">,
+): {
+  retryCurrent: string;
+  openCurrent: string;
+  chooseDownstream: string;
+  openOnlyDownstream: string;
+  openRun: string;
+} {
+  const zh = resolveLocale() === "zh-CN";
+  if (zh) {
+    return {
+      retryCurrent: "重跑当前节点",
+      openCurrent: "查看阻塞节点",
+      chooseDownstream: `选择下游节点（${context.downstreamNodes.length}）`,
+      openOnlyDownstream: "进入下游节点",
+      openRun: "打开运行图",
+    };
+  }
+  return {
+    retryCurrent: "Retry current node",
+    openCurrent: "Open blocked node",
+    chooseDownstream: `Choose downstream node (${context.downstreamNodes.length})`,
+    openOnlyDownstream: "Open downstream node",
+    openRun: "Open graph",
+  };
+}
+
+function buildGraphBlockedPromptMessage(
+  run: GraphRunRecord,
+  context: GraphBlockedPromptContext,
+): string {
+  const zh = resolveLocale() === "zh-CN";
+  const downstreamSummary = context.downstreamNodes.length
+    ? context.downstreamNodes.map(formatGraphBlockedPromptNodeSummary).join(", ")
+    : (zh ? "无可进入的下游节点" : "No downstream node is available");
+  const lines = zh ? [
+    `Graph 运行遇到阻塞：${run.id}`,
+    "",
+    `阻塞节点：${formatGraphBlockedPromptNodeSummary(context.node)}`,
+    `阻塞原因：${truncateGraphBlockedPromptText(context.reason)}`,
+    `下游节点：${downstreamSummary}`,
+    "",
+    "请选择下一步操作。",
+  ] : [
+    `Graph run is blocked: ${run.id}`,
+    "",
+    `Blocked node: ${formatGraphBlockedPromptNodeSummary(context.node)}`,
+    `Reason: ${truncateGraphBlockedPromptText(context.reason)}`,
+    `Downstream nodes: ${downstreamSummary}`,
+    "",
+    "Choose the next action.",
+  ];
+  return lines.join("\n");
+}
+
+async function pickGraphBlockedDownstreamNode(
+  run: GraphRunRecord,
+  downstreamNodes: readonly GraphNodeRecord[],
+): Promise<GraphNodeRecord | null> {
+  const zh = resolveLocale() === "zh-CN";
+  const items: GraphBlockedDownstreamQuickPickItem[] = downstreamNodes.map((node) => ({
+    label: node.title || node.id,
+    description: node.id,
+    detail: `${node.kind} · ${node.status}`,
+    nodeId: node.id,
+  }));
+  const selected = await vscode.window.showQuickPick(items, {
+    title: zh ? "选择要进入的 Graph 下游节点" : "Choose Graph downstream node",
+    placeHolder: zh ? `Graph 运行 ${run.id}` : `Graph run ${run.id}`,
+    ignoreFocusOut: true,
+  });
+  if (!selected) {
+    return null;
+  }
+  return downstreamNodes.find((node) => node.id === selected.nodeId) ?? null;
+}
+
+function formatGraphBlockedPromptNodeSummary(node: GraphNodeRecord): string {
+  return `${node.title || node.id} (${node.id}, ${node.kind}, ${node.status})`;
+}
+
+function truncateGraphBlockedPromptText(value: string, maxLength = 900): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
 type GraphRunMergeBackOutcome = {
@@ -5370,9 +5867,10 @@ async function executeGraphNodeViaRunPrompt(
 
   const modelRole = request.modelRole
     ?? request.node.modelRole
-    ?? (request.node.id === GRAPH_AI_PLANNER_NODE_ID ? "main" : "subtask");
+    ?? (request.node.id === GRAPH_AI_PLANNER_NODE_ID || request.node.kind === "summary" ? "main" : "subtask");
   const selectedModel = request.model ?? resolvePromptRunModelForRole(rootInput, modelRole);
   const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(rootInput, modelRole);
+  const thinkingModeOverride = resolvePromptRunThinkingModeForRole(rootInput, target.cli, modelRole, selectedModel);
   appendGraphEvent(request.run.eventsFile, {
     runId: request.run.id,
     type: "run.updated",
@@ -5384,6 +5882,7 @@ async function executeGraphNodeViaRunPrompt(
       modelRole,
       model: selectedModel ?? null,
       modelFallback,
+      thinkingMode: thinkingModeOverride ?? null,
       modelRouting: request.run.modelRouting,
     },
   });
@@ -5393,6 +5892,7 @@ async function executeGraphNodeViaRunPrompt(
     modelRole,
     model: selectedModel ?? null,
     modelFallback,
+    thinkingMode: thinkingModeOverride ?? null,
   });
 
   let runPromptError: unknown;
@@ -5405,7 +5905,8 @@ async function executeGraphNodeViaRunPrompt(
       loopMainModel: rootInput.loopMainModel,
       loopSubtaskModel: rootInput.loopSubtaskModel,
       imagePaths: rootInput.imagePaths,
-      taskRole: "subtask",
+      taskRole: modelRole,
+      thinkingModeOverride,
       graphRunId: request.run.id,
       graphNodeId: request.node.id,
       executionCwd: executionContext.cwd,
@@ -5669,7 +6170,7 @@ function buildGraphRunStartedText(run: GraphRunRecord): string {
     `Graph run created: ${run.id}`,
     "",
     `- Planner: ${GRAPH_AI_PLANNER_NODE_ID} will generate the executable DAG before work nodes run.`,
-    `- Runtime: ${formatGraphRunExecutionMode(run)} via runPrompt, taskRole=subtask`,
+    `- Runtime: ${formatGraphRunExecutionMode(run)} via runPrompt, planner=main, execution=subtask`,
     ...executionLines,
     `- Scheduler: maxConcurrent=${run.maxConcurrent}`,
     `- Graph file: ${run.graphFile}`,
@@ -5683,6 +6184,40 @@ function buildGraphRunCompletedText(run: GraphRunRecord, mergeBack?: GraphRunMer
     run.finalAnswer?.summary ?? "AI-planned Graph runtime path completed.",
     ...(mergeBack ? [mergeBack.message] : []),
   ].join("\n");
+}
+
+function buildGraphFinalSummaryMarkdown(run: GraphRunRecord): string {
+  const finalAnswer = run.finalAnswer ?? buildGraphRunFinalAnswer(run);
+  const evidence = finalAnswer.evidence.length
+    ? finalAnswer.evidence
+    : ["无可用证据引用。"];
+  const unresolved = finalAnswer.unresolved.length
+    ? finalAnswer.unresolved
+    : ["无。"];
+  const summarySource = run.finalAnswer
+    ? "summary 节点 finalAnswer（主模型）"
+    : "宿主 fallback（summary 节点未提供 finalAnswer）";
+  const lines: string[] = [
+    "# Graph 任务最终总结",
+    "",
+    `- Graph 运行 ID：${run.id}`,
+    `- 会话 ID：${run.sessionId ?? "unknown"}`,
+    `- 生成时间：${new Date().toISOString()}`,
+    `- 总结来源：${summarySource}`,
+    "",
+    "## 问题回答结论",
+    finalAnswer.conclusion,
+    "",
+    "## 任务总结",
+    finalAnswer.summary,
+    "",
+    "## 验证证据",
+    ...evidence.map((item) => `- ${item}`),
+    "",
+    "## 未完成事项",
+    ...unresolved.map((item) => `- ${item}`),
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphRunMergeBackOutcome): string {
@@ -5751,6 +6286,7 @@ async function runLoopPromptOrchestration(
   if (!target || !input.displayPrompt.trim()) {
     return;
   }
+  input = await hydrateOpenCodePromptRoleModels(input, target.cli);
 
   const resumeTaskId = typeof options.resumeTaskId === "string" && options.resumeTaskId.trim()
     ? options.resumeTaskId.trim()
@@ -8396,6 +8932,9 @@ async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus
   refreshOpenLoopGroupChatPanelForTask(task.id);
 
   const roleModel = resolvePromptRunModelForRole(input, role);
+  const thinkingModeOverride = resolvePromptRunThinkingModeForRole(input, target.cli, role, roleModel, {
+    applySubtaskCap: true,
+  });
   await runPrompt({
     ...input,
     displayPrompt,
@@ -8405,12 +8944,7 @@ async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus
     loopTaskId: task.id,
     loopRound: round,
     loopSubtaskId: subtaskId,
-    thinkingModeOverride: role === "subtask"
-      ? resolveLoopSubtaskThinkingMode(
-          getEffectiveThinkingMode(target.cli, roleModel ?? getSelectedCliModel(target.cli)),
-          getGlobalLoopSubtaskMaxThinkingMode(),
-        )
-      : undefined,
+    thinkingModeOverride,
   }, { targetTabId: target.tabId });
 
   if (role === "main") {
@@ -9662,6 +10196,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     model?: string;
     loopMainModel?: string;
     loopSubtaskModel?: string;
+    loopMainThinkingMode?: ThinkingMode;
+    loopSubtaskThinkingMode?: ThinkingMode;
   }
 ): Promise<void> {
   const latestRun = getLatestLoopRoundRunRecord(
@@ -9715,6 +10251,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     model: options.model,
     loopMainModel: options.loopMainModel,
     loopSubtaskModel: options.loopSubtaskModel,
+    loopMainThinkingMode: options.loopMainThinkingMode,
+    loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
   }, {
     targetTabId: mainTarget.tabId,
     resumeTaskId: latestTask.id,
@@ -9940,6 +10478,52 @@ function appendLoopFinalSummaryMessage(
   appendMessageToStore(messages, message);
   sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
   persistLoopMessagesForTarget(target, messages);
+}
+
+function appendGraphFinalSummaryMessage(target: PromptRunTarget, run: GraphRunRecord): void {
+  const messages = getLoopMessagesForTarget(target);
+  const content = buildGraphFinalSummaryMarkdown(run);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const existing = messages[index];
+    if (!existing || !isGraphFinalSummaryMessageForRun(existing, run.id)) {
+      continue;
+    }
+    if (existing.content.trim() === content.trim()) {
+      return;
+    }
+    const replacement: ChatMessage = {
+      ...existing,
+      content,
+      merge: false,
+      taskRole: "main",
+      graphRunId: run.id,
+      graphFinalSummary: true,
+    };
+    messages[index] = replacement;
+    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
+    persistLoopMessagesForTarget(target, messages);
+    return;
+  }
+
+  const message: ChatMessage = {
+    id: createMessageId(),
+    role: "assistant",
+    content,
+    createdAt: Date.now(),
+    merge: false,
+    taskRole: "main",
+    graphRunId: run.id,
+    graphFinalSummary: true,
+  };
+  appendMessageToStore(messages, message);
+  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+  persistLoopMessagesForTarget(target, messages);
+}
+
+function isGraphFinalSummaryMessageForRun(message: ChatMessage, graphRunId: string): boolean {
+  return message.role === "assistant"
+    && message.graphFinalSummary === true
+    && message.graphRunId === graphRunId;
 }
 
 function appendSystemMessageForLoop(
@@ -10229,8 +10813,11 @@ async function runPromptOneShot(
   if (!cwd) {
     void logInfo("runPrompt-no-workspace", { cli: runCli });
   }
-  const runtimePreparation = await prepareOpenCodeRuntime();
-  const runtimeModel = runtimePreparation.primaryModel;
+  const runtimePreparation = await prepareOpenCodeRuntime({
+    role: input.taskRole === "subtask" ? "subtask" : "main",
+    model: input.model ?? null,
+  });
+  const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
   applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
   const runtimeEnvOverrides = runtimePreparation.envOverrides;
@@ -10256,8 +10843,8 @@ async function runPromptOneShot(
     {
       sessionId: initialRuntimeSessionId,
       thinkingMode,
-      openCodeVariant: runtimePreparation.primaryVariant,
-      openCodeSmallVariant: runtimePreparation.smallVariant,
+      openCodeVariant: runtimePreparation.effectiveVariant,
+      openCodeSmallVariant: runtimePreparation.subtaskVariant,
       model: runtimeModel,
       openCodeConfigContent: runtimeOpenCodeConfigContent,
       envOverrides: runtimeEnvOverrides,
@@ -10285,10 +10872,14 @@ async function runPromptOneShot(
     cwd,
     sessionId: initialSessionId,
     thinkingMode,
-    model: runtimeModel,
-    smallModel: runtimePreparation.smallModel,
-    primaryVariant: runtimePreparation.primaryVariant,
-    smallVariant: runtimePreparation.smallVariant,
+    modelRole: runtimePreparation.role,
+    mainModel: runtimePreparation.mainModel,
+    subtaskModel: runtimePreparation.subtaskModel,
+    effectiveModel: runtimePreparation.effectiveModel,
+    modelFallback: runtimePreparation.modelFallback,
+    mainVariant: runtimePreparation.mainVariant,
+    subtaskVariant: runtimePreparation.subtaskVariant,
+    effectiveVariant: runtimePreparation.effectiveVariant,
   });
 
   const userMessageId = input.preloadedUserMessageId ?? createMessageId();
@@ -10600,10 +11191,10 @@ async function runPromptOneShot(
           cwd,
           sessionId: runtimeSessionId,
           thinkingMode,
-          openCodeVariant: runtimePreparation.primaryVariant,
-          openCodeSmallVariant: runtimePreparation.smallVariant,
+          openCodeVariant: runtimePreparation.effectiveVariant,
+          openCodeSmallVariant: runtimePreparation.subtaskVariant,
           model: runtimeModel,
-          openCodeSmallModel: runtimePreparation.smallModel,
+          openCodeSmallModel: runtimePreparation.subtaskModel,
           openCodeConfigContent: runtimeOpenCodeConfigContent,
           envOverrides: runtimeEnvOverrides,
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
@@ -11135,12 +11726,16 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
         return { model: selectedModel };
       }
       const configId = getActiveConfigIdForCli("opencode");
-      const runtimePreparation = await prepareOpenCodeRuntime(configId);
+      const runtimePreparation = await prepareOpenCodeRuntime({
+        configId,
+        role: "main",
+        model: selectedModel ?? null,
+      });
       return {
-        openCodeVariant: runtimePreparation.primaryVariant,
-        openCodeSmallVariant: runtimePreparation.smallVariant,
-        model: runtimePreparation.primaryModel,
-        openCodeSmallModel: runtimePreparation.smallModel,
+        openCodeVariant: runtimePreparation.effectiveVariant,
+        openCodeSmallVariant: runtimePreparation.subtaskVariant,
+        model: runtimePreparation.effectiveModel,
+        openCodeSmallModel: runtimePreparation.subtaskModel,
         openCodeConfigContent: runtimePreparation.configContent,
         envOverrides: runtimePreparation.envOverrides,
       };
@@ -13132,6 +13727,15 @@ function getSelectedLoopCliModel(
   return getSelectedLoopCliModelFromStore(modelStore, cli, role, configId);
 }
 
+function getSelectedLoopThinkingMode(
+  cli: CliName,
+  role: "main" | "subtask",
+  model: string | null | undefined,
+  configId: string | null = getActiveConfigIdForCli(cli),
+): ThinkingMode | null {
+  return getSelectedLoopThinkingModeFromStore(modelStore, cli, role, model, configId);
+}
+
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
   return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
 }
@@ -13155,24 +13759,37 @@ function selectCliLoopModel(
   writeModelStore(modelStore);
 }
 
+function setSelectedLoopThinkingMode(
+  cli: CliName,
+  role: "main" | "subtask",
+  model: string | null | undefined,
+  thinkingMode: ThinkingMode | null,
+  configId: string | null = getActiveConfigIdForCli(cli),
+): void {
+  const normalizedThinkingMode = thinkingMode ? normalizeThinkingModeForCli(cli, thinkingMode) : null;
+  modelStore = setSelectedLoopThinkingModeInStore(modelStore, cli, role, model, normalizedThinkingMode, configId);
+  writeModelStore(modelStore);
+}
+
 async function updateOpenCodeRoleModelForConfig(
-  role: OpenCodeModelRole,
+  role: OpenCodeModelRoleInput,
   value: string | null,
   configId: string | null
 ): Promise<string | null> {
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   if (!configId) {
-    return `OpenCode ${role} model cannot be changed because there is no active config.`;
+    return `OpenCode ${normalizedRole} model cannot be changed because there is no active config.`;
   }
   const activeConfig = await configService.getConfigById("opencode", configId);
   if (!activeConfig) {
-    return `OpenCode ${role} model cannot be changed because active config "${configId}" was not found.`;
+    return `OpenCode ${normalizedRole} model cannot be changed because active config "${configId}" was not found.`;
   }
   const parsed = parseOpenCodeConfigModels(activeConfig.content);
-  const validation = validateOpenCodeModelOverride(parsed, role, value);
+  const validation = validateOpenCodeModelOverride(parsed, normalizedRole, value);
   if (!validation.ok) {
-    return validation.issue?.message ?? `OpenCode ${role} model selection is invalid.`;
+    return validation.issue?.message ?? `OpenCode ${normalizedRole} model selection is invalid.`;
   }
-  const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, role, validation.modelRef);
+  const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, normalizedRole, validation.modelRef);
   if (nextStore !== modelStore) {
     modelStore = nextStore;
     writeModelStore(modelStore);
@@ -13452,15 +14069,26 @@ function buildConversationTabsState(): {
 } {
   const tabState = sessionTabsController.buildConversationTabsState();
   const tabsById = new Map(ensureConversationTabs().tabs.map((tab) => [tab.id, tab]));
+  const graphRuns = listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs;
+  const graphRunsById = new Map(graphRuns.map((run) => [run.id, run]));
   const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
-    listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs,
+    graphRuns,
   );
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
       const graphRunId = normalizeChatGraphRunId(summary.graphRunId)
         ?? resolveConversationTabGraphRunId(tabsById.get(summary.id) ?? null, graphRunIdsBySessionByCli);
-      return graphRunId ? { ...summary, graphRunId } : summary;
+      if (!graphRunId) {
+        return summary;
+      }
+      const graphRun = graphRunsById.get(graphRunId) ?? null;
+      return {
+        ...summary,
+        graphRunId,
+        graphRunStatus: graphRun?.status,
+        graphRunBlocked: graphRun ? isGraphRunBlockedForMainTab(graphRun) : undefined,
+      };
     }),
   };
 }

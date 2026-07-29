@@ -663,6 +663,16 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return Boolean(meta && meta.taskRole === "main");
       }
 
+      function isGraphConversationTabErrored(tab) {
+        return Boolean(
+          tab
+          && (
+            tab.graphRunStatus === "error"
+            || tab.graphRunBlocked === true
+          )
+        );
+      }
+
       function formatConversationTabLabel(tab, baseLabel) {
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
@@ -939,7 +949,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           if (isActive) {
             tabItem.classList.add("active");
           }
-          if (isTabErrored(tab.id)) {
+          if (isTabErrored(tab.id) || isGraphConversationTabErrored(tab)) {
             tabItem.classList.add("errored");
           } else if (isConversationTabRunning(tab)) {
             tabItem.classList.add("running");

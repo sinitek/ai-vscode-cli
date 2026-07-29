@@ -8,20 +8,29 @@ import {
   type ThinkingMode,
 } from "./cli/types";
 import type { PanelState } from "./webview/types";
-import type { OpenCodeModelRole } from "./cli/opencodeconfigmodels";
+import {
+  normalizeOpenCodeModelRole,
+  type OpenCodeCanonicalModelRole,
+  type OpenCodeModelRoleInput,
+} from "./cli/opencodeconfigmodels";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 
 export type LoopTaskRoleForModelSelection = "main" | "subtask";
+
+const OPEN_CODE_MODEL_ROLES = ["main", "subtask"] as const;
+const OPEN_CODE_MODEL_ROLE_INPUTS = ["main", "subtask", "primary", "small"] as const;
+const THINKING_MODE_VALUES = ["off", "on", "low", "medium", "high", "xhigh", "ultra", "max"] as const;
 
 export type CliModelStore = {
   selectedByConfigId: Record<string, string>;
   optionsByConfigId: Record<string, string[]>;
   thinkingByCliAndModel: Partial<Record<CliName, Record<string, ThinkingMode>>>;
+  loopThinkingByConfigId: Record<string, Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>>>;
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
-  openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeModelRole, string>>>>;
+  openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>>;
   selectedLoopByConfigId: Record<string, Partial<Record<LoopTaskRoleForModelSelection, string>>>;
   loopRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
-  openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeModelRole, string>>>;
+  openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>;
 };
 
 export type ModelSelectionStoreState = {
@@ -93,6 +102,53 @@ export function isLoopTaskRoleValue(value: unknown): value is LoopTaskRoleForMod
   return value === "main" || value === "subtask";
 }
 
+function isKnownThinkingMode(value: unknown): value is ThinkingMode {
+  return typeof value === "string" && THINKING_MODE_VALUES.includes(value as ThinkingMode);
+}
+
+function normalizeThinkingModeForStore(
+  cli: CliName,
+  mode: unknown,
+  options?: Pick<ModelSelectionStoreOptions, "isThinkingMode" | "normalizeThinkingModeForCli">
+): ThinkingMode | null {
+  if (options) {
+    return options.isThinkingMode(mode)
+      ? options.normalizeThinkingModeForCli(cli, mode)
+      : null;
+  }
+  return isKnownThinkingMode(mode) ? mode : null;
+}
+
+function normalizeThinkingModelKey(
+  rawKey: string,
+  options?: Pick<ModelSelectionStoreOptions, "defaultModelStoreKey">
+): string | null {
+  if (options && rawKey === options.defaultModelStoreKey) {
+    return options.defaultModelStoreKey;
+  }
+  return normalizeCliModelName(rawKey);
+}
+
+function findCaseInsensitiveRecordKey<T>(
+  record: Record<string, T> | undefined,
+  key: string
+): string | null {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const lowerKey = key.toLowerCase();
+  return Object.keys(record).find((candidate) => candidate.toLowerCase() === lowerKey) ?? null;
+}
+
+function readOpenCodeRoleValue(
+  value: Record<string, unknown>,
+  role: OpenCodeCanonicalModelRole
+): unknown {
+  return role === "main"
+    ? (value.main ?? value.primary)
+    : (value.subtask ?? value.small);
+}
+
 export function ensureCliModelStore(
   store?: CliModelStore,
   options?: Pick<ModelSelectionStoreOptions, "defaultModelStoreKey" | "isThinkingMode" | "normalizeThinkingModeForCli">
@@ -102,6 +158,7 @@ export function ensureCliModelStore(
     selectedByConfigId: {},
     optionsByConfigId: {},
     thinkingByCliAndModel: {},
+    loopThinkingByConfigId: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
     selectedLoopByConfigId: {},
@@ -173,15 +230,19 @@ export function ensureCliModelStore(
       if (!configId || !rawVariantsByModel || typeof rawVariantsByModel !== "object") {
         continue;
       }
-      const variantsByModel: Record<string, Partial<Record<OpenCodeModelRole, string>>> = {};
+      const variantsByModel: Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>> = {};
       for (const [rawModel, rawVariantsByRole] of Object.entries(rawVariantsByModel)) {
         const model = normalizeCliModelName(rawModel);
         if (!model || !rawVariantsByRole || typeof rawVariantsByRole !== "object") {
           continue;
         }
-        const variantsByRole: Partial<Record<OpenCodeModelRole, string>> = {};
-        for (const role of ["primary", "small"] as const) {
-          const variant = normalizeCliModelName((rawVariantsByRole as Partial<Record<OpenCodeModelRole, unknown>>)[role]);
+        const variantsByRole: Partial<Record<OpenCodeCanonicalModelRole, string>> = {};
+        for (const rawRole of OPEN_CODE_MODEL_ROLE_INPUTS) {
+          const role = normalizeOpenCodeModelRole(rawRole);
+          if (variantsByRole[role]) {
+            continue;
+          }
+          const variant = normalizeCliModelName((rawVariantsByRole as Partial<Record<OpenCodeModelRoleInput, unknown>>)[rawRole]);
           if (variant) {
             variantsByRole[role] = variant;
           }
@@ -201,9 +262,9 @@ export function ensureCliModelStore(
       if (!configId || !rawSelection || typeof rawSelection !== "object") {
         continue;
       }
-      const selection: Partial<Record<OpenCodeModelRole, string>> = {};
-      for (const role of ["primary", "small"] as const) {
-        const model = normalizeCliModelName(rawSelection[role]);
+      const selection: Partial<Record<OpenCodeCanonicalModelRole, string>> = {};
+      for (const role of OPEN_CODE_MODEL_ROLES) {
+        const model = normalizeCliModelName(readOpenCodeRoleValue(rawSelection as Record<string, unknown>, role));
         if (model) {
           selection[role] = model;
         }
@@ -232,23 +293,50 @@ export function ensureCliModelStore(
       }
     }
   }
-  if (options) {
-    for (const cli of CLI_LIST) {
-      const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
-      if (storedThinkingByModel && typeof storedThinkingByModel === "object") {
+  for (const cli of CLI_LIST) {
+    const storedThinkingByModel = store?.thinkingByCliAndModel?.[cli];
+    if (storedThinkingByModel && typeof storedThinkingByModel === "object") {
+      const normalizedThinkingByModel: Record<string, ThinkingMode> = {};
+      for (const [rawModelKey, rawThinkingMode] of Object.entries(storedThinkingByModel)) {
+        const normalizedModelKey = normalizeThinkingModelKey(rawModelKey, options);
+        const normalizedThinkingMode = normalizeThinkingModeForStore(cli, rawThinkingMode, options);
+        if (!normalizedModelKey || !normalizedThinkingMode) {
+          continue;
+        }
+        normalizedThinkingByModel[normalizedModelKey] = normalizedThinkingMode;
+      }
+      if (Object.keys(normalizedThinkingByModel).length > 0) {
+        normalized.thinkingByCliAndModel[cli] = normalizedThinkingByModel;
+      }
+    }
+  }
+  const storedLoopThinkingByConfigId = store?.loopThinkingByConfigId;
+  if (storedLoopThinkingByConfigId && typeof storedLoopThinkingByConfigId === "object") {
+    for (const [configId, rawThinkingByRole] of Object.entries(storedLoopThinkingByConfigId)) {
+      if (!configId || !rawThinkingByRole || typeof rawThinkingByRole !== "object") {
+        continue;
+      }
+      const normalizedThinkingByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = {};
+      for (const role of ["main", "subtask"] as LoopTaskRoleForModelSelection[]) {
+        const rawThinkingByModel = (rawThinkingByRole as Partial<Record<LoopTaskRoleForModelSelection, unknown>>)[role];
+        if (!rawThinkingByModel || typeof rawThinkingByModel !== "object") {
+          continue;
+        }
         const normalizedThinkingByModel: Record<string, ThinkingMode> = {};
-        for (const [rawModelKey, rawThinkingMode] of Object.entries(storedThinkingByModel)) {
-          const normalizedModelKey = rawModelKey === options.defaultModelStoreKey
-            ? options.defaultModelStoreKey
-            : normalizeCliModelName(rawModelKey);
-          if (!normalizedModelKey || !options.isThinkingMode(rawThinkingMode)) {
+        for (const [rawModelKey, rawThinkingMode] of Object.entries(rawThinkingByModel as Record<string, unknown>)) {
+          const normalizedModelKey = normalizeThinkingModelKey(rawModelKey, options);
+          const normalizedThinkingMode = normalizeThinkingModeForStore("codex", rawThinkingMode, options);
+          if (!normalizedModelKey || !normalizedThinkingMode) {
             continue;
           }
-          normalizedThinkingByModel[normalizedModelKey] = options.normalizeThinkingModeForCli(cli, rawThinkingMode);
+          normalizedThinkingByModel[normalizedModelKey] = normalizedThinkingMode;
         }
         if (Object.keys(normalizedThinkingByModel).length > 0) {
-          normalized.thinkingByCliAndModel[cli] = normalizedThinkingByModel;
+          normalizedThinkingByRole[role] = normalizedThinkingByModel;
         }
+      }
+      if (Object.keys(normalizedThinkingByRole).length > 0) {
+        normalized.loopThinkingByConfigId[configId] = normalizedThinkingByRole;
       }
     }
   }
@@ -336,19 +424,20 @@ export function getOpenCodeRoleVariantFromStore(
   store: CliModelStore,
   configId: string | null,
   model: string | null | undefined,
-  role: OpenCodeModelRole
+  role: OpenCodeModelRoleInput
 ): string | null {
   const normalizedModel = normalizeCliModelName(model);
   if (!configId || !normalizedModel) {
     return null;
   }
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   const roleVariant = normalizeCliModelName(
-    store.openCodeVariantByConfigModelAndRole?.[configId]?.[normalizedModel]?.[role]
+    store.openCodeVariantByConfigModelAndRole?.[configId]?.[normalizedModel]?.[normalizedRole]
   );
   if (roleVariant) {
     return roleVariant;
   }
-  return role === "primary"
+  return normalizedRole === "main"
     ? getOpenCodeVariantFromStore(store, configId, normalizedModel)
     : null;
 }
@@ -356,18 +445,19 @@ export function getOpenCodeRoleVariantFromStore(
 export function getOpenCodeRoleModelFromStore(
   store: CliModelStore,
   configId: string | null,
-  role: OpenCodeModelRole
+  role: OpenCodeModelRoleInput
 ): string | null {
   if (!configId) {
     return null;
   }
-  return normalizeCliModelName(ensureCliModelStore(store).openCodeRoleModelsByConfigId[configId]?.[role]);
+  const normalizedRole = normalizeOpenCodeModelRole(role);
+  return normalizeCliModelName(ensureCliModelStore(store).openCodeRoleModelsByConfigId[configId]?.[normalizedRole]);
 }
 
 export function setOpenCodeRoleModelInStore(
   store: CliModelStore,
   configId: string | null,
-  role: OpenCodeModelRole,
+  role: OpenCodeModelRoleInput,
   model: string | null
 ): CliModelStore {
   if (!configId) {
@@ -375,12 +465,13 @@ export function setOpenCodeRoleModelInStore(
   }
   const nextStore = ensureCliModelStore(store);
   const selection = { ...(nextStore.openCodeRoleModelsByConfigId[configId] ?? {}) };
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   const normalizedModel = normalizeCliModelName(model);
   if (normalizedModel) {
-    selection[role] = normalizedModel;
+    selection[normalizedRole] = normalizedModel;
     nextStore.openCodeRoleModelsByConfigId[configId] = selection;
   } else {
-    delete selection[role];
+    delete selection[normalizedRole];
     if (Object.keys(selection).length === 0) {
       delete nextStore.openCodeRoleModelsByConfigId[configId];
     } else {
@@ -431,15 +522,16 @@ export function setOpenCodeRoleVariantInStore(
   store: CliModelStore,
   configId: string | null,
   model: string | null | undefined,
-  role: OpenCodeModelRole,
+  role: OpenCodeModelRoleInput,
   variant: string | null | undefined
 ): CliModelStore {
   const normalizedModel = normalizeCliModelName(model);
   if (!configId || !normalizedModel) {
     return store;
   }
+  const normalizedRole = normalizeOpenCodeModelRole(role);
   const normalizedVariant = normalizeCliModelName(variant);
-  const currentVariant = getOpenCodeRoleVariantFromStore(store, configId, normalizedModel, role);
+  const currentVariant = getOpenCodeRoleVariantFromStore(store, configId, normalizedModel, normalizedRole);
   if (currentVariant === normalizedVariant) {
     return store;
   }
@@ -456,9 +548,9 @@ export function setOpenCodeRoleVariantInStore(
     ...(nextByModel[normalizedModel] ?? {}),
   };
   if (normalizedVariant) {
-    nextByRole[role] = normalizedVariant;
+    nextByRole[normalizedRole] = normalizedVariant;
   } else {
-    delete nextByRole[role];
+    delete nextByRole[normalizedRole];
   }
   if (Object.keys(nextByRole).length > 0) {
     nextByModel[normalizedModel] = nextByRole;
@@ -548,6 +640,9 @@ export function getSelectedLoopCliModelFromStore(
   role: LoopTaskRoleForModelSelection,
   configId: string | null
 ): string | null {
+  if (cli === "opencode") {
+    return getOpenCodeRoleModelFromStore(store, configId, role);
+  }
   if (!configId || cli !== "codex") {
     return null;
   }
@@ -571,6 +666,63 @@ export function getSelectedLoopCliModelFromStore(
     return selectedModel;
   }
   return optionsForRole[0] ?? null;
+}
+
+export function getSelectedLoopThinkingModeFromStore(
+  store: CliModelStore,
+  cli: CliName,
+  role: LoopTaskRoleForModelSelection,
+  model: string | null | undefined,
+  configId: string | null
+): ThinkingMode | null {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || cli !== "codex" || !normalizedModel) {
+    return null;
+  }
+  const roleThinking = store?.loopThinkingByConfigId?.[configId]?.[role];
+  const matchedKey = findCaseInsensitiveRecordKey(roleThinking, normalizedModel);
+  if (!matchedKey) {
+    return null;
+  }
+  const stored = roleThinking?.[matchedKey];
+  return isKnownThinkingMode(stored) ? stored : null;
+}
+
+export function setSelectedLoopThinkingModeInStore(
+  store: CliModelStore,
+  cli: CliName,
+  role: LoopTaskRoleForModelSelection,
+  model: string | null | undefined,
+  thinkingMode: ThinkingMode | null,
+  configId: string | null
+): CliModelStore {
+  const normalizedModel = normalizeCliModelName(model);
+  if (!configId || cli !== "codex" || !normalizedModel) {
+    return ensureCliModelStore(store);
+  }
+  const nextStore = ensureCliModelStore(store);
+  const currentByRole = nextStore.loopThinkingByConfigId[configId] ?? {};
+  const nextByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = { ...currentByRole };
+  const currentByModel = nextByRole[role] ?? {};
+  const nextByModel = { ...currentByModel };
+  const matchedKey = findCaseInsensitiveRecordKey(nextByModel, normalizedModel);
+  const targetKey = matchedKey ?? normalizedModel;
+  if (thinkingMode && isKnownThinkingMode(thinkingMode)) {
+    nextByModel[targetKey] = thinkingMode;
+  } else {
+    delete nextByModel[targetKey];
+  }
+  if (Object.keys(nextByModel).length > 0) {
+    nextByRole[role] = nextByModel;
+  } else {
+    delete nextByRole[role];
+  }
+  if (Object.keys(nextByRole).length > 0) {
+    nextStore.loopThinkingByConfigId[configId] = nextByRole;
+  } else {
+    delete nextStore.loopThinkingByConfigId[configId];
+  }
+  return ensureCliModelStore(nextStore);
 }
 
 export function selectCliModelInStore(
@@ -600,6 +752,9 @@ export function selectCliLoopModelInStore(
   model: string | null,
   configId: string | null,
 ): CliModelStore {
+  if (cli === "opencode") {
+    return setOpenCodeRoleModelInStore(store, configId, role, model);
+  }
   if (!configId || cli !== "codex") {
     return ensureCliModelStore(store);
   }
@@ -750,6 +905,28 @@ export function renameCliModelInStore(
       nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
     }
   }
+  const loopThinkingByRole = nextStore.loopThinkingByConfigId[configId];
+  if (loopThinkingByRole) {
+    const nextLoopThinkingByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = {
+      ...loopThinkingByRole,
+    };
+    let changed = false;
+    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
+      const thinkingByModel = nextLoopThinkingByRole[role];
+      const matchedThinkingKey = findCaseInsensitiveRecordKey(thinkingByModel, previousNormalized);
+      if (!thinkingByModel || !matchedThinkingKey) {
+        return;
+      }
+      const nextThinkingByModel = { ...thinkingByModel };
+      nextThinkingByModel[nextNormalized] = nextThinkingByModel[matchedThinkingKey];
+      delete nextThinkingByModel[matchedThinkingKey];
+      nextLoopThinkingByRole[role] = nextThinkingByModel;
+      changed = true;
+    });
+    if (changed) {
+      nextStore.loopThinkingByConfigId[configId] = nextLoopThinkingByRole;
+    }
+  }
 
   return { store: ensureCliModelStore(nextStore), renamedModel: nextNormalized };
 }
@@ -803,6 +980,34 @@ export function deleteCliModelFromStore(
       nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
     } else {
       delete nextStore.selectedLoopByConfigId[configId];
+    }
+  }
+  const loopThinkingByRole = nextStore.loopThinkingByConfigId[configId];
+  if (loopThinkingByRole) {
+    const nextLoopThinkingByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = {
+      ...loopThinkingByRole,
+    };
+    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
+      const thinkingByModel = nextLoopThinkingByRole[role];
+      if (!thinkingByModel) {
+        return;
+      }
+      const nextThinkingByModel = { ...thinkingByModel };
+      Object.keys(nextThinkingByModel).forEach((key) => {
+        if (key.toLowerCase() === targetKey) {
+          delete nextThinkingByModel[key];
+        }
+      });
+      if (Object.keys(nextThinkingByModel).length > 0) {
+        nextLoopThinkingByRole[role] = nextThinkingByModel;
+      } else {
+        delete nextLoopThinkingByRole[role];
+      }
+    });
+    if (Object.keys(nextLoopThinkingByRole).length > 0) {
+      nextStore.loopThinkingByConfigId[configId] = nextLoopThinkingByRole;
+    } else {
+      delete nextStore.loopThinkingByConfigId[configId];
     }
   }
 
@@ -894,6 +1099,7 @@ export function buildModelState(
   const optionsByCli = {} as Record<CliName, string[]>;
   const managedByCli = {} as Record<CliName, string[]>;
   const selectedLoopByCli: NonNullable<PanelState["modelState"]["selectedLoopByCli"]> = {};
+  const selectedLoopThinkingByCli: NonNullable<PanelState["modelState"]["selectedLoopThinkingByCli"]> = {};
   const loopOptionsByCli: NonNullable<PanelState["modelState"]["loopOptionsByCli"]> = {};
   for (const cli of CLI_LIST) {
     const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
@@ -902,14 +1108,33 @@ export function buildModelState(
     optionsByCli[cli] = getModelOptionsForCliFromStore(store, cli, activeConfigId);
     managedByCli[cli] = managedModels;
     if (cli === "codex") {
+      const loopMainModel = getSelectedLoopCliModelFromStore(store, cli, "main", activeConfigId);
+      const loopSubtaskModel = getSelectedLoopCliModelFromStore(store, cli, "subtask", activeConfigId);
+      const loopMainThinkingMode = getSelectedLoopThinkingModeFromStore(store, cli, "main", loopMainModel, activeConfigId);
+      const loopSubtaskThinkingMode = getSelectedLoopThinkingModeFromStore(store, cli, "subtask", loopSubtaskModel, activeConfigId);
       loopOptionsByCli[cli] = {
         main: getLoopModelOptionsForCliFromStore(store, cli, "main", activeConfigId),
         subtask: getLoopModelOptionsForCliFromStore(store, cli, "subtask", activeConfigId),
       };
       selectedLoopByCli[cli] = {
-        main: getSelectedLoopCliModelFromStore(store, cli, "main", activeConfigId),
-        subtask: getSelectedLoopCliModelFromStore(store, cli, "subtask", activeConfigId),
+        main: loopMainModel,
+        subtask: loopSubtaskModel,
       };
+      if (loopMainThinkingMode || loopSubtaskThinkingMode) {
+        selectedLoopThinkingByCli[cli] = {
+          main: loopMainThinkingMode,
+          subtask: loopSubtaskThinkingMode,
+        };
+      }
+    } else if (cli === "opencode") {
+      const openCodeMain = getSelectedLoopCliModelFromStore(store, cli, "main", activeConfigId);
+      const openCodeSubtask = getSelectedLoopCliModelFromStore(store, cli, "subtask", activeConfigId);
+      if (openCodeMain || openCodeSubtask) {
+        selectedLoopByCli[cli] = {
+          main: openCodeMain,
+          subtask: openCodeSubtask,
+        };
+      }
     }
   }
   return {
@@ -917,6 +1142,7 @@ export function buildModelState(
     optionsByCli,
     managedByCli,
     ...(Object.keys(selectedLoopByCli).length > 0 ? { selectedLoopByCli } : {}),
+    ...(Object.keys(selectedLoopThinkingByCli).length > 0 ? { selectedLoopThinkingByCli } : {}),
     ...(Object.keys(loopOptionsByCli).length > 0 ? { loopOptionsByCli } : {}),
   };
 }

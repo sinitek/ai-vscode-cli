@@ -42,33 +42,69 @@ test("migrates legacy Loop model-selection keys", () => {
   });
 });
 
-test("isolates OpenCode primary and small overrides by active config", () => {
+test("isolates OpenCode main and subtask overrides by active config", () => {
   let store = ensureCliModelStore();
-  store = setOpenCodeRoleModelInStore(store, "config-a", "primary", "one/main");
-  store = setOpenCodeRoleModelInStore(store, "config-a", "small", "one/small");
-  store = setOpenCodeRoleModelInStore(store, "config-b", "primary", "two/main");
+  store = setOpenCodeRoleModelInStore(store, "config-a", "main", "one/main");
+  store = setOpenCodeRoleModelInStore(store, "config-a", "subtask", "one/subtask");
+  store = setOpenCodeRoleModelInStore(store, "config-b", "main", "two/main");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "main"), "one/main");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "subtask"), "one/subtask");
   assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "primary"), "one/main");
-  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "small"), "one/small");
-  assert.equal(getOpenCodeRoleModelFromStore(store, "config-b", "primary"), "two/main");
-  assert.equal(getOpenCodeRoleModelFromStore(store, "config-b", "small"), null);
-  store = setOpenCodeRoleModelInStore(store, "config-a", "small", null);
-  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "small"), null);
-  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "primary"), "one/main");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "small"), "one/subtask");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-b", "main"), "two/main");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-b", "subtask"), null);
+  store = setOpenCodeRoleModelInStore(store, "config-a", "subtask", null);
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "subtask"), null);
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "main"), "one/main");
 });
 
+test("migrates legacy OpenCode primary and small persisted role selections", () => {
+  const legacyStore = {
+    selectedByConfigId: {},
+    optionsByConfigId: {},
+    thinkingByCliAndModel: {},
+    openCodeVariantByConfigAndModel: {},
+    openCodeVariantByConfigModelAndRole: {
+      "config-a": {
+        "one/main": { primary: "high" },
+        "one/small": { small: "low" },
+      },
+    },
+    selectedLoopByConfigId: {},
+    loopRolesByConfigId: {},
+    openCodeRoleModelsByConfigId: {
+      "config-a": {
+        primary: "one/main",
+        small: "one/small",
+      },
+    },
+  } as unknown as Parameters<typeof ensureCliModelStore>[0];
+  const store = ensureCliModelStore(legacyStore);
+
+  assert.deepEqual(store.openCodeRoleModelsByConfigId["config-a"], {
+    main: "one/main",
+    subtask: "one/small",
+  });
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "main"), "one/main");
+  assert.equal(getOpenCodeRoleModelFromStore(store, "config-a", "subtask"), "one/small");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/main", "main"), "high");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/small", "subtask"), "low");
+});
 
 
 test("isolates OpenCode thinking variants by role and active config", () => {
   let store = ensureCliModelStore();
-  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/main", "primary", "high");
-  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/small", "small", "low");
-  store = setOpenCodeRoleVariantInStore(store, "config-b", "one/main", "primary", "max");
+  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/main", "main", "high");
+  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/subtask", "subtask", "low");
+  store = setOpenCodeRoleVariantInStore(store, "config-b", "one/main", "main", "max");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/main", "main"), "high");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/subtask", "subtask"), "low");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-b", "one/main", "main"), "max");
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/main", "subtask"), null);
   assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/main", "primary"), "high");
-  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/small", "small"), "low");
-  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-b", "one/main", "primary"), "max");
-  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/main", "small"), null);
-  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/small", "small", null);
-  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/small", "small"), null);
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/subtask", "small"), "low");
+  store = setOpenCodeRoleVariantInStore(store, "config-a", "one/subtask", "subtask", null);
+  assert.equal(getOpenCodeRoleVariantFromStore(store, "config-a", "one/subtask", "subtask"), null);
 });
 
 test("does not expose legacy generic or Loop selections for OpenCode", () => {
@@ -76,6 +112,7 @@ test("does not expose legacy generic or Loop selections for OpenCode", () => {
     selectedByConfigId: { opencode: "legacy/main" },
     optionsByConfigId: { opencode: ["legacy/main"] },
     thinkingByCliAndModel: {},
+    loopThinkingByConfigId: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
     selectedLoopByConfigId: { opencode: { main: "legacy/main", subtask: "legacy/sub" } },
@@ -101,6 +138,7 @@ test("exposes Codex Loop role selections alongside the unified model", () => {
     selectedByConfigId: { "config-a": "codex-unified" },
     optionsByConfigId: { "config-a": ["codex-unified", "legacy-main", "legacy-subtask"] },
     thinkingByCliAndModel: {},
+    loopThinkingByConfigId: {},
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
     selectedLoopByConfigId: {

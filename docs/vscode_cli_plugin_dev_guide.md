@@ -12,9 +12,9 @@ Loop 开发级 Workflow Skills 的运行字段与降级、内置快照来源与�
 
 新增或修改用户可见能力时，需要同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。长期记忆能力的设计口径见 `docs/long_term_memory_design.md`。
 
-OpenCode 双模型与思考力度的实现事实以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 为准：主模型与小模型候选只从 active config 的 `provider.<id>.models` 加载；主模型通过 `--model` / `--variant` 运行，小模型只能通过 runtime config overlay 覆盖顶层 `small_model`，内部小模型请求只使用自身 `options` 并忽略 `variants`。
+OpenCode 主模型/子模型与思考力度的实现事实以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 为准：两个角色的候选只从 active config 的 `provider.<id>.models` 加载；主模型通过 `--model` / `--variant` 运行，子模型通过 runtime config overlay 写入 OpenCode CLI 兼容字段 `small_model`，内部 `small: true` 请求只使用该角色模型自身 `options` 并忽略 `variants`。
 
-Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时按 OpenCode 双模型区的布局显示“主模型 / 子模型”，Loop 主任务/续跑/唤醒使用主模型、Loop 子任务使用子模型，Graph planner 使用主模型、Graph 执行节点使用子模型；OpenCode 继续保留与 Loop 编排角色无关的大模型/小模型。
+Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时显示“主模型 / 子模型”；OpenCode 同样使用主模型 / 子模型口径，底层 `model` / `small_model` 只作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 
 Claude 配置卡片的实现事实以 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/references/cli-runtime-reference.md` 为准：`~/.claude/settings.json` 支持可视化与 JSON 双模式；可视化只定向维护官方常用核心字段和三档默认模型环境变量，序列化必须保留未知字段与额外环境变量。 Claude / OpenCode / Codex 三组可视化参数 label 右侧必须提供问号 tooltip，枚举参数列出可选值；“查看范例”统一放在配置文件名右侧。
 

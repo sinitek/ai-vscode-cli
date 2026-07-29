@@ -149,6 +149,14 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
     "normalizeModelSelection",
     "normalizeLoopRoleModelsPayload",
     "normalizeLoopRoleSelectionPayload",
+    "appendThinkingOption",
+    "normalizeThinkingModeSelection",
+    "normalizeLoopRoleThinkingPayload",
+    "getSelectedLoopRoleThinkingModeForCli",
+    "getVisibleLoopRoleThinkingModeForCli",
+    "appendCodexThinkingOptions",
+    "updateCodexLoopRoleThinkingSelect",
+    "updateCodexLoopThinkingSelectOptions",
     "shouldPreserveCurrentCliModelsOnEmptySnapshot",
     "applyModelState",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, name)).join("\n")
@@ -161,6 +169,7 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
       "updateCodexLoopRoleModelSelect",
       "updateCodexLoopModelSelectOptions",
       "handleCodexLoopRoleModelChange",
+      "handleCodexLoopRoleThinkingChange",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
   const state = {
     currentCli: "codex",
@@ -180,10 +189,17 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
       claude: { main: "", subtask: "" },
       opencode: { main: "", subtask: "" },
     },
+    selectedLoopThinkingByCli: {
+      codex: { main: "", subtask: "" },
+      claude: { main: "", subtask: "" },
+      opencode: { main: "", subtask: "" },
+    },
   };
   const elements = {
     codexLoopMainModelSelect: createSelect(),
     codexLoopSubtaskModelSelect: createSelect(),
+    codexLoopMainThinkingMode: createSelect(),
+    codexLoopSubtaskThinkingMode: createSelect(),
   };
   const postedMessages: unknown[] = [];
   const document = {
@@ -200,7 +216,7 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
     "CLI_NAMES",
     "t",
     "vscode",
-    `${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, handleCodexLoopRoleModelChange };`,
+    `${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, updateCodexLoopThinkingSelectOptions, handleCodexLoopRoleModelChange, handleCodexLoopRoleThinkingChange };`,
   )(
     state,
     elements,
@@ -211,7 +227,9 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
   ) as {
     applyModelState(modelState: unknown, panelCurrentCli: string): void;
     updateCodexLoopModelSelectOptions(): void;
+    updateCodexLoopThinkingSelectOptions(): void;
     handleCodexLoopRoleModelChange(role: "main" | "subtask", rawValue: string): void;
+    handleCodexLoopRoleThinkingChange(role: "main" | "subtask", rawValue: string): void;
   };
   return { state, elements, postedMessages, ...helpers };
 }
@@ -228,6 +246,8 @@ function buildVisibilityHarness() {
     codexLoopModelGroup: createVisibilityControl(),
     codexLoopMainModelSelect: createVisibilityControl(),
     codexLoopSubtaskModelSelect: createVisibilityControl(),
+    codexLoopMainThinkingMode: createVisibilityControl(),
+    codexLoopSubtaskThinkingMode: createVisibilityControl(),
     openCodeModelGroup: createVisibilityControl(),
     openCodePrimaryModelSelect: createVisibilityControl(),
     openCodeSmallModelSelect: createVisibilityControl(),
@@ -377,16 +397,22 @@ test("replays Codex role model options and selections from panel state", () => {
   assert.equal(harness.elements.codexLoopMainModelSelect.value, "main-large");
 });
 
-test("posts Codex role model changes with role, model, cli, and config id", () => {
+test("posts Codex role model and thinking changes with role, cli, and config id", () => {
   const harness = buildCodexModelHarness("en");
   harness.state.selectedLoopModelsByCli.codex = { main: "main-large", subtask: "sub-small" };
 
   harness.handleCodexLoopRoleModelChange("subtask", " sub-large ");
   harness.handleCodexLoopRoleModelChange("main", "");
+  harness.handleCodexLoopRoleThinkingChange("main", "xhigh");
+  harness.handleCodexLoopRoleThinkingChange("subtask", " ultra ");
 
   assert.deepEqual(harness.state.selectedLoopModelsByCli.codex, {
     main: "",
     subtask: "sub-large",
+  });
+  assert.deepEqual(harness.state.selectedLoopThinkingByCli.codex, {
+    main: "xhigh",
+    subtask: "ultra",
   });
   assert.deepEqual(harness.postedMessages, [
     {
@@ -402,6 +428,16 @@ test("posts Codex role model changes with role, model, cli, and config id", () =
       role: "main",
       model: null,
       configId: "cfg-1",
+    },
+    {
+      type: "updateSetting",
+      key: "selectedLoopThinkingMode.codex.main",
+      value: "xhigh",
+    },
+    {
+      type: "updateSetting",
+      key: "selectedLoopThinkingMode.codex.subtask",
+      value: "ultra",
     },
   ]);
 });

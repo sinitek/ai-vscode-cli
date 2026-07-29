@@ -7,6 +7,7 @@ import {
   ThinkingMode,
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
+import type { GraphRunStatus } from "../graph/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
 import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 
@@ -42,8 +43,8 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
-  | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small" }
-  | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; value: string | null }
+  | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole }
+  | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | { type: "installCodeGraph" }
   | {
@@ -56,6 +57,8 @@ export type PanelMessage =
       model?: string;
       loopMainModel?: string;
       loopSubtaskModel?: string;
+      loopMainThinkingMode?: ThinkingMode;
+      loopSubtaskThinkingMode?: ThinkingMode;
       lobsterMainModel?: string;
       lobsterSubtaskModel?: string;
       loopExecutionMode?: LoopExecutionMode;
@@ -150,6 +153,8 @@ export type ConversationTabSummary = {
   loopTaskStatus?: LoopTaskStatus;
   loopMainTabCloseLocked?: boolean;
   graphRunId?: string;
+  graphRunStatus?: GraphRunStatus;
+  graphRunBlocked?: boolean;
 };
 
 export type PromptHistoryItem = {
@@ -190,6 +195,7 @@ export type ChatMessage = {
   graphNodeId?: string;
   loopAnswerConclusion?: boolean;
   loopFinalSummary?: boolean;
+  graphFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
   subagentProvider?: "opencode" | "codex" | "loop";
   subagentId?: string;
@@ -205,14 +211,25 @@ export type OpenCodeModelOption = {
   modelId: string;
 };
 
+export type OpenCodeWebviewModelRole = "main" | "subtask";
+export type OpenCodeWebviewLegacyModelRole = "primary" | "small";
+
 export type OpenCodeModelsState = {
   models: OpenCodeModelOption[];
-  configPrimaryRef: string | null;
-  configSmallRef: string | null;
-  selectedPrimaryRef: string | null;
-  selectedSmallRef: string | null;
+  configMainRef?: string | null;
+  configSubtaskRef?: string | null;
+  selectedMainRef?: string | null;
+  selectedSubtaskRef?: string | null;
+  /** @deprecated Compatibility alias for OpenCode config field `model`. */
+  configPrimaryRef?: string | null;
+  /** @deprecated Compatibility alias for OpenCode config field `small_model`. */
+  configSmallRef?: string | null;
+  /** @deprecated Compatibility alias for the main role. */
+  selectedPrimaryRef?: string | null;
+  /** @deprecated Compatibility alias for the subtask role. */
+  selectedSmallRef?: string | null;
   issues: Array<{
-    role?: "primary" | "small";
+    role?: OpenCodeWebviewModelRole | OpenCodeWebviewLegacyModelRole;
     code: string;
     messageKey?: string;
   }>;
@@ -263,9 +280,10 @@ export type PanelState = {
   modelState: {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
-    managedByCli: Record<CliName, string[]>;
-    selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;
-    loopOptionsByCli?: Partial<Record<CliName, { main: string[]; subtask: string[] }>>;
-  };
+      managedByCli: Record<CliName, string[]>;
+      selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;
+      selectedLoopThinkingByCli?: Partial<Record<CliName, { main?: ThinkingMode | null; subtask?: ThinkingMode | null }>>;
+      loopOptionsByCli?: Partial<Record<CliName, { main: string[]; subtask: string[] }>>;
+    };
   editorContext: EditorContextState;
 };

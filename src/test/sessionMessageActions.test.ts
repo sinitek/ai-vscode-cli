@@ -343,7 +343,7 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   assert.equal(calls.preloaded[0].target.cli, "opencode");
 });
 
-test("routes OpenCode Loop through runLoopPrompt while ignoring the generic Codex model field", async () => {
+test("routes OpenCode Loop through runLoopPrompt using the generic model as main/subtask fallback", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   deps.getWorkspaceLoopExecutionMode = (cli) => {
     assert.equal(cli, "opencode");
@@ -376,7 +376,9 @@ test("routes OpenCode Loop through runLoopPrompt while ignoring the generic Code
     displayPrompt: "run the loop",
     modelPrompt: "run the loop",
     contextTags: [],
-    model: undefined,
+    model: "provider/general-model",
+    loopMainModel: "provider/general-model",
+    loopSubtaskModel: "provider/general-model",
     imagePaths: undefined,
     loopExecutionMode: "debate_multi_agent",
     preloadedUserMessageId: "user-preloaded",
@@ -385,7 +387,7 @@ test("routes OpenCode Loop through runLoopPrompt while ignoring the generic Code
   assert.equal(calls.postPanelState, 1);
 });
 
-test("routes OpenCode Graph through runGraphPrompt without starting Loop or normal prompt", async () => {
+test("routes OpenCode Graph through runGraphPrompt using the generic model as planner/executor fallback", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   let memoryInjectionCalls = 0;
   deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
@@ -419,7 +421,9 @@ test("routes OpenCode Graph through runGraphPrompt without starting Loop or norm
     displayPrompt: "run the graph",
     modelPrompt: "run the graph",
     contextTags: [],
-    model: undefined,
+    model: "provider/general-model",
+    loopMainModel: "provider/general-model",
+    loopSubtaskModel: "provider/general-model",
     imagePaths: undefined,
     skipLongTermMemoryPersist: true,
     preloadedUserMessageId: "user-preloaded",
@@ -439,6 +443,8 @@ test("routes Codex Loop with explicit main and subtask model payload fields", as
     model: "  gpt-5.3-codex  ",
     loopMainModel: "  gpt-5.3-codex-main  ",
     loopSubtaskModel: "  gpt-5.3-codex-subtask  ",
+    loopMainThinkingMode: "high",
+    loopSubtaskThinkingMode: "low",
   } as unknown as PanelMessage;
 
   await handlePanelMessageWithDeps(message, deps);
@@ -451,6 +457,8 @@ test("routes Codex Loop with explicit main and subtask model payload fields", as
     model: "gpt-5.3-codex-main",
     loopMainModel: "gpt-5.3-codex-main",
     loopSubtaskModel: "gpt-5.3-codex-subtask",
+    loopMainThinkingMode: "high",
+    loopSubtaskThinkingMode: "low",
     imagePaths: undefined,
     loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
@@ -493,6 +501,9 @@ test("routes Codex Graph with planner and execution model payload fields", async
   deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
     ? "stored-main-model"
     : "stored-subtask-model";
+  deps.getSelectedLoopThinkingMode = (_cli, role) => role === "main"
+    ? "high"
+    : "low";
 
   await handlePanelMessageWithDeps({
     type: "sendPrompt",
@@ -517,8 +528,73 @@ test("routes Codex Graph with planner and execution model payload fields", async
     model: "stored-main-model",
     loopMainModel: "stored-main-model",
     loopSubtaskModel: "stored-subtask-model",
+    loopMainThinkingMode: "high",
+    loopSubtaskThinkingMode: "low",
     imagePaths: undefined,
     skipLongTermMemoryPersist: true,
+    preloadedUserMessageId: "user-preloaded",
+  });
+});
+
+test("routes OpenCode Loop with selected main and subtask models", async () => {
+  const { deps, calls } = createSendPromptHarness("opencode");
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
+    ? "opencode-main-model"
+    : "opencode-subtask-model";
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run opencode loop",
+    interactiveMode: "loop",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.deepEqual(calls.runLoopPrompt[0].input, {
+    displayPrompt: "run opencode loop",
+    modelPrompt: "run opencode loop",
+    contextTags: [],
+    model: "opencode-main-model",
+    loopMainModel: "opencode-main-model",
+    loopSubtaskModel: "opencode-subtask-model",
+    imagePaths: undefined,
+    loopExecutionMode: "main_sub_multi_agent",
+    preloadedUserMessageId: "user-preloaded",
+  });
+});
+
+test("falls back OpenCode Loop subtask model to the main model when unset", async () => {
+  const { deps, calls } = createSendPromptHarness("opencode");
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main" ? "opencode-main-model" : null;
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run opencode loop fallback",
+    interactiveMode: "loop",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.deepEqual(calls.runLoopPrompt[0].input, {
+    displayPrompt: "run opencode loop fallback",
+    modelPrompt: "run opencode loop fallback",
+    contextTags: [],
+    model: "opencode-main-model",
+    loopMainModel: "opencode-main-model",
+    loopSubtaskModel: "opencode-main-model",
+    imagePaths: undefined,
+    loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
 });
@@ -675,6 +751,9 @@ test("ignores retired final-answer policy setting messages", async () => {
 
 test("forces a manual OpenCode Loop subtask continuation through coding runPrompt", async () => {
   const { deps, calls } = createSendPromptHarness();
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
+    ? "opencode-main-model"
+    : "opencode-subtask-model";
   deps.resolveLoopSubtaskConversationContext = () => ({
     taskId: "task-opencode-loop",
     subtaskId: "subtask-routing",
@@ -700,7 +779,9 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
     displayPrompt: "continue this subtask",
     modelPrompt: "continue this subtask",
     contextTags: [],
-    model: undefined,
+    model: "opencode-subtask-model",
+    loopMainModel: "opencode-main-model",
+    loopSubtaskModel: "opencode-subtask-model",
     imagePaths: undefined,
     taskRole: "subtask",
     loopTaskId: "task-opencode-loop",
@@ -717,9 +798,9 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
     options: {
       tabId: "tab-opencode-smoke",
       previousRunEndedAt: 0,
-      model: undefined,
-      loopMainModel: undefined,
-      loopSubtaskModel: undefined,
+      model: "opencode-main-model",
+      loopMainModel: "opencode-main-model",
+      loopSubtaskModel: "opencode-subtask-model",
     },
   }]);
 });
@@ -744,6 +825,8 @@ test("forces a manual Codex Loop subtask continuation through the subtask model 
     cli: "codex",
     loopMainModel: "planner-main-model",
     loopSubtaskModel: "executor-subtask-model",
+    loopMainThinkingMode: "high",
+    loopSubtaskThinkingMode: "low",
   }, deps);
 
   assert.deepEqual(calls.interactiveModes, [{ cli: "codex", mode: "coding" }]);
@@ -756,6 +839,8 @@ test("forces a manual Codex Loop subtask continuation through the subtask model 
     model: "executor-subtask-model",
     loopMainModel: "planner-main-model",
     loopSubtaskModel: "executor-subtask-model",
+    loopMainThinkingMode: "high",
+    loopSubtaskThinkingMode: "low",
     imagePaths: undefined,
     taskRole: "subtask",
     loopTaskId: "task-codex-loop",
@@ -775,6 +860,8 @@ test("forces a manual Codex Loop subtask continuation through the subtask model 
       model: "planner-main-model",
       loopMainModel: "planner-main-model",
       loopSubtaskModel: "executor-subtask-model",
+      loopMainThinkingMode: "high",
+      loopSubtaskThinkingMode: "low",
     },
   }]);
 });
@@ -791,6 +878,9 @@ test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata
     subtaskId: "subtask-routing",
     round: 2,
   });
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
+    ? "opencode-planner-model"
+    : "opencode-executor-model";
 
   await handlePanelMessageWithDeps({
     type: "sendPrompt",
@@ -813,7 +903,9 @@ test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata
     displayPrompt: "start a graph from here",
     modelPrompt: "start a graph from here",
     contextTags: [],
-    model: undefined,
+    model: "opencode-planner-model",
+    loopMainModel: "opencode-planner-model",
+    loopSubtaskModel: "opencode-executor-model",
     imagePaths: undefined,
     skipLongTermMemoryPersist: true,
     preloadedUserMessageId: "user-preloaded",

@@ -38,7 +38,7 @@ export function resolveOpenCodeModelForConfig(
     return { model: null, error: null };
   }
   const parsed = parseOpenCodeConfigModels(openCodeConfigContent);
-  const validation = validateOpenCodeModelOverride(parsed, "primary", normalizedModel);
+  const validation = validateOpenCodeModelOverride(parsed, "main", normalizedModel);
   if (validation.ok && validation.modelRef) {
     return { model: validation.modelRef, error: null };
   }

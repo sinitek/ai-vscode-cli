@@ -211,6 +211,10 @@ test("builds Graph run panel state with status stats, selected node, events, edg
     ["plan", "implement", "depends_on"],
     ["implement", "test", "depends_on"],
   ]);
+  assert.deepEqual(state.edges.map((edge) => [edge.from, edge.to, edge.visited]), [
+    ["plan", "implement", true],
+    ["implement", "test", false],
+  ]);
 });
 
 test("prefers run.edges over dependsOn fallback and honors requested node selection", () => {
@@ -291,7 +295,10 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /<option value="125">125%<\/option>/);
   assert.match(html, /<svg class="dag-edges"/);
   assert.match(html, /marker id="graph-arrowhead"/);
+  assert.match(html, /marker id="graph-arrowhead-visited"/);
   assert.match(html, /class="dag-edge-path active edge-kind-depends_on" data-edge-id="depends_on:plan-&gt;implement" data-edge-from="plan" data-edge-to="implement" data-from-port="right-50" data-to-port="left-50"/);
+  assert.match(html, /data-edge-id="depends_on:plan-&gt;implement"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
+  assert.match(html, /data-edge-id="depends_on:review-&gt;summary"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
   assert.match(html, /data-edge-label="[^"]*Depends On/);
   assert.match(html, /data-edge-display-label="Deps"/);
   assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="depends_on:plan-&gt;implement" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">Deps<\/text>/);
@@ -317,7 +324,9 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.match(html, /data-node-detail="review"/);
 	  assert.match(html, /id="nodeDetailDialogBackdrop" class="dialog-backdrop node-detail-backdrop"/);
 	  assert.match(html, /id="nodeDetailDialog" class="dialog node-detail-dialog" role="dialog" aria-modal="true"/);
-	  assert.match(html, /id="nodeDetailDialogClose"[\s\S]*data-node-detail-close[\s\S]*>Close Details</);
+	  assert.match(html, /<svg id="nodeDetailDialogClose" class="node-detail-close-icon"[\s\S]*data-node-detail-close[\s\S]*role="button"[\s\S]*aria-label="Close Details"[\s\S]*viewBox="0 0 16 16"/);
+	  assert.match(html, /<path d="M4 4l8 8M12 4 4 12" aria-hidden="true"><\/path>/);
+	  assert.doesNotMatch(html, /<button id="nodeDetailDialogClose"/);
 	  assert.match(html, /data-action="resetLayout"[\s\S]*aria-label="Clear saved manual node positions for this Graph run"[\s\S]*>↺</);
 	  assert.doesNotMatch(html, />\s*Reset layout\s*</);
 	  assert.match(html, /graphRunLayouts/);
@@ -332,9 +341,12 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.match(html, /persistManualLayout/);
 	  assert.match(html, /startNodeDrag/);
 	  assert.match(html, /pointermove/);
+	  assert.match(html, /nodeDragMoveThreshold/);
 	  assert.match(html, /const zoomScale = getCurrentZoomScale\(\);[\s\S]*const dx = rawDx \/ zoomScale;[\s\S]*const dy = rawDy \/ zoomScale;/);
 	  assert.match(html, /openNodeDetailDialog/);
+	  assert.match(html, /element\.addEventListener\("click", \(event\) => \{[\s\S]*openNodeDetailDialog\(element\.dataset\.nodeId \|\| "", \{ trigger: element, persist: true \}\)/);
 	  assert.match(html, /addEventListener\("dblclick"/);
+	  assert.match(html, /event\.stopPropagation\(\);[\s\S]*suppressNodeClickId = "";/);
 	  assert.match(html, /closeNodeDetailDialog/);
 	  assert.match(html, /event\.key === "Escape" && isNodeDetailDialogOpen\(\)/);
 	  assert.match(html, /startCanvasPan/);
@@ -787,8 +799,13 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.graph-dag[\s\S]*flex:\s*1 1 auto/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport[\s\S]*cursor:\s*grab/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport\.panning[\s\S]*cursor:\s*grabbing/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\][\s\S]*stroke:\s*var\(--vscode-textLink-foreground,\s*var\(--vscode-focusBorder\)\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited\s*\{[\s\S]*fill:\s*var\(--vscode-textLink-foreground,\s*var\(--vscode-focusBorder\)\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog[\s\S]*width:\s*min\(860px, 100%\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog-body[\s\S]*overflow:\s*auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-close-icon[\s\S]*position:\s*absolute/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-close-icon[\s\S]*color:\s*var\(--vscode-icon-foreground,\s*var\(--vscode-foreground\)\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-close-icon path[\s\S]*stroke:\s*currentColor/);
   assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /flex:\s*0 0 50%/);
   assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /flex:\s*1 1 50%/);
   assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /node-details-section/);

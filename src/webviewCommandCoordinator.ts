@@ -26,8 +26,12 @@ export type ConfigHeartbeatSnapshot = {
   configIds: string[];
   modelSelected: string | null;
   managedModelOptions: string[];
-  openCodePrimaryModelSelected: string | null;
-  openCodeSmallModelSelected: string | null;
+  openCodeMainModelSelected: string | null;
+  openCodeSubtaskModelSelected: string | null;
+  /** @deprecated Compatibility alias for the OpenCode main role. */
+  openCodePrimaryModelSelected?: string | null;
+  /** @deprecated Compatibility alias for the OpenCode subtask role. */
+  openCodeSmallModelSelected?: string | null;
 };
 
 export type ConfigHeartbeatCoordinatorDeps = {
@@ -87,14 +91,18 @@ function getConfigHeartbeatPayload(
   const openCodeRoleSelection = cli === "opencode" && modelConfigId
     ? (normalizedStore.openCodeRoleModelsByConfigId[modelConfigId] ?? {})
     : {};
+  const openCodeMainModelSelected = deps.normalizeCliModelName(openCodeRoleSelection.main);
+  const openCodeSubtaskModelSelected = deps.normalizeCliModelName(openCodeRoleSelection.subtask);
   return {
     cli,
     activeConfigId,
     configIds: configState.configs.map((config) => config.id),
     modelSelected,
     managedModelOptions,
-    openCodePrimaryModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.primary),
-    openCodeSmallModelSelected: deps.normalizeCliModelName(openCodeRoleSelection.small),
+    openCodeMainModelSelected,
+    openCodeSubtaskModelSelected,
+    openCodePrimaryModelSelected: openCodeMainModelSelected,
+    openCodeSmallModelSelected: openCodeSubtaskModelSelected,
   };
 }
 
@@ -121,10 +129,10 @@ function shouldRefreshConfigState(
   if (!areStringListsEqual(snapshot.managedModelOptions, nextPayload.managedModelOptions)) {
     return true;
   }
-  if (snapshot.openCodePrimaryModelSelected !== nextPayload.openCodePrimaryModelSelected) {
+  if (snapshot.openCodeMainModelSelected !== nextPayload.openCodeMainModelSelected) {
     return true;
   }
-  if (snapshot.openCodeSmallModelSelected !== nextPayload.openCodeSmallModelSelected) {
+  if (snapshot.openCodeSubtaskModelSelected !== nextPayload.openCodeSubtaskModelSelected) {
     return true;
   }
   return false;

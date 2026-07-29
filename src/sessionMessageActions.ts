@@ -1,5 +1,5 @@
 import { supportsCliManagedModelSelection } from "./cli/modelArgs";
-import { normalizeLoopExecutionMode } from "./cli/types";
+import { normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
@@ -76,6 +76,25 @@ export async function handleUpdateSettingMessage(
     ) {
       const modelValue = typeof message.value === "string" ? message.value : null;
       deps.selectCliLoopModel?.(cli, roleValue, modelValue, deps.getActiveConfigIdForCli(cli));
+      deps.loadModelStore();
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key.startsWith("selectedLoopThinkingMode.")) {
+    const [, cliValue, roleValue] = message.key.split(".");
+    const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
+    if (
+      cli === "codex"
+      && (roleValue === "main" || roleValue === "subtask")
+    ) {
+      const configId = deps.getActiveConfigIdForCli(cli);
+      const roleModel = deps.getSelectedLoopCliModel?.(cli, roleValue, configId)
+        ?? deps.getSelectedCliModel(cli, configId);
+      const thinkingMode = deps.isThinkingMode(message.value)
+        ? deps.normalizeThinkingModeForCli(cli, message.value)
+        : null;
+      deps.setSelectedLoopThinkingMode?.(cli, roleValue, roleModel, thinkingMode, configId);
       deps.loadModelStore();
     }
     await deps.postPanelState();
@@ -161,14 +180,33 @@ function normalizePromptModel(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function resolveCodexPromptModels(
+function normalizePromptThinkingMode(
+  value: unknown,
+  targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
+  deps: PanelMessageHandlerDeps
+): ThinkingMode | undefined {
+  if (typeof deps.isThinkingMode !== "function" || typeof deps.normalizeThinkingModeForCli !== "function") {
+    return undefined;
+  }
+  return deps.isThinkingMode(value)
+    ? deps.normalizeThinkingModeForCli(targetCli, value)
+    : undefined;
+}
+
+function supportsMainSubtaskPromptModels(
+  targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
+): boolean {
+  return targetCli === "codex" || targetCli === "opencode";
+}
+
+function resolvePromptRoleModels(
   message: Extract<PanelMessage, { type: "sendPrompt" }>,
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
   configId: string | null,
   deps: PanelMessageHandlerDeps,
   options: { includeLoopModels: boolean; subtaskContinuation: boolean },
 ): { model?: string; loopMainModel?: string; loopSubtaskModel?: string } {
-  if (targetCli !== "codex") {
+  if (!supportsMainSubtaskPromptModels(targetCli)) {
     return {};
   }
   const explicitModel = normalizePromptModel(message.model);
@@ -191,6 +229,31 @@ function resolveCodexPromptModels(
     model: options.subtaskContinuation ? loopSubtaskModel : (loopMainModel ?? explicitModel),
     loopMainModel,
     loopSubtaskModel,
+  };
+}
+
+function resolvePromptRoleThinkingModes(
+  message: Extract<PanelMessage, { type: "sendPrompt" }>,
+  targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
+  configId: string | null,
+  deps: PanelMessageHandlerDeps,
+  options: { includeLoopModels: boolean },
+  promptModels: { model?: string; loopMainModel?: string; loopSubtaskModel?: string }
+): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode } {
+  if (targetCli !== "codex" || !options.includeLoopModels) {
+    return {};
+  }
+  const mainModel = promptModels.loopMainModel ?? promptModels.model ?? deps.getSelectedCliModel(targetCli, configId);
+  const subtaskModel = promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
+  const loopMainThinkingMode = normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
+    ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
+    ?? undefined;
+  const loopSubtaskThinkingMode = normalizePromptThinkingMode(message.loopSubtaskThinkingMode, targetCli, deps)
+    ?? deps.getSelectedLoopThinkingMode?.(targetCli, "subtask", subtaskModel, configId)
+    ?? undefined;
+  return {
+    ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
+    ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
   };
 }
 
@@ -269,22 +332,31 @@ export async function handleSendPromptMessage(
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
   const shouldRunLoop = effectiveInteractiveMode === "loop";
   const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;
-  const codexModels = resolveCodexPromptModels(message, targetCli, activeConfigId, deps, {
+  const promptModels = resolvePromptRoleModels(message, targetCli, activeConfigId, deps, {
     includeLoopModels,
     subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
   });
+  const promptThinkingModes = resolvePromptRoleThinkingModes(message, targetCli, activeConfigId, deps, {
+    includeLoopModels,
+  }, promptModels);
   const promptInput: PromptRunInputForPanel = {
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,
-    model: codexModels.model,
+    model: promptModels.model,
     imagePaths: imagePaths.length ? imagePaths : undefined,
   };
-  if (codexModels.loopMainModel) {
-    promptInput.loopMainModel = codexModels.loopMainModel;
+  if (promptModels.loopMainModel) {
+    promptInput.loopMainModel = promptModels.loopMainModel;
   }
-  if (codexModels.loopSubtaskModel) {
-    promptInput.loopSubtaskModel = codexModels.loopSubtaskModel;
+  if (promptModels.loopSubtaskModel) {
+    promptInput.loopSubtaskModel = promptModels.loopSubtaskModel;
+  }
+  if (promptThinkingModes.loopMainThinkingMode) {
+    promptInput.loopMainThinkingMode = promptThinkingModes.loopMainThinkingMode;
+  }
+  if (promptThinkingModes.loopSubtaskThinkingMode) {
+    promptInput.loopSubtaskThinkingMode = promptThinkingModes.loopSubtaskThinkingMode;
   }
   if (shouldRunGraph) {
     promptInput.skipLongTermMemoryPersist = true;
@@ -339,13 +411,16 @@ export async function handleSendPromptMessage(
   } else {
     await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
     if (loopSubtaskContext && promptTargetTabId) {
-      await deps.maybeWakeLoopMainAfterSubtaskContinuation(loopSubtaskContext, {
+      const wakeOptions = {
         tabId: promptTargetTabId,
         previousRunEndedAt: previousSubtaskRunEndedAt,
         model: preparedPromptInput.loopMainModel ?? preparedPromptInput.model,
         loopMainModel: preparedPromptInput.loopMainModel,
         loopSubtaskModel: preparedPromptInput.loopSubtaskModel,
-      });
+        ...(preparedPromptInput.loopMainThinkingMode ? { loopMainThinkingMode: preparedPromptInput.loopMainThinkingMode } : {}),
+        ...(preparedPromptInput.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: preparedPromptInput.loopSubtaskThinkingMode } : {}),
+      };
+      await deps.maybeWakeLoopMainAfterSubtaskContinuation(loopSubtaskContext, wakeOptions);
     }
   }
 }

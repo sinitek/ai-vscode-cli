@@ -9,7 +9,7 @@ import {
   validateOpenCodeModelOverride,
 } from "../cli/opencodeconfigmodels";
 
-test("parses primary and small models while keeping display labels separate from exact refs", () => {
+test("parses main and subtask models while keeping display labels separate from exact refs", () => {
   const parsed = parseOpenCodeConfigModels(JSON.stringify({
     model: "main/chat",
     small_model: "utility/title",
@@ -29,6 +29,8 @@ test("parses primary and small models while keeping display labels separate from
     },
   }));
 
+  assert.equal(parsed.mainModel?.ref, "main/chat");
+  assert.equal(parsed.subtaskModel?.ref, "utility/title");
   assert.equal(parsed.primaryModel?.ref, "main/chat");
   assert.equal(parsed.smallModel?.ref, "utility/title");
   assert.deepEqual(parsed.candidates.map((candidate) => candidate.value), [
@@ -74,17 +76,20 @@ test("uses the model id when the configured model name is missing or blank", () 
   });
 });
 
-test("allows an empty small model to follow OpenCode automatic behavior", () => {
+test("allows an empty subtask model to follow OpenCode automatic behavior", () => {
   const parsed = parseOpenCodeConfigModels(JSON.stringify({
     model: "gateway/main",
     small_model: "",
     provider: { gateway: { models: { main: {} } } },
   }));
 
+  assert.equal(parsed.mainModelRef, "gateway/main");
+  assert.equal(parsed.subtaskModelRef, null);
+  assert.equal(parsed.subtaskModel, null);
   assert.equal(parsed.primaryModelRef, "gateway/main");
   assert.equal(parsed.smallModelRef, null);
   assert.equal(parsed.smallModel, null);
-  assert.equal(parsed.issues.some((issue) => issue.role === "small"), false);
+  assert.equal(parsed.issues.some((issue) => issue.role === "subtask"), false);
 });
 
 test("reports invalid JSON, exact refs, missing providers, and missing models", () => {
@@ -111,7 +116,7 @@ test("reports invalid JSON, exact refs, missing providers, and missing models", 
     provider: { gateway: { models: { present: {} } } },
   }));
   assert.equal(missingModel.issues[0].code, "role-model-not-found");
-  assert.equal(missingModel.issues[0].role, "primary");
+  assert.equal(missingModel.issues[0].role, "main");
 });
 
 test("applies provider and model filters without inferring adapter capabilities", () => {
@@ -143,7 +148,7 @@ test("applies provider and model filters without inferring adapter capabilities"
     "active/main",
     "active/alpha",
   ]);
-  assert.equal(parsed.smallModel?.resolution, "conditional");
+  assert.equal(parsed.subtaskModel?.resolution, "conditional");
   assert.deepEqual(new Set(parsed.issues.map((issue) => issue.code)), new Set([
     "model-resolution-conditional",
     "model-blacklisted",
@@ -164,19 +169,26 @@ test("validates temporary role overrides only against current exact candidates",
     },
   }));
 
-  assert.deepEqual(validateOpenCodeModelOverride(parsed, "primary", null), {
+  assert.deepEqual(validateOpenCodeModelOverride(parsed, "main", null), {
     ok: true,
-    role: "primary",
+    role: "main",
     modelRef: null,
     issue: null,
   });
-  assert.equal(validateOpenCodeModelOverride(parsed, "small", "two/small").ok, true);
+  assert.deepEqual(validateOpenCodeModelOverride(parsed, "primary", null), {
+    ok: true,
+    role: "main",
+    modelRef: null,
+    issue: null,
+  });
+  assert.equal(validateOpenCodeModelOverride(parsed, "subtask", "two/small").ok, true);
+  assert.equal(validateOpenCodeModelOverride(parsed, "small", "two/small").role, "subtask");
   assert.equal(
-    validateOpenCodeModelOverride(parsed, "primary", "main").issue?.code,
+    validateOpenCodeModelOverride(parsed, "main", "main").issue?.code,
     "override-model-invalid-ref"
   );
   assert.equal(
-    validateOpenCodeModelOverride(parsed, "primary", "one/missing").issue?.code,
+    validateOpenCodeModelOverride(parsed, "main", "one/missing").issue?.code,
     "override-model-unavailable"
   );
 });
@@ -193,8 +205,8 @@ test("creates a runtime overlay without mutating the source config", () => {
   };
   const snapshot = JSON.parse(JSON.stringify(source));
   const result = applyOpenCodeRuntimeModelOverlay(source, {
-    primary: "two/main",
-    small: "two/small",
+    main: "two/main",
+    subtask: "two/small",
   });
 
   assert.equal(result.ok, true);
@@ -206,11 +218,22 @@ test("creates a runtime overlay without mutating the source config", () => {
   assert.deepEqual(source, snapshot);
 
   const followingConfig = applyOpenCodeRuntimeModelOverlay(source, {
-    primary: null,
-    small: null,
+    main: null,
+    subtask: null,
   });
   assert.deepEqual(followingConfig.config, source);
   assert.notEqual(followingConfig.config, source);
+
+  const legacyAliasConfig = applyOpenCodeRuntimeModelOverlay(source, {
+    primary: "two/main",
+    small: "two/small",
+  });
+  assert.equal(legacyAliasConfig.ok, true);
+  assert.deepEqual(legacyAliasConfig.config, {
+    ...source,
+    model: "two/main",
+    small_model: "two/small",
+  });
 });
 
 test("keeps OpenCode task permissions unchanged when multi-agent is enabled", () => {

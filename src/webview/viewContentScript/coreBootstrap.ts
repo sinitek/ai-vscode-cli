@@ -120,6 +120,11 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: { main: "", subtask: "" },
           opencode: { main: "", subtask: "" },
         },
+        selectedLoopThinkingByCli: {
+          codex: { main: "", subtask: "" },
+          claude: { main: "", subtask: "" },
+          opencode: { main: "", subtask: "" },
+        },
         modelsByCli: {
           codex: [],
           claude: [],
@@ -178,6 +183,10 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         },
         openCodeModels: {
           models: [],
+          configMainRef: null,
+          configSubtaskRef: null,
+          selectedMainRef: null,
+          selectedSubtaskRef: null,
           configPrimaryRef: null,
           configSmallRef: null,
           selectedPrimaryRef: null,
@@ -251,6 +260,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         codexLoopModelGroup: document.getElementById("codexLoopModelGroup"),
         codexLoopMainModelSelect: document.getElementById("codexLoopMainModelSelect"),
         codexLoopSubtaskModelSelect: document.getElementById("codexLoopSubtaskModelSelect"),
+        codexLoopMainThinkingMode: document.getElementById("codexLoopMainThinkingMode"),
+        codexLoopSubtaskThinkingMode: document.getElementById("codexLoopSubtaskThinkingMode"),
         openCodeModelGroup: document.getElementById("openCodeModelGroup"),
         openCodePrimaryModelSelect: document.getElementById("openCodePrimaryModelSelect"),
         openCodeSmallModelSelect: document.getElementById("openCodeSmallModelSelect"),

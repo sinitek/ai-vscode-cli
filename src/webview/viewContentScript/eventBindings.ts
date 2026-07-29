@@ -39,6 +39,9 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         if (state.selectedLoopModelsByCli) {
           state.selectedLoopModelsByCli[state.currentCli] = { main: "", subtask: "" };
         }
+        if (state.selectedLoopThinkingByCli) {
+          state.selectedLoopThinkingByCli[state.currentCli] = { main: "", subtask: "" };
+        }
         if (state.modelsByCli) {
           state.modelsByCli[state.currentCli] = [];
         }
@@ -52,6 +55,9 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
           updateModelSelectOptions();
         }
         updateCodexLoopModelSelectOptions();
+        if (typeof updateCodexLoopThinkingSelectOptions === "function") {
+          updateCodexLoopThinkingSelectOptions();
+        }
         clearOpenCodeModelOptions();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {
           renderModelManagerList();
@@ -123,8 +129,12 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         });
       }
 
+      function getOpenCodeCompatModelRole(role) {
+        return role === "subtask" ? "small" : "primary";
+      }
+
       function handleOpenCodeThinkingModeChange(role, rawValue) {
-        const thinkingState = role === "small" ? state.openCodeSmallThinking : state.openCodeThinking;
+        const thinkingState = role === "subtask" ? state.openCodeSmallThinking : state.openCodeThinking;
         const selectedVariant = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
         const configuredDefaultVariant = thinkingState
           ? thinkingState.configuredDefaultVariant
@@ -137,14 +147,15 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         }
         vscode.postMessage({
           type: "updateOpenCodeVariant",
-          role,
+          role: getOpenCodeCompatModelRole(role),
+          modelRole: role,
           value,
         });
       }
 
       function handleThinkingModeChange(rawValue) {
         if (state.currentCli === "opencode") {
-          handleOpenCodeThinkingModeChange("primary", rawValue);
+          handleOpenCodeThinkingModeChange("main", rawValue);
           return;
         }
         const nextMode = rawValue || "off";
@@ -161,23 +172,24 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
       });
       if (elements.openCodePrimaryThinkingMode) {
         elements.openCodePrimaryThinkingMode.addEventListener("change", (event) => {
-          handleOpenCodeThinkingModeChange("primary", event.target.value);
+          handleOpenCodeThinkingModeChange("main", event.target.value);
         });
       }
       if (elements.openCodeSmallThinkingMode) {
         elements.openCodeSmallThinkingMode.addEventListener("change", (event) => {
-          handleOpenCodeThinkingModeChange("small", event.target.value);
+          handleOpenCodeThinkingModeChange("subtask", event.target.value);
         });
       }
 
       function handleOpenCodeRoleModelChange(role, rawValue) {
         const selectedRef = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
         const configRef = state.openCodeModels
-          ? (role === "small" ? state.openCodeModels.configSmallRef : state.openCodeModels.configPrimaryRef)
+          ? (role === "subtask" ? state.openCodeModels.configSubtaskRef : state.openCodeModels.configMainRef)
           : null;
         const value = selectedRef && selectedRef === configRef ? null : selectedRef;
         if (state.openCodeModels) {
-          if (role === "small") {
+          if (role === "subtask") {
+            state.openCodeModels.selectedSubtaskRef = selectedRef;
             state.openCodeModels.selectedSmallRef = selectedRef;
             state.openCodeSmallThinking = {
               selectedVariant: null,
@@ -187,6 +199,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               messageKey: "loading",
             };
           } else {
+            state.openCodeModels.selectedMainRef = selectedRef;
             state.openCodeModels.selectedPrimaryRef = selectedRef;
             state.openCodeThinking = {
               selectedVariant: null,
@@ -200,20 +213,21 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         }
         vscode.postMessage({
           type: "updateOpenCodeRoleModel",
-          role,
+          role: getOpenCodeCompatModelRole(role),
+          modelRole: role,
           value,
         });
       }
 
       if (elements.openCodePrimaryModelSelect) {
         elements.openCodePrimaryModelSelect.addEventListener("change", (event) => {
-          handleOpenCodeRoleModelChange("primary", event.target.value);
+          handleOpenCodeRoleModelChange("main", event.target.value);
         });
       }
 
       if (elements.openCodeSmallModelSelect) {
         elements.openCodeSmallModelSelect.addEventListener("change", (event) => {
-          handleOpenCodeRoleModelChange("small", event.target.value);
+          handleOpenCodeRoleModelChange("subtask", event.target.value);
         });
       }
 

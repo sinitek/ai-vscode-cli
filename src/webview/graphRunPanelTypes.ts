@@ -54,6 +54,7 @@ export type GraphRunPanelEdge = {
   kind: GraphEdgeKind;
   kindLabel: string;
   active: boolean;
+  visited: boolean;
   fromTitle: string;
   toTitle: string;
   label?: string;

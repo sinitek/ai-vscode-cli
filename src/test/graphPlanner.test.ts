@@ -160,6 +160,7 @@ test("materializes an AI planned non-linear DAG after the planner node passes", 
   assert.equal(result.run.nodes.find((node) => node.id === "implement-api")?.title, "实现 API");
   assert.equal(result.run.nodes.find((node) => node.id === "review-all")?.title, "评审合并结果");
   assert.equal(result.run.nodes.find((node) => node.id === "summary")?.title, "总结 AI 规划的 Graph 运行");
+  assert.equal(result.run.nodes.find((node) => node.id === "summary")?.ownerRole, "main");
   assert.deepEqual(result.run.nodes.find((node) => node.id === "summary")?.dependsOn, ["review-all"]);
   assert.equal(result.run.edges.some((edge) => edge.from === GRAPH_AI_PLANNER_NODE_ID && edge.to === "implement-api"), true);
   assert.equal(result.run.edges.some((edge) => edge.from === GRAPH_AI_PLANNER_NODE_ID && edge.to === "implement-ui"), true);

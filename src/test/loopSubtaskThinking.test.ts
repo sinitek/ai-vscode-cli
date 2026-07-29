@@ -33,7 +33,7 @@ test("applies the cap only while dispatching Loop subtasks", () => {
   const end = extensionSource.indexOf("function buildLoopActiveSubtaskPatch(", start);
   const runLoopRoundSource = extensionSource.slice(start, end);
 
-  assert.match(runLoopRoundSource, /thinkingModeOverride: role === "subtask"/u);
-  assert.match(runLoopRoundSource, /resolveLoopSubtaskThinkingMode\(/u);
-  assert.match(runLoopRoundSource, /getGlobalLoopSubtaskMaxThinkingMode\(\)/u);
+  assert.match(runLoopRoundSource, /const thinkingModeOverride = resolvePromptRunThinkingModeForRole\(input,\s*target\.cli,\s*role,\s*roleModel,\s*\{/u);
+  assert.match(runLoopRoundSource, /applySubtaskCap:\s*true/u);
+  assert.match(runLoopRoundSource, /thinkingModeOverride,/u);
 });

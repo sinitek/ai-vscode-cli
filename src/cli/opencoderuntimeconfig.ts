@@ -21,9 +21,17 @@ export type OpenCodeRuntimeConfigOverlayResult = {
 
 export function createOpenCodeRuntimeConfigOverlay(input: {
   configContent: string;
+  mainModel?: string | null;
+  subtaskModel?: string | null;
+  mainVariant?: string | null;
+  subtaskVariant?: string | null;
+  /** @deprecated Use mainModel. */
   primaryModel: string;
+  /** @deprecated Use subtaskModel. */
   smallModel: string | null;
+  /** @deprecated Use mainVariant. */
   primaryVariant?: string | null;
+  /** @deprecated Use subtaskVariant. */
   smallVariant?: string | null;
 }): OpenCodeRuntimeConfigOverlayResult {
   let parsedConfig: unknown;
@@ -54,10 +62,10 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
   const applied = applyOpenCodeRuntimeModelOverlay(
     parsedConfig as Record<string, unknown>,
     {
-      primary: input.primaryModel,
-      small: input.smallModel,
-      primaryVariant: input.primaryVariant ?? null,
-      smallVariant: input.smallVariant ?? null,
+      main: input.mainModel ?? input.primaryModel,
+      subtask: input.subtaskModel ?? input.smallModel,
+      mainVariant: input.mainVariant ?? input.primaryVariant ?? null,
+      subtaskVariant: input.subtaskVariant ?? input.smallVariant ?? null,
     }
   );
   if (!applied.ok || !applied.config) {

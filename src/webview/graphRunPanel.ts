@@ -231,6 +231,7 @@ ${GRAPH_RUN_PANEL_STYLES}
       const allowedDagZoomPercents = [${DAG_ZOOM_PERCENT_OPTIONS.join(", ")}];
       const defaultDagZoomPercent = ${DAG_DEFAULT_ZOOM_PERCENT};
       const panMoveThreshold = 4;
+      const nodeDragMoveThreshold = 4;
       let activeDrag = null;
       let activePan = null;
       let suppressNodeClickId = "";
@@ -605,7 +606,7 @@ ${GRAPH_RUN_PANEL_STYLES}
         }
         const rawDx = event.clientX - activeDrag.startClientX;
         const rawDy = event.clientY - activeDrag.startClientY;
-        if (Math.abs(rawDx) > 3 || Math.abs(rawDy) > 3) {
+        if (Math.abs(rawDx) > nodeDragMoveThreshold || Math.abs(rawDy) > nodeDragMoveThreshold) {
           activeDrag.moved = true;
           event.preventDefault();
         }
@@ -628,6 +629,8 @@ ${GRAPH_RUN_PANEL_STYLES}
         activeDrag.element.releasePointerCapture?.(event.pointerId);
         if (activeDrag.moved) {
           suppressNodeClickId = draggedNodeId;
+          event.preventDefault();
+          event.stopPropagation();
           persistManualLayout();
           window.setTimeout(() => {
             if (suppressNodeClickId === draggedNodeId) {
@@ -801,10 +804,12 @@ ${GRAPH_RUN_PANEL_STYLES}
         element.addEventListener("click", (event) => {
           if (suppressNodeClickId === element.dataset.nodeId) {
             event.preventDefault();
+            event.stopPropagation();
             suppressNodeClickId = "";
             return;
           }
-          setSelectedNode(element.dataset.nodeId || "");
+          event.preventDefault();
+          openNodeDetailDialog(element.dataset.nodeId || "", { trigger: element, persist: true });
         });
         element.addEventListener("dblclick", (event) => {
           event.preventDefault();
@@ -813,7 +818,7 @@ ${GRAPH_RUN_PANEL_STYLES}
         element.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setSelectedNode(element.dataset.nodeId || "");
+            openNodeDetailDialog(element.dataset.nodeId || "", { trigger: element, persist: true });
           }
         });
       });
@@ -895,6 +900,12 @@ ${GRAPH_RUN_PANEL_STYLES}
         }
       });
       nodeDetailClose?.addEventListener("click", closeNodeDetailDialog);
+      nodeDetailClose?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          closeNodeDetailDialog();
+        }
+      });
       nodeDetailBackdrop?.addEventListener("click", (event) => {
         if (event.target === nodeDetailBackdrop) {
           closeNodeDetailDialog();
@@ -1029,11 +1040,16 @@ function renderDagSvg(layout: DagLayout, strings: GraphRunPanelStrings): string 
       <marker id="graph-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
         <path class="dag-arrowhead" d="M 0 0 L 10 5 L 0 10 z"></path>
       </marker>
+      <marker id="graph-arrowhead-visited" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path class="dag-arrowhead dag-arrowhead-visited" d="M 0 0 L 10 5 L 0 10 z"></path>
+      </marker>
     </defs>
     ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, offset, labelX, labelY }) => {
       const activeClass = edge.active ? "active" : "inactive";
+      const visited = edge.visited ? "true" : "false";
+      const markerId = edge.visited ? "graph-arrowhead-visited" : "graph-arrowhead";
       const pathId = `dag-edge-${toSafeDomId(edge.id)}`;
-      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" d="${escapeHtml(path)}" marker-end="url(#graph-arrowhead)">
+      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
         <title>${escapeHtml(label || strings.none)}</title>
       </path>
       ${renderDagEdgeDisplayLabel(edge.id, displayLabel, activeClass, labelX, labelY)}`;
@@ -1175,7 +1191,10 @@ function renderNodeDetails(state: GraphRunPanelState, strings: GraphRunPanelStri
           <h2 id="nodeDetailDialogTitle" class="dialog-title">${escapeHtml(strings.details)}</h2>
           <p class="dialog-description">${escapeHtml(strings.selectedNode)}</p>
         </div>
-        <button id="nodeDetailDialogClose" class="button button-compact" type="button" data-node-detail-close>${escapeHtml(strings.closeDetails)}</button>
+        <svg id="nodeDetailDialogClose" class="node-detail-close-icon" data-node-detail-close role="button" tabindex="0" aria-label="${escapeHtml(strings.closeDetails)}" viewBox="0 0 16 16">
+          <title>${escapeHtml(strings.closeDetails)}</title>
+          <path d="M4 4l8 8M12 4 4 12" aria-hidden="true"></path>
+        </svg>
       </div>
       <div class="dialog-body node-detail-dialog-body">
         ${bodyHtml}

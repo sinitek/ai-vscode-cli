@@ -49,7 +49,7 @@ const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
     "验证目标能力，优先补或运行最小相关自动化测试；仅在授权写入范围内修改测试或必要夹具。",
   ],
   review: [
-    "按代码审查视角检查正确性、越权写入、遗漏验证和回归风险；只在授权时写修复。",
+    "按代码审查视角检查当前任务范围内的正确性、越权写入、遗漏验证和回归风险；只在授权时写修复。",
   ],
   debate: [
     "围绕方案、实现、验证和阻塞风险做结构化攻防；结论必须可追溯到证据。",
@@ -147,6 +147,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     "## 节点职责",
     ...GRAPH_NODE_ROLE_GUIDANCE[node.kind].map((item) => `- ${item}`),
     ...formatGraphNodeBoundaryLines(run, node),
+    ...formatGraphReviewScopeLines(run, node),
     "",
     "## Acceptance",
     ...formatAcceptanceLines(node.acceptance),
@@ -376,6 +377,74 @@ function formatGraphNodeBoundaryLines(run: GraphRunRecord, node: GraphNodeRecord
     boundaryLines.push("- 当前节点没有未完成下游节点；仍只产出本节点执行证据，Graph 是否完成由宿主根据全图状态判断。");
   }
   return boundaryLines;
+}
+
+function formatGraphReviewScopeLines(run: GraphRunRecord, node: GraphNodeRecord): string[] {
+  if (node.kind !== "review") {
+    return [];
+  }
+  const reviewScopeNodes = collectGraphReviewScopeNodes(run, node);
+  const reviewScopeWriteFiles = collectGraphReviewScopeWriteFiles(reviewScopeNodes);
+  const reviewScopeArtifacts = collectGraphReviewScopeArtifacts(run, reviewScopeNodes);
+  return [
+    "",
+    "## Review 节点评审范围",
+    `- 范围来源节点：${formatNodeReferences(reviewScopeNodes)}`,
+    `- 本次任务候选改动文件：${formatWriteFiles(reviewScopeWriteFiles, run)}`,
+    reviewScopeArtifacts.length > 0
+      ? `- 必读上游 evidence：${reviewScopeArtifacts.join("、")}`
+      : "- 必读上游 evidence：未声明；需读取上游 communicationFile 或 Graph events 补足证据。",
+    "- 先读取上游节点 communicationFile / artifactRef，提取本次任务实际修改、验证过的文件，再把这些路径作为评审目标。",
+    "- 使用 git status / git diff 时必须按上述文件范围或上游 evidence 中列出的实际修改文件加 pathspec 过滤；不要把整个工作区 dirty 状态当作当前任务失败依据。",
+    "- 如果 git status / git diff 出现评审范围外路径，默认视为同一 workspace 中的无关改动；只有证据表明该路径由本 Graph 任务产生或影响本任务验收时，才将其写入问题。",
+    "- 评审结论只覆盖当前任务范围内的正确性、验证证据和回归风险；范围外改动可在遗留问题中提示，但不得单独导致 failed/blocked。",
+  ];
+}
+
+function collectGraphReviewScopeNodes(run: GraphRunRecord, node: GraphNodeRecord): GraphNodeRecord[] {
+  const relationships = collectGraphTopologyRelationships(run, node);
+  const nodeById = new Map(run.nodes.map((item) => [item.id, item]));
+  const upstreamNodes = resolveGraphNodes(nodeById, relationships.ancestorIds);
+  return upstreamNodes.filter((item) => {
+    if (item.id === node.id || item.kind === "review" || item.kind === "summary" || item.kind === "sleep" || item.kind === "human_gate") {
+      return false;
+    }
+    return normalizeStringList(item.writeFiles).length > 0 || Boolean(item.artifactRef?.trim());
+  });
+}
+
+function collectGraphReviewScopeWriteFiles(nodes: readonly GraphNodeRecord[]): string[] {
+  const seen = new Set<string>();
+  const files: string[] = [];
+  for (const node of nodes) {
+    for (const file of normalizeStringList(node.writeFiles)) {
+      if (seen.has(file)) {
+        continue;
+      }
+      seen.add(file);
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+function collectGraphReviewScopeArtifacts(run: GraphRunRecord, nodes: readonly GraphNodeRecord[]): string[] {
+  const seen = new Set<string>();
+  const artifacts: string[] = [];
+  for (const node of nodes) {
+    for (const evidence of [
+      node.artifactRef,
+      resolveGraphNodeCommunicationFile(run, node),
+    ]) {
+      const normalized = evidence?.trim();
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      artifacts.push(normalized);
+    }
+  }
+  return artifacts;
 }
 
 function collectGraphTopologyRelationships(run: GraphRunRecord, node: GraphNodeRecord): GraphTopologyRelationships {

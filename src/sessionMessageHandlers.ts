@@ -24,6 +24,8 @@ export type PromptRunInputForPanel = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopMainThinkingMode?: ThinkingMode;
+  loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   imagePaths?: string[];
@@ -115,6 +117,19 @@ export type PanelMessageHandlerDeps = {
   setCliModelThinkingMode: (cli: CliName, model: string, thinkingMode: ThinkingMode) => void;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
+  getSelectedLoopThinkingMode?: (
+    cli: CliName,
+    role: "main" | "subtask",
+    model: string | null | undefined,
+    configId?: string | null
+  ) => ThinkingMode | null;
+  setSelectedLoopThinkingMode?: (
+    cli: CliName,
+    role: "main" | "subtask",
+    model: string | null | undefined,
+    thinkingMode: ThinkingMode | null,
+    configId?: string | null
+  ) => void;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
   setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLoopExecutionMode>) => void;
@@ -152,6 +167,8 @@ export type PanelMessageHandlerDeps = {
       model?: string;
       loopMainModel?: string;
       loopSubtaskModel?: string;
+      loopMainThinkingMode?: ThinkingMode;
+      loopSubtaskThinkingMode?: ThinkingMode;
     }
   ) => Promise<void>;
   resolveLoopResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LoopTaskRecord | null;

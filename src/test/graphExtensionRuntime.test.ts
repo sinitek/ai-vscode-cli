@@ -17,7 +17,7 @@ test("extension wires Graph prompt runtime to store, kernel, and existing runPro
   assert.match(extensionSource, /maxConcurrent:\s*GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES/);
   assert.match(extensionSource, /maxConcurrent:\s*resolveGraphExtensionExecutorMaxConcurrent\(run\)/);
   assert.match(extensionSource, /GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES\s*=\s*GRAPH_DEFAULT_MAX_CONCURRENT_NODES/);
-  assert.match(extensionSource, /taskRole:\s*"subtask"/);
+  assert.match(extensionSource, /taskRole:\s*modelRole/);
   assert.match(extensionSource, /function createGraphNodeRunTarget\([\s\S]*graphRunId:\s*string,[\s\S]*graphNodeId:\s*string/);
   assert.match(extensionSource, /const graphNodeTarget\s*=\s*createGraphNodeRunTarget\(target\.cli,\s*request\.run\.id,\s*request\.node\.id\)/);
   assert.match(extensionSource, /runPrompt\(\{\s*[\s\S]*displayPrompt:\s*request\.prompt[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id[\s\S]*throwOnError:\s*true[\s\S]*\},\s*\{\s*targetTabId:\s*graphNodeTarget\.tabId/);
@@ -43,6 +43,20 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
 	  assert.match(extensionSource, /feedbackGraphNodeFromPanel\(graphRunId,\s*nodeId\)/);
 	  assert.match(extensionSource, /tickGraphRunToPauseFromControl\(persisted/);
   assert.match(extensionSource, /stopActiveCliRunsForGraphRun\(graphRunId\)/);
+});
+
+test("extension prompts users when Graph runs block and supports retrying or entering downstream nodes", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /const graphBlockedPromptKeys = new Set<string>\(\);/);
+  assert.match(extensionSource, /await maybePromptForGraphBlockedRun\(run,\s*target\)/);
+  assert.match(extensionSource, /async function maybePromptForGraphBlockedRun\([\s\S]*showWarningMessage\([\s\S]*buildGraphBlockedPromptMessage\(run,\s*context\)[\s\S]*\{ modal:\s*true \}/);
+  assert.match(extensionSource, /selectedAction === "retry_current"[\s\S]*retryGraphNodeFromPanel\(run\.id,\s*context\.node\.id\)/);
+  assert.match(extensionSource, /selectedAction === "choose_downstream"[\s\S]*pickGraphBlockedDownstreamNode\(run,\s*context\.downstreamNodes\)[\s\S]*openGraphRunPanel\(\{ graphRunId:\s*run\.id,\s*nodeId:\s*downstreamNode\.id \}\)/);
+  assert.match(extensionSource, /function resolveGraphDownstreamNodes\(run:\s*GraphRunRecord,\s*nodeId:\s*string\):\s*GraphNodeRecord\[\][\s\S]*sourceNode\?\.unlocks\.forEach\(appendNodeId\)[\s\S]*node\.dependsOn\.includes\(nodeId\)[\s\S]*edge\.active[\s\S]*edge\.from === nodeId/);
+  assert.match(extensionSource, /showQuickPick\(items,\s*\{[\s\S]*ignoreFocusOut:\s*true/);
+  assert.match(extensionSource, /重跑当前节点/);
+  assert.match(extensionSource, /选择下游节点/);
 });
 
 test("extension surfaces human gate approval entry and precise Stop boundaries", () => {
@@ -92,23 +106,41 @@ test("extension includes Graph run ids in conversation tab summaries", () => {
 
   assert.match(extensionSource, /function resolveGraphRunIdFromMessages\(messages:\s*readonly ChatMessage\[\]\):\s*string \| null\s*\{[\s\S]*message\.graphRunId[\s\S]*action\.type !== "openGraphRun"[\s\S]*action\.graphRunId/);
   assert.match(extensionSource, /function resolveConversationTabGraphRunId\([\s\S]*tab:\s*ConversationTabRecord \| null,[\s\S]*graphNodeRunTargetsByTabId\.get\(tab\.id\)[\s\S]*parallelRunsByTabId\.get\(tab\.id\)\?\.graphRunId[\s\S]*interactiveRunsByTabId\.get\(tab\.id\)\?\.graphRunId[\s\S]*getLiveMessagesForTab\(tab\.id\)[\s\S]*getPendingSessionDraft\(tab\.id,\s*tab\.cli\)\.messages/);
-  assert.match(extensionSource, /function buildConversationTabsState\(\):\s*\{[\s\S]*tabs:\s*ConversationTabSummary\[\];[\s\S]*graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli\([\s\S]*listGraphRuns\(\{ workspaceKey:\s*activeWorkspaceKey \}\)\.runs[\s\S]*resolveConversationTabGraphRunId\(tabsById\.get\(summary\.id\) \?\? null,\s*graphRunIdsBySessionByCli\)[\s\S]*return graphRunId \? \{ \.\.\.summary,\s*graphRunId \} : summary/);
+  assert.match(extensionSource, /function buildConversationTabsState\(\):\s*\{[\s\S]*tabs:\s*ConversationTabSummary\[\];[\s\S]*const graphRuns = listGraphRuns\(\{ workspaceKey:\s*activeWorkspaceKey \}\)\.runs;[\s\S]*const graphRunsById = new Map\(graphRuns\.map\(\(run\) => \[run\.id,\s*run\]\)\);[\s\S]*graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli\(\s*graphRuns,[\s\S]*resolveConversationTabGraphRunId\(tabsById\.get\(summary\.id\) \?\? null,\s*graphRunIdsBySessionByCli\)[\s\S]*graphRunStatus:\s*graphRun\?\.status,[\s\S]*graphRunBlocked:\s*graphRun \? isGraphRunBlockedForMainTab\(graphRun\) : undefined/);
   assert.match(extensionSource, /if\s*\(resolveConversationTabGraphRunId\(tab\)\)\s*\{\s*return "graph";\s*\}/);
 });
 
-test("extension keeps the Graph main tab running until the graph reaches a terminal status", () => {
+test("extension marks blocked Graph main tabs as errored instead of running", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const webviewTypesSource = fs.readFileSync(path.join(process.cwd(), "src", "webview", "types.ts"), "utf8");
+  const messageRenderingSource = fs.readFileSync(path.join(process.cwd(), "src", "webview", "viewContentScript", "messageRendering.ts"), "utf8");
 
   assert.match(extensionSource, /type GraphRunStatus/);
   assert.match(extensionSource, /sendGraphMainRunStarted\(target,\s*run,\s*input\.displayPrompt\);/);
   assert.match(extensionSource, /function sendGraphMainRunStarted\([\s\S]*sendRunStatusForTab\(target\.tabId,\s*"start",\s*\{[\s\S]*graphRunId:\s*run\.id[\s\S]*\}\);/);
-  assert.match(extensionSource, /function resolveGraphMainRunStatusEvent\(status:\s*GraphRunStatus\):\s*"end" \| "error" \| "stopped" \| null/);
-  assert.match(extensionSource, /if\s*\(status === "completed"\)\s*\{\s*return "end";\s*\}/);
-  assert.match(extensionSource, /if\s*\(status === "error"\)\s*\{\s*return "error";\s*\}/);
-  assert.match(extensionSource, /if\s*\(status === "stopped"\)\s*\{\s*return "stopped";\s*\}/);
+  assert.match(extensionSource, /function isGraphRunBlockedForMainTab\(run:\s*GraphRunRecord\):\s*boolean\s*\{[\s\S]*run\.status === "needs-review"[\s\S]*selectGraphBlockedAttentionNode\(run\)/);
+  assert.match(extensionSource, /function resolveGraphMainRunStatusEvent\(run:\s*GraphRunRecord\):\s*"end" \| "error" \| "stopped" \| null/);
+  assert.match(extensionSource, /if\s*\(run\.status === "completed"\)\s*\{\s*return "end";\s*\}/);
+  assert.match(extensionSource, /if\s*\(run\.status === "error" \|\| isGraphRunBlockedForMainTab\(run\)\)\s*\{\s*return "error";\s*\}/);
+  assert.match(extensionSource, /if\s*\(run\.status === "stopped"\)\s*\{\s*return "stopped";\s*\}/);
   assert.match(extensionSource, /return null;\s*\}\s*function sendGraphMainRunTerminalStatus/);
   assert.match(extensionSource, /if\s*\(run\.status === "needs-review" \|\| run\.status === "sleeping" \|\| run\.status === "error" \|\| run\.status === "stopped"\)\s*\{[\s\S]*sendGraphMainRunTerminalStatus\(target,\s*run\)/);
   assert.match(extensionSource, /const target = resolveGraphRunExistingPromptTarget\(lookup\.run\);[\s\S]*sendGraphMainRunTerminalStatus\(target,\s*persisted\);/);
+  assert.match(extensionSource, /const graphRuns = listGraphRuns\(\{ workspaceKey:\s*activeWorkspaceKey \}\)\.runs;[\s\S]*const graphRunsById = new Map\(graphRuns\.map\(\(run\) => \[run\.id,\s*run\]\)\);/);
+  assert.match(extensionSource, /graphRunStatus:\s*graphRun\?\.status,[\s\S]*graphRunBlocked:\s*graphRun \? isGraphRunBlockedForMainTab\(graphRun\) : undefined/);
+  assert.match(webviewTypesSource, /graphRunStatus\?:\s*GraphRunStatus;/);
+  assert.match(webviewTypesSource, /graphRunBlocked\?:\s*boolean;/);
+  assert.match(messageRenderingSource, /function isGraphConversationTabErrored\(tab\)[\s\S]*tab\.graphRunStatus === "error"[\s\S]*tab\.graphRunBlocked === true/);
+  assert.match(messageRenderingSource, /if\s*\(isTabErrored\(tab\.id\) \|\| isGraphConversationTabErrored\(tab\)\)\s*\{\s*tabItem\.classList\.add\("errored"\);/);
+});
+
+test("extension stops Graph runs from the main conversation stop button and preserves stopped state", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /function stopGraphRunForConversationTab\(tabId:\s*string\):\s*boolean\s*\{[\s\S]*resolveConversationTabGraphRunId\(tab\)[\s\S]*readGraphRunRecord\(graphRunId\)[\s\S]*lookup\.run\.status === "completed" \|\| lookup\.run\.status === "stopped"[\s\S]*stopGraphRunFromConversationTab\(graphRunId,\s*tabId\)/);
+  assert.match(extensionSource, /function stopRunForTab\(tabId:\s*string \| null\):\s*void\s*\{[\s\S]*if\s*\(stopParallelRunForTab\(tabId\)\)[\s\S]*if\s*\(getPrimaryRunTabId\(\) === tabId\)[\s\S]*stopActiveRun\(\);[\s\S]*stopGraphRunFromConversationTab\(graphRunId,\s*tabId\)[\s\S]*if\s*\(stopGraphRunForConversationTab\(tabId\)\)/);
+  assert.match(extensionSource, /async function stopGraphRunFromConversationTab\(graphRunId:\s*string,\s*tabId:\s*string\):\s*Promise<void>\s*\{[\s\S]*stopGraphRunFromPanel\(graphRunId\)[\s\S]*graph-run-stopped-from-conversation-tab/);
+  assert.match(extensionSource, /function persistGraphRunTickState\(nextRun:\s*GraphRunRecord\):\s*GraphRunRecord\s*\{[\s\S]*readGraphRunRecord\(nextRun\.id\)\.run[\s\S]*latest\?\.status === "stopped" && nextRun\.status !== "stopped"[\s\S]*return latest;[\s\S]*updateGraphRunRecord\(nextRun\.id,\s*nextRun\)/);
 });
 
 test("extension creates a planning-only graph and materializes the AI planned DAG", () => {
@@ -139,10 +171,11 @@ test("extension routes Loop main and subtask runs through role-specific Codex mo
   assert.match(extensionSource, /const subtaskModel = normalizePromptRunModel\(input\.loopSubtaskModel\)[\s\S]*\?\? normalizePromptRunModel\(input\.model\)[\s\S]*\?\? mainModel;/);
   assert.match(extensionSource, /return role === "subtask"[\s\S]*\?\s*\(subtaskModel \?\? mainModel\)[\s\S]*:\s*\(mainModel \?\? subtaskModel\);/);
   assert.match(extensionSource, /const roleModel = resolvePromptRunModelForRole\(input,\s*role\);[\s\S]*await runPrompt\(\{[\s\S]*model:\s*roleModel,[\s\S]*taskRole:\s*role,[\s\S]*loopTaskId:\s*task\.id,[\s\S]*loopRound:\s*round,[\s\S]*loopSubtaskId:\s*subtaskId/);
-  assert.match(extensionSource, /thinkingModeOverride:\s*role === "subtask"[\s\S]*resolveLoopSubtaskThinkingMode\(/);
+  assert.match(extensionSource, /function resolvePromptRunThinkingModeForRole\([\s\S]*options:\s*\{ applySubtaskCap\?:\s*boolean \} = \{\}[\s\S]*return options\.applySubtaskCap && role === "subtask"[\s\S]*resolveLoopSubtaskThinkingMode\(/);
+  assert.match(extensionSource, /const thinkingModeOverride = resolvePromptRunThinkingModeForRole\(input,\s*target\.cli,\s*role,\s*roleModel,\s*\{[\s\S]*applySubtaskCap:\s*true,[\s\S]*\}\);[\s\S]*thinkingModeOverride,/);
 });
 
-test("extension routes Graph planner and execution nodes through main/subtask model records", () => {
+test("extension routes Graph planner, summary, and execution nodes through role-specific model records", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
   const graphKernelSource = fs.readFileSync(path.join(process.cwd(), "src", "graph", "graphKernel.ts"), "utf8");
   const graphStoreSource = fs.readFileSync(path.join(process.cwd(), "src", "graph", "graphStore.ts"), "utf8");
@@ -150,13 +183,16 @@ test("extension routes Graph planner and execution nodes through main/subtask mo
 
   assert.match(extensionSource, /function buildGraphRunModelRouting\(input:\s*PromptRunInput\):\s*GraphRunModelRoutingRecord\s*\{[\s\S]*planner:\s*\{[\s\S]*role:\s*"main"[\s\S]*executor:\s*\{[\s\S]*role:\s*"subtask"/);
   assert.match(extensionSource, /function resolvePromptRunModelFallback\(input:\s*PromptRunInput,\s*role:\s*GraphModelRole\):\s*string\s*\{[\s\S]*loop main model missing; using selected single model[\s\S]*loop subtask model missing; using selected single model[\s\S]*no explicit model selected; CLI default applies/);
+  assert.match(extensionSource, /async function hydrateOpenCodePromptRoleModels\(input:\s*PromptRunInput,\s*cli:\s*CliName\):\s*Promise<PromptRunInput>\s*\{[\s\S]*const roles = resolveOpenCodeRoleModelsForConfig\(configId,\s*current\.content \?\? "\{\}"\);[\s\S]*const loopMainModel = explicitMain \?\? explicitSingle \?\? roles\.main \?\? undefined;[\s\S]*const loopSubtaskModel = explicitSubtask \?\? roles\.subtask \?\? explicitSingle \?\? loopMainModel \?\? undefined;[\s\S]*roles\.fallback\.subtask/);
+  assert.match(extensionSource, /if\s*\(!configuredSubtask && main\)\s*\{[\s\S]*fallback\.subtask = "subtask model missing; using main model";/);
   assert.match(extensionSource, /nodes:\s*buildGraphPlanningRunNodes\(graphRunId\)[\s\S]*\.map\(\(node\) => applyGraphNodeModelRoute\(node,\s*modelRouting\.planner\)\)/);
   assert.match(extensionSource, /modelRouting,[\s\S]*appendGraphEvent\(run\.eventsFile,\s*\{[\s\S]*type:\s*"run\.created"[\s\S]*modelRouting:\s*run\.modelRouting/);
   assert.match(extensionSource, /const routedRun = applyGraphRunModelRouting\(materialized\.run\);/);
-  assert.match(extensionSource, /const modelRole = request\.modelRole[\s\S]*\?\? \(request\.node\.id === GRAPH_AI_PLANNER_NODE_ID \? "main" : "subtask"\);/);
+  assert.match(extensionSource, /function resolveGraphNodeModelRoute\([\s\S]*node\.id === GRAPH_AI_PLANNER_NODE_ID \|\| node\.kind === "summary"[\s\S]*\? routing\.planner[\s\S]*: routing\.executor/);
+  assert.match(extensionSource, /const modelRole = request\.modelRole[\s\S]*\?\? \(request\.node\.id === GRAPH_AI_PLANNER_NODE_ID \|\| request\.node\.kind === "summary" \? "main" : "subtask"\);/);
   assert.match(extensionSource, /const selectedModel = request\.model \?\? resolvePromptRunModelForRole\(rootInput,\s*modelRole\);/);
   assert.match(extensionSource, /const modelFallback = request\.modelFallback \?\? resolvePromptRunModelFallback\(rootInput,\s*modelRole\);/);
-  assert.match(extensionSource, /runPrompt\(\{[\s\S]*model:\s*selectedModel,[\s\S]*loopMainModel:\s*rootInput\.loopMainModel,[\s\S]*loopSubtaskModel:\s*rootInput\.loopSubtaskModel,[\s\S]*taskRole:\s*"subtask"[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id/);
+  assert.match(extensionSource, /runPrompt\(\{[\s\S]*model:\s*selectedModel,[\s\S]*loopMainModel:\s*rootInput\.loopMainModel,[\s\S]*loopSubtaskModel:\s*rootInput\.loopSubtaskModel,[\s\S]*taskRole:\s*modelRole[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id/);
 
   assert.match(graphKernelSource, /modelRole\?:\s*GraphModelRole;[\s\S]*model\?:\s*string;[\s\S]*modelFallback\?:\s*string;/);
   assert.match(graphKernelSource, /executor\.execute\(\{[\s\S]*\.\.\.\(node\.modelRole \? \{ modelRole:\s*node\.modelRole \} : \{\}\),[\s\S]*\.\.\.\(node\.model \? \{ model:\s*node\.model \} : \{\}\),[\s\S]*\.\.\.\(node\.modelFallback \? \{ modelFallback:\s*node\.modelFallback \} : \{\}\),/);
@@ -165,6 +201,27 @@ test("extension routes Graph planner and execution nodes through main/subtask mo
   assert.match(graphPromptSource, /Planner model role：\$\{formatValue\(planner\?\.role\)\}/);
   assert.match(graphPromptSource, /Execution node model role：\$\{formatValue\(executor\?\.role\)\}/);
   assert.match(graphPromptSource, /Model fallback：\$\{formatValue\(node\.modelFallback\)\}/);
+});
+
+test("extension appends a Graph final summary assistant message on completed main tabs", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const webviewTypesSource = fs.readFileSync(path.join(process.cwd(), "src", "webview", "types.ts"), "utf8");
+  const traceRenderingSource = fs.readFileSync(path.join(process.cwd(), "src", "webview", "viewContentScript", "traceRendering.ts"), "utf8");
+  const coreRuntimeSource = fs.readFileSync(path.join(process.cwd(), "src", "webview", "viewContentScript", "coreRuntimeState.ts"), "utf8");
+
+  assert.match(extensionSource, /if\s*\(run\.status === "completed"\)\s*\{[\s\S]*appendSystemMessageForGraph\(target,\s*buildGraphRunCompletedText\(run,\s*mergeBack\),\s*run\.id\);[\s\S]*appendGraphFinalSummaryMessage\(target,\s*run\);/);
+  assert.match(extensionSource, /function buildGraphFinalSummaryMarkdown\(run:\s*GraphRunRecord\):\s*string\s*\{/);
+  assert.match(extensionSource, /summary 节点 finalAnswer（主模型）/);
+  assert.match(extensionSource, /# Graph 任务最终总结/);
+  assert.match(extensionSource, /## 问题回答结论/);
+  assert.match(extensionSource, /## 任务总结/);
+  assert.match(extensionSource, /## 验证证据/);
+  assert.match(extensionSource, /## 未完成事项/);
+  assert.match(extensionSource, /function appendGraphFinalSummaryMessage\(target:\s*PromptRunTarget,\s*run:\s*GraphRunRecord\):\s*void\s*\{[\s\S]*role:\s*"assistant"[\s\S]*taskRole:\s*"main"[\s\S]*graphRunId:\s*run\.id[\s\S]*graphFinalSummary:\s*true/);
+  assert.match(extensionSource, /function isGraphFinalSummaryMessageForRun\(message:\s*ChatMessage,\s*graphRunId:\s*string\):\s*boolean\s*\{[\s\S]*message\.graphFinalSummary === true[\s\S]*message\.graphRunId === graphRunId/);
+  assert.match(webviewTypesSource, /graphFinalSummary\?:\s*boolean;/);
+  assert.match(traceRenderingSource, /message\.graphFinalSummary !== true[\s\S]*last\.graphFinalSummary !== true/);
+  assert.match(coreRuntimeSource, /current\.graphFinalSummary === true/);
 });
 
 test("extension merges completed Graph worktrees back and cleans up residual worktrees", () => {

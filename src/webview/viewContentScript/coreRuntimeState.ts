@@ -223,6 +223,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         if (current.loopFinalSummary === true) {
           return true;
         }
+        if (current.graphFinalSummary === true) {
+          return true;
+        }
         if (current.codexFinalAnswer === true) {
           return true;
         }

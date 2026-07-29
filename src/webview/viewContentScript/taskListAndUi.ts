@@ -684,6 +684,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return normalizeModelSelection(payload[key]);
       }
 
+      function readPromptPayloadThinkingField(payload, key) {
+        if (!payload || typeof payload !== "object") {
+          return "";
+        }
+        return normalizeThinkingModeSelection(payload[key]);
+      }
+
       function normalizePromptPayloadWithModelFields(payload) {
         const normalizedPayload = normalizePromptPayload(payload);
         if (!normalizedPayload) {
@@ -693,10 +700,14 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           || readPromptPayloadModelField(payload, "lobsterMainModel");
         const loopSubtaskModel = readPromptPayloadModelField(payload, "loopSubtaskModel")
           || readPromptPayloadModelField(payload, "lobsterSubtaskModel");
+        const loopMainThinkingMode = readPromptPayloadThinkingField(payload, "loopMainThinkingMode");
+        const loopSubtaskThinkingMode = readPromptPayloadThinkingField(payload, "loopSubtaskThinkingMode");
         return {
           ...normalizedPayload,
           ...(loopMainModel ? { loopMainModel } : {}),
           ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+          ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
+          ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
         };
       }
 
@@ -725,7 +736,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return normalizedPayload;
         }
         if (!shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab)) {
-          const { loopMainModel, loopSubtaskModel, ...payloadWithoutRoleModels } = normalizedPayload;
+          const { loopMainModel, loopSubtaskModel, loopMainThinkingMode, loopSubtaskThinkingMode, ...payloadWithoutRoleModels } = normalizedPayload;
           return payloadWithoutRoleModels;
         }
         if (typeof getSelectedLoopRoleModelForCli !== "function") {
@@ -733,10 +744,16 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const loopMainModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "main");
         const loopSubtaskModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "subtask");
+        const loopMainThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopMainThinkingMode)
+          || getSelectedLoopRoleThinkingModeForCli(targetCli, "main");
+        const loopSubtaskThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopSubtaskThinkingMode)
+          || getSelectedLoopRoleThinkingModeForCli(targetCli, "subtask");
         return {
           ...normalizedPayload,
           ...(loopMainModel ? { loopMainModel } : {}),
           ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+          ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
+          ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
         };
       }
 
@@ -815,6 +832,12 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (normalizedPayload.loopSubtaskModel) {
           sendPromptMessage.loopSubtaskModel = normalizedPayload.loopSubtaskModel;
+        }
+        if (normalizedPayload.loopMainThinkingMode) {
+          sendPromptMessage.loopMainThinkingMode = normalizedPayload.loopMainThinkingMode;
+        }
+        if (normalizedPayload.loopSubtaskThinkingMode) {
+          sendPromptMessage.loopSubtaskThinkingMode = normalizedPayload.loopSubtaskThinkingMode;
         }
         if (targetLoopExecutionMode) {
           sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;

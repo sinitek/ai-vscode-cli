@@ -164,11 +164,39 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         width: min(860px, 100%);
       }
       .node-detail-dialog-header {
+        position: relative;
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: var(--gap);
+        padding-right: 42px;
         border-bottom: 1px solid var(--vscode-widget-border);
+      }
+      .node-detail-close-icon {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 18px;
+        height: 18px;
+        padding: 3px;
+        color: var(--vscode-icon-foreground, var(--vscode-foreground));
+        border-radius: 4px;
+        cursor: pointer;
+        outline: none;
+      }
+      .node-detail-close-icon:hover {
+        color: var(--vscode-toolbar-hoverForeground, var(--vscode-foreground));
+        background: var(--vscode-toolbar-hoverBackground, transparent);
+      }
+      .node-detail-close-icon:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
+      .node-detail-close-icon path {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
       }
       .node-detail-dialog-body {
         min-height: 0;
@@ -361,6 +389,10 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         stroke: currentColor;
         stroke-width: 1.5;
       }
+      .dag-edge-path[data-edge-visited="true"] {
+        stroke: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+        stroke-width: 2;
+      }
       .dag-edge-path.inactive {
         stroke-dasharray: 5 4;
       }
@@ -378,6 +410,9 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       }
       .dag-arrowhead {
         fill: currentColor;
+      }
+      .dag-arrowhead-visited {
+        fill: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
       }
       .dag-node {
         position: absolute;

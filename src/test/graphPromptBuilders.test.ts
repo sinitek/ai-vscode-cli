@@ -114,6 +114,38 @@ test("builds a self-contained executable Graph node prompt with scope and accept
   assert.match(prompt, /"status":"passed\|failed\|blocked"/u);
 });
 
+test("node prompt includes graph-level model routing and node fallback records", () => {
+  const node = createNode({
+    modelRole: "subtask",
+    model: "opencode-executor",
+    modelFallback: "subtask model missing; using main model",
+  });
+  const run = createRun([node], [], {
+    cli: "opencode",
+    modelRouting: {
+      planner: {
+        role: "main",
+        model: "opencode-main",
+      },
+      executor: {
+        role: "subtask",
+        model: "opencode-executor",
+        fallback: "subtask model missing; using main model",
+      },
+    },
+  });
+  const prompt = buildGraphNodePrompt({ run, node });
+
+  assert.match(prompt, /Planner model role：main/u);
+  assert.match(prompt, /Planner model used：opencode-main/u);
+  assert.match(prompt, /Execution node model role：subtask/u);
+  assert.match(prompt, /Execution node model used：opencode-executor/u);
+  assert.match(prompt, /Execution node model fallback：subtask model missing; using main model/u);
+  assert.match(prompt, /Model role：subtask/u);
+  assert.match(prompt, /Model used：opencode-executor/u);
+  assert.match(prompt, /Model fallback：subtask model missing; using main model/u);
+});
+
 test("derives a node communication file when the node does not declare one", () => {
   const node = createNode({
     id: "Node With Spaces",
@@ -308,6 +340,71 @@ test("node prompt includes the full graph topology, current position, and downst
   assert.match(prompt, /图中已有后续 review 节点：review-ui/u);
   assert.match(prompt, /图中已有后续 summary 节点：summary-1/u);
   assert.match(prompt, /只产出本节点证据/u);
+});
+
+test("review node prompt scopes review to upstream task files instead of unrelated dirty workspace", () => {
+  const implement = createNode({
+    id: "implement-feature",
+    title: "实现 Graph 评审范围",
+    kind: "implement",
+    status: "passed",
+    ownerRole: "subtask",
+    artifactRef: "artifacts/implement-feature.md",
+    communicationFile: "/tmp/graph/nodes/implement-feature.md",
+    writeFiles: ["src/graph/graphPromptBuilders.ts"],
+    dependsOn: [],
+    unlocks: ["test-feature"],
+  });
+  const testNode = createNode({
+    id: "test-feature",
+    title: "验证 Graph 评审范围",
+    kind: "test",
+    status: "passed",
+    ownerRole: "subtask",
+    artifactRef: "artifacts/test-feature.md",
+    communicationFile: "/tmp/graph/nodes/test-feature.md",
+    writeFiles: ["src/test/graphPromptBuilders.test.ts"],
+    dependsOn: ["implement-feature"],
+    unlocks: ["review-feature"],
+  });
+  const review = createNode({
+    id: "review-feature",
+    title: "评审 Graph 评审范围",
+    kind: "review",
+    status: "pending",
+    ownerRole: "reviewer",
+    artifactRef: "artifacts/review-feature.md",
+    communicationFile: "/tmp/graph/nodes/review-feature.md",
+    writeFiles: [],
+    dependsOn: ["test-feature"],
+    unlocks: ["summary-feature"],
+  });
+  const summary = createNode({
+    id: "summary-feature",
+    title: "总结 Graph 评审范围",
+    kind: "summary",
+    status: "pending",
+    ownerRole: "system",
+    writeFiles: [],
+    dependsOn: ["review-feature"],
+    unlocks: [],
+  });
+  const run = createRun([implement, testNode, review, summary]);
+
+  const prompt = buildGraphNodePrompt({
+    run,
+    node: review,
+    options: { generatedAt: "2026-07-29T00:00:00.000Z" },
+  });
+
+  assert.match(prompt, /## Review 节点评审范围/u);
+  assert.match(prompt, /范围来源节点：test-feature（验证 Graph 评审范围｜test｜passed）、implement-feature（实现 Graph 评审范围｜implement｜passed）/u);
+  assert.match(prompt, /本次任务候选改动文件：src\/test\/graphPromptBuilders\.test\.ts、src\/graph\/graphPromptBuilders\.ts/u);
+  assert.match(prompt, /artifacts\/test-feature\.md、\/tmp\/graph\/nodes\/test-feature\.md/u);
+  assert.match(prompt, /artifacts\/implement-feature\.md、\/tmp\/graph\/nodes\/implement-feature\.md/u);
+  assert.match(prompt, /加 pathspec 过滤/u);
+  assert.match(prompt, /范围外路径，默认视为同一 workspace 中的无关改动/u);
+  assert.match(prompt, /不得单独导致 failed\/blocked/u);
 });
 
 test("summary node prompt requires events, node artifacts, evidence, and unresolved failures", () => {

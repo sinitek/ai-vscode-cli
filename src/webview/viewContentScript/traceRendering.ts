@@ -130,6 +130,8 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             && last.loopAnswerConclusion !== true
             && message.loopFinalSummary !== true
             && last.loopFinalSummary !== true
+            && message.graphFinalSummary !== true
+            && last.graphFinalSummary !== true
             && message.codexFinalAnswer !== true
             && last.codexFinalAnswer !== true
             && isSameAssistantKind(last, message)

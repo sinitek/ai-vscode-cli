@@ -47,6 +47,7 @@ import {
   GRAPH_NODE_STATUSES,
   type GraphEdgeRecord,
   type GraphEventRecord,
+  type GraphNodeStatus,
   type GraphNodeRecord,
   type GraphRunRecord,
 } from "./graph/types";
@@ -127,6 +128,57 @@ export type PanelStateBuilderDeps = {
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
 };
 
+function normalizeOpenCodePanelModelRef(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeOpenCodePanelModelRole(
+  role: "main" | "subtask" | "primary" | "small" | undefined,
+): "main" | "subtask" | undefined {
+  if (role === "subtask" || role === "small") {
+    return "subtask";
+  }
+  if (role === "main" || role === "primary") {
+    return "main";
+  }
+  return undefined;
+}
+
+function normalizeOpenCodeModelsForPanelState(
+  modelsState: PanelState["openCodeModels"],
+): PanelState["openCodeModels"] {
+  if (!modelsState) {
+    return modelsState;
+  }
+  const configMainRef = normalizeOpenCodePanelModelRef(
+    modelsState.configMainRef ?? modelsState.configPrimaryRef,
+  );
+  const configSubtaskRef = normalizeOpenCodePanelModelRef(
+    modelsState.configSubtaskRef ?? modelsState.configSmallRef,
+  );
+  const selectedMainRef = normalizeOpenCodePanelModelRef(
+    modelsState.selectedMainRef ?? modelsState.selectedPrimaryRef,
+  );
+  const selectedSubtaskRef = normalizeOpenCodePanelModelRef(
+    modelsState.selectedSubtaskRef ?? modelsState.selectedSmallRef,
+  );
+  return {
+    ...modelsState,
+    configMainRef,
+    configSubtaskRef,
+    selectedMainRef,
+    selectedSubtaskRef,
+    configPrimaryRef: configMainRef,
+    configSmallRef: configSubtaskRef,
+    selectedPrimaryRef: selectedMainRef,
+    selectedSmallRef: selectedSubtaskRef,
+    issues: modelsState.issues.map((issue) => {
+      const role = normalizeOpenCodePanelModelRole(issue.role);
+      return role ? { ...issue, role } : { ...issue, role: undefined };
+    }),
+  };
+}
+
 export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState {
   const config = deps.getWorkspaceConfiguration();
   const modelConfigId = deps.resolveModelConfigIdForCli(deps.currentCli, deps.configState);
@@ -154,7 +206,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     thinkingMode: deps.getEffectiveThinkingMode(deps.currentCli, selectedModel),
     openCodeThinking: deps.openCodeThinking,
     openCodeSmallThinking: deps.openCodeSmallThinking ?? deps.openCodeThinking,
-    openCodeModels: deps.openCodeModels,
+    openCodeModels: normalizeOpenCodeModelsForPanelState(deps.openCodeModels),
     interactiveMode: deps.getWorkspaceInteractiveMode(deps.currentCli),
     interactive: {
       supported: deps.isInteractiveSupported(deps.currentCli),
@@ -453,6 +505,7 @@ function buildGraphRunPanelEdge(
     kind: edge.kind,
     kindLabel: formatGraphEdgeKind(edge.kind, strings),
     active: edge.active !== false,
+    visited: isGraphRunPanelEdgeVisited(edge, fromNode),
     fromTitle: fromNode.title,
     toTitle: toNode.title,
     ...(label ? { label } : {}),
@@ -460,6 +513,77 @@ function buildGraphRunPanelEdge(
     ...(edge.conditionExpression ? { conditionExpression: edge.conditionExpression } : {}),
     ...(edge.metadata ? { metadata: edge.metadata } : {}),
   };
+}
+
+function isGraphRunPanelEdgeVisited(edge: GraphEdgeRecord, fromNode: GraphRunPanelNode): boolean {
+  if (edge.active === false) {
+    return false;
+  }
+  if (!isGraphRunPanelEdgeKindSatisfied(edge, fromNode.status)) {
+    return false;
+  }
+  if (edge.conditionExpression) {
+    return isGraphRunPanelEdgeConditionSatisfied(edge, fromNode);
+  }
+  return true;
+}
+
+function isGraphRunPanelEdgeKindSatisfied(edge: GraphEdgeRecord, status: GraphNodeStatus): boolean {
+  if (edge.kind === "if_fail" || edge.kind === "review_feedback") {
+    return status === "failed" || status === "blocked";
+  }
+  if (edge.kind === "conflicts_with") {
+    return false;
+  }
+  if (edge.kind === "evidence_for") {
+    return isTerminalGraphNodeStatus(status);
+  }
+  return status === "passed";
+}
+
+function isGraphRunPanelEdgeConditionSatisfied(edge: GraphEdgeRecord, fromNode: GraphRunPanelNode): boolean {
+  const expression = edge.conditionExpression;
+  if (!expression) {
+    return false;
+  }
+  if (expression.type === "source_status") {
+    const operator = expression.operator ?? ((expression.statuses?.length ?? 0) > 0 ? "one_of" : "equals");
+    if (operator === "one_of") {
+      return (expression.statuses ?? []).includes(fromNode.status);
+    }
+    if (operator !== "equals") {
+      return false;
+    }
+    return Boolean(expression.status) && fromNode.status === expression.status;
+  }
+  if (expression.type === "source_acceptance") {
+    const checks = fromNode.acceptance
+      .filter((item) => item.required !== false)
+      .filter((item) => !expression.acceptanceId || item.id === expression.acceptanceId || item.name === expression.acceptanceId);
+    if (!checks.length) {
+      return false;
+    }
+    const operator = expression.operator ?? "all_required_passed";
+    if (operator === "any_required_failed") {
+      return checks.some((item) => item.passed === false);
+    }
+    if (operator === "has_evidence") {
+      return checks.some((item) => Boolean(item.evidenceRef?.trim()));
+    }
+    return checks.every((item) => item.passed === true);
+  }
+  if (expression.type === "manual") {
+    return fromNode.status === "passed";
+  }
+  return isTerminalGraphNodeStatus(fromNode.status);
+}
+
+function isTerminalGraphNodeStatus(status: GraphNodeStatus): boolean {
+  return status === "passed"
+    || status === "failed"
+    || status === "blocked"
+    || status === "skipped"
+    || status === "stopped";
 }
 
 function normalizeGraphRunPanelEdgeText(value: string | null | undefined): string | undefined {

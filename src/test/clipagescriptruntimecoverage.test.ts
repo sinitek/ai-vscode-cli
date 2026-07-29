@@ -565,6 +565,11 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
         claude: { main: "", subtask: "" },
         opencode: { main: "", subtask: "" },
       },
+      selectedLoopThinkingByCli: {
+        codex: { main: "high", subtask: "low" },
+        claude: { main: "", subtask: "" },
+        opencode: { main: "", subtask: "" },
+      },
     },
     thinkingMode: "medium",
     openCodeThinking: { selectedVariant: "high", options: [{ value: "high", label: "High" }] },
@@ -1017,6 +1022,8 @@ test("dispatches Codex Graph prompts with role models and strips stale role mode
   assert.equal(graphSendPromptMessage.model, "gpt-5-main");
   assert.equal(graphSendPromptMessage.loopMainModel, "gpt-5-main");
   assert.equal(graphSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
+  assert.equal(graphSendPromptMessage.loopMainThinkingMode, "high");
+  assert.equal(graphSendPromptMessage.loopSubtaskThinkingMode, "low");
   assert.equal(
     Object.prototype.hasOwnProperty.call(graphSendPromptMessage, "loopExecutionMode"),
     false,
@@ -1048,6 +1055,8 @@ test("dispatches Codex Graph prompts with role models and strips stale role mode
   assert.equal(codingSendPromptMessage.model, "gpt-5");
   assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainModel"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskModel"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainThinkingMode"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskThinkingMode"), false);
 });
 
 test("reports runtime render and window-dispatch failures through the vscode bridge", () => {
@@ -1280,6 +1289,8 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "normalizeModelSelection",
     "normalizeLoopRoleModelsPayload",
     "normalizeLoopRoleSelectionPayload",
+    "normalizeThinkingModeSelection",
+    "normalizeLoopRoleThinkingPayload",
     "normalizeOpenCodeThinkingPayload",
     "normalizeOpenCodeModelsPayload",
     "shouldPreserveCurrentCliModelsOnEmptySnapshot",
@@ -1351,7 +1362,7 @@ test("applies model, panel, and selector state without preserving invalid snapsh
   assert.deepEqual(helpers.normalizeOpenCodeModelsPayload({
     models: [{ ref: "p/model", label: "Provider (p/model)", providerId: "p", modelId: "model" }, { ref: "p/model" }],
     issues: [{ code: "missing-role-model", role: "small" }, { code: "" }],
-  }).issues, [{ role: "small", code: "missing-role-model", messageKey: undefined }]);
+  }).issues, [{ role: "subtask", code: "missing-role-model", messageKey: undefined }]);
   helpers.applyModelState({ optionsByCli: { codex: [] }, managedByCli: { codex: [] }, selectedByCli: {} }, "codex");
   assert.deepEqual(state.modelsByCli.codex, ["old"]);
   helpers.applyModelState({ optionsByCli: { codex: ["new"] }, managedByCli: { codex: ["new"] }, selectedByCli: { codex: "new" } }, "codex");

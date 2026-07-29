@@ -132,11 +132,18 @@ function buildOpenCodeModelHarness(locale: "en" | "zh-CN" = "en") {
 }
 
 function buildRoleModelChangeHarness() {
-  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, "handleOpenCodeRoleModelChange");
+  const functionSource = [
+    "getOpenCodeCompatModelRole",
+    "handleOpenCodeRoleModelChange",
+  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, name)).join("\n");
   const state = {
     openCodeModels: {
+      configMainRef: "myAPI/main-chat",
+      configSubtaskRef: "myAPI/subtask-worker",
+      selectedMainRef: "myAPI/other",
+      selectedSubtaskRef: "myAPI/other",
       configPrimaryRef: "myAPI/main-chat",
-      configSmallRef: "myAPI/small-task",
+      configSmallRef: "myAPI/subtask-worker",
       selectedPrimaryRef: "myAPI/other",
       selectedSmallRef: "myAPI/other",
     },
@@ -154,7 +161,7 @@ function buildRoleModelChangeHarness() {
     state,
     { postMessage: (message: unknown) => postedMessages.push(message) },
     () => { thinkingSyncCount += 1; },
-  ) as (role: "primary" | "small", value: string) => void;
+  ) as (role: "main" | "subtask", value: string) => void;
   return { state, postedMessages, handleChange, getThinkingSyncCount: () => thinkingSyncCount };
 }
 
@@ -203,7 +210,7 @@ function buildVisibilityHarness() {
   return { state, elements, sync };
 }
 
-test("renders OpenCode selectors as labeled primary and small model rows", () => {
+test("renders OpenCode selectors as labeled main and subtask model rows", () => {
   const html = buildWebviewStaticHtml({
     locale: "en",
     cspSource: "vscode-webview:",
@@ -220,7 +227,7 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
   assert.match(group, /<label class="open-code-model-row" for="openCodePrimaryModelSelect">/);
   assert.match(group, /<label class="open-code-model-row" for="openCodeSmallModelSelect">/);
   assert.match(group, /<span class="open-code-model-label">Main<\/span>/);
-  assert.match(group, /<span class="open-code-model-label">Small<\/span>/);
+  assert.match(group, /<span class="open-code-model-label">Subtask<\/span>/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
@@ -233,8 +240,9 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
     /<option value="xhigh">xhigh<\/option>\s*<option value="max">max<\/option>\s*<option value="ultra">ultra<\/option>/,
   );
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
-  assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode small model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode small model selection"/);
-  assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode small model thinking mode"[^>]*title="OpenCode small model thinking mode"/);
+  assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode subtask model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode subtask model selection"/);
+  assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode subtask model thinking mode"[^>]*title="OpenCode subtask model thinking mode"/);
+  assert.doesNotMatch(group, /OpenCode small model|<span class="open-code-model-label">Small<\/span>/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|open-code-model-hint|lightweight internal tasks|reasoning effort/);
   assert.doesNotMatch(html, /loopMainModelSelect|loopSubtaskModelSelect|Loop main-task model|Loop subtask model/);
   const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";
@@ -244,6 +252,18 @@ test("renders OpenCode selectors as labeled primary and small model rows", () =>
     genericThinking,
     /<option value="xhigh">xhigh<\/option>\s*<option value="max">max<\/option>\s*<option value="ultra">ultra<\/option>/,
   );
+});
+
+test("keeps OpenCode user-facing copy on main and subtask wording", () => {
+  const englishCopy = Object.values(WEBVIEW_I18N.en).join("\n");
+  const chineseCopy = Object.values(WEBVIEW_I18N["zh-CN"]).join("\n");
+
+  assert.match(englishCopy, /OpenCode main model selection/);
+  assert.match(englishCopy, /OpenCode subtask model selection/);
+  assert.doesNotMatch(englishCopy, /OpenCode (?:large|small) model/i);
+  assert.match(chineseCopy, /OpenCode 主模型选择/);
+  assert.match(chineseCopy, /OpenCode 子模型选择/);
+  assert.doesNotMatch(chineseCopy, /OpenCode (?:大模型|小模型)/);
 });
 
 test("lays out OpenCode selectors as two full-width model rows", () => {
@@ -274,26 +294,27 @@ test("rebuilds both OpenCode selects with model names and direct effective selec
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [
       { ref: "myAPI/main-chat", label: "Main Chat", providerId: "myAPI", modelId: "main-chat" },
-      { ref: "myAPI/small-task", label: "Small Task", providerId: "myAPI", modelId: "small-task" },
+      { ref: "myAPI/subtask-worker", label: "Subtask Worker", providerId: "myAPI", modelId: "subtask-worker" },
     ],
-    configPrimaryRef: "myAPI/main-chat",
-    configSmallRef: "myAPI/small-task",
-    selectedPrimaryRef: "myAPI/main-chat",
-    selectedSmallRef: "removed/model",
-    issues: [{ role: "small", code: "model-not-found" }],
+    configMainRef: "myAPI/main-chat",
+    configSubtaskRef: "myAPI/subtask-worker",
+    selectedMainRef: "myAPI/main-chat",
+    selectedSubtaskRef: "removed/model",
+    issues: [{ role: "subtask", code: "model-not-found" }],
   });
   harness.updateOpenCodeModelSelectOptions();
 
   assert.deepEqual(optionPairs(harness.elements.openCodePrimaryModelSelect), [
     ["myAPI/main-chat", "Main Chat"],
-    ["myAPI/small-task", "Small Task"],
+    ["myAPI/subtask-worker", "Subtask Worker"],
   ]);
   assert.deepEqual(optionPairs(harness.elements.openCodeSmallModelSelect), [
     ["myAPI/main-chat", "Main Chat"],
-    ["myAPI/small-task", "Small Task"],
+    ["myAPI/subtask-worker", "Subtask Worker"],
   ]);
   assert.equal(harness.elements.openCodePrimaryModelSelect.value, "myAPI/main-chat");
   assert.equal(harness.elements.openCodeSmallModelSelect.value, "");
+  assert.equal(harness.state.openCodeModels.selectedSubtaskRef, null);
   assert.equal(harness.state.openCodeModels.selectedSmallRef, null);
   assert.equal(harness.elements.openCodeSmallModelSelect.attributes.get("aria-invalid"), "true");
   assert.match(harness.elements.openCodeModelIssue.textContent, /not declared/);
@@ -307,8 +328,8 @@ test("falls back to model id without exposing a full provider ref", () => {
   const harness = buildOpenCodeModelHarness("en");
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [{ ref: "myAPI/fallback-id", label: "myAPI/fallback-id", providerId: "myAPI", modelId: "fallback-id" }],
-    configPrimaryRef: "myAPI/fallback-id",
-    selectedPrimaryRef: "myAPI/fallback-id",
+    configMainRef: "myAPI/fallback-id",
+    selectedMainRef: "myAPI/fallback-id",
   });
   harness.updateOpenCodeModelSelectOptions();
 
@@ -338,7 +359,7 @@ test("strips only an exact legacy ref suffix from OpenCode model labels", () => 
         modelId: "fallback-id",
       },
     ],
-    selectedPrimaryRef: "myAPI/gpt-5.6-sol",
+    selectedMainRef: "myAPI/gpt-5.6-sol",
   });
   harness.updateOpenCodeModelSelectOptions();
 
@@ -353,15 +374,17 @@ test("strips only an exact legacy ref suffix from OpenCode model labels", () => 
 test("clears an override when selecting the configured default and sends exact refs otherwise", () => {
   const harness = buildRoleModelChangeHarness();
 
-  harness.handleChange("primary", "myAPI/main-chat");
-  harness.handleChange("small", "myAPI/other-small");
+  harness.handleChange("main", "myAPI/main-chat");
+  harness.handleChange("subtask", "myAPI/other-subtask");
 
   assert.deepEqual(harness.postedMessages, [
-    { type: "updateOpenCodeRoleModel", role: "primary", value: null },
-    { type: "updateOpenCodeRoleModel", role: "small", value: "myAPI/other-small" },
+    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: null },
+    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/other-subtask" },
   ]);
+  assert.equal(harness.state.openCodeModels.selectedMainRef, "myAPI/main-chat");
+  assert.equal(harness.state.openCodeModels.selectedSubtaskRef, "myAPI/other-subtask");
   assert.equal(harness.state.openCodeModels.selectedPrimaryRef, "myAPI/main-chat");
-  assert.equal(harness.state.openCodeModels.selectedSmallRef, "myAPI/other-small");
+  assert.equal(harness.state.openCodeModels.selectedSmallRef, "myAPI/other-subtask");
   assert.equal(harness.getThinkingSyncCount(), 2);
 });
 
@@ -383,14 +406,16 @@ test("clears stale OpenCode options and selections during config or CLI switchin
   const harness = buildOpenCodeModelHarness("zh-CN");
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [{ ref: "myAPI/main", label: "主对话", providerId: "myAPI", modelId: "main" }],
-    selectedPrimaryRef: "myAPI/main",
-    selectedSmallRef: "myAPI/main",
+    selectedMainRef: "myAPI/main",
+    selectedSubtaskRef: "myAPI/main",
   });
   harness.updateOpenCodeModelSelectOptions();
   harness.clearOpenCodeModelOptions();
 
   assert.deepEqual(optionPairs(harness.elements.openCodePrimaryModelSelect), [["", "未配置模型"]]);
   assert.deepEqual(optionPairs(harness.elements.openCodeSmallModelSelect), [["", "未配置模型"]]);
+  assert.equal(harness.state.openCodeModels.selectedMainRef, null);
+  assert.equal(harness.state.openCodeModels.selectedSubtaskRef, null);
   assert.equal(harness.state.openCodeModels.selectedPrimaryRef, null);
   assert.equal(harness.state.openCodeModels.selectedSmallRef, null);
   assert.match(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, /currentCli[\s\S]*clearOpenCodeModelOptions\(\)/);

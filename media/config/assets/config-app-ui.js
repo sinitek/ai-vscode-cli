@@ -5131,10 +5131,10 @@ const ConfigEditorPanel = () => {
         "API Key": "Provider API Key，可使用 {env:VAR} 引用环境变量。",
         "模型 id": "Provider 下的模型唯一标识，会拼成 provider/model 引用。",
         模型名称: "模型在配置页中显示的人类可读名称。",
-        "主模型 model": "OpenCode 主模型引用。候选仅来自当前配置，仍可输入内置或未声明引用。",
-        "Primary model": "OpenCode primary model reference. Suggestions come only from this config; built-in or undeclared references remain editable.",
-        "小模型 small_model": "OpenCode 小模型引用，可与主模型相同。",
-        "Small model": "OpenCode small model reference; it may be the same as the primary model.",
+        "主模型 model": "OpenCode 主模型引用；写入官方 model 字段，作为底层 CLI 兼容字段保存。",
+        "Main model": "OpenCode main model reference; saved to the official model field as a lower-level CLI compatibility field.",
+        "子模型 small_model": "OpenCode 子模型引用；写入官方 small_model 字段，作为底层 CLI 兼容字段保存。",
+        "Subtask model": "OpenCode subtask model reference; saved to the official small_model field as a lower-level CLI compatibility field.",
         "共享设置 share": "控制会话分享模式。",
         "Sharing mode": "Controls the session sharing mode.",
         "自动更新 autoupdate": "控制自动更新：开启、通知或关闭。",
@@ -5857,8 +5857,8 @@ const ConfigEditorPanel = () => {
                     marginBottom: "6px",
                   },
                   children: claudeText(
-                    "模型候选仅来自当前配置；可输入内置、未声明或旧的 provider/model 引用。",
-                    "Model suggestions come only from this config. Built-in, undeclared, and legacy provider/model references remain editable.",
+                    "模型候选仅来自当前配置；OpenCode 官方字段 model/small_model 作为底层兼容字段保存，编排使用主模型/子模型。",
+                    "Model suggestions come only from this config. OpenCode fields model/small_model are saved as lower-level compatibility fields; orchestration uses main/subtask models.",
                   ),
                 }),
                 be.jsxs("div", {
@@ -5869,7 +5869,7 @@ const ConfigEditorPanel = () => {
                   },
                   children: [
                     renderOpenCodeCombobox(
-                      claudeText("主模型 model", "Primary model"),
+                      claudeText("主模型 model", "Main model"),
                       openCodeVisualState.primaryModel,
                       (L) => setOpenCodeVisualState((U) => (U ? { ...U, primaryModel: L } : U)),
                       k,
@@ -5879,7 +5879,7 @@ const ConfigEditorPanel = () => {
                       },
                     ),
                     renderOpenCodeCombobox(
-                      claudeText("小模型 small_model", "Small model"),
+                      claudeText("子模型 small_model", "Subtask model"),
                       openCodeVisualState.smallModel,
                       (L) => setOpenCodeVisualState((U) => (U ? { ...U, smallModel: L } : U)),
                       k,

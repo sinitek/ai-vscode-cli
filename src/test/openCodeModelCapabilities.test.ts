@@ -434,7 +434,7 @@ test("isolates cache entries by command, version, config, provider, and model", 
   assert.equal(modelQueries, 6);
 });
 
-test("binds config variants only to the validated exact primary model", async () => {
+test("binds config variants only to the validated exact main model", async () => {
   const capabilities = loadCapabilities();
   capabilities.clearOpenCodeThinkingCapabilityCache();
   const configContent = JSON.stringify({
@@ -461,7 +461,7 @@ test("binds config variants only to the validated exact primary model", async ()
   assert.equal(result.options.some((option) => option.value === "low"), false);
 });
 
-test("refreshes configured defaults across active config and primary model changes", async () => {
+test("refreshes configured defaults across active config and main model changes", async () => {
   const capabilities = loadCapabilities();
   capabilities.clearOpenCodeThinkingCapabilityCache();
   const executor = async () => ({ stdout: "", stderr: "failed", exitCode: 1 });

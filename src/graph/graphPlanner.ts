@@ -304,7 +304,7 @@ function buildDefaultSummaryNode(nodes: readonly GraphNodeRecord[]): GraphNodeRe
     title: "总结 AI 规划的 Graph 运行",
     kind: "summary",
     status: "pending",
-    ownerRole: "system",
+    ownerRole: "main",
     maxAttempts: 1,
     attempts: 0,
     dependsOn: [],

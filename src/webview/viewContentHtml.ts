@@ -165,10 +165,12 @@ ${webviewStyles}    </style>
               <label class="open-code-model-row codex-loop-model-row" for="codexLoopMainModelSelect">
                 <span class="open-code-model-label">${i18n.codexLoopMainModelLabel}</span>
                 <select id="codexLoopMainModelSelect" class="model-select" aria-label="${i18n.codexLoopMainModelSelectAria}" title="${i18n.codexLoopMainModelSelectAria}"></select>
+                <select id="codexLoopMainThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopMainThinkingModeAria}" title="${i18n.codexLoopMainThinkingModeAria}"></select>
               </label>
               <label class="open-code-model-row codex-loop-model-row" for="codexLoopSubtaskModelSelect">
                 <span class="open-code-model-label">${i18n.codexLoopSubtaskModelLabel}</span>
                 <select id="codexLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}"></select>
+                <select id="codexLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopSubtaskThinkingModeAria}" title="${i18n.codexLoopSubtaskThinkingModeAria}"></select>
               </label>
             </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">

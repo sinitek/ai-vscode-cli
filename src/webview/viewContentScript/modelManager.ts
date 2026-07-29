@@ -264,6 +264,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       function updateCodexLoopModelSelectOptions() {
         updateCodexLoopRoleModelSelect(elements.codexLoopMainModelSelect, "main");
         updateCodexLoopRoleModelSelect(elements.codexLoopSubtaskModelSelect, "subtask");
+        if (typeof updateCodexLoopThinkingSelectOptions === "function") {
+          updateCodexLoopThinkingSelectOptions();
+        }
       }
 
       function clearOpenCodeModelOptions() {
@@ -324,13 +327,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         const payload = state.openCodeModels || normalizeOpenCodeModelsPayload(null);
         const models = Array.isArray(payload.models) ? payload.models : [];
-        const selectedRef = role === "small" ? payload.selectedSmallRef : payload.selectedPrimaryRef;
+        const selectedRef = role === "subtask" ? payload.selectedSubtaskRef : payload.selectedMainRef;
         const validRefs = new Set(models.map((model) => model.ref));
         const nextValue = selectedRef && validRefs.has(selectedRef) ? selectedRef : "";
-        if (role === "small") {
-          payload.selectedSmallRef = nextValue || null;
+        if (role === "subtask") {
+          payload.selectedSubtaskRef = nextValue || null;
+          payload.selectedSmallRef = payload.selectedSubtaskRef;
         } else {
-          payload.selectedPrimaryRef = nextValue || null;
+          payload.selectedMainRef = nextValue || null;
+          payload.selectedPrimaryRef = payload.selectedMainRef;
         }
         selectElement.innerHTML = "";
         if (models.length === 0) {
@@ -351,7 +356,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const issue = Array.isArray(payload.issues)
           ? payload.issues.find((candidate) => !candidate.role || candidate.role === role)
           : null;
-        const baseTitle = role === "small"
+        const baseTitle = role === "subtask"
           ? t("openCodeSmallModelSelectAria")
           : t("openCodePrimaryModelSelectAria");
         const issueMessage = getOpenCodeModelIssueMessage(issue);
@@ -364,8 +369,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function updateOpenCodeModelSelectOptions() {
-        updateOpenCodeRoleModelSelect(elements.openCodePrimaryModelSelect, "primary");
-        updateOpenCodeRoleModelSelect(elements.openCodeSmallModelSelect, "small");
+        updateOpenCodeRoleModelSelect(elements.openCodePrimaryModelSelect, "main");
+        updateOpenCodeRoleModelSelect(elements.openCodeSmallModelSelect, "subtask");
         if (!elements.openCodeModelIssue) {
           return;
         }
@@ -394,6 +399,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         if (elements.codexLoopSubtaskModelSelect) {
           elements.codexLoopSubtaskModelSelect.disabled = !showCodexLoopModelGroup;
+        }
+        if (elements.codexLoopMainThinkingMode) {
+          elements.codexLoopMainThinkingMode.disabled = !showCodexLoopModelGroup;
+          elements.codexLoopMainThinkingMode.style.display = showCodexLoopModelGroup ? "" : "none";
+        }
+        if (elements.codexLoopSubtaskThinkingMode) {
+          elements.codexLoopSubtaskThinkingMode.disabled = !showCodexLoopModelGroup;
+          elements.codexLoopSubtaskThinkingMode.style.display = showCodexLoopModelGroup ? "" : "none";
         }
         if (elements.openCodeModelGroup) {
           elements.openCodeModelGroup.style.display = isOpenCode ? "" : "none";
@@ -514,6 +527,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           main: role === "main" ? value : normalizeModelSelection(existingSelection.main),
           subtask: role === "subtask" ? value : normalizeModelSelection(existingSelection.subtask),
         };
+        if (!state.selectedLoopThinkingByCli || typeof state.selectedLoopThinkingByCli !== "object") {
+          state.selectedLoopThinkingByCli = {};
+        }
+        const existingThinking = state.selectedLoopThinkingByCli[cli] || { main: "", subtask: "" };
+        state.selectedLoopThinkingByCli[cli] = {
+          main: role === "main" ? "" : normalizeThinkingModeSelection(existingThinking.main),
+          subtask: role === "subtask" ? "" : normalizeThinkingModeSelection(existingThinking.subtask),
+        };
+        if (typeof updateCodexLoopThinkingSelectOptions === "function") {
+          updateCodexLoopThinkingSelectOptions();
+        }
         vscode.postMessage({
           type: "selectCliLoopModel",
           cli,
@@ -532,6 +556,36 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       if (elements.codexLoopSubtaskModelSelect) {
         elements.codexLoopSubtaskModelSelect.addEventListener("change", (event) => {
           handleCodexLoopRoleModelChange("subtask", event.target.value);
+        });
+      }
+
+      function handleCodexLoopRoleThinkingChange(role, rawValue) {
+        const value = normalizeThinkingModeSelection(rawValue) || "medium";
+        if (!state.selectedLoopThinkingByCli || typeof state.selectedLoopThinkingByCli !== "object") {
+          state.selectedLoopThinkingByCli = {};
+        }
+        const cli = state.currentCli;
+        const existingThinking = state.selectedLoopThinkingByCli[cli] || { main: "", subtask: "" };
+        state.selectedLoopThinkingByCli[cli] = {
+          main: role === "main" ? value : normalizeThinkingModeSelection(existingThinking.main),
+          subtask: role === "subtask" ? value : normalizeThinkingModeSelection(existingThinking.subtask),
+        };
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "selectedLoopThinkingMode." + cli + "." + role,
+          value,
+        });
+      }
+
+      if (elements.codexLoopMainThinkingMode) {
+        elements.codexLoopMainThinkingMode.addEventListener("change", (event) => {
+          handleCodexLoopRoleThinkingChange("main", event.target.value);
+        });
+      }
+
+      if (elements.codexLoopSubtaskThinkingMode) {
+        elements.codexLoopSubtaskThinkingMode.addEventListener("change", (event) => {
+          handleCodexLoopRoleThinkingChange("subtask", event.target.value);
         });
       }
 
