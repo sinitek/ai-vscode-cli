@@ -117,7 +117,9 @@ function buildHarness() {
     autoCompactContextAfterRun: createControl(),
     codexLoopModelGroup: createControl(),
     codexLoopMainModelSelect: createControl(),
+    codexLoopMainThinkingMode: createControl(),
     codexLoopSubtaskModelSelect: createControl(),
+    codexLoopSubtaskThinkingMode: createControl(),
     openCodeModelGroup: createControl(),
     openCodePrimaryModelSelect: createControl(),
     openCodeSmallModelSelect: createControl(),
@@ -322,7 +324,9 @@ test("switches Codex between coding, Loop, and Graph model layouts and persists 
   });
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
@@ -336,7 +340,9 @@ test("switches Codex between coding, Loop, and Graph model layouts and persists 
   });
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 

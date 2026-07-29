@@ -222,7 +222,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         min-width: 0;
       }
       .codex-loop-model-row {
-        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr);
+        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) calc(70px * 1.15);
       }
       .open-code-model-label {
         color: var(--vscode-descriptionForeground);

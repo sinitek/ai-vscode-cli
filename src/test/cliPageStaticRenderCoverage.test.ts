@@ -171,9 +171,11 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
   assertIncludesAll(html, [
     'for="codexLoopMainModelSelect"',
     'id="codexLoopMainModelSelect" class="model-select"',
+    'id="codexLoopMainThinkingMode" class="thinking-select"',
     'aria-label="Codex Loop/Graph main model selection"',
     'for="codexLoopSubtaskModelSelect"',
     'id="codexLoopSubtaskModelSelect" class="model-select"',
+    'id="codexLoopSubtaskThinkingMode" class="thinking-select"',
     'aria-label="Codex Loop/Graph subtask model selection"',
     'for="openCodePrimaryModelSelect"',
     'id="openCodePrimaryModelSelect" class="model-select"',
@@ -192,6 +194,18 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     '<option value="max">max</option>',
     '<option value="ultra">ultra</option>',
   ]);
+  assert.match(
+    html,
+    /<label class="open-code-model-row codex-loop-model-row" for="codexLoopMainModelSelect">[\s\S]*?<select id="codexLoopMainModelSelect" class="model-select"[\s\S]*?<select id="codexLoopMainThinkingMode" class="thinking-select"[\s\S]*?<\/label>/,
+  );
+  assert.match(
+    html,
+    /<label class="open-code-model-row codex-loop-model-row" for="codexLoopSubtaskModelSelect">[\s\S]*?<select id="codexLoopSubtaskModelSelect" class="model-select"[\s\S]*?<select id="codexLoopSubtaskThinkingMode" class="thinking-select"[\s\S]*?<\/label>/,
+  );
+  assert.match(
+    INPUT_CONTROLS_STYLES,
+    /\.codex-loop-model-row\s*\{\s*grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) calc\(70px \* 1\.15\);/,
+  );
 });
 
 test("renders history, settings, run-status, queue, and help overlays", () => {
