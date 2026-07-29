@@ -9,7 +9,7 @@
 
 Loop 开发级 Workflow Skills 的字段、门禁、恢复与降级以 CLI 运行时参考为准；内置快照来源、许可和隔离以权威 Skills 文档为准；同步、测试与 VSIX 逐项核验以本地开发 runbook 为准。本文不重复维护这些规则。
 
-Loop 模型语义：Claude 不接受插件侧模型选择；Codex 的 Coding/Loop 共用一个模型并供主任务、子任务、裁判、参与者、续跑和唤醒复用；OpenCode 保持自身大模型/小模型与独立思考力度，`small_model` 不等于 Loop 子任务模型。内部 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` wrapper 会被定向解析或去标签，普通 HTML 标签不受影响。
+Loop / Graph 模型语义：Claude 不接受插件侧模型选择；Codex 普通 Coding 仍使用单模型，切到 Loop 或 Graph 时显示主模型/子模型两个选择器，Loop 主任务/续跑/唤醒使用主模型、Loop 子任务使用子模型，Graph planner 使用主模型、Graph 执行节点使用子模型，子模型缺失时按主模型/单模型兼容回退并记录原因；OpenCode 保持自身大模型/小模型与独立思考力度，`small_model` 不等于 Loop 子任务模型。内部 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` wrapper 会被定向解析或去标签，普通 HTML 标签不受影响。
 
 OpenCode 全局 MCP 通过官方 XDG `opencode.json` 顶层 `mcp` 直接安装/卸载；local/remote 配置结构和“连接失败仍属于已安装”的健康识别规则，以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/runbooks/PITFALLS.md` 为准。
 

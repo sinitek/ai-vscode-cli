@@ -661,6 +661,8 @@ type LoopPromptRunInput = {
   modelPrompt: string;
   contextTags: string[];
   model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
   loopExecutionMode: ReturnType<typeof normalizeLoopExecutionMode>;
   loopContinuePrompt: string;
 };
@@ -700,6 +702,7 @@ type LoopDebateChatPanelDeps = {
   isTabRunActive: (tabId: string | null) => boolean;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
+  getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
   markTaskStoppedByUser: (taskId: string) => LoopTaskRecord | null;
@@ -1163,12 +1166,21 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
 
     const activeConfigId = deps.getActiveConfigIdForCli(target.cli);
+    const loopMainModel = deps.getSelectedLoopCliModel?.(target.cli, "main", activeConfigId)
+      ?? deps.getSelectedCliModel(target.cli, activeConfigId)
+      ?? undefined;
+    const loopSubtaskModel = deps.getSelectedLoopCliModel?.(target.cli, "subtask", activeConfigId)
+      ?? deps.getSelectedCliModel(target.cli, activeConfigId)
+      ?? loopMainModel
+      ?? undefined;
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
       contextTags: [],
-      model: deps.getSelectedCliModel(target.cli, activeConfigId) ?? undefined,
+      model: loopMainModel,
+      loopMainModel,
+      loopSubtaskModel,
       loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
       loopContinuePrompt: resumePrompt,
     }, {

@@ -16,13 +16,16 @@ import {
   type GraphBlockedNode,
   type GraphExecutionBatch,
 } from "./graphScheduler";
-import type { GraphNodeRecord, GraphRunRecord } from "./types";
+import type { GraphModelRole, GraphNodeRecord, GraphRunRecord } from "./types";
 
 export type GraphNodeExecutionRequest = {
   run: GraphRunRecord;
   node: GraphNodeRecord;
   prompt: string;
   attempt: number;
+  modelRole?: GraphModelRole;
+  model?: string;
+  modelFallback?: string;
 };
 
 export type GraphNodeExecutor = {
@@ -167,6 +170,9 @@ export async function tickGraphRun(
         node,
         prompt,
         attempt: node.attempts,
+        ...(node.modelRole ? { modelRole: node.modelRole } : {}),
+        ...(node.model ? { model: node.model } : {}),
+        ...(node.modelFallback ? { modelFallback: node.modelFallback } : {}),
       });
       return { nodeId: node.id, result };
     } catch (error) {

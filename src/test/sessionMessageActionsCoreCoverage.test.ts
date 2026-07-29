@@ -28,6 +28,7 @@ type SettingCalls = {
   interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
   loopModes: Array<{ cli: CliName; mode: LoopExecutionMode }>;
   selectedModels: Array<{ cli: CliName; model: string | null; configId: string | null }>;
+  selectedLoopModels: Array<{ cli: CliName; role: "main" | "subtask"; model: string | null; configId: string | null }>;
   loadedModelStores: number;
   toolSettings: Array<Partial<ToolSettingsState>>;
   statusUpdates: number;
@@ -49,6 +50,7 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     interactiveModes: [],
     loopModes: [],
     selectedModels: [],
+    selectedLoopModels: [],
     loadedModelStores: 0,
     toolSettings: [],
     statusUpdates: 0,
@@ -64,7 +66,7 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     value === "codex" || value === "claude" || value === "opencode"
   );
   const isInteractiveMode = (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop"
+    value === "coding" || value === "plan" || value === "loop" || value === "graph"
   );
   const isThinkingMode = (value: unknown): value is ThinkingMode => (
     value === "off" || value === "on" || value === "low" || value === "medium"
@@ -92,6 +94,9 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     },
     selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => {
       calls.selectedModels.push({ cli, model, configId: configId ?? null });
+    },
+    selectCliLoopModel: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => {
+      calls.selectedLoopModels.push({ cli, role, model, configId: configId ?? null });
     },
     getActiveConfigIdForCli: (cli: CliName) => `config-${cli}`,
     loadModelStore: () => { calls.loadedModelStores += 1; },
@@ -125,7 +130,15 @@ type PromptCalls = {
     input: PromptRunInputForPanel;
     options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean };
   }>;
-  wakeMain: Array<{ context: LoopSubtaskConversationContextForPanel; model?: string; previousRunEndedAt: number }>;
+  runGraphPrompt: Array<{ input: PromptRunInputForPanel; targetTabId: string | null | undefined }>;
+  wakeMain: Array<{
+    context: LoopSubtaskConversationContextForPanel;
+    tabId: string;
+    model?: string;
+    loopMainModel?: string;
+    loopSubtaskModel?: string;
+    previousRunEndedAt: number;
+  }>;
 };
 
 type PromptHarness = {
@@ -148,6 +161,7 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     preloaded: [],
     runPrompt: [],
     runLoopPrompt: [],
+    runGraphPrompt: [],
     wakeMain: [],
   };
   const state = { currentCli: initialCli, workspaceSettings: {} as WorkspaceSettings };
@@ -163,7 +177,7 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     value === "codex" || value === "claude" || value === "opencode"
   );
   const isInteractiveMode = (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop"
+    value === "coding" || value === "plan" || value === "loop" || value === "graph"
   );
 
   const deps = {
@@ -177,6 +191,9 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     getActiveConversationTabId: () => activeTab.id,
     getCurrentCli: () => state.currentCli,
     setCurrentCliValue: (cli: CliName) => { state.currentCli = cli; },
+    getActiveConfigIdForCli: (cli: CliName) => `config-${cli}`,
+    getSelectedCliModel: () => null,
+    getSelectedLoopCliModel: () => null,
     updateStatusBar: () => { calls.statusUpdates += 1; },
     getWorkspaceSettings: () => state.workspaceSettings,
     saveWorkspaceSettings: (settings: WorkspaceSettings) => {
@@ -217,12 +234,21 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
       resumeTaskId?: string | null;
       resumeRequested?: boolean;
     }) => { calls.runLoopPrompt.push({ input, options }); },
+    runGraphPrompt: async (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => {
+      calls.runGraphPrompt.push({ input, targetTabId: options?.targetTabId });
+    },
     runPrompt: async (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => {
       calls.runPrompt.push({ input, targetTabId: options?.targetTabId });
     },
     maybeWakeLoopMainAfterSubtaskContinuation: async (
       context: LoopSubtaskConversationContextForPanel,
-      options: { previousRunEndedAt: number; model?: string },
+      options: {
+        tabId: string;
+        previousRunEndedAt: number;
+        model?: string;
+        loopMainModel?: string;
+        loopSubtaskModel?: string;
+      },
     ) => { calls.wakeMain.push({ context, ...options }); },
     resolveLoopResumeTaskFromPrompt: () => null,
     isLoopResumePrompt: () => false,
@@ -421,6 +447,8 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
       modelPrompt: "context:resume the task:memory",
       contextTags: ["#file"],
       model: "codex-model",
+      loopMainModel: "codex-model",
+      loopSubtaskModel: "codex-model",
       imagePaths: ["/tmp/diagram.png"],
       loopExecutionMode: "main_sub_multi_agent",
       preloadedUserMessageId: "user-message",
@@ -429,6 +457,45 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
       targetTabId: "loop-tab",
       resumeTaskId: "resumed-task",
       resumeRequested: true,
+    },
+  }]);
+});
+
+test("routes Graph prompts with Codex main and subtask model payloads", async () => {
+  const { deps, calls, tabs } = createPromptHarness("codex");
+  tabs.set("graph-tab", {
+    id: "graph-tab",
+    cli: "codex",
+    sessionId: "graph-session",
+    sessionIdByCli: { codex: "graph-session" },
+    createdAt: 6,
+  });
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
+    ? "planner-main"
+    : "executor-subtask";
+
+  await handleSendPromptMessage({
+    type: "sendPrompt",
+    prompt: "plan then execute",
+    tabId: "graph-tab",
+    interactiveMode: "graph",
+    model: "fallback-model",
+  }, deps);
+
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.deepEqual(calls.runGraphPrompt, [{
+    targetTabId: "graph-tab",
+    input: {
+      displayPrompt: "plan then execute",
+      modelPrompt: "context:plan then execute",
+      contextTags: ["#file"],
+      model: "planner-main",
+      loopMainModel: "planner-main",
+      loopSubtaskModel: "executor-subtask",
+      imagePaths: ["/tmp/diagram.png"],
+      skipLongTermMemoryPersist: true,
+      preloadedUserMessageId: "user-message",
     },
   }]);
 });
@@ -503,7 +570,14 @@ test("forces a Loop subtask continuation through coding and wakes the parent aft
     loopSubtaskId: "subtask-1",
     preloadedUserMessageId: "user-message",
   });
-  assert.deepEqual(calls.wakeMain, [{ context, tabId: "subtask-tab", previousRunEndedAt: 123, model: undefined }]);
+  assert.deepEqual(calls.wakeMain, [{
+    context,
+    tabId: "subtask-tab",
+    previousRunEndedAt: 123,
+    model: undefined,
+    loopMainModel: undefined,
+    loopSubtaskModel: undefined,
+  }]);
 });
 
 test("falls back to the current cli when a requested tab and cli are invalid", async () => {

@@ -134,6 +134,9 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="promptContextTags"',
     'id="promptInput"',
     'id="attachmentInput"',
+    'id="codexLoopModelGroup"',
+    'id="codexLoopMainModelSelect"',
+    'id="codexLoopSubtaskModelSelect"',
     'id="modelSelect"',
     'id="thinkingMode"',
     'id="loopExecutionModeSelect"',
@@ -154,14 +157,24 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
   );
 });
 
-test("renders model-selection and OpenCode role-model anchors", () => {
+test("renders model-selection, Codex role-model, and OpenCode role-model anchors", () => {
   const html = buildHtml();
 
+  assert.match(
+    html,
+    /<div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">[\s\S]*?<\/div>/,
+  );
   assert.match(
     html,
     /<div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">[\s\S]*?<\/div>/,
   );
   assertIncludesAll(html, [
+    'for="codexLoopMainModelSelect"',
+    'id="codexLoopMainModelSelect" class="model-select"',
+    'aria-label="Codex Loop/Graph main model selection"',
+    'for="codexLoopSubtaskModelSelect"',
+    'id="codexLoopSubtaskModelSelect" class="model-select"',
+    'aria-label="Codex Loop/Graph subtask model selection"',
     'for="openCodePrimaryModelSelect"',
     'id="openCodePrimaryModelSelect" class="model-select"',
     'id="openCodePrimaryThinkingMode" class="thinking-select"',
@@ -257,6 +270,8 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Workspace Harness Scaffold",
     "Main/Sub Multi-Agent",
     "Red/Blue Debate Multi-Agent",
+    "Codex Loop/Graph main model selection",
+    "Codex Loop/Graph subtask model selection",
   ]);
   assertIncludesAll(chineseHtml, [
     '<html lang="zh-CN">',
@@ -278,6 +293,8 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "工作区 Harness 骨架",
     "主从多智能体",
     "红蓝辩论多智能体",
+    "Codex Loop/Graph 主模型选择",
+    "Codex Loop/Graph 子模型选择",
   ]);
 });
 
@@ -345,6 +362,7 @@ test("concatenates all static style modules and keeps key selectors available", 
     ".run-wait.has-current-graph-run",
     ".input-area {",
     ".open-code-model-group {",
+    ".codex-loop-model-row {",
     ".loop-execution-mode-select {",
     ".overlay {",
     ".toast {",

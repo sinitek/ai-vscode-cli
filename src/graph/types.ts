@@ -94,6 +94,12 @@ export const GRAPH_OWNER_ROLES = [
 ] as const;
 export type GraphOwnerRole = (typeof GRAPH_OWNER_ROLES)[number];
 
+export const GRAPH_MODEL_ROLES = [
+  "main",
+  "subtask",
+] as const;
+export type GraphModelRole = (typeof GRAPH_MODEL_ROLES)[number];
+
 export const GRAPH_EVENT_TYPES = [
   "run.created",
   "run.updated",
@@ -205,12 +211,26 @@ export type GraphRunDirectExecutionRecord = {
   createdAt?: number;
 };
 
+export type GraphModelRouteRecord = {
+  role: GraphModelRole;
+  model?: string;
+  fallback?: string;
+};
+
+export type GraphRunModelRoutingRecord = {
+  planner: GraphModelRouteRecord;
+  executor: GraphModelRouteRecord;
+};
+
 export type GraphNodeRecord = {
   id: string;
   title: string;
   kind: GraphNodeKind;
   status: GraphNodeStatus;
   ownerRole: GraphOwnerRole;
+  modelRole?: GraphModelRole;
+  model?: string;
+  modelFallback?: string;
   promptRef?: string;
   artifactRef?: string;
   communicationFile?: string;
@@ -269,6 +289,7 @@ export type GraphRunRecord = {
   executionMode?: GraphRunExecutionMode;
   directExecution?: GraphRunDirectExecutionRecord;
   worktree?: GraphRunWorktreeRecord;
+  modelRouting?: GraphRunModelRoutingRecord;
   finalAnswer?: GraphFinalAnswer;
 };
 
@@ -327,6 +348,10 @@ export function isGraphEdgeConditionOperator(value: unknown): value is GraphEdge
 
 export function isGraphOwnerRole(value: unknown): value is GraphOwnerRole {
   return isGraphValue(GRAPH_OWNER_ROLES, value);
+}
+
+export function isGraphModelRole(value: unknown): value is GraphModelRole {
+  return isGraphValue(GRAPH_MODEL_ROLES, value);
 }
 
 export function isGraphEventType(value: unknown): value is GraphEventType {

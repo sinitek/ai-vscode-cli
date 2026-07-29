@@ -135,7 +135,7 @@ Gemini 已从当前支持 CLI 中移除；旧 one-shot 路径只作为历史迁�
 
 Loop 模式仍由 `src/extension.ts` 统一编排，不新增独立后端服务或新的顶层 `InteractiveMode`。当前内部执行方式有两种：
 
-Loop 的主任务、子任务、裁判主持人和参与者是编排角色，不是模型角色。Webview 和运行时按 CLI 能力选择模型：Claude 在 Coding/Loop 均不显示插件侧模型下拉；Codex 在 Coding/Loop 共用一个 `modelSelect`，`sendPrompt` 只传一个 `model`，所有 Loop 角色、续跑和自动唤醒都沿用该值；OpenCode 在两种模式中保留自身 primary/small 双模型和各自思考力度，所有 Loop 对话角色使用 effective primary，small 只供 OpenCode 内部请求。旧主/子模型存储结构可以被归一化读取，但不得再暴露到 PanelState 或参与运行时选择。
+Loop 的主任务、子任务、裁判主持人和参与者是编排角色；模型角色按 CLI 能力映射。Claude 在 Coding/Loop 均不显示插件侧模型下拉；Codex 普通 Coding 显示单个 `modelSelect`，切到 Loop 时显示 `loopMainModel` / `loopSubtaskModel` 两个选择器，主任务、主持/复核、续跑和自动唤醒使用主模型，Loop 子任务使用子模型，缺少子模型时回退到主模型或单模型并记录原因；OpenCode 在两种模式中保留自身 primary/small 双模型和各自思考力度，所有 Loop 对话角色使用 effective primary，small 只供 OpenCode 内部请求。旧 `lobsterMainModel` / `lobsterSubtaskModel` 与旧 Loop 主/子模型存储结构仅用于兼容读取和迁移，不覆盖新的 PanelState 与运行时选择。
 
 Loop 子任务是插件创建的独立 CLI 会话，不属于 OpenCode/Codex 的内部 child session。每个子任务启动时，主任务 tab 立即创建一个按 `taskId + round + subtaskId` 隔离的 Loop 子代理 assistant 气泡；运行中每秒从对应子任务 tab 的消息存储读取非 thinking、非内部子代理的可见 assistant 快照，并将新增正文或修正快照定向更新到原气泡。完成、失败和中断更新同一气泡状态；子任务 tab 自身的 assistant/thinking/trace 事件保持不变。主任务进度气泡带稳定 `subagentId`，不会进入父任务 final-answer 或 successful-reply fallback。
 

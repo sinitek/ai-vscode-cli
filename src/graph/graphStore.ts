@@ -11,6 +11,7 @@ import {
   isGraphEdgeConditionOperator,
   isGraphEdgeConditionType,
   isGraphEdgeKind,
+  isGraphModelRole,
   isGraphNodeKind,
   isGraphNodeStatus,
   isGraphOwnerRole,
@@ -23,6 +24,8 @@ import {
   type GraphEdgeMetadata,
   type GraphEdgeRecord,
   type GraphFinalAnswer,
+  type GraphModelRouteRecord,
+  type GraphRunModelRoutingRecord,
   type GraphNodeRecord,
   type GraphNodeReworkRecord,
   type GraphNodeStatus,
@@ -103,6 +106,7 @@ export type CreateGraphRunRecordInput = {
   executionMode?: GraphRunRecord["executionMode"];
   directExecution?: GraphRunDirectExecutionRecord;
   worktree?: GraphRunWorktreeRecord;
+  modelRouting?: GraphRunModelRoutingRecord;
   finalAnswer?: GraphFinalAnswer;
 };
 
@@ -342,6 +346,7 @@ export function createGraphRunRecord(
     ...(input.executionMode ? { executionMode: input.executionMode } : {}),
     ...(input.directExecution ? { directExecution: input.directExecution } : {}),
     ...(input.worktree ? { worktree: input.worktree } : {}),
+    ...(input.modelRouting ? { modelRouting: input.modelRouting } : {}),
     ...(input.finalAnswer ? { finalAnswer: input.finalAnswer } : {}),
   };
   const normalized = normalizeGraphRunRecord(record, { ...options, sourceFile: storeFile });
@@ -451,6 +456,7 @@ export function normalizeGraphRunRecord(
   const updatedAt = normalizeFiniteTimestamp(raw.updatedAt, createdAt);
   const worktree = normalizeGraphRunWorktree(raw.worktree);
   const directExecution = normalizeGraphRunDirectExecution(raw.directExecution);
+  const modelRouting = normalizeGraphRunModelRouting(raw.modelRouting);
   const executionMode = isGraphRunExecutionMode(raw.executionMode)
     ? raw.executionMode
     : (directExecution ? "direct" : "worktree");
@@ -491,6 +497,7 @@ export function normalizeGraphRunRecord(
     executionMode,
     ...(directExecution ? { directExecution } : {}),
     ...(worktree ? { worktree } : {}),
+    ...(modelRouting ? { modelRouting } : {}),
     ...(normalizeGraphFinalAnswer(raw.finalAnswer) ? { finalAnswer: normalizeGraphFinalAnswer(raw.finalAnswer) as GraphFinalAnswer } : {}),
   };
 }
@@ -611,6 +618,9 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     kind: raw.kind,
     status: raw.status,
     ownerRole: raw.ownerRole,
+    ...(isGraphModelRole(raw.modelRole) ? { modelRole: raw.modelRole } : {}),
+    ...(typeof raw.model === "string" && raw.model.trim() ? { model: raw.model.trim() } : {}),
+    ...(typeof raw.modelFallback === "string" && raw.modelFallback.trim() ? { modelFallback: raw.modelFallback.trim() } : {}),
     ...(typeof raw.promptRef === "string" && raw.promptRef.trim() ? { promptRef: raw.promptRef } : {}),
     ...(typeof raw.artifactRef === "string" && raw.artifactRef.trim() ? { artifactRef: raw.artifactRef } : {}),
     ...(typeof raw.communicationFile === "string" && raw.communicationFile.trim() ? { communicationFile: raw.communicationFile } : {}),
@@ -700,6 +710,34 @@ function normalizeGraphRunDirectExecution(value: unknown): GraphRunDirectExecuti
     cwd: raw.cwd.trim(),
     ...(typeof raw.reason === "string" && raw.reason.trim() ? { reason: raw.reason.trim() } : {}),
     ...(normalizeOptionalTimestamp(raw.createdAt) !== undefined ? { createdAt: normalizeOptionalTimestamp(raw.createdAt) } : {}),
+  };
+}
+
+function normalizeGraphRunModelRouting(value: unknown): GraphRunModelRoutingRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphRunModelRoutingRecord>;
+  const planner = normalizeGraphModelRoute(raw.planner);
+  const executor = normalizeGraphModelRoute(raw.executor);
+  if (!planner || !executor) {
+    return null;
+  }
+  return { planner, executor };
+}
+
+function normalizeGraphModelRoute(value: unknown): GraphModelRouteRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<GraphModelRouteRecord>;
+  if (!isGraphModelRole(raw.role)) {
+    return null;
+  }
+  return {
+    role: raw.role,
+    ...(typeof raw.model === "string" && raw.model.trim() ? { model: raw.model.trim() } : {}),
+    ...(typeof raw.fallback === "string" && raw.fallback.trim() ? { fallback: raw.fallback.trim() } : {}),
   };
 }
 

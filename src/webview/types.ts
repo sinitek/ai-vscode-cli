@@ -24,6 +24,7 @@ export type PanelMessage =
   | { type: "requestState" }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
+  | { type: "selectCliLoopModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
   | { type: "addCliModel"; cli: CliName; model: string; configId?: string | null }
   | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string; configId?: string | null }
   | { type: "deleteCliModel"; cli: CliName; model: string; configId?: string | null }
@@ -53,6 +54,10 @@ export type PanelMessage =
       tabId?: string;
       cli?: CliName;
       model?: string;
+      loopMainModel?: string;
+      loopSubtaskModel?: string;
+      lobsterMainModel?: string;
+      lobsterSubtaskModel?: string;
       loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
     }
@@ -259,6 +264,8 @@ export type PanelState = {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
     managedByCli: Record<CliName, string[]>;
+    selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;
+    loopOptionsByCli?: Partial<Record<CliName, { main: string[]; subtask: string[] }>>;
   };
   editorContext: EditorContextState;
 };

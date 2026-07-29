@@ -88,6 +88,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     "## Graph Run",
     `- Graph run id：${run.id}`,
     `- CLI：${run.cli}`,
+    ...formatGraphRunModelRoutingLines(run),
     `- Workspace key：${run.workspaceKey}`,
     `- Session id：${run.sessionId ?? GRAPH_PROMPT_EMPTY_VALUE}`,
     `- Run status：${run.status}`,
@@ -108,6 +109,9 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Title：${node.title}`,
     `- Kind：${node.kind}`,
     `- Owner role：${node.ownerRole}`,
+    `- Model role：${formatValue(node.modelRole)}`,
+    `- Model used：${formatValue(node.model)}`,
+    `- Model fallback：${formatValue(node.modelFallback)}`,
     `- Status at dispatch：${node.status}`,
     `- Attempts：${node.attempts}/${node.maxAttempts}`,
     `- Depends on：${formatList(node.dependsOn)}`,
@@ -274,6 +278,9 @@ function formatGraphNodeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
       `kind=${item.kind}`,
       `status=${item.status}`,
       `owner=${item.ownerRole}`,
+      `modelRole=${formatValue(item.modelRole)}`,
+      `model=${formatValue(item.model)}`,
+      `modelFallback=${formatValue(item.modelFallback)}`,
       `dependsOn=${formatList(item.dependsOn)}`,
       `unlocks=${formatList(item.unlocks)}`,
       `writeFiles=${formatWriteFiles(item.writeFiles, run)}`,
@@ -704,6 +711,19 @@ function formatExtraInstructionLines(instructions: readonly string[] | undefined
 function formatList(values: readonly string[] | undefined): string {
   const normalized = normalizeStringList(values);
   return normalized.length > 0 ? normalized.join("、") : GRAPH_PROMPT_EMPTY_VALUE;
+}
+
+function formatGraphRunModelRoutingLines(run: GraphRunRecord): string[] {
+  const planner = run.modelRouting?.planner;
+  const executor = run.modelRouting?.executor;
+  return [
+    `- Planner model role：${formatValue(planner?.role)}`,
+    `- Planner model used：${formatValue(planner?.model)}`,
+    `- Planner model fallback：${formatValue(planner?.fallback)}`,
+    `- Execution node model role：${formatValue(executor?.role)}`,
+    `- Execution node model used：${formatValue(executor?.model)}`,
+    `- Execution node model fallback：${formatValue(executor?.fallback)}`,
+  ];
 }
 
 function formatGraphExecutionMode(run: GraphRunRecord): string {

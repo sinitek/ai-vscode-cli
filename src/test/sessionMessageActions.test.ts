@@ -224,6 +224,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     normalizeThinkingModeForCli: (_cli, mode) => mode,
     setCliModelThinkingMode: () => undefined,
     getSelectedCliModel: () => null,
+    getSelectedLoopCliModel: () => null,
     isInteractiveMode: (value: unknown): value is InteractiveMode => (
       value === "coding" || value === "plan" || value === "loop" || value === "graph"
     ),
@@ -427,33 +428,99 @@ test("routes OpenCode Graph through runGraphPrompt without starting Loop or norm
   assert.equal(calls.postPanelState, 1);
 });
 
-test("uses one Codex model for a Loop request and ignores legacy role-model fields", async () => {
+test("routes Codex Loop with explicit main and subtask model payload fields", async () => {
   const { deps, calls } = createSendPromptHarness("codex");
-  const legacyMessage = {
+  const message = {
     type: "sendPrompt",
-    prompt: "run one-model loop",
+    prompt: "run dual-model loop",
     interactiveMode: "loop",
     tabId: "tab-opencode-smoke",
     cli: "codex",
     model: "  gpt-5.3-codex  ",
-    loopMainModel: "legacy-main",
-    loopSubtaskModel: "legacy-subtask",
+    loopMainModel: "  gpt-5.3-codex-main  ",
+    loopSubtaskModel: "  gpt-5.3-codex-subtask  ",
   } as unknown as PanelMessage;
 
-  await handlePanelMessageWithDeps(legacyMessage, deps);
+  await handlePanelMessageWithDeps(message, deps);
 
   assert.equal(calls.runLoopPrompt.length, 1);
   assert.deepEqual(calls.runLoopPrompt[0].input, {
-    displayPrompt: "run one-model loop",
-    modelPrompt: "run one-model loop",
+    displayPrompt: "run dual-model loop",
+    modelPrompt: "run dual-model loop",
     contextTags: [],
-    model: "gpt-5.3-codex",
+    model: "gpt-5.3-codex-main",
+    loopMainModel: "gpt-5.3-codex-main",
+    loopSubtaskModel: "gpt-5.3-codex-subtask",
     imagePaths: undefined,
     loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
-  assert.equal(Object.prototype.hasOwnProperty.call(calls.runLoopPrompt[0].input, "loopMainModel"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(calls.runLoopPrompt[0].input, "loopSubtaskModel"), false);
+});
+
+test("falls back Codex Loop role models to the legacy generic model payload", async () => {
+  const { deps, calls } = createSendPromptHarness("codex");
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run fallback loop",
+    interactiveMode: "loop",
+    tabId: "tab-opencode-smoke",
+    cli: "codex",
+    model: "  gpt-5.3-codex  ",
+  }, deps);
+
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.deepEqual(calls.runLoopPrompt[0].input, {
+    displayPrompt: "run fallback loop",
+    modelPrompt: "run fallback loop",
+    contextTags: [],
+    model: "gpt-5.3-codex",
+    loopMainModel: "gpt-5.3-codex",
+    loopSubtaskModel: "gpt-5.3-codex",
+    imagePaths: undefined,
+    loopExecutionMode: "main_sub_multi_agent",
+    preloadedUserMessageId: "user-preloaded",
+  });
+});
+
+test("routes Codex Graph with planner and execution model payload fields", async () => {
+  const { deps, calls } = createSendPromptHarness("codex");
+  let memoryInjectionCalls = 0;
+  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
+    memoryInjectionCalls += 1;
+    return `${modelPrompt}:memory`;
+  };
+  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
+    ? "stored-main-model"
+    : "stored-subtask-model";
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run codex graph",
+    interactiveMode: "graph",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "codex",
+  }, deps);
+
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.equal(calls.runGraphPrompt.length, 1);
+  assert.equal(memoryInjectionCalls, 0);
+  assert.deepEqual(calls.runGraphPrompt[0].input, {
+    displayPrompt: "run codex graph",
+    modelPrompt: "run codex graph",
+    contextTags: [],
+    model: "stored-main-model",
+    loopMainModel: "stored-main-model",
+    loopSubtaskModel: "stored-subtask-model",
+    imagePaths: undefined,
+    skipLongTermMemoryPersist: true,
+    preloadedUserMessageId: "user-preloaded",
+  });
 });
 
 test("persists the OpenCode Loop execution mode by CLI", async () => {
@@ -651,6 +718,63 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
       tabId: "tab-opencode-smoke",
       previousRunEndedAt: 0,
       model: undefined,
+      loopMainModel: undefined,
+      loopSubtaskModel: undefined,
+    },
+  }]);
+});
+
+test("forces a manual Codex Loop subtask continuation through the subtask model and wakes the main model", async () => {
+  const { deps, calls } = createSendPromptHarness("codex");
+  deps.resolveLoopSubtaskConversationContext = () => ({
+    taskId: "task-codex-loop",
+    subtaskId: "subtask-routing",
+    round: 2,
+  });
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "continue this codex subtask",
+    interactiveMode: "loop",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "codex",
+    loopMainModel: "planner-main-model",
+    loopSubtaskModel: "executor-subtask-model",
+  }, deps);
+
+  assert.deepEqual(calls.interactiveModes, [{ cli: "codex", mode: "coding" }]);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(calls.runPrompt[0].input, {
+    displayPrompt: "continue this codex subtask",
+    modelPrompt: "continue this codex subtask",
+    contextTags: [],
+    model: "executor-subtask-model",
+    loopMainModel: "planner-main-model",
+    loopSubtaskModel: "executor-subtask-model",
+    imagePaths: undefined,
+    taskRole: "subtask",
+    loopTaskId: "task-codex-loop",
+    loopRound: 2,
+    loopSubtaskId: "subtask-routing",
+    preloadedUserMessageId: "user-preloaded",
+  });
+  assert.deepEqual(calls.wakeMain, [{
+    context: {
+      taskId: "task-codex-loop",
+      subtaskId: "subtask-routing",
+      round: 2,
+    },
+    options: {
+      tabId: "tab-opencode-smoke",
+      previousRunEndedAt: 0,
+      model: "planner-main-model",
+      loopMainModel: "planner-main-model",
+      loopSubtaskModel: "executor-subtask-model",
     },
   }]);
 });

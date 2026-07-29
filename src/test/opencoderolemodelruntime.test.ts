@@ -82,15 +82,21 @@ test("does not expose legacy generic or Loop selections for OpenCode", () => {
     loopRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
   });
-  const state = buildModelState(store, () => "opencode", { opencode: "opencode" });
+  const state = buildModelState(
+    store,
+    (cli) => cli === "opencode" ? "opencode" : null,
+    { opencode: "opencode" },
+  );
   assert.equal(state.selectedByCli.opencode, null);
   assert.deepEqual(state.optionsByCli.opencode, []);
-  assert.equal("selectedLoopByCli" in state, false);
-  assert.equal("loopOptionsByCli" in state, false);
+  assert.equal(state.selectedLoopByCli?.opencode, undefined);
+  assert.equal(state.loopOptionsByCli?.opencode, undefined);
+  assert.deepEqual(state.selectedLoopByCli?.codex, { main: null, subtask: null });
+  assert.deepEqual(state.loopOptionsByCli?.codex, { main: [], subtask: [] });
   assert.equal("managedLoopRolesByCli" in state, false);
 });
 
-test("keeps legacy Codex Loop role selections stored but exposes only the unified model", () => {
+test("exposes Codex Loop role selections alongside the unified model", () => {
   const store = ensureCliModelStore({
     selectedByConfigId: { "config-a": "codex-unified" },
     optionsByConfigId: { "config-a": ["codex-unified", "legacy-main", "legacy-subtask"] },
@@ -112,5 +118,12 @@ test("keeps legacy Codex Loop role selections stored but exposes only the unifie
   const state = buildModelState(store, () => "config-a", { codex: "config-a" });
   assert.equal(state.selectedByCli.codex, "codex-unified");
   assert.deepEqual(state.optionsByCli.codex, ["codex-unified", "legacy-main", "legacy-subtask"]);
-  assert.equal("selectedLoopByCli" in state, false);
+  assert.deepEqual(state.selectedLoopByCli?.codex, {
+    main: "legacy-main",
+    subtask: "legacy-subtask",
+  });
+  assert.deepEqual(state.loopOptionsByCli?.codex, {
+    main: ["codex-unified", "legacy-main"],
+    subtask: ["codex-unified", "legacy-subtask"],
+  });
 });

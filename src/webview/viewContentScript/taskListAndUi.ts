@@ -677,12 +677,89 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
       }
 
-      function dispatchPrompt(payload, options = {}) {
+      function readPromptPayloadModelField(payload, key) {
+        if (!payload || typeof payload !== "object") {
+          return "";
+        }
+        return normalizeModelSelection(payload[key]);
+      }
+
+      function normalizePromptPayloadWithModelFields(payload) {
         const normalizedPayload = normalizePromptPayload(payload);
         if (!normalizedPayload) {
+          return null;
+        }
+        const loopMainModel = readPromptPayloadModelField(payload, "loopMainModel")
+          || readPromptPayloadModelField(payload, "lobsterMainModel");
+        const loopSubtaskModel = readPromptPayloadModelField(payload, "loopSubtaskModel")
+          || readPromptPayloadModelField(payload, "lobsterSubtaskModel");
+        return {
+          ...normalizedPayload,
+          ...(loopMainModel ? { loopMainModel } : {}),
+          ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+        };
+      }
+
+      function shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab) {
+        if (targetCli !== "codex") {
           return false;
         }
-        const prompt = normalizedPayload.prompt;
+        if (targetInteractiveMode === "loop" || targetInteractiveMode === "graph") {
+          return true;
+        }
+        return Boolean(targetTab && targetTab.loopTaskRole === "subtask");
+      }
+
+      function resolvePromptLoopRoleModel(normalizedPayload, targetCli, role) {
+        const payloadValue = role === "subtask"
+          ? normalizeModelSelection(normalizedPayload.loopSubtaskModel)
+          : normalizeModelSelection(normalizedPayload.loopMainModel);
+        if (payloadValue) {
+          return payloadValue;
+        }
+        return getSelectedLoopRoleModelForCli(targetCli, role);
+      }
+
+      function applyCodexLoopRoleModelsToPromptPayload(normalizedPayload, targetCli, targetInteractiveMode, targetTab) {
+        if (!normalizedPayload) {
+          return normalizedPayload;
+        }
+        if (!shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab)) {
+          const { loopMainModel, loopSubtaskModel, ...payloadWithoutRoleModels } = normalizedPayload;
+          return payloadWithoutRoleModels;
+        }
+        if (typeof getSelectedLoopRoleModelForCli !== "function") {
+          return normalizedPayload;
+        }
+        const loopMainModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "main");
+        const loopSubtaskModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "subtask");
+        return {
+          ...normalizedPayload,
+          ...(loopMainModel ? { loopMainModel } : {}),
+          ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+        };
+      }
+
+      function snapshotPromptPayloadForQueue(payload) {
+        const normalizedPayload = normalizePromptPayloadWithModelFields(payload);
+        if (!normalizedPayload) {
+          return null;
+        }
+        const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
+        return applyCodexLoopRoleModelsToPromptPayload(
+          normalizedPayload,
+          state.currentCli,
+          interactiveMode,
+          getConversationTabSummary(getActiveConversationTabId())
+        );
+      }
+
+      function dispatchPrompt(payload, options = {}) {
+        const basePayload = normalizePromptPayloadWithModelFields(payload);
+        if (!basePayload) {
+          return false;
+        }
+        const prompt = basePayload.prompt;
         const targetTabId = typeof options.tabId === "string" && options.tabId
           ? options.tabId
           : getActiveConversationTabId();
@@ -690,6 +767,17 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetTab = getConversationTabSummary(targetTabId);
         const targetCli = targetTab && targetTab.cli ? targetTab.cli : state.currentCli;
         const isBackgroundDispatch = Boolean(targetTabId && activeTabId && targetTabId !== activeTabId);
+        const targetInteractiveMode = resolveDispatchInteractiveMode(
+          basePayload.interactiveMode,
+          targetTab,
+          isBackgroundDispatch,
+        );
+        const normalizedPayload = applyCodexLoopRoleModelsToPromptPayload(
+          basePayload,
+          targetCli,
+          targetInteractiveMode,
+          targetTab
+        );
         const targetRuntimeState = getConversationRuntimeState(targetTabId, { create: false });
         const shouldSuppressFlush = isTabRunning(targetTabId);
         const hasConfig = isBackgroundDispatch ? true : state.selectedConfigId || state.configState.activeConfigId;
@@ -709,11 +797,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : "";
-        const targetInteractiveMode = resolveDispatchInteractiveMode(
-          normalizedPayload.interactiveMode,
-          targetTab,
-          isBackgroundDispatch,
-        );
         const targetLoopExecutionMode = targetInteractiveMode === "loop"
           ? getLoopExecutionModeForCli(targetCli)
           : undefined;
@@ -724,9 +807,15 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           contextOptions: normalizedPayload.contextOptions,
           tabId: targetTabId || undefined,
           cli: targetCli,
-          model: targetModel || undefined,
+          model: normalizedPayload.loopMainModel || targetModel || undefined,
           preserveActiveTab: Boolean(options.preserveActiveTab && isBackgroundDispatch),
         };
+        if (normalizedPayload.loopMainModel) {
+          sendPromptMessage.loopMainModel = normalizedPayload.loopMainModel;
+        }
+        if (normalizedPayload.loopSubtaskModel) {
+          sendPromptMessage.loopSubtaskModel = normalizedPayload.loopSubtaskModel;
+        }
         if (targetLoopExecutionMode) {
           sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;
         }

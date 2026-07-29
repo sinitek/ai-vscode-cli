@@ -35,6 +35,20 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         return typeof value === "string" ? value.trim() : "";
       }
 
+      function normalizeLoopRoleModelsPayload(payload) {
+        return {
+          main: normalizeModelNameList(payload && payload.main),
+          subtask: normalizeModelNameList(payload && payload.subtask),
+        };
+      }
+
+      function normalizeLoopRoleSelectionPayload(payload) {
+        return {
+          main: normalizeModelSelection(payload && payload.main),
+          subtask: normalizeModelSelection(payload && payload.subtask),
+        };
+      }
+
       function normalizeOpenCodeThinkingPayload(payload) {
         const normalized = {
           selectedVariant: null,
@@ -165,12 +179,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const nextModelsByCli = {};
         const nextManagedModelsByCli = {};
         const nextSelectedModelsByCli = {};
+        const nextLoopModelsByCli = {};
+        const nextSelectedLoopModelsByCli = {};
 
         CLI_NAMES.forEach((cli) => {
           const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli]);
           const incomingManagedModels = normalizeModelNameList(modelState.managedByCli && modelState.managedByCli[cli]);
           const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli]);
           const previousManagedModels = normalizeModelNameList(state.managedModelsByCli && state.managedModelsByCli[cli]);
+          const incomingLoopModels = normalizeLoopRoleModelsPayload(modelState.loopOptionsByCli && modelState.loopOptionsByCli[cli]);
+          const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli]);
+          const incomingLoopSelection = normalizeLoopRoleSelectionPayload(modelState.selectedLoopByCli && modelState.selectedLoopByCli[cli]);
+          const previousLoopSelection = normalizeLoopRoleSelectionPayload(state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[cli]);
           const preservePrevious = shouldPreserveCurrentCliModelsOnEmptySnapshot(
             cli,
             incomingModels,
@@ -184,11 +204,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           nextSelectedModelsByCli[cli] = preservePrevious
             ? normalizeModelSelection(state.selectedModelsByCli && state.selectedModelsByCli[cli])
             : normalizeModelSelection(modelState.selectedByCli && modelState.selectedByCli[cli]);
+          nextLoopModelsByCli[cli] = preservePrevious ? previousLoopModels : incomingLoopModels;
+          nextSelectedLoopModelsByCli[cli] = preservePrevious ? previousLoopSelection : incomingLoopSelection;
         });
 
         state.modelsByCli = nextModelsByCli;
         state.managedModelsByCli = nextManagedModelsByCli;
         state.selectedModelsByCli = nextSelectedModelsByCli;
+        state.loopModelsByCli = nextLoopModelsByCli;
+        state.selectedLoopModelsByCli = nextSelectedLoopModelsByCli;
         state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
       }
 
@@ -329,6 +353,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.modelSelect) {
           updateModelSelectOptions();
         }
+        updateCodexLoopModelSelectOptions();
         updateOpenCodeModelSelectOptions();
         syncModelSelectorByInteractiveMode();
         if (elements.addModelOverlay && elements.addModelOverlay.classList.contains("visible")) {

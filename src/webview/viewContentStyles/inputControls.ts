@@ -221,6 +221,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         gap: 6px;
         min-width: 0;
       }
+      .codex-loop-model-row {
+        grid-template-columns: minmax(52px, auto) minmax(92px, 1fr);
+      }
       .open-code-model-label {
         color: var(--vscode-descriptionForeground);
         font-size: 12px;

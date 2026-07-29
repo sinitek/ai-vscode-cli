@@ -793,7 +793,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function queuePromptForLater(payload) {
-        const normalizedPayload = normalizePromptPayload(payload);
+        const normalizedPayload = snapshotPromptPayloadForQueue(payload);
         if (!normalizedPayload) {
           return;
         }

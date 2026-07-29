@@ -22,6 +22,8 @@ export type PromptRunInputForPanel = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   imagePaths?: string[];
@@ -69,6 +71,7 @@ export type PanelMessageHandlerDeps = {
   syncCurrentSessionWithActiveTab: () => string | null;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => void;
+  selectCliLoopModel?: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => void;
   updateOpenCodeRoleModel?: (
     role: "primary" | "small",
     value: string | null,
@@ -111,6 +114,7 @@ export type PanelMessageHandlerDeps = {
   normalizeThinkingModeForCli: (cli: CliName, mode: ThinkingMode) => ThinkingMode;
   setCliModelThinkingMode: (cli: CliName, model: string, thinkingMode: ThinkingMode) => void;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
+  getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
   setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLoopExecutionMode>) => void;
@@ -140,7 +144,16 @@ export type PanelMessageHandlerDeps = {
   runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean }) => Promise<void>;
   runGraphPrompt?: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
-  maybeWakeLoopMainAfterSubtaskContinuation: (context: LoopSubtaskConversationContextForPanel, options: { tabId: string; previousRunEndedAt: number; model?: string }) => Promise<void>;
+  maybeWakeLoopMainAfterSubtaskContinuation: (
+    context: LoopSubtaskConversationContextForPanel,
+    options: {
+      tabId: string;
+      previousRunEndedAt: number;
+      model?: string;
+      loopMainModel?: string;
+      loopSubtaskModel?: string;
+    }
+  ) => Promise<void>;
   resolveLoopResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LoopTaskRecord | null;
   isLoopResumePrompt: (prompt: string) => boolean;
   stopRunForTab: (tabId: string | null) => void;
@@ -162,6 +175,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
     selectCliModel,
+    selectCliLoopModel,
     updateOpenCodeRoleModel,
     addCliModel,
     renameCliModel,
@@ -200,6 +214,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     normalizeThinkingModeForCli,
     setCliModelThinkingMode,
     getSelectedCliModel,
+    getSelectedLoopCliModel,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
     setWorkspaceLoopExecutionModeForCli,
@@ -304,6 +319,14 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
   if (message.type === "selectCliModel" && message.cli) {
     const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
     selectCliModel(message.cli, message.model ?? null, configId);
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "selectCliLoopModel" && message.cli) {
+    const role = message.role === "subtask" ? "subtask" : "main";
+    const configId = typeof message.configId === "string" && message.configId ? message.configId : getActiveConfigIdForCli(message.cli);
+    selectCliLoopModel?.(message.cli, role, message.model ?? null, configId);
     await postPanelState();
     return;
   }

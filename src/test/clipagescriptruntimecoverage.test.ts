@@ -555,6 +555,16 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
       optionsByCli: { codex: ["gpt-5", "gpt-5"], claude: [], opencode: [] },
       managedByCli: { codex: ["gpt-5"], claude: [], opencode: [] },
       selectedByCli: { codex: "gpt-5", claude: "", opencode: "" },
+      loopOptionsByCli: {
+        codex: { main: ["gpt-5-main", "gpt-5-main"], subtask: ["gpt-5-subtask"] },
+        claude: { main: [], subtask: [] },
+        opencode: { main: [], subtask: [] },
+      },
+      selectedLoopByCli: {
+        codex: { main: "gpt-5-main", subtask: "gpt-5-subtask" },
+        claude: { main: "", subtask: "" },
+        opencode: { main: "", subtask: "" },
+      },
     },
     thinkingMode: "medium",
     openCodeThinking: { selectedVariant: "high", options: [{ value: "high", label: "High" }] },
@@ -590,6 +600,10 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
+function childValueTextPairs(element: FakeElement): Array<[string, string]> {
+  return element.children.map((child) => [child.value, child.textContent]);
+}
+
 test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },
@@ -621,6 +635,20 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(api.state.currentCli, "codex");
   assert.equal(api.state.loopMaxRounds, 12);
   assert.equal(api.state.macTaskShell, "bash");
+  assert.equal(document.getElementById("codexLoopModelGroup").style.display, "");
+  assert.equal(document.getElementById("codexLoopMainModelSelect").disabled, false);
+  assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, false);
+  assert.equal(document.getElementById("modelSelect").style.display, "none");
+  assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopMainModelSelect")), [
+    ["", "Model: Follow Config"],
+    ["gpt-5-main", "gpt-5-main"],
+  ]);
+  assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopSubtaskModelSelect")), [
+    ["", "Model: Follow Config"],
+    ["gpt-5-subtask", "gpt-5-subtask"],
+  ]);
+  assert.equal(document.getElementById("codexLoopMainModelSelect").value, "gpt-5-main");
+  assert.equal(document.getElementById("codexLoopSubtaskModelSelect").value, "gpt-5-subtask");
   assert.equal(document.getElementById("configSelect").children.length, 1);
   assert.equal(document.getElementById("sessionList").children.length, 1);
   assert.equal(document.getElementById("promptHistoryList").children.length, 1);
@@ -884,6 +912,10 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   api.state.conversationTabs.tabs[0].loopTaskRunning = false;
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
   assert.equal(posted.at(-1).type, "sendPrompt");
+  assert.equal(posted.at(-1).model, "gpt-5-main");
+  assert.equal(posted.at(-1).loopMainModel, "gpt-5-main");
+  assert.equal(posted.at(-1).loopSubtaskModel, "gpt-5-subtask");
+  assert.equal(posted.at(-1).interactiveMode, "loop");
 
   window.dispatchMessage({ type: "uploadResult", paths: ["/tmp/a.png"] });
   assert.match(document.getElementById("promptInput").value, /@\/tmp\/a\.png/);
@@ -957,6 +989,65 @@ test("dispatches background prompts for Graph tabs as Graph runs", () => {
   assert.equal(sendPromptMessage.cli, "opencode");
   assert.equal(sendPromptMessage.interactiveMode, "graph");
   assert.equal(sendPromptMessage.preserveActiveTab, true);
+});
+
+test("dispatches Codex Graph prompts with role models and strips stale role models from coding sends", () => {
+  const harness = createRuntimeHarness();
+  const { api, posted, window } = harness;
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      conversationTabs: {
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", cli: "codex" }],
+      },
+      interactiveMode: "graph",
+    }),
+  });
+
+  const beforeGraphDispatch = posted.length;
+  assert.equal(api.dispatchPrompt({ prompt: "run graph" }), true);
+  const graphSendPromptMessage = posted
+    .slice(beforeGraphDispatch)
+    .find((message) => message && message.type === "sendPrompt");
+  assert.ok(graphSendPromptMessage);
+  assert.equal(graphSendPromptMessage.cli, "codex");
+  assert.equal(graphSendPromptMessage.interactiveMode, "graph");
+  assert.equal(graphSendPromptMessage.model, "gpt-5-main");
+  assert.equal(graphSendPromptMessage.loopMainModel, "gpt-5-main");
+  assert.equal(graphSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(graphSendPromptMessage, "loopExecutionMode"),
+    false,
+  );
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      conversationTabs: {
+        activeTabId: "tab-1",
+        tabs: [{ id: "tab-1", cli: "codex" }],
+      },
+      interactiveMode: "coding",
+    }),
+  });
+
+  const beforeCodingDispatch = posted.length;
+  assert.equal(api.dispatchPrompt({
+    prompt: "run coding",
+    loopMainModel: "stale-main",
+    loopSubtaskModel: "stale-subtask",
+  }), true);
+  const codingSendPromptMessage = posted
+    .slice(beforeCodingDispatch)
+    .find((message) => message && message.type === "sendPrompt");
+  assert.ok(codingSendPromptMessage);
+  assert.equal(codingSendPromptMessage.cli, "codex");
+  assert.equal(codingSendPromptMessage.interactiveMode, "coding");
+  assert.equal(codingSendPromptMessage.model, "gpt-5");
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainModel"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskModel"), false);
 });
 
 test("reports runtime render and window-dispatch failures through the vscode bridge", () => {
@@ -1187,6 +1278,8 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "normalizeLoopMaxRounds",
     "normalizeModelNameList",
     "normalizeModelSelection",
+    "normalizeLoopRoleModelsPayload",
+    "normalizeLoopRoleSelectionPayload",
     "normalizeOpenCodeThinkingPayload",
     "normalizeOpenCodeModelsPayload",
     "shouldPreserveCurrentCliModelsOnEmptySnapshot",

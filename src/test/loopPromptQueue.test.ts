@@ -118,7 +118,7 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "queuePromptForLater");
   const runtimeState = { pendingPromptQueue: [] as unknown[] };
   const queuePromptForLater = new Function(
-    "normalizePromptPayload",
+    "snapshotPromptPayloadForQueue",
     "getActiveConversationRuntimeState",
     "normalizeInteractiveMode",
     "state",
@@ -136,16 +136,23 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
     () => "queued",
   ) as (payload: unknown) => void;
 
-  queuePromptForLater({ prompt: "next task", contextOptions: {} });
+  queuePromptForLater({
+    prompt: "next task",
+    contextOptions: {},
+    loopMainModel: "planner-main",
+    loopSubtaskModel: "executor-subtask",
+  });
 
   assert.deepEqual(runtimeState.pendingPromptQueue, [{
     prompt: "next task",
     contextOptions: {},
+    loopMainModel: "planner-main",
+    loopSubtaskModel: "executor-subtask",
     interactiveMode: "loop",
   }]);
   assert.match(
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
-    /normalizedPayload\.interactiveMode[\s\S]*isBackgroundDispatch/,
+    /basePayload\.interactiveMode[\s\S]*isBackgroundDispatch/,
   );
 });
 

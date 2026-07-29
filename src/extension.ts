@@ -344,6 +344,9 @@ import {
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   type GraphFinalAnswer,
+  type GraphModelRole,
+  type GraphNodeRecord,
+  type GraphRunModelRoutingRecord,
   type GraphRunRecord,
   type GraphRunStatus,
 } from "./graph/types";
@@ -433,6 +436,7 @@ import {
   getOpenCodeRoleVariantFromStore,
   getOpenCodeVariantFromStore,
   getSelectedCliModelFromStore,
+  getSelectedLoopCliModelFromStore,
   loadModelStore as loadModelSelectionStore,
   mergeUniqueModelNames,
   moveCliModelInStore,
@@ -440,6 +444,7 @@ import {
   readModelStore as readModelSelectionStore,
   renameCliModelInStore,
   selectCliModelInStore,
+  selectCliLoopModelInStore,
   setOpenCodeRoleModelInStore,
   setOpenCodeRoleVariantInStore,
   setOpenCodeVariantInStore,
@@ -1120,6 +1125,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
     selectCliModel,
+    selectCliLoopModel,
     updateOpenCodeRoleModel: updateOpenCodeRoleModelForConfig,
     addCliModel,
     renameCliModel,
@@ -1161,6 +1167,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     normalizeThinkingModeForCli,
     setCliModelThinkingMode,
     getSelectedCliModel,
+    getSelectedLoopCliModel,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
     setWorkspaceLoopExecutionModeForCli,
@@ -2285,6 +2292,7 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   isTabRunActive,
   getActiveConfigIdForCli,
   getSelectedCliModel,
+  getSelectedLoopCliModel,
   runLoopPrompt,
   stopRunsForTask: stopLoopRunsForTask,
   markTaskStoppedByUser: markLoopTaskStoppedByUser,
@@ -2761,11 +2769,12 @@ async function tickGraphRunToPauseFromControl(
 
   const activeConfigId = getActiveConfigIdForCli(target.cli);
   const prompt = graphRuntimeMessage("resumePrompt", { graphRunId: run.id });
+  const modelFields = resolveGraphResumePromptModels(run, target.cli, activeConfigId);
   const outcome = await tickGraphRunToPause(run, {
     displayPrompt: prompt,
     modelPrompt: run.rootPrompt || prompt,
     contextTags: [],
-    model: getSelectedCliModel(target.cli, activeConfigId) ?? undefined,
+    ...modelFields,
     graphRunId: run.id,
   }, target);
   return {
@@ -3143,6 +3152,8 @@ type PromptRunInput = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   imagePaths?: string[];
@@ -3164,6 +3175,118 @@ type PromptRunTarget = {
   cli: CliName;
   sessionId: string | null;
 };
+
+function normalizePromptRunModel(value: string | undefined): string | undefined {
+  return normalizeCliModelName(value) ?? undefined;
+}
+
+function resolvePromptRunModelForRole(input: PromptRunInput, role: GraphModelRole): string | undefined {
+  const mainModel = normalizePromptRunModel(input.loopMainModel) ?? normalizePromptRunModel(input.model);
+  const subtaskModel = normalizePromptRunModel(input.loopSubtaskModel)
+    ?? normalizePromptRunModel(input.model)
+    ?? mainModel;
+  return role === "subtask"
+    ? (subtaskModel ?? mainModel)
+    : (mainModel ?? subtaskModel);
+}
+
+function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRole): string {
+  if (role === "main") {
+    if (normalizePromptRunModel(input.loopMainModel)) {
+      return "none";
+    }
+    if (normalizePromptRunModel(input.model)) {
+      return "loop main model missing; using selected single model";
+    }
+    if (normalizePromptRunModel(input.loopSubtaskModel)) {
+      return "loop main model missing; using subtask model";
+    }
+    return "no explicit model selected; CLI default applies";
+  }
+  if (normalizePromptRunModel(input.loopSubtaskModel)) {
+    return "none";
+  }
+  if (normalizePromptRunModel(input.model)) {
+    return "loop subtask model missing; using selected single model";
+  }
+  if (normalizePromptRunModel(input.loopMainModel)) {
+    return "loop subtask model missing; using main model";
+  }
+  return "no explicit model selected; CLI default applies";
+}
+
+function buildGraphRunModelRouting(input: PromptRunInput): GraphRunModelRoutingRecord {
+  const plannerModel = resolvePromptRunModelForRole(input, "main");
+  const executorModel = resolvePromptRunModelForRole(input, "subtask");
+  const plannerFallback = resolvePromptRunModelFallback(input, "main");
+  const executorFallback = resolvePromptRunModelFallback(input, "subtask");
+  return {
+    planner: {
+      role: "main",
+      ...(plannerModel ? { model: plannerModel } : {}),
+      ...(plannerFallback !== "none" ? { fallback: plannerFallback } : {}),
+    },
+    executor: {
+      role: "subtask",
+      ...(executorModel ? { model: executorModel } : {}),
+      ...(executorFallback !== "none" ? { fallback: executorFallback } : {}),
+    },
+  };
+}
+
+function applyGraphNodeModelRoute(
+  node: GraphNodeRecord,
+  route: GraphRunModelRoutingRecord["planner"],
+): GraphNodeRecord {
+  const rest: GraphNodeRecord = { ...node };
+  delete rest.modelRole;
+  delete rest.model;
+  delete rest.modelFallback;
+  return {
+    ...rest,
+    modelRole: route.role,
+    ...(route.model ? { model: route.model } : {}),
+    ...(route.fallback ? { modelFallback: route.fallback } : {}),
+  };
+}
+
+function applyGraphRunModelRouting(run: GraphRunRecord): GraphRunRecord {
+  const routing = run.modelRouting;
+  if (!routing) {
+    return run;
+  }
+  return {
+    ...run,
+    nodes: run.nodes.map((node) => applyGraphNodeModelRoute(
+      node,
+      node.id === GRAPH_AI_PLANNER_NODE_ID ? routing.planner : routing.executor,
+    )),
+  };
+}
+
+function resolveGraphResumePromptModels(
+  run: GraphRunRecord,
+  cli: CliName,
+  configId: string | null,
+): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel"> {
+  if (cli !== "codex") {
+    const selectedModel = getSelectedCliModel(cli, configId) ?? undefined;
+    return selectedModel ? { model: selectedModel } : {};
+  }
+  const loopMainModel = run.modelRouting?.planner.model
+    ?? getSelectedLoopCliModel(cli, "main", configId)
+    ?? getSelectedCliModel(cli, configId)
+    ?? undefined;
+  const loopSubtaskModel = run.modelRouting?.executor.model
+    ?? getSelectedLoopCliModel(cli, "subtask", configId)
+    ?? getSelectedCliModel(cli, configId)
+    ?? loopMainModel
+    ?? undefined;
+  return {
+    ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
+    ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+  };
+}
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${info.code ?? ""} ${info.message ?? ""}`.toLowerCase();
@@ -4769,6 +4892,7 @@ async function runGraphPromptOrchestration(
     throw new Error("Graph mode requires an active workspace.");
   }
   const executionSetup = createGraphRunExecutionSetup(workspaceCwd, graphRunId);
+  const modelRouting = buildGraphRunModelRouting(input);
   let run = createGraphRunRecord({
     id: graphRunId,
     workspaceKey: activeWorkspaceKey,
@@ -4778,12 +4902,14 @@ async function runGraphPromptOrchestration(
     status: "running",
     templateId: GRAPH_AI_PLANNER_TEMPLATE_ID,
     templateVersion: GRAPH_AI_PLANNER_TEMPLATE_VERSION,
-    nodes: buildGraphPlanningRunNodes(graphRunId),
+    nodes: buildGraphPlanningRunNodes(graphRunId)
+      .map((node) => applyGraphNodeModelRoute(node, modelRouting.planner)),
     edges: buildGraphPlanningRunEdges(),
     maxConcurrent: GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES,
     executionMode: executionSetup.executionMode,
     ...(executionSetup.directExecution ? { directExecution: executionSetup.directExecution } : {}),
     ...(executionSetup.worktree ? { worktree: executionSetup.worktree } : {}),
+    modelRouting,
   });
   appendGraphEvent(run.eventsFile, {
     runId: run.id,
@@ -4797,6 +4923,7 @@ async function runGraphPromptOrchestration(
       worktree: executionSetup.worktree,
       directExecution: executionSetup.directExecution,
       fallbackReason: executionSetup.fallbackReason,
+      modelRouting: run.modelRouting,
     },
   });
   appendSystemMessageForGraph(target, buildGraphRunStartedText(run), run.id);
@@ -5113,7 +5240,8 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
     return { run, changed: false };
   }
 
-  const persisted = updateGraphRunRecord(materialized.run.id, materialized.run) ?? materialized.run;
+  const routedRun = applyGraphRunModelRouting(materialized.run);
+  const persisted = updateGraphRunRecord(routedRun.id, routedRun) ?? routedRun;
   appendGraphEvent(persisted.eventsFile, {
     runId: persisted.id,
     type: "run.updated",
@@ -5122,6 +5250,7 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
       plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
       plannedNodeIds: materialized.plannedNodeIds,
       maxConcurrent: persisted.maxConcurrent,
+      modelRouting: persisted.modelRouting,
     },
   });
   return { run: persisted, changed: true };
@@ -5239,13 +5368,42 @@ async function executeGraphNodeViaRunPrompt(
     request.run.id,
   );
 
+  const modelRole = request.modelRole
+    ?? request.node.modelRole
+    ?? (request.node.id === GRAPH_AI_PLANNER_NODE_ID ? "main" : "subtask");
+  const selectedModel = request.model ?? resolvePromptRunModelForRole(rootInput, modelRole);
+  const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(rootInput, modelRole);
+  appendGraphEvent(request.run.eventsFile, {
+    runId: request.run.id,
+    type: "run.updated",
+    nodeId: request.node.id,
+    attempt: request.attempt,
+    summary: `Graph node ${request.node.id} dispatched with ${modelRole} model role.`,
+    data: {
+      nodeId: request.node.id,
+      modelRole,
+      model: selectedModel ?? null,
+      modelFallback,
+      modelRouting: request.run.modelRouting,
+    },
+  });
+  void logInfo("graph-node-model-routing", {
+    graphRunId: request.run.id,
+    nodeId: request.node.id,
+    modelRole,
+    model: selectedModel ?? null,
+    modelFallback,
+  });
+
   let runPromptError: unknown;
   try {
     await runPrompt({
       displayPrompt: request.prompt,
       modelPrompt: request.prompt,
       contextTags: rootInput.contextTags,
-      model: rootInput.model,
+      model: selectedModel,
+      loopMainModel: rootInput.loopMainModel,
+      loopSubtaskModel: rootInput.loopSubtaskModel,
       imagePaths: rootInput.imagePaths,
       taskRole: "subtask",
       graphRunId: request.run.id,
@@ -6691,7 +6849,7 @@ async function runLoopDebateRound(options: {
 }
 
 function resolveLoopDebateModel(input: PromptRunInput): string | undefined {
-  return input.model;
+  return resolvePromptRunModelForRole(input, "main");
 }
 
 function getLoopDebateRunnerDeps(): LoopDebateRunnerDeps {
@@ -8237,18 +8395,19 @@ async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus
   });
   refreshOpenLoopGroupChatPanelForTask(task.id);
 
+  const roleModel = resolvePromptRunModelForRole(input, role);
   await runPrompt({
     ...input,
     displayPrompt,
     modelPrompt,
-    model: input.model,
+    model: roleModel,
     taskRole: role,
     loopTaskId: task.id,
     loopRound: round,
     loopSubtaskId: subtaskId,
     thinkingModeOverride: role === "subtask"
       ? resolveLoopSubtaskThinkingMode(
-          getEffectiveThinkingMode(target.cli, input.model ?? getSelectedCliModel(target.cli)),
+          getEffectiveThinkingMode(target.cli, roleModel ?? getSelectedCliModel(target.cli)),
           getGlobalLoopSubtaskMaxThinkingMode(),
         )
       : undefined,
@@ -9501,6 +9660,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     tabId: string;
     previousRunEndedAt: number;
     model?: string;
+    loopMainModel?: string;
+    loopSubtaskModel?: string;
   }
 ): Promise<void> {
   const latestRun = getLatestLoopRoundRunRecord(
@@ -9552,6 +9713,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     modelPrompt: resumePrompt,
     contextTags: [],
     model: options.model,
+    loopMainModel: options.loopMainModel,
+    loopSubtaskModel: options.loopSubtaskModel,
   }, {
     targetTabId: mainTarget.tabId,
     resumeTaskId: latestTask.id,
@@ -12961,6 +13124,14 @@ function getSelectedCliModel(cli: CliName, configId: string | null = getActiveCo
   return getSelectedCliModelFromStore(modelStore, cli, configId);
 }
 
+function getSelectedLoopCliModel(
+  cli: CliName,
+  role: "main" | "subtask",
+  configId: string | null = getActiveConfigIdForCli(cli),
+): string | null {
+  return getSelectedLoopCliModelFromStore(modelStore, cli, role, configId);
+}
+
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
   return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
 }
@@ -12971,6 +13142,16 @@ function getModelOptionsForCli(cli: CliName, configId: string | null = getActive
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
   modelStore = selectCliModelInStore(modelStore, cli, model, configId);
+  writeModelStore(modelStore);
+}
+
+function selectCliLoopModel(
+  cli: CliName,
+  role: "main" | "subtask",
+  model: string | null,
+  configId: string | null = getActiveConfigIdForCli(cli),
+): void {
+  modelStore = selectCliLoopModelInStore(modelStore, cli, role, model, configId);
   writeModelStore(modelStore);
 }
 

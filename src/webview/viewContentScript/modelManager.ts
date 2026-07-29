@@ -202,6 +202,70 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         elements.modelSelect.value = "";
       }
 
+      function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
+        return cli === "codex";
+      }
+
+      function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
+        const normalizedMode = normalizeInteractiveMode(interactiveMode);
+        return cliSupportsLoopRoleModelSelection(cli) && (normalizedMode === "loop" || normalizedMode === "graph");
+      }
+
+      function getLoopRoleModelsForCli(cli, role) {
+        const roleModels = state.loopModelsByCli && state.loopModelsByCli[cli] && Array.isArray(state.loopModelsByCli[cli][role])
+          ? state.loopModelsByCli[cli][role]
+          : [];
+        if (roleModels.length > 0) {
+          return roleModels;
+        }
+        return state.modelsByCli && Array.isArray(state.modelsByCli[cli])
+          ? state.modelsByCli[cli]
+          : [];
+      }
+
+      function getSelectedLoopRoleModelForCli(cli, role) {
+        const selected = state.selectedLoopModelsByCli
+          && state.selectedLoopModelsByCli[cli]
+          && typeof state.selectedLoopModelsByCli[cli][role] === "string"
+          ? state.selectedLoopModelsByCli[cli][role].trim()
+          : "";
+        const availableModels = getLoopRoleModelsForCli(cli, role);
+        if (selected && availableModels.includes(selected)) {
+          return selected;
+        }
+        return "";
+      }
+
+      function updateCodexLoopRoleModelSelect(selectElement, role) {
+        if (!selectElement) {
+          return;
+        }
+        const availableModels = getLoopRoleModelsForCli(state.currentCli, role);
+        selectElement.innerHTML = "";
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = t("modelOptionDefault");
+        selectElement.appendChild(defaultOption);
+
+        availableModels.forEach((modelName) => {
+          const option = document.createElement("option");
+          option.value = modelName;
+          option.textContent = modelName;
+          selectElement.appendChild(option);
+        });
+
+        selectElement.value = getSelectedLoopRoleModelForCli(state.currentCli, role);
+        selectElement.title = role === "subtask"
+          ? t("codexLoopSubtaskModelSelectAria")
+          : t("codexLoopMainModelSelectAria");
+      }
+
+      function updateCodexLoopModelSelectOptions() {
+        updateCodexLoopRoleModelSelect(elements.codexLoopMainModelSelect, "main");
+        updateCodexLoopRoleModelSelect(elements.codexLoopSubtaskModelSelect, "subtask");
+      }
+
       function clearOpenCodeModelOptions() {
         state.openCodeModels = normalizeOpenCodeModelsPayload(null);
         updateOpenCodeModelSelectOptions();
@@ -317,9 +381,20 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
         const supportsModelSelection = cliSupportsManagedModelSelection(cli);
         const isOpenCode = cli === "opencode";
-        const isLoop = normalizeInteractiveMode(state.interactiveMode) === "loop";
-        const showSingleModelSelect = supportsModelSelection;
+        const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
+        const isLoop = interactiveMode === "loop";
+        const showCodexLoopModelGroup = isLoopRoleModelMode(cli, interactiveMode);
+        const showSingleModelSelect = supportsModelSelection && !showCodexLoopModelGroup;
         const showLoopExecutionModeSelect = isLoop;
+        if (elements.codexLoopModelGroup) {
+          elements.codexLoopModelGroup.style.display = showCodexLoopModelGroup ? "" : "none";
+        }
+        if (elements.codexLoopMainModelSelect) {
+          elements.codexLoopMainModelSelect.disabled = !showCodexLoopModelGroup;
+        }
+        if (elements.codexLoopSubtaskModelSelect) {
+          elements.codexLoopSubtaskModelSelect.disabled = !showCodexLoopModelGroup;
+        }
         if (elements.openCodeModelGroup) {
           elements.openCodeModelGroup.style.display = isOpenCode ? "" : "none";
         }
@@ -425,6 +500,38 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           } else if (event.key === "Escape") {
             hideAddModelDialog();
           }
+        });
+      }
+
+      function handleCodexLoopRoleModelChange(role, rawValue) {
+        const value = normalizeModelSelection(rawValue);
+        if (!state.selectedLoopModelsByCli || typeof state.selectedLoopModelsByCli !== "object") {
+          state.selectedLoopModelsByCli = {};
+        }
+        const cli = state.currentCli;
+        const existingSelection = state.selectedLoopModelsByCli[cli] || { main: "", subtask: "" };
+        state.selectedLoopModelsByCli[cli] = {
+          main: role === "main" ? value : normalizeModelSelection(existingSelection.main),
+          subtask: role === "subtask" ? value : normalizeModelSelection(existingSelection.subtask),
+        };
+        vscode.postMessage({
+          type: "selectCliLoopModel",
+          cli,
+          role,
+          model: value || null,
+          configId: getCurrentModelConfigId(),
+        });
+      }
+
+      if (elements.codexLoopMainModelSelect) {
+        elements.codexLoopMainModelSelect.addEventListener("change", (event) => {
+          handleCodexLoopRoleModelChange("main", event.target.value);
+        });
+      }
+
+      if (elements.codexLoopSubtaskModelSelect) {
+        elements.codexLoopSubtaskModelSelect.addEventListener("change", (event) => {
+          handleCodexLoopRoleModelChange("subtask", event.target.value);
         });
       }
 

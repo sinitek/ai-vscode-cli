@@ -67,6 +67,20 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key.startsWith("selectedLoopModel.")) {
+    const [, cliValue, roleValue] = message.key.split(".");
+    const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
+    if (
+      cli
+      && (roleValue === "main" || roleValue === "subtask")
+    ) {
+      const modelValue = typeof message.value === "string" ? message.value : null;
+      deps.selectCliLoopModel?.(cli, roleValue, modelValue, deps.getActiveConfigIdForCli(cli));
+      deps.loadModelStore();
+    }
+    await deps.postPanelState();
+    return;
+  }
   if (message.key === "multiAgentEnabled" || message.key === "codexMultiAgentEnabled") {
     const savedGlobally = deps.updateStoredToolSettings({ multiAgentEnabled: Boolean(message.value) });
     if (savedGlobally
@@ -143,6 +157,43 @@ export async function handleUpdateSettingMessage(
   }
 }
 
+function normalizePromptModel(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function resolveCodexPromptModels(
+  message: Extract<PanelMessage, { type: "sendPrompt" }>,
+  targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
+  configId: string | null,
+  deps: PanelMessageHandlerDeps,
+  options: { includeLoopModels: boolean; subtaskContinuation: boolean },
+): { model?: string; loopMainModel?: string; loopSubtaskModel?: string } {
+  if (targetCli !== "codex") {
+    return {};
+  }
+  const explicitModel = normalizePromptModel(message.model);
+  const selectedModel = deps.getSelectedCliModel(targetCli, configId) ?? undefined;
+  const fallbackModel = explicitModel ?? selectedModel;
+  if (!options.includeLoopModels) {
+    return { model: explicitModel };
+  }
+
+  const loopMainModel = normalizePromptModel(message.loopMainModel)
+    ?? normalizePromptModel(message.lobsterMainModel)
+    ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
+    ?? fallbackModel;
+  const loopSubtaskModel = normalizePromptModel(message.loopSubtaskModel)
+    ?? normalizePromptModel(message.lobsterSubtaskModel)
+    ?? deps.getSelectedLoopCliModel?.(targetCli, "subtask", configId)
+    ?? fallbackModel
+    ?? loopMainModel;
+  return {
+    model: options.subtaskContinuation ? loopSubtaskModel : (loopMainModel ?? explicitModel),
+    loopMainModel,
+    loopSubtaskModel,
+  };
+}
+
 export async function handleSendPromptMessage(
   message: Extract<PanelMessage, { type: "sendPrompt" }>,
   deps: PanelMessageHandlerDeps
@@ -215,16 +266,26 @@ export async function handleSendPromptMessage(
   const imagePaths = targetCli === "codex"
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
-  const requestedModel = targetCli === "codex" && typeof message.model === "string"
-    ? message.model.trim()
-    : "";
+  const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
+  const shouldRunLoop = effectiveInteractiveMode === "loop";
+  const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;
+  const codexModels = resolveCodexPromptModels(message, targetCli, activeConfigId, deps, {
+    includeLoopModels,
+    subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
+  });
   const promptInput: PromptRunInputForPanel = {
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,
-    model: requestedModel || undefined,
+    model: codexModels.model,
     imagePaths: imagePaths.length ? imagePaths : undefined,
   };
+  if (codexModels.loopMainModel) {
+    promptInput.loopMainModel = codexModels.loopMainModel;
+  }
+  if (codexModels.loopSubtaskModel) {
+    promptInput.loopSubtaskModel = codexModels.loopSubtaskModel;
+  }
   if (shouldRunGraph) {
     promptInput.skipLongTermMemoryPersist = true;
   }
@@ -237,7 +298,6 @@ export async function handleSendPromptMessage(
     promptInput.loopRound = loopSubtaskContext.round;
     promptInput.loopSubtaskId = loopSubtaskContext.subtaskId;
   }
-  const shouldRunLoop = effectiveInteractiveMode === "loop";
   const loopResumeTask = shouldRunLoop
     ? deps.resolveLoopResumeTaskFromPrompt(trimmed, promptTargetTabId)
     : null;
@@ -282,7 +342,9 @@ export async function handleSendPromptMessage(
       await deps.maybeWakeLoopMainAfterSubtaskContinuation(loopSubtaskContext, {
         tabId: promptTargetTabId,
         previousRunEndedAt: previousSubtaskRunEndedAt,
-        model: preparedPromptInput.model,
+        model: preparedPromptInput.loopMainModel ?? preparedPromptInput.model,
+        loopMainModel: preparedPromptInput.loopMainModel,
+        loopSubtaskModel: preparedPromptInput.loopSubtaskModel,
       });
     }
   }

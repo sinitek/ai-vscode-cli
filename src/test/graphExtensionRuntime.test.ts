@@ -132,6 +132,41 @@ test("extension continues the tick loop immediately after successful planner mat
   assert.match(extensionSource, /const progressed = tickResult\.startedNodeIds\.length > 0[\s\S]*\|\| planMaterialization\.changed;[\s\S]*if\s*\(!progressed\)\s*\{/);
 });
 
+test("extension routes Loop main and subtask runs through role-specific Codex models", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /function resolvePromptRunModelForRole\(input:\s*PromptRunInput,\s*role:\s*GraphModelRole\):\s*string \| undefined\s*\{[\s\S]*const mainModel = normalizePromptRunModel\(input\.loopMainModel\) \?\? normalizePromptRunModel\(input\.model\);/);
+  assert.match(extensionSource, /const subtaskModel = normalizePromptRunModel\(input\.loopSubtaskModel\)[\s\S]*\?\? normalizePromptRunModel\(input\.model\)[\s\S]*\?\? mainModel;/);
+  assert.match(extensionSource, /return role === "subtask"[\s\S]*\?\s*\(subtaskModel \?\? mainModel\)[\s\S]*:\s*\(mainModel \?\? subtaskModel\);/);
+  assert.match(extensionSource, /const roleModel = resolvePromptRunModelForRole\(input,\s*role\);[\s\S]*await runPrompt\(\{[\s\S]*model:\s*roleModel,[\s\S]*taskRole:\s*role,[\s\S]*loopTaskId:\s*task\.id,[\s\S]*loopRound:\s*round,[\s\S]*loopSubtaskId:\s*subtaskId/);
+  assert.match(extensionSource, /thinkingModeOverride:\s*role === "subtask"[\s\S]*resolveLoopSubtaskThinkingMode\(/);
+});
+
+test("extension routes Graph planner and execution nodes through main/subtask model records", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const graphKernelSource = fs.readFileSync(path.join(process.cwd(), "src", "graph", "graphKernel.ts"), "utf8");
+  const graphStoreSource = fs.readFileSync(path.join(process.cwd(), "src", "graph", "graphStore.ts"), "utf8");
+  const graphPromptSource = fs.readFileSync(path.join(process.cwd(), "src", "graph", "graphPromptBuilders.ts"), "utf8");
+
+  assert.match(extensionSource, /function buildGraphRunModelRouting\(input:\s*PromptRunInput\):\s*GraphRunModelRoutingRecord\s*\{[\s\S]*planner:\s*\{[\s\S]*role:\s*"main"[\s\S]*executor:\s*\{[\s\S]*role:\s*"subtask"/);
+  assert.match(extensionSource, /function resolvePromptRunModelFallback\(input:\s*PromptRunInput,\s*role:\s*GraphModelRole\):\s*string\s*\{[\s\S]*loop main model missing; using selected single model[\s\S]*loop subtask model missing; using selected single model[\s\S]*no explicit model selected; CLI default applies/);
+  assert.match(extensionSource, /nodes:\s*buildGraphPlanningRunNodes\(graphRunId\)[\s\S]*\.map\(\(node\) => applyGraphNodeModelRoute\(node,\s*modelRouting\.planner\)\)/);
+  assert.match(extensionSource, /modelRouting,[\s\S]*appendGraphEvent\(run\.eventsFile,\s*\{[\s\S]*type:\s*"run\.created"[\s\S]*modelRouting:\s*run\.modelRouting/);
+  assert.match(extensionSource, /const routedRun = applyGraphRunModelRouting\(materialized\.run\);/);
+  assert.match(extensionSource, /const modelRole = request\.modelRole[\s\S]*\?\? \(request\.node\.id === GRAPH_AI_PLANNER_NODE_ID \? "main" : "subtask"\);/);
+  assert.match(extensionSource, /const selectedModel = request\.model \?\? resolvePromptRunModelForRole\(rootInput,\s*modelRole\);/);
+  assert.match(extensionSource, /const modelFallback = request\.modelFallback \?\? resolvePromptRunModelFallback\(rootInput,\s*modelRole\);/);
+  assert.match(extensionSource, /runPrompt\(\{[\s\S]*model:\s*selectedModel,[\s\S]*loopMainModel:\s*rootInput\.loopMainModel,[\s\S]*loopSubtaskModel:\s*rootInput\.loopSubtaskModel,[\s\S]*taskRole:\s*"subtask"[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id/);
+
+  assert.match(graphKernelSource, /modelRole\?:\s*GraphModelRole;[\s\S]*model\?:\s*string;[\s\S]*modelFallback\?:\s*string;/);
+  assert.match(graphKernelSource, /executor\.execute\(\{[\s\S]*\.\.\.\(node\.modelRole \? \{ modelRole:\s*node\.modelRole \} : \{\}\),[\s\S]*\.\.\.\(node\.model \? \{ model:\s*node\.model \} : \{\}\),[\s\S]*\.\.\.\(node\.modelFallback \? \{ modelFallback:\s*node\.modelFallback \} : \{\}\),/);
+  assert.match(graphStoreSource, /const modelRouting = normalizeGraphRunModelRouting\(raw\.modelRouting\);[\s\S]*\.\.\.\(modelRouting \? \{ modelRouting \} : \{\}\)/);
+  assert.match(graphStoreSource, /\.\.\.\(isGraphModelRole\(raw\.modelRole\) \? \{ modelRole:\s*raw\.modelRole \} : \{\}\),[\s\S]*model:\s*raw\.model\.trim\(\)[\s\S]*modelFallback:\s*raw\.modelFallback\.trim\(\)/);
+  assert.match(graphPromptSource, /Planner model role：\$\{formatValue\(planner\?\.role\)\}/);
+  assert.match(graphPromptSource, /Execution node model role：\$\{formatValue\(executor\?\.role\)\}/);
+  assert.match(graphPromptSource, /Model fallback：\$\{formatValue\(node\.modelFallback\)\}/);
+});
+
 test("extension merges completed Graph worktrees back and cleans up residual worktrees", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 

@@ -161,6 +161,16 @@ ${webviewStyles}    </style>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
           <div class="input-model-row">
+            <div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">
+              <label class="open-code-model-row codex-loop-model-row" for="codexLoopMainModelSelect">
+                <span class="open-code-model-label">${i18n.codexLoopMainModelLabel}</span>
+                <select id="codexLoopMainModelSelect" class="model-select" aria-label="${i18n.codexLoopMainModelSelectAria}" title="${i18n.codexLoopMainModelSelectAria}"></select>
+              </label>
+              <label class="open-code-model-row codex-loop-model-row" for="codexLoopSubtaskModelSelect">
+                <span class="open-code-model-label">${i18n.codexLoopSubtaskModelLabel}</span>
+                <select id="codexLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}"></select>
+              </label>
+            </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
               <label class="open-code-model-row" for="openCodePrimaryModelSelect">
                 <span class="open-code-model-label">${i18n.openCodePrimaryModelLabel}</span>

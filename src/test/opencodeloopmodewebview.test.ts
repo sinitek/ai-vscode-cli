@@ -115,6 +115,9 @@ function buildHarness() {
     commonCommandButton: createControl(),
     commandCompact: createControl(),
     autoCompactContextAfterRun: createControl(),
+    codexLoopModelGroup: createControl(),
+    codexLoopMainModelSelect: createControl(),
+    codexLoopSubtaskModelSelect: createControl(),
     openCodeModelGroup: createControl(),
     openCodePrimaryModelSelect: createControl(),
     openCodeSmallModelSelect: createControl(),
@@ -124,7 +127,12 @@ function buildHarness() {
   const normalizeInteractiveMode = (value: string) => (
     value === "loop" || value === "graph" ? value : "coding"
   );
-  const modelFunctionSource = ["cliSupportsManagedModelSelection", "syncModelSelectorByInteractiveMode"]
+  const modelFunctionSource = [
+    "cliSupportsManagedModelSelection",
+    "cliSupportsLoopRoleModelSelection",
+    "isLoopRoleModelMode",
+    "syncModelSelectorByInteractiveMode",
+  ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
     .join("\n");
   const syncModelSelectorByInteractiveMode = new Function(
@@ -292,6 +300,55 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
+});
+
+test("switches Codex between coding, Loop, and Graph model layouts and persists the mode", () => {
+  const harness = buildHarness();
+  harness.state.currentCli = "codex";
+  harness.state.interactive = { supported: true, enabled: true };
+
+  harness.syncInteractiveModeSelector();
+  assert.equal(harness.elements.interactiveModeSelect.style.display, "");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "");
+
+  harness.elements.interactiveModeSelect.dispatchChange("loop");
+  assert.equal(harness.state.interactiveMode, "loop");
+  assert.deepEqual(harness.postedMessages[0], {
+    type: "updateSetting",
+    key: "interactiveMode.codex",
+    value: "loop",
+  });
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.elements.interactiveModeSelect.dispatchChange("graph");
+  assert.equal(harness.state.interactiveMode, "graph");
+  assert.deepEqual(harness.postedMessages[1], {
+    type: "updateSetting",
+    key: "interactiveMode.codex",
+    value: "graph",
+  });
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.elements.interactiveModeSelect.dispatchChange("coding");
+  assert.equal(harness.state.interactiveMode, "coding");
+  assert.deepEqual(harness.postedMessages[2], {
+    type: "updateSetting",
+    key: "interactiveMode.codex",
+    value: "coding",
+  });
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "");
 });
 
 test("shows and triggers the compact command for OpenCode", () => {

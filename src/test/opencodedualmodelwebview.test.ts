@@ -167,11 +167,19 @@ function createVisibilityElement() {
 }
 
 function buildVisibilityHarness() {
-  const functionSource = ["cliSupportsManagedModelSelection", "syncModelSelectorByInteractiveMode"]
+  const functionSource = [
+    "cliSupportsManagedModelSelection",
+    "cliSupportsLoopRoleModelSelection",
+    "isLoopRoleModelMode",
+    "syncModelSelectorByInteractiveMode",
+  ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
     .join("\n");
   const state = { currentCli: "codex", interactiveMode: "coding" };
   const elements = {
+    codexLoopModelGroup: createVisibilityElement(),
+    codexLoopMainModelSelect: createVisibilityElement(),
+    codexLoopSubtaskModelSelect: createVisibilityElement(),
     openCodeModelGroup: createVisibilityElement(),
     openCodePrimaryModelSelect: createVisibilityElement(),
     openCodeSmallModelSelect: createVisibilityElement(),
@@ -389,37 +397,53 @@ test("clears stale OpenCode options and selections during config or CLI switchin
   assert.match(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, /configSelect[\s\S]*clearOpenCodeModelOptions\(\)/);
 });
 
-test("keeps OpenCode dual models, Codex one model, and Claude no model across Loop mode", () => {
+test("keeps OpenCode dual models, Codex role models, and Claude no model across modes", () => {
   const harness = buildVisibilityHarness();
 
   harness.state.interactiveMode = "coding";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "loop";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
   harness.sync("codex");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "");
 
   harness.state.interactiveMode = "loop";
   harness.sync("codex");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
-  assert.equal(harness.elements.modelSelect.style.display, "");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.state.interactiveMode = "graph";
+  harness.sync("codex");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
   harness.sync("claude");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "loop";
   harness.sync("claude");
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });

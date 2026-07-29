@@ -893,17 +893,31 @@ export function buildModelState(
   const selectedByCli = {} as Record<CliName, string | null>;
   const optionsByCli = {} as Record<CliName, string[]>;
   const managedByCli = {} as Record<CliName, string[]>;
+  const selectedLoopByCli: NonNullable<PanelState["modelState"]["selectedLoopByCli"]> = {};
+  const loopOptionsByCli: NonNullable<PanelState["modelState"]["loopOptionsByCli"]> = {};
   for (const cli of CLI_LIST) {
     const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
     const managedModels = getManagedModelOptionsForCliFromStore(store, cli, activeConfigId);
     selectedByCli[cli] = getSelectedCliModelFromStore(store, cli, activeConfigId);
     optionsByCli[cli] = getModelOptionsForCliFromStore(store, cli, activeConfigId);
     managedByCli[cli] = managedModels;
+    if (cli === "codex") {
+      loopOptionsByCli[cli] = {
+        main: getLoopModelOptionsForCliFromStore(store, cli, "main", activeConfigId),
+        subtask: getLoopModelOptionsForCliFromStore(store, cli, "subtask", activeConfigId),
+      };
+      selectedLoopByCli[cli] = {
+        main: getSelectedLoopCliModelFromStore(store, cli, "main", activeConfigId),
+        subtask: getSelectedLoopCliModelFromStore(store, cli, "subtask", activeConfigId),
+      };
+    }
   }
   return {
     selectedByCli,
     optionsByCli,
     managedByCli,
+    ...(Object.keys(selectedLoopByCli).length > 0 ? { selectedLoopByCli } : {}),
+    ...(Object.keys(loopOptionsByCli).length > 0 ? { loopOptionsByCli } : {}),
   };
 }
 

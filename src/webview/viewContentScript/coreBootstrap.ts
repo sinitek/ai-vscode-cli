@@ -115,10 +115,20 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: "",
           opencode: "",
         },
+        selectedLoopModelsByCli: {
+          codex: { main: "", subtask: "" },
+          claude: { main: "", subtask: "" },
+          opencode: { main: "", subtask: "" },
+        },
         modelsByCli: {
           codex: [],
           claude: [],
           opencode: [],
+        },
+        loopModelsByCli: {
+          codex: { main: [], subtask: [] },
+          claude: { main: [], subtask: [] },
+          opencode: { main: [], subtask: [] },
         },
         managedModelsByCli: {
           codex: [],
@@ -238,6 +248,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         thinkingMode: document.getElementById("thinkingMode"),
         openCodePrimaryThinkingMode: document.getElementById("openCodePrimaryThinkingMode"),
         openCodeSmallThinkingMode: document.getElementById("openCodeSmallThinkingMode"),
+        codexLoopModelGroup: document.getElementById("codexLoopModelGroup"),
+        codexLoopMainModelSelect: document.getElementById("codexLoopMainModelSelect"),
+        codexLoopSubtaskModelSelect: document.getElementById("codexLoopSubtaskModelSelect"),
         openCodeModelGroup: document.getElementById("openCodeModelGroup"),
         openCodePrimaryModelSelect: document.getElementById("openCodePrimaryModelSelect"),
         openCodeSmallModelSelect: document.getElementById("openCodeSmallModelSelect"),
