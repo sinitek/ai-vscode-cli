@@ -2918,7 +2918,7 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    not_resumable: "当前状态不可继续",
 	    node_not_found: "节点不存在",
 	    node_not_retryable: "节点当前不可重试",
-	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint",
+	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
 	    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
 	    worktree_reset_failed: "Graph worktree 回退失败",
 	    not_human_gate: "该节点不是人工关卡",
@@ -2931,7 +2931,7 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    not_resumable: "The run is not resumable from its current status.",
 	    node_not_found: "The node was not found.",
 	    node_not_retryable: "The node is not retryable from its current status.",
-	    feedback_not_available: "The node has no available upstream checkpoint for feedback rollback.",
+	    feedback_not_available: "The node has no available upstream checkpoint; direct mode does not support Feedback rollback.",
 	    passed_descendants: "The node has passed descendants and needs a later cascade reset flow.",
 	    worktree_reset_failed: "The Graph worktree could not be reset.",
 	    not_human_gate: "The node is not a human gate.",
@@ -4788,9 +4788,7 @@ async function runGraphPromptOrchestration(
   appendGraphEvent(run.eventsFile, {
     runId: run.id,
     type: "run.created",
-    summary: executionSetup.executionMode === "worktree"
-      ? `Graph run ${run.id} created with ${run.nodes.length} nodes.`
-      : `Graph run ${run.id} created in direct workspace fallback mode with ${run.nodes.length} nodes.`,
+    summary: `Graph run ${run.id} created in direct workspace mode with ${run.nodes.length} nodes.`,
     data: {
       nodeIds: run.nodes.map((node) => node.id),
       plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
@@ -5183,17 +5181,17 @@ type GraphNodeExecutionContext = {
 };
 
 function resolveGraphNodeExecutionContext(run: GraphRunRecord): GraphNodeExecutionContext | null {
+  if (run.directExecution?.cwd) {
+    return {
+      mode: "direct",
+      cwd: run.directExecution.cwd,
+    };
+  }
   if (run.worktree?.cwd) {
     return {
       mode: "worktree",
       cwd: run.worktree.cwd,
       worktreeCwd: run.worktree.cwd,
-    };
-  }
-  if (run.directExecution?.cwd) {
-    return {
-      mode: "direct",
-      cwd: run.directExecution.cwd,
     };
   }
   return null;
@@ -5490,7 +5488,7 @@ function buildGraphNodeStartedText(
 
 function formatGraphRunExecutionMode(run: GraphRunRecord): string {
   return run.executionMode === "direct" && run.directExecution?.cwd
-    ? "direct workspace fallback"
+    ? "direct project workspace"
     : "isolated git worktree";
 }
 
@@ -5501,20 +5499,20 @@ function formatGraphRunExecutionCwd(run: GraphRunRecord): string {
 }
 
 function buildGraphRunStartedText(run: GraphRunRecord): string {
-  const directFallbackLines = run.executionMode === "direct" && run.directExecution
+  const executionLines = run.executionMode === "direct" && run.directExecution
     ? [
-      `- Direct workspace: ${run.directExecution.cwd}`,
-      `- Fallback reason: ${run.directExecution.reason ?? "git worktree was unavailable"}`,
-      "- Direct mode limits: no git worktree isolation, checkpoint commits, merge-back, or rollback.",
+      `- Execution directory: ${run.directExecution.cwd}`,
+      "- Worktree: not used; changes are written directly to the current project workspace.",
     ]
-    : [];
+    : [
+      `- Worktree: ${run.worktree?.cwd ?? "unavailable"}`,
+    ];
   return [
     `Graph run created: ${run.id}`,
     "",
     `- Planner: ${GRAPH_AI_PLANNER_NODE_ID} will generate the executable DAG before work nodes run.`,
     `- Runtime: ${formatGraphRunExecutionMode(run)} via runPrompt, taskRole=subtask`,
-    `- Worktree: ${run.worktree?.cwd ?? "unavailable"}`,
-    ...directFallbackLines,
+    ...executionLines,
     `- Scheduler: maxConcurrent=${run.maxConcurrent}`,
     `- Graph file: ${run.graphFile}`,
   ].join("\n");

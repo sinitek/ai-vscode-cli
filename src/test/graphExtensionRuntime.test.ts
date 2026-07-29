@@ -150,16 +150,19 @@ test("extension merges completed Graph worktrees back and cleans up residual wor
   assert.match(extensionSource, /buildGraphRunNeedsAttentionText\(run,\s*mergeBack\)/);
 });
 
-test("extension falls back to direct workspace Graph execution when worktrees are unavailable", () => {
+test("extension defaults Graph execution to the direct project workspace", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
   assert.match(extensionSource, /createGraphRunExecutionSetup\(workspaceCwd,\s*graphRunId\)/);
   assert.match(extensionSource, /executionMode:\s*executionSetup\.executionMode/);
   assert.match(extensionSource, /directExecution:\s*executionSetup\.directExecution/);
-  assert.match(extensionSource, /Graph run .* created in direct workspace fallback mode/);
+  assert.match(extensionSource, /Graph run .* created in direct workspace mode/);
+  assert.doesNotMatch(extensionSource, /direct workspace fallback mode/);
+  assert.match(extensionSource, /direct project workspace/);
   assert.match(extensionSource, /function resolveGraphNodeExecutionContext\(run:\s*GraphRunRecord\):\s*GraphNodeExecutionContext \| null/);
   assert.match(extensionSource, /if\s*\(run\.directExecution\?\.cwd\)\s*\{\s*return\s*\{\s*mode:\s*"direct"/);
   assert.match(extensionSource, /executionCwd:\s*executionContext\.cwd/);
   assert.match(extensionSource, /if\s*\(executionContext\.mode === "worktree"\)\s*\{[\s\S]*commitGraphNodeCheckpoint/);
   assert.match(extensionSource, /if\s*\(run\.executionMode === "direct" && run\.directExecution\?\.cwd\)\s*\{[\s\S]*no git worktree, checkpoint, merge-back, or cleanup was used/);
+  assert.match(extensionSource, /Worktree: not used; changes are written directly to the current project workspace/);
 });

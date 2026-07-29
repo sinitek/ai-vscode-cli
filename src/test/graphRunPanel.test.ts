@@ -810,6 +810,8 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
 		  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.semantic-(?:start|end)[\s\S]*border-radius:\s*999px/);
 	  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /dag-node-meta/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill[\s\S]*flex:\s*0 0 auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-color:\s*var\(--vscode-errorForeground/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-width:\s*2px/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running\s*\{[\s\S]*border-color:\s*var\(--node-tone\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*animation:\s*graph-running-border-flow/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*repeating-linear-gradient\(90deg,\s*var\(--node-tone\)/);

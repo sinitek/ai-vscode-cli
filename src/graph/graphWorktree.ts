@@ -87,7 +87,7 @@ export type GraphRunExecutionSetup = {
   executionMode: "direct";
   worktree?: undefined;
   directExecution: GraphRunDirectExecutionRecord;
-  fallbackReason: string;
+  fallbackReason?: string;
 };
 
 export function createGraphRunExecutionSetup(
@@ -95,23 +95,14 @@ export function createGraphRunExecutionSetup(
   graphRunId: string,
   options: CreateGraphRunWorktreeOptions = {},
 ): GraphRunExecutionSetup {
-  try {
-    return {
-      executionMode: "worktree",
-      worktree: createGraphRunWorktree(workspaceCwd, graphRunId, options),
-    };
-  } catch (error) {
-    const fallbackReason = errorToMessage(error);
-    return {
-      executionMode: "direct",
-      directExecution: {
-        cwd: workspaceCwd,
-        reason: fallbackReason,
-        createdAt: options.now?.() ?? Date.now(),
-      },
-      fallbackReason,
-    };
-  }
+  return {
+    executionMode: "direct",
+    directExecution: {
+      cwd: workspaceCwd,
+      reason: "Graph mode executes in the current project workspace.",
+      createdAt: options.now?.() ?? Date.now(),
+    },
+  };
 }
 
 export function createGraphRunWorktree(

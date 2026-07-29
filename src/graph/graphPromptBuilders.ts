@@ -97,7 +97,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Main communication file：${run.mainCommunicationFile}`,
     `- Execution mode：${formatGraphExecutionMode(run)}`,
     `- Execution cwd：${formatGraphExecutionCwd(run)}`,
-    `- Direct fallback reason：${formatValue(run.directExecution?.reason)}`,
+    `- Direct execution note：${formatValue(run.directExecution?.reason)}`,
     `- Worktree cwd：${formatValue(run.worktree?.cwd)}`,
     `- Worktree branch：${formatValue(run.worktree?.branch)}`,
     `- Worktree base commit：${formatValue(run.worktree?.baseCommit)}`,
@@ -307,7 +307,7 @@ function formatGraphEdgeSemanticsLines(): string[] {
   return [
     "- depends_on / human_approved 是结构性前置；上游未 passed 时目标节点不可执行。",
     "- if_pass / if_fail 是条件路径；scheduler 会按上游状态和受支持的 conditionExpression 判定是否可通行，inactive edge 会阻塞并提示需要重规划或人工处理。",
-    "- review_feedback / if_fail 可作为返工路径；Feedback rollback 会优先选择 active feedback edge 指向的目标，再回退到最近上游 checkpoint。",
+    "- review_feedback / if_fail 可作为返工路径；只有历史 worktree run 且存在 checkpoint 时，Feedback rollback 才能回退到上游节点；direct run 需要在当前工作区手动控制返工范围。",
     "- evidence_for 是证据追踪边，不单独解锁调度；summary/review 节点应引用其 metadata.evidenceRef 或相关 artifact。",
     "- custom conditionExpression 当前只会保守阻塞并说明不可求值，不能伪装为已自动重算复杂谓词。",
   ];
@@ -708,7 +708,7 @@ function formatList(values: readonly string[] | undefined): string {
 
 function formatGraphExecutionMode(run: GraphRunRecord): string {
   return run.executionMode === "direct" && run.directExecution?.cwd
-    ? "direct workspace fallback"
+    ? "direct project workspace"
     : "isolated git worktree";
 }
 
@@ -721,13 +721,13 @@ function formatGraphExecutionCwd(run: GraphRunRecord): string {
 function formatGraphExecutionBoundaryLines(run: GraphRunRecord): string[] {
   if (run.executionMode === "direct" && run.directExecution?.cwd) {
     return [
-      "- 当前 Graph run 使用 direct workspace fallback：你正在当前工作区直接执行。",
+      "- 当前 Graph run 在项目工作区直接执行，行为与 Loop 主任务一样落在当前 workspace。",
       "- 只能在当前工作区中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
-      "- direct 模式没有 git worktree 隔离、checkpoint commit、自动 merge-back 或 rollback；必须格外控制改动范围并记录验证结果。",
+      "- direct 模式没有 Graph worktree 隔离、checkpoint commit、自动 merge-back 或 rollback；必须格外控制改动范围并记录验证结果。",
     ];
   }
   return [
-    "- 只能在 Graph worktree 中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
+    "- 这是历史 worktree Graph run；只能在 Graph worktree 中修改 writeFiles 明确列出的路径。",
     "- 不要直接修改主工作区；宿主会在节点结束后为当前 worktree 创建本地 git checkpoint commit。",
   ];
 }

@@ -478,6 +478,10 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .dag-node.selected {
         box-shadow: 0 0 0 1px var(--node-tone);
       }
+      .dag-node.status-blocked {
+        border-color: var(--vscode-errorForeground, var(--vscode-widget-border));
+        border-width: 2px;
+      }
       .dag-node.status-running {
         border-color: var(--node-tone);
       }

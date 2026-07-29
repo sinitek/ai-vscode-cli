@@ -9,6 +9,15 @@
 - 归档条目仍需保留首次发现时间、适用版本、修复方式和关联资料，便于审计和追溯。
 - 当历史归档数量较多或单文件超过约 500 行时，再按主题拆分历史文件并从本页建立索引。
 
+## Graph worktree 缺本地依赖导致验证节点误阻塞
+
+- 发现时间：2026-07-29
+- 适用版本：Graph 默认 worktree 执行版本
+- 现象：Graph run 在独立 worktree 中执行到 `verify-build` 时，`npm run build` 因 worktree 缺少本地 `node_modules/.bin/tsc` 连续失败，run 进入 `needs-review`，但主项目工作区本身已有依赖。
+- 根因：Graph worktree 与当前项目工作区的本地依赖环境不一致；验证命令在隔离目录中运行时无法复用项目工作区已经安装的依赖。
+- 修正：新 Graph run 改为固定在当前项目工作区 direct 执行，不再创建 `~/.sinitek_cli/graph-worktrees/<graphRunId>`、checkpoint commit、merge-back 或 cleanup 流程。
+- 验证：`createGraphRunExecutionSetup` 现在直接返回 `executionMode=direct`；相关 Graph runtime / prompt builder / 文档测试随行为更新。
+
 ## Graph 完成后只删 run worktree 但留下空父目录
 
 - 状态：已修复

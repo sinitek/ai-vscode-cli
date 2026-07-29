@@ -73,21 +73,23 @@ test("creates a Graph worktree and records per-node checkpoint commits", () => {
   }
 });
 
-test("falls back to direct workspace execution when git worktree setup is unavailable", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-direct-fallback-"));
+test("creates direct workspace execution setup without creating a Graph worktree", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-direct-setup-"));
   try {
-    const workspace = path.join(root, "not-a-git-repo");
-    fs.mkdirSync(workspace, { recursive: true });
+    const workspace = createGitRepo(root);
 
     const setup = createGraphRunExecutionSetup(workspace, "graph_run_direct", {
       baseDir: path.join(root, "data"),
       now: () => 3_000,
     });
 
-    assert.equal(setup.executionMode, "direct");
+    if (setup.executionMode !== "direct") {
+      assert.fail(`Expected direct execution setup, received ${setup.executionMode}`);
+    }
     assert.equal(setup.directExecution.cwd, workspace);
     assert.equal(setup.directExecution.createdAt, 3_000);
-    assert.match(setup.fallbackReason, /git rev-parse --show-toplevel failed/u);
+    assert.ok(setup.fallbackReason === undefined);
+    assert.ok(setup.worktree === undefined);
     assert.equal(fs.existsSync(path.join(root, "data", "graph-worktrees")), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
