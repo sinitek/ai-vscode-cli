@@ -3319,6 +3319,9 @@ function resolveAutoInteractiveModeForConversationTab(
   if (!tab) {
     return "coding";
   }
+  if (resolveConversationTabGraphRunId(tab)) {
+    return "graph";
+  }
   const context = resolveConversationTabLoopContext(tab);
   return resolveAutoInteractiveModeForLoopTask(context.taskRole, context.loopTaskId);
 }
@@ -13174,8 +13177,9 @@ function normalizeChatGraphRunId(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): string | null {
-  const messages = loadSessionMessages(cli, sessionId);
+type GraphRunSessionLookupByCli = ReturnType<typeof buildGraphRunIdsBySessionByCli>;
+
+function resolveGraphRunIdFromMessages(messages: readonly ChatMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     const directGraphRunId = normalizeChatGraphRunId(message.graphRunId);
@@ -13195,6 +13199,49 @@ function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): 
     }
   }
   return null;
+}
+
+function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): string | null {
+  return resolveGraphRunIdFromMessages(loadSessionMessages(cli, sessionId));
+}
+
+function resolveConversationTabGraphRunId(
+  tab: ConversationTabRecord | null,
+  graphRunIdsBySessionByCli?: GraphRunSessionLookupByCli,
+): string | null {
+  if (!tab) {
+    return null;
+  }
+  const graphNodeTarget = graphNodeRunTargetsByTabId.get(tab.id);
+  const graphNodeRunId = normalizeChatGraphRunId(graphNodeTarget?.graphRunId);
+  if (graphNodeRunId) {
+    return graphNodeRunId;
+  }
+  if (getPrimaryRunTabId() === tab.id) {
+    const activeGraphRunId = normalizeChatGraphRunId(activeTaskRun?.graphRunId);
+    if (activeGraphRunId) {
+      return activeGraphRunId;
+    }
+  }
+  const parallelGraphRunId = normalizeChatGraphRunId(parallelRunsByTabId.get(tab.id)?.graphRunId);
+  if (parallelGraphRunId) {
+    return parallelGraphRunId;
+  }
+  const interactiveGraphRunId = normalizeChatGraphRunId(interactiveRunsByTabId.get(tab.id)?.graphRunId);
+  if (interactiveGraphRunId) {
+    return interactiveGraphRunId;
+  }
+  const liveMessages = getLiveMessagesForTab(tab.id);
+  const liveGraphRunId = liveMessages ? resolveGraphRunIdFromMessages(liveMessages) : null;
+  if (liveGraphRunId) {
+    return liveGraphRunId;
+  }
+  const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+  if (sessionId) {
+    const storedGraphRunId = normalizeChatGraphRunId(graphRunIdsBySessionByCli?.[tab.cli]?.get(sessionId));
+    return storedGraphRunId ?? resolveSessionGraphRunIdFromMessages(tab.cli, sessionId);
+  }
+  return resolveGraphRunIdFromMessages(getPendingSessionDraft(tab.id, tab.cli).messages);
 }
 
 function ensureLatestSessionForCli(cli: CliName): void {
@@ -13224,7 +13271,19 @@ function buildConversationTabsState(): {
   activeTabId: string | null;
   tabs: ConversationTabSummary[];
 } {
-  return sessionTabsController.buildConversationTabsState();
+  const tabState = sessionTabsController.buildConversationTabsState();
+  const tabsById = new Map(ensureConversationTabs().tabs.map((tab) => [tab.id, tab]));
+  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
+    listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs,
+  );
+  return {
+    ...tabState,
+    tabs: tabState.tabs.map((summary) => {
+      const graphRunId = normalizeChatGraphRunId(summary.graphRunId)
+        ?? resolveConversationTabGraphRunId(tabsById.get(summary.id) ?? null, graphRunIdsBySessionByCli);
+      return graphRunId ? { ...summary, graphRunId } : summary;
+    }),
+  };
 }
 
 function initializeConversationTabsFromWorkspaceSettings(): void {

@@ -296,8 +296,10 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /data-edge-display-label="Deps"/);
   assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="depends_on:plan-&gt;implement" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">Deps<\/text>/);
 	  assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
-	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target selected status-passed kind-review node-tone-warning semantic-normal"/);
-	  assert.match(html, /data-node-kind-tone="warning"/);
+	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target status-passed kind-test node-tone-validation semantic-normal"[\s\S]*data-node-id="test"/);
+	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target selected status-passed kind-review node-tone-validation semantic-normal"/);
+	  assert.match(html, /data-node-tone="validation"/);
+	  assert.match(html, /data-node-kind-tone="validation"/);
 	  assert.match(html, /data-auto-x="\d+"[\s\S]*data-auto-y="\d+"[\s\S]*data-node-width="192"[\s\S]*data-node-height="78"/);
   assert.equal((html.match(/class="dag-port-dot/g) ?? []).length, 60);
   assert.match(html, /data-port-id="top-25"/);
@@ -481,11 +483,14 @@ test("renders edge purpose labels, semantic node classes, and twelve ports per n
   });
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "decision"), "en");
 
-  assert.match(html, /class="dag-node node-select-target status-passed kind-intake node-tone-info semantic-start"[\s\S]*data-node-id="start"[\s\S]*data-node-semantic="start"/);
-  assert.match(html, /class="dag-node node-select-target selected status-ready kind-review node-tone-warning semantic-decision"[\s\S]*data-node-id="decision"[\s\S]*data-node-semantic="decision"/);
+  assert.match(html, /class="dag-node node-select-target status-passed kind-intake node-tone-start semantic-start"[\s\S]*data-node-id="start"[\s\S]*data-node-semantic="start"/);
+  assert.match(html, /class="dag-node node-select-target selected status-ready kind-review node-tone-decision semantic-decision"[\s\S]*data-node-id="decision"[\s\S]*data-node-semantic="decision"/);
   assert.match(html, /class="dag-node node-select-target status-pending kind-summary node-tone-danger semantic-end"[\s\S]*data-node-id="end"[\s\S]*data-node-semantic="end"/);
-  assert.match(html, /data-node-kind-tone="info"/);
-  assert.match(html, /data-node-kind-tone="warning"/);
+  assert.match(html, /data-node-tone="start"/);
+  assert.match(html, /data-node-tone="decision"/);
+  assert.match(html, /data-node-tone="danger"/);
+  assert.match(html, /data-node-kind-tone="start"/);
+  assert.match(html, /data-node-kind-tone="decision"/);
   assert.match(html, /data-node-kind-tone="danger"/);
   assert.match(html, />Start<\/span>/);
   assert.match(html, />Decision<\/span>/);
@@ -793,6 +798,9 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /white-space:\s*normal/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-info[\s\S]*--node-tone:\s*var\(--vscode-focusBorder\)/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-accent[\s\S]*--node-tone:\s*var\(--vscode-progressBar-background/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-start[\s\S]*--node-tone:\s*var\(--vscode-testing-iconPassed/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-decision[\s\S]*--node-tone:\s*var\(--vscode-editorWarning-foreground/);
+	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-validation[\s\S]*--node-tone:\s*var\(--vscode-charts-orange/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-warning[\s\S]*--node-tone:\s*var\(--vscode-editorWarning-foreground/);
 	  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-success[\s\S]*--node-tone:\s*var\(--vscode-testing-iconPassed/);
 		  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.node-tone-danger[\s\S]*--node-tone:\s*var\(--vscode-errorForeground\)/);
@@ -802,7 +810,9 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
 		  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.semantic-(?:start|end)[\s\S]*border-radius:\s*999px/);
 	  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /dag-node-meta/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill[\s\S]*flex:\s*0 0 auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running\s*\{[\s\S]*border-color:\s*var\(--node-tone\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*animation:\s*graph-running-border-flow/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*repeating-linear-gradient\(90deg,\s*var\(--node-tone\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /@keyframes graph-running-border-flow/);
   assert.doesNotMatch(`${GRAPH_RUN_PANEL_STYLES}\n${html}`, /#[0-9a-fA-F]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(/);
 });

@@ -87,6 +87,15 @@ test("extension keeps Graph tab metadata on runStatus start while nodes are runn
   assert.match(extensionSource, /sendRunStatusForTab\(tabId,\s*"start",\s*\{\s*[\s\S]*graphRunId:\s*input\.graphRunId[\s\S]*graphNodeId:\s*input\.graphNodeId[\s\S]*\}\);/);
 });
 
+test("extension includes Graph run ids in conversation tab summaries", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /function resolveGraphRunIdFromMessages\(messages:\s*readonly ChatMessage\[\]\):\s*string \| null\s*\{[\s\S]*message\.graphRunId[\s\S]*action\.type !== "openGraphRun"[\s\S]*action\.graphRunId/);
+  assert.match(extensionSource, /function resolveConversationTabGraphRunId\([\s\S]*tab:\s*ConversationTabRecord \| null,[\s\S]*graphNodeRunTargetsByTabId\.get\(tab\.id\)[\s\S]*parallelRunsByTabId\.get\(tab\.id\)\?\.graphRunId[\s\S]*interactiveRunsByTabId\.get\(tab\.id\)\?\.graphRunId[\s\S]*getLiveMessagesForTab\(tab\.id\)[\s\S]*getPendingSessionDraft\(tab\.id,\s*tab\.cli\)\.messages/);
+  assert.match(extensionSource, /function buildConversationTabsState\(\):\s*\{[\s\S]*tabs:\s*ConversationTabSummary\[\];[\s\S]*graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli\([\s\S]*listGraphRuns\(\{ workspaceKey:\s*activeWorkspaceKey \}\)\.runs[\s\S]*resolveConversationTabGraphRunId\(tabsById\.get\(summary\.id\) \?\? null,\s*graphRunIdsBySessionByCli\)[\s\S]*return graphRunId \? \{ \.\.\.summary,\s*graphRunId \} : summary/);
+  assert.match(extensionSource, /if\s*\(resolveConversationTabGraphRunId\(tab\)\)\s*\{\s*return "graph";\s*\}/);
+});
+
 test("extension keeps the Graph main tab running until the graph reaches a terminal status", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 

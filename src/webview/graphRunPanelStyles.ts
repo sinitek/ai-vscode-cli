@@ -401,6 +401,15 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .dag-node.node-tone-accent {
         --node-tone: var(--vscode-progressBar-background, var(--vscode-focusBorder));
       }
+      .dag-node.node-tone-start {
+        --node-tone: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen, var(--vscode-focusBorder)));
+      }
+      .dag-node.node-tone-decision {
+        --node-tone: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, var(--vscode-focusBorder)));
+      }
+      .dag-node.node-tone-validation {
+        --node-tone: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
+      }
       .dag-node.node-tone-warning {
         --node-tone: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, var(--vscode-focusBorder)));
       }
@@ -470,29 +479,28 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         box-shadow: 0 0 0 1px var(--node-tone);
       }
       .dag-node.status-running {
-        border-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+        border-color: var(--node-tone);
       }
       .dag-node.status-running::before {
         content: "";
         position: absolute;
         inset: 0;
-        border: 2px solid transparent;
         border-radius: inherit;
-        background: linear-gradient(90deg, var(--vscode-progressBar-background, var(--vscode-focusBorder)), var(--vscode-focusBorder), var(--vscode-progressBar-background, var(--vscode-focusBorder))) border-box;
-        background-size: 220% 100%;
+        background:
+          repeating-linear-gradient(90deg, var(--node-tone) 0 8px, transparent 8px 14px) top left / 200% 2px repeat-x,
+          repeating-linear-gradient(90deg, var(--node-tone) 0 8px, transparent 8px 14px) bottom left / 200% 2px repeat-x,
+          repeating-linear-gradient(0deg, var(--node-tone) 0 8px, transparent 8px 14px) left top / 2px 200% repeat-y,
+          repeating-linear-gradient(0deg, var(--node-tone) 0 8px, transparent 8px 14px) right top / 2px 200% repeat-y;
         pointer-events: none;
-        animation: graph-running-border-flow 1.1s linear infinite;
-        -webkit-mask: linear-gradient(var(--vscode-editor-foreground) 0 0) padding-box, linear-gradient(var(--vscode-editor-foreground) 0 0);
-        -webkit-mask-composite: xor;
-        mask: linear-gradient(var(--vscode-editor-foreground) 0 0) padding-box, linear-gradient(var(--vscode-editor-foreground) 0 0);
-        mask-composite: exclude;
+        animation: graph-running-border-flow 900ms linear infinite;
       }
       @keyframes graph-running-border-flow {
+        /* Layer order: top, bottom, left, right. Clockwise flow: top →, bottom ←, left ↑, right ↓. */
         from {
-          background-position: 220% 0;
+          background-position: 0 0, 0 100%, 0 0, 100% 0;
         }
         to {
-          background-position: 0 0;
+          background-position: 28px 0, -28px 100%, 0 -28px, 100% 28px;
         }
       }
       @media (prefers-reduced-motion: reduce) {

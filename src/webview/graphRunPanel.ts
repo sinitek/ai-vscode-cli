@@ -79,7 +79,7 @@ type DagEdgeLayout = {
 };
 
 type GraphNodeSemanticKind = "start" | "decision" | "end" | "normal";
-type GraphNodeTone = "info" | "accent" | "warning" | "success" | "neutral" | "danger";
+type GraphNodeTone = "info" | "accent" | "warning" | "success" | "neutral" | "danger" | "start" | "decision" | "validation";
 
 type DagLayout = {
   width: number;
@@ -1062,7 +1062,7 @@ function renderDagNode(
   const node = layout.node;
   const selected = node.id === state.selectedNodeId ? " selected" : "";
   const semantic = getNodeSemantic(node, state.edges, strings);
-  const tone = getNodeKindTone(node.kind);
+  const tone = getNodeTone(node, semantic.kind);
   const ariaLabel = interpolateGraphRunPanelString(strings.graphNodeAria, {
     title: node.title,
     status: node.statusLabel,
@@ -1076,6 +1076,7 @@ function renderDagNode(
     type="button"
     data-node-id="${escapeHtml(node.id)}"
     data-node-semantic="${semantic.kind}"
+    data-node-tone="${tone}"
     data-node-kind-tone="${tone}"
     data-dag-order="${layout.order}"
     data-auto-x="${layout.x}"
@@ -1800,6 +1801,16 @@ function splitIntoCharacterSegments(label: string): string[] {
   }, []);
 }
 
+function getNodeTone(node: GraphRunPanelNode, semanticKind: GraphNodeSemanticKind): GraphNodeTone {
+  if (semanticKind === "start") {
+    return "start";
+  }
+  if (semanticKind === "decision") {
+    return "decision";
+  }
+  return getNodeKindTone(node.kind);
+}
+
 function getNodeKindTone(kind: string): GraphNodeTone {
   switch (kind) {
     case "intake":
@@ -1811,7 +1822,7 @@ function getNodeKindTone(kind: string): GraphNodeTone {
       return "accent";
     case "test":
     case "review":
-      return "warning";
+      return "validation";
     case "human_gate":
       return "success";
     case "sleep":
