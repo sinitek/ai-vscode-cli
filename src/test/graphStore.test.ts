@@ -10,6 +10,7 @@ import {
 } from "../graph/graphCommunications";
 import {
   buildGraphRunStoreFile,
+  buildGraphRunIdsBySessionByCli,
   createGraphRunRecord,
   findLatestGraphRun,
   listGraphRuns,
@@ -238,6 +239,19 @@ test("lists, filters, limits, and reads Graph runs with partial tolerance for da
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
+});
+
+test("builds latest Graph run ids by CLI session", () => {
+  const byCli = buildGraphRunIdsBySessionByCli([
+    { id: "run-old", cli: "codex", sessionId: " session-a ", createdAt: 1, updatedAt: 2 },
+    { id: "run-new", cli: "codex", sessionId: "session-a", createdAt: 3, updatedAt: 5 },
+    { id: "run-other", cli: "claude", sessionId: "session-b", createdAt: 4, updatedAt: 4 },
+    { id: "run-pending", cli: "opencode", sessionId: null, createdAt: 6, updatedAt: 6 },
+  ]);
+
+  assert.equal(byCli.codex.get("session-a"), "run-new");
+  assert.equal(byCli.claude.get("session-b"), "run-other");
+  assert.equal(byCli.opencode.size, 0);
 });
 
 test("rejects unknown Graph run status, node kind, node status, and edge kind", () => {

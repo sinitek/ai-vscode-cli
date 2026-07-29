@@ -109,14 +109,16 @@ test("marks Graph conversation tabs with an icon and auto-selects Graph mode", (
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "findGraphRunIdInMessage"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "setGraphMetaForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "updateGraphMetaForTabFromMessage"),
+      extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "updateGraphMetaForTabFromMessages"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "updateGraphMetaForTabFromRunStatus"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getGraphMetaForTabSummary"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabLabel"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
-      "return { updateGraphMetaForTabFromMessage, updateGraphMetaForTabFromRunStatus, formatConversationTabLabel, resolveAutoInteractiveModeForTab };",
+      "return { updateGraphMetaForTabFromMessage, updateGraphMetaForTabFromMessages, updateGraphMetaForTabFromRunStatus, formatConversationTabLabel, resolveAutoInteractiveModeForTab };",
     ].join("\n"),
   )(graphMetaByTabId, () => null) as {
     updateGraphMetaForTabFromMessage(tabId: string, message: unknown): boolean;
+    updateGraphMetaForTabFromMessages(tabId: string, messages: unknown[]): boolean;
     updateGraphMetaForTabFromRunStatus(tabId: string, runStatus: unknown): boolean;
     formatConversationTabLabel(tab: { id: string }, baseLabel: string): string;
     resolveAutoInteractiveModeForTab(tab: { id: string }): string;
@@ -135,4 +137,17 @@ test("marks Graph conversation tabs with an icon and auto-selects Graph mode", (
   }), true);
   assert.equal(helpers.formatConversationTabLabel({ id: "tab-2" }, "opencode"), "🗺️ opencode");
   assert.equal(helpers.resolveAutoInteractiveModeForTab({ id: "tab-2" }), "graph");
+  assert.equal(helpers.updateGraphMetaForTabFromMessages("tab-3", [{
+    role: "system",
+    actions: [{ type: "openGraphRun", graphRunId: " graph-3 " }],
+  }, {
+    role: "user",
+    content: "继续处理",
+  }]), true);
+  assert.equal(helpers.formatConversationTabLabel({ id: "tab-3" }, "codex"), "🗺️ codex");
+  assert.equal(helpers.updateGraphMetaForTabFromMessage("tab-3", {
+    role: "user",
+    content: "再补充一条",
+  }), false);
+  assert.equal(helpers.resolveAutoInteractiveModeForTab({ id: "tab-3" }), "graph");
 });

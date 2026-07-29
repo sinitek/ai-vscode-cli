@@ -127,6 +127,8 @@ export type SessionSummary = {
   lastUsedAt: number;
   cli: CliName;
   isLoopSession: boolean;
+  isGraphSession: boolean;
+  graphRunId: string | null;
   isOpenInConversationTabs: boolean;
   openConversationTabId: string | null;
   firstPrompt?: string;

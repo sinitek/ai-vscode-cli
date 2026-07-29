@@ -301,6 +301,7 @@ import {
   type GraphNodeExecutionRequest,
 } from "./graph/graphKernel";
 import {
+  buildGraphRunIdsBySessionByCli,
   createGraphRunRecord,
   findLatestGraphRun,
   listGraphRuns,
@@ -13112,6 +13113,9 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
   const loopSessionIdsByCli = buildLoopSessionIdsByCli(
     loopDebateChatPanelCoordinator.listGroupChatTasks()
   );
+  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
+    listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs
+  );
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
@@ -13133,6 +13137,8 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       const openConversationTabId = openConversationTabSessionMap.get(
         buildConversationTabSessionLookupKey(item, record.id)
       ) ?? null;
+      const graphRunId = graphRunIdsBySessionByCli[item].get(record.id)
+        ?? resolveSessionGraphRunIdFromMessages(item, record.id);
       allSessions.push({
         id: record.id,
         label: record.label,
@@ -13140,6 +13146,8 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         lastUsedAt: record.lastUsedAt,
         cli: item,
         isLoopSession: loopSessionIdsByCli[item].has(record.id),
+        isGraphSession: Boolean(graphRunId),
+        graphRunId,
         isOpenInConversationTabs: Boolean(openConversationTabId),
         openConversationTabId,
         firstPrompt,
@@ -13160,6 +13168,33 @@ function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | nu
   const messages = loadSessionMessages(cli, sessionId);
   const first = messages.find((message) => message.role === "user" && message.content.trim());
   return first ? first.content : null;
+}
+
+function normalizeChatGraphRunId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): string | null {
+  const messages = loadSessionMessages(cli, sessionId);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const directGraphRunId = normalizeChatGraphRunId(message.graphRunId);
+    if (directGraphRunId) {
+      return directGraphRunId;
+    }
+    const actions = Array.isArray(message.actions) ? message.actions : [];
+    for (let actionIndex = actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
+      const action = actions[actionIndex];
+      if (action.type !== "openGraphRun") {
+        continue;
+      }
+      const actionGraphRunId = normalizeChatGraphRunId(action.graphRunId);
+      if (actionGraphRunId) {
+        return actionGraphRunId;
+      }
+    }
+  }
+  return null;
 }
 
 function ensureLatestSessionForCli(cli: CliName): void {

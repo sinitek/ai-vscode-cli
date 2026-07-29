@@ -288,6 +288,12 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
             badge.textContent = t("sessionLoopLabel");
             titleRow.appendChild(badge);
           }
+          if (session.isGraphSession) {
+            const badge = document.createElement("span");
+            badge.className = "session-status-badge";
+            badge.textContent = t("sessionGraphLabel");
+            titleRow.appendChild(badge);
+          }
           if (session.isOpenInConversationTabs) {
             const badge = document.createElement("span");
             badge.className = "session-status-badge";

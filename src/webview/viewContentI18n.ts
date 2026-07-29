@@ -31,6 +31,7 @@ export const WEBVIEW_I18N = {
     taskRoleMain: "Loop",
     taskRoleSubtask: "Subtask",
     taskRoleSubtaskWithRound: "Subtask · Round {round}",
+    sessionGraphLabel: "Graph",
     openLoopGroupChatAction: "Open Loop group chat",
     openLoopGroupChatActionTitle:
       "Open the Loop group chat for this task",
@@ -402,6 +403,7 @@ export const WEBVIEW_I18N = {
     taskRoleMain: "Loop",
     taskRoleSubtask: "子任务",
     taskRoleSubtaskWithRound: "子任务·第{round}轮",
+    sessionGraphLabel: "Graph",
     openLoopGroupChatAction: "打开 Loop 群聊",
     openLoopGroupChatActionTitle: "打开当前 Loop 任务的群聊页面",
     openGraphRunAction: "打开 Graph 运行图",

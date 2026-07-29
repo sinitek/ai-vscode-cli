@@ -43,7 +43,7 @@ function createElement(): any {
   };
 }
 
-function renderSessionTitleBadges(isLoopSession: boolean, isOpenInConversationTabs: boolean): string[] {
+function renderSessionTitleBadges(isLoopSession: boolean, isGraphSession: boolean, isOpenInConversationTabs: boolean): string[] {
   const renderSessionListSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, "renderSessionList");
   const sessionList = createElement();
   const state = {
@@ -55,6 +55,8 @@ function renderSessionTitleBadges(isLoopSession: boolean, isOpenInConversationTa
         createdAt: 1,
         cli: "codex",
         isLoopSession,
+        isGraphSession,
+        graphRunId: isGraphSession ? "graph-1" : null,
         isOpenInConversationTabs,
         openConversationTabId: isOpenInConversationTabs ? "tab-1" : null,
       }],
@@ -79,7 +81,7 @@ function renderSessionTitleBadges(isLoopSession: boolean, isOpenInConversationTa
     { sessionList },
     state,
     { createElement },
-    (key: string) => ({ sessionLoopLabel: "Loop", sessionOpenInTabsLabel: "Open" } as Record<string, string>)[key] || key,
+    (key: string) => ({ sessionLoopLabel: "Loop", sessionGraphLabel: "Graph", sessionOpenInTabsLabel: "Open" } as Record<string, string>)[key] || key,
     (value: string) => value,
     () => "time",
     () => undefined,
@@ -109,9 +111,9 @@ test("collects bound Loop session ids by CLI and ignores pending tasks", () => {
   assert.deepEqual(Array.from(sessionIdsByCli.opencode), []);
 });
 
-test("renders Loop and open badges together in history sessions", () => {
-  assert.deepEqual(renderSessionTitleBadges(true, true), ["[codex] Build the feature", "Loop", "Open"]);
-  assert.deepEqual(renderSessionTitleBadges(false, false), ["[codex] Build the feature"]);
+test("renders Loop, Graph, and open badges together in history sessions", () => {
+  assert.deepEqual(renderSessionTitleBadges(true, true, true), ["[codex] Build the feature", "Loop", "Graph", "Open"]);
+  assert.deepEqual(renderSessionTitleBadges(false, false, false), ["[codex] Build the feature"]);
 });
 
 test("removes the standalone Loop group chat recovery tab", () => {

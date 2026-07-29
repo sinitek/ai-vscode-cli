@@ -595,9 +595,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (graphRunId) {
           return setGraphMetaForTab(tabId, graphRunId);
         }
-        if (message.role === "user" && String(message.content || "").trim()) {
-          return setGraphMetaForTab(tabId, "");
-        }
         return false;
       }
 
@@ -610,9 +607,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           const graphRunId = findGraphRunIdInMessage(message);
           if (graphRunId) {
             return setGraphMetaForTab(tabId, graphRunId);
-          }
-          if (message && message.role === "user" && String(message.content || "").trim()) {
-            return setGraphMetaForTab(tabId, "");
           }
         }
         return setGraphMetaForTab(tabId, "");

@@ -82,6 +82,8 @@ export type GraphRunLookupResult = {
   diagnostics: GraphRunDiscoveryDiagnostics;
 };
 
+export type GraphRunSessionBinding = Pick<GraphRunRecord, "cli" | "sessionId" | "id" | "createdAt" | "updatedAt">;
+
 export type CreateGraphRunRecordInput = {
   id: string;
   workspaceKey: string;
@@ -239,6 +241,37 @@ export function readGraphRunRecord(
     run: result.runs.find((run) => run.id === graphRunId) ?? null,
     errors: result.errors,
     diagnostics: result.diagnostics,
+  };
+}
+
+export function buildGraphRunIdsBySessionByCli(
+  runs: readonly GraphRunSessionBinding[],
+): Record<CliName, Map<string, string>> {
+  const selected: Record<CliName, Map<string, { id: string; timestamp: number }>> = {
+    codex: new Map(),
+    claude: new Map(),
+    opencode: new Map(),
+  };
+
+  runs.forEach((run) => {
+    const sessionId = typeof run.sessionId === "string" ? run.sessionId.trim() : "";
+    if (!sessionId) {
+      return;
+    }
+    const timestamp = Number.isFinite(run.updatedAt) ? run.updatedAt : run.createdAt;
+    const existing = selected[run.cli].get(sessionId);
+    if (!existing || timestamp >= existing.timestamp) {
+      selected[run.cli].set(sessionId, {
+        id: run.id,
+        timestamp,
+      });
+    }
+  });
+
+  return {
+    codex: new Map(Array.from(selected.codex.entries()).map(([sessionId, run]) => [sessionId, run.id])),
+    claude: new Map(Array.from(selected.claude.entries()).map(([sessionId, run]) => [sessionId, run.id])),
+    opencode: new Map(Array.from(selected.opencode.entries()).map(([sessionId, run]) => [sessionId, run.id])),
   };
 }
 
