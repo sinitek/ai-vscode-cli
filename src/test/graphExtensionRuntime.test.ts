@@ -33,6 +33,7 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
   assert.match(extensionSource, /listGraphRuns/);
 	  assert.match(extensionSource, /resumeGraphRunRecord/);
 	  assert.match(extensionSource, /retryGraphNodeForRun/);
+	  assert.match(extensionSource, /skipGraphNodeForRun/);
 	  assert.match(extensionSource, /feedbackGraphNodeForRun/);
 	  assert.match(extensionSource, /approveGraphHumanGateForRun/);
 	  assert.match(extensionSource, /stopGraphRunRecord/);
@@ -41,22 +42,23 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
   assert.match(extensionSource, /restoreGraphAutoWakeSchedules\(\)/);
 	  assert.match(extensionSource, /continueGraphRunFromStore\(graphRunId/);
 	  assert.match(extensionSource, /feedbackGraphNodeFromPanel\(graphRunId,\s*nodeId\)/);
+	  assert.match(extensionSource, /async function skipGraphNodeFromPanel\(\s*graphRunId:\s*string,\s*nodeId:\s*string/);
 	  assert.match(extensionSource, /tickGraphRunToPauseFromControl\(persisted/);
   assert.match(extensionSource, /stopActiveCliRunsForGraphRun\(graphRunId\)/);
 });
 
-test("extension prompts users when Graph runs block and supports retrying or entering downstream nodes", () => {
+test("extension prompts users when Graph runs block and supports retrying or skipping into downstream nodes", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
   assert.match(extensionSource, /const graphBlockedPromptKeys = new Set<string>\(\);/);
   assert.match(extensionSource, /await maybePromptForGraphBlockedRun\(run,\s*target\)/);
   assert.match(extensionSource, /async function maybePromptForGraphBlockedRun\([\s\S]*showWarningMessage\([\s\S]*buildGraphBlockedPromptMessage\(run,\s*context\)[\s\S]*\{ modal:\s*true \}/);
   assert.match(extensionSource, /selectedAction === "retry_current"[\s\S]*retryGraphNodeFromPanel\(run\.id,\s*context\.node\.id\)/);
-  assert.match(extensionSource, /selectedAction === "choose_downstream"[\s\S]*pickGraphBlockedDownstreamNode\(run,\s*context\.downstreamNodes\)[\s\S]*openGraphRunPanel\(\{ graphRunId:\s*run\.id,\s*nodeId:\s*downstreamNode\.id \}\)/);
+  assert.match(extensionSource, /selectedAction === "choose_downstream"[\s\S]*pickGraphBlockedDownstreamNode\(run,\s*context\.downstreamNodes\)[\s\S]*skipGraphNodeFromPanel\(run\.id,\s*context\.node\.id\)[\s\S]*openGraphRunPanel\(\{ graphRunId:\s*run\.id,\s*nodeId:\s*downstreamNode\.id \}\)/);
   assert.match(extensionSource, /function resolveGraphDownstreamNodes\(run:\s*GraphRunRecord,\s*nodeId:\s*string\):\s*GraphNodeRecord\[\][\s\S]*sourceNode\?\.unlocks\.forEach\(appendNodeId\)[\s\S]*node\.dependsOn\.includes\(nodeId\)[\s\S]*edge\.active[\s\S]*edge\.from === nodeId/);
   assert.match(extensionSource, /showQuickPick\(items,\s*\{[\s\S]*ignoreFocusOut:\s*true/);
   assert.match(extensionSource, /重跑当前节点/);
-  assert.match(extensionSource, /选择下游节点/);
+  assert.match(extensionSource, /跳过当前并选择下游继续/);
 });
 
 test("extension surfaces human gate approval entry and precise Stop boundaries", () => {

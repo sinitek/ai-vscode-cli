@@ -45,6 +45,7 @@ export const GRAPH_RUN_CONTROL_BLOCKED_REASONS = [
   "not_resumable",
   "node_not_found",
   "node_not_retryable",
+  "node_not_skippable",
   "feedback_not_available",
   "passed_descendants",
   "worktree_reset_failed",
@@ -259,6 +260,75 @@ export async function retryGraphNodeForRun(
     ok: true,
     changed: true,
     message: `Graph node ${nodeId} retry requested.`,
+    nodeId,
+    changedNodeIds: [nodeId],
+  };
+}
+
+export async function skipGraphNodeForRun(
+  run: GraphRunRecord,
+  nodeId: string,
+  options: GraphRunControlOptions = {},
+): Promise<GraphRunControlResult> {
+  if (isGraphRunTerminalStatus(run.status)) {
+    return unchangedControlResult(run, false, "terminal_run", `Graph run ${run.id} is ${run.status}.`, nodeId);
+  }
+
+  const node = run.nodes.find((item) => item.id === nodeId);
+  if (!node) {
+    return unchangedControlResult(run, false, "node_not_found", `Graph node ${nodeId} does not exist.`, nodeId);
+  }
+  if (node.status !== "failed" && node.status !== "blocked") {
+    return unchangedControlResult(run, false, "node_not_skippable", `Graph node ${nodeId} is not skippable from status ${node.status}.`, nodeId);
+  }
+
+  const passedDescendantNodeIds = findGraphPassedDescendantNodeIds(run, nodeId);
+  if (passedDescendantNodeIds.length > 0) {
+    return {
+      run,
+      ok: false,
+      changed: false,
+      message: `Graph node ${nodeId} has passed descendants and requires explicit cascade reset confirmation.`,
+      reason: "passed_descendants",
+      nodeId,
+      blockedNodeIds: passedDescendantNodeIds,
+    };
+  }
+
+  const timestamp = resolveGraphRunControlTimestamp(options);
+  const skipReason = options.reason ?? `Graph node ${nodeId} skipped by user.`;
+  const nextRun: GraphRunRecord = {
+    ...run,
+    status: "running",
+    updatedAt: timestamp,
+    activeNodeIds: run.activeNodeIds.filter((activeNodeId) => activeNodeId !== nodeId),
+    nodes: run.nodes.map((item) => item.id === nodeId
+      ? {
+        ...item,
+        status: "skipped",
+        completedAt: timestamp,
+        lastError: skipReason,
+      }
+      : item),
+  };
+  await appendGraphRunControlEvent(nextRun, {
+    runId: nextRun.id,
+    type: "node.skipped",
+    timestamp,
+    nodeId,
+    attempt: node.attempts,
+    summary: options.summary ?? skipReason,
+    data: {
+      source: options.source ?? "system",
+      previousStatus: node.status,
+      reason: options.reason,
+    },
+  }, options);
+  return {
+    run: nextRun,
+    ok: true,
+    changed: true,
+    message: `Graph node ${nodeId} skipped.`,
     nodeId,
     changedNodeIds: [nodeId],
   };

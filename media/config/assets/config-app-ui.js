@@ -3580,7 +3580,6 @@ const CODEX_VISUAL_REASONING_EFFORT_OPTIONS = Object.freeze([
 const codexVisualManagedProviderKeys = Object.freeze([
   "name",
   "base_url",
-  "env_key",
   "wire_api",
   "requires_openai_auth",
 ]);
@@ -3866,7 +3865,6 @@ const codexVisualCreateProvider = (id, value = {}) => ({
   id,
   name: codexVisualReadString(value.name),
   baseUrl: codexVisualReadString(value.base_url),
-  envKey: codexVisualReadString(value.env_key),
   wireApi: codexVisualReadEnum(value.wire_api),
   requiresOpenaiAuth: codexVisualReadOptionalBoolean(value.requires_openai_auth),
   source: codexVisualClone(value) || {},
@@ -3974,7 +3972,6 @@ const codexVisualSerializeState = (state) => {
       .forEach((key) => delete value[key]);
     codexVisualSetString(value, "name", provider.name);
     codexVisualSetString(value, "base_url", provider.baseUrl);
-    codexVisualSetString(value, "env_key", provider.envKey);
     codexVisualSetEnum(value, "wire_api", provider.wireApi);
     codexVisualSetOptionalBoolean(value, "requires_openai_auth", provider.requiresOpenaiAuth);
     providers[provider.id.trim()] = value;
@@ -4225,17 +4222,17 @@ const ConfigEditorPanel = () => {
       [S, y] = c.useState(null),
       [$, w] = c.useState(!1),
       [skillsModalOpen, setSkillsModalOpen] = c.useState(!1),
-      [claudeEditorMode, setClaudeEditorMode] = c.useState("visual"),
+      [claudeEditorMode, setClaudeEditorMode] = c.useState("json"),
       [claudeVisualState, setClaudeVisualState] = c.useState(() =>
         claudeVisualCreateState({}),
       ),
       [claudeVisualError, setClaudeVisualError] = c.useState(""),
-      [openCodeEditorMode, setOpenCodeEditorMode] = c.useState("visual"),
+      [openCodeEditorMode, setOpenCodeEditorMode] = c.useState("json"),
       [openCodeVisualState, setOpenCodeVisualState] = c.useState(() =>
         openCodeVisualCreateState({}),
       ),
       [openCodeVisualError, setOpenCodeVisualError] = c.useState(""),
-      [codexEditorMode, setCodexEditorMode] = c.useState("visual"),
+      [codexEditorMode, setCodexEditorMode] = c.useState("toml"),
       [codexVisualState, setCodexVisualState] = c.useState(() =>
         codexVisualCreateState("", ""),
       ),
@@ -4445,13 +4442,13 @@ const ConfigEditorPanel = () => {
           setOfficialSkillActionId(""),
           setOfficialSkillActionType(""),
           setSkillsModalOpen(!1),
-          setClaudeEditorMode("visual"),
+          setClaudeEditorMode("json"),
           setClaudeVisualState(claudeVisualCreateState({})),
           setClaudeVisualError(""),
-          setOpenCodeEditorMode("visual"),
+          setOpenCodeEditorMode("json"),
           setOpenCodeVisualState(openCodeVisualCreateState({})),
           setOpenCodeVisualError(""),
-          setCodexEditorMode("visual"),
+          setCodexEditorMode("toml"),
           setCodexVisualState(codexVisualCreateState("", "")),
           setCodexVisualError(""));
         return;
@@ -4459,14 +4456,14 @@ const ConfigEditorPanel = () => {
       if (O.platform === "claude") {
         const W = O.content || "{}",
           H = claudeVisualParseContent(W);
-        s(W), f(""), x(""), v(""), h(""), setClaudeEditorMode("visual");
+        s(W), f(""), x(""), v(""), h(""), setClaudeEditorMode("json");
         H.ok
           ? (setClaudeVisualState(H.state), setClaudeVisualError(""))
           : (setClaudeVisualState(null), setClaudeVisualError(H.error));
       } else if (O.platform === "opencode") {
         const W = O.content || "{}",
           H = openCodeVisualParseContent(W);
-        s(W), x(""), v(""), h(""), setOpenCodeEditorMode("visual");
+        s(W), x(""), v(""), h(""), setOpenCodeEditorMode("json");
         H.ok
           ? (setOpenCodeVisualState(H.state), setOpenCodeVisualError(""))
           : (setOpenCodeVisualState(null), setOpenCodeVisualError(H.error));
@@ -4474,7 +4471,7 @@ const ConfigEditorPanel = () => {
         const W = O.configContent || "",
           H = O.envContent || "",
           k = codexVisualParseContent(W, H);
-        v(W), x(H), h(O.authContent || "{}"), s(""), setCodexEditorMode("visual");
+        v(W), x(H), h(O.authContent || "{}"), s(""), setCodexEditorMode("toml");
         k.ok
           ? (setCodexVisualState(k.state), setCodexVisualError(""))
           : (setCodexVisualState(null), setCodexVisualError(k.error));
@@ -5158,7 +5155,6 @@ const ConfigEditorPanel = () => {
         model_supports_reasoning_summaries: "声明当前模型是否支持 reasoning summaries。",
         name: "Provider 展示名称。",
         base_url: "Provider API Base URL。",
-        env_key: "从 .env 读取 API Key 的环境变量名。",
         wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。",
         requires_openai_auth: "Provider 是否需要 OpenAI auth。",
         OPENAI_API_KEY: "OpenAI 或兼容服务 API Key。",
@@ -6517,7 +6513,7 @@ const ConfigEditorPanel = () => {
                 W
                   ? renderCodexSection(
                       "Provider 配置",
-                      "Provider 写入 [model_providers.<id>]，env_key 对应 ~/.codex/.env 中的密钥名。",
+                      "Provider 写入 [model_providers.<id>]，API Key 默认读取 ~/.codex/.env 的 OPENAI_API_KEY。",
                       be.jsxs(be.Fragment, {
                         children: [
                           be.jsxs("div", {
@@ -6545,7 +6541,6 @@ const ConfigEditorPanel = () => {
                               renderCodexField("Provider id", W.id, (L) => updateSelectedCodexProvider({ id: L }), "openai"),
                               renderCodexField("name", W.name, (L) => updateSelectedCodexProvider({ name: L }), "OpenAI"),
                               renderCodexField("base_url", W.baseUrl, (L) => updateSelectedCodexProvider({ baseUrl: L }), "https://api.openai.com/v1"),
-                              renderCodexField("env_key", W.envKey, (L) => updateSelectedCodexProvider({ envKey: L }), "OPENAI_API_KEY"),
                               renderCodexSelect(
                                 "wire_api",
                                 W.wireApi,
@@ -6564,7 +6559,7 @@ const ConfigEditorPanel = () => {
                   : null,
                 renderCodexSection(
                   "~/.codex/.env",
-                  "主配置使用 env_key 引用这里的环境变量；长尾变量可在源码模式直接编辑。",
+                  "Provider 默认读取 OPENAI_API_KEY；长尾变量可在 TOML 源码模式直接编辑。",
                   be.jsxs("div", {
                     style: k,
                     children: [
@@ -6580,6 +6575,36 @@ const ConfigEditorPanel = () => {
           ],
         });
       };
+    const renderFixedEditorModeTabs = (W) =>
+      be.jsx(nh, {
+        className: "config-editor-fixed-mode-switch",
+        size: "small",
+        activeKey: W.find((H) => H.active)?.value || W[0]?.value,
+        items: W.map((H) => ({ key: H.value, label: H.label })),
+        onChange: (H) => {
+          const k = W.find((L) => L.value === H);
+          k?.onClick?.();
+        },
+        tabBarStyle: { margin: 0 },
+        style: {
+          alignSelf: "flex-start",
+          minWidth: "150px",
+        },
+      });
+    const renderConfigEditorCardTitle = (W, H) =>
+      be.jsxs("div", {
+        className: "config-editor-fixed-title",
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: "4px",
+        },
+        children: [
+          be.jsx("div", { children: W }),
+          renderFixedEditorModeTabs(H),
+        ],
+      });
     return O
       ? O.platform === "claude"
         ? be.jsxs("div", {
@@ -6593,32 +6618,62 @@ const ConfigEditorPanel = () => {
             },
             children: [
               be.jsx(aa, {
-                title: `编辑配置: ${O.name}`,
+                title: renderConfigEditorCardTitle(`编辑配置: ${O.name}`, [
+                  {
+                    value: "visual",
+                    label: claudeText("可视化", "Visual"),
+                    active: claudeEditorMode === "visual",
+                    onClick: () => switchClaudeEditorMode("visual"),
+                  },
+                  {
+                    value: "json",
+                    label: "JSON",
+                    active: claudeEditorMode === "json",
+                    onClick: () => switchClaudeEditorMode("json"),
+                  },
+                ]),
                 extra: be.jsxs("div", {
-                  style: { display: "flex", gap: "4px" },
+                  className: "config-editor-fixed-actions",
+                  style: {
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: "4px",
+                  },
                   children: [
-                    be.jsx(xn, {
-                      className: "config-standard-action-button",
-                      size: "small",
-                      onClick: () => w(!0),
-                      children: "MCP(全局)",
+                    be.jsxs("div", {
+                      className: "config-editor-fixed-action-row",
+                      style: {
+                        display: "flex",
+                        gap: "4px",
+                        flexWrap: "wrap",
+                        justifyContent: "flex-end",
+                      },
+                      children: [
+                        be.jsx(xn, {
+                          className: "config-standard-action-button",
+                          size: "small",
+                          onClick: () => w(!0),
+                          children: "MCP(全局)",
+                        }),
+                        be.jsx(xn, {
+                          className: "config-standard-action-button",
+                          size: "small",
+                          onClick: () => setSkillsModalOpen(!0),
+                          children: "Skills",
+                        }),
+                        be.jsx(xn, {
+                          className: "config-standard-action-button",
+                          type: "primary",
+                          size: "small",
+                          icon: be.jsx(Pv, {}),
+                          onClick: saveClaudeSettingsCard,
+                          children: "保存",
+                        }),
+                      ],
                     }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      size: "small",
-	                      onClick: () => setSkillsModalOpen(!0),
-	                      children: "Skills",
-	                    }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      type: "primary",
-	                      size: "small",
-	                      icon: be.jsx(Pv, {}),
-	                      onClick: saveClaudeSettingsCard,
-	                      children: "保存",
-	                    }),
-	                  ],
-	                }),
+                  ],
+                }),
                 style: {
                   flex: 1,
                   display: "flex",
@@ -6674,23 +6729,6 @@ const ConfigEditorPanel = () => {
                                 }),
                               ],
 	                            }),
-                            be.jsxs("div", {
-                              style: { display: "flex", gap: "3px" },
-                              children: [
-                                be.jsx(xn, {
-                                  size: "small",
-                                  type: claudeEditorMode === "visual" ? "primary" : "default",
-                                  onClick: () => switchClaudeEditorMode("visual"),
-                                  children: claudeText("可视化", "Visual"),
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  type: claudeEditorMode === "json" ? "primary" : "default",
-                                  onClick: () => switchClaudeEditorMode("json"),
-                                  children: "JSON",
-                                }),
-                              ],
-                            }),
 	                          ],
 	                        }),
                         claudeVisualError
@@ -6928,32 +6966,62 @@ const ConfigEditorPanel = () => {
               },
               children: [
                 be.jsxs(aa, {
-                  title: `编辑配置: ${O.name}`,
+                  title: renderConfigEditorCardTitle(`编辑配置: ${O.name}`, [
+                    {
+                      value: "visual",
+                      label: "可视化",
+                      active: openCodeEditorMode === "visual",
+                      onClick: () => switchOpenCodeEditorMode("visual"),
+                    },
+                    {
+                      value: "json",
+                      label: "JSON",
+                      active: openCodeEditorMode === "json",
+                      onClick: () => switchOpenCodeEditorMode("json"),
+                    },
+                  ]),
                   extra: be.jsxs("div", {
-                    style: { display: "flex", gap: "4px" },
+                    className: "config-editor-fixed-actions",
+                    style: {
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: "4px",
+                    },
                     children: [
-                      be.jsx(xn, {
-                        className: "config-standard-action-button",
-                        size: "small",
-                        onClick: () => w(!0),
-                        children: "MCP(全局)",
+                      be.jsxs("div", {
+                        className: "config-editor-fixed-action-row",
+                        style: {
+                          display: "flex",
+                          gap: "4px",
+                          flexWrap: "wrap",
+                          justifyContent: "flex-end",
+                        },
+                        children: [
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => w(!0),
+                            children: "MCP(全局)",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => setSkillsModalOpen(!0),
+                            children: "Skills",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            type: "primary",
+                            size: "small",
+                            icon: be.jsx(Pv, {}),
+                            onClick: saveOpenCodeSettingsCard,
+                            children: "保存",
+                          }),
+                        ],
                       }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      size: "small",
-	                      onClick: () => setSkillsModalOpen(!0),
-	                      children: "Skills",
-	                    }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      type: "primary",
-	                      size: "small",
-	                      icon: be.jsx(Pv, {}),
-	                      onClick: saveOpenCodeSettingsCard,
-	                      children: "保存",
-	                    }),
-	                    ],
-	                  }),
+                    ],
+                  }),
                   style: {
                     flex: 1,
                     display: "flex",
@@ -6991,23 +7059,6 @@ const ConfigEditorPanel = () => {
                                   size: "small",
                                   onClick: () => N("opencode-settings"),
                                   children: "查看范例",
-                                }),
-                              ],
-                            }),
-                            be.jsxs("div", {
-                              style: { display: "flex", gap: "3px" },
-                              children: [
-                                be.jsx(xn, {
-                                  size: "small",
-                                  type: openCodeEditorMode === "visual" ? "primary" : "default",
-                                  onClick: () => switchOpenCodeEditorMode("visual"),
-                                  children: "可视化",
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  type: openCodeEditorMode === "json" ? "primary" : "default",
-                                  onClick: () => switchOpenCodeEditorMode("json"),
-                                  children: "JSON",
                                 }),
                               ],
                             }),
@@ -7254,32 +7305,62 @@ const ConfigEditorPanel = () => {
               },
               children: [
                 be.jsxs(aa, {
-                  title: `编辑配置: ${O.name}`,
+                  title: renderConfigEditorCardTitle(`编辑配置: ${O.name}`, [
+                    {
+                      value: "visual",
+                      label: "可视化",
+                      active: codexEditorMode === "visual",
+                      onClick: () => switchCodexEditorMode("visual"),
+                    },
+                    {
+                      value: "toml",
+                      label: "TOML 源码",
+                      active: codexEditorMode === "toml",
+                      onClick: () => switchCodexEditorMode("toml"),
+                    },
+                  ]),
                   extra: be.jsxs("div", {
-                    style: { display: "flex", gap: "4px" },
+                    className: "config-editor-fixed-actions",
+                    style: {
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: "4px",
+                    },
                     children: [
-                      be.jsx(xn, {
-                        className: "config-standard-action-button",
-                        size: "small",
-                        onClick: () => w(!0),
-                        children: "MCP(全局)",
+                      be.jsxs("div", {
+                        className: "config-editor-fixed-action-row",
+                        style: {
+                          display: "flex",
+                          gap: "4px",
+                          flexWrap: "wrap",
+                          justifyContent: "flex-end",
+                        },
+                        children: [
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => w(!0),
+                            children: "MCP(全局)",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => setSkillsModalOpen(!0),
+                            children: "Skills",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            type: "primary",
+                            size: "small",
+                            icon: be.jsx(Pv, {}),
+                            onClick: saveCodexConfigCard,
+                            children: "保存",
+                          }),
+                        ],
                       }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      size: "small",
-	                      onClick: () => setSkillsModalOpen(!0),
-	                      children: "Skills",
-	                    }),
-	                    be.jsx(xn, {
-	                      className: "config-standard-action-button",
-	                      type: "primary",
-	                      size: "small",
-	                      icon: be.jsx(Pv, {}),
-	                      onClick: saveCodexConfigCard,
-	                      children: "保存",
-	                    }),
-	                    ],
-	                  }),
+                    ],
+                  }),
                   style: {
                     flex: 1,
                     display: "flex",
@@ -7327,23 +7408,6 @@ const ConfigEditorPanel = () => {
                               },
                               children:
                                 "主配置: ~/.codex/config.toml；密钥: ~/.codex/.env；auth.json 保持兼容显示，不是主配置。",
-                            }),
-                          ],
-                        }),
-                        be.jsxs("div", {
-                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
-                          children: [
-                            be.jsx(xn, {
-                              size: "small",
-                              type: codexEditorMode === "visual" ? "primary" : "default",
-                              onClick: () => switchCodexEditorMode("visual"),
-                              children: "可视化",
-                            }),
-                            be.jsx(xn, {
-                              size: "small",
-                              type: codexEditorMode === "toml" ? "primary" : "default",
-                              onClick: () => switchCodexEditorMode("toml"),
-                              children: "TOML 源码",
                             }),
                           ],
                         }),

@@ -316,6 +316,7 @@ import {
   feedbackGraphNodeForRun,
   resumeGraphRunRecord,
   retryGraphNodeForRun,
+  skipGraphNodeForRun,
   stopGraphRunRecord,
   type GraphRunControlResult,
   type GraphRunControlSource,
@@ -2735,6 +2736,32 @@ async function retryGraphNodeFromPanel(
   });
 }
 
+async function skipGraphNodeFromPanel(
+  graphRunId: string,
+  nodeId: string,
+): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
+  const lookup = readGraphRunRecord(graphRunId);
+  if (!lookup.run) {
+    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
+  }
+  const control = await skipGraphNodeForRun(lookup.run, nodeId, {
+    source: "panel",
+    reason: "Panel requested Graph node skip and downstream continue.",
+    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
+  });
+  if (!control.ok) {
+    return toGraphPanelControlResult(control, "skip");
+  }
+  const persisted = persistGraphRunControlResult(control);
+  scheduleGraphRunAutoWake(persisted);
+  return tickGraphRunToPauseFromControl(persisted, {
+    source: "panel",
+    reason: "Panel requested Graph node skip and downstream continue.",
+    preferredTargetTabId: null,
+    successKey: "skipStarted",
+  });
+}
+
 async function feedbackGraphNodeFromPanel(
   graphRunId: string,
   nodeId: string,
@@ -2858,7 +2885,7 @@ async function tickGraphRunToPauseFromControl(
 	    source: GraphRunControlSource;
 	    reason: string;
 	    preferredTargetTabId?: string | null;
-	    successKey: "continueStarted" | "retryStarted" | "feedbackStarted" | "approveStarted";
+	    successKey: "continueStarted" | "retryStarted" | "feedbackStarted" | "approveStarted" | "skipStarted";
 	  },
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   const target = await resolveGraphRunPromptTarget(run, options.preferredTargetTabId ?? null);
@@ -2931,7 +2958,7 @@ function createGraphPanelMissingRunResult(
 
 function toGraphPanelControlResult(
   result: GraphRunControlResult,
-  action: "continue" | "retry" | "feedback" | "approve" | "stop",
+  action: "continue" | "retry" | "feedback" | "approve" | "skip" | "stop",
 ): { ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null } {
   if (result.ok) {
     const acceptedMessageKey: Record<typeof action, GraphRuntimeMessageKey> = {
@@ -2939,6 +2966,7 @@ function toGraphPanelControlResult(
       continue: "continueAccepted",
       feedback: "feedbackAccepted",
       retry: "retryAccepted",
+      skip: "skipAccepted",
       stop: "stopAccepted",
     };
     return {
@@ -3045,6 +3073,7 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    not_resumable: "当前状态不可继续",
 	    node_not_found: "节点不存在",
 	    node_not_retryable: "节点当前不可重试",
+	    node_not_skippable: "节点当前不可跳过",
 	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
 	    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
 	    worktree_reset_failed: "Graph worktree 回退失败",
@@ -3058,6 +3087,7 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    not_resumable: "The run is not resumable from its current status.",
 	    node_not_found: "The node was not found.",
 	    node_not_retryable: "The node is not retryable from its current status.",
+	    node_not_skippable: "The node is not skippable from its current status.",
 	    feedback_not_available: "The node has no available upstream checkpoint; direct mode does not support Feedback rollback.",
 	    passed_descendants: "The node has passed descendants and needs a later cascade reset flow.",
 	    worktree_reset_failed: "The Graph worktree could not be reset.",
@@ -3081,6 +3111,8 @@ type GraphRuntimeMessageKey =
   | "retryStarted"
   | "runMissing"
   | "runReadFailed"
+  | "skipAccepted"
+  | "skipStarted"
   | "stopAccepted"
   | "stopRequested"
   | "stopStateOnly"
@@ -3113,6 +3145,8 @@ function graphRuntimeMessage(
     retryStarted: `Graph 节点已重试并继续运行：${graphRunId}`,
     runMissing: `找不到 Graph 运行：${graphRunId}`,
     runReadFailed: `Graph 运行读取失败：${graphRunId}\n${detail}`.trim(),
+    skipAccepted: "节点跳过请求已记录。",
+    skipStarted: `Graph 已跳过阻塞节点并继续下游：${graphRunId}`,
     stopAccepted: "Graph 停止请求已记录。",
     stopRequested: "Graph 运行已由用户请求停止。",
     stopStateOnly: `Graph 运行状态已落盘为 stopped：${graphRunId}。未找到活动 CLI 进程映射；真实 CLI 进程未被确认停止。`,
@@ -3136,6 +3170,8 @@ function graphRuntimeMessage(
     retryStarted: `Graph node retry started and the run continued: ${graphRunId}`,
     runMissing: `Graph run was not found: ${graphRunId}`,
     runReadFailed: `Graph run could not be read: ${graphRunId}\n${detail}`.trim(),
+    skipAccepted: "The node skip request was recorded.",
+    skipStarted: `Graph skipped the blocked node and continued downstream: ${graphRunId}`,
     stopAccepted: "The Graph stop request was recorded.",
     stopRequested: "Graph run stop was requested by the user.",
     stopStateOnly: `Graph run state was persisted as stopped: ${graphRunId}. No active CLI process mapping was found; no real CLI process stop was confirmed.`,
@@ -5390,7 +5426,14 @@ async function maybePromptForGraphBlockedRun(
       ? context.downstreamNodes[0]
       : await pickGraphBlockedDownstreamNode(run, context.downstreamNodes);
     if (downstreamNode) {
-      await openGraphRunPanel({ graphRunId: run.id, nodeId: downstreamNode.id });
+      const result = await skipGraphNodeFromPanel(run.id, context.node.id);
+      if (result.ok) {
+        void vscode.window.showInformationMessage(result.message);
+        await openGraphRunPanel({ graphRunId: run.id, nodeId: downstreamNode.id });
+      } else {
+        void vscode.window.showWarningMessage(result.message);
+      }
+      return result.run ?? run;
     }
     return null;
   }
@@ -5484,16 +5527,16 @@ function buildGraphBlockedPromptLabels(
     return {
       retryCurrent: "重跑当前节点",
       openCurrent: "查看阻塞节点",
-      chooseDownstream: `选择下游节点（${context.downstreamNodes.length}）`,
-      openOnlyDownstream: "进入下游节点",
+      chooseDownstream: `跳过当前并选择下游继续（${context.downstreamNodes.length}）`,
+      openOnlyDownstream: "跳过当前并继续下游",
       openRun: "打开运行图",
     };
   }
   return {
     retryCurrent: "Retry current node",
     openCurrent: "Open blocked node",
-    chooseDownstream: `Choose downstream node (${context.downstreamNodes.length})`,
-    openOnlyDownstream: "Open downstream node",
+    chooseDownstream: `Skip current and choose downstream (${context.downstreamNodes.length})`,
+    openOnlyDownstream: "Skip current and continue downstream",
     openRun: "Open graph",
   };
 }
@@ -5538,7 +5581,7 @@ async function pickGraphBlockedDownstreamNode(
     nodeId: node.id,
   }));
   const selected = await vscode.window.showQuickPick(items, {
-    title: zh ? "选择要进入的 Graph 下游节点" : "Choose Graph downstream node",
+    title: zh ? "选择跳过后继续的 Graph 下游节点" : "Choose Graph downstream node to continue",
     placeHolder: zh ? `Graph 运行 ${run.id}` : `Graph run ${run.id}`,
     ignoreFocusOut: true,
   });

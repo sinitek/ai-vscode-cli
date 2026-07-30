@@ -397,14 +397,24 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.notEqual(openCodeStart, -1, "OpenCode visual editor should exist");
   assert.notEqual(openCodeEnd, -1, "OpenCode visual editor should terminate before Codex state");
   const openCodeVisualSource = source.slice(openCodeStart, openCodeEnd);
+  const openCodeBranchStart = source.indexOf('className: "config-editor-shell config-editor-opencode"');
+  const codexBranchStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
+  assert.notEqual(openCodeBranchStart, -1, "OpenCode editor branch should exist");
+  assert.notEqual(codexBranchStart, -1, "Codex editor branch should exist");
+  const openCodeBranch = source.slice(openCodeBranchStart, codexBranchStart);
   assert.equal(
     (openCodeVisualSource.match(/width: `\$\{CONFIG_PROVIDER_CARD_WIDTH_PX\}px`,\s+minWidth: `\$\{CONFIG_PROVIDER_CARD_MIN_WIDTH_PX\}px`,/g) || []).length,
     2,
     "OpenCode provider and model list cards should use the 60% shared width constants",
   );
   assert.match(
-    source,
-    /config\.json[\s\S]*?children: "查看范例"[\s\S]*?switchOpenCodeEditorMode\("visual"\)/,
+    openCodeBranch,
+    /title: renderConfigEditorCardTitle\(`编辑配置: \$\{O\.name\}`,[\s\S]*?switchOpenCodeEditorMode\("visual"\)[\s\S]*?switchOpenCodeEditorMode\("json"\)[\s\S]*?className: "config-editor-fixed-actions"[\s\S]*?className: "config-editor-fixed-action-row"[\s\S]*?children: "保存"/,
+    "OpenCode mode tabs should stay under the card title before primary actions",
+  );
+  assert.match(
+    openCodeBranch,
+    /config\.json[\s\S]*?children: "查看范例"/,
     "OpenCode example entry should remain beside the config filename",
   );
   assert.match(source, /renderConfigFieldLabel =/);

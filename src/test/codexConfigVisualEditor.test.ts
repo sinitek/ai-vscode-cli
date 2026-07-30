@@ -89,7 +89,7 @@ test("visual parser loads TOML fields, provider mapping, and .env values", () =>
   assert.equal(parsed.state.featuresWebSearch, undefined);
   assert.equal(parsed.state.providers.length, 1);
   assert.equal(parsed.state.providers[0].id, "codex");
-  assert.equal(parsed.state.providers[0].envKey, "OPENAI_API_KEY");
+  assert.equal(parsed.state.providers[0].source.env_key, "OPENAI_API_KEY");
   assert.equal(parsed.state.env.OPENAI_API_KEY, "<你的 api key>");
   assert.equal(parsed.state.env.OPENAI_BASE_URL, "<可选供应商 url>");
 });
@@ -97,7 +97,7 @@ test("visual parser loads TOML fields, provider mapping, and .env values", () =>
 test("serializes visual edits while preserving unknown TOML and .env fields", () => {
   const utils = loadVisualUtils();
   let state = utils.createState(
-    `model = "old"\ncustom_root = "keep"\n\n[model_providers.gateway]\nname = "Gateway"\nbase_url = "https://old.example/v1"\ncustom_provider = "keep"\n\n[experimental]\nflag = true\n`,
+    `model = "old"\ncustom_root = "keep"\n\n[model_providers.gateway]\nname = "Gateway"\nbase_url = "https://old.example/v1"\nenv_key = "OPENAI_API_KEY"\ncustom_provider = "keep"\n\n[experimental]\nflag = true\n`,
     `CUSTOM_ENV=keep\nOPENAI_API_KEY=old-key\n`,
   );
   state = utils.updateState(state, {
@@ -110,7 +110,6 @@ test("serializes visual edits while preserving unknown TOML and .env fields", ()
   });
   state = utils.updateProvider(state, "gateway", {
     baseUrl: "https://new.example/v1",
-    envKey: "OPENAI_API_KEY",
     wireApi: "responses",
   });
   state = utils.updateEnv(state, "OPENAI_API_KEY", "new-key");
@@ -298,14 +297,19 @@ test("editor exposes visual and TOML source modes with .env editor", () => {
   assert.match(codexBranch, /主配置: ~\/\.codex\/config\.toml/);
   assert.match(
     codexBranch,
-    /config\.toml \/ \.env[\s\S]*?children: "查看范例"[\s\S]*?switchCodexEditorMode\("visual"\)/,
-    "Codex example entry should sit beside the config filename and before mode controls",
+    /title: renderConfigEditorCardTitle\(`编辑配置: \$\{O\.name\}`,[\s\S]*?switchCodexEditorMode\("visual"\)[\s\S]*?switchCodexEditorMode\("toml"\)[\s\S]*?className: "config-editor-fixed-actions"[\s\S]*?className: "config-editor-fixed-action-row"[\s\S]*?children: "保存"/,
+    "Codex mode tabs should stay under the card title before primary actions",
+  );
+  assert.match(
+    codexBranch,
+    /config\.toml \/ \.env[\s\S]*?children: "查看范例"/,
+    "Codex example entry should remain beside the config filename",
   );
   assert.match(codexBranch, /switchCodexEditorMode\("visual"\)/);
   assert.match(codexBranch, /switchCodexEditorMode\("toml"\)/);
   assert.match(codexBranch, /codexEditorMode === "visual" \? renderCodexVisualEditor\(\) : null/);
   assert.match(codexBranch, /display: codexEditorMode === "toml" \? "flex" : "none"/);
-  assert.match(codexBranch, /children: "TOML 源码"/);
+  assert.match(codexBranch, /label: "TOML 源码"/);
   assert.match(codexBranch, /children: "配置文件路径: ~\/\.codex\/\.env"/);
   assert.match(codexBranch, /value: b/);
   assert.match(codexBranch, /placeholder: "请输入 \.env 配置"/);
@@ -355,9 +359,11 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /renderCodexTextArea\([\s\S]*?"developer_instructions"/);
   assert.match(source, /web_search[\s\S]*?\["", "disabled", "cached", "indexed", "live"\]\.map/);
   assert.match(source, /wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。"/);
+  assert.doesNotMatch(source, /env_key: "从 \.env 读取 API Key 的环境变量名。"/);
   const codexStart = source.indexOf("renderCodexVisualEditor = () =>");
   const codexEnd = source.indexOf("\n    return O", codexStart);
   const codexVisualSource = source.slice(codexStart, codexEnd);
+  assert.doesNotMatch(codexVisualSource, /renderCodexField\("env_key"/);
   assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("features\.web_search"/);
   assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("tools\.web_search"/);
 });

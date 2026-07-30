@@ -279,11 +279,11 @@ export function getGraphNodeBlockers(
       });
       return;
     }
-    if (dependency.status !== "passed") {
+    if (!isGraphStructuralDependencySatisfied(dependency)) {
       blockers.push({
         nodeId: node.id,
         reason: "dependency_not_passed",
-        message: `Graph node ${node.id} waits for dependency ${dependencyNodeId} to pass.`,
+        message: `Graph node ${node.id} waits for dependency ${dependencyNodeId} to pass or be skipped.`,
         dependencyNodeId,
         value: dependency.status,
       });
@@ -504,6 +504,10 @@ function getGraphNodeStatusBlockers(
   }
 
   return getGraphSleepBlockers(node, options);
+}
+
+function isGraphStructuralDependencySatisfied(node: GraphNodeRecord): boolean {
+  return node.status === "passed" || node.status === "skipped";
 }
 
 function getGraphSleepBlockers(

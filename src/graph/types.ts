@@ -107,6 +107,7 @@ export const GRAPH_EVENT_TYPES = [
   "node.completed",
   "node.failed",
   "node.blocked",
+  "node.skipped",
   "node.sleeping",
   "human_gate.waiting",
   "human_gate.approved",

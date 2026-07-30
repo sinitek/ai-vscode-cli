@@ -84,6 +84,23 @@ test("marks nodes ready only after all dependencies have passed and reports depe
   assert.equal(getGraphNodeBlockers(run, "missing")[0]?.reason, "missing_dependency");
 });
 
+test("treats skipped structural dependencies as continuable without satisfying if_pass edges", () => {
+  const skipped = createNode({ id: "skipped", title: "Skipped", status: "skipped" });
+  const structuralTarget = readyImplement("structural-target", { dependsOn: ["skipped"] });
+  const passTarget = readyImplement("pass-target");
+  const run = createRun([skipped, structuralTarget, passTarget], [{
+    id: "edge-pass-skipped",
+    from: "skipped",
+    to: "pass-target",
+    kind: "if_pass",
+    active: true,
+  }]);
+
+  assert.deepEqual(computeGraphReadyNodeIds(run), ["structural-target"]);
+  assert.deepEqual(getGraphNodeBlockers(run, "structural-target"), []);
+  assert.equal(getGraphNodeBlockers(run, "pass-target")[0]?.reason, "if_pass_not_satisfied");
+});
+
 test("allows failed nodes to retry before maxAttempts and blocks exhausted failed nodes", () => {
   const retryable = readyImplement("retryable", { status: "failed", attempts: 1, maxAttempts: 2 });
   const exhausted = readyImplement("exhausted", { status: "failed", attempts: 2, maxAttempts: 2 });

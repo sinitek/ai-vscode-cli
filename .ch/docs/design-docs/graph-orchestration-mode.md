@@ -1,7 +1,7 @@
 # Graph 编排模式详细设计
 
 - 状态：active（Phase 2 恢复与交互增强已落地）
-- 日期：2026-07-27
+- 日期：2026-07-30
 - 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`
 - 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 - 相关目录：`src/graph/`、`src/extension.ts`、`src/sessionMessageActions.ts`、`src/sessionMessageHandlers.ts`、`src/panelDiagnostics.ts`、`src/webview/`、`src/i18n.ts`
@@ -29,7 +29,7 @@
 - GraphRunPanel 的边中段显示短目的标签：优先从 edge `label` / `condition` / `conditionExpression.description` / 反馈 metadata 说明取义，缺失时展示 edge kind 短标签；可见标签会自动分段为最多两行，单段尽量不超过 4 个字/符，最终可见短标签不超过 8 个字/符，完整长说明继续保留在 SVG title、aria / data 属性和 accessible edge list。已按调度条件经过的边使用 VS Code 主题蓝色显示，未经过边保持原样。节点也会按入度/出度/条件出边给出 Start / Decision / End / Step 轻量语义 chip，用于视觉提示开始、判断和结束，不改变真实 DAG 结构。
 - 用户可在 `GraphRunPanel` 内拖拽节点微调当前 run 的可视布局，也可在 DAG 背景上按住鼠标左键拖动画布视口平移；节点拖拽会按当前 zoom 比例换算坐标，并按同一 12-port 规则同步重算 SVG edge path、端口属性和画布尺寸。手动节点位置和缩放值通过 VS Code webview state 按 `graphRunId` 本地保存，刷新/重渲染后可恢复；缩放下拉固定为 25%、50%、75%、100%、125%，默认 75%；重置能力保留为紧凑控件，用于清除当前 run 的手动节点位置回到 dagre 自动布局，不重置 zoom，也不改变 DAG 结构或调度语义。
 - `openGraphRun` 支持指定 `graphRunId` / `nodeId` 打开目标 run 和初始选中节点；未指定 run 时会按当前 workspace / CLI 从持久化 store 找最近 Graph run。坏 store 文件按 diagnostics 非阻塞展示，可读 run 仍可打开。
-- `GraphRunPanel` 只渲染当前真实可用且已接通的控制：run 级 Continue / “我要说话” / Stop，node 级 Retry failed/blocked node、Feedback rollback / 回退上游返工、Approve human_gate。Graph 节点进入 failed/blocked 并使 run 进入 `needs-review` 时，宿主会弹出 modal 展示阻塞节点和 `lastError`，并提供“重跑当前节点”“查看阻塞节点”“进入/选择下游节点”“打开运行图”；当阻塞节点有多个下游节点时，用户会先通过 quick pick 选择要进入的下游节点，随后打开 GraphRunPanel 并选中该节点。Graph 进入需要人工审批的 `human_gate` 时会尽量自动打开/刷新 GraphRunPanel 并选中待审批节点；Graph 系统消息 action 可显示“请你审批，点击这里”，点击后打开对应 run/node；单击节点打开的详情弹窗也提供同一路径的审批 CTA。用户通过“我要说话”提交的补充消息会写入 Graph run 的 `supplementalRequirements`、主沟通文件和 events，并注入后续节点 prompt；该能力不承诺打断已经运行中的子节点。GraphRunPanel Stop 和主 Graph tab 的 AI 对话“中止”都进入同一 run stop 控制链。Graph UI 不再在画布 notice 或节点详情弹窗中常驻展示 Stop 能力边界说明；具体 Stop 操作结果或错误仍通过运行消息/状态反馈表达。操作后刷新面板并保留可用 selected node。
+- `GraphRunPanel` 只渲染当前真实可用且已接通的控制：run 级 Continue / “我要说话” / Stop，node 级 Retry failed/blocked node、Feedback rollback / 回退上游返工、Approve human_gate。Graph 节点进入 failed/blocked 并使 run 进入 `needs-review` 时，宿主会弹出 modal 展示阻塞节点和 `lastError`，并提供“重跑当前节点”“查看阻塞节点”“跳过当前并继续下游”“打开运行图”；当阻塞节点有多个下游节点时，用户会先通过 quick pick 选择跳过后要继续的下游节点，宿主把当前阻塞节点写成 `skipped`、记录 `node.skipped` 事件、继续 tick，并打开 GraphRunPanel 选中目标下游节点。Graph 进入需要人工审批的 `human_gate` 时会尽量自动打开/刷新 GraphRunPanel 并选中待审批节点；Graph 系统消息 action 可显示“请你审批，点击这里”，点击后打开对应 run/node；单击节点打开的详情弹窗也提供同一路径的审批 CTA。用户通过“我要说话”提交的补充消息会写入 Graph run 的 `supplementalRequirements`、主沟通文件和 events，并注入后续 Graph 节点 prompt；该能力不承诺打断已经运行中的子节点。GraphRunPanel Stop 和主 Graph tab 的 AI 对话“中止”都进入同一 run stop 控制链。Graph UI 不再在画布 notice 或节点详情弹窗中常驻展示 Stop 能力边界说明；具体 Stop 操作结果或错误仍通过运行消息/状态反馈表达。操作后刷新面板并保留可用 selected node。
 - 节点详情弹窗已有证据区，会聚合当前选中节点的 `artifactRef`、`communicationFile`、`acceptance[].evidenceRef`、节点事件和 `finalAnswer.evidence` 引用；证据区展示引用与摘要，不读取证据文件正文。
 - `GraphAutoWakeScheduler` 会在扩展激活和 workspace 变化时恢复 sleeping Graph run 的定时器；到期后复用持久化 run 继续 tick 并刷新已打开面板。
 - 新增用户可见文案已进入现有 Webview / 后端 i18n 路径，中英文覆盖已通过相关测试。
@@ -38,7 +38,7 @@
 
 - 尚无图编辑器、模板库、运行前人工调整、DAG 结构编辑、边/节点编辑或图 diff；当前节点拖拽、背景拖拽平移、12-port 连线、短边目的标签、Start/Decision/End/Step 语义 chip 和按节点类型着色的矩形卡片都仅用于调整/增强 GraphRunPanel 内当前 run 的视觉表达，不修改 DAG 结构、调度语义或节点类型体系。
 - 尚无完整 human gate 表单、审批说明采集、驳回原因、多步骤人工工作流或多人审批；当前只支持已处于可批准状态的 `human_gate` 节点按钮/CTA 推进。
-- Retry 覆盖 failed / blocked 等可恢复节点：direct 模式没有 checkpoint，只会清理目标节点的运行状态并在当前工作区状态上重跑节点，不承诺撤销该节点上一次已经写入的文件改动。阻塞 modal 中的“重跑当前节点”复用同一 Retry 控制链，成功后立即继续 tick；若 Retry 因终态 run、不可重试状态或已有 passed 下游而被拒绝，会显示结构化拒绝原因。历史 worktree run 若节点记录了 `baseCommit`，宿主仍可在该独立 worktree 内 `reset --hard` 到节点执行前 checkpoint 并清理未跟踪文件，然后把节点重置为 pending。验证类节点（test/review/merge/human_gate/summary）failed 或 blocked 时，面板只在历史 worktree/baseCommit 可用时提供 Feedback rollback；direct 模式不提供 Feedback rollback，需要用户或后续节点在当前工作区中处理返工范围。
+- Retry 覆盖 failed / blocked 等可恢复节点：direct 模式没有 checkpoint，只会清理目标节点的运行状态并在当前工作区状态上重跑节点，不承诺撤销该节点上一次已经写入的文件改动。阻塞 modal 中的“重跑当前节点”复用同一 Retry 控制链，成功后立即继续 tick；若 Retry 因终态 run、不可重试状态或已有 passed 下游而被拒绝，会显示结构化拒绝原因。阻塞 modal 的“跳过当前并继续下游”会把当前 failed/blocked 节点写成 `skipped` 并继续普通结构下游；`skipped` 不等同于 `passed`，不会满足 `if_pass` 或 `human_approved` 条件，最终 summary 仍应把 skipped 节点列为未完成/未验证。历史 worktree run 若节点记录了 `baseCommit`，宿主仍可在该独立 worktree 内 `reset --hard` 到节点执行前 checkpoint 并清理未跟踪文件，然后把节点重置为 pending。验证类节点（test/review/merge/human_gate/summary）failed 或 blocked 时，面板只在历史 worktree/baseCommit 可用时提供 Feedback rollback；direct 模式不提供 Feedback rollback，需要用户或后续节点在当前工作区中处理返工范围。
 - 新 Graph run 没有完成态合回步骤，完成态表示改动已直接写入当前工作区。历史 worktree run 的合回逻辑仍保留：目标工作区不相关 dirty 内容可与 Graph diff 同时存在，由 Git 原生 merge 检查决定是否能安全应用；合回不会自动提交或自动解决冲突；成功合回后会清理 Graph worktree、空的 `graph-worktrees` 父目录和对应 Graph 分支，清理失败会进入 `needs-review`。
 - Stop 至少保证 Graph run / node 状态和事件落盘为 stopped；主 Graph tab 的 AI 对话“中止”和 GraphRunPanel Stop 共享该语义。只有 active CLI run 已携带 `graphRunId` / `graphNodeId` 映射时才会发送真实 CLI 停止请求，且真实进程是否退出取决于底层 CLI 响应；缺少映射时明确提示未确认真实进程停止。该边界是实现和文档事实，不再作为 Graph UI 固定说明常驻展示。
 - 尚未提供模板选择、AI 规划图生成前的用户确认、运行中即时打断重规划、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、证据文件正文读取、自动生成修复分支或可复用流程资产。
@@ -50,11 +50,11 @@
 | 节点 | 已完成基础能力 | `GraphNodeRecord`、节点类型、状态生命周期、communication file、artifact/checkpoint、面板节点展示已落地；GraphRunPanel 视觉层会按 `node.kind` 使用 VS Code 主题变量映射不同 tone，统一渲染矩形类型卡片，提示 Start / Decision / End / Step，并渲染 12 个连接点 | 尚无图编辑器、模板库和节点级表单化配置；类型 tone、语义 chip 和端口点只是视觉提示 |
 | 边 | 部分完成 | `GraphEdgeRecord`、`GraphPlannedEdgeSpec`、planner materialize、可视 DAG 边、`depends_on` / `if_pass` / `if_fail` / `human_approved` / `evidence_for` / `conflicts_with` 类型已入模；edge 可保留 `label`、`conditionExpression`、`metadata`；GraphRunPanel 会显示分段短边目的标签并基于 12-port 自动选择端口；active `review_feedback` / `if_fail` 可作为验证失败回退上游节点的优先目标 | 证据边和冲突边主要是记录/可视化信号；反馈边已有最小 rollback 控制，但尚无边编辑器、自动条件重规划或可视反馈路径编辑 |
 | 条件 | 部分完成 | Scheduler 已识别 active `if_pass` / `if_fail` 入边，并支持有限结构化 `conditionExpression` 求值：`source_status`、`source_acceptance`、`manual`；custom 条件会保守阻塞并输出可读 blocker | 尚无复杂布尔条件编辑器、数据谓词、运行中自动重规划或条件边 UI 编辑 |
-| 依赖 | 已完成基础能力 | `dependsOn` 与 active `depends_on` 边共同决定 ready set；缺失依赖、未通过依赖会进入 blocker；Feedback rollback 会沿依赖图重置上游返工节点及下游节点 | 尚无跨图模板依赖、外部资源依赖和可编辑 descendant reset 预览 |
+| 依赖 | 已完成基础能力 | `dependsOn` 与 active `depends_on` 边共同决定 ready set；缺失依赖、未通过且未 skipped 的依赖会进入 blocker；人工跳过的 `skipped` 结构依赖可继续普通下游，但不满足 `if_pass` / `human_approved`；Feedback rollback 会沿依赖图重置上游返工节点及下游节点 | 尚无跨图模板依赖、外部资源依赖和可编辑 descendant reset 预览 |
 | 并发 | 已完成基础能力 | Scheduler 选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 6)` 并行派发独立节点 tab | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
 | 冲突组 | 已完成基础能力 | `conflictGroup`、`writeFiles` 路径重叠和未声明写入范围可阻止同批/运行中冲突 | 只能做声明式与路径级冲突判断，尚无语义冲突检测、自动合并策略或冲突解释 UI |
 | 人工关卡 | 部分完成 | `human_gate` 节点可进入 waiting/ready，GraphRunPanel 提供 Approve 推进；需要审批时尽量自动打开/刷新面板并选中待审批节点，系统消息和节点详情可显示“请你审批，点击这里” | 尚无审批表单、风险说明采集、驳回原因、多人审批和人工步骤产物采集 |
-| 重试 / 返工 | 部分完成 | failed/blocked 节点可 Retry；阻塞 modal 会显示当前阻塞原因，并支持直接重跑当前节点或进入/选择下游节点查看；新 Graph run 使用 direct 模式，只在当前工作区状态上重跑节点，不自动撤销已写文件；历史 worktree run 在 baseCommit 可用时仍可回滚到节点前 checkpoint 并重新调度；验证类节点只在历史 worktree/baseCommit 可用时 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点及下游写入 `rework` | direct 模式无自动回滚；下游选择只打开节点详情，不修改 DAG 或跳过依赖；尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
+| 重试 / 返工 | 部分完成 | failed/blocked 节点可 Retry；阻塞 modal 会显示当前阻塞原因，并支持直接重跑当前节点，或把当前阻塞节点标记为 `skipped` 后继续普通结构下游；新 Graph run 使用 direct 模式，只在当前工作区状态上重跑节点，不自动撤销已写文件；历史 worktree run 在 baseCommit 可用时仍可回滚到节点前 checkpoint 并重新调度；验证类节点只在历史 worktree/baseCommit 可用时 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点及下游写入 `rework` | direct 模式无自动回滚；skip 不撤销当前节点已写文件、不满足条件通过边或人工批准；尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
 | 睡眠 | 已完成基础能力 | `sleep` 节点支持 `wakeAt`、sleeping 状态、auto wake 恢复和到期继续 tick | 尚无日历式 UI、外部守护进程、跨设备唤醒和复杂等待条件 |
 | 完成证据 | 部分完成 | 节点 `## JSON`、communication file、events.jsonl、artifactRef、summary finalAnswer、`executionCwd` 和完成态 execution event 构成基础证据链；历史 worktree run 可能额外保留 checkpoint commit 与 merge-back event；节点详情已有 Evidence/证据区聚合选中节点证据引用、事件和最终证据 | direct 模式无 checkpoint/merge-back 证据；证据区不读取文件正文；尚无证据边聚合视图、验收覆盖率检查和证据缺失自动阻断矩阵 |
 | 节点全图感知 | 已完成基础能力 | 后续派发节点的 prompt 会包含全图拓扑、当前位置、上下游链路、并发/冲突提示和下游职责边界 | 已运行中的节点不会被即时打断重注入；后续仍可做运行中 replan / prompt diff / 用户确认 |
@@ -317,7 +317,7 @@ Scheduler 每次从持久化状态读取图并计算 ready nodes：
 - `passed`：产物满足 acceptance，宿主读取节点 communication file 的 `## JSON` 后更新节点状态；worktree 模式会创建 checkpoint commit，direct 模式只记录 execution cwd；随后激活后续 `if_pass` 边。
 - `failed`：运行失败但可重试，激活 retry 或 `if_fail` 边。
 - `blocked`：需要用户或上游设计变更，Graph 进入 `needs-review` 或等待 human gate。
-- `skipped`：条件边未命中。
+- `skipped`：条件边未命中，或用户在阻塞 modal 中明确跳过 failed/blocked 节点以继续普通结构下游；不等同于 `passed`。
 
 ## CLI 适配
 
@@ -406,7 +406,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 - 已在 GraphRunPanel 上新增可控的恢复与 mutation 能力，并保持不可用操作不渲染。
 - 已支持从持久化 store 打开指定 run 或当前 workspace / CLI 最近 run，读取坏 store 时以 diagnostics 非阻塞降级。
 - 已支持 sleeping / needs-review / error run 的 Continue / Resume，复用现有 Graph executor / `runGraphPrompt` 安全路径继续 tick，不新建 run。
-- 已支持最小节点 mutation：Retry failed/blocked node、Feedback rollback failed/blocked 验证类节点到上游 checkpoint、Approve human_gate、Stop run，并在操作后刷新面板、尽量保留 selected node；failed/blocked 导致 `needs-review` 时会弹出阻塞原因和下一步选择，支持重跑当前阻塞节点、查看阻塞节点、进入/选择下游节点；`human_gate` 需要审批时会尽量自动打开/刷新面板并选中节点，系统消息和详情区提供“请你审批，点击这里”入口。
+- 已支持最小节点 mutation：Retry failed/blocked node、Skip failed/blocked node 后继续普通结构下游、Feedback rollback failed/blocked 验证类节点到上游 checkpoint、Approve human_gate、Stop run，并在操作后刷新面板、尽量保留 selected node；failed/blocked 导致 `needs-review` 时会弹出阻塞原因和下一步选择，支持重跑当前阻塞节点、查看阻塞节点、跳过当前并继续下游；`human_gate` 需要审批时会尽量自动打开/刷新面板并选中节点，系统消息和详情区提供“请你审批，点击这里”入口。
 - 已支持结构化条件/边基础字段：planner/store 保留 edge `label`、`conditionExpression`、`metadata`，scheduler 对支持的条件表达式求值并输出可读 blocker，prompt 注入边语义、metadata 和返工记录。
 - 已支持证据区：节点详情聚合当前节点 artifact、沟通文件、验收 evidenceRef、事件与 finalAnswer evidence 引用，但不读取外部证据文件正文。
 - 已支持 Graph auto wake：扩展激活或 workspace 变化时恢复 sleeping run 定时器，到期后 resume/tick。

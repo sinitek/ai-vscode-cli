@@ -313,7 +313,8 @@ function formatGraphEdgeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
 
 function formatGraphEdgeSemanticsLines(): string[] {
   return [
-    "- depends_on / human_approved 是结构性前置；上游未 passed 时目标节点不可执行。",
+    "- depends_on 是结构性前置；上游 passed 或被人工 skipped 后目标节点才可继续执行。",
+    "- human_approved 仍要求上游人工关卡 passed；skipped 不等同于批准。",
     "- if_pass / if_fail 是条件路径；scheduler 会按上游状态和受支持的 conditionExpression 判定是否可通行，inactive edge 会阻塞并提示需要重规划或人工处理。",
     "- review_feedback / if_fail 可作为返工路径；只有历史 worktree run 且存在 checkpoint 时，Feedback rollback 才能回退到上游节点；direct run 需要在当前工作区手动控制返工范围。",
     "- evidence_for 是证据追踪边，不单独解锁调度；summary/review 节点应引用其 metadata.evidenceRef 或相关 artifact。",

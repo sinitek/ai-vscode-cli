@@ -1027,9 +1027,41 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /className: "config-editor-shell config-editor-claude"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-opencode"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-codex"/);
+  assert.match(editorPanel, /\[claudeEditorMode, setClaudeEditorMode\] = c\.useState\("json"\)/);
+  assert.match(editorPanel, /\[openCodeEditorMode, setOpenCodeEditorMode\] = c\.useState\("json"\)/);
+  assert.match(editorPanel, /\[codexEditorMode, setCodexEditorMode\] = c\.useState\("toml"\)/);
+  assert.match(editorPanel, /O\.platform === "claude"[\s\S]*setClaudeEditorMode\("json"\)/);
+  assert.match(editorPanel, /O\.platform === "opencode"[\s\S]*setOpenCodeEditorMode\("json"\)/);
+  assert.match(editorPanel, /setCodexEditorMode\("toml"\)/);
   assert.match(editorPanel, /switchClaudeEditorMode\("visual"\)/);
   assert.match(editorPanel, /switchOpenCodeEditorMode\("json"\)/);
   assert.match(editorPanel, /switchCodexEditorMode\("toml"\)/);
+  assert.match(editorPanel, /const renderFixedEditorModeTabs =/);
+  assert.equal(
+    (editorPanel.match(/className: "config-editor-fixed-actions"/g) || []).length,
+    3,
+    "each config editor should render a fixed action area",
+  );
+  assert.match(editorPanel, /const renderConfigEditorCardTitle =/);
+  assert.equal(
+    (editorPanel.match(/title: renderConfigEditorCardTitle\(/g) || []).length,
+    3,
+    "each config editor should render mode tabs under the card title",
+  );
+  assert.equal(
+    (editorPanel.match(/renderFixedEditorModeTabs\(\[/g) || []).length,
+    0,
+    "mode tabs should not render from the right-side action area",
+  );
+  assert.match(editorPanel, /className: "config-editor-fixed-title"/);
+  assert.match(editorPanel, /children: \[[\s\S]*?be\.jsx\("div", \{ children: W \}\)[\s\S]*?renderFixedEditorModeTabs\(H\)/);
+  assert.match(editorPanel, /be\.jsx\(nh, \{[\s\S]*?className: "config-editor-fixed-mode-switch"/);
+  assert.match(editorPanel, /activeKey: W\.find\(\(H\) => H\.active\)\?\.value \|\| W\[0\]\?\.value/);
+  assert.match(editorPanel, /items: W\.map\(\(H\) => \(\{ key: H\.value, label: H\.label \}\)\)/);
+  assert.match(editorPanel, /onChange: \(H\) => \{[\s\S]*?const k = W\.find\(\(L\) => L\.value === H\);[\s\S]*?k\?\.onClick\?\.\(\);/);
+  assert.match(editorPanel, /tabBarStyle: \{ margin: 0 \}/);
+  assert.match(editorPanel, /alignSelf: "flex-start"/);
+  assert.doesNotMatch(editorPanel, /"aria-pressed":/);
 
   assert.match(layout, /CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY = "\(max-width: 920px\)"/);
   assert.match(layout, /className: "config-mobile-directory-button"/);

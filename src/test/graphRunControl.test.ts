@@ -13,6 +13,7 @@ import {
   getGraphRunControlState,
   resumeGraphRunRecord,
   retryGraphNodeForRun,
+  skipGraphNodeForRun,
   stopGraphRunRecord,
 } from "../graph/graphRunControl";
 import {
@@ -178,6 +179,59 @@ test("retries failed and exhausted blocked nodes while preserving attempt histor
     assert.equal(getNode(retryExhausted.run, "exhausted").attempts, 2);
     assert.equal(getNode(retryExhausted.run, "exhausted").maxAttempts, 3);
     assert.deepEqual(readGraphEvents(run.eventsFile).map((event) => event.type), ["node.retry_requested"]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test("skips blocked nodes so downstream work can continue without marking them passed", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const blocked = createNode({
+      id: "blocked",
+      kind: "review",
+      status: "blocked",
+      ownerRole: "reviewer",
+      attempts: 1,
+      maxAttempts: 1,
+      startedAt: 500,
+      completedAt: 900,
+      lastError: "Needs operator decision.",
+      unlocks: ["summary"],
+    });
+    const summary = createNode({
+      id: "summary",
+      kind: "summary",
+      status: "pending",
+      dependsOn: ["blocked"],
+    });
+    const run = createRun(baseDir, [blocked, summary], [], { activeNodeIds: ["blocked"] });
+
+    const skipped = await skipGraphNodeForRun(run, "blocked", {
+      now: () => 1_200,
+      source: "panel",
+      reason: "User chose to skip and continue downstream.",
+    });
+
+    assert.equal(skipped.ok, true);
+    assert.equal(skipped.changed, true);
+    assert.equal(skipped.run.status, "running");
+    assert.deepEqual(skipped.changedNodeIds, ["blocked"]);
+    assert.deepEqual(skipped.run.activeNodeIds, []);
+    assert.equal(getNode(skipped.run, "blocked").status, "skipped");
+    assert.equal(getNode(skipped.run, "blocked").completedAt, 1_200);
+    assert.equal(getNode(skipped.run, "blocked").lastError, "User chose to skip and continue downstream.");
+    assert.equal(getNode(skipped.run, "summary").status, "pending");
+    assert.deepEqual(readGraphEvents(skipped.run.eventsFile).map((event) => event.type), ["node.skipped"]);
+
+    const passedDescendantRun = createRun(path.join(baseDir, "passed-descendant"), [
+      createNode({ id: "upstream", status: "blocked", attempts: 1 }),
+      createNode({ id: "downstream", status: "passed", dependsOn: ["upstream"] }),
+    ]);
+    const rejected = await skipGraphNodeForRun(passedDescendantRun, "upstream");
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.reason, "passed_descendants");
+    assert.deepEqual(rejected.blockedNodeIds, ["downstream"]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }

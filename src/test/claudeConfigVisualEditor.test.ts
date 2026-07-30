@@ -315,10 +315,20 @@ test("official example and editor expose visual plus JSON modes", () => {
   assert.match(source, /switchClaudeEditorMode\("json"\)/);
   assert.match(source, /renderClaudeVisualEditor\(\)/);
   assert.match(source, /claudeText\("可视化", "Visual"\)/);
+  const claudeStart = source.indexOf('className: "config-editor-shell config-editor-claude"');
+  const openCodeStart = source.indexOf('className: "config-editor-shell config-editor-opencode"');
+  assert.notEqual(claudeStart, -1, "Claude editor branch should exist");
+  assert.notEqual(openCodeStart, -1, "OpenCode editor branch should exist");
+  const claudeBranch = source.slice(claudeStart, openCodeStart);
   assert.match(
-    source,
-    /~\/\.claude\/settings\.json[\s\S]*?children: "查看范例"[\s\S]*?switchClaudeEditorMode\("visual"\)/,
-    "Claude example entry should sit beside the config filename and before mode controls",
+    claudeBranch,
+    /title: renderConfigEditorCardTitle\(`编辑配置: \$\{O\.name\}`,[\s\S]*?switchClaudeEditorMode\("visual"\)[\s\S]*?switchClaudeEditorMode\("json"\)[\s\S]*?className: "config-editor-fixed-actions"[\s\S]*?className: "config-editor-fixed-action-row"[\s\S]*?children: "保存"/,
+    "Claude mode tabs should stay under the card title before primary actions",
+  );
+  assert.match(
+    claudeBranch,
+    /~\/\.claude\/settings\.json[\s\S]*?children: "查看范例"/,
+    "Claude example entry should remain beside the config filename",
   );
   assert.match(source, /Default model family mapping/);
   assert.match(source, /Advanced JSON mode preserves every Claude Code field/);
