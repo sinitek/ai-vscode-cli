@@ -18,6 +18,7 @@
 - Codex / Claude 交互式续接会话
 - 多标签会话并行管理
 - Prompt 上下文增强、附件上传、任务流观察
+- P0 性能与内存硬化：停止/停用可靠收口、OpenCode 输出有界、Run Stream/Assistant delta 低复杂度渲染、附件上传双端限制
 - Graph 模式运行内核、可视 DAG 面板与恢复交互
 - 插件侧长期记忆开关与本地记忆层
 - 规则管理、模型管理、思考模式、配置中心
@@ -66,6 +67,7 @@
 - Loop 主任务在已有远端 OpenCode session 的首次无 provider-error 空成功响应后，会在下一次 hidden retry 启动新 session 并重新发送完整主任务 prompt；捕获新 `sessionID` 后保留旧会话历史、同步 tab 和任务记录到新 session。该恢复不会用于普通任务、Loop 子任务、含 provider JSON error 的响应，也不会在同一运行内重复 rollover。
 - OpenCode 所有任务路径默认注入官方 `--auto`，自动批准仍处于 `ask` 的权限请求；默认 `external_directory: ask` 因而支持跨工作目录读写。插件不把 runtime permission 强制覆盖为 `allow`，用户配置、agent 配置及 OpenCode 默认规则中的显式 `deny` 仍优先，包括 `.env` 等受显式拒绝规则保护的文件。
 - OpenCode one-shot 只保留 60 秒启动 watchdog：只有启动后完全没有父 JSONL、error/status/progress 或子代理会话活动才进入 hidden retry；收到首个父事件或子代理更新后立即解除。OpenCode 父 `run --format json` 不转发内部子代理增量时，插件先启动受管 `opencode serve` 并通过 `/global/health` 确认就绪，再以 `run --attach` 执行父任务；公开 SSE 事件触发子会话消息快照刷新，并每 60 秒全量补捞 children/message/status。每个当前尝试新建的子 session 固定更新一个独立 assistant 气泡；多个子代理按 session ID 隔离，完成、失败或中断原位更新。服务启动失败时显示一次监控降级状态但不阻断父任务，SSE 重连指数退避到最长 60 秒；任务结束、报错或停止会清理服务、订阅和轮询，不读取 OpenCode 私有 SQLite。
+- 性能与内存硬化：用户停止、扩展停用或 reload 时会统一阻止新任务并尽力停止主进程、并行进程、交互运行和受管 OpenCode server；OpenCode one-shot / parallel / interactive raw stdout/stderr 只保留有界 tail，JSONL 未完成行限制为 64 KiB，activity 检测使用增量 tracker 避免按 chunk 重扫完整历史。Run Stream 每个 tab 有记录数、单条字节和总字节预算，overlay 关闭时不构建完整记录 DOM，导出会包含截断 metadata。Assistant delta 流式阶段使用轻量文本更新，idle/final 阶段再做完整 Markdown 渲染。附件上传在 Webview 预检和 Extension Host 保存前复验，最多 10 个文件、单文件 10 MiB、总计 25 MiB；超限时显示英文或中文拒绝提示。
 - AI 对话面板支持 `coding / loop / graph` 三种顶层交互模式；旧配置中的 `plan` 会按 `coding` 兼容归一化。Graph 模式面向复杂任务的显式工作图编排，适合需要节点状态、依赖、事件和验证证据可观察的任务；简单问答、小修小补和探索性调试仍优先使用 coding 或 Loop。
 - Codex / OpenCode 模型选择按模式切换：Codex 普通 Coding 仍显示并传递单个 `model`，切到 Loop 或 Graph 时显示主模型/子模型两个选择器，并为两个角色分别显示 Codex 思考力度选择器；OpenCode 在 Coding / Loop / Graph 中同样使用主模型/子模型口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。Webview payload 使用 `loopMainModel` / `loopSubtaskModel`、`loopMainThinkingMode` / `loopSubtaskThinkingMode` 或对应 OpenCode main/subtask 状态，PanelState 通过 CLI 维度回放。Loop 主任务、主持/复核、续跑和自动唤醒使用主模型及主任务思考力度，Loop 子任务使用子模型及子任务思考力度；Graph planner 和最终 `summary` 节点使用主模型及主任务思考力度，其他 materialized 执行节点使用子模型及子任务思考力度。缺少子模型时运行时回退到主模型或单模型，并在 Graph run / 节点 prompt / diagnostics 中记录 `modelFallback` 原因。
 - Graph 模式已完成 Phase 1 最小运行内核与 Phase 2 恢复交互：Webview 模式下拉可选择 Graph，发送后端进入 `interactiveMode=graph` 的 `runGraphPrompt` 分支；Graph 入口默认不注入插件侧长期记忆 recall，节点 `runPrompt` 结束也不会自动写入长期记忆。扩展先创建 planning-only Graph run，仅包含保留 `plan` AI planner 节点；planner 必须在节点 communication file 的 `## JSON` 中输出 `plannedGraph.nodes` 和 `plannedGraph.edges`，宿主校验后 materialize 为 AI 规划的 realized DAG（可包含分支、fan-out/fan-in、测试、评审、human_gate、sleep、merge 和 summary），规划无效时 run 进入 `needs-review` 而不执行固定线形 fallback。planner 需要输出中文节点标题；宿主对常见英文标题做中文兜底，GraphRunPanel 打开旧持久化 run 时也按同一规则显示中文标题。Graph 使用 `~/.sinitek_cli/graph-runs/<workspaceKey>/<cli>/<session-or-__pending__>/<graphRunId>/graph-runs.json`、`~/.sinitek_cli/graph-communications/<graphRunId>/graph.json`、`events.jsonl` 和 `nodes/<nodeId>.md` 保存状态、事件和节点沟通文件。节点执行继续复用现有 CLI runner / `runPrompt` 路径，并以 `taskRole="subtask"` 固定在当前项目工作区 direct cwd 中运行；新 Graph run 不再创建 Graph 专用独立 git worktree、checkpoint commit、merge-back 或 cleanup 流程。每个节点 prompt 都注入全图拓扑、当前位置、节点/边清单、直接上下游、上游/下游链路、同批 active 节点、冲突线索和后续 test/review/merge/summary 职责边界；`review` 节点还会从上游节点 `writeFiles`、communication file 和 `artifactRef` 生成独立评审范围，要求按这些候选改动文件过滤 `git status` / `git diff`，不因范围外 dirty workspace 改动单独判失败；每个节点结束后宿主会读取节点 communication file 的 `## JSON` 作为真实状态。direct 模式只保存 `executionCwd`，完成态表示改动已直接写入当前工作区。历史 worktree run 仍可读取 `worktree` metadata，并保留 checkpoint、`git merge --squash` 合回和 cleanup helper 处理旧运行记录；若历史 worktree run 的 worktree 缺失、Graph diff 会覆盖本地改动、发生冲突、合并失败或 cleanup 失败，run 会回到 `needs-review` 并在 events / 系统消息中记录原因。
@@ -187,6 +189,8 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 配置中心支持：
 
 - 配置档案列表、排序、激活、删除、初始化
+- 从 AI 对话面板点击“配置”会立即打开并前台聚焦 VS Code 编辑器主区域内的 `WebviewPanel`，随后进入 VS Code Zen Mode，隐藏侧栏、面板、状态栏等工作台外围，形成接近全屏弹窗的配置表面；重复点击复用同一面板并重新聚焦，不重复切换 Zen Mode。VS Code 扩展公开 API 不支持任意 Webview 的原生模态弹窗；Zen Mode 命令不可用时回退为普通编辑器面板。配置页自身会铺满 WebviewPanel 剩余视口，大型配置浮层使用近满屏宽高以减少左右和底部空白；配置页不启动独立浏览器或本地 HTTP 页面
+- 配置中心布局和控件继续复用携宁 CLI 配置页的交互，但颜色、字体、边框、焦点、状态、弹层和背景全部使用 VS Code `--vscode-*` 语义变量，自动适配浅色、深色和高对比度主题
 - 从对话面板的配置按钮打开配置中心时，若当前视口处于小于等于 `920px` 的窄宽度模式，左侧配置目录首次默认展开；展开后仍可通过关闭按钮、遮罩或 `Esc` 收起
 - 当前配置查看与应用
 - 配置内容按卡片独立保存，不提供顶部统一保存；Claude 的 `settings.json`、OpenCode 的 `config.json`、Codex 的 `config.toml` / `.env` / `auth.json` 都在对应卡片右上角保存，只更新该卡片对应字段；若保存的是当前激活配置，会同步把必要的完整 payload 应用到外部 CLI 配置文件。Gemini 配置卡片已移出当前支持范围。

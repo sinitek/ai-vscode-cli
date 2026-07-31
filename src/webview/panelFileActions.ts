@@ -53,6 +53,9 @@ const RUN_STREAM_EXPORT_FILENAME_PREFIX = "sinitek-run-stream";
 const SESSION_HISTORY_EXPORT_FILENAME_PREFIX = "sinitek-session-history";
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
+export const UPLOAD_MAX_FILES = 10;
+export const UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const UPLOAD_MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
@@ -147,19 +150,79 @@ function decodeDataUrl(dataUrl: string): Buffer | null {
   return Buffer.from(match[1], "base64");
 }
 
+function formatUploadLimitBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 MB";
+  }
+  const megaBytes = bytes / (1024 * 1024);
+  if (megaBytes >= 1) {
+    return `${megaBytes.toFixed(megaBytes >= 10 ? 0 : 1).replace(/\.0$/, "")} MB`;
+  }
+  return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+}
+
+function isChineseLocale(): boolean {
+  return /^zh(?:-|$)/i.test(vscode.env.language || "");
+}
+
+function buildUploadLimitError(en: string, zh: string): string {
+  return isChineseLocale() ? zh : en;
+}
+
+function buildTooManyFilesError(count: number): string {
+  return buildUploadLimitError(
+    `Too many attachments: ${count} selected, maximum ${UPLOAD_MAX_FILES}.`,
+    `附件数量过多：已选择 ${count} 个，最多 ${UPLOAD_MAX_FILES} 个。`
+  );
+}
+
+function buildFileTooLargeError(fileName: string, size: number): string {
+  const displayName = path.basename(fileName || "file") || "file";
+  const sizeLabel = formatUploadLimitBytes(size);
+  const maxLabel = formatUploadLimitBytes(UPLOAD_MAX_FILE_BYTES);
+  return buildUploadLimitError(
+    `Attachment "${displayName}" is ${sizeLabel}; maximum per file is ${maxLabel}.`,
+    `附件“${displayName}”大小为 ${sizeLabel}，单文件最大 ${maxLabel}。`
+  );
+}
+
+function buildTotalTooLargeError(size: number): string {
+  const sizeLabel = formatUploadLimitBytes(size);
+  const maxLabel = formatUploadLimitBytes(UPLOAD_MAX_TOTAL_BYTES);
+  return buildUploadLimitError(
+    `Attachments total ${sizeLabel}; maximum total is ${maxLabel}.`,
+    `附件总大小为 ${sizeLabel}，总上限 ${maxLabel}。`
+  );
+}
+
 export async function saveUploadedFiles(files: UploadFilePayload[]): Promise<UploadedFilesResult> {
   if (!Array.isArray(files) || files.length === 0) {
     return { paths: [] };
   }
+  if (files.length > UPLOAD_MAX_FILES) {
+    return { paths: [], error: buildTooManyFilesError(files.length) };
+  }
   const savedPaths: string[] = [];
   try {
-    ensureTempDir();
-    cleanupTempDir();
+    const decodedFiles: Array<{ file: UploadFilePayload; buffer: Buffer }> = [];
+    let totalBytes = 0;
     for (const file of files) {
       const buffer = decodeDataUrl(file.dataUrl);
       if (!buffer) {
-        return { paths: savedPaths, error: t("upload.parseError") };
+        return { paths: [], error: t("upload.parseError") };
       }
+      if (buffer.byteLength > UPLOAD_MAX_FILE_BYTES) {
+        return { paths: [], error: buildFileTooLargeError(file.name, buffer.byteLength) };
+      }
+      totalBytes += buffer.byteLength;
+      if (totalBytes > UPLOAD_MAX_TOTAL_BYTES) {
+        return { paths: [], error: buildTotalTooLargeError(totalBytes) };
+      }
+      decodedFiles.push({ file, buffer });
+    }
+    ensureTempDir();
+    cleanupTempDir();
+    for (const { file, buffer } of decodedFiles) {
       const targetPath = buildTempFilePath(file.name);
       fs.writeFileSync(targetPath, buffer);
       savedPaths.push(targetPath);

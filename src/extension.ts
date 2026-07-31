@@ -18,10 +18,10 @@ import {
 } from "./cli/config";
 import {
   buildCliArgs,
-  detectOpenCodeStreamActivity,
   buildOpenCodeRunFailureMessage,
   buildProcessLabel,
   captureCliOutput,
+  createOpenCodeStreamActivityTracker,
   parseOpenCodeVisibleStreamEvents,
   parseOpenCodeRunOutput,
   resolveCliCommand,
@@ -660,6 +660,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+let isExtensionDeactivating = false;
 const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
 const graphBlockedPromptKeys = new Set<string>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
@@ -671,6 +672,7 @@ let sessionLifecycleController: SessionLifecycleController;
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
 const AI_TASK_RAW_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
+const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 * 1024;
 const LOCAL_SESSION_PREFIX = "local_";
 const CONVERSATION_TAB_PREFIX = "tab_";
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
@@ -923,6 +925,7 @@ function initializeSessionControllers(): void {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  isExtensionDeactivating = false;
   extensionContext = context;
   extensionUri = context.extensionUri;
   interactiveRunnerManager = new InteractiveRunnerManager();
@@ -1028,11 +1031,85 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+  isExtensionDeactivating = true;
   void restoreMarketplaceUpdateCheck();
   loopAutoWakeScheduler?.dispose();
   loopAutoWakeScheduler = null;
   graphAutoWakeScheduler?.dispose();
   graphAutoWakeScheduler = null;
+  stopAllRuns();
+}
+
+function stopAllRuns(): void {
+  isExtensionDeactivating = true;
+
+  for (const [tabId, run] of Array.from(interactiveRunsByTabId.entries())) {
+    try {
+      run.stop();
+    } catch (error) {
+      void logError("deactivate-stop-interactive-run-failed", {
+        tabId,
+        runId: run.runId,
+        cli: run.cli,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      interactiveRunsByTabId.delete(tabId);
+    }
+  }
+
+  for (const [tabId, run] of Array.from(parallelRunsByTabId.entries())) {
+    try {
+      stopParallelRunForTab(tabId, t("run.stoppedByUser"));
+    } catch (error) {
+      void logError("deactivate-stop-parallel-run-failed", {
+        tabId,
+        runId: run.runId,
+        cli: run.cli,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      try {
+        run.process.kill();
+      } catch {
+        // ignore shutdown cleanup errors
+      }
+      parallelRunsByTabId.delete(tabId);
+    }
+  }
+
+  const activeStop = activeInteractiveStop;
+  if (activeStop) {
+    try {
+      activeStop();
+    } catch (error) {
+      void logError("deactivate-stop-active-interactive-failed", {
+        cli: activeCliForRun,
+        runId: activeRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (activeInteractiveStop === activeStop) {
+        activeInteractiveStop = null;
+      }
+    }
+  }
+
+  if (activeProcess) {
+    try {
+      stopActiveRun();
+    } catch (error) {
+      void logError("deactivate-stop-active-process-failed", {
+        cli: activeCliForRun ?? currentCli,
+        runId: activeRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      try {
+        activeProcess.kill();
+      } catch {
+        // ignore shutdown cleanup errors
+      }
+      clearActiveRun();
+    }
+  }
+
   interactiveRunnerManager?.disposeAll();
 }
 
@@ -10750,6 +10827,10 @@ async function runPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null } = {}
 ): Promise<void> {
+  if (isExtensionDeactivating) {
+    return;
+  }
+
   const prompt = input.displayPrompt;
   if (!prompt) {
     return;
@@ -11051,6 +11132,7 @@ async function runPromptOneShot(
     let sessionBuffer = "";
     let rawStdout = "";
     let rawStderr = "";
+    const openCodeActivityTracker = createOpenCodeStreamActivityTracker();
     const runtimeSessionId = isFreshSessionRecoveryAttempt
       ? null
       : resolveCliSessionIdForResume(runCli, activeSessionId);
@@ -11148,7 +11230,7 @@ async function runPromptOneShot(
         }
         startupTimeoutHandle = setTimeout(() => {
           startupTimeoutHandle = null;
-          const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+          const activity = openCodeActivityTracker.snapshot();
           const hasCurrentActivity = activity.hasAssistantAnswer
             || activity.hasError
             || activity.hasStatus
@@ -11187,7 +11269,7 @@ async function runPromptOneShot(
               return;
             }
             rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-            const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+            const activity = openCodeActivityTracker.updateStdout(chunk);
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
             }
@@ -11209,7 +11291,7 @@ async function runPromptOneShot(
               return;
             }
             rawStderr = appendBoundedUtf8Text(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-            const activity = detectOpenCodeStreamActivity(rawStdout, rawStderr);
+            const activity = openCodeActivityTracker.updateStderr(chunk);
             if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
               sawOpenCodeActivity = true;
             }
@@ -11250,6 +11332,10 @@ async function runPromptOneShot(
 
     if (activeRunId !== runId) {
       return;
+    }
+    const finalActivity = openCodeActivityTracker.flush();
+    if (finalActivity.hasAssistantAnswer) {
+      attemptHadNormalReply = true;
     }
 
     if (debugLogging) {
@@ -11593,7 +11679,8 @@ function consumeOpenCodeJsonlChunk(
 ): string {
   const combined = currentBuffer + chunk.replace(/\r\n/g, "\n");
   const lines = combined.split("\n");
-  const nextBuffer = flush ? "" : (lines.pop() ?? "");
+  const pendingLine = flush ? "" : (lines.pop() ?? "");
+  const nextBuffer = appendBoundedUtf8Text("", pendingLine, OPENCODE_JSONL_PENDING_LINE_MAX_BYTES).text;
   lines.forEach((line) => {
     parseOpenCodeVisibleStreamEvents(line).forEach(onEvent);
   });

@@ -4,7 +4,6 @@
 
 | ID | Modified | Type | Title | Source | Read |
 | --- | --- | --- | --- | --- | --- |
-| `mem-431f2548e1` | 2026-06-02T01:09:50+00:00 | `rule` | 热区记忆面 | `.ch/docs/memory/README.md` | ~46 |
 | `mem-0b64dd15aa` | 2026-06-25T01:59:58+00:00 | `plan` | Trace Error Bubble Dedupe | `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md` | ~47 |
 | `mem-c1d7e714b7` | 2026-06-29T05:11:09+00:00 | `rule` | 记忆流转规则 | `.ch/docs/MEMORY.md` | ~39 |
 | `mem-bbc18d3434` | 2026-07-07T01:50:50+00:00 | `plan` | Loop 主任务失败终止护栏 | `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` | ~39 |
@@ -14,3 +13,5 @@
 | `mem-fe60588b95` | 2026-07-14T01:27:53+00:00 | `plan` | Loop 红蓝辩论主持人轮流点名调度 | `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | ~40 |
 | `mem-b7b003c3a1` | 2026-07-14T03:33:01+00:00 | `plan` | 官方 skills 版本刷新与最新判断修复 | `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | ~45 |
 | `mem-d336cba178` | 2026-07-15T01:12:08+00:00 | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | ~120 |
+| `mem-431f2548e1` | 2026-07-25T14:49:44+00:00 | `rule` | 热区记忆面 | `.ch/docs/memory/README.md` | ~46 |
+| `mem-1e4667ddf6` | 2026-07-31T01:25:56+00:00 | `plan` | P0 性能与内存硬化执行计划 | `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` | ~107 |

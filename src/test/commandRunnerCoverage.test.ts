@@ -13,6 +13,7 @@ const {
   buildOpenCodeRunFailureMessage,
   buildProcessLabel,
   captureCliOutput,
+  createOpenCodeStreamActivityTracker,
   detectOpenCodeStreamActivity,
   isCliCommandAvailable,
   parseOpenCodeRunOutput,
@@ -695,6 +696,21 @@ test("parses nested OpenCode output, structured finals, provider errors, and str
     hasStatus: false,
     hasProgress: true,
   });
+
+  const tracker = createOpenCodeStreamActivityTracker();
+  const finalEvent = JSON.stringify({
+    type: "text",
+    part: { type: "text", text: "partial final" },
+  });
+  assert.deepEqual(tracker.updateStdout(finalEvent.slice(0, 12)), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: false,
+  });
+  assert.equal(tracker.updateStdout(`${finalEvent.slice(12)}\n`).hasAssistantAnswer, true);
+  assert.equal(tracker.updateStderr("> run \u00b7 model").hasStatus, true);
+
   assert.deepEqual(parseOpenCodeRunOutput(JSON.stringify({
     type: "error",
     error: { message: "plain provider error" },

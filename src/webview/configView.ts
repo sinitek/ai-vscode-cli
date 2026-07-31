@@ -6,6 +6,249 @@ import { resolveLocale, t } from "../i18n";
 
 const ASSETS_DIR = ["media", "config", "assets"];
 
+const CONFIG_VSCODE_THEME_STYLES = `
+:root {
+  color-scheme: var(--vscode-color-scheme, normal);
+  --clay-canvas: var(--vscode-editor-background);
+  --clay-surface: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --clay-surface-muted: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-border: var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-editor-foreground)));
+  --clay-border-soft: var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-editor-foreground)));
+  --clay-text: var(--vscode-foreground);
+  --clay-text-secondary: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  --clay-text-muted: var(--vscode-disabledForeground, var(--vscode-descriptionForeground, var(--vscode-foreground)));
+  --clay-inverse: var(--vscode-editor-background);
+  --clay-focus: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+  --clay-matcha: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-matcha-strong: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-foreground)));
+  --clay-slushie: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-lemon: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-lemon-strong: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, var(--vscode-foreground)));
+  --clay-ube: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-ube-strong: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
+  --clay-pomegranate: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-pomegranate-strong: var(--vscode-testing-iconFailed, var(--vscode-editorError-foreground, var(--vscode-foreground)));
+  --clay-blueberry: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  --clay-badge-bg: var(--vscode-textBlockQuote-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-badge-text: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  --clay-info-border: var(--vscode-textLink-foreground, var(--vscode-widget-border));
+  --clay-success-soft: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-success-text: var(--vscode-testing-iconPassed, var(--vscode-foreground));
+  --clay-warning-soft: var(--vscode-editorWarning-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-warning-text: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+  --clay-error-soft: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-error-text: var(--vscode-editorError-foreground, var(--vscode-foreground));
+  --clay-header-glass: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background));
+  --clay-surface-glass: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-focus-shadow: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+  --clay-overlay: var(--vscode-editorGroup-dropBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-floating-shadow: var(--vscode-widget-shadow, transparent);
+  --clay-radius-control: 2px;
+  --clay-radius-card: 2px;
+  --clay-radius-panel: 0px;
+  --clay-shadow: none;
+  --clay-shadow-panel: none;
+  --clay-shadow-floating: none;
+  --clay-motion: 120ms ease-out;
+  --font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --box-shadow-sm: none;
+  --box-shadow: none;
+  --box-shadow-lg: none;
+}
+
+html,
+body,
+#root,
+.config-app-theme {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: var(--vscode-editor-background) !important;
+  color: var(--vscode-foreground) !important;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif) !important;
+}
+
+body {
+  overflow: hidden !important;
+}
+
+.config-app-theme .ant-layout {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.config-app-workspace {
+  flex: 1 1 auto !important;
+  height: calc(100vh - 72px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.config-app-sidebar,
+.config-app-content {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.config-app-content,
+.config-editor-shell,
+.config-editor-shell > .ant-card,
+.skills-manager-modal .ant-modal-content {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.config-app-content > div,
+.config-editor-shell,
+.config-editor-shell > .ant-card,
+.skills-manager-content,
+.skills-manager-content > div:last-child {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.skills-manager-content {
+  max-height: none !important;
+}
+
+.skills-manager-content > div:last-child {
+  max-height: none !important;
+}
+
+.config-sidebar-panel {
+  height: 100% !important;
+  overflow: auto !important;
+}
+
+.config-editor-shell > .ant-card > .ant-card-body,
+.skills-manager-modal .ant-modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+}
+
+.skills-manager-modal .ant-modal {
+  width: min(1180px, calc(100vw - 24px)) !important;
+  top: 12px !important;
+  padding-bottom: 0 !important;
+}
+
+.skills-manager-modal .ant-modal-content {
+  height: calc(100vh - 24px) !important;
+  max-height: calc(100vh - 24px) !important;
+}
+
+.config-app-theme .ant-btn-primary {
+  background: var(--vscode-button-background) !important;
+  border-color: var(--vscode-button-border, transparent) !important;
+  color: var(--vscode-button-foreground) !important;
+  box-shadow: none !important;
+}
+
+.config-app-theme .ant-btn-primary:hover,
+.config-app-theme .ant-btn-primary:focus-visible,
+.config-app-theme .ant-btn-primary:active {
+  background: var(--vscode-button-hoverBackground, var(--vscode-button-background)) !important;
+  border-color: var(--vscode-focusBorder, var(--vscode-button-border, transparent)) !important;
+  color: var(--vscode-button-foreground) !important;
+  box-shadow: none !important;
+}
+
+.config-app-theme .ant-btn-default,
+.config-app-theme .ant-input,
+.config-app-theme .ant-input-affix-wrapper,
+.config-app-theme .ant-input-number,
+.config-app-theme .ant-select-selector,
+.config-app-theme .ant-picker {
+  background: var(--vscode-input-background, var(--vscode-editor-background)) !important;
+  border-color: var(--vscode-input-border, var(--vscode-widget-border)) !important;
+  color: var(--vscode-input-foreground, var(--vscode-foreground)) !important;
+}
+
+.config-app-theme .ant-btn-default:hover,
+.config-app-theme .ant-btn-default:focus-visible,
+.config-app-theme .ant-input:hover,
+.config-app-theme .ant-input:focus,
+.config-app-theme .ant-input-affix-wrapper:hover,
+.config-app-theme .ant-input-affix-wrapper:focus-within,
+.config-app-theme .ant-select-focused .ant-select-selector,
+.config-app-theme .ant-select-selector:hover {
+  border-color: var(--vscode-focusBorder, var(--vscode-textLink-foreground)) !important;
+}
+
+.config-app-theme .ant-input::placeholder,
+.config-app-theme .ant-select-selection-placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)) !important;
+}
+
+.config-app-theme .ant-tabs-tab-active .ant-tabs-tab-btn,
+.config-app-theme .ant-tabs-tab:hover {
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground)) !important;
+}
+
+.config-app-theme .ant-tabs-ink-bar {
+  background: var(--vscode-focusBorder, var(--vscode-textLink-foreground)) !important;
+}
+
+.config-app-theme .ant-checkbox-checked .ant-checkbox-inner,
+.config-app-theme .ant-switch.ant-switch-checked {
+  background: var(--vscode-button-background, var(--vscode-textLink-foreground)) !important;
+  border-color: var(--vscode-button-background, var(--vscode-textLink-foreground)) !important;
+}
+
+.ant-modal-root .ant-modal-content,
+.ant-drawer-root .ant-drawer-content,
+.ant-dropdown,
+.ant-select-dropdown,
+.ant-popover .ant-popover-inner {
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background)) !important;
+  color: var(--vscode-foreground) !important;
+}
+
+.ant-modal-root .ant-modal-mask,
+.ant-drawer-root .ant-drawer-mask {
+  background: var(--vscode-editorGroup-dropBackground, transparent) !important;
+}
+
+.config-app-theme,
+.config-app-theme *,
+.ant-modal-root,
+.ant-modal-root *,
+.ant-drawer-root,
+.ant-drawer-root *,
+.ant-popover,
+.ant-popover *,
+.ant-dropdown,
+.ant-dropdown * {
+  box-shadow: none !important;
+}
+
+.config-app-theme .ant-card,
+.config-app-theme .ant-collapse,
+.config-app-theme .ant-input,
+.config-app-theme .ant-input-affix-wrapper,
+.config-app-theme .ant-input-number,
+.config-app-theme .ant-select-selector,
+.config-app-theme .ant-picker,
+.ant-modal-root .ant-modal-content,
+.ant-drawer-root .ant-drawer-content,
+.ant-popover .ant-popover-inner,
+.ant-dropdown {
+  border-radius: 2px !important;
+}
+
+.config-app-header,
+.config-list-toolbar,
+.ant-modal-mask,
+.ant-drawer-mask {
+  backdrop-filter: none !important;
+}
+`;
+
 const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "携宁 CLI 配置": "Sinitek CLI Config",
   "添加配置": "Add Config",
@@ -250,7 +493,8 @@ export function getConfigViewHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${t("config.appTitle")}</title>
     <link rel="stylesheet" href="${cssUri}" />
-    <style>
+    <style nonce="${nonce}">
+      ${CONFIG_VSCODE_THEME_STYLES}
       html,
       body,
       #root {

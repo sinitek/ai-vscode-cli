@@ -12,6 +12,10 @@ import {
   stripThinkingWrapperTags,
 } from "../thinkingMarkup";
 import {
+  getUtf8ByteLength,
+  trimUtf8TextStartToMaxBytes,
+} from "../boundedText";
+import {
   extractOpenCodeTaskListItems,
   isOpenCodeTaskListTool,
   type OpenCodeTaskListItem,
@@ -137,6 +141,14 @@ export type OpenCodeStreamActivity = {
   hasProgress: boolean;
 };
 
+export type OpenCodeStreamActivityTracker = {
+  updateStdout: (chunk: string) => OpenCodeStreamActivity;
+  updateStderr: (chunk: string) => OpenCodeStreamActivity;
+  flush: () => OpenCodeStreamActivity;
+  snapshot: () => OpenCodeStreamActivity;
+  getPendingByteLengths: () => { stdout: number; stderr: number };
+};
+
 export type OpenCodeVisibleStreamEvent = {
   kind: "assistant" | "thinking" | "tool-use";
   content: string;
@@ -150,6 +162,7 @@ export type OpenCodeFailureMessageOptions = {
 
 const ANSI_ESCAPE_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const OPENCODE_STATUS_LINE_PATTERN = /^>\s*[^·\n]+(?:\s*·\s*.+)?$/u;
+export const OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES = 64 * 1024;
 const OPENCODE_JSON_TEXT_PART_TYPES = new Set([
   "text",
   "text-delta",
@@ -568,39 +581,176 @@ function collectOpenCodeJsonActivity(value: unknown, activity: OpenCodeStreamAct
   }
 }
 
-export function detectOpenCodeStreamActivity(stdout: string, stderr: string): OpenCodeStreamActivity {
-  const parsed = parseOpenCodeRunOutput(stdout, stderr);
-  const activity: OpenCodeStreamActivity = {
-    hasAssistantAnswer: Boolean(parsed.finalText),
-    hasError: Boolean(parsed.errorText),
-    hasStatus: Boolean(parsed.statusText),
+function createEmptyOpenCodeStreamActivity(): OpenCodeStreamActivity {
+  return {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
     hasProgress: false,
   };
+}
 
-  for (const line of stdout.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) {
-      continue;
-    }
-    try {
-      collectOpenCodeJsonActivity(JSON.parse(trimmed), activity);
-    } catch {
-      // Ignore incomplete JSONL events while the process is still streaming.
-    }
+function copyOpenCodeStreamActivity(activity: OpenCodeStreamActivity): OpenCodeStreamActivity {
+  return {
+    hasAssistantAnswer: activity.hasAssistantAnswer,
+    hasError: activity.hasError,
+    hasStatus: activity.hasStatus,
+    hasProgress: activity.hasProgress,
+  };
+}
+
+function normalizeOpenCodeActivityChunk(chunk: string): string {
+  return chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function trimOpenCodeActivityPendingLine(line: string): string {
+  return trimUtf8TextStartToMaxBytes(line, OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES).text;
+}
+
+function collectOpenCodePlainStdoutActivity(line: string, activity: OpenCodeStreamActivity): void {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("{")) {
+    return;
+  }
+  if (getUtf8ByteLength(trimmed) > OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES) {
+    activity.hasProgress = true;
+    return;
   }
 
-  const plainStdout = cleanOpenCodeStatusOutput(stdout);
-  if (plainStdout && !activity.hasAssistantAnswer) {
-    const plainLines = plainStdout
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (plainLines.some((line) => !line.startsWith("{"))) {
-      activity.hasProgress = true;
-    }
+  const cleaned = cleanOpenCodeStatusOutput(trimmed);
+  if (!cleaned) {
+    return;
+  }
+  const meaningfulLines = cleaned
+    .split(/\r?\n/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (meaningfulLines.length > 0 && meaningfulLines.every((item) => item.startsWith("{"))) {
+    return;
   }
 
-  return activity;
+  const textSegments = splitThinkingTaggedContent(cleaned);
+  if (textSegments.some((segment) => segment.kind === "assistant" && segment.content.trim().length > 0)) {
+    activity.hasAssistantAnswer = true;
+  }
+  if (textSegments.some((segment) => segment.kind === "thinking" && segment.content.trim().length > 0)) {
+    activity.hasProgress = true;
+  }
+  if (!activity.hasAssistantAnswer && meaningfulLines.some((item) => !item.startsWith("{"))) {
+    activity.hasProgress = true;
+  }
+}
+
+function collectOpenCodeStdoutActivityLine(line: string, activity: OpenCodeStreamActivity): void {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return;
+  }
+  if (!trimmed.startsWith("{")) {
+    collectOpenCodePlainStdoutActivity(trimmed, activity);
+    return;
+  }
+  if (getUtf8ByteLength(trimmed) > OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES) {
+    return;
+  }
+  try {
+    collectOpenCodeJsonActivity(JSON.parse(trimmed), activity);
+  } catch {
+    // Ignore malformed or incomplete JSONL events while the process is still streaming.
+  }
+}
+
+function collectOpenCodeStderrActivityLine(line: string, activity: OpenCodeStreamActivity): void {
+  const cleanedLine = stripAnsi(line).trim();
+  if (!cleanedLine) {
+    return;
+  }
+  if (getUtf8ByteLength(cleanedLine) > OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES) {
+    activity.hasError = true;
+    return;
+  }
+  if (OPENCODE_STATUS_LINE_PATTERN.test(cleanedLine)) {
+    activity.hasStatus = true;
+    return;
+  }
+  if (cleanOpenCodeStatusOutput(cleanedLine)) {
+    activity.hasError = true;
+  }
+}
+
+function consumeOpenCodeActivityLines(
+  pendingLine: string,
+  chunk: string,
+  flush: boolean,
+  onLine: (line: string) => void,
+  onPendingLine?: (line: string) => void,
+): string {
+  const combined = pendingLine + normalizeOpenCodeActivityChunk(chunk);
+  const lines = combined.split("\n");
+  const nextPendingLine = flush ? "" : (lines.pop() ?? "");
+  lines.forEach(onLine);
+  if (!flush && nextPendingLine) {
+    onPendingLine?.(nextPendingLine);
+  }
+  return trimOpenCodeActivityPendingLine(nextPendingLine);
+}
+
+export function createOpenCodeStreamActivityTracker(): OpenCodeStreamActivityTracker {
+  const activity = createEmptyOpenCodeStreamActivity();
+  let pendingStdoutLine = "";
+  let pendingStderrLine = "";
+
+  const snapshot = (): OpenCodeStreamActivity => copyOpenCodeStreamActivity(activity);
+
+  return {
+    updateStdout: (chunk: string) => {
+      pendingStdoutLine = consumeOpenCodeActivityLines(
+        pendingStdoutLine,
+        chunk,
+        false,
+        (line) => collectOpenCodeStdoutActivityLine(line, activity),
+        (line) => collectOpenCodePlainStdoutActivity(line, activity),
+      );
+      return snapshot();
+    },
+    updateStderr: (chunk: string) => {
+      pendingStderrLine = consumeOpenCodeActivityLines(
+        pendingStderrLine,
+        chunk,
+        false,
+        (line) => collectOpenCodeStderrActivityLine(line, activity),
+        (line) => collectOpenCodeStderrActivityLine(line, activity),
+      );
+      return snapshot();
+    },
+    flush: () => {
+      pendingStdoutLine = consumeOpenCodeActivityLines(
+        pendingStdoutLine,
+        "",
+        true,
+        (line) => collectOpenCodeStdoutActivityLine(line, activity),
+      );
+      pendingStderrLine = consumeOpenCodeActivityLines(
+        pendingStderrLine,
+        "",
+        true,
+        (line) => collectOpenCodeStderrActivityLine(line, activity),
+      );
+      return snapshot();
+    },
+    snapshot,
+    getPendingByteLengths: () => ({
+      stdout: getUtf8ByteLength(pendingStdoutLine),
+      stderr: getUtf8ByteLength(pendingStderrLine),
+    }),
+  };
+}
+
+export function detectOpenCodeStreamActivity(stdout: string, stderr: string): OpenCodeStreamActivity {
+  const tracker = createOpenCodeStreamActivityTracker();
+  tracker.updateStdout(stdout);
+  tracker.updateStderr(stderr);
+  return tracker.flush();
 }
 
 function parseOpenCodePlainOutput(stdout: string): string | null {

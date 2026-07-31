@@ -2,10 +2,13 @@ import {
   parseOpenCodeVisibleStreamEvents,
   type OpenCodeVisibleStreamEvent,
 } from "./cli/commandRunner";
+import { appendBoundedUtf8Text } from "./boundedText";
 import type { OpenCodeTaskListItem } from "./cli/openCodeTaskList";
 import type { ChatMessage } from "./webview/types";
 
 type OpenCodeAssistantKind = "normal" | "thinking";
+
+export const OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES = 64 * 1024;
 
 export type OpenCodeTabStreamMetadata = Pick<
   ChatMessage,
@@ -143,7 +146,8 @@ export function consumeOpenCodeTabStreamChunk(
   const state: OpenCodeTabStreamState = { ...currentState };
   const combined = state.jsonlBuffer + chunk.replace(/\r\n/g, "\n");
   const lines = combined.split("\n");
-  state.jsonlBuffer = flush ? "" : (lines.pop() ?? "");
+  const pendingLine = flush ? "" : (lines.pop() ?? "");
+  state.jsonlBuffer = appendBoundedUtf8Text("", pendingLine, OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES).text;
   const actions: OpenCodeTabStreamAction[] = [];
 
   lines.forEach((line) => {

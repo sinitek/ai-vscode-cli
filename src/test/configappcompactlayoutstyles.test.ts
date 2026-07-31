@@ -26,14 +26,32 @@ function mediaSource(query: string): string {
 
 test("configuration workspace and panels use compact desktop spacing", () => {
   const workspace = rule(css, ".config-app-workspace");
+  assert.match(workspace, /\bflex:\s*1 1 auto;/);
   assert.match(workspace, /\bgap:\s*9px;/);
+  assert.match(workspace, /\bheight:\s*calc\(100vh - 72px\);/);
   assert.match(workspace, /\bpadding:\s*0;/);
   assert.doesNotMatch(workspace, /\bgap:\s*18px;|\bpadding:\s*18px;/);
 
   assert.match(rule(css, ".config-app-header"), /\bpadding:\s*0 14px !important;/);
+  assert.match(rule(css, ".config-app-sidebar"), /\bheight:\s*100%;/);
+  assert.match(rule(css, ".config-app-content"), /\bheight:\s*100%;/);
   assert.match(rule(css, ".config-sidebar-panel"), /\bpadding:\s*8px !important;/);
+  assert.match(rule(css, ".config-sidebar-panel"), /\boverflow:\s*auto;/);
+  assert.match(rule(css, ".config-editor-shell"), /\bheight:\s*100%;/);
   assert.match(rule(css, ".config-editor-shell"), /\bpadding:\s*9px !important;/);
+  assert.match(rule(css, ".config-editor-shell > .ant-card"), /\bflex:\s*1 1 auto;/);
+  assert.match(rule(css, ".config-editor-shell > .ant-card > .ant-card-body"), /\boverflow:\s*auto;/);
   assert.match(rule(css, ".config-list-toolbar"), /\bpadding:\s*7px 8px 6px;/);
+});
+
+test("configuration skills manager modal uses a near-full viewport surface", () => {
+  assert.match(rule(css, ".skills-manager-modal .ant-modal"), /\bwidth:\s*min\(1180px,\s*calc\(100vw - 24px\)\) !important;/);
+  assert.match(rule(css, ".skills-manager-modal .ant-modal"), /\btop:\s*12px !important;/);
+  assert.match(rule(css, ".skills-manager-modal .ant-modal-content"), /\bheight:\s*calc\(100vh - 24px\);/);
+  assert.match(rule(css, ".skills-manager-modal .ant-modal-content"), /\bdisplay:\s*flex;/);
+  assert.match(rule(css, ".skills-manager-modal .ant-modal-body"), /\boverflow:\s*auto;/);
+  assert.match(rule(css, ".skills-manager-content"), /\bmax-height:\s*none !important;/);
+  assert.match(rule(css, ".skills-manager-content > div:last-child"), /\bmax-height:\s*none !important;/);
 });
 
 test("configuration cards and list items keep compact internal spacing", () => {

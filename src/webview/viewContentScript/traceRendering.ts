@@ -183,6 +183,35 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         );
       }
 
+      function clearAssistantDeltaRenderTimer(messageId) {
+        if (!messageId || !assistantDeltaRenderTimers[messageId]) {
+          return;
+        }
+        clearTimeout(assistantDeltaRenderTimers[messageId]);
+        delete assistantDeltaRenderTimers[messageId];
+      }
+
+      function scheduleAssistantDeltaMarkdownRender(messageId) {
+        if (!messageId) {
+          return;
+        }
+        clearAssistantDeltaRenderTimer(messageId);
+        assistantDeltaRenderTimers[messageId] = setTimeout(() => {
+          delete assistantDeltaRenderTimers[messageId];
+          const messageIndex = state.messages.findIndex((item) => item && item.id === messageId);
+          if (messageIndex === -1) {
+            return;
+          }
+          const message = state.messages[messageIndex];
+          if (!message || message.role !== "assistant") {
+            return;
+          }
+          if (!updateRenderedAssistantMessage(message, messageIndex)) {
+            renderMessages();
+          }
+        }, ASSISTANT_DELTA_MARKDOWN_IDLE_MS);
+      }
+
       function appendAssistantDelta(id, content, kind, options) {
         const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();
         const resolvedId = assistantRedirects[id] || id;
@@ -204,6 +233,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (targetIndex !== -1 && !hasContent && marksCodexFinalAnswer) {
           const target = state.messages[targetIndex];
           target.codexFinalAnswer = true;
+          clearAssistantDeltaRenderTimer(target.id);
           if (!updateRenderedAssistantMessage(target, targetIndex)) {
             renderMessages();
           }
@@ -234,11 +264,25 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         target.content += content || "";
         if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target)) {
+          clearAssistantDeltaRenderTimer(target.id);
           renderMessages();
           return;
         }
-        if (requiresFullRender || !updateRenderedAssistantMessage(target, targetIndex)) {
+        if (marksCodexFinalAnswer) {
+          clearAssistantDeltaRenderTimer(target.id);
+          if (!updateRenderedAssistantMessage(target, targetIndex)) {
+            renderMessages();
+          }
+          return;
+        }
+        if (requiresFullRender) {
           renderMessages();
+          scheduleAssistantDeltaMarkdownRender(target.id);
+          return;
+        }
+        if (!updateRenderedAssistantMessageStreaming(target, targetIndex)) {
+          renderMessages();
+          scheduleAssistantDeltaMarkdownRender(target.id);
           return;
         }
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
@@ -249,6 +293,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         } else {
           updateScrollToBottomButton();
         }
+        scheduleAssistantDeltaMarkdownRender(target.id);
       }
 
       function applyTraceSegment(data) {

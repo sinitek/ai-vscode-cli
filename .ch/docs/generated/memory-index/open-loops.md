@@ -12,6 +12,7 @@
 - `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`：MCP 市场全量检测与权威刷新 (~1645 tokens)
 - `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md`：Codex、Claude、OpenCode CLI 配置可视化扩展 (~5599 tokens)
 - `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md`：Harness 单元自测与 Chromium Playwright 能力吸收 (~5964 tokens)
+- `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`：P0 性能与内存硬化执行计划 (~2028 tokens)
 
 ## Pending Items
 

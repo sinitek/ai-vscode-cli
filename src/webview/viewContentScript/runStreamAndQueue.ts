@@ -66,6 +66,30 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         return normalized;
       }
 
+      function normalizeRunStreamRecordForStorage(content) {
+        const originalContent = normalizeRunStreamRecordContent(content);
+        const originalBytes = getRunStreamContentByteLength(originalContent);
+        if (originalBytes <= RUN_STREAM_MAX_RECORD_BYTES) {
+          return {
+            content: originalContent,
+            discardedBytes: 0,
+            truncated: false,
+          };
+        }
+        const truncationNotice = t("runStreamRecordBytesTruncated", {
+          count: originalBytes - RUN_STREAM_MAX_RECORD_BYTES,
+        }) + "\\n";
+        const noticeBytes = getRunStreamContentByteLength(truncationNotice);
+        const retainedBudget = Math.max(0, RUN_STREAM_MAX_RECORD_BYTES - noticeBytes);
+        const retainedContent = trimRunStreamContentToMaxBytes(originalContent, retainedBudget);
+        const retainedBytes = getRunStreamContentByteLength(retainedContent);
+        return {
+          content: truncationNotice + retainedContent,
+          discardedBytes: Math.max(0, originalBytes - retainedBytes),
+          truncated: true,
+        };
+      }
+
       function buildRunStreamPreview(content) {
         const normalized = String(content || "")
           .replace(/\\r\\n/g, "\\n")
@@ -288,10 +312,18 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const list = document.createElement("div");
         list.className = "run-stream-list";
         const discardedCount = runtimeState.runStreamDiscardedRecordCount || 0;
-        if (discardedCount > 0) {
+        const truncatedRecordCount = runtimeState.runStreamTruncatedRecordCount || 0;
+        if (discardedCount > 0 || truncatedRecordCount > 0) {
           const notice = document.createElement("div");
           notice.className = "run-stream-truncation";
-          notice.textContent = t("runStreamTruncated", { count: discardedCount });
+          const noticeParts = [];
+          if (discardedCount > 0) {
+            noticeParts.push(t("runStreamTruncated", { count: discardedCount }));
+          }
+          if (truncatedRecordCount > 0) {
+            noticeParts.push(t("runStreamRecordsShortened", { count: truncatedRecordCount }));
+          }
+          notice.textContent = noticeParts.join(" ");
           list.appendChild(notice);
         }
         runtimeState.runStreamRecords.forEach((record, index) => {
@@ -319,6 +351,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         runtimeState.runStreamRetainedBytes = 0;
         runtimeState.runStreamDiscardedRecordCount = 0;
         runtimeState.runStreamDiscardedBytes = 0;
+        runtimeState.runStreamTruncatedRecordCount = 0;
         runtimeState.runStreamOpenRecordIds.clear();
         runtimeState.overlays.runStream = false;
         runStreamExportPending = false;
@@ -332,19 +365,23 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function appendRunRawStream(content, source, tabId) {
-        const normalizedContent = trimRunStreamContentToMaxBytes(content, RUN_STREAM_MAX_BYTES);
-        if (!normalizedContent) {
+        const normalizedRecord = normalizeRunStreamRecordForStorage(content);
+        if (!normalizedRecord.content) {
           return;
         }
         const runtimeState = getConversationRuntimeState(tabId);
         if (!runtimeState) {
           return;
         }
-        const contentBytes = getRunStreamContentByteLength(normalizedContent);
+        const contentBytes = getRunStreamContentByteLength(normalizedRecord.content);
+        if (normalizedRecord.truncated) {
+          runtimeState.runStreamTruncatedRecordCount = (runtimeState.runStreamTruncatedRecordCount || 0) + 1;
+          runtimeState.runStreamDiscardedBytes = (runtimeState.runStreamDiscardedBytes || 0) + normalizedRecord.discardedBytes;
+        }
         runtimeState.runStreamRecordCounter += 1;
         runtimeState.runStreamRecords.push({
           id: "stream-record-" + runtimeState.runStreamRecordCounter,
-          content: normalizedContent,
+          content: normalizedRecord.content,
           source: normalizeRunStreamSource(source),
           createdAt: Date.now(),
         });
@@ -365,9 +402,12 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           runtimeState.runStreamOpenRecordIds.delete(removed.id);
         }
         if (isRuntimeStateForActiveTab(tabId)) {
-          updateRunStreamContent();
           updateRunStreamButton();
-          syncRunStreamOverlay();
+          if (runtimeState.overlays.runStream) {
+            syncRunStreamOverlay();
+          } else {
+            updateRunStreamExportButton();
+          }
         }
       }
 
@@ -466,12 +506,34 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState || !Array.isArray(runtimeState.runStreamRecords)) {
           return [];
         }
-        return runtimeState.runStreamRecords.map((record) => ({
+        const records = runtimeState.runStreamRecords.map((record) => ({
           id: record.id,
           content: record.content,
           source: record.source,
           createdAt: record.createdAt,
         }));
+        const discardedRecordCount = runtimeState.runStreamDiscardedRecordCount || 0;
+        const discardedBytes = runtimeState.runStreamDiscardedBytes || 0;
+        const truncatedRecordCount = runtimeState.runStreamTruncatedRecordCount || 0;
+        if (!discardedRecordCount && !discardedBytes && !truncatedRecordCount) {
+          return records;
+        }
+        return [{
+          id: "stream-truncation-metadata",
+          content: JSON.stringify({
+            type: "runStreamTruncation",
+            retainedRecordCount: records.length,
+            retainedBytes: runtimeState.runStreamRetainedBytes || 0,
+            discardedRecordCount,
+            discardedBytes,
+            truncatedRecordCount,
+            maxRecords: RUN_STREAM_MAX_RECORDS,
+            maxBytes: RUN_STREAM_MAX_BYTES,
+            maxRecordBytes: RUN_STREAM_MAX_RECORD_BYTES,
+          }, null, 2),
+          source: "event",
+          createdAt: records.length && typeof records[0].createdAt === "number" ? records[0].createdAt : Date.now(),
+        }].concat(records);
       }
 
       function requestRunStreamExport() {
@@ -961,11 +1023,67 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         });
       }
 
+      function formatUploadLimitBytes(bytes) {
+        const value = Number(bytes);
+        if (!Number.isFinite(value) || value <= 0) {
+          return "0 MB";
+        }
+        const megaBytes = value / (1024 * 1024);
+        if (megaBytes >= 1) {
+          return megaBytes.toFixed(megaBytes >= 10 ? 0 : 1).replace(/\\.0$/, "") + " MB";
+        }
+        const kiloBytes = value / 1024;
+        return Math.max(1, Math.ceil(kiloBytes)) + " KB";
+      }
+
+      function validateUploadFiles(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+          return "";
+        }
+        if (files.length > UPLOAD_MAX_FILES) {
+          return t("toastUploadTooManyFiles", {
+            count: files.length,
+            max: UPLOAD_MAX_FILES,
+          });
+        }
+        let totalBytes = 0;
+        for (const file of files) {
+          const size = file && typeof file.size === "number" && Number.isFinite(file.size)
+            ? Math.max(0, file.size)
+            : 0;
+          if (size > UPLOAD_MAX_FILE_BYTES) {
+            return t("toastUploadFileTooLarge", {
+              name: file && file.name ? file.name : t("attachmentFallbackName"),
+              size: formatUploadLimitBytes(size),
+              max: formatUploadLimitBytes(UPLOAD_MAX_FILE_BYTES),
+            });
+          }
+          totalBytes += size;
+          if (totalBytes > UPLOAD_MAX_TOTAL_BYTES) {
+            return t("toastUploadTotalTooLarge", {
+              size: formatUploadLimitBytes(totalBytes),
+              max: formatUploadLimitBytes(UPLOAD_MAX_TOTAL_BYTES),
+            });
+          }
+        }
+        return "";
+      }
+
       async function handleFileSelection(fileList) {
         if (!fileList || fileList.length === 0) {
           return;
         }
         const files = Array.from(fileList);
+        const validationError = validateUploadFiles(files);
+        if (validationError) {
+          showToast(validationError);
+          appendMessage({
+            id: createMessageId(),
+            role: "system",
+            content: validationError,
+          });
+          return;
+        }
         try {
           const payloadFiles = [];
           for (const file of files) {

@@ -12,6 +12,8 @@ const {
   buildOpenCodeRunFailureMessage,
   buildCliArgs,
   detectOpenCodeStreamActivity,
+  createOpenCodeStreamActivityTracker,
+  OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES,
   parseOpenCodeVisibleStreamEvents,
   parseOpenCodeSessionId,
   parseOpenCodeRunOutput,
@@ -841,6 +843,73 @@ test("disarms the OpenCode startup watchdog after the first JSONL activity", () 
   assert.equal(resolveOpenCodeOneShotWatchdogTimeoutMs(hasActivity), null);
 });
 
+test("tracks OpenCode stream activity incrementally across stdout and stderr chunks", () => {
+  const tracker = createOpenCodeStreamActivityTracker();
+  const progressEvent = JSON.stringify({
+    type: "step_start",
+    sessionID: "ses_incremental",
+    part: { type: "step-start", sessionID: "ses_incremental" },
+  });
+
+  assert.deepEqual(tracker.updateStdout(progressEvent.slice(0, 18)), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: false,
+  });
+  assert.deepEqual(tracker.updateStdout(`${progressEvent.slice(18)}\n`), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: true,
+  });
+  assert.deepEqual(tracker.updateStderr("\u001b[0m\n> build \u00b7 claude-sonnet-5"), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: true,
+    hasProgress: true,
+  });
+  assert.deepEqual(tracker.updateStdout("plain progress"), {
+    hasAssistantAnswer: true,
+    hasError: false,
+    hasStatus: true,
+    hasProgress: true,
+  });
+});
+
+test("detects OpenCode assistant and error activity through the incremental tracker", () => {
+  const tracker = createOpenCodeStreamActivityTracker();
+  const finalEvent = JSON.stringify({
+    type: "text",
+    sessionID: "ses_incremental_final",
+    part: { type: "text", text: "[final_answer] done" },
+  });
+  const errorEvent = JSON.stringify({
+    type: "error",
+    error: { message: "provider failed" },
+  });
+
+  assert.equal(tracker.updateStdout(`${finalEvent}\n`).hasAssistantAnswer, true);
+  assert.deepEqual(tracker.updateStdout(`${errorEvent}\n`), {
+    hasAssistantAnswer: true,
+    hasError: true,
+    hasStatus: false,
+    hasProgress: false,
+  });
+});
+
+test("bounds the OpenCode incremental activity pending JSONL buffers", () => {
+  const tracker = createOpenCodeStreamActivityTracker();
+  const oversizedPartialJsonl = `{"type":"text","part":{"text":"${"x".repeat(OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES * 2)}`;
+
+  tracker.updateStdout(oversizedPartialJsonl);
+  tracker.updateStderr(`> ${"s".repeat(OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES * 2)}`);
+  const pendingByteLengths = tracker.getPendingByteLengths();
+
+  assert.ok(pendingByteLengths.stdout <= OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES);
+  assert.ok(pendingByteLengths.stderr <= OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES);
+});
+
 test("detects OpenCode final answer activity from text events", () => {
   const stdout = JSON.stringify({
     type: "text",
@@ -967,6 +1036,41 @@ test("forwards parsed OpenCode visible events to the matching conversation tab",
     extensionSource,
     /function postPanelState\([\s\S]*viewProvider\?\.postState\(state\);[\s\S]*replayOpenCodeTaskLists\(\)/,
   );
+});
+
+test("one-shot OpenCode activity detection uses incremental tracker state", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const oneShotStart = extensionSource.indexOf("async function runPromptOneShot");
+  const oneShotEnd = extensionSource.indexOf("function appendTraceMessage", oneShotStart);
+  assert.ok(oneShotStart >= 0 && oneShotEnd > oneShotStart);
+  const oneShotSource = extensionSource.slice(oneShotStart, oneShotEnd);
+
+  assert.match(oneShotSource, /const openCodeActivityTracker = createOpenCodeStreamActivityTracker\(\)/);
+  assert.match(oneShotSource, /openCodeActivityTracker\.snapshot\(\)/);
+  assert.match(oneShotSource, /openCodeActivityTracker\.updateStdout\(chunk\)/);
+  assert.match(oneShotSource, /openCodeActivityTracker\.updateStderr\(chunk\)/);
+  assert.match(oneShotSource, /openCodeActivityTracker\.flush\(\)/);
+  assert.doesNotMatch(oneShotSource, /detectOpenCodeStreamActivity\(rawStdout, rawStderr\)/);
+});
+
+test("OpenCode host raw stdout and stderr caches remain bounded in all run modes", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const parallelStart = extensionSource.indexOf("async function runPromptParallel");
+  const oneShotStart = extensionSource.indexOf("async function runPromptOneShot");
+  const interactiveStart = extensionSource.indexOf("async function runPromptInteractive");
+  assert.ok(parallelStart >= 0 && oneShotStart > parallelStart && interactiveStart > oneShotStart);
+
+  const parallelSource = extensionSource.slice(parallelStart, oneShotStart);
+  const oneShotSource = extensionSource.slice(oneShotStart, interactiveStart);
+  const interactiveSource = extensionSource.slice(interactiveStart);
+
+  for (const source of [parallelSource, oneShotSource, interactiveSource]) {
+    assert.match(source, /rawStdout = appendBoundedUtf8Text\(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
+  }
+  assert.match(parallelSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
+  assert.match(oneShotSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
+  assert.match(interactiveSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, normalized, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
+  assert.match(extensionSource, /const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 \* 1024/);
 });
 
 test("wires subagent event monitoring and 60-second polling into both OpenCode run paths", () => {

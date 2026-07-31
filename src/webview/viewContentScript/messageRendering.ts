@@ -348,6 +348,43 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return true;
       }
 
+      function updateRenderedAssistantMessageStreaming(message, index) {
+        if (!message || message.role !== "assistant" || !message.id) {
+          return false;
+        }
+        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
+          renderMessages();
+          return true;
+        }
+        const wrapper = findRenderedMessageElement(message.id);
+        if (!wrapper) {
+          return false;
+        }
+        applyMessageElementClasses(wrapper, message, index);
+        const oldBadge = wrapper.querySelector(".message-task-role");
+        if (oldBadge) {
+          oldBadge.remove();
+        }
+        const bubble = wrapper.querySelector(".bubble");
+        if (!bubble) {
+          return false;
+        }
+        const nextBadge = createMessageTaskRoleElement(message);
+        if (nextBadge) {
+          wrapper.insertBefore(nextBadge, bubble);
+        }
+        bubble.innerHTML = "";
+        const contentNode = document.createElement("div");
+        contentNode.className = "assistant-message-content assistant-message-content-streaming";
+        contentNode.textContent = getAssistantMessageContentForDisplay(message);
+        bubble.appendChild(contentNode);
+        const actions = createMessageActionsElement(message);
+        if (actions) {
+          bubble.appendChild(actions);
+        }
+        return true;
+      }
+
       function renderMessages() {
         try {
           const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();

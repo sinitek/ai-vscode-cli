@@ -4,8 +4,8 @@
 
 ## plan
 
-- Entries: 8
-- Estimated read cost: ~565 tokens
+- Entries: 9
+- Estimated read cost: ~672 tokens
 
 - `mem-0b64dd15aa` `plan` Trace Error Bubble Dedupe -> `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md`
 - `mem-bbc18d3434` `plan` Loop 主任务失败终止护栏 -> `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md`
@@ -15,6 +15,7 @@
 - `mem-fe60588b95` `plan` Loop 红蓝辩论主持人轮流点名调度 -> `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md`
 - `mem-b7b003c3a1` `plan` 官方 skills 版本刷新与最新判断修复 -> `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md`
 - `mem-d336cba178` `plan` Harness 单元自测与 Chromium Playwright 能力吸收 -> `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md`
+- `mem-1e4667ddf6` `plan` P0 性能与内存硬化执行计划 -> `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`
 
 ## gotcha
 

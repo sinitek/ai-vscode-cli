@@ -10,7 +10,7 @@
 | `.ch/docs/memory/LESSONS_LEARNED.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PENDING_ITEMS.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PROJECT_CONTEXT.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
-| `.ch/docs/memory/README.md` | `active` | `stale` | 2026-05-21 | 2026-06-02T01:09:50+00:00 | ~18 | 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。 |
+| `.ch/docs/memory/README.md` | `active` | `stale` | 2026-05-21 | 2026-07-25T14:49:44+00:00 | ~18 | 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。 |
 | `.ch/docs/memory/ROLLING_SUMMARY.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-29T01:09:57+00:00 | ~22 | starter placeholder |
 | `.ch/docs/memory/USER_PREFERENCES.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
 
@@ -24,3 +24,4 @@
 - `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` 最后修改于 2026-07-11T03:33:13+00:00，读取成本约 1645 tokens
 - `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` 最后修改于 2026-07-13T04:55:42+00:00，读取成本约 5599 tokens
 - `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` 最后修改于 2026-07-15T01:12:08+00:00，读取成本约 5964 tokens
+- `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` 最后修改于 2026-07-31T01:25:56+00:00，读取成本约 2028 tokens

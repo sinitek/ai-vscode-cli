@@ -88,7 +88,7 @@
 - Observation IDs：`mem-431f2548e1`
 - Source of truth：`.ch/docs/memory/README.md`
 - 小节：`热区记忆面`, `文件分工`, `使用原则`, `体积控制`, `推荐阅读顺序`, `与 skills 的关系`
-- 直接引用：`.ch/docs/MEMORY.md`, `.ch/docs/generated/memory-index/`
+- 直接引用：`.ch/docs/MEMORY.md`
 
 ## 滚动摘要
 

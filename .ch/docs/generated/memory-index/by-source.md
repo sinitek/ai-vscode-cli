@@ -9,11 +9,11 @@
 - `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` <- `mem-fe60588b95`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md` <- `mem-4b483bd801`, `mem-5233a00937`, `mem-e2fabd8a2e`
 - `.ch/docs/exec-plans/` <- `mem-4b483bd801`, `mem-b7b003c3a1`
+- `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` <- `mem-1e4667ddf6`
 - `.ch/docs/generated/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
-- `.ch/docs/generated/memory-index/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
 - `.ch/docs/handoffs/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
 - `.ch/docs/product-specs/` <- `mem-b7b003c3a1`, `mem-fe60588b95`
-- `.ch/docs/product-specs/FEATURE_INVENTORY.md` <- `mem-4b483bd801`, `mem-5233a00937`, `mem-b7b003c3a1`, `mem-bbc18d3434`, `mem-d336cba178`, `mem-e2fabd8a2e`, `mem-fe60588b95`
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md` <- `mem-1e4667ddf6`, `mem-4b483bd801`, `mem-5233a00937`, `mem-b7b003c3a1`, `mem-bbc18d3434`, `mem-d336cba178`, `mem-e2fabd8a2e`, `mem-fe60588b95`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` <- `mem-4b483bd801`, `mem-5233a00937`, `mem-bbc18d3434`, `mem-d336cba178`, `mem-e2fabd8a2e`, `mem-fe60588b95`
 - `.ch/docs/references/` <- `mem-4b483bd801`, `mem-b7b003c3a1`
 - `.ch/docs/references/authoritative-skills.md` <- `mem-b7b003c3a1`
@@ -27,20 +27,28 @@
 - `scripts/` <- `mem-b7b003c3a1`
 - `scripts/run_smoke.mjs` <- `mem-d336cba178`
 - `scripts/validate_mcp_marketplace.js` <- `mem-4b483bd801`
+- `src/boundedText.ts` <- `mem-1e4667ddf6`
+- `src/cli/commandRunner.ts` <- `mem-1e4667ddf6`
 - `src/config/` <- `mem-4b483bd801`, `mem-5233a00937`, `mem-b7b003c3a1`
-- `src/extension.ts` <- `mem-0b64dd15aa`, `mem-bbc18d3434`, `mem-e2fabd8a2e`, `mem-fe60588b95`
+- `src/extension.ts` <- `mem-0b64dd15aa`, `mem-1e4667ddf6`, `mem-bbc18d3434`, `mem-e2fabd8a2e`, `mem-fe60588b95`
+- `src/interactive/claudeRunner.ts` <- `mem-1e4667ddf6`
 - `src/loopDebate.ts` <- `mem-fe60588b95`
+- `src/openCodeTabStream.ts` <- `mem-1e4667ddf6`
 - `src/test/` <- `mem-4b483bd801`, `mem-5233a00937`, `mem-bbc18d3434`
+- `src/test/boundedText.test.ts` <- `mem-1e4667ddf6`
 - `src/test/chromiumPlaywrightSmoke.test.ts` <- `mem-d336cba178`
 - `src/test/claudeConfigVisualEditor.test.ts` <- `mem-5233a00937`
+- `src/test/claudeRunner.test.ts` <- `mem-1e4667ddf6`
 - `src/test/codexConfigVisualEditor.test.ts` <- `mem-5233a00937`
 - `src/test/longTermMemory.test.ts` <- `mem-d336cba178`
 - `src/test/loopDebate.test.ts` <- `mem-fe60588b95`
 - `src/test/mcpMarketplaceCatalog.test.ts` <- `mem-4b483bd801`
 - `src/test/opencodeconfigvisualeditor.test.ts` <- `mem-5233a00937`
-- `src/webview/` <- `mem-b7b003c3a1`
+- `src/webview/` <- `mem-1e4667ddf6`, `mem-b7b003c3a1`
 - `src/webview/configPanel.ts` <- `mem-5233a00937`
 - `src/webview/configProtocol.ts` <- `mem-5233a00937`
 - `src/webview/loopDebatePanel.ts` <- `mem-e2fabd8a2e`
+- `src/webview/panelFileActions.ts` <- `mem-1e4667ddf6`
 - `src/webview/viewContent.ts` <- `mem-0b64dd15aa`
+- `src/webview/viewContentScript/*` <- `mem-1e4667ddf6`
 - `src/workspaceScaffold.ts` <- `mem-d336cba178`

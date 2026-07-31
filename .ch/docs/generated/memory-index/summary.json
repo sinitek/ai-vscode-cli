@@ -145,6 +145,28 @@
       ],
       "summary": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理",
       "title": "Harness 单元自测与 Chromium Playwright 能力吸收"
+    },
+    {
+      "modified_at": "2026-07-31T01:25:56+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 2028,
+      "references": [
+        ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "src/boundedText.ts",
+        "src/cli/commandRunner.ts",
+        "src/extension.ts",
+        "src/interactive/claudeRunner.ts",
+        "src/openCodeTabStream.ts",
+        "src/test/boundedText.test.ts",
+        "src/test/claudeRunner.test.ts",
+        "src/webview/",
+        "src/webview/panelFileActions.ts",
+        "src/webview/viewContentScript/*"
+      ],
+      "summary": "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
+      "title": "P0 性能与内存硬化执行计划"
     }
   ],
   "claim_count": 123,
@@ -1413,20 +1435,6 @@
       "text": "`memory-recall` 会先展示 observation index，再少量展开详情；需要前后文时可用 `--anchor-id <mem-id>` 生成 timeline window。"
     },
     {
-      "claim_id": "claim-507463b0bd41",
-      "claim_type": "fact",
-      "confidence": "medium",
-      "content_hash": "sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
-      "quote_hash": "sha256:b75a4f3db2d3fcbddd2e8067651dd4e0b6c50699b69e97c0ad3ea3c37442c80a",
-      "review_after": "2026-07-20",
-      "source_anchor": "与 skills 的关系",
-      "source_observation_id": "mem-431f2548e1",
-      "source_path": ".ch/docs/memory/README.md",
-      "source_span": "heading:与 skills 的关系",
-      "status": "active",
-      "text": "对应的默认召回压缩产物应生成到 `.ch/docs/generated/memory-index/`。"
-    },
-    {
       "claim_id": "claim-6820553f1318",
       "claim_type": "fact",
       "confidence": "medium",
@@ -1439,6 +1447,20 @@
       "source_span": "heading:与 skills 的关系",
       "status": "active",
       "text": "脚本的职责是提高效率和准确率，不替代人工可审阅的 Markdown 产物。"
+    },
+    {
+      "claim_id": "claim-867ff97804e0",
+      "claim_type": "fact",
+      "confidence": "medium",
+      "content_hash": "sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "quote_hash": "sha256:8906f7b9c2c6e35e618d6d27c8bde92aa2675788835d5aaf09a34180cc6438a8",
+      "review_after": "2026-07-20",
+      "source_anchor": "与 skills 的关系",
+      "source_observation_id": "mem-431f2548e1",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_span": "heading:与 skills 的关系",
+      "status": "active",
+      "text": "对应的默认召回压缩产物应生成到运行态目录 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/`，不作为仓库事实来源落盘。"
     },
     {
       "claim_id": "claim-871a36ba1346",
@@ -1889,7 +1911,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-07-24T09:16:44+00:00",
+  "generated_at": "2026-07-31T01:29:06+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2061,14 +2083,13 @@
       ],
       "last_verified_at": "2026-05-21",
       "memory_type": "memory_index_rules",
-      "modified_at": "2026-06-02T01:09:50+00:00",
+      "modified_at": "2026-07-25T14:49:44+00:00",
       "path": ".ch/docs/memory/README.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
       "read_tokens": 18,
       "references": [
-        ".ch/docs/MEMORY.md",
-        ".ch/docs/generated/memory-index/"
+        ".ch/docs/MEMORY.md"
       ],
       "source_of_truth": ".ch/docs/memory/README.md",
       "starter": false,
@@ -2136,7 +2157,7 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 10,
+  "observation_count": 11,
   "observations": [
     {
       "concepts": [
@@ -2407,30 +2428,40 @@
     },
     {
       "concepts": [
-        "gotcha"
+        "open-loop"
       ],
-      "content_hash": "431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "content_hash": "1e4667ddf61c977dc22d0f806c352a869c7369a486255f713c2f9d6fb37d88d8",
       "facts": [
-        "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
-        "Source of truth: .ch/docs/memory/README.md"
+        "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
+        "Modified at: 2026-07-31T01:25:56+00:00"
       ],
       "files": [
-        ".ch/docs/MEMORY.md",
-        ".ch/docs/generated/memory-index/"
+        ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "src/boundedText.ts",
+        "src/cli/commandRunner.ts",
+        "src/extension.ts",
+        "src/interactive/claudeRunner.ts",
+        "src/openCodeTabStream.ts",
+        "src/test/boundedText.test.ts",
+        "src/test/claudeRunner.test.ts",
+        "src/webview/",
+        "src/webview/panelFileActions.ts",
+        "src/webview/viewContentScript/*"
       ],
-      "id": "mem-431f2548e1",
-      "modified_at": "2026-06-02T01:09:50+00:00",
-      "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
+      "id": "mem-1e4667ddf6",
+      "modified_at": "2026-07-31T01:25:56+00:00",
+      "narrative": "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
       "private_stripped": false,
-      "read_tokens": 46,
-      "source_anchor": "热区记忆面",
-      "source_kind": "memory_doc",
-      "source_path": ".ch/docs/memory/README.md",
-      "source_title": "热区记忆面",
-      "subtitle": "operational_hot_zone / hot-memory",
-      "title": "热区记忆面",
-      "topic": "gotcha",
-      "type": "rule"
+      "read_tokens": 107,
+      "source_anchor": "P0 性能与内存硬化执行计划",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+      "source_title": "P0 性能与内存硬化执行计划",
+      "subtitle": "Active execution plan",
+      "title": "P0 性能与内存硬化执行计划",
+      "topic": "plan",
+      "type": "plan"
     },
     {
       "concepts": [
@@ -2458,10 +2489,36 @@
       "title": "记忆流转规则",
       "topic": "rule",
       "type": "rule"
+    },
+    {
+      "concepts": [
+        "gotcha"
+      ],
+      "content_hash": "431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "facts": [
+        "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
+        "Source of truth: .ch/docs/memory/README.md"
+      ],
+      "files": [
+        ".ch/docs/MEMORY.md"
+      ],
+      "id": "mem-431f2548e1",
+      "modified_at": "2026-07-25T14:49:44+00:00",
+      "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
+      "private_stripped": false,
+      "read_tokens": 46,
+      "source_anchor": "热区记忆面",
+      "source_kind": "memory_doc",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_title": "热区记忆面",
+      "subtitle": "operational_hot_zone / hot-memory",
+      "title": "热区记忆面",
+      "topic": "gotcha",
+      "type": "rule"
     }
   ],
   "open_loops": {
-    "active_plan_count": 8,
+    "active_plan_count": 9,
     "active_risks": [],
     "pending_items": []
   },
@@ -2489,7 +2546,7 @@
       "read_tokens": 46
     },
     "plan": {
-      "count": 8,
+      "count": 9,
       "ids": [
         "mem-0b64dd15aa",
         "mem-bbc18d3434",
@@ -2498,9 +2555,10 @@
         "mem-e2fabd8a2e",
         "mem-fe60588b95",
         "mem-b7b003c3a1",
-        "mem-d336cba178"
+        "mem-d336cba178",
+        "mem-1e4667ddf6"
       ],
-      "read_tokens": 565
+      "read_tokens": 672
     },
     "rule": {
       "count": 1,
@@ -2510,6 +2568,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 650,
+  "total_read_tokens": 757,
   "version": "0.2.0"
 }

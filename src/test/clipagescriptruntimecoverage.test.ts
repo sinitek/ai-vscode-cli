@@ -65,7 +65,12 @@ function extractFunctionSource(source: string, functionName: string): string {
       }
       continue;
     }
-    if (char === "/" && source[index + 1] !== "/" && source[index + 1] !== "*") {
+    if (
+      char === "/"
+      && source[index + 1] !== "/"
+      && source[index + 1] !== "*"
+      && isLikelyRegexLiteralStart(source, index)
+    ) {
       inRegex = true;
       inRegexCharClass = false;
       continue;
@@ -84,6 +89,21 @@ function extractFunctionSource(source: string, functionName: string): string {
     }
   }
   throw new Error(`Unterminated ${functionName}`);
+}
+
+function isLikelyRegexLiteralStart(source: string, slashIndex: number): boolean {
+  for (let index = slashIndex - 1; index >= 0; index -= 1) {
+    const char = source[index];
+    if (/\s/.test(char)) {
+      continue;
+    }
+    if ("({[=,:;!?&|+-*~^<>".includes(char)) {
+      return true;
+    }
+    const prefix = source.slice(Math.max(0, index - 8), index + 1);
+    return /\b(?:return|case|throw|typeof|delete|void|new|in|of)$/.test(prefix);
+  }
+  return true;
 }
 
 function extractWindowMessageHandlerSource(): string {
@@ -423,7 +443,7 @@ function createFakeWindow(): any {
   };
 }
 
-function createRuntimeHarness() {
+function createRuntimeHarness(markedOverride?: unknown) {
   const document = createFakeDocument();
   const fakeWindow = createFakeWindow();
   const posted: any[] = [];
@@ -476,6 +496,7 @@ function createRuntimeHarness() {
         applyExternalTaskListUpdate,
         buildInsertText,
         buildPromptPayload,
+        buildRunStreamExportPayload,
         closeHistorySessionMessages,
         continueQueuedPrompts,
         dispatchPrompt,
@@ -486,6 +507,7 @@ function createRuntimeHarness() {
         getAssistantMessageContentForDisplay,
         getRunPromptHistory,
         handleFileSelection,
+        appendAssistantDelta,
         openHistorySessionMessages,
         openQueueOverlay,
         openRunStreamOverlay,
@@ -511,7 +533,7 @@ function createRuntimeHarness() {
     fakeWindow,
     navigator,
     undefined,
-    undefined,
+    markedOverride,
     console,
     fakeWindow.setTimeout,
     fakeWindow.clearTimeout,
@@ -949,6 +971,103 @@ test("keeps run stream preview bounded per conversation tab", () => {
   assert.equal(runtimeState.runStreamRecords[0].content, "record-1");
   assert.equal(runtimeState.runStreamDiscardedRecordCount, 1);
   assert.ok(runtimeState.runStreamRetainedBytes > 0);
+  const exportPayload = api.buildRunStreamExportPayload(runtimeState);
+  assert.equal(exportPayload[0].id, "stream-truncation-metadata");
+  assert.equal(JSON.parse(exportPayload[0].content).discardedRecordCount, 1);
+});
+
+test("defers run stream DOM rendering while overlay is closed", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+
+  api.appendRunRawStream("record while closed", "stdout", "tab-1");
+
+  const runStreamContent = document.getElementById("runStreamContent");
+  assert.equal(runStreamContent.children.length, 0);
+  api.openRunStreamOverlay();
+  assert.equal(runStreamContent.querySelectorAll("details.run-stream-item").length, 1);
+});
+
+test("truncates oversized run stream records within the per-record byte budget", () => {
+  const { api, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+
+  api.appendRunRawStream("x".repeat(300 * 1024), "stdout", "tab-1");
+
+  const runtimeState = api.getConversationRuntimeState("tab-1");
+  assert.equal(runtimeState.runStreamRecords.length, 1);
+  assert.equal(runtimeState.runStreamTruncatedRecordCount, 1);
+  assert.match(runtimeState.runStreamRecords[0].content, /earlier bytes/);
+  assert.ok(new TextEncoder().encode(runtimeState.runStreamRecords[0].content).length <= 256 * 1024);
+  assert.equal(JSON.parse(api.buildRunStreamExportPayload(runtimeState)[0].content).truncatedRecordCount, 1);
+});
+
+test("batches assistant delta markdown rendering while streaming", () => {
+  let markdownParseCount = 0;
+  const marked = {
+    Renderer: class {
+      html(): string {
+        return "";
+      }
+    },
+    parse(value: string): string {
+      markdownParseCount += 1;
+      return `<p>${value}</p>`;
+    },
+  };
+  const { api, document, window } = createRuntimeHarness(marked);
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.renderMessages();
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "assistant-stream",
+    content: "hello",
+    kind: "normal",
+  });
+  assert.equal(markdownParseCount, 1);
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "assistant-stream",
+    content: " **world**",
+    kind: "normal",
+  });
+  assert.equal(markdownParseCount, 1);
+  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-streaming").length, 1);
+
+  const idleRender = Array.from(window.timers.values()).at(-1) as (() => void) | undefined;
+  assert.equal(typeof idleRender, "function");
+  idleRender?.();
+  assert.equal(markdownParseCount, 2);
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "assistant-stream",
+    content: "!",
+    kind: "normal",
+    codexFinalAnswer: true,
+  });
+  assert.equal(markdownParseCount, 3);
+});
+
+test("rejects attachment selections over webview limits before reading", async () => {
+  const { api, document, posted } = createRuntimeHarness();
+  const files = Array.from({ length: 11 }, (_, index) => ({
+    name: `file-${index}.txt`,
+    type: "text/plain",
+    size: 1,
+  }));
+
+  await api.handleFileSelection(files);
+
+  assert.equal(posted.some((message) => message && message.type === "uploadFiles"), false);
+  assert.match(document.getElementById("toast").textContent, /Too many attachments/);
+  assert.ok(api.state.messages.some((message: any) => /Too many attachments/.test(message.content)));
 });
 
 test("dispatches background prompts for Graph tabs as Graph runs", () => {
@@ -1188,6 +1307,8 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "unwrapShellCommand",
     "stripWrappedQuotes",
     "normalizeCommandForMatching",
+    "getToolStyleBucket",
+    "getLocalizedToolTitle",
     "getTraceTypeDefinition",
     "isLineNumberedLine",
     "wrapLineNumberedBlocks",
@@ -1379,6 +1500,9 @@ test("handles run stream, queue, attachments, history, and settings function bra
   const streamQueueSource = [
     "normalizeRunStreamSource",
     "normalizeRunStreamRecordContent",
+    "getRunStreamContentByteLength",
+    "trimRunStreamContentToMaxBytes",
+    "normalizeRunStreamRecordForStorage",
     "buildRunStreamPreview",
     "tryFormatRunStreamJsonContent",
     "formatRunStreamExpandedContent",
@@ -1389,10 +1513,12 @@ test("handles run stream, queue, attachments, history, and settings function bra
     "clearQueuedPromptIndex",
     "buildInsertText",
     "readFileAsDataUrl",
+    "formatUploadLimitBytes",
+    "validateUploadFiles",
     "getClipboardFiles",
     "getDropUris",
   ].map((name) => extractFunctionSource(`${VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE}\n${VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME}`, name)).join("\n");
-  const runtimeState = {
+  const runtimeState: any = {
     pendingPromptQueue: [{ prompt: "first" }, { prompt: "second" }],
     queueEditingIndex: 0,
     queueEditingDraft: "updated",
@@ -1401,6 +1527,12 @@ test("handles run stream, queue, attachments, history, and settings function bra
   const toasts: string[] = [];
   const helpers = new Function(
     "RUN_STREAM_PREVIEW_MAX_LENGTH",
+    "RUN_STREAM_MAX_RECORDS",
+    "RUN_STREAM_MAX_BYTES",
+    "RUN_STREAM_MAX_RECORD_BYTES",
+    "UPLOAD_MAX_FILES",
+    "UPLOAD_MAX_FILE_BYTES",
+    "UPLOAD_MAX_TOTAL_BYTES",
     "t",
     "normalizePromptPayload",
     "getActiveConversationRuntimeState",
@@ -1411,6 +1543,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
     `${streamQueueSource}; return {
       normalizeRunStreamSource,
       normalizeRunStreamRecordContent,
+      normalizeRunStreamRecordForStorage,
       buildRunStreamPreview,
       tryFormatRunStreamJsonContent,
       formatRunStreamExpandedContent,
@@ -1421,11 +1554,19 @@ test("handles run stream, queue, attachments, history, and settings function bra
       clearQueuedPromptIndex,
       buildInsertText,
       readFileAsDataUrl,
+      formatUploadLimitBytes,
+      validateUploadFiles,
       getClipboardFiles,
       getDropUris,
     };`,
   )(
     20,
+    2000,
+    8 * 1024 * 1024,
+    256 * 1024,
+    10,
+    10 * 1024 * 1024,
+    25 * 1024 * 1024,
     (key: string) => key,
     (payload: any) => payload && payload.prompt ? payload : null,
     () => runtimeState,
@@ -1456,17 +1597,30 @@ test("handles run stream, queue, attachments, history, and settings function bra
   assert.equal(helpers.tryFormatRunStreamJsonContent("plain"), null);
   assert.equal(helpers.formatRunStreamExpandedContent(""), "runStreamRecordEmpty");
   assert.deepEqual(helpers.buildRunStreamExportPayload(runtimeState), runtimeState.runStreamRecords);
+  runtimeState.runStreamDiscardedRecordCount = 1;
+  runtimeState.runStreamDiscardedBytes = 20;
+  runtimeState.runStreamRetainedBytes = 10;
+  assert.equal(JSON.parse(helpers.buildRunStreamExportPayload(runtimeState)[0].content).discardedBytes, 20);
+  runtimeState.runStreamDiscardedRecordCount = 0;
+  runtimeState.runStreamDiscardedBytes = 0;
+  const trimmedRecord = helpers.normalizeRunStreamRecordForStorage("x".repeat(300 * 1024));
+  assert.equal(trimmedRecord.truncated, true);
+  assert.ok(new TextEncoder().encode(trimmedRecord.content).length <= 256 * 1024);
   helpers.saveQueuedPromptEdit();
   assert.equal(runtimeState.pendingPromptQueue[0].prompt, "updated");
   assert.equal(toasts.at(-1), "toastQueueUpdated");
   helpers.moveQueuedPrompt(0, 1);
-  assert.deepEqual(runtimeState.pendingPromptQueue.map((item) => item.prompt), ["second", "updated"]);
+  assert.deepEqual(runtimeState.pendingPromptQueue.map((item: any) => item.prompt), ["second", "updated"]);
   helpers.clearQueuedPromptIndex(1);
-  assert.deepEqual(runtimeState.pendingPromptQueue.map((item) => item.prompt), ["second"]);
+  assert.deepEqual(runtimeState.pendingPromptQueue.map((item: any) => item.prompt), ["second"]);
   runtimeState.queueEditingIndex = 4;
   helpers.normalizeQueueEditingState(runtimeState);
   assert.equal(runtimeState.queueEditingIndex, -1);
   assert.equal(helpers.buildInsertText(["a", "b"], "#"), "#a #b ");
+  assert.equal(helpers.formatUploadLimitBytes(10 * 1024 * 1024), "10 MB");
+  assert.equal(helpers.validateUploadFiles(Array.from({ length: 11 }, () => ({ size: 1 }))), "toastUploadTooManyFiles");
+  assert.equal(helpers.validateUploadFiles([{ name: "big.bin", size: 11 * 1024 * 1024 }]), "toastUploadFileTooLarge");
+  assert.equal(helpers.validateUploadFiles([{ size: 9 * 1024 * 1024 }, { size: 9 * 1024 * 1024 }, { size: 9 * 1024 * 1024 }]), "toastUploadTotalTooLarge");
   assert.equal(await helpers.readFileAsDataUrl({ name: "ok" }), "data:ok");
   await assert.rejects(() => helpers.readFileAsDataUrl({ name: "bad" }));
   assert.deepEqual(helpers.getClipboardFiles({

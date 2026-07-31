@@ -18,8 +18,11 @@ type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
 };
 
+const CONFIG_ZEN_MODE_COMMAND = "workbench.action.toggleZenMode";
+
 export class ConfigManagerPanel {
   private panel: vscode.WebviewPanel | undefined;
+  private zenModeEnteredByPanel = false;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -28,7 +31,8 @@ export class ConfigManagerPanel {
 
   public show(): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Active, true);
+      this.panel.reveal(vscode.ViewColumn.Active, false);
+      this.enterZenMode();
       return;
     }
 
@@ -44,6 +48,7 @@ export class ConfigManagerPanel {
     );
 
     this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
+    this.enterZenMode();
 
     this.panel.webview.onDidReceiveMessage(
       (
@@ -77,6 +82,34 @@ export class ConfigManagerPanel {
 
     this.panel.onDidDispose(() => {
       this.panel = undefined;
+      this.leaveZenMode();
+    });
+  }
+
+  private enterZenMode(): void {
+    if (this.zenModeEnteredByPanel) {
+      return;
+    }
+    this.zenModeEnteredByPanel = true;
+    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND)).catch((error: unknown) => {
+      this.zenModeEnteredByPanel = false;
+      void logInfo("config-zen-mode-unavailable", {
+        command: CONFIG_ZEN_MODE_COMMAND,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  private leaveZenMode(): void {
+    if (!this.zenModeEnteredByPanel) {
+      return;
+    }
+    this.zenModeEnteredByPanel = false;
+    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND)).catch((error: unknown) => {
+      void logInfo("config-zen-mode-restore-failed", {
+        command: CONFIG_ZEN_MODE_COMMAND,
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 

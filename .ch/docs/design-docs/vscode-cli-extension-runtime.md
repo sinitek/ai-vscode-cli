@@ -77,6 +77,8 @@ media/
 - `configPanel.ts` 负责消息协议与请求转发
 - `configView.ts` 负责装载 `media/config/assets/*` 构建产物
 - 具体数据处理全部委托给 `src/config/configService.ts`
+- “配置”动作创建或复用前台聚焦的编辑器主区域面板，并尝试进入 VS Code `workbench.action.toggleZenMode`；这会隐藏工作台外围，形成接近全屏弹窗的配置表面，面板销毁后恢复。VS Code 扩展公开 API 不提供任意 Webview 的原生模态弹窗，因此命令不可用时回退为普通 `WebviewPanel`；不通过外部浏览器或独立 HTTP 服务承载配置页
+- `configView.ts` 在静态资源之后注入 CSP nonce 保护的 VS Code 主题适配层，把配置资源的布局变量映射到 `--vscode-*` 语义色；静态 UI 资源不得重新引入固定品牌色、固定字体或装饰性阴影作为主题来源
 
 也就是说，配置中心的前端和聊天面板是两套 UI，但共用同一扩展宿主和配置服务。
 
@@ -124,6 +126,8 @@ OpenCode 模型选择按 active config 解析为两个角色下拉：主模型�
 主模型运行时通过精确 `--model provider/model` 覆盖，并可用 `--variant` 选择该主模型 variants。CLI 不存在 `--small-model`；子模型临时选择必须写入本次 runtime config overlay 的顶层 `small_model` 兼容字段。每个模型的 `options` 定义基础参数，`variants` 定义该模型作为主模型运行时的可选档位；OpenCode 内部 `small: true` 请求会跳过 variants，只使用子模型自身 `options`。`@ai-sdk/openai-compatible` 只描述 API 协议适配器，不决定 low/medium/high 等档位。
 
 OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事件提取 assistant 文本生成最终结论气泡；默认格式兼容路径只接受 stdout 正文，不把 stderr 中 `> build · model` 这类状态行当作最终回答。若 CLI 输出 JSON `error` 事件，即使进程 `code!=0` 且 stderr 为空，也会把其中的 `APIError`、HTTP status、provider message、`responseBody.error.code` 和请求 URL 作为错误展示；只有没有可解析 provider/API 错误时才回退通用 `CLI 退出码`。若 `code=0` 但当前尝试没有非 thinking assistant 文本，one-shot 与并行路径都会展示明确的 OpenCode 空响应诊断并进入既有 hidden retry，重试耗尽后才按错误收口。Loop 后续轮次虽然复用初始用户消息锚点，但成功判定只认当前进程尝试的正文，不能用历史轮次 assistant JSON 替当前空响应通过。one-shot 只在启动后 60 秒完全没有 assistant / error / status / progress 活动时转成 OpenCode 启动空输出错误并进入 hidden retry；父 JSONL、子代理会话或子代理气泡出现活动后解除 watchdog。内部子代理增量不会由父 `run --format json` 转发；OpenCode 1.17.18 虽接受 `run --port`，但实测不会可靠监听该端口，因此 one-shot / 并行运行由插件显式启动受管 `opencode serve`、等待 `/global/health` 成功，再让父任务通过 `run --attach` 连接同一服务。捕获父 session 后订阅公开 `/event` SSE；子会话事件只触发读取 `/session/{id}/message` 权威快照，并通过 `/session/{parent}/children` 与 `/session/status` 校验父子关系和状态。无论 SSE 是否遗漏，运行期间都每 60 秒全量补捞一次；每个当前尝试新建的子 session 对应一个独立、不可合并的 assistant 气泡，正文按快照前缀增量追加，完成、失败和中断更新原气泡。服务启动失败时只显示一次监控降级状态并继续原父任务；SSE 重连指数退避到最长 60 秒，避免连接故障刷屏。任务结束、失败或停止统一关闭受管服务、订阅和轮询。该链路不读取 OpenCode 私有 SQLite，子代理消息标记 `subagentId`，不参与父任务最终答复与 hidden retry 成功判定。重试耗尽时必须追加可见 system 错误气泡、写入会话存档并记录日志。
+
+P0 性能与内存硬化后，OpenCode one-shot / parallel / interactive raw stdout/stderr 只在 Extension Host 中保留有界 tail；one-shot activity 使用 `createOpenCodeStreamActivityTracker()` 增量更新状态，不再把累计 `rawStdout/rawStderr` 每个 chunk 传回 `detectOpenCodeStreamActivity()`。OpenCode one-shot 与 tab stream 的 JSONL 未完成行均限制为 64 KiB。扩展停用或 reload 会先设置停用 guard，再通过幂等 stop-all 路径停止主进程、并行进程、交互运行和受管 OpenCode server，避免新 run 在停用期间进入。Webview Run Stream 每 tab 保留记录数、单条字节和总字节预算，overlay 关闭时只更新状态和按钮，不构建完整 records DOM；Assistant delta 流式阶段优先轻量文本更新，idle/final 时再做完整 Markdown 渲染；附件上传由 Webview 预检和 Extension Host decoded Buffer 复验共同限制为最多 10 个文件、单文件 10 MiB、总计 25 MiB。
 
 当且仅当 Loop 主任务已有可续接的远端 OpenCode session、当前空成功响应不含 provider JSON error，且同一运行尚未 rollover 时，下一次 hidden retry 以不带 `--session` 的新会话重新发送完整主任务 prompt。捕获新 `sessionID` 后，插件保留旧 session、复制 UI 会话记录到新 session、更新当前 tab 和 `LoopTaskRecord.sessionId/taskStoreFile`，再继续原状态机；不对 Loop 子任务、普通对话、已有 provider error 或第二次空响应重复切换。恢复中的中英文 system 消息只说明会话恢复，不把可恢复的旧会话空响应显示为 provider/model 配置终态。
 

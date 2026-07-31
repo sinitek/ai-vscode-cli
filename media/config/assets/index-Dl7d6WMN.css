@@ -5,51 +5,48 @@
 }
 
 :root {
-  color-scheme: light;
-  --clay-canvas: #faf9f7;
-  --clay-surface: #ffffff;
-  --clay-surface-muted: #f6f2eb;
-  --clay-border: #dad4c8;
-  --clay-border-soft: #eee9df;
-  --clay-text: #000000;
-  --clay-text-secondary: #55534e;
-  --clay-text-muted: #9f9b93;
-  --clay-inverse: #ffffff;
-  --clay-focus: #146ef5;
-  --clay-matcha: #84e7a5;
-  --clay-matcha-strong: #078a52;
-  --clay-slushie: #3bd3fd;
-  --clay-lemon: #f8cc65;
-  --clay-lemon-strong: #d08a11;
-  --clay-ube: #c1b0ff;
-  --clay-ube-strong: #43089f;
-  --clay-pomegranate: #fc7981;
-  --clay-pomegranate-strong: #c94d58;
-  --clay-blueberry: #01418d;
-  --clay-badge-bg: #f0f8ff;
-  --clay-badge-text: #3859f9;
-  --clay-info-border: #aac4ff;
-  --clay-success-soft: #e9faef;
-  --clay-success-text: #02492a;
-  --clay-warning-soft: #fff8e2;
-  --clay-warning-text: #7c5107;
-  --clay-error-soft: #fff0f1;
-  --clay-error-text: #9e303a;
-  --clay-header-glass: rgba(250, 249, 247, 0.94);
-  --clay-surface-glass: rgba(255, 255, 255, 0.94);
-  --clay-focus-shadow: rgba(20, 110, 245, 0.18);
-  --clay-overlay: rgba(23, 20, 16, 0.42);
-  --clay-floating-shadow: rgba(0, 0, 0, 0.14);
-  --clay-radius-control: 8px;
-  --clay-radius-card: 12px;
-  --clay-radius-panel: 24px;
-  --clay-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.1),
-    0 -1px 1px rgba(0, 0, 0, 0.04) inset,
-    0 -0.5px 1px rgba(0, 0, 0, 0.05);
-  --clay-shadow-panel: 0 16px 40px rgba(46, 39, 28, 0.08);
-  --clay-shadow-floating: -6px 7px 0 rgba(0, 0, 0, 0.96);
-  --clay-motion: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  color-scheme: var(--vscode-color-scheme, normal);
+  --clay-canvas: var(--vscode-editor-background);
+  --clay-surface: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --clay-surface-muted: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-border: var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-editor-foreground)));
+  --clay-border-soft: var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-editor-foreground)));
+  --clay-text: var(--vscode-foreground);
+  --clay-text-secondary: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  --clay-text-muted: var(--vscode-disabledForeground, var(--vscode-descriptionForeground, var(--vscode-foreground)));
+  --clay-inverse: var(--vscode-editor-background);
+  --clay-focus: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+  --clay-matcha: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-matcha-strong: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-foreground)));
+  --clay-slushie: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-lemon: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-lemon-strong: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, var(--vscode-foreground)));
+  --clay-ube: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-ube-strong: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
+  --clay-pomegranate: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-pomegranate-strong: var(--vscode-testing-iconFailed, var(--vscode-editorError-foreground, var(--vscode-foreground)));
+  --clay-blueberry: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  --clay-badge-bg: var(--vscode-textBlockQuote-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-badge-text: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  --clay-info-border: var(--vscode-textLink-foreground, var(--vscode-widget-border));
+  --clay-success-soft: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-success-text: var(--vscode-testing-iconPassed, var(--vscode-foreground));
+  --clay-warning-soft: var(--vscode-editorWarning-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-warning-text: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+  --clay-error-soft: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-error-text: var(--vscode-editorError-foreground, var(--vscode-foreground));
+  --clay-header-glass: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background));
+  --clay-surface-glass: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --clay-focus-shadow: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+  --clay-overlay: var(--vscode-editorGroup-dropBackground, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  --clay-floating-shadow: var(--vscode-widget-shadow, transparent);
+  --clay-radius-control: 2px;
+  --clay-radius-card: 2px;
+  --clay-radius-panel: 0px;
+  --clay-shadow: none;
+  --clay-shadow-panel: none;
+  --clay-shadow-floating: none;
+  --clay-motion: 120ms ease-out;
 
   --primary-color: var(--clay-text);
   --success-color: var(--clay-matcha-strong);
@@ -69,9 +66,7 @@
   --background-color-secondary: var(--clay-surface-muted);
   --border-color: var(--clay-border);
   --border-color-secondary: var(--clay-border-soft);
-  --font-family:
-    "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+  --font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   --font-size-sm: 12px;
   --font-size: 14px;
   --font-size-lg: 16px;
@@ -85,7 +80,7 @@
   --border-radius-lg: var(--clay-radius-panel);
   --box-shadow-sm: var(--clay-shadow);
   --box-shadow: var(--clay-shadow-panel);
-  --box-shadow-lg: 0 22px 64px rgba(0, 0, 0, 0.18);
+  --box-shadow-lg: none;
   --transition-fast: 100ms ease-out;
   --transition-base: var(--clay-motion);
   --transition-slow: 300ms ease-out;
@@ -149,11 +144,15 @@ body,
 }
 
 .config-app-theme {
+  display: flex;
+  flex-direction: column;
   min-width: 760px;
+  min-height: 100vh;
   overflow: hidden;
 }
 
 .config-app-theme .ant-layout {
+  flex: 1 1 auto;
   min-height: 0;
   background: var(--clay-canvas) !important;
 }
@@ -171,7 +170,7 @@ body,
   color: var(--clay-text) !important;
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.45px;
+  letter-spacing: 0;
 }
 
 .config-app-title:after {
@@ -235,7 +234,9 @@ body,
 
 .config-app-workspace {
   display: flex;
+  flex: 1 1 auto;
   gap: 9px;
+  height: calc(100vh - 72px);
   min-height: 0;
   padding: 0;
   overflow: hidden;
@@ -244,6 +245,7 @@ body,
 
 .config-app-sidebar,
 .config-app-content {
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--clay-border) !important;
@@ -254,18 +256,24 @@ body,
 
 .config-app-sidebar {
   flex: 0 0 360px !important;
+  height: 100%;
   width: 360px !important;
   min-width: 360px !important;
   max-width: 360px !important;
 }
 
 .config-app-content {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
+  height: 100%;
   min-width: 0;
 }
 
 .config-sidebar-panel {
+  height: 100%;
   padding: 8px !important;
+  overflow: auto;
   scrollbar-gutter: stable;
 }
 
@@ -340,15 +348,25 @@ body,
 }
 
 .config-app-content > div {
+  flex: 1 1 auto;
+  min-height: 0;
   background: transparent;
 }
 
 .config-editor-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   padding: 9px !important;
   background: var(--clay-surface) !important;
 }
 
 .config-editor-shell > .ant-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--clay-border-soft) !important;
   border-radius: 18px !important;
@@ -361,6 +379,9 @@ body,
 }
 
 .config-editor-shell > .ant-card > .ant-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   padding: 12px !important;
   background: var(--clay-surface) !important;
 }
@@ -895,6 +916,25 @@ input[type="file"]::file-selector-button {
   max-width: calc(100vw - 40px) !important;
 }
 
+.skills-manager-modal .ant-modal {
+  width: min(1180px, calc(100vw - 24px)) !important;
+  top: 12px !important;
+  padding-bottom: 0 !important;
+}
+
+.skills-manager-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 24px);
+  max-height: calc(100vh - 24px);
+}
+
+.skills-manager-modal .ant-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .ant-drawer {
   max-width: calc(100vw - 20px) !important;
 }
@@ -1026,7 +1066,18 @@ input[type="file"]::file-selector-button {
 }
 
 .skills-manager-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none !important;
   color: var(--clay-text);
+}
+
+.skills-manager-content > div:last-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
 }
 
 .skills-manager-tabs {

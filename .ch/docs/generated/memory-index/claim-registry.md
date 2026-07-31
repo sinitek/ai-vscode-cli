@@ -93,8 +93,8 @@
 | `claim-cc037a86b2d0` | `fact` | `active` | `high` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
 | `claim-6724347da52e` | `decision` | `active` | `high` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-08-19` |
 | `claim-0f988e077476` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-05` |
-| `claim-507463b0bd41` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
 | `claim-6820553f1318` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
+| `claim-867ff97804e0` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
 | `claim-871a36ba1346` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
 | `claim-d851c11cb399` | `risk` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-06-11` |
 | `claim-dbcde2cb40bb` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-07-20` |
@@ -1376,20 +1376,6 @@
 - Quote hash: `sha256:7d99623358c9fea41dcb29f77322a8b9a840e40cd63f19c1ffe838f9e1e44e7e`
 - Review after: `2026-07-05`
 
-### claim-507463b0bd41
-
-- Text: 对应的默认召回压缩产物应生成到 `.ch/docs/generated/memory-index/`。
-- Type: `fact`
-- Status: `active`
-- Confidence: `medium`
-- Source: `.ch/docs/memory/README.md`
-- Source anchor: `与 skills 的关系`
-- Source span: `heading:与 skills 的关系`
-- Source observation: `mem-431f2548e1`
-- Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
-- Quote hash: `sha256:b75a4f3db2d3fcbddd2e8067651dd4e0b6c50699b69e97c0ad3ea3c37442c80a`
-- Review after: `2026-07-20`
-
 ### claim-6820553f1318
 
 - Text: 脚本的职责是提高效率和准确率，不替代人工可审阅的 Markdown 产物。
@@ -1402,6 +1388,20 @@
 - Source observation: `mem-431f2548e1`
 - Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
 - Quote hash: `sha256:b8787f8cd01f3b1f7c3bf122264b4281c1270bd0bd192450bfe3f990638c32b6`
+- Review after: `2026-07-20`
+
+### claim-867ff97804e0
+
+- Text: 对应的默认召回压缩产物应生成到运行态目录 `~/.sinitek_cli/memory-generated/<workspace>/memory-index/`，不作为仓库事实来源落盘。
+- Type: `fact`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/memory/README.md`
+- Source anchor: `与 skills 的关系`
+- Source span: `heading:与 skills 的关系`
+- Source observation: `mem-431f2548e1`
+- Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
+- Quote hash: `sha256:8906f7b9c2c6e35e618d6d27c8bde92aa2675788835d5aaf09a34180cc6438a8`
 - Review after: `2026-07-20`
 
 ### claim-871a36ba1346

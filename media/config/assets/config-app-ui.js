@@ -7877,157 +7877,254 @@ const ConfigManagerLayout = () => {
     });
   };
 
-const configClayPalette = {
-  canvas: "#faf9f7",
-  surface: "#ffffff",
-  border: "#dad4c8",
-  borderSoft: "#eee9df",
-  text: "#000000",
-  textSecondary: "#55534e",
-  textMuted: "#9f9b93",
-  success: "#078a52",
-  warning: "#d08a11",
-  error: "#c94d58",
-  info: "#01418d",
-  focus: "#146ef5",
+const readConfigVscodeColor = (...variableNames) => {
+  const styles = window.getComputedStyle(document.documentElement);
+  for (const variableName of variableNames) {
+    const value = styles.getPropertyValue(variableName).trim();
+    if (value) return value;
+  }
+  return "transparent";
 };
 
-const configClayTheme = {
-  ...ZB,
-  token: {
-    ...(ZB.token || {}),
-    colorPrimary: configClayPalette.text,
-    colorPrimaryHover: configClayPalette.textSecondary,
-    colorPrimaryActive: configClayPalette.text,
-    colorInfo: configClayPalette.info,
-    colorSuccess: configClayPalette.success,
-    colorWarning: configClayPalette.warning,
-    colorError: configClayPalette.error,
-    colorText: configClayPalette.text,
-    colorTextSecondary: configClayPalette.textSecondary,
-    colorTextTertiary: configClayPalette.textMuted,
-    colorTextQuaternary: configClayPalette.textMuted,
-    colorTextDisabled: configClayPalette.textMuted,
-    colorTextLightSolid: configClayPalette.surface,
-    colorBgBase: configClayPalette.canvas,
-    colorBgContainer: configClayPalette.surface,
-    colorBgElevated: configClayPalette.surface,
-    colorBgLayout: configClayPalette.canvas,
-    colorFill: configClayPalette.borderSoft,
-    colorFillSecondary: configClayPalette.borderSoft,
-    colorFillTertiary: configClayPalette.canvas,
-    colorFillQuaternary: configClayPalette.canvas,
-    colorBorder: configClayPalette.border,
-    colorBorderSecondary: configClayPalette.borderSoft,
-    colorLink: configClayPalette.text,
-    colorLinkHover: configClayPalette.info,
-    colorLinkActive: configClayPalette.text,
-    controlOutline: configClayPalette.focus,
-    borderRadius: 12,
-    borderRadiusLG: 24,
-    borderRadiusSM: 8,
-    boxShadow: "0 1px 1px rgba(0, 0, 0, 0.1), 0 -1px 1px rgba(0, 0, 0, 0.04) inset, 0 -0.5px 1px rgba(0, 0, 0, 0.05)",
-    boxShadowSecondary: "0 18px 48px rgba(0, 0, 0, 0.16)",
-    fontFamily: '"DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  },
-  components: {
-    ...(ZB.components || {}),
-    Button: {
-      ...(ZB.components?.Button || {}),
-      defaultBg: configClayPalette.surface,
-      defaultColor: configClayPalette.text,
-      defaultBorderColor: configClayPalette.border,
-      defaultHoverBg: configClayPalette.text,
-      defaultHoverColor: configClayPalette.surface,
-      defaultHoverBorderColor: configClayPalette.text,
-      primaryColor: configClayPalette.surface,
-      dangerColor: configClayPalette.error,
-      dangerBorderColor: configClayPalette.error,
-      dangerBg: configClayPalette.surface,
-      primaryShadow: "none",
-      dangerShadow: "none",
-      borderRadius: 12,
-      controlHeight: 36,
+const createConfigVscodeTheme = () => {
+  const editorBackground = readConfigVscodeColor("--vscode-editor-background");
+  const foreground = readConfigVscodeColor("--vscode-foreground");
+  const secondaryForeground = readConfigVscodeColor(
+    "--vscode-descriptionForeground",
+    "--vscode-foreground",
+  );
+  const disabledForeground = readConfigVscodeColor(
+    "--vscode-disabledForeground",
+    "--vscode-descriptionForeground",
+    "--vscode-foreground",
+  );
+  const surface = readConfigVscodeColor(
+    "--vscode-editorWidget-background",
+    "--vscode-editor-background",
+  );
+  const surfaceMuted = readConfigVscodeColor(
+    "--vscode-input-background",
+    "--vscode-editorWidget-background",
+    "--vscode-editor-background",
+  );
+  const border = readConfigVscodeColor(
+    "--vscode-widget-border",
+    "--vscode-panel-border",
+    "--vscode-foreground",
+  );
+  const focus = readConfigVscodeColor(
+    "--vscode-focusBorder",
+    "--vscode-textLink-foreground",
+    "--vscode-foreground",
+  );
+  const primary = readConfigVscodeColor(
+    "--vscode-button-background",
+    "--vscode-textLink-foreground",
+    "--vscode-foreground",
+  );
+  const primaryHover = readConfigVscodeColor(
+    "--vscode-button-hoverBackground",
+    "--vscode-button-background",
+    "--vscode-textLink-activeForeground",
+    "--vscode-foreground",
+  );
+  const primaryForeground = readConfigVscodeColor(
+    "--vscode-button-foreground",
+    "--vscode-editor-background",
+  );
+  const link = readConfigVscodeColor(
+    "--vscode-textLink-foreground",
+    "--vscode-foreground",
+  );
+  const linkHover = readConfigVscodeColor(
+    "--vscode-textLink-activeForeground",
+    "--vscode-textLink-foreground",
+    "--vscode-foreground",
+  );
+  const success = readConfigVscodeColor(
+    "--vscode-testing-iconPassed",
+    "--vscode-charts-green",
+    "--vscode-foreground",
+  );
+  const warning = readConfigVscodeColor(
+    "--vscode-editorWarning-foreground",
+    "--vscode-charts-yellow",
+    "--vscode-foreground",
+  );
+  const error = readConfigVscodeColor(
+    "--vscode-editorError-foreground",
+    "--vscode-testing-iconFailed",
+    "--vscode-foreground",
+  );
+  const rowHover = readConfigVscodeColor(
+    "--vscode-list-hoverBackground",
+    "--vscode-editorWidget-background",
+    "--vscode-editor-background",
+  );
+  const selectedBackground = readConfigVscodeColor(
+    "--vscode-list-activeSelectionBackground",
+    "--vscode-button-background",
+    "--vscode-editorWidget-background",
+  );
+  const selectedForeground = readConfigVscodeColor(
+    "--vscode-list-activeSelectionForeground",
+    "--vscode-button-foreground",
+    "--vscode-foreground",
+  );
+
+  return {
+    ...ZB,
+    token: {
+      ...(ZB.token || {}),
+      colorPrimary: primary,
+      colorPrimaryHover: primaryHover,
+      colorPrimaryActive: primary,
+      colorInfo: link,
+      colorSuccess: success,
+      colorWarning: warning,
+      colorError: error,
+      colorText: foreground,
+      colorTextSecondary: secondaryForeground,
+      colorTextTertiary: secondaryForeground,
+      colorTextQuaternary: disabledForeground,
+      colorTextDisabled: disabledForeground,
+      colorTextLightSolid: primaryForeground,
+      colorBgBase: editorBackground,
+      colorBgContainer: surface,
+      colorBgElevated: surface,
+      colorBgLayout: editorBackground,
+      colorFill: surfaceMuted,
+      colorFillSecondary: surfaceMuted,
+      colorFillTertiary: surfaceMuted,
+      colorFillQuaternary: editorBackground,
+      colorBorder: border,
+      colorBorderSecondary: border,
+      colorLink: link,
+      colorLinkHover: linkHover,
+      colorLinkActive: linkHover,
+      controlOutline: focus,
+      borderRadius: 2,
+      borderRadiusLG: 2,
+      borderRadiusSM: 2,
+      boxShadow: "none",
+      boxShadowSecondary: "none",
+      fontFamily: "var(--vscode-font-family)",
     },
-    Card: {
-      ...(ZB.components?.Card || {}),
-      headerBg: configClayPalette.surface,
-      colorBorderSecondary: configClayPalette.borderSoft,
+    components: {
+      ...(ZB.components || {}),
+      Button: {
+        ...(ZB.components?.Button || {}),
+        defaultBg: surfaceMuted,
+        defaultColor: foreground,
+        defaultBorderColor: border,
+        defaultHoverBg: rowHover,
+        defaultHoverColor: foreground,
+        defaultHoverBorderColor: focus,
+        primaryColor: primaryForeground,
+        dangerColor: error,
+        dangerBorderColor: error,
+        dangerBg: surface,
+        primaryShadow: "none",
+        dangerShadow: "none",
+        borderRadius: 2,
+        controlHeight: 36,
+      },
+      Card: {
+        ...(ZB.components?.Card || {}),
+        headerBg: surface,
+        colorBorderSecondary: border,
+      },
+      Form: {
+        ...(ZB.components?.Form || {}),
+        labelColor: foreground,
+      },
+      Input: {
+        ...(ZB.components?.Input || {}),
+        activeBorderColor: focus,
+        hoverBorderColor: focus,
+        activeShadow: "none",
+      },
+      Layout: {
+        ...(ZB.components?.Layout || {}),
+        headerBg: editorBackground,
+        siderBg: surface,
+        bodyBg: editorBackground,
+        triggerBg: primary,
+        triggerColor: primaryForeground,
+      },
+      Modal: {
+        ...(ZB.components?.Modal || {}),
+        headerBg: surface,
+        contentBg: surface,
+        titleColor: foreground,
+        borderRadiusLG: 2,
+      },
+      Drawer: {
+        ...(ZB.components?.Drawer || {}),
+        colorBgElevated: surface,
+      },
+      Table: {
+        ...(ZB.components?.Table || {}),
+        headerBg: surfaceMuted,
+        headerColor: foreground,
+        rowHoverBg: rowHover,
+      },
+      Tree: {
+        ...(ZB.components?.Tree || {}),
+        nodeHoverBg: rowHover,
+        nodeSelectedBg: selectedBackground,
+        nodeSelectedColor: selectedForeground,
+      },
+      Tabs: {
+        ...(ZB.components?.Tabs || {}),
+        inkBarColor: focus,
+        itemActiveColor: foreground,
+        itemHoverColor: linkHover,
+        itemSelectedColor: foreground,
+      },
     },
-    Form: {
-      ...(ZB.components?.Form || {}),
-      labelColor: configClayPalette.text,
-    },
-    Input: {
-      ...(ZB.components?.Input || {}),
-      activeBorderColor: configClayPalette.text,
-      hoverBorderColor: configClayPalette.text,
-      activeShadow: `0 0 0 2px ${configClayPalette.focus}24`,
-    },
-    Layout: {
-      ...(ZB.components?.Layout || {}),
-      headerBg: configClayPalette.canvas,
-      siderBg: configClayPalette.surface,
-      bodyBg: configClayPalette.canvas,
-      triggerBg: configClayPalette.text,
-      triggerColor: configClayPalette.surface,
-    },
-    Modal: {
-      ...(ZB.components?.Modal || {}),
-      headerBg: configClayPalette.surface,
-      contentBg: configClayPalette.surface,
-      titleColor: configClayPalette.text,
-      borderRadiusLG: 24,
-    },
-    Drawer: {
-      ...(ZB.components?.Drawer || {}),
-      colorBgElevated: configClayPalette.surface,
-    },
-    Table: {
-      ...(ZB.components?.Table || {}),
-      headerBg: configClayPalette.borderSoft,
-      headerColor: configClayPalette.text,
-      rowHoverBg: configClayPalette.canvas,
-    },
-    Tree: {
-      ...(ZB.components?.Tree || {}),
-      nodeHoverBg: configClayPalette.canvas,
-      nodeSelectedBg: configClayPalette.text,
-      nodeSelectedColor: configClayPalette.surface,
-    },
-    Tabs: {
-      ...(ZB.components?.Tabs || {}),
-      inkBarColor: configClayPalette.text,
-      itemActiveColor: configClayPalette.text,
-      itemHoverColor: configClayPalette.text,
-      itemSelectedColor: configClayPalette.text,
-    },
-  },
+  };
 };
 
 // App root
-const ConfigAppRoot = () =>
-    be.jsx(Do, {
-      locale: BB,
-      theme: configClayTheme,
-      children: be.jsx(l$, {
-        children: be.jsx(iP, {
-          children: be.jsxs(LR, {
-            children: [
-              be.jsx(wu, {
-                path: "/",
-                element: be.jsx(Wy, { to: "/config", replace: !0 }),
-              }),
-              be.jsx(wu, { path: "/config", element: be.jsx(ConfigManagerLayout, {}) }),
-              be.jsx(wu, {
-                path: "*",
-                element: be.jsx(Wy, { to: "/config", replace: !0 }),
-              }),
-            ],
-          }),
+const ConfigAppRoot = () => {
+  const [configVscodeTheme, setConfigVscodeTheme] = c.useState(createConfigVscodeTheme);
+
+  c.useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setConfigVscodeTheme(createConfigVscodeTheme());
+    });
+    const themeAttributeOptions = {
+      attributes: true,
+      attributeFilter: ["class", "style", "data-vscode-theme-id", "data-vscode-theme-kind"],
+    };
+    observer.observe(document.documentElement, themeAttributeOptions);
+    observer.observe(document.body, themeAttributeOptions);
+    return () => observer.disconnect();
+  }, []);
+
+  return be.jsx(Do, {
+    locale: BB,
+    theme: configVscodeTheme,
+    children: be.jsx(l$, {
+      children: be.jsx(iP, {
+        children: be.jsxs(LR, {
+          children: [
+            be.jsx(wu, {
+              path: "/",
+              element: be.jsx(Wy, { to: "/config", replace: !0 }),
+            }),
+            be.jsx(wu, { path: "/config", element: be.jsx(ConfigManagerLayout, {}) }),
+            be.jsx(wu, {
+              path: "*",
+              element: be.jsx(Wy, { to: "/config", replace: !0 }),
+            }),
+          ],
         }),
       }),
-    });
+    }),
+  });
+};
 G2.createRoot(document.getElementById("root")).render(
   be.jsx(ee.StrictMode, { children: be.jsx(ConfigAppRoot, {}) }),
 );

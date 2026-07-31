@@ -513,6 +513,40 @@ test("returns path and upload results through isolated file-action adapters", as
   assert.equal(harness.calls.webviewMessages[3].error, "export blocked");
 });
 
+test("rejects upload boundaries in the file-action adapter before saving", async () => {
+  const {
+    saveUploadedFiles,
+    UPLOAD_MAX_FILES,
+    UPLOAD_MAX_FILE_BYTES,
+  } = require("../webview/panelFileActions") as typeof import("../webview/panelFileActions");
+  const tinyDataUrl = "data:text/plain;base64," + Buffer.from("x").toString("base64");
+
+  const tooMany = await saveUploadedFiles(Array.from({ length: UPLOAD_MAX_FILES + 1 }, (_, index) => ({
+    name: `file-${index}.txt`,
+    type: "text/plain",
+    dataUrl: tinyDataUrl,
+  })));
+  assert.deepEqual(tooMany.paths, []);
+  assert.match(String(tooMany.error), /Too many attachments/);
+
+  const tooLarge = await saveUploadedFiles([{
+    name: "large.bin",
+    type: "application/octet-stream",
+    dataUrl: "data:application/octet-stream;base64," + Buffer.alloc(UPLOAD_MAX_FILE_BYTES + 1).toString("base64"),
+  }]);
+  assert.deepEqual(tooLarge.paths, []);
+  assert.match(String(tooLarge.error), /maximum per file/);
+
+  const nineMbDataUrl = "data:application/octet-stream;base64," + Buffer.alloc(9 * 1024 * 1024).toString("base64");
+  const tooLargeTotal = await saveUploadedFiles([
+    { name: "a.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
+    { name: "b.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
+    { name: "c.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
+  ]);
+  assert.deepEqual(tooLargeTotal.paths, []);
+  assert.match(String(tooLargeTotal.error), /maximum total/);
+});
+
 test("forwards settings and prompts to action handlers and leaves unknown messages as a no-op", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

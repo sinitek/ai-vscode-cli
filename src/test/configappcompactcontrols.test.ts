@@ -44,7 +44,7 @@ test("halves core inline spacing across the config list and editor cards", () =>
   const source = loadUiSource();
   const listPanel = extractSection(source, "const ConfigListPanel =", "const jv =");
   const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
-  const managerLayout = extractSection(source, "const ConfigManagerLayout =", "const configClayPalette =");
+  const managerLayout = extractSection(source, "const ConfigManagerLayout =", "const readConfigVscodeColor =");
 
   assert.match(listPanel, /headStyle: \{ paddingLeft: "4px", paddingRight: "4px" \}/);
   assert.match(listPanel, /bodyStyle: \{ paddingLeft: "4px", paddingRight: "4px" \}/);
@@ -61,7 +61,7 @@ test("halves core inline spacing across the config list and editor cards", () =>
 
 test("opens the configuration list initially when the config page starts narrow", () => {
   const source = loadUiSource();
-  const managerLayout = extractSection(source, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const configClayPalette =");
+  const managerLayout = extractSection(source, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const readConfigVscodeColor =");
 
   assert.match(
     managerLayout,

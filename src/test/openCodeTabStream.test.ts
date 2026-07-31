@@ -8,6 +8,7 @@ const {
   appendOpenCodeFinalTextToTabStream,
   consumeOpenCodeTabStreamChunk,
   createOpenCodeTabStreamState,
+  OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES,
 } = require("../openCodeTabStream") as typeof import("../openCodeTabStream");
 
 function createContext() {
@@ -224,4 +225,17 @@ test("flushes the last JSONL record without requiring a trailing newline", () =>
     content: "最终片段",
   });
   assert.equal(flushed.state.jsonlBuffer, "");
+});
+
+test("bounds pending parallel OpenCode JSONL buffer", () => {
+  const context = createContext();
+  const result = consumeOpenCodeTabStreamChunk(
+    createOpenCodeTabStreamState(),
+    `{"type":"text","part":{"text":"${"x".repeat(OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES * 2)}`,
+    false,
+    context,
+  );
+
+  assert.equal(result.actions.length, 0);
+  assert.ok(Buffer.byteLength(result.state.jsonlBuffer, "utf8") <= OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES);
 });

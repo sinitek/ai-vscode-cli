@@ -144,12 +144,40 @@ globalThis.__utils = ${globalName};`,
   return sandbox.__utils as AnyRecord;
 }
 
+function loadConfigVscodeTheme(themeVariables: Record<string, string>): AnyRecord {
+  const source = readProjectFile("media/config/assets/config-app-ui.js");
+  const themeSource = extractBetween(source, "const readConfigVscodeColor =", "// App root");
+  const sandbox: AnyRecord = {
+    document: { documentElement: {} },
+    window: {
+      getComputedStyle: () => ({
+        getPropertyValue: (name: string) => themeVariables[name] || "",
+      }),
+    },
+    ZB: {
+      algorithm: "existing-algorithm",
+      token: { padding: 16, colorPrimary: "legacy-primary" },
+      components: {
+        Button: { fontWeight: 500, defaultBg: "legacy-button-background" },
+        List: { itemPaddingLG: "12px 16px" },
+      },
+    },
+  };
+  vm.runInNewContext(
+    `${themeSource}
+globalThis.__theme = createConfigVscodeTheme();`,
+    sandbox,
+  );
+  return sandbox.__theme as AnyRecord;
+}
+
 type PanelHarness = {
   createCalls: unknown[][];
   commandCalls: unknown[][];
   externalUrls: string[];
   messageHandler?: MessageHandler;
   disposeHandler?: () => void;
+  zenModeCommandError?: Error;
   panel: {
     title: string;
     webview: {
@@ -209,6 +237,9 @@ function installConfigPanelHarness(): PanelHarness {
   };
   vscode.commands.executeCommand = async (...args: unknown[]) => {
     harness.commandCalls.push(args);
+    if (args[0] === "workbench.action.toggleZenMode" && harness.zenModeCommandError) {
+      throw harness.zenModeCommandError;
+    }
     return undefined;
   };
   vscode.env.openExternal = async (uri: { toString?: () => string }) => {
@@ -252,6 +283,13 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   assert.match(html, /img-src vscode-resource:\/\/sinitek-test https: data:/);
   assert.match(html, /worker-src vscode-resource:\/\/sinitek-test blob:/);
   assert.match(html, new RegExp(`<link rel="stylesheet" href="webview-test://.*/${escapeRegExp(cssAsset)}" />`));
+  assert.match(html, /<style nonce="[A-Za-z0-9]{32}">[\s\S]*--clay-canvas: var\(--vscode-editor-background\)/);
+  assert.match(html, /--clay-shadow: none/);
+  assert.match(html, /--font-family: var\(--vscode-font-family/);
+  assert.match(html, /\.config-app-workspace\s*\{[\s\S]*height:\s*calc\(100vh - 72px\) !important/);
+  assert.match(html, /\.config-editor-shell > \.ant-card > \.ant-card-body[\s\S]*overflow:\s*auto !important/);
+  assert.match(html, /\.skills-manager-modal \.ant-modal\s*\{[\s\S]*width:\s*min\(1180px,\s*calc\(100vw - 24px\)\) !important/);
+  assert.match(html, /\.skills-manager-content > div:last-child[\s\S]*max-height:\s*none !important/);
   assert.match(html, new RegExp(`loadScript\\("webview-test://.*/${escapeRegExp(jsAsset)}"\\)`));
   assert.match(html, /const configBase = "webview-test:\/\/.*\/media\/config";/);
   assert.match(html, /const downloadsDir = ".*Downloads";/);
@@ -462,11 +500,20 @@ test("config manager panel creates a safe webview and handles non-config host me
   assert.equal((harness.createCalls[0][3] as AnyRecord).enableScripts, true);
   assert.equal((harness.createCalls[0][3] as AnyRecord).retainContextWhenHidden, true);
   assert.ok(harness.panel.webview.html.includes("window.electronAPI"));
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    1,
+  );
 
   const firstHtml = harness.panel.webview.html;
   manager.show();
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.revealCount, 1);
+  assert.equal(harness.commandCalls.find((call) => call[0] === "reveal")?.[2], false);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    1,
+  );
 
   manager.syncActiveConfig();
   assert.deepEqual(
@@ -490,8 +537,30 @@ test("config manager panel creates a safe webview and handles non-config host me
   assert.deepEqual(harness.externalUrls, ["https://example.test/signup"]);
 
   harness.disposeHandler?.();
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    2,
+  );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.filter((message) => (message as AnyRecord).type === "config:syncActive").length, 1);
+});
+
+test("config manager panel falls back to the editor surface when Zen Mode is unavailable", async () => {
+  const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  harness.zenModeCommandError = new Error("Zen Mode is unavailable");
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+
+  manager.show();
+  await delay(0);
+  manager.show();
+
+  assert.equal(harness.createCalls.length, 1);
+  assert.equal(harness.revealCount, 1);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    2,
+  );
 });
 
 test("config manager panel routes request actions, change notifications, and errors through response messages", async () => {
@@ -1012,7 +1081,7 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   const cssSource = readProjectFile(`media/config/assets/${findAsset(".css")}`);
   const listPanel = extractBetween(uiSource, "// Config list panel", "const jv =");
   const editorPanel = extractBetween(uiSource, "const ConfigEditorPanel =", "const { Header: jk");
-  const layout = extractBetween(uiSource, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const configClayPalette =");
+  const layout = extractBetween(uiSource, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const readConfigVscodeColor =");
 
   assert.match(listPanel, /H\("claude", \$\)/);
   assert.match(listPanel, /H\("codex", w\)/);
@@ -1076,6 +1145,54 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   ]) {
     assert.ok(cssSource.includes(selector), `compact stylesheet should keep ${selector}`);
   }
+  assert.match(uiSource, /const readConfigVscodeColor = \(\.\.\.variableNames\) => \{/);
+  assert.match(uiSource, /const createConfigVscodeTheme = \(\) => \{/);
+  assert.match(uiSource, /window\.getComputedStyle\(document\.documentElement\)/);
+  assert.match(uiSource, /new MutationObserver\(\(\) => \{/);
+  assert.match(uiSource, /observer\.observe\(document\.documentElement, themeAttributeOptions\)/);
+  assert.match(uiSource, /observer\.observe\(document\.body, themeAttributeOptions\)/);
+  assert.match(uiSource, /setConfigVscodeTheme\(createConfigVscodeTheme\(\)\)/);
+  assert.match(uiSource, /theme: configVscodeTheme/);
+  assert.doesNotMatch(uiSource, /configClayPalette|#faf9f7|#dad4c8|DM Sans/);
+  assert.doesNotMatch(cssSource, /#[0-9a-f]{3,8}\b|rgba?\(/i);
+});
+
+test("configuration UI resolves Ant Design tokens from the current VS Code theme", () => {
+  const theme = loadConfigVscodeTheme({
+    "--vscode-editor-background": "editor-background",
+    "--vscode-foreground": "editor-foreground",
+    "--vscode-descriptionForeground": "description-foreground",
+    "--vscode-disabledForeground": "disabled-foreground",
+    "--vscode-editorWidget-background": "widget-background",
+    "--vscode-input-background": "input-background",
+    "--vscode-widget-border": "widget-border",
+    "--vscode-focusBorder": "focus-border",
+    "--vscode-button-background": "button-background",
+    "--vscode-button-hoverBackground": "button-hover-background",
+    "--vscode-button-foreground": "button-foreground",
+    "--vscode-textLink-foreground": "link-foreground",
+    "--vscode-textLink-activeForeground": "link-active-foreground",
+    "--vscode-testing-iconPassed": "success-foreground",
+    "--vscode-editorWarning-foreground": "warning-foreground",
+    "--vscode-editorError-foreground": "error-foreground",
+    "--vscode-list-hoverBackground": "list-hover-background",
+    "--vscode-list-activeSelectionBackground": "list-selection-background",
+    "--vscode-list-activeSelectionForeground": "list-selection-foreground",
+  });
+
+  assert.equal(theme.algorithm, "existing-algorithm");
+  assert.equal(theme.token.padding, 16);
+  assert.equal(theme.token.colorPrimary, "button-background");
+  assert.equal(theme.token.colorPrimaryHover, "button-hover-background");
+  assert.equal(theme.token.colorText, "editor-foreground");
+  assert.equal(theme.token.colorBgBase, "editor-background");
+  assert.equal(theme.token.colorBorder, "widget-border");
+  assert.equal(theme.components.Button.defaultBg, "input-background");
+  assert.equal(theme.components.Button.primaryColor, "button-foreground");
+  assert.equal(theme.components.Button.fontWeight, 500);
+  assert.equal(theme.components.Tree.nodeSelectedBg, "list-selection-background");
+  assert.equal(theme.components.Tree.nodeSelectedColor, "list-selection-foreground");
+  assert.equal(theme.components.List.itemPaddingLG, "12px 16px");
 });
 
 test("skills manager renders installed skills as a compact multiselect table", () => {

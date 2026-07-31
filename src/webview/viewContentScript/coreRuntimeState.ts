@@ -24,6 +24,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           runStreamRetainedBytes: 0,
           runStreamDiscardedRecordCount: 0,
           runStreamDiscardedBytes: 0,
+          runStreamTruncatedRecordCount: 0,
           runStreamOpenRecordIds: new Set(),
           taskList: createTaskListState(),
           overlays: {
@@ -315,6 +316,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         runtimeState.runStreamRetainedBytes = 0;
         runtimeState.runStreamDiscardedRecordCount = 0;
         runtimeState.runStreamDiscardedBytes = 0;
+        runtimeState.runStreamTruncatedRecordCount = 0;
         runtimeState.runStreamOpenRecordIds.clear();
         runtimeState.overlays.runConflict = false;
         runtimeState.overlays.queue = false;
