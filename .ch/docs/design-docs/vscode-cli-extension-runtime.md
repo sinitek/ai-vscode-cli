@@ -108,6 +108,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 - OpenCode 在对话面板提供 coding / Loop 两种模式；Loop 复用现有主任务、子任务、多轮复核、任务群聊、状态落盘和唤醒链路，每次主任务或子任务仍通过非交互式 one-shot `opencode run` 执行。
 - `isInteractiveSupported(opencode)` 继续为 `false`，只表示 OpenCode 不提供 Codex/Claude interactive runner 与 common command。该标记不能用于隐藏 Loop 模式入口，也不能为了开放入口改成 `true`，否则普通 coding 请求可能错误进入不存在的交互式链路。
 - OpenCode 不读取 Codex 专用的旧 Loop 主任务/子任务模型分配字段，而是与 Codex 一样按 main/subtask 编排角色解析 active config。对话和并行请求使用 effective main；Loop 主任务、主持/复核、续跑和唤醒使用 main，Loop 子任务使用 subtask；Graph planner 和最终 `summary` 节点使用 main，Graph 其他执行节点使用 subtask。
+- Webview 前台发送没有显式 `interactiveMode` 的新提示时，以当前 `state.interactiveMode` 为分发权威；tab 上的 `graphRunId` / `openGraphRun` 元数据只用于 Graph 图入口、状态展示和历史恢复，不能覆盖用户已经切换到 coding/Vibe 或 Loop 的下一次前台发送。后台派发和 Graph 续跑仍可根据 Graph tab 元数据自动归入 `graph`，以保留排队/恢复语义。
 - 由宿主解析 JSON 决策的 Loop 任务协议支持通用 `status=sleep + wakeAfterSeconds + sleepReason`，不是主任务专属；普通自由文本回复不会触发自动睡眠。`extension.ts` 把相对间隔转换为绝对 `autoWakeAt` 并持久化 `status=sleeping`；`loopAutoWake.ts` 只负责协议边界、长延迟分段定时、状态复核、到期重试和取消。扩展激活时从当前工作区任务 Store 恢复睡眠任务，已到期任务直接复用 `runLoopPrompt`、原 CLI/session 和当前 Loop 轮次继续；VS Code 完全退出期间不运行外部守护进程。带合法 `autoWakeAt` 的睡眠任务跳过普通历史保留淘汰，人工继续、完成或中止后清除睡眠字段，避免陈旧定时器再次启动。
 
 

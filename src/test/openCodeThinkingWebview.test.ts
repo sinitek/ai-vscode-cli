@@ -23,6 +23,8 @@ type ThinkingSelect = {
 type ThinkingState = {
   currentCli: string;
   thinkingMode: string;
+  interactiveMode?: string;
+  selectedLoopThinkingByCli?: Record<string, { main?: string | null; subtask?: string | null }>;
   openCodeThinking: unknown;
   openCodeSmallThinking?: unknown;
 };
@@ -77,11 +79,17 @@ function createThinkingSelect(): ThinkingSelect {
 
 function buildThinkingSync(locale: "en" | "zh-CN") {
   const functionNames = [
+    "normalizeThinkingModeSelection",
     "normalizeOpenCodeThinkingPayload",
     "appendThinkingOption",
     "getOpenCodeThinkingOptionLabel",
     "getOpenCodeThinkingMessage",
     "syncOpenCodeThinkingSelect",
+    "getSelectedLoopRoleThinkingModeForCli",
+    "getVisibleLoopRoleThinkingModeForCli",
+    "appendCodexThinkingOptions",
+    "updateCodexLoopRoleThinkingSelect",
+    "updateCodexLoopThinkingSelectOptions",
     "syncOpenCodeThinkingOptions",
     "syncGenericThinkingOptions",
     "syncThinkingOptions",
@@ -92,13 +100,22 @@ function buildThinkingSync(locale: "en" | "zh-CN") {
   const state: ThinkingState = {
     currentCli: "opencode",
     thinkingMode: "medium",
+    interactiveMode: "coding",
     openCodeThinking: null,
     openCodeSmallThinking: null,
   };
   const thinkingMode = createThinkingSelect();
   const openCodePrimaryThinkingMode = createThinkingSelect();
   const openCodeSmallThinkingMode = createThinkingSelect();
-  const elements = { thinkingMode, openCodePrimaryThinkingMode, openCodeSmallThinkingMode };
+  const codexLoopMainThinkingMode = createThinkingSelect();
+  const codexLoopSubtaskThinkingMode = createThinkingSelect();
+  const elements = {
+    thinkingMode,
+    openCodePrimaryThinkingMode,
+    openCodeSmallThinkingMode,
+    codexLoopMainThinkingMode,
+    codexLoopSubtaskThinkingMode,
+  };
   const document = {
     createElement(tagName: string): ThinkingOption {
       assert.equal(tagName, "option");
@@ -134,6 +151,7 @@ function buildThinkingChangeHandler(
   configuredDefaultVariant: string | null = null,
 ) {
   const functionSource = [
+    "getOpenCodeCompatModelRole",
     "handleOpenCodeThinkingModeChange",
     "handleThinkingModeChange",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, name)).join("\n");
@@ -393,8 +411,8 @@ test("routes OpenCode variant changes separately from generic thinking settings"
   assert.equal(openCode.state.openCodeThinking.selectedVariant, null);
   openCode.handler("high");
   assert.deepEqual(openCode.messages, [
-    { type: "updateOpenCodeVariant", role: "primary", value: null },
-    { type: "updateOpenCodeVariant", role: "primary", value: "high" },
+    { type: "updateOpenCodeVariant", role: "primary", modelRole: "main", value: null },
+    { type: "updateOpenCodeVariant", role: "primary", modelRole: "main", value: "high" },
   ]);
   assert.equal(openCode.state.openCodeThinking.selectedVariant, "high");
 
@@ -430,6 +448,10 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
     VIEW_CONTENT_SCRIPT_EVENT_BINDINGS,
     "handleOpenCodeRoleModelChange",
   );
+  const roleHelperSource = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_EVENT_BINDINGS,
+    "getOpenCodeCompatModelRole",
+  );
   const messages: unknown[] = [];
   let thinkingSyncCount = 0;
   const state: any = {
@@ -456,14 +478,14 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
     "state",
     "vscode",
     "syncThinkingOptions",
-    `${handlerSource}; return handleOpenCodeRoleModelChange;`,
+    `${roleHelperSource}; ${handlerSource}; return handleOpenCodeRoleModelChange;`,
   )(
     state,
     { postMessage(message: unknown) { messages.push(message); } },
     () => { thinkingSyncCount += 1; },
-  ) as (role: "primary" | "small", value: string) => void;
+  ) as (role: "main" | "subtask", value: string) => void;
 
-  handler("small", "myAPI/small-task");
+  handler("subtask", "myAPI/small-task");
   assert.equal(state.openCodeThinking.selectedVariant, "high");
   assert.deepEqual(state.openCodeSmallThinking, {
     selectedVariant: null,
@@ -474,7 +496,7 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
   });
   assert.equal(thinkingSyncCount, 1);
 
-  handler("primary", "myAPI/main-chat");
+  handler("main", "myAPI/main-chat");
   assert.deepEqual(state.openCodeThinking, {
     selectedVariant: null,
     configuredDefaultVariant: null,
@@ -484,7 +506,7 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
   });
   assert.equal(thinkingSyncCount, 2);
   assert.deepEqual(messages, [
-    { type: "updateOpenCodeRoleModel", role: "small", value: "myAPI/small-task" },
-    { type: "updateOpenCodeRoleModel", role: "primary", value: "myAPI/main-chat" },
+    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/small-task" },
+    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: "myAPI/main-chat" },
   ]);
 });

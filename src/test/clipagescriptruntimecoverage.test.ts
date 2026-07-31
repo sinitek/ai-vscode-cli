@@ -1115,6 +1115,60 @@ test("dispatches background prompts for Graph tabs as Graph runs", () => {
   assert.equal(sendPromptMessage.preserveActiveTab, true);
 });
 
+test("uses the selected foreground mode after a Graph run on the same tab", () => {
+  const harness = createRuntimeHarness();
+  const { api, posted, window } = harness;
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      conversationTabs: {
+        activeTabId: "tab-graph",
+        tabs: [{ id: "tab-graph", cli: "codex", graphRunId: "graph-1" }],
+      },
+      interactiveMode: "coding",
+    }),
+  });
+
+  const beforeCodingDispatch = posted.length;
+  assert.equal(api.dispatchPrompt({ prompt: "switch to vibe" }), true);
+  const codingSendPromptMessage = posted
+    .slice(beforeCodingDispatch)
+    .find((message) => message && message.type === "sendPrompt");
+
+  assert.ok(codingSendPromptMessage);
+  assert.equal(codingSendPromptMessage.tabId, "tab-graph");
+  assert.equal(codingSendPromptMessage.cli, "codex");
+  assert.equal(codingSendPromptMessage.interactiveMode, "coding");
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainModel"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskModel"), false);
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      conversationTabs: {
+        activeTabId: "tab-graph",
+        tabs: [{ id: "tab-graph", cli: "codex", graphRunId: "graph-1" }],
+      },
+      interactiveMode: "loop",
+    }),
+  });
+
+  const beforeLoopDispatch = posted.length;
+  assert.equal(api.dispatchPrompt({ prompt: "switch to loop" }), true);
+  const loopSendPromptMessage = posted
+    .slice(beforeLoopDispatch)
+    .find((message) => message && message.type === "sendPrompt");
+
+  assert.ok(loopSendPromptMessage);
+  assert.equal(loopSendPromptMessage.tabId, "tab-graph");
+  assert.equal(loopSendPromptMessage.cli, "codex");
+  assert.equal(loopSendPromptMessage.interactiveMode, "loop");
+  assert.equal(loopSendPromptMessage.loopExecutionMode, "debate_multi_agent");
+  assert.equal(loopSendPromptMessage.loopMainModel, "gpt-5-main");
+  assert.equal(loopSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
+});
+
 test("dispatches Codex Graph prompts with role models and strips stale role models from coding sends", () => {
   const harness = createRuntimeHarness();
   const { api, posted, window } = harness;

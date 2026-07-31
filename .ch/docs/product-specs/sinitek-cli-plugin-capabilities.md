@@ -121,7 +121,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 ### 3.4 会话与并发
 
 - 会话列表与当前会话切换
-- 历史会话列表会显示该会话是否为 Loop / Graph 会话、是否已在 AI 对话 tabs 中打开，并移除“复制 ID”按钮；Graph 会话从 Graph run store 的 `cli + sessionId` 或已保存消息中的 `graphRunId` / `openGraphRun` action 识别，加载后底部“打开 Graph 图”按钮在后续普通回复后继续可用
+- 历史会话列表会显示该会话是否为 Loop / Graph 会话、是否已在 AI 对话 tabs 中打开，并移除“复制 ID”按钮；Graph 会话从 Graph run store 的 `cli + sessionId` 或已保存消息中的 `graphRunId` / `openGraphRun` action 识别，加载后底部“打开 Graph 图”按钮在后续普通回复后继续可用。Graph 元数据只保留图入口、状态展示和恢复线索；同一 tab 前台发送新提示时，分发模式以当前 UI 选择的 coding/Vibe、Loop 或 Graph 为准，切出 Graph 后仍复用该会话上下文但不会被 Graph 元数据强制改回 Graph
 - 历史记录弹窗支持查看单个历史会话的已保存消息，并可将该会话消息导出为 TXT；历史记录中的操作按钮允许换行展示，避免挤压列表宽度
 - 历史记录弹窗不再提供独立“Loop 群聊”恢复 tab；Loop 会话统一从“历史会话”加载，恢复主会话后通过输入区已有“打开群聊”按钮进入对应群聊
 - 从历史加载未打开的会话时会新建 tab 承载该会话；若该会话已在 tabs 中打开，则直接切换到已有 tab

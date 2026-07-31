@@ -14,6 +14,36 @@
 
 ## 当前有效条目
 
+## Graph Tab 元数据不能覆盖前台模式选择
+
+- 状态：已规避，需随 Graph / Loop / Vibe 入口变更复核
+- 首次发现：2026-07-31
+- 适用范围：AI 对话 Webview 模式选择、Graph tab 恢复元数据、前台发送与后台队列分发
+
+### 现象
+- 同一 conversation tab 先执行 Graph 后，用户切换到 Vibe/coding 或 Loop 再发送新提示，仍会被自动按 Graph 执行。
+- 视觉上模式选择已经改变，但运行路径没有跟随用户当前选择。
+
+### 触发条件与根因
+- Graph run 会在 tab 上保留 `graphRunId` / `openGraphRun` 等元数据，用于展示图入口、状态和历史恢复。
+- 前台发送路径若先根据 tab 元数据调用 auto mode 解析，再读取当前 UI 模式，就会把普通前台输入误判为 Graph 续跑。
+
+### 长期规避
+- 前台发送没有显式 `interactiveMode` 时，必须以当前 `state.interactiveMode` 为权威。
+- Graph 元数据只能用于图入口、展示、历史恢复，以及后台派发或 Graph 续跑的自动归类，不能覆盖用户在同一 tab 中切换后的 Vibe/coding 或 Loop 前台发送。
+- 修改 `resolveDispatchInteractiveMode`、tab 自动模式、队列出队或 Graph 恢复逻辑时，要同时覆盖“Graph 后切 Vibe”和“Graph 后切 Loop”回归测试。
+
+### 验证方式
+- 在带 `graphRunId` 的 active tab 上断言前台 `dispatchPrompt` 会随 `state.interactiveMode="coding"` 发送 coding/Vibe，并随 `state.interactiveMode="loop"` 发送 Loop。
+- 保留后台派发 Graph tab 自动使用 `graph` 的覆盖。
+- 运行 `npm run build` 与 `node --test dist/test/clipagescriptruntimecoverage.test.js dist/test/graphMainWebview.test.js`。
+
+### 关联资料
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/test/clipagescriptruntimecoverage.test.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+- `.ch/docs/references/cli-runtime-reference.md`
+
 ## VSIX 新增运行时依赖必须同步 `.vscodeignore` 放行
 
 - 状态：已规避，需发布时检查

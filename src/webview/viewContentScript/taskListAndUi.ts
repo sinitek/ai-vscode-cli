@@ -850,6 +850,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (explicitInteractiveMode) {
           return explicitInteractiveMode;
         }
+        if (!isBackgroundDispatch) {
+          return state.interactiveMode;
+        }
         const autoMode = typeof resolveAutoInteractiveModeForTab === "function"
           ? resolveAutoInteractiveModeForTab(targetTab)
           : "";
