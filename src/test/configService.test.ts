@@ -27,17 +27,16 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
-test("Codex runtime config uses ~/.codex/config.toml and ~/.codex/.env", async () => {
+test("Codex runtime config only manages ~/.codex/config.toml and auth.json", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
     const paths = configService.getCodexRuntimePaths();
 
     assert.equal(paths.config, path.join(homeDir, ".codex", "config.toml"));
-    assert.equal(paths.env, path.join(homeDir, ".codex", ".env"));
+    assert.equal(Object.prototype.hasOwnProperty.call(paths, "env"), false);
 
     assert.deepEqual(await configService.getCurrentConfig("codex"), {
       content: "",
-      envContent: "",
       configContent: "",
       authContent: "{}",
     });
@@ -52,20 +51,21 @@ test("Codex runtime config uses ~/.codex/config.toml and ~/.codex/.env", async (
 
     assert.deepEqual(await configService.getCurrentConfig("codex"), {
       content: "model = \"gpt-5\"\n",
-      envContent: "OPENAI_API_KEY=from-env\n",
       configContent: "model = \"gpt-5\"\n",
       authContent: "{}",
     });
   });
 });
 
-test("Codex applyConfig writes TOML content and envContent", async () => {
+test("Codex applyConfig writes TOML and auth without changing an existing .env", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
+    await fs.mkdir(path.join(homeDir, ".codex"), { recursive: true });
+    await fs.writeFile(path.join(homeDir, ".codex", ".env"), "OPENAI_API_KEY=from-existing-env\n");
 
     await configService.applyConfig("codex", {
       content: "model = \"gpt-5\"\nmodel_provider = \"openai\"\n",
-      envContent: "OPENAI_API_KEY=from-profile\n",
+      authContent: "{\n  \"token\": \"from-profile\"\n}\n",
     });
 
     assert.equal(
@@ -74,27 +74,29 @@ test("Codex applyConfig writes TOML content and envContent", async () => {
     );
     assert.equal(
       await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"),
-      "OPENAI_API_KEY=from-profile\n",
+      "OPENAI_API_KEY=from-existing-env\n",
     );
     assert.equal(
       await fs.readFile(path.join(homeDir, ".codex", "auth.json"), "utf-8"),
-      "{}",
+      "{\n  \"token\": \"from-profile\"\n}\n",
     );
 
     await configService.applyConfig("codex", {
       content: "model = \"gpt-5-mini\"\n",
-      envContent: "",
     });
 
     assert.equal(
       await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf-8"),
       "model = \"gpt-5-mini\"\n",
     );
-    assert.equal(await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"), "");
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"),
+      "OPENAI_API_KEY=from-existing-env\n",
+    );
   });
 });
 
-test("Codex backup writes config, env, and auth files", async () => {
+test("Codex backup writes config and auth files without backing up .env", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
 
@@ -104,39 +106,25 @@ test("Codex backup writes config, env, and auth files", async () => {
     await fs.writeFile(path.join(homeDir, ".codex", "auth.json"), "{\n  \"token\": \"from-auth\"\n}\n");
 
     const backups = await configService.backupCodexConfig();
-    assert.equal(backups.length, 3);
+    assert.equal(backups.length, 2);
 
     const configBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_config_"));
-    const envBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_env_"));
     const authBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_auth_"));
 
     assert.ok(configBackupPath, "config.toml backup should be returned");
-    assert.ok(envBackupPath, ".env backup should be returned");
     assert.ok(authBackupPath, "auth.json backup should be returned");
     assert.match(path.basename(configBackupPath), /^codex_config_.*\.toml$/);
-    assert.match(path.basename(envBackupPath), /^codex_env_.*\.env$/);
     assert.match(path.basename(authBackupPath), /^codex_auth_.*\.json$/);
     assert.equal(await fs.readFile(configBackupPath, "utf-8"), "model = \"gpt-5\"\n");
-    assert.equal(await fs.readFile(envBackupPath, "utf-8"), "OPENAI_API_KEY=from-env\n");
     assert.equal(await fs.readFile(authBackupPath, "utf-8"), "{\n  \"token\": \"from-auth\"\n}\n");
+    assert.equal(
+      await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf-8"),
+      "OPENAI_API_KEY=from-env\n",
+    );
   });
 });
 
-test("Codex backup writes an empty env backup when ~/.codex/.env is missing", async () => {
-  await withTempHome(async () => {
-    const configService = loadConfigService();
-
-    await configService.writeCodexConfig("model = \"gpt-5\"\n", "{}");
-
-    const backups = await configService.backupCodexConfig();
-    const envBackupPath = backups.find((filePath) => path.basename(filePath).startsWith("codex_env_"));
-
-    assert.ok(envBackupPath, ".env backup should be returned");
-    assert.equal(await fs.readFile(envBackupPath, "utf-8"), "");
-  });
-});
-
-test("Codex saved profiles preserve content and envContent", async () => {
+test("Codex saved profiles discard legacy envContent", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
     const config = {
@@ -157,17 +145,17 @@ test("Codex saved profiles preserve content and envContent", async () => {
     assert.equal(saved.platform, "codex");
     assert.equal(saved.content, "model = \"gpt-5\"\n");
     assert.equal(saved.configContent, "model = \"gpt-5\"\n");
-    assert.equal(saved.envContent, "OPENAI_API_KEY=from-profile\n");
+    assert.equal(saved.envContent, undefined);
     assert.equal(saved.authContent, "{}");
 
     const loaded = await configService.getConfigById("codex", "codex-toml-env");
     assert.equal(loaded?.content, "model = \"gpt-5\"\n");
     assert.equal(loaded?.configContent, "model = \"gpt-5\"\n");
-    assert.equal(loaded?.envContent, "OPENAI_API_KEY=from-profile\n");
+    assert.equal(loaded?.envContent, undefined);
     assert.equal(loaded?.authContent, "{}");
 
     const list = await configService.getConfigList("codex");
-    assert.equal(list[0]?.envContent, "OPENAI_API_KEY=from-profile\n");
+    assert.equal(list[0]?.envContent, undefined);
   });
 });
 
@@ -192,6 +180,7 @@ test("Codex profile saves the edited configContent over stale legacy content", a
     const saved = JSON.parse(await fs.readFile(savedPath, "utf-8"));
     assert.equal(saved.content, "model = \"updated-model\"\n");
     assert.equal(saved.configContent, "model = \"updated-model\"\n");
+    assert.equal(saved.envContent, undefined);
 
     const reopened = await configService.getConfigById("codex", "codex-edited-profile");
     assert.equal(reopened?.content, "model = \"updated-model\"\n");

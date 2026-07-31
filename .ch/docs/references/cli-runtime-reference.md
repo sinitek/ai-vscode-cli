@@ -100,7 +100,7 @@
 - OpenCode 运行前会对 effective main、effective subtask 和 overlay 后配置做 preflight：缺少有效主模型、角色引用不是当前配置候选、provider/model 已被过滤或配置仍含占位值时阻止启动；OpenAI-compatible provider 缺少 `baseURL` 等未完成配置同样阻断。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - Claude 配置中心管理用户级 `~/.claude/settings.json`。卡片默认进入可视化模式，也可切换到 JSON 高级模式；模式切换和保存都会先校验 JSON/可视化状态，无效 JSON 不得清空或覆盖最后一次有效状态。可视化模式定向维护 `model`、`fallbackModel`（最多三个）、`availableModels`、`effortLevel`（`low|medium|high|xhigh`）、常用行为字段、权限规则、API/网关环境变量，以及 `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` 三档模型映射；所有未受管字段基于原始 JSON 保留。
-- Codex 配置中心管理用户级 `~/.codex/config.toml` 与 `~/.codex/.env`。`config.toml` 是 Codex 主配置文件，格式为 TOML，支持可视化编辑和 TOML 源码编辑；`.env` 是独立环境变量文件，按文本键值保存，不得误称或序列化为 JSON，也不得与 `auth.json` 混作同一配置面。Claude 配置页仅做视觉风格对齐 OpenCode，不改变 Claude `settings.json` 的运行时语义。
+- Codex 配置中心管理用户级 `~/.codex/config.toml` 与既有 `~/.codex/auth.json` 入口。`config.toml` 是 Codex 主配置文件，格式为 TOML，支持可视化编辑和 TOML 源码编辑；插件不展示、读取、写入、备份、导入导出 `~/.codex/.env`，也不删除用户已有文件。Claude 配置页仅做视觉风格对齐 OpenCode，不改变 Claude `settings.json` 的运行时语义。
 - Claude、OpenCode、Codex 三组配置可视化参数的 label 右侧提供问号 tooltip；tooltip 说明字段含义、写入目标和注意事项，枚举字段同时列出可选值。三组“查看范例”入口统一放在配置文件名右侧，并与 OpenCode 现有交互风格保持一致。
 - 用户控制台若出现 `AugmentExtensionSidecar` 访问 `https://d17.api.augmentcode.com/find-missing` 或 `/record-session-events` 返回 403，应按 Augment 扩展侧鉴权/网络问题记录；本插件 Claude 配置页空白仍优先排查 Webview 渲染、配置 JSON/TOML 解析和初始化数据链路，不应仅凭该 403 判定根因。
 

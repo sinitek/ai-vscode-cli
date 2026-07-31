@@ -117,7 +117,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
 
-OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。OpenCode 官方 TUI 支持 `/compact`（alias `/summarize`）用于 compact current session，且配置层有 `compaction.auto` 默认自动压缩；因此插件侧可以把 OpenCode 纳入手动压缩与执行后自动压缩的产品范围，但运行时必须清晰区分可附着会话链路与非交互 fallback，不能把 OpenCode 说成已经拥有与 Codex app-server 完全相同的压缩通道。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。Codex 配置页不同于 OpenCode / Claude：主配置文件是 `~/.codex/config.toml`，格式为 TOML，并另有 `~/.codex/.env` 环境变量文件；配置中心需要同时支持 Codex 常用字段可视化编辑、TOML 源码编辑和 `.env` 文本管理，不能把 Codex 主配置误建模为 JSON。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
+OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。OpenCode 官方 TUI 支持 `/compact`（alias `/summarize`）用于 compact current session，且配置层有 `compaction.auto` 默认自动压缩；因此插件侧可以把 OpenCode 纳入手动压缩与执行后自动压缩的产品范围，但运行时必须清晰区分可附着会话链路与非交互 fallback，不能把 OpenCode 说成已经拥有与 Codex app-server 完全相同的压缩通道。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。Codex 配置页管理 `~/.codex/config.toml` 的常用字段可视化编辑、TOML 源码编辑及既有 `auth.json` 入口；不展示、读取、写入或备份 `.env`，也不删除用户已有文件，且不能把 Codex 主配置误建模为 JSON。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
 
 OpenCode 模型选择按 active config 解析为两个角色下拉：主模型对应顶层 `model`，子模型通过顶层 `small_model` 这个 OpenCode CLI 兼容字段落地，候选均只来自 `provider.<id>.models`，不复用插件模型管理器，也不提供新增、编辑、删除或排序入口。聊天区 DOM 只保留两个紧凑 select 与共享错误区域，不显示额外角色解释或“跟随配置”option；正常 option 文本只使用模型 `name`，缺失时回退 model id。选择当前配置默认 ref 时，Webview 发送 `null` 清除该角色的临时覆盖；其他选择发送 exact ref。普通对话和并行任务使用主模型；Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 与最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 
@@ -166,7 +166,7 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
-- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；Codex 配置中心维护 `~/.codex/config.toml` 主配置（TOML）、`~/.codex/.env` 环境变量文件和既有受控鉴权入口；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
+- 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；Codex 配置中心只维护 `~/.codex/config.toml` 主配置（TOML）和既有受控鉴权入口，不读取、写入或备份 `.env`；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
 - 配置中心 UI 的 Claude、OpenCode、Codex 三组可视化参数采用同一交互约定：参数 label 右侧展示问号 tooltip，枚举参数在 tooltip 中列出允许值；“查看范例”入口固定在配置文件名右侧，三组保持 OpenCode 风格的相同位置和密度
 - 管理配置档案（config profiles）
 - 管理备份、导出

@@ -98,7 +98,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       name: U,
                       platform: k,
                       configContent: "",
-                      envContent: "",
                       authContent: "{}",
                       codexSkills: [],
                     })),
@@ -182,7 +181,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	                  })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
-                    envContent: L.envContent,
                     authContent: L.authContent,
                     codexSkills: L.codexSkills ?? [],
                   }),
@@ -317,7 +315,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	            platform: G.platform,
 	            content: G.content,
 	            mcpContent: G.mcpContent,
-	            envContent: G.platform === "opencode" ? void 0 : G.envContent,
+            envContent: G.platform === "codex" || G.platform === "opencode" ? void 0 : G.envContent,
 	            configContent: G.configContent,
 	            authContent: G.authContent,
 	          })),
@@ -379,7 +377,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             name: G,
             platform: L,
             configContent: k.configContent ?? "",
-            envContent: k.envContent ?? "",
             authContent: k.authContent ?? "{}",
           };
         }
@@ -3584,13 +3581,6 @@ const codexVisualManagedProviderKeys = Object.freeze([
   "requires_openai_auth",
 ]);
 
-const codexVisualManagedEnvKeys = Object.freeze([
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENAI_ORG_ID",
-  "OPENAI_ORGANIZATION",
-]);
-
 const codexVisualTomlBareKeyPattern = /^[A-Za-z0-9_-]+$/;
 
 const codexVisualUnquoteTomlString = (value) => {
@@ -3822,45 +3812,6 @@ const codexVisualValidateEnum = (value, allowedValues, sourceValue, label) => {
   return `${label}必须是 ${allowedValues.join("、")} 之一`;
 };
 
-const codexVisualParseEnv = (content) => {
-  const env = {};
-  String(content || "")
-    .split(/\r?\n/)
-    .forEach((line) => {
-      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-      if (!match) return;
-      let value = match[2] || "";
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      env[match[1]] = value;
-    });
-  return env;
-};
-
-const codexVisualSerializeEnv = (content, env) => {
-  const keys = new Set(codexVisualManagedEnvKeys),
-    seen = new Set(),
-    lines = String(content || "").split(/\r?\n/).filter((line, index, list) => index < list.length - 1 || line !== "");
-  const nextLines = lines
-    .map((line) => {
-      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
-      if (!match || !keys.has(match[1])) return line;
-      seen.add(match[1]);
-      const value = codexVisualReadString(env?.[match[1]]).trim();
-      return value ? `${match[1]}=${value}` : null;
-    })
-    .filter((line) => line !== null);
-  codexVisualManagedEnvKeys.forEach((key) => {
-    const value = codexVisualReadString(env?.[key]).trim();
-    if (value && !seen.has(key)) nextLines.push(`${key}=${value}`);
-  });
-  return nextLines.join("\n");
-};
-
 const codexVisualCreateProvider = (id, value = {}) => ({
   id,
   name: codexVisualReadString(value.name),
@@ -3870,20 +3821,14 @@ const codexVisualCreateProvider = (id, value = {}) => ({
   source: codexVisualClone(value) || {},
 });
 
-const codexVisualCreateState = (configContent, envContent = "") => {
+const codexVisualCreateState = (configContent) => {
   const source = codexVisualParseToml(configContent || ""),
     providersSource = codexVisualIsRecord(source.model_providers) ? source.model_providers : {},
     providers = Object.entries(providersSource)
       .filter(([, value]) => codexVisualIsRecord(value))
-      .map(([id, value]) => codexVisualCreateProvider(id, value)),
-    envSource = codexVisualParseEnv(envContent),
-    env = {};
-  codexVisualManagedEnvKeys.forEach((key) => {
-    env[key] = codexVisualReadString(envSource[key]);
-  });
+      .map(([id, value]) => codexVisualCreateProvider(id, value));
   return {
     source,
-    envContent: envContent || "",
     model: codexVisualReadString(source.model),
     modelProvider: codexVisualReadString(source.model_provider),
     approvalPolicy: codexVisualReadEnum(source.approval_policy),
@@ -3898,13 +3843,12 @@ const codexVisualCreateState = (configContent, envContent = "") => {
     supportsReasoningSummaries: codexVisualReadOptionalBoolean(source.model_supports_reasoning_summaries),
     providers,
     selectedProviderId: codexVisualReadString(source.model_provider) || providers[0]?.id || "",
-    env,
   };
 };
 
-const codexVisualParseContent = (configContent, envContent = "") => {
+const codexVisualParseContent = (configContent) => {
   try {
-    return { ok: !0, state: codexVisualCreateState(configContent, envContent), error: "" };
+    return { ok: !0, state: codexVisualCreateState(configContent), error: "" };
   } catch (error) {
     return {
       ok: !1,
@@ -3947,7 +3891,7 @@ const codexVisualValidateState = (state) => {
 
 const codexVisualSerializeState = (state) => {
   const validation = codexVisualValidateState(state);
-  if (validation) return { ok: !1, content: "", envContent: state?.envContent || "", error: validation };
+  if (validation) return { ok: !1, content: "", error: validation };
   const config = codexVisualClone(state.source) || {};
   [
     ["model", state.model],
@@ -3982,17 +3926,11 @@ const codexVisualSerializeState = (state) => {
   return {
     ok: !0,
     content: codexVisualStringifyToml(config),
-    envContent: codexVisualSerializeEnv(state.envContent, state.env),
     error: "",
   };
 };
 
 const codexVisualUpdateState = (state, patch) => ({ ...state, ...patch });
-
-const codexVisualUpdateEnv = (state, key, value) => ({
-  ...state,
-  env: { ...state.env, [key]: value },
-});
 
 const codexVisualUniqueId = (items, prefix) => {
   const ids = new Set((items || []).map((item) => item.id));
@@ -4007,7 +3945,6 @@ const codexVisualAddProvider = (state) => {
     provider = codexVisualCreateProvider(id, {
       name: "OpenAI",
       base_url: "https://api.openai.com/v1",
-      env_key: "OPENAI_API_KEY",
       wire_api: "responses",
       requires_openai_auth: !0,
     });
@@ -4045,17 +3982,14 @@ const codexVisualDeleteProvider = (state, providerId) => {
 const CodexConfigVisualEditorUtils = Object.freeze({
   managedRootKeys: codexVisualManagedRootKeys,
   managedProviderKeys: codexVisualManagedProviderKeys,
-  managedEnvKeys: codexVisualManagedEnvKeys,
   reasoningEffortOptions: CODEX_VISUAL_REASONING_EFFORT_OPTIONS,
   parseToml: codexVisualParseToml,
   stringifyToml: codexVisualStringifyToml,
-  parseEnv: codexVisualParseEnv,
   createState: codexVisualCreateState,
   parseContent: codexVisualParseContent,
   validateState: codexVisualValidateState,
   serializeState: codexVisualSerializeState,
   updateState: codexVisualUpdateState,
-  updateEnv: codexVisualUpdateEnv,
   addProvider: codexVisualAddProvider,
   updateProvider: codexVisualUpdateProvider,
   deleteProvider: codexVisualDeleteProvider,
@@ -4114,12 +4048,8 @@ web_search = "cached"
 [model_providers.codex]
 name = "codex"
 base_url = "<供应商 url>"
-env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = true`,
-      env: `# ~/.codex/.env
-OPENAI_API_KEY=<你的 api key>
-OPENAI_BASE_URL=<可选供应商 url>`,
       auth: `{
   "OPENAI_API_KEY": "<你的 api key>"
 }`,
@@ -4184,8 +4114,7 @@ const Nk = {
 	      title: "OpenCode 模型配置 config.json（myAPI 双模型与思考力度范例）",
 	      content: ps.opencode.settings,
 	    },
-	    "codex-config": { title: "Codex config.toml 与 .env", content: `${ps.codex.config}\n\n# ~/.codex/.env\n${ps.codex.env}` },
-    "codex-env": { title: "Codex .env", content: ps.codex.env },
+    "codex-config": { title: "Codex config.toml", content: ps.codex.config },
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
   };
 
@@ -4202,7 +4131,6 @@ const ConfigEditorPanel = () => {
       [u, f] = c.useState(""),
       [m, v] = c.useState(""),
       [p, h] = c.useState(""),
-      [b, x] = c.useState(""),
       [codexMcpServerIds, setCodexMcpServerIds] = c.useState([]),
       [mcpHealthItems, setMcpHealthItems] = c.useState([]),
       [mcpHealthLoading, setMcpHealthLoading] = c.useState(!1),
@@ -4234,7 +4162,7 @@ const ConfigEditorPanel = () => {
       [openCodeVisualError, setOpenCodeVisualError] = c.useState(""),
       [codexEditorMode, setCodexEditorMode] = c.useState("toml"),
       [codexVisualState, setCodexVisualState] = c.useState(() =>
-        codexVisualCreateState("", ""),
+        codexVisualCreateState(""),
       ),
       [codexVisualError, setCodexVisualError] = c.useState(""),
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
@@ -4311,7 +4239,6 @@ const ConfigEditorPanel = () => {
         }
         const H = await fetchCurrentConfig("codex");
         H?.configContent !== void 0 && v(H.configContent);
-        H?.envContent !== void 0 && x(H.envContent);
         H?.authContent !== void 0 && h(H.authContent);
       }, []),
       refreshMcpInstalledIdsInBackground = c.useCallback((W) => {
@@ -4422,9 +4349,8 @@ const ConfigEditorPanel = () => {
     }, []);
     c.useEffect(() => {
       if (!O) {
-        (s(""),
+          (s(""),
           f(""),
-          x(""),
           v(""),
           h(""),
           Z([]),
@@ -4449,32 +4375,31 @@ const ConfigEditorPanel = () => {
           setOpenCodeVisualState(openCodeVisualCreateState({})),
           setOpenCodeVisualError(""),
           setCodexEditorMode("toml"),
-          setCodexVisualState(codexVisualCreateState("", "")),
+          setCodexVisualState(codexVisualCreateState("")),
           setCodexVisualError(""));
         return;
       }
       if (O.platform === "claude") {
         const W = O.content || "{}",
           H = claudeVisualParseContent(W);
-        s(W), f(""), x(""), v(""), h(""), setClaudeEditorMode("json");
+        s(W), f(""), v(""), h(""), setClaudeEditorMode("json");
         H.ok
           ? (setClaudeVisualState(H.state), setClaudeVisualError(""))
           : (setClaudeVisualState(null), setClaudeVisualError(H.error));
       } else if (O.platform === "opencode") {
         const W = O.content || "{}",
           H = openCodeVisualParseContent(W);
-        s(W), x(""), v(""), h(""), setOpenCodeEditorMode("json");
+        s(W), v(""), h(""), setOpenCodeEditorMode("json");
         H.ok
           ? (setOpenCodeVisualState(H.state), setOpenCodeVisualError(""))
           : (setOpenCodeVisualState(null), setOpenCodeVisualError(H.error));
       } else {
         const W = O.configContent || "",
-          H = O.envContent || "",
-          k = codexVisualParseContent(W, H);
-        v(W), x(H), h(O.authContent || "{}"), s(""), setCodexEditorMode("toml");
-        k.ok
-          ? (setCodexVisualState(k.state), setCodexVisualError(""))
-          : (setCodexVisualState(null), setCodexVisualError(k.error));
+          H = codexVisualParseContent(W);
+        v(W), h(O.authContent || "{}"), s(""), setCodexEditorMode("toml");
+        H.ok
+          ? (setCodexVisualState(H.state), setCodexVisualError(""))
+          : (setCodexVisualState(null), setCodexVisualError(H.error));
       }
     }, [O]);
     c.useEffect(() => {
@@ -4491,7 +4416,7 @@ const ConfigEditorPanel = () => {
       if (codexEditorMode !== "visual" || !codexVisualState) return;
       const W = codexVisualSerializeState(codexVisualState);
       W.ok
-        ? (v(W.content), x(W.envContent || ""), setCodexVisualError(""))
+        ? (v(W.content), setCodexVisualError(""))
         : setCodexVisualError(W.error);
     }, [codexEditorMode, codexVisualState]);
     c.useEffect(() => {
@@ -4700,25 +4625,24 @@ const ConfigEditorPanel = () => {
         }
         s(H.content), setOpenCodeVisualError(""), setOpenCodeEditorMode("json");
       },
-      syncCodexVisualContent = (W, H = b, k = "visual", L = !1) => {
-        const U = codexVisualParseContent(W, H);
-        if (!U.ok) {
-          setCodexVisualError(U.error), L && Kt.error(U.error);
+      syncCodexVisualContent = (W, H = "visual", k = !1) => {
+        const L = codexVisualParseContent(W);
+        if (!L.ok) {
+          setCodexVisualError(L.error), k && Kt.error(L.error);
           return !1;
         }
         return (
           v(W),
-          x(H),
-          setCodexVisualState(U.state),
+          setCodexVisualState(L.state),
           setCodexVisualError(""),
-          setCodexEditorMode(k),
+          setCodexEditorMode(H),
           !0
         );
       },
       switchCodexEditorMode = (W) => {
         if (W === codexEditorMode) return;
         if (W === "visual") {
-          syncCodexVisualContent(m, b, "visual", !0);
+          syncCodexVisualContent(m, "visual", !0);
           return;
         }
         if (!codexVisualState) {
@@ -4730,7 +4654,7 @@ const ConfigEditorPanel = () => {
           setCodexVisualError(H.error), Kt.error(H.error);
           return;
         }
-        v(H.content), x(H.envContent || ""), setCodexVisualError(""), setCodexEditorMode("toml");
+        v(H.content), setCodexVisualError(""), setCodexEditorMode("toml");
       },
       N = (W) => y(W),
       z = () => y(null),
@@ -4743,12 +4667,9 @@ const ConfigEditorPanel = () => {
 		            case "opencode-settings":
 			              syncOpenCodeVisualContent(I.content, "visual", !0);
 			              break;
-		            case "codex-config":
-              syncCodexVisualContent(ps.codex.config, ps.codex.env, "visual", !0);
+            case "codex-config":
+              syncCodexVisualContent(ps.codex.config, "visual", !0);
               break;
-            case "codex-env":
-              syncCodexVisualContent(m, I.content, codexEditorMode, !0);
-	              break;
             case "codex-auth":
               h(I.content);
               break;
@@ -4890,8 +4811,7 @@ const ConfigEditorPanel = () => {
           return;
         }
         try {
-          let W = m,
-            H = b;
+          let W = m;
           if (codexEditorMode === "visual") {
             if (!codexVisualState) {
               const k =
@@ -4905,9 +4825,8 @@ const ConfigEditorPanel = () => {
               return;
             }
             W = k.content;
-            H = k.envContent || "";
           } else {
-            const k = codexVisualParseContent(m, b);
+            const k = codexVisualParseContent(m);
             if (!k.ok) {
               setCodexVisualError(k.error), Kt.error(k.error);
               return;
@@ -4918,12 +4837,12 @@ const ConfigEditorPanel = () => {
             return;
           }
           const k = M(p);
-          await r(O.id, { content: W, configContent: W, envContent: H, authContent: k });
-          v(W), x(H), h(k);
-          const L = codexVisualParseContent(W, H);
+          await r(O.id, { content: W, configContent: W, authContent: k });
+          v(W), h(k);
+          const L = codexVisualParseContent(W);
           L.ok && setCodexVisualState(L.state);
           Kt.success("保存成功");
-          await A({ configContent: W, envContent: H, authContent: k, codexSkills: C });
+          await A({ configContent: W, authContent: k, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -4939,10 +4858,10 @@ const ConfigEditorPanel = () => {
         }
         try {
           const W = M(p);
-          await r(O.id, { content: m, configContent: m, envContent: b, authContent: W });
+          await r(O.id, { content: m, configContent: m, authContent: W });
           h(W);
           Kt.success("保存成功");
-          await A({ configContent: m, envContent: b, authContent: W, codexSkills: C });
+          await A({ configContent: m, authContent: W, codexSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -4993,13 +4912,11 @@ const ConfigEditorPanel = () => {
                 const T = M(p);
                 await applyConfigItem("codex", {
                   configContent: m,
-                  envContent: b,
                   authContent: T,
                   codexSkills: L,
                 });
                 const F = await fetchCurrentConfig("codex");
                 F?.configContent !== void 0 && v(F.configContent);
-                F?.envContent !== void 0 && x(F.envContent);
                 F?.authContent !== void 0 && h(F.authContent);
               }
               Kt.success("已更新当前激活的配置");
@@ -5055,13 +4972,11 @@ const ConfigEditorPanel = () => {
                 const L = M(p);
                 await applyConfigItem("codex", {
                   configContent: m,
-                  envContent: b,
                   authContent: L,
                   codexSkills: H,
                 });
                 const U = await fetchCurrentConfig("codex");
                 U?.configContent !== void 0 && v(U.configContent);
-                U?.envContent !== void 0 && x(U.envContent);
                 U?.authContent !== void 0 && h(U.authContent);
               }
               Kt.success("已更新当前激活的配置");
@@ -6218,8 +6133,6 @@ const ConfigEditorPanel = () => {
       ),
       updateCodexVisualState = (W) =>
         setCodexVisualState((H) => (H ? codexVisualUpdateState(H, W) : H)),
-      updateCodexVisualEnv = (W, H) =>
-        setCodexVisualState((k) => (k ? codexVisualUpdateEnv(k, W, H) : k)),
       selectCodexProvider = (W) =>
         setCodexVisualState((H) => (H ? { ...H, selectedProviderId: W } : H)),
       updateSelectedCodexProvider = (W) => {
@@ -6513,7 +6426,7 @@ const ConfigEditorPanel = () => {
                 W
                   ? renderCodexSection(
                       "Provider 配置",
-                      "Provider 写入 [model_providers.<id>]，API Key 默认读取 ~/.codex/.env 的 OPENAI_API_KEY。",
+                      "Provider 写入 [model_providers.<id>]；未展示的字段会保留在 TOML 源码中。",
                       be.jsxs(be.Fragment, {
                         children: [
                           be.jsxs("div", {
@@ -6557,19 +6470,6 @@ const ConfigEditorPanel = () => {
                       }),
                     )
                   : null,
-                renderCodexSection(
-                  "~/.codex/.env",
-                  "Provider 默认读取 OPENAI_API_KEY；长尾变量可在 TOML 源码模式直接编辑。",
-                  be.jsxs("div", {
-                    style: k,
-                    children: [
-                      renderCodexField("OPENAI_API_KEY", codexVisualState.env.OPENAI_API_KEY, (L) => updateCodexVisualEnv("OPENAI_API_KEY", L), "sk-...", { type: "password" }),
-                      renderCodexField("OPENAI_BASE_URL", codexVisualState.env.OPENAI_BASE_URL, (L) => updateCodexVisualEnv("OPENAI_BASE_URL", L), "https://api.example.com/v1"),
-                      renderCodexField("OPENAI_ORG_ID", codexVisualState.env.OPENAI_ORG_ID, (L) => updateCodexVisualEnv("OPENAI_ORG_ID", L), "org_..."),
-                      renderCodexField("OPENAI_ORGANIZATION", codexVisualState.env.OPENAI_ORGANIZATION, (L) => updateCodexVisualEnv("OPENAI_ORGANIZATION", L), "org_..."),
-                    ],
-                  }),
-                ),
               ],
             }),
           ],
@@ -7392,7 +7292,7 @@ const ConfigEditorPanel = () => {
                             be.jsxs("div", {
                               style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
                               children: [
-                                be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml / .env"] }),
+                                be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                                 be.jsx(xn, {
                                   size: "small",
                                   onClick: () => N("codex-config"),
@@ -7407,7 +7307,7 @@ const ConfigEditorPanel = () => {
                                 lineHeight: 1.5,
                               },
                               children:
-                                "主配置: ~/.codex/config.toml；密钥: ~/.codex/.env；auth.json 保持兼容显示，不是主配置。",
+                                "主配置: ~/.codex/config.toml；auth.json 保持兼容显示，不是主配置。",
                             }),
                           ],
                         }),
@@ -7472,60 +7372,6 @@ const ConfigEditorPanel = () => {
                           rows: 10,
                           style: {
                             flex: 1,
-                            fontFamily: "monospace",
-                            fontSize: "13px",
-                          },
-                        }),
-                      ],
-                    }),
-                    be.jsxs("div", {
-                      style: {
-                        flex: 1,
-                        display: codexEditorMode === "toml" ? "flex" : "none",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "4px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 4 },
-                              children: [
-                                be.jsxs("span", {
-                                  children: [be.jsx(Ya, {}), " .env"],
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => N("codex-env"),
-                                  children: "查看范例",
-                                }),
-                              ],
-                            }),
-                          ],
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            marginBottom: "4px",
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: "配置文件路径: ~/.codex/.env",
-                        }),
-                        be.jsx(Qa, {
-                          value: b,
-                          onChange: (W) => (x(W.target.value), setCodexVisualError("")),
-                          placeholder: "请输入 .env 配置",
-                          rows: 8,
-                          style: {
-                            flex: 1,
-                            minHeight: 180,
                             fontFamily: "monospace",
                             fontSize: "13px",
                           },

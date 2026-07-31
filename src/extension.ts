@@ -2129,7 +2129,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<void> {
   await configService.applyConfig(cli, {
     content: config.content,
     mcpContent: config.mcpContent,
-    envContent: config.envContent,
+    envContent: cli === "codex" ? undefined : config.envContent,
     configContent: config.configContent,
     authContent: config.authContent,
     codexSkills: config.codexSkills,

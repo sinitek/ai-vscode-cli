@@ -37,45 +37,27 @@ function extractCodexConfigExample(): string {
   return source.slice(contentStart, contentEnd);
 }
 
-function extractCodexEnvExample(): string {
-  const source = loadUiSource();
-  const marker = "env: `";
-  const configStart = source.indexOf("codex: {\n      config: `");
-  const start = source.indexOf(marker, configStart);
-  assert.notEqual(start, -1, "Codex .env example marker should exist");
-  const contentStart = start + marker.length;
-  const contentEnd = source.indexOf("`,\n", contentStart);
-  assert.notEqual(contentEnd, -1, "Codex .env example should terminate");
-  return source.slice(contentStart, contentEnd);
-}
-
-test("official Codex example uses config.toml with .env instead of JSON", () => {
+test("official Codex example uses config.toml instead of JSON", () => {
   const source = loadUiSource();
   const configExample = extractCodexConfigExample();
-  const envExample = extractCodexEnvExample();
 
   assert.match(configExample, /model = "gpt-5\.1-codex"/);
   assert.match(configExample, /\[model_providers\.codex\]/);
-  assert.match(configExample, /env_key = "OPENAI_API_KEY"/);
+  assert.match(configExample, /wire_api = "responses"/);
   assert.match(configExample, /web_search = "cached"/);
   assert.doesNotMatch(configExample, /\[features\]/);
-  assert.match(envExample, /# ~\/\.codex\/\.env/);
-  assert.match(envExample, /OPENAI_API_KEY=<你的 api key>/);
-  assert.match(source, /"codex-config": \{ title: "Codex config\.toml 与 \.env"/);
-  assert.match(source, /# ~\/\.codex\/\.env\\n\$\{ps\.codex\.env\}/);
+  assert.doesNotMatch(configExample, /env_key/);
+  assert.match(source, /"codex-config": \{ title: "Codex config\.toml", content: ps\.codex\.config \}/);
   assert.doesNotMatch(source, /Codex JSON/i);
 });
 
-test("visual parser loads TOML fields, provider mapping, and .env values", () => {
+test("visual parser loads TOML fields and provider mapping", () => {
   const utils = loadVisualUtils();
   const configWithRootFields = extractCodexConfigExample().replace(
     "\n[model_providers.codex]",
     '\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\nweb_search = true\n[model_providers.codex]',
   );
-  const parsed = utils.parseContent(
-    `${configWithRootFields}\n[tools]\nweb_search = true\n[features]\nweb_search = false\n`,
-    extractCodexEnvExample(),
-  );
+  const parsed = utils.parseContent(`${configWithRootFields}\n[tools]\nweb_search = true\n[features]\nweb_search = false\n`);
 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.state.model, "gpt-5.1-codex");
@@ -89,16 +71,13 @@ test("visual parser loads TOML fields, provider mapping, and .env values", () =>
   assert.equal(parsed.state.featuresWebSearch, undefined);
   assert.equal(parsed.state.providers.length, 1);
   assert.equal(parsed.state.providers[0].id, "codex");
-  assert.equal(parsed.state.providers[0].source.env_key, "OPENAI_API_KEY");
-  assert.equal(parsed.state.env.OPENAI_API_KEY, "<你的 api key>");
-  assert.equal(parsed.state.env.OPENAI_BASE_URL, "<可选供应商 url>");
+  assert.equal(parsed.state.providers[0].source.wire_api, "responses");
 });
 
-test("serializes visual edits while preserving unknown TOML and .env fields", () => {
+test("serializes visual edits while preserving unknown TOML fields", () => {
   const utils = loadVisualUtils();
   let state = utils.createState(
     `model = "old"\ncustom_root = "keep"\n\n[model_providers.gateway]\nname = "Gateway"\nbase_url = "https://old.example/v1"\nenv_key = "OPENAI_API_KEY"\ncustom_provider = "keep"\n\n[experimental]\nflag = true\n`,
-    `CUSTOM_ENV=keep\nOPENAI_API_KEY=old-key\n`,
   );
   state = utils.updateState(state, {
     model: "gpt-5.1-codex",
@@ -112,9 +91,6 @@ test("serializes visual edits while preserving unknown TOML and .env fields", ()
     baseUrl: "https://new.example/v1",
     wireApi: "responses",
   });
-  state = utils.updateEnv(state, "OPENAI_API_KEY", "new-key");
-  state = utils.updateEnv(state, "OPENAI_BASE_URL", "https://new.example/v1");
-
   const serialized = utils.serializeState(state);
 
   assert.equal(serialized.ok, true);
@@ -125,9 +101,7 @@ test("serializes visual edits while preserving unknown TOML and .env fields", ()
   assert.match(serialized.content, /custom_provider = "keep"/);
   assert.match(serialized.content, /base_url = "https:\/\/new\.example\/v1"/);
   assert.match(serialized.content, /env_key = "OPENAI_API_KEY"/);
-  assert.match(serialized.envContent, /CUSTOM_ENV=keep/);
-  assert.match(serialized.envContent, /OPENAI_API_KEY=new-key/);
-  assert.match(serialized.envContent, /OPENAI_BASE_URL=https:\/\/new\.example\/v1/);
+  assert.equal(serialized.envContent, undefined);
 });
 
 test("Codex visual state round-trips developer instructions, verbosity, and web search modes", () => {
@@ -287,13 +261,13 @@ test("invalid TOML cannot replace the last valid visual state", () => {
   assert.match(serialized.error, /TOML 源码修复/);
 });
 
-test("editor exposes visual and TOML source modes with .env editor", () => {
+test("editor keeps visual and TOML source modes without .env editor", () => {
   const source = loadUiSource();
   const codexStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
   assert.notEqual(codexStart, -1, "Codex editor branch should exist");
   const codexBranch = source.slice(codexStart);
 
-  assert.match(codexBranch, /config\.toml \/ \.env/);
+  assert.match(codexBranch, /children: \[be\.jsx\(Ya, \{\}\), " config\.toml"\]/);
   assert.match(codexBranch, /主配置: ~\/\.codex\/config\.toml/);
   assert.match(
     codexBranch,
@@ -302,7 +276,7 @@ test("editor exposes visual and TOML source modes with .env editor", () => {
   );
   assert.match(
     codexBranch,
-    /config\.toml \/ \.env[\s\S]*?children: "查看范例"/,
+    /config\.toml[\s\S]*?children: "查看范例"/,
     "Codex example entry should remain beside the config filename",
   );
   assert.match(codexBranch, /switchCodexEditorMode\("visual"\)/);
@@ -310,23 +284,23 @@ test("editor exposes visual and TOML source modes with .env editor", () => {
   assert.match(codexBranch, /codexEditorMode === "visual" \? renderCodexVisualEditor\(\) : null/);
   assert.match(codexBranch, /display: codexEditorMode === "toml" \? "flex" : "none"/);
   assert.match(codexBranch, /label: "TOML 源码"/);
-  assert.match(codexBranch, /children: "配置文件路径: ~\/\.codex\/\.env"/);
-  assert.match(codexBranch, /value: b/);
-  assert.match(codexBranch, /placeholder: "请输入 \.env 配置"/);
+  assert.match(codexBranch, /children: "配置文件路径: ~\/\.codex\/config\.toml"/);
+  assert.doesNotMatch(codexBranch, /\.env|codex-env|请输入 \.env 配置/);
   assert.doesNotMatch(codexBranch, /请输入JSON配置[\s\S]*?config\.toml/);
 });
 
-test("Codex editor keeps the legacy profile content in sync when saving", () => {
+test("Codex editor saves TOML and auth without envContent", () => {
   const source = loadUiSource();
 
   assert.match(
     source,
-    /await r\(O\.id, \{ content: W, configContent: W, envContent: H, authContent: k \}\);/,
+    /await r\(O\.id, \{ content: W, configContent: W, authContent: k \}\);/,
   );
   assert.match(
     source,
-    /await r\(O\.id, \{ content: m, configContent: m, envContent: b, authContent: W \}\);/,
+    /await r\(O\.id, \{ content: m, configContent: m, authContent: W \}\);/,
   );
+  assert.doesNotMatch(source, /await applyConfigItem\("codex", \{[\s\S]*?envContent:/);
 });
 
 test("visual labels expose tooltip help and enum values", () => {
@@ -364,6 +338,7 @@ test("visual labels expose tooltip help and enum values", () => {
   const codexEnd = source.indexOf("\n    return O", codexStart);
   const codexVisualSource = source.slice(codexStart, codexEnd);
   assert.doesNotMatch(codexVisualSource, /renderCodexField\("env_key"/);
+  assert.doesNotMatch(codexVisualSource, /OPENAI_API_KEY|\.codex\/\.env|codexVisualState\.env/);
   assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("features\.web_search"/);
   assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("tools\.web_search"/);
 });
