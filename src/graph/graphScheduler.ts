@@ -8,6 +8,11 @@ import {
   type GraphNodeStatus,
   type GraphRunRecord,
 } from "./types";
+import {
+  normalizeConflictGroup,
+  normalizeWriteFiles,
+  writeFilePathsOverlap,
+} from "../shared/writeScope";
 
 export const GRAPH_UNSCOPED_WRITE_CONFLICT_GROUP = "__graph_unscoped_write__";
 
@@ -370,7 +375,7 @@ export function getGraphNodeConflictReason(
   const rightFiles = normalizeGraphWriteFiles(right.writeFiles);
   for (const leftFile of leftFiles) {
     for (const rightFile of rightFiles) {
-      if (graphWriteFilePathsOverlap(leftFile, rightFile)) {
+      if (writeFilePathsOverlap(leftFile, rightFile)) {
         return {
           leftNodeId: left.id,
           rightNodeId: right.id,
@@ -409,21 +414,11 @@ export function hasGraphNodeWriteConflict(
 }
 
 export function normalizeGraphWriteFiles(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const normalized = value
-    .map((item) => normalizeGraphWriteFilePath(item))
-    .filter((item): item is string => Boolean(item));
-  return Array.from(new Set(normalized));
+  return normalizeWriteFiles(value);
 }
 
 export function normalizeGraphConflictGroup(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().replace(/\s+/g, " ").toLowerCase();
-  return normalized || null;
+  return normalizeConflictGroup(value);
 }
 
 export function resolveGraphMaxConcurrent(
@@ -795,35 +790,6 @@ function isGraphUnscopedWriteNode(node: GraphNodeRecord): boolean {
   return isGraphWriteClassNode(node)
     && normalizeGraphWriteFiles(node.writeFiles).length === 0
     && !getGraphNodeNormalizedConflictGroup(node);
-}
-
-function normalizeGraphWriteFilePath(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const normalized = trimmed
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/\.\//g, "/")
-    .replace(/\/$/, "")
-    .toLowerCase();
-  return normalized || null;
-}
-
-function graphWriteFilePathsOverlap(left: string, right: string): boolean {
-  if (left === right) {
-    return true;
-  }
-  return isGraphPathAncestor(left, right) || isGraphPathAncestor(right, left);
-}
-
-function isGraphPathAncestor(parent: string, child: string): boolean {
-  return Boolean(parent && child.startsWith(`${parent}/`));
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number): number {

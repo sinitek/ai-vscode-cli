@@ -1,3 +1,5 @@
+import { sanitizePathSegment } from "./shared/pathSegments";
+
 export const LOOP_DEBATE_DIR_NAME = "debates";
 export const LOOP_DEBATE_PARTICIPANTS_DIR_NAME = "participants";
 export const LOOP_DEBATE_BRIEF_FILENAME = "brief.md";
@@ -659,8 +661,7 @@ function normalizeLoopDebateIdentifier(value: unknown, fallback: string): string
 }
 
 function sanitizeLoopDebatePathSegment(value: string, fallback: string): string {
-  const normalized = normalizeLoopDebateIdentifier(value, fallback).replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return normalized || fallback;
+  return sanitizePathSegment(normalizeLoopDebateIdentifier(value, fallback), fallback);
 }
 
 function classifyLoopDebateChatSection(heading: string, body: string): LoopDebateChatSegment {

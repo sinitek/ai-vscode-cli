@@ -17,6 +17,7 @@ import {
 import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import type { LoopDebateRoundRecord } from "./loopDebate";
+import { sanitizePathSegment } from "./shared/pathSegments";
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -174,8 +175,7 @@ function isCliName(value: string): value is CliName {
 }
 
 function sanitizeLoopPathSegment(value: string, fallback: string): string {
-  const normalized = String(value ?? "").trim().replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return normalized || fallback;
+  return sanitizePathSegment(value, fallback);
 }
 
 export function getLoopTaskStoreSessionFile(workspaceKey: string, cli: CliName, sessionId: string): string {

@@ -2,13 +2,17 @@ import * as os from "os";
 import * as path from "path";
 
 import type { CliName } from "../cli/types";
+import {
+  PATH_SEGMENT_REPLACEMENT_PATTERN,
+  sanitizePathSegment,
+} from "../shared/pathSegments";
 
 export const GRAPH_SCHEMA_VERSION = 1;
 export type GraphSchemaVersion = typeof GRAPH_SCHEMA_VERSION;
 
 export const GRAPH_DEFAULT_MAX_CONCURRENT_NODES = 6;
 export const GRAPH_DATA_DIR_NAME = ".sinitek_cli";
-export const GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN = /[^a-zA-Z0-9_.-]/g;
+export const GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN = PATH_SEGMENT_REPLACEMENT_PATTERN;
 export const GRAPH_WORKSPACE_KEY_FALLBACK = "no-workspace";
 export const GRAPH_PENDING_SESSION_SEGMENT = "__pending__";
 
@@ -315,8 +319,7 @@ export function getGraphDataDir(baseDir?: string): string {
 }
 
 export function sanitizeGraphPathSegment(value: unknown, fallback: string): string {
-  const normalized = String(value ?? "").trim().replace(GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN, "_");
-  return normalized || fallback;
+  return sanitizePathSegment(value, fallback);
 }
 
 export function isGraphRunStatus(value: unknown): value is GraphRunStatus {

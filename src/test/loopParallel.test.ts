@@ -30,6 +30,20 @@ test("serializes subtasks that declare the same write file", () => {
   assert.equal(plan.conflicts[0]?.reason, "writeFiles");
 });
 
+test("serializes subtasks that declare parent and child write paths", () => {
+  const plan = buildLoopSubtaskExecutionPlan([
+    { id: "parent", writeFiles: ["src/graph"] },
+    { id: "child", writeFiles: ["src/graph/graphScheduler.ts"] },
+    { id: "independent", writeFiles: ["src/cli/types.ts"] },
+  ]);
+
+  assert.deepEqual(plan.groups.map((group) => group.map((item) => item.id)), [
+    ["parent", "independent"],
+    ["child"],
+  ]);
+  assert.equal(plan.conflicts[0]?.reason, "writeFiles");
+});
+
 test("serializes subtasks that share a conflict group", () => {
   const plan = buildLoopSubtaskExecutionPlan([
     { id: "a", title: "A", conflictGroup: "model-store" },

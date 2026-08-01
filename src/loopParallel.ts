@@ -1,3 +1,9 @@
+import {
+  normalizeConflictGroup,
+  normalizeWriteFiles,
+  writeFilePathsOverlap,
+} from "./shared/writeScope";
+
 export type LoopParallelCandidate = {
   id: string;
   title?: string;
@@ -20,13 +26,7 @@ export type LoopSubtaskExecutionPlan<T extends LoopParallelCandidate> = {
 };
 
 export function normalizeLoopWriteFiles(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const normalized = value
-    .map((item) => normalizeLoopWriteFilePath(item))
-    .filter((item): item is string => Boolean(item));
-  return Array.from(new Set(normalized));
+  return normalizeWriteFiles(value);
 }
 
 export function buildLoopSubtaskExecutionPlan<T extends LoopParallelCandidate>(
@@ -89,8 +89,8 @@ function getLoopSubtaskConflict(
   left: LoopParallelCandidate,
   right: LoopParallelCandidate,
 ): LoopParallelConflict | null {
-  const leftConflictGroup = normalizeLoopConflictGroup(left.conflictGroup);
-  const rightConflictGroup = normalizeLoopConflictGroup(right.conflictGroup);
+  const leftConflictGroup = normalizeConflictGroup(left.conflictGroup);
+  const rightConflictGroup = normalizeConflictGroup(right.conflictGroup);
   if (leftConflictGroup && rightConflictGroup && leftConflictGroup === rightConflictGroup) {
     return {
       leftId: left.id,
@@ -100,11 +100,11 @@ function getLoopSubtaskConflict(
     };
   }
 
-  const leftFiles = normalizeLoopWriteFiles(left.writeFiles);
-  const rightFiles = normalizeLoopWriteFiles(right.writeFiles);
+  const leftFiles = normalizeWriteFiles(left.writeFiles);
+  const rightFiles = normalizeWriteFiles(right.writeFiles);
   for (const leftFile of leftFiles) {
     for (const rightFile of rightFiles) {
-      if (loopWriteFilePathsOverlap(leftFile, rightFile)) {
+      if (writeFilePathsOverlap(leftFile, rightFile)) {
         return {
           leftId: left.id,
           rightId: right.id,
@@ -116,41 +116,4 @@ function getLoopSubtaskConflict(
   }
 
   return null;
-}
-
-function normalizeLoopConflictGroup(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().replace(/\s+/g, " ").toLowerCase();
-  return normalized || null;
-}
-
-function normalizeLoopWriteFilePath(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const normalized = trimmed
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/\.\//g, "/")
-    .replace(/\/$/, "")
-    .toLowerCase();
-  return normalized || null;
-}
-
-function loopWriteFilePathsOverlap(left: string, right: string): boolean {
-  if (left === right) {
-    return true;
-  }
-  return isLoopPathAncestor(left, right) || isLoopPathAncestor(right, left);
-}
-
-function isLoopPathAncestor(parent: string, child: string): boolean {
-  return Boolean(parent && child.startsWith(`${parent}/`));
 }
