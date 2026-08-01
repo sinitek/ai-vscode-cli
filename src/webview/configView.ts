@@ -321,6 +321,7 @@ const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
   "健康检查详情": "Health Check Details",
   "失败原因": "Failure Reason",
   "关闭": "Close",
+  "关闭配置弹窗": "Close Config Panel",
   "查看范例": "View example",
   "请输入配置名称": "Enter config name",
   "请输入新的配置名称": "Enter new config name",
@@ -623,6 +624,13 @@ export function getConfigViewHtml(
         openExternal: (url) => {
           try {
             vscode.postMessage({ type: "config:openExternal", url });
+          } catch (error) {
+            // ignore
+          }
+        },
+        close: () => {
+          try {
+            vscode.postMessage({ type: "config:close" });
           } catch (error) {
             // ignore
           }

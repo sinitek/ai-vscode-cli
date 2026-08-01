@@ -185,6 +185,35 @@ body,
   vertical-align: 2px;
 }
 
+.config-app-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--clay-border);
+  border-radius: 0;
+  background: var(--clay-surface);
+  color: var(--clay-text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--clay-motion),
+    background var(--clay-motion),
+    color var(--clay-motion);
+}
+
+.config-app-close-button:hover,
+.config-app-close-button:focus-visible {
+  border-color: var(--clay-text);
+  background: var(--clay-text);
+  color: var(--clay-inverse);
+}
+
 .config-mobile-directory-button,
 .config-mobile-close-button,
 .config-mobile-sidebar-backdrop {

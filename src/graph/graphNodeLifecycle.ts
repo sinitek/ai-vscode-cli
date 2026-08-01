@@ -134,20 +134,18 @@ export async function markGraphNodeFailed(
   result: Partial<GraphNodeExecutionResult> = {},
 ): Promise<GraphRunRecord> {
   const timestamp = resolveGraphLifecycleTimestamp(deps);
-  const existingNode = getGraphRunNodeOrThrow(run, nodeId);
-  const attemptsExhausted = existingNode.attempts >= existingNode.maxAttempts;
-  const nextStatus = attemptsExhausted ? "blocked" : "failed";
   const { run: nextRun, node } = updateGraphRunNode(run, nodeId, (current) => ({
     ...current,
-    status: nextStatus,
+    status: "failed",
     ...buildGraphNodeCheckpointPatch(result),
     completedAt: timestamp,
     lastError: error,
   }), {
-    status: attemptsExhausted ? "needs-review" : "running",
+    status: "running",
     updatedAt: timestamp,
     activeNodeIds: removeGraphActiveNodeId(run.activeNodeIds, nodeId),
   });
+  const attemptsExhausted = node.attempts >= node.maxAttempts;
 
   await appendGraphLifecycleEvent(nextRun, {
     runId: nextRun.id,
@@ -168,18 +166,6 @@ export async function markGraphNodeFailed(
     },
   }, deps);
 
-  if (attemptsExhausted) {
-    await appendGraphLifecycleEvent(nextRun, {
-      runId: nextRun.id,
-      type: "node.blocked",
-      timestamp,
-      nodeId,
-      attempt: node.attempts,
-      summary: `Graph node ${nodeId} exhausted maxAttempts (${node.maxAttempts}).`,
-      error,
-    }, deps);
-  }
-
   return nextRun;
 }
 
@@ -190,36 +176,7 @@ export async function markGraphNodeBlocked(
   deps: GraphNodeLifecycleDeps = {},
   result: Partial<GraphNodeExecutionResult> = {},
 ): Promise<GraphRunRecord> {
-  const timestamp = resolveGraphLifecycleTimestamp(deps);
-  const { run: nextRun, node } = updateGraphRunNode(run, nodeId, (current) => ({
-    ...current,
-    status: "blocked",
-    ...buildGraphNodeCheckpointPatch(result),
-    completedAt: timestamp,
-    lastError: reason,
-  }), {
-    status: "needs-review",
-    updatedAt: timestamp,
-    activeNodeIds: removeGraphActiveNodeId(run.activeNodeIds, nodeId),
-  });
-
-  await appendGraphLifecycleEvent(nextRun, {
-    runId: nextRun.id,
-    type: "node.blocked",
-    timestamp,
-    nodeId,
-    attempt: node.attempts,
-    summary: reason,
-    error: reason,
-    data: {
-      executionCwd: result.executionCwd,
-      worktreeCwd: result.worktreeCwd,
-      baseCommit: result.baseCommit,
-      commit: result.commit,
-    },
-  }, deps);
-
-  return nextRun;
+  return markGraphNodeFailed(run, nodeId, reason, deps, result);
 }
 
 export async function markGraphNodeSleeping(
@@ -374,7 +331,7 @@ export async function finalizeGraphNodeResult(
     return markGraphNodeFailed(run, nodeId, result.error ?? result.summary ?? "Graph node failed.", deps, result);
   }
   if (result.status === "blocked") {
-    return markGraphNodeBlocked(run, nodeId, result.error ?? result.summary ?? "Graph node blocked.", deps, result);
+    return markGraphNodeFailed(run, nodeId, result.error ?? result.summary ?? "Graph node blocked.", deps, result);
   }
   return markGraphNodeSleeping(
     run,

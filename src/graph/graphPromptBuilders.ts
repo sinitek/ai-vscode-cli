@@ -52,10 +52,10 @@ const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
     "按代码审查视角检查当前任务范围内的正确性、越权写入、遗漏验证和回归风险；只在授权时写修复。",
   ],
   debate: [
-    "围绕方案、实现、验证和阻塞风险做结构化攻防；结论必须可追溯到证据。",
+    "围绕方案、实现、验证和失败风险做结构化攻防；结论必须可追溯到证据。",
   ],
   human_gate: [
-    "这是人工关卡节点；普通 CLI executor 不应执行它，只能由宿主或用户批准后推进。",
+    "这是历史兼容的人工关卡节点；新 Graph 运行时不再执行人工交互关卡，应按失败或 if_fail 路径收束。",
   ],
   merge: [
     "汇总已通过节点的改动和证据，处理授权范围内的合并冲突或收束工作。",
@@ -65,7 +65,7 @@ const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
   ],
   summary: [
     "读取 Graph events、graph.json 和节点 artifacts，生成最终结论、验证证据与未完成事项。",
-    "不得把 failed、blocked、stopped、skipped 或未验证节点描述为成功完成。",
+    "不得把 failed、历史 blocked、stopped、skipped 或未验证节点描述为成功完成。",
   ],
 };
 
@@ -139,7 +139,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- conflictGroup：${formatValue(node.conflictGroup)}`,
     ...formatGraphExecutionBoundaryLines(run),
     "- 不得修改未授权文件、任务记录、Graph store、其他节点 artifact 或其他节点沟通文件。",
-    "- 如果正确完成任务必须修改未授权范围，停止实施，在本节点沟通文件写明待确认事项，并返回 blocked。",
+    "- 如果正确完成任务必须修改未授权范围，停止实施，在本节点沟通文件写明原因，并返回 failed。",
     "",
     "## 依赖与输入",
     ...formatDependencyLines(run, node),
@@ -158,17 +158,17 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     "## 输出格式",
     "- 必须把执行记录写入上方 Communication file。",
     "- 回复和 artifact 必须包含以下固定小节：",
-    "  - `## 执行摘要`：说明完成、失败或阻塞的结论。",
+    "  - `## 执行摘要`：说明完成或失败的结论。",
     "  - `## 实际修改/操作`：列出实际读写与关键判断。",
     "  - `## 验证命令与结果`：列出命令、结果、退出码；未运行需说明原因。",
     "  - `## 遗留问题`：没有则写“无”。",
     "  - `## JSON`：提供一个 JSON 代码块，供宿主解析节点结果。",
     "- JSON 结构必须是：",
-    '{"status":"passed|failed|blocked","summary":"一句话结果","artifactRef":"可选 artifact 路径","acceptance":[{"name":"检查项","passed":true,"required":true,"detail":"证据"}]}',
+    '{"status":"passed|failed","summary":"一句话结果","artifactRef":"可选 artifact 路径","acceptance":[{"name":"检查项","passed":true,"required":true,"detail":"证据"}]}',
     "",
     "## 禁止越权",
     "- 禁止扩大技术栈、改动未授权文件、绕开 Graph 调度器、启动未指定的长期后台任务或声称未验证能力已经完成。",
-    "- 禁止把未通过的 acceptance、失败的测试、blocked 节点或未读取的 artifact 写成成功完成。",
+    "- 禁止把未通过的 acceptance、失败的测试、历史 blocked 节点或未读取的 artifact 写成成功完成。",
     ...formatExtraInstructionLines(options.extraInstructions),
   ];
 
@@ -210,10 +210,10 @@ function buildGraphSummaryPromptTail(run: GraphRunRecord): string[] {
     `- 必须读取 events file：${run.eventsFile}`,
     `- 必须读取 graph snapshot：${run.graphFile}`,
     "- 必须按需要读取所有节点 communicationFile / artifactRef，不能只依赖本提示词中的摘要。",
-    "- 最终结论必须区分已完成、未完成、失败、阻塞和未验证事项；不得把未通过节点写成成功完成。",
-    "- 如果任何必要节点 failed、blocked、stopped、skipped 或缺少验证证据，finalAnswer.unresolved 必须列出具体节点和原因。",
+    "- 最终结论必须区分已完成、未完成、失败和未验证事项；不得把未通过节点写成成功完成。",
+    "- 如果任何必要节点 failed、历史 blocked、stopped、skipped 或缺少验证证据，finalAnswer.unresolved 必须列出具体节点和原因。",
     "- Summary JSON 必须额外包含 finalAnswer：",
-    '{"status":"passed|blocked","summary":"最终摘要","finalAnswer":{"conclusion":"最终结论","summary":"用户可读总结","evidence":["验证证据或 artifact"],"unresolved":["未完成事项"],"completedAt":1234567890}}',
+    '{"status":"passed|failed","summary":"最终摘要","finalAnswer":{"conclusion":"最终结论","summary":"用户可读总结","evidence":["验证证据或 artifact"],"unresolved":["未完成事项"],"completedAt":1234567890}}',
     "",
     "## 节点与 artifact 清单",
     ...run.nodes.map((item) => {
@@ -244,7 +244,7 @@ function formatGraphTopologyLines(run: GraphRunRecord, node: GraphNodeRecord): s
   const currentIndex = Math.max(run.nodes.findIndex((item) => item.id === node.id), 0);
   const nodeById = new Map(run.nodes.map((item) => [item.id, item]));
   return [
-    "- Graph 模式按已规划的 Realized Graph 执行；宿主调度器依据节点、边、状态、依赖、冲突组和人工/系统关卡推进。",
+    "- Graph 模式按已规划的 Realized Graph 执行；宿主调度器依据节点、边、状态、依赖、冲突组和系统关卡推进。",
     "- 本节点不是 Loop 主智能体，也不要自行创建或调度子智能体；当前会话只完成本节点在图中的职责。",
     `- 当前节点位置：${currentIndex + 1}/${run.nodes.length}；${node.id}（${node.title}）`,
     `- Graph maxConcurrent：${run.maxConcurrent}`,
@@ -270,7 +270,7 @@ function formatGraphTopologyLines(run: GraphRunRecord, node: GraphNodeRecord): s
 
 function formatGraphNodeTopologyLines(run: GraphRunRecord, currentNode: GraphNodeRecord): string[] {
   if (run.nodes.length === 0) {
-    return ["- Graph nodes 为空；本节点应返回 blocked 并说明 graph.json 不完整。"];
+    return ["- Graph nodes 为空；本节点应返回 failed 并说明 graph.json 不完整。"];
   }
   return run.nodes.map((item) => {
     const marker = item.id === currentNode.id ? "[当前]" : "[全图]";
@@ -313,12 +313,12 @@ function formatGraphEdgeTopologyLines(run: GraphRunRecord, currentNode: GraphNod
 
 function formatGraphEdgeSemanticsLines(): string[] {
   return [
-    "- depends_on 是结构性前置；上游 passed 或被人工 skipped 后目标节点才可继续执行。",
-    "- human_approved 仍要求上游人工关卡 passed；skipped 不等同于批准。",
-    "- if_pass / if_fail 是条件路径；scheduler 会按上游状态和受支持的 conditionExpression 判定是否可通行，inactive edge 会阻塞并提示需要重规划或人工处理。",
+    "- depends_on 是结构性前置；上游 passed 或被 skipped 后目标节点才可继续执行。",
+    "- human_approved 仅作历史兼容；新 Graph planner 不应生成该边，运行时不会发起人工审批。",
+    "- if_pass / if_fail 是条件路径；scheduler 会按上游状态和受支持的 conditionExpression 判定是否可通行，inactive edge 会进入失败/复核口径而不是人工弹窗。",
     "- review_feedback / if_fail 可作为返工路径；只有历史 worktree run 且存在 checkpoint 时，Feedback rollback 才能回退到上游节点；direct run 需要在当前工作区手动控制返工范围。",
     "- evidence_for 是证据追踪边，不单独解锁调度；summary/review 节点应引用其 metadata.evidenceRef 或相关 artifact。",
-    "- custom conditionExpression 当前只会保守阻塞并说明不可求值，不能伪装为已自动重算复杂谓词。",
+    "- custom conditionExpression 当前只会保守标记不可求值并说明原因，不能伪装为已自动重算复杂谓词。",
   ];
 }
 
@@ -342,7 +342,7 @@ function formatGraphConcurrencyLines(run: GraphRunRecord, node: GraphNodeRecord)
     sameWriteScope.length > 0
       ? `- 共享 writeFiles 线索的节点：${formatNodeReferences(sameWriteScope)}`
       : "- 未发现明显共享 writeFiles 的其他节点。",
-    "- 即使 scheduler 已尽量避免同批冲突，执行中发现实际路径冲突、锁冲突或语义冲突时，也必须停止扩大写入并返回 blocked。",
+    "- 即使 scheduler 已尽量避免同批冲突，执行中发现实际路径冲突、锁冲突或语义冲突时，也必须停止扩大写入并返回 failed。",
   ];
 }
 
@@ -359,7 +359,7 @@ function formatGraphNodeBoundaryLines(run: GraphRunRecord, node: GraphNodeRecord
     "",
     "## Graph 节点边界",
     "- 只完成当前节点的 title、kind、acceptance 和授权写入范围；不要把下游节点的职责提前吞并。",
-    "- 如果发现图缺少必要测试、评审、人工批准或返工路径，应在本节点沟通文件写明缺口；只有该缺口使本节点无法安全完成时才返回 blocked。",
+    "- 如果发现图缺少必要测试、评审或返工路径，应在本节点沟通文件写明缺口；只有该缺口使本节点无法安全完成时才返回 failed。",
     "- 条件边以 graph.json 中的 edge.kind、condition、active 和上游节点状态为准；不要自行发明未在图中声明的新路径。",
   ];
   if (downstreamTests.length > 0) {
@@ -398,7 +398,7 @@ function formatGraphReviewScopeLines(run: GraphRunRecord, node: GraphNodeRecord)
     "- 先读取上游节点 communicationFile / artifactRef，提取本次任务实际修改、验证过的文件，再把这些路径作为评审目标。",
     "- 使用 git status / git diff 时必须按上述文件范围或上游 evidence 中列出的实际修改文件加 pathspec 过滤；不要把整个工作区 dirty 状态当作当前任务失败依据。",
     "- 如果 git status / git diff 出现评审范围外路径，默认视为同一 workspace 中的无关改动；只有证据表明该路径由本 Graph 任务产生或影响本任务验收时，才将其写入问题。",
-    "- 评审结论只覆盖当前任务范围内的正确性、验证证据和回归风险；范围外改动可在遗留问题中提示，但不得单独导致 failed/blocked。",
+    "- 评审结论只覆盖当前任务范围内的正确性、验证证据和回归风险；范围外改动可在遗留问题中提示，但不得单独导致 failed。",
   ];
 }
 
@@ -569,7 +569,7 @@ function buildGraphAiPlannerPromptTail(): string[] {
   return [
     "## AI Planner 节点专用要求",
     "- 你不是在直接实现任务；你必须先把原始目标编译成一个可执行 Graph DAG。",
-    "- Graph 不能固定输出线形 `plan -> implement -> test -> review -> summary`；复杂需求必须拆出并行分支、依赖边、验证节点、评审节点，必要时加入 debate、human_gate、sleep 或 merge 节点。",
+    "- Graph 不能固定输出线形 `plan -> implement -> test -> review -> summary`；复杂需求必须拆出并行分支、依赖边、验证节点、评审节点，必要时加入 debate、sleep 或 merge 节点。",
     "- 节点粒度要按可独立执行、可验证、可回退来拆；同一文件或同一风险域的写入节点要声明相同 conflictGroup 或重叠 writeFiles，避免并发冲突。",
     "- 每个会写文件的 implement/test/review/merge 节点必须声明 writeFiles；如果无法精确判断路径，用 `[\"**\"]` 并设置保守 conflictGroup。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
@@ -648,9 +648,9 @@ function buildGraphAiPlannerPromptTail(): string[] {
       },
       acceptance: [{ name: "plannedGraph 可执行；复杂需求已按需拆成非线形 DAG；结构符合 schema。", passed: true, required: true }],
     }),
-    "- 允许的 node.kind：intake、plan、implement、test、review、debate、human_gate、merge、sleep、summary。",
-    "- 允许的 edge.kind：depends_on、if_pass、if_fail、review_feedback、conflicts_with、evidence_for、human_approved。",
-    "- edge.condition 可写人类可读说明；edge.conditionExpression 当前支持 source_status、source_acceptance、manual 的有限求值；custom 表达式会保守阻塞，需后续重规划或人工处理。",
+    "- 允许的 node.kind：intake、plan、implement、test、review、debate、merge、sleep、summary；不得生成 human_gate。",
+    "- 允许的 edge.kind：depends_on、if_pass、if_fail、review_feedback、conflicts_with、evidence_for；不得生成 human_approved。",
+    "- edge.condition 可写人类可读说明；edge.conditionExpression 当前支持 source_status、source_acceptance 的有限求值；不得生成 manual 条件；custom 表达式会保守进入失败/复核口径，需后续重规划或返工处理。",
     "- review_feedback / if_fail 返工边可用 metadata.feedbackReason、metadata.reworkTargetNodeId、metadata.reworkScopeNodeIds 说明返工目标与预期影响范围。",
     "- evidence_for 边可用 metadata.evidenceRef、metadata.rationale 说明证据来源；它是追踪信号，不替代 depends_on。",
   ];
@@ -668,7 +668,7 @@ function formatDependencyLines(run: GraphRunRecord, node: GraphNodeRecord): stri
   return node.dependsOn.map((dependencyId) => {
     const dependency = nodeById.get(dependencyId);
     if (!dependency) {
-      return `- ${dependencyId}：未在 Graph nodes 中找到；如该依赖是必需项，应返回 blocked。`;
+      return `- ${dependencyId}：未在 Graph nodes 中找到；如该依赖是必需项，应返回 failed。`;
     }
     return `- ${dependency.id}：${dependency.title}｜kind=${dependency.kind}｜status=${dependency.status}｜artifactRef=${formatValue(dependency.artifactRef)}`;
   });

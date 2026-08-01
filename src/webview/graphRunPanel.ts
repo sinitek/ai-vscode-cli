@@ -866,14 +866,6 @@ ${GRAPH_RUN_PANEL_STYLES}
 	              nodeId: element.dataset.controlNodeId || "",
 	              selectedNodeId,
 	            });
-	            return;
-	          }
-	          if (action === "approve") {
-	            vscode.postMessage({
-	              type: "graphRun:approveHumanGate",
-              nodeId: element.dataset.controlNodeId || "",
-              selectedNodeId,
-            });
           }
         });
       });
@@ -1227,7 +1219,6 @@ function renderNodeDetailArticle(
       </div>
       <span class="status-pill ${statusClassName(node.status)}">${escapeHtml(node.statusLabel)}</span>
     </div>
-    ${renderHumanApprovalCallout(node, strings)}
     ${renderNodeControls(node, strings)}
     <div class="detail-grid">
       ${renderMetaCard(strings.nodeId, node.id)}
@@ -1252,19 +1243,6 @@ function renderNodeDetailArticle(
   </article>`;
 }
 
-function renderHumanApprovalCallout(node: GraphRunPanelNode, strings: GraphRunPanelStrings): string {
-  if (!node.control.canApprove) {
-    return "";
-  }
-  return `<div class="empty-card status-needs-review">
-    <div class="label">${escapeHtml(strings.humanApprovalTitle)}</div>
-    <div class="pre-wrap">${escapeHtml(strings.humanApprovalDescription)}</div>
-    <div class="detail-actions">
-      <button class="button" type="button" data-action="approve" data-control-node-id="${escapeHtml(node.id)}">${escapeHtml(strings.humanApprovalCta)}</button>
-    </div>
-  </div>`;
-}
-
 function renderNodeControls(node: GraphRunPanelNode, strings: GraphRunPanelStrings): string {
   const buttons: string[] = [];
 	  if (node.control.canRetry) {
@@ -1272,9 +1250,6 @@ function renderNodeControls(node: GraphRunPanelNode, strings: GraphRunPanelStrin
 	  }
 	  if (node.control.canFeedback) {
 	    buttons.push(`<button class="button" type="button" data-action="feedback" data-control-node-id="${escapeHtml(node.id)}">${escapeHtml(strings.feedbackNode)}</button>`);
-	  }
-	  if (node.control.canApprove) {
-	    buttons.push(`<button class="button" type="button" data-action="approve" data-control-node-id="${escapeHtml(node.id)}">${escapeHtml(strings.approveHumanGate)}</button>`);
 	  }
   if (!buttons.length) {
     return "";

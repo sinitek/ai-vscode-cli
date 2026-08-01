@@ -170,7 +170,12 @@ function optionPairs(select: FakeSelect): Array<[string, string]> {
 }
 
 function createVisibilityElement() {
-  return { style: { display: "" }, disabled: false, value: "" };
+  return {
+    style: { display: "" },
+    disabled: false,
+    value: "",
+    parentElement: { style: { display: "" } },
+  };
 }
 
 function buildVisibilityHarness() {
@@ -178,6 +183,7 @@ function buildVisibilityHarness() {
     "cliSupportsManagedModelSelection",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
+    "isOpenCodeRoleModelMode",
     "syncModelSelectorByInteractiveMode",
   ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
@@ -428,15 +434,29 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   harness.state.interactiveMode = "coding";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, true);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "loop";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.state.interactiveMode = "graph";
+  harness.sync("opencode");
+  assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
   harness.sync("codex");

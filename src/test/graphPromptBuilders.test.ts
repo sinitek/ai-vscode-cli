@@ -111,7 +111,7 @@ test("builds a self-contained executable Graph node prompt with scope and accept
   assert.match(prompt, /Kernel adapter compiles/u);
   assert.match(prompt, /运行 npm run build/u);
   assert.match(prompt, /禁止越权/u);
-  assert.match(prompt, /"status":"passed\|failed\|blocked"/u);
+  assert.match(prompt, /"status":"passed\|failed"/u);
 });
 
 test("node prompt includes graph-level model routing and node fallback records", () => {
@@ -404,7 +404,7 @@ test("review node prompt scopes review to upstream task files instead of unrelat
   assert.match(prompt, /artifacts\/implement-feature\.md、\/tmp\/graph\/nodes\/implement-feature\.md/u);
   assert.match(prompt, /加 pathspec 过滤/u);
   assert.match(prompt, /范围外路径，默认视为同一 workspace 中的无关改动/u);
-  assert.match(prompt, /不得单独导致 failed\/blocked/u);
+  assert.match(prompt, /不得单独导致 failed/u);
 });
 
 test("summary node prompt requires events, node artifacts, evidence, and unresolved failures", () => {
@@ -441,7 +441,7 @@ test("summary node prompt requires events, node artifacts, evidence, and unresol
 
   assert.match(prompt, /必须读取 events file：\/tmp\/graph\/events\.jsonl/u);
   assert.match(prompt, /必须读取 graph snapshot：\/tmp\/graph\/graph\.json/u);
-  assert.match(prompt, /不得把 failed、blocked、stopped、skipped 或未验证节点描述为成功完成/u);
+  assert.match(prompt, /不得把 failed、历史 blocked、stopped、skipped 或未验证节点描述为成功完成/u);
   assert.match(prompt, /finalAnswer/u);
   assert.match(prompt, /implement-1｜implement｜passed｜Implementation/u);
   assert.match(prompt, /test-1｜test｜failed｜Validation/u);

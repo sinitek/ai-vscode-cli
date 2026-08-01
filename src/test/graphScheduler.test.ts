@@ -309,7 +309,7 @@ test("falls back to default maxConcurrent when run maxConcurrent is invalid", ()
   assert.equal(selectGraphRunnableBatch(run).selectedNodeIds.length, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
 });
 
-test("keeps human_gate and sleep nodes out of the ordinary CLI execution batch", () => {
+test("does not expose human_gate as a runtime action and keeps sleep nodes out of CLI execution", () => {
   const cli = readyImplement("cli", { writeFiles: ["src/graph/graphScheduler.ts"] });
   const gate = createNode({
     id: "gate",
@@ -338,7 +338,8 @@ test("keeps human_gate and sleep nodes out of the ordinary CLI execution batch",
   const batch = selectGraphRunnableBatch(run, { now: 1_000 });
 
   assert.deepEqual(batch.selectedNodeIds, ["cli"]);
-  assert.deepEqual(batch.humanGateNodes.map((item) => item.nodeId), ["gate"]);
+  assert.deepEqual(batch.humanGateNodes.map((item) => item.nodeId), []);
   assert.deepEqual(batch.sleepReadyNodes.map((item) => item.nodeId), ["due-sleep"]);
+  assert.equal(batch.deferredNodes.find((item) => item.nodeId === "gate")?.blockers[0]?.reason, "terminal_status");
   assert.equal(batch.deferredNodes.find((item) => item.nodeId === "sleeping")?.blockers[0]?.reason, "already_sleeping");
 });

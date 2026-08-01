@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { getConfigViewHtml } from "./configView";
 import {
+  ConfigCloseMessage,
   ConfigRequestMessage,
   ConfigResponseMessage,
   ConfigOpenExternalMessage,
@@ -56,29 +57,34 @@ export class ConfigManagerPanel {
           | ConfigRequestMessage
           | ConfigOpenPathMessage
           | ConfigOpenExternalMessage
+          | ConfigCloseMessage
           | { type: "config:debug"; payload?: unknown }
       ) => {
-      if (message && message.type === "config:debug") {
-        void logInfo("config-view-debug", message.payload ?? {});
-        return;
-      }
-      if (message && message.type === "config:openPath") {
-        const target = message.path;
-        if (target) {
-          const uri = vscode.Uri.file(target);
-          void vscode.commands.executeCommand("revealFileInOS", uri);
+        if (message && message.type === "config:close") {
+          this.panel?.dispose();
+          return;
         }
-        return;
-      }
-      if (message && message.type === "config:openExternal") {
-        const target = message.url;
-        if (target) {
-          void vscode.env.openExternal(vscode.Uri.parse(target));
+        if (message && message.type === "config:debug") {
+          void logInfo("config-view-debug", message.payload ?? {});
+          return;
         }
-        return;
-      }
-      void this.handleRequest(message as ConfigRequestMessage);
-    });
+        if (message && message.type === "config:openPath") {
+          const target = message.path;
+          if (target) {
+            const uri = vscode.Uri.file(target);
+            void vscode.commands.executeCommand("revealFileInOS", uri);
+          }
+          return;
+        }
+        if (message && message.type === "config:openExternal") {
+          const target = message.url;
+          if (target) {
+            void vscode.env.openExternal(vscode.Uri.parse(target));
+          }
+          return;
+        }
+        void this.handleRequest(message as ConfigRequestMessage);
+      });
 
     this.panel.onDidDispose(() => {
       this.panel = undefined;

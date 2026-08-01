@@ -57,6 +57,8 @@ test("halves core inline spacing across the config list and editor cards", () =>
   assert.match(editorPanel, /className: "config-editor-shell config-editor-opencode",[\s\S]*?padding: "8px"[\s\S]*?bodyStyle: \{[\s\S]*?padding: "8px",\s+gap: "8px"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-codex",[\s\S]*?padding: "8px"[\s\S]*?bodyStyle: \{[\s\S]*?padding: "8px",\s+gap: "8px"/);
   assert.match(managerLayout, /className: "config-app-header",[\s\S]*?padding: "0 12px"/);
+  assert.match(managerLayout, /closeConfigPanel = \(\) => window\.sinitekConfigBridge\?\.close\?\.\(\)/);
+  assert.match(managerLayout, /className: "config-app-close-button"[\s\S]*?"aria-label": "关闭配置弹窗"[\s\S]*?onClick: closeConfigPanel/);
 });
 
 test("opens the configuration list initially when the config page starts narrow", () => {

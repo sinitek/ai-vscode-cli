@@ -58,7 +58,7 @@ export type GraphNodeConflict = {
   value: string;
 };
 
-export type GraphReadyNodeExecutionKind = "cli" | "human_gate" | "sleep_due";
+export type GraphReadyNodeExecutionKind = "cli" | "sleep_due";
 
 export type GraphReadyNode = {
   node: GraphNodeRecord;
@@ -175,7 +175,7 @@ export function selectGraphRunnableBatch(
   const runningNodes = getGraphRunningNodes(run);
   const availableSlots = Math.max(0, maxConcurrent - runningNodes.length);
   const readySet = computeGraphReadyNodes(run, options);
-  const humanGateNodes = readySet.readyNodes.filter((item) => item.executionKind === "human_gate");
+  const humanGateNodes: GraphReadyNode[] = [];
   const sleepReadyNodes = readySet.readyNodes.filter((item) => item.executionKind === "sleep_due");
   const cliReadyNodes = readySet.readyNodes.filter((item) => item.executionKind === "cli");
   const selectedNodes: GraphNodeRecord[] = [];
@@ -446,7 +446,7 @@ export function isGraphWriteClassNode(node: GraphNodeRecord): boolean {
 
 function getGraphReadyNodeExecutionKind(node: GraphNodeRecord): GraphReadyNodeExecutionKind | null {
   if (node.kind === "human_gate") {
-    return "human_gate";
+    return null;
   }
   if (node.kind === "sleep") {
     return "sleep_due";

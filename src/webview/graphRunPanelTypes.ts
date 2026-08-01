@@ -123,5 +123,4 @@ export type GraphRunPanelMessage =
 	  | { type: "graphRun:supplementRun"; prompt: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:retryNode"; nodeId: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:feedbackNode"; nodeId: string; selectedNodeId?: string | null }
-	  | { type: "graphRun:approveHumanGate"; nodeId: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:stopRun"; selectedNodeId?: string | null };

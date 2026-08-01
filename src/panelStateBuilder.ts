@@ -357,7 +357,6 @@ export type GraphRunPanelStateBuilderDeps = {
 	    supplementRun?: boolean;
 	    retryNode?: boolean;
 	    feedbackNode?: boolean;
-	    approveHumanGate?: boolean;
 	    stopRun?: boolean;
 	  };
 };
@@ -371,11 +370,10 @@ export function buildGraphRunPanelStateWithDeps(
 	  const controlState = getGraphRunControlState(run);
 	  const retryableNodeIds = new Set(controlState.retryableNodeIds);
 	  const feedbackableNodeIds = new Set(controlState.feedbackableNodeIds);
-	  const approvableNodeIds = new Set(controlState.approvableNodeIds);
 	  const nodes = run.nodes.map((node) => buildGraphRunPanelNode(node, strings, {
 	    canRetry: Boolean(deps.controls?.retryNode) && retryableNodeIds.has(node.id),
 	    canFeedback: Boolean(deps.controls?.feedbackNode) && feedbackableNodeIds.has(node.id),
-	    canApprove: Boolean(deps.controls?.approveHumanGate) && approvableNodeIds.has(node.id),
+	    canApprove: false,
 	  }));
   const edges = buildGraphRunPanelEdges(run, nodes, strings);
   const selectedNode = selectGraphRunPanelNode(nodes, deps.selectedNodeId);
@@ -600,14 +598,6 @@ function selectGraphRunPanelNode(
     if (requestedNode) {
       return requestedNode;
     }
-  }
-  const approvableNode = nodes.find((node) => node.control.canApprove);
-  if (approvableNode) {
-    return approvableNode;
-  }
-  const waitingHumanGateNode = nodes.find((node) => node.kind === "human_gate" && node.status === "ready");
-  if (waitingHumanGateNode) {
-    return waitingHumanGateNode;
   }
   return nodes.find((node) => (
     node.status === "running"

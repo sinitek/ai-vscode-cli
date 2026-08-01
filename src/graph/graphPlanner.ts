@@ -153,6 +153,14 @@ function buildMaterializedGraph(
   if (graph.nodes.some((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)) {
     return { nodes: [], edges: [], error: `Planner output must not redefine reserved node id ${GRAPH_AI_PLANNER_NODE_ID}.` };
   }
+  const humanGateNode = graph.nodes.find((node) => node.kind === "human_gate");
+  if (humanGateNode) {
+    return { nodes: [], edges: [], error: `Planner output must not include human_gate node ${humanGateNode.id}; model failed branches with failed/if_fail flow instead.` };
+  }
+  const humanEdge = (graph.edges ?? []).find((edge) => edge.kind === "human_approved" || edge.conditionExpression?.type === "manual");
+  if (humanEdge) {
+    return { nodes: [], edges: [], error: `Planner edge ${humanEdge.id ?? `${humanEdge.from}->${humanEdge.to}`} must not require human approval or manual conditions; model failures with if_fail flow instead.` };
+  }
 
   const plannedNodeIds = new Set(graph.nodes.map((node) => node.id));
   const materializedNodes = graph.nodes.map((node) => buildGraphNodeRecordFromPlan(node));
@@ -180,7 +188,7 @@ function buildMaterializedGraph(
     if (normalizedEdge.to === GRAPH_AI_PLANNER_NODE_ID) {
       return { nodes: [], edges: [], error: `Planner edge ${normalizedEdge.id} must not target the reserved planner node.` };
     }
-    if (normalizedEdge.kind === "depends_on" || normalizedEdge.kind === "human_approved") {
+    if (normalizedEdge.kind === "depends_on") {
       appendDependency(normalizedEdge.from, normalizedEdge.to);
     }
     edgeRecords.push(normalizedEdge);

@@ -5,7 +5,6 @@ import {
 import {
   completeGraphSleepNodeDue,
   finalizeGraphNodeResult,
-  markGraphHumanGateWaiting,
   markGraphNodeSleeping,
   markGraphNodeStarted,
   type GraphNodeExecutionResult,
@@ -32,12 +31,7 @@ export type GraphNodeExecutor = {
   execute: (request: GraphNodeExecutionRequest) => Promise<GraphNodeExecutionResult>;
 };
 
-export type GraphKernelPendingAction = {
-  type: "human_gate";
-  nodeId: string;
-  title: string;
-  communicationFile?: string;
-};
+export type GraphKernelPendingAction = never;
 
 export type GraphKernelSystemAction =
   | {
@@ -121,20 +115,6 @@ export async function tickGraphRun(
     });
   }
 
-  for (const readyHumanGate of batch.humanGateNodes) {
-    currentRun = await commitGraphKernelRun(
-      await markGraphHumanGateWaiting(currentRun, readyHumanGate.nodeId, lifecycleDeps),
-      deps,
-    );
-    const node = getGraphKernelNode(currentRun, readyHumanGate.nodeId);
-    pendingActions.push({
-      type: "human_gate",
-      nodeId: node.id,
-      title: node.title,
-      ...(node.communicationFile ? { communicationFile: node.communicationFile } : {}),
-    });
-  }
-
   for (const readySleep of batch.sleepReadyNodes) {
     currentRun = await commitGraphKernelRun(
       await completeGraphSleepNodeDue(currentRun, readySleep.nodeId, lifecycleDeps),
@@ -194,15 +174,13 @@ export async function tickGraphRun(
     );
     if (execution.result.status === "passed") {
       completedNodeIds.push(execution.nodeId);
-    } else if (execution.result.status === "failed") {
+    } else if (execution.result.status === "failed" || execution.result.status === "blocked") {
       const node = getGraphKernelNode(currentRun, execution.nodeId);
       if (node.status === "blocked") {
         blockedNodeIds.push(execution.nodeId);
       } else {
         failedNodeIds.push(execution.nodeId);
       }
-    } else if (execution.result.status === "blocked") {
-      blockedNodeIds.push(execution.nodeId);
     } else {
       sleepingNodeIds.push(execution.nodeId);
     }

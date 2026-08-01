@@ -35,7 +35,6 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
 	  assert.match(extensionSource, /retryGraphNodeForRun/);
 	  assert.match(extensionSource, /skipGraphNodeForRun/);
 	  assert.match(extensionSource, /feedbackGraphNodeForRun/);
-	  assert.match(extensionSource, /approveGraphHumanGateForRun/);
 	  assert.match(extensionSource, /stopGraphRunRecord/);
   assert.match(extensionSource, /GraphAutoWakeScheduler/);
   assert.match(extensionSource, /initializeGraphAutoWakeScheduler\(context\)/);
@@ -47,32 +46,31 @@ test("extension wires Graph recovery controls, latest fallback, and auto wake", 
   assert.match(extensionSource, /stopActiveCliRunsForGraphRun\(graphRunId\)/);
 });
 
-test("extension prompts users when Graph runs block and supports retrying or skipping into downstream nodes", () => {
+test("extension treats Graph blocked runs as failed flow without modal prompts", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
-  assert.match(extensionSource, /const graphBlockedPromptKeys = new Set<string>\(\);/);
-  assert.match(extensionSource, /await maybePromptForGraphBlockedRun\(run,\s*target\)/);
-  assert.match(extensionSource, /async function maybePromptForGraphBlockedRun\([\s\S]*showWarningMessage\([\s\S]*buildGraphBlockedPromptMessage\(run,\s*context\)[\s\S]*\{ modal:\s*true \}/);
-  assert.match(extensionSource, /selectedAction === "retry_current"[\s\S]*retryGraphNodeFromPanel\(run\.id,\s*context\.node\.id\)/);
-  assert.match(extensionSource, /selectedAction === "choose_downstream"[\s\S]*pickGraphBlockedDownstreamNode\(run,\s*context\.downstreamNodes\)[\s\S]*skipGraphNodeFromPanel\(run\.id,\s*context\.node\.id\)[\s\S]*openGraphRunPanel\(\{ graphRunId:\s*run\.id,\s*nodeId:\s*downstreamNode\.id \}\)/);
-  assert.match(extensionSource, /function resolveGraphDownstreamNodes\(run:\s*GraphRunRecord,\s*nodeId:\s*string\):\s*GraphNodeRecord\[\][\s\S]*sourceNode\?\.unlocks\.forEach\(appendNodeId\)[\s\S]*node\.dependsOn\.includes\(nodeId\)[\s\S]*edge\.active[\s\S]*edge\.from === nodeId/);
-  assert.match(extensionSource, /showQuickPick\(items,\s*\{[\s\S]*ignoreFocusOut:\s*true/);
-  assert.match(extensionSource, /重跑当前节点/);
-  assert.match(extensionSource, /跳过当前并选择下游继续/);
+  assert.doesNotMatch(extensionSource, /graphBlockedPromptKeys/);
+  assert.doesNotMatch(extensionSource, /maybePromptForGraphBlockedRun/);
+  assert.doesNotMatch(extensionSource, /buildGraphBlockedPromptMessage/);
+  assert.doesNotMatch(extensionSource, /pickGraphBlockedDownstreamNode/);
+  assert.doesNotMatch(extensionSource, /resolveGraphDownstreamNodes/);
+  assert.doesNotMatch(extensionSource, /重跑当前节点/);
+  assert.doesNotMatch(extensionSource, /跳过当前并选择下游继续/);
+  assert.match(extensionSource, /function buildGraphRunNeedsAttentionText\(run:\s*GraphRunRecord[\s\S]*node\.status === "blocked" \|\| node\.status === "failed"/);
 });
 
-test("extension surfaces human gate approval entry and precise Stop boundaries", () => {
+test("extension removes automatic human gate approval entry and keeps precise Stop boundaries", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 
-  assert.match(extensionSource, /const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded\(run\);/);
-  assert.match(extensionSource, /openGraphRunPanel\(\{\s*[\s\S]*graphRunId:\s*run\.id,[\s\S]*nodeId:\s*humanGateNode\.id/);
-  assert.match(extensionSource, /function resolveGraphPendingHumanGateNode\(run:\s*GraphRunRecord\):\s*GraphRunRecord\["nodes"\]\[number\] \| null/);
-  assert.match(extensionSource, /node\.kind === "human_gate" && node\.status === "ready"/);
-  assert.match(extensionSource, /graphHumanApprovalCtaText\(\)/);
-  assert.match(extensionSource, /请你审批，点击这里/);
+  assert.doesNotMatch(extensionSource, /openGraphHumanGateApprovalPanelIfNeeded/);
+  assert.doesNotMatch(extensionSource, /resolveGraphPendingHumanGateNode/);
+  assert.doesNotMatch(extensionSource, /graphHumanApprovalCtaText/);
+  assert.doesNotMatch(extensionSource, /请你审批，点击这里/);
+  assert.doesNotMatch(extensionSource, /approveGraphHumanGateForRun/);
   assert.match(extensionSource, /buildGraphRunMessageAction\([\s\S]*nodeId\?: string \| null,[\s\S]*label\?: string \| null/);
-  assert.match(extensionSource, /function isHumanGateGraphMessageAction\(nodeId\?: string \| null,\s*actionLabel\?: string \| null\): boolean/);
-  assert.match(extensionSource, /if\s*\(isHumanGateGraphMessageAction\(nodeId,\s*actionLabel\)\)\s*\{\s*return \[buildGraphRunMessageAction\(graphRunId,\s*nodeId,\s*actionLabel\)\];\s*\}/);
+  assert.match(extensionSource, /function isTargetedGraphMessageAction\(nodeId\?: string \| null,\s*actionLabel\?: string \| null\): boolean/);
+  assert.match(extensionSource, /if\s*\(isTargetedGraphMessageAction\(nodeId,\s*actionLabel\)\)\s*\{\s*return \[buildGraphRunMessageAction\(graphRunId,\s*nodeId,\s*actionLabel\)\];\s*\}/);
+  assert.doesNotMatch(extensionSource, /isHumanGateGraphMessageAction/);
   assert.match(extensionSource, /const actions = resolveGraphSystemMessageActions\(target,\s*graphRunId,\s*nodeId,\s*actionLabel\);/);
   assert.match(extensionSource, /\.\.\.\(actions\.length \? \{ actions \} : \{\}\)/);
   assert.match(extensionSource, /no real CLI process stop was confirmed/);
@@ -155,7 +153,9 @@ test("extension creates a planning-only graph and materializes the AI planned DA
   assert.match(extensionSource, /function maybeMaterializeGraphPlanAfterTick\(run:\s*GraphRunRecord\)/);
   assert.match(extensionSource, /readGraphNodeExecutionResultArtifact\(resolveGraphNodeCommunicationFile\(run,\s*plannerNode\)\)/);
   assert.match(extensionSource, /materializeGraphPlan\(run,\s*artifact\.plannedGraph\)/);
-  assert.match(extensionSource, /blockGraphPlannerRun\(run,\s*"Graph planner passed without a valid plannedGraph DAG artifact\."\)/);
+  assert.match(extensionSource, /failGraphPlannerRun\(run,\s*"Graph planner passed without a valid plannedGraph DAG artifact\."\)/);
+  assert.match(extensionSource, /function failGraphPlannerRun\(run:\s*GraphRunRecord,\s*reason:\s*string\):\s*GraphRunRecord\s*\{[\s\S]*status:\s*"failed" as const[\s\S]*type:\s*"node\.failed"/);
+  assert.doesNotMatch(extensionSource, /blockGraphPlannerRun/);
   assert.doesNotMatch(extensionSource, /function buildMinimalGraphRunNodes/u);
 });
 

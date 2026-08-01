@@ -312,7 +312,6 @@ import {
   updateGraphRunRecord,
 } from "./graph/graphStore";
 import {
-  approveGraphHumanGateForRun,
   feedbackGraphNodeForRun,
   resumeGraphRunRecord,
   retryGraphNodeForRun,
@@ -662,7 +661,6 @@ const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 let isExtensionDeactivating = false;
 const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
-const graphBlockedPromptKeys = new Set<string>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 let loopAutoWakeScheduler: LoopAutoWakeScheduler | null = null;
 let graphAutoWakeScheduler: GraphAutoWakeScheduler | null = null;
@@ -2184,6 +2182,7 @@ type OpenCodeRuntimePreparationInput = {
   configId?: string | null;
   role?: OpenCodeModelRoleInput;
   model?: string | null;
+  requiresSubtaskModel?: boolean;
 };
 
 function normalizeOpenCodeRuntimePreparationInput(
@@ -2191,18 +2190,22 @@ function normalizeOpenCodeRuntimePreparationInput(
 ): Required<Pick<OpenCodeRuntimePreparationInput, "configId">> & {
   role: OpenCodeCanonicalModelRole;
   model: string | null;
+  requiresSubtaskModel: boolean;
 } {
   if (typeof input === "string" || input === null) {
     return {
       configId: input ?? getActiveConfigIdForCli("opencode"),
       role: "main",
       model: null,
+      requiresSubtaskModel: false,
     };
   }
+  const role = normalizeOpenCodeModelRole(input?.role ?? "main");
   return {
     configId: input?.configId ?? getActiveConfigIdForCli("opencode"),
-    role: normalizeOpenCodeModelRole(input?.role ?? "main"),
+    role,
     model: normalizeCliModelName(input?.model) ?? null,
+    requiresSubtaskModel: role === "subtask" || input?.requiresSubtaskModel === true,
   };
 }
 
@@ -2224,6 +2227,7 @@ async function prepareOpenCodeRuntime(
   if (!parsedModels.config) {
     throw new Error("OpenCode config JSON is invalid.");
   }
+  const subtaskModel = runtimeInput.requiresSubtaskModel ? roles.subtask : null;
   let effectiveModel = runtimeInput.role === "subtask"
     ? roles.subtask ?? roles.main
     : roles.main;
@@ -2247,7 +2251,7 @@ async function prepareOpenCodeRuntime(
   );
   const subtaskVariant = getOpenCodeVariantForRun(
     "opencode",
-    roles.subtask,
+    subtaskModel,
     configId,
     configContent,
     "subtask",
@@ -2261,7 +2265,7 @@ async function prepareOpenCodeRuntime(
   );
   const overlay = applyOpenCodeRuntimeModelOverlay(parsedModels.config, {
     main: roles.main,
-    subtask: roles.subtask,
+    subtask: subtaskModel,
     mainVariant,
     subtaskVariant,
   });
@@ -2285,7 +2289,7 @@ async function prepareOpenCodeRuntime(
     configId,
     role: runtimeInput.role,
     mainModel: roles.main,
-    subtaskModel: roles.subtask,
+    subtaskModel,
     effectiveModel,
     modelFallback,
     mainVariant,
@@ -2302,14 +2306,14 @@ async function prepareOpenCodeRuntime(
     configContent: runtimeConfigContent,
     role: runtimeInput.role,
     mainModel: roles.main,
-    subtaskModel: roles.subtask,
+    subtaskModel,
     effectiveModel,
     mainVariant,
     subtaskVariant,
     effectiveVariant,
     modelFallback,
     primaryModel: roles.main,
-    smallModel: roles.subtask,
+    smallModel: subtaskModel,
     primaryVariant: mainVariant,
     smallVariant: subtaskVariant,
   };
@@ -2510,7 +2514,6 @@ const graphRunPanelCoordinator = createGraphRunPanelCoordinator({
   supplementRun: (graphRunId, prompt) => supplementGraphRunFromPanel(graphRunId, prompt),
   retryNode: (graphRunId, nodeId) => retryGraphNodeFromPanel(graphRunId, nodeId),
   feedbackNode: (graphRunId, nodeId) => feedbackGraphNodeFromPanel(graphRunId, nodeId),
-  approveHumanGate: (graphRunId, nodeId) => approveGraphHumanGateFromPanel(graphRunId, nodeId),
   stopRun: (graphRunId) => stopGraphRunFromPanel(graphRunId),
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
@@ -2865,32 +2868,6 @@ async function feedbackGraphNodeFromPanel(
   });
 }
 
-async function approveGraphHumanGateFromPanel(
-  graphRunId: string,
-  nodeId: string,
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const control = await approveGraphHumanGateForRun(lookup.run, nodeId, {
-    source: "panel",
-    reason: "Panel approved Graph human gate.",
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "approve");
-  }
-  const persisted = persistGraphRunControlResult(control);
-  scheduleGraphRunAutoWake(persisted);
-  return tickGraphRunToPauseFromControl(persisted, {
-    source: "panel",
-    reason: "Panel approved Graph human gate.",
-    preferredTargetTabId: null,
-    successKey: "approveStarted",
-  });
-}
-
 async function stopGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   const lookup = readGraphRunRecord(graphRunId);
   if (!lookup.run) {
@@ -2962,7 +2939,7 @@ async function tickGraphRunToPauseFromControl(
 	    source: GraphRunControlSource;
 	    reason: string;
 	    preferredTargetTabId?: string | null;
-	    successKey: "continueStarted" | "retryStarted" | "feedbackStarted" | "approveStarted" | "skipStarted";
+	    successKey: "continueStarted" | "retryStarted" | "feedbackStarted" | "skipStarted";
 	  },
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   const target = await resolveGraphRunPromptTarget(run, options.preferredTargetTabId ?? null);
@@ -3035,11 +3012,10 @@ function createGraphPanelMissingRunResult(
 
 function toGraphPanelControlResult(
   result: GraphRunControlResult,
-  action: "continue" | "retry" | "feedback" | "approve" | "skip" | "stop",
+  action: "continue" | "retry" | "feedback" | "skip" | "stop",
 ): { ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null } {
   if (result.ok) {
     const acceptedMessageKey: Record<typeof action, GraphRuntimeMessageKey> = {
-      approve: "approveAccepted",
       continue: "continueAccepted",
       feedback: "feedbackAccepted",
       retry: "retryAccepted",
@@ -3154,8 +3130,6 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
 	    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
 	    worktree_reset_failed: "Graph worktree 回退失败",
-	    not_human_gate: "该节点不是人工关卡",
-	    human_gate_not_waiting: "人工关卡当前不在等待批准状态",
 	  } : {
     already_running: "The run is already running.",
     already_stopped: "The run is already stopped.",
@@ -3168,15 +3142,11 @@ function formatGraphControlBlockedReason(reason: string | undefined, fallback: s
 	    feedback_not_available: "The node has no available upstream checkpoint; direct mode does not support Feedback rollback.",
 	    passed_descendants: "The node has passed descendants and needs a later cascade reset flow.",
 	    worktree_reset_failed: "The Graph worktree could not be reset.",
-	    not_human_gate: "The node is not a human gate.",
-	    human_gate_not_waiting: "The human gate is not waiting for approval.",
 	  };
   return reason ? (messages[reason] ?? fallback) : fallback;
 }
 
 type GraphRuntimeMessageKey =
-	  | "approveAccepted"
-	  | "approveStarted"
 	  | "continueAccepted"
 	  | "continueStarted"
 	  | "controlRejected"
@@ -3209,8 +3179,6 @@ function graphRuntimeMessage(
   const detail = String(params.detail ?? "");
   const count = String(params.count ?? "");
 	  const messages: Record<GraphRuntimeMessageKey, string> = zh ? {
-	    approveAccepted: "人工关卡批准已记录。",
-	    approveStarted: `Graph 运行已批准并继续：${graphRunId}`,
 	    continueAccepted: "Graph 继续请求已记录。",
 	    continueStarted: `Graph 运行已继续：${graphRunId}`,
 	    controlRejected: `Graph 操作未执行：${detail}`,
@@ -3234,8 +3202,6 @@ function graphRuntimeMessage(
     targetBusy: `Graph 运行目标标签页当前有任务在执行：${graphRunId}`,
     targetMissing: `无法为 Graph 运行找到可用执行标签页：${graphRunId}`,
 	  } : {
-	    approveAccepted: "The human gate approval was recorded.",
-	    approveStarted: `Graph run was approved and continued: ${graphRunId}`,
 	    continueAccepted: "The Graph continue request was recorded.",
 	    continueStarted: `Graph run continued: ${graphRunId}`,
 	    controlRejected: `Graph action was not run: ${detail}`,
@@ -4387,6 +4353,7 @@ async function runPromptParallel(
   const runtimePreparation = await prepareOpenCodeRuntime({
     role: input.taskRole === "subtask" ? "subtask" : "main",
     model: input.model ?? null,
+    requiresSubtaskModel: Boolean(input.loopTaskId || input.graphRunId),
   });
   const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
@@ -5329,38 +5296,22 @@ async function tickGraphRunToPause(
         appendSystemMessageForGraph(target, buildGraphRunCompletedText(run, mergeBack), run.id);
         appendGraphFinalSummaryMessage(target, run);
       } else {
-        const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded(run);
         appendSystemMessageForGraph(
           target,
           buildGraphRunNeedsAttentionText(run, mergeBack),
           run.id,
-          humanGateNode?.id ?? null,
-          humanGateNode ? graphHumanApprovalCtaText() : undefined,
         );
-        const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
-        if (blockedPromptRun) {
-          return { run: blockedPromptRun, progressed: true };
-        }
       }
       return { run, progressed: true };
     }
     if (run.status === "needs-review" || run.status === "sleeping" || run.status === "error" || run.status === "stopped") {
       scheduleGraphRunAutoWake(run);
       sendGraphMainRunTerminalStatus(target, run);
-      const humanGateNode = openGraphHumanGateApprovalPanelIfNeeded(run);
       appendSystemMessageForGraph(
         target,
         buildGraphRunNeedsAttentionText(run),
         run.id,
-        humanGateNode?.id ?? null,
-        humanGateNode ? graphHumanApprovalCtaText() : undefined,
       );
-      if (run.status === "needs-review") {
-        const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
-        if (blockedPromptRun) {
-          return { run: blockedPromptRun, progressed: true };
-        }
-      }
       return { run, progressed: true };
     }
     const progressed = tickResult.startedNodeIds.length > 0
@@ -5381,10 +5332,6 @@ async function tickGraphRunToPause(
       scheduleGraphRunAutoWake(run);
       sendGraphMainRunTerminalStatus(target, run);
       appendSystemMessageForGraph(target, buildGraphRunIdleText(run), run.id);
-      const blockedPromptRun = await maybePromptForGraphBlockedRun(run, target);
-      if (blockedPromptRun) {
-        return { run: blockedPromptRun, progressed: true };
-      }
       return { run, progressed: false };
     }
   }
@@ -5437,109 +5384,6 @@ function sendGraphMainRunTerminalStatus(target: PromptRunTarget, run: GraphRunRe
   sendRunStatusForTab(target.tabId, status);
 }
 
-type GraphBlockedPromptContext = {
-  node: GraphNodeRecord;
-  downstreamNodes: GraphNodeRecord[];
-  promptKey: string;
-  reason: string;
-};
-
-type GraphBlockedPromptAction = "retry_current" | "open_current" | "choose_downstream" | "open_run";
-
-type GraphBlockedDownstreamQuickPickItem = vscode.QuickPickItem & {
-  nodeId: string;
-};
-
-async function maybePromptForGraphBlockedRun(
-  run: GraphRunRecord,
-  target: PromptRunTarget,
-): Promise<GraphRunRecord | null> {
-  const context = resolveGraphBlockedPromptContext(run);
-  if (!context || graphBlockedPromptKeys.has(context.promptKey)) {
-    return null;
-  }
-  graphBlockedPromptKeys.add(context.promptKey);
-
-  const labels = buildGraphBlockedPromptLabels(context);
-  const actions: Array<{ action: GraphBlockedPromptAction; label: string }> = [
-    { action: "retry_current", label: labels.retryCurrent },
-    { action: "open_current", label: labels.openCurrent },
-  ];
-  if (context.downstreamNodes.length > 0) {
-    actions.push({
-      action: "choose_downstream",
-      label: context.downstreamNodes.length > 1 ? labels.chooseDownstream : labels.openOnlyDownstream,
-    });
-  }
-  actions.push({ action: "open_run", label: labels.openRun });
-
-  const selectedLabel = await vscode.window.showWarningMessage(
-    buildGraphBlockedPromptMessage(run, context),
-    { modal: true },
-    ...actions.map((item) => item.label),
-  );
-  const selectedAction = actions.find((item) => item.label === selectedLabel)?.action;
-  if (!selectedAction) {
-    return null;
-  }
-
-  if (selectedAction === "retry_current") {
-    const result = await retryGraphNodeFromPanel(run.id, context.node.id);
-    if (result.ok) {
-      void vscode.window.showInformationMessage(result.message);
-    } else {
-      void vscode.window.showWarningMessage(result.message);
-    }
-    return result.run ?? run;
-  }
-
-  if (selectedAction === "open_current") {
-    await openGraphRunPanel({ graphRunId: run.id, nodeId: context.node.id });
-    return null;
-  }
-
-  if (selectedAction === "choose_downstream") {
-    const downstreamNode = context.downstreamNodes.length === 1
-      ? context.downstreamNodes[0]
-      : await pickGraphBlockedDownstreamNode(run, context.downstreamNodes);
-    if (downstreamNode) {
-      const result = await skipGraphNodeFromPanel(run.id, context.node.id);
-      if (result.ok) {
-        void vscode.window.showInformationMessage(result.message);
-        await openGraphRunPanel({ graphRunId: run.id, nodeId: downstreamNode.id });
-      } else {
-        void vscode.window.showWarningMessage(result.message);
-      }
-      return result.run ?? run;
-    }
-    return null;
-  }
-
-  await openGraphRunPanel({ graphRunId: run.id });
-  return null;
-}
-
-function resolveGraphBlockedPromptContext(run: GraphRunRecord): GraphBlockedPromptContext | null {
-  const node = selectGraphBlockedAttentionNode(run);
-  if (!node) {
-    return null;
-  }
-  const reason = resolveGraphBlockedNodeReason(node);
-  return {
-    node,
-    downstreamNodes: resolveGraphDownstreamNodes(run, node.id),
-    promptKey: [
-      run.id,
-      node.id,
-      node.status,
-      node.attempts,
-      node.completedAt ?? "",
-      reason,
-    ].join("::"),
-    reason,
-  };
-}
-
 function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord | null {
   const blockedNodes = run.nodes
     .filter((node) => node.status === "blocked" || node.status === "failed")
@@ -5552,132 +5396,6 @@ function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord |
       return run.nodes.indexOf(right) - run.nodes.indexOf(left);
     });
   return blockedNodes[0] ?? null;
-}
-
-function resolveGraphBlockedNodeReason(node: GraphNodeRecord): string {
-  const reason = typeof node.lastError === "string" ? node.lastError.trim() : "";
-  if (reason) {
-    return reason;
-  }
-  return `Graph node ${node.id} is ${node.status}.`;
-}
-
-function resolveGraphDownstreamNodes(run: GraphRunRecord, nodeId: string): GraphNodeRecord[] {
-  const downstreamNodeIds = new Set<string>();
-  const appendNodeId = (value: unknown): void => {
-    const normalized = typeof value === "string" ? value.trim() : "";
-    if (normalized && normalized !== nodeId) {
-      downstreamNodeIds.add(normalized);
-    }
-  };
-  const sourceNode = run.nodes.find((node) => node.id === nodeId);
-  sourceNode?.unlocks.forEach(appendNodeId);
-  run.nodes.forEach((node) => {
-    if (node.dependsOn.includes(nodeId)) {
-      appendNodeId(node.id);
-    }
-  });
-  run.edges.forEach((edge) => {
-    if (
-      edge.active
-      && edge.from === nodeId
-      && edge.kind !== "conflicts_with"
-      && edge.kind !== "evidence_for"
-    ) {
-      appendNodeId(edge.to);
-    }
-  });
-  return run.nodes.filter((node) => downstreamNodeIds.has(node.id));
-}
-
-function buildGraphBlockedPromptLabels(
-  context: Pick<GraphBlockedPromptContext, "downstreamNodes">,
-): {
-  retryCurrent: string;
-  openCurrent: string;
-  chooseDownstream: string;
-  openOnlyDownstream: string;
-  openRun: string;
-} {
-  const zh = resolveLocale() === "zh-CN";
-  if (zh) {
-    return {
-      retryCurrent: "重跑当前节点",
-      openCurrent: "查看阻塞节点",
-      chooseDownstream: `跳过当前并选择下游继续（${context.downstreamNodes.length}）`,
-      openOnlyDownstream: "跳过当前并继续下游",
-      openRun: "打开运行图",
-    };
-  }
-  return {
-    retryCurrent: "Retry current node",
-    openCurrent: "Open blocked node",
-    chooseDownstream: `Skip current and choose downstream (${context.downstreamNodes.length})`,
-    openOnlyDownstream: "Skip current and continue downstream",
-    openRun: "Open graph",
-  };
-}
-
-function buildGraphBlockedPromptMessage(
-  run: GraphRunRecord,
-  context: GraphBlockedPromptContext,
-): string {
-  const zh = resolveLocale() === "zh-CN";
-  const downstreamSummary = context.downstreamNodes.length
-    ? context.downstreamNodes.map(formatGraphBlockedPromptNodeSummary).join(", ")
-    : (zh ? "无可进入的下游节点" : "No downstream node is available");
-  const lines = zh ? [
-    `Graph 运行遇到阻塞：${run.id}`,
-    "",
-    `阻塞节点：${formatGraphBlockedPromptNodeSummary(context.node)}`,
-    `阻塞原因：${truncateGraphBlockedPromptText(context.reason)}`,
-    `下游节点：${downstreamSummary}`,
-    "",
-    "请选择下一步操作。",
-  ] : [
-    `Graph run is blocked: ${run.id}`,
-    "",
-    `Blocked node: ${formatGraphBlockedPromptNodeSummary(context.node)}`,
-    `Reason: ${truncateGraphBlockedPromptText(context.reason)}`,
-    `Downstream nodes: ${downstreamSummary}`,
-    "",
-    "Choose the next action.",
-  ];
-  return lines.join("\n");
-}
-
-async function pickGraphBlockedDownstreamNode(
-  run: GraphRunRecord,
-  downstreamNodes: readonly GraphNodeRecord[],
-): Promise<GraphNodeRecord | null> {
-  const zh = resolveLocale() === "zh-CN";
-  const items: GraphBlockedDownstreamQuickPickItem[] = downstreamNodes.map((node) => ({
-    label: node.title || node.id,
-    description: node.id,
-    detail: `${node.kind} · ${node.status}`,
-    nodeId: node.id,
-  }));
-  const selected = await vscode.window.showQuickPick(items, {
-    title: zh ? "选择跳过后继续的 Graph 下游节点" : "Choose Graph downstream node to continue",
-    placeHolder: zh ? `Graph 运行 ${run.id}` : `Graph run ${run.id}`,
-    ignoreFocusOut: true,
-  });
-  if (!selected) {
-    return null;
-  }
-  return downstreamNodes.find((node) => node.id === selected.nodeId) ?? null;
-}
-
-function formatGraphBlockedPromptNodeSummary(node: GraphNodeRecord): string {
-  return `${node.title || node.id} (${node.id}, ${node.kind}, ${node.status})`;
-}
-
-function truncateGraphBlockedPromptText(value: string, maxLength = 900): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
 type GraphRunMergeBackOutcome = {
@@ -5841,7 +5559,7 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
   const artifact = readGraphNodeExecutionResultArtifact(resolveGraphNodeCommunicationFile(run, plannerNode));
   if (!artifact?.plannedGraph) {
     return {
-      run: blockGraphPlannerRun(run, "Graph planner passed without a valid plannedGraph DAG artifact."),
+      run: failGraphPlannerRun(run, "Graph planner passed without a valid plannedGraph DAG artifact."),
       changed: true,
     };
   }
@@ -5849,7 +5567,7 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
   const materialized = materializeGraphPlan(run, artifact.plannedGraph);
   if (materialized.error) {
     return {
-      run: blockGraphPlannerRun(run, materialized.error),
+      run: failGraphPlannerRun(run, materialized.error),
       changed: true,
     };
   }
@@ -5873,31 +5591,31 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
   return { run: persisted, changed: true };
 }
 
-function blockGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecord {
+function failGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecord {
   const timestamp = Date.now();
   const nodes = run.nodes.map((node) => node.id === GRAPH_AI_PLANNER_NODE_ID
     ? {
       ...node,
-      status: "blocked" as const,
+      status: "failed" as const,
       completedAt: timestamp,
       lastError: reason,
     }
     : node);
   const nextRun = updateGraphRunRecord(run.id, {
-    status: "needs-review",
+    status: "running",
     updatedAt: timestamp,
     activeNodeIds: [],
     nodes,
   }) ?? {
     ...run,
-    status: "needs-review" as const,
+    status: "running" as const,
     updatedAt: timestamp,
     activeNodeIds: [],
     nodes,
   };
   appendGraphEvent(nextRun.eventsFile, {
     runId: nextRun.id,
-    type: "node.blocked",
+    type: "node.failed",
     timestamp,
     nodeId: GRAPH_AI_PLANNER_NODE_ID,
     attempt: nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)?.attempts,
@@ -6156,7 +5874,7 @@ function buildGraphRunMessageAction(
   };
 }
 
-function isHumanGateGraphMessageAction(nodeId?: string | null, actionLabel?: string | null): boolean {
+function isTargetedGraphMessageAction(nodeId?: string | null, actionLabel?: string | null): boolean {
   return Boolean(nodeId && actionLabel?.trim());
 }
 
@@ -6201,7 +5919,7 @@ function resolveGraphSystemMessageActions(
   if (!graphRunId) {
     return [];
   }
-  if (isHumanGateGraphMessageAction(nodeId, actionLabel)) {
+  if (isTargetedGraphMessageAction(nodeId, actionLabel)) {
     return [buildGraphRunMessageAction(graphRunId, nodeId, actionLabel)];
   }
   const messages = getLoopMessagesForTarget(target);
@@ -6344,40 +6062,14 @@ function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphR
   const blockedNodes = run.nodes
     .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping")
     .map((node) => `${node.id}:${node.status}${node.lastError ? ` (${node.lastError})` : ""}`);
-  const humanGateNode = resolveGraphPendingHumanGateNode(run);
-  const humanGateLines = humanGateNode ? [
-    `- Human gate: ${humanGateNode.id}:${humanGateNode.status}`,
-    `- ${graphHumanApprovalCtaText()}: open the Graph Run panel and approve node ${humanGateNode.id}.`,
-  ] : [];
   return [
     `Graph run needs attention: ${run.id}`,
     "",
     `- Status: ${run.status}`,
-    ...humanGateLines,
     `- Nodes: ${blockedNodes.length ? blockedNodes.join(", ") : "No blocked node details recorded."}`,
     `- Graph file: ${run.graphFile}`,
     ...(mergeBack ? [mergeBack.message] : []),
   ].join("\n");
-}
-
-function openGraphHumanGateApprovalPanelIfNeeded(run: GraphRunRecord): GraphRunRecord["nodes"][number] | null {
-  const humanGateNode = resolveGraphPendingHumanGateNode(run);
-  if (!humanGateNode) {
-    return null;
-  }
-  void openGraphRunPanel({
-    graphRunId: run.id,
-    nodeId: humanGateNode.id,
-  });
-  return humanGateNode;
-}
-
-function resolveGraphPendingHumanGateNode(run: GraphRunRecord): GraphRunRecord["nodes"][number] | null {
-  return run.nodes.find((node) => node.kind === "human_gate" && node.status === "ready") ?? null;
-}
-
-function graphHumanApprovalCtaText(): string {
-  return resolveLocale() === "zh-CN" ? "请你审批，点击这里" : "Please approve, click here";
 }
 
 function buildGraphRunIdleText(run: GraphRunRecord): string {
@@ -10940,6 +10632,7 @@ async function runPromptOneShot(
   const runtimePreparation = await prepareOpenCodeRuntime({
     role: input.taskRole === "subtask" ? "subtask" : "main",
     model: input.model ?? null,
+    requiresSubtaskModel: Boolean(input.loopTaskId || input.graphRunId),
   });
   const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);

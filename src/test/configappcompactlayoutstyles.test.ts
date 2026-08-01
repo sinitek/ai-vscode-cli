@@ -33,6 +33,9 @@ test("configuration workspace and panels use compact desktop spacing", () => {
   assert.doesNotMatch(workspace, /\bgap:\s*18px;|\bpadding:\s*18px;/);
 
   assert.match(rule(css, ".config-app-header"), /\bpadding:\s*0 14px !important;/);
+  assert.match(rule(css, ".config-app-close-button"), /\bmargin-left:\s*auto;/);
+  assert.match(rule(css, ".config-app-close-button"), /\bborder:\s*1px solid var\(--clay-border\);/);
+  assert.match(rule(css, ".config-app-close-button:hover,\n.config-app-close-button:focus-visible"), /\bbackground:\s*var\(--clay-text\);/);
   assert.match(rule(css, ".config-app-sidebar"), /\bheight:\s*100%;/);
   assert.match(rule(css, ".config-app-content"), /\bheight:\s*100%;/);
   assert.match(rule(css, ".config-sidebar-panel"), /\bpadding:\s*8px !important;/);

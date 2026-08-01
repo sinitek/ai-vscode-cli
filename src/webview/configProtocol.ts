@@ -97,3 +97,7 @@ export type ConfigOpenExternalMessage = {
   type: "config:openExternal";
   url: string;
 };
+
+export type ConfigCloseMessage = {
+  type: "config:close";
+};

@@ -7635,7 +7635,8 @@ const ConfigManagerLayout = () => {
       [mobileNavigationOpen, setMobileNavigationOpen] = c.useState(
         shouldOpenConfigMobileNavigationInitially,
       ),
-      closeMobileNavigation = () => setMobileNavigationOpen(!1);
+      closeMobileNavigation = () => setMobileNavigationOpen(!1),
+      closeConfigPanel = () => window.sinitekConfigBridge?.close?.();
 
     c.useEffect(() => {
       (async () => {
@@ -7685,6 +7686,14 @@ const ConfigManagerLayout = () => {
                 margin: 0,
               },
               children: "携宁 CLI 配置",
+            }),
+            be.jsx("button", {
+              type: "button",
+              className: "config-app-close-button",
+              "aria-label": "关闭配置弹窗",
+              title: "关闭配置弹窗",
+              onClick: closeConfigPanel,
+              children: "×",
             }),
           ],
         }),

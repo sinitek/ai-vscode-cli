@@ -724,7 +724,6 @@ type GraphRunPanelDeps = {
 	  supplementRun?: (graphRunId: string, prompt: string) => Promise<GraphRunPanelControlResult>;
 	  retryNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
 	  feedbackNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
-	  approveHumanGate?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
 	  stopRun?: (graphRunId: string) => Promise<GraphRunPanelControlResult>;
   showInformationMessage: (message: string) => void;
   showWarningMessage: (message: string) => void;
@@ -855,7 +854,6 @@ function buildGraphRunPanelState(
 	      supplementRun: Boolean(deps.supplementRun),
 	      retryNode: Boolean(deps.retryNode),
 	      feedbackNode: Boolean(deps.feedbackNode),
-	      approveHumanGate: Boolean(deps.approveHumanGate),
 	      stopRun: Boolean(deps.stopRun),
     },
   });
@@ -912,10 +910,6 @@ export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
 	      await runGraphPanelNodeControl(graphRunId, message.nodeId, message.selectedNodeId, deps.feedbackNode, deps);
 	      return;
 	    }
-	    if (message.type === "graphRun:approveHumanGate") {
-	      await runGraphPanelNodeControl(graphRunId, message.nodeId, message.selectedNodeId, deps.approveHumanGate, deps);
-	      return;
-    }
     if (message.type === "graphRun:stopRun") {
       await runGraphPanelControl(graphRunId, message.selectedNodeId, deps.stopRun, deps);
     }

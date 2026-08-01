@@ -216,6 +216,55 @@ test("rejects invalid planner graphs instead of falling back to a fixed linear g
   assert.equal(duplicateResult.changed, false);
   assert.match(duplicateResult.error ?? "", /duplicate node id implement/u);
 
+  const humanGateResult = materializeGraphPlan(createRun([passedPlanner()]), {
+    nodes: [{
+      id: "approve",
+      title: "Approve",
+      kind: "human_gate",
+    }],
+  });
+  assert.equal(humanGateResult.changed, false);
+  assert.match(humanGateResult.error ?? "", /must not include human_gate/u);
+
+  const humanEdgeResult = materializeGraphPlan(createRun([passedPlanner()]), {
+    nodes: [{
+      id: "source",
+      title: "Source",
+      kind: "implement",
+    }, {
+      id: "target",
+      title: "Target",
+      kind: "review",
+    }],
+    edges: [{
+      from: "source",
+      to: "target",
+      kind: "human_approved",
+    }],
+  });
+  assert.equal(humanEdgeResult.changed, false);
+  assert.match(humanEdgeResult.error ?? "", /must not require human approval/u);
+
+  const manualConditionResult = materializeGraphPlan(createRun([passedPlanner()]), {
+    nodes: [{
+      id: "source",
+      title: "Source",
+      kind: "implement",
+    }, {
+      id: "target",
+      title: "Target",
+      kind: "review",
+    }],
+    edges: [{
+      from: "source",
+      to: "target",
+      kind: "if_pass",
+      conditionExpression: { type: "manual" },
+    }],
+  });
+  assert.equal(manualConditionResult.changed, false);
+  assert.match(manualConditionResult.error ?? "", /manual conditions/u);
+
   const cycleResult = materializeGraphPlan(createRun([passedPlanner()]), {
     nodes: [{
       id: "a",

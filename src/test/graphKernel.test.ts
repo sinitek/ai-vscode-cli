@@ -117,7 +117,7 @@ test("starts the selected CLI batch before invoking the injected executor", asyn
   }
 });
 
-test("writes success, failed, and blocked executor results back through lifecycle", async () => {
+test("writes blocked executor results through the failed lifecycle", async () => {
   const baseDir = createTempBaseDir();
   try {
     const events: string[] = [];
@@ -154,19 +154,20 @@ test("writes success, failed, and blocked executor results back through lifecycl
 
     assert.equal(getNode(result.run, "success").status, "passed");
     assert.equal(getNode(result.run, "failed").status, "failed");
-    assert.equal(getNode(result.run, "blocked").status, "blocked");
+    assert.equal(getNode(result.run, "blocked").status, "failed");
     assert.deepEqual(result.completedNodeIds, ["success"]);
-    assert.deepEqual(result.failedNodeIds, ["failed"]);
-    assert.deepEqual(result.blockedNodeIds, ["blocked"]);
+    assert.deepEqual(result.failedNodeIds, ["failed", "blocked"]);
+    assert.deepEqual(result.blockedNodeIds, []);
     assert.ok(events.includes("node.completed:success"));
     assert.ok(events.includes("node.failed:failed"));
-    assert.ok(events.includes("node.blocked:blocked"));
+    assert.ok(events.includes("node.failed:blocked"));
+    assert.equal(events.includes("node.blocked:blocked"), false);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
 });
 
-test("records executor throws as failed events and blocks when maxAttempts is exhausted", async () => {
+test("records executor throws as failed events even when maxAttempts is exhausted", async () => {
   const baseDir = createTempBaseDir();
   try {
     const events: string[] = [];
@@ -194,17 +195,18 @@ test("records executor throws as failed events and blocks when maxAttempts is ex
       },
     });
 
-    assert.equal(getNode(result.run, "throwing").status, "blocked");
+    assert.equal(getNode(result.run, "throwing").status, "failed");
     assert.equal(getNode(result.run, "throwing").lastError, "executor exploded");
-    assert.deepEqual(result.blockedNodeIds, ["throwing"]);
+    assert.deepEqual(result.failedNodeIds, ["throwing"]);
+    assert.deepEqual(result.blockedNodeIds, []);
     assert.ok(events.some((event) => event === "node.failed:throwing:executor exploded"));
-    assert.ok(events.some((event) => event === "node.blocked:throwing:executor exploded"));
+    assert.equal(events.some((event) => event === "node.blocked:throwing:executor exploded"), false);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
 });
 
-test("returns human gate actions and completes due sleep nodes without ordinary CLI execution", async () => {
+test("does not create human gate actions and completes due sleep nodes without ordinary CLI execution", async () => {
   const baseDir = createTempBaseDir();
   try {
     const executed: string[] = [];
@@ -255,12 +257,12 @@ test("returns human gate actions and completes due sleep nodes without ordinary 
     });
 
     assert.deepEqual(executed, ["cli"]);
-    assert.deepEqual(result.pendingActions, [{ type: "human_gate", nodeId: "gate", title: "Approve" }]);
+    assert.deepEqual(result.pendingActions, []);
     assert.deepEqual(result.systemActions, [{ type: "sleep_due_completed", nodeId: "sleep", title: "Wait", wakeAt: 900 }]);
-    assert.equal(getNode(result.run, "gate").status, "ready");
+    assert.equal(getNode(result.run, "gate").status, "pending");
     assert.equal(getNode(result.run, "sleep").status, "passed");
     assert.equal(getNode(result.run, "cli").status, "passed");
-    assert.ok(events.includes("human_gate.waiting:gate"));
+    assert.equal(events.includes("human_gate.waiting:gate"), false);
     assert.ok(events.includes("node.completed:sleep"));
     assert.ok(!executed.includes("gate"));
     assert.ok(!executed.includes("sleep"));

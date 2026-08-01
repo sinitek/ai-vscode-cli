@@ -8,6 +8,7 @@ import * as vm from "node:vm";
 
 import { installVscodeMock } from "./vscodeMock";
 import type {
+  ConfigCloseMessage,
   ConfigOpenExternalMessage,
   ConfigOpenPathMessage,
   ConfigRequestMessage,
@@ -178,6 +179,7 @@ type PanelHarness = {
   messageHandler?: MessageHandler;
   disposeHandler?: () => void;
   zenModeCommandError?: Error;
+  disposeCount: number;
   panel: {
     title: string;
     webview: {
@@ -190,6 +192,7 @@ type PanelHarness = {
     };
     reveal: (column: unknown, preserveFocus?: boolean) => void;
     onDidDispose: (handler: () => void) => { dispose: () => void };
+    dispose: () => void;
   };
   revealCount: number;
 };
@@ -200,6 +203,7 @@ function installConfigPanelHarness(): PanelHarness {
     createCalls: [],
     commandCalls: [],
     externalUrls: [],
+    disposeCount: 0,
     revealCount: 0,
     panel: {
       title: "",
@@ -227,6 +231,10 @@ function installConfigPanelHarness(): PanelHarness {
       onDidDispose(handler: () => void) {
         harness.disposeHandler = handler;
         return { dispose: () => undefined };
+      },
+      dispose() {
+        harness.disposeCount += 1;
+        harness.disposeHandler?.();
       },
     },
   };
@@ -484,9 +492,11 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   ];
   const openPathMessage: ConfigOpenPathMessage = { type: "config:openPath", path: "/tmp/config.json" };
   const openExternalMessage: ConfigOpenExternalMessage = { type: "config:openExternal", url: "https://example.test" };
+  const closeMessage: ConfigCloseMessage = { type: "config:close" };
   assert.deepEqual(requestMessages.map((message) => message.type), ["config:request", "config:request", "config:request"]);
   assert.equal(openPathMessage.type, "config:openPath");
   assert.equal(openExternalMessage.type, "config:openExternal");
+  assert.equal(closeMessage.type, "config:close");
 });
 
 test("config manager panel creates a safe webview and handles non-config host messages", async () => {
@@ -543,6 +553,26 @@ test("config manager panel creates a safe webview and handles non-config host me
   );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.filter((message) => (message as AnyRecord).type === "config:syncActive").length, 1);
+});
+
+test("config manager panel closes when the webview requests it", async () => {
+  const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+
+  manager.show();
+  assert.ok(harness.messageHandler, "message handler should be registered");
+
+  harness.messageHandler({ type: "config:close" } satisfies ConfigCloseMessage);
+  await delay(0);
+
+  assert.equal(harness.disposeCount, 1);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    2,
+  );
+  manager.syncActiveConfig();
+  assert.equal(harness.panel.webview.postedMessages.length, 0);
 });
 
 test("config manager panel falls back to the editor surface when Zen Mode is unavailable", async () => {
@@ -978,6 +1008,8 @@ test("config protocol declarations stay aligned with panel switch cases and brid
   assert.match(apiSource, /detectConfigApiMode = \(\) =>[\s\S]*window\.electronAPI\?\.config \? "ipc" : "http"/);
   assert.match(apiSource, /getOpenCodeSkillsList: \(\) => requestConfigApi\("\/opencode\/skills"\)/);
   assert.match(apiSource, /configApiMode === "ipc" \? getIpcConfigApi\(\) : httpConfigApi/);
+  assert.match(viewSource, /close: \(\) => \{[\s\S]*?vscode\.postMessage\(\{ type: "config:close" \}\)/);
+  assert.match(panelSource, /message\.type === "config:close"[\s\S]*?this\.panel\?\.dispose\(\)/);
 });
 
 test("config API asset supports IPC, HTTP success, and HTTP error contracts", async () => {

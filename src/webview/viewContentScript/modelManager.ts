@@ -211,6 +211,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         return cliSupportsLoopRoleModelSelection(cli) && (normalizedMode === "loop" || normalizedMode === "graph");
       }
 
+      function isOpenCodeRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
+        const normalizedMode = normalizeInteractiveMode(interactiveMode);
+        return cli === "opencode" && (normalizedMode === "loop" || normalizedMode === "graph");
+      }
+
       function getLoopRoleModelsForCli(cli, role) {
         const roleModels = state.loopModelsByCli && state.loopModelsByCli[cli] && Array.isArray(state.loopModelsByCli[cli][role])
           ? state.loopModelsByCli[cli][role]
@@ -389,6 +394,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
         const isLoop = interactiveMode === "loop";
         const showCodexLoopModelGroup = isLoopRoleModelMode(cli, interactiveMode);
+        const showOpenCodeSubtaskModel = isOpenCodeRoleModelMode(cli, interactiveMode);
         const showSingleModelSelect = supportsModelSelection && !showCodexLoopModelGroup;
         const showLoopExecutionModeSelect = isLoop;
         if (elements.codexLoopModelGroup) {
@@ -415,7 +421,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.openCodePrimaryModelSelect.disabled = !isOpenCode;
         }
         if (elements.openCodeSmallModelSelect) {
-          elements.openCodeSmallModelSelect.disabled = !isOpenCode;
+          elements.openCodeSmallModelSelect.disabled = !showOpenCodeSubtaskModel;
+          const row = elements.openCodeSmallModelSelect.parentElement;
+          if (row) {
+            row.style.display = showOpenCodeSubtaskModel ? "" : "none";
+          }
         }
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";

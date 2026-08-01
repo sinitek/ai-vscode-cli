@@ -585,7 +585,6 @@ test("renders only wired and currently available Graph run and node controls", (
 	        supplementRun: true,
 	        retryNode: true,
 	        feedbackNode: true,
-	        approveHumanGate: true,
 	        stopRun: true,
 	      },
     },
@@ -597,7 +596,7 @@ test("renders only wired and currently available Graph run and node controls", (
 	  assert.equal(state.runControl.canStop, true);
 	  assert.equal(state.nodes.find((node) => node.id === "fix")?.control.canRetry, true);
 	  assert.equal(state.nodes.find((node) => node.id === "failed-test")?.control.canFeedback, true);
-	  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, true);
+	  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, false);
   assert.match(html, /data-action="continue"[\s\S]*>Continue</);
 	  assert.match(html, /data-action="supplement"[\s\S]*>I want to speak</);
 		  assert.match(html, /data-action="stop"[\s\S]*>Stop Run</);
@@ -605,12 +604,12 @@ test("renders only wired and currently available Graph run and node controls", (
 		  assertOmitsStopBoundaryCopy(html);
 		  assert.match(html, /data-action="retry" data-control-node-id="fix"[\s\S]*>Retry Failed Node</);
 		  assert.match(html, /data-action="feedback" data-control-node-id="failed-test"[\s\S]*>Rollback Upstream</);
-		  assert.match(html, /data-action="approve" data-control-node-id="gate"[\s\S]*>Approve Human Gate</);
+		  assert.doesNotMatch(html, /data-action="approve" data-control-node-id="gate"/);
   assert.match(html, /graphRun:continue/);
 	  assert.match(html, /graphRun:supplementRun/);
 	  assert.match(html, /graphRun:retryNode/);
 	  assert.match(html, /graphRun:feedbackNode/);
-	  assert.match(html, /graphRun:approveHumanGate/);
+	  assert.doesNotMatch(html, /graphRun:approveHumanGate/);
 	  assert.match(html, /graphRun:stopRun/);
 
   const zhStopState = buildGraphRunPanelStateWithDeps(
@@ -651,7 +650,6 @@ test("renders only wired and currently available Graph run and node controls", (
 	        supplementRun: true,
 	        retryNode: true,
 	        feedbackNode: true,
-	        approveHumanGate: true,
 	        stopRun: true,
       },
     },
@@ -661,7 +659,7 @@ test("renders only wired and currently available Graph run and node controls", (
   assertOmitsStopBoundaryCopy(hiddenHtml);
 	});
 
-test("selects waiting human gates and renders a visible approval CTA", () => {
+test("renders historical human gates without approval controls", () => {
   const state = buildGraphRunPanelStateWithDeps(
     createRun({
       status: "needs-review",
@@ -685,17 +683,17 @@ test("selects waiting human gates and renders a visible approval CTA", () => {
     [],
     {
       strings: getGraphRunPanelStrings("zh-CN"),
-      controls: { approveHumanGate: true },
     },
   );
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
 
   assert.equal(state.selectedNodeId, "gate");
-  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, true);
-  assert.match(html, /需要人工审批/);
-  assert.match(html, /请你审批，点击这里/);
-  assert.match(html, /data-action="approve" data-control-node-id="gate"/);
-  assert.match(html, /graphRun:approveHumanGate/);
+  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, false);
+  assert.match(html, /人工关卡/);
+  assert.doesNotMatch(html, /需要人工审批/);
+  assert.doesNotMatch(html, /请你审批，点击这里/);
+  assert.doesNotMatch(html, /data-action="approve" data-control-node-id="gate"/);
+  assert.doesNotMatch(html, /graphRun:approveHumanGate/);
 });
 
 test("renders first-class evidence for selected node and final answer sources", () => {

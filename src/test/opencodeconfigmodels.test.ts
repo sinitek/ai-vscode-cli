@@ -236,6 +236,28 @@ test("creates a runtime overlay without mutating the source config", () => {
   });
 });
 
+test("keeps the configured subtask model when a Vibe run overrides only the main model", () => {
+  const source = {
+    model: "one/main",
+    small_model: "one/small",
+    provider: {
+      one: { models: { main: {}, small: {} } },
+      two: { models: { main: {} } },
+    },
+  };
+
+  const result = applyOpenCodeRuntimeModelOverlay(source, {
+    main: "two/main",
+    subtask: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.config, {
+    ...source,
+    model: "two/main",
+  });
+});
+
 test("keeps OpenCode task permissions unchanged when multi-agent is enabled", () => {
   const source = {
     model: "one/main",

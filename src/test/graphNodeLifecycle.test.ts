@@ -109,7 +109,7 @@ test("marks a Graph node started and completed with events and activeNodeIds", a
   }
 });
 
-test("keeps retryable failures failed and blocks exhausted failures", async () => {
+test("keeps exhausted failures in the failed flow", async () => {
   const baseDir = createTempBaseDir();
   try {
     let now = 1_000;
@@ -127,22 +127,21 @@ test("keeps retryable failures failed and blocks exhausted failures", async () =
     run = await markGraphNodeStarted(run, "node-1", deps);
     now = 4_000;
     run = await markGraphNodeFailed(run, "node-1", "Second failure", deps);
-    assert.equal(getNode(run, "node-1").status, "blocked");
-    assert.equal(run.status, "needs-review");
+    assert.equal(getNode(run, "node-1").status, "failed");
+    assert.equal(run.status, "running");
     assert.equal(getNode(run, "node-1").lastError, "Second failure");
     assert.deepEqual(readGraphEvents(run.eventsFile).map((event) => event.type), [
       "node.started",
       "node.failed",
       "node.started",
       "node.failed",
-      "node.blocked",
     ]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
 });
 
-test("marks blocked and sleeping nodes with run status and events", async () => {
+test("maps blocked lifecycle requests to failed events before sleeping nodes", async () => {
   const baseDir = createTempBaseDir();
   try {
     let now = 1_000;
@@ -153,8 +152,8 @@ test("marks blocked and sleeping nodes with run status and events", async () => 
     const deps = { now: () => now };
 
     run = await markGraphNodeBlocked(run, "blocked-node", "Needs user decision", deps);
-    assert.equal(getNode(run, "blocked-node").status, "blocked");
-    assert.equal(run.status, "needs-review");
+    assert.equal(getNode(run, "blocked-node").status, "failed");
+    assert.equal(run.status, "running");
     assert.deepEqual(run.activeNodeIds, ["sleep-node"]);
 
     now = 2_000;
@@ -163,7 +162,7 @@ test("marks blocked and sleeping nodes with run status and events", async () => 
     assert.equal(getNode(run, "sleep-node").wakeAt, 9_000);
     assert.equal(run.status, "sleeping");
     assert.deepEqual(run.activeNodeIds, []);
-    assert.deepEqual(readGraphEvents(run.eventsFile).map((event) => event.type), ["node.blocked", "node.sleeping"]);
+    assert.deepEqual(readGraphEvents(run.eventsFile).map((event) => event.type), ["node.failed", "node.sleeping"]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
