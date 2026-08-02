@@ -99,13 +99,16 @@ test("does not automatically close stopped or failed Loop subtask tabs", async (
 });
 
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {
-  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const loopOrchestrationSource = fs.readFileSync(
+    path.join(process.cwd(), "src", "extensionHost", "loopOrchestration.ts"),
+    "utf8",
+  );
   const promptRuntimeSource = fs.readFileSync(
     path.join(process.cwd(), "src", "extensionHost", "promptRunRuntime.ts"),
     "utf8",
   );
   const automaticRetrySource = extractAsyncFunctionSection(
-    extensionSource,
+    loopOrchestrationSource,
     "runLoopSubtaskWithRetry",
     "waitForLoopSubtaskRetryDelay",
   );

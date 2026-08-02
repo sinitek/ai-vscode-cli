@@ -28,10 +28,13 @@ test("uses the lower of the selected thinking mode and Loop subtask cap", () => 
 });
 
 test("applies the cap only while dispatching Loop subtasks", () => {
-  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-  const start = extensionSource.indexOf("async function runLoopRound(");
-  const end = extensionSource.indexOf("function buildLoopActiveSubtaskPatch(", start);
-  const runLoopRoundSource = extensionSource.slice(start, end);
+  const loopOrchestrationSource = fs.readFileSync(
+    path.join(process.cwd(), "src", "extensionHost", "loopOrchestration.ts"),
+    "utf8",
+  );
+  const start = loopOrchestrationSource.indexOf("async function runLoopRound(");
+  const end = loopOrchestrationSource.indexOf("function buildLoopActiveSubtaskPatch(", start);
+  const runLoopRoundSource = loopOrchestrationSource.slice(start, end);
 
   assert.match(runLoopRoundSource, /const thinkingModeOverride = resolvePromptRunThinkingModeForRole\(input,\s*target\.cli,\s*role,\s*roleModel,\s*\{/u);
   assert.match(runLoopRoundSource, /applySubtaskCap:\s*true/u);

@@ -98,11 +98,14 @@ test("maps Loop run terminal states to subagent bubble states", () => {
 });
 
 test("wires Loop subtask progress snapshots into the main conversation bubble", () => {
-  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-  const runnerStart = extensionSource.indexOf("async function runLoopSubtaskWithRetry");
-  const runnerEnd = extensionSource.indexOf("async function waitForLoopSubtaskRetryDelay", runnerStart);
+  const loopOrchestrationSource = fs.readFileSync(
+    path.join(process.cwd(), "src", "extensionHost", "loopOrchestration.ts"),
+    "utf8",
+  );
+  const runnerStart = loopOrchestrationSource.indexOf("async function runLoopSubtaskWithRetry");
+  const runnerEnd = loopOrchestrationSource.indexOf("async function waitForLoopSubtaskRetryDelay", runnerStart);
   assert.ok(runnerStart >= 0 && runnerEnd > runnerStart);
-  const runnerSource = extensionSource.slice(runnerStart, runnerEnd);
+  const runnerSource = loopOrchestrationSource.slice(runnerStart, runnerEnd);
 
   assert.match(runnerSource, /createSubagentProgressController\(\{/u);
   assert.match(runnerSource, /createLoopSubtaskProgressMonitor\(\{/u);
