@@ -88,11 +88,51 @@ type DagLayout = {
   edgeLayouts: DagEdgeLayout[];
 };
 
+type DagAutoLayoutDirection = "LR";
+
+type DagAutoLayoutConfig = {
+  direction: DagAutoLayoutDirection;
+  ranksep: number;
+  nodesep: number;
+  edgesep: number;
+  marginX: number;
+  marginY: number;
+};
+
+type DagAutoLayoutBox = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type DagNodeSize = {
+  width: number;
+  height: number;
+};
+
 const DAG_NODE_WIDTH = 192;
 const DAG_NODE_HEIGHT = 78;
-const DAG_RANK_SEP = 96;
-const DAG_NODE_SEP = 54;
-const DAG_MARGIN = 24;
+const DAG_WORKFLOW_REFERENCE_NODE_WIDTH = 320;
+const DAG_WORKFLOW_REFERENCE_NODE_HEIGHT = 148;
+const DAG_RANK_SEP = scaleWorkflowLayoutMetric(180, DAG_NODE_WIDTH, DAG_WORKFLOW_REFERENCE_NODE_WIDTH, 4);
+const DAG_NODE_SEP = scaleWorkflowLayoutMetric(120, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
+const DAG_EDGE_SEP = scaleWorkflowLayoutMetric(60, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
+const DAG_MARGIN_X = scaleWorkflowLayoutMetric(80, DAG_NODE_WIDTH, DAG_WORKFLOW_REFERENCE_NODE_WIDTH, 4);
+const DAG_MARGIN_Y = scaleWorkflowLayoutMetric(80, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
+const DAG_AUTO_LAYOUT_CONFIG: DagAutoLayoutConfig = {
+  direction: "LR",
+  ranksep: DAG_RANK_SEP,
+  nodesep: DAG_NODE_SEP,
+  edgesep: DAG_EDGE_SEP,
+  marginX: DAG_MARGIN_X,
+  marginY: DAG_MARGIN_Y,
+};
+const DAG_NODE_LONG_TITLE_THRESHOLD = 28;
+const DAG_NODE_LONG_TITLE_EXTRA_HEIGHT = 18;
+const DAG_NODE_BRANCH_EXTRA_HEIGHT = 10;
+const DAG_FALLBACK_DRAFT_EXTRA_GAP = 140;
 const DAG_EDGE_CURVE_MIN = 38;
 const DAG_EDGE_PARALLEL_OFFSET = 14;
 const DAG_EDGE_LABEL_SEGMENT_LIMIT = 4;
@@ -448,8 +488,8 @@ ${GRAPH_RUN_PANEL_STYLES}
           const box = getNodeBox(element);
           const nodeId = element.dataset.nodeId || "";
           nodeById.set(nodeId, box);
-          maxX = Math.max(maxX, box.x + box.width + ${DAG_MARGIN});
-          maxY = Math.max(maxY, box.y + box.height + ${DAG_MARGIN});
+          maxX = Math.max(maxX, box.x + box.width + ${DAG_MARGIN_X});
+          maxY = Math.max(maxY, box.y + box.height + ${DAG_MARGIN_Y});
         });
         edgePaths.forEach((pathElement) => {
           const from = nodeById.get(pathElement.dataset.edgeFrom || "");
@@ -469,8 +509,8 @@ ${GRAPH_RUN_PANEL_STYLES}
             edgeLabel.setAttribute("x", formatPathNumber(edgePath.labelX));
             edgeLabel.setAttribute("y", formatPathNumber(edgePath.labelY));
           }
-          maxX = Math.max(maxX, edgePath.maxX + ${DAG_MARGIN});
-          maxY = Math.max(maxY, edgePath.maxY + ${DAG_MARGIN});
+          maxX = Math.max(maxX, edgePath.maxX + ${DAG_MARGIN_X});
+          maxY = Math.max(maxY, edgePath.maxY + ${DAG_MARGIN_Y});
         });
         const zoomScale = getCurrentZoomScale();
         const viewportWidth = (dagViewport?.clientWidth || dagCanvas.parentElement?.clientWidth || 0) / zoomScale;
@@ -1353,100 +1393,263 @@ function buildDagLayout(state: GraphRunPanelState, strings: GraphRunPanelStrings
     nodeIndexById.has(edge.from) && nodeIndexById.has(edge.to)
   ));
   const visibleEdges = selectDagVisibleEdges(validEdges);
-  const activeEdges = visibleEdges.filter((edge) => edge.active);
-  const layoutEdges = activeEdges.length ? activeEdges : visibleEdges;
+  const positionMap = (() => {
+    try {
+      return buildDagDagreLayoutPositions(state.nodes, visibleEdges, DAG_AUTO_LAYOUT_CONFIG);
+    } catch {
+      return buildFallbackDagLayoutPositions(state.nodes, visibleEdges, DAG_AUTO_LAYOUT_CONFIG);
+    }
+  })();
+  const nodeLayouts = state.nodes.map((node, order) => {
+    const size = estimateDagAutoLayoutNodeSize(node);
+    const position = positionMap.get(node.id) ?? {
+      x: DAG_MARGIN_X + order * (DAG_NODE_WIDTH + DAG_RANK_SEP),
+      y: DAG_MARGIN_Y,
+    };
+    return {
+      node,
+      x: Math.max(0, Math.round(position.x)),
+      y: Math.max(0, Math.round(position.y)),
+      width: size.width,
+      height: size.height,
+      order,
+    };
+  });
+  const positionById = new Map(nodeLayouts.map((layout) => [layout.node.id, layout]));
+  const edgeLayouts = buildDagEdgeLayouts(visibleEdges, positionById, strings);
+  const width = Math.max(
+    DAG_MARGIN_X * 2 + DAG_NODE_WIDTH,
+    ...nodeLayouts.map((layout) => layout.x + layout.width + DAG_MARGIN_X),
+    ...edgeLayouts.map((layout) => layout.maxX + DAG_MARGIN_X),
+  );
+  const height = Math.max(
+    DAG_MARGIN_Y * 2 + DAG_NODE_HEIGHT,
+    ...nodeLayouts.map((layout) => layout.y + layout.height + DAG_MARGIN_Y),
+    ...edgeLayouts.map((layout) => layout.maxY + DAG_MARGIN_Y),
+  );
+  return { width, height, nodeLayouts, edgeLayouts };
+}
+
+function buildDagDagreLayoutPositions(
+  nodes: readonly GraphRunPanelNode[],
+  edges: readonly GraphRunPanelEdge[],
+  config: DagAutoLayoutConfig,
+): Map<string, { x: number; y: number }> {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const graph = new graphlib.Graph<GraphLabel, NodeLabel, EdgeLabel>({
     directed: true,
     multigraph: true,
   });
   graph.setGraph({
-    rankdir: "LR",
-    ranksep: DAG_RANK_SEP,
-    nodesep: DAG_NODE_SEP,
-    edgesep: Math.max(16, Math.round(DAG_NODE_SEP / 2)),
-    marginx: DAG_MARGIN,
-    marginy: DAG_MARGIN,
+    rankdir: config.direction,
+    ranksep: config.ranksep,
+    nodesep: config.nodesep,
+    edgesep: config.edgesep,
+    marginx: config.marginX,
+    marginy: config.marginY,
     acyclicer: "greedy",
     ranker: "network-simplex",
   });
-  graph.setDefaultEdgeLabel(() => ({ minlen: 1, weight: 1 }));
-  state.nodes.forEach((node, index) => {
-    graph.setNode(node.id, {
-      width: DAG_NODE_WIDTH,
-      height: DAG_NODE_HEIGHT,
-      order: index,
-    });
+  graph.setDefaultEdgeLabel(() => ({}));
+
+  nodes.forEach((node) => {
+    graph.setNode(node.id, estimateDagAutoLayoutNodeSize(node));
   });
-  layoutEdges.forEach((edge, index) => {
-    graph.setEdge(edge.from, edge.to, {
-      minlen: 1,
-      weight: edge.active ? 2 : 1,
-    }, `${edge.id || `${edge.from}->${edge.to}`}:${index}`);
+  edges.forEach((edge, index) => {
+    if (!nodeMap.has(edge.from) || !nodeMap.has(edge.to)) {
+      return;
+    }
+    graph.setEdge(edge.from, edge.to, {}, edge.id || `${edge.from}__${edge.to}__${index}`);
   });
 
-  try {
-    applyDagreLayout(graph);
-  } catch {
-    return buildFallbackDagLayout(state, visibleEdges, strings);
-  }
+  applyDagreLayout(graph);
 
-  const dagreNodeLayouts = state.nodes.map((node, order) => {
+  const boxes = nodes.map((node, order) => {
+    const size = estimateDagAutoLayoutNodeSize(node);
     const label = graph.node(node.id);
-    const centerX = readFiniteNumber(label?.x, DAG_MARGIN + DAG_NODE_WIDTH / 2);
-    const centerY = readFiniteNumber(label?.y, DAG_MARGIN + order * (DAG_NODE_HEIGHT + DAG_NODE_SEP) + DAG_NODE_HEIGHT / 2);
     return {
-      node,
-      x: Math.max(0, Math.round(centerX - DAG_NODE_WIDTH / 2)),
-      y: Math.max(0, Math.round(centerY - DAG_NODE_HEIGHT / 2)),
-      width: DAG_NODE_WIDTH,
-      height: DAG_NODE_HEIGHT,
-      order,
+      id: node.id,
+      x: readFiniteNumber(label?.x, config.marginX + size.width / 2) - size.width / 2 + config.marginX,
+      y: readFiniteNumber(label?.y, config.marginY + order * (size.height + config.nodesep) + size.height / 2) - size.height / 2 + config.marginY,
+      width: readFiniteNumber(label?.width, size.width),
+      height: readFiniteNumber(label?.height, size.height),
     };
   });
-  const positionById = new Map(dagreNodeLayouts.map((layout) => [layout.node.id, layout]));
-  const nodeLayouts = Array.from(positionById.values()).sort((left, right) => left.order - right.order);
-  const edgeLayouts = buildDagEdgeLayouts(visibleEdges, positionById, strings);
 
-  const graphLabel = graph.graph();
-  const width = Math.max(
-    readFiniteNumber(graphLabel?.width, 0),
-    ...nodeLayouts.map((layout) => layout.x + layout.width + DAG_MARGIN),
-    ...edgeLayouts.map((layout) => layout.maxX + DAG_MARGIN),
-  );
-  const height = Math.max(
-    readFiniteNumber(graphLabel?.height, 0),
-    ...nodeLayouts.map((layout) => layout.y + layout.height + DAG_MARGIN),
-    ...edgeLayouts.map((layout) => layout.maxY + DAG_MARGIN),
-  );
-  return { width, height, nodeLayouts, edgeLayouts };
+  return resolveDagAutoLayoutCollisions(boxes, config);
 }
 
-function buildFallbackDagLayout(
-  state: GraphRunPanelState,
-  visibleEdges: readonly GraphRunPanelEdge[],
-  strings: GraphRunPanelStrings,
-): DagLayout {
-  const nodeLayouts = state.nodes.map((node, order) => ({
-    node,
-    x: DAG_MARGIN + order * (DAG_NODE_WIDTH + DAG_RANK_SEP),
-    y: DAG_MARGIN,
+function buildFallbackDagLayoutPositions(
+  nodes: readonly GraphRunPanelNode[],
+  edges: readonly GraphRunPanelEdge[],
+  config: DagAutoLayoutConfig,
+): Map<string, { x: number; y: number }> {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const orderMap = new Map(nodes.map((node, index) => [node.id, index]));
+  const levelMap = new Map<string, number>();
+  const adjacencyMap = new Map<string, string[]>(nodes.map((node) => [node.id, []]));
+  const reachableNodeIds = new Set<string>();
+  const incomingCountMap = new Map(nodes.map((node) => [node.id, 0]));
+
+  edges.forEach((edge) => {
+    if (!nodeMap.has(edge.from) || !nodeMap.has(edge.to)) {
+      return;
+    }
+    adjacencyMap.get(edge.from)?.push(edge.to);
+    incomingCountMap.set(edge.to, Number(incomingCountMap.get(edge.to) || 0) + 1);
+  });
+
+  adjacencyMap.forEach((targetIds) => {
+    targetIds.sort((leftId, rightId) => compareDagNodesForAutoLayout(nodeMap.get(leftId), nodeMap.get(rightId), orderMap));
+  });
+
+  const startNode = nodes.find((node) => node.kind === "intake")
+    ?? nodes.find((node) => Number(incomingCountMap.get(node.id) || 0) === 0)
+    ?? nodes[0]
+    ?? null;
+  const queue = startNode
+    ? [{ id: startNode.id, level: 0 }]
+    : nodes
+      .filter((node) => Number(incomingCountMap.get(node.id) || 0) === 0)
+      .sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap))
+      .map((node) => ({ id: node.id, level: 0 }));
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) {
+      break;
+    }
+    if (reachableNodeIds.has(current.id)) {
+      continue;
+    }
+    reachableNodeIds.add(current.id);
+    levelMap.set(current.id, current.level);
+    (adjacencyMap.get(current.id) || []).forEach((targetId) => {
+      if (!reachableNodeIds.has(targetId)) {
+        queue.push({ id: targetId, level: current.level + 1 });
+      }
+    });
+  }
+
+  const levelBuckets = new Map<number, GraphRunPanelNode[]>();
+  nodes
+    .filter((node) => reachableNodeIds.has(node.id))
+    .forEach((node) => {
+      const level = levelMap.get(node.id) || 0;
+      const bucket = levelBuckets.get(level) || [];
+      bucket.push(node);
+      levelBuckets.set(level, bucket);
+    });
+
+  const boxes: DagAutoLayoutBox[] = [];
+  Array.from(levelBuckets.entries())
+    .sort((left, right) => left[0] - right[0])
+    .forEach(([level, nodesAtLevel]) => {
+      const sortedNodes = nodesAtLevel.sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap));
+      sortedNodes.forEach((node, index) => {
+        const size = estimateDagAutoLayoutNodeSize(node);
+        boxes.push({
+          id: node.id,
+          x: config.marginX + level * (DAG_NODE_WIDTH + config.ranksep),
+          y: config.marginY + index * (DAG_NODE_HEIGHT + config.nodesep),
+          width: size.width,
+          height: size.height,
+        });
+      });
+    });
+
+  const draftNodes = nodes
+    .filter((node) => !reachableNodeIds.has(node.id))
+    .sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap));
+  draftNodes.forEach((node, index) => {
+    const size = estimateDagAutoLayoutNodeSize(node);
+    boxes.push({
+      id: node.id,
+      x: config.marginX + DAG_NODE_WIDTH + config.ranksep,
+      y: config.marginY + (DAG_NODE_HEIGHT + config.nodesep) * (index + 1) + DAG_FALLBACK_DRAFT_EXTRA_GAP,
+      width: size.width,
+      height: size.height,
+    });
+  });
+
+  return resolveDagAutoLayoutCollisions(boxes, config);
+}
+
+function scaleWorkflowLayoutMetric(value: number, nodeMetric: number, referenceMetric: number, step: number): number {
+  const scaled = (value * nodeMetric) / referenceMetric;
+  return Math.max(step, Math.round(scaled / step) * step);
+}
+
+function estimateDagAutoLayoutNodeSize(node: GraphRunPanelNode): DagNodeSize {
+  const titleLength = Array.from((node.title || node.kindLabel || node.kind).trim()).length;
+  const titleLineAllowance = titleLength > DAG_NODE_LONG_TITLE_THRESHOLD ? DAG_NODE_LONG_TITLE_EXTRA_HEIGHT : 0;
+  const branchNodeAllowance = node.unlocks.length > 1 ? DAG_NODE_BRANCH_EXTRA_HEIGHT : 0;
+  return {
     width: DAG_NODE_WIDTH,
-    height: DAG_NODE_HEIGHT,
-    order,
-  }));
-  const positionById = new Map(nodeLayouts.map((layout) => [layout.node.id, layout]));
-  const edgeLayouts = buildDagEdgeLayouts(visibleEdges, positionById, strings);
-  const width = Math.max(
-    DAG_MARGIN * 2 + DAG_NODE_WIDTH,
-    ...nodeLayouts.map((layout) => layout.x + layout.width + DAG_MARGIN),
-    ...edgeLayouts.map((layout) => layout.maxX + DAG_MARGIN),
-  );
-  const height = Math.max(
-    DAG_MARGIN * 2 + DAG_NODE_HEIGHT,
-    ...nodeLayouts.map((layout) => layout.y + layout.height + DAG_MARGIN),
-    ...edgeLayouts.map((layout) => layout.maxY + DAG_MARGIN),
-  );
-  return { width, height, nodeLayouts, edgeLayouts };
+    height: DAG_NODE_HEIGHT + titleLineAllowance + branchNodeAllowance,
+  };
+}
+
+function resolveDagAutoLayoutCollisions(
+  boxes: readonly DagAutoLayoutBox[],
+  config: DagAutoLayoutConfig,
+): Map<string, { x: number; y: number }> {
+  const orderedBoxes = [...boxes].sort((left, right) => (
+    (left.x - right.x) || (left.y - right.y)
+  ));
+  const placedBoxes: DagAutoLayoutBox[] = [];
+
+  orderedBoxes.forEach((box) => {
+    const nextBox = { ...box };
+    let guard = 0;
+    while (guard < (boxes.length * boxes.length) + 8) {
+      const overlapBox = placedBoxes.find((placedBox) => dagAutoLayoutBoxesOverlap(nextBox, placedBox));
+      if (!overlapBox) {
+        break;
+      }
+      nextBox.y = overlapBox.y + overlapBox.height + config.nodesep;
+      guard += 1;
+    }
+    placedBoxes.push(nextBox);
+  });
+
+  return new Map(placedBoxes.map((box) => [box.id, {
+    x: Math.round(box.x),
+    y: Math.round(box.y),
+  }]));
+}
+
+function dagAutoLayoutBoxesOverlap(left: DagAutoLayoutBox, right: DagAutoLayoutBox): boolean {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
+function compareDagNodesForAutoLayout(
+  left: GraphRunPanelNode | undefined,
+  right: GraphRunPanelNode | undefined,
+  orderMap: ReadonlyMap<string, number>,
+): number {
+  if (!left || !right) {
+    return left ? -1 : right ? 1 : 0;
+  }
+  const leftKindWeight = getDagNodeAutoLayoutKindWeight(left);
+  const rightKindWeight = getDagNodeAutoLayoutKindWeight(right);
+  if (leftKindWeight !== rightKindWeight) {
+    return leftKindWeight - rightKindWeight;
+  }
+  return Number(orderMap.get(left.id) || 0) - Number(orderMap.get(right.id) || 0);
+}
+
+function getDagNodeAutoLayoutKindWeight(node: GraphRunPanelNode): number {
+  if (node.kind === "intake") {
+    return -2;
+  }
+  if (node.kind === "summary") {
+    return 2;
+  }
+  return 0;
 }
 
 function buildDagEdgeLayouts(

@@ -65,6 +65,48 @@ function getDagEdgePathAttrs(html: string): DagEdgePathAttrs[] {
     });
 }
 
+function getDagNodeAttrs(html: string): DagEdgePathAttrs[] {
+  return Array.from(html.matchAll(/<button\s+class="dag-node[^>]*>/g))
+    .map((match) => {
+      const attrs: DagEdgePathAttrs = {};
+      Array.from(match[0].matchAll(/\s([\w-]+)="([^"]*)"/g)).forEach((attrMatch) => {
+        attrs[attrMatch[1]] = attrMatch[2];
+      });
+      return attrs;
+    });
+}
+
+function getDagNodeLayoutById(html: string): Map<string, { x: number; y: number; width: number; height: number }> {
+  return new Map(getDagNodeAttrs(html).map((attrs) => [
+    attrs["data-node-id"],
+    {
+      x: readRequiredDagNumber(attrs, "data-auto-x"),
+      y: readRequiredDagNumber(attrs, "data-auto-y"),
+      width: readRequiredDagNumber(attrs, "data-node-width"),
+      height: readRequiredDagNumber(attrs, "data-node-height"),
+    },
+  ]));
+}
+
+function readRequiredDagNumber(attrs: DagEdgePathAttrs, key: string): number {
+  const value = Number.parseFloat(attrs[key] ?? "");
+  assert.ok(Number.isFinite(value), `Expected finite ${key}`);
+  return value;
+}
+
+function assertDagNodeLayoutsDoNotOverlap(layouts: Iterable<{ x: number; y: number; width: number; height: number }>): void {
+  const boxes = Array.from(layouts);
+  boxes.forEach((left, leftIndex) => {
+    boxes.slice(leftIndex + 1).forEach((right) => {
+      const overlaps = left.x < right.x + right.width
+        && left.x + left.width > right.x
+        && left.y < right.y + right.height
+        && left.y + left.height > right.y;
+      assert.equal(overlaps, false);
+    });
+  });
+}
+
 function createNode(overrides: Partial<GraphNodeRecord> = {}): GraphNodeRecord {
   return {
     id: "plan",
@@ -370,6 +412,64 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.doesNotMatch(html, /node-details-section/);
 	  assert.doesNotMatch(html, />\s*(Overview|Status Statistics|Final Answer|Recent Events)\s*</);
 	  assert.doesNotMatch(html, />\s*(Retry|Approve|Continue|Stop)\s*</);
+});
+
+test("uses workflow-style auto layout spacing, collision handling, and dynamic node sizing", () => {
+  const run = createRun({
+    nodes: [
+      createNode({
+        id: "start",
+        title: "Start intake",
+        kind: "intake",
+        dependsOn: [],
+        unlocks: ["design", "implement", "validate"],
+      }),
+      createNode({
+        id: "design",
+        title: "Design execution path",
+        kind: "plan",
+        dependsOn: ["start"],
+        unlocks: ["summary"],
+      }),
+      createNode({
+        id: "implement",
+        title: "Implement upgraded graph auto layout",
+        kind: "implement",
+        dependsOn: ["start"],
+        unlocks: ["summary"],
+      }),
+      createNode({
+        id: "validate",
+        title: "Validate a very long Graph visualization branch title",
+        kind: "test",
+        dependsOn: ["start"],
+        unlocks: ["summary"],
+      }),
+      createNode({
+        id: "summary",
+        title: "Summarize result",
+        kind: "summary",
+        dependsOn: ["design", "implement", "validate"],
+        unlocks: [],
+      }),
+    ],
+    edges: [],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "start"), "en");
+  const nodeLayouts = getDagNodeLayoutById(html);
+  const start = nodeLayouts.get("start");
+  const design = nodeLayouts.get("design");
+  const implement = nodeLayouts.get("implement");
+  const validate = nodeLayouts.get("validate");
+  const summary = nodeLayouts.get("summary");
+  assert.ok(start && design && implement && validate && summary);
+
+  assert.equal(start.width, 192);
+  assert.ok(start.height > 78);
+  assert.ok(validate.height > 78);
+  assert.ok(Math.min(design.x, implement.x, validate.x) - start.x >= 300);
+  assert.ok(summary.x - Math.max(design.x, implement.x, validate.x) >= 300);
+  assertDagNodeLayoutsDoNotOverlap(nodeLayouts.values());
 });
 
 test("packages dagre runtime dependency used by graph run panel layout", () => {
