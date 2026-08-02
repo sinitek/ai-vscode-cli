@@ -2,7 +2,7 @@ import type { CliName } from "../cli/types";
 import { CLI_LIST } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
 import { t } from "../i18n";
-import { getLatestSessionIdFromRecords, writeSessionFile, type SessionStore } from "../sessionStore";
+import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli } from "../loopTaskStore";
 import { normalizeLoopDebateSessionId } from "../loopDebate";
 import { logError } from "../logger";

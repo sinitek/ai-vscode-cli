@@ -14,6 +14,36 @@
 
 ## 当前有效条目
 
+## Extension Host 拆分时同名包装函数不能回注自身
+
+- 状态：已规避，需随后续 `extensionHost/*` 拆分和依赖注入变更复核
+- 首次发现：2026-08-02
+- 适用范围：`src/extension.ts`、`src/extensionHost/*` host wrapper、controller dependency injection
+
+### 现象
+- VS Code Extension Host 反复输出 `RangeError: Maximum call stack size exceeded`，堆栈集中在 `dist/extensionHost/sessionTabs.js` 的 `wrap(...).finally(syncToDeps)` 和 `persistSessionStore`。
+- 报错出现在 Promise reject callback 中，表面看像异步清理问题，实际是 host 方法通过依赖闭包调用回同名包装方法。
+
+### 触发条件与根因
+- `extension.ts` 创建 host 时传入形如 `persistSessionStore: (store) => persistSessionStore(store)` 的依赖。
+- 同一作用域随后又从 `sessionTabsHost` 解构出同名 `persistSessionStore` 包装函数，闭包最终捕获的是 host wrapper，不是原始存储实现。
+- host 内部 `persistSessionStore -> deps.persistSessionStore -> persistSessionStore` 自递归，Promise `finally(syncToDeps)` 反复排队后触发栈溢出。
+
+### 长期规避
+- 拆分 `extensionHost/*` 时，注入依赖必须指向命名清晰的原始实现，例如 `persistSessionStoreToStorage`，不要用与 host 返回方法同名的闭包转发。
+- 如果 host 返回对象需要暴露同名方法，`extension.ts` 解构时不要再绑定成会被依赖闭包捕获的同名局部变量。
+- 对关键依赖注入边界加源码契约测试，断言不会出现 `name: (args) => name(args)` 这类自引用 wiring。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/sessionPersistenceWiring.test.js dist/test/sessionLifecycleCoreCoverage.test.js dist/test/sessionStoreCoreCoverage.test.js`。
+- 编译后用 `rg "persistSessionStoreToStorage|persistSessionStore: persistSessionStoreToStorage" dist/extension.js src/extension.ts` 确认宿主注入指向原始实现。
+
+### 关联资料
+- `src/extension.ts`
+- `src/extensionHost/sessionTabs.ts`
+- `src/test/sessionPersistenceWiring.test.ts`
+
 ## Graph 全量验证节点不能默认硬阻断交付收束
 
 - 状态：已规避，需随 Graph planner / scheduler / summary 变更复核
