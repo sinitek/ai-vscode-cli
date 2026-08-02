@@ -38,6 +38,8 @@ function assertOmitsStopBoundaryCopy(html: string): void {
 }
 
 type DagEdgePathAttrs = Record<string, string>;
+type DagBox = { x: number; y: number; width: number; height: number };
+type DagPoint = { x: number; y: number };
 
 function getVisibleEdgeLabels(html: string): string[] {
   return Array.from(html.matchAll(/<text class="dag-edge-label [^"]+"[^>]*>([^<]*)<\/text>/g))
@@ -77,7 +79,7 @@ function getDagNodeAttrs(html: string): DagEdgePathAttrs[] {
     });
 }
 
-function getDagNodeLayoutById(html: string): Map<string, { x: number; y: number; width: number; height: number }> {
+function getDagNodeLayoutById(html: string): Map<string, DagBox> {
   return new Map(getDagNodeAttrs(html).map((attrs) => [
     attrs["data-node-id"],
     {
@@ -95,7 +97,53 @@ function readRequiredDagNumber(attrs: DagEdgePathAttrs, key: string): number {
   return value;
 }
 
-function assertDagNodeLayoutsDoNotOverlap(layouts: Iterable<{ x: number; y: number; width: number; height: number }>): void {
+function readDagEdgePathEndpoints(edge: DagEdgePathAttrs): { start: DagPoint; end: DagPoint } {
+  const numbers = Array.from((edge.d ?? "").matchAll(/-?\d+(?:\.\d+)?/g))
+    .map((match) => Number.parseFloat(match[0]));
+  assert.equal(numbers.length, 8, `Expected cubic path coordinates for ${edge["data-edge-id"]}`);
+  return {
+    start: { x: numbers[0], y: numbers[1] },
+    end: { x: numbers[6], y: numbers[7] },
+  };
+}
+
+function assertDagEdgeUsesNearestBorderPoints(edge: DagEdgePathAttrs, layouts: ReadonlyMap<string, DagBox>): void {
+  const from = layouts.get(edge["data-edge-from"] ?? "");
+  const to = layouts.get(edge["data-edge-to"] ?? "");
+  assert.ok(from && to, `Expected node layouts for ${edge["data-edge-id"]}`);
+  const endpoints = readDagEdgePathEndpoints(edge);
+  assertDagPointOnBoxBorder(endpoints.start, from, "source", edge["data-edge-id"]);
+  assertDagPointOnBoxBorder(endpoints.end, to, "target", edge["data-edge-id"]);
+  const actualDistance = getDagPointDistance(endpoints.start, endpoints.end);
+  const expectedDistance = getDagBoxDistance(from, to);
+  assert.ok(
+    Math.abs(actualDistance - expectedDistance) <= 0.75,
+    `Expected ${edge["data-edge-id"]} endpoint distance ${actualDistance} to match nearest box distance ${expectedDistance}`,
+  );
+}
+
+function assertDagPointOnBoxBorder(point: DagPoint, box: DagBox, label: string, edgeId: string | undefined): void {
+  const epsilon = 0.75;
+  const withinX = point.x >= box.x - epsilon && point.x <= box.x + box.width + epsilon;
+  const withinY = point.y >= box.y - epsilon && point.y <= box.y + box.height + epsilon;
+  const onVerticalBorder = (Math.abs(point.x - box.x) <= epsilon || Math.abs(point.x - (box.x + box.width)) <= epsilon) && withinY;
+  const onHorizontalBorder = (Math.abs(point.y - box.y) <= epsilon || Math.abs(point.y - (box.y + box.height)) <= epsilon) && withinX;
+  assert.ok(onVerticalBorder || onHorizontalBorder, `Expected ${label} endpoint for ${edgeId} to sit on node border`);
+}
+
+function getDagBoxDistance(from: DagBox, to: DagBox): number {
+  const dx = Math.max(0, Math.max(to.x - (from.x + from.width), from.x - (to.x + to.width)));
+  const dy = Math.max(0, Math.max(to.y - (from.y + from.height), from.y - (to.y + to.height)));
+  return Math.sqrt((dx * dx) + (dy * dy));
+}
+
+function getDagPointDistance(from: DagPoint, to: DagPoint): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return Math.sqrt((dx * dx) + (dy * dy));
+}
+
+function assertDagNodeLayoutsDoNotOverlap(layouts: Iterable<DagBox>): void {
   const boxes = Array.from(layouts);
   boxes.forEach((left, leftIndex) => {
     boxes.slice(leftIndex + 1).forEach((right) => {
@@ -681,7 +729,7 @@ test("dedupes same-direction DAG edges and separates bidirectional connection po
   assert.doesNotMatch(html, /<textPath/);
 });
 
-test("separates fan-out and fan-in ports with target-style side hints and offsets", () => {
+test("uses nearest border points for fan-out and fan-in edges while keeping offsets", () => {
   const run = createRun({
     nodes: [
       createNode({
@@ -722,15 +770,17 @@ test("separates fan-out and fan-in ports with target-style side hints and offset
   });
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "fan"), "en");
   const edges = getDagEdgePathAttrs(html);
+  const nodeLayouts = getDagNodeLayoutById(html);
   const fanOutEdges = edges.filter((edge) => edge["data-edge-from"] === "fan");
   const fanInEdges = edges.filter((edge) => edge["data-edge-to"] === "merge");
 
   assert.equal(fanOutEdges.length, 2);
   assert.equal(fanInEdges.length, 2);
-  assert.deepEqual(new Set(fanOutEdges.map((edge) => edge["data-edge-from-side-hint"])), new Set(["right"]));
-  assert.deepEqual(new Set(fanOutEdges.map((edge) => edge["data-edge-to-side-hint"])), new Set(["left"]));
-  assert.equal(new Set(fanOutEdges.map((edge) => edge["data-to-port"])).size, 2);
-  assert.equal(new Set(fanInEdges.map((edge) => edge["data-from-port"])).size, 2);
+  [...fanOutEdges, ...fanInEdges].forEach((edge) => {
+    assert.equal(edge["data-edge-from-side-hint"], undefined);
+    assert.equal(edge["data-edge-to-side-hint"], undefined);
+    assertDagEdgeUsesNearestBorderPoints(edge, nodeLayouts);
+  });
   assert.ok(fanOutEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
   assert.ok(fanInEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
 });

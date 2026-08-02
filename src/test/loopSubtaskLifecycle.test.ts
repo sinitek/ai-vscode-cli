@@ -33,7 +33,7 @@ function createCompletionHarness(): CompletionHarness {
 
 function extractAsyncFunctionSection(source: string, name: string, nextFunctionName: string): string {
   const start = source.indexOf(`async function ${name}(`);
-  assert.notEqual(start, -1, `${name} should exist in extension.ts`);
+  assert.notEqual(start, -1, `${name} should exist in source`);
   const end = source.indexOf(`function ${nextFunctionName}(`, start);
   assert.notEqual(end, -1, `${nextFunctionName} should follow ${name}`);
   return source.slice(start, end);
@@ -100,13 +100,17 @@ test("does not automatically close stopped or failed Loop subtask tabs", async (
 
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const promptRuntimeSource = fs.readFileSync(
+    path.join(process.cwd(), "src", "extensionHost", "promptRunRuntime.ts"),
+    "utf8",
+  );
   const automaticRetrySource = extractAsyncFunctionSection(
     extensionSource,
     "runLoopSubtaskWithRetry",
     "waitForLoopSubtaskRetryDelay",
   );
   const manualResumeSource = extractAsyncFunctionSection(
-    extensionSource,
+    promptRuntimeSource,
     "maybeWakeLoopMainAfterSubtaskContinuation",
     "getLoopTargetSessionId",
   );

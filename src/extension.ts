@@ -298,60 +298,18 @@ import {
   finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps,
   type LoopSubtaskCompletionOptions,
 } from "./loopSubtaskLifecycle";
-import { appendGraphEvent, readGraphEvents } from "./graph/graphEvents";
-import {
-  tickGraphRun,
-  type GraphNodeExecutionRequest,
-} from "./graph/graphKernel";
 import {
   buildGraphRunIdsBySessionByCli,
-  createGraphRunRecord,
-  findLatestGraphRun,
   listGraphRuns,
   readGraphRunRecord,
-  updateGraphRunRecord,
 } from "./graph/graphStore";
+import type { GraphRunControlSource } from "./graph/graphRunControl";
+import type { GraphAutoWakeAttemptResult } from "./graph/graphAutoWake";
 import {
-  feedbackGraphNodeForRun,
-  resumeGraphRunRecord,
-  retryGraphNodeForRun,
-  skipGraphNodeForRun,
-  stopGraphRunRecord,
-  type GraphRunControlResult,
-  type GraphRunControlSource,
-} from "./graph/graphRunControl";
-import {
-  GraphAutoWakeScheduler,
-  resolveGraphRunAutoWakeAt,
-  type GraphAutoWakeAttemptResult,
-} from "./graph/graphAutoWake";
-import { readGraphNodeExecutionResultArtifact } from "./graph/graphNodeArtifact";
-import {
-  buildGraphPlanningRunEdges,
-  buildGraphPlanningRunNodes,
-  GRAPH_AI_PLANNER_NODE_ID,
-  GRAPH_AI_PLANNER_TEMPLATE_ID,
-  GRAPH_AI_PLANNER_TEMPLATE_VERSION,
-  materializeGraphPlan,
-} from "./graph/graphPlanner";
-import { resolveGraphNodeCommunicationFile } from "./graph/graphPromptBuilders";
-import {
-  cleanupGraphRunWorktree,
-  commitGraphNodeCheckpoint,
-  createGraphRunExecutionSetup,
-  getGraphWorktreeHeadCommit,
-  mergeGraphRunWorktreeToWorkspace,
-  type GraphWorktreeCleanupResult,
-  type GraphWorktreeMergeBackResult,
-} from "./graph/graphWorktree";
-import {
-  GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
-  type GraphFinalAnswer,
   type GraphModelRole,
   type GraphNodeRecord,
   type GraphRunModelRoutingRecord,
   type GraphRunRecord,
-  type GraphRunStatus,
 } from "./graph/types";
 import {
   readToolSettings,
@@ -458,6 +416,17 @@ import {
   type CliModelStore,
 } from "./modelSelectionStore";
 import { handleUpdateOpenCodeVariantMessage } from "./sessionMessageActions";
+import { createGraphControlsHost, type GraphControlsHost } from "./extensionHost/graphControls";
+import { createPromptRunRuntimeHost } from "./extensionHost/promptRunRuntime";
+import { createModelSettingsHost } from "./extensionHost/modelSettings";
+import { createExtensionSessionTabsHost } from "./extensionHost/sessionTabs";
+import { createGraphMessagesHost, type GraphRuntimeMessageKey } from "./extensionHost/graphMessages";
+import {
+  createGraphRuntimeHost,
+  type GraphRuntimeHost,
+  type PromptRunInput,
+  type PromptRunTarget,
+} from "./extensionHost/graphRuntime";
 import {
   loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
   saveWorkspaceSettings as saveWorkspaceSettingsToStore,
@@ -509,7 +478,6 @@ import {
   buildHiddenRetryStartedMessage,
   collectRecentLoopTaskIdsFromMessages,
   createHiddenRetryErrorTraceMessage,
-  createGraphRunPanelCoordinator,
   createLoopDebateChatPanelCoordinator,
   createPanelDiagnosticsInspector,
   detectLoopVerificationSignals,
@@ -608,7 +576,6 @@ import {
   type TaskRunStatus,
   type TaskStore,
 } from "./promptRunState";
-
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
@@ -663,7 +630,6 @@ let isExtensionDeactivating = false;
 const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 let loopAutoWakeScheduler: LoopAutoWakeScheduler | null = null;
-let graphAutoWakeScheduler: GraphAutoWakeScheduler | null = null;
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -689,8 +655,6 @@ const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
 const LOOP_DEFAULT_MAX_ROUNDS = 20;
-const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1;
-const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES;
 const LOOP_MIN_MAX_ROUNDS = 1;
 const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_PARALLEL_SUBTASK_MAX = 6;
@@ -716,7 +680,6 @@ const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
 ]);
-
 function shouldUseFallbackSessionLabel(label: string | null | undefined): boolean {
   return shouldUseFallbackSessionLabelWithSet(label, UNNAMED_SESSION_LABELS);
 }
@@ -730,14 +693,12 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   claude: "CLAUDE.md",
   opencode: "AGENTS.md",
 };
-
 const PROMPT_HISTORY_LIMIT = 200;
 const CONTEXT_COMPACT_TURN_THRESHOLD = 30;
 const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
 const FROZEN_THREAD_LIMIT = 5;
 const KEEP_RECENT_TURNS = 3;
 const suppressCompactPrompt = new Set<string>();
-
 type ParallelTabRun = {
   runId: string;
   tabId: string;
@@ -755,7 +716,6 @@ type ParallelTabRun = {
   graphRunId?: string;
   graphNodeId?: string;
 };
-
 type InteractiveTabRun = {
   runId: string;
   tabId: string;
@@ -773,15 +733,12 @@ type InteractiveTabRun = {
   graphRunId?: string;
   graphNodeId?: string;
 };
-
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
-
 type CliInstallStatus = {
   command: string;
   installed: boolean;
   checkedAt: number;
 };
-
 const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   codex: null,
   claude: null,
@@ -797,7 +754,6 @@ let openCodeThinkingRequestId = 0;
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
 let historyArtifactRetentionCleanupPromise: Promise<void> | null = null;
-
 function initializeSessionControllers(): void {
   sessionTabsController = createSessionTabsController({
     state: conversationTabStore,
@@ -921,7 +877,6 @@ function initializeSessionControllers(): void {
     logError: (event, payload) => void logError(event, payload),
   });
 }
-
 export function activate(context: vscode.ExtensionContext): void {
   isExtensionDeactivating = false;
   extensionContext = context;
@@ -957,24 +912,20 @@ export function activate(context: vscode.ExtensionContext): void {
   startHistoryArtifactRetentionCleanup(context);
   startConfigHeartbeat(context);
   void refreshCliInstallStatuses();
-
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = "sinitek-cli-tools.openPanel";
   updateStatusBar();
   statusBarItem.show();
-
   viewProvider = new CliBridgeViewProvider(extensionUri, {
     onMessage: async (message) => {
       await handlePanelMessage(message);
     },
   });
-
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     })
   );
-
   registerExtensionCommands(context, {
     isCliName,
     getCurrentCli: () => currentCli,
@@ -984,7 +935,6 @@ export function activate(context: vscode.ExtensionContext): void {
     postPanelState,
     openLoopGroupChatPanel,
   });
-
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("sinitek-cli-tools")) {
@@ -999,7 +949,6 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
-
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       ensureWorkspaceSessionStore();
@@ -1008,13 +957,11 @@ export function activate(context: vscode.ExtensionContext): void {
       void postPanelState();
     })
   );
-
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(() => {
       postEditorContextState();
     })
   );
-
   context.subscriptions.push(
     vscode.window.onDidChangeTextEditorSelection((event) => {
       if (event.textEditor === vscode.window.activeTextEditor) {
@@ -1022,25 +969,20 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
-
   if (getAutoOpenPanel()) {
     void vscode.commands.executeCommand("sinitek-cli-tools.openPanel");
   }
 }
-
 export function deactivate(): void {
   isExtensionDeactivating = true;
   void restoreMarketplaceUpdateCheck();
   loopAutoWakeScheduler?.dispose();
   loopAutoWakeScheduler = null;
-  graphAutoWakeScheduler?.dispose();
-  graphAutoWakeScheduler = null;
+  graphControlsHost.disposeGraphAutoWakeScheduler();
   stopAllRuns();
 }
-
 function stopAllRuns(): void {
   isExtensionDeactivating = true;
-
   for (const [tabId, run] of Array.from(interactiveRunsByTabId.entries())) {
     try {
       run.stop();
@@ -1054,7 +996,6 @@ function stopAllRuns(): void {
       interactiveRunsByTabId.delete(tabId);
     }
   }
-
   for (const [tabId, run] of Array.from(parallelRunsByTabId.entries())) {
     try {
       stopParallelRunForTab(tabId, t("run.stoppedByUser"));
@@ -1073,7 +1014,6 @@ function stopAllRuns(): void {
       parallelRunsByTabId.delete(tabId);
     }
   }
-
   const activeStop = activeInteractiveStop;
   if (activeStop) {
     try {
@@ -1089,7 +1029,6 @@ function stopAllRuns(): void {
       }
     }
   }
-
   if (activeProcess) {
     try {
       stopActiveRun();
@@ -1364,269 +1303,6 @@ function buildDefaultOpenCodeThinkingState(
   };
 }
 
-function getOpenCodeThinkingStateForRole(
-  role: OpenCodeModelRoleInput
-): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
-  return normalizeOpenCodeModelRole(role) === "subtask" ? openCodeSmallThinkingState : openCodeThinkingState;
-}
-
-function setOpenCodeThinkingStateForRole(
-  role: OpenCodeModelRoleInput,
-  state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">
-): void {
-  if (normalizeOpenCodeModelRole(role) === "subtask") {
-    openCodeSmallThinkingState = state;
-    return;
-  }
-  openCodeThinkingState = state;
-}
-
-function persistOpenCodeVariant(
-  configId: string | null,
-  exactModel: string | null,
-  role: OpenCodeModelRoleInput,
-  variant: string | null
-): void {
-  const normalizedRole = normalizeOpenCodeModelRole(role);
-  let nextStore = setOpenCodeRoleVariantInStore(modelStore, configId, exactModel, normalizedRole, variant);
-  if (normalizedRole === "main") {
-    nextStore = setOpenCodeVariantInStore(nextStore, configId, exactModel, variant);
-  }
-  if (nextStore === modelStore) {
-    return;
-  }
-  modelStore = nextStore;
-  writeModelStore(modelStore);
-}
-
-function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRoleInput, value: string | null): void {
-  const normalizedRole = normalizeOpenCodeModelRole(role);
-  if (currentCli !== "opencode" || !openCodeThinkingConfigId) {
-    return;
-  }
-  const exactModel = openCodeThinkingExactModels[normalizedRole];
-  if (!exactModel) {
-    return;
-  }
-  const currentState = getOpenCodeThinkingStateForRole(normalizedRole);
-  const nextVariant = value && currentState.options.some((option) => option.value === value)
-    ? value
-    : null;
-  persistOpenCodeVariant(openCodeThinkingConfigId, exactModel, normalizedRole, nextVariant);
-  setOpenCodeThinkingStateForRole(normalizedRole, {
-    ...currentState,
-    selectedVariant: nextVariant,
-  });
-}
-
-type ResolvedOpenCodeRoleModels = {
-  main: string | null;
-  subtask: string | null;
-  fallback: Partial<Record<OpenCodeCanonicalModelRole, string>>;
-};
-
-function resolveOpenCodeRoleModelsForConfig(
-  configId: string | null,
-  configContent: string
-): ResolvedOpenCodeRoleModels {
-  const parsed = parseOpenCodeConfigModels(configContent);
-  const issues = [...parsed.issues];
-  let nextStore = modelStore;
-
-  if (configId) {
-    const legacyMain = normalizeCliModelName(modelStore.selectedByConfigId?.[configId]);
-    const legacyLoopMain = normalizeCliModelName(modelStore.selectedLoopByConfigId?.[configId]?.main);
-    const legacyLoopSubtask = normalizeCliModelName(modelStore.selectedLoopByConfigId?.[configId]?.subtask);
-    const storedMain = getOpenCodeRoleModelFromStore(modelStore, configId, "main");
-    const storedSubtask = getOpenCodeRoleModelFromStore(modelStore, configId, "subtask");
-    if (!storedMain) {
-      const legacyCandidate = legacyLoopMain ?? legacyMain;
-      if (legacyCandidate) {
-        const legacyValidation = validateOpenCodeModelOverride(parsed, "main", legacyCandidate);
-        if (legacyValidation.ok && legacyValidation.modelRef) {
-          nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "main", legacyValidation.modelRef);
-        }
-      }
-    }
-    if (!storedSubtask && legacyLoopSubtask) {
-      const legacyValidation = validateOpenCodeModelOverride(parsed, "subtask", legacyLoopSubtask);
-      if (legacyValidation.ok && legacyValidation.modelRef) {
-        nextStore = setOpenCodeRoleModelInStore(nextStore, configId, "subtask", legacyValidation.modelRef);
-      }
-    }
-    if (
-      modelStore.selectedByConfigId?.[configId]
-      || modelStore.optionsByConfigId?.[configId]
-      || modelStore.selectedLoopByConfigId?.[configId]
-      || modelStore.loopRolesByConfigId?.[configId]
-    ) {
-      nextStore = ensureCliModelSelectionStore(nextStore);
-      delete nextStore.selectedByConfigId[configId];
-      delete nextStore.optionsByConfigId[configId];
-      delete nextStore.selectedLoopByConfigId[configId];
-      delete nextStore.loopRolesByConfigId[configId];
-    }
-  }
-
-  const resolveRole = (role: OpenCodeCanonicalModelRole): string | null => {
-    const override = getOpenCodeRoleModelFromStore(nextStore, configId, role);
-    if (override) {
-      const validation = validateOpenCodeModelOverride(parsed, role, override);
-      if (validation.ok && validation.modelRef) {
-        return validation.modelRef;
-      }
-      if (validation.issue) {
-        issues.push(validation.issue);
-      }
-      nextStore = setOpenCodeRoleModelInStore(nextStore, configId, role, null);
-    }
-    return role === "main"
-      ? parsed.mainModel?.ref ?? null
-      : parsed.subtaskModel?.ref ?? null;
-  };
-
-  const main = resolveRole("main");
-  const configuredSubtask = resolveRole("subtask");
-  const fallback: Partial<Record<OpenCodeCanonicalModelRole, string>> = {};
-  const subtask = configuredSubtask ?? main;
-  if (!configuredSubtask && main) {
-    fallback.subtask = "subtask model missing; using main model";
-  }
-  if (nextStore !== modelStore) {
-    modelStore = nextStore;
-    writeModelStore(modelStore);
-  }
-  openCodeModelsState = {
-    models: parsed.candidates.map((candidate) => ({
-      ref: candidate.ref,
-      label: candidate.label,
-      providerId: candidate.providerId,
-      modelId: candidate.modelId,
-    })),
-    configPrimaryRef: parsed.mainModelRef,
-    configSmallRef: parsed.subtaskModelRef,
-    selectedPrimaryRef: main,
-    selectedSmallRef: subtask,
-    issues: issues.map((issue) => ({
-      ...(issue.role ? { role: toOpenCodeConfigFieldRole(issue.role) } : {}),
-      code: issue.code,
-      messageKey: `opencodeModels.issue.${issue.code}`,
-    })),
-  };
-  return { main, subtask, fallback };
-}
-
-async function refreshOpenCodeThinkingState(configState: PanelState["configState"]): Promise<void> {
-  if (currentCli !== "opencode") {
-    openCodeThinkingRequestId += 1;
-    openCodeThinkingContextKey = `inactive:${currentCli}`;
-    openCodeThinkingConfigId = null;
-    openCodeThinkingExactModels = { main: null, subtask: null };
-    openCodeThinkingState = buildDefaultOpenCodeThinkingState();
-    openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
-    openCodeModelsState = undefined;
-    return;
-  }
-
-  const configId = resolveModelConfigIdForCli("opencode", configState);
-  const activeConfig = configId
-    ? await configService.getConfigById("opencode", configId)
-    : await configService.getCurrentConfig("opencode");
-  const configContent = activeConfig?.content ?? "{}";
-  const roleModels = resolveOpenCodeRoleModelsForConfig(configId, configContent);
-  const command = getCliCommand("opencode");
-  const configHash = createHash("sha256").update(configContent).digest("hex");
-  const contextKey = [
-    command,
-    configId ?? "current",
-    configHash,
-    roleModels.main ?? "",
-    roleModels.subtask ?? "",
-  ].join("\u0000");
-  if (contextKey === openCodeThinkingContextKey) {
-    return;
-  }
-
-  openCodeThinkingContextKey = contextKey;
-  openCodeThinkingConfigId = configId;
-  openCodeThinkingExactModels = {
-    main: roleModels.main,
-    subtask: roleModels.subtask,
-  };
-  const requestId = ++openCodeThinkingRequestId;
-  const refreshRoleThinking = (role: OpenCodeCanonicalModelRole, exactModel: string | null): void => {
-    setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
-      exactModel ? "loading" : "select-model",
-      exactModel
-    ));
-    if (!exactModel) {
-      return;
-    }
-
-    const persistedVariant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role);
-    void resolveOpenCodeThinkingCapability({
-      command,
-      configIdentity: `${configId ?? "current"}:${configHash}:${role}`,
-      configContent,
-      model: exactModel,
-      selectedVariant: persistedVariant,
-    }).then((capability) => {
-      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-        return;
-      }
-      const selectedVariant = persistedVariant
-        && capability.options.some((option) => option.value === persistedVariant)
-        ? persistedVariant
-        : null;
-      if (persistedVariant && !selectedVariant) {
-        persistOpenCodeVariant(configId, exactModel, role, null);
-      }
-      setOpenCodeThinkingStateForRole(role, {
-        ...capability,
-        selectedVariant,
-        disabled: capability.options.length === 0,
-      });
-      void postPanelState();
-    }).catch(() => {
-      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-        return;
-      }
-      if (persistedVariant) {
-        persistOpenCodeVariant(configId, exactModel, role, null);
-      }
-      setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
-        "metadata-error",
-        exactModel
-      ));
-      void postPanelState();
-    });
-  };
-  refreshRoleThinking("main", roleModels.main);
-  refreshRoleThinking("subtask", roleModels.subtask);
-}
-
-function getOpenCodeVariantForRun(
-  cli: CliName,
-  model: string | null | undefined,
-  configId: string | null,
-  configContent: string | null | undefined,
-  role: OpenCodeModelRoleInput = "main"
-): string | null {
-  const normalizedRole = normalizeOpenCodeModelRole(role);
-  if (cli !== "opencode" || !configId) {
-    return null;
-  }
-  const resolution = resolveOpenCodeModelForConfig(model, configContent);
-  const exactModel = resolution.error ? null : resolution.model;
-  if (!exactModel || exactModel !== openCodeThinkingExactModels[normalizedRole] || configId !== openCodeThinkingConfigId) {
-    return null;
-  }
-  const state = getOpenCodeThinkingStateForRole(normalizedRole);
-  const variant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, normalizedRole);
-  return variant && state.options.some((option) => option.value === variant)
-    ? variant
-    : null;
-}
 
 async function postPanelState(): Promise<void> {
   const state = await buildPanelState();
@@ -1641,6 +1317,13 @@ function postEditorContextState(): void {
     payload: buildEditorContextState(),
   });
 }
+
+const promptRunRuntimeHost = createPromptRunRuntimeHost({ getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopDebateChatMessageAction: (taskId, round) => buildLoopDebateChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), cancelLoopTaskAutoWake: (taskId) => cancelLoopTaskAutoWake(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), formatLoopAutoWakeAtForRecord: (value) => formatLoopAutoWakeAtForRecord(value), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeConversationTabAndRefreshPanel(tabId) });
+const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, showLoopAutoSleepMessage, buildLoopAutoSleepMessageMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
+const modelSettingsHost = createModelSettingsHost({ getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatSnapshot, getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
+const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getWorkspaceLoopExecutionMode, setWorkspaceLoopExecutionModeForCli, buildWorkspaceLoopExecutionModeByCli, getGlobalMultiAgentEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, startCodeGraphWorkspaceSetup, createCodeGraphTerminal, installCodeGraphForWorkspace, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopSubtaskMaxThinkingMode, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel, selectCliLoopModel, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
+const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => activeTabIdForRun, getActiveSessionId: () => activeSessionId, persistSessionStore: (store) => persistSessionStore(store), getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
+const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, normalizeChatGraphRunId, resolveGraphRunIdFromMessages, resolveSessionGraphRunIdFromMessages, resolveConversationTabGraphRunId, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, createGraphNodeRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, persistSessionStore, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 const inspectModelManagerState = createPanelDiagnosticsInspector({
   getWorkspaceKey: () => activeWorkspaceKey,
@@ -2501,23 +2184,80 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   t,
 });
 
-const graphRunPanelCoordinator = createGraphRunPanelCoordinator({
+
+const graphMessagesHost = createGraphMessagesHost({
+  resolveLocale,
+  getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId),
+  getLoopMessagesForTarget,
+  appendSystemMessageForLoop,
+  appendMessageToStore,
+  sendPanelMessage,
+  persistLoopMessagesForTarget,
+  createMessageId,
+});
+
+let graphRuntimeHost: GraphRuntimeHost;
+
+const graphControlsHost: GraphControlsHost = createGraphControlsHost({
   getExtensionUri: () => extensionUri,
   panelsByRunId: graphRunPanelsByRunId,
-  readRunRecord: (graphRunId) => readGraphRunRecord(graphRunId),
-  findLatestRun: () => findLatestGraphRun({
-    workspaceKey: activeWorkspaceKey,
-    cli: currentCli,
-  }),
-  readEvents: readGraphEvents,
-  continueRun: (graphRunId) => continueGraphRunFromPanel(graphRunId),
-  supplementRun: (graphRunId, prompt) => supplementGraphRunFromPanel(graphRunId, prompt),
-  retryNode: (graphRunId, nodeId) => retryGraphNodeFromPanel(graphRunId, nodeId),
-  feedbackNode: (graphRunId, nodeId) => feedbackGraphNodeFromPanel(graphRunId, nodeId),
-  stopRun: (graphRunId) => stopGraphRunFromPanel(graphRunId),
+  getActiveWorkspaceKey: () => activeWorkspaceKey,
+  getCurrentCli: () => currentCli,
+  postPanelState,
+  resolvePromptRunTarget,
+  findConversationTabIdBySession,
+  getActiveConversationTab,
+  addConversationTab,
+  switchVisibleConversationTabForLoop,
+  isTabRunActive,
+  getActiveConfigIdForCli,
+  stopParallelRunForTab,
+  getParallelRunsByTabId: () => parallelRunsByTabId,
+  getInteractiveRunsByTabId: () => interactiveRunsByTabId,
+  isPrimaryRunActive,
+  getActiveTaskRun: () => activeTaskRun,
+  stopActiveRun,
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
+  errorToMessage,
+  messages: graphMessagesHost,
+  runtime: {
+    resolveGraphResumePromptModels: (run, cli, configId) => graphRuntimeHost.resolveGraphResumePromptModels(run, cli, configId),
+    hydrateOpenCodePromptRoleModels: (input, cli) => graphRuntimeHost.hydrateOpenCodePromptRoleModels(input, cli),
+    tickGraphRunToPause: (run, input, target) => graphRuntimeHost.tickGraphRunToPause(run, input, target),
+    sendGraphMainRunTerminalStatus: (target, run) => graphRuntimeHost.sendGraphMainRunTerminalStatus(target, run),
+  },
   t,
+});
+
+graphRuntimeHost = createGraphRuntimeHost({
+  getActiveWorkspaceKey: () => activeWorkspaceKey,
+  getActiveConversationTabId,
+  resolvePromptRunTarget,
+  resolveGraphRunSessionId: (target) => {
+    const tab = getConversationTabById(target.tabId);
+    return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
+  },
+  getActiveConfigIdForCli,
+  getSelectedCliModel,
+  getSelectedLoopCliModel,
+  getSelectedLoopThinkingMode,
+  normalizeThinkingModeForCli,
+  getEffectiveThinkingMode,
+  getGlobalLoopSubtaskMaxThinkingMode,
+  isThinkingMode,
+  resolveOpenCodeRoleModelsForConfig,
+  createMessageId,
+  resolveWorkspaceCwd,
+  postPanelState,
+  persistGraphRunTickState: graphControlsHost.persistGraphRunTickState,
+  scheduleGraphRunAutoWake: graphControlsHost.scheduleGraphRunAutoWake,
+  sendRunStatusForTab,
+  createGraphNodeRunTarget,
+  runPrompt,
+  closeConversationTabAndRefreshPanel,
+  errorToMessage,
+  messages: graphMessagesHost,
 });
 
 function initializeLoopAutoWakeScheduler(context: vscode.ExtensionContext): void {
@@ -2611,294 +2351,59 @@ function attemptLoopTaskAutoWake(taskId: string): LoopAutoWakeAttemptResult {
 }
 
 function initializeGraphAutoWakeScheduler(context: vscode.ExtensionContext): void {
-  graphAutoWakeScheduler?.dispose();
-  graphAutoWakeScheduler = new GraphAutoWakeScheduler({
-    readRun: (graphRunId) => readGraphRunRecord(graphRunId).run,
-    onWake: attemptGraphRunAutoWake,
-    onError: (graphRunId, error) => {
-      void logError("graph-auto-wake-scheduler-error", {
-        graphRunId,
-        error: errorToMessage(error),
-      });
-    },
-  });
-  context.subscriptions.push(graphAutoWakeScheduler);
-  restoreGraphAutoWakeSchedules();
+  graphControlsHost.initializeGraphAutoWakeScheduler(context);
 }
 
 function restoreGraphAutoWakeSchedules(): void {
-  if (!graphAutoWakeScheduler) {
-    return;
-  }
-  const result = listGraphRuns({
-    workspaceKey: activeWorkspaceKey,
-    statuses: ["sleeping"],
-  });
-  if (result.errors.length > 0) {
-    void logError("graph-auto-wake-restore-partial-read", {
-      unreadableStoreFiles: result.diagnostics.unreadableStoreFiles,
-      errors: result.errors.slice(0, 3),
-    });
-  }
-  graphAutoWakeScheduler.restore(result.runs);
+  graphControlsHost.restoreGraphAutoWakeSchedules();
 }
 
 function scheduleGraphRunAutoWake(run: GraphRunRecord): void {
-  if (run.status === "sleeping" && resolveGraphRunAutoWakeAt(run) !== null) {
-    graphAutoWakeScheduler?.schedule(run);
-  } else {
-    graphAutoWakeScheduler?.cancel(run.id);
-  }
-  refreshOpenGraphRunPanelForRun(run.id);
+  graphControlsHost.scheduleGraphRunAutoWake(run);
 }
 
 function cancelGraphRunAutoWake(graphRunId: string): void {
-  graphAutoWakeScheduler?.cancel(graphRunId);
+  graphControlsHost.cancelGraphRunAutoWake(graphRunId);
 }
 
 function attemptGraphRunAutoWake(graphRunId: string): GraphAutoWakeAttemptResult {
-  const lookup = readGraphRunRecord(graphRunId);
-  const run = lookup.run;
-  if (!run || run.status !== "sleeping") {
-    return "discard";
-  }
-  if (run.workspaceKey !== activeWorkspaceKey) {
-    return "discard";
-  }
-  const wakeAt = resolveGraphRunAutoWakeAt(run);
-  if (wakeAt === null || wakeAt > Date.now()) {
-    return "retry";
-  }
-  const target = resolveGraphRunExistingPromptTarget(run);
-  if (target && isTabRunActive(target.tabId)) {
-    return "retry";
-  }
-  void continueGraphRunFromStore(graphRunId, {
-    source: "auto_wake",
-    reason: "Graph sleep wakeAt is due.",
-    preferredTargetTabId: target?.tabId ?? null,
-  }).then((result) => {
-    if (!result.ok) {
-      void logError("graph-auto-wake-failed", {
-        graphRunId,
-        message: result.message,
-      });
-    }
-  });
-  return "started";
+  return graphControlsHost.attemptGraphRunAutoWake(graphRunId);
 }
 
 async function continueGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return continueGraphRunFromStore(graphRunId, {
-    source: "panel",
-    reason: "Panel requested Graph run continue.",
-  });
+  return graphControlsHost.continueGraphRunFromPanel(graphRunId);
 }
 
 async function supplementGraphRunFromPanel(
   graphRunId: string,
   prompt: string,
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const supplementalRequirement = normalizeGraphSupplementalRequirement(prompt);
-  if (!supplementalRequirement) {
-    return {
-      ok: false,
-      changed: false,
-      message: graphRuntimeMessage("controlRejected", { detail: graphRuntimeMessage("supplementEmpty") }),
-      run: lookup.run,
-    };
-  }
-  if (lookup.run.status === "completed" || lookup.run.status === "stopped") {
-    return {
-      ok: false,
-      changed: false,
-      message: graphRuntimeMessage("controlRejected", { detail: graphRuntimeMessage("supplementUnavailable") }),
-      run: lookup.run,
-    };
-  }
-  const nextRequirements = appendGraphSupplementalRequirement(
-    lookup.run.supplementalRequirements,
-    supplementalRequirement,
-  );
-  const timestamp = Date.now();
-  const persisted = updateGraphRunRecord(lookup.run.id, {
-    supplementalRequirements: nextRequirements,
-    updatedAt: timestamp,
-  }) ?? lookup.run;
-  appendGraphSupplementalRequirementToCommunication(persisted, supplementalRequirement, timestamp);
-  appendGraphEvent(persisted.eventsFile, {
-    runId: persisted.id,
-    type: "run.updated",
-    timestamp,
-    summary: "Graph supplemental requirement added from panel.",
-    data: {
-      source: "panel",
-      supplementalRequirementCount: nextRequirements.length,
-    },
-  });
-  refreshOpenGraphRunPanelForRun(persisted.id);
-  await postPanelState();
-  return {
-    ok: true,
-    changed: true,
-    message: graphRuntimeMessage("supplementAccepted"),
-    run: persisted,
-  };
-}
-
-function normalizeGraphSupplementalRequirement(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized ? normalized : null;
-}
-
-function appendGraphSupplementalRequirement(
-  existing: readonly string[] | undefined,
-  nextItem: string,
-): string[] {
-  const normalizedExisting = Array.isArray(existing)
-    ? existing.map((item) => String(item).trim()).filter(Boolean)
-    : [];
-  return [...normalizedExisting, nextItem];
-}
-
-function appendGraphSupplementalRequirementToCommunication(
-  run: GraphRunRecord,
-  requirement: string,
-  timestamp: number,
-): void {
-  const body = [
-    `- 时间：${new Date(timestamp).toISOString()}`,
-    `- Graph 运行：${run.id}`,
-    requirement,
-  ].join("\n");
-  try {
-    fs.mkdirSync(path.dirname(run.mainCommunicationFile), { recursive: true });
-    fs.appendFileSync(run.mainCommunicationFile, `\n## 补充需求\n${body}\n`, "utf8");
-  } catch (error) {
-    void logError("graph-supplemental-requirement-write-error", {
-      graphRunId: run.id,
-      filePath: run.mainCommunicationFile,
-      error: String(error),
-    });
-  }
+  return graphControlsHost.supplementGraphRunFromPanel(graphRunId, prompt);
 }
 
 async function retryGraphNodeFromPanel(
   graphRunId: string,
   nodeId: string,
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const control = await retryGraphNodeForRun(lookup.run, nodeId, {
-    source: "panel",
-    reason: "Panel requested Graph node retry.",
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "retry");
-  }
-  const persisted = persistGraphRunControlResult(control);
-  scheduleGraphRunAutoWake(persisted);
-  return tickGraphRunToPauseFromControl(persisted, {
-    source: "panel",
-    reason: "Panel requested Graph node retry.",
-    preferredTargetTabId: null,
-    successKey: "retryStarted",
-  });
+  return graphControlsHost.retryGraphNodeFromPanel(graphRunId, nodeId);
 }
 
 async function skipGraphNodeFromPanel(
   graphRunId: string,
   nodeId: string,
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const control = await skipGraphNodeForRun(lookup.run, nodeId, {
-    source: "panel",
-    reason: "Panel requested Graph node skip and downstream continue.",
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "skip");
-  }
-  const persisted = persistGraphRunControlResult(control);
-  scheduleGraphRunAutoWake(persisted);
-  return tickGraphRunToPauseFromControl(persisted, {
-    source: "panel",
-    reason: "Panel requested Graph node skip and downstream continue.",
-    preferredTargetTabId: null,
-    successKey: "skipStarted",
-  });
+  return graphControlsHost.skipGraphNodeFromPanel(graphRunId, nodeId);
 }
 
 async function feedbackGraphNodeFromPanel(
   graphRunId: string,
   nodeId: string,
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const control = await feedbackGraphNodeForRun(lookup.run, nodeId, {
-    source: "panel",
-    reason: "Panel requested Graph upstream feedback rollback.",
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "feedback");
-  }
-  const persisted = persistGraphRunControlResult(control);
-  scheduleGraphRunAutoWake(persisted);
-  return tickGraphRunToPauseFromControl(persisted, {
-    source: "panel",
-    reason: "Panel requested Graph upstream feedback rollback.",
-    preferredTargetTabId: null,
-    successKey: "feedbackStarted",
-  });
+  return graphControlsHost.feedbackGraphNodeFromPanel(graphRunId, nodeId);
 }
 
 async function stopGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const target = resolveGraphRunExistingPromptTarget(lookup.run);
-  const stoppedCliRuns = stopActiveCliRunsForGraphRun(graphRunId);
-  const control = await stopGraphRunRecord(lookup.run, {
-    source: "panel",
-    reason: "Panel requested Graph run stop.",
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "stop");
-  }
-  const persisted = persistGraphRunControlResult(control);
-  cancelGraphRunAutoWake(graphRunId);
-  refreshOpenGraphRunPanelForRun(graphRunId);
-  if (target) {
-    sendGraphMainRunTerminalStatus(target, persisted);
-  }
-  await postPanelState();
-  return {
-    ok: true,
-    changed: control.changed,
-    message: graphRuntimeMessage(stoppedCliRuns > 0 ? "stopWithCli" : "stopStateOnly", {
-      graphRunId,
-      count: stoppedCliRuns,
-    }),
-    run: persisted,
-  };
+  return graphControlsHost.stopGraphRunFromPanel(graphRunId);
 }
 
 async function continueGraphRunFromStore(
@@ -2909,331 +2414,38 @@ async function continueGraphRunFromStore(
     preferredTargetTabId?: string | null;
   },
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run) {
-    return createGraphPanelMissingRunResult(graphRunId, lookup.errors);
-  }
-  const control = await resumeGraphRunRecord(lookup.run, {
-    source: options.source,
-    reason: options.reason,
-    appendEvent: (run, event) => appendGraphEvent(run.eventsFile, event),
-  });
-  if (!control.ok) {
-    return toGraphPanelControlResult(control, "continue");
-  }
-  const persisted = control.changed
-    ? persistGraphRunControlResult(control)
-    : control.run;
-  cancelGraphRunAutoWake(persisted.id);
-  return tickGraphRunToPauseFromControl(persisted, {
-    source: options.source,
-    reason: options.reason,
-    preferredTargetTabId: options.preferredTargetTabId ?? null,
-    successKey: "continueStarted",
-  });
-}
-
-async function tickGraphRunToPauseFromControl(
-	  run: GraphRunRecord,
-	  options: {
-	    source: GraphRunControlSource;
-	    reason: string;
-	    preferredTargetTabId?: string | null;
-	    successKey: "continueStarted" | "retryStarted" | "feedbackStarted" | "skipStarted";
-	  },
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  const target = await resolveGraphRunPromptTarget(run, options.preferredTargetTabId ?? null);
-  if (!target) {
-    return {
-      ok: false,
-      changed: false,
-      message: graphRuntimeMessage("targetMissing", { graphRunId: run.id }),
-      run,
-    };
-  }
-  if (isTabRunActive(target.tabId)) {
-    return {
-      ok: false,
-      changed: false,
-      message: graphRuntimeMessage("targetBusy", { graphRunId: run.id }),
-      run,
-    };
-  }
-
-  const activeConfigId = getActiveConfigIdForCli(target.cli);
-  const prompt = graphRuntimeMessage("resumePrompt", { graphRunId: run.id });
-  const modelFields = resolveGraphResumePromptModels(run, target.cli, activeConfigId);
-  const promptInput = await hydrateOpenCodePromptRoleModels({
-    displayPrompt: prompt,
-    modelPrompt: run.rootPrompt || prompt,
-    contextTags: [],
-    ...modelFields,
-    graphRunId: run.id,
-  }, target.cli);
-  const outcome = await tickGraphRunToPause(run, promptInput, target);
-  return {
-    ok: true,
-    changed: true,
-    message: outcome.progressed
-      ? graphRuntimeMessage(options.successKey, { graphRunId: outcome.run.id })
-      : graphRuntimeMessage("noRunnableNode", { graphRunId: outcome.run.id }),
-    run: outcome.run,
-  };
-}
-
-function persistGraphRunControlResult(result: GraphRunControlResult): GraphRunRecord {
-  return updateGraphRunRecord(result.run.id, result.run) ?? result.run;
+  return graphControlsHost.continueGraphRunFromStore(graphRunId, options);
 }
 
 function persistGraphRunTickState(nextRun: GraphRunRecord): GraphRunRecord {
-  const latest = readGraphRunRecord(nextRun.id).run;
-  if (latest?.status === "stopped" && nextRun.status !== "stopped") {
-    refreshOpenGraphRunPanelForRun(latest.id);
-    return latest;
-  }
-  const persisted = updateGraphRunRecord(nextRun.id, nextRun) ?? nextRun;
-  refreshOpenGraphRunPanelForRun(persisted.id);
-  return persisted;
-}
-
-function createGraphPanelMissingRunResult(
-  graphRunId: string,
-  errors: readonly { storeFile: string; error: string }[] = [],
-): { ok: false; changed: false; message: string; run: null } {
-  return {
-    ok: false,
-    changed: false,
-    message: errors.length
-      ? graphRuntimeMessage("runReadFailed", { graphRunId, detail: errors.slice(0, 3).map((error) => `${error.storeFile}: ${error.error}`).join("\n") })
-      : graphRuntimeMessage("runMissing", { graphRunId }),
-    run: null,
-  };
-}
-
-function toGraphPanelControlResult(
-  result: GraphRunControlResult,
-  action: "continue" | "retry" | "feedback" | "skip" | "stop",
-): { ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null } {
-  if (result.ok) {
-    const acceptedMessageKey: Record<typeof action, GraphRuntimeMessageKey> = {
-      continue: "continueAccepted",
-      feedback: "feedbackAccepted",
-      retry: "retryAccepted",
-      skip: "skipAccepted",
-      stop: "stopAccepted",
-    };
-    return {
-      ok: true,
-      changed: result.changed,
-      message: graphRuntimeMessage(acceptedMessageKey[action]),
-      run: result.run,
-    };
-  }
-  return {
-    ok: false,
-    changed: false,
-    message: graphRuntimeMessage("controlRejected", {
-      detail: formatGraphControlBlockedReason(result.reason, result.message),
-    }),
-    run: result.run,
-  };
+  return graphControlsHost.persistGraphRunTickState(nextRun);
 }
 
 function refreshOpenGraphRunPanelForRun(graphRunId: string): void {
-  graphRunPanelCoordinator.refreshOpenPanelForRun(graphRunId);
+  graphControlsHost.refreshOpenGraphRunPanelForRun(graphRunId);
 }
 
 function resolveGraphRunExistingPromptTarget(run: GraphRunRecord): PromptRunTarget | null {
-  if (run.sessionId) {
-    const existingTabId = findConversationTabIdBySession(run.cli, run.sessionId);
-    const existingTarget = resolveGraphRunPromptTargetByTabId(existingTabId, run.cli);
-    if (existingTarget) {
-      return existingTarget;
-    }
-  }
-  const activeTab = getActiveConversationTab();
-  if (activeTab?.cli === run.cli) {
-    return resolveGraphRunPromptTargetByTabId(activeTab.id, run.cli);
-  }
-  return null;
-}
-
-async function resolveGraphRunPromptTarget(
-  run: GraphRunRecord,
-  preferredTabId: string | null,
-): Promise<PromptRunTarget | null> {
-  const preferredTarget = resolveGraphRunPromptTargetByTabId(preferredTabId, run.cli);
-  if (preferredTarget) {
-    await switchVisibleConversationTabForLoop(preferredTarget.tabId);
-    return preferredTarget;
-  }
-
-  const existingTarget = resolveGraphRunExistingPromptTarget(run);
-  if (existingTarget) {
-    await switchVisibleConversationTabForLoop(existingTarget.tabId);
-    return existingTarget;
-  }
-
-  const tabId = addConversationTab(run.cli, run.sessionId ?? null);
-  if (!tabId) {
-    return null;
-  }
-  await switchVisibleConversationTabForLoop(tabId);
-  return resolveGraphRunPromptTargetByTabId(tabId, run.cli);
-}
-
-function resolveGraphRunPromptTargetByTabId(tabId: string | null, cli: CliName): PromptRunTarget | null {
-  const target = resolvePromptRunTarget(tabId);
-  return target?.cli === cli ? target : null;
+  return graphControlsHost.resolveGraphRunExistingPromptTarget(run);
 }
 
 function stopActiveCliRunsForGraphRun(graphRunId: string): number {
-  let stoppedCount = 0;
-  const parallelTabIds = Array.from(parallelRunsByTabId.entries())
-    .filter(([, run]) => run.graphRunId === graphRunId)
-    .map(([tabId]) => tabId);
-  parallelTabIds.forEach((tabId) => {
-    if (stopParallelRunForTab(tabId, graphRuntimeMessage("stopRequested"))) {
-      stoppedCount += 1;
-    }
-  });
-
-  const interactiveTabIds = Array.from(interactiveRunsByTabId.entries())
-    .filter(([, run]) => run.graphRunId === graphRunId && !run.stopped)
-    .map(([tabId]) => tabId);
-  interactiveTabIds.forEach((tabId) => {
-    const run = interactiveRunsByTabId.get(tabId);
-    if (run && !run.stopped) {
-      run.stop();
-      stoppedCount += 1;
-    }
-  });
-
-  if (isPrimaryRunActive() && activeTaskRun?.graphRunId === graphRunId) {
-    stopActiveRun();
-    stoppedCount += 1;
-  }
-  return stoppedCount;
+  return graphControlsHost.stopActiveCliRunsForGraphRun(graphRunId);
 }
-
-function formatGraphControlBlockedReason(reason: string | undefined, fallback: string): string {
-  const zh = resolveLocale() === "zh-CN";
-  const messages: Record<string, string> = zh ? {
-    already_running: "运行已在执行中",
-    already_stopped: "运行已停止",
-    completed_run: "已完成的运行不能继续操作",
-	    terminal_run: "终态运行不能继续操作",
-	    not_resumable: "当前状态不可继续",
-	    node_not_found: "节点不存在",
-	    node_not_retryable: "节点当前不可重试",
-	    node_not_skippable: "节点当前不可跳过",
-	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
-	    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
-	    worktree_reset_failed: "Graph worktree 回退失败",
-	  } : {
-    already_running: "The run is already running.",
-    already_stopped: "The run is already stopped.",
-    completed_run: "Completed runs cannot be changed.",
-	    terminal_run: "Terminal runs cannot be changed.",
-	    not_resumable: "The run is not resumable from its current status.",
-	    node_not_found: "The node was not found.",
-	    node_not_retryable: "The node is not retryable from its current status.",
-	    node_not_skippable: "The node is not skippable from its current status.",
-	    feedback_not_available: "The node has no available upstream checkpoint; direct mode does not support Feedback rollback.",
-	    passed_descendants: "The node has passed descendants and needs a later cascade reset flow.",
-	    worktree_reset_failed: "The Graph worktree could not be reset.",
-	  };
-  return reason ? (messages[reason] ?? fallback) : fallback;
-}
-
-type GraphRuntimeMessageKey =
-	  | "continueAccepted"
-	  | "continueStarted"
-	  | "controlRejected"
-	  | "feedbackAccepted"
-	  | "feedbackStarted"
-	  | "noRunnableNode"
-  | "resumePrompt"
-  | "retryAccepted"
-  | "retryStarted"
-  | "runMissing"
-  | "runReadFailed"
-  | "skipAccepted"
-  | "skipStarted"
-  | "stopAccepted"
-  | "stopRequested"
-  | "stopStateOnly"
-  | "stopWithCli"
-  | "supplementAccepted"
-  | "supplementEmpty"
-  | "supplementUnavailable"
-  | "targetBusy"
-  | "targetMissing";
 
 function graphRuntimeMessage(
   key: GraphRuntimeMessageKey,
   params: Record<string, string | number | undefined> = {},
 ): string {
-  const zh = resolveLocale() === "zh-CN";
-  const graphRunId = String(params.graphRunId ?? "");
-  const detail = String(params.detail ?? "");
-  const count = String(params.count ?? "");
-	  const messages: Record<GraphRuntimeMessageKey, string> = zh ? {
-	    continueAccepted: "Graph 继续请求已记录。",
-	    continueStarted: `Graph 运行已继续：${graphRunId}`,
-	    controlRejected: `Graph 操作未执行：${detail}`,
-	    feedbackAccepted: "Graph 上游返工回退请求已记录。",
-	    feedbackStarted: `Graph 已回退上游节点并继续运行：${graphRunId}`,
-	    noRunnableNode: `Graph 运行没有可执行节点，已刷新面板：${graphRunId}`,
-    resumePrompt: `继续 Graph 运行：${graphRunId}`,
-    retryAccepted: "节点重试请求已记录。",
-    retryStarted: `Graph 节点已重试并继续运行：${graphRunId}`,
-    runMissing: `找不到 Graph 运行：${graphRunId}`,
-    runReadFailed: `Graph 运行读取失败：${graphRunId}\n${detail}`.trim(),
-    skipAccepted: "节点跳过请求已记录。",
-    skipStarted: `Graph 已跳过阻塞节点并继续下游：${graphRunId}`,
-    stopAccepted: "Graph 停止请求已记录。",
-    stopRequested: "Graph 运行已由用户请求停止。",
-    stopStateOnly: `Graph 运行状态已落盘为 stopped：${graphRunId}。未找到活动 CLI 进程映射；真实 CLI 进程未被确认停止。`,
-    stopWithCli: `Graph 运行状态已落盘为 stopped：${graphRunId}。已向 ${count} 个已映射活动 CLI 运行发送停止请求；真实进程是否退出取决于底层 CLI 响应。`,
-    supplementAccepted: "Graph 补充消息已记录，后续节点会读取。",
-    supplementEmpty: "补充消息不能为空。",
-    supplementUnavailable: "已完成或已停止的 Graph 运行不能补充消息。",
-    targetBusy: `Graph 运行目标标签页当前有任务在执行：${graphRunId}`,
-    targetMissing: `无法为 Graph 运行找到可用执行标签页：${graphRunId}`,
-	  } : {
-	    continueAccepted: "The Graph continue request was recorded.",
-	    continueStarted: `Graph run continued: ${graphRunId}`,
-	    controlRejected: `Graph action was not run: ${detail}`,
-	    feedbackAccepted: "The Graph upstream feedback rollback request was recorded.",
-	    feedbackStarted: `Graph upstream feedback rollback started and the run continued: ${graphRunId}`,
-	    noRunnableNode: `Graph run has no executable node; the panel was refreshed: ${graphRunId}`,
-    resumePrompt: `Continue Graph run: ${graphRunId}`,
-    retryAccepted: "The node retry request was recorded.",
-    retryStarted: `Graph node retry started and the run continued: ${graphRunId}`,
-    runMissing: `Graph run was not found: ${graphRunId}`,
-    runReadFailed: `Graph run could not be read: ${graphRunId}\n${detail}`.trim(),
-    skipAccepted: "The node skip request was recorded.",
-    skipStarted: `Graph skipped the blocked node and continued downstream: ${graphRunId}`,
-    stopAccepted: "The Graph stop request was recorded.",
-    stopRequested: "Graph run stop was requested by the user.",
-    stopStateOnly: `Graph run state was persisted as stopped: ${graphRunId}. No active CLI process mapping was found; no real CLI process stop was confirmed.`,
-    stopWithCli: `Graph run state was persisted as stopped: ${graphRunId}. Sent stop requests to ${count} mapped active CLI run(s); real process exit depends on the underlying CLI response.`,
-    supplementAccepted: "The Graph supplemental message was recorded for later nodes.",
-    supplementEmpty: "The supplemental message cannot be empty.",
-    supplementUnavailable: "Completed or stopped Graph runs cannot accept supplemental messages.",
-    targetBusy: `The Graph run target tab is currently busy: ${graphRunId}`,
-    targetMissing: `No executable tab could be found for Graph run: ${graphRunId}`,
-  };
-  return messages[key];
+  return graphMessagesHost.graphRuntimeMessage(key, params);
+}
+
+async function openGraphRunPanel(arg?: unknown): Promise<void> {
+  await graphControlsHost.openGraphRunPanel(arg);
 }
 
 async function openLoopGroupChatPanel(arg?: unknown): Promise<void> {
   await loopDebateChatPanelCoordinator.open(arg);
-}
-
-async function openGraphRunPanel(arg?: unknown): Promise<void> {
-  await graphRunPanelCoordinator.open(arg);
 }
 
 function normalizeLoopContinuePrompt(value: unknown): string {
@@ -3343,52 +2555,8 @@ function ensureLoopMainSubChatTranscript(task: LoopTaskRecord): string {
   });
 }
 
-type PromptRunInput = {
-  displayPrompt: string;
-  modelPrompt: string;
-  contextTags: string[];
-  preloadedUserMessageId?: string;
-  model?: string;
-  loopMainModel?: string;
-  loopSubtaskModel?: string;
-  loopMainThinkingMode?: ThinkingMode;
-  loopSubtaskThinkingMode?: ThinkingMode;
-  loopMainModelFallback?: string;
-  loopSubtaskModelFallback?: string;
-  loopExecutionMode?: LoopExecutionMode;
-  loopContinuePrompt?: string;
-  imagePaths?: string[];
-  taskRole?: LoopTaskRole;
-  loopTaskId?: string;
-  loopRound?: number;
-  loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
-  executionCwd?: string;
-  isolateProjectInstructions?: boolean;
-  skipLongTermMemoryPersist?: boolean;
-  thinkingModeOverride?: ThinkingMode;
-  throwOnError?: boolean;
-};
-
-type PromptRunTarget = {
-  tabId: string;
-  cli: CliName;
-  sessionId: string | null;
-};
-
-function normalizePromptRunModel(value: string | undefined): string | undefined {
-  return normalizeCliModelName(value) ?? undefined;
-}
-
 function resolvePromptRunModelForRole(input: PromptRunInput, role: GraphModelRole): string | undefined {
-  const mainModel = normalizePromptRunModel(input.loopMainModel) ?? normalizePromptRunModel(input.model);
-  const subtaskModel = normalizePromptRunModel(input.loopSubtaskModel)
-    ?? normalizePromptRunModel(input.model)
-    ?? mainModel;
-  return role === "subtask"
-    ? (subtaskModel ?? mainModel)
-    : (mainModel ?? subtaskModel);
+  return graphRuntimeHost.resolvePromptRunModelForRole(input, role);
 }
 
 function resolvePromptRunThinkingModeForRole(
@@ -3396,119 +2564,28 @@ function resolvePromptRunThinkingModeForRole(
   cli: CliName,
   role: GraphModelRole,
   model: string | undefined,
-  options: { applySubtaskCap?: boolean } = {}
+  options: { applySubtaskCap?: boolean } = {},
 ): ThinkingMode | undefined {
-  const roleModel = normalizePromptRunModel(model)
-    ?? resolvePromptRunModelForRole(input, role)
-    ?? getSelectedCliModel(cli)
-    ?? undefined;
-  const explicitThinkingMode = role === "subtask"
-    ? input.loopSubtaskThinkingMode
-    : input.loopMainThinkingMode;
-  const roleThinkingMode = cli === "codex" && isThinkingMode(explicitThinkingMode)
-    ? normalizeThinkingModeForCli(cli, explicitThinkingMode)
-    : cli === "codex"
-      ? getSelectedLoopThinkingMode(cli, role, roleModel) ?? undefined
-      : undefined;
-  const resolvedThinkingMode = roleThinkingMode
-    ?? (options.applySubtaskCap && role === "subtask"
-      ? getEffectiveThinkingMode(cli, roleModel ?? getSelectedCliModel(cli))
-      : undefined);
-  if (!resolvedThinkingMode) {
-    return undefined;
-  }
-  return options.applySubtaskCap && role === "subtask"
-    ? resolveLoopSubtaskThinkingMode(resolvedThinkingMode, getGlobalLoopSubtaskMaxThinkingMode())
-    : resolvedThinkingMode;
+  return graphRuntimeHost.resolvePromptRunThinkingModeForRole(input, cli, role, model, options);
 }
 
 function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRole): string {
-  if (role === "main") {
-    if (input.loopMainModelFallback) {
-      return input.loopMainModelFallback;
-    }
-    if (normalizePromptRunModel(input.loopMainModel)) {
-      return "none";
-    }
-    if (normalizePromptRunModel(input.model)) {
-      return "loop main model missing; using selected single model";
-    }
-    if (normalizePromptRunModel(input.loopSubtaskModel)) {
-      return "loop main model missing; using subtask model";
-    }
-    return "no explicit model selected; CLI default applies";
-  }
-  if (input.loopSubtaskModelFallback) {
-    return input.loopSubtaskModelFallback;
-  }
-  if (normalizePromptRunModel(input.loopSubtaskModel)) {
-    return "none";
-  }
-  if (normalizePromptRunModel(input.model)) {
-    return "loop subtask model missing; using selected single model";
-  }
-  if (normalizePromptRunModel(input.loopMainModel)) {
-    return "loop subtask model missing; using main model";
-  }
-  return "no explicit model selected; CLI default applies";
+  return graphRuntimeHost.resolvePromptRunModelFallback(input, role);
 }
 
 function buildGraphRunModelRouting(input: PromptRunInput): GraphRunModelRoutingRecord {
-  const plannerModel = resolvePromptRunModelForRole(input, "main");
-  const executorModel = resolvePromptRunModelForRole(input, "subtask");
-  const plannerFallback = resolvePromptRunModelFallback(input, "main");
-  const executorFallback = resolvePromptRunModelFallback(input, "subtask");
-  return {
-    planner: {
-      role: "main",
-      ...(plannerModel ? { model: plannerModel } : {}),
-      ...(plannerFallback !== "none" ? { fallback: plannerFallback } : {}),
-    },
-    executor: {
-      role: "subtask",
-      ...(executorModel ? { model: executorModel } : {}),
-      ...(executorFallback !== "none" ? { fallback: executorFallback } : {}),
-    },
-  };
+  return graphRuntimeHost.buildGraphRunModelRouting(input);
 }
 
 function applyGraphNodeModelRoute(
   node: GraphNodeRecord,
   route: GraphRunModelRoutingRecord["planner"],
 ): GraphNodeRecord {
-  const rest: GraphNodeRecord = { ...node };
-  delete rest.modelRole;
-  delete rest.model;
-  delete rest.modelFallback;
-  return {
-    ...rest,
-    modelRole: route.role,
-    ...(route.model ? { model: route.model } : {}),
-    ...(route.fallback ? { modelFallback: route.fallback } : {}),
-  };
+  return graphRuntimeHost.applyGraphNodeModelRoute(node, route);
 }
 
 function applyGraphRunModelRouting(run: GraphRunRecord): GraphRunRecord {
-  const routing = run.modelRouting;
-  if (!routing) {
-    return run;
-  }
-  return {
-    ...run,
-    nodes: run.nodes.map((node) => applyGraphNodeModelRoute(
-      node,
-      resolveGraphNodeModelRoute(node, routing),
-    )),
-  };
-}
-
-function resolveGraphNodeModelRoute(
-  node: GraphNodeRecord,
-  routing: GraphRunModelRoutingRecord,
-): GraphRunModelRoutingRecord["planner"] {
-  return node.id === GRAPH_AI_PLANNER_NODE_ID || node.kind === "summary"
-    ? routing.planner
-    : routing.executor;
+  return graphRuntimeHost.applyGraphRunModelRouting(run);
 }
 
 function resolveGraphResumePromptModels(
@@ -3516,49 +2593,11 @@ function resolveGraphResumePromptModels(
   cli: CliName,
   configId: string | null,
 ): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
-  if (cli !== "codex" && cli !== "opencode") {
-    const selectedModel = getSelectedCliModel(cli, configId) ?? undefined;
-    return selectedModel ? { model: selectedModel } : {};
-  }
-  const loopMainModel = run.modelRouting?.planner.model
-    ?? getSelectedLoopCliModel(cli, "main", configId)
-    ?? getSelectedCliModel(cli, configId)
-    ?? undefined;
-  const loopSubtaskModel = run.modelRouting?.executor.model
-    ?? getSelectedLoopCliModel(cli, "subtask", configId)
-    ?? getSelectedCliModel(cli, configId)
-    ?? loopMainModel
-    ?? undefined;
-  return {
-    ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
-    ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
-    ...(run.modelRouting?.planner.fallback ? { loopMainModelFallback: run.modelRouting.planner.fallback } : {}),
-    ...(run.modelRouting?.executor.fallback ? { loopSubtaskModelFallback: run.modelRouting.executor.fallback } : {}),
-  };
+  return graphRuntimeHost.resolveGraphResumePromptModels(run, cli, configId);
 }
 
 async function hydrateOpenCodePromptRoleModels(input: PromptRunInput, cli: CliName): Promise<PromptRunInput> {
-  if (cli !== "opencode") {
-    return input;
-  }
-  const configId = getActiveConfigIdForCli("opencode");
-  const activeConfig = configId
-    ? await configService.getConfigById("opencode", configId)
-    : null;
-  const current = activeConfig ?? await configService.getCurrentConfig("opencode");
-  const roles = resolveOpenCodeRoleModelsForConfig(configId, current.content ?? "{}");
-  const explicitMain = normalizePromptRunModel(input.loopMainModel);
-  const explicitSubtask = normalizePromptRunModel(input.loopSubtaskModel);
-  const explicitSingle = normalizePromptRunModel(input.model);
-  const loopMainModel = explicitMain ?? explicitSingle ?? roles.main ?? undefined;
-  const loopSubtaskModel = explicitSubtask ?? roles.subtask ?? explicitSingle ?? loopMainModel ?? undefined;
-  return {
-    ...input,
-    ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
-    ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
-    ...(roles.fallback.main ? { loopMainModelFallback: roles.fallback.main } : {}),
-    ...(roles.fallback.subtask ? { loopSubtaskModelFallback: roles.fallback.subtask } : {}),
-  };
+  return graphRuntimeHost.hydrateOpenCodePromptRoleModels(input, cli);
 }
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
@@ -3814,83 +2853,7 @@ function disposeInteractiveRunnerIfUnused(binding: InteractiveSessionBinding | n
   interactiveRunnerManager.disposeIfMatches(binding.cli, binding.sessionId ?? null);
 }
 
-function resolvePromptRunTarget(tabId: string | null): PromptRunTarget | null {
-  if (!tabId) {
-    return null;
-  }
-  const tab = getConversationTabById(tabId);
-  if (!tab) {
-    return null;
-  }
-  return {
-    tabId: tab.id,
-    cli: tab.cli,
-    sessionId: tab.sessionId,
-  };
-}
-
-function collectRecentLoopTaskIdsForTarget(target: PromptRunTarget, limit = 12): string[] {
-  return collectRecentLoopTaskIdsFromMessages(getLoopMessagesForTarget(target), limit);
-}
-
-function isLoopTaskCompatibleWithTarget(
-  task: LoopTaskRecord,
-  target: PromptRunTarget,
-  options: { allowMissingTaskSessionId?: boolean } = {}
-): boolean {
-  if (task.cli !== target.cli || task.workspaceKey !== activeWorkspaceKey) {
-    return false;
-  }
-  const targetSessionId = resolveLoopTaskSessionId(target);
-  return isLoopTaskSessionCompatible(task, targetSessionId, options);
-}
-
-function findResumableLoopTaskForTarget(target: PromptRunTarget): LoopTaskRecord | null {
-  const candidates: LoopTaskRecord[] = [];
-  const seenTaskIds = new Set<string>();
-
-  const appendCandidate = (
-    task: LoopTaskRecord | null | undefined,
-    options: { allowMissingTaskSessionId?: boolean } = {}
-  ): void => {
-    if (
-      !task
-      || seenTaskIds.has(task.id)
-      || !isLoopTaskCompatibleWithTarget(task, target, {
-        allowMissingTaskSessionId: options.allowMissingTaskSessionId,
-      })
-    ) {
-      return;
-    }
-    seenTaskIds.add(task.id);
-    candidates.push(task);
-  };
-
-  const recentTaskIds = collectRecentLoopTaskIdsForTarget(target);
-  recentTaskIds.forEach((taskId) => {
-    appendCandidate(readLoopTaskRecord(taskId), { allowMissingTaskSessionId: true });
-  });
-
-  const targetSessionId = resolveLoopTaskSessionId(target);
-  if (targetSessionId) {
-    const sessionStoreFile = getLoopTaskStoreSessionFile(activeWorkspaceKey, target.cli, targetSessionId);
-    const sessionStore = readLoopTaskStore(sessionStoreFile);
-    sessionStore.tasks
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .forEach((task) => {
-        appendCandidate(
-          task.taskStoreFile === sessionStoreFile ? task : { ...task, taskStoreFile: sessionStoreFile }
-        );
-      });
-  }
-
-  const resumable = candidates
-    .filter((task) => isLoopTaskResumable(task) || (
-      task.status === "completed" && !hasCompleteLoopCompletionMessagesForTask(target, task.id)
-    ))
-    .sort((left, right) => right.updatedAt - left.updatedAt);
-  return resumable[0] ?? null;
-}
+// Prompt run target helpers moved to extensionHost/promptRunRuntime.ts.
 
 function resolveLoopResumeTaskFromPrompt(
   prompt: string,
@@ -5163,96 +4126,14 @@ async function runGraphPrompt(
   input: PromptRunInput,
   options: { targetTabId?: string | null } = {}
 ): Promise<void> {
-  const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
-  if (!target || !input.displayPrompt.trim()) {
-    return;
-  }
-  let run: GraphRunRecord | null = null;
-  try {
-    run = await runGraphPromptOrchestration(input, options);
-  } catch (error) {
-    const failureMessage = errorToMessage(error);
-    void logError("graph-orchestration-unhandled-error", {
-      graphRunId: run?.id ?? null,
-      tabId: target.tabId,
-      cli: target.cli,
-      error: failureMessage,
-    });
-    if (run) {
-      run = updateGraphRunRecord(run.id, {
-        status: "error",
-        updatedAt: Date.now(),
-      }) ?? run;
-      appendGraphEvent(run.eventsFile, {
-        runId: run.id,
-        type: "run.error",
-        summary: failureMessage,
-        error: failureMessage,
-      });
-      sendGraphMainRunTerminalStatus(target, run);
-    }
-    appendSystemMessageForGraph(target, buildGraphRunErrorText(run?.id ?? null, failureMessage), run?.id);
-  } finally {
-    await postPanelState();
-  }
+  return graphRuntimeHost.runGraphPrompt(input, options);
 }
 
 async function runGraphPromptOrchestration(
   input: PromptRunInput,
   options: { targetTabId?: string | null } = {}
 ): Promise<GraphRunRecord | null> {
-  const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
-  if (!target || !input.displayPrompt.trim()) {
-    return null;
-  }
-  input = await hydrateOpenCodePromptRoleModels(input, target.cli);
-
-  scheduleLogRetentionCleanup();
-  const graphRunId = `graph_${createMessageId()}`;
-  const workspaceCwd = resolveWorkspaceCwd();
-  if (!workspaceCwd) {
-    throw new Error("Graph mode requires an active workspace.");
-  }
-  const executionSetup = createGraphRunExecutionSetup(workspaceCwd, graphRunId);
-  const modelRouting = buildGraphRunModelRouting(input);
-  let run = createGraphRunRecord({
-    id: graphRunId,
-    workspaceKey: activeWorkspaceKey,
-    cli: target.cli,
-    sessionId: resolveGraphRunSessionId(target),
-    rootPrompt: input.displayPrompt,
-    status: "running",
-    templateId: GRAPH_AI_PLANNER_TEMPLATE_ID,
-    templateVersion: GRAPH_AI_PLANNER_TEMPLATE_VERSION,
-    nodes: buildGraphPlanningRunNodes(graphRunId)
-      .map((node) => applyGraphNodeModelRoute(node, modelRouting.planner)),
-    edges: buildGraphPlanningRunEdges(),
-    maxConcurrent: GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES,
-    executionMode: executionSetup.executionMode,
-    ...(executionSetup.directExecution ? { directExecution: executionSetup.directExecution } : {}),
-    ...(executionSetup.worktree ? { worktree: executionSetup.worktree } : {}),
-    modelRouting,
-  });
-  appendGraphEvent(run.eventsFile, {
-    runId: run.id,
-    type: "run.created",
-    summary: `Graph run ${run.id} created in direct workspace mode with ${run.nodes.length} nodes.`,
-    data: {
-      nodeIds: run.nodes.map((node) => node.id),
-      plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
-      maxConcurrent: run.maxConcurrent,
-      executionMode: executionSetup.executionMode,
-      worktree: executionSetup.worktree,
-      directExecution: executionSetup.directExecution,
-      fallbackReason: executionSetup.fallbackReason,
-      modelRouting: run.modelRouting,
-    },
-  });
-  appendSystemMessageForGraph(target, buildGraphRunStartedText(run), run.id);
-  await postPanelState();
-
-  const outcome = await tickGraphRunToPause(run, input, target);
-  return outcome.run;
+  return graphRuntimeHost.runGraphPromptOrchestration(input, options);
 }
 
 async function tickGraphRunToPause(
@@ -5260,888 +4141,19 @@ async function tickGraphRunToPause(
   input: PromptRunInput,
   target: PromptRunTarget,
 ): Promise<{ run: GraphRunRecord; progressed: boolean }> {
-  let run = initialRun;
-  sendGraphMainRunStarted(target, run, input.displayPrompt);
-  const executor = {
-    execute: async (request: GraphNodeExecutionRequest) => executeGraphNodeViaRunPrompt(request, input, target),
-  };
-  let madeProgress = false;
-  let tickIndex = 0;
-  while (tickIndex < Math.max(12, run.nodes.length * 6)) {
-    tickIndex += 1;
-    const tickResult = await tickGraphRun(run, {
-      executor,
-      appendEvent: (eventRun, event) => appendGraphEvent(eventRun.eventsFile, event),
-      persistRun: persistGraphRunTickState,
-    }, {
-      maxConcurrent: resolveGraphExtensionExecutorMaxConcurrent(run),
-    });
-    run = tickResult.run;
-    const planMaterialization = maybeMaterializeGraphPlanAfterTick(run);
-    run = planMaterialization.run;
-    await postPanelState();
-
-    if (planMaterialization.changed && run.status === "running") {
-      madeProgress = true;
-      scheduleGraphRunAutoWake(run);
-      continue;
-    }
-
-    if (run.status === "completed") {
-      const mergeBack = finalizeCompletedGraphRunWorktreeMergeBack(run);
-      run = mergeBack.run;
-      scheduleGraphRunAutoWake(run);
-      sendGraphMainRunTerminalStatus(target, run);
-      if (run.status === "completed") {
-        appendSystemMessageForGraph(target, buildGraphRunCompletedText(run, mergeBack), run.id);
-        appendGraphFinalSummaryMessage(target, run);
-      } else {
-        appendSystemMessageForGraph(
-          target,
-          buildGraphRunNeedsAttentionText(run, mergeBack),
-          run.id,
-        );
-      }
-      return { run, progressed: true };
-    }
-    if (run.status === "needs-review" || run.status === "sleeping" || run.status === "error" || run.status === "stopped") {
-      scheduleGraphRunAutoWake(run);
-      sendGraphMainRunTerminalStatus(target, run);
-      appendSystemMessageForGraph(
-        target,
-        buildGraphRunNeedsAttentionText(run),
-        run.id,
-      );
-      return { run, progressed: true };
-    }
-    const progressed = tickResult.startedNodeIds.length > 0
-      || tickResult.completedNodeIds.length > 0
-      || tickResult.failedNodeIds.length > 0
-      || tickResult.blockedNodeIds.length > 0
-      || tickResult.sleepingNodeIds.length > 0
-      || tickResult.systemActions.length > 0
-      || tickResult.pendingActions.length > 0
-      || planMaterialization.changed;
-    madeProgress = madeProgress || progressed;
-    scheduleGraphRunAutoWake(run);
-    if (!progressed) {
-      run = updateGraphRunRecord(run.id, {
-        status: "needs-review",
-        updatedAt: Date.now(),
-      }) ?? run;
-      scheduleGraphRunAutoWake(run);
-      sendGraphMainRunTerminalStatus(target, run);
-      appendSystemMessageForGraph(target, buildGraphRunIdleText(run), run.id);
-      return { run, progressed: false };
-    }
-  }
-
-  run = updateGraphRunRecord(run.id, {
-    status: "error",
-    updatedAt: Date.now(),
-  }) ?? run;
-  appendGraphEvent(run.eventsFile, {
-    runId: run.id,
-    type: "run.error",
-    summary: `Graph run ${run.id} exceeded the extension runtime tick guard.`,
-  });
-  scheduleGraphRunAutoWake(run);
-  sendGraphMainRunTerminalStatus(target, run);
-  appendSystemMessageForGraph(target, buildGraphRunErrorText(run.id, "Graph run exceeded the extension runtime tick guard."), run.id);
-  return { run, progressed: madeProgress };
-}
-
-function sendGraphMainRunStarted(target: PromptRunTarget, run: GraphRunRecord, prompt: string): void {
-  sendRunStatusForTab(target.tabId, "start", {
-    prompt,
-    startedAt: run.createdAt,
-    graphRunId: run.id,
-  });
-}
-
-function isGraphRunBlockedForMainTab(run: GraphRunRecord): boolean {
-  return run.status === "needs-review" && Boolean(selectGraphBlockedAttentionNode(run));
-}
-
-function resolveGraphMainRunStatusEvent(run: GraphRunRecord): "end" | "error" | "stopped" | null {
-  if (run.status === "completed") {
-    return "end";
-  }
-  if (run.status === "error" || isGraphRunBlockedForMainTab(run)) {
-    return "error";
-  }
-  if (run.status === "stopped") {
-    return "stopped";
-  }
-  return null;
+  return graphRuntimeHost.tickGraphRunToPause(initialRun, input, target);
 }
 
 function sendGraphMainRunTerminalStatus(target: PromptRunTarget, run: GraphRunRecord): void {
-  const status = resolveGraphMainRunStatusEvent(run);
-  if (!status) {
-    return;
-  }
-  sendRunStatusForTab(target.tabId, status);
+  graphRuntimeHost.sendGraphMainRunTerminalStatus(target, run);
+}
+
+function isGraphRunBlockedForMainTab(run: GraphRunRecord): boolean {
+  return graphRuntimeHost.isGraphRunBlockedForMainTab(run);
 }
 
 function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord | null {
-  const blockedNodes = run.nodes
-    .filter((node) => node.status === "blocked" || node.status === "failed")
-    .sort((left, right) => {
-      const leftTime = left.completedAt ?? left.startedAt ?? 0;
-      const rightTime = right.completedAt ?? right.startedAt ?? 0;
-      if (rightTime !== leftTime) {
-        return rightTime - leftTime;
-      }
-      return run.nodes.indexOf(right) - run.nodes.indexOf(left);
-    });
-  return blockedNodes[0] ?? null;
-}
-
-type GraphRunMergeBackOutcome = {
-  run: GraphRunRecord;
-  status: "merged" | "direct" | "failed";
-  message: string;
-  result?: GraphWorktreeMergeBackResult;
-  cleanup?: GraphWorktreeCleanupResult;
-  error?: string;
-};
-
-function finalizeCompletedGraphRunWorktreeMergeBack(run: GraphRunRecord): GraphRunMergeBackOutcome {
-  const timestamp = Date.now();
-  if (run.executionMode === "direct" && run.directExecution?.cwd) {
-    const nextRun = updateGraphRunRecord(run.id, {
-      updatedAt: timestamp,
-    }) ?? { ...run, updatedAt: timestamp };
-    appendGraphEvent(nextRun.eventsFile, {
-      runId: nextRun.id,
-      type: "run.updated",
-      timestamp,
-      summary: `Graph run completed in direct workspace mode without worktree merge-back: ${run.directExecution.cwd}`,
-      data: {
-        executionMode: "direct",
-        directExecution: run.directExecution,
-      },
-    });
-    return {
-      run: nextRun,
-      status: "direct",
-      message: `- Direct workspace: executed directly in ${run.directExecution.cwd}; no git worktree, checkpoint, merge-back, or cleanup was used.`,
-    };
-  }
-  const workspaceCwd = resolveWorkspaceCwd();
-  if (!workspaceCwd || !run.worktree) {
-    const error = !workspaceCwd
-      ? "Graph run completed but no active workspace was available for merge-back."
-      : "Graph run completed but has no worktree metadata for merge-back.";
-    const nextRun = updateGraphRunRecord(run.id, {
-      status: "needs-review",
-      updatedAt: timestamp,
-    }) ?? { ...run, status: "needs-review" as const, updatedAt: timestamp };
-    appendGraphEvent(nextRun.eventsFile, {
-      runId: nextRun.id,
-      type: "run.updated",
-      timestamp,
-      summary: `Graph worktree merge-back failed: ${error}`,
-      error,
-      data: { workspaceCwd, worktree: run.worktree },
-    });
-    return {
-      run: nextRun,
-      status: "failed",
-      message: `- Merge-back: failed; ${error}`,
-      error,
-    };
-  }
-
-  try {
-    const result = mergeGraphRunWorktreeToWorkspace({ workspaceCwd, worktree: run.worktree });
-    let cleanup: GraphWorktreeCleanupResult;
-    try {
-      cleanup = cleanupGraphRunWorktree({ workspaceCwd, worktree: run.worktree });
-    } catch (cleanupError) {
-      const cleanupMessage = errorToMessage(cleanupError);
-      const nextRun = updateGraphRunRecord(run.id, {
-        status: "needs-review",
-        updatedAt: timestamp,
-      }) ?? { ...run, status: "needs-review" as const, updatedAt: timestamp };
-      appendGraphEvent(nextRun.eventsFile, {
-        runId: nextRun.id,
-        type: "run.updated",
-        timestamp,
-        summary: `Graph worktree cleanup failed after merge-back: ${cleanupMessage}`,
-        error: cleanupMessage,
-        data: {
-          workspaceCwd,
-          worktree: run.worktree,
-          mergeBack: {
-            repoRoot: result.repoRoot,
-            worktreeCwd: result.worktreeCwd,
-            sourceBranch: result.sourceBranch,
-            sourceCommit: result.sourceCommit,
-            statusAfter: result.statusAfter,
-          },
-        },
-      });
-      return {
-        run: nextRun,
-        status: "failed",
-        message: `- Merge-back: applied Graph worktree changes to ${result.repoRoot} with git merge --squash; cleanup failed: ${cleanupMessage}`,
-        result,
-        error: cleanupMessage,
-      };
-    }
-    const nextRun = updateGraphRunRecord(run.id, {
-      updatedAt: timestamp,
-      worktree: undefined,
-    }) ?? { ...run, updatedAt: timestamp, worktree: undefined };
-    appendGraphEvent(nextRun.eventsFile, {
-      runId: nextRun.id,
-      type: "run.updated",
-      timestamp,
-      summary: `Graph worktree merged back into workspace and cleaned up without committing: ${result.repoRoot}`,
-      data: {
-        workspaceCwd: result.workspaceCwd,
-        repoRoot: result.repoRoot,
-        worktreeCwd: result.worktreeCwd,
-        sourceBranch: result.sourceBranch,
-        sourceCommit: result.sourceCommit,
-        targetHeadBefore: result.targetHeadBefore,
-        targetHeadAfter: result.targetHeadAfter,
-        statusAfter: result.statusAfter,
-        mergeOutput: result.mergeOutput,
-        cleanup,
-      },
-    });
-    return {
-      run: nextRun,
-      status: "merged",
-      message: `- Merge-back: applied Graph worktree changes to ${result.repoRoot} with git merge --squash; no commit was created. Cleaned up worktree ${cleanup.worktreeCwd} and branch ${cleanup.sourceBranch}.`,
-      result,
-      cleanup,
-    };
-  } catch (error) {
-    const message = errorToMessage(error);
-    const nextRun = updateGraphRunRecord(run.id, {
-      status: "needs-review",
-      updatedAt: timestamp,
-    }) ?? { ...run, status: "needs-review" as const, updatedAt: timestamp };
-    appendGraphEvent(nextRun.eventsFile, {
-      runId: nextRun.id,
-      type: "run.updated",
-      timestamp,
-      summary: `Graph worktree merge-back failed: ${message}`,
-      error: message,
-      data: { workspaceCwd, worktree: run.worktree },
-    });
-    return {
-      run: nextRun,
-      status: "failed",
-      message: `- Merge-back: failed; ${message}`,
-      error: message,
-    };
-  }
-}
-
-function resolveGraphExtensionExecutorMaxConcurrent(run: Pick<GraphRunRecord, "maxConcurrent">): number {
-  return Math.max(1, Math.min(run.maxConcurrent, GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES));
-}
-
-function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRunRecord; changed: boolean } {
-  if (run.templateId !== GRAPH_AI_PLANNER_TEMPLATE_ID || run.nodes.some((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)) {
-    return { run, changed: false };
-  }
-  const plannerNode = run.nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID);
-  if (!plannerNode || plannerNode.status !== "passed") {
-    return { run, changed: false };
-  }
-
-  const artifact = readGraphNodeExecutionResultArtifact(resolveGraphNodeCommunicationFile(run, plannerNode));
-  if (!artifact?.plannedGraph) {
-    return {
-      run: failGraphPlannerRun(run, "Graph planner passed without a valid plannedGraph DAG artifact."),
-      changed: true,
-    };
-  }
-
-  const materialized = materializeGraphPlan(run, artifact.plannedGraph);
-  if (materialized.error) {
-    return {
-      run: failGraphPlannerRun(run, materialized.error),
-      changed: true,
-    };
-  }
-  if (!materialized.changed) {
-    return { run, changed: false };
-  }
-
-  const routedRun = applyGraphRunModelRouting(materialized.run);
-  const persisted = updateGraphRunRecord(routedRun.id, routedRun) ?? routedRun;
-  appendGraphEvent(persisted.eventsFile, {
-    runId: persisted.id,
-    type: "run.updated",
-    summary: `Graph planner materialized ${materialized.plannedNodeIds.length} execution nodes.`,
-    data: {
-      plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
-      plannedNodeIds: materialized.plannedNodeIds,
-      maxConcurrent: persisted.maxConcurrent,
-      modelRouting: persisted.modelRouting,
-    },
-  });
-  return { run: persisted, changed: true };
-}
-
-function failGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecord {
-  const timestamp = Date.now();
-  const nodes = run.nodes.map((node) => node.id === GRAPH_AI_PLANNER_NODE_ID
-    ? {
-      ...node,
-      status: "failed" as const,
-      completedAt: timestamp,
-      lastError: reason,
-    }
-    : node);
-  const nextRun = updateGraphRunRecord(run.id, {
-    status: "running",
-    updatedAt: timestamp,
-    activeNodeIds: [],
-    nodes,
-  }) ?? {
-    ...run,
-    status: "running" as const,
-    updatedAt: timestamp,
-    activeNodeIds: [],
-    nodes,
-  };
-  appendGraphEvent(nextRun.eventsFile, {
-    runId: nextRun.id,
-    type: "node.failed",
-    timestamp,
-    nodeId: GRAPH_AI_PLANNER_NODE_ID,
-    attempt: nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)?.attempts,
-    summary: reason,
-    error: reason,
-  });
-  appendGraphEvent(nextRun.eventsFile, {
-    runId: nextRun.id,
-    type: "run.updated",
-    timestamp,
-    summary: `Graph run ${nextRun.id} paused because planner output could not be materialized.`,
-    data: {
-      plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
-      reason,
-    },
-  });
-  return nextRun;
-}
-
-type GraphNodeExecutionContext = {
-  mode: "worktree";
-  cwd: string;
-  worktreeCwd: string;
-} | {
-  mode: "direct";
-  cwd: string;
-};
-
-function resolveGraphNodeExecutionContext(run: GraphRunRecord): GraphNodeExecutionContext | null {
-  if (run.directExecution?.cwd) {
-    return {
-      mode: "direct",
-      cwd: run.directExecution.cwd,
-    };
-  }
-  if (run.worktree?.cwd) {
-    return {
-      mode: "worktree",
-      cwd: run.worktree.cwd,
-      worktreeCwd: run.worktree.cwd,
-    };
-  }
-  return null;
-}
-
-async function executeGraphNodeViaRunPrompt(
-  request: GraphNodeExecutionRequest,
-  rootInput: PromptRunInput,
-  target: PromptRunTarget,
-) {
-  const executionContext = resolveGraphNodeExecutionContext(request.run);
-  if (!executionContext) {
-    return {
-      status: "failed" as const,
-      summary: `Graph node ${request.node.id} has no execution directory.`,
-      error: "Graph run is missing both worktree and direct execution metadata.",
-    };
-  }
-
-  let baseCommit: string | undefined;
-  if (executionContext.mode === "worktree") {
-    try {
-      baseCommit = getGraphWorktreeHeadCommit(executionContext.worktreeCwd);
-    } catch (error) {
-      return {
-        status: "failed" as const,
-        summary: `Graph node ${request.node.id} could not read worktree HEAD.`,
-        error: errorToMessage(error),
-        executionCwd: executionContext.cwd,
-        worktreeCwd: executionContext.worktreeCwd,
-      };
-    }
-  }
-
-  const communicationFile = resolveGraphNodeCommunicationFile(request.run, request.node);
-  const graphNodeTarget = createGraphNodeRunTarget(target.cli, request.run.id, request.node.id);
-  appendSystemMessageForGraph(
-    target,
-    buildGraphNodeDispatchedText(request.run, request.node, graphNodeTarget, communicationFile),
-    request.run.id,
-  );
-  appendSystemMessageForGraph(
-    graphNodeTarget,
-    buildGraphNodeStartedText(request.run, request.node, communicationFile),
-    request.run.id,
-  );
-
-  const modelRole = request.modelRole
-    ?? request.node.modelRole
-    ?? (request.node.id === GRAPH_AI_PLANNER_NODE_ID || request.node.kind === "summary" ? "main" : "subtask");
-  const selectedModel = request.model ?? resolvePromptRunModelForRole(rootInput, modelRole);
-  const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(rootInput, modelRole);
-  const thinkingModeOverride = resolvePromptRunThinkingModeForRole(rootInput, target.cli, modelRole, selectedModel);
-  appendGraphEvent(request.run.eventsFile, {
-    runId: request.run.id,
-    type: "run.updated",
-    nodeId: request.node.id,
-    attempt: request.attempt,
-    summary: `Graph node ${request.node.id} dispatched with ${modelRole} model role.`,
-    data: {
-      nodeId: request.node.id,
-      modelRole,
-      model: selectedModel ?? null,
-      modelFallback,
-      thinkingMode: thinkingModeOverride ?? null,
-      modelRouting: request.run.modelRouting,
-    },
-  });
-  void logInfo("graph-node-model-routing", {
-    graphRunId: request.run.id,
-    nodeId: request.node.id,
-    modelRole,
-    model: selectedModel ?? null,
-    modelFallback,
-    thinkingMode: thinkingModeOverride ?? null,
-  });
-
-  let runPromptError: unknown;
-  try {
-    await runPrompt({
-      displayPrompt: request.prompt,
-      modelPrompt: request.prompt,
-      contextTags: rootInput.contextTags,
-      model: selectedModel,
-      loopMainModel: rootInput.loopMainModel,
-      loopSubtaskModel: rootInput.loopSubtaskModel,
-      imagePaths: rootInput.imagePaths,
-      taskRole: modelRole,
-      thinkingModeOverride,
-      graphRunId: request.run.id,
-      graphNodeId: request.node.id,
-      executionCwd: executionContext.cwd,
-      isolateProjectInstructions: true,
-      skipLongTermMemoryPersist: true,
-      throwOnError: true,
-    }, {
-      targetTabId: graphNodeTarget.tabId,
-    });
-  } catch (error) {
-    runPromptError = error;
-  } finally {
-    try {
-      await closeConversationTabAndRefreshPanel(graphNodeTarget.tabId);
-      void logInfo("graph-node-tab-auto-closed", {
-        graphRunId: request.run.id,
-        nodeId: request.node.id,
-        tabId: graphNodeTarget.tabId,
-      });
-    } catch (error) {
-      void logError("graph-node-tab-auto-close-error", {
-        graphRunId: request.run.id,
-        nodeId: request.node.id,
-        tabId: graphNodeTarget.tabId,
-        error: errorToMessage(error),
-      });
-    }
-  }
-
-  const artifactResult = readGraphNodeExecutionResultArtifact(communicationFile);
-  const executionResult = artifactResult ?? {
-    status: "failed" as const,
-    summary: runPromptError
-      ? `Graph node ${request.node.id} runner failed before a parseable JSON artifact was produced.`
-      : `Graph node ${request.node.id} did not produce a parseable ## JSON artifact.`,
-    error: runPromptError ? errorToMessage(runPromptError) : "Missing or invalid Graph node ## JSON artifact.",
-    artifactRef: communicationFile,
-  };
-  const result = runPromptError && executionResult.status === "passed"
-    ? {
-      ...executionResult,
-      status: "failed" as const,
-      error: errorToMessage(runPromptError),
-      summary: `Graph node ${request.node.id} runner failed despite a passed artifact.`,
-    }
-    : executionResult;
-
-  let commit: string | undefined;
-  if (executionContext.mode === "worktree") {
-    try {
-      const checkpoint = commitGraphNodeCheckpoint({
-        worktreeCwd: executionContext.worktreeCwd,
-        graphRunId: request.run.id,
-        nodeId: request.node.id,
-        status: result.status,
-        baseCommit: baseCommit as string,
-        summary: result.summary,
-      });
-      commit = checkpoint.commit;
-    } catch (error) {
-      return {
-        status: "failed" as const,
-        summary: `Graph node ${request.node.id} could not create a local checkpoint commit.`,
-        error: errorToMessage(error),
-        artifactRef: result.artifactRef ?? communicationFile,
-        acceptance: result.acceptance,
-        executionCwd: executionContext.cwd,
-        worktreeCwd: executionContext.worktreeCwd,
-        baseCommit,
-      };
-    }
-  }
-
-  const executionMetadata = {
-    executionCwd: executionContext.cwd,
-    ...(executionContext.mode === "worktree" ? { worktreeCwd: executionContext.worktreeCwd } : {}),
-    ...(baseCommit ? { baseCommit } : {}),
-    ...(commit ? { commit } : {}),
-  };
-  if (request.node.kind === "summary" && result.status === "passed" && !result.finalAnswer) {
-    return {
-      ...result,
-      finalAnswer: buildGraphRunFinalAnswer(request.run),
-      artifactRef: result.artifactRef ?? communicationFile,
-      ...executionMetadata,
-    };
-  }
-  return {
-    ...result,
-    artifactRef: result.artifactRef ?? communicationFile,
-    ...executionMetadata,
-  };
-}
-
-function buildGraphRunFinalAnswer(run: GraphRunRecord): GraphFinalAnswer {
-  const completedNodes = run.nodes
-    .filter((node) => node.status === "passed")
-    .map((node) => `${node.id}:${node.title}`);
-  const unresolved = run.nodes
-    .filter((node) => node.kind !== "summary" && node.status !== "passed")
-    .map((node) => `${node.id}:${node.status}`);
-  return {
-    conclusion: unresolved.length === 0
-      ? "Graph run completed its AI-planned DAG runtime path."
-      : "Graph run completed summary with unresolved node state.",
-    summary: `Graph run ${run.id} executed an AI-planned Graph DAG through the existing CLI runner path.`,
-    evidence: completedNodes,
-    unresolved,
-  };
-}
-
-function resolveGraphRunSessionId(target: PromptRunTarget): string | null {
-  const tab = getConversationTabById(target.tabId);
-  return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-}
-
-function buildGraphRunMessageAction(
-  graphRunId: string,
-  nodeId?: string | null,
-  label?: string | null,
-): ChatMessageAction {
-  return {
-    type: "openGraphRun",
-    graphRunId,
-    ...(nodeId ? { nodeId } : {}),
-    ...(label ? { label } : {}),
-  };
-}
-
-function isTargetedGraphMessageAction(nodeId?: string | null, actionLabel?: string | null): boolean {
-  return Boolean(nodeId && actionLabel?.trim());
-}
-
-function isPlainGraphRunOpenAction(action: ChatMessageAction, graphRunId: string): boolean {
-  return action.type === "openGraphRun"
-    && action.graphRunId === graphRunId
-    && !action.nodeId
-    && !action.label;
-}
-
-function isGraphNodeRunTarget(
-  target: PromptRunTarget,
-  graphRunId: string,
-  messages: readonly ChatMessage[],
-): boolean {
-  const nodeTarget = graphNodeRunTargetsByTabId.get(target.tabId);
-  if (nodeTarget?.graphRunId === graphRunId) {
-    return true;
-  }
-  return messages.some((message) => (
-    message.graphRunId === graphRunId
-    && Boolean(message.graphNodeId)
-  ));
-}
-
-function hasVisibleGraphRunOpenActionForTarget(
-  messages: readonly ChatMessage[],
-  graphRunId: string,
-): boolean {
-  return messages.some((message) => (
-    Array.isArray(message.actions)
-    && message.actions.some((action) => isPlainGraphRunOpenAction(action, graphRunId))
-  ));
-}
-
-function resolveGraphSystemMessageActions(
-  target: PromptRunTarget,
-  graphRunId?: string | null,
-  nodeId?: string | null,
-  actionLabel?: string | null,
-): ChatMessageAction[] {
-  if (!graphRunId) {
-    return [];
-  }
-  if (isTargetedGraphMessageAction(nodeId, actionLabel)) {
-    return [buildGraphRunMessageAction(graphRunId, nodeId, actionLabel)];
-  }
-  const messages = getLoopMessagesForTarget(target);
-  if (
-    isGraphNodeRunTarget(target, graphRunId, messages)
-    || hasVisibleGraphRunOpenActionForTarget(messages, graphRunId)
-  ) {
-    return [];
-  }
-  return [buildGraphRunMessageAction(graphRunId)];
-}
-
-function appendSystemMessageForGraph(
-  target: PromptRunTarget,
-  content: string,
-  graphRunId?: string | null,
-  nodeId?: string | null,
-  actionLabel?: string | null,
-): void {
-  const actions = resolveGraphSystemMessageActions(target, graphRunId, nodeId, actionLabel);
-  appendSystemMessageForLoop(target, content, {
-    merge: false,
-    ...(actions.length ? { actions } : {}),
-  });
-}
-
-function buildGraphNodeDispatchedText(
-  run: GraphRunRecord,
-  node: GraphNodeExecutionRequest["node"],
-  graphNodeTarget: PromptRunTarget,
-  communicationFile: string,
-): string {
-  return [
-    `Graph 节点已派发：${node.id}`,
-    "",
-    `- 运行：${run.id}`,
-    `- 节点：${node.title}`,
-    `- 子任务 tab：${graphNodeTarget.tabId}`,
-    `- 并行上限：${run.maxConcurrent}`,
-    `- 执行模式：${formatGraphRunExecutionMode(run)}`,
-    `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
-    `- 沟通文件：${communicationFile}`,
-  ].join("\n");
-}
-
-function buildGraphNodeStartedText(
-  run: GraphRunRecord,
-  node: GraphNodeExecutionRequest["node"],
-  communicationFile: string,
-): string {
-  return [
-    `Graph 子节点开始执行：${node.id}`,
-    "",
-    `- 运行：${run.id}`,
-    `- 节点标题：${node.title}`,
-    `- 节点类型：${node.kind}`,
-    `- 执行模式：${formatGraphRunExecutionMode(run)}`,
-    `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
-    `- 授权文件：${node.writeFiles?.length ? node.writeFiles.join("、") : "未声明"}`,
-    `- 沟通文件：${communicationFile}`,
-  ].join("\n");
-}
-
-function formatGraphRunExecutionMode(run: GraphRunRecord): string {
-  return run.executionMode === "direct" && run.directExecution?.cwd
-    ? "direct project workspace"
-    : "isolated git worktree";
-}
-
-function formatGraphRunExecutionCwd(run: GraphRunRecord): string {
-  return run.executionMode === "direct" && run.directExecution?.cwd
-    ? run.directExecution.cwd
-    : (run.worktree?.cwd ?? "unavailable");
-}
-
-function buildGraphRunStartedText(run: GraphRunRecord): string {
-  const executionLines = run.executionMode === "direct" && run.directExecution
-    ? [
-      `- Execution directory: ${run.directExecution.cwd}`,
-      "- Worktree: not used; changes are written directly to the current project workspace.",
-    ]
-    : [
-      `- Worktree: ${run.worktree?.cwd ?? "unavailable"}`,
-    ];
-  return [
-    `Graph run created: ${run.id}`,
-    "",
-    `- Planner: ${GRAPH_AI_PLANNER_NODE_ID} will generate the executable DAG before work nodes run.`,
-    `- Runtime: ${formatGraphRunExecutionMode(run)} via runPrompt, planner=main, execution=subtask`,
-    ...executionLines,
-    `- Scheduler: maxConcurrent=${run.maxConcurrent}`,
-    `- Graph file: ${run.graphFile}`,
-  ].join("\n");
-}
-
-function buildGraphRunCompletedText(run: GraphRunRecord, mergeBack?: GraphRunMergeBackOutcome): string {
-  return [
-    `Graph run completed: ${run.id}`,
-    "",
-    run.finalAnswer?.summary ?? "AI-planned Graph runtime path completed.",
-    ...(mergeBack ? [mergeBack.message] : []),
-  ].join("\n");
-}
-
-function buildGraphFinalSummaryMarkdown(run: GraphRunRecord): string {
-  const finalAnswer = run.finalAnswer ?? buildGraphRunFinalAnswer(run);
-  const evidence = finalAnswer.evidence.length
-    ? finalAnswer.evidence
-    : ["无可用证据引用。"];
-  const unresolved = finalAnswer.unresolved.length
-    ? finalAnswer.unresolved
-    : ["无。"];
-  const summarySource = run.finalAnswer
-    ? "summary 节点 finalAnswer（主模型）"
-    : "宿主 fallback（summary 节点未提供 finalAnswer）";
-  const lines: string[] = [
-    "# Graph 任务最终总结",
-    "",
-    `- Graph 运行 ID：${run.id}`,
-    `- 会话 ID：${run.sessionId ?? "unknown"}`,
-    `- 生成时间：${new Date().toISOString()}`,
-    `- 总结来源：${summarySource}`,
-    "",
-    "## 问题回答结论",
-    finalAnswer.conclusion,
-    "",
-    "## 任务总结",
-    finalAnswer.summary,
-    "",
-    "## 验证证据",
-    ...evidence.map((item) => `- ${item}`),
-    "",
-    "## 未完成事项",
-    ...unresolved.map((item) => `- ${item}`),
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphRunMergeBackOutcome): string {
-  const blockedNodes = run.nodes
-    .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping")
-    .map(formatGraphNodeAttentionSummary);
-  return [
-    `Graph run needs attention: ${run.id}`,
-    "",
-    `- Status: ${run.status}`,
-    `- Nodes: ${blockedNodes.length ? blockedNodes.join(", ") : "No blocked node details recorded."}`,
-    `- Graph file: ${run.graphFile}`,
-    ...(mergeBack ? [mergeBack.message] : []),
-  ].join("\n");
-}
-
-function buildGraphRunIdleText(run: GraphRunRecord): string {
-  const baseLines = [
-    `Graph run paused for review: ${run.id}`,
-    "",
-    "- Status: no runnable node remained while the run was still active.",
-    `- Graph file: ${run.graphFile}`,
-  ];
-  const attentionNodes = run.nodes
-    .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping");
-  if (!attentionNodes.some((node) => Boolean(node.failure))) {
-    return baseLines.join("\n");
-  }
-  return [
-    ...baseLines,
-    `- Nodes: ${attentionNodes.map(formatGraphNodeAttentionSummary).join(", ")}`,
-  ].join("\n");
-}
-
-function formatGraphNodeAttentionSummary(node: GraphNodeRecord): string {
-  const failure = formatGraphFailureClassificationForAttention(node);
-  return `${node.id}:${node.status}${failure ? ` ${failure}` : ""}${node.lastError ? ` (${node.lastError})` : ""}`;
-}
-
-function formatGraphFailureClassificationForAttention(node: GraphNodeRecord): string | null {
-  const failure = node.failure;
-  if (!failure) {
-    return null;
-  }
-  const parts = [
-    `[${failure.category}/${failure.confidence}]`,
-    failure.summary,
-  ];
-  if (failure.signals.length > 0) {
-    parts.push(`signals=${formatGraphAttentionList(failure.signals)}`);
-  }
-  if (typeof failure.attemptsExhausted === "boolean") {
-    parts.push(`attemptsExhausted=${failure.attemptsExhausted}`);
-  }
-  const recovery = failure.recommendedRecovery;
-  if (recovery) {
-    const recoveryParts = [
-      `recommendedRecovery=${recovery.action}`,
-      recovery.summary,
-    ];
-    if (recovery.targetNodeId) {
-      recoveryParts.push(`targetNode=${recovery.targetNodeId}`);
-    }
-    if (recovery.recommendedWriteFiles?.length) {
-      recoveryParts.push(`recommendedWriteFiles=${formatGraphAttentionList(recovery.recommendedWriteFiles)}`);
-    }
-    if (recovery.nodeDraft?.id) {
-      recoveryParts.push(`nodeDraft=${recovery.nodeDraft.id}`);
-    }
-    parts.push(recoveryParts.join("; "));
-  }
-  return parts.filter(Boolean).join("; ");
-}
-
-function formatGraphAttentionList(values: readonly string[], limit = 3): string {
-  const visible = values.slice(0, limit);
-  const suffix = values.length > visible.length ? ` +${values.length - visible.length} more` : "";
-  return `${visible.join(", ")}${suffix}`;
-}
-
-function buildGraphRunErrorText(graphRunId: string | null, error: string): string {
-  return [
-    `Graph run error${graphRunId ? `: ${graphRunId}` : ""}`,
-    "",
-    error,
-  ].join("\n");
+  return graphRuntimeHost.selectGraphBlockedAttentionNode(run);
 }
 
 async function runLoopPromptOrchestration(
@@ -9099,1370 +7111,7 @@ function buildLoopSubtaskModelPrompt(
   ].join("\n");
 }
 
-function getLoopMessagesForTarget(target: PromptRunTarget): ChatMessage[] {
-  const tab = getConversationTabById(target.tabId);
-  const sessionId = tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-  return sessionId
-    ? loadSessionMessages(target.cli, sessionId)
-    : getPendingSessionDraft(target.tabId, target.cli).messages;
-}
-
-function resolveLoopSubtaskConversationContext(
-  cli: CliName,
-  tabId: string | null | undefined
-): LoopSubtaskConversationContext | null {
-  if (!tabId) {
-    return null;
-  }
-  const tab = getConversationTabById(tabId);
-  if (!tab || tab.cli !== cli) {
-    return null;
-  }
-  const sessionId = getConversationTabSessionIdForCli(tab, cli);
-  const messages = sessionId
-    ? loadSessionMessages(cli, sessionId)
-    : getPendingSessionDraft(tabId, cli).messages;
-  return resolveLoopSubtaskConversationContextFromMessages(messages);
-}
-
-function isLoopSubtaskConversationTarget(cli: CliName, tabId: string | null | undefined): boolean {
-  return Boolean(resolveLoopSubtaskConversationContext(cli, tabId));
-}
-
-function getLastLoopAssistantContent(
-  target: PromptRunTarget,
-  taskId: string,
-  round: number,
-  role: LoopTaskRole
-): string | null {
-  const messages = getLoopMessagesForTarget(target);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message.role === "assistant"
-      && message.taskRole === role
-      && message.loopTaskId === taskId
-      && message.loopRound === round
-      && message.content.trim()
-    ) {
-      return message.content;
-    }
-  }
-  return null;
-}
-
-function parseLoopMainDecision(content: string | null): LoopMainDecision | null {
-  if (!content) {
-    return null;
-  }
-  const jsonText = extractJsonObjectText(content);
-  if (!jsonText) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(jsonText);
-    return normalizeLoopMainDecision(parsed);
-  } catch {
-    return null;
-  }
-}
-
-function extractJsonObjectText(content: string): string | null {
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-  const start = content.indexOf("{");
-  if (start < 0) {
-    return null;
-  }
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < content.length; index += 1) {
-    const char = content[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) {
-      continue;
-    }
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return content.slice(start, index + 1).trim();
-      }
-    }
-  }
-  return null;
-}
-
-function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const raw = value as Partial<LoopMainDecision>;
-  const estimatedRemainingRounds = normalizeLoopEstimatedRemainingRounds(
-    (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
-  );
-  if (raw.status === "sleep") {
-    const sleepDecision = normalizeLoopSleepDecision(value);
-    if (!sleepDecision) {
-      return null;
-    }
-    return {
-      ...sleepDecision,
-      estimatedRemainingRounds,
-    };
-  }
-  if (raw.status === "completed") {
-    const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
-    const requirementCoverage = normalizeLoopAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
-    const answerConclusion = typeof raw.answerConclusion === "string" && raw.answerConclusion.trim()
-      ? raw.answerConclusion.trim()
-      : undefined;
-    const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
-      ? raw.finalSummary.trim()
-      : "";
-    const roundSummaries = normalizeLoopRoundSummaries((raw as { roundSummaries?: unknown }).roundSummaries);
-    if (
-      !acceptance?.passed
-      || !acceptance.checks.every((check) => check.passed)
-      || requirementCoverage.length === 0
-      || !requirementCoverage.every((item) => item.passed)
-      || !finalSummary
-      || !roundSummaries
-    ) {
-      return null;
-    }
-    return {
-      status: "completed",
-      ...(answerConclusion ? { answerConclusion } : {}),
-      finalSummary,
-      requirementCoverage,
-      roundSummaries,
-      acceptance,
-      estimatedRemainingRounds: 0,
-    };
-  }
-  if (raw.status === "blocked") {
-    return {
-      status: "blocked",
-      finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
-      estimatedRemainingRounds,
-    };
-  }
-  if (raw.status !== "continue") {
-    return null;
-  }
-  const subtasks = normalizeLoopSubtaskDecisions(raw);
-  if (!subtasks || subtasks.length === 0) {
-    return null;
-  }
-  const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
-  return {
-    status: "continue",
-    acceptance: acceptance ?? { passed: false, checks: [] },
-    subtask: subtasks[0],
-    subtasks,
-    parallelReason: typeof (raw as { parallelReason?: unknown }).parallelReason === "string"
-      ? (raw as { parallelReason: string }).parallelReason.trim()
-      : undefined,
-    estimatedRemainingRounds,
-  };
-}
-
-function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
-  const numeric = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  if (!Number.isFinite(numeric)) {
-    return undefined;
-  }
-  return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
-}
-
-function normalizeLoopSubtaskDecisions(raw: Partial<LoopMainDecision>): LoopSubtaskDecision[] | null {
-  const rawSubtasks = Array.isArray((raw as { subtasks?: unknown }).subtasks)
-    ? (raw as { subtasks: unknown[] }).subtasks
-    : (raw.subtask ? [raw.subtask] : []);
-  if (rawSubtasks.length === 0 || rawSubtasks.length > LOOP_PARALLEL_SUBTASK_MAX) {
-    return null;
-  }
-  const normalized = rawSubtasks
-    .map((item): LoopSubtaskDecision | null => normalizeSingleLoopSubtaskDecision(item))
-    .filter((item): item is LoopSubtaskDecision => Boolean(item));
-  if (normalized.length !== rawSubtasks.length) {
-    return null;
-  }
-  const seenIds = new Set<string>();
-  for (const subtask of normalized) {
-    const id = subtask.id ?? buildLoopSubtaskId(subtask.title);
-    if (seenIds.has(id)) {
-      return null;
-    }
-    seenIds.add(id);
-  }
-  return normalized;
-}
-
-function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const subtask = value as {
-    id?: unknown;
-    title?: unknown;
-    prompt?: unknown;
-    conflictGroup?: unknown;
-    writeFiles?: unknown;
-    skillIds?: unknown;
-  };
-  const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
-  const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
-  if (!title || !prompt || prompt.length < LOOP_SUBTASK_PROMPT_MIN_LENGTH) {
-    return null;
-  }
-  const id = typeof subtask.id === "string" && subtask.id.trim()
-    ? subtask.id.trim()
-    : buildLoopSubtaskId(title);
-  const conflictGroup = typeof subtask.conflictGroup === "string" && subtask.conflictGroup.trim()
-    ? subtask.conflictGroup.trim()
-    : undefined;
-  const writeFiles = normalizeLoopWriteFiles(subtask.writeFiles);
-  const skillIds = Array.isArray(subtask.skillIds)
-    ? subtask.skillIds
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : [];
-  return {
-    id,
-    title,
-    prompt,
-    conflictGroup,
-    writeFiles: writeFiles.length > 0 ? writeFiles : undefined,
-    ...(skillIds.length > 0 ? { skillIds } : {}),
-  };
-}
-
-function normalizeLoopRoundSummaries(value: unknown): LoopRoundSummary[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  return value
-    .map((item): LoopRoundSummary | null => normalizeSingleLoopRoundSummary(item))
-    .filter((item): item is LoopRoundSummary => Boolean(item));
-}
-
-function normalizeSingleLoopRoundSummary(value: unknown): LoopRoundSummary | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const summary = value as {
-    round?: unknown;
-    subtaskId?: unknown;
-    title?: unknown;
-    summary?: unknown;
-  };
-  const round = typeof summary.round === "number" && summary.round > 0
-    ? Math.floor(summary.round)
-    : null;
-  const title = typeof summary.title === "string" ? summary.title.trim() : "";
-  const content = typeof summary.summary === "string" ? summary.summary.trim() : "";
-  if (!round || !title || !content) {
-    return null;
-  }
-  return {
-    round,
-    subtaskId: typeof summary.subtaskId === "string" && summary.subtaskId.trim()
-      ? summary.subtaskId.trim()
-      : undefined,
-    title,
-    summary: content,
-  };
-}
-
-function normalizeLoopAcceptance(value: unknown): LoopAcceptance | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const raw = value as { passed?: unknown; summary?: unknown; checks?: unknown };
-  const checks = normalizeLoopAcceptanceChecks(raw.checks);
-  return {
-    passed: raw.passed === true,
-    summary: typeof raw.summary === "string" ? raw.summary : undefined,
-    checks,
-  };
-}
-
-function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item): LoopAcceptanceCheck | null => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const check = item as { name?: unknown; passed?: unknown; detail?: unknown };
-      const name = typeof check.name === "string" && check.name.trim() ? check.name.trim() : "acceptance";
-      return {
-        name,
-        passed: check.passed === true,
-        detail: typeof check.detail === "string" ? check.detail : undefined,
-      };
-    })
-    .filter((item): item is LoopAcceptanceCheck => Boolean(item));
-}
-
-function buildLoopSubtaskId(title: string): string {
-  return `subtask_${createHash("sha1").update(title).digest("hex").slice(0, 10)}`;
-}
-
-function applyLoopMainDecision(
-  taskId: string,
-  decision: LoopMainDecision,
-): { status: "completed" | "continue" | "sleeping" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
-  const existing = readLoopTaskRecord(taskId);
-  if (!existing) {
-    throw new Error(`loop-task-missing:${taskId}`);
-  }
-  if (decision.status === "completed") {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "completed",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      answerConclusion: resolveLoopAnswerConclusion(existing, decision),
-      finalSummary: decision.finalSummary,
-      estimatedRemainingRounds: 0,
-      completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
-      completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
-      updatedAt: Date.now(),
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "completed", task };
-  }
-  if (decision.status === "sleep") {
-    const sleepDecision = normalizeLoopSleepDecision(decision);
-    if (!sleepDecision) {
-      throw new Error(`loop-task-invalid-sleep-decision:${taskId}`);
-    }
-    const autoSleepStartedAt = Date.now();
-    const autoWakeAt = resolveLoopAutoWakeAt(autoSleepStartedAt, sleepDecision.wakeAfterSeconds);
-    const task = updateLoopTaskRecord(taskId, {
-      status: "sleeping",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      autoSleepStartedAt,
-      autoWakeAt,
-      autoSleepReason: sleepDecision.sleepReason,
-      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      updatedAt: autoSleepStartedAt,
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "sleeping", task };
-  }
-  if (decision.status === "blocked") {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "needs-review",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      finalSummary: decision.finalSummary ?? "Main task reported blocked.",
-      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
-      updatedAt: Date.now(),
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "blocked", task };
-  }
-
-  const decisionSubtasks = getLoopDecisionSubtasks(decision);
-  if (decisionSubtasks.length === 0) {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "needs-review",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      finalSummary: "Main task returned continue without subtasks.",
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
-      updatedAt: Date.now(),
-    }) ?? existing;
-    return { status: "blocked", task };
-  }
-
-  const subtaskBatch = upsertLoopSubtasks(existing, decisionSubtasks);
-  const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
-  const task = updateLoopTaskRecord(taskId, {
-    status: "running",
-    activeSubtaskId: activeSubtaskIds[0] ?? null,
-    activeSubtaskIds,
-    subTasks: subtaskBatch.nextSubtasks,
-    ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-    autoSleepStartedAt: undefined,
-    autoWakeAt: undefined,
-    autoSleepReason: undefined,
-    updatedAt: Date.now(),
-  }) ?? existing;
-  appendLoopMainDecisionSummary(task, decision);
-  appendLoopMainSubChatMainDecision(task, decision, subtaskBatch.records);
-  return { status: "continue", task, subtasks: subtaskBatch.records };
-}
-
-function getLoopDecisionSubtasks(decision: LoopMainDecision): LoopSubtaskDecision[] {
-  if (Array.isArray(decision.subtasks) && decision.subtasks.length > 0) {
-    return decision.subtasks;
-  }
-  return decision.subtask ? [decision.subtask] : [];
-}
-
-function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainDecision): void {
-  try {
-    fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
-    const lines: string[] = [
-      `## 主任务${decision.status === "completed" ? "最终验收" : "复核结论"}`,
-      `- 时间：${new Date().toISOString()}`,
-      `- 状态：${decision.status}`,
-    ];
-    if (decision.acceptance?.summary) {
-      lines.push(`- 验收摘要：${decision.acceptance.summary}`);
-    }
-    const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
-    if (remainingRounds) {
-      lines.push(`- 预计剩余轮次：${remainingRounds}`);
-    }
-    if (decision.status === "sleep") {
-      lines.push(`- 自动睡眠原因：${task.autoSleepReason ?? decision.sleepReason ?? "未记录"}`);
-      lines.push(`- 计划唤醒时间：${formatLoopAutoWakeAtForRecord(task.autoWakeAt)}`);
-      lines.push(`- 唤醒间隔秒数：${decision.wakeAfterSeconds ?? "未记录"}`);
-    }
-    if (decision.status === "completed") {
-      lines.push("");
-      lines.push("### 问题回答结论");
-      lines.push(resolveLoopAnswerConclusion(task, decision));
-    }
-    if (decision.finalSummary) {
-      lines.push("");
-      lines.push("### 整体总结");
-      lines.push(decision.finalSummary);
-    }
-    const decisionSubtasks = getLoopDecisionSubtasks(decision);
-    if (decisionSubtasks.length > 0) {
-      lines.push("");
-      lines.push(decisionSubtasks.length === 1 ? "### 下一步子任务" : "### 下一步并发子任务批次");
-      if (decision.parallelReason) {
-        lines.push(`- 并发判断：${decision.parallelReason}`);
-      }
-      decisionSubtasks.forEach((subtask, index) => {
-        const prefix = decisionSubtasks.length === 1 ? "" : `${index + 1}. `;
-        lines.push(`- ${prefix}子任务 ID：${subtask.id ?? buildLoopSubtaskId(subtask.title)}`);
-        lines.push(`- ${prefix}标题：${subtask.title}`);
-        if (subtask.conflictGroup) {
-          lines.push(`- ${prefix}冲突组：${subtask.conflictGroup}`);
-        }
-        const writeFiles = formatLoopWriteFiles(subtask.writeFiles);
-        if (writeFiles) {
-          lines.push(`- ${prefix}预计写入：${writeFiles}`);
-        }
-        lines.push("");
-        lines.push(`#### ${prefix}子任务指令`);
-        lines.push(subtask.prompt);
-      });
-    }
-    if (Array.isArray(decision.roundSummaries) && decision.roundSummaries.length > 0) {
-      lines.push("");
-      lines.push("### 各轮子任务摘要");
-      decision.roundSummaries
-        .slice()
-        .sort((left, right) => left.round - right.round)
-        .forEach((item) => {
-          const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
-          lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
-        });
-    }
-    if (Array.isArray(decision.requirementCoverage) && decision.requirementCoverage.length > 0) {
-      lines.push("");
-      lines.push("### 用户需求覆盖清单");
-      decision.requirementCoverage.forEach((item) => {
-        const detail = item.detail ? `（${item.detail}）` : "";
-        lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
-      });
-    }
-    fs.appendFileSync(task.mainCommunicationFile, `\n\n${lines.join("\n")}\n`, "utf8");
-  } catch (error) {
-    void logError("loop-main-summary-write-error", {
-      taskId: task.id,
-      filePath: task.mainCommunicationFile,
-      error: String(error),
-    });
-  }
-}
-
-function buildLoopSubtaskDecisionMarkdown(
-  task: LoopTaskRecord,
-  round: number,
-  subtasks: LoopSubtaskRecord[],
-  decision: LoopMainDecision,
-): string {
-  const acceptanceChecks = Array.isArray(decision.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
-  const lines: string[] = [
-    subtasks.length === 1 ? "## Loop 子任务派发" : "## Loop 并发子任务派发",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- 轮次：${round}`,
-    `- 子任务数量：${subtasks.length}`,
-    `- 决策状态：${decision.status}`,
-  ];
-
-  if (decision.acceptance?.summary) {
-    lines.push(`- 本轮复核：${decision.acceptance.summary}`);
-  }
-  const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
-  if (remainingRounds) {
-    lines.push(`- 预计剩余轮次：${remainingRounds}`);
-  }
-  if (decision.parallelReason) {
-    lines.push(`- 并发判断：${decision.parallelReason}`);
-  }
-  if (subtasks.length === 1 && subtasks[0]) {
-    lines.push(`- 子任务 ID：${subtasks[0].id}`);
-    lines.push(`- 子任务标题：${subtasks[0].title}`);
-    if (subtasks[0].conflictGroup) {
-      lines.push(`- 冲突组：${subtasks[0].conflictGroup}`);
-    }
-    const writeFiles = formatLoopWriteFiles(subtasks[0].writeFiles);
-    if (writeFiles) {
-      lines.push(`- 预计写入：${writeFiles}`);
-    }
-  }
-
-  if (acceptanceChecks.length > 0) {
-    lines.push("");
-    lines.push("### 复核检查");
-    acceptanceChecks.forEach((check) => {
-      const detail = check.detail ? `（${check.detail}）` : "";
-      lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
-    });
-  }
-
-  lines.push("");
-  lines.push(subtasks.length === 1 ? "### 子任务指令" : "### 子任务指令批次");
-  subtasks.forEach((subtask, index) => {
-    if (subtasks.length > 1) {
-      lines.push("");
-      lines.push(`#### ${index + 1}. ${subtask.title}`);
-      lines.push(`- 子任务 ID：${subtask.id}`);
-      if (subtask.conflictGroup) {
-        lines.push(`- 冲突组：${subtask.conflictGroup}`);
-      }
-      const writeFiles = formatLoopWriteFiles(subtask.writeFiles);
-      if (writeFiles) {
-        lines.push(`- 预计写入：${writeFiles}`);
-      }
-    }
-    lines.push(subtask.prompt ?? subtask.title);
-  });
-
-  return `${lines.join("\n")}\n`;
-}
-
-function upsertLoopSubtask(
-  task: LoopTaskRecord,
-  subtask: NonNullable<LoopMainDecision["subtask"]>,
-): { record: LoopSubtaskRecord; nextSubtasks: LoopSubtaskRecord[] } {
-  const now = Date.now();
-  const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
-  const nextSubtasks = [...task.subTasks];
-  const existingIndex = nextSubtasks.findIndex((item) => item.id === id);
-  const record: LoopSubtaskRecord = {
-    id,
-    title: subtask.title,
-    prompt: subtask.prompt,
-    conflictGroup: subtask.conflictGroup,
-    writeFiles: subtask.writeFiles,
-    status: "running",
-    updatedAt: now,
-  };
-  if (existingIndex >= 0) {
-    const { skillIds: _skillIds, skillGuidance: _skillGuidance, ...existingRecord } = nextSubtasks[existingIndex];
-    const nextRecord: LoopSubtaskRecord = {
-      ...existingRecord,
-      ...record,
-      status: existingRecord.status === "completed" ? "completed" : "running",
-    };
-    nextSubtasks[existingIndex] = nextRecord;
-    return { record: nextRecord, nextSubtasks };
-  }
-  nextSubtasks.push(record);
-  return { record, nextSubtasks };
-}
-
-function upsertLoopSubtasks(
-  task: LoopTaskRecord,
-  subtasks: LoopSubtaskDecision[],
-): { records: LoopSubtaskRecord[]; nextSubtasks: LoopSubtaskRecord[] } {
-  let nextSubtasks = [...task.subTasks];
-  const records: LoopSubtaskRecord[] = [];
-  subtasks.forEach((subtask) => {
-    const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
-    const result = upsertLoopSubtask(
-      { ...task, subTasks: nextSubtasks },
-      subtask,
-    );
-    nextSubtasks = result.nextSubtasks;
-    records.push(result.record);
-  });
-  return { records, nextSubtasks };
-}
-
-function getActiveLoopSubtaskIds(task: LoopTaskRecord): string[] {
-  const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
-  const normalized = ids.filter((id) => typeof id === "string" && id.trim());
-  if (task.activeSubtaskId && !normalized.includes(task.activeSubtaskId)) {
-    normalized.unshift(task.activeSubtaskId);
-  }
-  return Array.from(new Set(normalized));
-}
-
-function markLoopSubtaskRunFinished(
-  taskId: string,
-  subtaskId: string,
-  runStatus: TaskRunStatus,
-  assistantContent: string | null,
-): void {
-  const task = readLoopTaskRecord(taskId);
-  if (!task) {
-    return;
-  }
-  const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
-  const now = Date.now();
-  const summary = buildLoopSubtaskCompletionSummary(assistantContent);
-  const nextStatus: LoopSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
-  const subTasks = task.subTasks.map((item) => {
-    if (item.id !== subtaskId) {
-      return item;
-    }
-    return {
-      ...item,
-      status: nextStatus,
-      summary: summary ?? item.summary,
-      updatedAt: now,
-    };
-  });
-  const activeSubtaskIds = getActiveLoopSubtaskIds(task).filter((id) => id !== subtaskId);
-  updateLoopTaskRecord(taskId, {
-    subTasks,
-    activeSubtaskId: activeSubtaskIds[0] ?? null,
-    activeSubtaskIds,
-    updatedAt: now,
-  });
-  appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
-  if (subtaskRecord) {
-    appendLoopMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, assistantContent);
-  } else {
-    refreshOpenLoopGroupChatPanelForTask(taskId);
-  }
-}
-
-async function finalizeLoopSubtaskRun(options: LoopSubtaskCompletionOptions): Promise<void> {
-  await finalizeLoopSubtaskRunWithDeps(options, {
-    markSubtaskRunFinished: markLoopSubtaskRunFinished,
-    closeSubtaskTab: closeConversationTabAndRefreshPanel,
-    logSubtaskTabAutoClosed: ({ taskId, round, subtaskId, tabId }) => {
-      void logInfo("loop-subtask-tab-auto-closed", {
-        taskId,
-        round,
-        subtaskId,
-        tabId,
-      });
-    },
-  });
-}
-
-function buildLoopSubtaskCompletionSummary(content: string | null): string | undefined {
-  const normalized = String(content ?? "").trim().replace(/\s+/g, " ");
-  if (!normalized) {
-    return undefined;
-  }
-  return normalized.length > 1000 ? `${normalized.slice(0, 1000)}...` : normalized;
-}
-
-function appendLoopSubtaskCompletionAutoLog(
-  task: LoopTaskRecord,
-  subtask: LoopSubtaskRecord | undefined,
-  runStatus: TaskRunStatus,
-  summary?: string,
-  assistantContent?: string | null,
-): void {
-  const filePath = typeof subtask?.communicationFile === "string" && subtask.communicationFile.trim()
-    ? subtask.communicationFile
-    : null;
-  if (!filePath || !subtask) {
-    return;
-  }
-
-  let existingContent = "";
-  try {
-    if (fs.existsSync(filePath)) {
-      existingContent = fs.readFileSync(filePath, "utf8");
-    }
-  } catch (error) {
-    void logError("loop-subtask-communication-read-error", {
-      taskId: task.id,
-      subtaskId: subtask.id,
-      filePath,
-      error: String(error),
-    });
-  }
-
-  const verification = detectLoopVerificationSignals(`${existingContent}\n${assistantContent ?? ""}`);
-  const lines = [
-    "",
-    `## 扩展自动记录（${new Date().toISOString()}）`,
-    `- 子任务 ID：${subtask.id}`,
-    `- 子任务标题：${subtask.title}`,
-    `- 运行状态：${runStatus === "end" ? "completed" : runStatus}`,
-    `- 单测状态：${formatLoopVerificationState(verification.unitTest)}`,
-    `- 编译状态：${formatLoopVerificationState(verification.build)}`,
-  ];
-  if (verification.unitTestEvidence) {
-    lines.push(`- 单测依据：${verification.unitTestEvidence}`);
-  }
-  if (verification.buildEvidence) {
-    lines.push(`- 编译依据：${verification.buildEvidence}`);
-  }
-  if (summary) {
-    lines.push(`- 输出摘要：${summary}`);
-  }
-  if (verification.unitTest === "unknown" || verification.build === "unknown") {
-    lines.push("- 备注：当前记录未明确声明全部验证结果，主任务复核时需重点确认。");
-  }
-
-  try {
-    fs.appendFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
-  } catch (error) {
-    void logError("loop-subtask-communication-append-error", {
-      taskId: task.id,
-      subtaskId: subtask.id,
-      filePath,
-      error: String(error),
-    });
-  }
-}
-
-function markLoopTaskInterrupted(
-  taskId: string,
-  status: "error" | "stopped",
-  target: PromptRunTarget,
-  options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
-): void {
-  const existing = readLoopTaskRecord(taskId);
-  if (existing && existing.status !== "running") {
-    return;
-  }
-  const now = Date.now();
-  const patch: Partial<LoopTaskRecord> = {
-    status,
-    activeSubtaskId: null,
-    activeSubtaskIds: [],
-    updatedAt: now,
-  };
-  if (options.source === "main" && status === "error") {
-    Object.assign(patch, buildNextLoopMainAiFailureState(existing ?? {}, {
-      now,
-      failureMessage: options.failureMessage,
-    }));
-    if (isLoopMainAiFailureLimitReached({
-      mainAiFailureCount: patch.mainAiFailureCount,
-      mainAiFailureLimitReached: patch.mainAiFailureLimitReached,
-    })) {
-      patch.status = "needs-review";
-      patch.finalSummary = [
-        `主任务 AI 调用已连续失败 ${patch.mainAiFailureCount}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`,
-        options.failureMessage ? `最近一次失败：${options.failureMessage}` : "",
-      ].filter(Boolean).join("\n");
-    }
-  }
-  const record = updateLoopTaskRecord(taskId, patch) ?? existing;
-  if (record) {
-    appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
-  }
-}
-
-function isLoopTaskExecutionInterrupted(taskId: string): boolean {
-  const status = readLoopTaskRecord(taskId)?.status;
-  return status === "needs-review" || status === "error" || status === "stopped";
-}
-
-function markLoopTaskStopped(
-  taskId: string,
-  options: {
-    finalSummary?: string;
-    subtaskSummary?: string;
-    participantSummary?: string;
-  } = {},
-): LoopTaskRecord | null {
-  const task = readLoopTaskRecord(taskId);
-  if (!task || isLoopTaskCompleted(task)) {
-    return task;
-  }
-
-  const now = Date.now();
-  const activeSubtaskIds = new Set(getActiveLoopSubtaskIds(task));
-  const subTasks = task.subTasks.map((subtask) => {
-    const shouldStopSubtask = activeSubtaskIds.has(subtask.id)
-      || subtask.status === "running"
-      || subtask.status === "pending";
-    if (!shouldStopSubtask) {
-      return subtask;
-    }
-    return {
-      ...subtask,
-      status: "blocked" as const,
-      ...(subtask.summary || options.subtaskSummary
-        ? { summary: subtask.summary || options.subtaskSummary }
-        : {}),
-      updatedAt: now,
-    };
-  });
-  const debateRounds = task.debateRounds?.map((round) => {
-    const participants = round.participants.map((participant) => {
-      if (participant.status !== "running" && participant.status !== "pending") {
-        return participant;
-      }
-      return {
-        ...participant,
-        status: "stopped" as const,
-        ...(participant.summary || options.participantSummary
-          ? { summary: participant.summary || options.participantSummary }
-          : {}),
-        updatedAt: now,
-      };
-    });
-    const shouldStopRound = round.status === "running"
-      || Boolean(round.activeSpeaker)
-      || round.participants.some((participant) => participant.status === "running" || participant.status === "pending");
-    if (!shouldStopRound) {
-      return { ...round, participants };
-    }
-    return {
-      ...round,
-      status: "stopped" as const,
-      completedAt: round.completedAt ?? now,
-      activeSpeaker: undefined,
-      participants,
-    };
-  });
-
-  const record = updateLoopTaskRecord(taskId, {
-    status: "stopped",
-    activeSubtaskId: null,
-    activeSubtaskIds: [],
-    autoSleepStartedAt: undefined,
-    autoWakeAt: undefined,
-    autoSleepReason: undefined,
-    subTasks,
-    ...(debateRounds ? { debateRounds } : {}),
-    ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
-    updatedAt: now,
-  });
-  refreshOpenLoopGroupChatPanelForTask(taskId);
-  return record;
-}
-
-function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
-  cancelLoopTaskAutoWake(taskId);
-  return markLoopTaskStopped(taskId, {
-    finalSummary: "用户已从 Loop 群聊中止任务。",
-    subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
-    participantSummary: "用户已从 Loop 群聊中止该参与者任务。",
-  });
-}
-
-function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | null {
-  const record = markLoopTaskStopped(taskId);
-  if (record) {
-    void logInfo("loop-task-runtime-state-reconciled", {
-      taskId,
-      previousStatus: "running",
-      nextStatus: record.status,
-    });
-  }
-  return record;
-}
-
-function resolvePromptRunTargetFromConversationTab(tab: ConversationTabRecord): PromptRunTarget {
-  return {
-    tabId: tab.id,
-    cli: tab.cli,
-    sessionId: getConversationTabSessionIdForCli(tab, tab.cli),
-  };
-}
-
-function resolveLoopMainPromptTarget(task: LoopTaskRecord): PromptRunTarget | null {
-  const state = ensureConversationTabs();
-  let sessionFallback: ConversationTabRecord | null = null;
-  for (const tab of state.tabs) {
-    if (tab.cli !== task.cli) {
-      continue;
-    }
-    const context = resolveConversationTabLoopContext(tab);
-    if (context.taskRole === "main" && context.loopTaskId === task.id) {
-      return resolvePromptRunTargetFromConversationTab(tab);
-    }
-    if (
-      !sessionFallback
-      && task.sessionId
-      && getConversationTabSessionIdForCli(tab, tab.cli) === task.sessionId
-    ) {
-      sessionFallback = tab;
-    }
-  }
-  if (sessionFallback) {
-    return resolvePromptRunTargetFromConversationTab(sessionFallback);
-  }
-
-  const newTab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli: task.cli,
-    sessionId: task.sessionId ?? null,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, task.cli, task.sessionId ?? null),
-    createdAt: Date.now(),
-  };
-  state.tabs.push(newTab);
-  persistConversationTabsToWorkspaceSettings();
-  void postPanelState();
-  return resolvePromptRunTargetFromConversationTab(newTab);
-}
-
-async function maybeWakeLoopMainAfterSubtaskContinuation(
-  context: LoopSubtaskConversationContext,
-  options: {
-    tabId: string;
-    previousRunEndedAt: number;
-    model?: string;
-    loopMainModel?: string;
-    loopSubtaskModel?: string;
-    loopMainThinkingMode?: ThinkingMode;
-    loopSubtaskThinkingMode?: ThinkingMode;
-  }
-): Promise<void> {
-  const latestRun = getLatestLoopRoundRunRecord(
-    context.taskId,
-    context.round,
-    "subtask",
-    context.subtaskId
-  );
-  if (!latestRun || latestRun.endedAt <= options.previousRunEndedAt || latestRun.status !== "end") {
-    return;
-  }
-
-  const subtaskTarget = resolvePromptRunTarget(options.tabId);
-  const summary = subtaskTarget
-    ? getLastLoopAssistantContent(subtaskTarget, context.taskId, context.round, "subtask")
-    : null;
-  await finalizeLoopSubtaskRun({
-    taskId: context.taskId,
-    round: context.round,
-    subtaskId: context.subtaskId,
-    runStatus: "end",
-    assistantContent: summary,
-    tabId: subtaskTarget?.tabId ?? null,
-  });
-
-  const latestTask = readLoopTaskRecord(context.taskId);
-  if (
-    !latestTask
-    || isLoopTaskBlockedByMainAiFailureLimit(latestTask)
-    || (latestTask.status !== "error" && latestTask.status !== "stopped")
-  ) {
-    return;
-  }
-
-  const mainTarget = resolveLoopMainPromptTarget(latestTask);
-  if (!mainTarget || isTabRunActive(mainTarget.tabId)) {
-    return;
-  }
-
-  const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
-  appendSystemMessageForLoop(
-    mainTarget,
-    buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
-  );
-
-  const resumePrompt = t("run.hiddenContinuePrompt");
-  await runLoopPrompt({
-    displayPrompt: resumePrompt,
-    modelPrompt: resumePrompt,
-    contextTags: [],
-    model: options.model,
-    loopMainModel: options.loopMainModel,
-    loopSubtaskModel: options.loopSubtaskModel,
-    loopMainThinkingMode: options.loopMainThinkingMode,
-    loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
-  }, {
-    targetTabId: mainTarget.tabId,
-    resumeTaskId: latestTask.id,
-    resumeRequested: true,
-  });
-}
-
-function getLoopTargetSessionId(target: PromptRunTarget): string | null {
-  const tab = getConversationTabById(target.tabId);
-  return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-}
-
-function persistLoopMessagesForTarget(target: PromptRunTarget, messages: ChatMessage[]): void {
-  const sessionId = getLoopTargetSessionId(target);
-  persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
-}
-
-function removeLoopMainDecisionMessage(
-  target: PromptRunTarget,
-  taskId: string,
-  round: number,
-): void {
-  const messages = getLoopMessagesForTarget(target);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message.role === "assistant"
-      && message.taskRole === "main"
-      && message.loopTaskId === taskId
-      && message.loopRound === round
-    ) {
-      messages.splice(index, 1);
-      persistLoopMessagesForTarget(target, messages);
-      sendPanelMessage({ type: "removeMessage", id: message.id, tabId: target.tabId });
-      return;
-    }
-  }
-}
-
-function replaceLoopMainDecisionMessageWithMarkdown(
-  target: PromptRunTarget,
-  taskId: string,
-  round: number,
-  content: string,
-): boolean {
-  const messages = getLoopMessagesForTarget(target);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message.role === "assistant"
-      && message.taskRole === "main"
-      && message.loopTaskId === taskId
-      && message.loopRound === round
-    ) {
-      const nextMessage: ChatMessage = {
-        ...message,
-        content,
-        merge: false,
-      };
-      messages[index] = nextMessage;
-      persistLoopMessagesForTarget(target, messages);
-      sendPanelMessage({ type: "replaceMessage", message: nextMessage, tabId: target.tabId });
-      return true;
-    }
-  }
-  return false;
-}
-
-function showLoopSubtaskDecisionMarkdown(
-  target: PromptRunTarget,
-  task: LoopTaskRecord,
-  round: number,
-  subtasks: LoopSubtaskRecord[],
-  decision: LoopMainDecision,
-): void {
-  const content = buildLoopSubtaskDecisionMarkdown(task, round, subtasks, decision);
-  if (replaceLoopMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
-    return;
-  }
-
-  const messages = getLoopMessagesForTarget(target);
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    loopTaskId: task.id,
-    loopRound: round,
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function showLoopAutoSleepMessage(
-  target: PromptRunTarget,
-  task: LoopTaskRecord,
-  round: number,
-  decision: LoopMainDecision,
-): void {
-  const content = buildLoopAutoSleepMessageMarkdown(task, decision);
-  if (replaceLoopMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
-    return;
-  }
-
-  const messages = getLoopMessagesForTarget(target);
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    loopTaskId: task.id,
-    loopRound: round,
-    actions: [buildLoopDebateChatMessageAction(task.id, round)],
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function buildLoopAutoSleepMessageMarkdown(task: LoopTaskRecord, decision: LoopMainDecision): string {
-  const locale = resolveLocale();
-  const wakeAt = typeof task.autoWakeAt === "number"
-    ? new Date(task.autoWakeAt).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US")
-    : t("run.loopAutoWakeTimeUnknown");
-  const reason = task.autoSleepReason ?? decision.sleepReason ?? t("run.loopAutoSleepReasonUnknown");
-  return [
-    `## ${t("run.loopAutoSleepTitle")}`,
-    t("run.loopAutoSleepReason", { reason }),
-    t("run.loopAutoWakeAt", { time: wakeAt }),
-  ].join("\n\n");
-}
-
-function hasCompleteLoopCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
-  return hasCompleteLoopCompletionMessages(getLoopMessagesForTarget(target), taskId);
-}
-
-function appendLoopAnswerConclusionMessage(
-  target: PromptRunTarget,
-  task: LoopTaskRecord,
-  decision?: LoopMainDecision | null,
-): void {
-  const messages = getLoopMessagesForTarget(target);
-  const content = buildLoopAnswerConclusionMarkdown(task, decision);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const existing = messages[index];
-    if (!existing || !isLoopAnswerConclusionMessageForTask(existing, task.id)) {
-      continue;
-    }
-    if (existing.content.trim() === content.trim()) {
-      return;
-    }
-    const replacement: ChatMessage = {
-      ...existing,
-      content,
-      merge: false,
-      taskRole: "main",
-      loopTaskId: task.id,
-      loopAnswerConclusion: true,
-    };
-    messages[index] = replacement;
-    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
-    persistLoopMessagesForTarget(target, messages);
-    return;
-  }
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    loopTaskId: task.id,
-    loopAnswerConclusion: true,
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function appendLoopFinalSummaryMessage(
-  target: PromptRunTarget,
-  task: LoopTaskRecord,
-  decision?: LoopMainDecision | null,
-): void {
-  const messages = getLoopMessagesForTarget(target);
-  const content = buildLoopFinalSummaryMarkdown(task, decision);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const existing = messages[index];
-    if (!existing || !isLoopFinalSummaryMessageForTask(existing, task.id)) {
-      continue;
-    }
-    if (isCompleteLoopFinalSummaryContent(existing.content)) {
-      return;
-    }
-    const replacement: ChatMessage = {
-      ...existing,
-      content,
-      merge: false,
-      taskRole: "main",
-      loopTaskId: task.id,
-      loopFinalSummary: true,
-    };
-    messages[index] = replacement;
-    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
-    persistLoopMessagesForTarget(target, messages);
-    return;
-  }
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    loopTaskId: task.id,
-    loopFinalSummary: true,
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function appendGraphFinalSummaryMessage(target: PromptRunTarget, run: GraphRunRecord): void {
-  const messages = getLoopMessagesForTarget(target);
-  const content = buildGraphFinalSummaryMarkdown(run);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const existing = messages[index];
-    if (!existing || !isGraphFinalSummaryMessageForRun(existing, run.id)) {
-      continue;
-    }
-    if (existing.content.trim() === content.trim()) {
-      return;
-    }
-    const replacement: ChatMessage = {
-      ...existing,
-      content,
-      merge: false,
-      taskRole: "main",
-      graphRunId: run.id,
-      graphFinalSummary: true,
-    };
-    messages[index] = replacement;
-    sendPanelMessage({ type: "replaceMessage", message: replacement, tabId: target.tabId });
-    persistLoopMessagesForTarget(target, messages);
-    return;
-  }
-
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    graphRunId: run.id,
-    graphFinalSummary: true,
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function isGraphFinalSummaryMessageForRun(message: ChatMessage, graphRunId: string): boolean {
-  return message.role === "assistant"
-    && message.graphFinalSummary === true
-    && message.graphRunId === graphRunId;
-}
-
-function appendSystemMessageForLoop(
-  target: PromptRunTarget,
-  content: string,
-  options: {
-    taskRole?: LoopTaskRole;
-    loopTaskId?: string;
-    loopRound?: number;
-    loopSubtaskId?: string;
-    actions?: ChatMessageAction[];
-    merge?: boolean;
-  } = {},
-): void {
-  const tab = getConversationTabById(target.tabId);
-  const sessionId = tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-  const messages = sessionId
-    ? loadSessionMessages(target.cli, sessionId)
-    : getPendingSessionDraft(target.tabId, target.cli).messages;
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "system",
-    content,
-    createdAt: Date.now(),
-    ...(options.merge === false ? { merge: false } : {}),
-    ...(options.taskRole ? { taskRole: options.taskRole } : {}),
-    ...(options.loopTaskId ? { loopTaskId: options.loopTaskId } : {}),
-    ...(typeof options.loopRound === "number" ? { loopRound: options.loopRound } : {}),
-    ...(options.loopSubtaskId ? { loopSubtaskId: options.loopSubtaskId } : {}),
-    ...(options.actions?.length ? { actions: options.actions } : {}),
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  if (sessionId) {
-    persistMessagesForTab(target.cli, sessionId, target.tabId, messages);
-    return;
-  }
-  // Keep loop pre-run system messages in draft only, so the first real turn can
-  // start a fresh remote session instead of being blocked by a local-only session id.
-  updatePendingSessionDraft(target.tabId, { messages }, target.cli);
-}
-
-function getLoopRoundRunStatus(
-  taskId: string,
-  round: number,
-  role: LoopTaskRole,
-  subtaskId?: string,
-): TaskRunStatus | null {
-  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId);
-  return record ? record.status : null;
-}
-
-function getLatestLoopRoundRunRecord(
-  taskId: string,
-  round: number,
-  role: LoopTaskRole,
-  subtaskId?: string,
-): TaskRunRecord | null {
-  const runs = readTaskStore().runs;
-  for (let index = runs.length - 1; index >= 0; index -= 1) {
-    const run = runs[index];
-    if (
-      run.loopTaskId === taskId
-      && run.loopRound === round
-      && run.taskRole === role
-      && (role !== "subtask" || run.loopSubtaskId === subtaskId)
-    ) {
-      return run;
-    }
-  }
-  return null;
-}
+// Loop prompt run runtime helpers moved to extensionHost/promptRunRuntime.ts.
 
 function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "opencode" {
   return cli === "codex" || cli === "claude" || cli === "opencode";
@@ -13156,1154 +9805,6 @@ function createLoopTaskRecord(
   return record;
 }
 
-function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null {
-  return resolvePromptRunTargetSessionIdWithDeps(target, (candidate) => {
-    const tab = getConversationTabById(candidate.tabId);
-    return tab ? getConversationTabSessionIdForCli(tab, candidate.cli) : null;
-  });
-}
-
-function resolveLoopTaskSessionId(target: PromptRunTarget): string | null {
-  return resolveLoopTaskSessionIdWithDeps(target, (candidate) => {
-    const tab = getConversationTabById(candidate.tabId);
-    return tab ? getConversationTabSessionIdForCli(tab, candidate.cli) : null;
-  });
-}
-
-function isLoopTaskBlockedByMainAiFailureLimit(task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">): boolean {
-  return isLoopTaskBlockedByMainAiFailureLimitWithLimit(task, LOOP_MAIN_AI_FAILURE_LIMIT);
-}
-
-function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
-  if (cli !== "codex" && cli !== "claude" && mode === "max") {
-    return "high";
-  }
-  if (cli !== "codex" && cli !== "claude" && mode === "xhigh") {
-    return "high";
-  }
-  if (cli === "codex" && mode === "off") {
-    return "low";
-  }
-  return mode;
-}
-
-function getWorkspaceThinkingMode(cli: CliName): ThinkingMode {
-  if (workspaceSettings.thinkingMode && isThinkingMode(workspaceSettings.thinkingMode)) {
-    return normalizeThinkingModeForCli(cli, workspaceSettings.thinkingMode);
-  }
-  return getThinkingMode(cli);
-}
-
-function getCliModelThinkingKey(model: string | null): string {
-  return normalizeCliModelName(model) ?? DEFAULT_MODEL_STORE_KEY;
-}
-
-function getStoredCliModelThinkingMode(cli: CliName, model: string | null): ThinkingMode | null {
-  const cliThinking = modelStore?.thinkingByCliAndModel?.[cli];
-  if (!cliThinking || typeof cliThinking !== "object") {
-    return null;
-  }
-  const stored = cliThinking[getCliModelThinkingKey(model)];
-  if (!isThinkingMode(stored)) {
-    return null;
-  }
-  return normalizeThinkingModeForCli(cli, stored);
-}
-
-function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMode: ThinkingMode): void {
-  const normalizedThinkingMode = normalizeThinkingModeForCli(cli, thinkingMode);
-  const nextStore = ensureCliModelStore(modelStore);
-  const nextThinkingByCliAndModel = {
-    ...nextStore.thinkingByCliAndModel,
-  };
-  nextThinkingByCliAndModel[cli] = {
-    ...(nextThinkingByCliAndModel[cli] ?? {}),
-    [getCliModelThinkingKey(model)]: normalizedThinkingMode,
-  };
-  nextStore.thinkingByCliAndModel = nextThinkingByCliAndModel;
-  modelStore = ensureCliModelStore(nextStore);
-  writeModelStore(modelStore);
-}
-
-function getEffectiveThinkingMode(cli: CliName, model: string | null = getSelectedCliModel(cli)): ThinkingMode {
-  if (cli === "opencode") {
-    return "off";
-  }
-  return getStoredCliModelThinkingMode(cli, model) ?? getWorkspaceThinkingMode(cli);
-}
-
-function getWorkspaceInteractiveMode(cli: CliName): InteractiveMode {
-  const perCli = workspaceSettings.interactiveModeByCli;
-  if (!perCli) {
-    return "coding";
-  }
-  const mode = perCli[cli];
-  return normalizeVisibleInteractiveMode(mode);
-}
-
-function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode): boolean {
-  const normalizedMode = normalizeVisibleInteractiveMode(mode);
-  if (!workspaceSettings.interactiveModeByCli) {
-    workspaceSettings.interactiveModeByCli = {};
-  }
-  if (workspaceSettings.interactiveModeByCli[cli] === normalizedMode) {
-    return false;
-  }
-  workspaceSettings.interactiveModeByCli[cli] = normalizedMode;
-  saveWorkspaceSettings(workspaceSettings);
-  return true;
-}
-
-function getWorkspaceLoopExecutionMode(cli: CliName): LoopExecutionMode {
-  const perCli = workspaceSettings.loopExecutionModeByCli;
-  if (!perCli) {
-    return DEFAULT_LOOP_EXECUTION_MODE;
-  }
-  return normalizeLoopExecutionMode(perCli[cli]);
-}
-
-function setWorkspaceLoopExecutionModeForCli(cli: CliName, mode: LoopExecutionMode): boolean {
-  const normalizedMode = normalizeLoopExecutionMode(mode);
-  if (!workspaceSettings.loopExecutionModeByCli) {
-    workspaceSettings.loopExecutionModeByCli = {};
-  }
-  if (workspaceSettings.loopExecutionModeByCli[cli] === normalizedMode) {
-    return false;
-  }
-  workspaceSettings.loopExecutionModeByCli[cli] = normalizedMode;
-  saveWorkspaceSettings(workspaceSettings);
-  return true;
-}
-
-function buildWorkspaceLoopExecutionModeByCli(): Record<CliName, LoopExecutionMode> {
-  const result = {} as Record<CliName, LoopExecutionMode>;
-  CLI_LIST.forEach((cli) => {
-    result[cli] = getWorkspaceLoopExecutionMode(cli);
-  });
-  return result;
-}
-
-function getGlobalMultiAgentEnabled(): boolean {
-  return resolveGlobalMultiAgentEnabled(readToolSettings(), workspaceSettings);
-}
-
-function shouldRequireExplicitFinalAnswerForRun(input: { loopTaskId?: string }): boolean {
-  return !input.loopTaskId;
-}
-
-function buildLongTermMemoryRuntimeSettings(): MemoryRuntimeGateSettings {
-  const toolSettings = readToolSettings();
-  return {
-    memoryEnabled: toolSettings.memoryEnabled,
-    globalMemoryEnabled: toolSettings.globalMemoryEnabled,
-    memoryAutoExtractAfterCompact: toolSettings.memoryAutoExtractAfterCompact,
-    memoryAutoExtractAfterLoopTask: toolSettings.memoryAutoExtractAfterLoopTask,
-    workspaceSettings: {
-      longTermMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
-      workspaceMemoryEnabled: workspaceSettings.workspaceMemoryEnabled,
-    },
-  };
-}
-
-function getLongTermMemoryDisabledReason(): "disabled-by-setting" | null {
-  return getLongTermMemoryRuntimeDisableReason(buildLongTermMemoryRuntimeSettings());
-}
-
-function getEffectiveLongTermMemoryEnabled(): boolean {
-  return isLongTermMemoryRuntimeEnabled(buildLongTermMemoryRuntimeSettings());
-}
-
-function getActiveWorkspaceMemoryPaths() {
-  return resolveWorkspaceMemoryPaths(resolveWorkspaceCwd() ?? null);
-}
-
-function ensureActiveWorkspaceHarnessScaffold(): boolean {
-  const paths = getActiveWorkspaceMemoryPaths();
-  if (!paths) {
-    return false;
-  }
-  try {
-    ensureWorkspaceHarnessScaffold(extensionUri.fsPath, paths);
-    return true;
-  } catch (error) {
-    void logError("workspace-harness-scaffold-error", {
-      error: String(error),
-      workspace: paths.workspaceRoot,
-    });
-    return false;
-  }
-}
-
-async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
-  const workspaceRoot = resolveWorkspaceCwd();
-  if (!workspaceRoot) {
-    void vscode.window.showWarningMessage(t("workspaceHarness.noWorkspace"));
-    return false;
-  }
-  const confirmLabel = t("workspaceHarness.confirmInitializeAction");
-  const selection = await vscode.window.showWarningMessage(
-    t("workspaceHarness.confirmInitialize", { workspace: workspaceRoot }),
-    { modal: true },
-    confirmLabel,
-  );
-  if (selection !== confirmLabel) {
-    return false;
-  }
-  const scaffoldReady = ensureActiveWorkspaceHarnessScaffold();
-  if (!scaffoldReady) {
-    void vscode.window.showWarningMessage(t("workspaceHarness.initFailed"));
-    return false;
-  }
-  startCodeGraphWorkspaceSetup(workspaceRoot);
-  void vscode.window.showInformationMessage(t("workspaceHarness.initStarted"));
-  void maybePromptInitializeArchitectureWithAi(workspaceRoot);
-  return true;
-}
-
-function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
-  const terminal = createCodeGraphTerminal(WORKSPACE_HARNESS_TERMINAL_NAME, workspaceRoot);
-  terminal.show();
-  terminal.sendText(CODEGRAPH_SETUP_COMMAND);
-  void logInfo("workspace-harness-codegraph-setup-triggered", {
-    workspace: workspaceRoot,
-    command: CODEGRAPH_SETUP_COMMAND,
-  });
-}
-
-function createCodeGraphTerminal(name: string, cwd: string): vscode.Terminal {
-  const terminalOptions: vscode.TerminalOptions = {
-    name,
-    cwd,
-  };
-  if (process.platform === "win32") {
-    terminalOptions.shellPath = process.env.ComSpec || "cmd.exe";
-  }
-  return vscode.window.createTerminal(terminalOptions);
-}
-
-async function installCodeGraphForWorkspace(): Promise<void> {
-  const workspaceRoot = resolveWorkspaceCwd();
-  const initializeWorkspace = Boolean(workspaceRoot);
-  const installCommand = getCodeGraphInstallCommand({ initializeWorkspace });
-  const confirmLabel = t("codegraph.installAction");
-  const confirmMessage = workspaceRoot
-    ? t("codegraph.installConfirm", { workspace: workspaceRoot, command: installCommand })
-    : t("codegraph.installConfirmNoWorkspace", { command: installCommand });
-  const selection = await vscode.window.showWarningMessage(
-    confirmMessage,
-    { modal: true },
-    confirmLabel,
-  );
-  if (selection !== confirmLabel) {
-    return;
-  }
-
-  const terminal = createCodeGraphTerminal(
-    CODEGRAPH_INSTALL_TERMINAL_NAME,
-    workspaceRoot ?? os.homedir(),
-  );
-  terminal.show();
-  terminal.sendText(installCommand);
-  void logInfo("codegraph-install-triggered", {
-    workspace: workspaceRoot ?? null,
-    command: installCommand,
-    initializeWorkspace,
-    platform: process.platform,
-  });
-  void vscode.window.showInformationMessage(
-    t("codegraph.installStarted", { command: installCommand }),
-  );
-}
-
-function buildArchitectureInitializationModelPrompt(workspaceRoot: string): string {
-  return [
-    "你正在当前 VS Code 工作区执行 Harness 骨架初始化后的 ARCHITECTURE.md 初始化任务。",
-    "",
-    "目标：",
-    "- 阅读当前项目的真实目录、README、package/config、现有文档和关键源码入口。",
-    "- 按当前项目实际架构更新根级 ARCHITECTURE.md。",
-    "- 保留 Harness 模板要求的结构化、可导航、AI 友好风格，但不要写成通用模板或安装说明。",
-    "- 内容应覆盖项目使命、运行边界、主要模块、数据/配置存储、关键流程、扩展点、验证方式和维护注意事项。",
-    "",
-    "范围与约束：",
-    "- 只修改当前工作区根级 ARCHITECTURE.md；除非发现事实来源文档必须同步，否则不要改其他文件。",
-    "- 不要替换技术栈，不要做无关重构，不要提交密钥、账号或机器私有信息。",
-    "- 如果现有 ARCHITECTURE.md 已有项目特有内容，先保留有价值事实，再补齐缺失结构。",
-    "- 如果某些架构事实无法自动确认，在 ARCHITECTURE.md 中明确标为待确认，不要编造。",
-    "",
-    "执行步骤：",
-    "1. 快速读取 README.md、package.json、src/、media/、docs/、.ch/docs/ 中与插件运行相关的事实来源。",
-    "2. 识别这是 VS Code 插件项目，并归纳 UI webview、extension host、CLI 调用、配置/历史/任务数据、Harness/记忆骨架等边界。",
-    "3. 更新 ARCHITECTURE.md，使后续 AI 进入仓库时可以据此理解项目结构和修改边界。",
-    "4. 运行最小相关验证；Node/TypeScript 项目至少执行 npm run build，若失败需说明原因和影响。",
-    "",
-    `工作区：${workspaceRoot}`,
-  ].join("\n");
-}
-
-async function maybePromptInitializeArchitectureWithAi(workspaceRoot: string): Promise<void> {
-  const confirmLabel = t("workspaceHarness.confirmArchitectureInitializeAction");
-  const selection = await vscode.window.showWarningMessage(
-    t("workspaceHarness.confirmArchitectureInitialize"),
-    { modal: true },
-    confirmLabel,
-  );
-  if (selection !== confirmLabel) {
-    return;
-  }
-
-  const targetTab = getActiveConversationTab();
-  const targetCli = targetTab?.cli ?? currentCli;
-  const targetTabId = targetTab?.id ?? getActiveConversationTabId();
-  if (!targetTabId || isTabRunActive(targetTabId)) {
-    void vscode.window.showWarningMessage(t("workspaceHarness.architectureInitBusy"));
-    return;
-  }
-
-  if (currentCli !== targetCli) {
-    currentCli = targetCli;
-    updateStatusBar();
-    workspaceSettings.currentCli = currentCli;
-  }
-  setWorkspaceInteractiveModeForCli(targetCli, "coding");
-  workspaceSettings.currentCli = targetCli;
-  saveWorkspaceSettings(workspaceSettings);
-  await postPanelState();
-
-  const activeConfigId = getActiveConfigIdForCli(targetCli);
-  const selectedModel = getSelectedCliModel(targetCli, activeConfigId) ?? undefined;
-  const promptInput: PromptRunInput = {
-    displayPrompt: ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT,
-    modelPrompt: buildArchitectureInitializationModelPrompt(workspaceRoot),
-    contextTags: [],
-    model: selectedModel,
-  };
-  const target = resolvePromptRunTarget(targetTabId);
-  const preparedInput = target ? preloadUserMessageForPrompt(promptInput, target) : promptInput;
-  recordPromptHistory(ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT, targetCli);
-  void vscode.window.showInformationMessage(t("workspaceHarness.architectureInitStarted"));
-  void runPrompt(preparedInput, { targetTabId });
-}
-
-function getGlobalAutoCompactContextAfterRun(): boolean {
-  return resolveGlobalAutoCompactContextAfterRun(readToolSettings(), workspaceSettings);
-}
-
-function normalizeLoopMaxRounds(value: unknown): number {
-  const rawValue = parseLoopMaxRoundsValue(value);
-  if (!Number.isFinite(rawValue)) {
-    return LOOP_DEFAULT_MAX_ROUNDS;
-  }
-  const integerValue = Math.floor(rawValue);
-  return Math.min(Math.max(integerValue, LOOP_MIN_MAX_ROUNDS), LOOP_MAX_MAX_ROUNDS);
-}
-
-function normalizeStoredLoopMaxRounds(value: unknown): number {
-  const rawValue = parseLoopMaxRoundsValue(value);
-  if (!Number.isFinite(rawValue)) {
-    return LOOP_DEFAULT_MAX_ROUNDS;
-  }
-  return Math.max(Math.floor(rawValue), LOOP_MIN_MAX_ROUNDS);
-}
-
-function parseLoopMaxRoundsValue(value: unknown): number {
-  const rawValue = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  return rawValue;
-}
-
-function getGlobalLoopMaxRounds(): number {
-  const toolSettings = readToolSettings();
-  if (typeof toolSettings.loopMaxRounds === "number") {
-    return normalizeLoopMaxRounds(toolSettings.loopMaxRounds);
-  }
-  return normalizeLoopMaxRounds(workspaceSettings.loopMaxRounds);
-}
-
-function getGlobalLoopSubtaskMaxThinkingMode() {
-  return getEffectiveLoopSubtaskMaxThinkingMode(readToolSettings().loopSubtaskMaxThinkingMode);
-}
-
-function getModelStoreOptions() {
-  return {
-    modelStoreFile: MODEL_STORE_FILE,
-    defaultModelStoreKey: DEFAULT_MODEL_STORE_KEY,
-    isThinkingMode,
-    normalizeThinkingModeForCli,
-    logError: (event: string, payload?: unknown) => void logError(event, payload),
-  };
-}
-
-function getWorkspaceSettingsStoreOptions() {
-  return {
-    workspaceSettingsDir: WORKSPACE_SETTINGS_DIR,
-    workspaceKey: activeWorkspaceKey,
-    isCliName,
-    isThinkingMode,
-    isInteractiveMode,
-    normalizeVisibleInteractiveMode,
-    normalizeLoopMaxRounds,
-    normalizeToolSettingsLocale,
-    sanitizeConversationTabRecord: (value: unknown): ConversationTabRecordForWorkspaceSettings | null => sanitizeConversationTabRecord(value),
-    logError: (event: string, payload?: unknown) => void logError(event, payload),
-  };
-}
-
-function getPromptHistoryStoreOptions() {
-  return {
-    promptHistoryDir: PROMPT_HISTORY_DIR,
-    legacyPromptHistoryFile: LEGACY_PROMPT_HISTORY_FILE,
-    workspaceKey: activeWorkspaceKey,
-    workspaceKeyFallback: WORKSPACE_KEY_FALLBACK,
-    promptHistoryLimit: PROMPT_HISTORY_LIMIT,
-    currentCli,
-    isCliName,
-    isTimestampWithinHistoryRetention,
-    logInfo: (event: string, payload?: unknown) => void logInfo(event, payload),
-    logError: (event: string, payload?: unknown) => void logError(event, payload),
-  };
-}
-
-function errorToMessage(error: unknown): string {
-  return error instanceof Error ? (error.message || String(error)) : String(error);
-}
-
-function ensureCliModelStore(store?: CliModelStore): CliModelStore {
-  return ensureCliModelSelectionStore(store, getModelStoreOptions());
-}
-
-function readModelStore(): CliModelStore | undefined {
-  return readModelSelectionStore(modelSelectionStoreState, getModelStoreOptions());
-}
-
-function writeModelStore(store: CliModelStore): void {
-  writeModelSelectionStore(modelSelectionStoreState, store, getModelStoreOptions());
-}
-
-function loadModelStore(): CliModelStore {
-  return loadModelSelectionStore(modelSelectionStoreState, getModelStoreOptions());
-}
-
-function getActiveConfigIdForCli(cli: CliName): string | null {
-  const snapshot = configHeartbeatSnapshot;
-  if (snapshot && snapshot.cli === cli && snapshot.activeConfigId) {
-    return snapshot.activeConfigId;
-  }
-  return getWorkspacePreferredConfigIdForCli(cli);
-}
-
-function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  return getSelectedCliModelFromStore(modelStore, cli, configId);
-}
-
-function getSelectedLoopCliModel(
-  cli: CliName,
-  role: "main" | "subtask",
-  configId: string | null = getActiveConfigIdForCli(cli),
-): string | null {
-  return getSelectedLoopCliModelFromStore(modelStore, cli, role, configId);
-}
-
-function getSelectedLoopThinkingMode(
-  cli: CliName,
-  role: "main" | "subtask",
-  model: string | null | undefined,
-  configId: string | null = getActiveConfigIdForCli(cli),
-): ThinkingMode | null {
-  return getSelectedLoopThinkingModeFromStore(modelStore, cli, role, model, configId);
-}
-
-function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
-}
-
-function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
-  return getModelOptionsForCliFromStore(modelStore, cli, configId);
-}
-
-function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
-  modelStore = selectCliModelInStore(modelStore, cli, model, configId);
-  writeModelStore(modelStore);
-}
-
-function selectCliLoopModel(
-  cli: CliName,
-  role: "main" | "subtask",
-  model: string | null,
-  configId: string | null = getActiveConfigIdForCli(cli),
-): void {
-  modelStore = selectCliLoopModelInStore(modelStore, cli, role, model, configId);
-  writeModelStore(modelStore);
-}
-
-function setSelectedLoopThinkingMode(
-  cli: CliName,
-  role: "main" | "subtask",
-  model: string | null | undefined,
-  thinkingMode: ThinkingMode | null,
-  configId: string | null = getActiveConfigIdForCli(cli),
-): void {
-  const normalizedThinkingMode = thinkingMode ? normalizeThinkingModeForCli(cli, thinkingMode) : null;
-  modelStore = setSelectedLoopThinkingModeInStore(modelStore, cli, role, model, normalizedThinkingMode, configId);
-  writeModelStore(modelStore);
-}
-
-async function updateOpenCodeRoleModelForConfig(
-  role: OpenCodeModelRoleInput,
-  value: string | null,
-  configId: string | null
-): Promise<string | null> {
-  const normalizedRole = normalizeOpenCodeModelRole(role);
-  if (!configId) {
-    return `OpenCode ${normalizedRole} model cannot be changed because there is no active config.`;
-  }
-  const activeConfig = await configService.getConfigById("opencode", configId);
-  if (!activeConfig) {
-    return `OpenCode ${normalizedRole} model cannot be changed because active config "${configId}" was not found.`;
-  }
-  const parsed = parseOpenCodeConfigModels(activeConfig.content);
-  const validation = validateOpenCodeModelOverride(parsed, normalizedRole, value);
-  if (!validation.ok) {
-    return validation.issue?.message ?? `OpenCode ${normalizedRole} model selection is invalid.`;
-  }
-  const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, normalizedRole, validation.modelRef);
-  if (nextStore !== modelStore) {
-    modelStore = nextStore;
-    writeModelStore(modelStore);
-  }
-  return null;
-}
-
-function addCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  const normalized = normalizeCliModelName(model);
-  if (!normalized) {
-    return null;
-  }
-  const nextStore = selectCliModelInStore(modelStore, cli, normalized, configId);
-  if (nextStore === modelStore) {
-    return null;
-  }
-  modelStore = nextStore;
-  writeModelStore(modelStore);
-  return normalized;
-}
-
-function renameCliModel(cli: CliName, previousModel: string, nextModel: string, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  const result = renameCliModelInStore(modelStore, cli, previousModel, nextModel, configId);
-  if (!result.renamedModel) {
-    return null;
-  }
-  modelStore = result.store;
-  writeModelStore(modelStore);
-  return result.renamedModel;
-}
-
-function deleteCliModel(cli: CliName, model: string, configId: string | null = getActiveConfigIdForCli(cli)): void {
-  modelStore = deleteCliModelFromStore(modelStore, cli, model, configId);
-  writeModelStore(modelStore);
-}
-
-function moveCliModel(cli: CliName, model: string, direction: "up" | "down", configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  const result = moveCliModelInStore(modelStore, cli, model, direction, configId);
-  if (!result.movedModel) {
-    return null;
-  }
-  modelStore = result.store;
-  writeModelStore(modelStore);
-  return result.movedModel;
-}
-
-function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCliModel(cli)): string[] {
-  return getEffectiveCliArgsFromStore(cli, model);
-}
-
-function buildModelState(
-  activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
-): PanelState["modelState"] {
-  return buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
-}
-
-function loadWorkspaceSettings(): WorkspaceSettings {
-  return loadWorkspaceSettingsFromStore(getWorkspaceSettingsStoreOptions());
-}
-
-function saveWorkspaceSettings(next: WorkspaceSettings): void {
-  saveWorkspaceSettingsToStore(next, getWorkspaceSettingsStoreOptions());
-}
-
-function loadPromptHistoryStore(): PromptHistoryStore {
-  return loadPromptHistoryStoreFromStore(getPromptHistoryStoreOptions());
-}
-
-function ensurePromptHistoryStore(store?: PromptHistoryStore): PromptHistoryStore {
-  return ensurePromptHistoryStoreState(store, getPromptHistoryStoreOptions());
-}
-
-function buildPromptHistoryState(): PromptHistoryItem[] {
-  return buildPromptHistoryStateFromStore(promptHistoryStore);
-}
-
-function recordPromptHistory(prompt: string, cli: CliName): void {
-  promptHistoryStore = recordPromptHistoryInStore(promptHistoryStore, prompt, cli, getPromptHistoryStoreOptions());
-}
-
-function clearPromptHistory(): void {
-  promptHistoryStore = clearPromptHistoryStore(getPromptHistoryStoreOptions());
-}
-
-function getPromptHistoryFilePath(workspaceKey: string = activeWorkspaceKey): string {
-  return getPromptHistoryStoreFilePath(getPromptHistoryStoreOptions(), workspaceKey);
-}
-
-function readPromptHistoryFile(workspaceKey: string = activeWorkspaceKey): PromptHistoryStore | undefined {
-  return readPromptHistoryStoreFile(getPromptHistoryStoreOptions(), workspaceKey);
-}
-
-function writePromptHistoryFile(store: PromptHistoryStore, workspaceKey: string = activeWorkspaceKey): void {
-  writePromptHistoryStoreFile(store, getPromptHistoryStoreOptions(), workspaceKey);
-}
-
-function deletePromptHistoryFile(workspaceKey: string): void {
-  deletePromptHistoryStoreFile(getPromptHistoryStoreOptions(), workspaceKey);
-}
-
-function cleanupPromptHistoryRetentionAcrossWorkspaces(): void {
-  cleanupPromptHistoryStoreRetentionAcrossWorkspaces(getPromptHistoryStoreOptions());
-}
-
-function collectWorkspaceKeysForPromptHistoryCleanup(): string[] {
-  return collectWorkspaceKeysForPromptHistoryStoreCleanup(getPromptHistoryStoreOptions());
-}
-
-function loadSessionStore(): SessionStore {
-  return sessionLifecycleController.loadSessionStore();
-}
-
-async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
-  await sessionLifecycleController.cleanupSessionRetentionAcrossWorkspaces();
-}
-
-function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
-  const allSessions: SessionSummary[] = [];
-  const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
-  const loopSessionIdsByCli = buildLoopSessionIdsByCli(
-    loopDebateChatPanelCoordinator.listGroupChatTasks()
-  );
-  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
-    listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs
-  );
-  let shouldPersist = false;
-  for (const item of CLI_LIST) {
-    const records = sessionStore[item]?.sessions ?? [];
-    records.forEach((record) => {
-      let firstPrompt = record.firstPrompt;
-      if (!firstPrompt) {
-        const resolved = resolveSessionFirstPrompt(item, record.id);
-        if (resolved) {
-          record.firstPrompt = resolved;
-          firstPrompt = resolved;
-          shouldPersist = true;
-        }
-      }
-      const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
-      if (fallbackLabel && shouldUseFallbackSessionLabel(record.label)) {
-        record.label = fallbackLabel;
-        shouldPersist = true;
-      }
-      const openConversationTabId = openConversationTabSessionMap.get(
-        buildConversationTabSessionLookupKey(item, record.id)
-      ) ?? null;
-      const graphRunId = graphRunIdsBySessionByCli[item].get(record.id)
-        ?? resolveSessionGraphRunIdFromMessages(item, record.id);
-      allSessions.push({
-        id: record.id,
-        label: record.label,
-        createdAt: record.createdAt,
-        lastUsedAt: record.lastUsedAt,
-        cli: item,
-        isLoopSession: loopSessionIdsByCli[item].has(record.id),
-        isGraphSession: Boolean(graphRunId),
-        graphRunId,
-        isOpenInConversationTabs: Boolean(openConversationTabId),
-        openConversationTabId,
-        firstPrompt,
-      });
-    });
-  }
-  if (shouldPersist) {
-    void persistSessionStore(sessionStore);
-  }
-  const sessions = allSessions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
-  return {
-    currentSessionId: sessionStore[cli]?.currentId ?? null,
-    sessions,
-  };
-}
-
-function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | null {
-  const messages = loadSessionMessages(cli, sessionId);
-  const first = messages.find((message) => message.role === "user" && message.content.trim());
-  return first ? first.content : null;
-}
-
-function normalizeChatGraphRunId(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-type GraphRunSessionLookupByCli = ReturnType<typeof buildGraphRunIdsBySessionByCli>;
-
-function resolveGraphRunIdFromMessages(messages: readonly ChatMessage[]): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const directGraphRunId = normalizeChatGraphRunId(message.graphRunId);
-    if (directGraphRunId) {
-      return directGraphRunId;
-    }
-    const actions = Array.isArray(message.actions) ? message.actions : [];
-    for (let actionIndex = actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
-      const action = actions[actionIndex];
-      if (action.type !== "openGraphRun") {
-        continue;
-      }
-      const actionGraphRunId = normalizeChatGraphRunId(action.graphRunId);
-      if (actionGraphRunId) {
-        return actionGraphRunId;
-      }
-    }
-  }
-  return null;
-}
-
-function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): string | null {
-  return resolveGraphRunIdFromMessages(loadSessionMessages(cli, sessionId));
-}
-
-function resolveConversationTabGraphRunId(
-  tab: ConversationTabRecord | null,
-  graphRunIdsBySessionByCli?: GraphRunSessionLookupByCli,
-): string | null {
-  if (!tab) {
-    return null;
-  }
-  const graphNodeTarget = graphNodeRunTargetsByTabId.get(tab.id);
-  const graphNodeRunId = normalizeChatGraphRunId(graphNodeTarget?.graphRunId);
-  if (graphNodeRunId) {
-    return graphNodeRunId;
-  }
-  if (getPrimaryRunTabId() === tab.id) {
-    const activeGraphRunId = normalizeChatGraphRunId(activeTaskRun?.graphRunId);
-    if (activeGraphRunId) {
-      return activeGraphRunId;
-    }
-  }
-  const parallelGraphRunId = normalizeChatGraphRunId(parallelRunsByTabId.get(tab.id)?.graphRunId);
-  if (parallelGraphRunId) {
-    return parallelGraphRunId;
-  }
-  const interactiveGraphRunId = normalizeChatGraphRunId(interactiveRunsByTabId.get(tab.id)?.graphRunId);
-  if (interactiveGraphRunId) {
-    return interactiveGraphRunId;
-  }
-  const liveMessages = getLiveMessagesForTab(tab.id);
-  const liveGraphRunId = liveMessages ? resolveGraphRunIdFromMessages(liveMessages) : null;
-  if (liveGraphRunId) {
-    return liveGraphRunId;
-  }
-  const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
-  if (sessionId) {
-    const storedGraphRunId = normalizeChatGraphRunId(graphRunIdsBySessionByCli?.[tab.cli]?.get(sessionId));
-    return storedGraphRunId ?? resolveSessionGraphRunIdFromMessages(tab.cli, sessionId);
-  }
-  return resolveGraphRunIdFromMessages(getPendingSessionDraft(tab.id, tab.cli).messages);
-}
-
-function ensureLatestSessionForCli(cli: CliName): void {
-  const latestSessionId = getLatestSessionId(cli);
-  if (!latestSessionId) {
-    return;
-  }
-  if (getCurrentSessionId(cli) === latestSessionId) {
-    return;
-  }
-  setCurrentSession(cli, latestSessionId, { syncConversationTab: false });
-}
-
-function getLatestSessionId(cli: CliName): string | null {
-  return getLatestSessionIdFromRecords(sessionStore[cli]?.sessions ?? []);
-}
-
-function getCurrentSessionId(cli: CliName): string | null {
-  return sessionStore[cli]?.currentId ?? null;
-}
-
-function buildOpenConversationTabSessionMap(): Map<string, string> {
-  return sessionTabsController.buildOpenConversationTabSessionMap();
-}
-
-function buildConversationTabsState(): {
-  activeTabId: string | null;
-  tabs: ConversationTabSummary[];
-} {
-  const tabState = sessionTabsController.buildConversationTabsState();
-  const tabsById = new Map(ensureConversationTabs().tabs.map((tab) => [tab.id, tab]));
-  const graphRuns = listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs;
-  const graphRunsById = new Map(graphRuns.map((run) => [run.id, run]));
-  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
-    graphRuns,
-  );
-  return {
-    ...tabState,
-    tabs: tabState.tabs.map((summary) => {
-      const graphRunId = normalizeChatGraphRunId(summary.graphRunId)
-        ?? resolveConversationTabGraphRunId(tabsById.get(summary.id) ?? null, graphRunIdsBySessionByCli);
-      if (!graphRunId) {
-        return summary;
-      }
-      const graphRun = graphRunsById.get(graphRunId) ?? null;
-      return {
-        ...summary,
-        graphRunId,
-        graphRunStatus: graphRun?.status,
-        graphRunBlocked: graphRun ? isGraphRunBlockedForMainTab(graphRun) : undefined,
-      };
-    }),
-  };
-}
-
-function initializeConversationTabsFromWorkspaceSettings(): void {
-  sessionTabsController.initializeConversationTabsFromWorkspaceSettings();
-}
-
-function sanitizeConversationTabRecord(value: unknown): ConversationTabRecord | null {
-  return sessionTabsController.sanitizeConversationTabRecord(value);
-}
-
-function ensureConversationTabs(): ConversationTabsState {
-  return sessionTabsController.ensureConversationTabs();
-}
-
-function persistConversationTabsToWorkspaceSettings(): void {
-  sessionTabsController.persistConversationTabsToWorkspaceSettings();
-}
-
-function getConversationTabById(tabId: string): ConversationTabRecord | null {
-  return sessionTabsController.getConversationTabById(tabId);
-}
-
-function getActiveConversationTabId(): string | null {
-  return sessionTabsController.getActiveConversationTabId();
-}
-
-function getActiveConversationTab(): ConversationTabRecord | null {
-  return sessionTabsController.getActiveConversationTab();
-}
-
-function getActiveConversationSessionId(cli: CliName): string | null {
-  return sessionTabsController.getActiveConversationSessionId(cli);
-}
-
-function findConversationTabIdBySession(cli: CliName, sessionId: string): string | null {
-  return sessionTabsController.findConversationTabIdBySession(cli, sessionId);
-}
-
-function updateActiveConversationTabSession(cli: CliName, sessionId: string | null): void {
-  sessionTabsController.updateActiveConversationTabSession(cli, sessionId);
-}
-
-function setActiveConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
-  return sessionTabsController.setActiveConversationTab(tabId);
-}
-
-async function switchVisibleConversationTabForLoop(
-  tabId: string
-): Promise<{ cli: CliName; sessionId: string | null } | null> {
-  const previousCli = currentCli;
-  const switched = setActiveConversationTab(tabId);
-  if (!switched) {
-    return null;
-  }
-  if (currentCli !== switched.cli) {
-    currentCli = switched.cli;
-    updateStatusBar();
-    workspaceSettings.currentCli = currentCli;
-    saveWorkspaceSettings(workspaceSettings);
-  }
-  if (previousCli !== switched.cli) {
-    await maybePromptInstallOnCliGroupSwitch(switched.cli);
-  }
-  await postPanelState();
-  sendSessionMessagesToPanel(switched.cli, switched.sessionId, tabId);
-  return switched;
-}
-
-function createLoopSubtaskRunTarget(
-  cli: CliName,
-  options: { sessionId?: string | null } = {}
-): PromptRunTarget {
-  const sessionId = normalizeLoopDebateSessionId(options.sessionId);
-  const state = ensureConversationTabs();
-  const tab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli,
-    sessionId,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
-    createdAt: Date.now(),
-  };
-  state.tabs.push(tab);
-  persistConversationTabsToWorkspaceSettings();
-  void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
-  void postPanelState();
-  return {
-    tabId: tab.id,
-    cli,
-    sessionId,
-  };
-}
-
-function createGraphNodeRunTarget(
-  cli: CliName,
-  graphRunId: string,
-  graphNodeId: string,
-): PromptRunTarget {
-  const sessionId = null;
-  const state = ensureConversationTabs();
-  const tab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli,
-    sessionId,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
-    createdAt: Date.now(),
-  };
-  state.tabs.push(tab);
-  graphNodeRunTargetsByTabId.set(tab.id, { graphRunId, graphNodeId });
-  persistConversationTabsToWorkspaceSettings();
-  void logInfo("graph-node-session-created", { cli, tabId: tab.id, graphRunId, graphNodeId });
-  void postPanelState();
-  return {
-    tabId: tab.id,
-    cli,
-    sessionId,
-  };
-}
-
-function addConversationTab(
-  cli: CliName,
-  sessionId: string | null,
-  options: { skipPersist?: boolean } = {}
-): string | null {
-  return sessionTabsController.addConversationTab(cli, sessionId, options);
-}
-
-function closeConversationTab(tabId: string): { cli: CliName; sessionId: string | null } | null {
-  return sessionTabsController.closeConversationTab(tabId);
-}
-
-async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
-  if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
-    await postPanelState();
-    return;
-  }
-  const closingTab = getConversationTabById(tabId);
-  if (!closingTab) {
-    return;
-  }
-  graphNodeRunTargetsByTabId.delete(tabId);
-  const previousCli = currentCli;
-  const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
-  const next = closeConversationTab(tabId);
-  closingBindings.forEach((binding) => {
-    disposeInteractiveRunnerIfUnused(binding);
-  });
-  if (next && currentCli !== next.cli) {
-    currentCli = next.cli;
-    updateStatusBar();
-    workspaceSettings.currentCli = currentCli;
-    saveWorkspaceSettings(workspaceSettings);
-  }
-  if (next && previousCli !== next.cli) {
-    await maybePromptInstallOnCliGroupSwitch(next.cli);
-  }
-  await postPanelState();
-  if (next) {
-    sendSessionMessagesToPanel(next.cli, next.sessionId);
-    return;
-  }
-  sendSessionMessagesToPanel(currentCli, null);
-}
-
-function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {
-  sessionTabsController.detachConversationTabsFromSession(cli, sessionId);
-}
-
-function syncCurrentSessionWithActiveTab(preferredCli?: CliName): string | null {
-  return sessionTabsController.syncCurrentSessionWithActiveTab(preferredCli);
-}
-
-function setCurrentSession(
-  cli: CliName,
-  sessionId: string | null,
-  options: { syncConversationTab?: boolean } = {}
-): void {
-  if (!sessionStore[cli]) {
-    sessionStore[cli] = { currentId: null, sessions: [] };
-  }
-  sessionStore[cli].currentId = sessionId;
-  if (sessionId) {
-    touchSession(cli, sessionId);
-  }
-  if (options.syncConversationTab !== false) {
-    updateActiveConversationTabSession(cli, sessionId);
-  }
-  void persistSessionStore(sessionStore);
-  void logInfo("session-selected", { cli, sessionId });
-}
-
-function startNewSession(cli: CliName): void {
-  const activeTab = getActiveConversationTab();
-  sessionTabsController.startNewSession(cli);
-  void logInfo("session-new", { cli, tabId: activeTab?.id ?? null });
-}
-
-async function resetConversationTabSession(): Promise<void> {
-  const activeTab = getActiveConversationTab();
-  if (!activeTab) {
-    return;
-  }
-  if (isTabRunActive(activeTab.id) || isLoopMainTabCloseLocked(activeTab.id)) {
-    await postPanelState();
-    return;
-  }
-  const previousTabId = activeTab.id;
-  const targetCli = activeTab.cli;
-  addConversationTab(targetCli, null);
-  setWorkspaceInteractiveModeForCli(targetCli, "coding");
-  await closeConversationTabAndRefreshPanel(previousTabId);
-  void logInfo("session-reset-to-new-tab", {
-    cli: targetCli,
-    previousTabId,
-    activeTabId: getActiveConversationTabId(),
-  });
-}
-
-function captureSessionFromBuffer(cli: CliName, buffer: string): void {
-  const sessionId = extractSessionId(cli, buffer);
-  if (!sessionId) {
-    return;
-  }
-  adoptDetectedSessionId(cli, sessionId, activeTabIdForRun, activeSessionId);
-}
-
-function adoptDetectedSessionId(
-  cli: CliName,
-  sessionId: string,
-  tabId: string | null,
-  previousSessionId: string | null,
-): void {
-  if (previousSessionId === sessionId) {
-    return;
-  }
-  if (previousSessionId && !isLocalSessionId(previousSessionId)) {
-    return;
-  }
-  if (previousSessionId) {
-    migrateLocalSessionToTargetSession(cli, previousSessionId, sessionId, { notifyPanel: false });
-  }
-  adoptSessionId(cli, sessionId, tabId);
-}
-
-function adoptFreshOpenCodeLoopRecoverySession(options: {
-  sessionId: string;
-  previousSessionId: string | null;
-  tabId: string | null;
-  messageTarget: ChatMessage[];
-  loopTaskId: string;
-}): ChatMessage[] {
-  const sessionId = options.sessionId.trim();
-  if (!sessionId) {
-    return options.messageTarget;
-  }
-
-  // Preserve the UI transcript while the OpenCode provider starts a clean context.
-  saveSessionMessages("opencode", sessionId, options.messageTarget);
-  adoptSessionId("opencode", sessionId, options.tabId);
-  bindLoopTaskToSession(options.loopTaskId, sessionId);
-  if (activeTaskRun?.cli === "opencode" && activeTaskRun.loopTaskId === options.loopTaskId) {
-    activeTaskRun.sessionId = sessionId;
-  }
-  void logInfo("opencode-loop-main-fresh-session-recovered", {
-    taskId: options.loopTaskId,
-    tabId: options.tabId,
-    previousSessionId: options.previousSessionId,
-    sessionId,
-  });
-  return loadSessionMessages("opencode", sessionId);
-}
-
-function touchSession(cli: CliName, sessionId: string): void {
-  const now = Date.now();
-  const sessions = sessionStore[cli].sessions;
-  const existing = sessions.find((item) => item.id === sessionId);
-  if (existing) {
-    existing.lastUsedAt = now;
-    return;
-  }
-  sessions.push({ id: sessionId, label: t("session.unnamed"), createdAt: now, lastUsedAt: now });
-}
-
-async function persistSessionStore(nextStore: SessionStore): Promise<void> {
-  await extensionContext.globalState.update(getSessionStoreKey(), nextStore);
-  writeSessionFile(nextStore, activeWorkspaceKey, {
-    workspaceKeyFallback: WORKSPACE_KEY_FALLBACK,
-    legacySessionFile: LEGACY_SESSION_FILE,
-    sessionDir: SESSION_DIR,
-    logError: (event, payload) => void logError(event, payload),
-  });
-}
-
-function updateSessionBuffer(buffer: string, chunk: string): string {
-  const next = buffer + chunk;
-  if (next.length <= SESSION_BUFFER_LIMIT) {
-    return next;
-  }
-  return next.slice(next.length - SESSION_BUFFER_LIMIT);
-}
-
-function createConversationTabId(): string {
-  return sessionTabsController.createConversationTabId();
-}
-
-function getPendingSessionDraft(tabId: string, cli?: CliName): PendingSessionDraft {
-  return sessionTabsController.getPendingSessionDraft(tabId, cli);
-}
-
-function updatePendingSessionDraft(
-  tabId: string,
-  patch: Partial<PendingSessionDraft>,
-  cli?: CliName,
-): PendingSessionDraft {
-  return sessionTabsController.updatePendingSessionDraft(tabId, patch, cli);
-}
-
-function clearPendingSessionDraft(tabId: string, cli?: CliName): void {
-  sessionTabsController.clearPendingSessionDraft(tabId, cli);
-}
-
-function ensureLocalSession(cli: CliName, tabId: string): void {
-  sessionLifecycleController.ensureLocalSession(cli, tabId);
-}
-
-function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void {
-  sessionTabsController.preparePendingLabel(cli, tabId, prompt);
-}
-
-function assignPendingLabel(cli: CliName, tabId: string, sessionId: string): void {
-  sessionLifecycleController.assignPendingLabel(cli, tabId, sessionId);
-}
-
-function persistActiveMessages(): void {
-  sessionLifecycleController.persistActiveMessages();
-}
 
 function attachPendingMessages(cli: CliName, tabId: string, sessionId: string): void {
   sessionLifecycleController.attachPendingMessages(cli, tabId, sessionId);

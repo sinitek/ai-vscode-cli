@@ -1115,6 +1115,7 @@ test("uses structured OpenCode final events in both successful completion paths"
 
 test("wires one fresh-session recovery into both Loop OpenCode run paths", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const sessionTabsSource = fs.readFileSync(path.join(process.cwd(), "src", "extensionHost", "sessionTabs.ts"), "utf8");
   const recoverySelectors = extensionSource.match(
     /shouldRecoverOpenCodeLoopMainSessionInFreshSession\(\{/g,
   ) ?? [];
@@ -1132,7 +1133,7 @@ test("wires one fresh-session recovery into both Loop OpenCode run paths", () =>
   assert.equal(queuedRecoveryMessages.length, 2);
   assert.equal(recoveryAdoptions.length, 2);
   assert.equal(freshSessionArguments.length, 2);
-  assert.match(extensionSource, /bindLoopTaskToSession\(options\.loopTaskId, sessionId\)/);
+  assert.match(sessionTabsSource, /function adoptFreshOpenCodeLoopRecoverySession\([\s\S]*bindLoopTaskToSession\(options\.loopTaskId, sessionId\)/);
 });
 
 test("formats OpenCode JSONL text and reasoning events for visible bubbles", () => {

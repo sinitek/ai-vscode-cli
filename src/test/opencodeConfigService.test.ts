@@ -371,7 +371,7 @@ test("OpenCode preflight reports missing env keys before running CLI", () => {
   assert.deepEqual(result.issues.map((issue) => issue.code), ["missing-env"]);
 });
 
-test("OpenCode preflight reports primary and small role refs before running CLI", () => {
+test("OpenCode preflight reports main and subtask role refs before running CLI", () => {
   const configService = loadConfigService();
   const missingPrimary = configService.validateOpenCodeConfigForRun(JSON.stringify({
     provider: { gateway: { models: { model: {} } } },
@@ -379,8 +379,8 @@ test("OpenCode preflight reports primary and small role refs before running CLI"
   assert.equal(missingPrimary.ok, false);
   assert.deepEqual(missingPrimary.issues[0], {
     code: "role-model-missing",
-    message: "OpenCode primary model is missing; configure top-level model as an exact provider/model reference.",
-    role: "primary",
+    message: "OpenCode main model is missing; configure top-level model as an exact provider/model reference.",
+    role: "main",
   });
 
   const invalidSmall = configService.validateOpenCodeConfigForRun(JSON.stringify({
@@ -391,7 +391,7 @@ test("OpenCode preflight reports primary and small role refs before running CLI"
   assert.equal(invalidSmall.ok, false);
   assert.ok(invalidSmall.issues.some((issue) => (
     issue.code === "role-provider-not-found"
-    && issue.role === "small"
+    && issue.role === "subtask"
     && issue.ref === "other/missing"
   )));
 });

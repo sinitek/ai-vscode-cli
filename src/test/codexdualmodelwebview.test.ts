@@ -239,6 +239,7 @@ function buildVisibilityHarness() {
     "cliSupportsManagedModelSelection",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
+    "isOpenCodeRoleModelMode",
     "syncModelSelectorByInteractiveMode",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
   const state = { currentCli: "codex", interactiveMode: "coding" };

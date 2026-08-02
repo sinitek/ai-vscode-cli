@@ -1160,11 +1160,12 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
 
     const activeConfigId = deps.getActiveConfigIdForCli(target.cli);
+    const selectedCliModel = deps.getSelectedCliModel(target.cli, activeConfigId) ?? undefined;
     const loopMainModel = deps.getSelectedLoopCliModel?.(target.cli, "main", activeConfigId)
-      ?? deps.getSelectedCliModel(target.cli, activeConfigId)
+      ?? selectedCliModel
       ?? undefined;
     const loopSubtaskModel = deps.getSelectedLoopCliModel?.(target.cli, "subtask", activeConfigId)
-      ?? deps.getSelectedCliModel(target.cli, activeConfigId)
+      ?? selectedCliModel
       ?? loopMainModel
       ?? undefined;
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);

@@ -53,6 +53,11 @@ type DagPort = {
   y: number;
 };
 
+type DagPoint = {
+  x: number;
+  y: number;
+};
+
 type DagEdgeGeometry = {
   path: string;
   fromPort: DagPort;
@@ -71,8 +76,6 @@ type DagEdgeLayout = {
   fromPort: string;
   toPort: string;
   portHint: DagPortHint;
-  fromSideHint: DagPortSide | "";
-  toSideHint: DagPortSide | "";
   offset: number;
   labelX: number;
   labelY: number;
@@ -115,11 +118,6 @@ type DagNodeSize = {
   height: number;
 };
 
-type DagPortPairPreference = {
-  fromSides?: readonly DagPortSide[];
-  toSides?: readonly DagPortSide[];
-};
-
 const DAG_NODE_WIDTH = 192;
 const DAG_NODE_HEIGHT = 78;
 const DAG_RANK_SEP = 124;
@@ -144,16 +142,6 @@ const DAG_EDGE_PARALLEL_OFFSET = 18;
 const DAG_EDGE_LABEL_SEGMENT_LIMIT = 4;
 const DAG_EDGE_LABEL_MAX_SEGMENTS = 2;
 const DAG_PORT_RATIOS = [0.25, 0.5, 0.75] as const;
-const DAG_PORT_HINT_RATIOS: Record<DagPortHint, string> = {
-  start: "25",
-  center: "50",
-  end: "75",
-};
-const DAG_PORT_SIDE_MISMATCH_PENALTY = 400;
-const DAG_PORT_RATIO_MISMATCH_PENALTY = 90;
-const DAG_PORT_SAME_SIDE_PENALTY = 120;
-const DAG_PORT_ORIENTATION_PENALTY = 96;
-const DAG_PORT_CENTER_TIE_BREAKER = 0.5;
 const DAG_VISIBLE_EDGE_ACTIVE_WEIGHT = 4;
 const DAG_VISIBLE_EDGE_PURPOSE_WEIGHT = 2;
 const DAG_VISIBLE_EDGE_NON_DEFAULT_KIND_WEIGHT = 1;
@@ -353,19 +341,6 @@ ${GRAPH_RUN_PANEL_STYLES}
         };
       }
 
-      function getNodePorts(box) {
-        const ratios = [0.25, 0.5, 0.75];
-        const ports = [];
-        ratios.forEach((ratio) => {
-          const label = String(Math.round(ratio * 100));
-          ports.push({ id: "top-" + label, side: "top", x: box.x + box.width * ratio, y: box.y });
-          ports.push({ id: "right-" + label, side: "right", x: box.x + box.width, y: box.y + box.height * ratio });
-          ports.push({ id: "bottom-" + label, side: "bottom", x: box.x + box.width * ratio, y: box.y + box.height });
-          ports.push({ id: "left-" + label, side: "left", x: box.x, y: box.y + box.height * ratio });
-        });
-        return ports;
-      }
-
       function getPreferredPortSides(from, to) {
         const fromCenter = getBoxCenter(from);
         const toCenter = getBoxCenter(to);
@@ -381,76 +356,95 @@ ${GRAPH_RUN_PANEL_STYLES}
           : { fromSide: "top", toSide: "bottom" };
       }
 
-      function getPortHintRatio(portHint) {
+      function getPortHintRatioValue(portHint) {
         if (portHint === "start") {
-          return "25";
+          return 0.25;
         }
         if (portHint === "end") {
-          return "75";
+          return 0.75;
         }
-        return "50";
+        return 0.5;
       }
 
-      function getPortRatioLabel(port) {
-        const parts = String(port.id || "").split("-");
-        return parts[parts.length - 1] || "50";
-      }
-
-      function normalizePortSideHint(value) {
-        return ["top", "right", "bottom", "left"].includes(value) ? value : "";
-      }
-
-      function chooseEdgePortPair(from, to, portHint = "center", sideHint = {}) {
-        const fromCenter = getBoxCenter(from);
-        const toCenter = getBoxCenter(to);
+      function chooseEdgePortPair(from, to, portHint = "center") {
+        if (from === to || (from.id && from.id === to.id)) {
+          return getFallbackEdgePortPair(from, to);
+        }
         const preferred = getPreferredPortSides(from, to);
-        const preferredRatio = getPortHintRatio(portHint);
-        const forcedFromSide = normalizePortSideHint(sideHint.fromSide);
-        const forcedToSide = normalizePortSideHint(sideHint.toSide);
-        let best = null;
-        getNodePorts(from).forEach((fromPort) => {
-          getNodePorts(to).forEach((toPort) => {
-            if (forcedFromSide && fromPort.side !== forcedFromSide) {
-              return;
-            }
-            if (forcedToSide && toPort.side !== forcedToSide) {
-              return;
-            }
-            const dx = toPort.x - fromPort.x;
-            const dy = toPort.y - fromPort.y;
-            const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
-            const unitX = dx / distance;
-            const unitY = dy / distance;
-            const fromNormal = getPortNormal(fromPort.side);
-            const toNormal = getPortNormal(toPort.side);
-            const fromFacingScore = fromNormal.x * unitX + fromNormal.y * unitY;
-            const toFacingScore = toNormal.x * -unitX + toNormal.y * -unitY;
-            const orientationScore = ((1 - fromFacingScore) + (1 - toFacingScore)) * ${DAG_PORT_ORIENTATION_PENALTY};
-            const fromSidePenalty = fromPort.side === preferred.fromSide ? 0 : ${DAG_PORT_SIDE_MISMATCH_PENALTY};
-            const toSidePenalty = toPort.side === preferred.toSide ? 0 : ${DAG_PORT_SIDE_MISMATCH_PENALTY};
-            const fromRatioPenalty = getPortRatioLabel(fromPort) === preferredRatio ? 0 : ${DAG_PORT_RATIO_MISMATCH_PENALTY};
-            const toRatioPenalty = getPortRatioLabel(toPort) === preferredRatio ? 0 : ${DAG_PORT_RATIO_MISMATCH_PENALTY};
-            const sameSidePenalty = fromPort.side === toPort.side ? ${DAG_PORT_SAME_SIDE_PENALTY} : 0;
-            const centerScore = (
-              Math.abs(fromPort.y - fromCenter.y)
-              + Math.abs(toPort.y - toCenter.y)
-              + Math.abs(fromPort.x - fromCenter.x)
-              + Math.abs(toPort.x - toCenter.x)
-            ) * ${DAG_PORT_CENTER_TIE_BREAKER};
-            const score = distance
-              + orientationScore
-              + fromSidePenalty
-              + toSidePenalty
-              + fromRatioPenalty
-              + toRatioPenalty
-              + sameSidePenalty
-              + centerScore;
-            if (!best || score < best.score) {
-              best = { fromPort, toPort, score };
-            }
-          });
-        });
-        return best || {
+        const nearest = getNearestBoxBorderPoints(from, to, getPortHintRatioValue(portHint));
+        if (!nearest) {
+          return getFallbackEdgePortPair(from, to);
+        }
+        return {
+          fromPort: buildNearestPort(from, nearest.fromPoint, preferred.fromSide),
+          toPort: buildNearestPort(to, nearest.toPoint, preferred.toSide),
+          score: nearest.distance,
+        };
+      }
+
+      function getNearestBoxBorderPoints(from, to, hintRatio) {
+        const x = getNearestIntervalCoordinates(from.x, from.x + from.width, to.x, to.x + to.width, hintRatio);
+        const y = getNearestIntervalCoordinates(from.y, from.y + from.height, to.y, to.y + to.height, hintRatio);
+        if (x.overlaps && y.overlaps) {
+          return null;
+        }
+        const dx = x.to - x.from;
+        const dy = y.to - y.from;
+        return {
+          fromPoint: { x: x.from, y: y.from },
+          toPoint: { x: x.to, y: y.to },
+          distance: Math.sqrt((dx * dx) + (dy * dy)),
+        };
+      }
+
+      function getNearestIntervalCoordinates(fromMin, fromMax, toMin, toMax, hintRatio) {
+        if (fromMax <= toMin) {
+          return { from: fromMax, to: toMin, overlaps: false };
+        }
+        if (toMax <= fromMin) {
+          return { from: fromMin, to: toMax, overlaps: false };
+        }
+        const overlapMin = Math.max(fromMin, toMin);
+        const overlapMax = Math.min(fromMax, toMax);
+        const coordinate = overlapMin + (overlapMax - overlapMin) * hintRatio;
+        return { from: coordinate, to: coordinate, overlaps: true };
+      }
+
+      function buildNearestPort(box, point, fallbackSide) {
+        const side = resolveNearestPortSide(box, point, fallbackSide);
+        return {
+          id: side + "-" + getPortCoordinateLabel(box, side, point),
+          side,
+          x: point.x,
+          y: point.y,
+        };
+      }
+
+      function resolveNearestPortSide(box, point, fallbackSide) {
+        const epsilon = 0.01;
+        const candidates = [
+          { side: "top", distance: Math.abs(point.y - box.y) },
+          { side: "right", distance: Math.abs(point.x - (box.x + box.width)) },
+          { side: "bottom", distance: Math.abs(point.y - (box.y + box.height)) },
+          { side: "left", distance: Math.abs(point.x - box.x) },
+        ];
+        const minDistance = Math.min(...candidates.map((candidate) => candidate.distance));
+        if (candidates.some((candidate) => candidate.side === fallbackSide && candidate.distance <= minDistance + epsilon)) {
+          return fallbackSide;
+        }
+        return candidates.sort((left, right) => left.distance - right.distance)[0].side;
+      }
+
+      function getPortCoordinateLabel(box, side, point) {
+        const ratio = side === "left" || side === "right"
+          ? (point.y - box.y) / Math.max(1, box.height)
+          : (point.x - box.x) / Math.max(1, box.width);
+        const percent = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+        return String(percent);
+      }
+
+      function getFallbackEdgePortPair(from, to) {
+        return {
           fromPort: { id: "right-50", side: "right", x: from.x + from.width, y: from.y + from.height / 2 },
           toPort: { id: "left-50", side: "left", x: to.x, y: to.y + to.height / 2 },
           score: 0,
@@ -506,10 +500,7 @@ ${GRAPH_RUN_PANEL_STYLES}
       }
 
       function buildEdgePathFromBoxes(from, to, options = {}) {
-        const pair = chooseEdgePortPair(from, to, options.portHint || "center", {
-          fromSide: options.fromSideHint || "",
-          toSide: options.toSideHint || "",
-        });
+        const pair = chooseEdgePortPair(from, to, options.portHint || "center");
         const offset = readNumber(options.offset, 0);
         const edgePath = buildCurvedEdgePath(pair.fromPort, pair.toPort, offset);
         return {
@@ -542,8 +533,6 @@ ${GRAPH_RUN_PANEL_STYLES}
           const edgePath = buildEdgePathFromBoxes(from, to, {
             offset: readNumber(pathElement.dataset.edgeOffset, 0),
             portHint: pathElement.dataset.edgePortHint || "center",
-            fromSideHint: pathElement.dataset.edgeFromSideHint || "",
-            toSideHint: pathElement.dataset.edgeToSideHint || "",
           });
           pathElement.setAttribute("d", edgePath.path);
           pathElement.dataset.fromPort = edgePath.fromPort;
@@ -1162,12 +1151,12 @@ function renderDagSvg(layout: DagLayout, strings: GraphRunPanelStrings): string 
         <path class="dag-arrowhead dag-arrowhead-visited" d="M 0 0 L 10 5 L 0 10 z"></path>
       </marker>
     </defs>
-    ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, fromSideHint, toSideHint, offset, labelX, labelY }) => {
+    ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, offset, labelX, labelY }) => {
       const activeClass = edge.active ? "active" : "inactive";
       const visited = edge.visited ? "true" : "false";
       const markerId = edge.visited ? "graph-arrowhead-visited" : "graph-arrowhead";
       const pathId = `dag-edge-${toSafeDomId(edge.id)}`;
-      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-from-side-hint="${fromSideHint}" data-edge-to-side-hint="${toSideHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
+      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
         <title>${escapeHtml(label || strings.none)}</title>
       </path>
       ${renderDagEdgeDisplayLabel(edge.id, displayLabel, activeClass, labelX, labelY)}`;
@@ -1785,7 +1774,6 @@ function buildDagEdgeLayouts(
 ): DagEdgeLayout[] {
   const edgeOffsets = buildEdgeOffsets(edges);
   const portHints = buildEdgePortHints(edges);
-  const parallelChildNodeIds = buildDagParallelChildNodeIdSet(edges, positionById);
   return edges
     .map((edge, index) => {
       const from = positionById.get(edge.from);
@@ -1795,8 +1783,7 @@ function buildDagEdgeLayouts(
       }
       const offset = edgeOffsets[index] ?? 0;
       const portHint = portHints[index] ?? "center";
-      const sideHint = buildDagEdgeSideHint(edge, parallelChildNodeIds);
-      const geometry = buildEdgePath(from, to, offset, portHint, sideHint);
+      const geometry = buildEdgePath(from, to, offset, portHint);
       return {
         edge,
         path: geometry.path,
@@ -1805,8 +1792,6 @@ function buildDagEdgeLayouts(
         fromPort: geometry.fromPort.id,
         toPort: geometry.toPort.id,
         portHint,
-        fromSideHint: sideHint.fromSides?.[0] ?? "",
-        toSideHint: sideHint.toSides?.[0] ?? "",
         offset,
         labelX: geometry.labelX,
         labelY: geometry.labelY,
@@ -1815,37 +1800,6 @@ function buildDagEdgeLayouts(
       };
     })
     .filter((edgeLayout): edgeLayout is DagEdgeLayout => Boolean(edgeLayout));
-}
-
-function buildDagParallelChildNodeIdSet(
-  edges: readonly GraphRunPanelEdge[],
-  positionById: ReadonlyMap<string, DagNodeLayout>,
-): Set<string> {
-  const childNodeIds = new Set<string>();
-  edges.forEach((edge) => {
-    const source = positionById.get(edge.from);
-    if (!source) {
-      return;
-    }
-    if (String(source.node.kind) === "parallel" || source.node.unlocks.length > 1) {
-      childNodeIds.add(edge.to);
-    }
-  });
-  return childNodeIds;
-}
-
-function buildDagEdgeSideHint(
-  edge: GraphRunPanelEdge,
-  parallelChildNodeIds: ReadonlySet<string>,
-): DagPortPairPreference {
-  return {
-    ...(parallelChildNodeIds.has(edge.from) || parallelChildNodeIds.has(edge.to)
-      ? { fromSides: ["right" as const] }
-      : {}),
-    ...(parallelChildNodeIds.has(edge.to)
-      ? { toSides: ["left" as const] }
-      : {}),
-  };
 }
 
 function selectDagVisibleEdges(edges: readonly GraphRunPanelEdge[]): GraphRunPanelEdge[] {
@@ -2017,9 +1971,8 @@ function buildEdgePath(
   to: DagNodeLayout,
   offset = 0,
   portHint: DagPortHint = "center",
-  preference: DagPortPairPreference = {},
 ): DagEdgeGeometry {
-  const pair = chooseEdgePortPair(from, to, portHint, preference);
+  const pair = chooseEdgePortPair(from, to, portHint);
   const dx = pair.toPort.x - pair.fromPort.x;
   const dy = pair.toPort.y - pair.fromPort.y;
   const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
@@ -2079,76 +2032,106 @@ function chooseEdgePortPair(
   from: DagNodeLayout,
   to: DagNodeLayout,
   portHint: DagPortHint = "center",
-  preference: DagPortPairPreference = {},
 ): { fromPort: DagPort; toPort: DagPort } {
-  const preferred = getPreferredPortSides(from, to);
-  const fromCenter = getNodeCenter(from);
-  const toCenter = getNodeCenter(to);
-  const preferredRatio = DAG_PORT_HINT_RATIOS[portHint];
-  let best: { fromPort: DagPort; toPort: DagPort; score: number } | null = null;
-  for (const fromPort of buildNodePorts(from)) {
-    for (const toPort of buildNodePorts(to)) {
-      if (preference.fromSides?.length && !preference.fromSides.includes(fromPort.side)) {
-        continue;
-      }
-      if (preference.toSides?.length && !preference.toSides.includes(toPort.side)) {
-        continue;
-      }
-      const dx = toPort.x - fromPort.x;
-      const dy = toPort.y - fromPort.y;
-      const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
-      const unitX = dx / distance;
-      const unitY = dy / distance;
-      const fromNormal = getPortNormal(fromPort.side);
-      const toNormal = getPortNormal(toPort.side);
-      const fromFacingScore = fromNormal.x * unitX + fromNormal.y * unitY;
-      const toFacingScore = toNormal.x * -unitX + toNormal.y * -unitY;
-      const orientationScore = ((1 - fromFacingScore) + (1 - toFacingScore)) * DAG_PORT_ORIENTATION_PENALTY;
-      const fromSidePenalty = fromPort.side === preferred.fromSide ? 0 : DAG_PORT_SIDE_MISMATCH_PENALTY;
-      const toSidePenalty = toPort.side === preferred.toSide ? 0 : DAG_PORT_SIDE_MISMATCH_PENALTY;
-      const fromRatioPenalty = getPortRatioLabel(fromPort) === preferredRatio ? 0 : DAG_PORT_RATIO_MISMATCH_PENALTY;
-      const toRatioPenalty = getPortRatioLabel(toPort) === preferredRatio ? 0 : DAG_PORT_RATIO_MISMATCH_PENALTY;
-      const sameSidePenalty = fromPort.side === toPort.side ? DAG_PORT_SAME_SIDE_PENALTY : 0;
-      const centerScore = (
-        Math.abs(fromPort.y - fromCenter.y)
-        + Math.abs(toPort.y - toCenter.y)
-        + Math.abs(fromPort.x - fromCenter.x)
-        + Math.abs(toPort.x - toCenter.x)
-      ) * DAG_PORT_CENTER_TIE_BREAKER;
-      const score = distance
-        + orientationScore
-        + fromSidePenalty
-        + toSidePenalty
-        + fromRatioPenalty
-        + toRatioPenalty
-        + sameSidePenalty
-        + centerScore;
-      if (!best || score < best.score) {
-        best = { fromPort, toPort, score };
-      }
-    }
+  if (from.node.id === to.node.id) {
+    return getFallbackEdgePortPair(from, to);
   }
-  return best ?? {
-    fromPort: { id: "right-50", side: "right", x: from.x + from.width, y: from.y + from.height / 2 },
-    toPort: { id: "left-50", side: "left", x: to.x, y: to.y + to.height / 2 },
+  const preferred = getPreferredPortSides(from, to);
+  const nearest = getNearestNodeBorderPoints(from, to, getPortHintRatioValue(portHint));
+  if (!nearest) {
+    return getFallbackEdgePortPair(from, to);
+  }
+  return {
+    fromPort: buildNearestPort(from, nearest.fromPoint, preferred.fromSide),
+    toPort: buildNearestPort(to, nearest.toPoint, preferred.toSide),
   };
 }
 
-function getPortRatioLabel(port: DagPort): string {
-  const parts = port.id.split("-");
-  return parts[parts.length - 1] ?? DAG_PORT_HINT_RATIOS.center;
+function getNearestNodeBorderPoints(
+  from: DagNodeLayout,
+  to: DagNodeLayout,
+  hintRatio: number,
+): { fromPoint: DagPoint; toPoint: DagPoint } | null {
+  const x = getNearestIntervalCoordinates(from.x, from.x + from.width, to.x, to.x + to.width, hintRatio);
+  const y = getNearestIntervalCoordinates(from.y, from.y + from.height, to.y, to.y + to.height, hintRatio);
+  if (x.overlaps && y.overlaps) {
+    return null;
+  }
+  return {
+    fromPoint: { x: x.from, y: y.from },
+    toPoint: { x: x.to, y: y.to },
+  };
 }
 
-function buildNodePorts(layout: DagNodeLayout): DagPort[] {
-  return DAG_PORT_RATIOS.flatMap((ratio) => {
-    const label = String(Math.round(ratio * 100));
-    return [
-      { id: `top-${label}`, side: "top" as const, x: layout.x + layout.width * ratio, y: layout.y },
-      { id: `right-${label}`, side: "right" as const, x: layout.x + layout.width, y: layout.y + layout.height * ratio },
-      { id: `bottom-${label}`, side: "bottom" as const, x: layout.x + layout.width * ratio, y: layout.y + layout.height },
-      { id: `left-${label}`, side: "left" as const, x: layout.x, y: layout.y + layout.height * ratio },
-    ];
-  });
+function getNearestIntervalCoordinates(
+  fromMin: number,
+  fromMax: number,
+  toMin: number,
+  toMax: number,
+  hintRatio: number,
+): { from: number; to: number; overlaps: boolean } {
+  if (fromMax <= toMin) {
+    return { from: fromMax, to: toMin, overlaps: false };
+  }
+  if (toMax <= fromMin) {
+    return { from: fromMin, to: toMax, overlaps: false };
+  }
+  const overlapMin = Math.max(fromMin, toMin);
+  const overlapMax = Math.min(fromMax, toMax);
+  const coordinate = overlapMin + (overlapMax - overlapMin) * hintRatio;
+  return { from: coordinate, to: coordinate, overlaps: true };
+}
+
+function getPortHintRatioValue(portHint: DagPortHint): number {
+  if (portHint === "start") {
+    return 0.25;
+  }
+  if (portHint === "end") {
+    return 0.75;
+  }
+  return 0.5;
+}
+
+function buildNearestPort(layout: DagNodeLayout, point: DagPoint, fallbackSide: DagPortSide): DagPort {
+  const side = resolveNearestPortSide(layout, point, fallbackSide);
+  return {
+    id: `${side}-${getPortCoordinateLabel(layout, side, point)}`,
+    side,
+    x: point.x,
+    y: point.y,
+  };
+}
+
+function resolveNearestPortSide(layout: DagNodeLayout, point: DagPoint, fallbackSide: DagPortSide): DagPortSide {
+  const epsilon = 0.01;
+  const candidates: { side: DagPortSide; distance: number }[] = [
+    { side: "top", distance: Math.abs(point.y - layout.y) },
+    { side: "right", distance: Math.abs(point.x - (layout.x + layout.width)) },
+    { side: "bottom", distance: Math.abs(point.y - (layout.y + layout.height)) },
+    { side: "left", distance: Math.abs(point.x - layout.x) },
+  ];
+  const minDistance = Math.min(...candidates.map((candidate) => candidate.distance));
+  if (candidates.some((candidate) => candidate.side === fallbackSide && candidate.distance <= minDistance + epsilon)) {
+    return fallbackSide;
+  }
+  return candidates.sort((left, right) => left.distance - right.distance)[0]?.side ?? fallbackSide;
+}
+
+function getPortCoordinateLabel(layout: DagNodeLayout, side: DagPortSide, point: DagPoint): string {
+  const ratio = side === "left" || side === "right"
+    ? (point.y - layout.y) / Math.max(1, layout.height)
+    : (point.x - layout.x) / Math.max(1, layout.width);
+  return String(Math.max(0, Math.min(100, Math.round(ratio * 100))));
+}
+
+function getFallbackEdgePortPair(
+  from: DagNodeLayout,
+  to: DagNodeLayout,
+): { fromPort: DagPort; toPort: DagPort } {
+  return {
+    fromPort: { id: "right-50", side: "right", x: from.x + from.width, y: from.y + from.height / 2 },
+    toPort: { id: "left-50", side: "left", x: to.x, y: to.y + to.height / 2 },
+  };
 }
 
 function getNodeCenter(layout: DagNodeLayout): { x: number; y: number } {

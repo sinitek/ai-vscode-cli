@@ -14,6 +14,7 @@ type FakeControl = {
   checked: boolean;
   tabIndex: number;
   value: string;
+  parentElement: { style: { display: string } };
   addEventListener(type: "change", listener: (event: ChangeEvent) => void): void;
   addEventListener(type: "click", listener: (event: ClickEvent) => void): void;
   dispatchChange(value: string): void;
@@ -72,6 +73,7 @@ function createControl(): FakeControl {
     checked: false,
     tabIndex: 0,
     value: "",
+    parentElement: { style: { display: "" } },
     addEventListener(type, listener) {
       if (type === "change") {
         changeListener = listener as (event: ChangeEvent) => void;
@@ -133,6 +135,7 @@ function buildHarness() {
     "cliSupportsManagedModelSelection",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
+    "isOpenCodeRoleModelMode",
     "syncModelSelectorByInteractiveMode",
   ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
@@ -262,7 +265,8 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   harness.syncInteractiveModeSelector();
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
-  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, true);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
@@ -275,6 +279,8 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "loop",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.loopExecutionModeSelect.disabled, false);
   assert.equal(harness.elements.loopExecutionModeSelect.value, "main-sub-multi-agent");
@@ -287,6 +293,8 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "coding",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, true);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
@@ -299,6 +307,8 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
     value: "graph",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
   assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
