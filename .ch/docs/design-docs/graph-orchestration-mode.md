@@ -14,17 +14,21 @@
 
 ## 当前已落地状态
 
-截至 2026-07-29，Graph 已完成 Phase 1 最小运行内核、Phase 2 的可视 DAG / 持久化恢复 / 面板控制 / 睡眠唤醒增强、项目工作区 direct 执行、验证失败反馈边记录、结构化条件边与返工记录，以及规划 DAG 的并行节点执行上下文派发；它仍不是完整 workflow 平台或图编辑器。当前能力边界如下：
+截至 2026-08-02，Graph 已完成 Phase 1 最小运行内核、Phase 2 的可视 DAG / 持久化恢复 / 面板控制 / 睡眠唤醒增强、项目工作区 direct 执行、验证失败反馈边记录、结构化条件边与返工记录、AI planner 并行优先 DAG 规划，以及规划 DAG 的并行节点执行上下文派发；它仍不是完整 workflow 平台或图编辑器。当前能力边界如下：
 
 - 用户可在主 Webview 输入区选择 `Graph` 模式并发送任务；前端 payload 保留 `interactiveMode=graph`，后端 `handleSendPromptMessage` 会进入独立 `runGraphPrompt` 分支，不走普通 coding 或 Loop 编排。Codex 切到 Graph 时显示主模型/子模型两个选择器，普通 Coding 仍保持单模型选择器；OpenCode Graph 也使用主模型/子模型口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。
 - Graph 模式默认不触发插件侧长期记忆 recall 注入，也不会在 Graph 节点结束后自动写入长期记忆；节点 prompt 只允许只读已有仓库记忆或运行态 recall，任务完成后的长期记忆沉淀由主智能体在收束后专门处理。
 - 后端会先创建 planning-only Graph run，只包含保留 `plan` AI planner 节点；planner 必须在节点 `## JSON` 中返回 `plannedGraph.nodes` 和 `plannedGraph.edges`，宿主校验后把后续执行节点替换为 AI 规划的 realized DAG，再使用 `GraphRunStore`、`graph.json`、`events.jsonl` 和 `graph-communications/<graphRunId>/nodes/*.md` 落盘。Codex / OpenCode Graph 的 planner 和最终 `summary` 节点使用主模型，其他 materialized 执行节点使用子模型；`modelRouting`、节点 `modelRole/model/modelFallback` 和 prompt 注入会记录实际模型角色与回退原因。
+- AI planner prompt 会默认要求先寻找可并行分支：多个可拆分且互不冲突的任务应从 planner fan-out 并行开始，再通过 test / review / merge / summary fan-in 收束；不得仅因任务同属一个用户目标或列表顺序靠后就串行化独立分支。planner 未显式输出 `plannedGraph.maxConcurrent` 时，materialize 会按首批依赖 `plan` 且不冲突的可执行根节点推断并发上限；同一 `conflictGroup`、重叠 `writeFiles` 或未声明写入范围的写节点仍按 scheduler 冲突规则保守串行。
+- AI planner prompt 已强化重构/迁移/拆模块防护：当现有 source-contract、文本快照、路径断言或测试 canonical source 可能引用旧文件时，必须规划独立 test adaptation / 契约更新节点，声明具体测试 `writeFiles`，并把验证节点的 `if_fail` / `review_feedback` 返工路径指向测试适配节点，而不是只回到原实现节点。
 - `src/graph/` 已提供 v1 类型、store、communications、events、scheduler、prompt builders、node lifecycle 和 `tickGraphRun` kernel。Edge 记录已保留 planner 输出的 `label`、`conditionExpression` 和 `metadata`；Scheduler 支持依赖、终态、attempt、结构化 `source_status` / `source_acceptance` 条件求值、不可求值 custom 条件保守进入失败/复核口径、`sleep` ready action、`writeFiles` 路径重叠、`conflictGroup` 和并发上限计算；新 planner 输出会拒绝 `human_gate`、`human_approved` 和 `manual` 条件，运行时不再生成等待外部批准的 action；扩展侧不再把 executor 固定为 1，而是按 `min(run.maxConcurrent, 6)` 执行 scheduler 选出的同批可运行节点。
+- Graph runtime 已在节点失败时写入结构化失败分类：`GraphNodeRecord.failure` 和 `node.failed.data.failureClassification` 会保留 category、confidence、signals、attemptsExhausted 与 recommendedRecovery。needs-review / idle 主 tab 文案会展示 category、confidence、signals、recommendedRecovery、recommendedWriteFiles 和 nodeDraft，旧运行记录没有 `failure` 时仍回退到原 lastError 摘要。
 - 扩展侧 Graph runtime 通过现有 `runPrompt` 执行节点。新 Graph run 固定使用 `executionMode=direct`，节点直接以当前项目工作区为 cwd 执行，不再创建 `~/.sinitek_cli/graph-worktrees/<graphRunId>`、本地 checkpoint commit、merge-back 或 cleanup 流程。每个被调度的 Graph 节点还会创建独立 Graph 子任务 conversation tab。这里的“子任务 tab”只是节点执行容器，不是 Loop 主从智能体里的运行时主/从关系；主 Graph tab 负责记录调度和收束消息，节点 tab 负责运行对应节点。同一批互不冲突节点可并行运行且不会因为复用同一 tab 互相 stop。Codex / OpenCode 节点 tab 按 Graph executor/subtask 模型角色启动；缺少子模型时兼容回退到主模型或单模型，并在节点 prompt、Graph events/diagnostics 和持久化 run 中留下回退说明。direct 模式下，节点只保存 `executionCwd`，完成态代表改动已经直接落在当前工作区。历史 worktree run 的 `worktree` metadata、checkpoint、merge-back 和 cleanup helper 仍可被读取和处理，但不再是新 Graph run 的默认执行路径。Graph node 执行记录仍携带 `graphRunId` / `graphNodeId` 元数据，用于可用场景下映射到当前 active CLI run。
 - 每个后续派发的 Graph 节点 prompt 都会注入当前 `graph.json` 的全图拓扑、节点清单、边清单、当前位置、直接上下游、上游/下游链路、同批 active 节点、`writeFiles` / `conflictGroup` 冲突线索和下游 test/review/merge/summary 职责。这样实现节点知道图中已有后续测试或评审节点时，只完成自身 acceptance 和最小必要自检，不替代下游节点的完整验证、评审或最终总结。`review` 节点会额外生成“Review 节点评审范围”，从上游节点 `writeFiles`、communication file 和 `artifactRef` 推导候选改动文件；评审使用 `git status` / `git diff` 时应按这些路径过滤，范围外 dirty 文件默认视为同一 workspace 中的无关改动，不单独导致 `failed`。
 - 普通“打开 Graph 运行图” `openGraphRun` action 只由主 Graph tab / 图级系统消息按同一 run 输出一次，Graph 节点/子任务 conversation tab 不再重复展示；点击后打开独立 `GraphRunPanel`，并仍支持指定 `graphRunId` / `nodeId`。当前 Graph tab 在会话标签上显示 `🗺️` 标识，active Graph tab 的底部运行状态行固定提供“打开 Graph 图”按钮，入口与 Loop 的“打开群聊”按钮同级。
 - Graph 正式开始后，主 Graph tab 的视觉运行态跟随图级生命周期，而不是跟随某个节点 tab 的 CLI 进程生命周期；`running`、`sleeping` 等等待态保持主 tab 运行中，但 failed 节点导致 run 进入 `needs-review` 时，主 tab 立即进入错误态并释放运行态；历史 blocked 节点按失败注意事项展示，不再弹出人工决策流程；图级 `completed`、`error` 或 `stopped` 也会释放为非运行态。主 Graph tab 右下角的 AI 对话“中止”复用 GraphRunPanel 的 Stop 控制链，会把对应 run / active node 状态落盘为 `stopped`，并且异步 tick 不得用旧状态覆盖已落盘的 stopped。节点 tab 仍按各自 `runPrompt` 执行流独立开始和结束；完成态会在主 Graph tab 追加 `summary` 节点产出的最终总结 assistant 气泡，包含结论、任务总结、验证证据和未完成事项。
 - `GraphRunPanel` 采用 full-canvas 运行图布局：主体区域由 SVG edge / arrow + HTML node button 的可视 DAG 占满，不再长期保留下方节点详情分栏；DAG 顶部不再显示“可视图”、Dagre 说明、键盘提示或长“重置布局 / Reset layout”文案，而是收敛为右上角紧凑工具区。节点自动布局已对齐目标系统工作流画布：使用 `@dagrejs/dagre` 的 left-to-right layered layout，以可见代表边参与排布，按当前紧凑节点尺寸等比例收敛目标工作流的 ranksep / nodesep / edgesep / margin 参数，dagre 输出后执行同方向碰撞消解；长标题和多下游节点会增加估算高度，dagre 异常时按 intake / 零入度起点做拓扑层级兜底，并继续渲染所有 valid edges；节点统一渲染为矩形工作流卡片，不再对 start/end 使用胶囊形状；卡片参考目标工作流的类型/tone 思路，用 VS Code 主题变量按 `node.kind` 映射 info/accent/warning/success/neutral/danger tone，并显示 type badge、短标识、标题、状态和 Start / Decision / End / Step 轻量语义 chip。负责人、attempt、prompt/artifact/通信文件等正文细节通过单击节点打开详情弹窗查看，拖拽移动节点后的 click 会被抑制，避免误触发详情；面板不再渲染 run 概览、状态统计、节点列表、recent events 或 finalAnswer 区块。
+- GraphRunPanel 的自动布局已吸收目标系统 workflow 画布的 dagre + fallback / collision / 端口 / 视口经验：默认仍为 LR，但内部支持 `LR` / `RL` / `TB` / `BT` 方向；参数调优为当前紧凑节点尺寸下的 `ranksep=124`、`nodesep=88`、`edgesep=44`、`marginX=56`、`marginY=56`、draft extra gap 160；fallback 从所有零入度 roots 入队，多根并行分支不会被误放入 draft 长串；`review_feedback` 和指向上游/更早节点的 `if_fail` 作为 non-ranking return edge，不拉歪主链但仍渲染；collision 按方向横向向下推、纵向向右推；端口评分使用距离和朝向惩罚，并对 fan-out / fan-in / return 边分离端口；首次打开优先居中 selected 节点，其次 running / sleeping / blocked / failed 节点。
 - 可视 DAG 的每个节点表面渲染 12 个低调连接点（top/right/bottom/left 各 25%/50%/75%）。每条边会根据 from/to 节点相对位置从 12-port 中自动选择 `fromPort` / `toPort`，并在 SVG path 上保留 `data-from-port` / `data-to-port` 便于排查；同一对节点的多条边、反馈/回环边和同侧连接会有轻微 offset/曲线差异，避免所有线条挤在节点中心或同一个边界点。
 - GraphRunPanel 的边中段显示短目的标签：优先从 edge `label` / `condition` / `conditionExpression.description` / 反馈 metadata 说明取义，缺失时展示 edge kind 短标签；可见标签会自动分段为最多两行，单段尽量不超过 4 个字/符，最终可见短标签不超过 8 个字/符，完整长说明继续保留在 SVG title、aria / data 属性和 accessible edge list。已按调度条件经过的边使用 VS Code 主题蓝色显示，未经过边保持原样。节点也会按入度/出度/条件出边给出 Start / Decision / End / Step 轻量语义 chip，用于视觉提示开始、判断和结束，不改变真实 DAG 结构。
 - 用户可在 `GraphRunPanel` 内拖拽节点微调当前 run 的可视布局，也可在 DAG 背景上按住鼠标左键拖动画布视口平移；节点拖拽会按当前 zoom 比例换算坐标，并按同一 12-port 规则同步重算 SVG edge path、端口属性和画布尺寸。手动节点位置和缩放值通过 VS Code webview state 按 `graphRunId` 本地保存，刷新/重渲染后可恢复；缩放下拉固定为 25%、50%、75%、100%、125%，默认 75%；重置能力保留为紧凑控件，用于清除当前 run 的手动节点位置回到 dagre 自动布局，不重置 zoom，也不改变 DAG 结构或调度语义。
@@ -43,6 +47,14 @@
 - Stop 至少保证 Graph run / node 状态和事件落盘为 stopped；主 Graph tab 的 AI 对话“中止”和 GraphRunPanel Stop 共享该语义。只有 active CLI run 已携带 `graphRunId` / `graphNodeId` 映射时才会发送真实 CLI 停止请求，且真实进程是否退出取决于底层 CLI 响应；缺少映射时明确提示未确认真实进程停止。该边界是实现和文档事实，不再作为 Graph UI 固定说明常驻展示。
 - 尚未提供模板选择、AI 规划图生成前的用户确认、运行中即时打断重规划、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、证据文件正文读取、自动生成修复分支或可复用流程资产。
 
+## 最新失败案例与恢复策略
+
+最新失败 run 中，`test-schema-definitions` 执行到 2/2 attempts 后进入 `needs-review`。根因不是 SQL 实现继续错误：SQL 定义已经从 `apps/server/src/db.js` 迁移到 `apps/server/src/db/schema/observability.js`，但 `apps/server/test/performance/performance-observation-schema.test.js` 仍读取旧 `db.js` source-contract / canonical source 文本断言；该 `test` 节点又没有声明测试文件 `writeFiles`，因此无法在验证节点内修复旧契约。
+
+该类失败应分类为主 category `missing_write_scope`，signals 包含 `stale_test_contract`，recommendedRecovery 使用 `add_rework_node`，recommendedWriteFiles 包含 `apps/server/test/performance/performance-observation-schema.test.js`。正确优化路径是让 planner 在重构/迁移时提前生成测试契约适配节点，例如 `implement-schema-definitions -> adapt-schema-contract-tests -> test-schema-definitions`，并把 `test-schema-definitions` 的旧契约失败边返工到 `adapt-schema-contract-tests`。
+
+运行态已经落地结构化可见性：`markGraphNodeFailed` 会写入 `GraphNodeRecord.failure` 与 `node.failed.data.failureClassification`；needs-review / idle 文案会列出失败 category、confidence、signals、attemptsExhausted、recommendedRecovery、recommendedWriteFiles 和 nodeDraft。Retry 不能新增 writeFiles，因此对 `missing_write_scope` 不应被包装成单纯重试。
+
 ## Graph 语义完成度矩阵
 
 | 语义 | 当前状态 | 已完成 | 仍缺口 |
@@ -51,10 +63,11 @@
 | 边 | 部分完成 | `GraphEdgeRecord`、`GraphPlannedEdgeSpec`、planner materialize、可视 DAG 边、`depends_on` / `if_pass` / `if_fail` / `evidence_for` / `conflicts_with` 类型已入模；`human_approved` 仅作为历史兼容类型保留，新 planner 会拒绝生成；edge 可保留 `label`、`conditionExpression`、`metadata`；GraphRunPanel 会显示分段短边目的标签并基于 12-port 自动选择端口；active `review_feedback` / `if_fail` 可作为验证失败回退上游节点的优先目标 | 证据边和冲突边主要是记录/可视化信号；反馈边已有最小 rollback 控制，但尚无边编辑器、自动条件重规划或可视反馈路径编辑 |
 | 条件 | 部分完成 | Scheduler 已识别 active `if_pass` / `if_fail` 入边，并支持有限结构化 `conditionExpression` 求值：`source_status`、`source_acceptance`；`manual` 仅为历史兼容类型，新 planner 会拒绝生成；custom 条件会保守进入失败/复核口径并输出可读 blocker | 尚无复杂布尔条件编辑器、数据谓词、运行中自动重规划或条件边 UI 编辑 |
 | 依赖 | 已完成基础能力 | `dependsOn` 与 active `depends_on` 边共同决定 ready set；缺失依赖、未通过且未 skipped 的依赖会进入 blocker；Feedback rollback 会沿依赖图重置上游返工节点及下游节点 | 尚无跨图模板依赖、外部资源依赖和可编辑 descendant reset 预览 |
-| 并发 | 已完成基础能力 | Scheduler 选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 6)` 并行派发独立节点 tab | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
+| 并发 | 已完成基础能力 | AI planner prompt 要求默认寻找可并行分支并生成 fan-out/fan-in DAG；planner 漏填 `plannedGraph.maxConcurrent` 时，materialize 会按首批无冲突根节点推断并发上限；Scheduler 继续选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 6)` 并行派发独立节点 tab | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
 | 冲突组 | 已完成基础能力 | `conflictGroup`、`writeFiles` 路径重叠和未声明写入范围可阻止同批/运行中冲突 | 只能做声明式与路径级冲突判断，尚无语义冲突检测、自动合并策略或冲突解释 UI |
 | 风险关卡 | 历史兼容 | `human_gate` / `human_approved` 类型仍可读取旧运行记录；新 Graph planner 会拒绝生成，scheduler/kernel 不再把它们暴露为人工等待 action | 尚无审批表单、风险说明采集、驳回原因、多人审批和人工步骤产物采集；当前运行时不走人工审批流程 |
 | 重试 / 返工 | 部分完成 | failed 节点可 Retry；节点 blocked 结果会归一为 failed 并走 retry / `if_fail` / failed 复核路径；新 Graph run 使用 direct 模式，只在当前工作区状态上重跑节点，不自动撤销已写文件；历史 worktree run 在 baseCommit 可用时仍可回滚到节点前 checkpoint 并重新调度；验证类节点只在历史 worktree/baseCommit 可用时 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点及下游写入 `rework` | direct 模式无自动回滚；尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
+| 失败分类 | 已完成基础能力 | 失败节点可保存 `GraphFailureClassification`；`node.failed` event data 同步写入分类；needs-review / idle 文案展示 category、confidence、signals、recommendedRecovery、recommendedWriteFiles 和 nodeDraft；`stale_test_contract` / `missing_write_scope` 可推荐新增测试适配返工节点 | 首版只展示建议，不自动应用 node/edge draft，不自动扩大 writeFiles，也不读取大型证据文件正文做深度分析 |
 | 睡眠 | 已完成基础能力 | `sleep` 节点支持 `wakeAt`、sleeping 状态、auto wake 恢复和到期继续 tick | 尚无日历式 UI、外部守护进程、跨设备唤醒和复杂等待条件 |
 | 完成证据 | 部分完成 | 节点 `## JSON`、communication file、events.jsonl、artifactRef、summary finalAnswer、`executionCwd` 和完成态 execution event 构成基础证据链；历史 worktree run 可能额外保留 checkpoint commit 与 merge-back event；节点详情已有 Evidence/证据区聚合选中节点证据引用、事件和最终证据 | direct 模式无 checkpoint/merge-back 证据；证据区不读取文件正文；尚无证据边聚合视图、验收覆盖率检查和证据缺失自动阻断矩阵 |
 | 节点全图感知 | 已完成基础能力 | 后续派发节点的 prompt 会包含全图拓扑、当前位置、上下游链路、并发/冲突提示和下游职责边界 | 已运行中的节点不会被即时打断重注入；后续仍可做运行中 replan / prompt diff / 用户确认 |
@@ -217,6 +230,7 @@ type GraphNodeRecord = {
   startedAt?: number;
   completedAt?: number;
   lastError?: string;
+  failure?: GraphFailureClassification;
   rework?: GraphNodeReworkRecord;
   executionCwd?: string;
   worktreeCwd?: string;
@@ -224,6 +238,43 @@ type GraphNodeRecord = {
   commit?: string;
 };
 ```
+
+### GraphFailureClassification
+
+```ts
+type GraphFailureCategory =
+  | "stale_test_contract"
+  | "missing_write_scope"
+  | "environment_failure"
+  | "implementation_bug";
+
+type GraphFailureRecoveryAction =
+  | "retry_node"
+  | "feedback_rollback"
+  | "add_write_scope"
+  | "add_rework_node"
+  | "manual_review";
+
+type GraphFailureRecoveryRecommendation = {
+  action: GraphFailureRecoveryAction;
+  summary: string;
+  targetNodeId?: string;
+  recommendedWriteFiles?: string[];
+  nodeDraft?: GraphPlannedNodeSpec;
+  edgeDrafts?: GraphPlannedEdgeSpec[];
+};
+
+type GraphFailureClassification = {
+  category: GraphFailureCategory;
+  confidence: "low" | "medium" | "high";
+  summary: string;
+  signals: string[];
+  attemptsExhausted?: boolean;
+  recommendedRecovery?: GraphFailureRecoveryRecommendation;
+};
+```
+
+该字段是向后兼容的失败分析快照，不替代 `lastError` 原文，也不会自动改写 graph。运行时分类器会从 error、节点 result、acceptance、artifact summary 和候选路径中抽取 signals；store / artifact normalize 只保留合法 category 与 recovery action。`missing_write_scope` 场景首版推荐 `add_rework_node` / `recommendedWriteFiles` / nodeDraft / edgeDrafts，供主 tab 或面板展示给用户，不自动扩大失败节点的写入授权。
 
 ### GraphNodeReworkRecord
 
@@ -340,6 +391,7 @@ OpenCode 仍走 one-shot / attach 机制；Codex / Claude 继续按现有交互�
 - 会话标签与状态行：Graph tab 显示 `🗺️` 标识；active Graph tab 识别到 `graphRunId` 后，在底部运行状态行固定显示“打开 Graph 图”按钮。
 - 内容区面板：主体是 full-canvas SVG/HTML 可视 DAG，不再保留下方常驻节点详情分栏；DAG 节点使用 `@dagrejs/dagre` 自动布局，并支持节点拖拽微调、背景左键按住拖拽平移、按 `graphRunId` 本地持久化节点位置和 zoom。右上角紧凑工具区提供 25%、50%、75%、100%、125% 缩放下拉，默认 75%，Reset 仅为紧凑重置控件；节点矩形保持紧凑，只在图上显示标题、状态和 Start/Decision/End/Step 视觉 chip，正文细节通过单击节点打开的详情弹窗查看，拖拽移动不会误触发详情；详情弹窗包含 Evidence/证据区和当前真实可用的节点控制；概览、状态统计、节点列表、recent events 和 finalAnswer 不在面板内渲染。
 - 图视图：已使用原生 SVG 渲染边、path、marker、arrow 和边目的标签，使用 HTML button 渲染节点；每个节点显示 12 个连接点，边会按节点相对位置自动选择 `fromPort` / `toPort` 并为多边/反馈边增加轻微曲线差异；已经过边显示为主题蓝色，未经过边保持原样；旧记录缺少 `run.edges` 时可从 `dependsOn` fallback 生成 `depends_on` 边。
+- 自动布局：默认展示仍为 LR，但内部已支持 `LR` / `RL` / `TB` / `BT`；fallback 会从所有零入度 roots 入队；`review_feedback` 与上游 `if_fail` 回边不参与主 ranking；collision、端口评分和初始视口居中均按目标系统 workflow 画布经验调优。
 - 节点状态：pending、ready、running、passed、failed、blocked、sleeping、skipped。
 - 操作：只显示真实接通且当前状态允许的 Continue / “我要说话” / Retry / Feedback rollback / Stop；不可用操作直接隐藏。GraphRunPanel Stop 与主 Graph tab AI 对话“中止”必须共用同一 Graph stop 控制链。Stop 文案必须同时说明状态已落盘，以及真实 CLI 进程停止只是对已映射 active run 发起请求、未必已确认退出。
 - i18n：所有新增 Webview 文案必须提供中英文；状态值内部用英文枚举，展示走现有翻译词典。
@@ -396,9 +448,10 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 ### Phase 1：最小 Graph 运行内核
 
 - 已新增 `GraphRunStore`、`GraphNodeRecord`、`GraphEdgeRecord`、`graph.json` 和 `events.jsonl`。
-- 已支持用户从 Webview 选择 `Graph` 并启动 AI-planned realized graph：扩展先运行 planning-only `plan` 节点，读取并校验 planner artifact 中的 `plannedGraph`，再 materialize 为包含分支、fan-out/fan-in、测试、评审、sleep、merge 或 summary 的真实 DAG；规划无效时 planner 节点记为 failed 并继续按失败路径调度，而不是进入人工审批。
+- 已支持用户从 Webview 选择 `Graph` 并启动 AI-planned realized graph：扩展先运行 planning-only `plan` 节点，读取并校验 planner artifact 中的 `plannedGraph`，再 materialize 为包含分支、fan-out/fan-in、测试、评审、sleep、merge 或 summary 的真实 DAG；planner prompt 已强化为默认并行优先，要求独立无冲突分支不要串行，并要求 `plannedGraph.maxConcurrent` 反映首批无冲突分支数；规划无效时 planner 节点记为 failed 并继续按失败路径调度，而不是进入人工审批。
+- planner prompt 已要求重构/迁移场景检查旧 source-contract、文本快照、路径断言和测试 canonical source，必要时规划独立测试适配/契约更新节点并声明测试 `writeFiles`。
 - 已支持 `plan`、`implement`、`test`、`review`、`summary` 的 CLI 节点执行；`sleep` 已有 kernel/scheduler/lifecycle 与自动唤醒路径；`human_gate` 仅保留历史类型兼容，新 planner 输出会被拒绝。
-- Scheduler 已作为本地纯函数落地；Graph 记录会保留 planner 输出的 DAG 和 maxConcurrent，扩展侧按 `min(run.maxConcurrent, 6)` 派发同批 ready nodes，并为每个节点创建独立 Graph 节点 tab，避免并行节点共享同一主 tab 互相 stop。
+- Scheduler 已作为本地纯函数落地；Graph 记录会保留 planner 输出的 DAG 和 maxConcurrent，planner 漏填 maxConcurrent 时会从 materialized graph 的首批无冲突根节点推断默认值，扩展侧按 `min(run.maxConcurrent, 6)` 派发同批 ready nodes，并为每个节点创建独立 Graph 节点 tab，避免并行节点共享同一主 tab 互相 stop。
 - 已复用现有 CLI runner 和 Loop 子任务隔离经验，节点 prompt 明确授权范围、输入 artifact、完成标准、验证要求、全图拓扑、当前位置和下游职责边界。
 
 ### Phase 2：Graph 恢复与交互增强
@@ -408,6 +461,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 - 已支持 sleeping / needs-review / error run 的 Continue / Resume，复用现有 Graph executor / `runGraphPrompt` 安全路径继续 tick，不新建 run。
 - 已支持最小节点 mutation：Retry failed node、Feedback rollback failed/历史 blocked 验证类节点到上游 checkpoint、Stop run，并在操作后刷新面板、尽量保留 selected node；blocked 执行结果会归一为 failed 并走 retry / `if_fail` / failed 复核路径，不再弹出阻塞 modal、跳过下游 quick pick 或 human gate 审批入口。
 - 已支持结构化条件/边基础字段：planner/store 保留 edge `label`、`conditionExpression`、`metadata`，scheduler 对支持的条件表达式求值并输出可读 blocker，prompt 注入边语义、metadata 和返工记录。
+- 已支持结构化失败分类：失败节点落盘 `failure`，`node.failed` event data 写入 `failureClassification`，needs-review / idle 文案展示分类、signals、推荐恢复动作、推荐写入文件和建议返工节点草案。
 - 已支持证据区：节点详情聚合当前节点 artifact、沟通文件、验收 evidenceRef、事件与 finalAnswer evidence 引用，但不读取外部证据文件正文。
 - 已支持 Graph auto wake：扩展激活或 workspace 变化时恢复 sleeping run 定时器，到期后 resume/tick。
 - 尚未支持从失败节点自动生成补充需求、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、完整审批表单/驳回/多人审批、证据文件正文读取、图编辑器或模板库。
@@ -438,7 +492,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 
 ## 文档与测试影响
 
-Phase 2 和后续 Graph 视觉优化已同步产品规格和功能清单，相关事实来源为 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 与 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。用户可见能力按“Graph 最小运行内核 + `@dagrejs/dagre` full-canvas 可视 DAG 自动布局 + 12-port 自动连线 + 分段短边标签 + 已经过边主题蓝色高亮 + 按节点类型着色的矩形卡片 + Start/Decision/End/Step 语义 chip + 节点拖拽微调且不误触发详情 + 背景拖拽平移 + 单击节点详情弹窗 + 按 `graphRunId` 本地持久化节点位置和 zoom + 默认 75% 缩放 / 25-125% 固定下拉 + 紧凑重置控件 + 主 Graph tab 唯一普通打开入口 + 持久化恢复 + 最小控制 + auto wake + 验证失败反馈回退 + 结构化条件边 + blocked 归一 failed + 证据区 + Stop 边界文案”声明，不把未实现或已下线的图编辑器、模板库、完整 human gate 表单/驳回/多人审批、运行时人工审批、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演或证据文件正文读取写成已完成。
+Phase 2 和后续 Graph 视觉优化已同步产品规格和功能清单，相关事实来源为 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 与 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。用户可见能力按“Graph 最小运行内核 + `@dagrejs/dagre` full-canvas 可视 DAG 自动布局 + LR/RL/TB/BT 内部方向能力 + 多根 fallback + non-ranking 回边 + 方向感知 collision + 12-port 自动连线 + 分段短边标签 + 已经过边主题蓝色高亮 + 按节点类型着色的矩形卡片 + Start/Decision/End/Step 语义 chip + 节点拖拽微调且不误触发详情 + 背景拖拽平移 + 初始居中 selected/running/sleeping/blocked/failed 节点 + 单击节点详情弹窗 + 按 `graphRunId` 本地持久化节点位置和 zoom + 默认 75% 缩放 / 25-125% 固定下拉 + 紧凑重置控件 + 主 Graph tab 唯一普通打开入口 + 持久化恢复 + 最小控制 + auto wake + 验证失败反馈回退 + 结构化失败分类 + 结构化条件边 + blocked 归一 failed + 证据区 + Stop 边界文案”声明，不把未实现或已下线的图编辑器、模板库、完整 human gate 表单/驳回/多人审批、运行时人工审批、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、自动应用返工节点草案或证据文件正文读取写成已完成。
 
 最终验证记录：
 

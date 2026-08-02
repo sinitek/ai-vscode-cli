@@ -141,6 +141,54 @@ test("keeps exhausted failures in the failed flow", async () => {
   }
 });
 
+test("writes failure classification to failed nodes and node.failed events", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const node = createNode({
+      id: "test-schema-definitions",
+      title: "Validate schema definitions",
+      kind: "test",
+      attempts: 2,
+      maxAttempts: 2,
+      dependsOn: ["implement-schema-definitions"],
+    });
+    const run = createRun(baseDir, [node], [{
+      id: "test-schema-definitions-if-fail",
+      from: "test-schema-definitions",
+      to: "implement-schema-definitions",
+      kind: "if_fail",
+      active: true,
+      metadata: { reworkTargetNodeId: "implement-schema-definitions" },
+    }], { activeNodeIds: ["test-schema-definitions"] });
+
+    const failed = await markGraphNodeFailed(
+      run,
+      "test-schema-definitions",
+      "performance-observation-schema still depends on old db.js text assertion.",
+      { now: () => 4_000 },
+      {
+        summary: "Build passed, but the source-contract assertion is stale after SQL moved to db/schema/observability.js.",
+        acceptance: [{
+          name: "schema tests pass",
+          passed: false,
+          required: true,
+          detail: "apps/server/test/performance/performance-observation-schema.test.js still reads apps/server/src/db.js after SQL moved to apps/server/src/db/schema/observability.js.",
+        }],
+      },
+    );
+
+    assert.equal(getNode(failed, "test-schema-definitions").failure?.category, "missing_write_scope");
+    assert.equal(getNode(failed, "test-schema-definitions").lastError, "performance-observation-schema still depends on old db.js text assertion.");
+    const event = readGraphEvents(failed.eventsFile).at(-1);
+    assert.equal(event?.type, "node.failed");
+    const data = event?.data as { failureClassification?: { category?: string; recommendedRecovery?: { action?: string } } };
+    assert.equal(data.failureClassification?.category, "missing_write_scope");
+    assert.equal(data.failureClassification?.recommendedRecovery?.action, "add_rework_node");
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 test("maps blocked lifecycle requests to failed events before sleeping nodes", async () => {
   const baseDir = createTempBaseDir();
   try {

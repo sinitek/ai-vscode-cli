@@ -5,11 +5,16 @@ import {
 import {
   type GraphAcceptanceCheck,
   type GraphEventRecord,
+  type GraphFailureClassification,
   type GraphFinalAnswer,
   type GraphNodeRecord,
   type GraphPlannedGraphSpec,
   type GraphRunRecord,
 } from "./types";
+import {
+  classifyGraphNodeFailure,
+  normalizeGraphFailureClassification,
+} from "./graphFailureClassification";
 
 export type GraphNodeExecutionResultStatus = "passed" | "failed" | "blocked" | "sleeping";
 
@@ -19,6 +24,7 @@ export type GraphNodeExecutionResult = {
   error?: string;
   artifactRef?: string;
   acceptance?: GraphAcceptanceCheck[];
+  failure?: GraphFailureClassification;
   finalAnswer?: GraphFinalAnswer;
   plannedGraph?: GraphPlannedGraphSpec;
   wakeAt?: number;
@@ -134,18 +140,28 @@ export async function markGraphNodeFailed(
   result: Partial<GraphNodeExecutionResult> = {},
 ): Promise<GraphRunRecord> {
   const timestamp = resolveGraphLifecycleTimestamp(deps);
+  const currentNode = getGraphRunNodeOrThrow(run, nodeId);
+  const attemptsExhausted = currentNode.attempts >= currentNode.maxAttempts;
+  const failureClassification = normalizeGraphFailureClassification(result.failure)
+    ?? classifyGraphNodeFailure({
+      run,
+      node: currentNode,
+      error,
+      result,
+      attemptsExhausted,
+    });
   const { run: nextRun, node } = updateGraphRunNode(run, nodeId, (current) => ({
     ...current,
     status: "failed",
     ...buildGraphNodeCheckpointPatch(result),
     completedAt: timestamp,
     lastError: error,
+    failure: failureClassification,
   }), {
     status: "running",
     updatedAt: timestamp,
     activeNodeIds: removeGraphActiveNodeId(run.activeNodeIds, nodeId),
   });
-  const attemptsExhausted = node.attempts >= node.maxAttempts;
 
   await appendGraphLifecycleEvent(nextRun, {
     runId: nextRun.id,
@@ -163,6 +179,7 @@ export async function markGraphNodeFailed(
       worktreeCwd: result.worktreeCwd,
       baseCommit: result.baseCommit,
       commit: result.commit,
+      failureClassification,
     },
   }, deps);
 

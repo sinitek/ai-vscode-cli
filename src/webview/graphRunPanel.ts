@@ -71,6 +71,8 @@ type DagEdgeLayout = {
   fromPort: string;
   toPort: string;
   portHint: DagPortHint;
+  fromSideHint: DagPortSide | "";
+  toSideHint: DagPortSide | "";
   offset: number;
   labelX: number;
   labelY: number;
@@ -84,11 +86,12 @@ type GraphNodeTone = "info" | "accent" | "warning" | "success" | "neutral" | "da
 type DagLayout = {
   width: number;
   height: number;
+  config: DagAutoLayoutConfig;
   nodeLayouts: DagNodeLayout[];
   edgeLayouts: DagEdgeLayout[];
 };
 
-type DagAutoLayoutDirection = "LR";
+type DagAutoLayoutDirection = "LR" | "RL" | "TB" | "BT";
 
 type DagAutoLayoutConfig = {
   direction: DagAutoLayoutDirection;
@@ -112,15 +115,18 @@ type DagNodeSize = {
   height: number;
 };
 
+type DagPortPairPreference = {
+  fromSides?: readonly DagPortSide[];
+  toSides?: readonly DagPortSide[];
+};
+
 const DAG_NODE_WIDTH = 192;
 const DAG_NODE_HEIGHT = 78;
-const DAG_WORKFLOW_REFERENCE_NODE_WIDTH = 320;
-const DAG_WORKFLOW_REFERENCE_NODE_HEIGHT = 148;
-const DAG_RANK_SEP = scaleWorkflowLayoutMetric(180, DAG_NODE_WIDTH, DAG_WORKFLOW_REFERENCE_NODE_WIDTH, 4);
-const DAG_NODE_SEP = scaleWorkflowLayoutMetric(120, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
-const DAG_EDGE_SEP = scaleWorkflowLayoutMetric(60, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
-const DAG_MARGIN_X = scaleWorkflowLayoutMetric(80, DAG_NODE_WIDTH, DAG_WORKFLOW_REFERENCE_NODE_WIDTH, 4);
-const DAG_MARGIN_Y = scaleWorkflowLayoutMetric(80, DAG_NODE_HEIGHT, DAG_WORKFLOW_REFERENCE_NODE_HEIGHT, 4);
+const DAG_RANK_SEP = 124;
+const DAG_NODE_SEP = 88;
+const DAG_EDGE_SEP = 44;
+const DAG_MARGIN_X = 56;
+const DAG_MARGIN_Y = 56;
 const DAG_AUTO_LAYOUT_CONFIG: DagAutoLayoutConfig = {
   direction: "LR",
   ranksep: DAG_RANK_SEP,
@@ -132,9 +138,9 @@ const DAG_AUTO_LAYOUT_CONFIG: DagAutoLayoutConfig = {
 const DAG_NODE_LONG_TITLE_THRESHOLD = 28;
 const DAG_NODE_LONG_TITLE_EXTRA_HEIGHT = 18;
 const DAG_NODE_BRANCH_EXTRA_HEIGHT = 10;
-const DAG_FALLBACK_DRAFT_EXTRA_GAP = 140;
-const DAG_EDGE_CURVE_MIN = 38;
-const DAG_EDGE_PARALLEL_OFFSET = 14;
+const DAG_FALLBACK_DRAFT_EXTRA_GAP = 160;
+const DAG_EDGE_CURVE_MIN = 42;
+const DAG_EDGE_PARALLEL_OFFSET = 18;
 const DAG_EDGE_LABEL_SEGMENT_LIMIT = 4;
 const DAG_EDGE_LABEL_MAX_SEGMENTS = 2;
 const DAG_PORT_RATIOS = [0.25, 0.5, 0.75] as const;
@@ -143,9 +149,11 @@ const DAG_PORT_HINT_RATIOS: Record<DagPortHint, string> = {
   center: "50",
   end: "75",
 };
-const DAG_PORT_SIDE_MISMATCH_PENALTY = 10_000;
-const DAG_PORT_RATIO_MISMATCH_PENALTY = 1_200;
-const DAG_PORT_SAME_SIDE_PENALTY = 650;
+const DAG_PORT_SIDE_MISMATCH_PENALTY = 400;
+const DAG_PORT_RATIO_MISMATCH_PENALTY = 90;
+const DAG_PORT_SAME_SIDE_PENALTY = 120;
+const DAG_PORT_ORIENTATION_PENALTY = 96;
+const DAG_PORT_CENTER_TIE_BREAKER = 0.5;
 const DAG_VISIBLE_EDGE_ACTIVE_WEIGHT = 4;
 const DAG_VISIBLE_EDGE_PURPOSE_WEIGHT = 2;
 const DAG_VISIBLE_EDGE_NON_DEFAULT_KIND_WEIGHT = 1;
@@ -388,24 +396,55 @@ ${GRAPH_RUN_PANEL_STYLES}
         return parts[parts.length - 1] || "50";
       }
 
-      function chooseEdgePortPair(from, to, portHint = "center") {
+      function normalizePortSideHint(value) {
+        return ["top", "right", "bottom", "left"].includes(value) ? value : "";
+      }
+
+      function chooseEdgePortPair(from, to, portHint = "center", sideHint = {}) {
         const fromCenter = getBoxCenter(from);
         const toCenter = getBoxCenter(to);
         const preferred = getPreferredPortSides(from, to);
         const preferredRatio = getPortHintRatio(portHint);
+        const forcedFromSide = normalizePortSideHint(sideHint.fromSide);
+        const forcedToSide = normalizePortSideHint(sideHint.toSide);
         let best = null;
         getNodePorts(from).forEach((fromPort) => {
           getNodePorts(to).forEach((toPort) => {
+            if (forcedFromSide && fromPort.side !== forcedFromSide) {
+              return;
+            }
+            if (forcedToSide && toPort.side !== forcedToSide) {
+              return;
+            }
             const dx = toPort.x - fromPort.x;
             const dy = toPort.y - fromPort.y;
-            const distanceScore = (dx * dx) + (dy * dy);
+            const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+            const fromNormal = getPortNormal(fromPort.side);
+            const toNormal = getPortNormal(toPort.side);
+            const fromFacingScore = fromNormal.x * unitX + fromNormal.y * unitY;
+            const toFacingScore = toNormal.x * -unitX + toNormal.y * -unitY;
+            const orientationScore = ((1 - fromFacingScore) + (1 - toFacingScore)) * ${DAG_PORT_ORIENTATION_PENALTY};
             const fromSidePenalty = fromPort.side === preferred.fromSide ? 0 : ${DAG_PORT_SIDE_MISMATCH_PENALTY};
             const toSidePenalty = toPort.side === preferred.toSide ? 0 : ${DAG_PORT_SIDE_MISMATCH_PENALTY};
             const fromRatioPenalty = getPortRatioLabel(fromPort) === preferredRatio ? 0 : ${DAG_PORT_RATIO_MISMATCH_PENALTY};
             const toRatioPenalty = getPortRatioLabel(toPort) === preferredRatio ? 0 : ${DAG_PORT_RATIO_MISMATCH_PENALTY};
             const sameSidePenalty = fromPort.side === toPort.side ? ${DAG_PORT_SAME_SIDE_PENALTY} : 0;
-            const centerScore = Math.abs(fromPort.y - fromCenter.y) + Math.abs(toPort.y - toCenter.y);
-            const score = distanceScore + fromSidePenalty + toSidePenalty + fromRatioPenalty + toRatioPenalty + sameSidePenalty + centerScore;
+            const centerScore = (
+              Math.abs(fromPort.y - fromCenter.y)
+              + Math.abs(toPort.y - toCenter.y)
+              + Math.abs(fromPort.x - fromCenter.x)
+              + Math.abs(toPort.x - toCenter.x)
+            ) * ${DAG_PORT_CENTER_TIE_BREAKER};
+            const score = distance
+              + orientationScore
+              + fromSidePenalty
+              + toSidePenalty
+              + fromRatioPenalty
+              + toRatioPenalty
+              + sameSidePenalty
+              + centerScore;
             if (!best || score < best.score) {
               best = { fromPort, toPort, score };
             }
@@ -467,7 +506,10 @@ ${GRAPH_RUN_PANEL_STYLES}
       }
 
       function buildEdgePathFromBoxes(from, to, options = {}) {
-        const pair = chooseEdgePortPair(from, to, options.portHint || "center");
+        const pair = chooseEdgePortPair(from, to, options.portHint || "center", {
+          fromSide: options.fromSideHint || "",
+          toSide: options.toSideHint || "",
+        });
         const offset = readNumber(options.offset, 0);
         const edgePath = buildCurvedEdgePath(pair.fromPort, pair.toPort, offset);
         return {
@@ -500,6 +542,8 @@ ${GRAPH_RUN_PANEL_STYLES}
           const edgePath = buildEdgePathFromBoxes(from, to, {
             offset: readNumber(pathElement.dataset.edgeOffset, 0),
             portHint: pathElement.dataset.edgePortHint || "center",
+            fromSideHint: pathElement.dataset.edgeFromSideHint || "",
+            toSideHint: pathElement.dataset.edgeToSideHint || "",
           });
           pathElement.setAttribute("d", edgePath.path);
           pathElement.dataset.fromPort = edgePath.fromPort;
@@ -600,6 +644,47 @@ ${GRAPH_RUN_PANEL_STYLES}
           }
         });
         syncGraphCanvasAndEdges();
+      }
+
+      function centerDagViewportOnNode(nodeId) {
+        if (!dagViewport || !nodeId) {
+          return;
+        }
+        const target = selectableNodes.find((element) => element.dataset.nodeId === nodeId);
+        if (!target) {
+          return;
+        }
+        const box = getNodeBox(target);
+        const zoomScale = getCurrentZoomScale();
+        const centerX = (box.x + box.width / 2) * zoomScale;
+        const centerY = (box.y + box.height / 2) * zoomScale;
+        dagViewport.scrollLeft = Math.max(0, Math.round(centerX - dagViewport.clientWidth / 2));
+        dagViewport.scrollTop = Math.max(0, Math.round(centerY - dagViewport.clientHeight / 2));
+      }
+
+      function resolveInitialViewportNodeId(preferredNodeId) {
+        if (preferredNodeId && nodeIds.includes(preferredNodeId)) {
+          return preferredNodeId;
+        }
+        const priorityClasses = ["status-running", "status-sleeping", "status-blocked", "status-failed"];
+        for (const statusClass of priorityClasses) {
+          const target = selectableNodes.find((element) => element.classList.contains(statusClass));
+          if (target?.dataset.nodeId) {
+            return target.dataset.nodeId;
+          }
+        }
+        return nodeIds[0] || "";
+      }
+
+      function centerInitialDagViewport(nodeId) {
+        const targetNodeId = resolveInitialViewportNodeId(nodeId);
+        if (!targetNodeId) {
+          return;
+        }
+        window.requestAnimationFrame?.(() => {
+          syncGraphCanvasAndEdges();
+          centerDagViewportOnNode(targetNodeId);
+        });
       }
 
       function resetManualLayout() {
@@ -963,6 +1048,7 @@ ${GRAPH_RUN_PANEL_STYLES}
       if (initialSelected) {
         setSelectedNode(initialSelected, { persist: false });
       }
+      centerInitialDagViewport(serverSelected || persisted || "");
     </script>
   </body>
 </html>`;
@@ -1025,7 +1111,7 @@ function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings
     ${hasActiveEdges ? "" : `<div class="empty-card dag-empty">${escapeHtml(strings.noEdges)}</div>`}
     <div class="dag-viewport" data-dag-viewport role="group" aria-label="${escapeHtml(strings.graphView)}">
       <div class="dag-canvas-shell" data-dag-canvas-shell style="width: ${scaleDagSize(layout.width, DAG_DEFAULT_ZOOM_PERCENT)}px; height: ${scaleDagSize(layout.height, DAG_DEFAULT_ZOOM_PERCENT)}px;">
-        <div class="dag-canvas" data-dag-canvas data-layout-engine="@dagrejs/dagre" data-auto-width="${layout.width}" data-auto-height="${layout.height}" data-default-zoom="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-percent="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-scale="${DAG_DEFAULT_ZOOM_PERCENT / 100}" style="width: ${layout.width}px; height: ${layout.height}px; transform: scale(${DAG_DEFAULT_ZOOM_PERCENT / 100});">
+        <div class="dag-canvas" data-dag-canvas data-layout-engine="@dagrejs/dagre" data-auto-layout-direction="${layout.config.direction}" data-auto-ranksep="${layout.config.ranksep}" data-auto-nodesep="${layout.config.nodesep}" data-auto-edgesep="${layout.config.edgesep}" data-auto-margin-x="${layout.config.marginX}" data-auto-margin-y="${layout.config.marginY}" data-auto-width="${layout.width}" data-auto-height="${layout.height}" data-default-zoom="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-percent="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-scale="${DAG_DEFAULT_ZOOM_PERCENT / 100}" style="width: ${layout.width}px; height: ${layout.height}px; transform: scale(${DAG_DEFAULT_ZOOM_PERCENT / 100});">
           ${layout.edgeLayouts.length ? renderDagSvg(layout, strings) : ""}
           ${layout.nodeLayouts.map((nodeLayout) => renderDagNode(nodeLayout, state, strings)).join("")}
         </div>
@@ -1076,12 +1162,12 @@ function renderDagSvg(layout: DagLayout, strings: GraphRunPanelStrings): string 
         <path class="dag-arrowhead dag-arrowhead-visited" d="M 0 0 L 10 5 L 0 10 z"></path>
       </marker>
     </defs>
-    ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, offset, labelX, labelY }) => {
+    ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, fromSideHint, toSideHint, offset, labelX, labelY }) => {
       const activeClass = edge.active ? "active" : "inactive";
       const visited = edge.visited ? "true" : "false";
       const markerId = edge.visited ? "graph-arrowhead-visited" : "graph-arrowhead";
       const pathId = `dag-edge-${toSafeDomId(edge.id)}`;
-      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
+      return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-from-side-hint="${fromSideHint}" data-edge-to-side-hint="${toSideHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
         <title>${escapeHtml(label || strings.none)}</title>
       </path>
       ${renderDagEdgeDisplayLabel(edge.id, displayLabel, activeClass, labelX, labelY)}`;
@@ -1387,24 +1473,45 @@ function formatEvidenceTimestamp(value: number | undefined): string {
   return new Date(value).toLocaleString();
 }
 
-function buildDagLayout(state: GraphRunPanelState, strings: GraphRunPanelStrings): DagLayout {
+export function buildGraphRunPanelDagLayoutForTest(
+  state: GraphRunPanelState,
+  locale: AppLocale = "en",
+  direction: DagAutoLayoutDirection = DAG_AUTO_LAYOUT_CONFIG.direction,
+  engine: "dagre" | "fallback" = "dagre",
+): DagLayout {
+  return buildDagLayout(state, getGraphRunPanelStrings(locale), {
+    ...DAG_AUTO_LAYOUT_CONFIG,
+    direction,
+  }, engine);
+}
+
+function buildDagLayout(
+  state: GraphRunPanelState,
+  strings: GraphRunPanelStrings,
+  config: DagAutoLayoutConfig = DAG_AUTO_LAYOUT_CONFIG,
+  engine: "dagre" | "fallback" = "dagre",
+): DagLayout {
   const nodeIndexById = new Map(state.nodes.map((node, index) => [node.id, index]));
   const validEdges = state.edges.filter((edge) => (
     nodeIndexById.has(edge.from) && nodeIndexById.has(edge.to)
   ));
   const visibleEdges = selectDagVisibleEdges(validEdges);
+  const layoutEdges = selectDagLayoutEdges(visibleEdges, state.nodes);
   const positionMap = (() => {
+    if (engine === "fallback") {
+      return buildFallbackDagLayoutPositions(state.nodes, layoutEdges, config);
+    }
     try {
-      return buildDagDagreLayoutPositions(state.nodes, visibleEdges, DAG_AUTO_LAYOUT_CONFIG);
+      return buildDagDagreLayoutPositions(state.nodes, layoutEdges, config);
     } catch {
-      return buildFallbackDagLayoutPositions(state.nodes, visibleEdges, DAG_AUTO_LAYOUT_CONFIG);
+      return buildFallbackDagLayoutPositions(state.nodes, layoutEdges, config);
     }
   })();
   const nodeLayouts = state.nodes.map((node, order) => {
     const size = estimateDagAutoLayoutNodeSize(node);
     const position = positionMap.get(node.id) ?? {
-      x: DAG_MARGIN_X + order * (DAG_NODE_WIDTH + DAG_RANK_SEP),
-      y: DAG_MARGIN_Y,
+      x: config.marginX + order * (DAG_NODE_WIDTH + config.ranksep),
+      y: config.marginY,
     };
     return {
       node,
@@ -1418,16 +1525,16 @@ function buildDagLayout(state: GraphRunPanelState, strings: GraphRunPanelStrings
   const positionById = new Map(nodeLayouts.map((layout) => [layout.node.id, layout]));
   const edgeLayouts = buildDagEdgeLayouts(visibleEdges, positionById, strings);
   const width = Math.max(
-    DAG_MARGIN_X * 2 + DAG_NODE_WIDTH,
-    ...nodeLayouts.map((layout) => layout.x + layout.width + DAG_MARGIN_X),
-    ...edgeLayouts.map((layout) => layout.maxX + DAG_MARGIN_X),
+    config.marginX * 2 + DAG_NODE_WIDTH,
+    ...nodeLayouts.map((layout) => layout.x + layout.width + config.marginX),
+    ...edgeLayouts.map((layout) => layout.maxX + config.marginX),
   );
   const height = Math.max(
-    DAG_MARGIN_Y * 2 + DAG_NODE_HEIGHT,
-    ...nodeLayouts.map((layout) => layout.y + layout.height + DAG_MARGIN_Y),
-    ...edgeLayouts.map((layout) => layout.maxY + DAG_MARGIN_Y),
+    config.marginY * 2 + DAG_NODE_HEIGHT,
+    ...nodeLayouts.map((layout) => layout.y + layout.height + config.marginY),
+    ...edgeLayouts.map((layout) => layout.maxY + config.marginY),
   );
-  return { width, height, nodeLayouts, edgeLayouts };
+  return { width, height, config, nodeLayouts, edgeLayouts };
 }
 
 function buildDagDagreLayoutPositions(
@@ -1503,16 +1610,11 @@ function buildFallbackDagLayoutPositions(
     targetIds.sort((leftId, rightId) => compareDagNodesForAutoLayout(nodeMap.get(leftId), nodeMap.get(rightId), orderMap));
   });
 
-  const startNode = nodes.find((node) => node.kind === "intake")
-    ?? nodes.find((node) => Number(incomingCountMap.get(node.id) || 0) === 0)
-    ?? nodes[0]
-    ?? null;
-  const queue = startNode
-    ? [{ id: startNode.id, level: 0 }]
-    : nodes
-      .filter((node) => Number(incomingCountMap.get(node.id) || 0) === 0)
-      .sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap))
-      .map((node) => ({ id: node.id, level: 0 }));
+  const roots = nodes
+    .filter((node) => Number(incomingCountMap.get(node.id) || 0) === 0)
+    .sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap));
+  const queue = (roots.length ? roots : [...nodes].sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap)))
+    .map((node) => ({ id: node.id, level: 0 }));
 
   while (queue.length) {
     const current = queue.shift();
@@ -1541,6 +1643,8 @@ function buildFallbackDagLayoutPositions(
       levelBuckets.set(level, bucket);
     });
 
+  const horizontalLayout = isDagAutoLayoutHorizontal(config.direction);
+  const maxLevel = Math.max(0, ...Array.from(levelBuckets.keys()));
   const boxes: DagAutoLayoutBox[] = [];
   Array.from(levelBuckets.entries())
     .sort((left, right) => left[0] - right[0])
@@ -1548,10 +1652,15 @@ function buildFallbackDagLayoutPositions(
       const sortedNodes = nodesAtLevel.sort((left, right) => compareDagNodesForAutoLayout(left, right, orderMap));
       sortedNodes.forEach((node, index) => {
         const size = estimateDagAutoLayoutNodeSize(node);
+        const normalizedLevel = shouldReverseDagAutoLayoutLevel(config.direction) ? maxLevel - level : level;
         boxes.push({
           id: node.id,
-          x: config.marginX + level * (DAG_NODE_WIDTH + config.ranksep),
-          y: config.marginY + index * (DAG_NODE_HEIGHT + config.nodesep),
+          x: config.marginX + (horizontalLayout
+            ? normalizedLevel * (DAG_NODE_WIDTH + config.ranksep)
+            : index * (DAG_NODE_WIDTH + config.nodesep)),
+          y: config.marginY + (horizontalLayout
+            ? index * (DAG_NODE_HEIGHT + config.nodesep)
+            : normalizedLevel * (DAG_NODE_HEIGHT + config.ranksep)),
           width: size.width,
           height: size.height,
         });
@@ -1565,19 +1674,18 @@ function buildFallbackDagLayoutPositions(
     const size = estimateDagAutoLayoutNodeSize(node);
     boxes.push({
       id: node.id,
-      x: config.marginX + DAG_NODE_WIDTH + config.ranksep,
-      y: config.marginY + (DAG_NODE_HEIGHT + config.nodesep) * (index + 1) + DAG_FALLBACK_DRAFT_EXTRA_GAP,
+      x: config.marginX + (horizontalLayout
+        ? DAG_NODE_WIDTH + config.ranksep
+        : index * (DAG_NODE_WIDTH + config.nodesep)),
+      y: config.marginY + (horizontalLayout
+        ? (DAG_NODE_HEIGHT + config.nodesep) * (index + 1) + DAG_FALLBACK_DRAFT_EXTRA_GAP
+        : (maxLevel + 1) * (DAG_NODE_HEIGHT + config.ranksep) + DAG_FALLBACK_DRAFT_EXTRA_GAP),
       width: size.width,
       height: size.height,
     });
   });
 
   return resolveDagAutoLayoutCollisions(boxes, config);
-}
-
-function scaleWorkflowLayoutMetric(value: number, nodeMetric: number, referenceMetric: number, step: number): number {
-  const scaled = (value * nodeMetric) / referenceMetric;
-  return Math.max(step, Math.round(scaled / step) * step);
 }
 
 function estimateDagAutoLayoutNodeSize(node: GraphRunPanelNode): DagNodeSize {
@@ -1594,8 +1702,11 @@ function resolveDagAutoLayoutCollisions(
   boxes: readonly DagAutoLayoutBox[],
   config: DagAutoLayoutConfig,
 ): Map<string, { x: number; y: number }> {
+  const horizontalLayout = isDagAutoLayoutHorizontal(config.direction);
   const orderedBoxes = [...boxes].sort((left, right) => (
-    (left.x - right.x) || (left.y - right.y)
+    horizontalLayout
+      ? (left.x - right.x) || (left.y - right.y)
+      : (left.y - right.y) || (left.x - right.x)
   ));
   const placedBoxes: DagAutoLayoutBox[] = [];
 
@@ -1607,7 +1718,11 @@ function resolveDagAutoLayoutCollisions(
       if (!overlapBox) {
         break;
       }
-      nextBox.y = overlapBox.y + overlapBox.height + config.nodesep;
+      if (horizontalLayout) {
+        nextBox.y = overlapBox.y + overlapBox.height + config.nodesep;
+      } else {
+        nextBox.x = overlapBox.x + overlapBox.width + config.nodesep;
+      }
       guard += 1;
     }
     placedBoxes.push(nextBox);
@@ -1617,6 +1732,14 @@ function resolveDagAutoLayoutCollisions(
     x: Math.round(box.x),
     y: Math.round(box.y),
   }]));
+}
+
+function isDagAutoLayoutHorizontal(direction: DagAutoLayoutDirection): boolean {
+  return direction === "LR" || direction === "RL";
+}
+
+function shouldReverseDagAutoLayoutLevel(direction: DagAutoLayoutDirection): boolean {
+  return direction === "RL" || direction === "BT";
 }
 
 function dagAutoLayoutBoxesOverlap(left: DagAutoLayoutBox, right: DagAutoLayoutBox): boolean {
@@ -1646,6 +1769,9 @@ function getDagNodeAutoLayoutKindWeight(node: GraphRunPanelNode): number {
   if (node.kind === "intake") {
     return -2;
   }
+  if (node.kind === "plan" && node.dependsOn.length === 0) {
+    return -1;
+  }
   if (node.kind === "summary") {
     return 2;
   }
@@ -1659,6 +1785,7 @@ function buildDagEdgeLayouts(
 ): DagEdgeLayout[] {
   const edgeOffsets = buildEdgeOffsets(edges);
   const portHints = buildEdgePortHints(edges);
+  const parallelChildNodeIds = buildDagParallelChildNodeIdSet(edges, positionById);
   return edges
     .map((edge, index) => {
       const from = positionById.get(edge.from);
@@ -1668,7 +1795,8 @@ function buildDagEdgeLayouts(
       }
       const offset = edgeOffsets[index] ?? 0;
       const portHint = portHints[index] ?? "center";
-      const geometry = buildEdgePath(from, to, offset, portHint);
+      const sideHint = buildDagEdgeSideHint(edge, parallelChildNodeIds);
+      const geometry = buildEdgePath(from, to, offset, portHint, sideHint);
       return {
         edge,
         path: geometry.path,
@@ -1677,6 +1805,8 @@ function buildDagEdgeLayouts(
         fromPort: geometry.fromPort.id,
         toPort: geometry.toPort.id,
         portHint,
+        fromSideHint: sideHint.fromSides?.[0] ?? "",
+        toSideHint: sideHint.toSides?.[0] ?? "",
         offset,
         labelX: geometry.labelX,
         labelY: geometry.labelY,
@@ -1685,6 +1815,37 @@ function buildDagEdgeLayouts(
       };
     })
     .filter((edgeLayout): edgeLayout is DagEdgeLayout => Boolean(edgeLayout));
+}
+
+function buildDagParallelChildNodeIdSet(
+  edges: readonly GraphRunPanelEdge[],
+  positionById: ReadonlyMap<string, DagNodeLayout>,
+): Set<string> {
+  const childNodeIds = new Set<string>();
+  edges.forEach((edge) => {
+    const source = positionById.get(edge.from);
+    if (!source) {
+      return;
+    }
+    if (String(source.node.kind) === "parallel" || source.node.unlocks.length > 1) {
+      childNodeIds.add(edge.to);
+    }
+  });
+  return childNodeIds;
+}
+
+function buildDagEdgeSideHint(
+  edge: GraphRunPanelEdge,
+  parallelChildNodeIds: ReadonlySet<string>,
+): DagPortPairPreference {
+  return {
+    ...(parallelChildNodeIds.has(edge.from) || parallelChildNodeIds.has(edge.to)
+      ? { fromSides: ["right" as const] }
+      : {}),
+    ...(parallelChildNodeIds.has(edge.to)
+      ? { toSides: ["left" as const] }
+      : {}),
+  };
 }
 
 function selectDagVisibleEdges(edges: readonly GraphRunPanelEdge[]): GraphRunPanelEdge[] {
@@ -1701,6 +1862,68 @@ function selectDagVisibleEdges(edges: readonly GraphRunPanelEdge[]): GraphRunPan
     .map(({ edge }) => edge);
 }
 
+function selectDagLayoutEdges(
+  edges: readonly GraphRunPanelEdge[],
+  nodes: readonly GraphRunPanelNode[],
+): GraphRunPanelEdge[] {
+  const orderMap = new Map(nodes.map((node, index) => [node.id, index]));
+  const forwardAdjacency = new Map<string, string[]>(nodes.map((node) => [node.id, []]));
+  edges.forEach((edge) => {
+    if (edge.kind === "review_feedback" || edge.kind === "if_fail") {
+      return;
+    }
+    forwardAdjacency.get(edge.from)?.push(edge.to);
+  });
+  return edges.filter((edge) => !isDagReturnEdge(edge, orderMap, forwardAdjacency));
+}
+
+function isDagReturnEdge(
+  edge: GraphRunPanelEdge,
+  orderMap: ReadonlyMap<string, number>,
+  forwardAdjacency: ReadonlyMap<string, readonly string[]>,
+): boolean {
+  if (edge.kind === "review_feedback") {
+    return true;
+  }
+  if (edge.kind !== "if_fail") {
+    return false;
+  }
+  if (edge.from === edge.to) {
+    return true;
+  }
+  const fromOrder = orderMap.get(edge.from);
+  const toOrder = orderMap.get(edge.to);
+  if (fromOrder !== undefined && toOrder !== undefined && toOrder <= fromOrder) {
+    return true;
+  }
+  return hasDagForwardPath(forwardAdjacency, edge.to, edge.from);
+}
+
+function hasDagForwardPath(
+  adjacency: ReadonlyMap<string, readonly string[]>,
+  fromId: string,
+  toId: string,
+): boolean {
+  const queue = [fromId];
+  const visited = new Set<string>();
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    if (current === toId) {
+      return true;
+    }
+    visited.add(current);
+    (adjacency.get(current) ?? []).forEach((nextId) => {
+      if (!visited.has(nextId)) {
+        queue.push(nextId);
+      }
+    });
+  }
+  return false;
+}
+
 function getDagVisibleEdgeScore(edge: GraphRunPanelEdge): number {
   return (edge.active ? DAG_VISIBLE_EDGE_ACTIVE_WEIGHT : 0)
     + (hasExplicitEdgePurpose(edge) ? DAG_VISIBLE_EDGE_PURPOSE_WEIGHT : 0)
@@ -1709,12 +1932,29 @@ function getDagVisibleEdgeScore(edge: GraphRunPanelEdge): number {
 
 function buildEdgePortHints(edges: readonly GraphRunPanelEdge[]): DagPortHint[] {
   const directedPairs = new Set(edges.map((edge) => buildDirectedEdgeKey(edge.from, edge.to)));
-  return edges.map((edge) => {
-    if (edge.from === edge.to || !directedPairs.has(buildDirectedEdgeKey(edge.to, edge.from))) {
-      return "center";
+  const hints: DagPortHint[] = edges.map(() => "center");
+  const applyFanHints = (buckets: ReadonlyMap<string, number[]>): void => {
+    buckets.forEach((bucket) => {
+      if (bucket.length < 2) {
+        return;
+      }
+      const midpoint = (bucket.length - 1) / 2;
+      bucket.forEach((edgeIndex, order) => {
+        hints[edgeIndex] = order < midpoint ? "start" : order > midpoint ? "end" : "center";
+      });
+    });
+  };
+  applyFanHints(buildEdgeIndexBuckets(edges, (edge) => `from:${edge.from}`));
+  applyFanHints(buildEdgeIndexBuckets(edges, (edge) => `to:${edge.to}`));
+  edges.forEach((edge, index) => {
+    if (edge.from !== edge.to && directedPairs.has(buildDirectedEdgeKey(edge.to, edge.from))) {
+      hints[index] = edge.from.localeCompare(edge.to) <= 0 ? "start" : "end";
     }
-    return edge.from.localeCompare(edge.to) <= 0 ? "start" : "end";
+    if (edge.kind === "review_feedback" || edge.kind === "if_fail") {
+      hints[index] = hints[index] === "start" ? "start" : "end";
+    }
   });
+  return hints;
 }
 
 function buildDirectedEdgeKey(from: string, to: string): string {
@@ -1723,28 +1963,53 @@ function buildDirectedEdgeKey(from: string, to: string): string {
 
 function buildEdgeOffsets(edges: readonly GraphRunPanelEdge[]): number[] {
   const offsets = edges.map(() => 0);
-  const indexBuckets = new Map<string, number[]>();
-  edges.forEach((edge, index) => {
-    const pairKey = [edge.from, edge.to].sort().join("<->");
-    const bucket = indexBuckets.get(pairKey) ?? [];
-    bucket.push(index);
-    indexBuckets.set(pairKey, bucket);
-  });
-  indexBuckets.forEach((bucket) => {
-    const midpoint = (bucket.length - 1) / 2;
-    bucket.forEach((edgeIndex, order) => {
-      offsets[edgeIndex] = (order - midpoint) * DAG_EDGE_PARALLEL_OFFSET;
-    });
-  });
+  applyDagEdgeOffsetBuckets(offsets, buildEdgeIndexBuckets(edges, (edge) => [edge.from, edge.to].sort().join("<->")), false);
+  applyDagEdgeOffsetBuckets(offsets, buildEdgeIndexBuckets(edges, (edge) => `from:${edge.from}`), true);
+  applyDagEdgeOffsetBuckets(offsets, buildEdgeIndexBuckets(edges, (edge) => `to:${edge.to}`), true);
   edges.forEach((edge, index) => {
     if (edge.from === edge.to && offsets[index] === 0) {
       offsets[index] = DAG_EDGE_PARALLEL_OFFSET;
     }
-    if ((edge.kind === "review_feedback" || edge.kind === "if_fail") && offsets[index] === 0) {
-      offsets[index] = DAG_EDGE_PARALLEL_OFFSET;
+    if (edge.kind === "review_feedback" || edge.kind === "if_fail") {
+      if (Math.abs(offsets[index]) < DAG_EDGE_PARALLEL_OFFSET) {
+        offsets[index] = offsets[index] < 0 ? -DAG_EDGE_PARALLEL_OFFSET : DAG_EDGE_PARALLEL_OFFSET;
+      }
     }
   });
   return offsets;
+}
+
+function buildEdgeIndexBuckets(
+  edges: readonly GraphRunPanelEdge[],
+  buildKey: (edge: GraphRunPanelEdge) => string,
+): Map<string, number[]> {
+  const buckets = new Map<string, number[]>();
+  edges.forEach((edge, index) => {
+    const key = buildKey(edge);
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(index);
+    buckets.set(key, bucket);
+  });
+  return buckets;
+}
+
+function applyDagEdgeOffsetBuckets(
+  offsets: number[],
+  indexBuckets: ReadonlyMap<string, readonly number[]>,
+  onlyEmptyOffsets: boolean,
+): void {
+  indexBuckets.forEach((bucket) => {
+    if (bucket.length < 2) {
+      return;
+    }
+    const midpoint = (bucket.length - 1) / 2;
+    bucket.forEach((edgeIndex, order) => {
+      if (onlyEmptyOffsets && offsets[edgeIndex] !== 0) {
+        return;
+      }
+      offsets[edgeIndex] = (order - midpoint) * DAG_EDGE_PARALLEL_OFFSET;
+    });
+  });
 }
 
 function buildEdgePath(
@@ -1752,8 +2017,9 @@ function buildEdgePath(
   to: DagNodeLayout,
   offset = 0,
   portHint: DagPortHint = "center",
+  preference: DagPortPairPreference = {},
 ): DagEdgeGeometry {
-  const pair = chooseEdgePortPair(from, to, portHint);
+  const pair = chooseEdgePortPair(from, to, portHint, preference);
   const dx = pair.toPort.x - pair.fromPort.x;
   const dy = pair.toPort.y - pair.fromPort.y;
   const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
@@ -1813,6 +2079,7 @@ function chooseEdgePortPair(
   from: DagNodeLayout,
   to: DagNodeLayout,
   portHint: DagPortHint = "center",
+  preference: DagPortPairPreference = {},
 ): { fromPort: DagPort; toPort: DagPort } {
   const preferred = getPreferredPortSides(from, to);
   const fromCenter = getNodeCenter(from);
@@ -1821,16 +2088,35 @@ function chooseEdgePortPair(
   let best: { fromPort: DagPort; toPort: DagPort; score: number } | null = null;
   for (const fromPort of buildNodePorts(from)) {
     for (const toPort of buildNodePorts(to)) {
+      if (preference.fromSides?.length && !preference.fromSides.includes(fromPort.side)) {
+        continue;
+      }
+      if (preference.toSides?.length && !preference.toSides.includes(toPort.side)) {
+        continue;
+      }
       const dx = toPort.x - fromPort.x;
       const dy = toPort.y - fromPort.y;
-      const distanceScore = (dx * dx) + (dy * dy);
+      const distance = Math.max(1, Math.sqrt((dx * dx) + (dy * dy)));
+      const unitX = dx / distance;
+      const unitY = dy / distance;
+      const fromNormal = getPortNormal(fromPort.side);
+      const toNormal = getPortNormal(toPort.side);
+      const fromFacingScore = fromNormal.x * unitX + fromNormal.y * unitY;
+      const toFacingScore = toNormal.x * -unitX + toNormal.y * -unitY;
+      const orientationScore = ((1 - fromFacingScore) + (1 - toFacingScore)) * DAG_PORT_ORIENTATION_PENALTY;
       const fromSidePenalty = fromPort.side === preferred.fromSide ? 0 : DAG_PORT_SIDE_MISMATCH_PENALTY;
       const toSidePenalty = toPort.side === preferred.toSide ? 0 : DAG_PORT_SIDE_MISMATCH_PENALTY;
       const fromRatioPenalty = getPortRatioLabel(fromPort) === preferredRatio ? 0 : DAG_PORT_RATIO_MISMATCH_PENALTY;
       const toRatioPenalty = getPortRatioLabel(toPort) === preferredRatio ? 0 : DAG_PORT_RATIO_MISMATCH_PENALTY;
       const sameSidePenalty = fromPort.side === toPort.side ? DAG_PORT_SAME_SIDE_PENALTY : 0;
-      const centerScore = Math.abs(fromPort.y - fromCenter.y) + Math.abs(toPort.y - toCenter.y);
-      const score = distanceScore
+      const centerScore = (
+        Math.abs(fromPort.y - fromCenter.y)
+        + Math.abs(toPort.y - toCenter.y)
+        + Math.abs(fromPort.x - fromCenter.x)
+        + Math.abs(toPort.x - toCenter.x)
+      ) * DAG_PORT_CENTER_TIE_BREAKER;
+      const score = distance
+        + orientationScore
         + fromSidePenalty
         + toSidePenalty
         + fromRatioPenalty

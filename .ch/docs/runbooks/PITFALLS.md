@@ -1358,6 +1358,47 @@
 - 执行 `npm run build`。
 - 执行 `node --test dist/test/graphExtensionRuntime.test.js dist/test/graphMainWebview.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/loopmaingroupchatbutton.test.js`。
 
+## Graph 重构后验证节点不能无写入授权地承担测试契约迁移
+
+- 状态：已规避，需随 Graph planner / failure classification 变更复核
+- 首次发现：2026-08-02
+- 适用范围：Graph planner、Graph test/review 节点、source-contract / canonical source 测试、重构/迁移/拆模块任务
+
+### 现象
+- Graph run `graph_msg_1785661781962_abd923233c4068` 执行到 `test-schema-definitions` 后失败并进入 `needs-review`，attempts 达到 2/2。
+- 失败看起来像 SQL schema 实现继续出错，但实际测试 `apps/server/test/performance/performance-observation-schema.test.js` 仍读取旧 `apps/server/src/db.js` 文本 source-contract，查找已经迁入 `apps/server/src/db/schema/observability.js` 的 SQL 定义。
+- `test-schema-definitions` 节点没有测试文件 `writeFiles` 授权，只能重复失败，Retry 也不能新增授权范围。
+
+### 触发条件
+- 重构、迁移或拆模块移动 canonical source，例如把 SQL 常量从聚合文件移到子模块。
+- 现有测试用 source-contract、文本快照、路径断言或 “canonical source” 读取旧文件，而 planner 只规划实现节点和只读验证节点。
+- 验证节点没有声明受影响测试文件的 `writeFiles`，`if_fail` / `review_feedback` 又只回到原实现节点。
+
+### 根因
+- planner 过去没有把“实现迁移”和“测试契约迁移”拆成两个有写入授权的节点。
+- runtime 过去只保留 `lastError`，缺少 `missing_write_scope` / `stale_test_contract` 分类与 recommendedWriteFiles，主 tab 难以看出失败应返工到测试适配节点。
+
+### 长期规避
+- planner 遇到重构/迁移/拆模块时，必须检查 source-contract、文本快照、路径断言和测试 canonical source；风险存在时规划独立 test adaptation / 契约更新节点，并声明具体测试 `writeFiles`。
+- 验证节点发现旧测试契约失败时，应通过 `if_fail` / `review_feedback` 返工到测试适配节点，而不是只回到原实现节点。
+- runtime 需要把该类失败分类为 `missing_write_scope`，signals 保留 `stale_test_contract`，recommendedRecovery 使用 `add_rework_node`，recommendedWriteFiles 指向需要授权的测试文件；不得建议单纯 Retry 作为主要恢复路径。
+- needs-review / idle 文案必须展示 category、confidence、signals、recommendedRecovery、recommendedWriteFiles 和 nodeDraft，确保主任务或用户不用翻 artifact 才能理解下一步。
+
+### 验证方式
+- 用 `test-schema-definitions` 失败样本文本验证分类结果：category 为 `missing_write_scope`，signals 包含 `stale_test_contract`，recommendedWriteFiles 包含 `apps/server/test/performance/performance-observation-schema.test.js`。
+- 检查 planner prompt 覆盖 stale/source-contract/writeFiles/test adaptation 要求。
+- 执行 `node --test dist/test/graphFailureClassification.test.js dist/test/graphNodeLifecycle.test.js dist/test/graphStore.test.js dist/test/graphNodeArtifact.test.js dist/test/graphExtensionRuntime.test.js dist/test/graphPromptBuilders.test.js`，并在需要时执行 `npm run build`。
+
+### 关联资料
+- `.ch/docs/design-docs/graph-orchestration-mode.md`
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+- `src/graph/graphFailureClassification.ts`
+- `src/graph/graphPromptBuilders.ts`
+- `src/extension.ts`
+- `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-1-planner-stale-contract-guards.md`
+- `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-2-graph-failure-classification-core.md`
+
 ## 建议模板
 
 ```md

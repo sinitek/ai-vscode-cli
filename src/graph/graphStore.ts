@@ -34,6 +34,7 @@ import {
   type GraphRunStore,
   type GraphRunWorktreeRecord,
 } from "./types";
+import { normalizeGraphFailureClassification } from "./graphFailureClassification";
 import {
   ensureGraphCommunicationFiles,
   getGraphCommunicationPaths,
@@ -612,6 +613,7 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
   if (raw.rework !== undefined && !rework) {
     return null;
   }
+  const failure = normalizeGraphFailureClassification(raw.failure);
   return {
     id: raw.id,
     title: raw.title,
@@ -640,6 +642,7 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     ...(typeof raw.worktreeCwd === "string" && raw.worktreeCwd.trim() ? { worktreeCwd: raw.worktreeCwd.trim() } : {}),
     ...(typeof raw.baseCommit === "string" && raw.baseCommit.trim() ? { baseCommit: raw.baseCommit.trim() } : {}),
     ...(typeof raw.commit === "string" && raw.commit.trim() ? { commit: raw.commit.trim() } : {}),
+    ...(failure ? { failure } : {}),
   };
 }
 

@@ -8,6 +8,7 @@ installVscodeMock();
 
 import { buildGraphRunPanelStateWithDeps } from "../panelStateBuilder";
 import {
+  buildGraphRunPanelDagLayoutForTest,
   buildGraphRunPanelHtml,
 } from "../webview/graphRunPanel";
 import { getGraphRunPanelStrings } from "../webview/graphRunPanelRenderer";
@@ -381,6 +382,11 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.match(html, /graphRunLayouts\[graphRunId\] = \{/);
 	  assert.match(html, /zoom: normalizeZoomPercent\(zoomPercent\)/);
 	  assert.match(html, /persistManualLayout/);
+	  assert.match(html, /centerInitialDagViewport/);
+	  assert.match(html, /resolveInitialViewportNodeId/);
+	  assert.match(html, /status-running", "status-sleeping", "status-blocked", "status-failed"/);
+	  assert.match(html, /dagViewport\.scrollLeft = Math\.max\(0, Math\.round\(centerX - dagViewport\.clientWidth \/ 2\)\)/);
+	  assert.match(html, /dagViewport\.scrollTop = Math\.max\(0, Math\.round\(centerY - dagViewport\.clientHeight \/ 2\)\)/);
 	  assert.match(html, /startNodeDrag/);
 	  assert.match(html, /pointermove/);
 	  assert.match(html, /nodeDragMoveThreshold/);
@@ -472,6 +478,102 @@ test("uses workflow-style auto layout spacing, collision handling, and dynamic n
   assertDagNodeLayoutsDoNotOverlap(nodeLayouts.values());
 });
 
+test("supports target workflow-style layout directions and tuned spacing parameters", () => {
+  const run = createRun({
+    nodes: [
+      createNode({ id: "start", title: "Start intake", kind: "intake", dependsOn: [], unlocks: ["step"] }),
+      createNode({
+        id: "step",
+        title: "Execute step",
+        kind: "implement",
+        dependsOn: ["start"],
+        unlocks: [],
+      }),
+    ],
+    edges: [],
+  });
+  const state = buildState(run, "step");
+  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "LR");
+  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "TB");
+  const lrNodes = new Map(lrLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
+  const tbNodes = new Map(tbLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
+  const lrStart = lrNodes.get("start");
+  const lrStep = lrNodes.get("step");
+  const tbStart = tbNodes.get("start");
+  const tbStep = tbNodes.get("step");
+  assert.ok(lrStart && lrStep && tbStart && tbStep);
+
+  assert.equal(lrLayout.config.direction, "LR");
+  assert.equal(tbLayout.config.direction, "TB");
+  assert.equal(lrLayout.config.ranksep, 124);
+  assert.equal(lrLayout.config.nodesep, 88);
+  assert.equal(lrLayout.config.edgesep, 44);
+  assert.equal(lrLayout.config.marginX, 56);
+  assert.equal(lrLayout.config.marginY, 56);
+  assert.ok(lrStep.x - lrStart.x >= 300);
+  assert.ok(tbStep.y - tbStart.y >= 190);
+
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+  assert.match(html, /data-auto-layout-direction="LR"/);
+  assert.match(html, /data-auto-ranksep="124"/);
+  assert.match(html, /data-auto-nodesep="88"/);
+  assert.match(html, /data-auto-edgesep="44"/);
+  assert.match(html, /data-auto-margin-x="56"/);
+  assert.match(html, /data-auto-margin-y="56"/);
+});
+
+test("fallback auto layout expands all zero-indegree roots instead of drafting parallel roots", () => {
+  const run = createRun({
+    nodes: [
+      createNode({
+        id: "root-a",
+        title: "Primary intake",
+        kind: "intake",
+        dependsOn: [],
+        unlocks: ["merge"],
+      }),
+      createNode({
+        id: "root-b",
+        title: "Independent plan",
+        kind: "plan",
+        dependsOn: [],
+        unlocks: ["merge"],
+      }),
+      createNode({
+        id: "merge",
+        title: "Merge roots",
+        kind: "merge",
+        dependsOn: ["root-a", "root-b"],
+        unlocks: [],
+      }),
+    ],
+    edges: [],
+  });
+  const state = buildState(run, "merge");
+  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "LR", "fallback");
+  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "TB", "fallback");
+  const lrNodes = new Map(lrLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
+  const tbNodes = new Map(tbLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
+  const lrRootA = lrNodes.get("root-a");
+  const lrRootB = lrNodes.get("root-b");
+  const lrMerge = lrNodes.get("merge");
+  const tbRootA = tbNodes.get("root-a");
+  const tbRootB = tbNodes.get("root-b");
+  const tbMerge = tbNodes.get("merge");
+  assert.ok(lrRootA && lrRootB && lrMerge && tbRootA && tbRootB && tbMerge);
+
+  assert.equal(lrRootA.x, lrRootB.x);
+  assert.ok(lrRootB.y > lrRootA.y);
+  assert.ok(lrMerge.x > lrRootA.x);
+  assert.ok(lrRootB.y - lrRootA.y < 260);
+  assert.equal(tbRootA.y, tbRootB.y);
+  assert.ok(tbRootB.x > tbRootA.x);
+  assert.ok(tbMerge.y > tbRootA.y);
+  assert.ok(tbRootB.x - tbRootA.x < 360);
+  assertDagNodeLayoutsDoNotOverlap(lrLayout.nodeLayouts);
+  assertDagNodeLayoutsDoNotOverlap(tbLayout.nodeLayouts);
+});
+
 test("packages dagre runtime dependency used by graph run panel layout", () => {
   assert.equal(packageJson.dependencies?.["@dagrejs/dagre"], "^3.0.0");
   assert.match(vscodeIgnoreText, /^!node_modules\/@dagrejs\/\*\*$/m);
@@ -526,6 +628,19 @@ test("renders cyclic and feedback edges conservatively without hiding valid edge
   assert.match(html, /edge-kind-review_feedback" data-edge-id="review-implement" data-edge-from="review" data-edge-to="implement"/);
   assert.match(html, /edge-kind-if_fail" data-edge-id="review-plan" data-edge-from="review" data-edge-to="plan"/);
   assert.match(html, /needs changes/);
+  const nodeLayouts = getDagNodeLayoutById(html);
+  const plan = nodeLayouts.get("plan");
+  const implement = nodeLayouts.get("implement");
+  const review = nodeLayouts.get("review");
+  assert.ok(plan && implement && review);
+  assert.ok(plan.x < implement.x);
+  assert.ok(implement.x < review.x);
+  const edges = getDagEdgePathAttrs(html);
+  const reviewFeedback = edges.find((edge) => edge["data-edge-id"] === "review-implement");
+  const ifFail = edges.find((edge) => edge["data-edge-id"] === "review-plan");
+  assert.ok(reviewFeedback && ifFail);
+  assert.ok(Math.abs(Number.parseFloat(reviewFeedback["data-edge-offset"] ?? "")) >= 18);
+  assert.ok(Math.abs(Number.parseFloat(ifFail["data-edge-offset"] ?? "")) >= 18);
 });
 
 test("dedupes same-direction DAG edges and separates bidirectional connection ports", () => {
@@ -564,6 +679,60 @@ test("dedupes same-direction DAG edges and separates bidirectional connection po
   assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="beta-alpha-feedback" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">need \/ chan<\/text>/);
   assert.ok(getDagEdgeLabelAttrs(html).every((edgeLabel) => Number.isFinite(Number.parseFloat(edgeLabel.x ?? "")) && Number.isFinite(Number.parseFloat(edgeLabel.y ?? ""))));
   assert.doesNotMatch(html, /<textPath/);
+});
+
+test("separates fan-out and fan-in ports with target-style side hints and offsets", () => {
+  const run = createRun({
+    nodes: [
+      createNode({
+        id: "fan",
+        title: "Parallel fan out",
+        kind: "plan",
+        dependsOn: [],
+        unlocks: ["branch-a", "branch-b"],
+      }),
+      createNode({
+        id: "branch-a",
+        title: "Branch A",
+        kind: "implement",
+        dependsOn: ["fan"],
+        unlocks: ["merge"],
+      }),
+      createNode({
+        id: "branch-b",
+        title: "Branch B",
+        kind: "test",
+        dependsOn: ["fan"],
+        unlocks: ["merge"],
+      }),
+      createNode({
+        id: "merge",
+        title: "Merge",
+        kind: "merge",
+        dependsOn: ["branch-a", "branch-b"],
+        unlocks: [],
+      }),
+    ],
+    edges: [
+      { id: "fan-a", from: "fan", to: "branch-a", kind: "depends_on", active: true },
+      { id: "fan-b", from: "fan", to: "branch-b", kind: "depends_on", active: true },
+      { id: "a-merge", from: "branch-a", to: "merge", kind: "depends_on", active: true },
+      { id: "b-merge", from: "branch-b", to: "merge", kind: "depends_on", active: true },
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "fan"), "en");
+  const edges = getDagEdgePathAttrs(html);
+  const fanOutEdges = edges.filter((edge) => edge["data-edge-from"] === "fan");
+  const fanInEdges = edges.filter((edge) => edge["data-edge-to"] === "merge");
+
+  assert.equal(fanOutEdges.length, 2);
+  assert.equal(fanInEdges.length, 2);
+  assert.deepEqual(new Set(fanOutEdges.map((edge) => edge["data-edge-from-side-hint"])), new Set(["right"]));
+  assert.deepEqual(new Set(fanOutEdges.map((edge) => edge["data-edge-to-side-hint"])), new Set(["left"]));
+  assert.equal(new Set(fanOutEdges.map((edge) => edge["data-to-port"])).size, 2);
+  assert.equal(new Set(fanInEdges.map((edge) => edge["data-from-port"])).size, 2);
+  assert.ok(fanOutEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
+  assert.ok(fanInEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
 });
 
 test("renders edge purpose labels, semantic node classes, and twelve ports per node", () => {

@@ -173,6 +173,73 @@ test("materializes an AI planned non-linear DAG after the planner node passes", 
   assert.deepEqual(feedbackEdge?.metadata?.reworkScopeNodeIds, ["implement-api", "test-api", "review-all"]);
 });
 
+test("infers materialized maxConcurrent from independent root branches when planner omits it", () => {
+  const plannedGraph: GraphPlannedGraphSpec = {
+    nodes: [{
+      id: "implement-api",
+      title: "Implement API",
+      kind: "implement",
+      writeFiles: ["src/api"],
+      conflictGroup: "api",
+    }, {
+      id: "implement-ui",
+      title: "Implement UI",
+      kind: "implement",
+      writeFiles: ["src/webview"],
+      conflictGroup: "ui",
+    }, {
+      id: "test-all",
+      title: "Test all",
+      kind: "test",
+      dependsOn: ["implement-api", "implement-ui"],
+      writeFiles: ["src/test"],
+    }],
+  };
+
+  const result = materializeGraphPlan(createRun([passedPlanner()], [], { maxConcurrent: 1 }), plannedGraph, { now: () => 2 });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.error, undefined);
+  assert.equal(result.run.maxConcurrent, 2);
+  assert.deepEqual(result.run.nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)?.unlocks, [
+    "implement-api",
+    "implement-ui",
+  ]);
+});
+
+test("keeps inferred maxConcurrent conservative for conflicting root write branches", () => {
+  const plannedGraph: GraphPlannedGraphSpec = {
+    nodes: [{
+      id: "implement-api",
+      title: "Implement API",
+      kind: "implement",
+      writeFiles: ["src/api"],
+      conflictGroup: "api",
+    }, {
+      id: "implement-api-routes",
+      title: "Implement API routes",
+      kind: "implement",
+      writeFiles: ["src/api/routes.ts"],
+    }, {
+      id: "implement-api-docs",
+      title: "Implement API docs",
+      kind: "implement",
+      writeFiles: ["docs/api.md"],
+      conflictGroup: "api",
+    }, {
+      id: "implement-unknown",
+      title: "Implement unknown",
+      kind: "implement",
+    }],
+  };
+
+  const result = materializeGraphPlan(createRun([passedPlanner()], [], { maxConcurrent: 1 }), plannedGraph, { now: () => 2 });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.error, undefined);
+  assert.equal(result.run.maxConcurrent, 1);
+});
+
 test("rejects invalid planner graphs instead of falling back to a fixed linear graph", () => {
   assert.equal(normalizeGraphPlannedGraphSpec({
     nodes: [{

@@ -6061,7 +6061,7 @@ function buildGraphFinalSummaryMarkdown(run: GraphRunRecord): string {
 function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphRunMergeBackOutcome): string {
   const blockedNodes = run.nodes
     .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping")
-    .map((node) => `${node.id}:${node.status}${node.lastError ? ` (${node.lastError})` : ""}`);
+    .map(formatGraphNodeAttentionSummary);
   return [
     `Graph run needs attention: ${run.id}`,
     "",
@@ -6073,12 +6073,67 @@ function buildGraphRunNeedsAttentionText(run: GraphRunRecord, mergeBack?: GraphR
 }
 
 function buildGraphRunIdleText(run: GraphRunRecord): string {
-  return [
+  const baseLines = [
     `Graph run paused for review: ${run.id}`,
     "",
     "- Status: no runnable node remained while the run was still active.",
     `- Graph file: ${run.graphFile}`,
+  ];
+  const attentionNodes = run.nodes
+    .filter((node) => node.status === "blocked" || node.status === "failed" || node.status === "sleeping");
+  if (!attentionNodes.some((node) => Boolean(node.failure))) {
+    return baseLines.join("\n");
+  }
+  return [
+    ...baseLines,
+    `- Nodes: ${attentionNodes.map(formatGraphNodeAttentionSummary).join(", ")}`,
   ].join("\n");
+}
+
+function formatGraphNodeAttentionSummary(node: GraphNodeRecord): string {
+  const failure = formatGraphFailureClassificationForAttention(node);
+  return `${node.id}:${node.status}${failure ? ` ${failure}` : ""}${node.lastError ? ` (${node.lastError})` : ""}`;
+}
+
+function formatGraphFailureClassificationForAttention(node: GraphNodeRecord): string | null {
+  const failure = node.failure;
+  if (!failure) {
+    return null;
+  }
+  const parts = [
+    `[${failure.category}/${failure.confidence}]`,
+    failure.summary,
+  ];
+  if (failure.signals.length > 0) {
+    parts.push(`signals=${formatGraphAttentionList(failure.signals)}`);
+  }
+  if (typeof failure.attemptsExhausted === "boolean") {
+    parts.push(`attemptsExhausted=${failure.attemptsExhausted}`);
+  }
+  const recovery = failure.recommendedRecovery;
+  if (recovery) {
+    const recoveryParts = [
+      `recommendedRecovery=${recovery.action}`,
+      recovery.summary,
+    ];
+    if (recovery.targetNodeId) {
+      recoveryParts.push(`targetNode=${recovery.targetNodeId}`);
+    }
+    if (recovery.recommendedWriteFiles?.length) {
+      recoveryParts.push(`recommendedWriteFiles=${formatGraphAttentionList(recovery.recommendedWriteFiles)}`);
+    }
+    if (recovery.nodeDraft?.id) {
+      recoveryParts.push(`nodeDraft=${recovery.nodeDraft.id}`);
+    }
+    parts.push(recoveryParts.join("; "));
+  }
+  return parts.filter(Boolean).join("; ");
+}
+
+function formatGraphAttentionList(values: readonly string[], limit = 3): string {
+  const visible = values.slice(0, limit);
+  const suffix = values.length > visible.length ? ` +${values.length - visible.length} more` : "";
+  return `${visible.join(", ")}${suffix}`;
 }
 
 function buildGraphRunErrorText(graphRunId: string | null, error: string): string {

@@ -19,7 +19,7 @@ import {
   readGraphRunStore,
   updateGraphRunRecord,
 } from "../graph/graphStore";
-import { GRAPH_SCHEMA_VERSION, type GraphNodeRecord } from "../graph/types";
+import { GRAPH_SCHEMA_VERSION, type GraphFailureClassification, type GraphNodeRecord } from "../graph/types";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-store-"));
@@ -367,6 +367,81 @@ test("normalizes structured edge metadata and node rework records", () => {
     ...base,
     nodes: [{ ...base.nodes[0], rework: { sourceNodeId: "review" } }],
   }), null);
+});
+
+test("normalizes optional Graph node failure classifications", () => {
+  const validFailure = {
+    category: "missing_write_scope",
+    confidence: "high",
+    summary: "Needs a test write scope.",
+    signals: ["candidate_write_file: apps/server/test/performance/performance-observation-schema.test.js"],
+    attemptsExhausted: true,
+    recommendedRecovery: {
+      action: "add_rework_node",
+      summary: "Add a rework node.",
+      recommendedWriteFiles: ["apps/server/test/performance/performance-observation-schema.test.js"],
+      nodeDraft: {
+        id: "adapt-schema-contract-tests",
+        title: "Adapt schema contract tests",
+        kind: "test",
+        writeFiles: ["apps/server/test/performance/performance-observation-schema.test.js"],
+      },
+    },
+  } satisfies GraphFailureClassification;
+  const base = {
+    id: "run-failure-classification",
+    workspaceKey: "workspace-a",
+    cli: "codex",
+    sessionId: null,
+    rootPrompt: "Keep failure classification compatible.",
+    status: "running",
+    createdAt: 1,
+    updatedAt: 1,
+    graphVersion: GRAPH_SCHEMA_VERSION,
+    runStoreFile: "/tmp/graph-runs.json",
+    nodes: [createNode({ failure: validFailure })],
+    edges: [],
+    activeNodeIds: [],
+    maxConcurrent: 6,
+    eventsFile: "/tmp/events.jsonl",
+    communicationDir: "/tmp/graph",
+    mainCommunicationFile: "/tmp/graph/main.md",
+    graphFile: "/tmp/graph/graph.json",
+  };
+
+  const normalized = normalizeGraphRunRecord(base);
+  assert.equal(normalized?.nodes[0].failure?.category, "missing_write_scope");
+  assert.equal(normalized?.nodes[0].failure?.recommendedRecovery?.action, "add_rework_node");
+  assert.equal(normalized?.nodes[0].failure?.recommendedRecovery?.nodeDraft?.id, "adapt-schema-contract-tests");
+
+  const oldGraph = normalizeGraphRunRecord({
+    ...base,
+    nodes: [createNode()],
+  });
+  assert.equal(oldGraph?.nodes[0].failure, undefined);
+
+  const invalidCategory = normalizeGraphRunRecord({
+    ...base,
+    nodes: [{ ...createNode(), failure: { ...validFailure, category: "unknown_category" } }],
+  });
+  assert.ok(invalidCategory);
+  assert.equal(invalidCategory.nodes[0].failure, undefined);
+
+  const invalidAction = normalizeGraphRunRecord({
+    ...base,
+    nodes: [{
+      ...createNode(),
+      failure: {
+        ...validFailure,
+        recommendedRecovery: {
+          ...validFailure.recommendedRecovery,
+          action: "unknown_action",
+        },
+      },
+    }],
+  });
+  assert.equal(invalidAction?.nodes[0].failure?.category, "missing_write_scope");
+  assert.equal(invalidAction?.nodes[0].failure?.recommendedRecovery, undefined);
 });
 
 test("throws on damaged Graph run store JSON instead of silently succeeding", () => {

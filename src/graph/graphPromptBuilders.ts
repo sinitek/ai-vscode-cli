@@ -570,8 +570,14 @@ function buildGraphAiPlannerPromptTail(): string[] {
     "## AI Planner 节点专用要求",
     "- 你不是在直接实现任务；你必须先把原始目标编译成一个可执行 Graph DAG。",
     "- Graph 不能固定输出线形 `plan -> implement -> test -> review -> summary`；复杂需求必须拆出并行分支、依赖边、验证节点、评审节点，必要时加入 debate、sleep 或 merge 节点。",
+    "- 默认先寻找可并行分支：多个可拆分且互不冲突的任务应从 planner fan-out 并行开始，再通过 test/review/merge/summary fan-in 收束。",
+    "- 不要仅因为任务在列表中靠后、属于同一用户目标或共享最终验收，就给独立分支添加串行 dependsOn；只有真实数据依赖、同一文件写入或同一风险域才串行。",
     "- 节点粒度要按可独立执行、可验证、可回退来拆；同一文件或同一风险域的写入节点要声明相同 conflictGroup 或重叠 writeFiles，避免并发冲突。",
+    "- 拆分时优先按独立文件路径、组件、API/UI/文档/测试等风险域划分；无法确认路径时必须保守声明 `writeFiles: [\"**\"]` 和 conflictGroup，让调度器自动限制并发。",
     "- 每个会写文件的 implement/test/review/merge 节点必须声明 writeFiles；如果无法精确判断路径，用 `[\"**\"]` 并设置保守 conflictGroup。",
+    "- 重构/迁移/拆模块任务必须显式检查旧测试契约：source-contract、文本快照、路径断言、测试里的 canonical source 是否仍指向旧文件；若可能受影响，必须规划独立的 test adaptation/契约更新节点，声明具体测试 writeFiles，不能把这类修复留给无写权限的 test 验证节点。",
+    "- plannedGraph 必须把“验证节点发现旧契约失败”归类为 `stale_test_contract` 或 `missing_write_scope` 风险；返工边或前置依赖要指向测试适配/契约更新节点，不能在实现已迁移 canonical source 后只回到原实现节点。",
+    "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发；如果不确定，少报但不要把可证明独立的分支压成 1。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
     "- plannedGraph.nodes[].title 必须使用简洁中文，禁止英文整句标题；API、HTML、Graph、DAG 等技术缩写可以保留，但业务含义必须中文表达。",
     "- plannedGraph.nodes 不得包含保留 ID `plan`；宿主会保留当前 planner 节点，并自动让无依赖节点依赖 `plan`。",
@@ -595,6 +601,16 @@ function buildGraphAiPlannerPromptTail(): string[] {
           dependsOn: [],
           acceptance: [{ name: "API 改动已实现且范围受控。", required: true }],
         }, {
+          id: "implement-ui",
+          title: "实现 UI 改动",
+          kind: "implement",
+          ownerRole: "subtask",
+          writeFiles: ["src/webview/**"],
+          conflictGroup: "ui",
+          maxAttempts: 2,
+          dependsOn: [],
+          acceptance: [{ name: "UI 改动已实现且范围受控。", required: true }],
+        }, {
           id: "test-api",
           title: "验证 API 行为",
           kind: "test",
@@ -603,12 +619,20 @@ function buildGraphAiPlannerPromptTail(): string[] {
           dependsOn: ["implement-api"],
           acceptance: [{ name: "相关 API 测试通过，或失败原因已记录。", required: true }],
         }, {
-          id: "review-api",
-          title: "评审 API 结果",
+          id: "test-ui",
+          title: "验证 UI 行为",
+          kind: "test",
+          ownerRole: "subtask",
+          writeFiles: ["src/test/**", "src/webview/**"],
+          dependsOn: ["implement-ui"],
+          acceptance: [{ name: "相关 UI 测试通过，或失败原因已记录。", required: true }],
+        }, {
+          id: "review-all",
+          title: "评审并行结果",
           kind: "review",
           ownerRole: "reviewer",
-          dependsOn: ["test-api"],
-          acceptance: [{ name: "评审覆盖正确性、范围和残余风险。", required: true }],
+          dependsOn: ["test-api", "test-ui"],
+          acceptance: [{ name: "评审覆盖 API/UI 正确性、范围和残余风险。", required: true }],
         }],
         edges: [{
           from: "implement-api",
@@ -616,7 +640,7 @@ function buildGraphAiPlannerPromptTail(): string[] {
           kind: "depends_on",
         }, {
           from: "test-api",
-          to: "review-api",
+          to: "review-all",
           kind: "if_pass",
           label: "测试通过后评审",
           condition: "test-api 必须通过",
@@ -627,18 +651,26 @@ function buildGraphAiPlannerPromptTail(): string[] {
             description: "测试节点 passed 后才进入评审。",
           },
         }, {
-          from: "review-api",
+          from: "implement-ui",
+          to: "test-ui",
+          kind: "depends_on",
+        }, {
+          from: "test-ui",
+          to: "review-all",
+          kind: "depends_on",
+        }, {
+          from: "review-all",
           to: "implement-api",
           kind: "review_feedback",
           label: "评审失败返工实现",
           metadata: {
             feedbackReason: "评审或验证失败时只返工 API 实现分支。",
             reworkTargetNodeId: "implement-api",
-            reworkScopeNodeIds: ["implement-api", "test-api", "review-api"],
+            reworkScopeNodeIds: ["implement-api", "test-api", "review-all"],
           },
         }, {
           from: "test-api",
-          to: "review-api",
+          to: "review-all",
           kind: "evidence_for",
           metadata: {
             evidenceRef: "test-api artifact",
@@ -653,6 +685,10 @@ function buildGraphAiPlannerPromptTail(): string[] {
     "- edge.condition 可写人类可读说明；edge.conditionExpression 当前支持 source_status、source_acceptance 的有限求值；不得生成 manual 条件；custom 表达式会保守进入失败/复核口径，需后续重规划或返工处理。",
     "- review_feedback / if_fail 返工边可用 metadata.feedbackReason、metadata.reworkTargetNodeId、metadata.reworkScopeNodeIds 说明返工目标与预期影响范围。",
     "- evidence_for 边可用 metadata.evidenceRef、metadata.rationale 说明证据来源；它是追踪信号，不替代 depends_on。",
+    "",
+    "## 重构/迁移契约防护示例",
+    "- 示例：`implement-schema-migration` 写 `db/schema/observability.js`，`adapt-schema-contract-tests` 是独立 test adaptation/契约更新节点，dependsOn=[\"implement-schema-migration\"]，writeFiles=[\"src/test/test-schema-definitions.test.js\"]；`test-schema-definitions` 验证节点 dependsOn=[\"adapt-schema-contract-tests\"]。",
+    "- 如果 `test-schema-definitions` 因旧 `db.js` 文本断言、source-contract 或 canonical source 路径失败，plannedGraph 要把风险写成 `stale_test_contract`；如果验证节点没有测试写入授权，写成 `missing_write_scope`，并用 if_fail/review_feedback 返工到 `adapt-schema-contract-tests`，不要只返工 `implement-schema-migration`。",
   ];
 }
 

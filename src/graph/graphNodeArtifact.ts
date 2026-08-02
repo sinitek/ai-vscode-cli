@@ -2,8 +2,10 @@ import * as fs from "fs";
 
 import type {
   GraphAcceptanceCheck,
+  GraphFailureClassification,
   GraphFinalAnswer,
 } from "./types";
+import { normalizeGraphFailureClassification } from "./graphFailureClassification";
 import { normalizeGraphPlannedGraphSpec } from "./graphPlanner";
 import type {
   GraphNodeExecutionResult,
@@ -63,6 +65,7 @@ function normalizeGraphNodeExecutionResult(value: unknown): GraphNodeExecutionRe
     ...(typeof raw.error === "string" ? { error: raw.error } : {}),
     ...(typeof raw.artifactRef === "string" && raw.artifactRef.trim() ? { artifactRef: raw.artifactRef } : {}),
     ...(normalizeAcceptance(raw.acceptance).length > 0 ? { acceptance: normalizeAcceptance(raw.acceptance) } : {}),
+    ...(normalizeGraphFailureClassification(raw.failure) ? { failure: normalizeGraphFailureClassification(raw.failure) as GraphFailureClassification } : {}),
     ...(normalizeFinalAnswer(raw.finalAnswer) ? { finalAnswer: normalizeFinalAnswer(raw.finalAnswer) as GraphFinalAnswer } : {}),
     ...(normalizeGraphPlannedGraphSpec(raw.plannedGraph) ? { plannedGraph: normalizeGraphPlannedGraphSpec(raw.plannedGraph) as NonNullable<GraphNodeExecutionResult["plannedGraph"]> } : {}),
     ...(typeof raw.wakeAt === "number" && Number.isFinite(raw.wakeAt) ? { wakeAt: raw.wakeAt } : {}),

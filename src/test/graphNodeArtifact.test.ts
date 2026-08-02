@@ -20,6 +20,17 @@ test("reads Graph node execution status from the communication JSON block", () =
         summary: "writeFiles missing",
         artifactRef: "/tmp/implement.md",
         acceptance: [{ name: "Stopped safely", passed: true, required: true }],
+        failure: {
+          category: "missing_write_scope",
+          confidence: "high",
+          summary: "Needs write scope.",
+          signals: ["missing_write_scope: candidate fix files are outside this node writeFiles"],
+          recommendedRecovery: {
+            action: "add_rework_node",
+            summary: "Add rework node.",
+            recommendedWriteFiles: ["apps/server/test/performance/performance-observation-schema.test.js"],
+          },
+        },
       }),
       "```",
       "",
@@ -30,6 +41,8 @@ test("reads Graph node execution status from the communication JSON block", () =
     assert.equal(result?.summary, "writeFiles missing");
     assert.equal(result?.artifactRef, "/tmp/implement.md");
     assert.equal(result?.acceptance?.[0].name, "Stopped safely");
+    assert.equal(result?.failure?.category, "missing_write_scope");
+    assert.equal(result?.failure?.recommendedRecovery?.action, "add_rework_node");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

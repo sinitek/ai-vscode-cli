@@ -59,6 +59,30 @@ test("extension treats Graph blocked runs as failed flow without modal prompts",
   assert.match(extensionSource, /function buildGraphRunNeedsAttentionText\(run:\s*GraphRunRecord[\s\S]*node\.status === "blocked" \|\| node\.status === "failed"/);
 });
 
+test("extension surfaces Graph failure classification and recovery in needs-review text", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /function formatGraphNodeAttentionSummary\(node:\s*GraphNodeRecord\):\s*string/);
+  assert.match(extensionSource, /function formatGraphFailureClassificationForAttention\(node:\s*GraphNodeRecord\):\s*string \| null/);
+  assert.match(extensionSource, /\[\$\{failure\.category\}\/\$\{failure\.confidence\}\]/);
+  assert.match(extensionSource, /failure\.summary/);
+  assert.match(extensionSource, /failure\.signals\.length > 0/);
+  assert.match(extensionSource, /attemptsExhausted=\$\{failure\.attemptsExhausted\}/);
+  assert.match(extensionSource, /recommendedRecovery=\$\{recovery\.action\}/);
+  assert.match(extensionSource, /recommendedWriteFiles=\$\{formatGraphAttentionList\(recovery\.recommendedWriteFiles\)\}/);
+  assert.match(extensionSource, /nodeDraft=\$\{recovery\.nodeDraft\.id\}/);
+  assert.match(extensionSource, /buildGraphRunNeedsAttentionText\(run:\s*GraphRunRecord[\s\S]*\.map\(formatGraphNodeAttentionSummary\)/);
+});
+
+test("extension keeps idle Graph text short unless failure classification exists", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+
+  assert.match(extensionSource, /function buildGraphRunIdleText\(run:\s*GraphRunRecord\):\s*string\s*\{/);
+  assert.match(extensionSource, /const baseLines = \[[\s\S]*Graph run paused for review:[\s\S]*Graph file:[\s\S]*\];/);
+  assert.match(extensionSource, /if\s*\(!attentionNodes\.some\(\(node\) => Boolean\(node\.failure\)\)\)\s*\{\s*return baseLines\.join\("\\n"\);\s*\}/);
+  assert.match(extensionSource, /`- Nodes: \$\{attentionNodes\.map\(formatGraphNodeAttentionSummary\)\.join\(", "\)\}`/);
+});
+
 test("extension removes automatic human gate approval entry and keeps precise Stop boundaries", () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 

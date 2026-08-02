@@ -125,6 +125,43 @@ export const GRAPH_EVENT_TYPES = [
 ] as const;
 export type GraphEventType = (typeof GRAPH_EVENT_TYPES)[number];
 
+export const GRAPH_FAILURE_CATEGORIES = [
+  "stale_test_contract",
+  "missing_write_scope",
+  "environment_failure",
+  "implementation_bug",
+] as const;
+export type GraphFailureCategory = (typeof GRAPH_FAILURE_CATEGORIES)[number];
+
+export const GRAPH_FAILURE_RECOVERY_ACTIONS = [
+  "retry_node",
+  "feedback_rollback",
+  "add_write_scope",
+  "add_rework_node",
+  "manual_review",
+] as const;
+export type GraphFailureRecoveryAction = (typeof GRAPH_FAILURE_RECOVERY_ACTIONS)[number];
+
+export type GraphFailureConfidence = "low" | "medium" | "high";
+
+export type GraphFailureRecoveryRecommendation = {
+  action: GraphFailureRecoveryAction;
+  summary: string;
+  targetNodeId?: string;
+  recommendedWriteFiles?: string[];
+  nodeDraft?: GraphPlannedNodeSpec;
+  edgeDrafts?: GraphPlannedEdgeSpec[];
+};
+
+export type GraphFailureClassification = {
+  category: GraphFailureCategory;
+  confidence: GraphFailureConfidence;
+  summary: string;
+  signals: string[];
+  attemptsExhausted?: boolean;
+  recommendedRecovery?: GraphFailureRecoveryRecommendation;
+};
+
 export type GraphAcceptanceCheck = {
   id?: string;
   name: string;
@@ -255,6 +292,7 @@ export type GraphNodeRecord = {
   worktreeCwd?: string;
   baseCommit?: string;
   commit?: string;
+  failure?: GraphFailureClassification;
 };
 
 export type GraphEdgeRecord = {
@@ -360,6 +398,14 @@ export function isGraphModelRole(value: unknown): value is GraphModelRole {
 
 export function isGraphEventType(value: unknown): value is GraphEventType {
   return isGraphValue(GRAPH_EVENT_TYPES, value);
+}
+
+export function isGraphFailureCategory(value: unknown): value is GraphFailureCategory {
+  return isGraphValue(GRAPH_FAILURE_CATEGORIES, value);
+}
+
+export function isGraphFailureRecoveryAction(value: unknown): value is GraphFailureRecoveryAction {
+  return isGraphValue(GRAPH_FAILURE_RECOVERY_ACTIONS, value);
 }
 
 function isGraphValue<T extends readonly string[]>(values: T, value: unknown): value is T[number] {

@@ -22,6 +22,10 @@ import {
   type GraphRunRecord,
 } from "./types";
 import { formatGraphNodeTitleInChinese } from "./graphNodeTitles";
+import {
+  getGraphNodeConflictReason,
+  isGraphCliExecutableNode,
+} from "./graphScheduler";
 
 export const GRAPH_AI_PLANNER_TEMPLATE_ID = "ai-planned-dag";
 export const GRAPH_AI_PLANNER_TEMPLATE_VERSION = "1";
@@ -128,7 +132,7 @@ export function materializeGraphPlan(
     status: "running",
     updatedAt: timestamp,
     activeNodeIds: run.activeNodeIds.filter((nodeId) => nodeId !== GRAPH_AI_PLANNER_NODE_ID),
-    maxConcurrent: normalizePositiveInteger(graph.maxConcurrent, run.maxConcurrent, GRAPH_PLANNER_MAX_CONCURRENT),
+    maxConcurrent: resolveMaterializedGraphMaxConcurrent(graph, normalized.nodes),
     nodes: normalized.nodes,
     edges: normalized.edges,
   };
@@ -235,6 +239,40 @@ function buildMaterializedGraph(
   ];
 
   return { nodes: nextNodes, edges: withSummary.edges };
+}
+
+function resolveMaterializedGraphMaxConcurrent(
+  graph: GraphPlannedGraphSpec,
+  nodes: readonly GraphNodeRecord[],
+): number {
+  const explicitMaxConcurrent = normalizePositiveInteger(graph.maxConcurrent, 0, GRAPH_PLANNER_MAX_CONCURRENT);
+  if (explicitMaxConcurrent > 0) {
+    return explicitMaxConcurrent;
+  }
+  return inferInitialRunnableParallelism(nodes);
+}
+
+function inferInitialRunnableParallelism(nodes: readonly GraphNodeRecord[]): number {
+  const rootCandidates = nodes.filter(isPlannerRootCliNode);
+  const selected: GraphNodeRecord[] = [];
+  for (const candidate of rootCandidates) {
+    if (selected.length >= GRAPH_PLANNER_MAX_CONCURRENT) {
+      break;
+    }
+    if (selected.some((selectedNode) => getGraphNodeConflictReason(candidate, selectedNode))) {
+      continue;
+    }
+    selected.push(candidate);
+  }
+  return Math.max(1, selected.length);
+}
+
+function isPlannerRootCliNode(node: GraphNodeRecord): boolean {
+  return node.id !== GRAPH_AI_PLANNER_NODE_ID
+    && node.kind !== "summary"
+    && isGraphCliExecutableNode(node)
+    && node.dependsOn.length === 1
+    && node.dependsOn[0] === GRAPH_AI_PLANNER_NODE_ID;
 }
 
 function buildGraphNodeRecordFromPlan(node: GraphPlannedNodeSpec): GraphNodeRecord {
