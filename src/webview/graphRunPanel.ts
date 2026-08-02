@@ -266,6 +266,7 @@ ${GRAPH_RUN_PANEL_STYLES}
       ]));
       const allowedDagZoomPercents = [${DAG_ZOOM_PERCENT_OPTIONS.join(", ")}];
       const defaultDagZoomPercent = ${DAG_DEFAULT_ZOOM_PERCENT};
+      const dagPortRatios = [${DAG_PORT_RATIOS.join(", ")}];
       const panMoveThreshold = 4;
       const nodeDragMoveThreshold = 4;
       let activeDrag = null;
@@ -412,12 +413,36 @@ ${GRAPH_RUN_PANEL_STYLES}
 
       function buildNearestPort(box, point, fallbackSide) {
         const side = resolveNearestPortSide(box, point, fallbackSide);
+        const snappedPoint = snapPointToPortSide(box, side, point);
         return {
-          id: side + "-" + getPortCoordinateLabel(box, side, point),
+          id: side + "-" + getPortCoordinateLabel(box, side, snappedPoint),
           side,
-          x: point.x,
-          y: point.y,
+          x: snappedPoint.x,
+          y: snappedPoint.y,
         };
+      }
+
+      function snapPointToPortSide(box, side, point) {
+        const rawRatio = side === "left" || side === "right"
+          ? (point.y - box.y) / Math.max(1, box.height)
+          : (point.x - box.x) / Math.max(1, box.width);
+        const ratio = getNearestPortRatio(rawRatio);
+        if (side === "left" || side === "right") {
+          return {
+            x: side === "right" ? box.x + box.width : box.x,
+            y: box.y + box.height * ratio,
+          };
+        }
+        return {
+          x: box.x + box.width * ratio,
+          y: side === "bottom" ? box.y + box.height : box.y,
+        };
+      }
+
+      function getNearestPortRatio(rawRatio) {
+        return dagPortRatios.reduce((nearest, ratio) => (
+          Math.abs(rawRatio - ratio) < Math.abs(rawRatio - nearest) ? ratio : nearest
+        ), dagPortRatios[0]);
       }
 
       function resolveNearestPortSide(box, point, fallbackSide) {
@@ -2094,12 +2119,36 @@ function getPortHintRatioValue(portHint: DagPortHint): number {
 
 function buildNearestPort(layout: DagNodeLayout, point: DagPoint, fallbackSide: DagPortSide): DagPort {
   const side = resolveNearestPortSide(layout, point, fallbackSide);
+  const snappedPoint = snapPointToPortSide(layout, side, point);
   return {
-    id: `${side}-${getPortCoordinateLabel(layout, side, point)}`,
+    id: `${side}-${getPortCoordinateLabel(layout, side, snappedPoint)}`,
     side,
-    x: point.x,
-    y: point.y,
+    x: snappedPoint.x,
+    y: snappedPoint.y,
   };
+}
+
+function snapPointToPortSide(layout: DagNodeLayout, side: DagPortSide, point: DagPoint): DagPoint {
+  const rawRatio = side === "left" || side === "right"
+    ? (point.y - layout.y) / Math.max(1, layout.height)
+    : (point.x - layout.x) / Math.max(1, layout.width);
+  const ratio = getNearestPortRatio(rawRatio);
+  if (side === "left" || side === "right") {
+    return {
+      x: side === "right" ? layout.x + layout.width : layout.x,
+      y: layout.y + layout.height * ratio,
+    };
+  }
+  return {
+    x: layout.x + layout.width * ratio,
+    y: side === "bottom" ? layout.y + layout.height : layout.y,
+  };
+}
+
+function getNearestPortRatio(rawRatio: number): number {
+  return DAG_PORT_RATIOS.reduce((nearest, ratio) => (
+    Math.abs(rawRatio - ratio) < Math.abs(rawRatio - nearest) ? ratio : nearest
+  ), DAG_PORT_RATIOS[0]);
 }
 
 function resolveNearestPortSide(layout: DagNodeLayout, point: DagPoint, fallbackSide: DagPortSide): DagPortSide {

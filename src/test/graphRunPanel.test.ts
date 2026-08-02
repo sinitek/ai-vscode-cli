@@ -40,6 +40,7 @@ function assertOmitsStopBoundaryCopy(html: string): void {
 type DagEdgePathAttrs = Record<string, string>;
 type DagBox = { x: number; y: number; width: number; height: number };
 type DagPoint = { x: number; y: number };
+const DAG_EXPECTED_PORT_RATIOS = [0.25, 0.5, 0.75] as const;
 
 function getVisibleEdgeLabels(html: string): string[] {
   return Array.from(html.matchAll(/<text class="dag-edge-label [^"]+"[^>]*>([^<]*)<\/text>/g))
@@ -107,19 +108,15 @@ function readDagEdgePathEndpoints(edge: DagEdgePathAttrs): { start: DagPoint; en
   };
 }
 
-function assertDagEdgeUsesNearestBorderPoints(edge: DagEdgePathAttrs, layouts: ReadonlyMap<string, DagBox>): void {
+function assertDagEdgeUsesVisiblePortPoints(edge: DagEdgePathAttrs, layouts: ReadonlyMap<string, DagBox>): void {
   const from = layouts.get(edge["data-edge-from"] ?? "");
   const to = layouts.get(edge["data-edge-to"] ?? "");
   assert.ok(from && to, `Expected node layouts for ${edge["data-edge-id"]}`);
   const endpoints = readDagEdgePathEndpoints(edge);
   assertDagPointOnBoxBorder(endpoints.start, from, "source", edge["data-edge-id"]);
   assertDagPointOnBoxBorder(endpoints.end, to, "target", edge["data-edge-id"]);
-  const actualDistance = getDagPointDistance(endpoints.start, endpoints.end);
-  const expectedDistance = getDagBoxDistance(from, to);
-  assert.ok(
-    Math.abs(actualDistance - expectedDistance) <= 0.75,
-    `Expected ${edge["data-edge-id"]} endpoint distance ${actualDistance} to match nearest box distance ${expectedDistance}`,
-  );
+  assertDagPointOnVisiblePort(endpoints.start, from, "source", edge["data-edge-id"]);
+  assertDagPointOnVisiblePort(endpoints.end, to, "target", edge["data-edge-id"]);
 }
 
 function assertDagPointOnBoxBorder(point: DagPoint, box: DagBox, label: string, edgeId: string | undefined): void {
@@ -131,16 +128,18 @@ function assertDagPointOnBoxBorder(point: DagPoint, box: DagBox, label: string, 
   assert.ok(onVerticalBorder || onHorizontalBorder, `Expected ${label} endpoint for ${edgeId} to sit on node border`);
 }
 
-function getDagBoxDistance(from: DagBox, to: DagBox): number {
-  const dx = Math.max(0, Math.max(to.x - (from.x + from.width), from.x - (to.x + to.width)));
-  const dy = Math.max(0, Math.max(to.y - (from.y + from.height), from.y - (to.y + to.height)));
-  return Math.sqrt((dx * dx) + (dy * dy));
-}
-
-function getDagPointDistance(from: DagPoint, to: DagPoint): number {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  return Math.sqrt((dx * dx) + (dy * dy));
+function assertDagPointOnVisiblePort(point: DagPoint, box: DagBox, label: string, edgeId: string | undefined): void {
+  const epsilon = 0.75;
+  const visiblePorts = DAG_EXPECTED_PORT_RATIOS.flatMap((ratio) => [
+    { x: box.x + box.width * ratio, y: box.y },
+    { x: box.x + box.width, y: box.y + box.height * ratio },
+    { x: box.x + box.width * ratio, y: box.y + box.height },
+    { x: box.x, y: box.y + box.height * ratio },
+  ]);
+  const matchesVisiblePort = visiblePorts.some((port) => (
+    Math.abs(point.x - port.x) <= epsilon && Math.abs(point.y - port.y) <= epsilon
+  ));
+  assert.ok(matchesVisiblePort, `Expected ${label} endpoint for ${edgeId} to use one of the three visible ports per node side`);
 }
 
 function assertDagNodeLayoutsDoNotOverlap(layouts: Iterable<DagBox>): void {
@@ -404,6 +403,8 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /data-port-id="right-50"/);
   assert.match(html, /data-port-id="bottom-75"/);
 		  assert.match(html, /data-port-id="left-50"/);
+  assert.doesNotMatch(html, /data-port-id="(?:top|right|bottom|left)-(?:0|100)"/);
+  assert.doesNotMatch(html, /data-(?:from|to)-port="(?:top|right|bottom|left)-(?:0|100)"/);
 		  assert.match(html, /height: 78px/);
 		  assert.match(html, /class="dag-tone-stripe"/);
 		  assert.doesNotMatch(html, /class="dag-kind-mark"/);
@@ -729,7 +730,7 @@ test("dedupes same-direction DAG edges and separates bidirectional connection po
   assert.doesNotMatch(html, /<textPath/);
 });
 
-test("uses nearest border points for fan-out and fan-in edges while keeping offsets", () => {
+test("snaps fan-out and fan-in edges to visible side ports while keeping offsets", () => {
   const run = createRun({
     nodes: [
       createNode({
@@ -779,7 +780,7 @@ test("uses nearest border points for fan-out and fan-in edges while keeping offs
   [...fanOutEdges, ...fanInEdges].forEach((edge) => {
     assert.equal(edge["data-edge-from-side-hint"], undefined);
     assert.equal(edge["data-edge-to-side-hint"], undefined);
-    assertDagEdgeUsesNearestBorderPoints(edge, nodeLayouts);
+    assertDagEdgeUsesVisiblePortPoints(edge, nodeLayouts);
   });
   assert.ok(fanOutEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
   assert.ok(fanInEdges.every((edge) => Math.abs(Number.parseFloat(edge["data-edge-offset"] ?? "")) > 0));
