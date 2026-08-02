@@ -14,6 +14,40 @@
 
 ## 当前有效条目
 
+## Graph 全量验证节点不能默认硬阻断交付收束
+
+- 状态：已规避，需随 Graph planner / scheduler / summary 变更复核
+- 首次发现：2026-08-02
+- 适用范围：Graph AI planner、验证节点规划、scheduler 结构依赖、summary 未解决事项
+
+### 现象
+- Graph 运行中相关 focused 回归已经通过，但 `npm run test:unit` 等完整单测失败少量历史/范围外 subtests 后，整个 run 进入 `needs-review`，后续 review / summary 未执行。
+- 用户看到的是“Graph 中断”，而不是“相关验证已通过，全量验证存在遗留失败”。
+
+### 触发条件与根因
+- AI planner 把完整单测节点规划成普通 blocking `depends_on`，并让 review/summary 结构依赖该节点。
+- 完整单测节点 `maxAttempts=1` 且失败后没有可用 `if_fail` 返工路径，scheduler 后续无可运行节点，宿主 idle 后置为 `needs-review`。
+- 全量测试输出常引用 `dist/test/*.test.js`，如果失败分类不映射回 `src/test/*.test.ts`，会误判真实修复范围。
+
+### 长期规避
+- 完整单测、全仓测试、全量 lint 等覆盖面大且可能包含历史/范围外失败的验证节点，默认规划为 `blocking:false` advisory 节点，并用 `evidence_for` 连到 review/summary。
+- 相关 focused 验证仍必须使用普通 blocking dependency 或 `if_pass`，确保真实相关失败能阻断交付。
+- Summary 必须把 advisory failed 节点列入 unresolved，不能把失败命令描述为已成功通过。
+- failure classifier 必须把 `dist/test/*.test.js` 候选映射回 `src/test/*.test.ts`，再判断是否需要测试适配或源码返工。
+
+### 验证方式
+- 覆盖 failed `blocking:false` 结构依赖可继续调度 review/summary，但 `if_pass` 仍不满足。
+- 覆盖 planner/store 保留 `blocking:false`，prompt 明确完整单测默认 advisory。
+- 覆盖 `dist/test/codexdualmodelwebview.test.js` 能映射到 `src/test/codexdualmodelwebview.test.ts`。
+- 运行 `npm run build` 与 `node --test dist/test/graph*.test.js`。
+
+### 关联资料
+- `src/graph/types.ts`
+- `src/graph/graphScheduler.ts`
+- `src/graph/graphPromptBuilders.ts`
+- `src/graph/graphFailureClassification.ts`
+- `.ch/docs/exec-plans/completed/2026-08-02-graph-advisory-validation.md`
+
 ## Graph Tab 元数据不能覆盖前台模式选择
 
 - 状态：已规避，需随 Graph / Loop / Vibe 入口变更复核

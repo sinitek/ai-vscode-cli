@@ -109,6 +109,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Title：${node.title}`,
     `- Kind：${node.kind}`,
     `- Owner role：${node.ownerRole}`,
+    `- Blocking dependency：${node.blocking === false ? "false (advisory)" : "true"}`,
     `- Model role：${formatValue(node.modelRole)}`,
     `- Model used：${formatValue(node.model)}`,
     `- Model fallback：${formatValue(node.modelFallback)}`,
@@ -577,6 +578,8 @@ function buildGraphAiPlannerPromptTail(): string[] {
     "- 每个会写文件的 implement/test/review/merge 节点必须声明 writeFiles；如果无法精确判断路径，用 `[\"**\"]` 并设置保守 conflictGroup。",
     "- 重构/迁移/拆模块任务必须显式检查旧测试契约：source-contract、文本快照、路径断言、测试里的 canonical source 是否仍指向旧文件；若可能受影响，必须规划独立的 test adaptation/契约更新节点，声明具体测试 writeFiles，不能把这类修复留给无写权限的 test 验证节点。",
     "- plannedGraph 必须把“验证节点发现旧契约失败”归类为 `stale_test_contract` 或 `missing_write_scope` 风险；返工边或前置依赖要指向测试适配/契约更新节点，不能在实现已迁移 canonical source 后只回到原实现节点。",
+    "- 完整单测、全仓测试、全量 lint 这类覆盖面大且可能包含历史/范围外失败的验证节点，默认应设置 `blocking:false`，并用 `evidence_for` 连到 review/summary；只有本次相关 focused 验证节点才作为硬性 depends_on/if_pass 阻断交付收束。",
+    "- `blocking:false` 只表示该节点失败不阻断结构依赖继续执行；节点本身仍必须如实返回 failed，review/summary 必须把失败命令、失败范围和后续建议写入 unresolved。",
     "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发；如果不确定，少报但不要把可证明独立的分支压成 1。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
     "- plannedGraph.nodes[].title 必须使用简洁中文，禁止英文整句标题；API、HTML、Graph、DAG 等技术缩写可以保留，但业务含义必须中文表达。",
@@ -627,6 +630,15 @@ function buildGraphAiPlannerPromptTail(): string[] {
           dependsOn: ["implement-ui"],
           acceptance: [{ name: "相关 UI 测试通过，或失败原因已记录。", required: true }],
         }, {
+          id: "test-unit-full",
+          title: "运行完整单测",
+          kind: "test",
+          ownerRole: "subtask",
+          blocking: false,
+          writeFiles: ["dist/**"],
+          dependsOn: ["test-api", "test-ui"],
+          acceptance: [{ name: "完整单测已运行；失败时记录最小失败范围和是否命中本次改动。", required: false }],
+        }, {
           id: "review-all",
           title: "评审并行结果",
           kind: "review",
@@ -658,6 +670,14 @@ function buildGraphAiPlannerPromptTail(): string[] {
           from: "test-ui",
           to: "review-all",
           kind: "depends_on",
+        }, {
+          from: "test-unit-full",
+          to: "review-all",
+          kind: "evidence_for",
+          metadata: {
+            evidenceRef: "test-unit-full artifact",
+            rationale: "完整单测提供最终可信度证据；历史或范围外失败不单独阻断 review。",
+          },
         }, {
           from: "review-all",
           to: "implement-api",

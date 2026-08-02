@@ -101,6 +101,33 @@ test("treats skipped structural dependencies as continuable without satisfying i
   assert.equal(getGraphNodeBlockers(run, "pass-target")[0]?.reason, "if_pass_not_satisfied");
 });
 
+test("treats failed advisory dependencies as continuable without satisfying if_pass edges", () => {
+  const advisory = createNode({
+    id: "full-unit",
+    title: "Full unit tests",
+    kind: "test",
+    status: "failed",
+    blocking: false,
+    attempts: 1,
+    maxAttempts: 1,
+    lastError: "Full suite has unrelated failures.",
+  });
+  const structuralTarget = readyImplement("structural-target", { dependsOn: ["full-unit"] });
+  const passTarget = readyImplement("pass-target");
+  const run = createRun([advisory, structuralTarget, passTarget], [{
+    id: "edge-pass-advisory",
+    from: "full-unit",
+    to: "pass-target",
+    kind: "if_pass",
+    active: true,
+  }]);
+
+  assert.deepEqual(computeGraphReadyNodeIds(run), ["structural-target"]);
+  assert.deepEqual(getGraphNodeBlockers(run, "structural-target"), []);
+  assert.equal(getGraphNodeBlockers(run, "pass-target")[0]?.reason, "if_pass_not_satisfied");
+  assert.equal(getGraphNodeBlockers(run, "full-unit")[0]?.reason, "attempts_exhausted");
+});
+
 test("allows failed nodes to retry before maxAttempts and blocks exhausted failed nodes", () => {
   const retryable = readyImplement("retryable", { status: "failed", attempts: 1, maxAttempts: 2 });
   const exhausted = readyImplement("exhausted", { status: "failed", attempts: 2, maxAttempts: 2 });

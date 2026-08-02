@@ -192,6 +192,10 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /无写权限的 test 验证节点/u);
   assert.match(prompt, /stale_test_contract/u);
   assert.match(prompt, /missing_write_scope/u);
+  assert.match(prompt, /完整单测、全仓测试、全量 lint/u);
+  assert.match(prompt, /blocking:false/u);
+  assert.match(prompt, /"blocking":false/u);
+  assert.match(prompt, /"title":"运行完整单测"/u);
   assert.match(prompt, /adapt-schema-contract-tests/u);
   assert.match(prompt, /writeFiles=\["src\/test\/test-schema-definitions\.test\.js"\]/u);
   assert.match(prompt, /返工到 `adapt-schema-contract-tests`/u);

@@ -502,7 +502,9 @@ function getGraphNodeStatusBlockers(
 }
 
 function isGraphStructuralDependencySatisfied(node: GraphNodeRecord): boolean {
-  return node.status === "passed" || node.status === "skipped";
+  return node.status === "passed"
+    || node.status === "skipped"
+    || (node.status === "failed" && node.blocking === false);
 }
 
 function getGraphSleepBlockers(

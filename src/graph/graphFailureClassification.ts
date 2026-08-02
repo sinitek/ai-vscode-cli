@@ -109,7 +109,7 @@ export function extractCandidateWriteFiles(source: string | readonly string[]): 
   if (testPathMatches.length > 0) {
     const relevantTestPaths = testPathMatches
       .filter((match) => hasCandidateWriteFileContext(text, match.index))
-      .map((match) => match.path);
+      .flatMap((match) => expandCandidateWriteFilePath(match.path));
     if (relevantTestPaths.length > 0) {
       const frequentRelevantTestPaths = selectMostFrequentPaths(relevantTestPaths);
       if (frequentRelevantTestPaths.length > 0) {
@@ -117,14 +117,15 @@ export function extractCandidateWriteFiles(source: string | readonly string[]): 
       }
       return uniqueStrings(relevantTestPaths);
     }
-    const frequentTestPaths = selectMostFrequentPaths(testPathMatches.map((match) => match.path));
+    const frequentTestPaths = selectMostFrequentPaths(testPathMatches.flatMap((match) => expandCandidateWriteFilePath(match.path)));
     if (frequentTestPaths.length > 0) {
       return frequentTestPaths;
     }
-    return uniqueStrings(testPathMatches.map((match) => match.path));
+    return uniqueStrings(testPathMatches.flatMap((match) => expandCandidateWriteFilePath(match.path)));
   }
   return uniqueStrings(extractPathMatches(text, PATH_WITH_EXTENSION_PATTERN)
-    .filter(isLikelyWritablePath));
+    .filter(isLikelyWritablePath)
+    .flatMap(expandCandidateWriteFilePath));
 }
 
 export function buildGraphFailureRecoveryRecommendation(input: ClassifyGraphNodeFailureInput & {
@@ -514,6 +515,23 @@ function selectMostFrequentPaths(paths: readonly string[]): string[] {
 
 function trimPathToken(value: string): string {
   return value.trim().replace(/[),.;:]+$/u, "");
+}
+
+function expandCandidateWriteFilePath(pathName: string): string[] {
+  const normalized = pathName.trim();
+  const sourceTestPath = mapCompiledDistTestToSourceTest(normalized);
+  if (!sourceTestPath || sourceTestPath === normalized) {
+    return [normalized];
+  }
+  return [sourceTestPath, normalized];
+}
+
+function mapCompiledDistTestToSourceTest(pathName: string): string | null {
+  const match = /^dist\/test\/(.+)\.test\.js$/u.exec(pathName);
+  if (!match) {
+    return null;
+  }
+  return `src/test/${match[1]}.test.ts`;
 }
 
 function isLikelyWritablePath(value: string): boolean {

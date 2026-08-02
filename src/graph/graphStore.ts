@@ -620,6 +620,7 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     kind: raw.kind,
     status: raw.status,
     ownerRole: raw.ownerRole,
+    ...(typeof raw.blocking === "boolean" ? { blocking: raw.blocking } : {}),
     ...(isGraphModelRole(raw.modelRole) ? { modelRole: raw.modelRole } : {}),
     ...(typeof raw.model === "string" && raw.model.trim() ? { model: raw.model.trim() } : {}),
     ...(typeof raw.modelFallback === "string" && raw.modelFallback.trim() ? { modelFallback: raw.modelFallback.trim() } : {}),

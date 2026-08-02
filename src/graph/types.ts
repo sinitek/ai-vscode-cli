@@ -213,6 +213,7 @@ export type GraphPlannedNodeSpec = {
   title: string;
   kind: GraphNodeKind;
   ownerRole?: GraphOwnerRole;
+  blocking?: boolean;
   promptRef?: string;
   writeFiles?: string[];
   conflictGroup?: string;
@@ -270,6 +271,7 @@ export type GraphNodeRecord = {
   kind: GraphNodeKind;
   status: GraphNodeStatus;
   ownerRole: GraphOwnerRole;
+  blocking?: boolean;
   modelRole?: GraphModelRole;
   model?: string;
   modelFallback?: string;

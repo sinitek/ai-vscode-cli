@@ -311,6 +311,7 @@ test("normalizes structured edge metadata and node rework records", () => {
     runStoreFile: "/tmp/graph-runs.json",
     nodes: [createNode({
       id: "implement",
+      blocking: false,
       rework: {
         sourceNodeId: "review",
         targetNodeId: "implement",
@@ -350,6 +351,7 @@ test("normalizes structured edge metadata and node rework records", () => {
   };
 
   const normalized = normalizeGraphRunRecord(base);
+  assert.equal(normalized?.nodes[0].blocking, false);
   assert.equal(normalized?.nodes[0].rework?.reason, "Review feedback.");
   assert.deepEqual(normalized?.nodes[0].rework?.resetScopeNodeIds, ["implement", "test", "review"]);
   assert.equal(normalized?.edges[0].label, "测试通过后评审");

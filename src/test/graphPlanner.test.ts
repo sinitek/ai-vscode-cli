@@ -207,6 +207,30 @@ test("infers materialized maxConcurrent from independent root branches when plan
   ]);
 });
 
+test("materializes advisory validation nodes without making them implicitly blocking", () => {
+  const plannedGraph: GraphPlannedGraphSpec = {
+    nodes: [{
+      id: "test-unit-full",
+      title: "Run full unit tests",
+      kind: "test",
+      blocking: false,
+      writeFiles: ["dist/**"],
+      acceptance: [{ name: "Full unit suite result recorded", required: false }],
+    }, {
+      id: "review-result",
+      title: "Review result",
+      kind: "review",
+      dependsOn: ["test-unit-full"],
+    }],
+  };
+
+  const result = materializeGraphPlan(createRun([passedPlanner()]), plannedGraph, { now: () => 2 });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.run.nodes.find((node) => node.id === "test-unit-full")?.blocking, false);
+  assert.equal(result.run.nodes.find((node) => node.id === "review-result")?.dependsOn.includes("test-unit-full"), true);
+});
+
 test("keeps inferred maxConcurrent conservative for conflicting root write branches", () => {
   const plannedGraph: GraphPlannedGraphSpec = {
     nodes: [{

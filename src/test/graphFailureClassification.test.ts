@@ -154,6 +154,16 @@ test("extracts test paths as preferred candidate write files", () => {
   );
 });
 
+test("maps compiled dist test failures back to source test candidates", () => {
+  assert.deepEqual(
+    extractCandidateWriteFiles("dist/test/codexdualmodelwebview.test.js failed with ReferenceError."),
+    [
+      "src/test/codexdualmodelwebview.test.ts",
+      "dist/test/codexdualmodelwebview.test.js",
+    ],
+  );
+});
+
 test("prioritizes repeated failure-context test paths over broad command lists", () => {
   const source = [
     "node --test apps/server/test/source-contract/db-init-order-source.test.js apps/server/test/db/db-facade-exports.test.js apps/server/test/performance/performance-observation-schema.test.js",
