@@ -54,15 +54,16 @@ media/
 - 接收 Webview 消息并分发到 CLI、运行时 host、交互 Runner、配置服务
 - 将运行结果、trace、任务列表和状态变更回推给 Webview
 
-这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-03 的运行时抽取后，`src/extension.ts` 为 5092 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
+这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-03 的运行时抽取后，`src/extension.ts` 为 4968 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
 
 提示运行的连续状态机已经从组合根下沉：
 
-- `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 994 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理监控、最终结论判定、长期记忆触发和执行后自动压缩触发。
+- `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 994 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、最终结论判定、长期记忆触发和执行后自动压缩触发。
 - `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host，当前 1210 行。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 回归路径。
-- `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免 one-shot 与 interactive host 通过宽泛对象耦合。
+- `src/extensionHost/openCodeSubagentRuntime.ts`：OpenCode 子代理 runtime preparer，当前 201 行。它负责 configured attach、managed server 启动、Basic auth env override、server readiness race、unavailable fallback 和 disabled monitor，向 one-shot / parallel host 返回 `PreparedOpenCodeSubagentRuntime`。
+- `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免提示运行 host 通过宽泛对象耦合。
 
-依赖方向是单向的：`extension.ts` 导入 `createPromptOneShotRuntimeHost` / `createPromptInteractiveRuntimeHost` 并注入显式依赖；runtime host 可以依赖 `cli/`、`interactive/`、`promptRuntime`、`promptRunState` 等服务或类型，但不能反向依赖 `extension.ts`。`runPrompt` 仍留在 `extension.ts`，负责选择 interactive、parallel 或 one-shot 路径，并把 Loop 子任务临时执行根作为执行选项传入 host。
+依赖方向是单向的：`extension.ts` 导入 `createPromptOneShotRuntimeHost` / `createPromptInteractiveRuntimeHost` / `createOpenCodeSubagentRuntimePreparer` 并注入显式依赖；runtime host 可以依赖 `cli/`、`interactive/`、`promptRuntime`、`promptRunState` 等服务或类型，但不能反向依赖 `extension.ts`。`runPrompt` 仍留在 `extension.ts`，负责选择 interactive、parallel 或 one-shot 路径，并把 Loop 子任务临时执行根作为执行选项传入 host。
 
 ### 3.2 聊天面板层：`src/webview/*`
 
@@ -296,7 +297,7 @@ cli / interactive / config 服务层
 
 ## 10. 当前已知限制
 
-- `extension.ts` 仍为 5092 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
+- `extension.ts` 仍为 4968 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化
 - Loop 自动唤醒依赖 Extension Host 运行；VS Code 退出期间不会按墙钟时间启动 CLI，只会在下一次扩展激活时补唤醒。

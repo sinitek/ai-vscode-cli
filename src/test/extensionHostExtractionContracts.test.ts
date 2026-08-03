@@ -5,10 +5,60 @@ import os = require("node:os");
 import path = require("node:path");
 
 import { createLoopOrchestrationHost } from "../extensionHost/loopOrchestration";
+import {
+  createDisabledOpenCodeSubagentMonitor,
+  createOpenCodeSubagentRuntimePreparer,
+  type OpenCodeSubagentRuntimeDeps,
+} from "../extensionHost/openCodeSubagentRuntime";
 import { createPromptParallelRuntimeHost } from "../extensionHost/promptParallelRuntime";
+import type { OpenCodeRuntimePreparation } from "../extensionHost/promptExecutionShared";
 
 function readSource(...relativePath: string[]): string {
   return fs.readFileSync(path.join(process.cwd(), ...relativePath), "utf8");
+}
+
+function createOpenCodeRuntimePreparation(
+  overrides: Partial<OpenCodeRuntimePreparation> = {},
+): OpenCodeRuntimePreparation {
+  return {
+    envOverrides: {},
+    configContent: "{}",
+    role: "main",
+    mainModel: "provider/main",
+    subtaskModel: "provider/subtask",
+    effectiveModel: "provider/main",
+    mainVariant: "balanced",
+    subtaskVariant: "fast",
+    effectiveVariant: "balanced",
+    modelFallback: "none",
+    primaryModel: "provider/main",
+    smallModel: "provider/subtask",
+    primaryVariant: "balanced",
+    smallVariant: "fast",
+    ...overrides,
+  };
+}
+
+function createOpenCodeSubagentRuntimeDeps(
+  overrides: Partial<OpenCodeSubagentRuntimeDeps> = {},
+): OpenCodeSubagentRuntimeDeps {
+  return {
+    getOpenCodeCliArgs: () => [],
+    resolveConnection: async () => ({
+      serverUrl: "http://127.0.0.1:4096",
+    }),
+    startServer: () => ({
+      pid: 1,
+      kill: () => undefined,
+    }),
+    waitForServerReady: async () => undefined,
+    buildServerProcessLabel: (runId) => `opencode-${runId}-server`,
+    getDefaultDirectory: () => process.cwd(),
+    logDebug: () => undefined,
+    logInfo: () => undefined,
+    logError: () => undefined,
+    ...overrides,
+  };
 }
 
 test("extension delegates Loop, parallel, one-shot, and interactive prompt runtime wiring to extensionHost hosts", () => {
@@ -27,6 +77,180 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(extensionSource, /await runPromptOneShot\(promptInput, target, executionOptions\);/);
   assert.match(extensionSource, /await runPromptInteractive\(promptInput, target, executionOptions\);/);
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
+});
+
+test("OpenCode subagent runtime keeps the host source canonical and the extension as composition root", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  const runtimeSource = readSource("src", "extensionHost", "openCodeSubagentRuntime.ts");
+
+  assert.match(extensionSource, /from "\.\/extensionHost\/openCodeSubagentRuntime"/);
+  assert.match(extensionSource, /const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer\(\{/);
+  assert.match(extensionSource, /getOpenCodeCliArgs: \(\) => getCliArgs\("opencode"\)/);
+  assert.match(extensionSource, /resolveConnection: resolveOpenCodeSubagentConnection/);
+  assert.match(
+    extensionSource,
+    /startServer: \(port, handlers, options\) => startOpenCodeServer\(port, handlers, options\)/,
+  );
+  assert.match(extensionSource, /waitForServerReady: waitForOpenCodeServerReady/);
+  assert.match(extensionSource, /createDisabledOpenCodeSubagentMonitor,/);
+  assert.doesNotMatch(extensionSource, /async function prepareOpenCodeSubagentRuntime\(/);
+  assert.doesNotMatch(extensionSource, /function createDisabledOpenCodeSubagentMonitor\(/);
+
+  assert.match(
+    runtimeSource,
+    /export function createOpenCodeSubagentRuntimePreparer\(\s*deps: OpenCodeSubagentRuntimeDeps/,
+  );
+  assert.match(runtimeSource, /export function createDisabledOpenCodeSubagentMonitor\(\)/);
+  assert.match(runtimeSource, /function applyBasicAuthEnvOverrides\(/);
+  assert.match(runtimeSource, /const managedServerEnvOverrides = applyBasicAuthEnvOverrides\(/);
+  assert.match(runtimeSource, /const serverLifecycleFailure = new Promise<never>/);
+  assert.match(runtimeSource, /await Promise\.race\(\[/);
+  assert.match(runtimeSource, /endpointSource: "configured-attach"/);
+  assert.match(runtimeSource, /endpointSource: "managed-server"/);
+  assert.match(runtimeSource, /endpointSource: "unavailable"/);
+});
+
+test("OpenCode subagent runtime preserves configured attach without starting a managed server", async () => {
+  const connection = {
+    serverUrl: "http://127.0.0.1:4096",
+    authorization: "Basic dXNlcjpwYXNz",
+  };
+  let startServerCalls = 0;
+  const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer(
+    createOpenCodeSubagentRuntimeDeps({
+      resolveConnection: async () => connection,
+      startServer: () => {
+        startServerCalls += 1;
+        return { pid: 1, kill: () => undefined };
+      },
+    }),
+  );
+
+  const result = await prepareOpenCodeSubagentRuntime({
+    cwd: undefined,
+    runId: "attach-run",
+    runtime: createOpenCodeRuntimePreparation(),
+  });
+
+  assert.equal(result.connection, connection);
+  assert.equal(result.endpointSource, "configured-attach");
+  assert.equal(result.error, null);
+  assert.equal(startServerCalls, 0);
+  result.dispose();
+});
+
+test("disabled OpenCode subagent monitor keeps optional monitoring calls as no-ops", async () => {
+  const monitor = createDisabledOpenCodeSubagentMonitor();
+
+  assert.equal(monitor.setParentSessionId("parent-session"), undefined);
+  await monitor.pollNow();
+  assert.equal(monitor.finish("completed"), undefined);
+  assert.equal(monitor.dispose(), undefined);
+});
+
+test("OpenCode subagent runtime starts, configures, and idempotently disposes a managed server", async () => {
+  const logs: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const runtime = createOpenCodeRuntimePreparation({
+    envOverrides: { EXISTING: "value" },
+    configContent: "{\"model\":\"provider/main\"}",
+  });
+  let startedPort: number | null = null;
+  let startedModel: string | null = null;
+  let startedSmallModel: string | null = null;
+  let startedProcessLabel: string | null = null;
+  let startedEnvOverrides: Record<string, string> | null = null;
+  let readyDirectory: string | null = null;
+  let killCount = 0;
+
+  const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer(
+    createOpenCodeSubagentRuntimeDeps({
+      getOpenCodeCliArgs: () => ["run", "--port=4097"],
+      resolveConnection: async () => ({
+        serverUrl: "http://127.0.0.1:4097",
+        serverPort: 4097,
+        authorization: `Basic ${Buffer.from("user:pass").toString("base64")}`,
+      }),
+      startServer: (port, _handlers, options) => {
+        startedPort = port;
+        startedModel = options.model ?? null;
+        startedSmallModel = options.openCodeSmallModel ?? null;
+        startedProcessLabel = options.processLabel ?? null;
+        startedEnvOverrides = options.envOverrides ?? null;
+        return {
+          pid: 42,
+          kill: () => {
+            killCount += 1;
+          },
+        };
+      },
+      waitForServerReady: async (_connection, directory) => {
+        readyDirectory = directory;
+      },
+      buildServerProcessLabel: (runId) => `server-for-${runId}`,
+      logDebug: (event, payload) => logs.push({ event, payload }),
+      logInfo: (event, payload) => logs.push({ event, payload }),
+      logError: (event, payload) => logs.push({ event, payload }),
+    }),
+  );
+
+  const result = await prepareOpenCodeSubagentRuntime({
+    cwd: "/tmp/opencode-workspace",
+    runId: "managed-run",
+    runtime,
+    isolateProjectInstructions: true,
+  });
+
+  assert.equal(result.endpointSource, "managed-server");
+  assert.equal(result.error, null);
+  assert.equal(startedPort, 4097);
+  assert.equal(startedModel, "provider/main");
+  assert.equal(startedSmallModel, "provider/subtask");
+  assert.equal(startedProcessLabel, "server-for-managed-run");
+  assert.deepEqual(startedEnvOverrides, {
+    EXISTING: "value",
+    OPENCODE_SERVER_USERNAME: "user",
+    OPENCODE_SERVER_PASSWORD: "pass",
+  });
+  assert.equal(readyDirectory, "/tmp/opencode-workspace");
+  assert.ok(logs.some(({ event }) => event === "opencode-subagent-server-ready"));
+
+  result.dispose();
+  result.dispose();
+  assert.equal(killCount, 1);
+});
+
+test("OpenCode subagent runtime reports startup failures and kills the managed process", async () => {
+  const startupError = new Error("server readiness failed");
+  let killCount = 0;
+  const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer(
+    createOpenCodeSubagentRuntimeDeps({
+      resolveConnection: async () => ({
+        serverUrl: "http://127.0.0.1:4098",
+        serverPort: 4098,
+      }),
+      startServer: () => ({
+        pid: 43,
+        kill: () => {
+          killCount += 1;
+        },
+      }),
+      waitForServerReady: async () => {
+        throw startupError;
+      },
+    }),
+  );
+
+  const result = await prepareOpenCodeSubagentRuntime({
+    cwd: "/tmp/opencode-workspace",
+    runId: "failed-run",
+    runtime: createOpenCodeRuntimePreparation(),
+  });
+
+  assert.equal(result.connection, null);
+  assert.equal(result.endpointSource, "unavailable");
+  assert.equal(result.error, startupError);
+  assert.equal(killCount, 1);
+  result.dispose();
 });
 
 test("Loop orchestration source contract lives in extensionHost/loopOrchestration", () => {

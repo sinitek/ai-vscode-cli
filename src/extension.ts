@@ -57,8 +57,6 @@ import {
   OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
   resolveOpenCodeSubagentConnection,
   waitForOpenCodeServerReady,
-  type OpenCodeSubagentConnection,
-  type OpenCodeSubagentMonitor,
 } from "./cli/openCodeSubagentMonitor";
 import {
   appendOpenCodeFinalTextToTabStream,
@@ -420,6 +418,10 @@ import { createPromptRunRuntimeHost } from "./extensionHost/promptRunRuntime";
 import { createPromptParallelRuntimeHost } from "./extensionHost/promptParallelRuntime";
 import { createPromptInteractiveRuntimeHost } from "./extensionHost/promptInteractiveRuntime";
 import { createPromptOneShotRuntimeHost } from "./extensionHost/promptOneShotRuntime";
+import {
+  createDisabledOpenCodeSubagentMonitor,
+  createOpenCodeSubagentRuntimePreparer,
+} from "./extensionHost/openCodeSubagentRuntime";
 import type { InteractiveTabRun } from "./extensionHost/promptExecutionShared";
 import {
   createLoopOrchestrationHost,
@@ -681,6 +683,17 @@ const UNNAMED_SESSION_LABELS = new Set([
   t("session.unnamed", undefined, "zh-CN"),
   t("session.unnamed", undefined, "en"),
 ]);
+const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer({
+  getOpenCodeCliArgs: () => getCliArgs("opencode"),
+  resolveConnection: resolveOpenCodeSubagentConnection,
+  startServer: (port, handlers, options) => startOpenCodeServer(port, handlers, options),
+  waitForServerReady: waitForOpenCodeServerReady,
+  buildServerProcessLabel: (runId) => `${buildProcessLabel("opencode", runId)}-server`,
+  getDefaultDirectory: () => process.cwd(),
+  logDebug: (event, payload) => void logDebug(event, payload),
+  logInfo: (event, payload) => void logInfo(event, payload),
+  logError: (event, payload) => void logError(event, payload),
+});
 function shouldUseFallbackSessionLabel(label: string | null | undefined): boolean {
   return shouldUseFallbackSessionLabelWithSet(label, UNNAMED_SESSION_LABELS);
 }
@@ -3449,143 +3462,6 @@ function buildSubagentProgressLabels(): SubagentProgressLabels {
     },
     errorPrefix: t("run.subagent.errorPrefix"),
   };
-}
-
-type PreparedOpenCodeSubagentRuntime = {
-  connection: OpenCodeSubagentConnection | null;
-  endpointSource: "managed-server" | "configured-attach" | "unavailable";
-  error: Error | null;
-  dispose: () => void;
-};
-
-function createDisabledOpenCodeSubagentMonitor(): OpenCodeSubagentMonitor {
-  return {
-    setParentSessionId: () => undefined,
-    pollNow: async () => undefined,
-    finish: () => undefined,
-    dispose: () => undefined,
-  };
-}
-
-async function prepareOpenCodeSubagentRuntime(options: {
-  cwd: string | undefined;
-  runId: string;
-  runtime: OpenCodeRuntimePreparation;
-  isolateProjectInstructions?: boolean;
-}): Promise<PreparedOpenCodeSubagentRuntime> {
-  const directory = options.cwd ?? process.cwd();
-  let managedServerProcess: RunProcess | null = null;
-  try {
-    const connection = await resolveOpenCodeSubagentConnection(getCliArgs("opencode"), {
-      env: options.runtime.envOverrides,
-    });
-    if (!connection.serverPort) {
-      return {
-        connection,
-        endpointSource: "configured-attach",
-        error: null,
-        dispose: () => undefined,
-      };
-    }
-
-    const managedServerEnvOverrides = { ...options.runtime.envOverrides };
-    if (connection.authorization?.startsWith("Basic ")) {
-      const credentials = Buffer.from(connection.authorization.slice("Basic ".length), "base64").toString("utf8");
-      const separatorIndex = credentials.indexOf(":");
-      if (separatorIndex >= 0) {
-        managedServerEnvOverrides.OPENCODE_SERVER_USERNAME = credentials.slice(0, separatorIndex);
-        managedServerEnvOverrides.OPENCODE_SERVER_PASSWORD = credentials.slice(separatorIndex + 1);
-      }
-    }
-
-    let disposed = false;
-    let serverReady = false;
-    let rejectServerLifecycle: ((error: Error) => void) | null = null;
-    const serverLifecycleFailure = new Promise<never>((_resolve, reject) => {
-      rejectServerLifecycle = reject;
-    });
-    const serverProcess = startOpenCodeServer(connection.serverPort, {
-      onStderr: (content) => {
-        if (content.trim()) {
-          void logDebug("opencode-subagent-server-stderr", {
-            runId: options.runId,
-            port: connection.serverPort,
-            contentLength: content.length,
-          });
-        }
-      },
-      onError: (error) => {
-        void logError("opencode-subagent-server-error", {
-          runId: options.runId,
-          port: connection.serverPort,
-          error: error.message,
-        });
-        if (!serverReady) {
-          rejectServerLifecycle?.(error);
-        }
-      },
-      onExit: (code) => {
-        void logInfo("opencode-subagent-server-exit", {
-          runId: options.runId,
-          port: connection.serverPort,
-          code,
-        });
-        if (!serverReady) {
-          rejectServerLifecycle?.(new Error(`OpenCode server exited before readiness with code ${code ?? "unknown"}.`));
-        }
-      },
-    }, {
-      cwd: options.cwd,
-      model: options.runtime.effectiveModel,
-      openCodeSmallModel: options.runtime.subtaskModel,
-      openCodeVariant: options.runtime.effectiveVariant,
-      openCodeSmallVariant: options.runtime.subtaskVariant,
-      openCodeConfigContent: options.runtime.configContent,
-      envOverrides: managedServerEnvOverrides,
-      isolateProjectInstructions: options.isolateProjectInstructions,
-      processLabel: `${buildProcessLabel("opencode", options.runId)}-server`,
-    });
-    managedServerProcess = serverProcess;
-    if (!serverProcess.pid) {
-      throw new Error("OpenCode server process did not start.");
-    }
-
-    await Promise.race([
-      waitForOpenCodeServerReady(connection, directory),
-      serverLifecycleFailure,
-    ]);
-    serverReady = true;
-    void logInfo("opencode-subagent-server-ready", {
-      runId: options.runId,
-      port: connection.serverPort,
-      pid: serverProcess.pid ?? null,
-    });
-    return {
-      connection,
-      endpointSource: "managed-server",
-      error: null,
-      dispose: () => {
-        if (disposed) {
-          return;
-        }
-        disposed = true;
-        serverProcess.kill();
-      },
-    };
-  } catch (error) {
-    managedServerProcess?.kill();
-    const normalizedError = error instanceof Error ? error : new Error(String(error));
-    void logError("opencode-subagent-server-unavailable", {
-      runId: options.runId,
-      error: normalizedError.message,
-    });
-    return {
-      connection: null,
-      endpointSource: "unavailable",
-      error: normalizedError,
-      dispose: () => undefined,
-    };
-  }
 }
 
 // Parallel prompt runtime moved to extensionHost/promptParallelRuntime.ts.

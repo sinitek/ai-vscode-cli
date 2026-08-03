@@ -1085,10 +1085,11 @@ test("OpenCode host raw stdout and stderr caches remain bounded in all run modes
 
 test("wires subagent event monitoring and 60-second polling into both OpenCode run paths", () => {
   const extensionSource = readSource("src", "extension.ts");
+  const subagentRuntimeSource = readSource("src", "extensionHost", "openCodeSubagentRuntime.ts");
   const promptOneShotRuntimeSource = readSource("src", "extensionHost", "promptOneShotRuntime.ts");
   const promptParallelRuntimeSource = readSource("src", "extensionHost", "promptParallelRuntime.ts");
   const combinedOpenCodeRunSources = `${promptOneShotRuntimeSource}\n${promptParallelRuntimeSource}`;
-  const connectionFactories = extensionSource.match(/resolveOpenCodeSubagentConnection\(getCliArgs\("opencode"\)/g) ?? [];
+  const connectionFactories = subagentRuntimeSource.match(/deps\.resolveConnection\(deps\.getOpenCodeCliArgs\(\)/g) ?? [];
   const monitorFactories = combinedOpenCodeRunSources.match(/createOpenCodeSubagentMonitor\(\{/g) ?? [];
   const serverUrls = combinedOpenCodeRunSources.match(/openCodeServerUrl: subagentRuntime\.connection\?\.serverUrl/g) ?? [];
   const progressUpdates = combinedOpenCodeRunSources.match(/subagentProgress\.update\(update\)/g) ?? [];
@@ -1099,8 +1100,15 @@ test("wires subagent event monitoring and 60-second polling into both OpenCode r
   assert.equal(serverUrls.length, 2);
   assert.equal(progressUpdates.length, 2);
   assert.equal(localizedMessages.length, 2);
-  assert.match(extensionSource, /startOpenCodeServer\(connection\.serverPort/);
-  assert.match(extensionSource, /waitForOpenCodeServerReady\(connection, directory\)/);
+  assert.match(extensionSource, /createOpenCodeSubagentRuntimePreparer\(\{/);
+  assert.match(extensionSource, /resolveConnection: resolveOpenCodeSubagentConnection/);
+  assert.match(
+    extensionSource,
+    /startServer: \(port, handlers, options\) => startOpenCodeServer\(port, handlers, options\)/,
+  );
+  assert.match(extensionSource, /waitForServerReady: waitForOpenCodeServerReady/);
+  assert.match(subagentRuntimeSource, /deps\.startServer\(connection\.serverPort/);
+  assert.match(subagentRuntimeSource, /deps\.waitForServerReady\(connection, directory\)/);
   assert.match(promptParallelRuntimeSource, /runPrompt-parallel-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
   assert.match(promptOneShotRuntimeSource, /runPrompt-one-shot-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
   assert.match(
