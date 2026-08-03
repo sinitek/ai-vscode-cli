@@ -5,15 +5,15 @@
 
 ## Run Context
 
-- Generated at: 2026-08-03T01:28:19Z
-- Focus: review-extension-refactor graph task failed review auto repair
-- Focus terms: `review-extension-refactor`, `graph`, `task`, `failed`, `review`, `auto`, `repair`
+- Generated at: 2026-08-03T10:14:20Z
+- Focus: exec plan active cleanup
+- Focus terms: `exec`, `plan`, `active`, `cleanup`
 - Anchor ID: -
-- Selection mode: focus-filtered
-- Candidate count: 12
-- Ranked candidate count: 3
-- Focus match count: 3
-- Focus excluded count: 9
+- Selection mode: baseline-fallback
+- Candidate count: 2
+- Ranked candidate count: 2
+- Focus match count: 0
+- Focus excluded count: 0
 
 ## Heuristics
 
@@ -32,73 +32,51 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-fb18b9b4d2` | `105` | `103` | review-extension-refactor, graph | `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` | `0` |
-| 2 | `mem-19baaefc61` | `94` | `92` | graph | `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` | `0` |
-| 3 | `mem-4b483bd801` | `93` | `91` | task | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | `0` |
+| 1 | `mem-c1d7e714b7` | `62` | `56` | - | `.ch/docs/MEMORY.md` | `84` |
+| 2 | `mem-431f2548e1` | `61` | `55` | - | `.ch/docs/memory/README.md` | `39` |
 
 ## Score Breakdown
 
-### mem-fb18b9b4d2 - extension.ts 入口运行时重构计划
+### mem-c1d7e714b7 - 记忆流转规则
 
-- Final score: `105`
-- Base score: `103`
-- Matched terms: `review-extension-refactor`, `graph`
-- Source: `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`
-- Selected claim IDs: -
+- Final score: `62`
+- Base score: `56`
+- Matched terms: -
+- Source: `.ch/docs/MEMORY.md`
+- Selected claim IDs: `claim-04d77e38d577`, `claim-0b54f47ce76f`, `claim-0b87a7723e07`, `claim-13080f25ffe8`, `claim-16cc09133222`, `claim-1cf94165b719` ... (+78 more)
 
 | Heuristic | Contribution |
 | --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `24` |
+| `type_priority` | `45` |
+| `focus_terms` | `0` |
 | `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `2` |
-| `evidence_bonus` | `6` |
+| `read_cost_adjustment` | `4` |
+| `evidence_bonus` | `4` |
 | `concept_bonus` | `1` |
 | `topic_bonus` | `2` |
 | `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
+| `claim_bonus` | `4` |
 | `same_source_penalty` | `0` |
 
-### mem-19baaefc61 - 可复用逻辑重构执行计划
+### mem-431f2548e1 - 热区记忆面
 
-- Final score: `94`
-- Base score: `92`
-- Matched terms: `graph`
-- Source: `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md`
-- Selected claim IDs: -
+- Final score: `61`
+- Base score: `55`
+- Matched terms: -
+- Source: `.ch/docs/memory/README.md`
+- Selected claim IDs: `claim-093d0b145dbc`, `claim-0e19638c3dbc`, `claim-0f988e077476`, `claim-1782b644ce89`, `claim-1b53727dc88c`, `claim-2435e8e9d987` ... (+33 more)
 
 | Heuristic | Contribution |
 | --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `12` |
+| `type_priority` | `45` |
+| `focus_terms` | `0` |
 | `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `2` |
-| `evidence_bonus` | `6` |
-| `concept_bonus` | `2` |
-| `topic_bonus` | `2` |
-| `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
-| `same_source_penalty` | `0` |
-
-### mem-4b483bd801 - MCP 市场全量检测与权威刷新
-
-- Final score: `93`
-- Base score: `91`
-- Matched terms: `task`
-- Source: `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`
-- Selected claim IDs: -
-
-| Heuristic | Contribution |
-| --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `12` |
-| `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `2` |
-| `evidence_bonus` | `6` |
+| `read_cost_adjustment` | `4` |
+| `evidence_bonus` | `3` |
 | `concept_bonus` | `1` |
 | `topic_bonus` | `2` |
 | `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
+| `claim_bonus` | `4` |
 | `same_source_penalty` | `0` |
 
 ## Top Unselected Candidates
@@ -107,26 +85,24 @@
 
 ## Source Diversity
 
-- Unique source count: 3
-- Selected observation count: 3
+- Unique source count: 2
+- Selected observation count: 2
 - Max same-source observations: 1
 
 ### Source Path Counts
 
-- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`: 1
-- `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md`: 1
-- `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`: 1
+- `.ch/docs/MEMORY.md`: 1
+- `.ch/docs/memory/README.md`: 1
 
 ### Source Kind Counts
 
-- `active_plan`: 3
+- `memory_doc`: 2
 
 ## Claim Status Snapshot
 
-- No selected claims
+- `active`: 123
 
 ## Watch Items
 
-- 当前有 10 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。

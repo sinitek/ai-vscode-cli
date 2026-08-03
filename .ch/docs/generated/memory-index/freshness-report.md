@@ -16,13 +16,4 @@
 
 ## Active Plan Activity
 
-- `.ch/docs/exec-plans/active/2026-06-04-trace-error-bubble-dedupe.md` 最后修改于 2026-06-25T01:59:58+00:00，读取成本约 588 tokens
-- `.ch/docs/exec-plans/active/2026-06-25-loop-group-chat-ui-followups.md` 最后修改于 2026-07-14T01:27:53+00:00，读取成本约 916 tokens
-- `.ch/docs/exec-plans/active/2026-06-27-loop-main-failure-stop.md` 最后修改于 2026-07-07T01:50:50+00:00，读取成本约 338 tokens
-- `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` 最后修改于 2026-07-14T03:33:01+00:00，读取成本约 1597 tokens
-- `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` 最后修改于 2026-07-14T01:27:53+00:00，读取成本约 463 tokens
-- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` 最后修改于 2026-07-11T03:33:13+00:00，读取成本约 1645 tokens
-- `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` 最后修改于 2026-07-13T04:55:42+00:00，读取成本约 5599 tokens
-- `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` 最后修改于 2026-07-15T01:12:08+00:00，读取成本约 5964 tokens
-- `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` 最后修改于 2026-08-01T09:56:10+00:00，读取成本约 1247 tokens
-- `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` 最后修改于 2026-08-02T16:49:15+00:00，读取成本约 1686 tokens
+- 当前无 active plan

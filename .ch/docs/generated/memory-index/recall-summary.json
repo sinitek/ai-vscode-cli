@@ -1,27 +1,23 @@
 {
   "generator": "memory-recall",
   "version": "0.3.0",
-  "generated_at": "2026-08-03T01:28:19Z",
+  "generated_at": "2026-08-03T10:14:20Z",
   "repo_root": ".",
   "output_dir": ".ch/docs/generated/memory-index",
-  "focus": "review-extension-refactor graph task failed review auto repair",
+  "focus": "exec plan active cleanup",
   "focus_terms": [
-    "review-extension-refactor",
-    "graph",
-    "task",
-    "failed",
-    "review",
-    "auto",
-    "repair"
+    "exec",
+    "plan",
+    "active",
+    "cleanup"
   ],
   "anchor_id": "",
-  "selection_mode": "focus-filtered",
-  "available_observation_count": 12,
-  "selected_observation_count": 3,
+  "selection_mode": "baseline-fallback",
+  "available_observation_count": 2,
+  "selected_observation_count": 2,
   "selected_observation_ids": [
-    "mem-fb18b9b4d2",
-    "mem-19baaefc61",
-    "mem-4b483bd801"
+    "mem-c1d7e714b7",
+    "mem-431f2548e1"
   ],
   "generated_docs": [
     {
@@ -30,7 +26,7 @@
       "kind": "generated",
       "reason": "ID 化 observation 索引，优先扫描标题、类型、来源和读取成本。",
       "score": 100,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "渐进披露第一层：只看有什么和读取成本。"
     },
@@ -40,7 +36,7 @@
       "kind": "generated",
       "reason": "解释 lexical recall 的 matched terms、打分和多样性重排。",
       "score": 99,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "评测和审阅优先看这里，不替代原始事实来源。"
     },
@@ -50,19 +46,9 @@
       "kind": "generated",
       "reason": "按 ID 展开 observation facts / narrative / source。",
       "score": 96,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "渐进披露第二层：只展开已经筛选过的 ID。"
-    },
-    {
-      "path": ".ch/docs/generated/memory-index/open-loops.md",
-      "title": "Open Loops",
-      "kind": "generated",
-      "reason": "当前存在开放事项、活跃风险或 active plans，需要先看 open loops。",
-      "score": 95,
-      "modified_at": "2026-08-03T01:28:19Z",
-      "matched_terms": [],
-      "summary": "集中看 pending items、active risks 和 active plan 计数。"
     },
     {
       "path": ".ch/docs/generated/memory-index/claim-registry.md",
@@ -70,7 +56,7 @@
       "kind": "generated",
       "reason": "当前 observation 已经可关联到 claim 级证据，可直接检查状态和来源。",
       "score": 93,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "claim-aware recall 的证据补充层，不替代原始事实来源。"
     },
@@ -80,7 +66,7 @@
       "kind": "generated",
       "reason": "围绕 ID 或时间顺序恢复前后文。",
       "score": 92,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "按 modified/source 顺序排列 observation entries。"
     },
@@ -90,7 +76,7 @@
       "kind": "generated",
       "reason": "当前热区记忆存在 stale 项，需要先确认哪些内容仍可信。",
       "score": 90,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "检查哪些 memory docs 已过期或需要再核验。"
     },
@@ -100,7 +86,7 @@
       "kind": "generated",
       "reason": "按 topic 聚合可复用知识，便于后续 reference pack。",
       "score": 86,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "专题 corpus 起点，不替代原始事实来源。"
     },
@@ -110,342 +96,1572 @@
       "kind": "generated",
       "reason": "热区记忆、开放事项和当前计划的低噪音总入口。",
       "score": 84,
-      "modified_at": "2026-08-03T01:28:19Z",
+      "modified_at": "2026-08-03T10:14:20Z",
       "matched_terms": [],
       "summary": "默认先读的 generated 记忆索引入口。"
     }
   ],
   "selected_observations": [
     {
-      "id": "mem-fb18b9b4d2",
-      "type": "plan",
-      "title": "extension.ts 入口运行时重构计划",
-      "reason": "命中 focus：review-extension-refactor, graph。",
-      "score": 105,
-      "read_tokens": 112,
-      "source_path": ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md",
-      "source_kind": "active_plan",
-      "modified_at": "2026-08-02T16:49:15+00:00",
-      "matched_terms": [
-        "review-extension-refactor",
-        "graph"
-      ],
+      "id": "mem-c1d7e714b7",
+      "type": "rule",
+      "title": "记忆流转规则",
+      "reason": "baseline recall entry。",
+      "score": 62,
+      "read_tokens": 39,
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_kind": "memory_doc",
+      "modified_at": "2026-06-29T05:11:09+00:00",
+      "matched_terms": [],
       "concepts": [
-        "open-loop"
+        "general"
       ],
       "facts": [
-        "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor",
-        "Modified at: 2026-08-02T16:49:15+00:00"
+        "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+        "Source of truth: .ch/docs/MEMORY.md"
       ],
-      "narrative": "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor",
+      "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
       "files": [
-        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-        ".ch/docs/memory/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/runbooks/PITFALLS.md",
-        "src/extension.ts",
-        "src/extensionHost/",
-        "src/extensionHost/promptExecutionShared.ts",
-        "src/extensionHost/promptInteractiveRuntime.ts",
-        "src/extensionHost/promptOneShotRuntime.ts",
-        "src/test/extensionDeactivateStopAll.test.ts",
-        "src/test/extensionHostExtractionContracts.test.ts",
-        "src/test/opencodeCommandRunner.test.ts"
+        ".ch/docs/generated/",
+        ".ch/docs/handoffs/"
       ],
-      "topic": "plan",
-      "preliminary_score": 103,
-      "final_score": 105,
+      "topic": "rule",
+      "preliminary_score": 56,
+      "final_score": 62,
       "score_breakdown": {
-        "type_priority": 68,
-        "focus_terms": 24,
+        "type_priority": 45,
+        "focus_terms": 0,
         "open_loop_bonus": 0,
-        "read_cost_adjustment": 2,
-        "evidence_bonus": 6,
+        "read_cost_adjustment": 4,
+        "evidence_bonus": 4,
         "concept_bonus": 1,
         "topic_bonus": 2,
         "source_diversity_bonus": 2,
-        "claim_bonus": 0,
+        "claim_bonus": 4,
         "same_source_penalty": 0
       },
       "selection_rank": 1,
-      "selected_claim_ids": []
+      "selected_claim_ids": [
+        "claim-04d77e38d577",
+        "claim-0b54f47ce76f",
+        "claim-0b87a7723e07",
+        "claim-13080f25ffe8",
+        "claim-16cc09133222",
+        "claim-1cf94165b719",
+        "claim-1d1e7be6ee1c",
+        "claim-20629fe24ba5",
+        "claim-21ecf7768395",
+        "claim-259cd3783fe1",
+        "claim-279d99a97043",
+        "claim-285fa8189f74",
+        "claim-2ca86ba56e7f",
+        "claim-301bcd9b6729",
+        "claim-31c40732d88d",
+        "claim-3a4be9c2c6c0",
+        "claim-3ab608f37230",
+        "claim-3c950a84b5ab",
+        "claim-3e3f9252f7f9",
+        "claim-3f217e8afb15",
+        "claim-427706d12520",
+        "claim-4518afd4cc75",
+        "claim-47603a887086",
+        "claim-47b42538891e",
+        "claim-4829d0d15fdf",
+        "claim-49283be92447",
+        "claim-52bbde3ab973",
+        "claim-52e045371286",
+        "claim-56d13d65b17d",
+        "claim-57ec5b4cba0b",
+        "claim-5e26ac0f2987",
+        "claim-5e96e78372b0",
+        "claim-61d02d68a681",
+        "claim-6417e633d8e4",
+        "claim-64f682be4ea7",
+        "claim-6526c3497f22",
+        "claim-6fe1efa27030",
+        "claim-768b3fcfc162",
+        "claim-7a3d4d89eeb6",
+        "claim-7f42140f7486",
+        "claim-837fcf7096b6",
+        "claim-85389a999bc4",
+        "claim-85a15bb2d8cc",
+        "claim-87536ae79419",
+        "claim-89b41df2bb3f",
+        "claim-89f5ada29d23",
+        "claim-8a47032ff62d",
+        "claim-8dc6f43a1394",
+        "claim-915ccf7f246f",
+        "claim-949ef7ce6b71",
+        "claim-98d08f096a6e",
+        "claim-9df3b36ed708",
+        "claim-a2c73ffdb0be",
+        "claim-a3dfd046e8a4",
+        "claim-a6973cc297b1",
+        "claim-a7dc7dc82446",
+        "claim-a8c01f6b6aef",
+        "claim-aaaedfc927a7",
+        "claim-ad2fe280b900",
+        "claim-b01ca5be3a20",
+        "claim-be3ff3c921d3",
+        "claim-c0cd0f390982",
+        "claim-c21b7051df5a",
+        "claim-ca65712018cf",
+        "claim-ceaa0ef4b488",
+        "claim-d6f64d7d312b",
+        "claim-d9631afdfac4",
+        "claim-dc6fafa028d9",
+        "claim-e070ca955471",
+        "claim-e39a4d1b9cc5",
+        "claim-e4cbd25c5798",
+        "claim-e819c704ea7b",
+        "claim-eea07e75d7cf",
+        "claim-ef4432384b5d",
+        "claim-f1cb895d9aea",
+        "claim-f26c13e53c93",
+        "claim-f4db54d9df7a",
+        "claim-f53825ea1a5c",
+        "claim-f54ed267af3a",
+        "claim-f56fb5adc0d5",
+        "claim-f5ee94832254",
+        "claim-f724b3508a51",
+        "claim-f814479a0e56",
+        "claim-fddf92bdd6e3"
+      ]
     },
     {
-      "id": "mem-19baaefc61",
-      "type": "plan",
-      "title": "可复用逻辑重构执行计划",
-      "reason": "命中 focus：graph。",
-      "score": 94,
-      "read_tokens": 104,
-      "source_path": ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md",
-      "source_kind": "active_plan",
-      "modified_at": "2026-08-01T09:56:10+00:00",
-      "matched_terms": [
-        "graph"
-      ],
+      "id": "mem-431f2548e1",
+      "type": "rule",
+      "title": "热区记忆面",
+      "reason": "baseline recall entry。",
+      "score": 61,
+      "read_tokens": 46,
+      "source_path": ".ch/docs/memory/README.md",
+      "source_kind": "memory_doc",
+      "modified_at": "2026-07-25T14:49:44+00:00",
+      "matched_terms": [],
       "concepts": [
-        "open-loop",
-        "pattern"
+        "gotcha"
       ],
       "facts": [
-        "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor",
-        "Modified at: 2026-08-01T09:56:10+00:00"
+        "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
+        "Source of truth: .ch/docs/memory/README.md"
       ],
-      "narrative": "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor",
+      "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
       "files": [
-        ".ch/docs/TESTING.md",
-        ".ch/docs/memory/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        "src/foo",
-        "src/foo/bar",
-        "src/foobar",
-        "src/graph/",
-        "src/graph/graphScheduler.ts",
-        "src/graph/types.ts",
-        "src/loop*.ts",
-        "src/loopDebate.ts",
-        "src/loopParallel.ts"
+        ".ch/docs/MEMORY.md"
       ],
-      "topic": "plan",
-      "preliminary_score": 92,
-      "final_score": 94,
+      "topic": "gotcha",
+      "preliminary_score": 55,
+      "final_score": 61,
       "score_breakdown": {
-        "type_priority": 68,
-        "focus_terms": 12,
+        "type_priority": 45,
+        "focus_terms": 0,
         "open_loop_bonus": 0,
-        "read_cost_adjustment": 2,
-        "evidence_bonus": 6,
-        "concept_bonus": 2,
-        "topic_bonus": 2,
-        "source_diversity_bonus": 2,
-        "claim_bonus": 0,
-        "same_source_penalty": 0
-      },
-      "selection_rank": 2,
-      "selected_claim_ids": []
-    },
-    {
-      "id": "mem-4b483bd801",
-      "type": "plan",
-      "title": "MCP 市场全量检测与权威刷新",
-      "reason": "命中 focus：task。",
-      "score": 93,
-      "read_tokens": 119,
-      "source_path": ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md",
-      "source_kind": "active_plan",
-      "modified_at": "2026-07-11T03:33:13+00:00",
-      "matched_terms": [
-        "task"
-      ],
-      "concepts": [
-        "open-loop"
-      ],
-      "facts": [
-        "日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务",
-        "Modified at: 2026-07-11T03:33:13+00:00"
-      ],
-      "narrative": "日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务",
-      "files": [
-        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-        ".ch/docs/exec-plans/",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
-        ".ch/docs/references/",
-        ".ch/docs/references/cli-runtime-reference.md",
-        ".ch/docs/runbooks/",
-        ".ch/docs/runbooks/PITFALLS.md",
-        "scripts/validate_mcp_marketplace.js",
-        "src/config/",
-        "src/test/",
-        "src/test/mcpMarketplaceCatalog.test.ts"
-      ],
-      "topic": "plan",
-      "preliminary_score": 91,
-      "final_score": 93,
-      "score_breakdown": {
-        "type_priority": 68,
-        "focus_terms": 12,
-        "open_loop_bonus": 0,
-        "read_cost_adjustment": 2,
-        "evidence_bonus": 6,
+        "read_cost_adjustment": 4,
+        "evidence_bonus": 3,
         "concept_bonus": 1,
         "topic_bonus": 2,
         "source_diversity_bonus": 2,
-        "claim_bonus": 0,
+        "claim_bonus": 4,
         "same_source_penalty": 0
       },
-      "selection_rank": 3,
-      "selected_claim_ids": []
+      "selection_rank": 2,
+      "selected_claim_ids": [
+        "claim-093d0b145dbc",
+        "claim-0e19638c3dbc",
+        "claim-0f988e077476",
+        "claim-1782b644ce89",
+        "claim-1b53727dc88c",
+        "claim-2435e8e9d987",
+        "claim-2e13489adca9",
+        "claim-2e819189bdd0",
+        "claim-31f63a1bc3de",
+        "claim-32c338c888a7",
+        "claim-397b5adbc71a",
+        "claim-498bbf9f832e",
+        "claim-50ede8309b41",
+        "claim-515804a50029",
+        "claim-6724347da52e",
+        "claim-6820553f1318",
+        "claim-6c2e0c45436e",
+        "claim-6d9f2766d40e",
+        "claim-721fae53d0e0",
+        "claim-76c9d62175b7",
+        "claim-84e37475678a",
+        "claim-867ff97804e0",
+        "claim-871a36ba1346",
+        "claim-9571c70b7dfd",
+        "claim-9615cc07c46c",
+        "claim-9e44f3555b31",
+        "claim-a60844e2384d",
+        "claim-b9597eb2f15d",
+        "claim-c5443e62b9df",
+        "claim-cc037a86b2d0",
+        "claim-ccc9412cd149",
+        "claim-d3161b121ee2",
+        "claim-d432691ce646",
+        "claim-d44b9f5288e6",
+        "claim-d851c11cb399",
+        "claim-dbcde2cb40bb",
+        "claim-e3434d2766cc",
+        "claim-ebc83806d722",
+        "claim-ff9a4b7ad762"
+      ]
     }
   ],
   "expanded_observation_ids": [
-    "mem-fb18b9b4d2",
-    "mem-19baaefc61",
-    "mem-4b483bd801"
+    "mem-c1d7e714b7",
+    "mem-431f2548e1"
   ],
   "selected_source_paths": [
-    ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md",
-    ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md",
-    ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md"
+    ".ch/docs/MEMORY.md",
+    ".ch/docs/memory/README.md"
   ],
   "selected_source_kinds": [
-    "active_plan"
+    "memory_doc"
   ],
-  "matched_terms": [
-    "review-extension-refactor",
-    "graph",
-    "task"
-  ],
+  "matched_terms": [],
   "score": {
-    "max": 105,
-    "min": 93,
-    "average": 97.33,
+    "max": 62,
+    "min": 61,
+    "average": 61.5,
     "by_observation": [
       {
-        "id": "mem-fb18b9b4d2",
-        "score": 105,
-        "preliminary_score": 103,
+        "id": "mem-c1d7e714b7",
+        "score": 62,
+        "preliminary_score": 56,
         "rank": 1,
         "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 24,
+          "type_priority": 45,
+          "focus_terms": 0,
           "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
+          "read_cost_adjustment": 4,
+          "evidence_bonus": 4,
           "concept_bonus": 1,
           "topic_bonus": 2,
           "source_diversity_bonus": 2,
-          "claim_bonus": 0,
+          "claim_bonus": 4,
           "same_source_penalty": 0
         }
       },
       {
-        "id": "mem-19baaefc61",
-        "score": 94,
-        "preliminary_score": 92,
+        "id": "mem-431f2548e1",
+        "score": 61,
+        "preliminary_score": 55,
         "rank": 2,
         "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 12,
+          "type_priority": 45,
+          "focus_terms": 0,
           "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
-          "concept_bonus": 2,
-          "topic_bonus": 2,
-          "source_diversity_bonus": 2,
-          "claim_bonus": 0,
-          "same_source_penalty": 0
-        }
-      },
-      {
-        "id": "mem-4b483bd801",
-        "score": 93,
-        "preliminary_score": 91,
-        "rank": 3,
-        "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 12,
-          "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
+          "read_cost_adjustment": 4,
+          "evidence_bonus": 3,
           "concept_bonus": 1,
           "topic_bonus": 2,
           "source_diversity_bonus": 2,
-          "claim_bonus": 0,
+          "claim_bonus": 4,
           "same_source_penalty": 0
         }
       }
     ]
   },
   "score_summary": {
-    "max": 105,
-    "min": 93,
-    "average": 97.33,
+    "max": 62,
+    "min": 61,
+    "average": 61.5,
     "by_observation": [
       {
-        "id": "mem-fb18b9b4d2",
-        "score": 105,
-        "preliminary_score": 103,
+        "id": "mem-c1d7e714b7",
+        "score": 62,
+        "preliminary_score": 56,
         "rank": 1,
         "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 24,
+          "type_priority": 45,
+          "focus_terms": 0,
           "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
+          "read_cost_adjustment": 4,
+          "evidence_bonus": 4,
           "concept_bonus": 1,
           "topic_bonus": 2,
           "source_diversity_bonus": 2,
-          "claim_bonus": 0,
+          "claim_bonus": 4,
           "same_source_penalty": 0
         }
       },
       {
-        "id": "mem-19baaefc61",
-        "score": 94,
-        "preliminary_score": 92,
+        "id": "mem-431f2548e1",
+        "score": 61,
+        "preliminary_score": 55,
         "rank": 2,
         "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 12,
+          "type_priority": 45,
+          "focus_terms": 0,
           "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
-          "concept_bonus": 2,
-          "topic_bonus": 2,
-          "source_diversity_bonus": 2,
-          "claim_bonus": 0,
-          "same_source_penalty": 0
-        }
-      },
-      {
-        "id": "mem-4b483bd801",
-        "score": 93,
-        "preliminary_score": 91,
-        "rank": 3,
-        "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 12,
-          "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
+          "read_cost_adjustment": 4,
+          "evidence_bonus": 3,
           "concept_bonus": 1,
           "topic_bonus": 2,
           "source_diversity_bonus": 2,
-          "claim_bonus": 0,
+          "claim_bonus": 4,
           "same_source_penalty": 0
         }
       }
     ]
   },
   "source_diversity": {
-    "unique_source_count": 3,
-    "selected_observation_count": 3,
+    "unique_source_count": 2,
+    "selected_observation_count": 2,
     "source_path_counts": {
-      ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md": 1,
-      ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md": 1,
-      ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md": 1
+      ".ch/docs/MEMORY.md": 1,
+      ".ch/docs/memory/README.md": 1
     },
     "source_kind_counts": {
-      "active_plan": 3
+      "memory_doc": 2
     },
     "max_same_source_observations": 1
   },
   "estimated_read_tokens": {
-    "selected_total": 335,
-    "expanded_total": 335,
-    "available_total": 866
+    "selected_total": 85,
+    "expanded_total": 85,
+    "available_total": 85
   },
-  "selected_claim_ids": [],
-  "selected_claims": [],
-  "claim_status_summary": {},
-  "watch_items": [
+  "selected_claim_ids": [
+    "claim-04d77e38d577",
+    "claim-0b54f47ce76f",
+    "claim-0b87a7723e07",
+    "claim-13080f25ffe8",
+    "claim-16cc09133222",
+    "claim-1cf94165b719",
+    "claim-1d1e7be6ee1c",
+    "claim-20629fe24ba5",
+    "claim-21ecf7768395",
+    "claim-259cd3783fe1",
+    "claim-279d99a97043",
+    "claim-285fa8189f74",
+    "claim-2ca86ba56e7f",
+    "claim-301bcd9b6729",
+    "claim-31c40732d88d",
+    "claim-3a4be9c2c6c0",
+    "claim-3ab608f37230",
+    "claim-3c950a84b5ab",
+    "claim-3e3f9252f7f9",
+    "claim-3f217e8afb15",
+    "claim-427706d12520",
+    "claim-4518afd4cc75",
+    "claim-47603a887086",
+    "claim-47b42538891e",
+    "claim-4829d0d15fdf",
+    "claim-49283be92447",
+    "claim-52bbde3ab973",
+    "claim-52e045371286",
+    "claim-56d13d65b17d",
+    "claim-57ec5b4cba0b",
+    "claim-5e26ac0f2987",
+    "claim-5e96e78372b0",
+    "claim-61d02d68a681",
+    "claim-6417e633d8e4",
+    "claim-64f682be4ea7",
+    "claim-6526c3497f22",
+    "claim-6fe1efa27030",
+    "claim-768b3fcfc162",
+    "claim-7a3d4d89eeb6",
+    "claim-7f42140f7486",
+    "claim-837fcf7096b6",
+    "claim-85389a999bc4",
+    "claim-85a15bb2d8cc",
+    "claim-87536ae79419",
+    "claim-89b41df2bb3f",
+    "claim-89f5ada29d23",
+    "claim-8a47032ff62d",
+    "claim-8dc6f43a1394",
+    "claim-915ccf7f246f",
+    "claim-949ef7ce6b71",
+    "claim-98d08f096a6e",
+    "claim-9df3b36ed708",
+    "claim-a2c73ffdb0be",
+    "claim-a3dfd046e8a4",
+    "claim-a6973cc297b1",
+    "claim-a7dc7dc82446",
+    "claim-a8c01f6b6aef",
+    "claim-aaaedfc927a7",
+    "claim-ad2fe280b900",
+    "claim-b01ca5be3a20",
+    "claim-be3ff3c921d3",
+    "claim-c0cd0f390982",
+    "claim-c21b7051df5a",
+    "claim-ca65712018cf",
+    "claim-ceaa0ef4b488",
+    "claim-d6f64d7d312b",
+    "claim-d9631afdfac4",
+    "claim-dc6fafa028d9",
+    "claim-e070ca955471",
+    "claim-e39a4d1b9cc5",
+    "claim-e4cbd25c5798",
+    "claim-e819c704ea7b",
+    "claim-eea07e75d7cf",
+    "claim-ef4432384b5d",
+    "claim-f1cb895d9aea",
+    "claim-f26c13e53c93",
+    "claim-f4db54d9df7a",
+    "claim-f53825ea1a5c",
+    "claim-f54ed267af3a",
+    "claim-f56fb5adc0d5",
+    "claim-f5ee94832254",
+    "claim-f724b3508a51",
+    "claim-f814479a0e56",
+    "claim-fddf92bdd6e3",
+    "claim-093d0b145dbc",
+    "claim-0e19638c3dbc",
+    "claim-0f988e077476",
+    "claim-1782b644ce89",
+    "claim-1b53727dc88c",
+    "claim-2435e8e9d987",
+    "claim-2e13489adca9",
+    "claim-2e819189bdd0",
+    "claim-31f63a1bc3de",
+    "claim-32c338c888a7",
+    "claim-397b5adbc71a",
+    "claim-498bbf9f832e",
+    "claim-50ede8309b41",
+    "claim-515804a50029",
+    "claim-6724347da52e",
+    "claim-6820553f1318",
+    "claim-6c2e0c45436e",
+    "claim-6d9f2766d40e",
+    "claim-721fae53d0e0",
+    "claim-76c9d62175b7",
+    "claim-84e37475678a",
+    "claim-867ff97804e0",
+    "claim-871a36ba1346",
+    "claim-9571c70b7dfd",
+    "claim-9615cc07c46c",
+    "claim-9e44f3555b31",
+    "claim-a60844e2384d",
+    "claim-b9597eb2f15d",
+    "claim-c5443e62b9df",
+    "claim-cc037a86b2d0",
+    "claim-ccc9412cd149",
+    "claim-d3161b121ee2",
+    "claim-d432691ce646",
+    "claim-d44b9f5288e6",
+    "claim-d851c11cb399",
+    "claim-dbcde2cb40bb",
+    "claim-e3434d2766cc",
+    "claim-ebc83806d722",
+    "claim-ff9a4b7ad762"
+  ],
+  "selected_claims": [
     {
-      "kind": "active_plans",
-      "severity": "medium",
-      "count": 10,
-      "message": "当前有 10 份 active plans。"
+      "claim_id": "claim-04d77e38d577",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
     },
+    {
+      "claim_id": "claim-0b54f47ce76f",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-0b87a7723e07",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-13080f25ffe8",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-16cc09133222",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-1cf94165b719",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-1d1e7be6ee1c",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-20629fe24ba5",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-21ecf7768395",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-259cd3783fe1",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-279d99a97043",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-285fa8189f74",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-2ca86ba56e7f",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-301bcd9b6729",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-31c40732d88d",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-3a4be9c2c6c0",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-3ab608f37230",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "high",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-3c950a84b5ab",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-3e3f9252f7f9",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-3f217e8afb15",
+      "status": "active",
+      "claim_type": "preference",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-09-18"
+    },
+    {
+      "claim_id": "claim-427706d12520",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-4518afd4cc75",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-47603a887086",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-47b42538891e",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-4829d0d15fdf",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-49283be92447",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-52bbde3ab973",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-52e045371286",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-56d13d65b17d",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-57ec5b4cba0b",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-5e26ac0f2987",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-5e96e78372b0",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-61d02d68a681",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-6417e633d8e4",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-64f682be4ea7",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-6526c3497f22",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-6fe1efa27030",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-768b3fcfc162",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-7a3d4d89eeb6",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-7f42140f7486",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-837fcf7096b6",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-85389a999bc4",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-85a15bb2d8cc",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-87536ae79419",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-89b41df2bb3f",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-89f5ada29d23",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-8a47032ff62d",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-8dc6f43a1394",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-915ccf7f246f",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-949ef7ce6b71",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-98d08f096a6e",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-9df3b36ed708",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "high",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-a2c73ffdb0be",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-a3dfd046e8a4",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-a6973cc297b1",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-a7dc7dc82446",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-a8c01f6b6aef",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-aaaedfc927a7",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-ad2fe280b900",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-b01ca5be3a20",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-be3ff3c921d3",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-c0cd0f390982",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-c21b7051df5a",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-ca65712018cf",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-ceaa0ef4b488",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "high",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-d6f64d7d312b",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-d9631afdfac4",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-dc6fafa028d9",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-e070ca955471",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-e39a4d1b9cc5",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-e4cbd25c5798",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-e819c704ea7b",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-eea07e75d7cf",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-ef4432384b5d",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f1cb895d9aea",
+      "status": "active",
+      "claim_type": "hypothesis",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-f26c13e53c93",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "high",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-f4db54d9df7a",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f53825ea1a5c",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f54ed267af3a",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f56fb5adc0d5",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f5ee94832254",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f724b3508a51",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-f814479a0e56",
+      "status": "active",
+      "claim_type": "preference",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-09-18"
+    },
+    {
+      "claim_id": "claim-fddf92bdd6e3",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_observation_id": "mem-c1d7e714b7",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-093d0b145dbc",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "high",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-0e19638c3dbc",
+      "status": "active",
+      "claim_type": "preference",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-09-18"
+    },
+    {
+      "claim_id": "claim-0f988e077476",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-1782b644ce89",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-1b53727dc88c",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-2435e8e9d987",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-2e13489adca9",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-2e819189bdd0",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "high",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-31f63a1bc3de",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-32c338c888a7",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-397b5adbc71a",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-498bbf9f832e",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-50ede8309b41",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-515804a50029",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-6724347da52e",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "high",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-6820553f1318",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-6c2e0c45436e",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-6d9f2766d40e",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-721fae53d0e0",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-76c9d62175b7",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-84e37475678a",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-867ff97804e0",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-871a36ba1346",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-9571c70b7dfd",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-9615cc07c46c",
+      "status": "active",
+      "claim_type": "decision",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-08-19"
+    },
+    {
+      "claim_id": "claim-9e44f3555b31",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-a60844e2384d",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-b9597eb2f15d",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-c5443e62b9df",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-cc037a86b2d0",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "high",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-ccc9412cd149",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-d3161b121ee2",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-d432691ce646",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-d44b9f5288e6",
+      "status": "active",
+      "claim_type": "instruction",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-05"
+    },
+    {
+      "claim_id": "claim-d851c11cb399",
+      "status": "active",
+      "claim_type": "risk",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-06-11"
+    },
+    {
+      "claim_id": "claim-dbcde2cb40bb",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-e3434d2766cc",
+      "status": "active",
+      "claim_type": "preference",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-09-18"
+    },
+    {
+      "claim_id": "claim-ebc83806d722",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    },
+    {
+      "claim_id": "claim-ff9a4b7ad762",
+      "status": "active",
+      "claim_type": "fact",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_observation_id": "mem-431f2548e1",
+      "confidence": "medium",
+      "review_after": "2026-07-20"
+    }
+  ],
+  "claim_status_summary": {
+    "active": 123
+  },
+  "watch_items": [
     {
       "kind": "stale_memory_docs",
       "severity": "high",
@@ -471,16 +1687,15 @@
     }
   ],
   "watch_item_messages": [
-    "当前有 10 份 active plans。",
     "存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。",
     "这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。"
   ],
   "retrieval_debug": {
     "file": ".ch/docs/generated/memory-index/retrieval-debug.md",
-    "candidate_count": 12,
-    "ranked_candidate_count": 3,
-    "focus_match_count": 3,
-    "focus_excluded_count": 9,
+    "candidate_count": 2,
+    "ranked_candidate_count": 2,
+    "focus_match_count": 0,
+    "focus_excluded_count": 0,
     "heuristics": [
       "type_priority",
       "focus_terms",
@@ -519,67 +1734,31 @@
     }
   ],
   "handoffs": [],
-  "active_plans": [
-    {
-      "path": ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md",
-      "title": "extension.ts 入口运行时重构计划",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 32,
-      "modified_at": "2026-08-02T16:49:15+00:00",
-      "matched_terms": [
-        "review-extension-refactor",
-        "graph"
-      ],
-      "summary": "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor"
-    },
-    {
-      "path": ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md",
-      "title": "可复用逻辑重构执行计划",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 26,
-      "modified_at": "2026-08-01T09:56:10+00:00",
-      "matched_terms": [
-        "graph"
-      ],
-      "summary": "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor"
-    },
-    {
-      "path": ".ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md",
-      "title": "MCP 市场全量检测与权威刷新",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 26,
-      "modified_at": "2026-07-11T03:33:13+00:00",
-      "matched_terms": [
-        "task"
-      ],
-      "summary": "日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务"
-    },
-    {
-      "path": ".ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md",
-      "title": "Harness 单元自测与 Chromium Playwright 能力吸收",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 20,
-      "modified_at": "2026-07-15T01:12:08+00:00",
-      "matched_terms": [],
-      "summary": "日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理"
-    }
-  ],
+  "active_plans": [],
   "design_docs": [
     {
       "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
       "title": "Graph 编排模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：graph。",
-      "score": 25,
-      "modified_at": "2026-08-02T15:39:19Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：active。",
+      "score": 4,
+      "modified_at": "2026-08-03T01:56:26Z",
       "matched_terms": [
-        "graph"
+        "active"
       ],
-      "summary": "状态：active（Phase 2 恢复与交互增强已落地） 日期：2026-07-30 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`"
+      "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`"
+    },
+    {
+      "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
+      "title": "Loop 红蓝辩论多智能体模式详细设计",
+      "kind": "design_doc",
+      "reason": "与当前 focus 相关的设计决策入口，命中：active。",
+      "score": 4,
+      "modified_at": "2026-08-03T08:33:24Z",
+      "matched_terms": [
+        "active"
+      ],
+      "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
     }
   ],
   "runbooks": []

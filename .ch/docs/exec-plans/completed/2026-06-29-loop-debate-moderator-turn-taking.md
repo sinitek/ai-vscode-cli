@@ -1,7 +1,7 @@
 # Loop 红蓝辩论主持人轮流点名调度
 
 - 日期：2026-06-29
-- 状态：in-progress
+- 状态：completed
 - 负责人：Codex
 
 ## 背景

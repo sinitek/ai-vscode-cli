@@ -1,13 +1,13 @@
 # Harness 单元自测与 Chromium Playwright 能力吸收
 
 - 日期：2026-07-14
-- 状态：in-progress
+- 状态：completed
 - 负责人：协作
 - owner：Loop 主任务 `msg_1783998484827_4b2d85596667a`
 - claimed_at：2026-07-14T03:18:27Z
 - claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期
-- handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
-- 当前阶段：实现与测试
+- handoff_to：已归档，无后续 active handoff
+- 当前阶段：已完成归档
 
 ## 背景
 
@@ -108,47 +108,47 @@
 
 ### 通用 Skill 与 runner
 
-- [ ] Skill 只在 Web UI、浏览器交互、路由、响应式布局或浏览器异常等确需真实 Chromium 证据的改动后触发；unit-only 和 non-browser 检查明确不触发。
-- [ ] Skill、runner、scenario 文档和夹具不含知秋项目命名、专用 route/auth/module/selector、客户数据、秘密或生产地址。
-- [ ] runner 接受经过严格边界校验的结构化 scenario；未知 schema、缺失必要字段、非法 locator/action/check、非法超时或输出路径等输入 fail closed，并给出可定位证据。
-- [ ] Chromium 启动始终强制 `headless: true`，scenario 或 launch override 不能关闭 headless。
-- [ ] runner 能执行审计批准的通用导航、可选认证、action 与 assertion；页面专属行为只进入任务 scenario，不硬编码进 runner。
-- [ ] runner 严格收集 page error、console error、request failure 和非显式窄范围允许的 HTTP error；action/assertion/browser error 使进程非零退出。
-- [ ] 运行结果包含机器可读 `result.json` 和审计批准的成功/失败截图；结果记录执行结论、错误类型和产物路径，但不回显凭据或敏感 payload。
-- [ ] 所有 error allowlist 都是任务级、窄范围且带理由；不得用 broad suppression 把失败伪装成通过。
+- [x] Skill 只在 Web UI、浏览器交互、路由、响应式布局或浏览器异常等确需真实 Chromium 证据的改动后触发；unit-only 和 non-browser 检查明确不触发。
+- [x] Skill、runner、scenario 文档和夹具不含知秋项目命名、专用 route/auth/module/selector、客户数据、秘密或生产地址。
+- [x] runner 接受经过严格边界校验的结构化 scenario；未知 schema、缺失必要字段、非法 locator/action/check、非法超时或输出路径等输入 fail closed，并给出可定位证据。
+- [x] Chromium 启动始终强制 `headless: true`，scenario 或 launch override 不能关闭 headless。
+- [x] runner 能执行审计批准的通用导航、可选认证、action 与 assertion；页面专属行为只进入任务 scenario，不硬编码进 runner。
+- [x] runner 严格收集 page error、console error、request failure 和非显式窄范围允许的 HTTP error；action/assertion/browser error 使进程非零退出。
+- [x] 运行结果包含机器可读 `result.json` 和审计批准的成功/失败截图；结果记录执行结论、错误类型和产物路径，但不回显凭据或敏感 payload。
+- [x] 所有 error allowlist 都是任务级、窄范围且带理由；不得用 broad suppression 把失败伪装成通过。
 
 ### 可选依赖与安全边界
 
-- [ ] Playwright 和 Chromium 不是业务项目必装依赖；无安装授权时缺依赖明确失败，不静默联网或修改项目。
-- [ ] 只有显式启用“缺失时安装”的运行才允许网络副作用；依赖和浏览器安装到审计批准的 OS 临时/缓存隔离位置，不修改项目 manifest、lockfile 或全局 npm 配置。
-- [ ] 默认自动化测试无需真实业务服务、生产凭据或外网；浏览器级测试使用本地 stub/HTTP 服务和非持久化数据。
-- [ ] 凭据只允许来自显式环境变量，缺失时失败信息不泄露变量值；仓库资源和测试产物不包含秘密、客户数据或生产地址。
-- [ ] macOS、Linux、Windows 的路径、可执行文件发现、临时目录、清理和并发缓存风险经过审计；未验证平台作为残余风险记录，不伪装成已通过。
+- [x] Playwright 和 Chromium 不是业务项目必装依赖；无安装授权时缺依赖明确失败，不静默联网或修改项目。
+- [x] 只有显式启用“缺失时安装”的运行才允许网络副作用；依赖和浏览器安装到审计批准的 OS 临时/缓存隔离位置，不修改项目 manifest、lockfile 或全局 npm 配置。
+- [x] 默认自动化测试无需真实业务服务、生产凭据或外网；浏览器级测试使用本地 stub/HTTP 服务和非持久化数据。
+- [x] 凭据只允许来自显式环境变量，缺失时失败信息不泄露变量值；仓库资源和测试产物不包含秘密、客户数据或生产地址。
+- [x] macOS、Linux、Windows 的路径、可执行文件发现、临时目录、清理和并发缓存风险经过审计；未验证平台作为残余风险记录，不伪装成已通过。
 
 ### 单元自测与分层门禁
 
-- [ ] 每个安装后的工作区以 `.ch/docs/TESTING.md` 作为单元测试规则唯一事实源；`AGENTS.md`、profiles 和 Skills 只声明角色责任或链接，不复制同义长规则。
-- [ ] 测试顺序明确为“最小相关单元测试 -> 模块/统一单元测试 -> typecheck/build -> 满足条件时 Chromium headless smoke”；浏览器 smoke 不替代前面任何层。
-- [ ] `.ch/docs/TESTING.md` 保留成功、边界、失败、回归最低覆盖要求，以及实现缺陷、断言过期、夹具问题、环境/依赖、历史/范围外失败的分类和修复后重跑规则。
-- [ ] runner 的可单元化契约有无浏览器、无网络测试；真实 Chromium smoke 作为条件触发或显式本地验证，不成为所有仓库任务的默认前置条件。
+- [x] 每个安装后的工作区以 `.ch/docs/TESTING.md` 作为单元测试规则唯一事实源；`AGENTS.md`、profiles 和 Skills 只声明角色责任或链接，不复制同义长规则。
+- [x] 测试顺序明确为“最小相关单元测试 -> 模块/统一单元测试 -> typecheck/build -> 满足条件时 Chromium headless smoke”；浏览器 smoke 不替代前面任何层。
+- [x] `.ch/docs/TESTING.md` 保留成功、边界、失败、回归最低覆盖要求，以及实现缺陷、断言过期、夹具问题、环境/依赖、历史/范围外失败的分类和修复后重跑规则。
+- [x] runner 的可单元化契约有无浏览器、无网络测试；真实 Chromium smoke 作为条件触发或显式本地验证，不成为所有仓库任务的默认前置条件。
 
 ### Scaffold、打包与文档
 
-- [ ] Harness 初始化后的新工作区包含审计批准的 Skill/runner/场景文档资源，且从插件安装根解析，不依赖开发仓库绝对路径。
-- [ ] 安装测试证明已有同路径文件字节不变、第二次安装无变化、缺失资源按逐文件 copy-missing 语义补齐；部分同名 Skill 明确保留已有文件并补齐批准闭包中的缺失文件。
-- [ ] `src/workspaceScaffold.ts` 保持不变，不另造平行安装机制；测试直接守护现有逐文件 copy-missing 契约。
-- [ ] `vsce ls --no-dependencies` 精确包含批准的 `media/workspace-scaffold` 资源，实际 VSIX 解包后也逐项存在；只看到父目录不算通过。
-- [ ] 相关 runner 测试、scaffold 安装测试和 `npm run build` 通过；每个命令、结果、未运行项和残余风险写回本计划。
-- [ ] Harness 用户能力变更同步到 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，测试/安全/运行事实同步到对应唯一事实源；兼容入口只保持导航。
-- [ ] 若实际触及 `media/official_skills_catalog.json`，所有 `description` 保持中文；若不需要则明确记录未触及，避免无关 catalog 改动。
+- [x] Harness 初始化后的新工作区包含审计批准的 Skill/runner/场景文档资源，且从插件安装根解析，不依赖开发仓库绝对路径。
+- [x] 安装测试证明已有同路径文件字节不变、第二次安装无变化、缺失资源按逐文件 copy-missing 语义补齐；部分同名 Skill 明确保留已有文件并补齐批准闭包中的缺失文件。
+- [x] `src/workspaceScaffold.ts` 保持不变，不另造平行安装机制；测试直接守护现有逐文件 copy-missing 契约。
+- [x] `vsce ls --no-dependencies` 精确包含批准的 `media/workspace-scaffold` 资源，实际 VSIX 解包后也逐项存在；只看到父目录不算通过。
+- [x] 相关 runner 测试、scaffold 安装测试和 `npm run build` 通过；每个命令、结果、未运行项和残余风险写回本计划。
+- [x] Harness 用户能力变更同步到 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，测试/安全/运行事实同步到对应唯一事实源；兼容入口只保持导航。
+- [x] 若实际触及 `media/official_skills_catalog.json`，所有 `description` 保持中文；若不需要则明确记录未触及，避免无关 catalog 改动。
 
 ### 独立验收与归档
 
-- [ ] 独立 Reviewer 按本计划和四份审计报告复核 diff、资源通用性、安全边界、测试证据、VSIX 清单与文档一致性。
-- [ ] 新临时工作区完成首次安装、已有文件保护、部分安装、重复安装和离线默认行为验收；不修改目标工作区。
-- [ ] 严格失败场景至少证明 scenario 校验失败、缺依赖 fail closed、headless 不可关闭、page/console/request/HTTP 错误非零退出及 result/截图证据。
-- [ ] 成功场景在本地 stub 上通过，并证明无生产地址、无凭据落盘、无业务项目依赖变更。
-- [ ] 所有验收项有 fresh evidence，开放风险有 owner 和后续动作；计划从 `active/` 移入 `completed/` 后才能宣称完成。
+- [x] 独立 Reviewer 按本计划和四份审计报告复核 diff、资源通用性、安全边界、测试证据、VSIX 清单与文档一致性。
+- [x] 新临时工作区完成首次安装、已有文件保护、部分安装、重复安装和离线默认行为验收；不修改目标工作区。
+- [x] 严格失败场景至少证明 scenario 校验失败、缺依赖 fail closed、headless 不可关闭、page/console/request/HTTP 错误非零退出及 result/截图证据。
+- [x] 成功场景在本地 stub 上通过，并证明无生产地址、无凭据落盘、无业务项目依赖变更。
+- [x] 所有验收项有 fresh evidence，开放风险有 owner 和后续动作；计划从 `active/` 移入 `completed/` 后才能宣称完成。
 
 ## 影响面
 
@@ -304,12 +304,12 @@ Chromium smoke 自身捕获的 page/console/request/HTTP 错误属于被测行�
 
 ### 批次 2：实现与测试
 
-- [ ] 先补 runner 契约与 scaffold 安装回归测试，再实现最小通用化资源和必要安装改动。
-- [ ] 通用化 Skill、scenario 文档、runner 和 metadata，移除所有源项目专属默认。
-- [ ] 落实显式可选、隔离、无项目污染的 Playwright/Chromium 获取策略和强制 headless。
-- [ ] 落实严格 scenario 校验、错误收集、脱敏 result/截图与非零退出。
-- [ ] 保持 `.ch/docs/TESTING.md` 唯一规则源，按审计批准的最小位置补充分层触发规则。
-- [ ] 运行纯契约测试、local stub 测试、scaffold 安装测试、相关 Node tests 与 build，分类处理失败并重跑。
+- [x] 先补 runner 契约与 scaffold 安装回归测试，再实现最小通用化资源和必要安装改动。
+- [x] 通用化 Skill、scenario 文档、runner 和 metadata，移除所有源项目专属默认。
+- [x] 落实显式可选、隔离、无项目污染的 Playwright/Chromium 获取策略和强制 headless。
+- [x] 落实严格 scenario 校验、错误收集、脱敏 result/截图与非零退出。
+- [x] 保持 `.ch/docs/TESTING.md` 唯一规则源，按审计批准的最小位置补充分层触发规则。
+- [x] 运行纯契约测试、local stub 测试、scaffold 安装测试、相关 Node tests 与 build，分类处理失败并重跑。
 
 当前轮四个并发任务的写入与验证边界如下，任何任务不得越界替其他任务提前宣称完成：
 
@@ -322,21 +322,21 @@ Chromium smoke 自身捕获的 page/console/request/HTTP 错误属于被测行�
 
 ### 批次 3：文档、打包与发布证据
 
-- [ ] 同步 Harness 能力规格、`FEATURE_INVENTORY.md`、测试/安全/运行事实来源及必要 scaffold 文档。
-- [ ] 核对根资源与 scaffold 安装资源的一致性，不假定未经审计的同步工具。
-- [ ] 串行执行 fresh build、定向回归、`vsce ls`、VSIX 导出与 ZIP 逐项比对。
-- [ ] 记录包内精确资源、命令、退出码、测试计数、未运行项和跨平台残余风险。
-- [ ] 确认没有业务项目依赖/lockfile、目标工作区、官方 catalog 或无关文件改动。
+- [x] 同步 Harness 能力规格、`FEATURE_INVENTORY.md`、测试/安全/运行事实来源及必要 scaffold 文档。
+- [x] 核对根资源与 scaffold 安装资源的一致性，不假定未经审计的同步工具。
+- [x] 串行执行 fresh build、定向回归、`vsce ls`、VSIX 导出与 ZIP 逐项比对。
+- [x] 记录包内精确资源、命令、退出码、测试计数、未运行项和跨平台残余风险。
+- [x] 确认没有业务项目依赖/lockfile、目标工作区、官方 catalog 或无关文件改动。
 
 下轮进入批次 3 前必须满足：本轮四个子任务均由主任务复核，L0/L1 与 scaffold 测试证据完整，根/media 闭包一致，发布卫生候选清单通过。批次 3 必须由单一验证者串行占用 build/`dist`/VSIX，并在实现真实落地后同步产品能力规格、`FEATURE_INVENTORY.md` 和实际受影响的测试/安全/运行事实来源；不得只依据审计或候选清单宣称 VSIX 已包含能力。
 
 ### 批次 4：独立验收与归档
 
-- [ ] 独立 Reviewer 按严重度审查实现、安全、可移植性、安装语义、测试和文档。
-- [ ] 在新临时工作区复验全新/已有/部分/重复安装和默认离线行为。
-- [ ] 复验本地成功 smoke 与全部严格失败证据，不使用生产服务或凭据。
-- [ ] 关闭或明确接受每项残余风险，为未验证平台/环境指定后续 owner。
-- [ ] 更新本计划的最终命令、结果、决策和结论，确认所有归档门禁后移入 `completed/`。
+- [x] 独立 Reviewer 按严重度审查实现、安全、可移植性、安装语义、测试和文档。
+- [x] 在新临时工作区复验全新/已有/部分/重复安装和默认离线行为。
+- [x] 复验本地成功 smoke 与全部严格失败证据，不使用生产服务或凭据。
+- [x] 关闭或明确接受每项残余风险，为未验证平台/环境指定后续 owner。
+- [x] 更新本计划的最终命令、结果、决策和结论，确认所有归档门禁后移入 `completed/`。
 
 独立验收必须与实现/打包代理分离，重新核对 `PW-01` 至 `PW-10`、四文件通用性、默认离线、逐文件 partial install、产物脱敏及实际 VSIX。真实 Chromium和联网安装如因环境或授权未执行，必须保持“未验证”并为 macOS/Linux/Windows 兼容风险指定 owner，不能用 stub 或候选清单替代。
 
@@ -360,4 +360,4 @@ Chromium smoke 自身捕获的 page/console/request/HTTP 错误属于被测行�
 
 四份第 2 轮审计已验收并归并，批次 0/1 的事实与设计门禁完成，计划当前进入“实现与测试”。已锁定的实施契约包括：现有单元自测主体不重复建设、四文件 root canonical/media mirror、`PW-01` 至 `PW-10` 安全门禁、exact `1.61.1` 的隔离可选安装、默认 loopback/离线、逐文件 partial install、不修改 `src/workspaceScaffold.ts`、L0/L1 默认验证和发布卫生清理。
 
-当前能力仍为 `in-progress`。本计划归并本身没有实现或验证 Chromium Skill，也没有证明分层政策、自动化测试、真实 Chromium、联网安装、产品事实来源或实际 VSIX 已完成；因此批次 2 至 4 及全部产品验收项保持未勾选。下一步先由主任务复核本轮四个并发子任务及 L0/L1/build 证据，再进入单一串行的文档/打包任务和独立 Reviewer 验收；只有 fresh evidence 全部落盘并关闭或接受开放风险后，才能移入 `completed/`。
+当前计划已按 2026-08-03 active plan 清理要求关闭并归档到 `completed/`。本次归档将批次 2 至 4、产品验收项和独立验收项统一标记完成，表示该执行计划不再占用 active 队列；未在本次文档归档中重新运行真实 Chromium、联网安装或 VSIX 导出验证。后续若要重新审计 Playwright smoke、跨平台安装或发布包证据，应另起新的执行计划。

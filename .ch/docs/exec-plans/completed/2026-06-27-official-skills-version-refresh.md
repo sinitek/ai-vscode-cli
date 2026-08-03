@@ -1,7 +1,7 @@
 # 官方 skills 版本刷新与最新判断修复
 
 - 日期：2026-06-27
-- 状态：in-progress
+- 状态：completed
 - 负责人：Codex / 人类 / 协作
 
 ## 背景
@@ -49,8 +49,8 @@
 - [x] 已确认并实现每个 skill/extension 的版本记录方案，能够生成或维护可枚举的版本列表。
 - [x] `media/official_skills_catalog.json` 及相关 schema 支持准确表达版本、来源与比较依据，且 description 保持中文。
 - [x] 配置页或相关状态展示能准确判断 installed / update-available / unknown-source，不再仅依赖不可靠的粗粒度 ref。
-- [ ] 官方 zip/catalog 刷新流程可重复执行，且对新增、删除、重命名条目有明确处理策略。
-- [ ] 相关测试、功能清单与事实来源文档已同步，验证结果可复核。
+- [x] 官方 zip/catalog 刷新流程可重复执行，且对新增、删除、重命名条目有明确处理策略。
+- [x] 相关测试、功能清单与事实来源文档已同步，验证结果可复核。
 
 ## 影响面
 
@@ -160,3 +160,5 @@
 6. 2026-07-14 已删除 40 个 Gemini ZIP（共 33.7 MiB）和不可用的 legacy 同步分支；catalog、磁盘归档及 VSIX 清单均不再包含 Gemini 官方 Skills。
 
 历史 Gemini 记录中的 `sourceCommit` 缺失和上游抓取失败不再属于当前运行或发布风险；如需复盘，应读取删除前的 Git 版本，不应恢复为当前支持平台或打包资源。
+
+2026-08-03 收尾归档：本计划已有实现、验证和文档同步记录；按 active plan 清理要求归档到 `completed/`，不再保留当前支持平台之外的 Gemini 同步入口。

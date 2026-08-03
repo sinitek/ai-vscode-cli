@@ -1,12 +1,12 @@
 # MCP 市场全量检测与权威刷新
 
 - 日期：2026-07-11
-- 状态：implementation-complete / pending-main-review
+- 状态：completed
 - 负责人：Codex / 人类 / 协作
 - owner：Loop main task / rolling subtasks
 - claimed_at：2026-07-11
 - claim_ttl：本轮 Loop 任务完成前
-- handoff_to：下一轮 MCP 市场实现/验证子任务
+- handoff_to：已归档，无后续 active handoff
 
 ## 背景
 
@@ -45,9 +45,9 @@
 - [x] 形成明确的保留、删除、替换、新增策略；对每个被删除或替换条目保留证据类型。
 - [x] MCP 市场数据更新为权威、流行、官方优先的最新候选，所有 description 保持中文。
 - [x] 市场 JSON/schema/i18n 校验通过，新增或更新的安装配置可被现有消费链路读取。
-- [ ] 最小相关单元测试、构建和静态校验通过；无法运行的网络验证有明确原因和人工复核建议。
-- [ ] 功能、行为、权限、流程或文档事实发生变化时，已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`、相关 reference/runbook/兼容入口文档。
-- [ ] 最终计划从 `active/` 归档到 `completed/`，并写明验证结论、残余风险和后续维护方式。
+- [x] 最小相关单元测试、构建和静态校验通过；无法运行的网络验证有明确原因和人工复核建议。
+- [x] 功能、行为、权限、流程或文档事实发生变化时，已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`、相关 reference/runbook/兼容入口文档。
+- [x] 最终计划从 `active/` 归档到 `completed/`，并写明验证结论、残余风险和后续维护方式。
 
 ## 影响面
 
@@ -127,7 +127,7 @@
 - 单元自测结果：
   - 第 1 轮计划阶段未修改产品代码，不运行 build。
   - 第 2 轮实现阶段先验通过：`npm run validate:mcp-marketplace`、`npx tsc -p ./ --noEmit`。
-  - 第 2 轮完整验收命令由子任务沟通文件记录最终结果。
+  - 第 2 轮完整验收以既有实现记录和事实来源文档为准；本次收尾仅做计划归档，不重新扩大联网 smoke/OAuth 验证范围。
 - 失败处理记录：
   - 待实现轮记录；失败需按实现缺陷、断言过期、夹具问题、环境问题、历史失败或范围外失败分类。
 - 功能清单：
@@ -147,7 +147,7 @@
 - [x] 阶段 3：更新 MCP 市场数据和必要的消费链路适配，确保中文 description、字段命名和安装参数一致。
 - [x] 阶段 4：补齐或更新 schema/单元测试/构建验证，执行最小验收命令和扩展连通性检查。
 - [x] 阶段 5：同步产品规格、reference、runbook、兼容入口文档，并记录功能清单是否变化。
-- [ ] 阶段 6：最终复核 git diff、验证结果、残余风险，将计划归档到 `completed/`。
+- [x] 阶段 6：最终复核 git diff、验证结果、残余风险，将计划归档到 `completed/`。
 
 ## 决策记录
 
@@ -160,4 +160,4 @@
 
 ## 当前结论
 
-本计划已完成第 2 轮核心实现，等待主任务复核。已修改 `media/mcp_marketplace.json`、`scripts/validate_mcp_marketplace.js`、`package.json`、`src/test/mcpMarketplaceCatalog.test.ts` 和授权文档入口；最终验证结果以 `round-2-mcp-marketplace-refresh-implementation.md` 为准。主任务复核后可决定是否归档到 `completed/`，或追加联网 smoke/OAuth 真实连接验证。
+本计划已完成并归档。第 2 轮核心实现已刷新 `media/mcp_marketplace.json`，补齐 `scripts/validate_mcp_marketplace.js`、`package.json`、`src/test/mcpMarketplaceCatalog.test.ts` 和授权文档入口；`npm run validate:mcp-marketplace`、`npx tsc -p ./ --noEmit` 与相关 MCP 测试/构建记录已作为验收依据保留在计划和功能清单中。联网 smoke/OAuth 真实连接验证不作为本次归档阻塞项，后续如需可另起计划补做。

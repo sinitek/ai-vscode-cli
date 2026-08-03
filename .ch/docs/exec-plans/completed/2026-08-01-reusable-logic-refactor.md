@@ -1,12 +1,12 @@
 # 可复用逻辑重构执行计划
 
 - 日期：2026-08-01
-- 状态：in-progress
+- 状态：completed
 - 负责人：Codex（Graph 主任务）
 - owner：main
 - claimed_at：2026-08-01T09:31:44+08:00
 - claim_ttl：本次 Graph run 完成前
-- handoff_to：verify-build-tests、review-refactor
+- handoff_to：已归档，无后续 active handoff
 
 ## 背景
 
@@ -47,7 +47,7 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
 - [completed] Graph scheduler 与 Loop parallel 的写入文件/冲突组归一化和路径重叠判断均复用共享工具，父子路径边界不误匹配，例如 `src/foo` 不匹配 `src/foobar`。
 - [completed] Graph 特有的 `unscopedWrite` 语义、两套冲突结果结构、遍历顺序和消息格式仍由各自调用方负责。
 - [completed] 共享工具测试覆盖成功路径、非法字符或空值边界、大小写/重复项、父子路径和冲突组归一化；Graph/Loop 回归测试通过。
-- [pending] `npm run build` 通过，相关 Graph/Loop 测试通过；失败时按测试规则记录失败类型、证据、影响范围和最小恢复动作。
+- [completed] `npm run build` 通过，相关 Graph/Loop 测试通过；失败时按测试规则记录失败类型、证据、影响范围和最小恢复动作。
 - [completed] 确认本次仅为内部结构重构，无用户可见功能、权限或流程变化，因此无需更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md`；该结论保留在本计划中。
 
 ## 影响面
@@ -81,7 +81,7 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
 ## 测试与清单同步
 
 - 单元测试新增/更新：新增共享工具行为测试；更新 Graph/Loop 现有测试以锁定兼容导出、路径格式和冲突边界。
-- 单元自测结果：`test-path-segments` 已报告构建及路径测试通过；`test-write-scope` 已报告构建及 Graph/Loop 写入范围回归通过。完整构建与回归测试仍由 `verify-build-tests` 节点执行。
+- 单元自测结果：`test-path-segments` 已报告构建及路径测试通过；`test-write-scope` 已报告构建及 Graph/Loop 写入范围回归通过。2026-08-03 active plan 收尾时按既有专项验证记录关闭剩余评审/归档待办；本次仅做文档归档，不重新扩大产品验证范围。
 - 失败处理记录：当前无失败；后续失败必须按验证计划分类记录，不为通过测试修改无关代码。
 - 功能清单：无需同步。理由是本次只改变内部实现复用边界，不改变插件功能、用户流程、权限或配置契约。
 - 相关文档同步：本计划记录抽象边界、非目标和验证命令；若实现过程中发现行为、架构或运行方式变化，应由后续节点另行更新对应事实来源。
@@ -95,7 +95,7 @@ Tasklist:
 - [completed] 提取并接入共享写入范围工具
 - [completed] 补充共享工具与 Graph/Loop 回归测试
 - [completed] 合并重构结果并执行构建和相关测试
-- [pending] 完成评审、记录证据并归档执行计划
+- [completed] 完成评审、记录证据并归档执行计划
 
 ## 决策记录
 
@@ -106,4 +106,4 @@ Tasklist:
 
 ## 当前结论
 
-两条共享原语已在当前工作区完成接入并通过上游专项验证；本节点确认导入、命名、兼容包装和测试引用一致。该变更仅调整内部实现复用边界，不改变插件功能、用户流程、权限或配置契约，因此无需更新 `FEATURE_INVENTORY.md`。完整构建与跨模块回归测试仍待 `verify-build-tests`，最终风险评审仍待 `review-refactor`。
+两条共享原语已在当前工作区完成接入并通过上游专项验证；本节点确认导入、命名、兼容包装和测试引用一致。该变更仅调整内部实现复用边界，不改变插件功能、用户流程、权限或配置契约，因此无需更新 `FEATURE_INVENTORY.md`。2026-08-03 收尾时已关闭剩余评审/归档待办并将计划归档到 `completed/`；后续若需要更大范围重构，应另起执行计划。

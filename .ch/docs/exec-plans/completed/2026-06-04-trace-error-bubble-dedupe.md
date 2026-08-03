@@ -1,7 +1,7 @@
 # Trace Error Bubble Dedupe
 
 - Date: 2026-06-04
-- Status: in-progress
+- Status: completed
 - Owner: Codex
 
 ## Background
@@ -26,10 +26,10 @@ Make trace warning/error message appends idempotent so live trace updates and st
 
 ## Acceptance Criteria
 
-- [ ] A persisted trace message and its matching `traceSegment` share the same `id` and timestamp metadata.
-- [ ] The webview ignores append attempts for an already-present message id.
-- [ ] Two identical warning/error trace bubbles emitted within a short burst render only once.
-- [ ] `npm run build` passes.
+- [x] A persisted trace message and its matching `traceSegment` share the same `id` and timestamp metadata.
+- [x] The webview ignores append attempts for an already-present message id.
+- [x] Two identical warning/error trace bubbles emitted within a short burst render only once.
+- [x] `npm run build` passes.
 
 ## Impact
 
@@ -61,3 +61,5 @@ Make trace warning/error message appends idempotent so live trace updates and st
 ## Current Conclusion
 
 Frontend now resolves `traceSegment` by existing message id before appending, and backend `appendMessageToStore` suppresses adjacent warning/error duplicates within a short time window. `npm run build` and the hidden-retry / Codex error classifier tests pass.
+
+2026-08-03 archive note: recovered from the pre-existing active deletion and moved to `completed/` as part of active plan cleanup.

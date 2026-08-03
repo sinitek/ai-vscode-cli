@@ -6,7 +6,7 @@
 - owner：Loop 主任务 `msg_1783863365764_c2291c1e371688`
 - claimed_at：2026-07-12
 - claim_ttl：当前 Loop 执行期
-- handoff_to：Loop 主任务最终复核与归档
+- handoff_to：已归档，无后续 active handoff
 
 ## 背景
 
@@ -250,7 +250,7 @@ node --check media/config/assets/config-app-ui.js
 - [x] 共享 UI 集成子任务：按本批台账实施三组可视化编辑器、英文映射与对应回归。
 - [x] 执行最小相关构建、定向测试、静态检查和格式/JSON 校验，并记录结果；真实 VS Code 点击回归作为残余风险记录。
 - [x] 同步功能清单和能力规格；运行时参考、设计/排障文档无需因本批授权范围内的文档收尾额外改写。
-- [x] 将实施计划标记为完成并交接给主任务最终复核；文件按本轮授权保留在 `active/`，归档由主任务统一执行。
+- [x] 将实施计划标记为完成并由主任务归档到 `completed/`。
 
 ## 决策记录
 
@@ -264,4 +264,4 @@ node --check media/config/assets/config-app-ui.js
 
 ## 当前结论
 
-本计划的实施目标已完成：三组 CLI 都有与原生 TOML/JSON 源码模式并存的可视化编辑器，稳定字段已采用合适的单选、三态、可编辑组合框、多值 tags 或文本控件，未知/复杂配置仍受定向合并与源码回退保护。官方 URL、`2026-07-12` 访问日期和 defer 边界继续保留在台账；`ultra` 的产品扩展、Codex 固定 `max`、Claude legacy `max` 兼容和 OpenCode 动态 variant 不重排已在完成记录中明确。主任务可据此进行最终独立审计并在整个 Loop 任务完成后统一归档本计划。
+本计划的实施目标已完成并归档：三组 CLI 都有与原生 TOML/JSON 源码模式并存的可视化编辑器，稳定字段已采用合适的单选、三态、可编辑组合框、多值 tags 或文本控件，未知/复杂配置仍受定向合并与源码回退保护。官方 URL、`2026-07-12` 访问日期和 defer 边界继续保留在台账；`ultra` 的产品扩展、Codex 固定 `max`、Claude legacy `max` 兼容和 OpenCode 动态 variant 不重排已在完成记录中明确。本次 active plan 清理仅执行归档，不改变产品代码或延期范围。
