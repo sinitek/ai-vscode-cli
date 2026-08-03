@@ -79,7 +79,7 @@
 - 当前 Loop 任务记录类型只有 `main` / `subtask` 两类角色。
 - 当前主任务 JSON 解析集中在 `parseLoopMainDecision`、`normalizeLoopMainDecision`、`applyLoopMainDecision`。
 - 当前子任务批次最多 `LOOP_PARALLEL_SUBTASK_MAX = 6`。
-- 当前 Loop 最大主任务复核轮次由项目级设置控制，默认 20。
+- 当前 Loop 最大主任务复核轮次由全局工具设置控制，默认 20；已有任务在恢复、继续或下一轮运行前可随全局设置上调而提升记录上限，但不会随全局设置降低而下调。
 - 当前子任务失败会 1 分钟后自动重试，最多 5 次。
 - 任务记录和沟通目录有 30 天保留清理。
 

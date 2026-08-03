@@ -236,6 +236,20 @@ test("normalizes persisted task, subtask, round, and acceptance records at the s
   ]);
 });
 
+test("raises existing Loop task maxRounds to the current global setting without lowering it", () => {
+  resetLoopStorage();
+  const task = createTask({ maxRounds: 20 });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  const raised = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(task, 50);
+  assert.equal(raised.maxRounds, 50);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
+
+  const unchanged = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(raised, 10);
+  assert.equal(unchanged.maxRounds, 50);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
+});
+
 test("writes normalized data and contains write failures at the persistence boundary", () => {
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });

@@ -273,6 +273,7 @@ import {
   cleanupLoopCommunicationRetention,
   cleanupLoopTaskStoreRetention,
   ensureLoopCommunicationFiles,
+  ensureLoopTaskMaxRoundsAtLeast,
   getLoopCommunicationPaths,
   getLoopTaskStoreSessionFile,
   listLoopTaskStoreFiles,
@@ -3774,11 +3775,13 @@ async function runLoopPromptOrchestration(
   if (!task) {
     return;
   }
+  task = ensureLoopTaskMaxRoundsAtLeast(task, getGlobalLoopMaxRounds());
   onTaskOwnershipAcquired?.(task.id, target);
   await postPanelState();
 
   while (round <= task.maxRounds) {
-    const latest: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
+    const latestRecord: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
+    const latest: LoopTaskRecord = ensureLoopTaskMaxRoundsAtLeast(latestRecord, getGlobalLoopMaxRounds());
     task = latest;
     if (isLoopTaskBlockedByMainAiFailureLimit(latest)) {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(latest));

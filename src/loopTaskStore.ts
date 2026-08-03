@@ -636,6 +636,24 @@ export function updateLoopTaskRecord(
   return next;
 }
 
+export function ensureLoopTaskMaxRoundsAtLeast(
+  task: LoopTaskRecord,
+  minimumMaxRounds: number,
+): LoopTaskRecord {
+  const normalizedMinimum = normalizeStoredLoopMaxRounds(minimumMaxRounds);
+  if (normalizedMinimum <= task.maxRounds) {
+    return task;
+  }
+  return updateLoopTaskRecord(task.id, {
+    maxRounds: normalizedMinimum,
+    updatedAt: Date.now(),
+  }) ?? {
+    ...task,
+    maxRounds: normalizedMinimum,
+    updatedAt: Date.now(),
+  };
+}
+
 export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
   const storeFile = resolveLoopTaskStoreFileForTask(taskId);
   if (!storeFile) {
