@@ -10,7 +10,8 @@ import {
 export const GRAPH_SCHEMA_VERSION = 1;
 export type GraphSchemaVersion = typeof GRAPH_SCHEMA_VERSION;
 
-export const GRAPH_DEFAULT_MAX_CONCURRENT_NODES = 6;
+export const GRAPH_MAX_CONCURRENT_NODES = 5;
+export const GRAPH_DEFAULT_MAX_CONCURRENT_NODES = GRAPH_MAX_CONCURRENT_NODES;
 export const GRAPH_DATA_DIR_NAME = ".sinitek_cli";
 export const GRAPH_PATH_SEGMENT_REPLACEMENT_PATTERN = PATH_SEGMENT_REPLACEMENT_PATTERN;
 export const GRAPH_WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -118,6 +119,7 @@ export const GRAPH_EVENT_TYPES = [
   "run.resumed",
   "node.retry_requested",
   "node.feedback_requested",
+  "node.direct_rework_requested",
   "node.stopped",
   "run.completed",
   "run.error",
@@ -136,6 +138,7 @@ export type GraphFailureCategory = (typeof GRAPH_FAILURE_CATEGORIES)[number];
 export const GRAPH_FAILURE_RECOVERY_ACTIONS = [
   "retry_node",
   "feedback_rollback",
+  "direct_rework",
   "add_write_scope",
   "add_rework_node",
   "manual_review",

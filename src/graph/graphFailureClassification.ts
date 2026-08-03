@@ -40,7 +40,7 @@ export type GraphFailureClassificationExecutorResult = {
 };
 
 export type ClassifyGraphNodeFailureInput = {
-  run?: Pick<GraphRunRecord, "nodes" | "edges">;
+  run?: Pick<GraphRunRecord, "nodes" | "edges" | "executionMode" | "directExecution" | "worktree">;
   node: GraphNodeRecord;
   error?: string;
   result?: GraphFailureClassificationExecutorResult;
@@ -177,6 +177,13 @@ export function buildGraphFailureRecoveryRecommendation(input: ClassifyGraphNode
 
   const feedbackTargetNodeId = findFeedbackTargetNodeId(input.run, input.node.id);
   if (feedbackTargetNodeId) {
+    if (isDirectGraphRun(input.run)) {
+      return {
+        action: "direct_rework",
+        summary: `Reset the direct workspace rework scope at ${feedbackTargetNodeId} using the existing feedback edge.`,
+        targetNodeId: feedbackTargetNodeId,
+      };
+    }
     return {
       action: "feedback_rollback",
       summary: `Route the failure back to ${feedbackTargetNodeId} using the existing feedback edge.`,
@@ -458,6 +465,13 @@ function findFeedbackTargetNodeId(
     && candidate.active !== false
     && (candidate.kind === "if_fail" || candidate.kind === "review_feedback"));
   return edge?.metadata?.reworkTargetNodeId ?? edge?.to;
+}
+
+function isDirectGraphRun(
+  run: Pick<GraphRunRecord, "executionMode" | "directExecution" | "worktree"> | undefined,
+): boolean {
+  return run?.executionMode === "direct"
+    || Boolean(run?.directExecution?.cwd && !run?.worktree?.cwd);
 }
 
 function extractPathMatches(text: string, pattern: RegExp): string[] {

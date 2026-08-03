@@ -23,6 +23,7 @@
 ```text
 src/
 ├── extension.ts              # 扩展入口、命令注册、状态编排、面板消息总线
+├── extensionHost/            # 扩展宿主侧运行时 host 与组合根拆分
 ├── cli/                      # CLI 设置读取、命令解析、参数构建、进程执行
 ├── interactive/              # Codex/Claude/OpenCode 交互 Runner 与会话映射
 ├── webview/                  # 侧边栏聊天面板、配置中心面板、前后端协议
@@ -50,10 +51,18 @@ media/
 - 注册 VS Code 命令与视图
 - 初始化状态栏、聊天面板、配置中心
 - 维护当前 CLI、当前工作区、当前会话和多 Tab 状态
-- 接收 Webview 消息并分发到 CLI、交互 Runner、配置服务
+- 接收 Webview 消息并分发到 CLI、运行时 host、交互 Runner、配置服务
 - 将运行结果、trace、任务列表和状态变更回推给 Webview
 
-这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。
+这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-03 的运行时抽取后，`src/extension.ts` 为 5092 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
+
+提示运行的连续状态机已经从组合根下沉：
+
+- `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 994 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理监控、最终结论判定、长期记忆触发和执行后自动压缩触发。
+- `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host，当前 1210 行。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 回归路径。
+- `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免 one-shot 与 interactive host 通过宽泛对象耦合。
+
+依赖方向是单向的：`extension.ts` 导入 `createPromptOneShotRuntimeHost` / `createPromptInteractiveRuntimeHost` 并注入显式依赖；runtime host 可以依赖 `cli/`、`interactive/`、`promptRuntime`、`promptRunState` 等服务或类型，但不能反向依赖 `extension.ts`。`runPrompt` 仍留在 `extension.ts`，负责选择 interactive、parallel 或 one-shot 路径，并把 Loop 子任务临时执行根作为执行选项传入 host。
 
 ### 3.2 聊天面板层：`src/webview/*`
 
@@ -248,7 +257,7 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 ```text
 webview UI
     ↓
-extension.ts 编排层
+extension.ts 组合根 / extensionHost 运行时 host
     ↓
 cli / interactive / config 服务层
     ↓
@@ -272,7 +281,7 @@ cli / interactive / config 服务层
 2. 如果是会话型协议复用，放到 `src/interactive/`
 3. 如果涉及本地配置、Skills、MCP 或外部目录管理，放到 `src/config/`
 4. 如果只是展示或交互优化，放到 `src/webview/`
-5. 如果需要全链路编排，再回到 `src/extension.ts` 做总线接入
+5. 如果需要全链路编排，再回到 `src/extension.ts` 做总线接入；如果是提示运行的连续执行状态机，优先放到 `src/extensionHost/*Runtime.ts`，由 `extension.ts` 注入生命周期、消息和持久化依赖
 
 ### 新增 UI 时
 
@@ -287,7 +296,7 @@ cli / interactive / config 服务层
 
 ## 10. 当前已知限制
 
-- `extension.ts` 仍然偏大，属于中心编排文件，后续若继续扩展应逐步下沉非核心细节
+- `extension.ts` 仍为 5092 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化
 - Loop 自动唤醒依赖 Extension Host 运行；VS Code 退出期间不会按墙钟时间启动 CLI，只会在下一次扩展激活时补唤醒。

@@ -580,7 +580,7 @@ function buildGraphAiPlannerPromptTail(): string[] {
     "- plannedGraph 必须把“验证节点发现旧契约失败”归类为 `stale_test_contract` 或 `missing_write_scope` 风险；返工边或前置依赖要指向测试适配/契约更新节点，不能在实现已迁移 canonical source 后只回到原实现节点。",
     "- 完整单测、全仓测试、全量 lint 这类覆盖面大且可能包含历史/范围外失败的验证节点，默认应设置 `blocking:false`，并用 `evidence_for` 连到 review/summary；只有本次相关 focused 验证节点才作为硬性 depends_on/if_pass 阻断交付收束。",
     "- `blocking:false` 只表示该节点失败不阻断结构依赖继续执行；节点本身仍必须如实返回 failed，review/summary 必须把失败命令、失败范围和后续建议写入 unresolved。",
-    "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发；如果不确定，少报但不要把可证明独立的分支压成 1。",
+    "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发 5；如果不确定，少报但不要把可证明独立的分支压成 1。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
     "- plannedGraph.nodes[].title 必须使用简洁中文，禁止英文整句标题；API、HTML、Graph、DAG 等技术缩写可以保留，但业务含义必须中文表达。",
     "- plannedGraph.nodes 不得包含保留 ID `plan`；宿主会保留当前 planner 节点，并自动让无依赖节点依赖 `plan`。",
@@ -592,7 +592,7 @@ function buildGraphAiPlannerPromptTail(): string[] {
       status: "passed",
       summary: "规划完成，生成可执行 Graph DAG。",
       plannedGraph: {
-        maxConcurrent: 4,
+        maxConcurrent: 5,
         nodes: [{
           id: "implement-api",
           title: "实现 API 改动",

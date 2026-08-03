@@ -57,7 +57,7 @@ function createRun(
     nodes,
     edges,
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "/tmp/graph/events.jsonl",
     communicationDir: "/tmp/graph",
     mainCommunicationFile: "/tmp/graph/main.md",

@@ -1,5 +1,6 @@
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
+  GRAPH_MAX_CONCURRENT_NODES,
   type GraphEdgeConditionExpression,
   type GraphEdgeKind,
   type GraphEdgeRecord,
@@ -425,9 +426,9 @@ export function resolveGraphMaxConcurrent(
   run: Pick<GraphRunRecord, "maxConcurrent">,
   options: GraphSchedulerOptions = {},
 ): number {
-  return normalizePositiveInteger(
+  return normalizeGraphMaxConcurrent(
     options.maxConcurrent,
-    normalizePositiveInteger(run.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES),
+    normalizeGraphMaxConcurrent(run.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES),
   );
 }
 
@@ -798,4 +799,11 @@ function normalizePositiveInteger(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0
     ? value
     : fallback;
+}
+
+function normalizeGraphMaxConcurrent(value: unknown, fallback: number): number {
+  return Math.min(
+    normalizePositiveInteger(value, fallback),
+    GRAPH_MAX_CONCURRENT_NODES,
+  );
 }

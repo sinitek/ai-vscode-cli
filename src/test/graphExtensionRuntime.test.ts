@@ -65,7 +65,7 @@ function createGraphRun(overrides: Partial<GraphRunRecord> = {}): GraphRunRecord
     nodes: [createGraphNode()],
     edges: [],
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "events.jsonl",
     communicationDir: "nodes",
     mainCommunicationFile: "main.md",
@@ -172,6 +172,10 @@ test("Graph runtime source contract lives in extensionHost/graphRuntime", () => 
   assert.match(graphRuntimeSource, /tickGraphRun\(run,\s*\{[\s\S]*persistRun:\s*deps\.persistGraphRunTickState/);
   assert.match(graphRuntimeSource, /maxConcurrent:\s*GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES/);
   assert.match(graphRuntimeSource, /maxConcurrent:\s*resolveGraphExtensionExecutorMaxConcurrent\(run\)/);
+  assert.match(graphRuntimeSource, /directReworkGraphNodeForRun\(run,\s*nodeId/);
+  assert.match(graphRuntimeSource, /function shouldAutoRequestGraphDirectRework\(node:\s*GraphNodeRecord \| undefined\):\s*node is GraphNodeRecord/);
+  assert.match(graphRuntimeSource, /recovery\?\.action !== "direct_rework"/);
+  assert.match(graphRuntimeSource, /node\.rework\?\.sourceNodeId === node\.id && node\.rework\.targetNodeId === recovery\.targetNodeId/);
   assert.match(graphRuntimeSource, /readGraphNodeExecutionResultArtifact\(resolveGraphNodeCommunicationFile\(run,\s*plannerNode\)\)/);
   assert.match(graphRuntimeSource, /materializeGraphPlan\(run,\s*artifact\.plannedGraph\)/);
   assert.match(graphRuntimeSource, /const graphNodeTarget\s*=\s*deps\.createGraphNodeRunTarget\(target\.cli,\s*request\.run\.id,\s*request\.node\.id\)/);

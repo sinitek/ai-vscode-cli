@@ -8,6 +8,7 @@ import * as path from "path";
 import { readGraphEvents } from "../graph/graphEvents";
 import {
   approveGraphHumanGateForRun,
+  directReworkGraphNodeForRun,
   feedbackGraphNodeForRun,
   findGraphPassedDescendantNodeIds,
   getGraphRunControlState,
@@ -87,7 +88,7 @@ function createRun(
     nodes,
     edges,
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: path.join(baseDir, "events.jsonl"),
     communicationDir: path.join(baseDir, "graph"),
     mainCommunicationFile: path.join(baseDir, "graph", "main.md"),
@@ -308,6 +309,131 @@ test("direct workspace retry skips worktree reset and feedback rollback", async 
     assert.equal(retryNode.baseCommit, undefined);
     assert.equal(retryNode.commit, undefined);
     assert.equal(retryNode.lastError, undefined);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test("direct workspace rework resets explicit feedback scope without worktree rollback", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const implement = createNode({
+      id: "implement",
+      status: "passed",
+      attempts: 1,
+      maxAttempts: 1,
+      unlocks: ["review"],
+      executionCwd: "/workspace/project",
+      baseCommit: "not-a-real-commit",
+      commit: "not-a-real-checkpoint",
+      artifactRef: "nodes/implement.md",
+      acceptance: [{ name: "Implemented", required: true, passed: true, evidenceRef: "src/feature.ts" }],
+    });
+    const review = createNode({
+      id: "review",
+      kind: "review",
+      status: "failed",
+      ownerRole: "reviewer",
+      attempts: 1,
+      maxAttempts: 2,
+      dependsOn: ["implement"],
+      unlocks: ["summary"],
+      executionCwd: "/workspace/project",
+      lastError: "Review found trailing whitespace.",
+      failure: {
+        category: "implementation_bug",
+        confidence: "medium",
+        summary: "Review found a fixable implementation issue.",
+        signals: ["candidate_write_file: src/extensionHost/promptOneShotRuntime.ts"],
+        recommendedRecovery: {
+          action: "direct_rework",
+          summary: "Reset direct rework scope at implement.",
+          targetNodeId: "implement",
+        },
+      },
+    });
+    const summary = createNode({
+      id: "summary",
+      kind: "summary",
+      status: "passed",
+      dependsOn: ["review"],
+      attempts: 1,
+    });
+    const run = createRun(baseDir, [implement, review, summary], [{
+      id: "review-feedback",
+      from: "review",
+      to: "implement",
+      kind: "review_feedback",
+      active: true,
+      metadata: {
+        feedbackReason: "Review feedback asks implementation rework.",
+        reworkTargetNodeId: "implement",
+        reworkScopeNodeIds: ["implement", "review"],
+      },
+    }], {
+      executionMode: "direct",
+      directExecution: {
+        cwd: "/workspace/project",
+        reason: "Graph uses current project workspace.",
+      },
+      activeNodeIds: ["review"],
+    });
+
+    const result = await directReworkGraphNodeForRun(run, "review", {
+      now: () => 3_200,
+      source: "system",
+      reason: "Review found trailing whitespace.",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.changed, true);
+    assert.equal(result.run.status, "running");
+    assert.deepEqual(result.changedNodeIds, ["implement", "review"]);
+    assert.equal(result.reworkTargetNodeId, "implement");
+    assert.deepEqual(result.reworkScopeNodeIds, ["implement", "review"]);
+    assert.deepEqual(result.run.activeNodeIds, []);
+    assert.equal(getNode(result.run, "summary").status, "passed");
+    for (const nodeId of ["implement", "review"]) {
+      const node = getNode(result.run, nodeId);
+      assert.equal(node.status, "pending");
+      assert.equal(node.startedAt, undefined);
+      assert.equal(node.completedAt, undefined);
+      assert.equal(node.lastError, undefined);
+      assert.equal(node.artifactRef, undefined);
+      assert.equal(node.executionCwd, undefined);
+      assert.equal(node.baseCommit, undefined);
+      assert.equal(node.commit, undefined);
+      assert.equal(node.failure, undefined);
+      assert.equal(node.rework?.sourceNodeId, "review");
+      assert.equal(node.rework?.targetNodeId, "implement");
+      assert.deepEqual(node.rework?.resetScopeNodeIds, ["implement", "review"]);
+      assert.equal(node.rework?.reason, "Review found trailing whitespace.");
+      assert.equal(node.rework?.edgeId, "review-feedback");
+      assert.equal(node.rework?.edgeKind, "review_feedback");
+    }
+    assert.equal(getNode(result.run, "implement").maxAttempts, 2);
+    assert.equal(getNode(result.run, "review").maxAttempts, 2);
+    assert.deepEqual(getNode(result.run, "implement").acceptance, [{ name: "Implemented", required: true }]);
+    const [event] = readGraphEvents(result.run.eventsFile);
+    assert.equal(event?.type, "node.direct_rework_requested");
+    const eventData = event?.data as {
+      feedbackNodeId?: string;
+      reworkNodeId?: string;
+      reworkTargetSelection?: string;
+      candidateNodeIds?: string[];
+      requestedReworkScopeNodeIds?: string[];
+      changedNodeIds?: string[];
+      reason?: string;
+      executionMode?: string;
+    } | undefined;
+    assert.equal(eventData?.feedbackNodeId, "review");
+    assert.equal(eventData?.reworkNodeId, "implement");
+    assert.equal(eventData?.reworkTargetSelection, "active review_feedback edge review-feedback");
+    assert.deepEqual(eventData?.candidateNodeIds, ["implement"]);
+    assert.deepEqual(eventData?.requestedReworkScopeNodeIds, ["implement", "review"]);
+    assert.deepEqual(eventData?.changedNodeIds, ["implement", "review"]);
+    assert.equal(eventData?.reason, "Review found trailing whitespace.");
+    assert.equal(eventData?.executionMode, "direct");
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }

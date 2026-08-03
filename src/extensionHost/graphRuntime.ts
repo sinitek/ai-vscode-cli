@@ -17,6 +17,7 @@ import {
   materializeGraphPlan,
 } from "../graph/graphPlanner";
 import { resolveGraphNodeCommunicationFile } from "../graph/graphPromptBuilders";
+import { directReworkGraphNodeForRun } from "../graph/graphRunControl";
 import { createGraphRunRecord, readGraphRunRecord, updateGraphRunRecord } from "../graph/graphStore";
 import {
   cleanupGraphRunWorktree,
@@ -428,6 +429,15 @@ async function tickGraphRunToPause(
       continue;
     }
 
+    const directRework = await maybeRequestGraphDirectReworkAfterTick(run, tickResult.failedNodeIds);
+    if (directRework.changed && directRework.run.status === "running") {
+      run = directRework.run;
+      madeProgress = true;
+      await deps.postPanelState();
+      deps.scheduleGraphRunAutoWake(run);
+      continue;
+    }
+
     if (run.status === "completed") {
       const mergeBack = finalizeCompletedGraphRunWorktreeMergeBack(run);
       run = mergeBack.run;
@@ -490,6 +500,43 @@ async function tickGraphRunToPause(
   sendGraphMainRunTerminalStatus(target, run);
   deps.messages.appendSystemMessageForGraph(target, deps.messages.buildGraphRunErrorText(run.id, "Graph run exceeded the extension runtime tick guard."), run.id);
   return { run, progressed: madeProgress };
+}
+
+async function maybeRequestGraphDirectReworkAfterTick(
+  run: GraphRunRecord,
+  failedNodeIds: readonly string[],
+): Promise<{ run: GraphRunRecord; changed: boolean }> {
+  for (const nodeId of failedNodeIds) {
+    const node = run.nodes.find((item) => item.id === nodeId);
+    if (!shouldAutoRequestGraphDirectRework(node)) {
+      continue;
+    }
+    const control = await directReworkGraphNodeForRun(run, nodeId, {
+      source: "system",
+      reason: node?.lastError,
+      summary: `Graph node ${nodeId} failed and requested direct upstream rework.`,
+      appendEvent: (eventRun, event) => appendGraphEvent(eventRun.eventsFile, event),
+    });
+    if (!control.ok || !control.changed) {
+      continue;
+    }
+    return {
+      run: deps.persistGraphRunTickState(control.run),
+      changed: true,
+    };
+  }
+  return { run, changed: false };
+}
+
+function shouldAutoRequestGraphDirectRework(node: GraphNodeRecord | undefined): node is GraphNodeRecord {
+  if (!node || node.status !== "failed") {
+    return false;
+  }
+  const recovery = node.failure?.recommendedRecovery;
+  if (recovery?.action !== "direct_rework" || !recovery.targetNodeId) {
+    return false;
+  }
+  return !(node.rework?.sourceNodeId === node.id && node.rework.targetNodeId === recovery.targetNodeId);
 }
 
 function sendGraphMainRunStarted(target: PromptRunTarget, run: GraphRunRecord, prompt: string): void {

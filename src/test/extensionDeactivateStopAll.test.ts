@@ -57,7 +57,7 @@ test("runPrompt refuses new work once extension deactivation starts", () => {
   const runPromptSource = extractFunctionSource(
     extensionSource,
     "async function runPrompt(",
-    "async function runPromptOneShot",
+    "// One-shot prompt runtime moved to extensionHost/promptOneShotRuntime.ts.",
   );
 
   assert.match(runPromptSource, /if \(isExtensionDeactivating\) \{\s*return;\s*\}/u);

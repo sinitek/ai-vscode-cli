@@ -12,6 +12,7 @@
 | `mem-fe60588b95` | `plan` | Loop 红蓝辩论主持人轮流点名调度 | ~40 | `.ch/docs/exec-plans/active/2026-06-29-loop-debate-moderator-turn-taking.md` | open-loop |
 | `mem-b7b003c3a1` | `plan` | 官方 skills 版本刷新与最新判断修复 | ~45 | `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | open-loop, problem-solution, procedure |
 | `mem-d336cba178` | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | ~120 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | open-loop |
-| `mem-1e4667ddf6` | `plan` | P0 性能与内存硬化执行计划 | ~107 | `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` | open-loop |
+| `mem-19baaefc61` | `plan` | 可复用逻辑重构执行计划 | ~104 | `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` | open-loop, pattern |
+| `mem-fb18b9b4d2` | `plan` | extension.ts 入口运行时重构计划 | ~112 | `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` | open-loop |
 | `mem-c1d7e714b7` | `rule` | 记忆流转规则 | ~39 | `.ch/docs/MEMORY.md` | general |
 | `mem-431f2548e1` | `rule` | 热区记忆面 | ~46 | `.ch/docs/memory/README.md` | gotcha |

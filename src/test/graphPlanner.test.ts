@@ -9,6 +9,7 @@ import {
   normalizeGraphPlannedGraphSpec,
 } from "../graph/graphPlanner";
 import {
+  GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
   type GraphNodeRecord,
@@ -205,6 +206,40 @@ test("infers materialized maxConcurrent from independent root branches when plan
     "implement-api",
     "implement-ui",
   ]);
+});
+
+test("infers up to five independent root branches when planner omits maxConcurrent", () => {
+  const rootNodes = Array.from({ length: GRAPH_DEFAULT_MAX_CONCURRENT_NODES }, (_unused, index) => {
+    const number = index + 1;
+    return {
+      id: `implement-part-${number}`,
+      title: `Implement part ${number}`,
+      kind: "implement" as const,
+      writeFiles: [`src/part-${number}`],
+      conflictGroup: `part-${number}`,
+    };
+  });
+  const plannedGraph: GraphPlannedGraphSpec = {
+    nodes: [
+      ...rootNodes,
+      {
+        id: "review-all",
+        title: "Review all",
+        kind: "review",
+        dependsOn: rootNodes.map((node) => node.id),
+      },
+    ],
+  };
+
+  const result = materializeGraphPlan(createRun([passedPlanner()], [], { maxConcurrent: 1 }), plannedGraph, { now: () => 2 });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.error, undefined);
+  assert.equal(result.run.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
+  assert.deepEqual(
+    result.run.nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)?.unlocks,
+    rootNodes.map((node) => node.id),
+  );
 });
 
 test("materializes advisory validation nodes without making them implicitly blocking", () => {

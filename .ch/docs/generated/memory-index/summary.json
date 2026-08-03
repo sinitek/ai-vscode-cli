@@ -147,26 +147,61 @@
       "title": "Harness 单元自测与 Chromium Playwright 能力吸收"
     },
     {
-      "modified_at": "2026-07-31T01:25:56+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+      "modified_at": "2026-08-01T09:56:10+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 2028,
+      "read_tokens": 1247,
       "references": [
-        ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/memory/",
         ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        "src/boundedText.ts",
-        "src/cli/commandRunner.ts",
-        "src/extension.ts",
-        "src/interactive/claudeRunner.ts",
-        "src/openCodeTabStream.ts",
-        "src/test/boundedText.test.ts",
-        "src/test/claudeRunner.test.ts",
-        "src/webview/",
-        "src/webview/panelFileActions.ts",
-        "src/webview/viewContentScript/*"
+        "src/foo",
+        "src/foo/bar",
+        "src/foobar",
+        "src/graph/",
+        "src/graph/graphScheduler.ts",
+        "src/graph/types.ts",
+        "src/loop*.ts",
+        "src/loopDebate.ts",
+        "src/loopParallel.ts",
+        "src/loopTaskStore.ts",
+        "src/shared/",
+        "src/shared/pathSegments.ts",
+        "src/shared/writeScope.ts",
+        "src/test/graphScheduler.test.ts",
+        "src/test/graphStore.test.ts",
+        "src/test/loopDebate.test.ts",
+        "src/test/loopParallel.test.ts",
+        "src/test/loopTaskStore.test.ts",
+        "src/test/pathSegments.test.ts",
+        "src/test/writeScope.test.ts"
       ],
-      "summary": "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
-      "title": "P0 性能与内存硬化执行计划"
+      "summary": "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor",
+      "title": "可复用逻辑重构执行计划"
+    },
+    {
+      "modified_at": "2026-08-02T16:49:15+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 1686,
+      "references": [
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/memory/",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/runbooks/PITFALLS.md",
+        "src/extension.ts",
+        "src/extensionHost/",
+        "src/extensionHost/promptExecutionShared.ts",
+        "src/extensionHost/promptInteractiveRuntime.ts",
+        "src/extensionHost/promptOneShotRuntime.ts",
+        "src/test/extensionDeactivateStopAll.test.ts",
+        "src/test/extensionHostExtractionContracts.test.ts",
+        "src/test/opencodeCommandRunner.test.ts",
+        "src/test/promptInteractiveRuntime.test.ts",
+        "src/test/promptOneShotRuntime.test.ts"
+      ],
+      "summary": "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor",
+      "title": "extension.ts 入口运行时重构计划"
     }
   ],
   "claim_count": 123,
@@ -1911,7 +1946,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-07-31T01:29:06+00:00",
+  "generated_at": "2026-08-03T01:28:19+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2157,7 +2192,7 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 11,
+  "observation_count": 12,
   "observations": [
     {
       "concepts": [
@@ -2428,38 +2463,76 @@
     },
     {
       "concepts": [
-        "open-loop"
+        "open-loop",
+        "pattern"
       ],
-      "content_hash": "1e4667ddf61c977dc22d0f806c352a869c7369a486255f713c2f9d6fb37d88d8",
+      "content_hash": "19baaefc617de9d1f0ba2a8593eaea6eb6e197043773c40dd7b4d704f157a08a",
       "facts": [
-        "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
-        "Modified at: 2026-07-31T01:25:56+00:00"
+        "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor",
+        "Modified at: 2026-08-01T09:56:10+00:00"
       ],
       "files": [
-        ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/memory/",
         ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        "src/boundedText.ts",
-        "src/cli/commandRunner.ts",
-        "src/extension.ts",
-        "src/interactive/claudeRunner.ts",
-        "src/openCodeTabStream.ts",
-        "src/test/boundedText.test.ts",
-        "src/test/claudeRunner.test.ts",
-        "src/webview/",
-        "src/webview/panelFileActions.ts",
-        "src/webview/viewContentScript/*"
+        "src/foo",
+        "src/foo/bar",
+        "src/foobar",
+        "src/graph/",
+        "src/graph/graphScheduler.ts",
+        "src/graph/types.ts",
+        "src/loop*.ts",
+        "src/loopDebate.ts",
+        "src/loopParallel.ts"
       ],
-      "id": "mem-1e4667ddf6",
-      "modified_at": "2026-07-31T01:25:56+00:00",
-      "narrative": "日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核",
+      "id": "mem-19baaefc61",
+      "modified_at": "2026-08-01T09:56:10+00:00",
+      "narrative": "日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor",
       "private_stripped": false,
-      "read_tokens": 107,
-      "source_anchor": "P0 性能与内存硬化执行计划",
+      "read_tokens": 104,
+      "source_anchor": "可复用逻辑重构执行计划",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md",
-      "source_title": "P0 性能与内存硬化执行计划",
+      "source_path": ".ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md",
+      "source_title": "可复用逻辑重构执行计划",
       "subtitle": "Active execution plan",
-      "title": "P0 性能与内存硬化执行计划",
+      "title": "可复用逻辑重构执行计划",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "fb18b9b4d29918ef8228b6848e76950d707a2ec61aeff96ade3f4e1ed074043d",
+      "facts": [
+        "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor",
+        "Modified at: 2026-08-02T16:49:15+00:00"
+      ],
+      "files": [
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/memory/",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/runbooks/PITFALLS.md",
+        "src/extension.ts",
+        "src/extensionHost/",
+        "src/extensionHost/promptExecutionShared.ts",
+        "src/extensionHost/promptInteractiveRuntime.ts",
+        "src/extensionHost/promptOneShotRuntime.ts",
+        "src/test/extensionDeactivateStopAll.test.ts",
+        "src/test/extensionHostExtractionContracts.test.ts",
+        "src/test/opencodeCommandRunner.test.ts"
+      ],
+      "id": "mem-fb18b9b4d2",
+      "modified_at": "2026-08-02T16:49:15+00:00",
+      "narrative": "日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor",
+      "private_stripped": false,
+      "read_tokens": 112,
+      "source_anchor": "extension.ts 入口运行时重构计划",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md",
+      "source_title": "extension.ts 入口运行时重构计划",
+      "subtitle": "Active execution plan",
+      "title": "extension.ts 入口运行时重构计划",
       "topic": "plan",
       "type": "plan"
     },
@@ -2518,7 +2591,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 9,
+    "active_plan_count": 10,
     "active_risks": [],
     "pending_items": []
   },
@@ -2546,7 +2619,7 @@
       "read_tokens": 46
     },
     "plan": {
-      "count": 9,
+      "count": 10,
       "ids": [
         "mem-0b64dd15aa",
         "mem-bbc18d3434",
@@ -2556,9 +2629,10 @@
         "mem-fe60588b95",
         "mem-b7b003c3a1",
         "mem-d336cba178",
-        "mem-1e4667ddf6"
+        "mem-19baaefc61",
+        "mem-fb18b9b4d2"
       ],
-      "read_tokens": 672
+      "read_tokens": 781
     },
     "rule": {
       "count": 1,
@@ -2568,6 +2642,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 757,
+  "total_read_tokens": 866,
   "version": "0.2.0"
 }

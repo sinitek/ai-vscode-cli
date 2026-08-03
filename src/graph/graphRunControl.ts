@@ -442,6 +442,93 @@ export async function feedbackGraphNodeForRun(
   };
 }
 
+export async function directReworkGraphNodeForRun(
+  run: GraphRunRecord,
+  nodeId: string,
+  options: GraphRunControlOptions = {},
+): Promise<GraphRunControlResult> {
+  if (isGraphRunTerminalStatus(run.status)) {
+    return unchangedControlResult(run, false, "terminal_run", `Graph run ${run.id} is ${run.status}.`, nodeId);
+  }
+  if (!isDirectGraphRun(run)) {
+    return unchangedControlResult(run, false, "feedback_not_available", `Graph run ${run.id} is not a direct workspace run.`, nodeId);
+  }
+
+  const sourceNode = run.nodes.find((item) => item.id === nodeId);
+  if (!sourceNode) {
+    return unchangedControlResult(run, false, "node_not_found", `Graph node ${nodeId} does not exist.`, nodeId);
+  }
+  if (!isGraphFeedbackSourceNode(sourceNode)) {
+    return unchangedControlResult(run, false, "feedback_not_available", `Graph node ${nodeId} cannot trigger direct rework from status ${sourceNode.status}.`, nodeId);
+  }
+
+  const targetSelection = selectGraphFeedbackTarget(run, nodeId);
+  if (!targetSelection?.edge) {
+    return unchangedControlResult(run, false, "feedback_not_available", `Graph node ${nodeId} has no explicit feedback edge for direct rework.`, nodeId);
+  }
+
+  const targetNode = targetSelection.targetNode;
+  const timestamp = resolveGraphRunControlTimestamp(options);
+  const sortedResetNodeIds = resolveGraphDirectReworkResetNodeIds(run, sourceNode, targetSelection);
+  const resetNodeIds = new Set(sortedResetNodeIds);
+  const feedbackReason = resolveGraphFeedbackReason(sourceNode, targetSelection, options);
+  const reworkRecord: GraphNodeReworkRecord = {
+    sourceNodeId: nodeId,
+    targetNodeId: targetNode.id,
+    resetAt: timestamp,
+    resetScopeNodeIds: sortedResetNodeIds,
+    ...(feedbackReason ? { reason: feedbackReason } : {}),
+    edgeId: targetSelection.edge.id,
+    edgeKind: targetSelection.edge.kind as GraphEdgeKind,
+  };
+  const previousStatuses = run.nodes
+    .filter((node) => resetNodeIds.has(node.id))
+    .map((node) => ({ nodeId: node.id, status: node.status }));
+  const nextRun: GraphRunRecord = {
+    ...run,
+    status: "running",
+    updatedAt: timestamp,
+    activeNodeIds: run.activeNodeIds.filter((activeNodeId) => !resetNodeIds.has(activeNodeId)),
+    nodes: run.nodes.map((node) => resetNodeIds.has(node.id)
+      ? resetGraphNodeForRework(node, reworkRecord)
+      : node),
+  };
+
+  await appendGraphRunControlEvent(nextRun, {
+    runId: nextRun.id,
+    type: "node.direct_rework_requested",
+    timestamp,
+    nodeId,
+    attempt: sourceNode.attempts,
+    summary: options.summary ?? options.reason ?? `Graph node ${nodeId} requested direct rework at ${targetNode.id}.`,
+    data: {
+      source: options.source ?? "system",
+      feedbackNodeId: nodeId,
+      reworkNodeId: targetNode.id,
+      reworkTargetSelection: targetSelection.selectionReason,
+      candidateNodeIds: targetSelection.candidateNodeIds,
+      requestedReworkScopeNodeIds: targetSelection.requestedReworkScopeNodeIds,
+      changedNodeIds: sortedResetNodeIds,
+      previousStatuses,
+      reason: feedbackReason,
+      executionMode: run.executionMode,
+      directExecution: run.directExecution,
+    },
+  }, options);
+
+  return {
+    run: nextRun,
+    ok: true,
+    changed: true,
+    message: `Graph node ${nodeId} requested direct rework at ${targetNode.id}; reset scope: ${sortedResetNodeIds.join(", ")}.`,
+    nodeId,
+    changedNodeIds: sortedResetNodeIds,
+    reworkTargetNodeId: targetNode.id,
+    reworkScopeNodeIds: sortedResetNodeIds,
+    feedbackReason,
+  };
+}
+
 export async function approveGraphHumanGateForRun(
   run: GraphRunRecord,
   nodeId: string,
@@ -609,6 +696,10 @@ function isGraphFeedbackSourceNode(node: GraphNodeRecord): boolean {
     && (GRAPH_FEEDBACK_SOURCE_NODE_KINDS as readonly string[]).includes(node.kind);
 }
 
+function isDirectGraphRun(run: GraphRunRecord): boolean {
+  return run.executionMode === "direct" || Boolean(run.directExecution?.cwd && !run.worktree?.cwd);
+}
+
 function selectGraphFeedbackTarget(run: GraphRunRecord, nodeId: string): GraphFeedbackTargetSelection | null {
   const sourceNode = run.nodes.find((node) => node.id === nodeId);
   if (!sourceNode) {
@@ -724,6 +815,25 @@ function findGraphDescendantNodeIds(run: GraphRunRecord, nodeId: string): string
   return Array.from(visited).sort();
 }
 
+function resolveGraphDirectReworkResetNodeIds(
+  run: GraphRunRecord,
+  sourceNode: GraphNodeRecord,
+  targetSelection: GraphFeedbackTargetSelection,
+): string[] {
+  const nodeIds = new Set(run.nodes.map((node) => node.id));
+  const requestedNodeIds = (targetSelection.requestedReworkScopeNodeIds ?? [])
+    .map((value) => value.trim())
+    .filter((value) => value && nodeIds.has(value));
+  const resetNodeIds = requestedNodeIds.length > 0
+    ? new Set(requestedNodeIds)
+    : new Set(resolveGraphReworkResetNodeIds(run, targetSelection.targetNode.id));
+  resetNodeIds.add(targetSelection.targetNode.id);
+  resetNodeIds.add(sourceNode.id);
+  return Array.from(resetNodeIds)
+    .filter((nodeId) => nodeIds.has(nodeId))
+    .sort();
+}
+
 function resetGraphNodeForRework(node: GraphNodeRecord, rework: GraphNodeReworkRecord): GraphNodeRecord {
   const nextMaxAttempts = node.attempts >= node.maxAttempts
     ? node.attempts + 1
@@ -741,6 +851,7 @@ function resetGraphNodeForRework(node: GraphNodeRecord, rework: GraphNodeReworkR
     worktreeCwd: undefined,
     baseCommit: undefined,
     commit: undefined,
+    failure: undefined,
     acceptance: resetGraphAcceptanceForRework(node),
   };
 }

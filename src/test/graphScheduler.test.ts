@@ -322,7 +322,6 @@ test("uses default maxConcurrent and honors a valid run maxConcurrent override",
     "node-3",
     "node-4",
     "node-5",
-    "node-6",
   ]);
   assert.deepEqual(selectGraphRunnableBatch(limitedRun).selectedNodeIds, ["limited-1", "limited-2"]);
 });
@@ -334,6 +333,16 @@ test("falls back to default maxConcurrent when run maxConcurrent is invalid", ()
 
   assert.equal(selectGraphRunnableBatch(run).maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
   assert.equal(selectGraphRunnableBatch(run).selectedNodeIds.length, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
+});
+
+test("caps over-limit run maxConcurrent at the Graph default maximum", () => {
+  const run = createRun(Array.from({ length: 8 }, (_unused, index) => readyImplement(`node-${index + 1}`, {
+    writeFiles: [`src/over-limit-${index + 1}.ts`],
+  })), [], { maxConcurrent: 99 });
+  const batch = selectGraphRunnableBatch(run);
+
+  assert.equal(batch.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
+  assert.equal(batch.selectedNodeIds.length, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
 });
 
 test("does not expose human_gate as a runtime action and keeps sleep nodes out of CLI execution", () => {

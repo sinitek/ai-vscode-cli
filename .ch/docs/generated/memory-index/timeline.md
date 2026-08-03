@@ -14,4 +14,5 @@
 | `mem-b7b003c3a1` | 2026-07-14T03:33:01+00:00 | `plan` | 官方 skills 版本刷新与最新判断修复 | `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | ~45 |
 | `mem-d336cba178` | 2026-07-15T01:12:08+00:00 | `plan` | Harness 单元自测与 Chromium Playwright 能力吸收 | `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | ~120 |
 | `mem-431f2548e1` | 2026-07-25T14:49:44+00:00 | `rule` | 热区记忆面 | `.ch/docs/memory/README.md` | ~46 |
-| `mem-1e4667ddf6` | 2026-07-31T01:25:56+00:00 | `plan` | P0 性能与内存硬化执行计划 | `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` | ~107 |
+| `mem-19baaefc61` | 2026-08-01T09:56:10+00:00 | `plan` | 可复用逻辑重构执行计划 | `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` | ~104 |
+| `mem-fb18b9b4d2` | 2026-08-02T16:49:15+00:00 | `plan` | extension.ts 入口运行时重构计划 | `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` | ~112 |

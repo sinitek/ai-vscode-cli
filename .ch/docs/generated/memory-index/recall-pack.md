@@ -2,21 +2,21 @@
 
 ## Summary
 
-- Generated at: 2026-07-31T01:29:06Z
-- Focus: 携宁 CLI 配置 Web 页面 VS Code 全屏弹窗
+- Generated at: 2026-08-03T01:28:19Z
+- Focus: review-extension-refactor graph task failed review auto repair
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Available observation entries: 11
-- Available read cost: ~757 tokens
-- Selected index entries: 2 (~214 tokens if fully expanded)
-- Expanded entries in this pack: 2 (~214 tokens)
+- Available observation entries: 12
+- Available read cost: ~866 tokens
+- Selected index entries: 3 (~335 tokens if fully expanded)
+- Expanded entries in this pack: 3 (~335 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
 - Recent handoffs: 0
 - Active plans: 4
-- Related design docs: 4
-- Related runbooks: 1
-- Source diversity: 2 unique sources / 2 selected observations
+- Related design docs: 1
+- Related runbooks: 0
+- Source diversity: 3 unique sources / 3 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -28,56 +28,77 @@
 
 ## Focus Match Summary
 
-- Matched terms: `cli`, `配置`
+- Matched terms: `review-extension-refactor`, `graph`, `task`
 
 ## Observation Index
 
 | ID | Type | Title | Read | Source | Why |
 | --- | --- | --- | --- | --- | --- |
-| `mem-5233a00937` | `plan` | Codex、Claude、OpenCode CLI 配置可视化扩展 | ~107 | `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | 命中 focus：cli, 配置。 |
-| `mem-1e4667ddf6` | `plan` | P0 性能与内存硬化执行计划 | ~107 | `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` | 命中 focus：cli。 |
+| `mem-fb18b9b4d2` | `plan` | extension.ts 入口运行时重构计划 | ~112 | `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` | 命中 focus：review-extension-refactor, graph。 |
+| `mem-19baaefc61` | `plan` | 可复用逻辑重构执行计划 | ~104 | `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` | 命中 focus：graph。 |
+| `mem-4b483bd801` | `plan` | MCP 市场全量检测与权威刷新 | ~119 | `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | 命中 focus：task。 |
 
 ## Expanded Observation Details
 
-### mem-5233a00937 - Codex、Claude、OpenCode CLI 配置可视化扩展
+### mem-fb18b9b4d2 - extension.ts 入口运行时重构计划
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~107 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md`
+- Read: ~112 tokens
+- Source: `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`
 - Score: `105` (base `103`)
-- Matches: `cli`, `配置`
+- Matches: `review-extension-refactor`, `graph`
 - Score breakdown: type_priority=68, focus_terms=24, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
 - Concepts: `open-loop`
-- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/references/cli-runtime-reference.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/config/`, `src/test/`, `src/test/claudeConfigVisualEditor.test.ts`
+- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/memory/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extension.ts`, `src/extensionHost/`, `src/extensionHost/promptExecutionShared.ts`, `src/extensionHost/promptInteractiveRuntime.ts`
 
 Facts:
-- 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
-- Modified at: 2026-07-13T04:55:42+00:00
+- 日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor
+- Modified at: 2026-08-02T16:49:15+00:00
 
 Narrative:
 
-日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
+日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor
 
-### mem-1e4667ddf6 - P0 性能与内存硬化执行计划
+### mem-19baaefc61 - 可复用逻辑重构执行计划
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~107 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`
-- Score: `93` (base `91`)
-- Matches: `cli`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
-- Concepts: `open-loop`
-- Files: `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `src/boundedText.ts`, `src/cli/commandRunner.ts`, `src/extension.ts`, `src/interactive/claudeRunner.ts`, `src/openCodeTabStream.ts`, `src/test/boundedText.test.ts`
+- Read: ~104 tokens
+- Source: `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md`
+- Score: `94` (base `92`)
+- Matches: `graph`
+- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=2, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`, `pattern`
+- Files: `.ch/docs/TESTING.md`, `.ch/docs/memory/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `src/foo`, `src/foo/bar`, `src/foobar`, `src/graph/`, `src/graph/graphScheduler.ts`
 
 Facts:
-- 日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核
-- Modified at: 2026-07-31T01:25:56+00:00
+- 日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor
+- Modified at: 2026-08-01T09:56:10+00:00
 
 Narrative:
 
-日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核
+日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor
+
+### mem-4b483bd801 - MCP 市场全量检测与权威刷新
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~119 tokens
+- Source: `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md`
+- Score: `93` (base `91`)
+- Matches: `task`
+- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`
+- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/exec-plans/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/references/`, `.ch/docs/references/cli-runtime-reference.md`, `.ch/docs/runbooks/`, `.ch/docs/runbooks/PITFALLS.md`
+
+Facts:
+- 日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
+- Modified at: 2026-07-11T03:33:13+00:00
+
+Narrative:
+
+日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
 
 ## Recommended Reading Order
 
@@ -142,49 +163,35 @@ Narrative:
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` | Codex、Claude、OpenCode CLI 配置可视化扩展 | matches=cli, 配置
+- `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` | extension.ts 入口运行时重构计划 | matches=review-extension-refactor, graph
   Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-12 状态：completed 负责人：Codex / 主任务协作 owner：Loop 主任务 `msg_1783863365764_c2291c1e371688` claimed_at：2026-07-12 claim_ttl：当前 Loop 执行期 handoff_to：Loop 主任务最终复核与归档
+  Summary: 日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor
 
-- `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` | P0 性能与内存硬化执行计划
+- `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` | 可复用逻辑重构执行计划 | matches=graph
   Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核
+  Summary: 日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor
+
+- `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` | MCP 市场全量检测与权威刷新 | matches=task
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-07-11 状态：implementation-complete / pending-main-review 负责人：Codex / 人类 / 协作 owner：Loop main task / rolling subtasks claimed_at：2026-07-11 claim_ttl：本轮 Loop 任务完成前 handoff_to：下一轮 MCP 市场实现/验证子任务
 
 - `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` | Harness 单元自测与 Chromium Playwright 能力吸收
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
 
-- `.ch/docs/exec-plans/active/2026-06-27-official-skills-version-refresh.md` | 官方 skills 版本刷新与最新判断修复
-  Why: 当前任务推进中的 working-layer 事实来源。
-  Summary: 日期：2026-06-27 状态：in-progress 负责人：Codex / 人类 / 协作
-
 ## Related Design Docs
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=cli, 配置, vs, code
-  Why: 与当前 focus 相关的设计决策入口，命中：cli / 配置 / vs / code。
-  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 相关计划：`.ch/docs/exec-plans/completed/2026-04-02-docs-migration-to-ch.md`（完成后归档） 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
-
-- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=cli, 配置
-  Why: 与当前 focus 相关的设计决策入口，命中：cli / 配置。
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=graph
+  Why: 与当前 focus 相关的设计决策入口，命中：graph。
   Summary: 状态：active（Phase 2 恢复与交互增强已落地） 日期：2026-07-30 相关计划：`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode-design.md`、`.ch/docs/exec-plans/completed/2026-07-23-graph-orchestration-mode.md`
-
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=cli
-  Why: 与当前 focus 相关的设计决策入口，命中：cli。
-  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
-
-- `.ch/docs/design-docs/core-beliefs.md` | 核心信念 | matches=配置
-  Why: 与当前 focus 相关的设计决策入口，命中：配置。
-  Summary: 这些信念不是宣传语，而是为了让仓库长期对代理和人类都保持可读、可维护、可演化。
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=cli, 配置, web, vs, code
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：cli / 配置 / web / vs / code。
-  Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
+- None
 
 ## Watch Items
 
-- 当前有 9 份 active plans。
+- 当前有 10 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。
 

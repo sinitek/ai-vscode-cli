@@ -19,7 +19,12 @@ import {
   readGraphRunStore,
   updateGraphRunRecord,
 } from "../graph/graphStore";
-import { GRAPH_SCHEMA_VERSION, type GraphFailureClassification, type GraphNodeRecord } from "../graph/types";
+import {
+  GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
+  GRAPH_SCHEMA_VERSION,
+  type GraphFailureClassification,
+  type GraphNodeRecord,
+} from "../graph/types";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-store-"));
@@ -77,6 +82,7 @@ test("creates, reads, and updates a Graph run with v1 defaults and communication
 
     assert.equal(run.status, "draft");
     assert.equal(run.graphVersion, GRAPH_SCHEMA_VERSION);
+    assert.equal(run.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
     assert.deepEqual(run.supplementalRequirements, ["keep this supplement"]);
     assert.equal(run.runStoreFile, storeFile);
     assert.equal(run.eventsFile, communication.eventsFile);
@@ -275,7 +281,7 @@ test("rejects unknown Graph run status, node kind, node status, and edge kind", 
       active: true,
     }],
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "/tmp/events.jsonl",
     communicationDir: "/tmp/graph",
     mainCommunicationFile: "/tmp/graph/main.md",
@@ -283,6 +289,7 @@ test("rejects unknown Graph run status, node kind, node status, and edge kind", 
   };
 
   assert.equal(normalizeGraphRunRecord({ ...base, status: "ready" }), null);
+  assert.equal(normalizeGraphRunRecord({ ...base, maxConcurrent: 99 })?.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES);
   assert.equal(normalizeGraphRunRecord({
     ...base,
     nodes: [{ ...createNode(), kind: "execute" }],
@@ -343,7 +350,7 @@ test("normalizes structured edge metadata and node rework records", () => {
       active: true,
     }],
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "/tmp/events.jsonl",
     communicationDir: "/tmp/graph",
     mainCommunicationFile: "/tmp/graph/main.md",
@@ -404,7 +411,7 @@ test("normalizes optional Graph node failure classifications", () => {
     nodes: [createNode({ failure: validFailure })],
     edges: [],
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "/tmp/events.jsonl",
     communicationDir: "/tmp/graph",
     mainCommunicationFile: "/tmp/graph/main.md",
@@ -482,7 +489,7 @@ test("filters invalid persisted runs before they can be executed", () => {
         nodes: [{ ...createNode(), kind: "unsupported" }],
         edges: [],
         activeNodeIds: [],
-        maxConcurrent: 6,
+        maxConcurrent: 5,
         eventsFile: "/tmp/events.jsonl",
         communicationDir: "/tmp/graph",
         mainCommunicationFile: "/tmp/graph/main.md",

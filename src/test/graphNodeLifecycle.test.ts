@@ -65,7 +65,7 @@ function createRun(
     nodes,
     edges,
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: path.join(baseDir, "events.jsonl"),
     communicationDir: path.join(baseDir, "graph"),
     mainCommunicationFile: path.join(baseDir, "graph", "main.md"),

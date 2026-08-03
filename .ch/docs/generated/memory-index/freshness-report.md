@@ -24,4 +24,5 @@
 - `.ch/docs/exec-plans/active/2026-07-11-mcp-market-refresh.md` 最后修改于 2026-07-11T03:33:13+00:00，读取成本约 1645 tokens
 - `.ch/docs/exec-plans/active/2026-07-12-cli-config-visualization.md` 最后修改于 2026-07-13T04:55:42+00:00，读取成本约 5599 tokens
 - `.ch/docs/exec-plans/active/2026-07-14-harness-testing-playwright.md` 最后修改于 2026-07-15T01:12:08+00:00，读取成本约 5964 tokens
-- `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md` 最后修改于 2026-07-31T01:25:56+00:00，读取成本约 2028 tokens
+- `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md` 最后修改于 2026-08-01T09:56:10+00:00，读取成本约 1247 tokens
+- `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md` 最后修改于 2026-08-02T16:49:15+00:00，读取成本约 1686 tokens

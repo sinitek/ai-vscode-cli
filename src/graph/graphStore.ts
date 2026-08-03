@@ -4,6 +4,7 @@ import * as path from "path";
 import { CLI_LIST, type CliName } from "../cli/types";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
+  GRAPH_MAX_CONCURRENT_NODES,
   GRAPH_PENDING_SESSION_SEGMENT,
   GRAPH_SCHEMA_VERSION,
   GRAPH_WORKSPACE_KEY_FALLBACK,
@@ -339,7 +340,7 @@ export function createGraphRunRecord(
     nodes: input.nodes ?? [],
     edges: input.edges ?? [],
     activeNodeIds: input.activeNodeIds ?? [],
-    maxConcurrent: normalizePositiveInteger(input.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES),
+    maxConcurrent: normalizeGraphMaxConcurrent(input.maxConcurrent),
     eventsFile: communication.eventsFile,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,
@@ -482,7 +483,7 @@ export function normalizeGraphRunRecord(
     nodes,
     edges,
     activeNodeIds: normalizeStringArray(raw.activeNodeIds),
-    maxConcurrent: normalizePositiveInteger(raw.maxConcurrent, GRAPH_DEFAULT_MAX_CONCURRENT_NODES),
+    maxConcurrent: normalizeGraphMaxConcurrent(raw.maxConcurrent),
     eventsFile: typeof raw.eventsFile === "string" && raw.eventsFile.trim()
       ? raw.eventsFile
       : communication.eventsFile,
@@ -933,6 +934,13 @@ function normalizePositiveInteger(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0
     ? value
     : fallback;
+}
+
+function normalizeGraphMaxConcurrent(value: unknown): number {
+  return Math.min(
+    normalizePositiveInteger(value, GRAPH_DEFAULT_MAX_CONCURRENT_NODES),
+    GRAPH_MAX_CONCURRENT_NODES,
+  );
 }
 
 function normalizeNonNegativeInteger(value: unknown, fallback: number): number {

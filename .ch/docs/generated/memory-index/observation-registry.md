@@ -170,26 +170,47 @@ Narrative:
 
 日期：2026-07-14 状态：in-progress 负责人：协作 owner：Loop 主任务 `msg_1783998484827_4b2d85596667a` claimed_at：2026-07-14T03:18:27Z claim_ttl：本 Loop 任务完成前；每轮主任务复核时续期 handoff_to：由 Loop 主任务派发的审计归并、实施与独立验收代理
 
-## mem-1e4667ddf6 - P0 性能与内存硬化执行计划
+## mem-19baaefc61 - 可复用逻辑重构执行计划
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~107 tokens
-- Source: `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`
+- Read: ~104 tokens
+- Source: `.ch/docs/exec-plans/active/2026-08-01-reusable-logic-refactor.md`
 - Source kind: `active_plan`
-- Content hash: `1e4667ddf61c977dc22d0f806c352a869c7369a486255f713c2f9d6fb37d88d8`
-- Concepts: `open-loop`
-- Files: `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `src/boundedText.ts`, `src/cli/commandRunner.ts`, `src/extension.ts`, `src/interactive/claudeRunner.ts`, `src/openCodeTabStream.ts`, `src/test/boundedText.test.ts`, `src/test/claudeRunner.test.ts`, `src/webview/`, `src/webview/panelFileActions.ts`, `src/webview/viewContentScript/*`
+- Content hash: `19baaefc617de9d1f0ba2a8593eaea6eb6e197043773c40dd7b4d704f157a08a`
+- Concepts: `open-loop`, `pattern`
+- Files: `.ch/docs/TESTING.md`, `.ch/docs/memory/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `src/foo`, `src/foo/bar`, `src/foobar`, `src/graph/`, `src/graph/graphScheduler.ts`, `src/graph/types.ts`, `src/loop*.ts`, `src/loopDebate.ts`, `src/loopParallel.ts`
 
 Subtitle: Active execution plan
 
 Facts:
-- 日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核
-- Modified at: 2026-07-31T01:25:56+00:00
+- 日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor
+- Modified at: 2026-08-01T09:56:10+00:00
 
 Narrative:
 
-日期：2026-07-31 状态：in-progress 负责人：Loop 协作 owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory claimed_at：2026-07-31 claim_ttl：本轮 P0 全部验收前 handoff_to：后续 P0 子任务与主任务复核
+日期：2026-08-01 状态：in-progress 负责人：Codex（Graph 主任务） owner：main claimed_at：2026-08-01T09:31:44+08:00 claim_ttl：本次 Graph run 完成前 handoff_to：verify-build-tests、review-refactor
+
+## mem-fb18b9b4d2 - extension.ts 入口运行时重构计划
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~112 tokens
+- Source: `.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`
+- Source kind: `active_plan`
+- Content hash: `fb18b9b4d29918ef8228b6848e76950d707a2ec61aeff96ade3f4e1ed074043d`
+- Concepts: `open-loop`
+- Files: `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, `.ch/docs/memory/`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extension.ts`, `src/extensionHost/`, `src/extensionHost/promptExecutionShared.ts`, `src/extensionHost/promptInteractiveRuntime.ts`, `src/extensionHost/promptOneShotRuntime.ts`, `src/test/extensionDeactivateStopAll.test.ts`, `src/test/extensionHostExtractionContracts.test.ts`, `src/test/opencodeCommandRunner.test.ts`
+
+Subtitle: Active execution plan
+
+Facts:
+- 日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor
+- Modified at: 2026-08-02T16:49:15+00:00
+
+Narrative:
+
+日期：2026-08-02 状态：in-progress 负责人：协作 owner：graph_msg_1785683322596_8d0486c3981e8 claimed_at：2026-08-02T15:19:46+08:00 claim_ttl：Graph run 生命周期内有效 handoff_to：review-extension-refactor
 
 ## mem-c1d7e714b7 - 记忆流转规则
 

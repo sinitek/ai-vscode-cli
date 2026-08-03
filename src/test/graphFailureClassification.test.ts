@@ -24,7 +24,7 @@ function createNode(overrides: Partial<GraphNodeRecord> = {}): GraphNodeRecord {
   };
 }
 
-function createRun(nodes: GraphNodeRecord[]): GraphRunRecord {
+function createRun(nodes: GraphNodeRecord[], overrides: Partial<GraphRunRecord> = {}): GraphRunRecord {
   const feedbackSourceNodeId = nodes[0]?.id ?? "test-schema-definitions";
   return {
     id: "run-1",
@@ -49,11 +49,12 @@ function createRun(nodes: GraphNodeRecord[]): GraphRunRecord {
       },
     }],
     activeNodeIds: [],
-    maxConcurrent: 6,
+    maxConcurrent: 5,
     eventsFile: "/tmp/events.jsonl",
     communicationDir: "/tmp/graph",
     mainCommunicationFile: "/tmp/graph/main.md",
     graphFile: "/tmp/graph/graph.json",
+    ...overrides,
   };
 }
 
@@ -144,6 +145,33 @@ test("classifies ordinary assertion failures as implementation_bug", () => {
 
   assert.equal(classification.category, "implementation_bug");
   assert.equal(classification.recommendedRecovery?.action, "feedback_rollback");
+  assert.equal(classification.recommendedRecovery?.targetNodeId, "implement-schema-definitions");
+});
+
+test("recommends direct rework for direct workspace runs with feedback edges", () => {
+  const node = createNode({
+    id: "review-extension-refactor",
+    title: "Review extension refactor",
+    kind: "review",
+    attempts: 1,
+    maxAttempts: 2,
+  });
+  const run = createRun([node], {
+    executionMode: "direct",
+    directExecution: {
+      cwd: "/workspace/project",
+      reason: "Graph executes in the current project workspace.",
+    },
+  });
+  const classification = classifyGraphNodeFailure({
+    run,
+    node,
+    error: "Review found trailing whitespace in src/extensionHost/promptOneShotRuntime.ts.",
+  });
+
+  assert.equal(classification.category, "implementation_bug");
+  assert.equal(classification.recommendedRecovery?.action, "direct_rework");
+  assert.notEqual(classification.recommendedRecovery?.action, "feedback_rollback");
   assert.equal(classification.recommendedRecovery?.targetNodeId, "implement-schema-definitions");
 });
 
