@@ -5,6 +5,16 @@ import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
+import {
+  buildNaturalLanguageHumanInteractionRequest,
+  buildCodexHumanInteractionResolution,
+  createHumanInteractionRejectedError,
+  formatHumanInteractionSubmittedText,
+  isHumanInteractionRejectedErrorInfo,
+  normalizeHumanInteractionRequestFromCodex,
+  type HumanInteractionRequest,
+  type HumanInteractionSubmission,
+} from "../humanInteraction";
 import { ClaudeInteractiveRunner } from "../interactive/claudeRunner";
 import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
 import { CodexInteractiveRunner } from "../interactive/codexRunner";
@@ -66,6 +76,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getConversationTabById: (tabId: string) => { sessionId?: string | null } | null | undefined;
   getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
+  getGlobalHumanInteractionEnabled: () => boolean;
   getGlobalMultiAgentEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
@@ -104,6 +115,8 @@ export type PromptInteractiveRuntimeHostDeps = {
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
   resolveInteractiveSessionForResume: (cli: CliName, sessionId: string | null, tabId: string | null) => Promise<string | null | undefined>;
   resolveWorkspaceCwd: () => string | undefined;
+  requestHumanInteraction: (request: HumanInteractionRequest) => Promise<HumanInteractionSubmission>;
+  cancelHumanInteractionForTab: (tabId: string, statusText?: string) => void;
   sendPanelMessage: (payload: Record<string, unknown>) => void;
   sendRunStatusForTab: (tabId: string, status: "start" | "end" | "error" | "stopped", options?: {
     message?: string;
@@ -153,6 +166,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     getConversationTabById,
     getEffectiveCliArgs,
     getEffectiveThinkingMode,
+    getGlobalHumanInteractionEnabled,
     getGlobalMultiAgentEnabled,
     getPendingSessionDraft,
     getSelectedCliModel,
@@ -170,6 +184,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     resolveInteractiveMappedId,
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
+    requestHumanInteraction,
+    cancelHumanInteractionForTab,
     sendPanelMessage,
     sendRunStatusForTab,
     shouldAutoCompactContextAfterRunForTarget,
@@ -216,9 +232,15 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       : getPendingSessionDraft(tabId, cli).messages;
 
     const includeFinalAnswerInstruction = !input.loopTaskId;
+    const humanInteractionEnabledForCodexRun = cli === "codex"
+      && interactiveMode === "coding"
+      && !input.loopTaskId
+      && !input.graphRunId
+      && getGlobalHumanInteractionEnabled();
     const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
       includeSuffix: false,
       includeFinalAnswerInstruction,
+      includeHumanInteractionInstruction: humanInteractionEnabledForCodexRun,
     });
     const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode, {
       includeFinalAnswerInstruction,
@@ -281,6 +303,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let stopCurrentTurn: (() => void) | null = null;
     let hiddenRetryCount = 0;
     let observedCodexFinalAnswer = false;
+    let naturalLanguageHumanInteractionCount = 0;
+    let pendingHumanInteractionContinuationPrompt: string | null = null;
 
     const syncInteractiveRunEntry = (stop?: () => void): void => {
       const entry = interactiveRunsByTabId.get(tabId);
@@ -574,6 +598,27 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return true;
     };
 
+    const removeCurrentAssistantMessageForTab = (): string => {
+      if (assistantMessageIndex === null) {
+        return "";
+      }
+      const message = messageTarget[assistantMessageIndex];
+      if (!message || message.role !== "assistant") {
+        return "";
+      }
+      const removedId = message.id;
+      const content = String(message.content ?? "");
+      messageTarget.splice(assistantMessageIndex, 1);
+      assistantMessageIndex = null;
+      if (assistantMessageId === removedId) {
+        assistantMessageId = undefined;
+      }
+      sendPanelMessage({ type: "removeMessage", id: removedId, tabId });
+      syncInteractiveRunEntry();
+      schedulePersistForInteractiveRun();
+      return content;
+    };
+
     const appendSystemMessageForTab = (content: string): void => {
       if (!content.trim()) {
         return;
@@ -660,6 +705,107 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return taskRecord;
     };
 
+    const canHandleHumanInteractionRequest = (): boolean => {
+      return humanInteractionEnabledForCodexRun;
+    };
+
+    const appendHumanInteractionSubmissionForTab = (
+      submission: HumanInteractionSubmission,
+      request: HumanInteractionRequest,
+    ): void => {
+      appendMessageForTab({
+        id: createMessageId(),
+        role: "user",
+        content: formatHumanInteractionSubmittedText(submission, request.formFields),
+        createdAt: Date.now(),
+        merge: false,
+      });
+    };
+
+    const handleCodexHumanInteractionRequest = async (request: {
+      method: string;
+      params?: unknown;
+    }) => {
+      if (
+        !canHandleHumanInteractionRequest()
+        || (
+          request.method !== "item/tool/requestUserInput"
+          && request.method !== "mcpServer/elicitation/request"
+        )
+      ) {
+        return null;
+      }
+      const humanRequest = normalizeHumanInteractionRequestFromCodex({
+        method: request.method,
+        params: request.params,
+        fallbackInteractionId: createMessageId(),
+        tabId,
+      });
+      appendSystemMessageForTab(t("run.humanInteractionWaiting"));
+      const submission = await requestHumanInteraction(humanRequest);
+      appendHumanInteractionSubmissionForTab(submission, humanRequest);
+      if (submission.status === "aborted") {
+        throw createHumanInteractionRejectedError();
+      }
+      return buildCodexHumanInteractionResolution(request.method, submission);
+    };
+
+    const buildHumanInteractionContinuationPrompt = (
+      submission: HumanInteractionSubmission,
+      request: HumanInteractionRequest,
+    ): string => {
+      return buildThinkingPrompt(cli, thinkingMode, [
+        formatHumanInteractionSubmittedText(submission, request.formFields),
+        "",
+        "请根据以上补充信息继续完成原始任务。",
+      ].join("\n"), {
+        includePrefix: false,
+        includeSuffix: false,
+        includeFinalAnswerInstruction,
+        includeHumanInteractionInstruction: canHandleHumanInteractionRequest(),
+      });
+    };
+
+    const maybeHandleNaturalLanguageHumanInteraction = async (): Promise<boolean> => {
+      if (!canHandleHumanInteractionRequest() || naturalLanguageHumanInteractionCount > 0) {
+        return false;
+      }
+      if (assistantMessageIndex === null) {
+        return false;
+      }
+      const message = messageTarget[assistantMessageIndex];
+      if (!message || message.role !== "assistant" || message.kind === "thinking") {
+        return false;
+      }
+      const humanRequest = buildNaturalLanguageHumanInteractionRequest({
+        tabId,
+        fallbackInteractionId: createMessageId(),
+        userPrompt: prompt,
+        assistantText: String(message.content ?? ""),
+      });
+      if (!humanRequest) {
+        return false;
+      }
+      naturalLanguageHumanInteractionCount += 1;
+      removeCurrentAssistantMessageForTab();
+      appendSystemMessageForTab(t("run.humanInteractionWaiting"));
+      const submission = await requestHumanInteraction(humanRequest);
+      appendHumanInteractionSubmissionForTab(submission, humanRequest);
+      if (submission.status === "aborted") {
+        throw createHumanInteractionRejectedError();
+      }
+      pendingHumanInteractionContinuationPrompt = buildHumanInteractionContinuationPrompt(submission, humanRequest);
+      void logInfo("runPrompt-interactive-natural-human-interaction", {
+        cli,
+        tabId,
+        runId,
+        sessionId: uiSessionId,
+        interactionId: humanRequest.interactionId,
+        fields: humanRequest.formFields.length,
+      });
+      return true;
+    };
+
     const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
       subagentProgress.finishRunning(status === "end" ? "completed" : "failed");
       void logInfo("runPrompt-interactive-end", {
@@ -731,6 +877,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       void logInfo("runPrompt-interactive-stop-requested", { cli, sessionId: uiSessionId, runId, tabId });
       const removedPlaceholder = removeAssistantPlaceholderForTab();
       appendSystemMessageForTab(t("run.stoppedByUser"));
+      cancelHumanInteractionForTab(tabId, t("run.stoppedByUser"));
       try {
         stopCurrentTurn?.();
       } catch {
@@ -830,7 +977,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
     while (true) {
       const attemptNumber = hiddenRetryCount + 1;
-      const attemptPrompt = hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt;
+      const attemptPrompt = pendingHumanInteractionContinuationPrompt
+        ?? (hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt);
+      pendingHumanInteractionContinuationPrompt = null;
       let attemptHadNormalReply = false;
 
       if (hiddenRetryCount > 0) {
@@ -959,6 +1108,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items, tabId });
             },
+            onRequest: handleCodexHumanInteractionRequest,
             onThreadId: (threadId) => {
               updateProcessTitle(cli, threadId);
               updateSessionForNewRun(threadId, {
@@ -987,6 +1137,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               syncInteractiveRunEntry();
             },
           });
+          if (await maybeHandleNaturalLanguageHumanInteraction()) {
+            continue;
+          }
           const finalConclusionState = handleMissingFinalConclusionForTab("codex");
           if (finalConclusionState.action === "stopped") {
             return;
@@ -1149,6 +1302,23 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           return;
         }
         subagentProgress.finishRunning("failed");
+
+        if (isHumanInteractionRejectedErrorInfo(info)) {
+          const userMessage = t("run.humanInteractionRejected");
+          appendSystemMessageForTab(userMessage);
+          cancelHumanInteractionForTab(tabId, userMessage);
+          void logInfo("runPrompt-interactive-human-interaction-rejected", {
+            cli,
+            tabId,
+            runId,
+            sessionId: uiSessionId,
+            error: info.message,
+            errorName: info.name,
+            errorCode: info.code,
+          });
+          await cleanupAfterRun("stopped");
+          return;
+        }
 
         const canContinueCurrentConversation = Boolean(uiSessionId);
         hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);

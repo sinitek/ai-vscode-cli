@@ -10,6 +10,7 @@ import { ConfigPlatform } from "../config/types";
 import type { GraphRunStatus } from "../graph/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
 import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
+import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 
 export type ConfigSummary = {
   id: string;
@@ -43,6 +44,13 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
+  | {
+      type: "humanInteractionResponse";
+      interactionId: string;
+      tabId?: string;
+      status: HumanInteractionSubmissionStatus;
+      values: Record<string, unknown>;
+    }
   | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole }
   | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
@@ -244,6 +252,7 @@ export type PanelState = {
   workspaceMemoryEnabled: boolean;
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
+  humanInteractionEnabled: boolean;
   loopMaxRounds: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;

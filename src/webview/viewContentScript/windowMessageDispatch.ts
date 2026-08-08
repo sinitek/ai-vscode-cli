@@ -259,6 +259,15 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           if (data.type === "taskListUpdate") {
             applyExternalTaskListUpdate(data.items, data.tabId);
           }
+          if (data.type === "humanInteractionRequest") {
+            openHumanInteractionDialog(data.request);
+          }
+          if (data.type === "humanInteractionCancel") {
+            cancelHumanInteractionDialog(typeof data.tabId === "string" ? data.tabId : "");
+            if (data.statusText) {
+              showToast(String(data.statusText));
+            }
+          }
           if (data.type === "rulesContent") {
             if (data.error) {
               setRulesHint(data.error);

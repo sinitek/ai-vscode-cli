@@ -15,6 +15,7 @@ export type ToolSettingsState = {
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
   multiAgentEnabled?: boolean;
+  humanInteractionEnabled?: boolean;
   loopMaxRounds?: number;
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   locale?: ToolSettingsLocale;
@@ -65,6 +66,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.multiAgentEnabled === "boolean") {
     normalized.multiAgentEnabled = record.multiAgentEnabled;
+  }
+  if (typeof record.humanInteractionEnabled === "boolean") {
+    normalized.humanInteractionEnabled = record.humanInteractionEnabled;
   }
   if (typeof record.loopMaxRounds === "number" || typeof record.loopMaxRounds === "string") {
     const parsed = typeof record.loopMaxRounds === "number"
@@ -135,6 +139,15 @@ export function resolveGlobalAutoCompactContextAfterRun(
   }
   if (typeof legacyWorkspaceSettings?.autoCompactContextBeforeRun === "boolean") {
     return legacyWorkspaceSettings.autoCompactContextBeforeRun;
+  }
+  return true;
+}
+
+export function resolveGlobalHumanInteractionEnabled(
+  globalSettings?: Pick<ToolSettingsState, "humanInteractionEnabled"> | null,
+): boolean {
+  if (typeof globalSettings?.humanInteractionEnabled === "boolean") {
+    return globalSettings.humanInteractionEnabled;
   }
   return true;
 }

@@ -130,6 +130,17 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           });
         });
       }
+      if (elements.humanInteractionEnabled) {
+        elements.humanInteractionEnabled.addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state.humanInteractionEnabled = enabled;
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "humanInteractionEnabled",
+            value: enabled,
+          });
+        });
+      }
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {
           const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);
@@ -237,6 +248,323 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function closeCommonCommands() {
         elements.commonCommandsOverlay.classList.remove("visible");
+      }
+
+      function normalizeHumanInteractionText(value, fallback) {
+        const text = typeof value === "string" ? value.trim() : "";
+        return text || fallback || "";
+      }
+
+      function normalizeHumanInteractionOptions(value) {
+        if (!Array.isArray(value)) {
+          return [];
+        }
+        const seen = new Set();
+        const options = [];
+        value.forEach((item) => {
+          const record = item && typeof item === "object" ? item : {};
+          const optionValue = normalizeHumanInteractionText(record.value, normalizeHumanInteractionText(record.id, normalizeHumanInteractionText(record.label, String(item || ""))));
+          if (!optionValue || seen.has(optionValue)) {
+            return;
+          }
+          seen.add(optionValue);
+          options.push({
+            value: optionValue,
+            label: normalizeHumanInteractionText(record.label, optionValue),
+            description: normalizeHumanInteractionText(record.description, ""),
+          });
+        });
+        return options;
+      }
+
+      function normalizeHumanInteractionField(rawField, index) {
+        const field = rawField && typeof rawField === "object" ? rawField : {};
+        const id = normalizeHumanInteractionText(field.id, normalizeHumanInteractionText(field.name, "answer_" + (index + 1)));
+        const options = normalizeHumanInteractionOptions(field.options);
+        const supportedTypes = ["text", "password", "textarea", "radio", "checkbox", "select", "multiselect"];
+        const requestedType = normalizeHumanInteractionText(field.type, options.length ? "radio" : "textarea").toLowerCase();
+        return {
+          id,
+          label: normalizeHumanInteractionText(field.label, id),
+          type: supportedTypes.includes(requestedType) ? requestedType : (options.length ? "radio" : "textarea"),
+          required: field.required !== false,
+          placeholder: normalizeHumanInteractionText(field.placeholder, ""),
+          description: normalizeHumanInteractionText(field.description, ""),
+          options,
+          defaultValue: field.defaultValue,
+        };
+      }
+
+      function normalizeHumanInteractionRequest(request) {
+        const record = request && typeof request === "object" ? request : {};
+        const rawFields = Array.isArray(record.formFields) ? record.formFields : [];
+        const formFields = rawFields
+          .map((field, index) => normalizeHumanInteractionField(field, index))
+          .filter((field) => field.id);
+        return {
+          interactionId: normalizeHumanInteractionText(record.interactionId, createMessageId()),
+          tabId: normalizeHumanInteractionText(record.tabId, getActiveConversationTabId() || ""),
+          title: normalizeHumanInteractionText(record.title, t("humanInteractionTitle")),
+          instruction: normalizeHumanInteractionText(record.instruction, t("humanInteractionDefaultInstruction")),
+          formFields: formFields.length ? formFields : [normalizeHumanInteractionField({
+            id: "answer",
+            label: t("humanInteractionDefaultFieldLabel"),
+            type: "textarea",
+            required: true,
+            placeholder: t("humanInteractionDefaultFieldPlaceholder"),
+          }, 0)],
+          submitLabel: normalizeHumanInteractionText(record.submitLabel, t("humanInteractionSubmit")),
+          cancelLabel: normalizeHumanInteractionText(record.cancelLabel, t("humanInteractionReject")),
+          values: {},
+          error: "",
+        };
+      }
+
+      function getHumanInteractionDefaultValues(field) {
+        const value = field.defaultValue;
+        if (Array.isArray(value)) {
+          return value.map((item) => String(item));
+        }
+        if (typeof value === "string" && value.trim()) {
+          return [value.trim()];
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+          return [String(value)];
+        }
+        return [];
+      }
+
+      function createHumanInteractionInput(field) {
+        if (field.type === "textarea") {
+          const textarea = document.createElement("textarea");
+          textarea.className = "human-interaction-input human-interaction-textarea";
+          textarea.rows = 4;
+          textarea.setAttribute("data-human-field", field.id);
+          textarea.placeholder = field.placeholder || "";
+          textarea.value = getHumanInteractionDefaultValues(field)[0] || "";
+          return textarea;
+        }
+        if (field.type === "select" || field.type === "multiselect") {
+          const select = document.createElement("select");
+          select.className = "human-interaction-input";
+          select.setAttribute("data-human-field", field.id);
+          select.multiple = field.type === "multiselect";
+          if (select.multiple) {
+            select.size = Math.min(Math.max(field.options.length, 2), 6);
+          }
+          const defaults = new Set(getHumanInteractionDefaultValues(field));
+          field.options.forEach((option) => {
+            const item = document.createElement("option");
+            item.value = option.value;
+            item.textContent = option.label;
+            item.selected = defaults.has(option.value);
+            select.appendChild(item);
+          });
+          return select;
+        }
+        if ((field.type === "radio" || field.type === "checkbox") && field.options.length) {
+          const group = document.createElement("div");
+          group.className = "human-interaction-options";
+          const defaults = new Set(getHumanInteractionDefaultValues(field));
+          field.options.forEach((option) => {
+            const label = document.createElement("label");
+            label.className = "human-interaction-option";
+            const input = document.createElement("input");
+            input.type = field.type === "radio" ? "radio" : "checkbox";
+            input.name = "humanInteraction:" + field.id;
+            input.value = option.value;
+            input.setAttribute("data-human-field", field.id);
+            input.checked = defaults.has(option.value);
+            const text = document.createElement("span");
+            text.textContent = option.label;
+            label.appendChild(input);
+            label.appendChild(text);
+            if (option.description) {
+              const description = document.createElement("small");
+              description.textContent = option.description;
+              label.appendChild(description);
+            }
+            group.appendChild(label);
+          });
+          return group;
+        }
+        if (field.type === "checkbox") {
+          const label = document.createElement("label");
+          label.className = "human-interaction-option";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.setAttribute("data-human-field", field.id);
+          input.checked = getHumanInteractionDefaultValues(field).includes("true");
+          const text = document.createElement("span");
+          text.textContent = field.placeholder || field.label;
+          label.appendChild(input);
+          label.appendChild(text);
+          return label;
+        }
+        const input = document.createElement("input");
+        input.className = "human-interaction-input";
+        input.type = field.type === "password" ? "password" : "text";
+        input.setAttribute("data-human-field", field.id);
+        input.placeholder = field.placeholder || "";
+        input.value = getHumanInteractionDefaultValues(field)[0] || "";
+        return input;
+      }
+
+      function renderHumanInteractionDialog() {
+        const dialog = state.humanInteractionDialog;
+        if (!elements.humanInteractionOverlay || !elements.humanInteractionForm) {
+          return;
+        }
+        elements.humanInteractionTitle.textContent = dialog.title || t("humanInteractionTitle");
+        elements.humanInteractionInstruction.textContent = dialog.instruction || t("humanInteractionDefaultInstruction");
+        elements.humanInteractionSubmit.textContent = dialog.submitLabel || t("humanInteractionSubmit");
+        elements.humanInteractionReject.textContent = dialog.cancelLabel || t("humanInteractionReject");
+        elements.humanInteractionError.textContent = dialog.error || "";
+        elements.humanInteractionError.style.display = dialog.error ? "block" : "none";
+        elements.humanInteractionForm.innerHTML = "";
+        dialog.formFields.forEach((field) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "human-interaction-field";
+          const label = document.createElement("label");
+          label.className = "human-interaction-label";
+          label.textContent = field.required ? field.label + " *" : field.label;
+          wrapper.appendChild(label);
+          if (field.description) {
+            const description = document.createElement("div");
+            description.className = "human-interaction-description";
+            description.textContent = field.description;
+            wrapper.appendChild(description);
+          }
+          wrapper.appendChild(createHumanInteractionInput(field));
+          elements.humanInteractionForm.appendChild(wrapper);
+        });
+        elements.humanInteractionOverlay.classList.toggle("visible", Boolean(dialog.open));
+        if (dialog.open) {
+          const firstControl = elements.humanInteractionForm.querySelector("[data-human-field]");
+          if (firstControl && typeof firstControl.focus === "function") {
+            firstControl.focus();
+          }
+        }
+      }
+
+      function openHumanInteractionDialog(request) {
+        state.humanInteractionDialog = Object.assign({ open: true }, normalizeHumanInteractionRequest(request));
+        renderHumanInteractionDialog();
+      }
+
+      function closeHumanInteractionDialog() {
+        state.humanInteractionDialog = {
+          open: false,
+          interactionId: "",
+          tabId: "",
+          title: "",
+          instruction: "",
+          formFields: [],
+          submitLabel: "",
+          cancelLabel: "",
+          values: {},
+          error: "",
+        };
+        if (elements.humanInteractionOverlay) {
+          elements.humanInteractionOverlay.classList.remove("visible");
+        }
+      }
+
+      function collectHumanInteractionValues() {
+        const values = {};
+        const form = elements.humanInteractionForm;
+        state.humanInteractionDialog.formFields.forEach((field) => {
+          const controls = Array.from(form.querySelectorAll("[data-human-field]"))
+            .filter((control) => control.getAttribute("data-human-field") === field.id);
+          if (field.type === "checkbox" && !field.options.length) {
+            values[field.id] = Boolean(controls[0] && controls[0].checked);
+            return;
+          }
+          if (field.type === "multiselect") {
+            const control = controls[0];
+            values[field.id] = control && control.selectedOptions
+              ? Array.from(control.selectedOptions).map((option) => option.value)
+              : [];
+            return;
+          }
+          if (field.type === "checkbox") {
+            values[field.id] = controls
+              .filter((control) => control.checked)
+              .map((control) => control.value);
+            return;
+          }
+          if (field.type === "select") {
+            const control = controls[0];
+            values[field.id] = control ? control.value : "";
+            return;
+          }
+          if (field.type === "radio") {
+            const checked = controls.find((control) => control.checked);
+            values[field.id] = checked ? checked.value : "";
+            return;
+          }
+          values[field.id] = controls[0] ? controls[0].value : "";
+        });
+        return values;
+      }
+
+      function isHumanInteractionValueEmpty(value) {
+        if (Array.isArray(value)) {
+          return value.length === 0;
+        }
+        if (typeof value === "boolean") {
+          return !value;
+        }
+        return !String(value || "").trim();
+      }
+
+      function submitHumanInteractionDialog() {
+        const dialog = state.humanInteractionDialog;
+        if (!dialog.open || !dialog.interactionId) {
+          return;
+        }
+        const values = collectHumanInteractionValues();
+        const missingField = dialog.formFields.find((field) => field.required && isHumanInteractionValueEmpty(values[field.id]));
+        if (missingField) {
+          dialog.error = t("humanInteractionRequired", { label: missingField.label });
+          renderHumanInteractionDialog();
+          return;
+        }
+        vscode.postMessage({
+          type: "humanInteractionResponse",
+          interactionId: dialog.interactionId,
+          tabId: dialog.tabId,
+          status: "completed",
+          values,
+        });
+        closeHumanInteractionDialog();
+      }
+
+      function rejectHumanInteractionDialog() {
+        const dialog = state.humanInteractionDialog;
+        if (!dialog.open || !dialog.interactionId) {
+          closeHumanInteractionDialog();
+          return;
+        }
+        vscode.postMessage({
+          type: "humanInteractionResponse",
+          interactionId: dialog.interactionId,
+          tabId: dialog.tabId,
+          status: "aborted",
+          values: {},
+        });
+        closeHumanInteractionDialog();
+      }
+
+      function cancelHumanInteractionDialog(tabId) {
+        const dialog = state.humanInteractionDialog;
+        if (!dialog.open) {
+          return;
+        }
+        if (tabId && dialog.tabId && dialog.tabId !== tabId) {
+          return;
+        }
+        closeHumanInteractionDialog();
       }
 
       function setHistoryTab(tab) {
@@ -458,6 +786,29 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         closeCommonCommands();
         vscode.postMessage({ type: "runCommonCommand", command: "compactContext" });
       });
+
+      if (elements.closeHumanInteraction) {
+        elements.closeHumanInteraction.addEventListener("click", () => {
+          rejectHumanInteractionDialog();
+        });
+      }
+      if (elements.humanInteractionReject) {
+        elements.humanInteractionReject.addEventListener("click", () => {
+          rejectHumanInteractionDialog();
+        });
+      }
+      if (elements.humanInteractionSubmit) {
+        elements.humanInteractionSubmit.addEventListener("click", () => {
+          submitHumanInteractionDialog();
+        });
+      }
+      if (elements.humanInteractionOverlay) {
+        elements.humanInteractionOverlay.addEventListener("click", (event) => {
+          if (event.target === elements.humanInteractionOverlay) {
+            rejectHumanInteractionDialog();
+          }
+        });
+      }
 
       elements.runConflictOverlay.addEventListener("click", (event) => {
         if (event.target === elements.runConflictOverlay) {

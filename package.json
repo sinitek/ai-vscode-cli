@@ -128,6 +128,11 @@
           "default": false,
           "description": "%config.autoAddEditorContextTags.description%"
         },
+        "sinitek-cli-tools.humanInteractionEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.humanInteractionEnabled.description%"
+        },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
           "default": false,

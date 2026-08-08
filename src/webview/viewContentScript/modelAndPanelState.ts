@@ -357,6 +357,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
+        state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
         state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
         state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
           panelState.loopSubtaskMaxThinkingMode
@@ -413,6 +414,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.multiAgentEnabled) {
           elements.multiAgentEnabled.checked = state.multiAgentEnabled;
+        }
+        if (elements.humanInteractionEnabled) {
+          elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);

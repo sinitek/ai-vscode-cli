@@ -17,7 +17,7 @@ import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getManagedModelOptionsForCliFromStore, getModelOptionsForCliFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedCliModelFromStore, getSelectedLoopCliModelFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectCliLoopModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
-import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalMultiAgentEnabled, type ToolSettingsLocale } from "../toolSettings";
+import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled, resolveGlobalMultiAgentEnabled, type ToolSettingsLocale } from "../toolSettings";
 import { t } from "../i18n";
 import { logInfo } from "../logger";
 import { isTimestampWithinHistoryRetention } from "../historyRetention";
@@ -521,6 +521,10 @@ function buildWorkspaceLoopExecutionModeByCli(): Record<CliName, LoopExecutionMo
 
 function getGlobalMultiAgentEnabled(): boolean {
   return resolveGlobalMultiAgentEnabled(readToolSettings(), workspaceSettings);
+}
+
+function getGlobalHumanInteractionEnabled(): boolean {
+  return resolveGlobalHumanInteractionEnabled(readToolSettings());
 }
 
 function shouldRequireExplicitFinalAnswerForRun(input: { loopTaskId?: string }): boolean {
@@ -1035,6 +1039,7 @@ return {
   setWorkspaceLoopExecutionModeForCli: wrap(setWorkspaceLoopExecutionModeForCli),
   buildWorkspaceLoopExecutionModeByCli: wrap(buildWorkspaceLoopExecutionModeByCli),
   getGlobalMultiAgentEnabled: wrap(getGlobalMultiAgentEnabled),
+  getGlobalHumanInteractionEnabled: wrap(getGlobalHumanInteractionEnabled),
   shouldRequireExplicitFinalAnswerForRun: wrap(shouldRequireExplicitFinalAnswerForRun),
   buildLongTermMemoryRuntimeSettings: wrap(buildLongTermMemoryRuntimeSettings),
   getLongTermMemoryDisabledReason: wrap(getLongTermMemoryDisabledReason),

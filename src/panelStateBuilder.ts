@@ -106,6 +106,7 @@ export type PanelStateBuilderDeps = {
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
   getGlobalMultiAgentEnabled: () => boolean;
+  getGlobalHumanInteractionEnabled: () => boolean;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
   buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
@@ -196,6 +197,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     workspaceMemoryEnabled: deps.workspaceSettings.workspaceMemoryEnabled === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
+    humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
     loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),

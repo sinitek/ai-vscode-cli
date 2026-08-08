@@ -387,6 +387,16 @@ ${webviewStyles}    </style>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsHumanInteractionLabel}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsHumanInteractionTitle}">
+                    <input type="checkbox" id="humanInteractionEnabled" />
+                    <span>${i18n.toolSettingsHumanInteractionToggle}</span>
+                  </label>
+                </div>
+                <div class="tool-settings-note">${i18n.toolSettingsHumanInteractionHint}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
                   <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
                     <input type="checkbox" id="autoCompactContextAfterRun" />
@@ -458,6 +468,29 @@ ${webviewStyles}    </style>
                 </div>
                 <div class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
               </section>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="humanInteractionOverlay" class="overlay">
+        <div class="modal human-interaction-modal" role="dialog" aria-modal="true" aria-labelledby="humanInteractionTitle">
+          <div class="modal-header">
+            <div id="humanInteractionTitle" class="title">${i18n.humanInteractionTitle}</div>
+            <button id="closeHumanInteraction" class="secondary icon-button" title="${i18n.humanInteractionClose}" aria-label="${i18n.humanInteractionClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="human-interaction-body">
+            <div id="humanInteractionInstruction" class="human-interaction-instruction">${i18n.humanInteractionDefaultInstruction}</div>
+            <div id="humanInteractionForm" class="human-interaction-form"></div>
+            <div id="humanInteractionError" class="human-interaction-error" role="alert" style="display: none;"></div>
+            <div class="human-interaction-actions">
+              <button id="humanInteractionReject" class="secondary action-button">${i18n.humanInteractionReject}</button>
+              <button id="humanInteractionSubmit" class="action-button">${i18n.humanInteractionSubmit}</button>
             </div>
           </div>
         </div>

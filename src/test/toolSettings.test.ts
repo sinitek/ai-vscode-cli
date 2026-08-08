@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import {
   normalizeToolSettings,
   resolveGlobalAutoCompactContextAfterRun,
+  resolveGlobalHumanInteractionEnabled,
   resolveGlobalMultiAgentEnabled,
   resolveLongTermMemoryEnabled,
   type ToolSettingsState,
@@ -42,6 +43,23 @@ test("resolves the global implicit-subagents setting before legacy workspace val
   }), true);
   assert.equal(resolveGlobalMultiAgentEnabled({}, { multiAgentEnabled: true }), true);
   assert.equal(resolveGlobalMultiAgentEnabled({}, { codexMultiAgentEnabled: true }), true);
+});
+
+test("normalizes the global human-interaction setting", () => {
+  assert.deepEqual(
+    normalizeToolSettings({ humanInteractionEnabled: false }),
+    { humanInteractionEnabled: false },
+  );
+  assert.deepEqual(
+    normalizeToolSettings({ humanInteractionEnabled: "false" }),
+    {},
+  );
+});
+
+test("resolves global human interaction as default-on", () => {
+  assert.equal(resolveGlobalHumanInteractionEnabled({}), true);
+  assert.equal(resolveGlobalHumanInteractionEnabled({ humanInteractionEnabled: true }), true);
+  assert.equal(resolveGlobalHumanInteractionEnabled({ humanInteractionEnabled: false }), false);
 });
 
 test("normalizes the global automatic-compaction setting", () => {

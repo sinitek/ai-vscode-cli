@@ -17,6 +17,7 @@ import {
   buildAppServerRequestResolution,
   buildForwardedRawEvent,
   buildTurnFailureMessage,
+  type JsonRpcResolution,
 } from "./codexAppServerProtocol";
 import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 import {
@@ -54,6 +55,11 @@ export type CodexAssistantDeltaMeta = {
   codexFinalAnswer?: boolean;
 };
 
+export type CodexAppServerRequest = {
+  method: string;
+  params?: unknown;
+};
+
 export type CodexStreamHandlers = {
   onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
   onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
@@ -61,6 +67,7 @@ export type CodexStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
   onEvent?: (event: unknown) => void;
+  onRequest?: (request: CodexAppServerRequest) => Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined;
 };
 
 type JsonRpcPendingRequest = {
@@ -799,10 +806,11 @@ export class CodexInteractiveRunner {
           }
 
           if (hasId && method) {
-            const resolution = buildAppServerRequestResolution(
-              method,
-              t("codex.appServerUnsupportedRequest", { method: method || "unknown" })
-            );
+            const resolution = await handlers.onRequest?.({ method, params: message.params })
+              ?? buildAppServerRequestResolution(
+                method,
+                t("codex.appServerUnsupportedRequest", { method: method || "unknown" })
+              );
             try {
               sendJsonRpcMessage(resolution.error
                 ? { jsonrpc: "2.0", id: message.id, error: resolution.error }

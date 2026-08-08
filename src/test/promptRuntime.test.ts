@@ -7,6 +7,7 @@ installVscodeMock();
 const {
   buildHiddenRetryPrompt,
   buildThinkingPrompt,
+  CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION,
   CODEX_TASK_LIST_PROMPT_INSTRUCTION,
 } = require("../promptRuntime") as typeof import("../promptRuntime");
 const {
@@ -39,6 +40,20 @@ test("keeps Codex Tasklist logging format out of non-Codex and opted-out prompts
   assert.doesNotMatch(
     buildThinkingPrompt("codex", "medium", "implement the task", { includeTaskListInstruction: false }),
     /Tasklist:/,
+  );
+});
+
+test("adds Codex human interaction instruction only when requested", () => {
+  const prompt = buildThinkingPrompt("codex", "medium", "implement the task", {
+    includeHumanInteractionInstruction: true,
+  });
+
+  assert.ok(prompt.includes(CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION));
+  assert.ok(prompt.indexOf(CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION) < prompt.indexOf(FINAL_ANSWER_PROMPT_INSTRUCTION));
+  assert.doesNotMatch(buildThinkingPrompt("codex", "medium", "implement the task"), /Human interaction requirement/);
+  assert.doesNotMatch(
+    buildThinkingPrompt("claude", "medium", "implement the task", { includeHumanInteractionInstruction: true }),
+    /Human interaction requirement/,
   );
 });
 

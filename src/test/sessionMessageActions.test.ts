@@ -648,6 +648,21 @@ test("persists implicit subagents globally and removes legacy workspace fields",
   assert.equal(calls.postPanelState, 1);
 });
 
+test("persists human interaction globally", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "humanInteractionEnabled",
+    value: false,
+  }, deps);
+
+  assert.deepEqual(calls.toolSettingsPatches, [{ humanInteractionEnabled: false }]);
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 1);
+});
+
 test("keeps legacy workspace values when the global implicit-subagents save fails", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   state.workspaceSettings = { multiAgentEnabled: true };

@@ -111,6 +111,11 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key === "humanInteractionEnabled") {
+    deps.updateStoredToolSettings({ humanInteractionEnabled: Boolean(message.value) });
+    await deps.postPanelState();
+    return;
+  }
   if (message.key === "autoCompactContextAfterRun" || message.key === "autoCompactContextBeforeRun") {
     const savedGlobally = deps.updateStoredToolSettings({
       autoCompactContextAfterRun: Boolean(message.value),

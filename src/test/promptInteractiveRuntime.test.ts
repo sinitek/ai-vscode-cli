@@ -9,6 +9,7 @@ import type { TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../extensionHost/graphRuntime";
 import type { InteractiveTabRun } from "../extensionHost/promptExecutionShared";
+import type { HumanInteractionRequest, HumanInteractionSubmission } from "../humanInteraction";
 
 installVscodeMock();
 
@@ -54,6 +55,8 @@ function createInteractiveRuntimeHarness(options: {
   codexRunBehavior?: CodexRunBehavior;
   requireExplicitFinalAnswer?: boolean;
   autoCompactAfterRun?: boolean;
+  humanInteractionEnabled?: boolean;
+  humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
 } = {}) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
@@ -69,6 +72,8 @@ function createInteractiveRuntimeHarness(options: {
   const mappingUpserts: Array<{ cli: CliName; sessionId: string; mappedId: string; freezePrevious?: string }> = [];
   const processTitles: Array<{ cli: CliName; sessionId: string }> = [];
   const codexPrompts: string[] = [];
+  const humanInteractionRequests: HumanInteractionRequest[] = [];
+  const canceledHumanInteractionTabs: Array<{ tabId: string; statusText?: string }> = [];
   let idCounter = 0;
   let codexRunnerCreateCalls = 0;
   let claudeRunnerCreateCalls = 0;
@@ -142,6 +147,7 @@ function createInteractiveRuntimeHarness(options: {
     getConversationTabById: () => ({ sessionId: null }),
     getEffectiveCliArgs: () => ["--effective"],
     getEffectiveThinkingMode: () => "medium",
+    getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled !== false,
     getGlobalMultiAgentEnabled: () => false,
     getPendingSessionDraft: (tabId) => {
       const existing = pendingMessagesByTab.get(tabId);
@@ -175,6 +181,21 @@ function createInteractiveRuntimeHarness(options: {
     resolveInteractiveMappedId: () => null,
     resolveInteractiveSessionForResume: async (_cli, sessionId) => sessionId,
     resolveWorkspaceCwd: () => process.cwd(),
+    requestHumanInteraction: async (request) => {
+      humanInteractionRequests.push(request);
+      if (typeof options.humanInteractionSubmission === "function") {
+        return options.humanInteractionSubmission(request);
+      }
+      return options.humanInteractionSubmission ?? {
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: "completed",
+        values: {},
+      };
+    },
+    cancelHumanInteractionForTab: (tabId, statusText) => {
+      canceledHumanInteractionTabs.push({ tabId, statusText });
+    },
     sendPanelMessage: (payload) => {
       panelMessages.push(payload);
     },
@@ -212,6 +233,8 @@ function createInteractiveRuntimeHarness(options: {
     mappingUpserts,
     processTitles,
     codexPrompts,
+    humanInteractionRequests,
+    canceledHumanInteractionTabs,
     get codexRunnerCreateCalls() {
       return codexRunnerCreateCalls;
     },
@@ -302,6 +325,267 @@ test("interactive runtime host completes a successful Codex runner turn", async 
     { cli: "codex", sessionId: "session-1", mappedId: "thread-success" },
   );
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
+});
+
+test("interactive runtime host submits Codex human interaction answers in Vibe mode", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: {
+      interactionId: "ask-1",
+      tabId: "tab-human",
+      status: "completed",
+      values: { path: "src/index.ts" },
+    },
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-human");
+      handlers.onThreadId("thread-human");
+      const resolution = await handlers.onRequest?.({
+        method: "item/tool/requestUserInput",
+        params: {
+          id: "ask-1",
+          title: "Need context",
+          question: "Which path should be updated?",
+          fields: [{ id: "path", label: "Path", type: "text", required: true }],
+        },
+      });
+      assert.deepEqual(resolution?.result, {
+        answers: { path: "src/index.ts" },
+        result: { values: { path: "src/index.ts" } },
+        text: "已提交补充信息。",
+      });
+      handlers.onAssistantDelta("[final_answer] continued", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "needs human context",
+      modelPrompt: "needs human context",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ tabId: "tab-human", sessionId: "session-human" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-human") ?? [];
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.equal(harness.humanInteractionRequests[0]?.title, "Need context");
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
+  assert.ok(messages.some((message) => message.role === "user" && message.content.includes("Path：src/index.ts")));
+  assert.ok(messages.some((message) => message.role === "assistant" && message.content === "[final_answer] continued"));
+});
+
+test("interactive runtime host converts explicit natural clarification replies into human interaction forms", async () => {
+  let runCount = 0;
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "completed",
+      values: {
+        answer_1: "秋天",
+        answer_2: "古风",
+      },
+    }),
+    codexRunBehavior: async (prompt, handlers) => {
+      runCount += 1;
+      harness.setCodexThreadId("thread-natural-human");
+      handlers.onThreadId("thread-natural-human");
+      if (runCount === 1) {
+        assert.match(prompt, /Human interaction requirement for Codex Vibe tasks/);
+        handlers.onAssistantDelta([
+          "[final_answer] 可以。请先回答：",
+          "1. 主题是什么？",
+          "2. 希望什么风格？",
+        ].join("\n"), { codexFinalAnswer: true });
+        return;
+      }
+      assert.match(prompt, /已提交补充信息/);
+      assert.match(prompt, /主题是什么？：秋天/);
+      assert.match(prompt, /希望什么风格？：古风/);
+      handlers.onAssistantDelta("[final_answer] 秋风入纸，古意成诗。", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ tabId: "tab-natural-human", sessionId: "session-natural-human" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-natural-human") ?? [];
+  assert.equal(runCount, 2);
+  assert.equal(harness.codexPrompts.length, 2);
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(
+    harness.humanInteractionRequests[0]?.formFields.map((field) => field.label),
+    ["主题是什么？", "希望什么风格？"],
+  );
+  assert.ok(harness.panelMessages.some((message) => message.type === "removeMessage" && message.tabId === "tab-natural-human"));
+  assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
+  assert.ok(messages.some((message) => message.role === "user" && message.content.includes("主题是什么？：秋天")));
+  assert.ok(messages.some((message) => message.role === "assistant" && message.content === "[final_answer] 秋风入纸，古意成诗。"));
+  assert.equal(messages.some((message) => message.role === "assistant" && message.content.includes("请先回答")), false);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+});
+
+test("interactive runtime host preserves lettered natural clarification options", async () => {
+  let runCount = 0;
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "completed",
+      values: {
+        answer_1: "自然 / 四季",
+        answer_2: "温柔治愈",
+      },
+    }),
+    codexRunBehavior: async (prompt, handlers) => {
+      runCount += 1;
+      harness.setCodexThreadId("thread-natural-options");
+      handlers.onThreadId("thread-natural-options");
+      if (runCount === 1) {
+        handlers.onAssistantDelta([
+          "[final_answer] 可以。你按下面格式回复选项即可，比如：1A 2C。",
+          "1. **主题想写什么？**",
+          "A. 爱情 / 思念",
+          "B. 人生 / 成长",
+          "C. 自然 / 四季",
+          "2. **情绪基调？** A. 温柔治愈 B. 孤独克制 C. 热烈浪漫",
+        ].join("\n"), { codexFinalAnswer: true });
+        return;
+      }
+      assert.match(prompt, /主题想写什么？：自然 \/ 四季/);
+      assert.match(prompt, /情绪基调？：温柔治愈/);
+      handlers.onAssistantDelta("[final_answer] 春风拂过四季。", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ tabId: "tab-natural-options", sessionId: "session-natural-options" }),
+  );
+
+  assert.equal(runCount, 2);
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(
+    harness.humanInteractionRequests[0]?.formFields.map((field) => ({
+      label: field.label,
+      type: field.type,
+      options: field.options?.map((option) => option.label) ?? [],
+    })),
+    [
+      {
+        label: "主题想写什么？",
+        type: "radio",
+        options: ["爱情 / 思念", "人生 / 成长", "自然 / 四季"],
+      },
+      {
+        label: "情绪基调？",
+        type: "radio",
+        options: ["温柔治愈", "孤独克制", "热烈浪漫"],
+      },
+    ],
+  );
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+});
+
+test("interactive runtime host stops when natural-language human interaction is rejected", async () => {
+  let runCount = 0;
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "aborted",
+      values: {},
+    }),
+    codexRunBehavior: async (_prompt, handlers) => {
+      runCount += 1;
+      harness.setCodexThreadId("thread-natural-stop");
+      handlers.onThreadId("thread-natural-stop");
+      handlers.onAssistantDelta([
+        "[final_answer] 可以。请先回答：",
+        "1. 主题是什么？",
+        "2. 希望什么风格？",
+      ].join("\n"), { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ tabId: "tab-natural-stop", sessionId: "session-natural-stop" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-natural-stop") ?? [];
+  assert.equal(runCount, 1);
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "stopped"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["stopped"]);
+  assert.deepEqual(harness.memoryPersistStatuses, ["stopped"]);
+  assert.equal(harness.canceledHumanInteractionTabs.length, 1);
+  assert.ok(messages.some((message) => message.role === "user" && message.content === "用户已拒绝补充信息。"));
+  assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionRejected"));
+  assert.equal(messages.some((message) => message.role === "assistant" && message.content.includes("请先回答")), false);
+});
+
+test("interactive runtime host stops when Codex human interaction is rejected", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: {
+      interactionId: "ask-stop",
+      tabId: "tab-human-stop",
+      status: "aborted",
+      values: {},
+    },
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-human-stop");
+      handlers.onThreadId("thread-human-stop");
+      await handlers.onRequest?.({
+        method: "mcpServer/elicitation/request",
+        params: {
+          id: "ask-stop",
+          title: "Need decision",
+          message: "Should this continue?",
+          fields: [{ id: "decision", label: "Decision", type: "textarea", required: true }],
+        },
+      });
+      handlers.onAssistantDelta("[final_answer] should not render", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "reject human context",
+      modelPrompt: "reject human context",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ tabId: "tab-human-stop", sessionId: "session-human-stop" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-human-stop") ?? [];
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "stopped"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["stopped"]);
+  assert.deepEqual(harness.memoryPersistStatuses, ["stopped"]);
+  assert.equal(harness.canceledHumanInteractionTabs.length, 1);
+  assert.ok(messages.some((message) => message.role === "user" && message.content === "用户已拒绝补充信息。"));
+  assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionRejected"));
+  assert.equal(messages.some((message) => message.content === "[final_answer] should not render"), false);
 });
 
 test("interactive runtime host finalizes runner failures", async () => {

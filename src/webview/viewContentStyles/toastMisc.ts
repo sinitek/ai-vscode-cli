@@ -154,6 +154,95 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         }
       }
 
+      .human-interaction-modal {
+        width: min(560px, 92vw);
+      }
+      .human-interaction-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+      }
+      .human-interaction-instruction {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+      .human-interaction-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .human-interaction-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .human-interaction-label {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .human-interaction-description {
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .human-interaction-input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border);
+        border-radius: 6px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font: inherit;
+        font-size: 12px;
+        padding: 7px 8px;
+      }
+      .human-interaction-input:focus,
+      .human-interaction-textarea:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+      }
+      .human-interaction-textarea {
+        min-height: 96px;
+        resize: vertical;
+        line-height: 1.5;
+      }
+      .human-interaction-options {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .human-interaction-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .human-interaction-option input {
+        margin-top: 2px;
+      }
+      .human-interaction-option small {
+        display: block;
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+      }
+      .human-interaction-error {
+        color: var(--vscode-errorForeground);
+        font-size: 12px;
+      }
+      .human-interaction-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
       .common-commands-modal {
         width: 360px;
       }

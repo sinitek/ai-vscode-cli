@@ -59,7 +59,7 @@ media/
 提示运行的连续状态机已经从组合根下沉：
 
 - `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 994 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、最终结论判定、长期记忆触发和执行后自动压缩触发。
-- `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host，当前 1210 行。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 回归路径。
+- `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、Codex Vibe 人工交互请求拦截、hidden retry 和 final answer 回归路径。
 - `src/extensionHost/openCodeSubagentRuntime.ts`：OpenCode 子代理 runtime preparer，当前 201 行。它负责 configured attach、managed server 启动、Basic auth env override、server readiness race、unavailable fallback 和 disabled monitor，向 one-shot / parallel host 返回 `PreparedOpenCodeSubagentRuntime`。
 - `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免提示运行 host 通过宽泛对象耦合。
 
@@ -123,7 +123,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
-- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护主 threadId；`item/agentMessage/delta`、`collabAgentToolCall`、`subAgentActivity` 和 `turn/completed` 均按通知 `threadId` 区分父线程与子线程，子线程输出进入独立子代理气泡，不得改写主 threadId、主任务列表、父回复 final 标记或父 turn 完成状态。Runner 优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且全局工具设置“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
+- `codexRunner.ts`：通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话，维护主 threadId；`item/agentMessage/delta`、`collabAgentToolCall`、`subAgentActivity` 和 `turn/completed` 均按通知 `threadId` 区分父线程与子线程，子线程输出进入独立子代理气泡，不得改写主 threadId、主任务列表、父回复 final 标记或父 turn 完成状态。Runner 对 JSON-RPC request 暴露 `onRequest` 拦截点，默认仍按 app-server fallback 处理 unsupported request；Codex Vibe/coding 且全局 `humanInteractionEnabled=true` 时，`promptInteractiveRuntime` 拦截 `item/tool/requestUserInput` 与 `mcpServer/elicitation/request`，并对用户原始 prompt 明确要求 AI 先询问需求、但 Codex 只返回普通问题列表的情况做兜底：移除该问题列表 assistant 气泡，复用同一 Webview 表单收集补充信息；兜底会把“可选 / 选项 / 例如 / 如”候选项和紧随问题的 `A.` / `B.` / `C.` 字母选项列表渲染为 radio/checkbox；提交后回传 answers/content 或把补充信息作为下一轮输入继续同一 Codex thread，拒绝或关闭表单会终止当前任务且不进入 hidden retry；Loop/Graph 不走该弹窗。Runner 优先直接启动已解析的 Codex 可执行路径，显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，启动前确保工作区 trust，并在回合结束时优先走 graceful shutdown；“常用命令 -> 压缩上下文”对 Codex 直接复用当前 threadId 发送 `thread/compact/start`，且全局工具设置“执行后自动压缩上下文”（默认开启）会在已有会话任务成功结束且执行超过 5 分钟后自动触发同一路径；任务中断、报错或执行不超过 5 分钟不触发
 - `claudeRunner.ts`：通过 `@anthropic-ai/claude-agent-sdk` 建立交互会话，维护 Claude session；“常用命令 -> 压缩上下文”优先直接发送官方 `/compact`，并根据 SDK `status=compacting` / `compact_boundary` 信号判定完成；仅在旧环境明确不支持原生 compact 时回退到摘要模拟
 - `metaStore.ts`：把扩展 sessionId 与 threadId / Claude sessionId 的映射落盘
 - `claudeTranscript.ts`：辅助 Claude 历史恢复
@@ -197,7 +197,7 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 
 当前主要包括：
 
-- `settings.json`：工具设置中的全局项（如 debug、自动文件标签、执行后自动压缩上下文、隐式子代理、语言、macOS task shell）；自动压缩使用 `autoCompactContextAfterRun`，默认开启；隐式子代理使用 `multiAgentEnabled`，默认关闭
+- `settings.json`：工具设置中的全局项（如 debug、自动文件标签、执行后自动压缩上下文、隐式子代理、人工交互、语言、macOS task shell）；自动压缩使用 `autoCompactContextAfterRun`，默认开启；隐式子代理使用 `multiAgentEnabled`，默认关闭；Codex Vibe 人工交互使用 `humanInteractionEnabled`，默认开启
 - `sessions/`：按工作区维护会话元信息
 - `messages/`：会话消息内容
 - `prompt-history/`：历史提示词

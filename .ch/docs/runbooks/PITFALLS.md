@@ -14,6 +14,37 @@
 
 ## 当前有效条目
 
+## 人工交互自然语言兜底不能只识别“可选：”候选项
+
+- 状态：已规避，需随 Codex 澄清回复样式变化复核
+- 首次发现：2026-08-08
+- 适用范围：Codex Vibe/coding 人工交互兜底、`src/humanInteraction.ts`、Webview 表单渲染
+
+### 现象
+- 用户执行“写一首诗，你来问我一些要求帮你更精准写出我想要的诗”时，Codex 没有发结构化 `requestUserInput`，而是输出普通最终答复里的问题和选项。
+- 弹窗出现后，本应展示选项的字段仍是多行 textarea。
+
+### 触发条件与根因
+- 真实 Codex 回复常用 `1. 问题` 后紧跟 `A. 选项一 / 选项二`、`B. ...` 的字母选项列表。
+- 早期 parser 只识别“可选 / 选项 / 例如 / 如”这类显式提示词，丢掉了紧随问题的 `A.` / `B.` / `C.` 选项行，导致字段没有 `options` 并回退为 textarea。
+
+### 长期规避
+- 自然语言人工交互兜底必须覆盖至少两类真实样式：显式提示词候选项，以及紧随问题的字母选项列表。
+- Webview 层要保留“有 `options` 且无显式 type 时默认 radio”的归一化，并用前端脚本级 smoke 验证 `createHumanInteractionInput` 实际生成 radio/checkbox 控件。
+- 回归用例要使用真实诗歌提示样例，不能只覆盖人工构造的“可选：爱情、自然、人生”。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/humanInteraction.test.js dist/test/promptInteractiveRuntime.test.js dist/test/multiAgentSettingWebview.test.js`。
+- 用 `buildNaturalLanguageHumanInteractionRequest` 喂入含 `A.` / `B.` / `C.` 选项的诗歌澄清文本，确认输出字段 `type=radio` 或 `checkbox` 且 `options` 非空。
+
+### 关联资料
+- `src/humanInteraction.ts`
+- `src/test/humanInteraction.test.ts`
+- `src/test/promptInteractiveRuntime.test.ts`
+- `src/test/multiAgentSettingWebview.test.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
 ## Extension Host 拆分时同名包装函数不能回注自身
 
 - 状态：已规避，需随后续 `extensionHost/*` 拆分和依赖注入变更复核

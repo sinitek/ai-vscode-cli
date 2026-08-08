@@ -155,6 +155,12 @@ export const WEBVIEW_I18N = {
     toolSettingsImplicitSubagentsToggle: "On",
     toolSettingsImplicitSubagentsHint:
       "Global and off by default. When disabled, the extension disables Codex multi_agent and denies OpenCode task subagents for this run. When enabled, it preserves each CLI's available implicit subagent capabilities and OpenCode task permissions. This setting does not affect Loop orchestration.",
+    toolSettingsHumanInteractionLabel: "Human Interaction",
+    toolSettingsHumanInteractionTitle:
+      "Global setting. Allow Vibe tasks to ask for structured clarification before continuing.",
+    toolSettingsHumanInteractionToggle: "On",
+    toolSettingsHumanInteractionHint:
+      "Global and on by default. When enabled, Codex Vibe tasks can open a form when the AI needs more input. Rejecting the form stops the current task.",
     toolSettingsLoopMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLoopMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
@@ -182,6 +188,15 @@ export const WEBVIEW_I18N = {
     toolSettingsMacShellAria: "Task shell for macOS",
     toolSettingsMacShellZsh: "zsh",
     toolSettingsMacShellBash: "bash",
+    humanInteractionTitle: "Human Interaction",
+    humanInteractionClose: "Reject and close",
+    humanInteractionDefaultInstruction:
+      "The AI needs more information before continuing this Vibe task.",
+    humanInteractionDefaultFieldLabel: "Additional information",
+    humanInteractionDefaultFieldPlaceholder: "Enter the details to continue...",
+    humanInteractionSubmit: "Submit",
+    humanInteractionReject: "Reject",
+    humanInteractionRequired: "{label} is required.",
     commonCommandsTitle: "Common Commands",
     commonCommandsClose: "Close",
     commonCommandCompactTitle: "Compact Context",
@@ -532,6 +547,12 @@ export const WEBVIEW_I18N = {
     toolSettingsImplicitSubagentsToggle: "开启",
     toolSettingsImplicitSubagentsHint:
       "全局配置，默认关闭。关闭时，扩展会禁用 Codex multi_agent，并在本次 OpenCode 运行中拒绝 task 子代理。开启后，扩展保留各 CLI 自身可用的隐式子代理能力和 OpenCode task 权限。此设置不影响 Loop 编排。",
+    toolSettingsHumanInteractionLabel: "人工交互",
+    toolSettingsHumanInteractionTitle:
+      "全局设置。允许 Vibe 任务在继续执行前以结构化表单询问补充信息。",
+    toolSettingsHumanInteractionToggle: "开启",
+    toolSettingsHumanInteractionHint:
+      "全局配置，默认开启。开启后，Codex Vibe 任务在 AI 需要补充输入时可弹出表单；拒绝表单会终止当前任务。",
     toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
@@ -559,6 +580,15 @@ export const WEBVIEW_I18N = {
     toolSettingsMacShellAria: "macOS 任务 Shell",
     toolSettingsMacShellZsh: "zsh",
     toolSettingsMacShellBash: "bash",
+    humanInteractionTitle: "人工交互",
+    humanInteractionClose: "拒绝并关闭",
+    humanInteractionDefaultInstruction:
+      "AI 需要你补充以下信息后继续执行当前 Vibe 任务。",
+    humanInteractionDefaultFieldLabel: "补充信息",
+    humanInteractionDefaultFieldPlaceholder: "请输入补充信息...",
+    humanInteractionSubmit: "提交",
+    humanInteractionReject: "拒绝",
+    humanInteractionRequired: "请填写“{label}”。",
     commonCommandsTitle: "常用指令",
     commonCommandsClose: "关闭",
     commonCommandCompactTitle: "压缩上下文",

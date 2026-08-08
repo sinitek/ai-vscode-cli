@@ -71,6 +71,7 @@ export type ThinkingPromptOptions = {
   includeSuffix?: boolean;
   includeFinalAnswerInstruction?: boolean;
   includeTaskListInstruction?: boolean;
+  includeHumanInteractionInstruction?: boolean;
 };
 
 export const CODEX_TASK_LIST_PROMPT_INSTRUCTION = [
@@ -84,6 +85,14 @@ export const CODEX_TASK_LIST_PROMPT_INSTRUCTION = [
   "Write every task item description in Simplified Chinese (中文) unless the user explicitly requests another language; preserve code identifiers, commands, file paths, package names, and exact user-provided terms as-is.",
   "Do not use other Tasklist headings, inline prose lists, semicolon-separated lists, localized status words, or checkbox syntax for task status.",
   "Omit the Tasklist block when there is no meaningful task-list change.",
+].join("\n");
+
+export const CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
+  "Human interaction requirement for Codex Vibe tasks:",
+  "When you need user clarification, missing requirements, or user preferences before continuing, request structured user input through the available app-server user-input or elicitation mechanism.",
+  "Ask at most 3 short questions. Each question must resolve one decision, and when clear candidates exist provide 2-3 mutually exclusive options with the recommended option first.",
+  "For request_user_input style payloads, prefer questions like { id, header, question, options: [{ label, description }], isOther: true } instead of free-form text fields unless the answer is inherently open-ended.",
+  "Do not respond with a plain final-answer list of clarification questions when structured human interaction is available.",
 ].join("\n");
 
 export function buildThinkingPrompt(
@@ -105,10 +114,16 @@ export function buildThinkingPrompt(
   const promptWithTaskListInstruction = includeTaskListInstruction
     ? mergePromptSections("", promptWithThinkingInstructions, CODEX_TASK_LIST_PROMPT_INSTRUCTION)
     : promptWithThinkingInstructions;
+  const includeHumanInteractionInstruction = cli === "codex"
+    && options.includeHumanInteractionInstruction === true
+    && options.includeFinalAnswerInstruction !== false;
+  const promptWithHumanInteractionInstruction = includeHumanInteractionInstruction
+    ? mergePromptSections("", promptWithTaskListInstruction, CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION)
+    : promptWithTaskListInstruction;
   if (options.includeFinalAnswerInstruction === false) {
-    return promptWithTaskListInstruction;
+    return promptWithHumanInteractionInstruction;
   }
-  return mergePromptSections("", promptWithTaskListInstruction, FINAL_ANSWER_PROMPT_INSTRUCTION);
+  return mergePromptSections("", promptWithHumanInteractionInstruction, FINAL_ANSWER_PROMPT_INSTRUCTION);
 }
 
 export function buildHiddenRetryPrompt(
