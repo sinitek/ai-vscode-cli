@@ -91,6 +91,7 @@ type Calls = {
   webviewMessages: Record<string, unknown>[];
   clearedSessions: number;
   clearedPromptHistory: number;
+  promptFavorites: Array<{ id: string; favorite?: boolean }>;
   savedSettings: WorkspaceSettings[];
   statusUpdates: number;
   ruleWrites: Array<{ cli: CliName; scope: "global" | "project"; content: string }>;
@@ -154,6 +155,7 @@ function createHarness(): HandlerHarness {
     webviewMessages: [],
     clearedSessions: 0,
     clearedPromptHistory: 0,
+    promptFavorites: [],
     savedSettings: [],
     statusUpdates: 0,
     ruleWrites: [],
@@ -278,6 +280,7 @@ function createHarness(): HandlerHarness {
     postWebviewMessage: (payload) => { calls.webviewMessages.push(payload); },
     clearAllSessions: () => { calls.clearedSessions += 1; },
     clearPromptHistory: () => { calls.clearedPromptHistory += 1; },
+    setPromptHistoryFavorite: (id, favorite) => { calls.promptFavorites.push({ id, favorite }); },
     setWorkspaceInteractiveModeForCli: (cli, mode) => { calls.interactiveModes.push({ cli, mode }); },
     resetConversationTabSession: async () => undefined,
     getConfigManagerPanel: () => undefined,
@@ -440,6 +443,25 @@ test("honors cancellation and executes confirmed destructive session actions", a
   assert.equal(harness.calls.disposedAll, 1);
   assert.equal(harness.calls.clearedSessions, 1);
   assert.equal(harness.calls.clearedPromptHistory, 1);
+});
+
+test("toggles prompt history favorite state without confirmation", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+
+  await handlePanelMessageWithDeps({
+    type: "togglePromptHistoryFavorite",
+    id: " prompt-1 ",
+    favorite: true,
+  }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "togglePromptHistoryFavorite",
+    id: "",
+    favorite: false,
+  }, harness.deps);
+
+  assert.deepEqual(harness.calls.promptFavorites, [{ id: "prompt-1", favorite: true }]);
+  assert.equal(harness.calls.panelStates, 1);
 });
 
 test("reports config and rules failures while preserving successful rule contracts", async (t) => {

@@ -43,6 +43,7 @@ export type PanelMessage =
   | { type: "applyConfig"; cli: CliName; configId: string }
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
+  | { type: "togglePromptHistoryFavorite"; id: string; favorite?: boolean }
   | { type: "updateSetting"; key: string; value: unknown }
   | {
       type: "humanInteractionResponse";
@@ -170,6 +171,7 @@ export type PromptHistoryItem = {
   prompt: string;
   createdAt: number;
   cli: CliName;
+  favorite?: boolean;
 };
 
 export type ChatMessageAction =

@@ -700,6 +700,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
+      if (elements.promptHistoryFavoritesOnly) {
+        elements.promptHistoryFavoritesOnly.addEventListener("change", (event) => {
+          state.promptHistoryFavoritesOnly = Boolean(event.target.checked);
+          persistWebviewUiState();
+          renderPromptHistoryList();
+        });
+      }
+
       elements.historyTabPrompts.addEventListener("click", () => {
         setHistoryTab("prompts");
       });

@@ -958,6 +958,48 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(errors, []);
 });
 
+test("renders prompt history favorites and filters to favorite prompts", () => {
+  const harness = createRuntimeHarness();
+  const { api, document, posted, window } = harness;
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      promptHistory: [
+        { id: "fav", prompt: "favorite prompt", cli: "codex", createdAt: 1_700_000_000_002, favorite: true },
+        { id: "plain", prompt: "plain prompt", cli: "codex", createdAt: 1_700_000_000_001, favorite: false },
+      ],
+    }),
+  });
+
+  const list = document.getElementById("promptHistoryList");
+  assert.equal(list.children.length, 2);
+  assert.equal(document.getElementById("promptHistorySummary").textContent, "1/2 favorites");
+
+  const favoritesOnly = document.getElementById("promptHistoryFavoritesOnly");
+  favoritesOnly.checked = true;
+  favoritesOnly.dispatchEvent({ type: "change", target: favoritesOnly });
+  assert.equal(api.state.promptHistoryFavoritesOnly, true);
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].querySelector(".prompt-preview")?.textContent, "favorite prompt");
+  assert.deepEqual(posted.at(-1), {
+    type: "setState",
+    state: { onlyShowFinalResults: true, promptHistoryFavoritesOnly: true },
+  });
+
+  const favoriteButton = list.children[0].querySelector("button.prompt-favorite-button");
+  assert.ok(favoriteButton);
+  favoriteButton.click();
+  assert.deepEqual(posted.at(-1), {
+    type: "togglePromptHistoryFavorite",
+    id: "fav",
+    favorite: false,
+  });
+  assert.equal(api.state.promptHistory[0].favorite, false);
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].textContent, "No favorite prompts");
+});
+
 test("keeps run stream preview bounded per conversation tab", () => {
   const { api, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });

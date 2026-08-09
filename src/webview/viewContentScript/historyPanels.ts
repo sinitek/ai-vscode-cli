@@ -367,11 +367,18 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           return;
         }
         elements.promptHistoryList.innerHTML = "";
-        const items = Array.isArray(state.promptHistory) ? state.promptHistory : [];
+        const allItems = Array.isArray(state.promptHistory) ? state.promptHistory : [];
+        const favoriteCount = allItems.filter((item) => isPromptHistoryFavorite(item)).length;
+        syncPromptHistoryToolbar(allItems.length, favoriteCount);
+        const items = state.promptHistoryFavoritesOnly
+          ? allItems.filter((item) => isPromptHistoryFavorite(item))
+          : allItems;
         if (!items.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = t("historyEmptyPrompts");
+          empty.textContent = state.promptHistoryFavoritesOnly
+            ? t("historyEmptyFavoritePrompts")
+            : t("historyEmptyPrompts");
           elements.promptHistoryList.appendChild(empty);
           return;
         }
@@ -382,6 +389,10 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         items.forEach((item) => {
           const wrapper = document.createElement("div");
           wrapper.className = "prompt-item";
+          const isFavorite = isPromptHistoryFavorite(item);
+          if (isFavorite) {
+            wrapper.classList.add("favorite");
+          }
           if (state.promptHistoryExpandedId === item.id) {
             wrapper.classList.add("expanded");
           }
@@ -409,6 +420,21 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           const actions = document.createElement("div");
           actions.className = "prompt-actions";
 
+          const favoriteButton = document.createElement("button");
+          favoriteButton.className = isFavorite
+            ? "ghost icon-button prompt-favorite-button is-favorite"
+            : "ghost icon-button prompt-favorite-button";
+          favoriteButton.textContent = isFavorite ? "\\u2605" : "\\u2606";
+          favoriteButton.title = isFavorite
+            ? t("promptFavoriteRemoveLabel")
+            : t("promptFavoriteAddLabel");
+          favoriteButton.setAttribute("aria-label", favoriteButton.title);
+          favoriteButton.setAttribute("aria-pressed", String(isFavorite));
+          favoriteButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            setPromptHistoryFavorite(item.id, !isFavorite);
+          });
+
           const viewButton = document.createElement("button");
           viewButton.className = "ghost";
           viewButton.textContent = state.promptHistoryExpandedId === item.id
@@ -427,6 +453,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
             applyPromptHistory(item.prompt || "");
           });
 
+          actions.appendChild(favoriteButton);
           actions.appendChild(viewButton);
           actions.appendChild(useButton);
 
@@ -445,6 +472,41 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           });
 
           elements.promptHistoryList.appendChild(wrapper);
+        });
+      }
+
+      function isPromptHistoryFavorite(item) {
+        return Boolean(item && item.favorite === true);
+      }
+
+      function syncPromptHistoryToolbar(totalCount, favoriteCount) {
+        if (elements.promptHistoryFavoritesOnly) {
+          elements.promptHistoryFavoritesOnly.checked = Boolean(state.promptHistoryFavoritesOnly);
+          elements.promptHistoryFavoritesOnly.disabled = totalCount === 0;
+        }
+        if (elements.promptHistorySummary) {
+          elements.promptHistorySummary.textContent = t("historyPromptFavoriteSummary", {
+            favorite: favoriteCount,
+            total: totalCount,
+          });
+        }
+      }
+
+      function setPromptHistoryFavorite(id, favorite) {
+        const normalizedId = typeof id === "string" ? id.trim() : "";
+        if (!normalizedId) {
+          return;
+        }
+        const items = Array.isArray(state.promptHistory) ? state.promptHistory : [];
+        const target = items.find((item) => item && item.id === normalizedId);
+        if (target) {
+          target.favorite = Boolean(favorite);
+        }
+        renderPromptHistoryList();
+        vscode.postMessage({
+          type: "togglePromptHistoryFavorite",
+          id: normalizedId,
+          favorite: Boolean(favorite),
         });
       }
 

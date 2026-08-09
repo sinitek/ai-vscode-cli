@@ -41,12 +41,9 @@ export function ensurePromptHistoryStore(
   const normalized = items
     .map((item) => normalizePromptHistoryItem(item, options))
     .filter((item): item is PromptHistoryItem => Boolean(item))
-    .filter((item) => options.isTimestampWithinHistoryRetention(item.createdAt, now));
+    .filter((item) => shouldRetainPromptHistoryItem(item, options, now));
   normalized.sort((a, b) => b.createdAt - a.createdAt);
-  if (normalized.length > options.promptHistoryLimit) {
-    normalized.length = options.promptHistoryLimit;
-  }
-  return { items: normalized };
+  return { items: limitPromptHistoryItems(normalized, options.promptHistoryLimit) };
 }
 
 export function normalizePromptHistoryItem(
@@ -71,6 +68,7 @@ export function normalizePromptHistoryItem(
     prompt,
     createdAt,
     cli,
+    favorite: record.favorite === true,
   };
 }
 
@@ -81,6 +79,24 @@ export function createPromptHistoryId(timestamp?: number): string {
 
 export function buildPromptHistoryState(store: PromptHistoryStore | undefined): PromptHistoryItem[] {
   return store?.items ? [...store.items] : [];
+}
+
+function shouldRetainPromptHistoryItem(
+  item: PromptHistoryItem,
+  options: Pick<PromptHistoryStoreOptions, "isTimestampWithinHistoryRetention">,
+  now: number
+): boolean {
+  return item.favorite === true || options.isTimestampWithinHistoryRetention(item.createdAt, now);
+}
+
+function limitPromptHistoryItems(items: PromptHistoryItem[], promptHistoryLimit: number): PromptHistoryItem[] {
+  const nonFavoriteLimit = Math.max(0, promptHistoryLimit);
+  const keptNonFavorites = new Set(
+    items
+      .filter((item) => item.favorite !== true)
+      .slice(0, nonFavoriteLimit)
+  );
+  return items.filter((item) => item.favorite === true || keptNonFavorites.has(item));
 }
 
 export function recordPromptHistoryInStore(
@@ -101,18 +117,59 @@ export function recordPromptHistoryInStore(
     prompt: normalized,
     createdAt: Date.now(),
     cli,
+    favorite: false,
   });
-  if (nextStore.items.length > options.promptHistoryLimit) {
-    nextStore.items = nextStore.items.slice(0, options.promptHistoryLimit);
-  }
+  nextStore.items = limitPromptHistoryItems(nextStore.items, options.promptHistoryLimit);
   writePromptHistoryFile(nextStore, options);
   return nextStore;
 }
 
-export function clearPromptHistoryStore(options: PromptHistoryStoreOptions): PromptHistoryStore {
-  const nextStore: PromptHistoryStore = { items: [] };
+export function setPromptHistoryFavoriteInStore(
+  store: PromptHistoryStore | undefined,
+  id: string,
+  favorite: boolean | undefined,
+  options: PromptHistoryStoreOptions
+): PromptHistoryStore {
+  const normalizedId = String(id ?? "").trim();
+  const nextStore = store
+    ? ensurePromptHistoryStore(store, options)
+    : loadPromptHistoryStore(options);
+  if (!normalizedId) {
+    return nextStore;
+  }
+  const item = nextStore.items.find((entry) => entry.id === normalizedId);
+  if (!item) {
+    return nextStore;
+  }
+  const nextFavorite = typeof favorite === "boolean" ? favorite : !Boolean(item.favorite);
+  if (Boolean(item.favorite) === nextFavorite) {
+    return nextStore;
+  }
+  item.favorite = nextFavorite;
   writePromptHistoryFile(nextStore, options);
-  options.logInfo?.("prompt-history-cleared", { workspace: options.workspaceKey });
+  options.logInfo?.("prompt-history-favorite-updated", {
+    workspace: options.workspaceKey,
+    id: normalizedId,
+    favorite: nextFavorite,
+  });
+  return nextStore;
+}
+
+export function clearPromptHistoryStore(
+  store: PromptHistoryStore | undefined,
+  options: PromptHistoryStoreOptions
+): PromptHistoryStore {
+  const currentStore = store
+    ? ensurePromptHistoryStore(store, options)
+    : loadPromptHistoryStore(options);
+  const nextStore: PromptHistoryStore = {
+    items: currentStore.items.filter((item) => item.favorite === true),
+  };
+  writePromptHistoryFile(nextStore, options);
+  options.logInfo?.("prompt-history-cleared", {
+    workspace: options.workspaceKey,
+    preservedFavoriteCount: nextStore.items.length,
+  });
   return nextStore;
 }
 

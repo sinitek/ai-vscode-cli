@@ -105,6 +105,7 @@ export type PanelMessageHandlerDeps = {
   postWebviewMessage: (payload: Record<string, unknown>) => void;
   clearAllSessions: () => void;
   clearPromptHistory: () => void;
+  setPromptHistoryFavorite: (id: string, favorite?: boolean) => void;
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => void;
   resetConversationTabSession: () => Promise<void>;
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;
@@ -220,6 +221,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     postWebviewMessage,
     clearAllSessions,
     clearPromptHistory,
+    setPromptHistoryFavorite,
     setWorkspaceInteractiveModeForCli,
     resetConversationTabSession,
     getConfigManagerPanel,
@@ -592,6 +594,16 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
       return;
     }
     clearPromptHistory();
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "togglePromptHistoryFavorite") {
+    const id = typeof message.id === "string" ? message.id.trim() : "";
+    if (!id) {
+      return;
+    }
+    setPromptHistoryFavorite(id, message.favorite);
     await postPanelState();
     return;
   }

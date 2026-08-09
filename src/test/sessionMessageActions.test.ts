@@ -204,6 +204,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     postWebviewMessage: () => undefined,
     clearAllSessions: () => undefined,
     clearPromptHistory: () => undefined,
+    setPromptHistoryFavorite: () => undefined,
     setWorkspaceInteractiveModeForCli: (cli, mode) => {
       calls.interactiveModes.push({ cli, mode });
       state.workspaceSettings.interactiveModeByCli = {

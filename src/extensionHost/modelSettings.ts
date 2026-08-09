@@ -16,7 +16,7 @@ import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
 import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getManagedModelOptionsForCliFromStore, getModelOptionsForCliFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedCliModelFromStore, getSelectedLoopCliModelFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectCliLoopModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
-import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
+import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
 import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled, resolveGlobalMultiAgentEnabled, type ToolSettingsLocale } from "../toolSettings";
 import { t } from "../i18n";
 import { logInfo } from "../logger";
@@ -988,8 +988,12 @@ function recordPromptHistory(prompt: string, cli: CliName): void {
   promptHistoryStore = recordPromptHistoryInStore(promptHistoryStore, prompt, cli, getPromptHistoryStoreOptions());
 }
 
+function setPromptHistoryFavorite(id: string, favorite?: boolean): void {
+  promptHistoryStore = setPromptHistoryFavoriteInStore(promptHistoryStore, id, favorite, getPromptHistoryStoreOptions());
+}
+
 function clearPromptHistory(): void {
-  promptHistoryStore = clearPromptHistoryStore(getPromptHistoryStoreOptions());
+  promptHistoryStore = clearPromptHistoryStore(promptHistoryStore, getPromptHistoryStoreOptions());
 }
 
 function getPromptHistoryFilePath(workspaceKey: string = activeWorkspaceKey): string {
@@ -1088,6 +1092,7 @@ return {
   ensurePromptHistoryStore: wrap(ensurePromptHistoryStore),
   buildPromptHistoryState: wrap(buildPromptHistoryState),
   recordPromptHistory: wrap(recordPromptHistory),
+  setPromptHistoryFavorite: wrap(setPromptHistoryFavorite),
   clearPromptHistory: wrap(clearPromptHistory),
   getPromptHistoryFilePath: wrap(getPromptHistoryFilePath),
   readPromptHistoryFile: wrap(readPromptHistoryFile),

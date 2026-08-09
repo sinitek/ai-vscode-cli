@@ -118,6 +118,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         try {
           vscode.setState({
             onlyShowFinalResults: state.onlyShowFinalResults,
+            promptHistoryFavoritesOnly: state.promptHistoryFavoritesOnly,
           });
         } catch {
           // ignore

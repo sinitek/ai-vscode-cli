@@ -266,6 +266,13 @@ ${webviewStyles}    </style>
             <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
           </div>
           <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
+            <div class="prompt-history-toolbar">
+              <label class="prompt-history-filter">
+                <input id="promptHistoryFavoritesOnly" type="checkbox" />
+                <span>${i18n.historyPromptFavoritesOnly}</span>
+              </label>
+              <div id="promptHistorySummary" class="prompt-history-summary"></div>
+            </div>
             <div id="promptHistoryList" class="prompt-list"></div>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">

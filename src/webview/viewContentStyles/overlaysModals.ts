@@ -473,6 +473,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .history-panel.prompts {
         padding: 16px;
         overflow-y: auto;
+        gap: 10px;
       }
       .history-panel.sessions {
         overflow: hidden;
@@ -679,6 +680,25 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         flex-direction: column;
         gap: 8px;
       }
+      .prompt-history-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .prompt-history-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        user-select: none;
+      }
+      .prompt-history-summary {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
       .prompt-item {
         padding: 10px;
         border: 1px solid var(--vscode-widget-border);
@@ -689,6 +709,9 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         gap: 8px;
       }
       .prompt-item:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      .prompt-item.favorite {
         border-color: var(--vscode-focusBorder);
       }
       .prompt-header {
@@ -728,7 +751,16 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         flex-shrink: 0;
         flex-wrap: wrap;
         justify-content: flex-end;
-        max-width: 180px;
+        max-width: 220px;
+      }
+      .prompt-favorite-button {
+        min-width: 28px;
+        width: 28px;
+        padding: 0;
+        color: var(--vscode-descriptionForeground);
+      }
+      .prompt-favorite-button.is-favorite {
+        color: var(--vscode-charts-yellow, var(--vscode-foreground));
       }
       .prompt-full {
         display: none;

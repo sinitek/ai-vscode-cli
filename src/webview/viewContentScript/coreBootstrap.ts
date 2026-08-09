@@ -200,6 +200,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         ruleScope: "global",
         historyTab: "sessions",
         promptHistoryExpandedId: null,
+        promptHistoryFavoritesOnly: Boolean(persistedWebviewState.promptHistoryFavoritesOnly),
         historySessionMessages: {
           cli: "",
           sessionId: "",
@@ -311,6 +312,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         historyTabSessions: document.getElementById("historyTabSessions"),
         historyPanelPrompts: document.getElementById("historyPanelPrompts"),
         historyPanelSessions: document.getElementById("historyPanelSessions"),
+        promptHistoryFavoritesOnly: document.getElementById("promptHistoryFavoritesOnly"),
+        promptHistorySummary: document.getElementById("promptHistorySummary"),
         promptHistoryList: document.getElementById("promptHistoryList"),
         sessionList: document.getElementById("sessionList"),
         historyMessagesOverlay: document.getElementById("historyMessagesOverlay"),
