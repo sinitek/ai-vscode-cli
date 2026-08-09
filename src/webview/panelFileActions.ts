@@ -54,8 +54,7 @@ const SESSION_HISTORY_EXPORT_FILENAME_PREFIX = "sinitek-session-history";
 const PATH_PICKER_EXCLUDE = "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**}";
 const PATH_PICKER_MAX_RESULTS = 2000;
 export const UPLOAD_MAX_FILES = 10;
-export const UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024;
-export const UPLOAD_MAX_TOTAL_BYTES = 25 * 1024 * 1024;
+export const UPLOAD_MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
@@ -186,15 +185,6 @@ function buildFileTooLargeError(fileName: string, size: number): string {
   );
 }
 
-function buildTotalTooLargeError(size: number): string {
-  const sizeLabel = formatUploadLimitBytes(size);
-  const maxLabel = formatUploadLimitBytes(UPLOAD_MAX_TOTAL_BYTES);
-  return buildUploadLimitError(
-    `Attachments total ${sizeLabel}; maximum total is ${maxLabel}.`,
-    `附件总大小为 ${sizeLabel}，总上限 ${maxLabel}。`
-  );
-}
-
 export async function saveUploadedFiles(files: UploadFilePayload[]): Promise<UploadedFilesResult> {
   if (!Array.isArray(files) || files.length === 0) {
     return { paths: [] };
@@ -205,7 +195,6 @@ export async function saveUploadedFiles(files: UploadFilePayload[]): Promise<Upl
   const savedPaths: string[] = [];
   try {
     const decodedFiles: Array<{ file: UploadFilePayload; buffer: Buffer }> = [];
-    let totalBytes = 0;
     for (const file of files) {
       const buffer = decodeDataUrl(file.dataUrl);
       if (!buffer) {
@@ -213,10 +202,6 @@ export async function saveUploadedFiles(files: UploadFilePayload[]): Promise<Upl
       }
       if (buffer.byteLength > UPLOAD_MAX_FILE_BYTES) {
         return { paths: [], error: buildFileTooLargeError(file.name, buffer.byteLength) };
-      }
-      totalBytes += buffer.byteLength;
-      if (totalBytes > UPLOAD_MAX_TOTAL_BYTES) {
-        return { paths: [], error: buildTotalTooLargeError(totalBytes) };
       }
       decodedFiles.push({ file, buffer });
     }

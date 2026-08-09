@@ -1628,7 +1628,6 @@ test("handles run stream, queue, attachments, history, and settings function bra
     "RUN_STREAM_MAX_RECORD_BYTES",
     "UPLOAD_MAX_FILES",
     "UPLOAD_MAX_FILE_BYTES",
-    "UPLOAD_MAX_TOTAL_BYTES",
     "t",
     "normalizePromptPayload",
     "getActiveConversationRuntimeState",
@@ -1661,8 +1660,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
     8 * 1024 * 1024,
     256 * 1024,
     10,
-    10 * 1024 * 1024,
-    25 * 1024 * 1024,
+    20 * 1024 * 1024,
     (key: string) => key,
     (payload: any) => payload && payload.prompt ? payload : null,
     () => runtimeState,
@@ -1713,10 +1711,10 @@ test("handles run stream, queue, attachments, history, and settings function bra
   helpers.normalizeQueueEditingState(runtimeState);
   assert.equal(runtimeState.queueEditingIndex, -1);
   assert.equal(helpers.buildInsertText(["a", "b"], "#"), "#a #b ");
-  assert.equal(helpers.formatUploadLimitBytes(10 * 1024 * 1024), "10 MB");
+  assert.equal(helpers.formatUploadLimitBytes(20 * 1024 * 1024), "20 MB");
   assert.equal(helpers.validateUploadFiles(Array.from({ length: 11 }, () => ({ size: 1 }))), "toastUploadTooManyFiles");
-  assert.equal(helpers.validateUploadFiles([{ name: "big.bin", size: 11 * 1024 * 1024 }]), "toastUploadFileTooLarge");
-  assert.equal(helpers.validateUploadFiles([{ size: 9 * 1024 * 1024 }, { size: 9 * 1024 * 1024 }, { size: 9 * 1024 * 1024 }]), "toastUploadTotalTooLarge");
+  assert.equal(helpers.validateUploadFiles([{ name: "big.bin", size: 21 * 1024 * 1024 }]), "toastUploadFileTooLarge");
+  assert.equal(helpers.validateUploadFiles([{ size: 19 * 1024 * 1024 }, { size: 19 * 1024 * 1024 }]), "");
   assert.equal(await helpers.readFileAsDataUrl({ name: "ok" }), "data:ok");
   await assert.rejects(() => helpers.readFileAsDataUrl({ name: "bad" }));
   assert.deepEqual(helpers.getClipboardFiles({

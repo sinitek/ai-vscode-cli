@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "fs";
 import { installVscodeMock } from "./vscodeMock";
 
 installVscodeMock();
@@ -560,13 +561,19 @@ test("rejects upload boundaries in the file-action adapter before saving", async
   assert.match(String(tooLarge.error), /maximum per file/);
 
   const nineMbDataUrl = "data:application/octet-stream;base64," + Buffer.alloc(9 * 1024 * 1024).toString("base64");
-  const tooLargeTotal = await saveUploadedFiles([
+  const overOldTotal = await saveUploadedFiles([
     { name: "a.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
     { name: "b.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
     { name: "c.bin", type: "application/octet-stream", dataUrl: nineMbDataUrl },
   ]);
-  assert.deepEqual(tooLargeTotal.paths, []);
-  assert.match(String(tooLargeTotal.error), /maximum total/);
+  try {
+    assert.equal(overOldTotal.error, undefined);
+    assert.equal(overOldTotal.paths.length, 3);
+  } finally {
+    for (const savedPath of overOldTotal.paths) {
+      fs.rmSync(savedPath, { force: true });
+    }
+  }
 });
 
 test("forwards settings and prompts to action handlers and leaves unknown messages as a no-op", async (t) => {

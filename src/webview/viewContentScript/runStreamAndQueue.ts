@@ -1046,7 +1046,6 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
             max: UPLOAD_MAX_FILES,
           });
         }
-        let totalBytes = 0;
         for (const file of files) {
           const size = file && typeof file.size === "number" && Number.isFinite(file.size)
             ? Math.max(0, file.size)
@@ -1056,13 +1055,6 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
               name: file && file.name ? file.name : t("attachmentFallbackName"),
               size: formatUploadLimitBytes(size),
               max: formatUploadLimitBytes(UPLOAD_MAX_FILE_BYTES),
-            });
-          }
-          totalBytes += size;
-          if (totalBytes > UPLOAD_MAX_TOTAL_BYTES) {
-            return t("toastUploadTotalTooLarge", {
-              size: formatUploadLimitBytes(totalBytes),
-              max: formatUploadLimitBytes(UPLOAD_MAX_TOTAL_BYTES),
             });
           }
         }
