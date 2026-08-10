@@ -107,5 +107,5 @@
   "view.container.title": "携宁 CLI 助手",
   "view.panel.name": "携宁 CLI 助手",
   "config.autoAddEditorContextTags.description": "控制是否在 AI 对话中自动将当前文件/选区加入输入框上下文标签。",
-  "config.humanInteractionEnabled.description": "启用 Vibe 任务中的人工交互表单，用于 AI 继续执行前需要澄清需求的场景。"
+  "config.humanInteractionEnabled.description": "启用 Codex、Claude 和 OpenCode Vibe 任务中的人工交互表单，用于 AI 继续执行前需要澄清需求的场景。"
 }

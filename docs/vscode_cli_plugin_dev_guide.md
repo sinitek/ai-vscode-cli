@@ -16,7 +16,7 @@ OpenCode 主模型/子模型与思考力度的实现事实以 `.ch/docs/referenc
 
 Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时显示“主模型 / 子模型”；OpenCode 同样使用主模型 / 子模型口径，底层 `model` / `small_model` 只作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 
-Codex Vibe/coding 人工交互表单由全局工具设置 `humanInteractionEnabled` 控制，默认开启。运行时拦截结构化 Codex app-server 人工澄清请求；当用户明确要求 AI 先询问需求/细节但 Codex 只返回普通问题列表时，也会兜底转为同一人工交互表单，并把问题里的“可选 / 选项 / 例如 / 如”候选项以及紧随问题的 `A.` / `B.` / `C.` 字母选项列表渲染成 radio/checkbox。提交继续、拒绝终止；详细边界以 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 为准。
+Codex、Claude 和 OpenCode Vibe/coding 人工交互表单由全局工具设置 `humanInteractionEnabled` 控制，默认开启。运行时会拦截结构化 Codex app-server 人工澄清请求；当用户明确要求 AI 先询问需求/细节但模型只返回普通问题列表时，三组 CLI 都会兜底转为同一人工交互表单，并把问题里的“可选 / 选项 / 例如 / 如”候选项以及紧随问题的 `A.` / `B.` / `C.` 字母选项列表渲染成 radio/checkbox。提交继续、拒绝终止；详细边界以 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 为准。
 
 Claude 配置卡片的实现事实以 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/references/cli-runtime-reference.md` 为准：`~/.claude/settings.json` 支持可视化与 JSON 双模式；可视化只定向维护官方常用核心字段和三档默认模型环境变量，序列化必须保留未知字段与额外环境变量。 Claude / OpenCode / Codex 三组可视化参数 label 右侧必须提供问号 tooltip，枚举参数列出可选值；“查看范例”统一放在配置文件名右侧。
 

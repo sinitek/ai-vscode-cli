@@ -21,6 +21,12 @@ import type { CliName, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
 import { getLocaleSetting, resolveLocale, type I18nKey } from "../i18n";
+import {
+  buildNaturalLanguageHumanInteractionRequest,
+  formatHumanInteractionSubmittedText,
+  type HumanInteractionRequest,
+  type HumanInteractionSubmission,
+} from "../humanInteraction";
 import { logCliRaw, logCliStream, logDebug, logError, logInfo, sanitizeEnv } from "../logger";
 import { resolveOpenCodeSuccessfulExitOutcome, shouldRecoverOpenCodeLoopMainSessionInFreshSession } from "../openCodeRunCompletion";
 import {
@@ -79,6 +85,7 @@ type PromptOneShotRuntimeHostDeps = {
   buildSubagentProgressLabels: () => SubagentProgressLabels;
   buildUserChatMessage: (input: PromptRunInput, createdAt: number, messageId: string) => ChatMessage;
   captureSessionFromBuffer: (cli: CliName, buffer: string) => void;
+  cancelHumanInteractionForTab: (tabId: string, statusText?: string) => void;
   clearActiveRun: () => void;
   createDisabledOpenCodeSubagentMonitor: () => OpenCodeSubagentMonitor;
   createMessageId: () => string;
@@ -86,6 +93,7 @@ type PromptOneShotRuntimeHostDeps = {
   getActiveRunId: () => string | undefined;
   getActiveTaskRun: () => TaskRunDraft | null;
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
+  getGlobalHumanInteractionEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   killActiveProcess: () => void;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
@@ -122,6 +130,7 @@ type PromptOneShotRuntimeHostDeps = {
     isolateProjectInstructions?: boolean;
   }) => Promise<PreparedOpenCodeSubagentRuntime>;
   preparePendingLabel: (cli: CliName, tabId: string, prompt: string) => void;
+  requestHumanInteraction: (request: HumanInteractionRequest) => Promise<HumanInteractionSubmission>;
   resetActiveAssistantMessage: () => void;
   resetTraceState: () => void;
   resolveCliSessionIdForResume: (cli: CliName, sessionId: string | null) => string | null;
@@ -193,6 +202,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     buildSubagentProgressLabels,
     buildUserChatMessage,
     captureSessionFromBuffer,
+    cancelHumanInteractionForTab,
     clearActiveRun: clearPrimaryActiveRun,
     createDisabledOpenCodeSubagentMonitor,
     createMessageId,
@@ -200,6 +210,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     getActiveRunId,
     getActiveTaskRun,
     getEffectiveThinkingMode,
+    getGlobalHumanInteractionEnabled,
     getPendingSessionDraft,
     killActiveProcess,
     loadSessionMessages,
@@ -210,6 +221,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     prepareOpenCodeRuntime,
     prepareOpenCodeSubagentRuntime,
     preparePendingLabel,
+    requestHumanInteraction,
     resetActiveAssistantMessage,
     resetTraceState,
     resolveCliSessionIdForResume,
@@ -300,8 +312,12 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     const initialSessionId = target.sessionId;
     const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, initialSessionId);
     const includeFinalAnswerInstruction = !input.loopTaskId;
+    const humanInteractionEnabledForVibeRun = !input.loopTaskId
+      && !input.graphRunId
+      && getGlobalHumanInteractionEnabled();
     const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
       includeFinalAnswerInstruction,
+      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
     });
     const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode, {
       includeFinalAnswerInstruction,
@@ -436,6 +452,123 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       },
     });
 
+    let naturalLanguageHumanInteractionCount = 0;
+    let pendingHumanInteractionContinuationPrompt: string | null = null;
+
+    const appendHumanInteractionSubmission = (
+      targetMessages: ChatMessage[],
+      submission: HumanInteractionSubmission,
+      request: HumanInteractionRequest,
+    ): void => {
+      const message: ChatMessage = {
+        id: createMessageId(),
+        role: "user",
+        content: formatHumanInteractionSubmittedText(submission, request.formFields),
+        createdAt: Date.now(),
+        merge: false,
+      };
+      appendMessageToStore(targetMessages, message);
+      sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
+    };
+
+    const removeLatestAssistantMessage = (targetMessages: ChatMessage[]): void => {
+      const userMessageIndex = targetMessages.findIndex((message) => message.id === userMessageId);
+      for (let index = targetMessages.length - 1; index > userMessageIndex; index -= 1) {
+        const message = targetMessages[index];
+        if (!message || message.role !== "assistant" || message.kind === "thinking" || message.subagentId) {
+          continue;
+        }
+        targetMessages.splice(index, 1);
+        activeOpenCodeDisplayedFinalText = null;
+        resetActiveAssistantMessage();
+        sendPanelMessage({ type: "removeMessage", id: message.id, tabId: activeTabId });
+        return;
+      }
+    };
+
+    const buildHumanInteractionContinuationPrompt = (
+      submission: HumanInteractionSubmission,
+      request: HumanInteractionRequest,
+    ): string => buildThinkingPrompt(runCli, thinkingMode, [
+      formatHumanInteractionSubmittedText(submission, request.formFields),
+      "",
+      "请根据以上补充信息继续完成原始任务。",
+    ].join("\n"), {
+      includePrefix: false,
+      includeSuffix: false,
+      includeFinalAnswerInstruction,
+      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
+    });
+
+    const maybeHandleNaturalLanguageHumanInteraction = async (
+      targetMessages: ChatMessage[],
+    ): Promise<"continue" | "stopped" | false> => {
+      if (!humanInteractionEnabledForVibeRun || naturalLanguageHumanInteractionCount > 0) {
+        return false;
+      }
+      const assistantMessage = [...targetMessages].reverse().find((message) => (
+        message.role === "assistant"
+        && message.kind !== "thinking"
+        && !message.subagentId
+        && String(message.content ?? "").trim().length > 0
+      ));
+      if (!assistantMessage) {
+        return false;
+      }
+      const humanRequest = buildNaturalLanguageHumanInteractionRequest({
+        tabId: activeTabId,
+        fallbackInteractionId: createMessageId(),
+        userPrompt: prompt,
+        assistantText: String(assistantMessage.content ?? ""),
+      });
+      if (!humanRequest) {
+        return false;
+      }
+      naturalLanguageHumanInteractionCount += 1;
+      removeLatestAssistantMessage(targetMessages);
+      appendSystemMessage(t("run.humanInteractionWaiting"));
+      const submission = await requestHumanInteraction(humanRequest);
+      appendHumanInteractionSubmission(targetMessages, submission, humanRequest);
+      if (submission.status === "aborted") {
+        const userMessage = t("run.humanInteractionRejected");
+        appendSystemMessage(userMessage);
+        cancelHumanInteractionForTab(activeTabId, userMessage);
+        void logInfo("runPrompt-one-shot-human-interaction-rejected", {
+          cli: runCli,
+          tabId: activeTabId,
+          runId,
+          sessionId: activeSessionId,
+          interactionId: humanRequest.interactionId,
+        });
+        sendRunStatus("stopped");
+        appendCompletionMessage("stopped");
+        persistActiveMessages();
+        maybePersistLongTermMemoryFromRun({
+          status: "stopped",
+          cli: runCli,
+          prompt,
+          messages: activeMessageTarget ?? targetMessages,
+          taskRole: input.taskRole,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          loopSubtaskId: input.loopSubtaskId,
+          skip: input.skipLongTermMemoryPersist,
+        });
+        clearActiveRun();
+        return "stopped";
+      }
+      pendingHumanInteractionContinuationPrompt = buildHumanInteractionContinuationPrompt(submission, humanRequest);
+      void logInfo("runPrompt-one-shot-natural-human-interaction", {
+        cli: runCli,
+        tabId: activeTabId,
+        runId,
+        sessionId: activeSessionId,
+        interactionId: humanRequest.interactionId,
+        fields: humanRequest.formFields.length,
+      });
+      return "continue";
+    };
+
     while (true) {
       const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
       freshSessionRecoveryPending = false;
@@ -443,9 +576,11 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         freshSessionRecoveryAttempted = true;
       }
       const attemptNumber = hiddenRetryCount + 1;
-      const attemptPrompt = isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
-        ? thinkingPrompt
-        : hiddenRetryPrompt;
+      const attemptPrompt = pendingHumanInteractionContinuationPrompt
+        ?? (isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
+          ? thinkingPrompt
+          : hiddenRetryPrompt);
+      pendingHumanInteractionContinuationPrompt = null;
       let attemptHadNormalReply = false;
 
       if (hiddenRetryCount > 0) {
@@ -726,6 +861,15 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
         if (openCodeOutput.finalText) {
           appendOpenCodeFinalText(openCodeOutput.finalText);
+        }
+        const humanInteractionResult = await maybeHandleNaturalLanguageHumanInteraction(finalMessageTarget);
+        if (humanInteractionResult === "stopped") {
+          return;
+        }
+        if (humanInteractionResult === "continue") {
+          hiddenRetryCount = 0;
+          freshSessionRecoveryPending = false;
+          continue;
         }
         const conversationHasFinalConclusion = hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
           observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,

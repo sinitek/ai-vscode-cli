@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import { installVscodeMock } from "./vscodeMock";
 
 import type { RunProcess } from "../cli/commandRunner";
+import type { HumanInteractionRequest, HumanInteractionSubmission } from "../humanInteraction";
 import type { TaskRunDraft, TaskRunStatus } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
 
@@ -50,7 +51,10 @@ function createAsyncRunCliStreamStub(
   }) as RunCliStream;
 }
 
-function createOneShotRuntimeHarness() {
+function createOneShotRuntimeHarness(options: {
+  humanInteractionEnabled?: boolean;
+  humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
+} = {}) {
   const messages: ChatMessage[] = [];
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
   const panelMessages: Array<Record<string, unknown>> = [];
@@ -61,6 +65,8 @@ function createOneShotRuntimeHarness() {
   const shownCommandErrors: string[] = [];
   const memoryPersistStatuses: TaskRunStatus[] = [];
   const rawStreamDeltas: Array<{ content: unknown; stream?: string }> = [];
+  const humanInteractionRequests: HumanInteractionRequest[] = [];
+  const canceledHumanInteractionTabs: Array<{ tabId: string; statusText?: string }> = [];
   let activeRunId: string | undefined;
   let activeTaskRun: TaskRunDraft | null = null;
   let activeMessageTarget: ChatMessage[] | null = null;
@@ -144,6 +150,9 @@ function createOneShotRuntimeHarness() {
       graphNodeId: input.graphNodeId,
     }),
     captureSessionFromBuffer: () => undefined,
+    cancelHumanInteractionForTab: (tabId, statusText) => {
+      canceledHumanInteractionTabs.push({ tabId, statusText });
+    },
     clearActiveRun: () => {
       activeRunId = undefined;
       activeTaskRun = null;
@@ -160,6 +169,7 @@ function createOneShotRuntimeHarness() {
     getActiveRunId: () => activeRunId,
     getActiveTaskRun: () => activeTaskRun,
     getEffectiveThinkingMode: () => "medium",
+    getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled !== false,
     getPendingSessionDraft: (tabId) => {
       if (!pendingMessagesByTab.has(tabId)) {
         pendingMessagesByTab.set(tabId, messages);
@@ -204,6 +214,18 @@ function createOneShotRuntimeHarness() {
       dispose: () => undefined,
     }),
     preparePendingLabel: () => undefined,
+    requestHumanInteraction: async (request) => {
+      humanInteractionRequests.push(request);
+      if (typeof options.humanInteractionSubmission === "function") {
+        return options.humanInteractionSubmission(request);
+      }
+      return options.humanInteractionSubmission ?? {
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: "completed",
+        values: {},
+      };
+    },
     resetActiveAssistantMessage: () => undefined,
     resetTraceState: () => undefined,
     resolveCliSessionIdForResume: (_cli, sessionId) => sessionId,
@@ -261,6 +283,8 @@ function createOneShotRuntimeHarness() {
     shownCommandErrors,
     memoryPersistStatuses,
     rawStreamDeltas,
+    humanInteractionRequests,
+    canceledHumanInteractionTabs,
     get activeRunId() {
       return activeRunId;
     },
@@ -298,6 +322,77 @@ test("one-shot runtime host completes a successful OpenCode run", async () => {
   assert.ok(assistantMessage);
   assert.equal(assistantMessage.content, "[final_answer] completed");
   assert.deepEqual(harness.rawStreamDeltas, [{ content: stdout, stream: "stdout" }]);
+});
+
+test("one-shot runtime host converts OpenCode natural clarification replies into human interaction forms", async () => {
+  const prompts: string[] = [];
+  const harness = createOneShotRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "completed",
+      values: {
+        answer_1: "秋天",
+        answer_2: "古风",
+      },
+    }),
+  });
+  const buildStdout = (text: string, sessionID = "ses_natural_human"): string => `${JSON.stringify({
+    type: "text",
+    sessionID,
+    part: { type: "text", text },
+  })}\n`;
+  const runCliStreamStub = ((_cli, prompt, handlers) => {
+    prompts.push(prompt);
+    const processHandle: RunProcess = {
+      kill: () => true,
+    };
+    setImmediate(() => {
+      const runNumber = prompts.length;
+      if (runNumber === 1) {
+        handlers.onStdout(buildStdout([
+          "[final_answer] 可以。请先回答：",
+          "1. 主题是什么？",
+          "2. 希望什么风格？",
+        ].join("\n")));
+        handlers.onExit(0);
+        return;
+      }
+      handlers.onStdout(buildStdout("[final_answer] 秋风入纸，古意成诗。"));
+      handlers.onExit(0);
+    });
+    return processHandle;
+  }) as RunCliStream;
+
+  await withRunCliStreamStub(runCliStreamStub, async () => {
+    await harness.host.runPromptOneShot(
+      {
+        displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+        modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+        contextTags: [],
+      },
+      { tabId: "tab-opencode-natural-human", cli: "opencode", sessionId: null },
+    );
+  });
+
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0] ?? "", /Human interaction requirement for Vibe tasks/);
+  assert.match(prompts[1] ?? "", /已提交补充信息/);
+  assert.match(prompts[1] ?? "", /主题是什么？：秋天/);
+  assert.match(prompts[1] ?? "", /希望什么风格？：古风/);
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(
+    harness.humanInteractionRequests[0]?.formFields.map((field) => field.label),
+    ["主题是什么？", "希望什么风格？"],
+  );
+  assert.ok(harness.panelMessages.some((message) => message.type === "removeMessage" && message.tabId === "tab-opencode-natural-human"));
+  assert.ok(harness.messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
+  assert.ok(harness.messages.some((message) => message.role === "user" && message.content.includes("主题是什么？：秋天")));
+  assert.ok(harness.messages.some((message) => message.role === "assistant" && message.content === "[final_answer] 秋风入纸，古意成诗。"));
+  assert.equal(harness.messages.some((message) => message.role === "assistant" && message.content.includes("请先回答")), false);
+  assert.deepEqual(harness.statusEvents.map((event) => event.status), ["start", "end"]);
+  assert.deepEqual(harness.completionStatuses, ["end"]);
+  assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
 });
 
 test("one-shot runtime host keeps empty and unsupported prompts inside its boundary", async () => {

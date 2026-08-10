@@ -16,9 +16,9 @@
 
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
-- 状态：已规避，需随 Codex 澄清回复样式变化复核
+- 状态：已规避，需随 Codex / Claude / OpenCode 澄清回复样式变化复核
 - 首次发现：2026-08-08
-- 适用范围：Codex Vibe/coding 人工交互兜底、`src/humanInteraction.ts`、Webview 表单渲染
+- 适用范围：Codex / Claude / OpenCode Vibe/coding 人工交互兜底、`src/humanInteraction.ts`、Webview 表单渲染
 
 ### 现象
 - 用户执行“写一首诗，你来问我一些要求帮你更精准写出我想要的诗”时，Codex 没有发结构化 `requestUserInput`，而是输出普通最终答复里的问题和选项。

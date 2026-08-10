@@ -4,6 +4,7 @@ import { installVscodeMock } from "./vscodeMock";
 
 import type { CliName } from "../cli/types";
 import type { CodexInteractiveRunner, CodexStreamHandlers } from "../interactive/codexRunner";
+import type { ClaudeStreamHandlers } from "../interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import type { TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
@@ -36,6 +37,7 @@ type PersistedMessages = {
 };
 
 type CodexRunBehavior = (prompt: string, handlers: CodexStreamHandlers) => Promise<void>;
+type ClaudeRunBehavior = (prompt: string, handlers: ClaudeStreamHandlers) => Promise<void>;
 
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((message) => ({ ...message }));
@@ -53,6 +55,7 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void; reject
 
 function createInteractiveRuntimeHarness(options: {
   codexRunBehavior?: CodexRunBehavior;
+  claudeRunBehavior?: ClaudeRunBehavior;
   requireExplicitFinalAnswer?: boolean;
   autoCompactAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
@@ -78,7 +81,9 @@ function createInteractiveRuntimeHarness(options: {
   let codexRunnerCreateCalls = 0;
   let claudeRunnerCreateCalls = 0;
   let codexStopCalls = 0;
+  let claudeStopCalls = 0;
   let codexThreadId: string | null = null;
+  let claudeSessionId: string | null = null;
 
   const codexRunner = {
     getThreadId: () => codexThreadId,
@@ -96,6 +101,24 @@ function createInteractiveRuntimeHarness(options: {
     dispose: () => undefined,
   } as unknown as CodexInteractiveRunner;
 
+  const claudeRunner = {
+    getSessionId: () => claudeSessionId,
+    updateSessionId: (sessionId: string) => {
+      claudeSessionId = sessionId;
+    },
+    runStreamed: async (prompt: string, handlers: ClaudeStreamHandlers): Promise<void> => {
+      await (options.claudeRunBehavior ?? (async (_prompt, streamHandlers) => {
+        claudeSessionId = "claude-session-default";
+        streamHandlers.onSessionId("claude-session-default");
+        streamHandlers.onAssistantDelta("[final_answer] default");
+      }))(prompt, handlers);
+    },
+    stopAndRebuild: () => {
+      claudeStopCalls += 1;
+    },
+    dispose: () => undefined,
+  };
+
   const manager = {
     getCodexRunnerSelection: () => null,
     getOrCreateCodexRunner: () => {
@@ -104,7 +127,7 @@ function createInteractiveRuntimeHarness(options: {
     },
     getOrCreateClaudeRunner: () => {
       claudeRunnerCreateCalls += 1;
-      throw new Error("claude runner was not configured for this test");
+      return claudeRunner;
     },
     setRunner: () => undefined,
   } as unknown as InteractiveRunnerManager;
@@ -244,8 +267,14 @@ function createInteractiveRuntimeHarness(options: {
     get codexStopCalls() {
       return codexStopCalls;
     },
+    get claudeStopCalls() {
+      return claudeStopCalls;
+    },
     setCodexThreadId(threadId: string | null) {
       codexThreadId = threadId;
+    },
+    setClaudeSessionId(sessionId: string | null) {
+      claudeSessionId = sessionId;
     },
   };
 }
@@ -392,7 +421,7 @@ test("interactive runtime host converts explicit natural clarification replies i
       harness.setCodexThreadId("thread-natural-human");
       handlers.onThreadId("thread-natural-human");
       if (runCount === 1) {
-        assert.match(prompt, /Human interaction requirement for Codex Vibe tasks/);
+        assert.match(prompt, /Human interaction requirement for Vibe tasks/);
         handlers.onAssistantDelta([
           "[final_answer] 可以。请先回答：",
           "1. 主题是什么？",
@@ -426,6 +455,63 @@ test("interactive runtime host converts explicit natural clarification replies i
     ["主题是什么？", "希望什么风格？"],
   );
   assert.ok(harness.panelMessages.some((message) => message.type === "removeMessage" && message.tabId === "tab-natural-human"));
+  assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
+  assert.ok(messages.some((message) => message.role === "user" && message.content.includes("主题是什么？：秋天")));
+  assert.ok(messages.some((message) => message.role === "assistant" && message.content === "[final_answer] 秋风入纸，古意成诗。"));
+  assert.equal(messages.some((message) => message.role === "assistant" && message.content.includes("请先回答")), false);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+});
+
+test("interactive runtime host converts Claude natural clarification replies into human interaction forms", async () => {
+  let runCount = 0;
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "completed",
+      values: {
+        answer_1: "秋天",
+        answer_2: "古风",
+      },
+    }),
+    claudeRunBehavior: async (prompt, handlers) => {
+      runCount += 1;
+      harness.setClaudeSessionId("claude-natural-human");
+      handlers.onSessionId("claude-natural-human");
+      if (runCount === 1) {
+        assert.match(prompt, /Human interaction requirement for Vibe tasks/);
+        handlers.onAssistantDelta([
+          "[final_answer] 可以。请先回答：",
+          "1. 主题是什么？",
+          "2. 希望什么风格？",
+        ].join("\n"));
+        return;
+      }
+      assert.match(prompt, /已提交补充信息/);
+      assert.match(prompt, /主题是什么？：秋天/);
+      assert.match(prompt, /希望什么风格？：古风/);
+      handlers.onAssistantDelta("[final_answer] 秋风入纸，古意成诗。");
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({
+      displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
+      graphRunId: undefined,
+      graphNodeId: undefined,
+    }),
+    createTarget({ cli: "claude", tabId: "tab-claude-natural-human", sessionId: "session-claude-natural-human" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-claude-natural-human") ?? [];
+  assert.equal(runCount, 2);
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(
+    harness.humanInteractionRequests[0]?.formFields.map((field) => field.label),
+    ["主题是什么？", "希望什么风格？"],
+  );
+  assert.ok(harness.panelMessages.some((message) => message.type === "removeMessage" && message.tabId === "tab-claude-natural-human"));
   assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
   assert.ok(messages.some((message) => message.role === "user" && message.content.includes("主题是什么？：秋天")));
   assert.ok(messages.some((message) => message.role === "assistant" && message.content === "[final_answer] 秋风入纸，古意成诗。"));

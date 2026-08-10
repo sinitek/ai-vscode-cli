@@ -107,5 +107,5 @@
   "view.container.title": "Sinitek CLI Assistant",
   "view.panel.name": "Sinitek CLI Assistant",
   "config.autoAddEditorContextTags.description": "Toggle whether the current file/selection is automatically added as input context tags in AI chat.",
-  "config.humanInteractionEnabled.description": "Enable Vibe task human interaction forms when the AI needs clarification before continuing."
+  "config.humanInteractionEnabled.description": "Enable Codex, Claude, and OpenCode Vibe task human interaction forms when the AI needs clarification before continuing."
 }

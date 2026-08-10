@@ -1579,6 +1579,7 @@ const { runPromptParallel } = createPromptParallelRuntimeHost({
   extractSessionId,
   getAttemptFailureMessage,
   getEffectiveThinkingMode,
+  getGlobalHumanInteractionEnabled,
   getHiddenRetryDelayMs,
   getPendingSessionDraft,
   hasAssistantFinalConclusionAfterMessage,
@@ -1597,6 +1598,8 @@ const { runPromptParallel } = createPromptParallelRuntimeHost({
   prepareOpenCodeRuntime,
   prepareOpenCodeSubagentRuntime,
   preparePendingLabel,
+  requestHumanInteraction,
+  cancelHumanInteractionForTab,
   resetHiddenRetryCountOnRecoveredReply,
   resolveCliSessionIdForResume,
   resolveOpenCodeSuccessfulExitOutcome,
@@ -1672,6 +1675,7 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   buildSubagentProgressLabels,
   buildUserChatMessage,
   captureSessionFromBuffer,
+  cancelHumanInteractionForTab,
   clearActiveRun,
   createDisabledOpenCodeSubagentMonitor,
   createMessageId,
@@ -1679,6 +1683,7 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   getActiveRunId: () => activeRunId,
   getActiveTaskRun: () => activeTaskRun,
   getEffectiveThinkingMode,
+  getGlobalHumanInteractionEnabled,
   getPendingSessionDraft,
   killActiveProcess: () => {
     activeProcess?.kill();
@@ -1691,6 +1696,7 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   prepareOpenCodeRuntime,
   prepareOpenCodeSubagentRuntime,
   preparePendingLabel,
+  requestHumanInteraction,
   resetActiveAssistantMessage: () => {
     activeAssistantMessageId = undefined;
     activeMessageIndex = null;

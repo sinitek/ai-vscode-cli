@@ -87,13 +87,15 @@ export const CODEX_TASK_LIST_PROMPT_INSTRUCTION = [
   "Omit the Tasklist block when there is no meaningful task-list change.",
 ].join("\n");
 
-export const CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
-  "Human interaction requirement for Codex Vibe tasks:",
-  "When you need user clarification, missing requirements, or user preferences before continuing, request structured user input through the available app-server user-input or elicitation mechanism.",
+export const HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
+  "Human interaction requirement for Vibe tasks:",
+  "When you need user clarification, missing requirements, or user preferences before continuing, request structured user input through the available app-server user-input, MCP elicitation, or host-provided user-input mechanism.",
   "Ask at most 3 short questions. Each question must resolve one decision, and when clear candidates exist provide 2-3 mutually exclusive options with the recommended option first.",
-  "For request_user_input style payloads, prefer questions like { id, header, question, options: [{ label, description }], isOther: true } instead of free-form text fields unless the answer is inherently open-ended.",
+  "For request_user_input or elicitation style payloads, prefer questions like { id, header, question, options: [{ label, description }], isOther: true } instead of free-form text fields unless the answer is inherently open-ended.",
   "Do not respond with a plain final-answer list of clarification questions when structured human interaction is available.",
 ].join("\n");
+
+export const CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION = HUMAN_INTERACTION_PROMPT_INSTRUCTION;
 
 export function buildThinkingPrompt(
   cli: CliName,
@@ -114,11 +116,10 @@ export function buildThinkingPrompt(
   const promptWithTaskListInstruction = includeTaskListInstruction
     ? mergePromptSections("", promptWithThinkingInstructions, CODEX_TASK_LIST_PROMPT_INSTRUCTION)
     : promptWithThinkingInstructions;
-  const includeHumanInteractionInstruction = cli === "codex"
-    && options.includeHumanInteractionInstruction === true
+  const includeHumanInteractionInstruction = options.includeHumanInteractionInstruction === true
     && options.includeFinalAnswerInstruction !== false;
   const promptWithHumanInteractionInstruction = includeHumanInteractionInstruction
-    ? mergePromptSections("", promptWithTaskListInstruction, CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION)
+    ? mergePromptSections("", promptWithTaskListInstruction, HUMAN_INTERACTION_PROMPT_INSTRUCTION)
     : promptWithTaskListInstruction;
   if (options.includeFinalAnswerInstruction === false) {
     return promptWithHumanInteractionInstruction;

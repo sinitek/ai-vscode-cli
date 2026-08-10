@@ -232,15 +232,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       : getPendingSessionDraft(tabId, cli).messages;
 
     const includeFinalAnswerInstruction = !input.loopTaskId;
-    const humanInteractionEnabledForCodexRun = cli === "codex"
-      && interactiveMode === "coding"
+    const humanInteractionEnabledForVibeRun = interactiveMode === "coding"
       && !input.loopTaskId
       && !input.graphRunId
       && getGlobalHumanInteractionEnabled();
     const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
       includeSuffix: false,
       includeFinalAnswerInstruction,
-      includeHumanInteractionInstruction: humanInteractionEnabledForCodexRun,
+      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
     });
     const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode, {
       includeFinalAnswerInstruction,
@@ -705,8 +704,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return taskRecord;
     };
 
-    const canHandleHumanInteractionRequest = (): boolean => {
-      return humanInteractionEnabledForCodexRun;
+    const canHandleStructuredHumanInteractionRequest = (): boolean => {
+      return cli === "codex" && humanInteractionEnabledForVibeRun;
+    };
+
+    const canHandleNaturalLanguageHumanInteraction = (): boolean => {
+      return humanInteractionEnabledForVibeRun;
     };
 
     const appendHumanInteractionSubmissionForTab = (
@@ -727,7 +730,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       params?: unknown;
     }) => {
       if (
-        !canHandleHumanInteractionRequest()
+        !canHandleStructuredHumanInteractionRequest()
         || (
           request.method !== "item/tool/requestUserInput"
           && request.method !== "mcpServer/elicitation/request"
@@ -762,12 +765,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         includePrefix: false,
         includeSuffix: false,
         includeFinalAnswerInstruction,
-        includeHumanInteractionInstruction: canHandleHumanInteractionRequest(),
+        includeHumanInteractionInstruction: canHandleNaturalLanguageHumanInteraction(),
       });
     };
 
     const maybeHandleNaturalLanguageHumanInteraction = async (): Promise<boolean> => {
-      if (!canHandleHumanInteractionRequest() || naturalLanguageHumanInteractionCount > 0) {
+      if (!canHandleNaturalLanguageHumanInteraction() || naturalLanguageHumanInteractionCount > 0) {
         return false;
       }
       if (assistantMessageIndex === null) {
@@ -1267,6 +1270,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             } else {
               throw error;
             }
+          }
+          if (await maybeHandleNaturalLanguageHumanInteraction()) {
+            continue;
           }
           const finalConclusionState = handleMissingFinalConclusionForTab("claude");
           if (finalConclusionState.action === "stopped") {
