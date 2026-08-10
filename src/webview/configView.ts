@@ -476,9 +476,15 @@ export function getConfigViewHtml(
   const jsUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, ...ASSETS_DIR, jsFile)
   );
-  const appUris = appFiles.map((file) =>
-    webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...ASSETS_DIR, file))
-  );
+  const appUris = appFiles.map((file) => {
+    const appFsPath = path.join(assetsFsPath, file);
+    const stat = fs.statSync(appFsPath);
+    const version = `${Math.round(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}`;
+    const uri = webview
+      .asWebviewUri(vscode.Uri.joinPath(extensionUri, ...ASSETS_DIR, file))
+      .toString();
+    return `${uri}${uri.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
+  });
   const configBaseUri = webview
     .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "config"))
     .toString();
@@ -1228,7 +1234,7 @@ export function getConfigViewHtml(
       }
 
       function loadConfigManagerApp() {
-        const appScripts = ${JSON.stringify(appUris.map((uri) => uri.toString()))};
+        const appScripts = ${JSON.stringify(appUris)};
         loadScript(${JSON.stringify(jsUri.toString())}).then(() =>
           appScripts.reduce((chain, src) => chain.then(() => loadScript(src)), Promise.resolve())
         );

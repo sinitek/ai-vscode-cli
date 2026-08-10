@@ -295,18 +295,22 @@ test("renders Codex Loop and Graph selectors as localized role model rows", () =
     loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
-  const group = englishHtml.match(/<div id="codexLoopModelGroup"[\s\S]*?<\/div>/)?.[0] || "";
+  const groupStart = englishHtml.indexOf('<div id="codexLoopModelGroup"');
+  const groupEnd = englishHtml.indexOf('<div id="openCodeModelGroup"', groupStart);
+  assert.notEqual(groupStart, -1);
+  assert.notEqual(groupEnd, -1);
+  const group = englishHtml.slice(groupStart, groupEnd);
 
   assert.match(group, /class="open-code-model-group codex-loop-model-group"/);
-  assert.match(group, /<label class="open-code-model-row codex-loop-model-row" for="codexLoopMainModelSelect">/);
-  assert.match(group, /<label class="open-code-model-row codex-loop-model-row" for="codexLoopSubtaskModelSelect">/);
-  assert.match(group, /<span class="open-code-model-label">Main<\/span>/);
-  assert.match(group, /<span class="open-code-model-label">Subtask<\/span>/);
+  assert.match(group, /<div class="open-code-model-row codex-loop-model-row">/);
+  assert.doesNotMatch(group, /<label class="open-code-model-row/);
+  assert.match(group, /<label class="open-code-model-label" for="codexLoopMainModelSelect">Main<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">Subtask<\/label>/);
   assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Graph main model selection"/);
   assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Graph subtask model selection"/);
   assert.doesNotMatch(group, /openCodePrimaryThinkingMode|openCodeSmallThinkingMode|openCodeModelIssue/);
-  assert.match(chineseHtml, /<span class="open-code-model-label">主模型<\/span>/);
-  assert.match(chineseHtml, /<span class="open-code-model-label">子模型<\/span>/);
+  assert.match(chineseHtml, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
+  assert.match(chineseHtml, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
   assert.match(chineseHtml, /aria-label="Codex Loop\/Graph 主模型选择"/);
   assert.match(chineseHtml, /aria-label="Codex Loop\/Graph 子模型选择"/);
 });

@@ -74,6 +74,12 @@ test("visual editor keeps provider npm suggestions while effort candidates stay 
   assert.match(source, /renderOpenCodeCombobox = \([\s\S]*?be\.jsx\("datalist"/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "tags"/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?tokenSeparators: \[","\]/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?return be\.jsxs\("div"/);
+  assert.match(
+    source,
+    /renderOpenCodeMultiSelect = \([\s\S]*?getPopupContainer: \(Q\) => Q\.parentElement \|\| document\.body/,
+  );
+  assert.doesNotMatch(source, /source: "opencode-efforts"/);
   assert.doesNotMatch(source, /OPEN_CODE_REASONING_EFFORT_OPTIONS/);
   assert.match(source, /Google \(@ai-sdk\/google\)/);
 });

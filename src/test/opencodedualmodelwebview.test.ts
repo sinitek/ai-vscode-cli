@@ -228,12 +228,16 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
     loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
-  const group = html.match(/<div id="openCodeModelGroup"[\s\S]*?<\/div>/)?.[0] || "";
+  const groupStart = html.indexOf('<div id="openCodeModelGroup"');
+  const groupEnd = html.indexOf('<select id="modelSelect"', groupStart);
+  assert.notEqual(groupStart, -1);
+  assert.notEqual(groupEnd, -1);
+  const group = html.slice(groupStart, groupEnd);
 
-  assert.match(group, /<label class="open-code-model-row" for="openCodePrimaryModelSelect">/);
-  assert.match(group, /<label class="open-code-model-row" for="openCodeSmallModelSelect">/);
-  assert.match(group, /<span class="open-code-model-label">Main<\/span>/);
-  assert.match(group, /<span class="open-code-model-label">Subtask<\/span>/);
+  assert.match(group, /<div class="open-code-model-row">/);
+  assert.doesNotMatch(group, /<label class="open-code-model-row"/);
+  assert.match(group, /<label class="open-code-model-label" for="openCodePrimaryModelSelect">Main<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="openCodeSmallModelSelect">Subtask<\/label>/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
@@ -248,7 +252,7 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode subtask model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode subtask model selection"/);
   assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode subtask model thinking mode"[^>]*title="OpenCode subtask model thinking mode"/);
-  assert.doesNotMatch(group, /OpenCode small model|<span class="open-code-model-label">Small<\/span>/);
+  assert.doesNotMatch(group, /OpenCode small model|<label class="open-code-model-label"[^>]*>Small<\/label>/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|open-code-model-hint|lightweight internal tasks|reasoning effort/);
   assert.doesNotMatch(html, /loopMainModelSelect|loopSubtaskModelSelect|Loop main-task model|Loop subtask model/);
   const genericThinking = html.match(/<select id="thinkingMode"[\s\S]*?<\/select>/)?.[0] || "";

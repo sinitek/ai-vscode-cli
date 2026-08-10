@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { installVscodeMock } from "./vscodeMock";
 
@@ -161,6 +162,113 @@ test("rejects stale asynchronous OpenCode capability results", () => {
   assert.equal(isOpenCodeThinkingRequestCurrent(2, "new", 2, "new"), true);
   assert.equal(isOpenCodeThinkingRequestCurrent(1, "old", 2, "new"), false);
   assert.equal(isOpenCodeThinkingRequestCurrent(2, "old", 2, "new"), false);
+});
+
+test("clears stale OpenCode main model override that mirrors the config subtask default", () => {
+  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-model-settings-"));
+  const originalHome = process.env.HOME;
+  process.env.HOME = tempHome;
+  try {
+    const {
+      createModelSettingsHost,
+    } = require("../extensionHost/modelSettings") as typeof import("../extensionHost/modelSettings");
+    let currentCli: import("../cli/types").CliName = "opencode";
+    let modelStore = ensureCliModelStore({
+      openCodeRoleModelsByConfigId: {
+        "config-a": {
+          main: "myAPI/gpt-5.6-luna",
+        },
+      },
+    } as unknown as ReturnType<typeof ensureCliModelStore>);
+    let workspaceSettings = {};
+    const modelSelectionStoreState = {
+      store: modelStore,
+      lastReadError: null,
+      lastWriteError: null,
+    };
+    const defaultOpenCodeThinking = {
+      providerId: null,
+      modelId: null,
+      reasoning: "unknown",
+      options: [],
+      configuredDefaultVariant: null,
+      selectedVariant: null,
+      status: "unknown",
+      source: "fallback",
+      disabled: true,
+      messageKey: "follow-default",
+    };
+    const host = createModelSettingsHost({
+      getCurrentCli: () => currentCli,
+      setCurrentCli: (cli) => { currentCli = cli; },
+      getModelStore: () => modelStore,
+      setModelStore: (store) => { modelStore = store; modelSelectionStoreState.store = store; },
+      getWorkspaceSettings: () => workspaceSettings,
+      setWorkspaceSettings: (settings) => { workspaceSettings = settings; },
+      getPromptHistoryStore: () => ({ items: [] }),
+      setPromptHistoryStore: () => undefined,
+      getModelSelectionStoreState: () => modelSelectionStoreState,
+      getActiveWorkspaceKey: () => "workspace",
+      getConfigHeartbeatSnapshot: () => null,
+      getOpenCodeThinkingState: () => defaultOpenCodeThinking as any,
+      setOpenCodeThinkingState: () => undefined,
+      getOpenCodeSmallThinkingState: () => defaultOpenCodeThinking as any,
+      setOpenCodeSmallThinkingState: () => undefined,
+      getOpenCodeModelsState: () => undefined,
+      setOpenCodeModelsState: () => undefined,
+      getOpenCodeThinkingContextKey: () => "",
+      setOpenCodeThinkingContextKey: () => undefined,
+      getOpenCodeThinkingConfigId: () => null,
+      setOpenCodeThinkingConfigId: () => undefined,
+      getOpenCodeThinkingExactModels: () => ({ main: null, subtask: null }),
+      setOpenCodeThinkingExactModels: () => undefined,
+      getOpenCodeThinkingRequestId: () => 0,
+      setOpenCodeThinkingRequestId: () => undefined,
+      getWorkspacePreferredConfigIdForCli: () => "config-a",
+      resolveModelConfigIdForCli: () => "config-a",
+      postPanelState: async () => undefined,
+      resolveWorkspaceCwd: () => undefined,
+      getExtensionUri: () => ({ fsPath: tempHome }) as any,
+      updateStatusBar: () => undefined,
+      getActiveConversationTab: () => null,
+      getActiveConversationTabId: () => null,
+      getConversationTabById: () => null,
+      isTabRunActive: () => false,
+      preloadUserMessageForPrompt: (input) => input,
+      resolvePromptRunTarget: () => null,
+      runPrompt: async () => undefined,
+      sanitizeConversationTabRecord: () => null,
+      logError: () => undefined,
+    });
+    const configContent = JSON.stringify({
+      model: "myAPI/gpt-5.6-sol",
+      small_model: "myAPI/gpt-5.6-luna",
+      provider: {
+        myAPI: {
+          models: {
+            "gpt-5.6-sol": { name: "gpt-5.6-sol" },
+            "gpt-5.6-luna": { name: "gpt-5.6-luna" },
+          },
+        },
+      },
+    });
+
+    const roles = host.resolveOpenCodeRoleModelsForConfig("config-a", configContent);
+
+    assert.equal(roles.main, "myAPI/gpt-5.6-sol");
+    assert.equal(roles.subtask, "myAPI/gpt-5.6-luna");
+    assert.equal(modelStore.openCodeRoleModelsByConfigId["config-a"], undefined);
+    const writtenStorePath = path.join(tempHome, ".sinitek_cli", "models.json");
+    const writtenStore = JSON.parse(fs.readFileSync(writtenStorePath, "utf8"));
+    assert.equal(writtenStore.openCodeRoleModelsByConfigId["config-a"], undefined);
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  }
 });
 
 test("handles OpenCode variant save and null clear events", async () => {

@@ -162,20 +162,20 @@ ${webviewStyles}    </style>
         <div class="input-footer">
           <div class="input-model-row">
             <div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">
-              <label class="open-code-model-row codex-loop-model-row" for="codexLoopMainModelSelect">
-                <span class="open-code-model-label">${i18n.codexLoopMainModelLabel}</span>
+              <div class="open-code-model-row codex-loop-model-row">
+                <label class="open-code-model-label" for="codexLoopMainModelSelect">${i18n.codexLoopMainModelLabel}</label>
                 <select id="codexLoopMainModelSelect" class="model-select" aria-label="${i18n.codexLoopMainModelSelectAria}" title="${i18n.codexLoopMainModelSelectAria}"></select>
                 <select id="codexLoopMainThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopMainThinkingModeAria}" title="${i18n.codexLoopMainThinkingModeAria}"></select>
-              </label>
-              <label class="open-code-model-row codex-loop-model-row" for="codexLoopSubtaskModelSelect">
-                <span class="open-code-model-label">${i18n.codexLoopSubtaskModelLabel}</span>
+              </div>
+              <div class="open-code-model-row codex-loop-model-row">
+                <label class="open-code-model-label" for="codexLoopSubtaskModelSelect">${i18n.codexLoopSubtaskModelLabel}</label>
                 <select id="codexLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}"></select>
                 <select id="codexLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopSubtaskThinkingModeAria}" title="${i18n.codexLoopSubtaskThinkingModeAria}"></select>
-              </label>
+              </div>
             </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
-              <label class="open-code-model-row" for="openCodePrimaryModelSelect">
-                <span class="open-code-model-label">${i18n.openCodePrimaryModelLabel}</span>
+              <div class="open-code-model-row">
+                <label class="open-code-model-label" for="openCodePrimaryModelSelect">${i18n.openCodePrimaryModelLabel}</label>
                 <select id="openCodePrimaryModelSelect" class="model-select" aria-label="${i18n.openCodePrimaryModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodePrimaryModelSelectAria}"></select>
                 <select id="openCodePrimaryThinkingMode" class="thinking-select" aria-label="${i18n.openCodePrimaryThinkingModeAria}" title="${i18n.openCodePrimaryThinkingModeAria}">
                   <option value="off">${i18n.thinkingOptionOff}</option>
@@ -186,12 +186,12 @@ ${webviewStyles}    </style>
                   <option value="max">${i18n.thinkingOptionMax}</option>
                   <option value="ultra">${i18n.thinkingOptionUltra}</option>
                 </select>
-              </label>
-              <label class="open-code-model-row" for="openCodeSmallModelSelect">
-                <span class="open-code-model-label">${i18n.openCodeSmallModelLabel}</span>
+              </div>
+              <div class="open-code-model-row">
+                <label class="open-code-model-label" for="openCodeSmallModelSelect">${i18n.openCodeSmallModelLabel}</label>
                 <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
                 <select id="openCodeSmallThinkingMode" class="thinking-select" aria-label="${i18n.openCodeSmallThinkingModeAria}" title="${i18n.openCodeSmallThinkingModeAria}" style="display: none;"></select>
-              </label>
+              </div>
               <span id="openCodeModelIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             </div>
             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">

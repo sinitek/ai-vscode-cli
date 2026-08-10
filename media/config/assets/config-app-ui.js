@@ -5702,7 +5702,7 @@ const ConfigEditorPanel = () => {
         const T = openCodeVisualNormalizeEfforts(H),
           Z = new Set(L.map((Q) => Q.value)),
           ee = [...L, ...T.filter((Q) => !Z.has(Q)).map((Q) => ({ value: Q, label: Q }))];
-        return be.jsxs("label", {
+        return be.jsxs("div", {
           style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
           children: [
             renderConfigFieldLabel(
@@ -5719,6 +5719,7 @@ const ConfigEditorPanel = () => {
               optionFilterProp: "label",
               tokenSeparators: [","],
               maxTagCount: "responsive",
+              getPopupContainer: (Q) => Q.parentElement || document.body,
               placeholder: U.placeholder,
               style: { width: "100%" },
             }),

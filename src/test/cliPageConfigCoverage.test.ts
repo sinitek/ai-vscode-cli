@@ -299,6 +299,7 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   assert.match(html, /\.skills-manager-modal \.ant-modal\s*\{[\s\S]*width:\s*min\(1180px,\s*calc\(100vw - 24px\)\) !important/);
   assert.match(html, /\.skills-manager-content > div:last-child[\s\S]*max-height:\s*none !important/);
   assert.match(html, new RegExp(`loadScript\\("webview-test://.*/${escapeRegExp(jsAsset)}"\\)`));
+  assert.match(html, /config-app-ui\.js\?v=/);
   assert.match(html, /const configBase = "webview-test:\/\/.*\/media\/config";/);
   assert.match(html, /const downloadsDir = ".*Downloads";/);
   assert.match(html, /history\.replaceState\(null, "", configBase \+ "\/index\.html"\)/);

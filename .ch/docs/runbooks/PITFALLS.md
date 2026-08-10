@@ -1533,6 +1533,110 @@
 - `src/test/humanInteraction.test.ts`
 - `src/test/multiAgentSettingWebview.test.ts`
 
+## Webview 行级 label 包多个 select 会导致后一个下拉无法打开
+
+- 状态：已规避
+- 首次发现：2026-08-10
+- 适用范围：主聊天面板模型/思考力度选择器、配置视觉编辑器中的 Ant Design Select
+
+### 现象
+- OpenCode 主/子模型旁的“思考力度”下拉点击后没有展开，看起来像配置已存在但 UI 不响应。
+- 配置页日志只出现 `config-view-debug` 同步事件，没有进入对应控件的点击诊断，容易误判为配置数据问题。
+
+### 触发条件
+- 使用 `<label for="modelSelect">` 包住整行，并在同一 label 内同时放模型 `<select>` 和思考力度 `<select>`。
+- Ant Design tags/multi Select 也放在外层 `<label>` 容器内时，点击/焦点行为可能被 label 转发或干扰。
+
+### 根因
+- HTML label 的点击会关联到 `for` 指向的控件；当一个 label 内包含多个交互控件时，点击非目标控件也可能被转发到目标控件。
+- 对 OpenCode 主模型行来说，点击思考力度 select 会被转发到模型 select，因此思考力度自己的下拉无法稳定打开。
+
+### 长期规避
+- 不要用行级 label 包多个交互控件；行容器用 `div`，只给文字标签使用 `<label class="... " for="目标控件">`。
+- 新增模型/思考力度组合控件时，测试中断言不存在 `<label class="open-code-model-row"` 这类整行 label。
+- 配置页非 hash app 脚本变更后要带版本参数，避免 Webview 缓存继续执行旧 `config-app-ui.js`。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/opencodedualmodelwebview.test.js dist/test/codexdualmodelwebview.test.js dist/test/cliPageStaticRenderCoverage.test.js dist/test/openCodeThinkingWebview.test.js`。
+- 配置页相关变更还需执行 `node --test dist/test/opencodeconfigvisualeditor.test.js dist/test/cliPageConfigCoverage.test.js`。
+
+### 关联资料
+- `src/webview/viewContentHtml.ts`
+- `src/webview/configView.ts`
+- `media/config/assets/config-app-ui.js`
+- `src/test/opencodedualmodelwebview.test.ts`
+- `src/test/codexdualmodelwebview.test.ts`
+- `src/test/cliPageStaticRenderCoverage.test.ts`
+
+## OpenCode 配置正确但主面板 variants 为空时要检查 role override
+
+- 状态：已规避
+- 首次发现：2026-08-10
+- 适用范围：OpenCode 主面板模型选择、动态 thinking variants、`~/.sinitek_cli/models.json`
+
+### 现象
+- `~/.opencode/config.json` 或 `~/.opencode/__config/<id>.json` 中主模型已经声明 `variants`，但主面板“思考力度”下拉点开仍没有选项。
+- 日志里 `opencode run` 可能实际使用配置默认主模型，但 UI store 仍保留旧的 `openCodeRoleModelsByConfigId.<configId>.main`。
+
+### 触发条件
+- 旧 Webview label 转发或其它 UI 状态错误把 OpenCode main role override 写成了当前配置的 `small_model`。
+- 后续配置文件已经恢复为 `model=<主模型>`、`small_model=<子模型>`，但 role override 仍优先覆盖配置默认主模型。
+
+### 根因
+- `resolveOpenCodeRoleModelsForConfig` 会优先读取 `openCodeRoleModelsByConfigId`，导致主面板使用 stale override 对应模型的 variants。
+- 如果 stale override 指向子模型，而子模型没有主模型的 `xhigh/max/ultra` variants，thinking select 会被同步为空或只显示错误档位。
+
+### 长期规避
+- 当 OpenCode 配置文件与主面板表现不一致时，同时检查 `~/.sinitek_cli/models.json` 的 `openCodeRoleModelsByConfigId`。
+- 解析 OpenCode role model 时，若某个 role override 正好镜像到当前配置的相反默认 role，自动清理该 stale override，回到配置默认模型。
+- 回归测试要覆盖 `model=provider/sol`、`small_model=provider/luna`，但 store 中旧 `main=provider/luna` 的场景。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/opencodethinkingintegration.test.js dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js`。
+- 复测 OpenCode 主面板时，切换到 OpenCode 或重载窗口后确认主模型 thinking 下拉出现配置中的 variants。
+
+### 关联资料
+- `src/extensionHost/modelSettings.ts`
+- `src/test/opencodethinkingintegration.test.ts`
+- `src/cli/openCodeModelCapabilities.ts`
+- `~/.sinitek_cli/models.json`
+
+## OpenCode thinking capability 异步回调要先同步 host 状态再刷新面板
+
+- 状态：已规避
+- 首次发现：2026-08-10
+- 适用范围：OpenCode 主面板动态 thinking variants、`createModelSettingsHost`、异步 capability 解析
+
+### 现象
+- 本机 `~/.opencode/__config/<id>.json` 已配置模型 `variants`，直接解析 capability 能得到 `xhigh/max/ultra`，但主面板“思考力度”下拉仍为空。
+- 日志里 OpenCode 运行路径已经使用正确主模型，排除配置文件和 role override 后仍复现。
+
+### 触发条件
+- `refreshOpenCodeThinkingState` 启动异步 `resolveOpenCodeThinkingCapability(...).then(...)`。
+- 异步回调只更新 `createModelSettingsHost` 闭包里的 `openCodeThinkingState`，随后直接调用 `postPanelState()`。
+- `postPanelState()` 内部重新进入 wrapped host 方法时会先 `syncFromDeps()`，从 extension 全局状态读回旧的 loading/空状态，覆盖刚解析出的 variants。
+
+### 根因
+- `createModelSettingsHost` 的 wrapper 只会在同步函数返回或 awaited promise finally 时自动 `syncToDeps()`；异步 fire-and-forget 回调不在 wrapper 生命周期内。
+- capability 回调中如果没有显式 `syncToDeps()`，解析结果不会进入真实 panel state，刷新面板时仍看到旧状态。
+
+### 长期规避
+- 在 host 内部 fire-and-forget 异步回调里修改闭包状态后，若马上触发 `postPanelState()` 或其它依赖 deps getter 的流程，必须先显式 `syncToDeps()`。
+- 回归测试要覆盖完整 `refreshOpenCodeThinkingState` 异步路径，而不是只测 capability parser 或纯 webview select 同步。
+- 本机复现可用真实 OpenCode config 跑 host refresh，确认 `openCodeThinkingState.disabled=false` 且 `options` 非空。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/opencodethinkingrefreshstate.test.js dist/test/opencodethinkingintegration.test.js dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js`。
+- 用真实 `~/.opencode` 配置调用 `resolveOpenCodeThinkingCapability` 与 `refreshOpenCodeThinkingState`，确认主模型 variants 均为非空。
+
+### 关联资料
+- `src/extensionHost/modelSettings.ts`
+- `src/test/opencodethinkingrefreshstate.test.ts`
+- `src/cli/openCodeModelCapabilities.ts`
+
 ## 建议模板
 
 ```md

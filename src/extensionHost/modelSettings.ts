@@ -6,7 +6,7 @@ import { getCliArgs, getCliCommand, getThinkingMode } from "../cli/config";
 import { getCodeGraphInstallCommand } from "../cli/installer";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
 import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
-import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput } from "../cli/opencodeconfigmodels";
+import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput, type ParsedOpenCodeConfigModels } from "../cli/opencodeconfigmodels";
 import { resolveOpenCodeThinkingCapability, type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import * as configService from "../config/configService";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
@@ -189,6 +189,21 @@ type ResolvedOpenCodeRoleModels = {
   fallback: Partial<Record<OpenCodeCanonicalModelRole, string>>;
 };
 
+function shouldClearOpenCodeRoleOverrideMirroringOppositeDefault(
+  parsed: ParsedOpenCodeConfigModels,
+  role: OpenCodeCanonicalModelRole,
+  override: string
+): boolean {
+  const mainRef = normalizeCliModelName(parsed.mainModelRef);
+  const subtaskRef = normalizeCliModelName(parsed.subtaskModelRef);
+  if (!mainRef || !subtaskRef || mainRef === subtaskRef) {
+    return false;
+  }
+  return role === "main"
+    ? override === subtaskRef
+    : override === mainRef;
+}
+
 function resolveOpenCodeRoleModelsForConfig(
   configId: string | null,
   configContent: string
@@ -235,6 +250,12 @@ function resolveOpenCodeRoleModelsForConfig(
   const resolveRole = (role: OpenCodeCanonicalModelRole): string | null => {
     const override = getOpenCodeRoleModelFromStore(nextStore, configId, role);
     if (override) {
+      if (shouldClearOpenCodeRoleOverrideMirroringOppositeDefault(parsed, role, override)) {
+        nextStore = setOpenCodeRoleModelInStore(nextStore, configId, role, null);
+        return role === "main"
+          ? parsed.mainModel?.ref ?? null
+          : parsed.subtaskModel?.ref ?? null;
+      }
       const validation = validateOpenCodeModelOverride(parsed, role, override);
       if (validation.ok && validation.modelRef) {
         return validation.modelRef;
@@ -350,6 +371,7 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
         selectedVariant,
         disabled: capability.options.length === 0,
       });
+      syncToDeps();
       void postPanelState();
     }).catch(() => {
       if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
@@ -362,6 +384,7 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
         "metadata-error",
         exactModel
       ));
+      syncToDeps();
       void postPanelState();
     });
   };
