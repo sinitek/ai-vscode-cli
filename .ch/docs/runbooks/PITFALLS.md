@@ -1494,6 +1494,45 @@
 - `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-1-planner-stale-contract-guards.md`
 - `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-2-graph-failure-classification-core.md`
 
+## 同版本 VSIX 强装后人工交互弹窗可能卡在运行时 / webview 版本边界
+
+- 状态：需部署时检查
+- 首次发现：2026-08-10
+- 适用范围：Codex / Claude / OpenCode Vibe 人工交互弹窗、VS Code extension 同版本本地强装、webview runtime
+
+### 现象
+- OpenCode 已按人工交互要求输出 2-3 个问题和选项，但界面只显示普通 assistant 气泡，没有弹出表单。
+- OpenCode one-shot 日志可能已出现 `assistant-chunk` 和 `runPrompt-exit`，但用户看不到 `humanInteractionOverlay`。
+
+### 触发条件
+- 修改扩展后用同一版本号执行 `code --install-extension dist/sinitek-cli-tools-<version>.vsix --force`。
+- 当前 VS Code 窗口或 webview 没有重新加载，导致后端 extension host、安装目录代码、已打开 webview script 可能不在同一版本。
+- 人工交互链路缺少分段日志时，无法快速区分“未解析出表单”“后端已发请求但前端未收到”“前端收到但 DOM/CSS 未显示”。
+
+### 根因
+- VS Code 同版本强装只替换安装目录，不保证已经打开的窗口和 webview 立即加载新 HTML/script。
+- OpenCode 自然语言 fallback 依赖后端解析 assistant 文本并向 webview 发送 `humanInteractionRequest`，任一侧版本不一致都会表现为普通消息而非表单。
+- OpenCode one-shot 在 stdout 中检测到真实 `sessionID` 后会把本地 draft 消息迁移到真实 session；如果运行态仍拿旧 draft 数组做自然语言人工交互判断，就会出现 `assistant-chunk` 已写出、但 `runPrompt-one-shot-natural-human-interaction-skip` 报 `reason:"no-assistant-message"` 的假阴性。
+
+### 长期规避
+- 本地强装同版本 VSIX 后，必须执行 `Developer: Reload Window`，再重测人工交互弹窗。
+- 排查时按日志事件分段判断：`runPrompt-one-shot-session-target-synced` 表示 OpenCode 真实 session 已同步到 one-shot 运行态；`runPrompt-one-shot-natural-human-interaction-prepared` 表示后端已解析表单并准备请求；`humanInteraction-request` 表示后端已发请求；`human-interaction-request-received` 表示 webview 已收到并尝试显示；`runPrompt-one-shot-natural-human-interaction-skip` 表示 one-shot 后端未能从最终助手消息构建表单。
+- OpenCode one-shot/parallel 改动后，用包含 A/B/C 选项的问题输出做回归，确保能生成 radio 字段并移除普通 assistant 提问气泡。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/promptOneShotRuntime.test.js dist/test/humanInteraction.test.js dist/test/multiAgentSettingWebview.test.js`。
+- 重新打包并强装 VSIX 后，检查安装目录包含 `runPrompt-one-shot-session-target-synced`、`runPrompt-one-shot-natural-human-interaction-prepared`、`humanInteraction-request`、`human-interaction-request-received`、`runPrompt-one-shot-natural-human-interaction-skip`。
+- 重载 VS Code 窗口后，用 OpenCode 发送“写一首诗，你来问我一些要求帮你更精准写出我想要的诗”，确认出现表单弹窗。
+
+### 关联资料
+- `src/extension.ts`
+- `src/extensionHost/promptOneShotRuntime.ts`
+- `src/webview/viewContentScript/settingsAndOverlays.ts`
+- `src/test/promptOneShotRuntime.test.ts`
+- `src/test/humanInteraction.test.ts`
+- `src/test/multiAgentSettingWebview.test.ts`
+
 ## 建议模板
 
 ```md

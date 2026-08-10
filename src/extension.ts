@@ -1384,6 +1384,11 @@ function requestHumanInteraction(request: HumanInteractionRequest): Promise<Huma
   }
   return new Promise((resolve, reject) => {
     rememberPendingHumanInteraction({ request, resolve, reject });
+    void logInfo("humanInteraction-request", {
+      tabId: request.tabId,
+      interactionId: request.interactionId,
+      fields: request.formFields.length,
+    });
     viewProvider?.postMessage({ type: "humanInteractionRequest", request });
   });
 }

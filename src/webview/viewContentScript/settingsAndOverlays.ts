@@ -450,6 +450,12 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       function openHumanInteractionDialog(request) {
         state.humanInteractionDialog = Object.assign({ open: true }, normalizeHumanInteractionRequest(request));
         renderHumanInteractionDialog();
+        postWebviewDebug("human-interaction-request-received", {
+          interactionId: state.humanInteractionDialog.interactionId,
+          tabId: state.humanInteractionDialog.tabId,
+          fields: state.humanInteractionDialog.formFields.length,
+          overlayVisible: Boolean(elements.humanInteractionOverlay && elements.humanInteractionOverlay.classList.contains("visible")),
+        });
       }
 
       function closeHumanInteractionDialog() {

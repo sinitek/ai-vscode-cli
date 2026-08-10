@@ -471,19 +471,42 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
     };
 
-    const removeLatestAssistantMessage = (targetMessages: ChatMessage[]): void => {
+    const summarizeMessagesForHumanInteractionLog = (targetMessages: ChatMessage[]): Array<Record<string, unknown>> => (
+      targetMessages.slice(-6).map((message, index) => {
+        const content = String(message.content ?? "").replace(/\s+/g, " ").trim();
+        return {
+          offset: targetMessages.length - Math.min(targetMessages.length, 6) + index,
+          id: message.id,
+          role: message.role,
+          kind: message.kind ?? null,
+          subagentId: message.subagentId ?? null,
+          contentLength: String(message.content ?? "").length,
+          contentPreview: content.slice(0, 160),
+        };
+      })
+    );
+
+    const removeLatestAssistantMessage = (targetMessages: ChatMessage[], options: {
+      allowThinking?: boolean;
+    } = {}): boolean => {
       const userMessageIndex = targetMessages.findIndex((message) => message.id === userMessageId);
       for (let index = targetMessages.length - 1; index > userMessageIndex; index -= 1) {
         const message = targetMessages[index];
-        if (!message || message.role !== "assistant" || message.kind === "thinking" || message.subagentId) {
+        if (
+          !message
+          || message.role !== "assistant"
+          || (!options.allowThinking && message.kind === "thinking")
+          || message.subagentId
+        ) {
           continue;
         }
         targetMessages.splice(index, 1);
         activeOpenCodeDisplayedFinalText = null;
         resetActiveAssistantMessage();
         sendPanelMessage({ type: "removeMessage", id: message.id, tabId: activeTabId });
-        return;
+        return true;
       }
+      return false;
     };
 
     const buildHumanInteractionContinuationPrompt = (
@@ -502,6 +525,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
 
     const maybeHandleNaturalLanguageHumanInteraction = async (
       targetMessages: ChatMessage[],
+      fallbackAssistantText: string | null = null,
     ): Promise<"continue" | "stopped" | false> => {
       if (!humanInteractionEnabledForVibeRun || naturalLanguageHumanInteractionCount > 0) {
         return false;
@@ -512,20 +536,56 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         && !message.subagentId
         && String(message.content ?? "").trim().length > 0
       ));
-      if (!assistantMessage) {
+      const assistantText = String(assistantMessage?.content ?? fallbackAssistantText ?? "").trim();
+      const assistantSource = assistantMessage ? "message" : (assistantText ? "opencode-final-text" : "none");
+      if (!assistantText) {
+        void logDebug("runPrompt-one-shot-natural-human-interaction-skip", {
+          cli: runCli,
+          tabId: activeTabId,
+          runId,
+          sessionId: activeSessionId,
+          reason: "no-assistant-message",
+          messageCount: targetMessages.length,
+          activeMessageCount: activeMessageTarget?.length ?? null,
+          fallbackAssistantLength: String(fallbackAssistantText ?? "").length,
+          candidates: summarizeMessagesForHumanInteractionLog(targetMessages),
+        });
         return false;
       }
       const humanRequest = buildNaturalLanguageHumanInteractionRequest({
         tabId: activeTabId,
         fallbackInteractionId: createMessageId(),
         userPrompt: prompt,
-        assistantText: String(assistantMessage.content ?? ""),
+        assistantText,
       });
       if (!humanRequest) {
+        void logDebug("runPrompt-one-shot-natural-human-interaction-skip", {
+          cli: runCli,
+          tabId: activeTabId,
+          runId,
+          sessionId: activeSessionId,
+          reason: "unparseable-assistant-message",
+          source: assistantSource,
+          assistantLength: assistantText.length,
+          candidates: summarizeMessagesForHumanInteractionLog(targetMessages),
+        });
         return false;
       }
       naturalLanguageHumanInteractionCount += 1;
-      removeLatestAssistantMessage(targetMessages);
+      const removedAssistantMessage = removeLatestAssistantMessage(targetMessages, {
+        allowThinking: !assistantMessage && assistantSource === "opencode-final-text",
+      });
+      void logDebug("runPrompt-one-shot-natural-human-interaction-prepared", {
+        cli: runCli,
+        tabId: activeTabId,
+        runId,
+        sessionId: activeSessionId,
+        interactionId: humanRequest.interactionId,
+        source: assistantSource,
+        fields: humanRequest.formFields.length,
+        removedAssistantMessage,
+        messageCount: targetMessages.length,
+      });
       appendSystemMessage(t("run.humanInteractionWaiting"));
       const submission = await requestHumanInteraction(humanRequest);
       appendHumanInteractionSubmission(targetMessages, submission, humanRequest);
@@ -567,6 +627,28 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         fields: humanRequest.formFields.length,
       });
       return "continue";
+    };
+
+    const syncDetectedSessionTargetFromBuffer = (buffer: string, stream: "stdout" | "stderr"): void => {
+      const detectedSessionId = extractSessionId(runCli, buffer);
+      const previousSessionId = activeSessionId;
+      captureSessionFromBuffer(runCli, buffer);
+      if (!detectedSessionId || detectedSessionId === previousSessionId) {
+        return;
+      }
+      const syncedMessages = loadSessionMessages(runCli, detectedSessionId);
+      setActiveSessionId(detectedSessionId);
+      setActiveMessageTarget(syncedMessages);
+      void logDebug("runPrompt-one-shot-session-target-synced", {
+        cli: runCli,
+        tabId: activeTabId,
+        runId,
+        stream,
+        previousSessionId,
+        sessionId: detectedSessionId,
+        messageCount: syncedMessages.length,
+        candidates: summarizeMessagesForHumanInteractionLog(syncedMessages),
+      });
     };
 
     while (true) {
@@ -753,7 +835,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
               sendRawStreamDelta(chunk, { stream: "stdout" });
               appendOpenCodeJsonlEvents(chunk);
               sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              captureSessionFromBuffer(runCli, sessionBuffer);
+              syncDetectedSessionTargetFromBuffer(sessionBuffer, "stdout");
               subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
               if (activity.hasAssistantAnswer) {
                 attemptHadNormalReply = true;
@@ -774,7 +856,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
               refreshStartupTimeout();
               sendRawStreamDelta(chunk, { stream: "stderr" });
               sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              captureSessionFromBuffer(runCli, sessionBuffer);
+              syncDetectedSessionTargetFromBuffer(sessionBuffer, "stderr");
               subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
               appendTraceLines(chunk);
               if (debugLogging) {
@@ -857,12 +939,16 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
         flushOpenCodeJsonlBuffer();
         flushTraceBuffer();
-        const finalMessageTarget = activeMessageTarget ?? messageTarget;
+        let finalMessageTarget = activeMessageTarget ?? messageTarget;
         const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
         if (openCodeOutput.finalText) {
           appendOpenCodeFinalText(openCodeOutput.finalText);
+          finalMessageTarget = activeMessageTarget ?? finalMessageTarget;
         }
-        const humanInteractionResult = await maybeHandleNaturalLanguageHumanInteraction(finalMessageTarget);
+        const humanInteractionResult = await maybeHandleNaturalLanguageHumanInteraction(
+          finalMessageTarget,
+          openCodeOutput.finalText,
+        );
         if (humanInteractionResult === "stopped") {
           return;
         }
