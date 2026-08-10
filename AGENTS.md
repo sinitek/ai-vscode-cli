@@ -17,7 +17,7 @@
 - 前后端完成任务后如果是比复杂时的功能，请务必添加更新单元测试。
 - 如果修复bug，先看看是否修复后补充单元测试以免以后再重复出现bug.
 - 代码重构前先看看已有单元测试是否需要补充，补充后再开始重构
-- 本机真实测试不是单元测试替代；当问题依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态时，使用 `.agents/skills/local-real-testing/SKILL.md` 补充验证。
+- 本机真实测试不是单元测试替代；当问题依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态时，使用 `.agents/skills/local-real-testing/SKILL.md` 补充验证，验证时的经验也可以继续修改这个 skills 。
 - 真实测试概要方式：先 `npm run build`，再跑最小相关 `node --test dist/test/...`，然后用只读命令或脚本验证真实配置/CLI/面板状态，记录命令、关键输出和结论；若发现高复发踩坑，同步补单测和 `.ch/docs/runbooks/PITFALLS.md`。
 
 ## 任务完成后
