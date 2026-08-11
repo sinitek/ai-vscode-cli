@@ -145,6 +145,13 @@ const DAG_PORT_RATIOS = [0.25, 0.5, 0.75] as const;
 const DAG_VISIBLE_EDGE_ACTIVE_WEIGHT = 4;
 const DAG_VISIBLE_EDGE_PURPOSE_WEIGHT = 2;
 const DAG_VISIBLE_EDGE_NON_DEFAULT_KIND_WEIGHT = 1;
+const DAG_FLOW_EDGE_KINDS: ReadonlySet<GraphRunPanelEdge["kind"]> = new Set([
+  "depends_on",
+  "if_pass",
+  "if_fail",
+  "review_feedback",
+  "human_approved",
+]);
 const DAG_ZOOM_PERCENT_OPTIONS = [25, 50, 75, 100, 125] as const;
 const DAG_DEFAULT_ZOOM_PERCENT = 75;
 
@@ -1110,8 +1117,9 @@ function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings
       <div class="empty-card">${escapeHtml(strings.noNodes)}</div>
     </section>`;
   }
-  const layout = buildDagLayout(state, strings);
-  const hasActiveEdges = state.edges.some((edge) => edge.active);
+  const dagState = buildGraphDagRenderState(state);
+  const layout = buildDagLayout(dagState, strings);
+  const hasActiveEdges = dagState.edges.some((edge) => edge.active);
   return `<section class="section graph-dag" aria-labelledby="graph-dag-title">
     <h2 id="graph-dag-title" class="sr-only">${escapeHtml(strings.graphView)}</h2>
     <div class="graph-dag-toolbar" aria-label="${escapeHtml(strings.graphTools)}">
@@ -1127,12 +1135,17 @@ function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings
       <div class="dag-canvas-shell" data-dag-canvas-shell style="width: ${scaleDagSize(layout.width, DAG_DEFAULT_ZOOM_PERCENT)}px; height: ${scaleDagSize(layout.height, DAG_DEFAULT_ZOOM_PERCENT)}px;">
         <div class="dag-canvas" data-dag-canvas data-layout-engine="@dagrejs/dagre" data-auto-layout-direction="${layout.config.direction}" data-auto-ranksep="${layout.config.ranksep}" data-auto-nodesep="${layout.config.nodesep}" data-auto-edgesep="${layout.config.edgesep}" data-auto-margin-x="${layout.config.marginX}" data-auto-margin-y="${layout.config.marginY}" data-auto-width="${layout.width}" data-auto-height="${layout.height}" data-default-zoom="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-percent="${DAG_DEFAULT_ZOOM_PERCENT}" data-zoom-scale="${DAG_DEFAULT_ZOOM_PERCENT / 100}" style="width: ${layout.width}px; height: ${layout.height}px; transform: scale(${DAG_DEFAULT_ZOOM_PERCENT / 100});">
           ${layout.edgeLayouts.length ? renderDagSvg(layout, strings) : ""}
-          ${layout.nodeLayouts.map((nodeLayout) => renderDagNode(nodeLayout, state, strings)).join("")}
+          ${layout.nodeLayouts.map((nodeLayout) => renderDagNode(nodeLayout, dagState, strings)).join("")}
         </div>
       </div>
     </div>
-    ${renderDagEdgeAccessibilityList(state.edges, strings)}
+    ${renderDagEdgeAccessibilityList(dagState.edges, strings)}
   </section>`;
+}
+
+function buildGraphDagRenderState(state: GraphRunPanelState): GraphRunPanelState {
+  const edges = selectDagFlowEdges(state.edges);
+  return edges.length === state.edges.length ? state : { ...state, edges };
 }
 
 function renderGraphCanvasNotices(state: GraphRunPanelState, strings: GraphRunPanelStrings): string {
@@ -1506,7 +1519,7 @@ function buildDagLayout(
   engine: "dagre" | "fallback" = "dagre",
 ): DagLayout {
   const nodeIndexById = new Map(state.nodes.map((node, index) => [node.id, index]));
-  const validEdges = state.edges.filter((edge) => (
+  const validEdges = selectDagFlowEdges(state.edges).filter((edge) => (
     nodeIndexById.has(edge.from) && nodeIndexById.has(edge.to)
   ));
   const visibleEdges = selectDagVisibleEdges(validEdges);
@@ -1839,6 +1852,10 @@ function selectDagVisibleEdges(edges: readonly GraphRunPanelEdge[]): GraphRunPan
   return Array.from(selectedByDirection.values())
     .sort((left, right) => left.index - right.index)
     .map(({ edge }) => edge);
+}
+
+function selectDagFlowEdges(edges: readonly GraphRunPanelEdge[]): GraphRunPanelEdge[] {
+  return edges.filter((edge) => DAG_FLOW_EDGE_KINDS.has(edge.kind));
 }
 
 function selectDagLayoutEdges(
@@ -2259,6 +2276,9 @@ function formatEdgeDisplayLabel(
   edge: GraphRunPanelEdge,
   strings: GraphRunPanelStrings,
 ): string {
+  if (edge.kind === "depends_on") {
+    return "";
+  }
   const explicitPurpose = getExplicitEdgePurposeLabel(edge);
   const label = explicitPurpose ?? getShortEdgeKindLabel(edge.kind, strings);
   return splitShortEdgeLabelSegments(label).join(" / ");

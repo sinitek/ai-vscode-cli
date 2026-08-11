@@ -390,8 +390,8 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /data-edge-id="depends_on:plan-&gt;implement"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
   assert.match(html, /data-edge-id="depends_on:review-&gt;summary"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
   assert.match(html, /data-edge-label="[^"]*Depends On/);
-  assert.match(html, /data-edge-display-label="Deps"/);
-  assert.match(html, /<text class="dag-edge-label active" data-edge-label-for="depends_on:plan-&gt;implement" x="[\d.]+" y="[\d.]+" text-anchor="middle" dominant-baseline="central" aria-hidden="true">Deps<\/text>/);
+  assert.match(html, /data-edge-id="depends_on:plan-&gt;implement"[\s\S]*data-edge-display-label=""/);
+  assert.deepEqual(getVisibleEdgeLabels(html), []);
 	  assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
 	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target status-passed kind-test node-tone-validation semantic-normal"[\s\S]*data-node-id="test"/);
 	  assert.match(html, /<button[\s\S]*class="dag-node node-select-target selected status-passed kind-review node-tone-validation semantic-normal"/);
@@ -831,7 +831,7 @@ test("renders edge purpose labels, semantic node classes, and twelve ports per n
   assert.match(html, /class="dag-kind-chip">Review<\/span>/);
   assert.match(html, /class="dag-kind-chip">Summary<\/span>/);
   assert.equal((html.match(/class="dag-port-dot/g) ?? []).length, 36);
-  assert.match(html, /data-edge-id="start-decision"[\s\S]*data-edge-label="[^"]*Prepare decision"[\s\S]*data-edge-display-label="Prep \/ deci"/);
+  assert.match(html, /data-edge-id="start-decision"[\s\S]*data-edge-label="[^"]*Prepare decision"[\s\S]*data-edge-display-label=""/);
   assert.match(html, /data-edge-id="decision-end"[\s\S]*data-edge-label="[^"]*Approved path"[\s\S]*data-edge-display-label="Appr \/ path"/);
   assert.match(html, /data-edge-id="decision-start"[\s\S]*data-edge-label="[^"]*Needs rework"[\s\S]*data-edge-display-label="Need \/ rewo"/);
   assert.match(html, /data-from-port="[^"]+" data-to-port="[^"]+"/);
@@ -1085,6 +1085,17 @@ test("renders no-edge state with nodes and omits SVG for empty node state", () =
   const isolatedHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(isolated), "en");
   assert.match(isolatedHtml, /No active edges are recorded/);
   assert.match(isolatedHtml, /class="dag-node node-select-target/);
+
+  const traceOnly = createRun({
+    edges: [
+      { id: "plan-test-evidence", from: "plan", to: "test", kind: "evidence_for", active: true },
+      { id: "plan-test-conflict", from: "plan", to: "test", kind: "conflicts_with", active: true },
+    ],
+  });
+  const traceOnlyHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(traceOnly), "en");
+  assert.match(traceOnlyHtml, /No active edges are recorded/);
+  assert.doesNotMatch(traceOnlyHtml, /edge-kind-evidence_for/);
+  assert.doesNotMatch(traceOnlyHtml, /edge-kind-conflicts_with/);
 
   const emptyState = buildGraphRunPanelStateWithDeps(
     createRun({ nodes: [], finalAnswer: undefined }),
