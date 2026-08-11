@@ -14,6 +14,35 @@
 
 ## 当前有效条目
 
+## LoopMainDecision 解析不能优先采用 prompt 内 fenced JSON 示例
+
+- 状态：已规避，需随 Loop 主任务协议和 prompt 模板变化复核
+- 首次发现：2026-08-11
+- 适用范围：Loop 主任务 `LoopMainDecision` 解析、`src/extensionHost/promptRunRuntime.ts`、主任务 prompt 中的子任务 JSON 示例
+
+### 现象
+- Loop 主任务最后返回看似合法的 `{"status":"continue","subtasks":[...]}` JSON，但运行被置为 `needs-review`。
+- UI 中断说明为 `Main task did not return a valid loop decision JSON.`，最新任务记录里 round-2 子任务仍停留在 `pending`，没有被真正派发。
+
+### 触发条件与根因
+- 外层 `LoopMainDecision` JSON 的 `subtasks[].prompt` 字符串里包含 fenced `json` 示例，例如业务规则 DSL 示例。
+- 早期 `extractJsonObjectText` 优先匹配第一个 ```json fenced block```，没有判断该 fenced block 是否位于 JSON 字符串内部。
+- 解析器因此拿到 prompt 内的业务规则示例对象，而不是外层 `LoopMainDecision`，`normalizeLoopMainDecision` 返回 null 后触发 `loop-main-decision-invalid`。
+
+### 长期规避
+- Loop 主任务解析应扫描候选 JSON 对象，并用 `normalizeLoopMainDecision` 选择第一个合法决策对象，不能仅凭第一个 fenced block 判定。
+- 子任务 prompt 允许包含 JSON 示例、DSL 示例和 markdown code fence；这些内容不应影响外层机器协议解析。
+- 真实日志排查时同时看 `loop-main-decision-invalid` 附近的 assistant content 和 `loop-tasks.json` 中 `subTasks` 状态，确认是解析失败还是模型确实没返回协议。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/loopMainDecisionParsing.test.js`。
+- 用包含 `subtasks[].prompt` fenced `json` 示例的外层 `LoopMainDecision` 回归样例，确认能解析出 `status=continue` 和完整子任务。
+
+### 关联资料
+- `src/extensionHost/promptRunRuntime.ts`
+- `src/test/loopMainDecisionParsing.test.ts`
+
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
 - 状态：已规避，需随 Codex / Claude / OpenCode 澄清回复样式变化复核

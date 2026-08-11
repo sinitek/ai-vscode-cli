@@ -200,27 +200,44 @@ function parseLoopMainDecision(content: string | null): LoopMainDecision | null 
   if (!content) {
     return null;
   }
-  const jsonText = extractJsonObjectText(content);
-  if (!jsonText) {
-    return null;
+  for (const jsonText of extractJsonObjectTexts(content)) {
+    try {
+      const parsed = JSON.parse(jsonText);
+      const decision = normalizeLoopMainDecision(parsed);
+      if (decision) {
+        return decision;
+      }
+    } catch {
+      // Continue scanning later JSON candidates. A prompt can legitimately contain
+      // fenced JSON examples before the actual LoopMainDecision object.
+    }
   }
-  try {
-    const parsed = JSON.parse(jsonText);
-    return normalizeLoopMainDecision(parsed);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function extractJsonObjectText(content: string): string | null {
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
+  return extractJsonObjectTexts(content)[0] ?? null;
+}
+
+function extractJsonObjectTexts(content: string): string[] {
+  const objects: string[] = [];
+  for (let searchIndex = 0; searchIndex < content.length; searchIndex += 1) {
+    const start = content.indexOf("{", searchIndex);
+    if (start < 0) {
+      break;
+    }
+    const end = findJsonObjectEnd(content, start);
+    if (end === null) {
+      searchIndex = start;
+      continue;
+    }
+    objects.push(content.slice(start, end + 1).trim());
+    searchIndex = end;
   }
-  const start = content.indexOf("{");
-  if (start < 0) {
-    return null;
-  }
+  return objects;
+}
+
+function findJsonObjectEnd(content: string, start: number): number | null {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -246,7 +263,7 @@ function extractJsonObjectText(content: string): string | null {
     } else if (char === "}") {
       depth -= 1;
       if (depth === 0) {
-        return content.slice(start, index + 1).trim();
+        return index;
       }
     }
   }
@@ -1474,6 +1491,7 @@ return {
   getLastLoopAssistantContent: wrap(getLastLoopAssistantContent),
   parseLoopMainDecision: wrap(parseLoopMainDecision),
   extractJsonObjectText: wrap(extractJsonObjectText),
+  extractJsonObjectTexts: wrap(extractJsonObjectTexts),
   normalizeLoopMainDecision: wrap(normalizeLoopMainDecision),
   normalizeLoopEstimatedRemainingRounds: wrap(normalizeLoopEstimatedRemainingRounds),
   normalizeLoopSubtaskDecisions: wrap(normalizeLoopSubtaskDecisions),
