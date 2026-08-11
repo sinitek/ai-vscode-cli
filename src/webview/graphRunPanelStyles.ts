@@ -393,6 +393,18 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         stroke: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
         stroke-width: 2;
       }
+      .dag-edge-path[data-edge-visited="true"].edge-kind-if_pass {
+        stroke: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen, var(--vscode-focusBorder)));
+      }
+      .dag-edge-path[data-edge-visited="true"].edge-kind-if_fail {
+        stroke: var(--vscode-testing-iconFailed, var(--vscode-errorForeground, var(--vscode-focusBorder)));
+      }
+      .dag-edge-path[data-edge-visited="true"].edge-kind-review_feedback {
+        stroke: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, var(--vscode-focusBorder)));
+      }
+      .dag-edge-path[data-edge-visited="true"].edge-kind-human_approved {
+        stroke: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
+      }
       .dag-edge-path.inactive {
         stroke-dasharray: 5 4;
       }
@@ -413,6 +425,18 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       }
       .dag-arrowhead-visited {
         fill: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+      }
+      .dag-arrowhead-visited-if-pass {
+        fill: var(--vscode-testing-iconPassed, var(--vscode-terminal-ansiGreen, var(--vscode-focusBorder)));
+      }
+      .dag-arrowhead-visited-if-fail {
+        fill: var(--vscode-testing-iconFailed, var(--vscode-errorForeground, var(--vscode-focusBorder)));
+      }
+      .dag-arrowhead-visited-review-feedback {
+        fill: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, var(--vscode-focusBorder)));
+      }
+      .dag-arrowhead-visited-human-approved {
+        fill: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
       }
       .dag-node {
         position: absolute;

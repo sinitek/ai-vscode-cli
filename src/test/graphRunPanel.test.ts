@@ -69,6 +69,12 @@ function getDagEdgePathAttrs(html: string): DagEdgePathAttrs[] {
     });
 }
 
+function getRequiredDagEdgePathAttrs(html: string, edgeId: string): DagEdgePathAttrs {
+  const edge = getDagEdgePathAttrs(html).find((attrs) => attrs["data-edge-id"] === edgeId);
+  assert.ok(edge, `Expected DAG edge ${edgeId}`);
+  return edge;
+}
+
 function getDagNodeAttrs(html: string): DagEdgePathAttrs[] {
   return Array.from(html.matchAll(/<button\s+class="dag-node[^>]*>/g))
     .map((match) => {
@@ -692,6 +698,42 @@ test("renders cyclic and feedback edges conservatively without hiding valid edge
   assert.ok(Math.abs(Number.parseFloat(ifFail["data-edge-offset"] ?? "")) >= 18);
 });
 
+test("colors visited non-dependency workflow edges by kind", () => {
+  const run = createRun({
+    nodes: [
+      createNode({ id: "pass-source", title: "Pass source", status: "passed", unlocks: ["pass-target"] }),
+      createNode({ id: "pass-target", title: "Pass target", status: "pending", dependsOn: ["pass-source"], unlocks: [] }),
+      createNode({ id: "fail-source", title: "Fail source", status: "failed", unlocks: ["fail-target"] }),
+      createNode({ id: "fail-target", title: "Fail target", status: "pending", dependsOn: ["fail-source"], unlocks: [] }),
+      createNode({ id: "review", title: "Review", kind: "review", status: "failed", unlocks: ["implement"] }),
+      createNode({ id: "implement", title: "Implement", kind: "implement", status: "pending", dependsOn: ["review"], unlocks: [] }),
+      createNode({ id: "gate", title: "Gate", kind: "human_gate", status: "passed", unlocks: ["summary"] }),
+      createNode({ id: "summary", title: "Summary", kind: "summary", status: "pending", dependsOn: ["gate"], unlocks: [] }),
+      createNode({ id: "pending-source", title: "Pending source", status: "pending", unlocks: ["pending-target"] }),
+      createNode({ id: "pending-target", title: "Pending target", status: "pending", dependsOn: ["pending-source"], unlocks: [] }),
+    ],
+    edges: [
+      { id: "visited-pass", from: "pass-source", to: "pass-target", kind: "if_pass", active: true },
+      { id: "visited-fail", from: "fail-source", to: "fail-target", kind: "if_fail", active: true },
+      { id: "visited-feedback", from: "review", to: "implement", kind: "review_feedback", active: true },
+      { id: "visited-approved", from: "gate", to: "summary", kind: "human_approved", active: true },
+      { id: "unvisited-pass", from: "pending-source", to: "pending-target", kind: "if_pass", active: true },
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "gate"), "en");
+
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-pass")["data-edge-visited"], "true");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-pass")["marker-end"], "url(#graph-arrowhead-visited-if-pass)");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-fail")["data-edge-visited"], "true");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-fail")["marker-end"], "url(#graph-arrowhead-visited-if-fail)");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-feedback")["data-edge-visited"], "true");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-feedback")["marker-end"], "url(#graph-arrowhead-visited-review-feedback)");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-approved")["data-edge-visited"], "true");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "visited-approved")["marker-end"], "url(#graph-arrowhead-visited-human-approved)");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "unvisited-pass")["data-edge-visited"], "false");
+  assert.equal(getRequiredDagEdgePathAttrs(html, "unvisited-pass")["marker-end"], "url(#graph-arrowhead)");
+});
+
 test("dedupes same-direction DAG edges and separates bidirectional connection ports", () => {
   const run = createRun({
     nodes: [
@@ -1129,7 +1171,15 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport[\s\S]*cursor:\s*grab/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport\.panning[\s\S]*cursor:\s*grabbing/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\][\s\S]*stroke:\s*var\(--vscode-textLink-foreground,\s*var\(--vscode-focusBorder\)\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\]\.edge-kind-if_pass\s*\{[\s\S]*stroke:\s*var\(--vscode-testing-iconPassed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\]\.edge-kind-if_fail\s*\{[\s\S]*stroke:\s*var\(--vscode-testing-iconFailed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\]\.edge-kind-review_feedback\s*\{[\s\S]*stroke:\s*var\(--vscode-editorWarning-foreground/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\]\.edge-kind-human_approved\s*\{[\s\S]*stroke:\s*var\(--vscode-charts-orange/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited\s*\{[\s\S]*fill:\s*var\(--vscode-textLink-foreground,\s*var\(--vscode-focusBorder\)\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited-if-pass\s*\{[\s\S]*fill:\s*var\(--vscode-testing-iconPassed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited-if-fail\s*\{[\s\S]*fill:\s*var\(--vscode-testing-iconFailed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited-review-feedback\s*\{[\s\S]*fill:\s*var\(--vscode-editorWarning-foreground/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-arrowhead-visited-human-approved\s*\{[\s\S]*fill:\s*var\(--vscode-charts-orange/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog[\s\S]*width:\s*min\(860px, 100%\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-dialog-body[\s\S]*overflow:\s*auto/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.node-detail-close-icon[\s\S]*position:\s*absolute/);

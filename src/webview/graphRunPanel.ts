@@ -152,6 +152,12 @@ const DAG_FLOW_EDGE_KINDS: ReadonlySet<GraphRunPanelEdge["kind"]> = new Set([
   "review_feedback",
   "human_approved",
 ]);
+const DAG_VISITED_EDGE_MARKER_IDS: Partial<Record<GraphRunPanelEdge["kind"], string>> = {
+  if_pass: "graph-arrowhead-visited-if-pass",
+  if_fail: "graph-arrowhead-visited-if-fail",
+  review_feedback: "graph-arrowhead-visited-review-feedback",
+  human_approved: "graph-arrowhead-visited-human-approved",
+};
 const DAG_ZOOM_PERCENT_OPTIONS = [25, 50, 75, 100, 125] as const;
 const DAG_DEFAULT_ZOOM_PERCENT = 75;
 
@@ -1188,11 +1194,23 @@ function renderDagSvg(layout: DagLayout, strings: GraphRunPanelStrings): string 
       <marker id="graph-arrowhead-visited" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
         <path class="dag-arrowhead dag-arrowhead-visited" d="M 0 0 L 10 5 L 0 10 z"></path>
       </marker>
+      <marker id="graph-arrowhead-visited-if-pass" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path class="dag-arrowhead dag-arrowhead-visited dag-arrowhead-visited-if-pass" d="M 0 0 L 10 5 L 0 10 z"></path>
+      </marker>
+      <marker id="graph-arrowhead-visited-if-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path class="dag-arrowhead dag-arrowhead-visited dag-arrowhead-visited-if-fail" d="M 0 0 L 10 5 L 0 10 z"></path>
+      </marker>
+      <marker id="graph-arrowhead-visited-review-feedback" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path class="dag-arrowhead dag-arrowhead-visited dag-arrowhead-visited-review-feedback" d="M 0 0 L 10 5 L 0 10 z"></path>
+      </marker>
+      <marker id="graph-arrowhead-visited-human-approved" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path class="dag-arrowhead dag-arrowhead-visited dag-arrowhead-visited-human-approved" d="M 0 0 L 10 5 L 0 10 z"></path>
+      </marker>
     </defs>
     ${layout.edgeLayouts.map(({ edge, path, label, displayLabel, fromPort, toPort, portHint, offset, labelX, labelY }) => {
       const activeClass = edge.active ? "active" : "inactive";
       const visited = edge.visited ? "true" : "false";
-      const markerId = edge.visited ? "graph-arrowhead-visited" : "graph-arrowhead";
+      const markerId = getDagEdgeMarkerId(edge);
       const pathId = `dag-edge-${toSafeDomId(edge.id)}`;
       return `<path id="${escapeHtml(pathId)}" class="dag-edge-path ${activeClass} edge-kind-${escapeHtml(edge.kind)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-from="${escapeHtml(edge.from)}" data-edge-to="${escapeHtml(edge.to)}" data-from-port="${escapeHtml(fromPort)}" data-to-port="${escapeHtml(toPort)}" data-edge-port-hint="${portHint}" data-edge-offset="${offset}" data-edge-label="${escapeHtml(label)}" data-edge-display-label="${escapeHtml(displayLabel)}" data-edge-visited="${visited}" d="${escapeHtml(path)}" marker-end="url(#${markerId})">
         <title>${escapeHtml(label || strings.none)}</title>
@@ -1200,6 +1218,13 @@ function renderDagSvg(layout: DagLayout, strings: GraphRunPanelStrings): string 
       ${renderDagEdgeDisplayLabel(edge.id, displayLabel, activeClass, labelX, labelY)}`;
     }).join("")}
   </svg>`;
+}
+
+function getDagEdgeMarkerId(edge: GraphRunPanelEdge): string {
+  if (!edge.visited) {
+    return "graph-arrowhead";
+  }
+  return DAG_VISITED_EDGE_MARKER_IDS[edge.kind] ?? "graph-arrowhead-visited";
 }
 
 function renderDagEdgeDisplayLabel(
