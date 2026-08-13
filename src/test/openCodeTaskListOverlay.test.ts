@@ -80,6 +80,8 @@ function createFakeElement(): FakeElement {
 
 test("renders OpenCode task updates in the active task-list overlay", () => {
   const functionSources = [
+    "clearScheduledTaskListUpdate",
+    "areTaskListItemsEqual",
     "setTaskListItems",
     "shouldDisplayTaskListItems",
     "shouldDisplayTaskListForTab",
@@ -120,7 +122,7 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
     "isTabRunning",
     "isConversationTabBusy",
     "state",
-    `${functionSources.join("\n")}; return applyExternalTaskListUpdate;`,
+    `let taskListTextUpdateTimer = null; ${functionSources.join("\n")}; return applyExternalTaskListUpdate;`,
   )(
     elements,
     { createElement: () => createFakeElement() },

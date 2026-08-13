@@ -409,6 +409,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       let historySessionExportPendingKey = "";
       let resizeFrame = 0;
       const assistantDeltaRenderTimers = Object.create(null);
+      let taskListTextUpdateTimer = null;
       const TAB_RUNTIME_DEFAULT_KEY = "__default__";
       const conversationRuntimeByTabId = Object.create(null);
       let runWaitTimer = null;
@@ -433,6 +434,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const RUN_STREAM_STALE_CRITICAL_MS = RUN_STREAM_STALE_CRITICAL_BASE_MS * RUN_STREAM_STALE_THRESHOLD_MULTIPLIER;
       const RUN_STREAM_STALE_REFRESH_INTERVAL_MS = 1000;
       const ASSISTANT_DELTA_MARKDOWN_IDLE_MS = 180;
+      const TASK_LIST_TEXT_UPDATE_IDLE_MS = 220;
       const UPLOAD_MAX_FILES = 10;
       const UPLOAD_MAX_FILE_BYTES = 20 * 1024 * 1024;
       const CONVERSATION_TAB_PAGE_SIZE = 5;

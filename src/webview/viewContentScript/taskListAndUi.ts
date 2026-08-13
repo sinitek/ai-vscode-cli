@@ -1,7 +1,8 @@
 // Task list, toast, clipboard, running state, and dispatch helpers.
-export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskList() {
+export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskList(options = {}) {
         const activeTabId = getActiveConversationTabId();
         if (!shouldDisplayTaskListForTab(activeTabId)) {
+          clearScheduledTaskListUpdate();
           closeTaskListForRunCompletion(activeTabId);
           return;
         }
@@ -11,29 +12,74 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return;
         }
         if (taskListState.source === "external") {
+          clearScheduledTaskListUpdate();
           renderTaskList(taskListState);
           return;
         }
+        if (state.isRunning === true && !(options && options.force === true)) {
+          scheduleTaskListUpdate();
+          return;
+        }
+        clearScheduledTaskListUpdate();
         const items = extractTaskListFromMessages(state.messages, taskListState.startIndex);
-        setTaskListItems(taskListState, items);
-        renderTaskList(taskListState);
+        const changed = setTaskListItems(taskListState, items);
+        if (changed || (options && options.force === true)) {
+          renderTaskList(taskListState);
+        }
+      }
+
+      function clearScheduledTaskListUpdate() {
+        if (!taskListTextUpdateTimer) {
+          return;
+        }
+        clearTimeout(taskListTextUpdateTimer);
+        taskListTextUpdateTimer = null;
+      }
+
+      function scheduleTaskListUpdate() {
+        clearScheduledTaskListUpdate();
+        taskListTextUpdateTimer = setTimeout(() => {
+          taskListTextUpdateTimer = null;
+          updateTaskList({ force: true });
+        }, TASK_LIST_TEXT_UPDATE_IDLE_MS);
+      }
+
+      function areTaskListItemsEqual(currentItems, nextItems) {
+        if (!Array.isArray(currentItems) || !Array.isArray(nextItems)) {
+          return false;
+        }
+        if (currentItems.length !== nextItems.length) {
+          return false;
+        }
+        for (let index = 0; index < currentItems.length; index += 1) {
+          const current = currentItems[index] || {};
+          const next = nextItems[index] || {};
+          if (current.text !== next.text || Boolean(current.done) !== Boolean(next.done)) {
+            return false;
+          }
+        }
+        return true;
       }
 
       function setTaskListItems(taskListState, items) {
         if (!taskListState) {
-          return;
+          return false;
         }
         const nextItems = Array.isArray(items) ? items : [];
-        const hadItems = Array.isArray(taskListState.items) && taskListState.items.length > 0;
+        const currentItems = Array.isArray(taskListState.items) ? taskListState.items : [];
+        const hadItems = currentItems.length > 0;
+        const wasOpen = Boolean(taskListState.open);
         if (!shouldDisplayTaskListItems(nextItems)) {
+          const changed = currentItems.length > 0 || wasOpen;
           taskListState.items = [];
           taskListState.open = false;
-          return;
+          return changed;
         }
+        const nextOpen = hadItems ? wasOpen : true;
+        const changed = !areTaskListItemsEqual(currentItems, nextItems) || wasOpen !== nextOpen;
         taskListState.items = nextItems;
-        if (!hadItems) {
-          taskListState.open = true;
-        }
+        taskListState.open = nextOpen;
+        return changed;
       }
 
       function shouldDisplayTaskListItems(items) {
@@ -426,7 +472,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (!taskListState) {
           return [];
         }
+        clearScheduledTaskListUpdate();
         const normalized = normalizeTaskListItems(items);
+        let changed = false;
         if (normalized.length) {
           if (!shouldDisplayTaskListForTab(targetTabId)) {
             const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
@@ -437,14 +485,19 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             }
             return normalized;
           }
-          setTaskListItems(taskListState, normalized);
+          const previousSource = taskListState.source;
+          changed = setTaskListItems(taskListState, normalized);
           taskListState.source = "external";
+          changed = changed || previousSource !== "external";
         } else {
           const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
           const startIndex = runtimeState ? ensureRuntimeStateMessages(runtimeState).length : 0;
+          changed = taskListState.source !== "auto"
+            || (Array.isArray(taskListState.items) && taskListState.items.length > 0)
+            || Boolean(taskListState.open);
           resetTaskListState(taskListState, startIndex);
         }
-        if (isRuntimeStateForActiveTab(targetTabId)) {
+        if (changed && isRuntimeStateForActiveTab(targetTabId)) {
           renderTaskList(taskListState);
         }
         return normalized;
@@ -648,6 +701,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function resetTaskListForRunStart(tabId) {
+        clearScheduledTaskListUpdate();
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
         const startIndex = runtimeState
@@ -663,6 +717,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function closeTaskListForRunCompletion(tabId) {
+        clearScheduledTaskListUpdate();
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         const runtimeState = getConversationRuntimeState(targetTabId, { create: false });
         const startIndex = runtimeState

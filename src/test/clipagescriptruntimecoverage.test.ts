@@ -443,6 +443,13 @@ function createFakeWindow(): any {
   };
 }
 
+function runLatestTimer(fakeWindow: { timers: Map<number, Listener> }): void {
+  const latest = Array.from(fakeWindow.timers.entries()).at(-1);
+  assert.ok(latest, "Expected a pending timer");
+  fakeWindow.timers.delete(latest[0]);
+  latest[1]();
+}
+
 function createRuntimeHarness(markedOverride?: unknown) {
   const document = createFakeDocument();
   const fakeWindow = createFakeWindow();
@@ -883,6 +890,8 @@ test("boots the runtime and dispatches state, message, stream, history, settings
     content: "Tasklist: [completed] inspect logs；[inProgress] patch parser；[pending] run tests",
     kind: "normal",
   });
+  assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  runLatestTimer(window);
   assert.equal(document.getElementById("taskListPanel").style.display, "block");
   assert.equal(document.getElementById("taskListCount").textContent, "1/3");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [{ text: "external task", completed: false }] });
