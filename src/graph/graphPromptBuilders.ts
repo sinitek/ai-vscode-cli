@@ -3,7 +3,11 @@ import * as path from "path";
 import {
   GRAPH_NODE_COMMUNICATIONS_DIR_NAME,
 } from "./graphCommunications";
-import { GRAPH_AI_PLANNER_NODE_ID } from "./graphPlanner";
+import {
+  GRAPH_AI_REPLANNER_NODE_ID_PREFIX,
+  GRAPH_AI_PLANNER_NODE_ID,
+  isGraphAiReplannerNode,
+} from "./graphPlanner";
 import {
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
@@ -176,8 +180,8 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
   if (node.kind === "summary") {
     lines.push("", ...buildGraphSummaryPromptTail(run));
   }
-  if (isAiPlannerNode(run, node)) {
-    lines.push("", ...buildGraphAiPlannerPromptTail());
+  if (isAiPlannerNode(run, node) || isGraphAiReplannerNode(node)) {
+    lines.push("", ...buildGraphAiPlannerPromptTail(run, node));
   }
 
   return `${lines.join("\n")}\n`;
@@ -566,10 +570,14 @@ function formatSupplementalRequirementLines(requirements: readonly string[] | un
   ];
 }
 
-function buildGraphAiPlannerPromptTail(): string[] {
+function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecord): string[] {
+  const replanning = isGraphAiReplannerNode(node);
   return [
-    "## AI Planner 节点专用要求",
-    "- 你不是在直接实现任务；你必须先把原始目标编译成一个可执行 Graph DAG。",
+    replanning ? "## AI Replanner 节点专用要求" : "## AI Planner 节点专用要求",
+    replanning
+      ? "- 你不是在直接实现任务；你必须把当前 Graph 的失败、阻塞或无路可走状态编译成 plannedGraph 增量。"
+      : "- 你不是在直接实现任务；你必须先把原始目标编译成一个可执行 Graph DAG。",
+    ...(replanning ? buildGraphAiReplannerPromptLines(run, node) : []),
     "- Graph 不能固定输出线形 `plan -> implement -> test -> review -> summary`；复杂需求必须拆出并行分支、依赖边、验证节点、评审节点，必要时加入 debate、sleep 或 merge 节点。",
     "- 默认先寻找可并行分支：多个可拆分且互不冲突的任务应从 planner fan-out 并行开始，再通过 test/review/merge/summary fan-in 收束。",
     "- 不要仅因为任务在列表中靠后、属于同一用户目标或共享最终验收，就给独立分支添加串行 dependsOn；只有真实数据依赖、同一文件写入或同一风险域才串行。",
@@ -583,8 +591,15 @@ function buildGraphAiPlannerPromptTail(): string[] {
     "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发 5；如果不确定，少报但不要把可证明独立的分支压成 1。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
     "- plannedGraph.nodes[].title 必须使用简洁中文，禁止英文整句标题；API、HTML、Graph、DAG 等技术缩写可以保留，但业务含义必须中文表达。",
-    "- plannedGraph.nodes 不得包含保留 ID `plan`；宿主会保留当前 planner 节点，并自动让无依赖节点依赖 `plan`。",
-    "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个 summary 节点收束叶子节点。",
+    replanning
+      ? `- plannedGraph.nodes 不得包含任何已存在 node id；新增节点建议使用 \`${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-\` 相关后缀或带明确续跑语义的唯一 ID。`
+      : "- plannedGraph.nodes 不得包含保留 ID `plan`；宿主会保留当前 planner 节点，并自动让无依赖节点依赖 `plan`。",
+    replanning
+      ? `- plannedGraph 中的所有新增节点都会自动依赖当前 replanner 节点 \`${node.id}\`；不要把 failed/blocked 旧节点写成 depends_on 结构依赖，相关证据用 evidence_for 或 prompt 内容承接。`
+      : "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个 summary 节点收束叶子节点。",
+    replanning
+      ? "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个新的续跑 summary 节点；不要复用旧 summary 节点。"
+      : "",
     "",
     "## plannedGraph JSON Schema",
     "- Plan JSON 必须额外包含 `plannedGraph`：",
@@ -714,6 +729,20 @@ function buildGraphAiPlannerPromptTail(): string[] {
 
 function isAiPlannerNode(run: GraphRunRecord, node: GraphNodeRecord): boolean {
   return node.id === GRAPH_AI_PLANNER_NODE_ID && node.kind === "plan" && run.nodes.length === 1;
+}
+
+function buildGraphAiReplannerPromptLines(run: GraphRunRecord, node: GraphNodeRecord): string[] {
+  const failedNodes = run.nodes.filter((item) => item.status === "failed" || item.status === "blocked");
+  return [
+    "- 当前节点是运行时追加的主模型续跑规划节点；目标是在当前 Graph run 内追加节点继续执行，而不是新建 Graph run。",
+    "- plannedGraph 必须是增量：只包含新增节点和新增边；不得重写、覆盖、重命名或删除当前图中已有节点。",
+    "- 新增边可以从当前图已有节点指向新增节点，也可以连接新增节点之间；不得让新增边指向已有节点；failed/blocked 旧节点到新增节点应优先使用 evidence_for 或 if_fail，不要用 depends_on。",
+    "- 优先围绕 failed/blocked 节点的 lastError、failure.recommendedRecovery、上游 artifacts 和用户补充要求规划最小返工、验证、评审、summary 链路。",
+    failedNodes.length > 0
+      ? `- 当前失败/阻塞节点：${formatNodeReferences(failedNodes)}`
+      : "- 当前未发现 failed/blocked 节点；请基于无可运行节点、条件不可求值或缺少收束路径来追加续跑节点。",
+    `- 当前 replanner 节点 id：${node.id}`,
+  ];
 }
 
 function formatDependencyLines(run: GraphRunRecord, node: GraphNodeRecord): string[] {

@@ -396,7 +396,9 @@ export async function handleSendPromptMessage(
       tabId: promptTargetTabId,
     });
   }
-  deps.recordPromptHistory(trimmed, targetCli);
+  if (message.skipPromptHistory !== true) {
+    deps.recordPromptHistory(trimmed, targetCli);
+  }
   await deps.postPanelState();
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget

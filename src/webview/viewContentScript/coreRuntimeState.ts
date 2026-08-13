@@ -563,6 +563,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
             includeSelection: contextOptions.includeSelection !== false,
           },
           ...(interactiveMode ? { interactiveMode } : {}),
+          ...(payload.skipPromptHistory === true ? { skipPromptHistory: true } : {}),
         };
       }
 

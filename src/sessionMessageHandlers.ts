@@ -830,6 +830,20 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     return;
   }
 
+  if (message.type === "recordPromptHistory" && typeof message.prompt === "string") {
+    const prompt = message.prompt.trim();
+    if (!prompt) {
+      return;
+    }
+    const messageCli = typeof message.cli === "string" && deps.isCliName(message.cli)
+      ? message.cli
+      : null;
+    const targetCli = messageCli ?? deps.getActiveConversationTab()?.cli ?? deps.getCurrentCli();
+    deps.recordPromptHistory(prompt, targetCli);
+    await deps.postPanelState();
+    return;
+  }
+
   if (message.type === "runCommonCommand" && message.command === "compactContext") {
     const label = t("common.compactContext");
     appendUserMessageForCli(

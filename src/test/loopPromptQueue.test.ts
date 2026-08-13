@@ -11,7 +11,23 @@ import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScri
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} should exist in webview script`);
-  const bodyStart = script.indexOf("{", start);
+  const paramsStart = script.indexOf("(", start);
+  assert.notEqual(paramsStart, -1, `${name} should have parameters`);
+  let paramsDepth = 0;
+  let paramsEnd = -1;
+  for (let index = paramsStart; index < script.length; index += 1) {
+    if (script[index] === "(") {
+      paramsDepth += 1;
+    } else if (script[index] === ")") {
+      paramsDepth -= 1;
+      if (paramsDepth === 0) {
+        paramsEnd = index;
+        break;
+      }
+    }
+  }
+  assert.notEqual(paramsEnd, -1, `${name} parameters should terminate`);
+  const bodyStart = script.indexOf("{", paramsEnd);
   assert.notEqual(bodyStart, -1, `${name} should have a body`);
   let depth = 0;
   for (let index = bodyStart; index < script.length; index += 1) {
@@ -117,11 +133,15 @@ test("does not flush a queued prompt while the target tab is still busy", () => 
 test("stores the Loop mode with a queued prompt for background dispatch", () => {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "queuePromptForLater");
   const runtimeState = { pendingPromptQueue: [] as unknown[] };
+  const posted: unknown[] = [];
   const queuePromptForLater = new Function(
     "snapshotPromptPayloadForQueue",
     "getActiveConversationRuntimeState",
     "normalizeInteractiveMode",
     "state",
+    "getActiveConversationTabId",
+    "getConversationTabSummary",
+    "vscode",
     "updateQueueIndicator",
     "showToast",
     "t",
@@ -130,7 +150,10 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
     (payload: unknown) => payload,
     () => runtimeState,
     (mode: unknown) => mode === "loop" ? "loop" : "coding",
-    { interactiveMode: "loop" },
+    { currentCli: "codex", interactiveMode: "loop" },
+    () => "tab-loop",
+    () => ({ cli: "opencode" }),
+    { postMessage: (message: unknown) => posted.push(message) },
     () => undefined,
     () => undefined,
     () => "queued",
@@ -149,11 +172,80 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
     loopMainModel: "planner-main",
     loopSubtaskModel: "executor-subtask",
     interactiveMode: "loop",
+    skipPromptHistory: true,
+  }]);
+  assert.deepEqual(posted, [{
+    type: "recordPromptHistory",
+    prompt: "next task",
+    cli: "opencode",
   }]);
   assert.match(
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
     /basePayload\.interactiveMode[\s\S]*isBackgroundDispatch/,
   );
+});
+
+test("forwards queued prompt history skip flag when dispatching", () => {
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "dispatchPrompt");
+  const posted: unknown[] = [];
+  const dispatchPrompt = new Function(
+    "normalizePromptPayloadWithModelFields",
+    "getActiveConversationTabId",
+    "getConversationTabSummary",
+    "state",
+    "resolveDispatchInteractiveMode",
+    "applyCodexLoopRoleModelsToPromptPayload",
+    "getConversationRuntimeState",
+    "isTabRunning",
+    "appendMessage",
+    "createMessageId",
+    "t",
+    "resetTaskListForRunStart",
+    "cliSupportsManagedModelSelection",
+    "getLoopExecutionModeForCli",
+    "vscode",
+    `${functionSource}; return dispatchPrompt;`,
+  )(
+    (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
+      ? {
+          prompt: payload.prompt,
+          contextOptions: payload.contextOptions || {},
+          skipPromptHistory: payload.skipPromptHistory === true,
+        }
+      : null,
+    () => "tab-loop",
+    () => ({ cli: "opencode" }),
+    {
+      currentCli: "opencode",
+      selectedConfigId: "config-opencode",
+      configState: { activeConfigId: "config-opencode" },
+      selectedModelsByCli: {},
+    },
+    (mode: unknown) => mode || "coding",
+    (payload: unknown) => payload,
+    () => null,
+    () => false,
+    () => undefined,
+    () => "message-1",
+    (key: string) => key,
+    () => undefined,
+    () => false,
+    () => undefined,
+    { postMessage: (message: unknown) => posted.push(message) },
+  ) as (payload: unknown) => boolean;
+
+  assert.equal(dispatchPrompt({ prompt: "queued task", contextOptions: {}, skipPromptHistory: true }), true);
+  assert.deepEqual(posted, [{
+    type: "sendPrompt",
+    prompt: "queued task",
+    interactiveMode: "coding",
+    contextOptions: {},
+    tabId: "tab-loop",
+    cli: "opencode",
+    model: undefined,
+    preserveActiveTab: false,
+    skipPromptHistory: true,
+  }]);
 });
 
 test("prevents the conflict overlay from bypassing a running Loop main tab", () => {

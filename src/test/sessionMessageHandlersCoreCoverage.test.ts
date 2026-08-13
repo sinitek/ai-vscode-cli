@@ -92,6 +92,7 @@ type Calls = {
   webviewMessages: Record<string, unknown>[];
   clearedSessions: number;
   clearedPromptHistory: number;
+  promptHistory: Array<{ prompt: string; cli: CliName }>;
   promptFavorites: Array<{ id: string; favorite?: boolean }>;
   savedSettings: WorkspaceSettings[];
   statusUpdates: number;
@@ -156,6 +157,7 @@ function createHarness(): HandlerHarness {
     webviewMessages: [],
     clearedSessions: 0,
     clearedPromptHistory: 0,
+    promptHistory: [],
     promptFavorites: [],
     savedSettings: [],
     statusUpdates: 0,
@@ -330,7 +332,7 @@ function createHarness(): HandlerHarness {
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt, modelPrompt) => modelPrompt,
     resolveCodexImagePathsForPrompt: async () => [],
     getLatestLoopRoundRunRecord: () => null,
-    recordPromptHistory: () => undefined,
+    recordPromptHistory: (prompt, cli) => { calls.promptHistory.push({ prompt, cli }); },
     resolvePromptRunTarget: (tabId) => {
       const tab = tabId ? state.tabs.get(tabId) : null;
       return tab ? { tabId: tab.id, cli: tab.cli, sessionId: tab.sessionId } : null;
@@ -463,6 +465,32 @@ test("toggles prompt history favorite state without confirmation", async (t) => 
 
   assert.deepEqual(harness.calls.promptFavorites, [{ id: "prompt-1", favorite: true }]);
   assert.equal(harness.calls.panelStates, 1);
+});
+
+test("records prompt history through explicit webview message", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+
+  await handlePanelMessageWithDeps({
+    type: "recordPromptHistory",
+    prompt: " queued prompt ",
+    cli: "opencode",
+  }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "recordPromptHistory",
+    prompt: " fallback prompt ",
+  }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "recordPromptHistory",
+    prompt: "",
+    cli: "claude",
+  }, harness.deps);
+
+  assert.deepEqual(harness.calls.promptHistory, [
+    { prompt: "queued prompt", cli: "opencode" },
+    { prompt: "fallback prompt", cli: "codex" },
+  ]);
+  assert.equal(harness.calls.panelStates, 2);
 });
 
 test("reports config and rules failures while preserving successful rule contracts", async (t) => {

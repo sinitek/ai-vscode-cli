@@ -9,11 +9,13 @@ import { appendGraphEvent } from "../graph/graphEvents";
 import { tickGraphRun, type GraphNodeExecutionRequest } from "../graph/graphKernel";
 import { readGraphNodeExecutionResultArtifact } from "../graph/graphNodeArtifact";
 import {
+  appendGraphReplanningNode,
   buildGraphPlanningRunEdges,
   buildGraphPlanningRunNodes,
   GRAPH_AI_PLANNER_NODE_ID,
   GRAPH_AI_PLANNER_TEMPLATE_ID,
   GRAPH_AI_PLANNER_TEMPLATE_VERSION,
+  isGraphAiReplannerNode,
   materializeGraphPlan,
 } from "../graph/graphPlanner";
 import { resolveGraphNodeCommunicationFile } from "../graph/graphPromptBuilders";
@@ -40,6 +42,7 @@ import type { GraphMessagesHost } from "./graphMessages";
 
 const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1;
 const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES;
+const GRAPH_EXTENSION_MAX_REPLANNING_NODES = 3;
 
 export type PromptRunInput = {
   displayPrompt: string;
@@ -245,7 +248,7 @@ function resolveGraphNodeModelRoute(
   node: GraphNodeRecord,
   routing: GraphRunModelRoutingRecord,
 ): GraphRunModelRoutingRecord["planner"] {
-  return node.id === GRAPH_AI_PLANNER_NODE_ID || node.kind === "summary"
+  return node.kind === "plan" || node.kind === "summary"
     ? routing.planner
     : routing.executor;
 }
@@ -438,6 +441,19 @@ async function tickGraphRunToPause(
       continue;
     }
 
+    const dynamicReplan = maybeAppendGraphReplanningNodeAfterTick(
+      run,
+      [...tickResult.failedNodeIds, ...tickResult.blockedNodeIds],
+      "Graph node failed or blocked and needs main-model replanning.",
+    );
+    if (dynamicReplan.changed && dynamicReplan.run.status === "running") {
+      run = dynamicReplan.run;
+      madeProgress = true;
+      await deps.postPanelState();
+      deps.scheduleGraphRunAutoWake(run);
+      continue;
+    }
+
     if (run.status === "completed") {
       const mergeBack = finalizeCompletedGraphRunWorktreeMergeBack(run);
       run = mergeBack.run;
@@ -476,6 +492,18 @@ async function tickGraphRunToPause(
     madeProgress = madeProgress || progressed;
     deps.scheduleGraphRunAutoWake(run);
     if (!progressed) {
+      const idleReplan = maybeAppendGraphReplanningNodeAfterTick(
+        run,
+        [],
+        "Graph run made no progress and needs main-model replanning.",
+      );
+      if (idleReplan.changed && idleReplan.run.status === "running") {
+        run = idleReplan.run;
+        madeProgress = true;
+        await deps.postPanelState();
+        deps.scheduleGraphRunAutoWake(run);
+        continue;
+      }
       run = updateGraphRunRecord(run.id, {
         status: "needs-review",
         updatedAt: Date.now(),
@@ -537,6 +565,84 @@ function shouldAutoRequestGraphDirectRework(node: GraphNodeRecord | undefined): 
     return false;
   }
   return !(node.rework?.sourceNodeId === node.id && node.rework.targetNodeId === recovery.targetNodeId);
+}
+
+function maybeAppendGraphReplanningNodeAfterTick(
+  run: GraphRunRecord,
+  triggerNodeIds: readonly string[],
+  reason: string,
+): { run: GraphRunRecord; changed: boolean } {
+  const selectedTriggerNodeIds = selectGraphReplanningTriggerNodeIds(run, triggerNodeIds);
+  if (triggerNodeIds.length > 0 && selectedTriggerNodeIds.length === 0) {
+    return { run, changed: false };
+  }
+  if (!shouldAppendGraphReplanningNode(run, selectedTriggerNodeIds)) {
+    return { run, changed: false };
+  }
+  const appended = appendGraphReplanningNode(run, {
+    triggerNodeIds: selectedTriggerNodeIds,
+    reason,
+  });
+  if (!appended.changed) {
+    return { run, changed: false };
+  }
+  const routedRun = applyGraphRunModelRouting(appended.run);
+  const persisted = deps.persistGraphRunTickState(routedRun);
+  appendGraphEvent(persisted.eventsFile, {
+    runId: persisted.id,
+    type: "run.updated",
+    summary: `Graph run ${persisted.id} appended ${appended.nodeId} for main-model replanning.`,
+    data: {
+      replanningNodeId: appended.nodeId,
+      triggerNodeIds: appended.triggerNodeIds,
+      reason,
+    },
+  });
+  return { run: persisted, changed: true };
+}
+
+function shouldAppendGraphReplanningNode(
+  run: GraphRunRecord,
+  triggerNodeIds: readonly string[],
+): boolean {
+  if (run.status !== "running") {
+    return false;
+  }
+  const replanningNodes = run.nodes.filter(isGraphAiReplannerNode);
+  if (replanningNodes.length >= GRAPH_EXTENSION_MAX_REPLANNING_NODES) {
+    return false;
+  }
+  if (replanningNodes.some((node) => node.status === "pending" || node.status === "running" || node.status === "ready")) {
+    return false;
+  }
+  if (triggerNodeIds.length === 0) {
+    return replanningNodes.every((node) => node.status !== "failed" && node.status !== "blocked");
+  }
+  return true;
+}
+
+function selectGraphReplanningTriggerNodeIds(
+  run: GraphRunRecord,
+  triggerNodeIds: readonly string[],
+): string[] {
+  const uniqueNodeIds = Array.from(new Set(triggerNodeIds));
+  return uniqueNodeIds.filter((nodeId) => {
+    const node = run.nodes.find((item) => item.id === nodeId);
+    if (!node || isGraphAiReplannerNode(node)) {
+      return false;
+    }
+    if (node.status === "blocked") {
+      return true;
+    }
+    if (node.status !== "failed") {
+      return false;
+    }
+    return node.kind === "review"
+      || node.attempts >= node.maxAttempts
+      || node.failure?.recommendedRecovery?.action === "add_rework_node"
+      || node.failure?.recommendedRecovery?.action === "add_write_scope"
+      || node.failure?.recommendedRecovery?.action === "manual_review";
+  });
 }
 
 function sendGraphMainRunStarted(target: PromptRunTarget, run: GraphRunRecord, prompt: string): void {
@@ -736,26 +842,30 @@ function resolveGraphExtensionExecutorMaxConcurrent(run: Pick<GraphRunRecord, "m
 }
 
 function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRunRecord; changed: boolean } {
-  if (run.templateId !== GRAPH_AI_PLANNER_TEMPLATE_ID || run.nodes.some((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)) {
+  if (run.templateId !== GRAPH_AI_PLANNER_TEMPLATE_ID) {
     return { run, changed: false };
   }
-  const plannerNode = run.nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID);
-  if (!plannerNode || plannerNode.status !== "passed") {
+  const plannerNode = run.nodes.find((node) => isGraphPlannerNodeReadyForMaterialization(run, node));
+  if (!plannerNode) {
     return { run, changed: false };
   }
 
   const artifact = readGraphNodeExecutionResultArtifact(resolveGraphNodeCommunicationFile(run, plannerNode));
   if (!artifact?.plannedGraph) {
     return {
-      run: failGraphPlannerRun(run, "Graph planner passed without a valid plannedGraph DAG artifact."),
+      run: failGraphPlannerRun(run, plannerNode.id, "Graph planner passed without a valid plannedGraph DAG artifact."),
       changed: true,
     };
   }
 
-  const materialized = materializeGraphPlan(run, artifact.plannedGraph);
+  const appendMode = plannerNode.id !== GRAPH_AI_PLANNER_NODE_ID;
+  const materialized = materializeGraphPlan(run, artifact.plannedGraph, {
+    plannerNodeId: plannerNode.id,
+    ...(appendMode ? { mode: "append" as const } : {}),
+  });
   if (materialized.error) {
     return {
-      run: failGraphPlannerRun(run, materialized.error),
+      run: failGraphPlannerRun(run, plannerNode.id, materialized.error),
       changed: true,
     };
   }
@@ -768,9 +878,10 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
   appendGraphEvent(persisted.eventsFile, {
     runId: persisted.id,
     type: "run.updated",
-    summary: `Graph planner materialized ${materialized.plannedNodeIds.length} execution nodes.`,
+    summary: `${appendMode ? "Graph replanner" : "Graph planner"} materialized ${materialized.plannedNodeIds.length} execution nodes.`,
     data: {
-      plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
+      plannerNodeId: plannerNode.id,
+      appendMode,
       plannedNodeIds: materialized.plannedNodeIds,
       maxConcurrent: persisted.maxConcurrent,
       modelRouting: persisted.modelRouting,
@@ -779,9 +890,20 @@ function maybeMaterializeGraphPlanAfterTick(run: GraphRunRecord): { run: GraphRu
   return { run: persisted, changed: true };
 }
 
-function failGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecord {
+function isGraphPlannerNodeReadyForMaterialization(run: GraphRunRecord, node: GraphNodeRecord): boolean {
+  if (node.status !== "passed") {
+    return false;
+  }
+  if (node.id === GRAPH_AI_PLANNER_NODE_ID) {
+    return !run.nodes.some((item) => item.id !== GRAPH_AI_PLANNER_NODE_ID);
+  }
+  return isGraphAiReplannerNode(node)
+    && !run.edges.some((edge) => edge.active && edge.kind === "depends_on" && edge.from === node.id);
+}
+
+function failGraphPlannerRun(run: GraphRunRecord, plannerNodeId: string, reason: string): GraphRunRecord {
   const timestamp = Date.now();
-  const nodes = run.nodes.map((node) => node.id === GRAPH_AI_PLANNER_NODE_ID
+  const nodes = run.nodes.map((node) => node.id === plannerNodeId
     ? {
       ...node,
       status: "failed" as const,
@@ -805,8 +927,8 @@ function failGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecor
     runId: nextRun.id,
     type: "node.failed",
     timestamp,
-    nodeId: GRAPH_AI_PLANNER_NODE_ID,
-    attempt: nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)?.attempts,
+    nodeId: plannerNodeId,
+    attempt: nodes.find((node) => node.id === plannerNodeId)?.attempts,
     summary: reason,
     error: reason,
   });
@@ -816,7 +938,7 @@ function failGraphPlannerRun(run: GraphRunRecord, reason: string): GraphRunRecor
     timestamp,
     summary: `Graph run ${nextRun.id} paused because planner output could not be materialized.`,
     data: {
-      plannerNodeId: GRAPH_AI_PLANNER_NODE_ID,
+      plannerNodeId,
       reason,
     },
   });
@@ -893,7 +1015,7 @@ async function executeGraphNodeViaRunPrompt(
 
   const modelRole = request.modelRole
     ?? request.node.modelRole
-    ?? (request.node.id === GRAPH_AI_PLANNER_NODE_ID || request.node.kind === "summary" ? "main" : "subtask");
+    ?? (request.node.kind === "plan" || request.node.kind === "summary" ? "main" : "subtask");
   const selectedModel = request.model ?? resolvePromptRunModelForRole(rootInput, modelRole);
   const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(rootInput, modelRole);
   const thinkingModeOverride = resolvePromptRunThinkingModeForRole(rootInput, target.cli, modelRole, selectedModel);

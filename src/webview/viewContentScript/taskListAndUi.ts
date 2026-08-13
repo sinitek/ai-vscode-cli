@@ -842,6 +842,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (targetLoopExecutionMode) {
           sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;
         }
+        if (normalizedPayload.skipPromptHistory === true) {
+          sendPromptMessage.skipPromptHistory = true;
+        }
         vscode.postMessage(sendPromptMessage);
         return true;
       }

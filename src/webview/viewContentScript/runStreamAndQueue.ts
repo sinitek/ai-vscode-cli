@@ -863,9 +863,17 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState) {
           return;
         }
-        runtimeState.pendingPromptQueue.push({
+        const queuedPayload = {
           ...normalizedPayload,
           interactiveMode: normalizeInteractiveMode(state.interactiveMode),
+          skipPromptHistory: true,
+        };
+        runtimeState.pendingPromptQueue.push(queuedPayload);
+        const activeTab = getConversationTabSummary(getActiveConversationTabId());
+        vscode.postMessage({
+          type: "recordPromptHistory",
+          prompt: queuedPayload.prompt,
+          cli: activeTab && activeTab.cli ? activeTab.cli : state.currentCli,
         });
         updateQueueIndicator();
         showToast(t("toastQueueAdded"));

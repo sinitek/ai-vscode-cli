@@ -31,6 +31,7 @@ export const GRAPH_AI_PLANNER_TEMPLATE_ID = "ai-planned-dag";
 export const GRAPH_AI_PLANNER_TEMPLATE_VERSION = "1";
 export const GRAPH_AI_PLANNER_NODE_ID = "plan";
 export const GRAPH_AI_PLANNER_SUMMARY_NODE_ID = "summary";
+export const GRAPH_AI_REPLANNER_NODE_ID_PREFIX = "replan";
 
 const GRAPH_PLANNER_MAX_NODE_COUNT = 40;
 const GRAPH_PLANNER_MAX_ATTEMPTS = 3;
@@ -40,6 +41,27 @@ const GRAPH_PLANNER_NODE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/u;
 export type GraphPlanMaterializationResult = {
   run: GraphRunRecord;
   changed: boolean;
+  plannedNodeIds: string[];
+  error?: string;
+};
+
+export type GraphPlanMaterializationOptions = {
+  now?: () => number;
+  plannerNodeId?: string;
+  mode?: "initial" | "append";
+};
+
+export type GraphReplanningNodeAppendResult = {
+  run: GraphRunRecord;
+  changed: boolean;
+  nodeId?: string;
+  triggerNodeIds: string[];
+};
+
+type MaterializedGraphBuildResult = {
+  nodes: GraphNodeRecord[];
+  edges: GraphEdgeRecord[];
+  materializedNodes: GraphNodeRecord[];
   plannedNodeIds: string[];
   error?: string;
 };
@@ -65,6 +87,83 @@ export function buildGraphPlanningRunNodes(graphRunId: string): GraphNodeRecord[
 
 export function buildGraphPlanningRunEdges(): GraphEdgeRecord[] {
   return [];
+}
+
+export function isGraphAiReplannerNode(node: Pick<GraphNodeRecord, "id" | "kind" | "ownerRole">): boolean {
+  return node.kind === "plan"
+    && node.ownerRole === "main"
+    && node.id.startsWith(`${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-`);
+}
+
+export function appendGraphReplanningNode(
+  run: GraphRunRecord,
+  options: {
+    triggerNodeIds?: readonly string[];
+    reason?: string;
+    now?: () => number;
+  } = {},
+): GraphReplanningNodeAppendResult {
+  const existingReplanner = run.nodes.find((node) => isGraphAiReplannerNode(node)
+    && (node.status === "pending" || node.status === "running" || node.status === "ready"));
+  const triggerNodeIds = normalizeStringArray(options.triggerNodeIds)
+    .filter((nodeId) => run.nodes.some((node) => node.id === nodeId));
+  if (existingReplanner) {
+    return { run, changed: false, nodeId: existingReplanner.id, triggerNodeIds };
+  }
+
+  const timestamp = options.now?.() ?? Date.now();
+  const nodeId = buildNextGraphReplannerNodeId(run);
+  const replannerNode: GraphNodeRecord = {
+    id: nodeId,
+    title: "重新规划 Graph 续跑",
+    kind: "plan",
+    status: "pending",
+    ownerRole: "main",
+    conflictGroup: `graph:${run.id}:replanning`,
+    maxAttempts: 1,
+    attempts: 0,
+    dependsOn: [],
+    unlocks: [],
+    acceptance: [{
+      name: "主模型基于当前失败或卡住状态输出 plannedGraph 增量，且只新增当前图的后续节点。",
+      required: true,
+    }],
+    ...(options.reason?.trim() ? { lastError: options.reason.trim() } : {}),
+  };
+  const triggerEdges = triggerNodeIds.map((triggerNodeId, index): GraphEdgeRecord => ({
+    id: buildGraphEdgeId(triggerNodeId, nodeId, "if_fail", run.edges.length + index),
+    from: triggerNodeId,
+    to: nodeId,
+    kind: "if_fail",
+    label: "失败后主模型扩图",
+    condition: `${triggerNodeId} failed or blocked triggers replanning`,
+    conditionExpression: {
+      type: "source_status",
+      operator: "one_of",
+      statuses: ["failed", "blocked"],
+      description: "失败或阻塞节点触发当前 Graph run 的增量续跑规划。",
+    },
+    active: true,
+  }));
+  const nextEdges = [...run.edges, ...triggerEdges];
+  const nextNodes = [...run.nodes, replannerNode];
+  const unlocksByNodeId = buildUnlocksByNodeId(nextNodes, nextEdges);
+  const nextRun: GraphRunRecord = {
+    ...run,
+    status: "running",
+    updatedAt: timestamp,
+    nodes: nextNodes.map((node) => ({
+      ...node,
+      unlocks: unlocksByNodeId.get(node.id) ?? [],
+    })),
+    edges: nextEdges,
+  };
+  return {
+    run: nextRun,
+    changed: true,
+    nodeId,
+    triggerNodeIds,
+  };
 }
 
 export function normalizeGraphPlannedGraphSpec(value: unknown): GraphPlannedGraphSpec | null {
@@ -99,16 +198,18 @@ export function normalizeGraphPlannedGraphSpec(value: unknown): GraphPlannedGrap
 export function materializeGraphPlan(
   run: GraphRunRecord,
   plannedGraph: GraphPlannedGraphSpec,
-  options: { now?: () => number } = {},
+  options: GraphPlanMaterializationOptions = {},
 ): GraphPlanMaterializationResult {
-  const plannerNode = run.nodes.find((node) => node.id === GRAPH_AI_PLANNER_NODE_ID);
+  const plannerNodeId = options.plannerNodeId ?? GRAPH_AI_PLANNER_NODE_ID;
+  const appendMode = options.mode === "append" || plannerNodeId !== GRAPH_AI_PLANNER_NODE_ID;
+  const plannerNode = run.nodes.find((node) => node.id === plannerNodeId);
   if (!plannerNode) {
-    return unchangedGraphPlanResult(run, "Graph planner node does not exist.");
+    return unchangedGraphPlanResult(run, `Graph planner node ${plannerNodeId} does not exist.`);
   }
   if (plannerNode.status !== "passed") {
-    return unchangedGraphPlanResult(run, `Graph planner node must pass before materialization; current status is ${plannerNode.status}.`);
+    return unchangedGraphPlanResult(run, `Graph planner node ${plannerNodeId} must pass before materialization; current status is ${plannerNode.status}.`);
   }
-  if (run.nodes.some((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)) {
+  if (!appendMode && run.nodes.some((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)) {
     return {
       run,
       changed: false,
@@ -121,7 +222,9 @@ export function materializeGraphPlan(
     return unchangedGraphPlanResult(run, "Planner output plannedGraph is missing or invalid.");
   }
 
-  const normalized = buildMaterializedGraph(run, plannerNode, graph);
+  const normalized = appendMode
+    ? buildAppendedMaterializedGraph(run, plannerNode, graph)
+    : buildMaterializedGraph(run, plannerNode, graph);
   if (normalized.error) {
     return unchangedGraphPlanResult(run, normalized.error);
   }
@@ -131,17 +234,17 @@ export function materializeGraphPlan(
     ...run,
     status: "running",
     updatedAt: timestamp,
-    activeNodeIds: run.activeNodeIds.filter((nodeId) => nodeId !== GRAPH_AI_PLANNER_NODE_ID),
-    maxConcurrent: resolveMaterializedGraphMaxConcurrent(graph, normalized.nodes),
+    activeNodeIds: run.activeNodeIds.filter((nodeId) => nodeId !== plannerNodeId),
+    maxConcurrent: appendMode
+      ? Math.max(run.maxConcurrent, resolveMaterializedGraphMaxConcurrent(graph, normalized.materializedNodes))
+      : resolveMaterializedGraphMaxConcurrent(graph, normalized.materializedNodes),
     nodes: normalized.nodes,
     edges: normalized.edges,
   };
   return {
     run: nextRun,
     changed: true,
-    plannedNodeIds: normalized.nodes
-      .filter((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)
-      .map((node) => node.id),
+    plannedNodeIds: normalized.plannedNodeIds,
   };
 }
 
@@ -149,21 +252,17 @@ function buildMaterializedGraph(
   run: GraphRunRecord,
   plannerNode: GraphNodeRecord,
   graph: GraphPlannedGraphSpec,
-): { nodes: GraphNodeRecord[]; edges: GraphEdgeRecord[]; error?: string } {
+): MaterializedGraphBuildResult {
   const duplicateNodeId = findDuplicate(graph.nodes.map((node) => node.id));
   if (duplicateNodeId) {
-    return { nodes: [], edges: [], error: `Planner output contains duplicate node id ${duplicateNodeId}.` };
+    return emptyMaterializedGraphResult(`Planner output contains duplicate node id ${duplicateNodeId}.`);
   }
   if (graph.nodes.some((node) => node.id === GRAPH_AI_PLANNER_NODE_ID)) {
-    return { nodes: [], edges: [], error: `Planner output must not redefine reserved node id ${GRAPH_AI_PLANNER_NODE_ID}.` };
+    return emptyMaterializedGraphResult(`Planner output must not redefine reserved node id ${GRAPH_AI_PLANNER_NODE_ID}.`);
   }
-  const humanGateNode = graph.nodes.find((node) => node.kind === "human_gate");
-  if (humanGateNode) {
-    return { nodes: [], edges: [], error: `Planner output must not include human_gate node ${humanGateNode.id}; model failed branches with failed/if_fail flow instead.` };
-  }
-  const humanEdge = (graph.edges ?? []).find((edge) => edge.kind === "human_approved" || edge.conditionExpression?.type === "manual");
-  if (humanEdge) {
-    return { nodes: [], edges: [], error: `Planner edge ${humanEdge.id ?? `${humanEdge.from}->${humanEdge.to}`} must not require human approval or manual conditions; model failures with if_fail flow instead.` };
+  const safetyError = validatePlannerGraphSafety(graph);
+  if (safetyError) {
+    return emptyMaterializedGraphResult(safetyError);
   }
 
   const plannedNodeIds = new Set(graph.nodes.map((node) => node.id));
@@ -184,13 +283,13 @@ function buildMaterializedGraph(
   for (const edge of graph.edges ?? []) {
     const normalizedEdge = buildGraphEdgeRecordFromPlan(edge, edgeRecords.length);
     if (!normalizedEdge) {
-      return { nodes: [], edges: [], error: `Planner output contains invalid edge from ${String(edge.from)} to ${String(edge.to)}.` };
+      return emptyMaterializedGraphResult(`Planner output contains invalid edge from ${String(edge.from)} to ${String(edge.to)}.`);
     }
     if (!isKnownMaterializedNode(normalizedEdge.from, plannedNodeIds) || !isKnownMaterializedNode(normalizedEdge.to, plannedNodeIds)) {
-      return { nodes: [], edges: [], error: `Planner edge ${normalizedEdge.id} references an unknown node.` };
+      return emptyMaterializedGraphResult(`Planner edge ${normalizedEdge.id} references an unknown node.`);
     }
     if (normalizedEdge.to === GRAPH_AI_PLANNER_NODE_ID) {
-      return { nodes: [], edges: [], error: `Planner edge ${normalizedEdge.id} must not target the reserved planner node.` };
+      return emptyMaterializedGraphResult(`Planner edge ${normalizedEdge.id} must not target the reserved planner node.`);
     }
     if (normalizedEdge.kind === "depends_on") {
       appendDependency(normalizedEdge.from, normalizedEdge.to);
@@ -209,7 +308,7 @@ function buildMaterializedGraph(
   for (const node of materializedNodes) {
     for (const dependencyId of dependencyByNodeId.get(node.id) ?? []) {
       if (!isKnownMaterializedNode(dependencyId, plannedNodeIds)) {
-        return { nodes: [], edges: [], error: `Planner node ${node.id} depends on unknown node ${dependencyId}.` };
+        return emptyMaterializedGraphResult(`Planner node ${node.id} depends on unknown node ${dependencyId}.`);
       }
       ensureGraphEdge(edgeRecords, {
         from: dependencyId,
@@ -221,7 +320,7 @@ function buildMaterializedGraph(
 
   const withSummary = ensureSummaryNode(materializedNodes, edgeRecords, dependencyByNodeId);
   if (hasDependencyCycle(withSummary.nodes, withSummary.edges)) {
-    return { nodes: [], edges: [], error: "Planner output contains a dependency cycle." };
+    return emptyMaterializedGraphResult("Planner output contains a dependency cycle.");
   }
 
   const unlocksByNodeId = buildUnlocksByNodeId([plannerNode, ...withSummary.nodes], withSummary.edges);
@@ -229,16 +328,129 @@ function buildMaterializedGraph(
     ...plannerNode,
     unlocks: unlocksByNodeId.get(plannerNode.id) ?? [],
   };
+  const nextMaterializedNodes = withSummary.nodes.map((node) => ({
+    ...node,
+    dependsOn: Array.from(dependencyByNodeId.get(node.id) ?? new Set(node.dependsOn)).sort(),
+    unlocks: unlocksByNodeId.get(node.id) ?? [],
+  }));
   const nextNodes = [
     nextPlannerNode,
-    ...withSummary.nodes.map((node) => ({
-      ...node,
-      dependsOn: Array.from(dependencyByNodeId.get(node.id) ?? new Set(node.dependsOn)).sort(),
-      unlocks: unlocksByNodeId.get(node.id) ?? [],
-    })),
+    ...nextMaterializedNodes,
   ];
 
-  return { nodes: nextNodes, edges: withSummary.edges };
+  return {
+    nodes: nextNodes,
+    edges: withSummary.edges,
+    materializedNodes: nextMaterializedNodes,
+    plannedNodeIds: nextMaterializedNodes
+      .filter((node) => node.id !== GRAPH_AI_PLANNER_NODE_ID)
+      .map((node) => node.id),
+  };
+}
+
+function buildAppendedMaterializedGraph(
+  run: GraphRunRecord,
+  plannerNode: GraphNodeRecord,
+  graph: GraphPlannedGraphSpec,
+): MaterializedGraphBuildResult {
+  const duplicateNodeId = findDuplicate(graph.nodes.map((node) => node.id));
+  if (duplicateNodeId) {
+    return emptyMaterializedGraphResult(`Planner output contains duplicate node id ${duplicateNodeId}.`);
+  }
+  const existingNodeIds = new Set(run.nodes.map((node) => node.id));
+  const collidingNode = graph.nodes.find((node) => existingNodeIds.has(node.id));
+  if (collidingNode) {
+    return emptyMaterializedGraphResult(`Planner output for ${plannerNode.id} must only add new node ids; ${collidingNode.id} already exists.`);
+  }
+  const safetyError = validatePlannerGraphSafety(graph);
+  if (safetyError) {
+    return emptyMaterializedGraphResult(safetyError);
+  }
+
+  const plannedNodeIds = new Set(graph.nodes.map((node) => node.id));
+  const knownNodeIds = new Set([...existingNodeIds, ...plannedNodeIds]);
+  const materializedNodes = graph.nodes.map((node) => buildGraphNodeRecordFromPlan(node));
+  const edgeRecords: GraphEdgeRecord[] = [...run.edges];
+  const dependencyByNodeId = new Map<string, Set<string>>();
+
+  materializedNodes.forEach((node) => {
+    dependencyByNodeId.set(node.id, new Set(node.dependsOn));
+  });
+
+  const appendDependency = (from: string, to: string): void => {
+    const dependencies = dependencyByNodeId.get(to);
+    if (dependencies) {
+      dependencies.add(from);
+    }
+  };
+
+  for (const edge of graph.edges ?? []) {
+    const normalizedEdge = buildGraphEdgeRecordFromPlan(edge, edgeRecords.length);
+    if (!normalizedEdge) {
+      return emptyMaterializedGraphResult(`Planner output contains invalid edge from ${String(edge.from)} to ${String(edge.to)}.`);
+    }
+    if (edgeRecords.some((existingEdge) => existingEdge.id === normalizedEdge.id)) {
+      return emptyMaterializedGraphResult(`Planner edge ${normalizedEdge.id} already exists in the current Graph run.`);
+    }
+    if (!knownNodeIds.has(normalizedEdge.from) || !knownNodeIds.has(normalizedEdge.to)) {
+      return emptyMaterializedGraphResult(`Planner edge ${normalizedEdge.id} references an unknown node.`);
+    }
+    if (existingNodeIds.has(normalizedEdge.to)) {
+      return emptyMaterializedGraphResult(`Planner edge ${normalizedEdge.id} must not target existing node ${normalizedEdge.to}; append new continuation nodes instead.`);
+    }
+    if (normalizedEdge.kind === "depends_on") {
+      appendDependency(normalizedEdge.from, normalizedEdge.to);
+    }
+    edgeRecords.push(normalizedEdge);
+  }
+
+  materializedNodes.forEach((node) => {
+    const dependencies = dependencyByNodeId.get(node.id) ?? new Set<string>();
+    dependencies.add(plannerNode.id);
+    dependencyByNodeId.set(node.id, dependencies);
+  });
+
+  for (const node of materializedNodes) {
+    for (const dependencyId of dependencyByNodeId.get(node.id) ?? []) {
+      if (!knownNodeIds.has(dependencyId)) {
+        return emptyMaterializedGraphResult(`Planner node ${node.id} depends on unknown node ${dependencyId}.`);
+      }
+      ensureGraphEdge(edgeRecords, {
+        from: dependencyId,
+        to: node.id,
+        kind: "depends_on",
+      });
+    }
+  }
+
+  const withSummary = ensureSummaryNode(materializedNodes, edgeRecords, dependencyByNodeId, {
+    summaryId: buildGraphReplanSummaryNodeId(plannerNode.id, knownNodeIds),
+    summaryTitle: "总结 Graph 续跑结果",
+  });
+  const allNodesBeforeUnlocks = [...run.nodes, ...withSummary.nodes];
+  if (hasDependencyCycle(allNodesBeforeUnlocks, edgeRecords)) {
+    return emptyMaterializedGraphResult("Planner output contains a dependency cycle.");
+  }
+
+  const unlocksByNodeId = buildUnlocksByNodeId(allNodesBeforeUnlocks, edgeRecords);
+  const nextExistingNodes = run.nodes.map((node) => ({
+    ...node,
+    unlocks: unlocksByNodeId.get(node.id) ?? [],
+  }));
+  const nextMaterializedNodes = withSummary.nodes.map((node) => ({
+    ...node,
+    dependsOn: Array.from(dependencyByNodeId.get(node.id) ?? new Set(node.dependsOn)).sort(),
+    unlocks: unlocksByNodeId.get(node.id) ?? [],
+  }));
+  return {
+    nodes: [
+      ...nextExistingNodes,
+      ...nextMaterializedNodes,
+    ],
+    edges: edgeRecords,
+    materializedNodes: nextMaterializedNodes,
+    plannedNodeIds: nextMaterializedNodes.map((node) => node.id),
+  };
 }
 
 function resolveMaterializedGraphMaxConcurrent(
@@ -272,7 +484,12 @@ function isPlannerRootCliNode(node: GraphNodeRecord): boolean {
     && node.kind !== "summary"
     && isGraphCliExecutableNode(node)
     && node.dependsOn.length === 1
-    && node.dependsOn[0] === GRAPH_AI_PLANNER_NODE_ID;
+    && isGraphPlannerDependencyNodeId(node.dependsOn[0] as string);
+}
+
+function isGraphPlannerDependencyNodeId(nodeId: string): boolean {
+  return nodeId === GRAPH_AI_PLANNER_NODE_ID
+    || nodeId.startsWith(`${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-`);
 }
 
 function buildGraphNodeRecordFromPlan(node: GraphPlannedNodeSpec): GraphNodeRecord {
@@ -323,9 +540,10 @@ function ensureSummaryNode(
   nodes: GraphNodeRecord[],
   edges: GraphEdgeRecord[],
   dependencyByNodeId: Map<string, Set<string>>,
+  options: { summaryId?: string; summaryTitle?: string } = {},
 ): { nodes: GraphNodeRecord[]; edges: GraphEdgeRecord[] } {
   const existingSummary = nodes.find((node) => node.kind === "summary");
-  const summaryNode = existingSummary ?? buildDefaultSummaryNode(nodes);
+  const summaryNode = existingSummary ?? buildDefaultSummaryNode(nodes, options);
   const nextNodes = existingSummary ? nodes : [...nodes, summaryNode];
   if (!dependencyByNodeId.has(summaryNode.id)) {
     dependencyByNodeId.set(summaryNode.id, new Set<string>());
@@ -343,12 +561,16 @@ function ensureSummaryNode(
   return { nodes: nextNodes, edges };
 }
 
-function buildDefaultSummaryNode(nodes: readonly GraphNodeRecord[]): GraphNodeRecord {
+function buildDefaultSummaryNode(
+  nodes: readonly GraphNodeRecord[],
+  options: { summaryId?: string; summaryTitle?: string } = {},
+): GraphNodeRecord {
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const id = nodeIds.has(GRAPH_AI_PLANNER_SUMMARY_NODE_ID) ? "final-summary" : GRAPH_AI_PLANNER_SUMMARY_NODE_ID;
+  const id = options.summaryId
+    ?? (nodeIds.has(GRAPH_AI_PLANNER_SUMMARY_NODE_ID) ? "final-summary" : GRAPH_AI_PLANNER_SUMMARY_NODE_ID);
   return {
     id,
-    title: "总结 AI 规划的 Graph 运行",
+    title: options.summaryTitle ?? "总结 AI 规划的 Graph 运行",
     kind: "summary",
     status: "pending",
     ownerRole: "main",
@@ -654,6 +876,52 @@ function normalizePositiveInteger(value: unknown, fallback: number, maxValue = N
 
 function isKnownMaterializedNode(nodeId: string, plannedNodeIds: ReadonlySet<string>): boolean {
   return nodeId === GRAPH_AI_PLANNER_NODE_ID || plannedNodeIds.has(nodeId);
+}
+
+function validatePlannerGraphSafety(graph: GraphPlannedGraphSpec): string | null {
+  const humanGateNode = graph.nodes.find((node) => node.kind === "human_gate");
+  if (humanGateNode) {
+    return `Planner output must not include human_gate node ${humanGateNode.id}; model failed branches with failed/if_fail flow instead.`;
+  }
+  const humanEdge = (graph.edges ?? []).find((edge) => edge.kind === "human_approved" || edge.conditionExpression?.type === "manual");
+  if (humanEdge) {
+    return `Planner edge ${humanEdge.id ?? `${humanEdge.from}->${humanEdge.to}`} must not require human approval or manual conditions; model failures with if_fail flow instead.`;
+  }
+  return null;
+}
+
+function buildNextGraphReplannerNodeId(run: Pick<GraphRunRecord, "nodes">): string {
+  const existingNodeIds = new Set(run.nodes.map((node) => node.id));
+  let index = run.nodes.filter(isGraphAiReplannerNode).length + 1;
+  while (existingNodeIds.has(`${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-${index}`)) {
+    index += 1;
+  }
+  return `${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-${index}`;
+}
+
+function buildGraphReplanSummaryNodeId(
+  plannerNodeId: string,
+  knownNodeIds: ReadonlySet<string>,
+): string {
+  const base = `${plannerNodeId}-summary`;
+  if (!knownNodeIds.has(base)) {
+    return base;
+  }
+  let index = 2;
+  while (knownNodeIds.has(`${base}-${index}`)) {
+    index += 1;
+  }
+  return `${base}-${index}`;
+}
+
+function emptyMaterializedGraphResult(error: string): MaterializedGraphBuildResult {
+  return {
+    nodes: [],
+    edges: [],
+    materializedNodes: [],
+    plannedNodeIds: [],
+    error,
+  };
 }
 
 function findDuplicate(values: readonly string[]): string | null {

@@ -43,6 +43,7 @@ export type PanelMessage =
   | { type: "applyConfig"; cli: CliName; configId: string }
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
+  | { type: "recordPromptHistory"; prompt: string; cli?: CliName }
   | { type: "togglePromptHistoryFavorite"; id: string; favorite?: boolean }
   | { type: "updateSetting"; key: string; value: unknown }
   | {
@@ -72,6 +73,7 @@ export type PanelMessage =
       lobsterSubtaskModel?: string;
       loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
+      skipPromptHistory?: boolean;
     }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }

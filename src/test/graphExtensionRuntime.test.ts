@@ -165,6 +165,7 @@ test("Graph runtime source contract lives in extensionHost/graphRuntime", () => 
 
   assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1/);
   assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES/);
+  assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_MAX_REPLANNING_NODES = 3/);
   assert.match(graphRuntimeSource, /async function runGraphPrompt\(/);
   assert.match(graphRuntimeSource, /async function runGraphPromptOrchestration\(/);
   assert.match(graphRuntimeSource, /createGraphRunRecord\(\{/);
@@ -176,8 +177,13 @@ test("Graph runtime source contract lives in extensionHost/graphRuntime", () => 
   assert.match(graphRuntimeSource, /function shouldAutoRequestGraphDirectRework\(node:\s*GraphNodeRecord \| undefined\):\s*node is GraphNodeRecord/);
   assert.match(graphRuntimeSource, /recovery\?\.action !== "direct_rework"/);
   assert.match(graphRuntimeSource, /node\.rework\?\.sourceNodeId === node\.id && node\.rework\.targetNodeId === recovery\.targetNodeId/);
+  assert.match(graphRuntimeSource, /appendGraphReplanningNode\(run,\s*\{/);
+  assert.match(graphRuntimeSource, /function maybeAppendGraphReplanningNodeAfterTick\(/);
+  assert.match(graphRuntimeSource, /function isGraphPlannerNodeReadyForMaterialization\(/);
+  assert.match(graphRuntimeSource, /isGraphAiReplannerNode\(node\)/);
   assert.match(graphRuntimeSource, /readGraphNodeExecutionResultArtifact\(resolveGraphNodeCommunicationFile\(run,\s*plannerNode\)\)/);
-  assert.match(graphRuntimeSource, /materializeGraphPlan\(run,\s*artifact\.plannedGraph\)/);
+  assert.match(graphRuntimeSource, /materializeGraphPlan\(run,\s*artifact\.plannedGraph,\s*\{/);
+  assert.match(graphRuntimeSource, /plannerNodeId:\s*plannerNode\.id/);
   assert.match(graphRuntimeSource, /const graphNodeTarget\s*=\s*deps\.createGraphNodeRunTarget\(target\.cli,\s*request\.run\.id,\s*request\.node\.id\)/);
   assert.match(graphRuntimeSource, /deps\.runPrompt\(\{[\s\S]*displayPrompt:\s*request\.prompt[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id[\s\S]*throwOnError:\s*true[\s\S]*\},\s*\{\s*targetTabId:\s*graphNodeTarget\.tabId/);
   assert.match(graphRuntimeSource, /finally\s*\{\s*try\s*\{[\s\S]*await deps\.closeConversationTabAndRefreshPanel\(graphNodeTarget\.tabId\)[\s\S]*graph-node-tab-auto-closed/);
@@ -270,6 +276,7 @@ test("Graph runtime host applies planner and executor routes to materialized nod
     },
     nodes: [
       createGraphNode({ id: GRAPH_AI_PLANNER_NODE_ID, kind: "plan", title: "Plan" }),
+      createGraphNode({ id: "replan-1", kind: "plan", title: "Replan" }),
       createGraphNode({ id: "summarize", kind: "summary", title: "Summarize" }),
       createGraphNode({ id: "execute", kind: "implement", title: "Execute" }),
     ],
@@ -281,6 +288,7 @@ test("Graph runtime host applies planner and executor routes to materialized nod
     routedRun.nodes.map((node) => [node.id, node.modelRole, node.model, node.modelFallback]),
     [
       [GRAPH_AI_PLANNER_NODE_ID, "main", "planner-model", "planner fallback"],
+      ["replan-1", "main", "planner-model", "planner fallback"],
       ["summarize", "main", "planner-model", "planner fallback"],
       ["execute", "subtask", "executor-model", "executor fallback"],
     ],

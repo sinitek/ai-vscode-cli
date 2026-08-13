@@ -344,6 +344,28 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   assert.equal(calls.preloaded[0].target.cli, "opencode");
 });
 
+test("skips prompt history when a queued prompt was already recorded", async () => {
+  const { deps, calls } = createSendPromptHarness();
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "queued follow-up",
+    interactiveMode: "coding",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    skipPromptHistory: true,
+  }, deps);
+
+  assert.deepEqual(calls.promptHistory, []);
+  assert.equal(calls.postPanelState, 1);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.equal(calls.runPrompt[0].input.displayPrompt, "queued follow-up");
+});
+
 test("routes OpenCode Loop through runLoopPrompt using the generic model as main/subtask fallback", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   deps.getWorkspaceLoopExecutionMode = (cli) => {

@@ -210,6 +210,56 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /plannedGraph\.nodes 不得包含保留 ID `plan`/u);
 });
 
+test("replanner prompt requires appending continuation nodes inside the current graph", () => {
+  const review = createNode({
+    id: "review",
+    title: "评审功能结果",
+    kind: "review",
+    status: "failed",
+    ownerRole: "reviewer",
+    writeFiles: [],
+    conflictGroup: undefined,
+    dependsOn: ["implement-1"],
+    unlocks: ["replan-1"],
+    lastError: "审核失败：缺少验证。",
+  });
+  const replanner = createNode({
+    id: "replan-1",
+    title: "重新规划 Graph 续跑",
+    kind: "plan",
+    status: "pending",
+    ownerRole: "main",
+    writeFiles: [],
+    conflictGroup: "graph:run-1:replanning",
+    dependsOn: [],
+    unlocks: [],
+  });
+  const run = createRun([review, replanner], [{
+    id: "edge-review-replan",
+    from: "review",
+    to: "replan-1",
+    kind: "if_fail",
+    active: true,
+  }]);
+
+  const prompt = buildGraphNodePrompt({
+    run,
+    node: replanner,
+    options: { generatedAt: "2026-08-11T00:00:00.000Z" },
+  });
+
+  assert.match(prompt, /AI Replanner 节点专用要求/u);
+  assert.match(prompt, /当前 Graph run 内追加节点继续执行，而不是新建 Graph run/u);
+  assert.match(prompt, /plannedGraph 必须是增量/u);
+  assert.match(prompt, /不得重写、覆盖、重命名或删除当前图中已有节点/u);
+  assert.match(prompt, /不得让新增边指向已有节点/u);
+  assert.match(prompt, /failed\/blocked 旧节点到新增节点应优先使用 evidence_for 或 if_fail，不要用 depends_on/u);
+  assert.match(prompt, /当前失败\/阻塞节点：review（评审功能结果｜review｜failed）/u);
+  assert.match(prompt, /所有新增节点都会自动依赖当前 replanner 节点 `replan-1`/u);
+  assert.match(prompt, /不要把 failed\/blocked 旧节点写成 depends_on 结构依赖/u);
+  assert.match(prompt, /不要复用旧 summary 节点/u);
+});
+
 test("node prompt includes the full graph topology, current position, and downstream boundaries", () => {
   const plan = createNode({
     id: "plan-1",

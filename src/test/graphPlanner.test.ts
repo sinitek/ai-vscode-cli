@@ -2,9 +2,11 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  appendGraphReplanningNode,
   buildGraphPlanningRunEdges,
   buildGraphPlanningRunNodes,
   GRAPH_AI_PLANNER_NODE_ID,
+  GRAPH_AI_REPLANNER_NODE_ID_PREFIX,
   materializeGraphPlan,
   normalizeGraphPlannedGraphSpec,
 } from "../graph/graphPlanner";
@@ -264,6 +266,131 @@ test("materializes advisory validation nodes without making them implicitly bloc
   assert.equal(result.changed, true);
   assert.equal(result.run.nodes.find((node) => node.id === "test-unit-full")?.blocking, false);
   assert.equal(result.run.nodes.find((node) => node.id === "review-result")?.dependsOn.includes("test-unit-full"), true);
+});
+
+test("appends a main replanner node and materializes its plannedGraph into the current run", () => {
+  const planner = passedPlanner();
+  const implement = {
+    id: "implement",
+    title: "Implement feature",
+    kind: "implement" as const,
+    status: "passed" as const,
+    ownerRole: "subtask" as const,
+    maxAttempts: 2,
+    attempts: 1,
+    dependsOn: [GRAPH_AI_PLANNER_NODE_ID],
+    unlocks: ["review"],
+  };
+  const review = {
+    id: "review",
+    title: "Review feature",
+    kind: "review" as const,
+    status: "failed" as const,
+    ownerRole: "reviewer" as const,
+    maxAttempts: 1,
+    attempts: 1,
+    dependsOn: ["implement"],
+    unlocks: [],
+    lastError: "Review found missing validation.",
+  };
+  const run = createRun([planner, implement, review], [{
+    id: "edge-plan-implement",
+    from: GRAPH_AI_PLANNER_NODE_ID,
+    to: "implement",
+    kind: "depends_on",
+    active: true,
+  }, {
+    id: "edge-implement-review",
+    from: "implement",
+    to: "review",
+    kind: "depends_on",
+    active: true,
+  }]);
+
+  const appended = appendGraphReplanningNode(run, {
+    triggerNodeIds: ["review"],
+    reason: "Review failed.",
+    now: () => 3,
+  });
+
+  assert.equal(appended.changed, true);
+  assert.equal(appended.nodeId, `${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-1`);
+  assert.equal(appended.run.status, "running");
+  assert.equal(appended.run.nodes.find((node) => node.id === "review")?.unlocks.includes("replan-1"), true);
+  const replanner = appended.run.nodes.find((node) => node.id === "replan-1");
+  assert.equal(replanner?.kind, "plan");
+  assert.equal(replanner?.ownerRole, "main");
+  assert.equal(replanner?.lastError, "Review failed.");
+  assert.equal(appended.run.edges.some((edge) => edge.from === "review" && edge.to === "replan-1" && edge.kind === "if_fail"), true);
+
+  const runWithPassedReplanner = {
+    ...appended.run,
+    nodes: appended.run.nodes.map((node) => node.id === "replan-1"
+      ? { ...node, status: "passed" as const, attempts: 1 }
+      : node),
+  };
+  const result = materializeGraphPlan(runWithPassedReplanner, {
+    nodes: [{
+      id: "fix-review-feedback",
+      title: "Fix review feedback",
+      kind: "implement",
+      writeFiles: ["src/feature.ts"],
+      maxAttempts: 2,
+    }, {
+      id: "test-review-feedback",
+      title: "Test review feedback",
+      kind: "test",
+      dependsOn: ["fix-review-feedback"],
+      writeFiles: ["src/test/feature.test.ts"],
+    }],
+    edges: [{
+      from: "review",
+      to: "fix-review-feedback",
+      kind: "evidence_for",
+      metadata: {
+        evidenceRef: "nodes/review.md",
+        rationale: "Review failure drives the continuation plan.",
+      },
+    }, {
+      from: "fix-review-feedback",
+      to: "test-review-feedback",
+      kind: "depends_on",
+    }],
+  }, {
+    plannerNodeId: "replan-1",
+    mode: "append",
+    now: () => 4,
+  });
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.plannedNodeIds, ["fix-review-feedback", "test-review-feedback", "replan-1-summary"]);
+  assert.deepEqual(result.run.nodes.map((node) => node.id), [
+    GRAPH_AI_PLANNER_NODE_ID,
+    "implement",
+    "review",
+    "replan-1",
+    "fix-review-feedback",
+    "test-review-feedback",
+    "replan-1-summary",
+  ]);
+  assert.deepEqual(result.run.nodes.find((node) => node.id === "fix-review-feedback")?.dependsOn, ["replan-1"]);
+  assert.deepEqual(result.run.nodes.find((node) => node.id === "test-review-feedback")?.dependsOn, ["fix-review-feedback", "replan-1"]);
+  assert.deepEqual(result.run.nodes.find((node) => node.id === "replan-1-summary")?.dependsOn, ["test-review-feedback"]);
+  assert.equal(result.run.nodes.find((node) => node.id === "replan-1")?.unlocks.includes("fix-review-feedback"), true);
+  assert.equal(result.run.edges.some((edge) => edge.from === "review" && edge.to === "fix-review-feedback" && edge.kind === "evidence_for"), true);
+
+  const collision = materializeGraphPlan(runWithPassedReplanner, {
+    nodes: [{
+      id: "review",
+      title: "Overwrite old review",
+      kind: "review",
+    }],
+  }, {
+    plannerNodeId: "replan-1",
+    mode: "append",
+  });
+  assert.equal(collision.changed, false);
+  assert.match(collision.error ?? "", /must only add new node ids/u);
 });
 
 test("keeps inferred maxConcurrent conservative for conflicting root write branches", () => {
