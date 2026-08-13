@@ -92,7 +92,10 @@ def main() -> int:
     root = Path(args.root).resolve()
     output_dir = resolve_output_dir(root, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    display_output_dir = display_path(root, output_dir)
+    try:
+        display_output_dir = output_dir.relative_to(root).as_posix()
+    except ValueError:
+        display_output_dir = str(output_dir)
 
     plans = collect_active_plans(root)
     summary = {
@@ -100,7 +103,6 @@ def main() -> int:
         "version": GENERATOR_VERSION,
         "generated_at": iso_now(),
         "repo_root": ".",
-        "output_dir": display_output_dir,
         "active_plan_count": len(plans),
         "plans": [plan.to_dict() for plan in plans],
         "blocked_count": sum(1 for plan in plans if plan.status == "blocked"),
@@ -112,7 +114,7 @@ def main() -> int:
     write_text(output_dir / "ownership-map.md", render_ownership_map(plans, display_output_dir))
     write_json(output_dir / "work-frontier-summary.json", summary)
 
-    print(f"[{GENERATOR_NAME}] generated frontier artifacts in {display_output_dir}")
+    print(f"[{GENERATOR_NAME}] generated frontier artifacts in {output_dir}")
     print("- work-frontier.md")
     print("- open-blockers.md")
     print("- ownership-map.md")
@@ -125,13 +127,6 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
-
-
-def display_path(root: Path, path: Path) -> str:
-    try:
-        return path.resolve().relative_to(root).as_posix()
-    except ValueError:
-        return path.name or "."
 
 
 def collect_active_plans(root: Path) -> list[PlanRecord]:

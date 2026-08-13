@@ -1,0 +1,105 @@
+{
+  "$schema": "../ontology.schema.json",
+  "version": "1.0.0",
+  "as_of": "2026-08-13",
+  "domain": {
+    "id": "project-system",
+    "name": "项目系统",
+    "description": "模板仓库中的业务语义占位域，用于承载真实项目的参与者、能力、模块和数据契约。",
+    "bounded_context": "真实项目复制 scaffold 后应替换的业务系统边界",
+    "status": "active",
+    "aliases": ["项目", "业务系统", "模块", "能力"],
+    "source_refs": [
+      {"path": "AGENTS.md"},
+      {"path": "ARCHITECTURE.md"},
+      {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+    ]
+  },
+  "concepts": [
+    {
+      "id": "project.actor",
+      "name": "项目参与者",
+      "kind": "actor",
+      "description": "使用或维护系统的人、角色、服务或外部系统；复制到真实项目后应拆成稳定角色。",
+      "status": "active",
+      "aliases": ["用户", "角色", "actor"],
+      "implementation_paths": ["AGENTS.md"],
+      "source_refs": [{"path": "AGENTS.md"}]
+    },
+    {
+      "id": "project.capability",
+      "name": "项目能力",
+      "kind": "capability",
+      "description": "用户可感知或系统可复用的稳定能力；应在功能清单中维护状态和事实来源。",
+      "status": "active",
+      "aliases": ["功能", "能力", "feature"],
+      "implementation_paths": [".ch/docs/product-specs/FEATURE_INVENTORY.md"],
+      "source_refs": [{"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}]
+    },
+    {
+      "id": "project.module",
+      "name": "项目模块",
+      "kind": "aggregate",
+      "description": "实现项目能力的代码或服务边界；真实项目应按架构文档拆分模块。",
+      "status": "active",
+      "aliases": ["模块", "服务", "component"],
+      "implementation_paths": ["ARCHITECTURE.md"],
+      "source_refs": [{"path": "ARCHITECTURE.md"}]
+    },
+    {
+      "id": "project.data_contract",
+      "name": "数据契约",
+      "kind": "value_object",
+      "description": "跨模块、外部接口、配置、数据库或事件传递的稳定输入输出契约。",
+      "status": "active",
+      "aliases": ["输入输出", "接口", "schema", "contract"],
+      "implementation_paths": [".ch/docs/product-specs/FEATURE_INVENTORY.md"],
+      "source_refs": [{"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}]
+    }
+  ],
+  "relations": [
+    {
+      "id": "project.relation.actor_uses_capability",
+      "name": "参与者使用能力",
+      "description": "项目参与者通过稳定入口使用项目能力。",
+      "status": "active",
+      "from": "project.actor",
+      "type": "uses",
+      "to": "project.capability",
+      "cardinality": "N:N",
+      "source_refs": [{"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}]
+    },
+    {
+      "id": "project.relation.module_materializes_capability",
+      "name": "模块实现能力",
+      "description": "项目模块承载用户可感知能力或平台能力的实现。",
+      "status": "active",
+      "from": "project.module",
+      "type": "materializes",
+      "to": "project.capability",
+      "cardinality": "N:N",
+      "source_refs": [{"path": "ARCHITECTURE.md"}]
+    },
+    {
+      "id": "project.relation.capability_uses_contract",
+      "name": "能力使用数据契约",
+      "description": "项目能力通过输入输出、接口、配置或事件契约和其他模块协作。",
+      "status": "active",
+      "from": "project.capability",
+      "type": "uses",
+      "to": "project.data_contract",
+      "cardinality": "N:N",
+      "source_refs": [{"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}]
+    }
+  ],
+  "rules": [
+    {
+      "id": "project.rule.replace_template_concepts",
+      "name": "真实项目应替换模板概念",
+      "description": "复制 scaffold 后，`project.*` 占位记录应被真实业务概念、关系和规则替换，不应长期作为最终 ontology 使用。",
+      "status": "active",
+      "applies_to": ["project.actor", "project.capability", "project.module", "project.data_contract"],
+      "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "什么时候更新"}]
+    }
+  ]
+}

@@ -5,6 +5,7 @@
 ## 快速入口
 
 - `.ch/docs/MEMORY.md`：记忆分层、流转、上提与清理规则。
+- `.ch/docs/ontology/README.md`：AI 开发业务本体、任务前查询和任务后维护入口。
 - `.ch/docs/TESTING.md`：测试与单元自测的唯一规则源。
 - `.ch/docs/TOOL_POLICY.md`：工具风险分级与使用边界。
 - `.ch/docs/exec-plans/README.md`：执行计划目录、模板和收尾规则。
@@ -22,6 +23,7 @@
 - `.ch/docs/generated/`：工具生成产物的占位入口，生成规则以对应 skill 为准。
 - `.ch/docs/handoffs/`：跨会话交接文档及模板。
 - `.ch/docs/memory/`：默认优先召回的热区记忆面，放 L1 滚动摘要、L2 事件记忆、L3 画像和 L4 经验入口。
+- `.ch/docs/ontology/`：人工维护的业务概念、关系、规则和跨域场景，供 AI 开发任务按需检索。
 - `.ch/docs/product-specs/`：业务规格、用例、范围和验收文档。
 - `.ch/docs/references/`：官方规范对齐、外部参考、AI 友好参考资料。
 - `.ch/docs/runbooks/`：运行、发布、排障、值班和环境操作手册。
@@ -32,6 +34,7 @@
 - 一旦发现真实踩坑，要及时沉淀为避坑指南，而不是留在聊天记录里。
 - 索引优先于大段正文。
 - 热区记忆只保留最该先读的信息，长过程和长历史仍应回到原始文档。
+- ontology 只做业务语义压缩和事实来源导航，不替代产品规格、架构、代码、测试或 CodeGraph。
 - 长期记忆文档应带统一 front matter，便于 freshness、superseded 和 source-of-truth 治理。
 - 每个目录至少保留一个清晰入口页。
 - 测试规则以 `TESTING.md` 为准；工具风险以 `TOOL_POLICY.md` 为准；执行计划以 `exec-plans/README.md` 为准；功能清单以 `product-specs/FEATURE_INVENTORY.md` 为准。

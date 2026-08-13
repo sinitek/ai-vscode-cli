@@ -51,7 +51,7 @@ description: Use when you need to score whether memory recall hit the expected s
 - 评测过程中复用或重建的 `summary.json` / `claims.jsonl`
 - 每道题的 `recall-pack.md` / `recall-summary.json` / `retrieval-debug.md`
 
-这些 recall 产物只服务于当前评测，不会覆盖正常使用的 `.ch/docs/generated/memory-index/recall-pack.md` 或 `recall-summary.json`。
+这些 recall 产物只服务于当前评测，不会覆盖正常使用的 `.ch/docs/generated/memory-index/.local/recall-pack.md` 或 `.local/recall-summary.json`。
 
 这些产物必须保持：
 

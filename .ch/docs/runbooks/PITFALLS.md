@@ -136,7 +136,7 @@
 - `src/graph/graphScheduler.ts`
 - `src/graph/graphPromptBuilders.ts`
 - `src/graph/graphFailureClassification.ts`
-- `.ch/docs/exec-plans/completed/2026-08-02-graph-advisory-validation.md`
+- `.ch/docs/exec-plans/completed/2026-08/2026-08-02-graph-advisory-validation.md`
 
 ## Graph Tab 元数据不能覆盖前台模式选择
 
@@ -1172,7 +1172,7 @@
 - `src/extension.ts`
 - `src/test/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
-- `.ch/docs/exec-plans/completed/2026-07-12-opencode-workspace-cwd.md`
+- `.ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-workspace-cwd.md`
 
 ## 历史：已移除的 Loop Workflow Skill 根分类
 
@@ -1358,7 +1358,7 @@
 - `src/loopTaskStore.ts`
 - `src/test/loopLegacyMigration.test.ts`
 - `src/test/loopTaskStore.test.ts`
-- `.ch/docs/exec-plans/completed/2026-07-14-loop-naming-migration.md`
+- `.ch/docs/exec-plans/completed/2026-07/2026-07-14-loop-naming-migration.md`
 
 ## 计费终态错误不能进入隐藏重试或充当恢复进度
 
@@ -1396,7 +1396,7 @@
 - `src/extension.ts`
 - `src/test/panelDiagnostics.test.ts`
 - `src/test/codexRunnerRuntime.test.ts`
-- `.ch/docs/exec-plans/completed/2026-07-14-codex-402-terminal-retry.md`
+- `.ch/docs/exec-plans/completed/2026-07/2026-07-14-codex-402-terminal-retry.md`
 
 ## Loop 长时间自动睡眠不能只保存内存定时器或普通更新时间
 
@@ -1438,7 +1438,7 @@
 - `src/loopTaskStore.ts`
 - `src/extension.ts`
 - `src/webview/loopDebatePanel.ts`
-- `.ch/docs/exec-plans/completed/2026-07-17-loop-auto-sleep-wake.md`
+- `.ch/docs/exec-plans/completed/2026-07/2026-07-17-loop-auto-sleep-wake.md`
 
 ## npm 启动的命令解析测试必须隔离 npm 前缀变量
 

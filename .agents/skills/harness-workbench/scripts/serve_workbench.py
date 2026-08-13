@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+COMPLETED_PLANS_DIR = ".ch/docs/exec-plans/completed"
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,7 +86,7 @@ def build_status(root: Path) -> dict[str, object]:
     )
     return {
         "generated_at": datetime.now(UTC).astimezone().isoformat(timespec="seconds"),
-        "root": ".",
+        "root": str(root),
         "git_changed_paths": git_changed_paths(root),
         "active_plans": active_plans,
         "task_board": task_board,
@@ -235,7 +236,7 @@ def render_page(root: Path) -> str:
 <body>
   <header>
     <h1>Harness Workbench</h1>
-    <div class="muted">Root: <code>{escape(str(status["root"]))}</code></div>
+    <div class="muted">Root: <code>{escape(str(root))}</code></div>
     <div class="muted">Generated: {escape(str(status["generated_at"]))}</div>
   </header>
   <main>
@@ -327,8 +328,25 @@ def git_changed_paths(root: Path) -> list[str]:
     paths: list[str] = []
     for line in result.stdout.splitlines():
         if line.strip():
-            paths.append(line[3:].strip())
+            normalized = normalize_completed_plan_path(root, line[3:].strip())
+            if normalized not in paths:
+                paths.append(normalized)
     return paths
+
+
+def normalize_completed_plan_path(root: Path, value: str) -> str:
+    if " -> " in value:
+        value = value.split(" -> ", 1)[1]
+    prefix = f"{COMPLETED_PLANS_DIR}/"
+    if not value.startswith(prefix):
+        return value
+    filename = value[len(prefix):]
+    if "/" in filename or not filename[:7].count("-") == 1 or not filename.endswith(".md"):
+        return value
+    normalized = f"{prefix}{filename[:7]}/{filename}"
+    if (root / normalized).exists():
+        return normalized
+    return value
 
 
 def escape(value: str) -> str:

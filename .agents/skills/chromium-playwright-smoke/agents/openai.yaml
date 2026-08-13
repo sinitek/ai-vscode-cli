@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chromium Playwright 冒烟"
+  short_description: "登录后直达模块并严格检查浏览器异常的 Chromium 无头冒烟测试"
+  default_prompt: "Use $chromium-playwright-smoke to verify a web module in headless Chromium and report browser errors."

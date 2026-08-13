@@ -1,0 +1,81 @@
+{
+  "$schema": "../ontology.schema.json",
+  "version": "1.0.0",
+  "as_of": "2026-08-13",
+  "collection": "cross-domain-workflows",
+  "workflows": [
+    {
+      "id": "scenario.cli_feature_change_with_harness",
+      "name": "CLI 插件功能变更的 harness 流程",
+      "description": "一次涉及插件运行时的非平凡变更，应先读取规则和 ontology，再用执行计划记录范围，最终验证并按记忆规则收尾。",
+      "status": "active",
+      "domains": ["cli-plugin-runtime", "harness-governance"],
+      "trigger": "用户请求新增、修复或调整插件运行时、CLI 调用、会话、Loop/Graph 或配置能力。",
+      "outcome": "代码、测试、文档和 ontology 状态一致，执行计划记录验证结果。",
+      "source_refs": [
+        {"path": "AGENTS.md"},
+        {"path": ".ch/docs/ontology/README.md"},
+        {"path": ".ch/docs/exec-plans/README.md"}
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "actor": "harness.agent_rules",
+          "action": "读取项目规则、任务列表要求和验证边界",
+          "object": "plugin.extension_host",
+          "result": "harness.execution_plan"
+        },
+        {
+          "order": 2,
+          "actor": "harness.ontology",
+          "action": "按业务关键词查询概念、关系和规则并打开 source_refs 核对",
+          "object": "plugin.local_cli",
+          "result": "harness.execution_plan"
+        },
+        {
+          "order": 3,
+          "actor": "plugin.extension_host",
+          "action": "在正确分层内实现并连接 CLI、Webview 或会话改动",
+          "object": "plugin.chat_panel",
+          "result": "plugin.cli_session"
+        },
+        {
+          "order": 4,
+          "actor": "harness.memory",
+          "action": "记录验证、文档同步和是否需要上提长期记忆",
+          "object": "harness.execution_plan",
+          "result": "harness.memory"
+        }
+      ]
+    },
+    {
+      "id": "scenario.workspace_scaffold_update_with_ontology",
+      "name": "Workspace scaffold 更新与 ontology 同步",
+      "description": "更新内置 workspace scaffold 时，应同步 AGENTS、skills、`.ch/docs` 和 ontology 骨架，避免新工作区缺少 harness 能力。",
+      "status": "active",
+      "domains": ["cli-plugin-runtime", "harness-governance"],
+      "trigger": "harness 骨架、skills 或 ontology 能力升级，需要同步到插件内置工作区模板。",
+      "outcome": "根仓库和 `media/workspace-scaffold` 均具备一致的通用 harness 能力。",
+      "source_refs": [
+        {"path": "media/workspace-scaffold/AGENTS.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md"}
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "actor": "harness.workspace_scaffold",
+          "action": "吸收通用 AGENTS、profiles、skills 和文档入口",
+          "object": "harness.agent_rules",
+          "result": "harness.skill"
+        },
+        {
+          "order": 2,
+          "actor": "harness.ontology",
+          "action": "提供业务中性的 ontology schema、manifest、domain 和 workflow 骨架",
+          "object": "harness.workspace_scaffold",
+          "result": "harness.ontology"
+        }
+      ]
+    }
+  ]
+}

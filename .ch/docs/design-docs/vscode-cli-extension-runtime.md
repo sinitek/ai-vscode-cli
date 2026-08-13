@@ -2,7 +2,6 @@
 
 - 状态：accepted
 - 相关目录：`src/`、`media/`、`docs/`
-- 相关计划：`.ch/docs/exec-plans/completed/2026-04-02-docs-migration-to-ch.md`（完成后归档）
 - 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
 
 ## 1. 设计目标

@@ -7,7 +7,7 @@
 ## 结构
 
 - `active/`：正在推进的任务
-- `completed/`：已经完成并归档的任务
+- `completed/YYYY-MM/`：已经完成并按月份归档的任务
 - `TEMPLATE.md`：计划模板
 - `tech-debt-tracker.md`：不单独建计划的小型后续项
 
@@ -17,12 +17,16 @@ starter 默认不保留历史计划文件；复制模板后再从真实任务开
 
 - `YYYY-MM-DD-简短英文slug.md`
 - 例：`2026-03-28-bootstrap-harness-foundation.md`
+- 完成后的归档路径：`completed/2026-03/2026-03-28-bootstrap-harness-foundation.md`
+
+归档月份取计划文件名或计划日期中的 `YYYY-MM`。完成计划不得平铺在 `completed/` 根目录；需要枚举历史计划时必须递归扫描 `completed/**/*.md`，并使用完整相对路径作为计划标识。
 
 ## 使用原则
 
 - 计划是执行载体，不是汇报材料。
 - 计划必须可延续：下一位代理或下一次会话看到它就能继续推进。
-- 计划完成后要归档，不要长期堆在 `active/`。
+- 计划头部状态明确标记为 `completed` 后，要归档到对应的 `completed/YYYY-MM/`，不要长期堆在 `active/`。
+- 移动计划后必须同步更新仓库内引用该计划的具体路径，并验证引用目标存在。
 - 计划内容不要停留在本目录：稳定设计进入 `design-docs/`，复发问题进入 `runbooks/`，用户可见能力进入 `product-specs/FEATURE_INVENTORY.md`，跨会话优先上下文进入 `handoffs/` 或 `memory/`。
 
 ## 什么时候建计划

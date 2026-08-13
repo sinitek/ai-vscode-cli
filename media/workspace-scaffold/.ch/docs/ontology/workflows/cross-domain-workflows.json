@@ -1,0 +1,52 @@
+{
+  "$schema": "../ontology.schema.json",
+  "version": "1.0.0",
+  "as_of": "2026-08-13",
+  "collection": "cross-domain-workflows",
+  "workflows": [
+    {
+      "id": "scenario.project_change_with_harness",
+      "name": "项目变更的 harness 流程",
+      "description": "一次非平凡项目变更应先读取规则和 ontology，再用执行计划记录范围，最终验证并按记忆规则收尾。",
+      "status": "active",
+      "domains": ["project-system", "harness-governance"],
+      "trigger": "用户请求新增、修复或调整项目能力、模块、接口或数据契约。",
+      "outcome": "代码、测试、文档和 ontology 状态一致，执行计划记录验证结果。",
+      "source_refs": [
+        {"path": "AGENTS.md"},
+        {"path": ".ch/docs/ontology/README.md"},
+        {"path": ".ch/docs/exec-plans/README.md"}
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "actor": "harness.agent_rules",
+          "action": "读取项目规则、任务列表要求和验证边界",
+          "object": "project.capability",
+          "result": "harness.execution_plan"
+        },
+        {
+          "order": 2,
+          "actor": "harness.ontology",
+          "action": "按业务关键词查询概念、关系和规则并打开 source_refs 核对",
+          "object": "project.module",
+          "result": "harness.execution_plan"
+        },
+        {
+          "order": 3,
+          "actor": "project.actor",
+          "action": "通过项目能力触发模块和数据契约变更",
+          "object": "project.capability",
+          "result": "project.data_contract"
+        },
+        {
+          "order": 4,
+          "actor": "harness.memory",
+          "action": "记录验证、文档同步和是否需要上提长期记忆",
+          "object": "harness.execution_plan",
+          "result": "harness.memory"
+        }
+      ]
+    }
+  ]
+}

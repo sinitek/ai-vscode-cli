@@ -14,6 +14,7 @@ from pathlib import Path
 GENERATOR_NAME = "task-board"
 GENERATOR_VERSION = "0.1.0"
 ACTIVE_PLANS_DIR = ".ch/docs/exec-plans/active"
+COMPLETED_PLANS_DIR = ".ch/docs/exec-plans/completed"
 DEFAULT_OUTPUT_DIR = ".ch/docs/generated/task-board"
 EXCLUDED_FILES = {".gitkeep", ".keep"}
 PRIVATE_TAG_NAMES = (
@@ -89,7 +90,7 @@ def main() -> int:
     write_json(output_dir / "task-board.json", payload)
     write_text(output_dir / "task-board.md", render_markdown(payload))
 
-    print(f"[{GENERATOR_NAME}] generated task board artifacts in {display_path(root, output_dir)}")
+    print(f"[{GENERATOR_NAME}] generated task board artifacts in {output_dir}")
     print("- task-board.md")
     print("- task-board.json")
     return 0
@@ -100,13 +101,6 @@ def resolve_path(root: Path, value: str) -> Path:
     if path.is_absolute():
         return path
     return root / path
-
-
-def display_path(root: Path, path: Path) -> str:
-    try:
-        return path.resolve().relative_to(root).as_posix()
-    except ValueError:
-        return path.name or "."
 
 
 def collect_tasks(root: Path) -> list[BoardTask]:
@@ -328,8 +322,23 @@ def collect_git_changed_paths(root: Path) -> list[str]:
         payload = line[3:].strip()
         if " -> " in payload:
             payload = payload.split(" -> ", 1)[1]
-        paths.append(payload)
+        normalized = normalize_completed_plan_path(root, payload)
+        if normalized not in paths:
+            paths.append(normalized)
     return paths
+
+
+def normalize_completed_plan_path(root: Path, value: str) -> str:
+    prefix = f"{COMPLETED_PLANS_DIR}/"
+    if not value.startswith(prefix):
+        return value
+    filename = value[len(prefix):]
+    if "/" in filename or not re.match(r"^\d{4}-\d{2}-.*\.md$", filename):
+        return value
+    normalized = f"{prefix}{filename[:7]}/{filename}"
+    if (root / normalized).exists():
+        return normalized
+    return value
 
 
 def build_summary(tasks: list[BoardTask], changed_paths: list[str]) -> dict[str, int]:

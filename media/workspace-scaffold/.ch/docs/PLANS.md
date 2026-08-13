@@ -4,5 +4,5 @@
 
 - 计划模板：`.ch/docs/exec-plans/TEMPLATE.md`
 - 活动计划：`.ch/docs/exec-plans/active/`
-- 完成归档：`.ch/docs/exec-plans/completed/`
+- 完成归档：`.ch/docs/exec-plans/completed/YYYY-MM/`
 - 轻量技术债：`.ch/docs/exec-plans/tech-debt-tracker.md`

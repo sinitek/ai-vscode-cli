@@ -1,7 +1,7 @@
 # Loop 红蓝辩论多智能体模式详细设计
 
 - 状态：active
-- 相关计划：`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06-16-loop-debate-session-tabs.md`
+- 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
 - 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 - 相关目录：`src/extension.ts`、`src/loopParallel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`、`src/cli/types.ts`
 

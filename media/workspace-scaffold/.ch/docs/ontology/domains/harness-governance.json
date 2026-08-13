@@ -1,0 +1,155 @@
+{
+  "$schema": "../ontology.schema.json",
+  "version": "1.0.0",
+  "as_of": "2026-08-13",
+  "domain": {
+    "id": "harness-governance",
+    "name": "Harness 治理",
+    "description": "描述仓库级 AGENTS 规则、skills、执行计划、记忆、ontology 与 workspace scaffold 如何协同约束 AI 开发任务。",
+    "bounded_context": "从任务规则读取、计划记录、技能执行到 ontology 维护的 AI 协作治理层",
+    "status": "active",
+    "aliases": ["harness", "AGENTS.md", "skills", "Tasklist", "ontology"],
+    "source_refs": [
+      {"path": "AGENTS.md"},
+      {"path": ".ch/docs/README.md"},
+      {"path": ".ch/docs/MEMORY.md"}
+    ]
+  },
+  "concepts": [
+    {
+      "id": "harness.agent_rules",
+      "name": "仓库级 AGENTS 规则",
+      "kind": "policy",
+      "description": "仓库级稳定规则和导航入口，保留项目特有约束与通用 harness 规则，细节下沉到 `.ch/docs/` 或局部 AGENTS。",
+      "status": "active",
+      "aliases": ["AGENTS.md", "项目规则", "仓库规则"],
+      "implementation_paths": ["AGENTS.md"],
+      "source_refs": [{"path": "AGENTS.md"}]
+    },
+    {
+      "id": "harness.skill",
+      "name": "仓库级 Skill",
+      "kind": "capability",
+      "description": "仓库内高复用、低噪音的程序性工作流，可包含脚本并引用稳定文档，帮助代理执行重复任务。",
+      "status": "active",
+      "aliases": ["skills", ".agents/skills", "SKILL.md"],
+      "implementation_paths": [".agents/skills"],
+      "source_refs": [{"path": ".agents/skills/AGENTS.md"}]
+    },
+    {
+      "id": "harness.execution_plan",
+      "name": "执行计划",
+      "kind": "ledger",
+      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；完成后按 `completed/YYYY-MM/` 月份归档。",
+      "status": "active",
+      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划"],
+      "implementation_paths": [".ch/docs/exec-plans"],
+      "source_refs": [
+        {"path": ".ch/docs/exec-plans/README.md"},
+        {"path": ".ch/docs/exec-plans/TEMPLATE.md"}
+      ]
+    },
+    {
+      "id": "harness.memory",
+      "name": "记忆金字塔",
+      "kind": "ledger",
+      "description": "把 working、episodic、semantic 和 procedural 信息按 L1-L4 上提、压缩和清理，避免知识长期留在聊天记录。",
+      "status": "active",
+      "aliases": ["memory", "记忆", "memory-index", "recall"],
+      "implementation_paths": [".ch/docs/MEMORY.md", ".ch/docs/memory"],
+      "source_refs": [
+        {"path": ".ch/docs/MEMORY.md"},
+        {"path": ".ch/docs/memory/README.md"}
+      ]
+    },
+    {
+      "id": "harness.ontology",
+      "name": "AI 开发业务本体",
+      "kind": "resource",
+      "description": "供 AI 开发任务检索业务概念、关系、规则、跨域场景和事实来源的人工维护语义导航层。",
+      "status": "active",
+      "aliases": ["ontology", "本体", "业务语义"],
+      "implementation_paths": [".ch/docs/ontology", ".agents/skills/ontology"],
+      "source_refs": [
+        {"path": ".ch/docs/ontology/README.md"},
+        {"path": ".agents/skills/ontology/SKILL.md"}
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "harness.relation.rules_govern_skills",
+      "name": "AGENTS 规则约束 Skills",
+      "description": "仓库级规则定义何时使用 skills、如何记录任务列表和如何同步文档。",
+      "status": "active",
+      "from": "harness.agent_rules",
+      "type": "governs",
+      "to": "harness.skill",
+      "cardinality": "1:N",
+      "source_refs": [{"path": "AGENTS.md", "anchor": "工作方式"}]
+    },
+    {
+      "id": "harness.relation.plan_records_memory",
+      "name": "执行计划记录任务事实",
+      "description": "多阶段或高风险工作先进入 active execution plan，收尾后再归档或上提。",
+      "status": "active",
+      "from": "harness.execution_plan",
+      "type": "records",
+      "to": "harness.memory",
+      "cardinality": "N:N",
+      "source_refs": [{"path": ".ch/docs/MEMORY.md", "anchor": "当前任务事实"}]
+    },
+    {
+      "id": "harness.relation.ontology_references_rules",
+      "name": "Ontology 引导事实来源核对",
+      "description": "ontology 只做语义导航，命中后仍需打开 source_refs 指向的事实来源核对。",
+      "status": "active",
+      "from": "harness.ontology",
+      "type": "references",
+      "to": "harness.agent_rules",
+      "cardinality": "N:N",
+      "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "边界"}]
+    }
+  ],
+  "rules": [
+    {
+      "id": "harness.rule.tasklist_format",
+      "name": "Tasklist 格式固定",
+      "description": "非平凡任务状态更新使用 `Tasklist:` 标题和 `[pending]`、`[in_progress]`、`[completed]` 状态，任务描述使用中文。",
+      "aliases": ["任务列表", "Tasklist"],
+      "status": "active",
+      "applies_to": ["harness.agent_rules", "harness.execution_plan"],
+      "source_refs": [{"path": "AGENTS.md", "anchor": "工作方式"}]
+    },
+    {
+      "id": "harness.rule.ontology_source_first",
+      "name": "Ontology 不替代事实来源",
+      "description": "ontology 命中后必须继续打开 source_refs 指向的产品规格、架构、SQL 或代码核对；冲突时以事实来源为准。",
+      "status": "active",
+      "applies_to": ["harness.ontology"],
+      "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "边界"}]
+    },
+    {
+      "id": "harness.rule.exec_plan_monthly_archive",
+      "name": "执行计划按月归档",
+      "description": "完成计划归档到 `.ch/docs/exec-plans/completed/YYYY-MM/`，不得平铺在 `completed/` 根目录；枚举历史计划时递归扫描 `completed/**/*.md` 并保留完整相对路径。",
+      "aliases": ["completed/YYYY-MM", "月份归档", "completed/**/*.md"],
+      "status": "active",
+      "applies_to": ["harness.execution_plan", "harness.skill"],
+      "source_refs": [{"path": ".ch/docs/exec-plans/README.md", "anchor": "命名建议"}]
+    },
+    {
+      "id": "harness.rule.ontology_bootstrap_required",
+      "name": "空本体先初始化",
+      "description": "AI 执行业务语义相关任务前必须先运行 ontology `--status-report`；本体为空、缺少非 harness 业务 domain 或仍是 scaffold `project.*` 占位时，先根据项目已有事实源初始化 ontology，再继续实现。",
+      "aliases": ["空本体", "ontology 初始化", "project.* 占位", "--status-report"],
+      "status": "active",
+      "applies_to": ["harness.ontology", "harness.agent_rules", "harness.skill"],
+      "source_refs": [
+        {"path": "AGENTS.md", "anchor": "AI 开发业务本体（Ontology）"},
+        {"path": ".agents/skills/ontology/SKILL.md", "anchor": "空本体初始化流程"},
+        {"path": ".ch/docs/ontology/README.md", "anchor": "任务中的使用顺序"}
+      ]
+    }
+  ]
+}

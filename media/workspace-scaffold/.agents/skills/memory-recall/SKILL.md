@@ -26,9 +26,9 @@ description: Use when you need a bounded, prioritized recall path for a complex 
    - `python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --focus "<short focus>"`
    - 如需围绕某条记忆展开前后文：`python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --anchor-id <mem-id>`
 2. 先读生成结果：
-   - `.ch/docs/generated/memory-index/recall-pack.md`
-   - `.ch/docs/generated/memory-index/retrieval-debug.md`
-   - `.ch/docs/generated/memory-index/recall-summary.json`
+   - `.ch/docs/generated/memory-index/.local/recall-pack.md`
+   - `.ch/docs/generated/memory-index/.local/retrieval-debug.md`
+   - `.ch/docs/generated/memory-index/.local/recall-summary.json`
 3. 按建议顺序展开：
    - 本文件里的 Observation Index
    - 少量 Expanded Observation Details
@@ -61,6 +61,7 @@ description: Use when you need a bounded, prioritized recall path for a complex 
 ## 输出边界
 
 - `recall-pack.md`、`recall-summary.json`、`retrieval-debug.md` 都是 generated-only 的召回辅助层。
+- 默认输出到 ignored 的 `.ch/docs/generated/memory-index/.local/`，避免个人任务 focus 覆盖团队共享索引。
 - 它们用于帮助 agent 做 bounded recall、人工审阅召回理由，以及让后续 `memory-eval` 直接读取结构化结果。
 - 它们不是新的长期事实来源，不替代原始 Markdown、`observation-registry.md`、`claim-registry.md`、设计文档或 runbook。
 - debug / summary 可以预留 claim 状态、unsupported / stale watch items 等 future-proof 字段，但不应引入外部检索 provider、向量库或数据库。

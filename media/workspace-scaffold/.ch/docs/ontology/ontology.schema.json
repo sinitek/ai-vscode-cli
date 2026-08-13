@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sinitek.local/schemas/ai-development-domain-ontology-v1.json",
+  "title": "AI Development Business Ontology",
+  "description": "AI 开发业务本体的域文件与跨域场景文件契约。",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/manifestDocument"
+    },
+    {
+      "$ref": "#/$defs/domainDocument"
+    },
+    {
+      "$ref": "#/$defs/workflowDocument"
+    }
+  ],
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anchor": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "baseRecord": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "status",
+        "source_refs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "historical",
+            "proposed"
+          ]
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    },
+    "concept": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "lifecycle": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "implementation_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "tables": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "relation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "from",
+            "type",
+            "to",
+            "cardinality"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "cardinality": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "rule": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "applies_to"
+          ],
+          "properties": {
+            "applies_to": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    },
+    "manifestDocument": {
+      "type": "object",
+      "required": [
+        "$schema",
+        "ontology_id",
+        "name",
+        "purpose",
+        "version",
+        "as_of",
+        "format",
+        "schema_file",
+        "domain_files",
+        "workflow_files",
+        "concept_kinds",
+        "relation_types",
+        "record_statuses",
+        "maintenance"
+      ],
+      "properties": {
+        "$schema": {"type": "string"},
+        "ontology_id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "as_of": {"type": "string", "format": "date"},
+        "format": {"type": "string", "minLength": 1},
+        "language": {"type": "string"},
+        "schema_file": {"type": "string", "minLength": 1},
+        "domain_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "workflow_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "source_precedence": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "concept_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "relation_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "record_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "maintenance": {"type": "object"}
+      }
+    },
+    "domainDocument": {
+      "type": "object",
+      "required": [
+        "$schema",
+        "version",
+        "as_of",
+        "domain",
+        "concepts",
+        "relations",
+        "rules"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "domain": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/baseRecord"
+            },
+            {
+              "type": "object",
+              "required": [
+                "bounded_context"
+              ],
+              "properties": {
+                "bounded_context": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "concepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/concept"
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relation"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rule"
+          }
+        }
+      }
+    },
+    "workflowStep": {
+      "type": "object",
+      "required": [
+        "order",
+        "actor",
+        "action",
+        "object",
+        "result"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actor": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "object": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      }
+    },
+    "workflow": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "domains",
+            "trigger",
+            "outcome",
+            "steps"
+          ],
+          "properties": {
+            "domains": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "trigger": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/workflowStep"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "workflowDocument": {
+      "type": "object",
+      "required": [
+        "$schema",
+        "version",
+        "as_of",
+        "collection",
+        "workflows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workflow"
+          }
+        }
+      }
+    }
+  }
+}

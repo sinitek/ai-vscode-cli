@@ -62,8 +62,9 @@ python3 .agents/skills/reference-pack/scripts/build_reference_pack.py --preset m
 - `.ch/docs/generated/memory-index/freshness-report.md`
 - `.ch/docs/generated/memory-index/manifest.json`
 - `.ch/docs/generated/memory-index/summary.json`
-- `.ch/docs/generated/memory-index/recall-pack.md`
-- `.ch/docs/generated/memory-index/recall-summary.json`
+- `.ch/docs/generated/memory-index/.local/recall-pack.md`
+- `.ch/docs/generated/memory-index/.local/recall-summary.json`
+- `.ch/docs/generated/memory-index/.local/retrieval-debug.md`
 - `.ch/docs/generated/memory-index/consolidation-report.md`
 - `.ch/docs/generated/memory-index/consolidation-summary.json`
 

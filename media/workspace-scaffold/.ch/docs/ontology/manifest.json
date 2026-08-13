@@ -1,0 +1,84 @@
+{
+  "$schema": "./ontology.schema.json",
+  "ontology_id": "workspace-scaffold-ai-development-ontology",
+  "name": "Workspace Scaffold AI 开发业务本体",
+  "purpose": "为新仓库提供可维护的 AI 开发 ontology 骨架，不作为产品运行时 ontology。",
+  "version": "1.0.0",
+  "as_of": "2026-08-13",
+  "format": "sinitek-domain-ontology-v1",
+  "language": "zh-CN",
+  "schema_file": ".ch/docs/ontology/ontology.schema.json",
+  "domain_files": [
+    ".ch/docs/ontology/domains/project-system.json",
+    ".ch/docs/ontology/domains/harness-governance.json"
+  ],
+  "workflow_files": [
+    ".ch/docs/ontology/workflows/cross-domain-workflows.json"
+  ],
+  "source_precedence": [
+    "当前生效的产品规格与明确设计文档",
+    "ARCHITECTURE.md 中的稳定架构与数据边界",
+    "当前代码、测试和运行时验证",
+    "README.md、completed plans 与 runbooks 中的补充事实",
+    "本 ontology 的压缩描述"
+  ],
+  "concept_kinds": [
+    "actor",
+    "aggregate",
+    "entity",
+    "value_object",
+    "capability",
+    "credential",
+    "policy",
+    "event",
+    "configuration",
+    "ledger",
+    "resource",
+    "snapshot"
+  ],
+  "relation_types": [
+    "is_a",
+    "belongs_to",
+    "contains",
+    "owns",
+    "authenticates",
+    "authorized_by",
+    "authorizes",
+    "scopes",
+    "activates",
+    "selects",
+    "binds",
+    "depends_on",
+    "versions",
+    "executes",
+    "produces",
+    "records",
+    "emits",
+    "routes_to",
+    "references",
+    "uses",
+    "governs",
+    "triggers",
+    "retries_as",
+    "shares_with",
+    "backs_up",
+    "restores",
+    "materializes",
+    "delivers",
+    "observes",
+    "charges",
+    "pauses",
+    "resumes"
+  ],
+  "record_statuses": [
+    "active",
+    "historical",
+    "proposed"
+  ],
+  "maintenance": {
+    "before_task": "先运行 --status-report；需要初始化时先根据项目事实源补齐 ontology，否则按 skill 查询并核对 source_refs。",
+    "after_task": "检查概念、关系、规则、场景和证据映射是否变化；如有变化，更新域文件并运行 --validate。",
+    "validation_command": "python3 .agents/skills/ontology/scripts/search_ontology.py --validate",
+    "owner": "修改相关业务事实的开发者或 AI 代理"
+  }
+}

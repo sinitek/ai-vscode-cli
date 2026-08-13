@@ -8,6 +8,10 @@ import * as path from "node:path";
 const repoRoot = process.cwd();
 const scaffoldSkillsRoot = path.join(repoRoot, "media", "workspace-scaffold", ".agents", "skills");
 
+function readRepoText(relativePath: string): string {
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
 function withTempDir<T>(prefix: string, run: (tempRoot: string) => T): T {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   try {
@@ -109,7 +113,7 @@ test("workspace scaffold skill artifacts use relative paths instead of local abs
     runPythonSkill("repo-indexer/scripts/generate_repo_index.py", ["--root", workspaceRoot]);
     runPythonSkill("memory-indexer/scripts/generate_memory_index.py", ["--root", workspaceRoot]);
     runPythonSkill("memory-consolidator/scripts/consolidate_memory.py", ["--root", workspaceRoot]);
-    runPythonSkill("memory-recall/scripts/build_recall_pack.py", ["--root", workspaceRoot, "--skip-indexer"]);
+    runPythonSkill("memory-recall/scripts/build_recall_pack.py", ["--root", workspaceRoot]);
     runPythonSkill("memory-eval/scripts/evaluate_memory_recall.py", ["--root", workspaceRoot]);
     runPythonSkill("work-frontier/scripts/build_work_frontier.py", ["--root", workspaceRoot]);
     runPythonSkill("claim-release-auditor/scripts/audit_plan_claims.py", ["--root", workspaceRoot]);
@@ -166,12 +170,42 @@ test("workspace scaffold skill artifacts use relative paths instead of local abs
     );
     assert.equal(memorySummary.repo_root, ".");
 
-    const recallSummary = readJson<{ repo_root: string; output_dir: string }>(
-      path.join(workspaceRoot, ".ch", "docs", "generated", "memory-index", "recall-summary.json"),
+    const recallSummary = readJson<{ repo_root: string }>(
+      path.join(workspaceRoot, ".ch", "docs", "generated", "memory-index", ".local", "recall-summary.json"),
     );
     assert.equal(recallSummary.repo_root, ".");
-    assert.equal(recallSummary.output_dir, ".ch/docs/generated/memory-index");
 
     assertGeneratedFilesDoNotContainLocalAbsolutePaths(workspaceRoot);
   });
+});
+
+test("exec plan completed archives use month directories in repo and scaffold", () => {
+  const conventionFiles = [
+    ".ch/docs/exec-plans/README.md",
+    ".ch/docs/PLANS.md",
+    ".agents/skills/execution-plan/SKILL.md",
+    "media/workspace-scaffold/.ch/docs/exec-plans/README.md",
+    "media/workspace-scaffold/.ch/docs/PLANS.md",
+    "media/workspace-scaffold/.agents/skills/execution-plan/SKILL.md",
+  ];
+
+  for (const relativePath of conventionFiles) {
+    const content = readRepoText(relativePath);
+    assert.match(content, /completed\/(?:<YYYY-MM>|YYYY-MM)\//u, `${relativePath} should document month archives`);
+  }
+
+  assert.match(readRepoText(".ch/docs/exec-plans/README.md"), /completed\/\*\*\/\*\.md/u);
+  assert.match(readRepoText("media/workspace-scaffold/.ch/docs/exec-plans/README.md"), /completed\/\*\*\/\*\.md/u);
+  assert.match(readRepoText(".agents/skills/execution-plan/SKILL.md"), /completed\/\*\*\/\*\.md/u);
+  assert.match(
+    readRepoText("media/workspace-scaffold/.agents/skills/execution-plan/SKILL.md"),
+    /completed\/\*\*\/\*\.md/u,
+  );
+
+  const completedRoot = path.join(repoRoot, ".ch", "docs", "exec-plans", "completed");
+  const flatCompletedPlans = fs
+    .readdirSync(completedRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name);
+  assert.deepEqual(flatCompletedPlans, []);
 });

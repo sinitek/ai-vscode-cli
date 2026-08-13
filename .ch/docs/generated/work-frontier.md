@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Generated at: 2026-08-03T10:12:56Z
+- Generated at: 2026-08-13T09:26:15Z
 - Output dir: .ch/docs/generated
 - Active plans: 0
 - Blocked plans: 0

@@ -1742,7 +1742,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-08-03T10:14:20+00:00",
+  "generated_at": "2026-07-25T14:49:44+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [

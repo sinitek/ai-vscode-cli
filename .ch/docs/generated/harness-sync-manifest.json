@@ -3,7 +3,7 @@
   "generatedBy": "codex-harness-sync",
   "templateSource": "codex-harness-template",
   "mode": "update",
-  "generatedAt": "2026-07-03T06:59:36+00:00",
+  "generatedAt": "2026-08-13T00:00:00+00:00",
   "files": [
     {
       "path": ".agents/profiles/README.md",
@@ -36,6 +36,48 @@
       "bytes": 944
     },
     {
+      "path": ".agents/skills/chromium-playwright-smoke/SKILL.md",
+      "source": "app/.agents/skills/chromium-playwright-smoke/SKILL.md",
+      "sha256": "0da1e46e258db304811717a83b55ad96eb0edf6bd2f3166db6ba2fa8fb218d15",
+      "bytes": 3937
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/agents/openai.yaml",
+      "source": "app/.agents/skills/chromium-playwright-smoke/agents/openai.yaml",
+      "sha256": "38fd3d71a1116f1d9d3643f4e45744d2b05bbbfc7f329bd349c5d9aacea8d8f6",
+      "bytes": 284
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/references/scenario-format.md",
+      "source": "app/.agents/skills/chromium-playwright-smoke/references/scenario-format.md",
+      "sha256": "c4206da648f61818cba856de2beadc3fdd78ebd3f936d82a083a1c4d7edfdc8f",
+      "bytes": 4335
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/references/workbench-tree-selection.md",
+      "source": "app/.agents/skills/chromium-playwright-smoke/references/workbench-tree-selection.md",
+      "sha256": "bda7642494a1507843166ac09bfe481201749db63198041e90db50635c079c07",
+      "bytes": 5019
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/references/workshop-knowledge-example.json",
+      "source": "app/.agents/skills/chromium-playwright-smoke/references/workshop-knowledge-example.json",
+      "sha256": "523fa8405858102fa1d4ce75bdf53ba37b5de2b413cb59c00ec0567b7d1f6cf7",
+      "bytes": 1651
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs",
+      "source": "app/.agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs",
+      "sha256": "6c039dc48de9cf772b368c44c9e644e018f882634e4461a125216a10f7954bd6",
+      "bytes": 22765
+    },
+    {
+      "path": ".agents/skills/chromium-playwright-smoke/scripts/workbench_tree_helpers.mjs",
+      "source": "app/.agents/skills/chromium-playwright-smoke/scripts/workbench_tree_helpers.mjs",
+      "sha256": "ba712c38b40ecfba6d326a5ce8111bfb9b93fbe62ed155656d55b009d9d36aca",
+      "bytes": 23992
+    },
+    {
       "path": ".agents/skills/claim-release-auditor/SKILL.md",
       "source": "app/.agents/skills/claim-release-auditor/SKILL.md",
       "sha256": "3e9ac6e44bea79dafb252514916a799bad941f235f4fc1324b99d951f8b06823",
@@ -44,8 +86,8 @@
     {
       "path": ".agents/skills/claim-release-auditor/scripts/audit_plan_claims.py",
       "source": "app/.agents/skills/claim-release-auditor/scripts/audit_plan_claims.py",
-      "sha256": "d5460fe08340267a24b37391af17c9be19759be71ea0df8067ab39cba10f1519",
-      "bytes": 11179
+      "sha256": "8f5bd9583f38239a9a087e9c86870de468f65a969f087918412260e9eb5e3a5f",
+      "bytes": 11173
     },
     {
       "path": ".agents/skills/codegraph/SKILL.md",
@@ -56,8 +98,8 @@
     {
       "path": ".agents/skills/execution-plan/SKILL.md",
       "source": "app/.agents/skills/execution-plan/SKILL.md",
-      "sha256": "a4295391361922b734f640b70c112131780fe8567f368980657696a1bfa36055",
-      "bytes": 1861
+      "sha256": "47f2fb46ff445430e4861479016b9dfe3b8b0fa0f481a7bc0bf809f2dfd8ebff",
+      "bytes": 2267
     },
     {
       "path": ".agents/skills/harness-workbench/SKILL.md",
@@ -68,8 +110,8 @@
     {
       "path": ".agents/skills/harness-workbench/scripts/serve_workbench.py",
       "source": "app/.agents/skills/harness-workbench/scripts/serve_workbench.py",
-      "sha256": "525e7d33fc78e393b5f377e6d3bb6c86940dfb84086686e83ec5c96e57df8e4c",
-      "bytes": 11293
+      "sha256": "47e5a25ec8d306a40d3fe1bfeaaa9498d95980c3c6582ed25bae92cb18e71032",
+      "bytes": 11977
     },
     {
       "path": ".agents/skills/memory-consolidator/SKILL.md",
@@ -80,14 +122,14 @@
     {
       "path": ".agents/skills/memory-consolidator/scripts/consolidate_memory.py",
       "source": "app/.agents/skills/memory-consolidator/scripts/consolidate_memory.py",
-      "sha256": "a4973b44ce6058ce807084bd48f4d33539799d67ac6f5f3afa2fcb378c8caee7",
-      "bytes": 55823
+      "sha256": "a256463a76fe10b0a1fc964627ce3a67349ad37ef25b73a6eedd0773e93d2716",
+      "bytes": 59419
     },
     {
       "path": ".agents/skills/memory-eval/SKILL.md",
       "source": "app/.agents/skills/memory-eval/SKILL.md",
-      "sha256": "433f551c42652df22d3e6a69113c79ad99d19f04ba074efbf95eb2ef8fc9add0",
-      "bytes": 2976
+      "sha256": "59039860c5bf1ced9f41f7e63b20200fac7ba6c9ec0ee0f5e9508e78dca57f4e",
+      "bytes": 2990
     },
     {
       "path": ".agents/skills/memory-eval/scripts/evaluate_memory_recall.py",
@@ -116,44 +158,38 @@
     {
       "path": ".agents/skills/memory-indexer/scripts/generate_memory_index.py",
       "source": "app/.agents/skills/memory-indexer/scripts/generate_memory_index.py",
-      "sha256": "d8c849e0b8b193af2f60865a7a81a5c5dbef3519e9813b528e72f5aa9f0ac34b",
-      "bytes": 64813
+      "sha256": "8a584890f2556dfc52ba8b8e8263f7ad11b6fbfaf8c8e594d09f62e7cf6fa485",
+      "bytes": 65627
     },
     {
       "path": ".agents/skills/memory-recall/SKILL.md",
       "source": "app/.agents/skills/memory-recall/SKILL.md",
-      "sha256": "7c40a6934b9fc1b56853ce3a119daee6b5d1124739abdd5704ad8893104c93c1",
-      "bytes": 4102
+      "sha256": "84d59f10ca378e46f410f6b19a5cae9f73a6becc31f59c42f7d9dbdc58256d8b",
+      "bytes": 4250
     },
     {
       "path": ".agents/skills/memory-recall/scripts/build_recall_pack.py",
       "source": "app/.agents/skills/memory-recall/scripts/build_recall_pack.py",
-      "sha256": "a92235b09d6f6cebd7fc43cf6b14ad4d62e66fd1b30d45cc693cd562537a3787",
-      "bytes": 70343
+      "sha256": "ce9b205122cb2b35ebc757712a0a3f69b544dfa7f051ab54058b0a65a6c905ca",
+      "bytes": 70769
     },
     {
-      "path": ".agents/skills/reference-pack-drift-auditor/SKILL.md",
-      "source": "app/.agents/skills/reference-pack-drift-auditor/SKILL.md",
-      "sha256": "16f18277a9e8ea8afd12492f93aadba552599e066d44880f111607f146ba4418",
-      "bytes": 1829
+      "path": ".agents/skills/ontology/SKILL.md",
+      "source": "app/.agents/skills/ontology/SKILL.md",
+      "sha256": "b9d2e3fc05e43634657e59ef12e32e9244f5422f68facf19f9f2710f13606da8",
+      "bytes": 6595
     },
     {
-      "path": ".agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
-      "source": "app/.agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
-      "sha256": "f0ada89725d6dd4dd7a25e1bdc565f65e236430b2807790d1f469037f2041372",
-      "bytes": 10736
+      "path": ".agents/skills/ontology/scripts/search_ontology.py",
+      "source": "app/.agents/skills/ontology/scripts/search_ontology.py",
+      "sha256": "5eafad10b74ac7ec87691640fe72274ab9b118ddac0c6033759df00cb8ae4bc7",
+      "bytes": 56042
     },
     {
-      "path": ".agents/skills/reference-pack-importer/SKILL.md",
-      "source": "app/.agents/skills/reference-pack-importer/SKILL.md",
-      "sha256": "1170c3f0b6688fc2ef2e2fc49f0620d4aaf5155556ffa9ad75e9f4f92169fd9b",
-      "bytes": 2176
-    },
-    {
-      "path": ".agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
-      "source": "app/.agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
-      "sha256": "64513bad4bc3461b5f9f7340ac185024ef91ee9219147d340b50086ae61411a2",
-      "bytes": 13421
+      "path": ".agents/skills/ontology/tests/test_search_ontology.py",
+      "source": "app/.agents/skills/ontology/tests/test_search_ontology.py",
+      "sha256": "107a1e8913247f93487a24259cbe675884dd3e50be5948b021e0f94f451e0510",
+      "bytes": 7711
     },
     {
       "path": ".agents/skills/reference-pack/SKILL.md",
@@ -168,6 +204,30 @@
       "bytes": 19875
     },
     {
+      "path": ".agents/skills/reference-pack-drift-auditor/SKILL.md",
+      "source": "app/.agents/skills/reference-pack-drift-auditor/SKILL.md",
+      "sha256": "16f18277a9e8ea8afd12492f93aadba552599e066d44880f111607f146ba4418",
+      "bytes": 1829
+    },
+    {
+      "path": ".agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
+      "source": "app/.agents/skills/reference-pack-drift-auditor/scripts/audit_reference_pack_drift.py",
+      "sha256": "af31ca629ab484dfa1ba615ec82db4afb6d5a20374d34b17e33b753c31108ee3",
+      "bytes": 10953
+    },
+    {
+      "path": ".agents/skills/reference-pack-importer/SKILL.md",
+      "source": "app/.agents/skills/reference-pack-importer/SKILL.md",
+      "sha256": "1170c3f0b6688fc2ef2e2fc49f0620d4aaf5155556ffa9ad75e9f4f92169fd9b",
+      "bytes": 2176
+    },
+    {
+      "path": ".agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
+      "source": "app/.agents/skills/reference-pack-importer/scripts/inspect_reference_pack_import.py",
+      "sha256": "64513bad4bc3461b5f9f7340ac185024ef91ee9219147d340b50086ae61411a2",
+      "bytes": 13421
+    },
+    {
       "path": ".agents/skills/repo-indexer/SKILL.md",
       "source": "app/.agents/skills/repo-indexer/SKILL.md",
       "sha256": "05d1a65bd37e6d845392f15682bc55dfbe73c93e8473f2b55ace06a5a395d400",
@@ -176,8 +236,8 @@
     {
       "path": ".agents/skills/repo-indexer/scripts/generate_repo_index.py",
       "source": "app/.agents/skills/repo-indexer/scripts/generate_repo_index.py",
-      "sha256": "7a0c99eef54c180be7bc52bdbdcec49c84fc29bb7653458ed6057d92e17e072a",
-      "bytes": 23603
+      "sha256": "c887379dabd1d34e8a17fe96f3d9bca7ef5a00a651dc84fbfb8ce25ffcf2df73",
+      "bytes": 23819
     },
     {
       "path": ".agents/skills/repo-radar/SKILL.md",
@@ -206,8 +266,8 @@
     {
       "path": ".agents/skills/task-board/scripts/build_task_board.py",
       "source": "app/.agents/skills/task-board/scripts/build_task_board.py",
-      "sha256": "37e04659442392cbe78cf0fe4917368d247af4811c226f02bca87bdf9d08f1a8",
-      "bytes": 14304
+      "sha256": "83da3f70bdc3c27db0c2c47848139c82414f63273e58f309c3170d72b42adafc",
+      "bytes": 14897
     },
     {
       "path": ".agents/skills/work-frontier/SKILL.md",
@@ -218,14 +278,14 @@
     {
       "path": ".agents/skills/work-frontier/scripts/build_work_frontier.py",
       "source": "app/.agents/skills/work-frontier/scripts/build_work_frontier.py",
-      "sha256": "2c9a62e2f11c3fd1e424d6e2aa26601290c74121b4b4ff08f9b3300077c2a81a",
-      "bytes": 17374
+      "sha256": "7643f103d3a6b49b1839a24067df4aa9ad30c45b3bfea671ebe898b0cab3079d",
+      "bytes": 17368
     },
     {
       "path": ".ch/docs/AGENTS.md",
       "source": "app/.ch/docs/AGENTS.md",
-      "sha256": "494ac76507f6d888e8e81bba12d7e943296b6e4f7f4fd7077f4a1826ce2c1b64",
-      "bytes": 412
+      "sha256": "262ea2f539ec1d9af60310a3706d48e2daca746f88fe8d9d465fa42a1a90485c",
+      "bytes": 582
     },
     {
       "path": ".ch/docs/DESIGN.md",
@@ -254,8 +314,8 @@
     {
       "path": ".ch/docs/PLANS.md",
       "source": "app/.ch/docs/PLANS.md",
-      "sha256": "ffd3c1943b2106d4606549761e07415a5b7ab20c504f962d6e3e5d340aef5097",
-      "bytes": 333
+      "sha256": "012270942e6cf3b2c4179741b6d3a0e57555e3572eead4ad01d5ca259d3e8cd5",
+      "bytes": 341
     },
     {
       "path": ".ch/docs/PRODUCT_SENSE.md",
@@ -266,8 +326,8 @@
     {
       "path": ".ch/docs/README.md",
       "source": "app/.ch/docs/README.md",
-      "sha256": "c8e2518dd4176e5fcfa97f59dbd2f8fa69d07d12e6a8f8ea8cb8494d2361af59",
-      "bytes": 2856
+      "sha256": "20ef5dfeaa27085a0c34ebc2426b37013e7e4f24d7e5d6dfc454da8b3156e887",
+      "bytes": 3204
     },
     {
       "path": ".ch/docs/RELIABILITY.md",
@@ -278,8 +338,8 @@
     {
       "path": ".ch/docs/SECURITY.md",
       "source": "app/.ch/docs/SECURITY.md",
-      "sha256": "cfe54a55b8fe7a1675bc2d037dce5696168c58804b143dc27ddfc95de972066c",
-      "bytes": 1435
+      "sha256": "fb4871081ca2615652c783ddf0430d8cdf37db3b4c83458f75d330546d0b581c",
+      "bytes": 2421
     },
     {
       "path": ".ch/docs/TESTING.md",
@@ -314,8 +374,8 @@
     {
       "path": ".ch/docs/exec-plans/README.md",
       "source": "app/.ch/docs/exec-plans/README.md",
-      "sha256": "3ae75bddddb8167b412fdf6b03277ec1a4637cfd13aa6c91089255a1e90c7c54",
-      "bytes": 2317
+      "sha256": "981087025ec13d99945905d736090c8ac9dabf88b85826862277a31c9b824eb2",
+      "bytes": 2839
     },
     {
       "path": ".ch/docs/exec-plans/TEMPLATE.md",
@@ -350,8 +410,8 @@
     {
       "path": ".ch/docs/generated/memory-index/README.md",
       "source": "app/.ch/docs/generated/memory-index/README.md",
-      "sha256": "793e5b77a014a8a6dfadfb5a745eea710a01219cb07279427aa8964b6b399d94",
-      "bytes": 4103
+      "sha256": "f977a0cfc21d47a1a2fa9441f833a0d8936231d0ed5dcb1ab4c73ab52174f3ea",
+      "bytes": 4179
     },
     {
       "path": ".ch/docs/generated/reference-pack-drifts/README.md",
@@ -392,20 +452,8 @@
     {
       "path": ".ch/docs/handoffs/TEMPLATE.md",
       "source": "app/.ch/docs/handoffs/TEMPLATE.md",
-      "sha256": "291e3a50dd3f628324a10527152777c27513c79f6365c0d8fcf6d1c3b763b06f",
-      "bytes": 1247
-    },
-    {
-      "path": ".ch/docs/memory-evals/README.md",
-      "source": "app/.ch/docs/memory-evals/README.md",
-      "sha256": "064052d004cc8b54233033273635c23c9b96a5ce24753d1b80d00eb99bec5e1a",
-      "bytes": 1656
-    },
-    {
-      "path": ".ch/docs/memory-evals/TEMPLATE.md",
-      "source": "app/.ch/docs/memory-evals/TEMPLATE.md",
-      "sha256": "24dbf4ecc065aeb093b45044323aa981572db0f23ff63fc13d849c83e70f3d19",
-      "bytes": 1650
+      "sha256": "9ac47df5c3108b961d9992fc486b8c0f3e5cebf0fbd2ac52ea6198c00f9aebfc",
+      "bytes": 1245
     },
     {
       "path": ".ch/docs/memory/ACTIVE_RISKS.md",
@@ -440,8 +488,8 @@
     {
       "path": ".ch/docs/memory/README.md",
       "source": "app/.ch/docs/memory/README.md",
-      "sha256": "d8efb3f954b9150b31a8ad03218514fb93b0116567e168404370fa8478edf78f",
-      "bytes": 4465
+      "sha256": "40efe845c9f17616b1452d16ea562dfa79f14a09cee03462e8e3def0e47a6ebf",
+      "bytes": 4566
     },
     {
       "path": ".ch/docs/memory/ROLLING_SUMMARY.md",
@@ -456,10 +504,58 @@
       "bytes": 1257
     },
     {
+      "path": ".ch/docs/memory-evals/README.md",
+      "source": "app/.ch/docs/memory-evals/README.md",
+      "sha256": "064052d004cc8b54233033273635c23c9b96a5ce24753d1b80d00eb99bec5e1a",
+      "bytes": 1656
+    },
+    {
+      "path": ".ch/docs/memory-evals/TEMPLATE.md",
+      "source": "app/.ch/docs/memory-evals/TEMPLATE.md",
+      "sha256": "24dbf4ecc065aeb093b45044323aa981572db0f23ff63fc13d849c83e70f3d19",
+      "bytes": 1650
+    },
+    {
+      "path": ".ch/docs/ontology/README.md",
+      "source": "app/.ch/docs/ontology/README.md",
+      "sha256": "333ee1bea5ac2127d99309e375a0780e6802a13aea122b1a3d2b85cfa471cc33",
+      "bytes": 3360
+    },
+    {
+      "path": ".ch/docs/ontology/domains/harness-governance.json",
+      "source": "app/.ch/docs/ontology/domains/harness-governance.json",
+      "sha256": "a1dd54e528283cb4b1073f8c3398289a179c8f702277139637a3a0d9a31bebcd",
+      "bytes": 8670
+    },
+    {
+      "path": ".ch/docs/ontology/domains/project-system.json",
+      "source": "app/.ch/docs/ontology/domains/project-system.json",
+      "sha256": "a46f03407ad65c68929c911ddfce9e0857b0ccdefdaebd4b5f2d7f2120b85644",
+      "bytes": 4192
+    },
+    {
+      "path": ".ch/docs/ontology/manifest.json",
+      "source": "app/.ch/docs/ontology/manifest.json",
+      "sha256": "74141323c2a2b77cac407d79516513d96efa0a1655af1c2e6e73150f20cb99f4",
+      "bytes": 2319
+    },
+    {
+      "path": ".ch/docs/ontology/ontology.schema.json",
+      "source": "app/.ch/docs/ontology/ontology.schema.json",
+      "sha256": "3838ee7eb100af67cb9e8776dc949edf7425a4f91f7ddecca7bbda3954664676",
+      "bytes": 8787
+    },
+    {
+      "path": ".ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "source": "app/.ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "sha256": "8191b489a7c349ee4539bf63698b811460f815a04dd619ed370863609084d7cf",
+      "bytes": 3340
+    },
+    {
       "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
       "source": "app/.ch/docs/product-specs/FEATURE_INVENTORY.md",
-      "sha256": "412c5bb5e74ca62fe87a36ceffc3442d4b8acc5720e652dceaa7d24a20b3278f",
-      "bytes": 1774
+      "sha256": "0c37b2cd204259d55a61249ac4b2e73a9e2c8fab4495d65aa28543466b32add2",
+      "bytes": 62813
     },
     {
       "path": ".ch/docs/product-specs/TEMPLATE.md",
@@ -476,14 +572,14 @@
     {
       "path": ".ch/docs/references/authoritative-skills.md",
       "source": "app/.ch/docs/references/authoritative-skills.md",
-      "sha256": "f10691703639cfa7533181a3f07848abbbad9bfa84554d839fadf73495edf170",
-      "bytes": 5318
+      "sha256": "d0da103ccff7ac359e5a99fa0d12a0508ab9213217fd16851b8b0f0c548014d1",
+      "bytes": 5956
     },
     {
       "path": ".ch/docs/references/codegraph.md",
       "source": "app/.ch/docs/references/codegraph.md",
-      "sha256": "769c238d5c766727b2ae8fb578bd53c8671380a3d961984f44ee9c5c1601afa3",
-      "bytes": 2122
+      "sha256": "9f75051b32d61179598d64270b85726d41d93ffb35895e41b6a68f2ebee8eb04",
+      "bytes": 2469
     },
     {
       "path": ".ch/docs/references/codex-official-alignment.md",
@@ -512,14 +608,14 @@
     {
       "path": ".ch/docs/runbooks/PITFALLS.md",
       "source": "app/.ch/docs/runbooks/PITFALLS.md",
-      "sha256": "e2aeeb073001e9f72398cc9024ed5df949f46d607a7cf3f4eecf62254c8fb7a4",
-      "bytes": 1733
+      "sha256": "787884cdb82c863743dd091e0d40551d3644356d80653449e64c6ff9e67ef461",
+      "bytes": 120849
     },
     {
       "path": ".ch/docs/runbooks/PITFALLS_HISTORY.md",
       "source": "app/.ch/docs/runbooks/PITFALLS_HISTORY.md",
-      "sha256": "8d6cc31b269f5c6cf2b2f0279565f1fa14cdada164292f3b91b8effc6a73c805",
-      "bytes": 603
+      "sha256": "39457bbccca03f7f01817e62783c5d144a2af8a96e9f9d6a6c776b7a8856f5c8",
+      "bytes": 4119
     },
     {
       "path": ".ch/docs/runbooks/README.md",
@@ -553,9 +649,15 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "app/AGENTS.md#managed-block",
-      "sha256": "4ae9b32b85595eec85b3309d641cc77d61d6e5ad05696375377388bb7ec4afdc",
-      "bytes": 9108
+      "source": "app/AGENTS.md",
+      "sha256": "4bf26d197879d046ff0f05e18c36436b0455ec95a41554a780d55ad754d749d5",
+      "bytes": 8599
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "source": "app/ARCHITECTURE.md",
+      "sha256": "e270db47e4ae0d82e141da38af8bc92223013e15097972171786aa2dda589092",
+      "bytes": 7087
     }
   ]
 }

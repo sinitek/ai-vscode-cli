@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "name": "workshop-knowledge-empty-agent",
+  "baseUrl": "http://127.0.0.1:6173",
+  "moduleUrl": "/#/workshop",
+  "login": {
+    "path": "/api/auth/login",
+    "usernameEnv": "PLAYWRIGHT_USERNAME",
+    "passwordEnv": "PLAYWRIGHT_PASSWORD"
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "suppressFavicon404": true,
+  "scope": {
+    "selector": ".module-surface-workshop"
+  },
+  "ready": {
+    "role": "button",
+    "name": "新建智能体",
+    "exact": true
+  },
+  "actions": [
+    {
+      "type": "click",
+      "role": "button",
+      "name": "新建智能体",
+      "exact": true
+    },
+    {
+      "type": "click",
+      "role": "button",
+      "name": "知识库",
+      "exact": true
+    },
+    {
+      "type": "waitFor",
+      "selector": ".workshop-knowledge-manager"
+    }
+  ],
+  "checks": [
+    {
+      "type": "count",
+      "selector": ".workshop-knowledge-manager-toolbar button",
+      "equals": 6
+    },
+    {
+      "type": "disabled",
+      "selector": ".workshop-knowledge-manager button[aria-label='新建文件夹']"
+    },
+    {
+      "type": "disabled",
+      "selector": ".workshop-knowledge-manager button[aria-label='上传文件']"
+    },
+    {
+      "type": "count",
+      "selector": ".workshop-knowledge-tree-shell .tree-list > li",
+      "equals": 1
+    },
+    {
+      "type": "text",
+      "selector": ".workshop-knowledge-tree-shell .tree-root-entry .tree-node-name",
+      "equals": "智能体知识库 /"
+    },
+    {
+      "type": "absentText",
+      "text": "保存后可管理专属知识库",
+      "exact": true
+    }
+  ],
+  "screenshot": {
+    "fullPage": true
+  }
+}

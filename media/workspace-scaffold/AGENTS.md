@@ -11,12 +11,19 @@
 - `ARCHITECTURE.md`
 - `.ch/docs/README.md`
 - `.ch/docs/MEMORY.md`
+- `.ch/docs/ontology/README.md`
 - 如果存在，优先看 `.ch/docs/handoffs/` 中最新 handoff
 - `.ch/docs/memory/README.md`
 - 如果存在，优先看 `.ch/docs/generated/task-board/task-board.md`
 - 如果任务范围大、上下文分散，先运行受支持的 memory recall 流程，并阅读工具返回的运行态 recall-pack 路径；不要默认把 generated recall 写入仓库。
 - 如果仓库启用了 CodeGraph（MCP 可用或存在 `.codegraph/codegraph.db`），代码探索、调用链和影响面分析优先使用 `codegraph` skill
 - 与当前任务最相关的主题文档，例如 `.ch/docs/SECURITY.md`、`.ch/docs/RELIABILITY.md`、`.ch/docs/PRODUCT_SENSE.md`、`.ch/docs/TESTING.md`
+
+## AI 开发业务本体（Ontology）
+
+- `.ch/docs/ontology/` 是仓库内 AI 开发的业务语义导航层，不是用户可见功能或应用运行时数据；详细流程以 `.agents/skills/ontology/SKILL.md` 为准，数据结构以 `.ch/docs/ontology/README.md` 与 `manifest.json` 为准。
+- 涉及业务、权限、状态机、输入输出、跨域流程、配置或 harness 规则的任务前，先运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --status-report`；需要初始化时先根据项目事实源补齐 ontology，否则按关键词或稳定 ID 查询并核对 `source_refs`。
+- 任务改变概念、关系、权限、状态机、输入输出、重试恢复、观测、跨域流程或来源路径时，同步更新 `.ch/docs/ontology/` 并运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`。
 
 ## 工作方式
 
@@ -54,6 +61,7 @@
 - `ARCHITECTURE.md`：目标结构、分层边界、扩展规则。
 - `.ch/docs/README.md`：文档系统总目录。
 - `.ch/docs/MEMORY.md`：记忆分层、上提与清理规则。
+- `.ch/docs/ontology/`：AI 开发业务本体、任务前查询和任务后维护入口。
 - `.ch/docs/handoffs/`：跨会话交接文档与模板。
 - `.ch/docs/memory/`：默认优先召回的热区记忆面。
 - `.ch/docs/design-docs/`：设计文档与核心信念。
