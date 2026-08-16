@@ -5,6 +5,7 @@ import {
   hasAssistantFinalConclusionAfterMessage,
   isAssistantFinalConclusionMessage,
   isExplicitAssistantFinalConclusionMessage,
+  isLikelyAssistantCompletionConclusionMessage,
 } from "../finalConclusion";
 import type { ChatMessage } from "../webview/types";
 
@@ -161,6 +162,79 @@ test("does not use old assistant messages for missing user anchors", () => {
   assert.equal(
     hasAssistantFinalConclusionAfterMessage(messages, "missing-user", {
       fallbackCreatedAt: 20,
+    }),
+    false,
+  );
+});
+
+test("accepts the latest assistant completion fallback only for explicit completion wording", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-progress",
+      role: "assistant",
+      content: "已定位到配置入口，接下来继续核对字段。",
+      createdAt: 20,
+    }),
+    message({
+      id: "assistant-final",
+      role: "assistant",
+      content: [
+        "已完成本体属性配置的全面核对。",
+        "",
+        "**结论**：本体属性配置已齐全，无需调整。",
+      ].join("\n"),
+      createdAt: 30,
+    }),
+  ];
+
+  assert.equal(isLikelyAssistantCompletionConclusionMessage(messages[2]), true);
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      requireExplicitFinalAnswer: true,
+      allowLatestAssistantCompletionFallback: true,
+    }),
+    true,
+  );
+});
+
+test("rejects ordinary progress bubbles even when latest assistant fallback is enabled", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-progress",
+      role: "assistant",
+      content: "已完成第一轮排查，接下来继续核对运行时字段。",
+      createdAt: 20,
+    }),
+  ];
+
+  assert.equal(isLikelyAssistantCompletionConclusionMessage(messages[1]), false);
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      requireExplicitFinalAnswer: true,
+      allowLatestAssistantCompletionFallback: true,
+    }),
+    false,
+  );
+});
+
+test("rejects completion-like assistant text when a later non-assistant message exists", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-final",
+      role: "assistant",
+      content: "已完成修复。\n\n验证通过。",
+      createdAt: 20,
+    }),
+    message({ id: "trace-after", role: "trace", content: "exec npm test", createdAt: 30 }),
+  ];
+
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      requireExplicitFinalAnswer: true,
+      allowLatestAssistantCompletionFallback: true,
     }),
     false,
   );

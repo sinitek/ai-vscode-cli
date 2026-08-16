@@ -45,8 +45,8 @@
 - 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
 - Codex app-server 可见错误通过结构化 `error` trace 展示，不能被交互重试状态机当作正常回复或工具进度。共享 hidden retry 对 HTTP 402、`Payment Required`、明确 `insufficient credits/balance/points` 以及 `requires <n> points, remaining 0` 直接判为计费终态错误，保留原始 provider 消息并在首次失败后收口；429、网络中断和其他暂时性错误继续使用既有有界退避。
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
-- 面板“工具设置”支持全局“执行后自动压缩上下文”开关 `autoCompactContextAfterRun`，保存在 `~/.sinitek_cli/settings.json`，默认开启。旧工作区 `autoCompactContextAfterRun` 和 `autoCompactContextBeforeRun` 仅作为迁移输入，全局字段缺失时按 after-run 优先、before-run 回退迁移当前工作区有效值；全局字段已有值时始终优先。开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
-- 面板“工具设置”不提供最终答复判定策略。普通任务固定使用严格 `[final_answer]` 协议；旧 `finalAnswerPolicy`、`codexFinalAnswerPolicy` 与历史兼容值会被忽略，不能放宽运行时终结判定。
+- 面板“工具设置”支持全局“执行后自动压缩上下文”开关 `autoCompactContextAfterRun`，保存在 `~/.sinitek_cli/settings.json`，默认开启。旧工作区 `autoCompactContextAfterRun` 和 `autoCompactContextBeforeRun` 仅作为迁移输入，全局字段缺失时按 after-run 优先、before-run 回退迁移当前工作区有效值；全局字段已有值时始终优先。开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。自动压缩单次最多等待 3 分钟，超时会停止当前压缩并按未压缩处理。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
+- 面板“工具设置”不提供最终答复判定策略。普通任务固定使用严格 `[final_answer]` 协议；旧 `finalAnswerPolicy`、`codexFinalAnswerPolicy` 与历史兼容值会被忽略，不能放宽运行时终结判定。Codex 交互式任务仅为兼容 `grok-4.6` 等 `turn.completed status="completed"` 但最终 `agent_message.phase=null` 的情况，允许最后一个当前回合 assistant 气泡在具备明确完成/结论语义且没有继续执行语义时作为最终回复；普通进度气泡、commentary-only completed turn、Claude/OpenCode 不走该 fallback。
 - 普通 Codex 人类对话 prompt 会同时注入 TaskList 日志格式要求：只有在进度更新需要携带任务状态时，使用 `Tasklist:` 标题，后续逐行输出 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码为解析协议必须保持英文，任务描述默认使用中文，代码符号、命令、路径、包名和用户原文术语可保留原文；不要输出其它标题、checkbox、中文状态词或同行分号列表。Loop 等内部机器协议不注入该人类可见 TaskList 指令。
 - 回合完成后优先走 graceful shutdown：先结束 stdin，再升级到信号终止，避免长任务在 flush 边界被粗暴打断
 - 会把部分设置映射到 thread 选项，例如：

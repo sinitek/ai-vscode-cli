@@ -356,6 +356,41 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
 });
 
+test("interactive runtime host accepts conservative Codex completion fallback for Grok-style final text", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-grok-final");
+      handlers.onThreadId("thread-grok-final");
+      handlers.onAssistantDelta("已定位到工坊本体卡片和设计文档，接下来核对属性配置的真实字段与用途。");
+      handlers.onTrace("exec rg ontology");
+      handlers.onAssistantDelta([
+        "已完成本体属性配置的全面核对。",
+        "",
+        "## 补",
+        "- 属性面板字段已全部支持。",
+        "",
+        "**结论**：本体属性配置已齐全，无需调整。",
+      ].join("\n"));
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-grok-final", sessionId: "session-grok-final" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-grok-final") ?? [];
+  assert.equal(harness.codexPrompts.length, 1);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.ok(messages.some((message) => (
+    message.role === "assistant"
+    && !message.codexFinalAnswer
+    && String(message.content).includes("**结论**：本体属性配置已齐全")
+  )));
+});
+
 test("interactive runtime host submits Codex human interaction answers in Vibe mode", async () => {
   const harness = createInteractiveRuntimeHarness({
     humanInteractionSubmission: {

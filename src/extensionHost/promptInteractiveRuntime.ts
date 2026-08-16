@@ -913,6 +913,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         observedFinalAnswer: source === "codex" && observedCodexFinalAnswer,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
+        allowLatestAssistantCompletionFallback: source === "codex",
       })) {
         return { action: "ok" };
       }

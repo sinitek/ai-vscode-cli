@@ -4,6 +4,10 @@ import assert = require("node:assert/strict");
 import type { ContextCompactionRunDeps } from "../contextCompactionRunner";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 
+type SilentCodexCompactionOptions = {
+  compactThread?: () => Promise<{ compacted: boolean; threadId: string }>;
+};
+
 const Module = require("node:module") as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
 };
@@ -24,7 +28,7 @@ Module._load = (request: string, parent: unknown, isMain: boolean): unknown => {
   return originalLoad(request, parent, isMain);
 };
 
-function createSilentCodexCompactionDeps() {
+function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions = {}) {
   let activeRunId: string | undefined;
   let activeStop: (() => void) | null = null;
   const calls = {
@@ -33,11 +37,16 @@ function createSilentCodexCompactionDeps() {
     persistActiveMessages: 0,
     clearActiveRun: 0,
     appendSystemMessage: 0,
+    appendStopMessageToStore: 0,
+    killActiveProcess: 0,
+    stopAndRebuild: 0,
   };
 
   const runner = {
-    compactThread: async () => ({ compacted: true, threadId: "thread-after-compact" }),
-    stopAndRebuild: () => {},
+    compactThread: options.compactThread ?? (async () => ({ compacted: true, threadId: "thread-after-compact" })),
+    stopAndRebuild: () => {
+      calls.stopAndRebuild += 1;
+    },
   };
 
   const deps: ContextCompactionRunDeps = {
@@ -68,8 +77,12 @@ function createSilentCodexCompactionDeps() {
       activeStop = stop;
     },
     isActiveInteractiveStop: (stop) => activeStop === stop,
-    appendStopMessageToStore: () => {},
-    killActiveProcess: () => {},
+    appendStopMessageToStore: () => {
+      calls.appendStopMessageToStore += 1;
+    },
+    killActiveProcess: () => {
+      calls.killActiveProcess += 1;
+    },
     sendRunStatus: (status, _message, options) => {
       calls.sendRunStatuses.push({ status, activity: options?.activity });
     },
@@ -313,6 +326,34 @@ test("silent context compaction emits status events for the active compaction in
   assert.equal(calls.persistActiveMessages, 1);
   assert.equal(calls.clearActiveRun, 1);
   assert.equal(calls.appendSystemMessage, 1);
+});
+
+test("silent Codex compaction stops and returns when native compact times out", async () => {
+  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { deps, calls } = createSilentCodexCompactionDeps({
+    compactThread: () => new Promise(() => {}),
+  });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    silent: true,
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+    timeoutMs: 10,
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "stopped", activity: undefined },
+  ]);
+  assert.equal(calls.appendCompletionMessage, 0);
+  assert.equal(calls.persistActiveMessages, 0);
+  assert.equal(calls.clearActiveRun, 1);
+  assert.equal(calls.appendStopMessageToStore, 1);
+  assert.equal(calls.killActiveProcess, 1);
+  assert.equal(calls.stopAndRebuild, 1);
+  assert.equal(calls.appendSystemMessage, 0);
 });
 
 test("OpenCode manual compaction runs native slash command with active session", async () => {

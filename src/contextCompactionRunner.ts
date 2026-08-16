@@ -59,6 +59,13 @@ type OpenCodeRuntimeOptions = {
 const OPENCODE_NATIVE_COMPACT_COMMAND = "/compact";
 const CONTEXT_COMPACTION_RAW_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
 
+class ContextCompactionTimeoutError extends Error {
+  public constructor(timeoutMs: number) {
+    super(`Context compaction timed out after ${timeoutMs}ms`);
+    this.name = "ContextCompactionTimeoutError";
+  }
+}
+
 function buildOpenCodeCompactSuccessMessage(sessionId: string): string {
   return `OpenCode context compaction completed for current session: ${sessionId}`;
 }
@@ -474,6 +481,7 @@ export type ContextCompactionOptions = {
   cli?: CliName;
   tabId?: string | null;
   sessionId?: string | null;
+  timeoutMs?: number;
 };
 
 export type ContextCompactionRunStatus = "end" | "error" | "stopped";
@@ -573,6 +581,9 @@ export async function runContextCompactionWithDeps(
   const cli = options.cli ?? deps.getCurrentCli();
   const tabId = typeof options.tabId === "string" ? options.tabId : deps.getActiveConversationTabId();
   const silent = options.silent === true;
+  const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? Math.floor(options.timeoutMs)
+    : null;
   if (!deps.isInteractiveSupported(cli)) {
     if (!silent) {
       deps.appendSystemMessageForCli(cli, deps.getCurrentSessionId(cli), t("rules.compactUnsupported"));
@@ -655,6 +666,31 @@ export async function runContextCompactionWithDeps(
     deps.clearActiveRun();
   };
   deps.setActiveInteractiveStop(stopFn);
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = timeoutMs
+    ? new Promise<never>((_resolve, reject) => {
+      timeoutHandle = setTimeout(() => {
+        if (deps.getActiveRunId() !== runId) {
+          return;
+        }
+        void logInfo("context-compact-timeout-stop-requested", {
+          cli,
+          sessionId,
+          runId,
+          timeoutMs,
+          silent,
+        });
+        stopFn();
+        reject(new ContextCompactionTimeoutError(timeoutMs));
+      }, timeoutMs);
+    })
+    : null;
+  const withCompactionTimeout = async <T>(operation: Promise<T>): Promise<T> => {
+    if (!timeoutPromise) {
+      return operation;
+    }
+    return Promise.race([operation, timeoutPromise]);
+  };
 
   try {
     if (cli === "codex") {
@@ -684,7 +720,7 @@ export async function runContextCompactionWithDeps(
       stopCurrentTurn = () => runner.stopAndRebuild();
       deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
       try {
-        const result = await runner.compactThread();
+        const result = await withCompactionTimeout(runner.compactThread());
         deps.upsertInteractiveMapping(cli, sessionId, result.threadId, {
           freezePrevious: mappedThreadId,
           codexSelection,
@@ -727,7 +763,7 @@ export async function runContextCompactionWithDeps(
         const summaryResult = await (async () => {
           deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
           try {
-            return await runner.runForText(buildCompactionPrompt(t));
+            return await withCompactionTimeout(runner.runForText(buildCompactionPrompt(t)));
           } finally {
             deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
           }
@@ -764,7 +800,7 @@ export async function runContextCompactionWithDeps(
         stopCurrentTurn = () => runner.stopAndRebuild();
         deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
         try {
-          await runner.runStreamed(bootstrap, {
+          await withCompactionTimeout(runner.runStreamed(bootstrap, {
             onAssistantDelta: () => {},
             onTrace: () => {},
             onEvent: (event) => {
@@ -787,7 +823,7 @@ export async function runContextCompactionWithDeps(
               });
               deps.interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
             },
-          });
+          }));
         } finally {
           deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
         }
@@ -797,7 +833,7 @@ export async function runContextCompactionWithDeps(
       try {
         deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
         try {
-          nativeResult = await runner.compactSession();
+          nativeResult = await withCompactionTimeout(runner.compactSession());
         } finally {
           deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
         }
@@ -865,12 +901,12 @@ export async function runContextCompactionWithDeps(
     }
 
     if (cli === "opencode") {
-      const result = await runOpenCodeNativeContextCompactionWithDeps(deps, {
+      const result = await withCompactionTimeout(runOpenCodeNativeContextCompactionWithDeps(deps, {
         sessionId,
         tabId,
         selectedModel,
         cwd: cwd ?? null,
-      });
+      }));
       deps.adoptSessionId(cli, result.sessionId, tabId);
       deps.appendSystemMessage(buildOpenCodeCompactSuccessMessage(result.sessionId));
       void logInfo("context-compact-opencode-native-complete", {
@@ -909,6 +945,9 @@ export async function runContextCompactionWithDeps(
     cleanupAfterRun(silent ? "end" : "error");
     return false;
   } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
     if (deps.isActiveInteractiveStop(stopFn)) {
       deps.setActiveInteractiveStop(null);
     }

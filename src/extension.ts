@@ -662,6 +662,7 @@ const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
 const AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS = 5 * 60 * 1000;
+const AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS = 3 * 60 * 1000;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
@@ -4436,6 +4437,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
     cli: target.cli,
     tabId: target.tabId,
     sessionId,
+    timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
   });
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,

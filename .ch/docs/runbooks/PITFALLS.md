@@ -286,6 +286,7 @@
 - Codex runner 缓存身份必须同时包含 active config ID 和 selected model；配置或模型变化时必须启动新 Codex thread，而不是 resume 旧 mapped thread。
 - 切换后新 thread 成功返回时，更新 UI session 到新 thread 的 mapping，并把旧 mapped thread 放入 frozen 历史，保留会话分组和消息连续性。
 - 自动上下文压缩路径也必须带同一 active config identity 更新 runner，否则压缩完成后会把 runner 身份写回不完整状态。
+- 自动上下文压缩还必须有有界超时；Codex app-server `thread/compact/start` 可能长时间没有完成事件，自动路径最多等待 3 分钟，超时直接停止并按未压缩处理。
 
 ### 验证方式
 - 断言相同 config/model 会继续复用 mapped thread；模型或 config 任一变化时传入 `threadId:null` 并记录旧 thread 用于 freeze。
@@ -351,8 +352,8 @@
 - Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
 - 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化类型时，只从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
 - `[final_answer]` 只能在 Webview assistant 气泡的展示文本中移除；不能提前改写 `message.content` 或会话存档，否则固定严格协议、历史恢复和 hidden retry 会丢失兜底终态信号。
-- 普通任务固定只接受结构化 final 或文本标记；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。Codex `turn.completed status:"completed"` 不得把 commentary 原位提升为最终答复。
-- 空回复、failed、interrupted、主动停止和 commentary-only completed turn 都不得收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
+- 普通任务固定只接受结构化 final 或文本标记；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。Codex `turn.completed status:"completed"` 不得把 commentary 原位提升为最终答复；唯一窄例外是 Codex 交互式成功回合的最后一个当前回合 assistant 气泡带明确完成/结论语义且没有继续执行语义，用于兼容 `grok-4.6` 这类 `phase=null` 最终正文。
+- 空回复、failed、interrupted、主动停止、commentary-only completed turn、最后消息不是 assistant，或“接下来/继续/下一步”等进度语义都不得收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
 
 ### 验证方式
 - 对 Codex / Claude / OpenCode 的首轮和 hidden retry prompt 断言都含最终回复标记约定。
