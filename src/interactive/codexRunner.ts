@@ -3,7 +3,7 @@ import { spawn } from "cross-spawn";
 import * as readline from "readline";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
-import { logInfo } from "../logger";
+import { logError, logInfo } from "../logger";
 import {
   extractCodexRawResponseToolCall,
   extractCodexWaitTimeoutPayload,
@@ -87,10 +87,27 @@ type CodexCompactionResult = {
 
 const createAbortError = createCodexAbortError;
 const createRunnerDisposedError = (): Error => createCodexRunnerDisposedError(t("run.disposedExternally"));
+const CODEX_APP_SERVER_PROCESS_LABEL = "sinitek-ai-vscode-cli-codex-app-server";
+
+function normalizeCodexSpawnError(error: Error, command: string): Error {
+  const errnoError = error as NodeJS.ErrnoException;
+  if (errnoError.code !== "EAGAIN") {
+    return error;
+  }
+  const wrapped = new Error(t("codex.appServerSpawnResourceUnavailable", {
+    command,
+    error: error.message,
+  })) as NodeJS.ErrnoException;
+  wrapped.code = errnoError.code;
+  wrapped.errno = errnoError.errno;
+  wrapped.path = errnoError.path;
+  wrapped.syscall = errnoError.syscall;
+  return wrapped;
+}
 
 export class CodexInteractiveRunner {
   public readonly cli: CliName = "codex";
-  private activeChild: ChildProcess | null = null;
+  private readonly activeChildren = new Set<ChildProcess>();
   private abortGeneration = 0;
   private disposeGeneration = 0;
   private disposed = false;
@@ -123,11 +140,18 @@ export class CodexInteractiveRunner {
 
   public stopAndRebuild(): void {
     this.abortGeneration += 1;
-    if (this.activeChild) {
-      requestChildShutdown(this.activeChild, "terminate");
-      this.activeChild = null;
+    for (const child of Array.from(this.activeChildren)) {
+      requestChildShutdown(child, "terminate");
     }
     this.rebuild();
+  }
+
+  private trackActiveChild(child: ChildProcess): void {
+    this.activeChildren.add(child);
+  }
+
+  private releaseActiveChild(child: ChildProcess): void {
+    this.activeChildren.delete(child);
   }
 
   public dispose(): void {
@@ -202,11 +226,12 @@ export class CodexInteractiveRunner {
     const child = spawn(spawnCommand.command, spawnCommand.args, {
       cwd: resolvedWorkspaceDir ?? this.options.cwd,
       env: childEnvResult.env,
-      detached: false,
+      argv0: CODEX_APP_SERVER_PROCESS_LABEL,
+      detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    this.activeChild = child;
+    this.trackActiveChild(child);
 
     let spawnError: Error | null = null;
     let streamError: Error | null = null;
@@ -215,8 +240,10 @@ export class CodexInteractiveRunner {
     let nextRequestId = 1;
     let settled = false;
     let childClosed = false;
+    let exitSettled = false;
     let threadCompacted = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
+    let rl: readline.Interface | null = null;
     let completionResolve: ((value: CodexCompactionResult) => void) | null = null;
     let completionReject: ((error: Error) => void) | null = null;
 
@@ -224,10 +251,21 @@ export class CodexInteractiveRunner {
       completionResolve = resolve;
       completionReject = reject;
     });
+    void completionPromise.catch(() => undefined);
     const exitPromise = new Promise<AppServerResponse>((resolve) => {
-      child.once("close", (code, signal) => {
+      const settleExit = (response: AppServerResponse): boolean => {
+        if (exitSettled) {
+          return false;
+        }
+        exitSettled = true;
         childClosed = true;
-        resolve({ code, signal });
+        resolve(response);
+        return true;
+      };
+      child.once("close", (code, signal) => {
+        if (!settleExit({ code, signal })) {
+          return;
+        }
         if (!settled) {
           const error = this.disposeGeneration !== runDisposeGeneration
             ? createRunnerDisposedError()
@@ -241,6 +279,20 @@ export class CodexInteractiveRunner {
               );
           settleFailure(error);
         }
+      });
+      child.once("error", (error) => {
+        const normalizedError = normalizeCodexSpawnError(error, spawnCommand.command);
+        spawnError = normalizedError;
+        void logError("codex-app-server-compact-spawn-error", {
+          command: spawnCommand.command,
+          code: (error as NodeJS.ErrnoException).code ?? null,
+          pid: child.pid ?? null,
+          activeChildren: this.activeChildren.size,
+          error: error.message,
+        });
+        rl?.close();
+        settleExit({ code: null, signal: null });
+        failRun(normalizedError);
       });
     });
 
@@ -320,11 +372,6 @@ export class CodexInteractiveRunner {
       sendJsonRpcMessage(message);
     };
 
-    child.once("error", (error) => {
-      spawnError = error;
-      failRun(error);
-    });
-
     child.stderr?.on("data", (chunk: string | Buffer) => {
       stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
@@ -334,14 +381,15 @@ export class CodexInteractiveRunner {
       throw new Error(t("codex.appServerNoStdout"));
     }
 
-    const rl = readline.createInterface({
+    rl = readline.createInterface({
       input: child.stdout,
       crlfDelay: Infinity,
     });
+    const outputReader = rl;
 
     const outputLoopPromise = (async (): Promise<void> => {
       try {
-        for await (const line of rl) {
+        for await (const line of outputReader) {
           const trimmed = line.trim();
           if (!trimmed) {
             continue;
@@ -486,14 +534,12 @@ export class CodexInteractiveRunner {
       }
       throw error;
     } finally {
-      rl.close();
+      rl?.close();
       child.removeAllListeners();
       child.stderr?.removeAllListeners();
       child.stdout?.removeAllListeners();
       child.stdin?.removeAllListeners();
-      if (this.activeChild === child) {
-        this.activeChild = null;
-      }
+      this.releaseActiveChild(child);
     }
   }
 
@@ -575,11 +621,12 @@ export class CodexInteractiveRunner {
     const child = spawn(spawnCommand.command, spawnCommand.args, {
       cwd: resolvedWorkspaceDir ?? this.options.cwd,
       env: childEnvResult.env,
-      detached: false,
+      argv0: CODEX_APP_SERVER_PROCESS_LABEL,
+      detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    this.activeChild = child;
+    this.trackActiveChild(child);
 
     let spawnError: Error | null = null;
     let streamError: Error | null = null;
@@ -588,10 +635,12 @@ export class CodexInteractiveRunner {
     let nextRequestId = 1;
     let turnSettled = false;
     let childClosed = false;
+    let exitSettled = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
     const assistantBuffers = new Map<string, string>();
     const emittedTraceContents = new Map<string, string>();
     let activeTurnId = "";
+    let rl: readline.Interface | null = null;
     let turnCompletionResolve: (() => void) | null = null;
     let turnCompletionReject: ((error: Error) => void) | null = null;
 
@@ -599,10 +648,21 @@ export class CodexInteractiveRunner {
       turnCompletionResolve = resolve;
       turnCompletionReject = reject;
     });
+    void turnCompletionPromise.catch(() => undefined);
     const exitPromise = new Promise<AppServerResponse>((resolve) => {
-      child.once("close", (code, signal) => {
+      const settleExit = (response: AppServerResponse): boolean => {
+        if (exitSettled) {
+          return false;
+        }
+        exitSettled = true;
         childClosed = true;
-        resolve({ code, signal });
+        resolve(response);
+        return true;
+      };
+      child.once("close", (code, signal) => {
+        if (!settleExit({ code, signal })) {
+          return;
+        }
         if (!turnSettled) {
           const error = this.disposeGeneration !== runDisposeGeneration
             ? createRunnerDisposedError()
@@ -616,6 +676,27 @@ export class CodexInteractiveRunner {
               );
           failRun(error);
         }
+      });
+      child.once("error", (error) => {
+        const normalizedError = normalizeCodexSpawnError(error, spawnCommand.command);
+        spawnError = normalizedError;
+        void logError("codex-app-server-spawn-error", {
+          command: spawnCommand.command,
+          code: (error as NodeJS.ErrnoException).code ?? null,
+          pid: child.pid ?? null,
+          activeChildren: this.activeChildren.size,
+          error: error.message,
+        });
+        handlers.onEvent?.({
+          type: "codex.lifecycle",
+          event: "spawn_error",
+          command: spawnCommand.command,
+          code: (error as NodeJS.ErrnoException).code ?? null,
+          error: normalizedError.message,
+        });
+        rl?.close();
+        settleExit({ code: null, signal: null });
+        failRun(normalizedError);
       });
     });
 
@@ -740,11 +821,6 @@ export class CodexInteractiveRunner {
       });
     };
 
-    child.once("error", (error) => {
-      spawnError = error;
-      failRun(error);
-    });
-
     child.stderr?.on("data", (chunk: string | Buffer) => {
       stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
@@ -754,14 +830,15 @@ export class CodexInteractiveRunner {
       throw new Error(t("codex.appServerNoStdout"));
     }
 
-    const rl = readline.createInterface({
+    rl = readline.createInterface({
       input: child.stdout,
       crlfDelay: Infinity,
     });
+    const outputReader = rl;
 
     const outputLoopPromise = (async (): Promise<void> => {
       try {
-        for await (const line of rl) {
+        for await (const line of outputReader) {
           const trimmed = line.trim();
           if (!trimmed) {
             continue;
@@ -1098,14 +1175,12 @@ export class CodexInteractiveRunner {
       }
       throw error;
     } finally {
-      rl.close();
+      rl?.close();
       child.removeAllListeners();
       child.stderr?.removeAllListeners();
       child.stdout?.removeAllListeners();
       child.stdin?.removeAllListeners();
-      if (this.activeChild === child) {
-        this.activeChild = null;
-      }
+      this.releaseActiveChild(child);
     }
   }
 }

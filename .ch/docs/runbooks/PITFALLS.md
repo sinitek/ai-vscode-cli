@@ -14,6 +14,43 @@
 
 ## 当前有效条目
 
+## Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN
+
+- 状态：已规避，需随 Codex app-server 启动/停止策略变化复核
+- 首次发现：2026-08-20
+- 适用范围：`src/interactive/codexRunner.ts`、Codex app-server、Loop/Graph 子任务、Extension Host 停止与 reload
+
+### 现象
+- 插件长时间使用后，Codex 运行开始报 `spawn /Users/fangjiawei/.npm-global/bin/codex EAGAIN`。
+- 重启电脑后恢复；只 reload 或重新发起任务不一定释放所有旧资源。
+- 本机只读排查能看到多个旧 `codex app-server --listen stdio://` 进程仍挂在 VS Code 相关父进程下，其中包括临时 Loop 子任务工作目录对应的进程。
+
+### 触发条件
+- 同一 Codex runner 在边界状态下同时存在多个 app-server child，或停止/扩展停用时只记住最后一个 child。
+- Codex CLI 的 Node wrapper 还会派生 vendor binary；仅杀直接子进程时，后代或同 runner 早期 child 可能残留。
+- 残留进程、pipe 和文件描述符累计后，系统拒绝继续创建新进程，Node 最终把失败表现为 `EAGAIN`。
+
+### 根因
+- 早期 `CodexInteractiveRunner` 只保存单个 `activeChild`，新 run 会覆盖旧 child 引用，停止时无法遍历所有活跃 app-server。
+- Codex app-server 以非独立进程组运行，`requestChildShutdown` 主要向直接 child 发信号，不能稳定清理 Node wrapper 及其 vendor 子进程树。
+- `spawn` 失败路径若只触发 `error` 而没有及时收口 exit/readline，相关 promise 和句柄也可能继续悬挂。
+
+### 长期规避
+- Codex app-server child 必须以集合跟踪，`stopAndRebuild()` / `dispose()` 对所有活跃 child 发起 shutdown。
+- macOS/Linux 下 Codex app-server 应使用独立 process group；关闭时先结束 stdin，再升级到 `SIGTERM` / `SIGKILL` 清理进程组。
+- `EAGAIN` 要转换为可诊断的资源耗尽错误，并记录 command、pid、active child 数，不能只透传裸 `spawn ... EAGAIN`。
+- 本机排查优先只读运行 `ps -axo pid,ppid,pgid,stat,etime,command | rg "codex app-server"`，确认是否有旧工作区或临时目录残留进程；不要默认要求用户重启电脑。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/codexRunnerLifecycle.test.js dist/test/codexRunnerSubagent.test.js`。
+- 本机只读验证 `codex --version` 与 `ps` 中 Codex app-server 进程列表；如仍有旧版本遗留进程，需区分历史残留和本次修复后的新进程。
+
+### 关联资料
+- `src/interactive/codexRunner.ts`
+- `src/interactive/codexRunnerProcess.ts`
+- `src/test/codexRunnerLifecycle.test.ts`
+
 ## LoopMainDecision 解析不能优先采用 prompt 内 fenced JSON 示例
 
 - 状态：已规避，需随 Loop 主任务协议和 prompt 模板变化复核

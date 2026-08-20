@@ -5,6 +5,11 @@ import { resolveCliCommand } from "../cli/commandRunner";
 
 const CODEX_CHILD_SHUTDOWN_GRACE_MS = 300;
 
+function scheduleShutdownStep(callback: () => void, delayMs: number): void {
+  const timeout = setTimeout(callback, delayMs);
+  timeout.unref?.();
+}
+
 function escapeShellArg(value: string): string {
   if (value === "") {
     return "''";
@@ -81,35 +86,29 @@ export function killProcessTree(
 
 export function requestChildShutdown(child: ChildProcess, mode: "graceful" | "terminate"): void {
   const isSettled = (): boolean => child.exitCode !== null || child.signalCode !== null;
+  const requestSignal = (signal: NodeJS.Signals | number): void => {
+    if (killProcessTree(child, signal)) {
+      return;
+    }
+    try {
+      child.kill(signal);
+    } catch {
+      // ignore shutdown escalation errors
+    }
+  };
 
   const sendTerminate = (): void => {
     if (isSettled()) {
       return;
     }
-    if (process.platform === "win32") {
-      killProcessTree(child, "SIGTERM");
-      return;
-    }
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      killProcessTree(child, "SIGTERM");
-    }
+    requestSignal("SIGTERM");
   };
 
   const sendForceKill = (): void => {
     if (isSettled()) {
       return;
     }
-    if (process.platform === "win32") {
-      killProcessTree(child, "SIGKILL");
-      return;
-    }
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      killProcessTree(child, "SIGKILL");
-    }
+    requestSignal("SIGKILL");
   };
 
   if (mode === "graceful") {
@@ -120,9 +119,9 @@ export function requestChildShutdown(child: ChildProcess, mode: "graceful" | "te
     } catch {
       // ignore stdin shutdown errors and continue with signal escalation
     }
-    setTimeout(() => {
+    scheduleShutdownStep(() => {
       sendTerminate();
-      setTimeout(() => {
+      scheduleShutdownStep(() => {
         sendForceKill();
       }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
     }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
@@ -130,7 +129,7 @@ export function requestChildShutdown(child: ChildProcess, mode: "graceful" | "te
   }
 
   sendTerminate();
-  setTimeout(() => {
+  scheduleShutdownStep(() => {
     sendForceKill();
   }, CODEX_CHILD_SHUTDOWN_GRACE_MS);
 }

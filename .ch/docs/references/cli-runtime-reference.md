@@ -39,6 +39,7 @@
 - 使用当前用户安装的官方 `codex` CLI
 - 通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话
 - 优先直接 `spawn` 已解析的 Codex 可执行路径；macOS 仅在命令无法直接解析时回退到用户配置的 shell 包装
+- Codex app-server 在 macOS/Linux 下以独立 process group 运行；运行时以 active child 集合跟踪，停止、取消、扩展停用或 `spawn error` 都会对所有活跃 child 先关 stdin、再升级到 `SIGTERM` / `SIGKILL` 清理进程组，避免 Node wrapper / vendor binary 残留导致后续 `EAGAIN`
 - 会为 Codex 子进程显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，并移除 `npm_config_prefix` / `NPM_CONFIG_PREFIX`
 - 启动前会确保当前工作区在 Codex 配置中被标记为 trusted，并通过 `-c projects.<workspace>.trust_level="trusted"` 追加运行时 override
 - 会做 `initialize` / `initialized` 握手
