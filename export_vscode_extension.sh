@@ -15,8 +15,25 @@ require_command() {
   fi
 }
 
-require_command "vsce" "Install it with: npm i -g @vscode/vsce"
+resolve_vsce_command() {
+  if [[ -x "${ROOT_DIR}/node_modules/.bin/vsce" ]]; then
+    VSCE_CMD=("${ROOT_DIR}/node_modules/.bin/vsce")
+    return
+  fi
+
+  if command -v vsce >/dev/null 2>&1; then
+    VSCE_CMD=("vsce")
+    return
+  fi
+
+  echo "Error: vsce is not installed. Run npm install, or install it globally with: npm i -g @vscode/vsce" >&2
+  exit 1
+}
+
+require_command "node" "Install Node.js and retry."
 require_command "unzip" "Install unzip and retry."
+VSCE_CMD=()
+resolve_vsce_command
 
 OUT_DIR="${ROOT_DIR}/dist"
 mkdir -p "$OUT_DIR"
@@ -26,7 +43,7 @@ VERSION="$(node -p "require('./package.json').version")"
 OUT_FILE="${OUT_DIR}/${PACKAGE_NAME}-${VERSION}.vsix"
 
 echo "Building VS Code extension and exporting to ${OUT_FILE} ..."
-vsce package --out "${OUT_FILE}"
+"${VSCE_CMD[@]}" package --out "${OUT_FILE}"
 
 echo "Checking VSIX contents ..."
 VSIX_CONTENTS="$(unzip -Z1 "${OUT_FILE}")"

@@ -240,6 +240,40 @@
 - `src/test/graphRunPanel.test.ts`
 - `export_vscode_extension.sh`
 
+## VSIX 打包脚本不能只依赖全局 `vsce`
+
+- 状态：已规避，需发布时检查
+- 首次发现：2026-08-20
+- 适用范围：VS Code 插件打包、`export_vscode_extension.sh`、`publish_vscode_extension.sh`、本机开发环境
+
+### 现象
+- 执行 `./export_vscode_extension.sh` 立即失败：`Error: vsce is not installed. Install it with: npm i -g @vscode/vsce`。
+- 同一仓库之前可用，但换机器、清理全局 npm 包或 PATH 变化后突然失败。
+
+### 触发条件
+- 打包脚本只检查 `command -v vsce`，没有优先使用项目内 devDependency。
+- 当前 shell 环境没有全局 `vsce`，即使项目代码和构建产物本身没有问题也会在入口预检失败。
+
+### 根因
+- `vsce` 属于本项目打包工具链，放在全局 npm 环境会让脚本依赖不可复现的机器状态。
+- 本地依赖和脚本命令解析没有对齐，导致 `npm install` 后仍可能因为 PATH 缺少全局命令而失败。
+
+### 长期规避
+- 将 `@vscode/vsce` 放入 `devDependencies`。
+- 打包和发布脚本优先调用 `node_modules/.bin/vsce`，仅在本地依赖不存在时回退到全局 `vsce`。
+- 文档以 `npm install` + `./export_vscode_extension.sh` 为默认流程，不再要求全局安装。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `./export_vscode_extension.sh`，确认无全局 `vsce` 时也能生成 VSIX 并通过 ZIP 清单检查。
+
+### 关联资料
+- `package.json`
+- `package-lock.json`
+- `export_vscode_extension.sh`
+- `publish_vscode_extension.sh`
+- `.ch/docs/runbooks/local-development.md`
+
 ## Codex 可见 Tasklist 不能只识别括号状态
 
 - 状态：已规避，需随 Codex 日志表达复核

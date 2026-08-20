@@ -11,6 +11,8 @@
 
 ## 导出可安装插件
 
+npm install
+
 ./export_vscode_extension.sh
 
 产物输出到 dist/<name>-<version>.vsix。

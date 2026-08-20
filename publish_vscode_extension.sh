@@ -15,10 +15,23 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v vsce >/dev/null 2>&1; then
-  echo "Error: vsce is not installed. Install it with: npm i -g @vscode/vsce" >&2
+resolve_vsce_command() {
+  if [[ -x "${ROOT_DIR}/node_modules/.bin/vsce" ]]; then
+    VSCE_CMD=("${ROOT_DIR}/node_modules/.bin/vsce")
+    return
+  fi
+
+  if command -v vsce >/dev/null 2>&1; then
+    VSCE_CMD=("vsce")
+    return
+  fi
+
+  echo "Error: vsce is not installed. Run npm install, or install it globally with: npm i -g @vscode/vsce" >&2
   exit 1
-fi
+}
+
+VSCE_CMD=()
+resolve_vsce_command
 
 PACKAGE_NAME="$(node -p "require('./package.json').name")"
 VERSION="$(node -p "require('./package.json').version")"
@@ -31,7 +44,7 @@ echo "[1/3] Building extension..."
 npm run build
 
 echo "[2/3] Packaging VSIX: ${OUT_FILE}"
-vsce package --out "$OUT_FILE"
+"${VSCE_CMD[@]}" package --out "$OUT_FILE"
 
 PUBLISH_ARGS=("--packagePath" "$OUT_FILE")
 if [[ -n "${VSCE_PAT:-}" ]]; then
@@ -41,6 +54,6 @@ elif [[ -n "${VSCODE_MARKETPLACE_PAT:-}" ]]; then
 fi
 
 echo "[3/3] Publishing to Marketplace..."
-vsce publish "${PUBLISH_ARGS[@]}"
+"${VSCE_CMD[@]}" publish "${PUBLISH_ARGS[@]}"
 
 echo "Done. Published ${PACKAGE_NAME}@${VERSION}."
