@@ -5,6 +5,7 @@ import path = require("node:path");
 
 import {
   finalizeLoopSubtaskRun,
+  shouldWakeLoopMainAfterSubtaskCompletion,
   type LoopSubtaskCompletionDeps,
 } from "../loopSubtaskLifecycle";
 
@@ -98,6 +99,20 @@ test("does not automatically close stopped or failed Loop subtask tabs", async (
   assert.deepEqual(failed.calls, ["mark:error"]);
 });
 
+test("keeps the parent Loop task waiting until every active subtask is completed", () => {
+  const base = {
+    status: "running" as const,
+    activeSubtaskIds: ["subtask-1"],
+    mainAiFailureCount: 0,
+    mainAiFailureLimitReached: false,
+  };
+
+  assert.equal(shouldWakeLoopMainAfterSubtaskCompletion(base), false);
+  assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [] }), true);
+  assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [], status: "stopped" }), false);
+  assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [], mainAiFailureLimitReached: true }), false);
+});
+
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {
   const loopOrchestrationSource = fs.readFileSync(
     path.join(process.cwd(), "src", "extensionHost", "loopOrchestration.ts"),
@@ -109,6 +124,11 @@ test("uses the same completion lifecycle for automatic retries and manual subtas
   );
   const automaticRetrySource = extractAsyncFunctionSection(
     loopOrchestrationSource,
+    "runLoopSubtasksBatchWithRetry",
+    "markUndispatchedLoopSubtasksSkipped",
+  );
+  const automaticSubtaskRetrySource = extractAsyncFunctionSection(
+    loopOrchestrationSource,
     "runLoopSubtaskWithRetry",
     "waitForLoopSubtaskRetryDelay",
   );
@@ -118,6 +138,8 @@ test("uses the same completion lifecycle for automatic retries and manual subtas
     "getLoopTargetSessionId",
   );
 
-  assert.match(automaticRetrySource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\.tabId/);
+  assert.match(automaticSubtaskRetrySource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\.tabId/);
+  assert.match(automaticRetrySource, /markUndispatchedLoopSubtasksSkipped\(task, executionPlan\.groups\.slice\(groupIndex \+ 1\)\)/);
   assert.match(manualResumeSource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\?\.tabId \?\? null/);
+  assert.match(manualResumeSource, /shouldWakeLoopMainAfterSubtaskCompletion\(latestTask\)/);
 });

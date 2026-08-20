@@ -116,6 +116,7 @@ test("identifies a persisted running Loop task without runtime ownership as orph
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "stopped" }, new Set()), false);
+  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running", activeSubtaskIds: ["subtask-1"] }, new Set()), false);
 });
 
 test("keeps loop continue available only for incomplete non-running tasks", () => {

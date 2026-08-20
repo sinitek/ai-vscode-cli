@@ -2324,6 +2324,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
       results.push(...groupResults);
       if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
+        markUndispatchedLoopSubtasksSkipped(task, executionPlan.groups.slice(groupIndex + 1));
         await switchVisibleConversationTabForLoop(target.tabId);
         return results;
       }
@@ -2350,6 +2351,35 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       );
     }
     return results;
+  }
+
+  function markUndispatchedLoopSubtasksSkipped(
+    task: LoopTaskRecord,
+    remainingGroups: readonly LoopSubtaskRecord[][],
+  ): void {
+    const skippedIds = new Set(remainingGroups.flatMap((group) => group.map((subtask) => subtask.id)));
+    if (skippedIds.size === 0) {
+      return;
+    }
+
+    const latest = readLoopTaskRecord(task.id) ?? task;
+    const activeSubtaskIds = getActiveLoopSubtaskIds(latest).filter((id: string) => !skippedIds.has(id));
+    const now = Date.now();
+    updateLoopTaskRecord(task.id, {
+      activeSubtaskId: activeSubtaskIds[0] ?? null,
+      activeSubtaskIds,
+      subTasks: latest.subTasks.map((subtask: LoopSubtaskRecord) => (
+        skippedIds.has(subtask.id)
+          ? {
+              ...subtask,
+              status: "skipped" as const,
+              summary: subtask.summary ?? "该子任务尚未启动；等待主任务在下一轮重新评估。",
+              updatedAt: now,
+            }
+          : subtask
+      )),
+      updatedAt: now,
+    });
   }
 
   async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {

@@ -3892,10 +3892,12 @@ async function runLoopPromptOrchestration(
     });
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
     if (interrupted) {
-      const interruptedStatus = interrupted.status === "stopped" ? "stopped" : "error";
-      markLoopTaskInterrupted(decisionRunResult.task.id, interruptedStatus, target, {
-        source: "subtask",
-      });
+      appendSystemMessageForLoop(
+        target,
+        interrupted.status === "stopped"
+          ? t("run.loopSubtaskStoppedAwaitingCompletion", { title: interrupted.subtask.title })
+          : t("run.loopSubtaskFailedAwaitingCompletion", { title: interrupted.subtask.title }),
+      );
       return;
     }
 

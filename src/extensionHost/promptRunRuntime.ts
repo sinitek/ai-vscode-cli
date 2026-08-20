@@ -11,7 +11,7 @@ import { normalizeLoopWriteFiles } from "../loopParallel";
 import { buildNextLoopMainAiFailureState, isLoopMainAiFailureLimitReached, LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopAnswerConclusion } from "../loopDebate";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopDebateFinalSummary";
-import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
+import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
 import { appendLoopRound, bindLoopTaskToSession, buildLoopSubtaskCommunicationFile, getLoopCommunicationPaths, getLoopTaskStoreSessionFile, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
@@ -831,7 +831,9 @@ function markLoopSubtaskRunFinished(
       updatedAt: now,
     };
   });
-  const activeSubtaskIds = getActiveLoopSubtaskIds(task).filter((id) => id !== subtaskId);
+  const activeSubtaskIds = runStatus === "end"
+    ? getActiveLoopSubtaskIds(task).filter((id) => id !== subtaskId)
+    : getActiveLoopSubtaskIds(task);
   updateLoopTaskRecord(taskId, {
     subTasks,
     activeSubtaskId: activeSubtaskIds[0] ?? null,
@@ -1155,8 +1157,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
   const latestTask = readLoopTaskRecord(context.taskId);
   if (
     !latestTask
+    || !shouldWakeLoopMainAfterSubtaskCompletion(latestTask)
     || isLoopTaskBlockedByMainAiFailureLimit(latestTask)
-    || (latestTask.status !== "error" && latestTask.status !== "stopped")
   ) {
     return;
   }

@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-13",
+  "as_of": "2026-08-20",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -82,10 +82,10 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。",
+      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。子任务局部中断或失败不会终止仍为 running 的父任务；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户级停止仍统一停止父子任务。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
-      "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts"],
+      "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
@@ -208,6 +208,17 @@
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.loop_task", "plugin.config_profile"],
       "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "基础本地资源层"}]
+    },
+    {
+      "id": "plugin.rule.loop_subtask_interruption_isolated",
+      "name": "Loop 子任务中断与父任务状态隔离",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；全部活动子任务成功完成后才可唤醒主任务复核。用户从 Loop 群聊停止整个任务时，父任务和活动子任务统一进入 stopped。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"}
+      ]
     }
   ]
 }

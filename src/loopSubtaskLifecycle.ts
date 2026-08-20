@@ -1,4 +1,5 @@
 import type { TaskRunStatus } from "./promptRunState";
+import type { LoopTaskRecord } from "./loopTaskStore";
 
 export type LoopSubtaskCompletionOptions = {
   taskId: string;
@@ -26,6 +27,19 @@ export type LoopSubtaskCompletionDeps = {
   closeSubtaskTab: (tabId: string) => Promise<void>;
   logSubtaskTabAutoClosed: (event: LoopSubtaskTabAutoClosedEvent) => void;
 };
+
+/**
+ * A stopped subtask leaves the parent Loop task waiting until that subtask is
+ * continued successfully. The parent must not be woken while any subtask id
+ * remains active, even when the parent runtime owner has already released.
+ */
+export function shouldWakeLoopMainAfterSubtaskCompletion(
+  task: Pick<LoopTaskRecord, "status" | "activeSubtaskIds" | "mainAiFailureCount" | "mainAiFailureLimitReached">,
+): boolean {
+  return task.status === "running"
+    && (task.activeSubtaskIds?.length ?? 0) === 0
+    && task.mainAiFailureLimitReached !== true;
+}
 
 /**
  * Applies the shared terminal cleanup for automatic retries and manual resumes.
