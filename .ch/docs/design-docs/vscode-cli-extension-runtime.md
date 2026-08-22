@@ -29,7 +29,6 @@ src/
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
 ├── trace/                    # trace/tool 事件格式化
 ├── loopDebate.ts          # Loop 辩论记录、路径、群聊解析和共识校验纯函数
-├── loopAutoWake.ts        # Loop 自动睡眠协议校验与可恢复定时唤醒控制器
 ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 ├── logger.ts                 # 本地日志与脱敏
 ├── i18n.ts                   # 扩展侧国际化
@@ -109,17 +108,17 @@ media/
 ### 4.2 `src/interactive/*`：会话型执行层
 
 Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 AI 任务走 `src/cli/commandRunner.ts` 的 `opencode run --auto --format json [message..]` one-shot / 并行子进程路径：
-- 普通消息、并行请求、全部 Loop 主任务/子任务、续跑和唤醒最终共享 `commandRunner.ts` 的 OpenCode 参数构建器；构建器集中注入并去重官方 `--auto`，所以这些路径不会各自维护权限参数。无 prompt 的终端启动也复用同一构建入口，默认得到 `opencode --auto`。
+- 普通消息、并行请求、全部 Loop 主任务/子任务和续跑最终共享 `commandRunner.ts` 的 OpenCode 参数构建器；构建器集中注入并去重官方 `--auto`，所以这些路径不会各自维护权限参数。无 prompt 的终端启动也复用同一构建入口，默认得到 `opencode --auto`。
 - 首轮 `opencode run --format json` 流式事件中的 `sessionID` 是 OpenCode 真实续接 ID；`sessionLifecycle.ts` 负责结构化提取并让 tab 接管该 `ses_*`，后续运行才可生成 `--session <ses_*>`。插件生成的 `local_*` 只用于真实 ID 缺失时暂存消息，运行边界会过滤它；旧 tab 捕获新真实 ID 后通过既有本地会话迁移逻辑保留消息和 tab 引用。
 - `--auto` 只自动批准未被显式拒绝的请求；runtime overlay 继续保留 active config 的 `permission`，不会为了跨目录访问覆盖用户或 agent 的显式 `deny`。
 - main/subtask 覆盖按 active config id 保存；旧 `primary` / `small` 覆盖仅作为兼容别名读取和迁移。PanelState 重解析 active config、清理失效覆盖并序列化双角色候选与 issue code。
-- 普通、并行、Loop 主任务、主持/复核、续跑、唤醒、Graph planner 和 Graph summary 使用 effective main 作为 `--model`；Loop 子任务和 Graph 其他执行节点使用 effective subtask，缺少子模型时回退并记录原因；subtask 对应的 `small_model` 只作为本次运行 overlay 的 OpenCode CLI 兼容字段。
+- 普通、并行、Loop 主任务、主持/复核、续跑、Graph planner 和 Graph summary 使用 effective main 作为 `--model`；Loop 子任务和 Graph 其他执行节点使用 effective subtask，缺少子模型时回退并记录原因；subtask 对应的 `small_model` 只作为本次运行 overlay 的 OpenCode CLI 兼容字段。
 - overlay 不改写用户配置，并在 exit/error/timeout/cancel 后清理；启动前校验 effective 角色和 overlay 后配置。
-- OpenCode 在对话面板提供 coding / Loop 两种模式；Loop 复用现有主任务、子任务、多轮复核、任务群聊、状态落盘和唤醒链路，每次主任务或子任务仍通过非交互式 one-shot `opencode run` 执行。
+- OpenCode 在对话面板提供 coding / Loop 两种模式；Loop 复用现有主任务、子任务、多轮复核、任务群聊和状态落盘链路，每次主任务或子任务仍通过非交互式 one-shot `opencode run` 执行。
 - `isInteractiveSupported(opencode)` 继续为 `false`，只表示 OpenCode 不提供 Codex/Claude interactive runner 与 common command。该标记不能用于隐藏 Loop 模式入口，也不能为了开放入口改成 `true`，否则普通 coding 请求可能错误进入不存在的交互式链路。
-- OpenCode 不读取 Codex 专用的旧 Loop 主任务/子任务模型分配字段，而是与 Codex 一样按 main/subtask 编排角色解析 active config。对话和并行请求使用 effective main；Loop 主任务、主持/复核、续跑和唤醒使用 main，Loop 子任务使用 subtask；Graph planner 和最终 `summary` 节点使用 main，Graph 其他执行节点使用 subtask。
+- OpenCode 不读取 Codex 专用的旧 Loop 主任务/子任务模型分配字段，而是与 Codex 一样按 main/subtask 编排角色解析 active config。对话和并行请求使用 effective main；Loop 主任务、主持/复核和续跑使用 main，Loop 子任务使用 subtask；Graph planner 和最终 `summary` 节点使用 main，Graph 其他执行节点使用 subtask。
 - Webview 前台发送没有显式 `interactiveMode` 的新提示时，以当前 `state.interactiveMode` 为分发权威；tab 上的 `graphRunId` / `openGraphRun` 元数据只用于 Graph 图入口、状态展示和历史恢复，不能覆盖用户已经切换到 coding/Vibe 或 Loop 的下一次前台发送。后台派发和 Graph 续跑仍可根据 Graph tab 元数据自动归入 `graph`，以保留排队/恢复语义。
-- 由宿主解析 JSON 决策的 Loop 任务协议支持通用 `status=sleep + wakeAfterSeconds + sleepReason`，不是主任务专属；普通自由文本回复不会触发自动睡眠。`extension.ts` 把相对间隔转换为绝对 `autoWakeAt` 并持久化 `status=sleeping`；`loopAutoWake.ts` 只负责协议边界、长延迟分段定时、状态复核、到期重试和取消。扩展激活时从当前工作区任务 Store 恢复睡眠任务，已到期任务直接复用 `runLoopPrompt`、原 CLI/session 和当前 Loop 轮次继续；VS Code 完全退出期间不运行外部守护进程。带合法 `autoWakeAt` 的睡眠任务跳过普通历史保留淘汰，人工继续、完成或中止后清除睡眠字段，避免陈旧定时器再次启动。
+- Loop 任务协议不再支持自动睡眠或定时唤醒；主任务/主持人不得返回 `status=sleep`、`wakeAfterSeconds` 或 `sleepReason`。需要等待外部结果或人工判断且当前没有可执行子任务时，必须返回 `status=blocked` 并说明等待对象。旧任务 Store 中的 `sleeping` 状态读取时会降级为 `needs-review`，旧 `autoSleepStartedAt` / `autoWakeAt` / `autoSleepReason` 字段会被丢弃。
 
 
 - `manager.ts`：按 `cli + sessionId` 复用 Runner，并处理空闲释放
@@ -130,7 +129,7 @@ Codex / Claude 已进入交互 Runner；OpenCode 当前不进入本层，普通 
 
 OpenCode 运行前只读取当前激活配置并生成本次运行 overlay；但不会请求 `InteractiveRunnerManager` 创建 Runner，避免没有 OpenCode 交互适配时触发 `interactive-runner-unsupported:opencode`。OpenCode 官方 TUI 支持 `/compact`（alias `/summarize`）用于 compact current session，且配置层有 `compaction.auto` 默认自动压缩；因此插件侧可以把 OpenCode 纳入手动压缩与执行后自动压缩的产品范围，但运行时必须清晰区分可附着会话链路与非交互 fallback，不能把 OpenCode 说成已经拥有与 Codex app-server 完全相同的压缩通道。配置中心不再维护 `~/.opencode/.env`，OpenCode 配置页只有一个 `config.json` 保存入口。Codex 配置页管理 `~/.codex/config.toml` 的常用字段可视化编辑、TOML 源码编辑及既有 `auth.json` 入口；不展示、读取、写入或备份 `.env`，也不删除用户已有文件，且不能把 Codex 主配置误建模为 JSON。运行前还会校验 OpenCode 自定义 provider 配置，阻止 `myprovider/my-model-name`、`myAPI` 范例模型或未解析环境变量、示例 baseURL 等未完成配置，并提示 OpenAI-compatible provider 使用实际 `/v1` endpoint；旧裸域名问题仅作为历史踩坑记录，不再作为当前示例名称。
 
-OpenCode 模型选择按 active config 解析为两个角色下拉：主模型对应顶层 `model`，子模型通过顶层 `small_model` 这个 OpenCode CLI 兼容字段落地，候选均只来自 `provider.<id>.models`，不复用插件模型管理器，也不提供新增、编辑、删除或排序入口。聊天区 DOM 只保留两个紧凑 select 与共享错误区域，不显示额外角色解释或“跟随配置”option；正常 option 文本只使用模型 `name`，缺失时回退 model id。选择当前配置默认 ref 时，Webview 发送 `null` 清除该角色的临时覆盖；其他选择发送 exact ref。普通对话和并行任务使用主模型；Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 与最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
+OpenCode 模型选择按 active config 解析为两个角色下拉：主模型对应顶层 `model`，子模型通过顶层 `small_model` 这个 OpenCode CLI 兼容字段落地，候选均只来自 `provider.<id>.models`，不复用插件模型管理器，也不提供新增、编辑、删除或排序入口。聊天区 DOM 只保留两个紧凑 select 与共享错误区域，不显示额外角色解释或“跟随配置”option；正常 option 文本只使用模型 `name`，缺失时回退 model id。选择当前配置默认 ref 时，Webview 发送 `null` 清除该角色的临时覆盖；其他选择发送 exact ref。普通对话和并行任务使用主模型；Loop 主任务、主持/复核和续跑使用主模型，Loop 子任务使用子模型；Graph planner 与最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 
 配置中心的 OpenCode `config.json` 卡片默认使用 Provider/模型可视化编辑器，并保留 JSON 高级模式。可视化层基于原始 JSON 深拷贝维护保留底稿，只重建 Provider/模型索引和编辑器负责的字段；Provider 支持 `id/name/npm/options.baseURL/options.apiKey`，模型支持 `id/name/reasoning`、主/子角色和逗号思考力度。力度输入 trim、去空、稳定去重，首项写 `options.reasoningEffort`，全部值生成简单 variants；清空只删除编辑器管理的简单 reasoning 字段，复杂 variants 和未知顶层/provider/model/options 字段保留。Provider/模型 id 重命名同步顶层 `model` / `small_model`，删除引用项会形成显式校验错误并阻止保存；无效 JSON 不覆盖有效可视化状态，范例导入后立即重建可视化。Claude 配置卡片的视觉样式、背景和表单密度对齐 OpenCode 配置卡片，但仍按 Claude `settings.json` 的字段语义保存。保存仍先更新配置档案，仅当档案为当前激活配置时调用应用链路；API Key 仅以密码输入展示，不写日志。
 
@@ -150,7 +149,7 @@ Gemini 已从当前支持 CLI 中移除；旧 one-shot 路径只作为历史迁�
 
 Loop 模式仍由 `src/extension.ts` 统一编排，不新增独立后端服务或新的顶层 `InteractiveMode`。当前内部执行方式有两种：
 
-Loop 的主任务、子任务、裁判主持人和参与者是编排角色；模型角色按 CLI 能力映射。Claude 在 Coding/Loop 均不显示插件侧模型下拉；Codex 普通 Coding 显示单个 `modelSelect`，切到 Loop/Graph 时显示 `loopMainModel` / `loopSubtaskModel` 两个选择器，并分别显示 `loopMainThinkingMode` / `loopSubtaskThinkingMode`；OpenCode 在 Coding/Loop/Graph 中同样使用 main/subtask 角色口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。主任务、主持/复核、续跑和自动唤醒使用主模型及主任务思考力度，Loop 子任务使用子模型及子任务思考力度，缺少子模型时回退到主模型或单模型并记录原因。旧 `primary` / `small`、`lobsterMainModel` / `lobsterSubtaskModel` 与旧 Loop 主/子模型存储结构仅用于兼容读取和迁移，不覆盖新的 PanelState 与运行时选择。
+Loop 的主任务、子任务、裁判主持人和参与者是编排角色；模型角色按 CLI 能力映射。Claude 在 Coding/Loop 均不显示插件侧模型下拉；Codex 普通 Coding 显示单个 `modelSelect`，切到 Loop/Graph 时显示 `loopMainModel` / `loopSubtaskModel` 两个选择器，并分别显示 `loopMainThinkingMode` / `loopSubtaskThinkingMode`；OpenCode 在 Coding/Loop/Graph 中同样使用 main/subtask 角色口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。主任务、主持/复核和续跑使用主模型及主任务思考力度，Loop 子任务使用子模型及子任务思考力度，缺少子模型时回退到主模型或单模型并记录原因。旧 `primary` / `small`、`lobsterMainModel` / `lobsterSubtaskModel` 与旧 Loop 主/子模型存储结构仅用于兼容读取和迁移，不覆盖新的 PanelState 与运行时选择。
 
 Loop 子任务是插件创建的独立 CLI 会话，不属于 OpenCode/Codex 的内部 child session。每个子任务启动时，主任务 tab 立即创建一个按 `taskId + round + subtaskId` 隔离的 Loop 子代理 assistant 气泡；运行中每秒从对应子任务 tab 的消息存储读取非 thinking、非内部子代理的可见 assistant 快照，并将新增正文或修正快照定向更新到原气泡。完成、失败和中断更新同一气泡状态；子任务 tab 自身的 assistant/thinking/trace 事件保持不变。主任务进度气泡带稳定 `subagentId`，不会进入父任务 final-answer 或 successful-reply fallback。
 
@@ -300,4 +299,4 @@ cli / interactive / config 服务层
 - `extension.ts` 仍为 4968 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化
-- Loop 自动唤醒依赖 Extension Host 运行；VS Code 退出期间不会按墙钟时间启动 CLI，只会在下一次扩展激活时补唤醒。
+- Loop 等待外部结果不再依赖 Extension Host 定时器；此类场景进入 `blocked` / `needs-review` 后由用户手动继续。

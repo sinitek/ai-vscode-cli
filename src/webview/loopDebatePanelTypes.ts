@@ -57,9 +57,6 @@ export type LoopDebateChatPanelState = {
     mainCommunicationFile: string;
     currentRound: number;
     updatedAt: number;
-    autoSleepStartedAt?: number;
-    autoWakeAt?: number;
-    autoSleepReason?: string;
     canSupplement: boolean;
     canContinue: boolean;
     canStop: boolean;

@@ -243,26 +243,13 @@ Loop 辩论未达成一致：存在阻塞性异议，已进入人工复核
 
 完整内容落盘到沟通目录，主面板展示摘要和路径；辩论任务启动气泡会立即显示“打开 Loop 群聊”入口，按气泡内 `taskId` 打开对应内容区面板。命令 `sinitek-cli-tools.openLoopGroupChat` 保持兼容命名，也可手动打开只读模拟群聊面板。辩论任务的同一个面板合并展示规划阶段的 `debates/round-*/chat.md` 和共识通过后的根部 `group-chat.md`，不再按轮次分区；主任务轮次、发言批次和执行阶段只作为系统消息呈现。群聊面板在同一 `loopTaskId` 存在运行进程时显示“中止”按钮，停止主持人、参与者、共识汇总器和共识通过后的执行子任务等相关运行；未完成且无运行进程时才显示“继续执行”按钮，两者互斥。任务进入 `needs-review` / `error` / `stopped` 时，面板会在时间线末尾追加一条虚拟的 `主持人停止说明` error 样式气泡，用 `finalSummary`、共识摘要和决策状态说明停止原因；该气泡不写回原始 transcript。面板根据任务记录中的 `activeSpeaker` / `activeSubtaskId` / `activeSubtaskIds` 在时间线末尾显示当前参与者、主持人、共识汇总器、主任务或子任务“思考中”等待气泡；角色发言、主持人控场、共识状态或子任务状态落盘后主动刷新已打开面板，5 秒自动刷新只作为兜底；若刷新前滚动位置距离底部不超过 50px 会自动跟随最新气泡，否则保留阅读位置并显示置底按钮。内容区页面保持只读，不再提供“打开 transcript”“打开任务记录”按钮。
 
-### 可解析任务决策自动睡眠与唤醒
+### 已移除：可解析任务决策自动睡眠与唤醒
 
-任何由宿主解析本 JSON 决策协议的 Loop 任务都可以主动进入自动睡眠，不是主任务专属；普通自由文本回复不会触发自动睡眠。只有在明确等待外部可观察结果、且当前没有可以立即派发的子任务时，才可返回：
+Loop 自动睡眠与定时唤醒已下线。当前主任务/主持人不得返回 `status=sleep`、`wakeAfterSeconds` 或 `sleepReason`；如果需要等待外部结果、授权或人工判断，且当前没有可立即派发的子任务，必须返回 `status=blocked` 并在 `finalSummary` 中说明等待对象或人工判断点。
 
-```json
-{
-  "status": "sleep",
-  "wakeAfterSeconds": 3600,
-  "sleepReason": "等待外部构建完成后复核结果",
-  "estimatedRemainingRounds": 1
-}
-```
-
-- `wakeAfterSeconds` 是 10 到 31536000 的整数；模型表达相对间隔，宿主以本机当前时间计算绝对 `autoWakeAt`。
-- `applyLoopMainDecision` 把任务更新为 `sleeping`，清空 activeSubtask 字段，写入 `autoSleepStartedAt`、`autoWakeAt`、`autoSleepReason`，并结束当前 CLI 调用；睡眠不等于 `completed` 或 `needs-review`。
-- 自动唤醒复用现有 `runLoopPrompt` 恢复入口、任务 ID、CLI/session、执行模式和 `resolveLoopResumeRound`，因此恢复的是当前 Loop 轮次，不创建第二套调度通道。
-- `LoopAutoWakeScheduler` 只保留内存定时器，真实事实是任务记录中的绝对时间。单次 Node 定时器延迟被限制并分段重设；Extension Host 重启后重新枚举当前工作区的睡眠任务，已到期任务立即尝试唤醒。
-- VS Code 完全退出期间不会创建系统级后台进程；下次扩展激活时补处理到期任务。带合法 `autoWakeAt` 的睡眠任务不得被普通历史保留清理删除。
-- 到期时目标 tab 正忙则短间隔重试；每次回调都重新读取持久化状态。人工提前继续、任务完成或中止会取消内存定时器并清除睡眠字段，陈旧回调因状态复核不会二次启动。
-- AI 对话把原始睡眠 JSON 原位替换为可读 assistant 气泡。群聊顶部显示每秒倒计时、绝对计划时间和原因，时间线显示自动睡眠气泡；睡眠态同时开放“继续执行”和“中止”，分别用于提前唤醒和取消计划。
+- 扩展不再维护 `LoopAutoWakeScheduler`，也不再在 Extension Host 激活或工作区变化时恢复 Loop 睡眠定时器。
+- 旧任务记录中的 `sleeping` 会在读取时降级为 `needs-review`，旧 `autoSleepStartedAt`、`autoWakeAt`、`autoSleepReason` 字段会被丢弃。
+- AI 对话和 Loop 群聊不再展示自动睡眠气泡、倒计时、计划唤醒时间或提前唤醒入口；用户通过现有“继续执行”手动恢复任务。
 
 ## 数据模型设计
 
@@ -346,29 +333,23 @@ type LoopTaskRecord = {
   // existing fields...
   executionMode?: LoopExecutionMode;
   debateRounds?: LoopDebateRoundRecord[];
-  autoSleepStartedAt?: number;
-  autoWakeAt?: number;
-  autoSleepReason?: string;
 };
 ```
 
 `executionMode` 必须在 `createLoopTaskRecord` 时写入，后续恢复不随 UI 当前选择改变。
 
-睡眠协议扩展现有决策和任务状态，不新增执行方式：
+当前 Loop 决策和任务状态不包含睡眠态：
 
 ```ts
 type LoopTaskStatus =
   | "running"
-  | "sleeping"
   | "completed"
   | "needs-review"
   | "error"
   | "stopped";
 
 type LoopMainDecision = {
-  status: "completed" | "continue" | "sleep" | "blocked";
-  wakeAfterSeconds?: number;
-  sleepReason?: string;
+  status: "completed" | "continue" | "blocked";
   // existing fields...
 };
 ```

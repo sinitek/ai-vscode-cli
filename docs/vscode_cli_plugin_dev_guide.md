@@ -14,7 +14,7 @@ Loop 开发级 Workflow Skills 的运行字段与降级、内置快照来源与�
 
 OpenCode 主模型/子模型与思考力度的实现事实以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 为准：两个角色的候选只从 active config 的 `provider.<id>.models` 加载；主模型通过 `--model` / `--variant` 运行，子模型通过 runtime config overlay 写入 OpenCode CLI 兼容字段 `small_model`，内部 `small: true` 请求只使用该角色模型自身 `options` 并忽略 `variants`。
 
-Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时显示“主模型 / 子模型”；OpenCode 同样使用主模型 / 子模型口径，底层 `model` / `small_model` 只作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
+Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时显示“主模型 / 子模型”；OpenCode 同样使用主模型 / 子模型口径，底层 `model` / `small_model` 只作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核和续跑使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 
 Codex、Claude 和 OpenCode Vibe/coding 人工交互表单由全局工具设置 `humanInteractionEnabled` 控制，默认开启。运行时会拦截结构化 Codex app-server 人工澄清请求；当用户明确要求 AI 先询问需求/细节但模型只返回普通问题列表时，三组 CLI 都会兜底转为同一人工交互表单，并把问题里的“可选 / 选项 / 例如 / 如”候选项以及紧随问题的 `A.` / `B.` / `C.` 字母选项列表渲染成 radio/checkbox。提交继续、拒绝终止；详细边界以 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 为准。
 

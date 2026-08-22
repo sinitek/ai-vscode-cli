@@ -27,11 +27,9 @@ function createRuntimeHost() {
     runLoopPrompt: async () => undefined,
     isTabRunActive: () => false,
     refreshOpenLoopGroupChatPanelForTask: () => undefined,
-    cancelLoopTaskAutoWake: () => undefined,
     resolveConversationTabLoopContext: () => ({}),
     resolveLoopTaskSessionId: () => null,
     isLoopTaskBlockedByMainAiFailureLimit: () => false,
-    formatLoopAutoWakeAtForRecord: () => "",
     appendLoopMainSubChatSubtaskFinished: () => undefined,
     closeConversationTabAndRefreshPanel: async () => undefined,
   };

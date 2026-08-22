@@ -4,9 +4,8 @@ import { createHash } from "crypto";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { ChatMessage, ChatMessageAction } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
-import { t, resolveLocale } from "../i18n";
+import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
-import { normalizeLoopSleepDecision, resolveLoopAutoWakeAt } from "../loopAutoWake";
 import { normalizeLoopWriteFiles } from "../loopParallel";
 import { buildNextLoopMainAiFailureState, isLoopMainAiFailureLimitReached, LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopAnswerConclusion } from "../loopDebate";
@@ -39,18 +38,16 @@ export type PromptRunRuntimeHostDeps = {
   runLoopPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean }) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
-  cancelLoopTaskAutoWake: (taskId: string) => void;
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => { taskRole?: string | null; loopTaskId?: string | null };
   resolveLoopTaskSessionId: (target: PromptRunTarget) => string | null;
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
-  formatLoopAutoWakeAtForRecord: (value: number | undefined) => string;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
 };
 
 export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
-const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopDebateChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, cancelLoopTaskAutoWake, resolveConversationTabLoopContext } = deps;
+const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopDebateChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
 const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_PARALLEL_SUBTASK_MAX = 6;
 const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
@@ -58,7 +55,6 @@ const readTaskStore = deps.readTaskStore;
 const writeTaskStore = deps.writeTaskStore;
 const resolveLoopTaskSessionId = deps.resolveLoopTaskSessionId;
 const isLoopTaskBlockedByMainAiFailureLimit = deps.isLoopTaskBlockedByMainAiFailureLimit;
-const formatLoopAutoWakeAtForRecord = deps.formatLoopAutoWakeAtForRecord;
 const appendLoopMainSubChatSubtaskFinished = deps.appendLoopMainSubChatSubtaskFinished;
 const closeConversationTabAndRefreshPanel = deps.closeConversationTabAndRefreshPanel;
 const ensureConversationTabs = () => ({ tabs: deps.getConversationTabs() });
@@ -278,16 +274,6 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   const estimatedRemainingRounds = normalizeLoopEstimatedRemainingRounds(
     (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
   );
-  if (raw.status === "sleep") {
-    const sleepDecision = normalizeLoopSleepDecision(value);
-    if (!sleepDecision) {
-      return null;
-    }
-    return {
-      ...sleepDecision,
-      estimatedRemainingRounds,
-    };
-  }
   if (raw.status === "completed") {
     const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
     const requirementCoverage = normalizeLoopAcceptanceChecks((raw as { requirementCoverage?: unknown }).requirementCoverage);
@@ -496,7 +482,7 @@ function buildLoopSubtaskId(title: string): string {
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
-): { status: "completed" | "continue" | "sleeping" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
+): { status: "completed" | "continue" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
   const existing = readLoopTaskRecord(taskId);
   if (!existing) {
     throw new Error(`loop-task-missing:${taskId}`);
@@ -511,35 +497,11 @@ function applyLoopMainDecision(
       estimatedRemainingRounds: 0,
       completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
       completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     appendLoopMainDecisionSummary(task, decision);
     appendLoopMainSubChatMainDecision(task, decision);
     return { status: "completed", task };
-  }
-  if (decision.status === "sleep") {
-    const sleepDecision = normalizeLoopSleepDecision(decision);
-    if (!sleepDecision) {
-      throw new Error(`loop-task-invalid-sleep-decision:${taskId}`);
-    }
-    const autoSleepStartedAt = Date.now();
-    const autoWakeAt = resolveLoopAutoWakeAt(autoSleepStartedAt, sleepDecision.wakeAfterSeconds);
-    const task = updateLoopTaskRecord(taskId, {
-      status: "sleeping",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      autoSleepStartedAt,
-      autoWakeAt,
-      autoSleepReason: sleepDecision.sleepReason,
-      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      updatedAt: autoSleepStartedAt,
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "sleeping", task };
   }
   if (decision.status === "blocked") {
     const task = updateLoopTaskRecord(taskId, {
@@ -548,9 +510,6 @@ function applyLoopMainDecision(
       activeSubtaskIds: [],
       finalSummary: decision.finalSummary ?? "Main task reported blocked.",
       ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     appendLoopMainDecisionSummary(task, decision);
@@ -565,9 +524,6 @@ function applyLoopMainDecision(
       activeSubtaskId: null,
       activeSubtaskIds: [],
       finalSummary: "Main task returned continue without subtasks.",
-      autoSleepStartedAt: undefined,
-      autoWakeAt: undefined,
-      autoSleepReason: undefined,
       updatedAt: Date.now(),
     }) ?? existing;
     return { status: "blocked", task };
@@ -581,9 +537,6 @@ function applyLoopMainDecision(
     activeSubtaskIds,
     subTasks: subtaskBatch.nextSubtasks,
     ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-    autoSleepStartedAt: undefined,
-    autoWakeAt: undefined,
-    autoSleepReason: undefined,
     updatedAt: Date.now(),
   }) ?? existing;
   appendLoopMainDecisionSummary(task, decision);
@@ -612,11 +565,6 @@ function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainD
     const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
     if (remainingRounds) {
       lines.push(`- 预计剩余轮次：${remainingRounds}`);
-    }
-    if (decision.status === "sleep") {
-      lines.push(`- 自动睡眠原因：${task.autoSleepReason ?? decision.sleepReason ?? "未记录"}`);
-      lines.push(`- 计划唤醒时间：${formatLoopAutoWakeAtForRecord(task.autoWakeAt)}`);
-      lines.push(`- 唤醒间隔秒数：${decision.wakeAfterSeconds ?? "未记录"}`);
     }
     if (decision.status === "completed") {
       lines.push("");
@@ -1042,9 +990,6 @@ function markLoopTaskStopped(
     status: "stopped",
     activeSubtaskId: null,
     activeSubtaskIds: [],
-    autoSleepStartedAt: undefined,
-    autoWakeAt: undefined,
-    autoSleepReason: undefined,
     subTasks,
     ...(debateRounds ? { debateRounds } : {}),
     ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
@@ -1055,7 +1000,6 @@ function markLoopTaskStopped(
 }
 
 function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
-  cancelLoopTaskAutoWake(taskId);
   return markLoopTaskStopped(taskId, {
     finalSummary: "用户已从 Loop 群聊中止任务。",
     subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
@@ -1280,47 +1224,6 @@ function showLoopSubtaskDecisionMarkdown(
   persistLoopMessagesForTarget(target, messages);
 }
 
-function showLoopAutoSleepMessage(
-  target: PromptRunTarget,
-  task: LoopTaskRecord,
-  round: number,
-  decision: LoopMainDecision,
-): void {
-  const content = buildLoopAutoSleepMessageMarkdown(task, decision);
-  if (replaceLoopMainDecisionMessageWithMarkdown(target, task.id, round, content)) {
-    return;
-  }
-
-  const messages = getLoopMessagesForTarget(target);
-  const message: ChatMessage = {
-    id: createMessageId(),
-    role: "assistant",
-    content,
-    createdAt: Date.now(),
-    merge: false,
-    taskRole: "main",
-    loopTaskId: task.id,
-    loopRound: round,
-    actions: [buildLoopDebateChatMessageAction(task.id, round)],
-  };
-  appendMessageToStore(messages, message);
-  sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-  persistLoopMessagesForTarget(target, messages);
-}
-
-function buildLoopAutoSleepMessageMarkdown(task: LoopTaskRecord, decision: LoopMainDecision): string {
-  const locale = resolveLocale();
-  const wakeAt = typeof task.autoWakeAt === "number"
-    ? new Date(task.autoWakeAt).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US")
-    : t("run.loopAutoWakeTimeUnknown");
-  const reason = task.autoSleepReason ?? decision.sleepReason ?? t("run.loopAutoSleepReasonUnknown");
-  return [
-    `## ${t("run.loopAutoSleepTitle")}`,
-    t("run.loopAutoSleepReason", { reason }),
-    t("run.loopAutoWakeAt", { time: wakeAt }),
-  ].join("\n\n");
-}
-
 function hasCompleteLoopCompletionMessagesForTask(target: PromptRunTarget, taskId: string): boolean {
   return hasCompleteLoopCompletionMessages(getLoopMessagesForTarget(target), taskId);
 }
@@ -1527,8 +1430,6 @@ return {
   removeLoopMainDecisionMessage: wrap(removeLoopMainDecisionMessage),
   replaceLoopMainDecisionMessageWithMarkdown: wrap(replaceLoopMainDecisionMessageWithMarkdown),
   showLoopSubtaskDecisionMarkdown: wrap(showLoopSubtaskDecisionMarkdown),
-  showLoopAutoSleepMessage: wrap(showLoopAutoSleepMessage),
-  buildLoopAutoSleepMessageMarkdown: wrap(buildLoopAutoSleepMessageMarkdown),
   hasCompleteLoopCompletionMessagesForTask: wrap(hasCompleteLoopCompletionMessagesForTask),
   appendLoopAnswerConclusionMessage: wrap(appendLoopAnswerConclusionMessage),
   appendLoopFinalSummaryMessage: wrap(appendLoopFinalSummaryMessage),

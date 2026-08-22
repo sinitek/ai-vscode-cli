@@ -262,43 +262,47 @@ test("writes normalized data and contains write failures at the persistence boun
   });
 });
 
-test("persists automatic-sleep state for restart-safe Loop wake-up", () => {
+test("normalizes legacy sleeping Loop tasks to manual review", () => {
   resetLoopStorage();
   const autoSleepStartedAt = Date.UTC(2026, 6, 17, 8, 0, 0);
-  const task = createTask({
+  const task = {
+    ...createTask({
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+    }),
     status: "sleeping",
     autoSleepStartedAt,
     autoWakeAt: autoSleepStartedAt + 60_000,
     autoSleepReason: "Wait for the deployment result.",
-    activeSubtaskId: null,
-    activeSubtaskIds: [],
-  });
+  } as unknown as LoopTaskRecord;
 
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   const persisted = readPersistedTask(task.taskStoreFile, task.id);
 
-  assert.equal(persisted.status, "sleeping");
-  assert.equal(persisted.autoSleepStartedAt, autoSleepStartedAt);
-  assert.equal(persisted.autoWakeAt, autoSleepStartedAt + 60_000);
-  assert.equal(persisted.autoSleepReason, "Wait for the deployment result.");
+  assert.equal(persisted.status, "needs-review");
+  assert.equal("autoSleepStartedAt" in persisted, false);
+  assert.equal("autoWakeAt" in persisted, false);
+  assert.equal("autoSleepReason" in persisted, false);
   assert.equal(persisted.activeSubtaskId, null);
   assert.deepEqual(persisted.activeSubtaskIds, []);
 });
 
-test("retains a valid sleeping task beyond ordinary history retention", () => {
+test("does not retain legacy sleeping tasks beyond ordinary history retention", () => {
   resetLoopStorage();
-  const task = createTask({
+  const task = {
+    ...createTask({
+      createdAt: 1,
+      updatedAt: 1,
+    }),
     status: "sleeping",
-    createdAt: 1,
-    updatedAt: 1,
     autoSleepStartedAt: 1,
     autoWakeAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
     autoSleepReason: "Wait for a long-running external process.",
-  });
+  } as unknown as LoopTaskRecord;
 
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).status, "sleeping");
+  assert.equal(loopTaskStore.readLoopTaskStore(task.taskStoreFile).tasks.length, 0);
 });
 
 test("updates task state, protects completed tasks, and appends rounds idempotently", () => {

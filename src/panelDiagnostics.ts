@@ -328,7 +328,6 @@ export function isLoopTaskResumable(task: LoopTaskRecord): boolean {
       task.status === "needs-review"
       || task.status === "error"
       || task.status === "stopped"
-      || task.status === "sleeping"
       || task.status === "running"
     );
 }

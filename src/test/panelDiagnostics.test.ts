@@ -62,7 +62,6 @@ test("keeps interrupted Loop task states resumable from the main tab", () => {
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "needs-review" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "error" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "stopped" }), true);
-  assert.equal(isLoopTaskResumable({ ...baseTask, status: "sleeping" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "running" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "completed" }), false);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "error", mainAiFailureLimitReached: true }), false);

@@ -280,8 +280,6 @@ test("Loop orchestration host exposes small helpers through the injected host bo
       "existing",
       " next ",
     ]);
-    assert.equal(host.formatLoopAutoWakeAtForRecord(Date.UTC(2026, 0, 2, 3, 4, 5)), "2026-01-02T03:04:05.000Z");
-    assert.equal(host.formatLoopAutoWakeAtForRecord(undefined), "未记录");
     assert.equal(host.writeTextFileEnsuringDir(filePath, " first "), true);
     assert.equal(host.readTextFileIfNonEmpty(filePath), "first");
     assert.equal(host.appendTextFileEnsuringDir(filePath, "\nsecond"), true);

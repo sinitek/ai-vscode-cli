@@ -18,7 +18,6 @@ import {
   type LoopSubtaskRecord,
   type LoopTaskRecord,
 } from "./loopTaskStore";
-import { buildLoopAutoSleepProtocolLines } from "./loopAutoWake";
 
 export type LoopDebateParticipantDefinition = {
   id: string;
@@ -631,12 +630,8 @@ export function buildLoopDebateConsensusModelPrompt(
     "3. 如果任一动态参与者 artifact 缺失、存在未解决 blocking disagreement、或你无法生成合法 LoopMainDecision，则 decision.json 必须走 blocked 路径，不得派发子任务。",
     "4. 红队 artifact 的原始立场为 block 时，必须先判断阻塞项是否已被蓝队回应并能被本轮计划解决：如果能通过补充证据、前置步骤、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该红队最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
     "5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。",
-    "6. status=sleep 必须提供整数 wakeAfterSeconds 和简短 sleepReason；不得同时提供 subtasks。",
-    "7. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
-    "8. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
-    "",
-    "自动睡眠协议（适用于任何可解析任务决策）：",
-    ...buildLoopAutoSleepProtocolLines().map((line) => `- ${line}`),
+    "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
+    "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
     "",
     "cross-review.md 内容要求：",
     "- 按群聊时间线总结蓝队方案、红队攻击和互相回应。",
@@ -650,7 +645,6 @@ export function buildLoopDebateConsensusModelPrompt(
     "decision.json 必须是纯 JSON 对象，符合现有 LoopMainDecision 协议：",
     '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
     continueDecisionExample,
-    '{"status":"sleep","wakeAfterSeconds":3600,"sleepReason":"等待外部构建完成后复核结果","estimatedRemainingRounds":1}',
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
     "status=completed 时 answerConclusion 必须直接回答用户原始问题，finalSummary 用于整体任务完成说明。",
     "",

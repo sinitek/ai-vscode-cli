@@ -88,7 +88,6 @@ export function buildLoopDebateChatPanelHtml(
   const nonce = getNonce();
   const strings = getStrings(locale);
   const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
-  const autoWakeAt = normalizeAutoWakeAt(state.task.autoWakeAt);
 
   return `<!DOCTYPE html>
 <html lang="${locale}">
@@ -111,10 +110,9 @@ ${LOOP_DEBATE_PANEL_STYLES}
         <div class="actions">
           ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
           ${state.task.canSupplement ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
-          ${state.task.canContinue && (!state.task.canStop || state.task.status === "sleeping") ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
+          ${state.task.canContinue && !state.task.canStop ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
         </div>
       </header>
-      ${renderAutoWakeBanner(state, strings, locale)}
       <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
         <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="continueDialogTitle" aria-describedby="continueDialogDescription">
           <div class="dialog-header">
@@ -133,12 +131,12 @@ ${LOOP_DEBATE_PANEL_STYLES}
         </div>
       </div>
       <div class="layout">
-	        <aside class="sidebar">
-	          ${renderTaskPanel(state, strings, locale)}
-	          ${renderRosterPanel(state, strings)}
-	        </aside>
-	        <main class="main">
-	          ${renderTimeline(state, transcript.segments, strings, locale)}
+        <aside class="sidebar">
+          ${renderTaskPanel(state, strings, locale)}
+          ${renderRosterPanel(state, strings)}
+        </aside>
+        <main class="main">
+          ${renderTimeline(state, transcript.segments, strings)}
 	          <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
 	            <button id="scrollToBottomButton" class="scroll-to-bottom-button" type="button" data-action="scrollToBottom" aria-label="${escapeAttribute(strings.scrollToBottomAria)}" title="${escapeAttribute(strings.scrollToBottomAria)}" aria-hidden="true">
 	              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -153,9 +151,6 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
-	      const AUTO_WAKE_AT = ${autoWakeAt ?? "null"};
-	      const AUTO_WAKE_DUE_TEXT = "${escapeJsString(strings.wakeDue)}";
-	      const AUTO_WAKE_DAY_SUFFIX = "${escapeJsString(strings.daySuffix)}";
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
 	      const SCROLL_BUTTON_SUPPRESS_MS = 400;
 	      const sidebarElement = document.querySelector(".sidebar");
@@ -170,9 +165,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
-	      const autoWakeCountdownElement = document.getElementById("autoWakeCountdown");
 	      let autoRefreshTimer = undefined;
-	      let autoWakeCountdownTimer = undefined;
 	      let suppressScrollButtonUntil = 0;
 	      let continueDialogOpen = false;
 	      let continueDialogMode = undefined;
@@ -416,36 +409,6 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        saveDialogState();
 	      }
 
-	      function formatAutoWakeRemaining(remainingMs) {
-	        const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-	        const days = Math.floor(totalSeconds / 86400);
-	        const hours = Math.floor((totalSeconds % 86400) / 3600);
-	        const minutes = Math.floor((totalSeconds % 3600) / 60);
-	        const seconds = totalSeconds % 60;
-	        const clock = [hours, minutes, seconds]
-	          .map((value) => String(value).padStart(2, "0"))
-	          .join(":");
-	        return days > 0 ? String(days) + AUTO_WAKE_DAY_SUFFIX + " " + clock : clock;
-	      }
-
-	      function updateAutoWakeCountdown() {
-	        if (!autoWakeCountdownElement || typeof AUTO_WAKE_AT !== "number") {
-	          return;
-	        }
-	        const remainingMs = AUTO_WAKE_AT - Date.now();
-	        autoWakeCountdownElement.textContent = remainingMs <= 0
-	          ? AUTO_WAKE_DUE_TEXT
-	          : formatAutoWakeRemaining(remainingMs);
-	      }
-
-	      function startAutoWakeCountdown() {
-	        if (!autoWakeCountdownElement || typeof AUTO_WAKE_AT !== "number") {
-	          return;
-	        }
-	        updateAutoWakeCountdown();
-	        autoWakeCountdownTimer = window.setInterval(updateAutoWakeCountdown, 1000);
-	      }
-
 	      function startAutoRefresh() {
 	        if (autoRefreshTimer !== undefined) {
 	          return;
@@ -563,65 +526,16 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        if (autoRefreshTimer !== undefined) {
 	          window.clearInterval(autoRefreshTimer);
 	        }
-	        if (autoWakeCountdownTimer !== undefined) {
-	          window.clearInterval(autoWakeCountdownTimer);
-	        }
 	      });
 	      window.requestAnimationFrame(() => {
 	        restoreScrollState();
 	        restoreDialogState();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
-	      startAutoWakeCountdown();
 	      startAutoRefresh();
 	    </script>
   </body>
 </html>`;
-}
-
-function renderAutoWakeBanner(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
-): string {
-  const autoWakeAt = normalizeAutoWakeAt(state.task.autoWakeAt);
-  if (state.task.status !== "sleeping" || autoWakeAt === null) {
-    return "";
-  }
-  const reason = state.task.autoSleepReason?.trim() || strings.autoSleep;
-  const initialCountdown = autoWakeAt <= Date.now()
-    ? strings.wakeDue
-    : formatAutoWakeRemainingForHtml(autoWakeAt - Date.now(), strings);
-  return `<section class="auto-wake-banner" aria-label="${escapeAttribute(strings.autoSleep)}">
-    <div class="auto-wake-primary">
-      <span class="auto-wake-title">${escapeHtml(strings.autoSleep)}</span>
-      <span class="auto-wake-countdown-label">${escapeHtml(strings.wakeCountdown)}</span>
-      <strong id="autoWakeCountdown" class="auto-wake-countdown" aria-live="polite">${escapeHtml(initialCountdown)}</strong>
-    </div>
-    <div class="auto-wake-details">
-      <span>${escapeHtml(strings.sleepReason)}: ${escapeHtml(reason)}</span>
-      <span>${escapeHtml(strings.scheduledWakeAt)}: <time datetime="${escapeAttribute(new Date(autoWakeAt).toISOString())}">${escapeHtml(formatTimestamp(autoWakeAt, locale))}</time></span>
-    </div>
-  </section>`;
-}
-
-function normalizeAutoWakeAt(value: number | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : null;
-}
-
-function formatAutoWakeRemainingForHtml(
-  remainingMs: number,
-  strings: LoopDebateChatPanelStrings,
-): string {
-  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
-  return days > 0 ? `${days}${strings.daySuffix} ${clock}` : clock;
 }
 
 function renderTaskPanel(
@@ -632,7 +546,7 @@ function renderTaskPanel(
   return `<section class="panel">
     <h2>${escapeHtml(strings.task)}</h2>
     <div class="meta-grid">
-      ${renderMetaRow(strings.status, state.task.status === "sleeping" ? strings.sleepingStatus : state.task.status)}
+      ${renderMetaRow(strings.status, state.task.status)}
       ${renderMetaRow(strings.cli, state.task.cli)}
       ${renderMetaRow(strings.currentRound, String(state.task.currentRound))}
       ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt, locale))}
@@ -735,21 +649,19 @@ function renderTimeline(
   state: LoopDebateChatPanelState,
   segments: LoopDebateChatSegment[],
   strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
 ): string {
   const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
-  const autoSleepBubble = renderAutoSleepBubble(state, strings, locale);
   if (state.error) {
-    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.loadingError)} ${escapeHtml(state.error)}</div>${autoSleepBubble}</div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.loadingError)} ${escapeHtml(state.error)}</div></div>`;
   }
   if (state.rounds.length === 0) {
-    return `<div class="timeline">${initialPromptBubble}${autoSleepBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
   }
   const thinkingBubble = renderThinkingBubble(state, strings);
   if (!state.chatMarkdown.trim() || segments.length === 0) {
-    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${autoSleepBubble}${thinkingBubble}</div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubble}</div>`;
   }
-  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${autoSleepBubble}${thinkingBubble}</div>`;
+  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubble}</div>`;
 }
 
 function renderInitialTaskPromptBubble(
@@ -765,31 +677,6 @@ function renderInitialTaskPromptBubble(
     body: rootPrompt,
     actorId: "user",
   }, strings, strings.initialTaskPrompt);
-}
-
-function renderAutoSleepBubble(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
-): string {
-  const autoWakeAt = normalizeAutoWakeAt(state.task.autoWakeAt);
-  if (state.task.status !== "sleeping" || autoWakeAt === null) {
-    return "";
-  }
-  const reason = state.task.autoSleepReason?.trim() || strings.autoSleep;
-  return `<article class="message auto-sleep with-avatar">
-    <span class="avatar">${escapeHtml(getAvatarLabel(strings.mainTask, "main"))}</span>
-    <section class="bubble">
-      <header class="bubble-header">
-        <span class="speaker">${escapeHtml(strings.mainTask)}</span>
-        <span class="tag">${escapeHtml(strings.autoSleep)}</span>
-      </header>
-      <div class="message-text auto-sleep-content">
-        <div><span class="auto-sleep-label">${escapeHtml(strings.sleepReason)}:</span> ${escapeHtml(reason)}</div>
-        <div><span class="auto-sleep-label">${escapeHtml(strings.scheduledWakeAt)}:</span> ${escapeHtml(formatTimestamp(autoWakeAt, locale))}</div>
-      </div>
-    </section>
-  </article>`;
 }
 
 function renderThinkingBubble(

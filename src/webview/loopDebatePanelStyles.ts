@@ -57,40 +57,6 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         gap: 8px;
         justify-content: flex-end;
       }
-      .auto-wake-banner {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 10px 16px;
-        border-bottom: 1px solid var(--vscode-editorWarning-foreground, var(--vscode-widget-border));
-        color: var(--vscode-statusBarItem-warningForeground, var(--vscode-editor-foreground));
-        background: var(--vscode-statusBarItem-warningBackground, var(--vscode-editorWidget-background));
-      }
-      .auto-wake-primary,
-      .auto-wake-details {
-        min-width: 0;
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 6px 10px;
-      }
-      .auto-wake-title,
-      .auto-wake-countdown {
-        font-weight: 600;
-      }
-      .auto-wake-countdown-label,
-      .auto-wake-details {
-        font-size: 12px;
-      }
-      .auto-wake-countdown {
-        min-width: 8ch;
-        font-variant-numeric: tabular-nums;
-      }
-      .auto-wake-details {
-        justify-content: flex-end;
-        overflow-wrap: anywhere;
-      }
       .button {
         border: 1px solid var(--vscode-button-border, var(--vscode-widget-border));
         border-radius: 4px;
@@ -381,18 +347,6 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
       .message.error .bubble-header {
         color: var(--vscode-errorForeground);
       }
-      .message.auto-sleep .bubble {
-        border-color: var(--vscode-editorWarning-foreground, var(--vscode-widget-border));
-        background: var(--vscode-inputValidation-warningBackground, var(--vscode-editorWidget-background));
-      }
-      .auto-sleep-content {
-        display: grid;
-        gap: 6px;
-      }
-      .auto-sleep-label {
-        color: var(--vscode-descriptionForeground);
-        font-weight: 600;
-      }
       .message.system .bubble,
       .message.task-event .bubble,
       .message.rules .bubble {
@@ -471,14 +425,6 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
           flex-direction: column;
         }
         .actions {
-          justify-content: flex-start;
-        }
-        .auto-wake-banner {
-          align-items: flex-start;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .auto-wake-details {
           justify-content: flex-start;
         }
         .layout {

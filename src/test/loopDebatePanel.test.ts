@@ -101,27 +101,23 @@ test("renders the Loop task prompt before chat records exist", () => {
   );
 });
 
-test("renders a live wake countdown and automatic-sleep assistant bubble", () => {
-  const autoWakeAt = Date.now() + 90_000;
+test("does not render removed automatic wake controls for review tasks", () => {
   const html = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,
     {
       mode: "main_sub",
       task: {
-        id: "task-sleeping",
+        id: "task-review",
         cli: "codex",
-        status: "sleeping",
+        status: "needs-review",
         rootPrompt: "Wait for the external deployment and verify it.",
         taskStoreFile: "/tmp/loop-tasks.json",
         mainCommunicationFile: "/tmp/main-task.md",
         currentRound: 3,
         updatedAt: Date.now(),
-        autoSleepStartedAt: Date.now(),
-        autoWakeAt,
-        autoSleepReason: "Waiting for deployment health checks.",
         canSupplement: true,
         canContinue: true,
-        canStop: true,
+        canStop: false,
       },
       rounds: [{
         key: "execution-3",
@@ -133,22 +129,15 @@ test("renders a live wake countdown and automatic-sleep assistant bubble", () =>
         participants: [],
         moderatorDecisions: [],
       }],
-      chatMarkdown: "# Loop chat\n\n## 任务事件\nWaiting started.",
+      chatMarkdown: "# Loop chat\n\n## 任务事件\nWaiting for manual review.",
     },
     "en",
   );
 
-  assert.match(html, /class="auto-wake-banner"/u);
-  assert.match(html, /id="autoWakeCountdown"/u);
-  assert.match(html, /Wakes in/u);
-  assert.match(html, /Waiting for deployment health checks\./u);
-  assert.match(html, new RegExp(`const AUTO_WAKE_AT = ${autoWakeAt};`, "u"));
-  assert.match(html, /window\.setInterval\(updateAutoWakeCountdown, 1000\)/u);
-  assert.match(html, /class="message auto-sleep with-avatar"/u);
-  assert.match(html, /<span class="tag">Automatic sleep<\/span>/u);
-  assert.match(html, /data-action="stopTask"/u);
-  assert.match(html, /data-action="continueTask"/u);
-  assert.match(html, /var\(--vscode-statusBarItem-warningBackground/u);
+  assert.doesNotMatch(html, /class="auto-wake-banner"|id="autoWakeCountdown"|AUTO_WAKE_AT/u);
+  assert.doesNotMatch(html, /Automatic sleep|Scheduled wake|window\.setInterval\(updateAutoWakeCountdown/u);
+  assert.doesNotMatch(html, /<button[^>]*data-action="stopTask"/u);
+  assert.match(html, /<button[^>]*data-action="continueTask"/u);
 });
 
 function createPanelHarness() {

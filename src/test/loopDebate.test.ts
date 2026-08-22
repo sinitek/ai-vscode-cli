@@ -100,14 +100,14 @@ test("resolves loop task run controls from persisted running status", () => {
   assert.equal(controlState.canContinue, false);
 });
 
-test("allows a sleeping Loop task to wake early or cancel its scheduled wake-up", () => {
+test("allows a review Loop task to continue without showing stop", () => {
   assert.deepEqual(
-    resolveLoopTaskRunControlState({ id: "task-sleeping", status: "sleeping" }, new Set()),
+    resolveLoopTaskRunControlState({ id: "task-review", status: "needs-review" }, new Set()),
     {
       isRunning: false,
       canSupplement: true,
       canContinue: true,
-      canStop: true,
+      canStop: false,
     },
   );
 });

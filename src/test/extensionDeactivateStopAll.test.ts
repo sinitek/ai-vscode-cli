@@ -24,7 +24,7 @@ test("deactivate routes through stopAllRuns after blocking new runs", () => {
   );
 
   assert.match(deactivateSource, /isExtensionDeactivating = true;/u);
-  assert.match(deactivateSource, /loopAutoWakeScheduler\?\.dispose\(\);/u);
+  assert.doesNotMatch(deactivateSource, /loopAutoWakeScheduler/u);
   assert.match(deactivateSource, /graphControlsHost\.disposeGraphAutoWakeScheduler\(\);/u);
   assert.match(deactivateSource, /stopAllRuns\(\);/u);
 });

@@ -34,8 +34,6 @@ export type LoopOrchestrationHostDeps = Record<string, any>;
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   const {
-    LOOP_AUTO_WAKE_MAX_SECONDS,
-    LOOP_AUTO_WAKE_MIN_SECONDS,
     LOOP_DEBATE_BLUE_TEAM_ROLE,
     LOOP_DEBATE_MAX_BATCH_SPEAKERS,
     LOOP_DEBATE_MAX_DIALOGUE_TURNS,
@@ -49,7 +47,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     appendSystemMessageForLoop,
     applyLoopMainDecision,
     bindLoopTaskToSession,
-    buildLoopAutoSleepProtocolLines,
     buildLoopCompletedConclusionAndSummaryMarkdown,
     buildLoopDebateBriefMarkdown,
     buildLoopDebateChatTurnMarkdown,
@@ -233,9 +230,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const decisionResult = applyLoopMainDecision(taskId, decision);
     if (decisionResult.status === "completed") {
       return { status: "completed", task: decisionResult.task, decision };
-    }
-    if (decisionResult.status === "sleeping") {
-      return { status: "sleeping", task: decisionResult.task, decision };
     }
     if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
       return { status: "needs-review", task: decisionResult.task, decision };
@@ -2118,12 +2112,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     appendLoopMainSubChatSection(task, "任务事件", body);
   }
 
-  function formatLoopAutoWakeAtForRecord(value: number | undefined): string {
-    return typeof value === "number" && Number.isFinite(value)
-      ? new Date(value).toISOString()
-      : "未记录";
-  }
-
   function appendLoopMainSubChatMainDecision(
     task: LoopTaskRecord,
     decision: LoopMainDecision,
@@ -2137,11 +2125,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const remainingRounds = formatLoopEstimatedRemainingRounds(decision.estimatedRemainingRounds);
     if (remainingRounds) {
       bodyLines.push(`- 预计剩余轮次：${remainingRounds}`);
-    }
-    if (decision.status === "sleep") {
-      bodyLines.push(`- 自动睡眠原因：${task.autoSleepReason ?? decision.sleepReason ?? "未记录"}`);
-      bodyLines.push(`- 计划唤醒时间：${formatLoopAutoWakeAtForRecord(task.autoWakeAt)}`);
-      bodyLines.push(`- 唤醒间隔秒数：${decision.wakeAfterSeconds ?? "未记录"}`);
     }
     if (decision.acceptance?.summary) {
       bodyLines.push(`- 复核摘要：${decision.acceptance.summary}`);
@@ -2260,7 +2243,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
     | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
     | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "sleeping"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 
   async function runLoopSubtasksBatchWithRetry(
@@ -2695,10 +2677,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOOP_PARALLEL_SUBTASK_MAX} 个子任务新会话。`,
       "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
-      "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；sleep 只会定时恢复，不代表完成。",
-      "",
-      "自动睡眠协议（适用于任何可解析任务决策）：",
-      ...buildLoopAutoSleepProtocolLines().map((line: string) => `- ${line}`),
+      "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
       "",
       "主任务职责：",
       "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、activeSubtaskIds、subTasks 和 rounds 概要。",
@@ -2721,11 +2700,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
       '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
       '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
-      '{"status":"sleep","wakeAfterSeconds":3600,"sleepReason":"等待外部构建完成后复核结果","estimatedRemainingRounds":1}',
       '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
       "",
       "字段要求：",
-      "- status 只能是 completed、continue、sleep、blocked。",
+      "- status 只能是 completed、continue、blocked。",
       "- 每次返回都必须提供 estimatedRemainingRounds；含义是从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed，必须是非负整数。",
       "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、answerConclusion、finalSummary、requirementCoverage 和 roundSummaries。",
       "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
@@ -2733,8 +2711,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
       "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
       `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}。`,
-      `- status=sleep 时不得提供 subtasks；必须提供 ${LOOP_AUTO_WAKE_MIN_SECONDS}~${LOOP_AUTO_WAKE_MAX_SECONDS} 范围内的整数 wakeAfterSeconds，以及非空的简短 sleepReason。`,
-      "- sleep 只能用于等待当前进程之外的可观察结果，不得用它替代可立即执行的调研、实现、验证或子任务派发；它是通用等待能力，但只有本 JSON 决策协议会被宿主解析。",
+      "- 当前没有可执行子任务、需要等待外部结果或需要人工判断时，必须返回 blocked，并在 finalSummary 说明等待对象或人工判断点。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
       "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
       "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
@@ -2882,7 +2859,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     appendLoopSupplementalRequirement,
     appendLoopSupplementalRequirementToCommunication,
     appendTextFileEnsuringDir,
-    formatLoopAutoWakeAtForRecord,
     readTextFileIfNonEmpty,
     runClassicLoopMainDecision,
     runLoopDebateRound,
