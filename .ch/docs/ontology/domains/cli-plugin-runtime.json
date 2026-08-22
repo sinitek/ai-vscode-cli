@@ -82,10 +82,10 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。子任务局部中断或失败不会终止仍为 running 的父任务；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户级停止仍统一停止父子任务。",
+      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。子任务局部中断或失败不会终止仍为 running 的父任务；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
-      "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts"],
+      "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
@@ -212,7 +212,7 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；全部活动子任务成功完成后才可唤醒主任务复核。用户从 Loop 群聊停止整个任务时，父任务和活动子任务统一进入 stopped。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [

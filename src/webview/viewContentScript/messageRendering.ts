@@ -866,10 +866,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
 
       function syncRunningStateForActiveTab() {
         const activeTabId = getActiveConversationTabId();
-        const isRunningOnActiveTab = isTabRunning(activeTabId);
+        const activeTab = getConversationTabSummary(activeTabId);
+        const isRunningOnActiveTab = isConversationTabRunning(activeTab);
         updateRunningState(isRunningOnActiveTab, {
           preserveRunArtifacts: true,
-          startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
+          startedAt: isTabRunning(activeTabId) ? getTabRunStartedAt(activeTabId) : 0,
         });
         syncConversationControlsForActiveTab();
       }

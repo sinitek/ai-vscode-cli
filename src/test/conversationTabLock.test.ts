@@ -84,6 +84,44 @@ function buildIsConversationTabRunning(
   )(isTabRunning, isLoopMainTab) as (tab: TabSummary | null) => boolean;
 }
 
+function buildSyncRunningStateForActiveTab(tab: TabSummary | null): {
+  isRunning: boolean;
+  startedAt: number;
+} {
+  const source = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,
+    "syncRunningStateForActiveTab",
+  );
+  const updates: Array<{ isRunning: boolean; startedAt: number }> = [];
+  const activeTabId = tab?.id ?? null;
+  const runtime = new Function(
+    "getActiveConversationTabId",
+    "getConversationTabSummary",
+    "isConversationTabRunning",
+    "isTabRunning",
+    "getTabRunStartedAt",
+    "updateRunningState",
+    "syncConversationControlsForActiveTab",
+    source + "; return syncRunningStateForActiveTab;",
+  )(
+    () => activeTabId,
+    () => tab,
+    (candidate: TabSummary | null) => Boolean(
+      candidate
+      && candidate.loopTaskRole === "main"
+      && (candidate.loopTaskRunning === true || candidate.loopTaskStatus === "running"),
+    ),
+    () => false,
+    () => 0,
+    (isRunning: boolean, options: { startedAt?: number }) => {
+      updates.push({ isRunning, startedAt: options.startedAt ?? 0 });
+    },
+    () => undefined,
+  ) as () => void;
+  runtime();
+  return updates[0] ?? { isRunning: false, startedAt: 0 };
+}
+
 function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: string) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabLabel");
   const getLoopMetaForTabSummary = (
@@ -335,6 +373,27 @@ test("treats explicit Loop task running status as a visual running fallback", ()
     loopTaskId: "task-1",
     loopTaskStatus: "completed",
   }), false);
+});
+
+test("drives the main tab stop control from persisted Loop running status", () => {
+  assert.deepEqual(
+    buildSyncRunningStateForActiveTab({
+      id: "main-tab",
+      loopTaskRole: "main",
+      loopTaskId: "task-1",
+      loopTaskStatus: "running",
+    }),
+    { isRunning: true, startedAt: 0 },
+  );
+  assert.deepEqual(
+    buildSyncRunningStateForActiveTab({
+      id: "main-tab",
+      loopTaskRole: "main",
+      loopTaskId: "task-1",
+      loopTaskStatus: "stopped",
+    }),
+    { isRunning: false, startedAt: 0 },
+  );
 });
 
 test("does not lock Loop main tab for unrelated running tasks", () => {

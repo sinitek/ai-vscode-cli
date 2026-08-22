@@ -79,6 +79,19 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
 });
 
+test("keeps a persisted running Loop main task stoppable without a direct runner", () => {
+  const extensionSource = readSource("src", "extension.ts");
+
+  assert.match(
+    extensionSource,
+    /const loopContext = tab \? resolveConversationTabLoopContext\(tab\) : null;[\s\S]*const loopTaskId = loopContext\?\.taskRole === "main"[\s\S]*readLoopTaskRecord\(loopTaskId\)\?\.status === "running"/,
+  );
+  assert.match(
+    extensionSource,
+    /if \(loopTaskId && readLoopTaskRecord\(loopTaskId\)\?\.status === "running"\) \{[\s\S]*stopLoopRunsForTask\(loopTaskId\);[\s\S]*markLoopTaskStoppedByUser\(loopTaskId\);[\s\S]*void postPanelState\(\);/,
+  );
+});
+
 test("OpenCode subagent runtime keeps the host source canonical and the extension as composition root", () => {
   const extensionSource = readSource("src", "extension.ts");
   const runtimeSource = readSource("src", "extensionHost", "openCodeSubagentRuntime.ts");

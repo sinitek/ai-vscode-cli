@@ -3372,6 +3372,21 @@ function stopRunForTab(tabId: string | null): void {
   if (stopGraphRunForConversationTab(tabId)) {
     return;
   }
+
+  // A Loop main task can remain persisted as running while its direct CLI
+  // process has already ended (for example, after all subtasks were
+  // interrupted). In that state there is no tab-local runner to stop, but the
+  // user must still be able to terminate the task from the main tab.
+  const tab = getConversationTabById(tabId);
+  const loopContext = tab ? resolveConversationTabLoopContext(tab) : null;
+  const loopTaskId = loopContext?.taskRole === "main"
+    ? normalizeLoopTaskId(loopContext.loopTaskId)
+    : null;
+  if (loopTaskId && readLoopTaskRecord(loopTaskId)?.status === "running") {
+    stopLoopRunsForTask(loopTaskId);
+    markLoopTaskStoppedByUser(loopTaskId);
+    void postPanelState();
+  }
 }
 
 function stopGraphRunForConversationTab(tabId: string): boolean {
