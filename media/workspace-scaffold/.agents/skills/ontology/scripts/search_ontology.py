@@ -1320,7 +1320,7 @@ def ontology_status_report(index: OntologyIndex) -> dict[str, Any]:
             "README.md",
             "ARCHITECTURE.md",
             ".ch/docs/product-specs/",
-            ".ch/docs/design-docs/",
+            ".ch/docs/TESTING.md",
             "docs/",
             "src/",
         ],

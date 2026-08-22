@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-13",
+  "as_of": "2026-08-22",
   "domain": {
     "id": "harness-governance",
     "name": "Harness 治理",
@@ -79,11 +79,14 @@
       "id": "harness.workspace_scaffold",
       "name": "Workspace Scaffold",
       "kind": "resource",
-      "description": "插件内置的新工作区 harness 模板，承载通用 AGENTS、profiles、skills、`.ch/docs` 和 ontology 骨架。",
+      "description": "插件内置的新工作区 harness 模板，承载通用 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架。",
       "status": "active",
       "aliases": ["media/workspace-scaffold", "workspace-scaffold", "scaffold"],
       "implementation_paths": ["media/workspace-scaffold"],
-      "source_refs": [{"path": "media/workspace-scaffold/AGENTS.md"}]
+      "source_refs": [
+        {"path": "media/workspace-scaffold/AGENTS.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"}
+      ]
     }
   ],
   "relations": [
@@ -123,13 +126,16 @@
     {
       "id": "harness.relation.scaffold_materializes_harness",
       "name": "Scaffold 物化 Harness 骨架",
-      "description": "workspace scaffold 把 AGENTS、profiles、skills、`.ch/docs` 和 ontology 骨架复制到新工作区。",
+      "description": "workspace scaffold 把 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架复制到新工作区。",
       "status": "active",
       "from": "harness.workspace_scaffold",
       "type": "materializes",
       "to": "harness.agent_rules",
       "cardinality": "1:N",
-      "source_refs": [{"path": "media/workspace-scaffold/AGENTS.md"}]
+      "source_refs": [
+        {"path": "media/workspace-scaffold/AGENTS.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"}
+      ]
     }
   ],
   "rules": [

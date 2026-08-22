@@ -28,8 +28,8 @@ related_paths: []
 ## 写法要求
 
 - 经验应尽量写成“触发场景 -> 推荐动作 -> 来源”的格式。
-- 如果它本质上是操作手册，应迁到 `runbooks/`。
-- 如果它本质上是稳定规则，应迁到 `design-docs/`、`AGENTS.md` 或 `skills/`。
+- 如果它本质上是稳定规则，应迁到 `AGENTS.md`、`ARCHITECTURE.md`、`.ch/docs/SECURITY.md`、`.ch/docs/TESTING.md` 或必要 `skills/`。
+- 如果它只是当前阶段风险，先迁到 `ACTIVE_RISKS.md`。
 
 ## 当前经验
 

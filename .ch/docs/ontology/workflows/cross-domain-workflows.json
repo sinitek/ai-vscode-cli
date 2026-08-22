@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-13",
+  "as_of": "2026-08-22",
   "collection": "cross-domain-workflows",
   "workflows": [
     {
@@ -51,20 +51,21 @@
     {
       "id": "scenario.workspace_scaffold_update_with_ontology",
       "name": "Workspace scaffold 更新与 ontology 同步",
-      "description": "更新内置 workspace scaffold 时，应同步 AGENTS、skills、`.ch/docs` 和 ontology 骨架，避免新工作区缺少 harness 能力。",
+      "description": "更新内置 workspace scaffold 时，应同步 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架，避免新工作区缺少 harness 能力。",
       "status": "active",
       "domains": ["cli-plugin-runtime", "harness-governance"],
       "trigger": "harness 骨架、skills 或 ontology 能力升级，需要同步到插件内置工作区模板。",
       "outcome": "根仓库和 `media/workspace-scaffold` 均具备一致的通用 harness 能力。",
       "source_refs": [
         {"path": "media/workspace-scaffold/AGENTS.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md"}
       ],
       "steps": [
         {
           "order": 1,
           "actor": "harness.workspace_scaffold",
-          "action": "吸收通用 AGENTS、profiles、skills 和文档入口",
+          "action": "吸收通用 AGENTS、必要 skills 和轻量文档入口",
           "object": "harness.agent_rules",
           "result": "harness.skill"
         },

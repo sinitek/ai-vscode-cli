@@ -2,7 +2,7 @@
 
 这个目录承载所有非平凡任务的仓库内计划与收尾记录。
 
-本页是执行计划规则的单一事实源；顶层 `PLANS.md` 只保留导航。
+本页是执行计划规则的单一事实源。
 
 ## 结构
 
@@ -27,7 +27,7 @@ starter 默认不保留历史计划文件；复制模板后再从真实任务开
 - 计划必须可延续：下一位代理或下一次会话看到它就能继续推进。
 - 计划头部状态明确标记为 `completed` 后，要归档到对应的 `completed/YYYY-MM/`，不要长期堆在 `active/`。
 - 移动计划后必须同步更新仓库内引用该计划的具体路径，并验证引用目标存在。
-- 计划内容不要停留在本目录：稳定设计进入 `design-docs/`，复发问题进入 `runbooks/`，用户可见能力进入 `product-specs/FEATURE_INVENTORY.md`，跨会话优先上下文进入 `handoffs/` 或 `memory/`。
+- 计划内容不要停留在本目录：稳定架构进入 `ARCHITECTURE.md`，规则进入 `AGENTS.md` 或 `.ch/docs/*.md`，用户可见能力进入 `product-specs/FEATURE_INVENTORY.md`，跨会话优先上下文进入 `memory/`。
 
 ## 什么时候建计划
 

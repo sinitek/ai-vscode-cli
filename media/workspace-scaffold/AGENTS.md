@@ -12,12 +12,10 @@
 - `.ch/docs/README.md`
 - `.ch/docs/MEMORY.md`
 - `.ch/docs/ontology/README.md`
-- 如果存在，优先看 `.ch/docs/handoffs/` 中最新 handoff
 - `.ch/docs/memory/README.md`
-- 如果存在，优先看 `.ch/docs/generated/task-board/task-board.md`
-- 如果任务范围大、上下文分散，先运行受支持的 memory recall 流程，并阅读工具返回的运行态 recall-pack 路径；不要默认把 generated recall 写入仓库。
+- 如果任务范围大、上下文分散，先读 `.ch/docs/memory/` 热区和 `.ch/docs/exec-plans/active/` 中相关计划。
 - 如果仓库启用了 CodeGraph（MCP 可用或存在 `.codegraph/codegraph.db`），代码探索、调用链和影响面分析优先使用 `codegraph` skill
-- 与当前任务最相关的主题文档，例如 `.ch/docs/SECURITY.md`、`.ch/docs/RELIABILITY.md`、`.ch/docs/PRODUCT_SENSE.md`、`.ch/docs/TESTING.md`
+- 与当前任务最相关的主题文档，例如 `.ch/docs/SECURITY.md`、`.ch/docs/TOOL_POLICY.md`、`.ch/docs/TESTING.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 ## AI 开发业务本体（Ontology）
 
@@ -41,7 +39,7 @@
 - 功能、行为、权限、流程发生变化时，要同步更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录为何无需更新。
 - 严禁基于猜测的数据结构继续开发；输入边界、外部接口、配置、事件都要先校验再使用。
 - 行为、接口、架构、运维方式发生变化时，同步更新对应文档。
-- 一旦发现真实踩坑、隐式前置条件或高复发问题，必须记录到 `.ch/docs/runbooks/PITFALLS.md` 或对应事实来源文档，沉淀为未来的避坑指南。
+- 一旦发现真实踩坑、隐式前置条件或高复发问题，必须记录到 `.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/ACTIVE_RISKS.md` 或对应规则/规格事实来源。
 - 验证先从最小相关范围开始，再扩到更大范围。
 
 ## 核心约束
@@ -56,23 +54,21 @@
 - `AGENTS.md`：仓库级总入口。
 - `.codex/config.toml`：项目级 Codex 配置与 MCP（如果仓库启用）。
 - `.agents/skills/`：仓库级技能。
-- `.agents/profiles/`：Planner / Implementer / Reviewer 等角色契约。
 - `.agents/skills/codegraph/`：可选 CodeGraph 语义代码图使用约定。
 - `ARCHITECTURE.md`：目标结构、分层边界、扩展规则。
 - `.ch/docs/README.md`：文档系统总目录。
+- `.ch/docs/SECURITY.md`：安全与可靠性基线。
+- `.ch/docs/TOOL_POLICY.md`：工具风险分级与使用边界。
+- `.ch/docs/TESTING.md`：测试与单元自测规则。
 - `.ch/docs/MEMORY.md`：记忆分层、上提与清理规则。
 - `.ch/docs/ontology/`：AI 开发业务本体、任务前查询和任务后维护入口。
-- `.ch/docs/handoffs/`：跨会话交接文档与模板。
 - `.ch/docs/memory/`：默认优先召回的热区记忆面。
-- `.ch/docs/design-docs/`：设计文档与核心信念。
 - `.ch/docs/exec-plans/`：执行计划、完成归档、技术债跟踪。
-- `.ch/docs/generated/`：生成类清单与索引。
-- `.ch/docs/generated/task-board/`：任务工作台的 Markdown / JSON 生成物。
 - `.ch/docs/product-specs/`：业务需求与产品规格。
-- `.ch/docs/references/`：官方对齐和外部参考。
 
 ## 仓库扩张后的做法
 
 - 优先在业务目录附近新增局部 `AGENTS.md`，不要让这个文件无限膨胀。
 - 前端、后端、数据、平台、运维、测试目录都应该有各自贴身的局部规则。
 - 文档要跟着代码边界走，说明“哪里是事实来源”，而不是写成长篇宣言。
+- starter 默认不预置额外专题目录；真实项目确有长期事实需要时，再在 `.ch/docs/README.md` 登记新增入口和事实来源边界。

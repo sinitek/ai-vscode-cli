@@ -51,7 +51,7 @@ description: Use before implementing or reviewing tasks that involve repository 
 
 当 `--status-report` 显示需要初始化时：
 
-1. 先阅读项目已有事实源，优先顺序为 `README.md`、`ARCHITECTURE.md`、`.ch/docs/product-specs/`、`.ch/docs/design-docs/`、`docs/`、核心源码目录和数据库/接口契约。
+1. 先阅读项目已有事实源，优先顺序为 `README.md`、`ARCHITECTURE.md`、`.ch/docs/product-specs/`、`.ch/docs/TESTING.md`、`docs/`、核心源码目录和数据库/接口契约。
 2. 提取 5-12 个稳定业务概念、3-10 条关键关系、2-6 条规则和 1-3 个跨域流程；只写已有事实能支撑的内容。
 3. 替换 scaffold `project.*` 占位或新增最贴近业务边界的 `domains/<domain-id>.json`，并更新 `manifest.json` 的 `domain_files` / `workflow_files`。
 4. 每条记录必须带可核对的 `source_refs`，避免复制长篇规格或写入密钥、客户数据、生产地址。

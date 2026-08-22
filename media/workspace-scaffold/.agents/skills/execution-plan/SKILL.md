@@ -23,9 +23,8 @@ description: Use for non-trivial, multi-step, risky, or cross-cutting changes th
 5. 收尾前，检查相关文档是否需要同步更新，包括：
    - `ARCHITECTURE.md`
    - `.ch/docs/*.md`
-   - `.ch/docs/design-docs/*`
    - `.ch/docs/product-specs/*`
-   - `.ch/docs/references/*`
+   - `.ch/docs/memory/*`
 6. 对有一定复杂度的功能，按项目现有测试体系执行单元自测；若失败，先按实现缺陷、断言过期、夹具问题、环境问题、历史失败或范围外失败分类，再修复、隔离或记录。
 7. 工作真正完成且计划头部状态标记为 `completed` 后，把计划移入 `.ch/docs/exec-plans/completed/<YYYY-MM>/`，月份取计划日期，并留下验证结论；不要把完成计划平铺在 `completed/` 根目录。
 8. 归档后更新仓库内引用该计划的具体路径，验证目标文件存在，并在结果中返回完整归档路径。

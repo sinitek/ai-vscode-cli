@@ -23,7 +23,7 @@ related_paths: []
 
 ## 不该写什么
 
-- 已经沉淀到 `PROJECT_CONTEXT.md`、`USER_PREFERENCES.md`、`EVENT_MEMORY.md`、`runbooks/` 或 `design-docs/` 的重复内容
+- 已经沉淀到 `PROJECT_CONTEXT.md`、`USER_PREFERENCES.md`、`EVENT_MEMORY.md`、`LESSONS_LEARNED.md`、`ARCHITECTURE.md` 或规格文档的重复内容
 - 单次任务内的完整过程流水账
 - 没有来源、无法追溯的推断
 

@@ -55,7 +55,7 @@
       "kind": "ledger",
       "description": "把 working、episodic、semantic 和 procedural 信息按 L1-L4 上提、压缩和清理，避免知识长期留在聊天记录。",
       "status": "active",
-      "aliases": ["memory", "记忆", "memory-index", "recall"],
+      "aliases": ["memory", "记忆", "热区记忆"],
       "implementation_paths": [".ch/docs/MEMORY.md", ".ch/docs/memory"],
       "source_refs": [
         {"path": ".ch/docs/MEMORY.md"},

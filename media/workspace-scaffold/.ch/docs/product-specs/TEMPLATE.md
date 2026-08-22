@@ -45,6 +45,9 @@
 - 是否需要更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md`：
 - 对应功能项：
 - 目标状态：
+- 角色：
+- 实现入口：
+- 最近验证链接：
 
 ## 影响面
 
