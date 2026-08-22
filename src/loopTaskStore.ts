@@ -911,13 +911,16 @@ function normalizeLoopTaskStatus(value: unknown): LoopTaskStatus {
   if (value === "sleeping") {
     return "needs-review";
   }
-  return value === "running"
+  if (
+    value === "running"
     || value === "completed"
     || value === "needs-review"
     || value === "error"
     || value === "stopped"
-    ? value
-    : "running";
+  ) {
+    return value;
+  }
+  return "stopped";
 }
 
 function isLoopTaskRole(value: unknown): value is LoopTaskRole {

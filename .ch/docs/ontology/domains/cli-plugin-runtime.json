@@ -82,7 +82,7 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。子任务局部中断或失败不会终止仍为 running 的父任务；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务。",
+      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。子任务局部中断或失败不会终止仍为 running 的父任务；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
       "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],

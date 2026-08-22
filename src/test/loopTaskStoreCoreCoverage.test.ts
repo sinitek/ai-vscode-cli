@@ -195,7 +195,7 @@ test("normalizes persisted task, subtask, round, and acceptance records at the s
   const store = loopTaskStore.readLoopTaskStore(storeFile);
   assert.equal(store.tasks.length, 1);
   const task = store.tasks[0];
-  assert.equal(task.status, "running");
+  assert.equal(task.status, "stopped");
   assert.equal(task.workspaceKey, "no-workspace");
   assert.equal(task.taskStoreFile, storeFile);
   assert.equal(task.sessionId, null);
@@ -234,6 +234,23 @@ test("normalizes persisted task, subtask, round, and acceptance records at the s
     { name: "Check", passed: true, detail: "kept exactly" },
     { name: "acceptance", passed: false, detail: undefined },
   ]);
+});
+
+test("does not resurrect persisted Loop tasks with missing status as running", () => {
+  resetLoopStorage();
+  const task = createTask({
+    id: "missing-status-task",
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+  });
+  const rawTask = { ...task } as Record<string, unknown>;
+  delete rawTask.status;
+  fs.mkdirSync(path.dirname(task.taskStoreFile), { recursive: true });
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify({ tasks: [rawTask] }), "utf8");
+
+  const persisted = readPersistedTask(task.taskStoreFile, task.id);
+
+  assert.equal(persisted.status, "stopped");
 });
 
 test("raises existing Loop task maxRounds to the current global setting without lowering it", () => {
