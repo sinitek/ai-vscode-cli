@@ -180,7 +180,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 普通“打开 Graph 运行图” action 只由主 Graph tab / 图级系统消息按同一 run 输出一次并打开 GraphRunPanel，Graph 节点/子任务会话不重复展示；active Graph tab 底部仍固定提供“打开 Graph 图”按钮。面板从 Graph run store 和 events 构建状态，界面改为 full-canvas 可视 DAG：画布占满主体可用空间，使用对齐目标工作流画布的 `@dagrejs/dagre` 自动布局，支持按当前节点尺寸调优的层间距/节点间距/边距、布局后碰撞消解、长标题/多下游节点动态高度、dagre 失败时拓扑层级兜底、12-port 自动连线、仅渲染 `depends_on` / `if_pass` / `if_fail` / `review_feedback` / `human_approved` 等流程边、隐藏 `evidence_for` / `conflicts_with` 等追踪/关系边、依赖边不显示可见文字、非依赖流程边保持正向单行短标签（完整说明保留在 title / aria / list）、已经过边按类型高亮：`depends_on` 保持 VS Code 主题蓝色，`if_pass` 绿色、`if_fail` 红色、`review_feedback` 黄色、`human_approved` 橙色，未经过边保持原样、Start/Decision/End/Step 语义 chip、按 `node.kind` 使用 VS Code 主题变量着色的矩形类型卡片、拖拽节点微调并同步重算边 path/端口属性/标签坐标、背景左键按住拖拽平移、拖拽移动不误触发详情、按 `graphRunId` 本地持久化节点位置和 zoom；右上角缩放下拉固定 25%、50%、75%、100%、125%，默认 75%，Reset 只作为紧凑控件清除手动节点位置，不再是占空间长文案按钮；面板保留当前真实可用的 Continue、“我要说话”和 Stop run 控制；单击节点打开详情弹窗，弹窗展示节点详情、证据区、补充消息和当前真实可用的 Retry、Feedback rollback 节点控制。Stop 控制和结果消息明确区分 Graph 状态已落盘与真实 CLI 停止仅尝试/未确认。读取失败或 run 缺失时使用 i18n 错误/空态；Phase 2 起支持指定/最近 run 恢复打开。
 - GraphRunPanel 自动布局默认展示仍为 LR，但内部已支持 `LR` / `RL` / `TB` / `BT` 方向；fallback 会从所有零入度 roots 入队，`review_feedback` 和指向上游/更早节点的 `if_fail` 回边不参与主 ranking，collision、端口评分与 selected/running/sleeping/blocked/failed 初始居中均按目标系统 workflow 画布经验调优。
 - tool-use 气泡保留原始工具详情，但标题会按界面语言本地化常见稳定工具名；中文界面下 `read`、`glob`、`grep`、`bash`、`apply_patch`、`todowrite`、`webfetch` 等分别显示为中文语义标题，未知工具名原样回退
-- 原始流消息导出；历史会话消息可按 TXT 日志导出
+- 原始流消息导出；运行中的普通任务和 Loop 子任务可根据原始流空闲时间显示“慢”/“极慢”提示，Loop 主任务不显示这两类提示；历史会话消息可按 TXT 日志导出
 - 错误详情查看 / 复制
 
 ### 3.7 模型、思考模式与规则

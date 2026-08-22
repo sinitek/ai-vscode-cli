@@ -524,6 +524,7 @@ function createRuntimeHarness(markedOverride?: unknown) {
         renderMessages,
         requestRunStreamExport,
         resetConversationRuntimeState,
+        updateRunStreamButton,
         sendPrompt,
         setMessagesForTab,
         shouldHideParsedTaskListMessage,
@@ -1051,6 +1052,45 @@ test("truncates oversized run stream records within the per-record byte budget",
   assert.match(runtimeState.runStreamRecords[0].content, /earlier bytes/);
   assert.ok(new TextEncoder().encode(runtimeState.runStreamRecords[0].content).length <= 256 * 1024);
   assert.equal(JSON.parse(api.buildRunStreamExportPayload(runtimeState)[0].content).truncatedRecordCount, 1);
+});
+
+test("hides stale run stream labels for Loop main tabs but keeps them for other runs", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.isRunning = true;
+
+  api.appendRunRawStream("Loop main output", "stdout", "tab-1");
+  const loopMainRuntime = api.getConversationRuntimeState("tab-1");
+  loopMainRuntime.runStreamRecords[0].createdAt = Date.now() - 4 * 60 * 1000;
+  api.updateRunStreamButton();
+
+  const staleBadge = document.getElementById("runStreamStaleBadge");
+  assert.equal(staleBadge.style.display, "none");
+  Array.from(window.timers.values()).forEach((listener) => (listener as Listener)());
+  assert.equal(staleBadge.style.display, "none");
+
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.appendRunRawStream("regular output", "stdout", "tab-2");
+  const regularRuntime = api.getConversationRuntimeState("tab-2");
+  regularRuntime.runStreamRecords[0].createdAt = Date.now() - 60 * 1000;
+  api.updateRunStreamButton();
+  assert.equal(staleBadge.style.display, "inline-flex");
+  assert.equal(staleBadge.textContent, "Slow");
+
+  api.state.conversationTabs.tabs.push({
+    id: "tab-3",
+    cli: "codex",
+    loopTaskRole: "subtask",
+    loopTaskId: "task-1",
+    loopTaskStatus: "running",
+  });
+  api.state.conversationTabs.activeTabId = "tab-3";
+  api.appendRunRawStream("Loop subtask output", "stdout", "tab-3");
+  const loopSubtaskRuntime = api.getConversationRuntimeState("tab-3");
+  loopSubtaskRuntime.runStreamRecords[0].createdAt = Date.now() - 4 * 60 * 1000;
+  api.updateRunStreamButton();
+  assert.equal(staleBadge.style.display, "inline-flex");
+  assert.equal(staleBadge.textContent, "Very Slow");
 });
 
 test("batches assistant delta markdown rendering while streaming", () => {

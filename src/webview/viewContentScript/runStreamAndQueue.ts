@@ -422,7 +422,8 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const hasRecords = recordCount > 0;
         const canShowForActiveTab = isRunArtifactsVisibleForActiveTab();
         const isButtonVisible = canShowForActiveTab && (state.isRunning || hasRecords);
-        const shouldHighlightStale = state.isRunning && hasRecords;
+        const activeTab = getConversationTabSummary(getActiveConversationTabId());
+        const shouldHighlightStale = state.isRunning && hasRecords && !isLoopMainTab(activeTab);
         elements.runStreamButton.textContent = getRunStreamButtonLabel(recordCount);
         elements.runStreamButton.style.display = isButtonVisible ? "inline-flex" : "none";
         applyRunStreamButtonStaleLevel(shouldHighlightStale ? runtimeState : null);
