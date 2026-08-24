@@ -60,7 +60,7 @@ related_paths:
 4. `USER_PREFERENCES.md`
 5. `ACTIVE_RISKS.md`
 6. `PENDING_ITEMS.md`
-7. 相关 `exec-plans/`、`product-specs/`、`ARCHITECTURE.md` 或规则文档
+7. 相关 `exec-plans/`、`runbooks/`、`product-specs/`、`ARCHITECTURE.md` 或规则文档
 
 ## 隐私边界
 
@@ -75,5 +75,6 @@ related_paths:
 - `ARCHITECTURE.md`：稳定架构、分层边界和扩展规则。
 - `.ch/docs/TESTING.md`：测试规则和失败分流。
 - `.ch/docs/SECURITY.md`：安全与可靠性规则。
+- `.ch/docs/runbooks/`：可执行运行手册、排障记录和长期避坑动作。
 
 热区记忆不是新的事实来源层级，而是这些事实来源的受控入口面。

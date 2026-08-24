@@ -5,10 +5,10 @@
   "domain": {
     "id": "harness-governance",
     "name": "Harness 治理",
-    "description": "描述仓库级 AGENTS 规则、skills、执行计划、记忆、ontology 与 workspace scaffold 如何协同约束 AI 开发任务。",
+    "description": "描述仓库级 AGENTS 规则、skills、执行计划、runbooks、记忆、ontology 与 workspace scaffold 如何协同约束 AI 开发任务。",
     "bounded_context": "从任务规则读取、计划记录、技能执行到 ontology 维护的 AI 协作治理层",
     "status": "active",
-    "aliases": ["harness", "AGENTS.md", "skills", "Tasklist", "ontology"],
+    "aliases": ["harness", "AGENTS.md", "skills", "runbooks", "Tasklist", "ontology"],
     "source_refs": [
       {"path": "AGENTS.md"},
       {"path": ".ch/docs/README.md"},
@@ -63,6 +63,19 @@
       ]
     },
     {
+      "id": "harness.runbook",
+      "name": "运行手册与避坑记录",
+      "kind": "resource",
+      "description": "面向接手者和代理的可执行运行、发布、排障、环境操作与长期避坑文档；真实踩坑先进入 PITFALLS.md，形成稳定规避法后再扩展专题 runbook。",
+      "status": "active",
+      "aliases": ["runbook", "runbooks", "PITFALLS.md", "避坑指南"],
+      "implementation_paths": [".ch/docs/runbooks"],
+      "source_refs": [
+        {"path": ".ch/docs/runbooks/README.md"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md"}
+      ]
+    },
+    {
       "id": "harness.ontology",
       "name": "AI 开发业务本体",
       "kind": "resource",
@@ -109,6 +122,20 @@
       "to": "harness.agent_rules",
       "cardinality": "N:N",
       "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "边界"}]
+    },
+    {
+      "id": "harness.relation.memory_promotes_runbook",
+      "name": "记忆沉淀为运行手册",
+      "description": "尚未形成稳定规避法的风险停留在 memory；确认会复发并形成长期规避动作后，上提到 runbooks。",
+      "status": "active",
+      "from": "harness.memory",
+      "type": "references",
+      "to": "harness.runbook",
+      "cardinality": "N:N",
+      "source_refs": [
+        {"path": ".ch/docs/MEMORY.md", "anchor": "复发问题和长期规避动作"},
+        {"path": ".ch/docs/runbooks/README.md", "anchor": "维护规则"}
+      ]
     }
   ],
   "rules": [
@@ -132,8 +159,8 @@
     {
       "id": "harness.rule.exec_plan_monthly_archive",
       "name": "执行计划按月归档",
-      "description": "完成计划归档到 `.ch/docs/exec-plans/completed/YYYY-MM/`，不得平铺在 `completed/` 根目录；枚举历史计划时递归扫描 `completed/**/*.md` 并保留完整相对路径。",
-      "aliases": ["completed/YYYY-MM", "月份归档", "completed/**/*.md"],
+      "description": "完成计划归档到 `.ch/docs/exec-plans/completed/YYYY-MM/`，月份目录严格使用四位年份和两位月份（例如 `2025-06/`），不得平铺在 `completed/` 根目录；枚举历史计划时递归扫描 `completed/**/*.md` 并保留完整相对路径。",
+      "aliases": ["completed/YYYY-MM", "2025-06", "月份归档", "completed/**/*.md"],
       "status": "active",
       "applies_to": ["harness.execution_plan", "harness.skill"],
       "source_refs": [{"path": ".ch/docs/exec-plans/README.md", "anchor": "命名建议"}]
@@ -149,6 +176,19 @@
         {"path": "AGENTS.md", "anchor": "AI 开发业务本体（Ontology）"},
         {"path": ".agents/skills/ontology/SKILL.md", "anchor": "空本体初始化流程"},
         {"path": ".ch/docs/ontology/README.md", "anchor": "任务中的使用顺序"}
+      ]
+    },
+    {
+      "id": "harness.rule.pitfall_recording",
+      "name": "复发踩坑进入 runbook",
+      "description": "真实踩坑、隐式前置条件或高复发问题优先记录到 .ch/docs/runbooks/PITFALLS.md；尚未形成稳定规避法的风险可暂留 memory。",
+      "aliases": ["踩坑记录", "PITFALLS.md", "长期规避"],
+      "status": "active",
+      "applies_to": ["harness.runbook", "harness.memory", "harness.agent_rules"],
+      "source_refs": [
+        {"path": "AGENTS.md", "anchor": "工作方式"},
+        {"path": ".ch/docs/runbooks/README.md", "anchor": "维护规则"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "记录原则"}
       ]
     }
   ]

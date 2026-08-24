@@ -39,7 +39,7 @@
 - 功能、行为、权限、流程发生变化时，要同步更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录为何无需更新。
 - 严禁基于猜测的数据结构继续开发；输入边界、外部接口、配置、事件都要先校验再使用。
 - 行为、接口、架构、运维方式发生变化时，同步更新对应文档。
-- 一旦发现真实踩坑、隐式前置条件或高复发问题，必须记录到 `.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/ACTIVE_RISKS.md` 或对应规则/规格事实来源。
+- 一旦发现真实踩坑、隐式前置条件或高复发问题，必须优先记录到 `.ch/docs/runbooks/PITFALLS.md`；尚未形成稳定规避法的风险可暂留 `.ch/docs/memory/ACTIVE_RISKS.md`，稳定经验可同步到 `LESSONS_LEARNED.md` 或对应规则/规格事实来源。
 - 验证先从最小相关范围开始，再扩到更大范围。
 
 ## 核心约束
@@ -64,6 +64,7 @@
 - `.ch/docs/ontology/`：AI 开发业务本体、任务前查询和任务后维护入口。
 - `.ch/docs/memory/`：默认优先召回的热区记忆面。
 - `.ch/docs/exec-plans/`：执行计划、完成归档、技术债跟踪。
+- `.ch/docs/runbooks/`：运行、发布、排障、环境操作和踩坑归档。
 - `.ch/docs/product-specs/`：业务需求与产品规格。
 
 ## 仓库扩张后的做法

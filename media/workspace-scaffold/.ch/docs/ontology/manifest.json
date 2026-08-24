@@ -19,7 +19,7 @@
     "当前生效的产品规格与明确架构文档",
     "ARCHITECTURE.md 中的稳定架构与数据边界",
     "当前代码、测试和运行时验证",
-    "README.md、completed plans 与 memory 中的补充事实",
+    "README.md、completed plans、runbooks 与 memory 中的补充事实",
     "本 ontology 的压缩描述"
   ],
   "concept_kinds": [
