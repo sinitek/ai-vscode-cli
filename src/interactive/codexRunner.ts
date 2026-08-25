@@ -24,6 +24,7 @@ import {
   buildCodexChildEnv,
   buildCodexWorkspaceTrustConfigOverride,
   ensureCodexProjectTrusted,
+  resolveCodexModelProvider,
   resolveCodexProjectPath,
 } from "./codexRuntimeConfig";
 import {
@@ -192,6 +193,7 @@ export class CodexInteractiveRunner {
     let resolvedWorkspaceDir = threadOptions.workingDirectory;
     const configOverrides: string[] = [];
     const childEnvResult = buildCodexChildEnv(process.env);
+    threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
 
     if (resolvedWorkspaceDir) {
       resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
@@ -565,6 +567,7 @@ export class CodexInteractiveRunner {
     let resolvedWorkspaceDir = threadOptions.workingDirectory;
     const configOverrides: string[] = [];
     const childEnvResult = buildCodexChildEnv(process.env);
+    threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
 
     if (resolvedWorkspaceDir) {
       resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);

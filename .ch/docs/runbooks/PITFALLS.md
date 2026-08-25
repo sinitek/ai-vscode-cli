@@ -338,38 +338,40 @@
 - `src/test/openCodeTaskListOverlay.test.ts`
 - `src/test/clipagescriptruntimecoverage.test.ts`
 
-## Codex 同一 UI 分组切换模型/配置时不能复用旧 thread
+## Codex 同一 UI 分组切换模型/配置时必须 resume 已映射 thread
 
-- 状态：已规避，需随 Codex app-server thread 元数据行为复核
-- 首次发现：2026-07-16
+- 状态：已规避，需随 Codex app-server provider 恢复语义复核
+- 首次发现：2026-07-16；规则修正：2026-08-25
 - 适用范围：Codex app-server interactive runner、模型配置切换、conversation tab / group 到 Codex thread 的映射、自动上下文压缩
 
 ### 现象
-- 同一个 AI 对话分组中，先用配置 A / 模型 A 完成任务，再不切换分组只切换到配置 B 或模型 B 后继续执行，用户会观察到像是仍在使用旧模型。
-- 插件日志已经显示新回合启动参数含新模型，但 Codex 本地 thread 元数据和某些 resume/compact 路径仍可沿用旧 thread 的原始模型。
+- 同一个 AI 对话分组中，先用配置 A / 模型 A 完成任务，再不切换分组只切换到配置 B 或模型 B 后继续执行，插件若主动新建 thread，模型将看不到已有会话上下文。
+- 跨 provider/account 的历史若含目标端不能解密的 reasoning/compaction 内容，app-server 可能返回 `invalid_encrypted_content`；这不是通过重放旧工具调用能够修复的客户端问题。
 
 ### 触发条件与根因
-- 插件的 UI 会话 ID 和 Codex thread ID 是映射关系；同一分组继续运行时会通过 mapping resume 旧 thread。
-- `InteractiveRunnerManager` 因模型变化重建本地 runner 仍不够，因为新 runner 如果拿到旧 mapped thread ID，底层仍会执行 `thread/resume`。
-- 本机 Codex 日志确认：同一 thread 后续回合可收到新的 `thread_settings_applied.model`，但 SQLite `threads.model` 仍保留初始模型，自动 compact 等路径仍可能参考旧 thread 元数据。
+- 旧实现把模型或配置变化直接解释为“必须新建 thread”，并冻结旧 mapping；这会绕过 app-server 的服务端会话恢复。
+- 旧 runner 只向 thread 请求传 `model`，没有从当前 `~/.codex/config.toml` 读取根级 `model_provider` 并传入 `modelProvider`，使跨 provider resume 不能按 app-server 官方路径选择目标 provider。
+- app-server 只在 `thread/start` / `thread/resume` 接收 `modelProvider`；把它错误传给 `turn/start` 或使用已废弃 `persistExtendedHistory` 都不能恢复上下文。
 
 ### 长期规避
-- Codex runner 缓存身份必须同时包含 active config ID 和 selected model；配置或模型变化时必须启动新 Codex thread，而不是 resume 旧 mapped thread。
-- 切换后新 thread 成功返回时，更新 UI session 到新 thread 的 mapping，并把旧 mapped thread 放入 frozen 历史，保留会话分组和消息连续性。
-- 自动上下文压缩路径也必须带同一 active config identity 更新 runner，否则压缩完成后会把 runner 身份写回不完整状态。
+- Codex runner 缓存身份仍须包含 active config ID 和 selected model，以便重建本地 process 配置；但模型或配置变化后必须继续将已映射 `threadId` 传给 `thread/resume`，不得主动冻结并创建新 thread。
+- 从当前生效 `~/.codex/config.toml` 读取根级 `model_provider`，仅在 `thread/start` / `thread/resume` 传入 `modelProvider`；没有该设置时省略字段，让 app-server 自动恢复。
+- app-server 恢复服务端 thread，不重新执行旧工具调用或重发完整历史事件。若返回不兼容的加密历史错误，保留原始错误并要求用户按服务端限制新建会话；不得伪造完整历史重放。
 - 自动上下文压缩还必须有有界超时；Codex app-server `thread/compact/start` 可能长时间没有完成事件，自动路径最多等待 3 分钟，超时直接停止并按未压缩处理。
 
 ### 验证方式
-- 断言相同 config/model 会继续复用 mapped thread；模型或 config 任一变化时传入 `threadId:null` 并记录旧 thread 用于 freeze。
-- 断言 `InteractiveRunnerManager` 在相同模型但不同 config ID 时会重建 Codex runner，并返回新的 selection identity。
-- 运行 Codex thread selection、context compaction、session lifecycle 和 Codex runtime 相关测试。
+- 断言相同 config/model 及模型或 config 任一变化时均继续复用 mapped thread。
+- 用临时 `config.toml` 断言 runner 发出的 `thread/resume` 同时包含原 `threadId`、当前模型和 `modelProvider`，且 `turn/start` 不含 provider。
+- 运行 `npm run build` 和 `node --test dist/test/codexThreadSelection.test.js dist/test/codexRunnerRuntime.test.js dist/test/codexRuntimeConfig.test.js dist/test/codexRunnerLifecycle.test.js`。
 
 ### 关联资料
 - `src/interactive/codexThreadSelection.ts`
 - `src/interactive/manager.ts`
-- `src/extension.ts`
+- `src/interactive/codexRuntimeConfig.ts`
+- `src/interactive/codexRunner.ts`
 - `src/contextCompactionRunner.ts`
 - `src/test/codexThreadSelection.test.ts`
+- `.ch/docs/exec-plans/completed/2026-08/2026-08-25-codex-app-server-provider-resume.md`
 
 ## Codex Graph 子任务报 `spawn <codex> ENOENT` 不一定是命令丢失
 

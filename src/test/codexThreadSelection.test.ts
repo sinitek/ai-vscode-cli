@@ -31,7 +31,7 @@ test("Codex thread selection reuses a mapped thread when config and model are un
   );
 });
 
-test("Codex thread selection starts fresh when model or config changes", () => {
+test("Codex thread selection keeps the mapped thread when model or config changes", () => {
   const previous = normalizeCodexRunSelection({ configId: "config-a", model: "gpt-5.6-sol" });
 
   assert.deepEqual(
@@ -41,9 +41,9 @@ test("Codex thread selection starts fresh when model or config changes", () => {
       nextSelection: normalizeCodexRunSelection({ configId: "config-a", model: "gpt-5.5" }),
     }),
     {
-      threadId: null,
-      freezePrevious: "thread-old",
-      startedFreshForSelectionChange: true,
+      threadId: "thread-old",
+      freezePrevious: null,
+      startedFreshForSelectionChange: false,
     }
   );
   assert.deepEqual(
@@ -53,9 +53,9 @@ test("Codex thread selection starts fresh when model or config changes", () => {
       nextSelection: normalizeCodexRunSelection({ configId: "config-b", model: "gpt-5.6-sol" }),
     }),
     {
-      threadId: null,
-      freezePrevious: "thread-old",
-      startedFreshForSelectionChange: true,
+      threadId: "thread-old",
+      freezePrevious: null,
+      startedFreshForSelectionChange: false,
     }
   );
 });

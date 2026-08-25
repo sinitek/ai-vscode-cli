@@ -42,13 +42,8 @@ export function decideCodexThreadForSelection(options: {
   previousSelection: CodexRunSelection | null;
   nextSelection: CodexRunSelection;
 }): CodexThreadSelectionDecision {
-  if (!areCodexRunSelectionsEqual(options.previousSelection, options.nextSelection)) {
-    return {
-      threadId: null,
-      freezePrevious: options.mappedThreadId,
-      startedFreshForSelectionChange: true,
-    };
-  }
+  // Model/provider changes are applied by thread/resume. Keeping the threadId
+  // preserves Codex's server-side conversation history across selection changes.
   return {
     threadId: options.mappedThreadId,
     freezePrevious: null,

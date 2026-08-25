@@ -23,6 +23,7 @@ import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 export type CodexThreadOptions = {
   workingDirectory?: string;
   skipGitRepoCheck?: boolean;
+  modelProvider?: string;
   modelReasoningEffort?: string;
   model?: string;
   approvalPolicy?: string;
@@ -369,10 +370,12 @@ export function buildCodexThreadParams(options: CodexThreadOptions): Record<stri
     sandbox: buildCodexAppServerSandboxMode(options.sandboxMode),
     config: buildCodexAppServerConfig(options),
     experimentalRawEvents: false,
-    persistExtendedHistory: false,
   };
   if (options.model) {
     params.model = options.model;
+  }
+  if (options.modelProvider) {
+    params.modelProvider = options.modelProvider;
   }
   if (options.approvalPolicy) {
     params.approvalPolicy = options.approvalPolicy;

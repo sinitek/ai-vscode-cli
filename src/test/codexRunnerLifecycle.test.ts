@@ -1,6 +1,9 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "./vscodeMock";
 
@@ -9,6 +12,42 @@ installVscodeMock();
 const crossSpawn = require("cross-spawn") as {
   spawn: (...args: unknown[]) => unknown;
 };
+
+const PROVIDER_CAPTURE_APP_SERVER = `#!/usr/bin/env node
+const fs = require("fs");
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/resume") {
+    fs.writeFileSync(process.env.CODEX_THREAD_REQUEST_LOG, JSON.stringify(message.params));
+    send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: message.params.threadId } } });
+    return;
+  }
+  if (message.method !== "turn/start") {
+    return;
+  }
+  send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "turn-1", status: "inProgress", items: [] } } });
+  setImmediate(() => {
+    send({
+      jsonrpc: "2.0",
+      method: "item/agentMessage/delta",
+      params: { threadId: message.params.threadId, turnId: "turn-1", itemId: "message-1", delta: "done", phase: "final_answer" },
+    });
+    send({
+      jsonrpc: "2.0",
+      method: "turn/completed",
+      params: { threadId: message.params.threadId, turn: { id: "turn-1", status: "completed", items: [] } },
+    });
+  });
+});
+`;
 
 type FakeChild = EventEmitter & {
   stdout: PassThrough;
@@ -157,5 +196,60 @@ test("Codex runner stop requests shutdown for every active app-server child", as
   } finally {
     process.kill = originalKill;
     crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner resumes the mapped thread with the active TOML model provider", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-provider-runner-"));
+  const commandPath = path.join(tempDir, "mock-codex");
+  const codexHomeDir = path.join(tempDir, "codex-home");
+  const requestLogPath = path.join(tempDir, "thread-request.json");
+  const previousCodexHomeDir = process.env.CODEX_HOME_DIR;
+  const previousRequestLog = process.env.CODEX_THREAD_REQUEST_LOG;
+  fs.mkdirSync(codexHomeDir, { recursive: true });
+  fs.writeFileSync(commandPath, PROVIDER_CAPTURE_APP_SERVER, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  fs.writeFileSync(path.join(codexHomeDir, "config.toml"), [
+    'model_provider = "gateway-b"',
+    'model = "gpt-5.6"',
+  ].join("\n"));
+  process.env.CODEX_HOME_DIR = codexHomeDir;
+  process.env.CODEX_THREAD_REQUEST_LOG = requestLogPath;
+
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const runner = new CodexInteractiveRunner({
+    command: commandPath,
+    args: [],
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: "gpt-5.6",
+    threadId: "thread-before-provider-switch",
+    multiAgentEnabled: true,
+  });
+
+  try {
+    await runner.runStreamed("continue", createHandlers());
+
+    assert.deepEqual(JSON.parse(fs.readFileSync(requestLogPath, "utf8")), {
+      threadId: "thread-before-provider-switch",
+      sandbox: "workspace-write",
+      config: { agents: { job_max_runtime_seconds: 86400 } },
+      experimentalRawEvents: false,
+      model: "gpt-5.6",
+      modelProvider: "gateway-b",
+    });
+  } finally {
+    runner.dispose();
+    if (previousCodexHomeDir === undefined) {
+      delete process.env.CODEX_HOME_DIR;
+    } else {
+      process.env.CODEX_HOME_DIR = previousCodexHomeDir;
+    }
+    if (previousRequestLog === undefined) {
+      delete process.env.CODEX_THREAD_REQUEST_LOG;
+    } else {
+      process.env.CODEX_THREAD_REQUEST_LOG = previousRequestLog;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

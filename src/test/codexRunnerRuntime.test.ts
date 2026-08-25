@@ -169,6 +169,7 @@ test("request builders produce initialize, thread, and turn params", () => {
   const options = {
     workingDirectory: "/repo",
     model: "gpt-5",
+    modelProvider: "gateway",
     modelReasoningEffort: "high",
     approvalPolicy: "on-request",
     sandboxMode: "workspace-write",
@@ -197,8 +198,8 @@ test("request builders produce initialize, thread, and turn params", () => {
       web_search: "live",
     },
     experimentalRawEvents: false,
-    persistExtendedHistory: false,
     model: "gpt-5",
+    modelProvider: "gateway",
     approvalPolicy: "on-request",
   });
   assert.deepEqual(buildCodexTurnStartParams("thread-1", "prompt", [" /tmp/a.png "], options), {

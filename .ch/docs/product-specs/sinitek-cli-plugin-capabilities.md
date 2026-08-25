@@ -15,7 +15,7 @@
 
 - 内置聊天侧边栏与状态栏入口
 - Codex / Claude / OpenCode 三个平台统一接入
-- Codex / Claude 交互式续接会话
+- Codex / Claude 交互式续接会话；Codex 切换插件侧模型或配置档案时仍复用现有 `threadId`，并将当前 TOML 根级 `model_provider` 作为 app-server `thread/start` / `thread/resume` 的 `modelProvider`。该恢复不会重放旧工具调用或历史事件；若目标 provider/account 无法解密历史 reasoning/compaction 内容，则显示 app-server 原始错误。
 - 多标签会话并行管理
 - Prompt 上下文增强、附件上传、任务流观察
 - P0 性能与内存硬化：停止/停用可靠收口、OpenCode 输出有界、Run Stream/Assistant delta 低复杂度渲染、附件上传双端限制

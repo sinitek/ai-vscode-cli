@@ -43,7 +43,7 @@
 - 会为 Codex 子进程显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，并移除 `npm_config_prefix` / `NPM_CONFIG_PREFIX`
 - 启动前会确保当前工作区在 Codex 配置中被标记为 trusted，并通过 `-c projects.<workspace>.trust_level="trusted"` 追加运行时 override
 - 会做 `initialize` / `initialized` 握手
-- 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId
+- 使用 `thread/start`、`thread/resume`、`turn/start` 维护 threadId。Codex 交互会话在切换插件侧模型或配置档案后仍优先复用已映射的 `threadId`，并从当前 `~/.codex/config.toml` 读取根级 `model_provider` 作为 `thread/start` / `thread/resume` 的 `modelProvider`；`turn/start` 只传官方支持的模型覆盖，不传 provider。app-server 恢复的是服务端 thread，不会重新执行旧工具调用或重发全部历史事件，`persistExtendedHistory` 也不是可用的恢复开关。若跨 provider/account 的历史含目标侧不能解密的 reasoning/compaction 内容，app-server 仍可能返回 `invalid_encrypted_content` 等原始错误；插件不伪造历史重放。
 - Codex app-server 可见错误通过结构化 `error` trace 展示，不能被交互重试状态机当作正常回复或工具进度。共享 hidden retry 对 HTTP 402、`Payment Required`、明确 `insufficient credits/balance/points` 以及 `requires <n> points, remaining 0` 直接判为计费终态错误，保留原始 provider 消息并在首次失败后收口；429、网络中断和其他暂时性错误继续使用既有有界退避。
 - 面板“常用命令 -> 压缩上下文”在 Codex 下会直接复用当前 threadId，走 app-server `thread/compact/start` 原生压缩；不会再通过“生成摘要后切到新线程”模拟压缩
 - 面板“工具设置”支持全局“执行后自动压缩上下文”开关 `autoCompactContextAfterRun`，保存在 `~/.sinitek_cli/settings.json`，默认开启。旧工作区 `autoCompactContextAfterRun` 和 `autoCompactContextBeforeRun` 仅作为迁移输入，全局字段缺失时按 after-run 优先、before-run 回退迁移当前工作区有效值；全局字段已有值时始终优先。开启后，在已有会话任务成功结束且执行超过 5 分钟后会自动压缩上下文；任务中断、报错或执行不超过 5 分钟不触发。自动压缩单次最多等待 3 分钟，超时会停止当前压缩并按未压缩处理。该自动行为当前面向 Codex / Claude / OpenCode；OpenCode 的具体压缩实现以插件当前 runner 能力为准
