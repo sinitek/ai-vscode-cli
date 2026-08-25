@@ -188,6 +188,41 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         return normalized;
       }
 
+      function reconcilePendingOpenCodeRoleSelection(nextOpenCodeModels) {
+        const pendingSelection = state.pendingOpenCodeRoleSelection;
+        if (!pendingSelection || pendingSelection.configId !== state.selectedConfigId) {
+          return nextOpenCodeModels;
+        }
+        const role = pendingSelection.role === "subtask" ? "subtask" : "main";
+        const expectedRef = typeof pendingSelection.value === "string" && pendingSelection.value.trim()
+          ? pendingSelection.value.trim()
+          : null;
+        const incomingRef = role === "subtask"
+          ? nextOpenCodeModels.selectedSubtaskRef
+          : nextOpenCodeModels.selectedMainRef;
+        if (incomingRef === expectedRef) {
+          state.pendingOpenCodeRoleSelection = null;
+          return nextOpenCodeModels;
+        }
+
+        const previousModels = state.openCodeModels;
+        const previousRef = previousModels
+          ? (role === "subtask" ? previousModels.selectedSubtaskRef : previousModels.selectedMainRef)
+          : null;
+        if (previousRef !== expectedRef) {
+          return nextOpenCodeModels;
+        }
+
+        if (role === "subtask") {
+          nextOpenCodeModels.selectedSubtaskRef = previousRef;
+          nextOpenCodeModels.selectedSmallRef = previousRef;
+        } else {
+          nextOpenCodeModels.selectedMainRef = previousRef;
+          nextOpenCodeModels.selectedPrimaryRef = previousRef;
+        }
+        return nextOpenCodeModels;
+      }
+
       function shouldPreserveCurrentCliModelsOnEmptySnapshot(cli, nextModels, nextManagedModels, previousModels, previousManagedModels) {
         if (cli !== state.currentCli) {
           return false;
@@ -315,8 +350,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         let nextSelected = state.configState.activeConfigId || "";
         let shouldAutoApplyConfig = false;
 
-        // 如果后端返回的 activeConfigId 为 null，但前端已有有效选择，且该选择仍然在配置列表中，则保持前端选择
-        if (!nextSelected && state.selectedConfigId) {
+        // 配置应用是异步的；在 activeConfigId 追上前端选择前，保持用户刚选的配置。
+        if (state.selectedConfigId && state.selectedConfigId !== nextSelected) {
           const configExists = configs.some(c => c.id === state.selectedConfigId);
           if (configExists) {
             nextSelected = state.selectedConfigId;
@@ -348,7 +383,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.thinkingMode = panelState.thinkingMode || "medium";
         state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
         state.openCodeSmallThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeSmallThinking);
-        state.openCodeModels = normalizeOpenCodeModelsPayload(panelState.openCodeModels);
+        state.openCodeModels = reconcilePendingOpenCodeRoleSelection(
+          normalizeOpenCodeModelsPayload(panelState.openCodeModels)
+        );
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);

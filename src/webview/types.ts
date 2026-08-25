@@ -54,7 +54,7 @@ export type PanelMessage =
       values: Record<string, unknown>;
     }
   | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole }
-  | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null }
+  | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null; configId?: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | { type: "installCodeGraph" }
   | {

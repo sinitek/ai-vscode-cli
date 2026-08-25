@@ -455,6 +455,7 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
   const messages: unknown[] = [];
   let thinkingSyncCount = 0;
   const state: any = {
+    selectedConfigId: "config-a",
     openCodeModels: {
       selectedPrimaryRef: null,
       selectedSmallRef: null,
@@ -506,7 +507,7 @@ test("refreshes variants only when the OpenCode primary model changes", () => {
   });
   assert.equal(thinkingSyncCount, 2);
   assert.deepEqual(messages, [
-    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/small-task" },
-    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: "myAPI/main-chat" },
+    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/small-task", configId: "config-a" },
+    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: "myAPI/main-chat", configId: "config-a" },
   ]);
 });

@@ -14,6 +14,36 @@
 
 ## 当前有效条目
 
+## OpenCode 模型选择消息必须绑定配置 ID
+
+- 状态：已规避，需随 OpenCode 模型选择或配置心跳链路变化复核
+- 首次发现：2026-08-25
+- 适用范围：AI 对话面板 OpenCode 主/子模型选择、Webview 消息、配置心跳与 `src/sessionMessageHandlers.ts`
+
+### 现象
+- 用户在 AI 对话面板切换 OpenCode 模型后，选择偶发失败，面板刷新后又显示配置默认模型。
+
+### 触发条件与根因
+- Webview 原先只发送模型引用，不携带用户当前选择的配置 ID。
+- 扩展端异步处理消息时重新读取 active config；配置切换或心跳刷新竞争会让同一个模型选择被校验/写入另一个配置，随后状态回显为默认模型。
+
+### 长期规避
+- OpenCode 主/子模型选择消息必须携带 `state.selectedConfigId`，扩展端优先使用消息中的配置 ID；仅对旧消息回退到 active config。
+- Webview 必须按配置 ID、模型角色和有效模型引用暂存未确认选择；同一配置的旧状态快照在尚未回显该引用前不得覆盖本地选择。选择配置默认值时暂存其有效默认引用，而不是已清除的 `null` 覆盖值。
+- 仍须使用当前配置的 `validateOpenCodeModelOverride` 校验 exact provider/model 引用，不把模型名写入全局或通用 Codex 选择存储。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/opencoderolemodelruntime.test.js`。
+- 检查选择消息包含 `configId`，确认宿主显式配置 ID 优先于 active config fallback，并断言旧快照不会把刚选择的 `gpt-5.5` 覆盖为 `gpt-5.6-sol`。
+
+### 关联资料
+- `src/webview/viewContentScript/eventBindings.ts`
+- `src/sessionMessageHandlers.ts`
+- `src/extensionHost/modelSettings.ts`
+- `src/test/sessionMessageActions.test.ts`
+- `src/test/opencodedualmodelwebview.test.ts`
+
 ## Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN
 
 - 状态：已规避，需随 Codex app-server 启动/停止策略变化复核

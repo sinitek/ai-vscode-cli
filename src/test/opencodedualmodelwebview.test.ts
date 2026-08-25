@@ -137,6 +137,8 @@ function buildRoleModelChangeHarness() {
     "handleOpenCodeRoleModelChange",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_EVENT_BINDINGS, name)).join("\n");
   const state = {
+    selectedConfigId: "config-a",
+    pendingOpenCodeRoleSelection: null as unknown,
     openCodeModels: {
       configMainRef: "myAPI/main-chat",
       configSubtaskRef: "myAPI/subtask-worker",
@@ -163,6 +165,35 @@ function buildRoleModelChangeHarness() {
     () => { thinkingSyncCount += 1; },
   ) as (role: "main" | "subtask", value: string) => void;
   return { state, postedMessages, handleChange, getThinkingSyncCount: () => thinkingSyncCount };
+}
+
+function buildPendingOpenCodeSelectionHarness() {
+  const functionSource = [
+    "normalizeOpenCodeModelsPayload",
+    "reconcilePendingOpenCodeRoleSelection",
+  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, name)).join("\n");
+  const state = {
+    selectedConfigId: "config-a",
+    pendingOpenCodeRoleSelection: {
+      configId: "config-a",
+      role: "main",
+      value: "myAPI/gpt-5.5",
+    } as unknown,
+    openCodeModels: {
+      selectedMainRef: "myAPI/gpt-5.5",
+      selectedSubtaskRef: "myAPI/subtask-worker",
+      selectedPrimaryRef: "myAPI/gpt-5.5",
+      selectedSmallRef: "myAPI/subtask-worker",
+    },
+  };
+  const runtime = new Function(
+    "state",
+    functionSource + "; return { normalizeOpenCodeModelsPayload, reconcilePendingOpenCodeRoleSelection };",
+  )(state) as {
+    normalizeOpenCodeModelsPayload(payload: unknown): any;
+    reconcilePendingOpenCodeRoleSelection(payload: any): any;
+  };
+  return { state, ...runtime };
 }
 
 function optionPairs(select: FakeSelect): Array<[string, string]> {
@@ -388,14 +419,45 @@ test("clears an override when selecting the configured default and sends exact r
   harness.handleChange("subtask", "myAPI/other-subtask");
 
   assert.deepEqual(harness.postedMessages, [
-    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: null },
-    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/other-subtask" },
+    { type: "updateOpenCodeRoleModel", role: "primary", modelRole: "main", value: null, configId: "config-a" },
+    { type: "updateOpenCodeRoleModel", role: "small", modelRole: "subtask", value: "myAPI/other-subtask", configId: "config-a" },
   ]);
   assert.equal(harness.state.openCodeModels.selectedMainRef, "myAPI/main-chat");
   assert.equal(harness.state.openCodeModels.selectedSubtaskRef, "myAPI/other-subtask");
   assert.equal(harness.state.openCodeModels.selectedPrimaryRef, "myAPI/main-chat");
   assert.equal(harness.state.openCodeModels.selectedSmallRef, "myAPI/other-subtask");
+  assert.deepEqual(harness.state.pendingOpenCodeRoleSelection, {
+    configId: "config-a",
+    role: "subtask",
+    value: "myAPI/other-subtask",
+  });
   assert.equal(harness.getThinkingSyncCount(), 2);
+});
+
+test("keeps a pending OpenCode main-model selection across an outdated snapshot", () => {
+  const harness = buildPendingOpenCodeSelectionHarness();
+  const outdatedSnapshot = harness.normalizeOpenCodeModelsPayload({
+    selectedMainRef: "myAPI/gpt-5.6-sol",
+    selectedSubtaskRef: "myAPI/subtask-worker",
+  });
+  const protectedSnapshot = harness.reconcilePendingOpenCodeRoleSelection(outdatedSnapshot);
+
+  assert.equal(protectedSnapshot.selectedMainRef, "myAPI/gpt-5.5");
+  assert.equal(protectedSnapshot.selectedPrimaryRef, "myAPI/gpt-5.5");
+  assert.deepEqual(harness.state.pendingOpenCodeRoleSelection, {
+    configId: "config-a",
+    role: "main",
+    value: "myAPI/gpt-5.5",
+  });
+
+  const confirmedSnapshot = harness.normalizeOpenCodeModelsPayload({
+    selectedMainRef: "myAPI/gpt-5.5",
+    selectedSubtaskRef: "myAPI/subtask-worker",
+  });
+  const confirmedSelection = harness.reconcilePendingOpenCodeRoleSelection(confirmedSnapshot);
+
+  assert.equal(confirmedSelection.selectedMainRef, "myAPI/gpt-5.5");
+  assert.equal(harness.state.pendingOpenCodeRoleSelection, null);
 });
 
 test("shows a localized disabled placeholder when no models are configured", () => {

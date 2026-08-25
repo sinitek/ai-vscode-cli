@@ -781,6 +781,13 @@ textarea::placeholder {
   color: var(--clay-text-muted) !important;
 }
 
+.config-editor-opencode .opencode-effort-multiselect,
+.config-editor-opencode .opencode-effort-multiselect .ant-select-selector,
+.config-editor-opencode .opencode-effort-multiselect .ant-select-selection-search,
+.config-editor-opencode .opencode-effort-multiselect .ant-select-selection-search-input {
+  width: 100% !important;
+}
+
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--clay-text);

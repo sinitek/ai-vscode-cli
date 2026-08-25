@@ -5703,13 +5703,21 @@ const ConfigEditorPanel = () => {
           Z = new Set(L.map((Q) => Q.value)),
           ee = [...L, ...T.filter((Q) => !Z.has(Q)).map((Q) => ({ value: Q, label: Q }))];
         return be.jsxs("div", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            minWidth: 0,
+            width: "100%",
+            gridColumn: "1 / -1",
+          },
           children: [
             renderConfigFieldLabel(
               W,
               formatConfigEnumHelp(getConfigFieldHelp(W, U.help), ee.map((Q) => Q.value)),
             ),
             be.jsx($l, {
+              className: "opencode-effort-multiselect",
               mode: "tags",
               value: T,
               onChange: (Q) => k(openCodeVisualNormalizeEfforts(Q).join(", ")),
@@ -5769,8 +5777,8 @@ const ConfigEditorPanel = () => {
                     marginBottom: "6px",
                   },
                   children: claudeText(
-                    "模型候选仅来自当前配置；OpenCode 官方字段 model/small_model 作为底层兼容字段保存，编排使用主模型/子模型。",
-                    "Model suggestions come only from this config. OpenCode fields model/small_model are saved as lower-level compatibility fields; orchestration uses main/subtask models.",
+                    "主模型候选仅来自当前配置；OpenCode 的 small_model 仅作为运行时兼容字段保留。",
+                    "Main model suggestions come only from this config. OpenCode small_model is retained only for runtime compatibility.",
                   ),
                 }),
                 be.jsxs("div", {
@@ -5780,25 +5788,12 @@ const ConfigEditorPanel = () => {
                     gap: "5px",
                   },
                   children: [
-                    renderOpenCodeCombobox(
+                    renderOpenCodeSelect(
                       claudeText("主模型 model", "Main model"),
                       openCodeVisualState.primaryModel,
                       (L) => setOpenCodeVisualState((U) => (U ? { ...U, primaryModel: L } : U)),
-                      k,
-                      {
-                        listId: "opencode-primary-model-options",
-                        placeholder: "provider/model",
-                      },
-                    ),
-                    renderOpenCodeCombobox(
-                      claudeText("子模型 small_model", "Subtask model"),
-                      openCodeVisualState.smallModel,
-                      (L) => setOpenCodeVisualState((U) => (U ? { ...U, smallModel: L } : U)),
-                      k,
-                      {
-                        listId: "opencode-small-model-options",
-                        placeholder: "provider/model",
-                      },
+                      k.map((L) => ({ value: L, label: L })),
+                      { placeholder: "provider/model" },
                     ),
                     renderOpenCodeSelect(
                       claudeText("共享设置 share", "Sharing mode"),

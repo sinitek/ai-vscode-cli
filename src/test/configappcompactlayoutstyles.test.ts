@@ -130,3 +130,11 @@ test("configuration action buttons use compact square shared styling", () => {
     /\bborder-radius:\s*0 !important;/,
   );
 });
+
+test("OpenCode effort multiselect fills the visual editor field width", () => {
+  const effortMultiselect = rule(
+    css,
+    ".config-editor-opencode .opencode-effort-multiselect,\n.config-editor-opencode .opencode-effort-multiselect .ant-select-selector,\n.config-editor-opencode .opencode-effort-multiselect .ant-select-selection-search,\n.config-editor-opencode .opencode-effort-multiselect .ant-select-selection-search-input",
+  );
+  assert.match(effortMultiselect, /\bwidth:\s*100% !important;/);
+});

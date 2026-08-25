@@ -962,15 +962,17 @@ test("saves and clears OpenCode role models through the active config", async ()
     type: "updateOpenCodeRoleModel",
     role: "primary",
     value: "provider/main",
+    configId: "explicit-opencode",
   }, deps);
   await handlePanelMessageWithDeps({
     type: "updateOpenCodeRoleModel",
     role: "small",
     value: null,
+    configId: "explicit-opencode",
   }, deps);
   assert.deepEqual(updates, [
-    { role: "primary", value: "provider/main", configId: "config-opencode" },
-    { role: "small", value: null, configId: "config-opencode" },
+    { role: "primary", value: "provider/main", configId: "explicit-opencode" },
+    { role: "small", value: null, configId: "explicit-opencode" },
   ]);
   assert.equal(calls.postPanelState, 2);
 });

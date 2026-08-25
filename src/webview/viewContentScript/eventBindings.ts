@@ -24,6 +24,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
 
       elements.currentCli.addEventListener("change", (event) => {
         armPromptContextForConversationStart();
+        state.pendingOpenCodeRoleSelection = null;
         const nextCli = event.target.value;
         clearOpenCodeModelOptions();
         syncModelSelectorByInteractiveMode(nextCli);
@@ -32,6 +33,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
 
       elements.configSelect.addEventListener("change", (event) => {
         state.selectedConfigId = event.target.value || "";
+        state.pendingOpenCodeRoleSelection = null;
         state.selectedModel = "";
         if (state.selectedModelsByCli) {
           state.selectedModelsByCli[state.currentCli] = "";
@@ -187,10 +189,18 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
           ? (role === "subtask" ? state.openCodeModels.configSubtaskRef : state.openCodeModels.configMainRef)
           : null;
         const value = selectedRef && selectedRef === configRef ? null : selectedRef;
+        const effectiveRef = value || configRef || null;
+        state.pendingOpenCodeRoleSelection = {
+          configId: typeof state.selectedConfigId === "string" && state.selectedConfigId.trim()
+            ? state.selectedConfigId.trim()
+            : null,
+          role: role === "subtask" ? "subtask" : "main",
+          value: effectiveRef,
+        };
         if (state.openCodeModels) {
           if (role === "subtask") {
-            state.openCodeModels.selectedSubtaskRef = selectedRef;
-            state.openCodeModels.selectedSmallRef = selectedRef;
+            state.openCodeModels.selectedSubtaskRef = effectiveRef;
+            state.openCodeModels.selectedSmallRef = effectiveRef;
             state.openCodeSmallThinking = {
               selectedVariant: null,
               configuredDefaultVariant: null,
@@ -199,8 +209,8 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               messageKey: "loading",
             };
           } else {
-            state.openCodeModels.selectedMainRef = selectedRef;
-            state.openCodeModels.selectedPrimaryRef = selectedRef;
+            state.openCodeModels.selectedMainRef = effectiveRef;
+            state.openCodeModels.selectedPrimaryRef = effectiveRef;
             state.openCodeThinking = {
               selectedVariant: null,
               configuredDefaultVariant: null,
@@ -216,6 +226,9 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
           role: getOpenCodeCompatModelRole(role),
           modelRole: role,
           value,
+          configId: typeof state.selectedConfigId === "string" && state.selectedConfigId.trim()
+            ? state.selectedConfigId.trim()
+            : null,
         });
       }
 

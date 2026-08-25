@@ -75,6 +75,8 @@ test("visual editor keeps provider npm suggestions while effort candidates stay 
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "tags"/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?tokenSeparators: \[","\]/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?return be\.jsxs\("div"/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?width: "100%",[\s\S]*?gridColumn: "1 \/ -1"/);
+  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?className: "opencode-effort-multiselect"/);
   assert.match(
     source,
     /renderOpenCodeMultiSelect = \([\s\S]*?getPopupContainer: \(Q\) => Q\.parentElement \|\| document\.body/,
@@ -426,8 +428,11 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
   assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
-  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"opencode-primary-model-options"/);
-  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"opencode-small-model-options"/);
+  assert.match(openCodeVisualSource, /renderOpenCodeSelect\([\s\S]*?openCodeVisualState\.primaryModel[\s\S]*?k\.map\(\(L\) => \(\{ value: L, label: L \}\)\)/);
+  assert.doesNotMatch(openCodeVisualSource, /renderOpenCodeCombobox\([\s\S]*?openCodeVisualState\.primaryModel/);
+  assert.doesNotMatch(openCodeVisualSource, /openCodeVisualState\.smallModel/);
+  assert.match(source, /smallModel:/);
+  assert.match(source, /small_model/);
   assert.match(source, /openCodeVisualModelSuggestions\(openCodeVisualState\)/);
   assert.doesNotMatch(openCodeVisualSource, /role: "primary"/);
   assert.doesNotMatch(openCodeVisualSource, /role: "small"/);

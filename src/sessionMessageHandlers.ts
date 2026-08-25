@@ -351,7 +351,9 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
   }
 
   if (message.type === "updateOpenCodeRoleModel") {
-    const configId = getActiveConfigIdForCli("opencode");
+    const configId = typeof message.configId === "string" && message.configId.trim()
+      ? message.configId.trim()
+      : getActiveConfigIdForCli("opencode");
     const error = updateOpenCodeRoleModel
       ? await updateOpenCodeRoleModel(message.role, message.value ?? null, configId)
       : "OpenCode role model updates are unavailable.";
