@@ -219,6 +219,19 @@
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/references/cli-runtime-reference.md"}
       ]
+    },
+    {
+      "id": "plugin.rule.opencode_model_selection_scoped_to_config",
+      "name": "OpenCode 模型选择必须绑定配置档案",
+      "description": "AI 对话面板更新 OpenCode 主/子角色模型时必须携带当前 configId；扩展宿主优先按该配置 ID 校验和写入。Webview 在同一配置尚未回显有效模型引用前保留待确认选择，异步旧快照不得覆盖用户刚完成的选择。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/eventBindings.ts", "anchor": "handleOpenCodeRoleModelChange"},
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts", "anchor": "reconcilePendingOpenCodeRoleSelection"},
+        {"path": "src/sessionMessageHandlers.ts", "anchor": "handlePanelMessageWithDeps"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "OpenCode 模型选择消息必须绑定配置 ID"}
+      ]
     }
   ]
 }

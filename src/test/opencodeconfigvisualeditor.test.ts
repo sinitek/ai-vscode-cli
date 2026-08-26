@@ -405,6 +405,9 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.notEqual(openCodeStart, -1, "OpenCode visual editor should exist");
   assert.notEqual(openCodeEnd, -1, "OpenCode visual editor should terminate before Codex state");
   const openCodeVisualSource = source.slice(openCodeStart, openCodeEnd);
+  const claudeSelectStart = source.indexOf("renderClaudeSelect =");
+  const openCodeFieldStart = source.indexOf("renderOpenCodeField =", claudeSelectStart);
+  const claudeSelectSource = source.slice(claudeSelectStart, openCodeFieldStart);
   const openCodeBranchStart = source.indexOf('className: "config-editor-shell config-editor-opencode"');
   const codexBranchStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
   assert.notEqual(openCodeBranchStart, -1, "OpenCode editor branch should exist");
@@ -428,7 +431,13 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
   assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
+  assert.match(
+    source,
+    /renderOpenCodeSelect = \([\s\S]*?U\.fullWidth \? \{ width: "100%", gridColumn: "1 \/ -1" \} : \{\}/,
+  );
   assert.match(openCodeVisualSource, /renderOpenCodeSelect\([\s\S]*?openCodeVisualState\.primaryModel[\s\S]*?k\.map\(\(L\) => \(\{ value: L, label: L \}\)\)/);
+  assert.match(openCodeVisualSource, /openCodeVisualState\.primaryModel[\s\S]*?fullWidth: !0/);
+  assert.doesNotMatch(claudeSelectSource, /U\.fullWidth/);
   assert.doesNotMatch(openCodeVisualSource, /renderOpenCodeCombobox\([\s\S]*?openCodeVisualState\.primaryModel/);
   assert.doesNotMatch(openCodeVisualSource, /openCodeVisualState\.smallModel/);
   assert.match(source, /smallModel:/);

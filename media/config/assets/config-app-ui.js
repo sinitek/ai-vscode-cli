@@ -5658,7 +5658,13 @@ const ConfigEditorPanel = () => {
               ]
             : L;
         return be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            minWidth: 0,
+            ...(U.fullWidth ? { width: "100%", gridColumn: "1 / -1" } : {}),
+          },
           children: [
             renderConfigFieldLabel(
               W,
@@ -5793,7 +5799,7 @@ const ConfigEditorPanel = () => {
                       openCodeVisualState.primaryModel,
                       (L) => setOpenCodeVisualState((U) => (U ? { ...U, primaryModel: L } : U)),
                       k.map((L) => ({ value: L, label: L })),
-                      { placeholder: "provider/model" },
+                      { placeholder: "provider/model", fullWidth: !0 },
                     ),
                     renderOpenCodeSelect(
                       claudeText("共享设置 share", "Sharing mode"),
