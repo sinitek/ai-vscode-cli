@@ -350,6 +350,8 @@ export const WEBVIEW_I18N = {
     toastQueueEmptyPrompt: "Prompt cannot be empty",
     toastQueueSendFailed:
       "Failed to send queued prompt. Activate a config first.",
+    toastConfigApplyPending:
+      "Config switch in progress, please wait.",
     toastQueuePaused:
       "Queue paused because the previous task did not finish successfully. {count} prompt(s) remain queued.",
     toastNoActiveConfig:
@@ -743,6 +745,7 @@ export const WEBVIEW_I18N = {
     toastQueueUpdated: "队列提示词已更新",
     toastQueueEmptyPrompt: "提示词不能为空",
     toastQueueSendFailed: "队列发送失败，请先激活配置",
+    toastConfigApplyPending: "配置切换中，请稍后再发送。",
     toastQueuePaused:
       "由于上一个任务未成功结束，队列已暂停。还有 {count} 条提示词留在队列中。",
     toastNoActiveConfig: "当前 CLI 未激活配置，请先在配置页激活后再发送。",

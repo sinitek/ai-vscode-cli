@@ -33,6 +33,9 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
 
       elements.configSelect.addEventListener("change", (event) => {
         state.selectedConfigId = event.target.value || "";
+        state.pendingConfigApply = state.selectedConfigId
+          ? { cli: state.currentCli, configId: state.selectedConfigId }
+          : null;
         state.pendingOpenCodeRoleSelection = null;
         state.selectedModel = "";
         if (state.selectedModelsByCli) {

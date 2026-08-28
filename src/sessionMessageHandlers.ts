@@ -15,6 +15,7 @@ import { type LoopTaskRecord } from "./loopTaskStore";
 import { type ConfigManagerPanel } from "./webview/configPanel";
 import { handleSendPromptMessage, handleUpdateSettingMessage } from "./sessionMessageActions";
 import { isPanelMessageType } from "./sessionMessageRouter";
+import { type ConfigApplyResult } from "./config/configApplyQueue";
 
 export type PromptRunInputForPanel = {
   displayPrompt: string;
@@ -109,7 +110,8 @@ export type PanelMessageHandlerDeps = {
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => void;
   resetConversationTabSession: () => Promise<void>;
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;
-  applyConfigById: (cli: CliName, configId: string) => Promise<void>;
+  applyConfigById: (cli: CliName, configId: string) => Promise<ConfigApplyResult>;
+  waitForConfigApply?: (cli: CliName) => Promise<boolean>;
   readCliRules: (cli: CliName, scope: "global" | "project") => Promise<string>;
   writeCliRules: (cli: CliName, scope: "global" | "project", content: string) => Promise<void>;
   normalizeRuleTargets: (targets: CliName[] | undefined) => CliName[];
@@ -226,6 +228,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     resetConversationTabSession,
     getConfigManagerPanel,
     applyConfigById,
+    waitForConfigApply,
     readCliRules,
     writeCliRules,
     normalizeRuleTargets,
@@ -631,7 +634,18 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
 
   if (message.type === "applyConfig") {
     try {
-      await applyConfigById(message.cli, message.configId);
+      const applyResult = await applyConfigById(message.cli, message.configId);
+      if (applyResult === "superseded") {
+        return;
+      }
+      if (waitForConfigApply) {
+        await waitForConfigApply(message.cli);
+      }
+      viewProviderRef.postMessage({
+        type: "configApplyApplied",
+        cli: message.cli,
+        configId: message.configId,
+      });
       await postPanelState();
       configManagerPanelRef.value?.syncActiveConfig();
     } catch (error) {
@@ -647,6 +661,11 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
         error,
         { detailTitle: t("config.applyFailedTitle") }
       );
+      if (waitForConfigApply) {
+        await waitForConfigApply(message.cli);
+      }
+      await postPanelState();
+      configManagerPanelRef.value?.syncActiveConfig();
     }
     return;
   }

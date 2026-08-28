@@ -938,6 +938,15 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState || !runtimeState.pendingPromptQueue.length) {
           return false;
         }
+        const targetTab = getConversationTabSummary(targetTabId);
+        const targetCli = targetTab && targetTab.cli ? targetTab.cli : state.currentCli;
+        if (
+          state.pendingConfigApply
+          && state.pendingConfigApply.cli === targetCli
+          && state.pendingConfigApply.configId
+        ) {
+          return false;
+        }
         const nextPromptPayload = runtimeState.pendingPromptQueue.shift();
         if (runtimeState.queueEditingIndex === 0) {
           runtimeState.queueEditingIndex = -1;
@@ -985,9 +994,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           openRunConflictOverlay(promptPayload);
           return;
         }
-        elements.promptInput.value = "";
         const sent = dispatchPrompt(promptPayload);
         if (sent) {
+          elements.promptInput.value = "";
           resetPromptContextForNextPrompt();
         }
       }

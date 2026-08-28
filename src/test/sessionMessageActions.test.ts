@@ -50,6 +50,20 @@ type WakeLoopMainCall = {
   options: Parameters<PanelMessageHandlerDeps["maybeWakeLoopMainAfterSubtaskContinuation"]>[1];
 };
 
+function createDeferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (error: Error) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 type SendPromptHarness = {
   deps: PanelMessageHandlerDeps;
   calls: {
@@ -69,10 +83,12 @@ type SendPromptHarness = {
     wakeMain: WakeLoopMainCall[];
     stoppedTabs: Array<string | null>;
     toolSettingsPatches: Array<Partial<ToolSettingsState>>;
+    configApplyWaits: CliName[];
   };
   state: {
     currentCli: CliName;
     workspaceSettings: WorkspaceSettings;
+    waitForConfigApply: ((cli: CliName) => Promise<boolean>) | null;
   };
 };
 
@@ -133,10 +149,12 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     wakeMain: [],
     stoppedTabs: [],
     toolSettingsPatches: [],
+    configApplyWaits: [],
   };
   const state: SendPromptHarness["state"] = {
     currentCli: "codex",
     workspaceSettings: {},
+    waitForConfigApply: null,
   };
   const persistWorkspaceSettings = (settings: WorkspaceSettings): void => {
     const snapshot: WorkspaceSettings = { ...settings };
@@ -215,7 +233,11 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     },
     resetConversationTabSession: async () => undefined,
     getConfigManagerPanel: () => undefined,
-    applyConfigById: async () => undefined,
+    applyConfigById: async () => "applied",
+    waitForConfigApply: (cli) => {
+      calls.configApplyWaits.push(cli);
+      return state.waitForConfigApply ? state.waitForConfigApply(cli) : Promise.resolve(true);
+    },
     readCliRules: async () => "",
     writeCliRules: async () => undefined,
     normalizeRuleTargets: (targets) => targets ?? [],
@@ -342,6 +364,35 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   });
   assert.equal(calls.preloaded.length, 1);
   assert.equal(calls.preloaded[0].target.cli, "opencode");
+});
+
+test("waits for pending config apply before sending a prompt", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  const configApplyReady = createDeferred<boolean>();
+  state.waitForConfigApply = async () => configApplyReady.promise;
+
+  const sendPromptPromise = handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "wait for config",
+    interactiveMode: "coding",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  await Promise.resolve();
+  assert.equal(calls.configApplyWaits.length, 1);
+  assert.equal(calls.runPrompt.length, 0);
+
+  configApplyReady.resolve(true);
+  await sendPromptPromise;
+
+  assert.deepEqual(calls.configApplyWaits, ["opencode"]);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
 });
 
 test("skips prompt history when a queued prompt was already recorded", async () => {

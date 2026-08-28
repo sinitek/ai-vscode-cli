@@ -97,6 +97,7 @@ type Calls = {
   savedSettings: WorkspaceSettings[];
   statusUpdates: number;
   ruleWrites: Array<{ cli: CliName; scope: "global" | "project"; content: string }>;
+  configApplies: Array<{ cli: CliName; configId: string }>;
   interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
   promptedInstalls: CliName[];
   codeGraphInstalls: number;
@@ -162,6 +163,7 @@ function createHarness(): HandlerHarness {
     savedSettings: [],
     statusUpdates: 0,
     ruleWrites: [],
+    configApplies: [],
     interactiveModes: [],
     promptedInstalls: [],
     codeGraphInstalls: 0,
@@ -287,10 +289,12 @@ function createHarness(): HandlerHarness {
     setWorkspaceInteractiveModeForCli: (cli, mode) => { calls.interactiveModes.push({ cli, mode }); },
     resetConversationTabSession: async () => undefined,
     getConfigManagerPanel: () => undefined,
-    applyConfigById: async () => {
+    applyConfigById: async (cli, configId) => {
+      calls.configApplies.push({ cli, configId });
       if (state.applyConfigFailure) {
         throw state.applyConfigFailure;
       }
+      return "applied";
     },
     readCliRules: async () => {
       if (state.readRulesFailure) {
@@ -529,6 +533,19 @@ test("reports config and rules failures while preserving successful rule contrac
   assert.equal(harness.calls.webviewMessages[5].configId, "bad-config");
   assert.match(String(harness.calls.webviewMessages[5].error), /invalid config/);
   assert.equal(harness.calls.errors.at(-1)?.detail, harness.state.applyConfigFailure);
+});
+
+test("applies config successfully and notifies the webview", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+
+  await handlePanelMessageWithDeps({ type: "applyConfig", cli: "opencode", configId: "config-1" }, harness.deps);
+
+  assert.equal(harness.calls.webviewMessages[0].type, "configApplyApplied");
+  assert.equal(harness.calls.webviewMessages[0].cli, "opencode");
+  assert.equal(harness.calls.webviewMessages[0].configId, "config-1");
+  assert.equal(harness.calls.panelStates, 1);
+  assert.equal(harness.calls.errors.length, 0);
 });
 
 test("returns path and upload results through isolated file-action adapters", async (t) => {

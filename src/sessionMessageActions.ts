@@ -334,6 +334,12 @@ export async function handleSendPromptMessage(
   const imagePaths = targetCli === "codex"
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
+  const configReady = deps.waitForConfigApply
+    ? await deps.waitForConfigApply(targetCli)
+    : true;
+  if (!configReady) {
+    return;
+  }
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
   const shouldRunLoop = effectiveInteractiveMode === "loop";
   const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;

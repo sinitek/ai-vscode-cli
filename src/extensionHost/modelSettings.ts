@@ -849,11 +849,15 @@ function loadModelStore(): CliModelStore {
 }
 
 function getActiveConfigIdForCli(cli: CliName): string | null {
+  const workspacePreferredConfigId = deps.getWorkspacePreferredConfigIdForCli(cli);
+  if (workspacePreferredConfigId) {
+    return workspacePreferredConfigId;
+  }
   const snapshot = deps.getConfigHeartbeatSnapshot();
   if (snapshot && snapshot.cli === cli && snapshot.activeConfigId) {
     return snapshot.activeConfigId;
   }
-  return deps.getWorkspacePreferredConfigIdForCli(cli);
+  return null;
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {

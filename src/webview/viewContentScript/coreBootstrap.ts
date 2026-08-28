@@ -109,6 +109,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           activeConfigId: null,
         },
         selectedConfigId: "",
+        pendingConfigApply: null,
         pendingOpenCodeRoleSelection: null,
         selectedModel: "",
         selectedModelsByCli: {

@@ -210,6 +210,23 @@
       "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "基础本地资源层"}]
     },
     {
+      "id": "plugin.rule.config_selection_commits_before_dispatch",
+      "name": "配置切换需先提交再发送",
+      "description": "AI 对话面板切换配置档案时，Webview 中的待选配置只在宿主完成 applyConfig 并回写 activeConfigIdByCli 后才算生效；提示词发送和队列出队必须等待这次提交完成。最新选择可以覆盖更早的待提交请求，失败时要回滚到当前 active config 并阻止误发旧配置。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/config/configApplyQueue.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/sessionMessageHandlers.ts"},
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
+        {"path": "src/webview/viewContentScript/runStreamAndQueue.ts"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
       "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。",

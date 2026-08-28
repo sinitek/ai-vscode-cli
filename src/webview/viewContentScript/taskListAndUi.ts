@@ -826,6 +826,14 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         );
       }
 
+      function isConfigApplyPendingForCli(cli) {
+        return Boolean(
+          state.pendingConfigApply
+          && state.pendingConfigApply.cli === cli
+          && state.pendingConfigApply.configId
+        );
+      }
+
       function dispatchPrompt(payload, options = {}) {
         const basePayload = normalizePromptPayloadWithModelFields(payload);
         if (!basePayload) {
@@ -852,6 +860,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         );
         const targetRuntimeState = getConversationRuntimeState(targetTabId, { create: false });
         const shouldSuppressFlush = isTabRunning(targetTabId);
+        if (isConfigApplyPendingForCli(targetCli)) {
+          showToast(t("toastConfigApplyPending"));
+          return false;
+        }
         const hasConfig = isBackgroundDispatch ? true : state.selectedConfigId || state.configState.activeConfigId;
         if (!hasConfig) {
           appendMessage({

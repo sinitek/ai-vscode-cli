@@ -14,6 +14,45 @@
 
 ## 当前有效条目
 
+## 配置切换下拉显示不能先于宿主提交完成
+
+- 状态：已规避，需随配置提交 / 发送链路变化复核
+- 首次发现：2026-08-28
+- 适用范围：AI 对话面板配置档案下拉、`src/extension.ts`、`src/sessionMessageHandlers.ts`、`src/sessionMessageActions.ts`、`src/webview/viewContentScript/*`
+
+### 现象
+- 用户在 AI 对话里切换配置后，下拉选项已经显示为新配置，但紧接着发送 prompt 时，实际运行偶发仍使用旧配置。
+- 如果切换失败，界面还可能短暂保持新选择，直到后续状态刷新才回到真实 active config。
+
+### 触发条件与根因
+- Webview 先乐观更新 `selectedConfigId`，而宿主侧 `applyConfig` 是异步提交，`activeConfigIdByCli` 只有在提交成功后才会写回。
+- 早期发送路径或队列出队会直接读取 active config / heartbeat 快照，导致“下拉已切过去、实际还没切”的窗口被命中。
+- 快速连续切换时，晚到的旧请求如果没有被显式标记为 superseded，可能把新选择覆盖回旧提交结果。
+
+### 长期规避
+- 配置切换必须先进入待生效态，只有宿主完成提交并回写 active config 后，才允许新的 prompt 发送或队列出队。
+- 同一 CLI 的配置应用采用 latest-selection-wins；被新选择覆盖的旧请求必须返回 `superseded`，不得提交过期 active config。
+- 配置应用失败后要把 Webview 回滚到当前真实 active config，并保留用户输入，不要伪装成已切换成功。
+- 成功或失败回包都要按 `cli + configId` 清理对应 pending 状态；不能只在当前 CLI 匹配时清理，否则用户切到其他 CLI 后再回来会被旧 pending 卡住。
+- 任何读取 `activeConfigIdByCli` 的发送、队列和模型解析逻辑，都应优先判断是否仍存在 pending 配置应用。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/configApplyQueue.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/clipagescriptruntimecoverage.test.js`。
+- 手动复现：快速切到新配置后立刻发送 prompt，确认下拉先显示待生效项、发送被暂缓，提交完成后才真正运行；失败时回滚到旧 active config。
+
+### 关联资料
+- `src/config/configApplyQueue.ts`
+- `src/extension.ts`
+- `src/extensionHost/modelSettings.ts`
+- `src/sessionMessageActions.ts`
+- `src/sessionMessageHandlers.ts`
+- `src/webview/viewContentScript/modelAndPanelState.ts`
+- `src/webview/viewContentScript/runStreamAndQueue.ts`
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/webview/viewContentScript/windowMessageDispatch.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
 ## OpenCode 模型选择消息必须绑定配置 ID
 
 - 状态：已规避，需随 OpenCode 模型选择或配置心跳链路变化复核

@@ -349,9 +349,29 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           : [];
         let nextSelected = state.configState.activeConfigId || "";
         let shouldAutoApplyConfig = false;
+        const pendingConfigApply = state.pendingConfigApply
+          && state.pendingConfigApply.cli === state.currentCli
+          && configs.some(c => c.id === state.pendingConfigApply.configId)
+            ? state.pendingConfigApply
+            : null;
+        if (
+          state.pendingConfigApply
+          && state.pendingConfigApply.cli === state.currentCli
+          && !pendingConfigApply
+        ) {
+          state.pendingConfigApply = null;
+        }
+        if (
+          pendingConfigApply
+          && state.configState.activeConfigId === pendingConfigApply.configId
+        ) {
+          state.pendingConfigApply = null;
+        } else if (pendingConfigApply) {
+          nextSelected = pendingConfigApply.configId;
+        }
 
         // 配置应用是异步的；在 activeConfigId 追上前端选择前，保持用户刚选的配置。
-        if (state.selectedConfigId && state.selectedConfigId !== nextSelected) {
+        if (!pendingConfigApply && state.selectedConfigId && state.selectedConfigId !== nextSelected) {
           const configExists = configs.some(c => c.id === state.selectedConfigId);
           if (configExists) {
             nextSelected = state.selectedConfigId;
@@ -370,6 +390,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           || Date.now() - lastAutoApplyConfigAt > autoApplyConfigRetryMs
         );
         if (canAutoApplyConfig) {
+          state.pendingConfigApply = { cli: state.currentCli, configId: nextSelected };
           state.autoAppliedConfig = true;
           lastAutoApplyConfigKey = autoApplyConfigKey;
           lastAutoApplyConfigAt = Date.now();

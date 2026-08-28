@@ -152,6 +152,7 @@ import {
   type LoopDebateChatPanelRound,
 } from "./webview/loopDebatePanel";
 import * as configService from "./config/configService";
+import { createConfigApplyQueue, type ConfigApplyResult } from "./config/configApplyQueue";
 import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
@@ -619,6 +620,7 @@ let updateCheckOverride: { autoCheckUpdates?: boolean; autoUpdate?: boolean } | 
 let configHeartbeatTimer: NodeJS.Timeout | null = null;
 let configHeartbeatRunning = false;
 let configHeartbeatSnapshot: ConfigHeartbeatSnapshot | null = null;
+const configApplyQueue = createConfigApplyQueue<CliName>();
 const modelSelectionStoreState = createEmptyModelSelectionStoreState();
 const lastConfigStateLoadErrorByCli: Partial<Record<CliName, string>> = {};
 const conversationTabStore: ConversationTabsState = {
@@ -1186,6 +1188,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     resetConversationTabSession,
     getConfigManagerPanel: () => configManagerPanel,
     applyConfigById,
+    waitForConfigApply: (cli) => configApplyQueue.waitForIdle(cli),
     readCliRules,
     writeCliRules,
     normalizeRuleTargets,
@@ -2217,31 +2220,36 @@ function resolveModelConfigIdForCli(
   );
 }
 
-async function applyConfigById(cli: CliName, configId: string): Promise<void> {
+async function applyConfigById(cli: CliName, configId: string): Promise<ConfigApplyResult> {
   if (!configId) {
-    return;
+    return "applied";
   }
-  const config = await configService.getConfigById(cli, configId);
-  if (!config) {
-    void vscode.window.showWarningMessage(t("config.notFound"));
-    return;
-  }
-  void logEssential("apply-config", {
-    workspaceKey: activeWorkspaceKey,
-    cli,
-    configId,
+  return configApplyQueue.request(cli, {
+    apply: async () => {
+      const config = await configService.getConfigById(cli, configId);
+      if (!config) {
+        throw new Error(t("config.notFound"));
+      }
+      void logEssential("apply-config", {
+        workspaceKey: activeWorkspaceKey,
+        cli,
+        configId,
+      });
+      await configService.applyConfig(cli, {
+        content: config.content,
+        mcpContent: config.mcpContent,
+        envContent: cli === "codex" ? undefined : config.envContent,
+        configContent: config.configContent,
+        authContent: config.authContent,
+        codexSkills: config.codexSkills,
+        claudeSkills: config.claudeSkills,
+        openCodeSkills: config.openCodeSkills,
+      });
+    },
+    commit: () => {
+      setWorkspaceActiveConfigId(cli, configId);
+    },
   });
-  await configService.applyConfig(cli, {
-    content: config.content,
-    mcpContent: config.mcpContent,
-    envContent: cli === "codex" ? undefined : config.envContent,
-    configContent: config.configContent,
-    authContent: config.authContent,
-    codexSkills: config.codexSkills,
-    claudeSkills: config.claudeSkills,
-    openCodeSkills: config.openCodeSkills,
-  });
-  setWorkspaceActiveConfigId(cli, configId);
 }
 
 async function loadConfigState(cli: CliName): Promise<PanelState["configState"]> {

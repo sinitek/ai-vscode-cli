@@ -253,7 +253,34 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           if (data.type === "historySessionExportResult") {
             handleHistorySessionExportResult(data);
           }
+          if (data.type === "configApplyApplied") {
+            if (
+              typeof data.configId === "string"
+              && data.configId
+              && state.pendingConfigApply
+              && state.pendingConfigApply.cli === data.cli
+              && state.pendingConfigApply.configId === data.configId
+            ) {
+              state.pendingConfigApply = null;
+            }
+          }
           if (data.type === "configApplyError") {
+            if (
+              typeof data.configId === "string"
+              && data.configId
+              && state.pendingConfigApply
+              && state.pendingConfigApply.cli === data.cli
+              && state.pendingConfigApply.configId === data.configId
+            ) {
+              state.pendingConfigApply = null;
+              if (data.cli === state.currentCli) {
+                const activeConfigId = state.configState && typeof state.configState.activeConfigId === "string"
+                  ? state.configState.activeConfigId
+                  : "";
+                state.selectedConfigId = activeConfigId;
+                renderConfigOptions();
+              }
+            }
             openConfigApplyErrorOverlay(data.error);
           }
           if (data.type === "taskListUpdate") {

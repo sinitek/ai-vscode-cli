@@ -958,11 +958,43 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.match(document.getElementById("promptInput").value, /@\/tmp\/a\.png/);
   window.dispatchMessage({ type: "pickWorkspacePathResult", canceled: true });
   assert.match(document.getElementById("promptInput").value, /@/);
-  window.dispatchMessage({ type: "configApplyError", error: "bad config" });
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      configState: {
+        activeConfigId: "cfg-1",
+        configs: [
+          { id: "cfg-1", name: "Default" },
+          { id: "bad-cfg", name: "Bad" },
+        ],
+      },
+    }),
+  });
+  const configSelect = document.getElementById("configSelect");
+  configSelect.value = "bad-cfg";
+  configSelect.dispatchEvent({ type: "change" });
+  assert.deepEqual(api.state.pendingConfigApply, { cli: "codex", configId: "bad-cfg" });
+  assert.deepEqual(posted.at(-1), { type: "applyConfig", cli: "codex", configId: "bad-cfg" });
+  const postedBeforeBlockedSend = posted.length;
+  document.getElementById("promptInput").value = "send after config";
+  document.getElementById("sendPrompt").click();
+  assert.equal(posted.length, postedBeforeBlockedSend);
+  assert.equal(document.getElementById("promptInput").value, "send after config");
+  window.dispatchMessage({ type: "configApplyError", error: "bad config", cli: "codex", configId: "bad-cfg" });
+  assert.equal(api.state.pendingConfigApply, null);
+  assert.equal(configSelect.value, "cfg-1");
   assert.equal(document.getElementById("configApplyErrorOverlay").classList.contains("visible"), true);
   assert.equal(document.getElementById("configApplyErrorContent").textContent, "bad config");
   document.getElementById("copyConfigApplyError").click();
   assert.equal(posted.at(-1).type, "clipboard");
+
+  api.state.pendingConfigApply = { cli: "opencode", configId: "opencode-cfg" };
+  window.dispatchMessage({ type: "configApplyApplied", cli: "opencode", configId: "opencode-cfg" });
+  assert.equal(api.state.pendingConfigApply, null);
+
+  api.state.pendingConfigApply = { cli: "opencode", configId: "opencode-cfg-2" };
+  window.dispatchMessage({ type: "configApplyError", error: "opencode config bad", cli: "opencode", configId: "opencode-cfg-2" });
+  assert.equal(api.state.pendingConfigApply, null);
 
   const errors = posted.filter((message) => message && message.type === "webviewError");
   assert.deepEqual(errors, []);
