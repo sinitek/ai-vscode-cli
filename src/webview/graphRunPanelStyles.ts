@@ -83,6 +83,13 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .button:hover {
         background: var(--vscode-button-secondaryHoverBackground);
       }
+      .button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .button:disabled:hover {
+        background: var(--vscode-button-secondaryBackground);
+      }
       .button-compact {
         padding: 3px 8px;
         font-size: 12px;
@@ -326,9 +333,22 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         margin-bottom: 8px;
       }
       .dag-icon-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         min-width: 28px;
         padding: 3px 7px;
         line-height: 18px;
+      }
+      .dag-icon {
+        width: 14px;
+        height: 14px;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8;
       }
       .dag-zoom-select {
         min-width: 76px;
@@ -547,23 +567,20 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .dag-node.status-running::before {
         content: "";
         position: absolute;
-        inset: 0;
+        inset: 2px;
         border-radius: inherit;
-        background:
-          repeating-linear-gradient(90deg, var(--node-tone) 0 8px, transparent 8px 14px) top left / 200% 2px repeat-x,
-          repeating-linear-gradient(90deg, var(--node-tone) 0 8px, transparent 8px 14px) bottom left / 200% 2px repeat-x,
-          repeating-linear-gradient(0deg, var(--node-tone) 0 8px, transparent 8px 14px) left top / 2px 200% repeat-y,
-          repeating-linear-gradient(0deg, var(--node-tone) 0 8px, transparent 8px 14px) right top / 2px 200% repeat-y;
+        border: 1px solid var(--node-tone);
+        opacity: 0.85;
         pointer-events: none;
-        animation: graph-running-border-flow 900ms linear infinite;
+        animation: graph-running-border-pulse 1200ms ease-in-out infinite;
       }
-      @keyframes graph-running-border-flow {
-        /* Layer order: top, bottom, left, right. Clockwise flow: top →, bottom ←, left ↑, right ↓. */
-        from {
-          background-position: 0 0, 0 100%, 0 0, 100% 0;
+      @keyframes graph-running-border-pulse {
+        0%,
+        100% {
+          opacity: 0.9;
         }
-        to {
-          background-position: 28px 0, -28px 100%, 0 -28px, 100% 28px;
+        50% {
+          opacity: 0.35;
         }
       }
       @media (prefers-reduced-motion: reduce) {

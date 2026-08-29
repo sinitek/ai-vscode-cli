@@ -689,15 +689,36 @@ ${GRAPH_RUN_PANEL_STYLES}
         dagViewport.scrollTop = Math.max(0, Math.round(centerY - dagViewport.clientHeight / 2));
       }
 
+      function resolveFirstNodeIdByStatusClass(statusClass) {
+        const target = selectableNodes.find((element) => (
+          element.classList.contains(statusClass) && Boolean(element.dataset.nodeId)
+        ));
+        return target?.dataset.nodeId || "";
+      }
+
+      function resolveRunningViewportNodeId() {
+        return resolveFirstNodeIdByStatusClass("status-running");
+      }
+
+      function centerRunningDagNode() {
+        const targetNodeId = resolveRunningViewportNodeId();
+        if (!targetNodeId) {
+          return;
+        }
+        setSelectedNode(targetNodeId, { persist: true });
+        syncGraphCanvasAndEdges();
+        centerDagViewportOnNode(targetNodeId);
+      }
+
       function resolveInitialViewportNodeId(preferredNodeId) {
         if (preferredNodeId && nodeIds.includes(preferredNodeId)) {
           return preferredNodeId;
         }
         const priorityClasses = ["status-running", "status-sleeping", "status-blocked", "status-failed"];
         for (const statusClass of priorityClasses) {
-          const target = selectableNodes.find((element) => element.classList.contains(statusClass));
-          if (target?.dataset.nodeId) {
-            return target.dataset.nodeId;
+          const targetNodeId = resolveFirstNodeIdByStatusClass(statusClass);
+          if (targetNodeId) {
+            return targetNodeId;
           }
         }
         return nodeIds[0] || "";
@@ -992,6 +1013,10 @@ ${GRAPH_RUN_PANEL_STYLES}
             resetManualLayout();
             return;
           }
+          if (action === "centerRunningNode") {
+            centerRunningDagNode();
+            return;
+          }
           if (action === "continue") {
             vscode.postMessage({ type: "graphRun:continue", selectedNodeId });
             return;
@@ -1126,9 +1151,14 @@ function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings
   const dagState = buildGraphDagRenderState(state);
   const layout = buildDagLayout(dagState, strings);
   const hasActiveEdges = dagState.edges.some((edge) => edge.active);
+  const hasRunningNode = dagState.nodes.some((node) => node.status === "running");
+  const centerRunningTitle = hasRunningNode ? strings.centerRunningNodeTitle : strings.centerRunningNodeUnavailable;
   return `<section class="section graph-dag" aria-labelledby="graph-dag-title">
     <h2 id="graph-dag-title" class="sr-only">${escapeHtml(strings.graphView)}</h2>
     <div class="graph-dag-toolbar" aria-label="${escapeHtml(strings.graphTools)}">
+      <button class="button button-compact dag-icon-button" type="button" data-action="centerRunningNode" title="${escapeHtml(centerRunningTitle)}" aria-label="${escapeHtml(strings.centerRunningNode)}"${hasRunningNode ? "" : " disabled"}>
+        ${renderDagLocateIcon()}
+      </button>
       <button class="button button-compact dag-icon-button" type="button" data-action="resetLayout" title="${escapeHtml(strings.resetLayoutTitle)}" aria-label="${escapeHtml(strings.resetLayoutTitle)}">↺</button>
       <label class="sr-only" for="dagZoomSelect">${escapeHtml(strings.zoomLevel)}</label>
       <select id="dagZoomSelect" class="dag-zoom-select" data-dag-zoom-select title="${escapeHtml(strings.zoomLevel)}" aria-label="${escapeHtml(strings.zoomLevel)}">
@@ -1147,6 +1177,14 @@ function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings
     </div>
     ${renderDagEdgeAccessibilityList(dagState.edges, strings)}
   </section>`;
+}
+
+function renderDagLocateIcon(): string {
+  return `<svg class="dag-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <circle cx="8" cy="8" r="4.5"></circle>
+    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2"></path>
+    <circle cx="8" cy="8" r="1"></circle>
+  </svg>`;
 }
 
 function buildGraphDagRenderState(state: GraphRunPanelState): GraphRunPanelState {

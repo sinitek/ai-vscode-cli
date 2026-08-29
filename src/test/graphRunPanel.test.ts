@@ -384,6 +384,8 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /data-zoom-scale="0\.75"/);
   assert.match(html, /transform: scale\(0\.75\)/);
   assert.match(html, /data-dag-zoom-select/);
+  assert.match(html, /data-action="centerRunningNode"[\s\S]*title="No running Graph node is available to center"[\s\S]*aria-label="Center running node"[\s\S]*disabled/);
+  assert.match(html, /<svg class="dag-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">/);
   assert.match(html, /<option value="25">25%<\/option>/);
   assert.match(html, /<option value="50">50%<\/option>/);
   assert.match(html, /<option value="75" selected>75%<\/option>/);
@@ -439,6 +441,8 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.match(html, /persistManualLayout/);
 	  assert.match(html, /centerInitialDagViewport/);
 	  assert.match(html, /resolveInitialViewportNodeId/);
+	  assert.match(html, /resolveRunningViewportNodeId/);
+	  assert.match(html, /centerRunningDagNode/);
 	  assert.match(html, /status-running", "status-sleeping", "status-blocked", "status-failed"/);
 	  assert.match(html, /dagViewport\.scrollLeft = Math\.max\(0, Math\.round\(centerX - dagViewport\.clientWidth \/ 2\)\)/);
 	  assert.match(html, /dagViewport\.scrollTop = Math\.max\(0, Math\.round\(centerY - dagViewport\.clientHeight \/ 2\)\)/);
@@ -635,11 +639,17 @@ test("packages dagre runtime dependency used by graph run panel layout", () => {
 });
 
 test("simplifies DAG canvas header while keeping compact zoom and reset controls", () => {
-  const state = buildState(createSerialFiveNodeRun(), "review");
+  const state = buildGraphRunPanelStateWithDeps(
+    createRun(),
+    [],
+    { strings: getGraphRunPanelStrings("zh-CN"), selectedNodeId: "plan" },
+  );
   const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
 
   assert.match(html, /class="graph-dag-toolbar"/);
   assert.match(html, /aria-label="运行图工具"/);
+  assert.match(html, /data-action="centerRunningNode"[\s\S]*title="将正在运行的 Graph 节点定位到画布中间"[\s\S]*aria-label="定位运行节点"/);
+  assert.doesNotMatch(html, /data-action="centerRunningNode"[\s\S]*disabled[\s\S]*data-action="resetLayout"/);
   assert.match(html, /title="缩放"/);
   assert.match(html, /data-action="resetLayout"[\s\S]*title="清除当前 Graph 运行保存的手动节点位置"[\s\S]*>↺</);
   assert.doesNotMatch(html, />\s*可视图\s*</);
@@ -1168,6 +1178,8 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.match(html, /var\(--vscode-editor-foreground\)/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.graph-canvas-content[\s\S]*height:\s*100%/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.graph-dag[\s\S]*flex:\s*1 1 auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.button:disabled[\s\S]*cursor:\s*not-allowed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-icon[\s\S]*stroke:\s*currentColor/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport[\s\S]*cursor:\s*grab/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-viewport\.panning[\s\S]*cursor:\s*grabbing/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-edge-path\[data-edge-visited="true"\][\s\S]*stroke:\s*var\(--vscode-textLink-foreground,\s*var\(--vscode-focusBorder\)\)/);
@@ -1209,9 +1221,10 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-color:\s*var\(--vscode-errorForeground/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-width:\s*2px/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running\s*\{[\s\S]*border-color:\s*var\(--node-tone\)/);
-  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*animation:\s*graph-running-border-flow/);
-  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*repeating-linear-gradient\(90deg,\s*var\(--node-tone\)/);
-  assert.match(GRAPH_RUN_PANEL_STYLES, /@keyframes graph-running-border-flow/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*border:\s*1px solid var\(--node-tone\)/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running::before[\s\S]*animation:\s*graph-running-border-pulse/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /@keyframes graph-running-border-pulse/);
+  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /repeating-linear-gradient\(90deg,\s*var\(--node-tone\)/);
   assert.doesNotMatch(`${GRAPH_RUN_PANEL_STYLES}\n${html}`, /#[0-9a-fA-F]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(/);
 });
 
