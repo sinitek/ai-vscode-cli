@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-22",
+  "as_of": "2026-08-29",
   "domain": {
     "id": "harness-governance",
     "name": "Harness 治理",
@@ -12,7 +12,8 @@
     "source_refs": [
       {"path": "AGENTS.md"},
       {"path": ".ch/docs/README.md"},
-      {"path": ".ch/docs/MEMORY.md"}
+      {"path": ".ch/docs/MEMORY.md"},
+      {"path": ".agents/skills/AGENTS.md"}
     ]
   },
   "concepts": [
@@ -30,7 +31,7 @@
       "id": "harness.skill",
       "name": "仓库级 Skill",
       "kind": "capability",
-      "description": "仓库内高复用、低噪音的程序性工作流，可包含脚本并引用稳定文档，帮助代理执行重复任务。",
+      "description": "仓库内高复用、低噪音的程序性工作流；默认 core 只保留 chromium-playwright-smoke、codegraph、execution-plan、memory-consolidator、memory-indexer、memory-recall、ontology 和 repo-indexer。",
       "status": "active",
       "aliases": ["skills", ".agents/skills", "SKILL.md"],
       "implementation_paths": [".agents/skills"],
@@ -147,6 +148,18 @@
       "status": "active",
       "applies_to": ["harness.agent_rules", "harness.execution_plan"],
       "source_refs": [{"path": "AGENTS.md", "anchor": "工作方式"}]
+    },
+    {
+      "id": "harness.rule.core_skill_set",
+      "name": "Core Skills 精简集合",
+      "description": "仓库级 core skills 默认只保留必要、高复用、低噪音的八个入口；治理报表、跨仓导入导出、评测、工作台 UI 和协作看板不随 core skeleton 提供。",
+      "aliases": ["core skills", "轻量技能集合", "技能精简"],
+      "status": "active",
+      "applies_to": ["harness.skill", "harness.workspace_scaffold"],
+      "source_refs": [
+        {"path": ".agents/skills/AGENTS.md"},
+        {"path": ".ch/docs/README.md", "anchor": "快速入口"}
+      ]
     },
     {
       "id": "harness.rule.ontology_source_first",

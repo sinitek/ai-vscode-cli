@@ -4,4 +4,6 @@
 
 - `.ch/docs/MEMORY.md` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
 - `.ch/docs/generated/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
-- `.ch/docs/handoffs/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
+- `.ch/docs/generated/memory-index/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
+- `.ch/docs/generated/memory-index/.local/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
+- `.ch/docs/ontology/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`

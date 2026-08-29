@@ -11,7 +11,7 @@
 - Source kind: `memory_doc`
 - Content hash: `c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
 - Concepts: `general`
-- Files: `.ch/docs/generated/`, `.ch/docs/handoffs/`
+- Files: `.ch/docs/generated/`, `.ch/docs/ontology/`
 
 Subtitle: operational_hot_zone / memory-rules
 
@@ -32,7 +32,7 @@ Narrative:
 - Source kind: `memory_doc`
 - Content hash: `431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
 - Concepts: `gotcha`
-- Files: `.ch/docs/MEMORY.md`
+- Files: `.ch/docs/MEMORY.md`, `.ch/docs/generated/memory-index/`, `.ch/docs/generated/memory-index/.local/`
 
 Subtitle: operational_hot_zone / hot-memory
 

@@ -1,6 +1,6 @@
 ---
 name: memory-recall
-description: Use when you need a bounded, prioritized recall path for a complex task so you can recover context from hot memory docs, generated memory index, recent handoffs, active plans, and focus-matched design or runbook docs instead of scanning the whole repo.
+description: Use when you need a bounded, prioritized recall path for a complex task so you can recover context from hot memory docs, generated memory index, active plans, and focus-matched design or runbook docs instead of scanning the whole repo.
 ---
 
 # Memory Recall
@@ -9,7 +9,7 @@ description: Use when you need a bounded, prioritized recall path for a complex 
 
 ## 什么时候用
 
-- 开始一个复杂任务，但上下文分散在热区、handoff、active plans 和专题文档里
+- 开始一个复杂任务，但上下文分散在热区、active plans 和专题文档里
 - 刚切回一个中断过的任务，需要快速恢复跨会话状态
 - 需要围绕某个焦点主题做 bounded recall，而不是全文搜索全仓
 - 收口或交接前，想确认当前任务最该先看的事实来源是什么
@@ -36,13 +36,12 @@ description: Use when you need a bounded, prioritized recall path for a complex 
    - `observation-registry.md` / `observations.jsonl`
    - 需要 claim 级证据时看 `claim-registry.md` / `claims.jsonl`
    - `timeline.md`
-   - 最近 handoff
    - active plans
    - 相关 `design-docs/`
    - 相关 `runbooks/`
 4. 如果 recall pack 暴露了 stale 文档、open loops 或 consolidation gaps，再决定是否继续运行：
    - `memory-consolidator`
-   - `memory-freshness-auditor`
+   - 手动检查对应事实来源的 freshness 字段和 open loops
 
 ## 产出要求
 
@@ -62,7 +61,7 @@ description: Use when you need a bounded, prioritized recall path for a complex 
 
 - `recall-pack.md`、`recall-summary.json`、`retrieval-debug.md` 都是 generated-only 的召回辅助层。
 - 默认输出到 ignored 的 `.ch/docs/generated/memory-index/.local/`，避免个人任务 focus 覆盖团队共享索引。
-- 它们用于帮助 agent 做 bounded recall、人工审阅召回理由，以及让后续 `memory-eval` 直接读取结构化结果。
+- 它们用于帮助 agent 做 bounded recall 和人工审阅召回理由。
 - 它们不是新的长期事实来源，不替代原始 Markdown、`observation-registry.md`、`claim-registry.md`、设计文档或 runbook。
 - debug / summary 可以预留 claim 状态、unsupported / stale watch items 等 future-proof 字段，但不应引入外部检索 provider、向量库或数据库。
 
@@ -71,5 +70,5 @@ description: Use when you need a bounded, prioritized recall path for a complex 
 - 不要把 recall skill 退化成“再造一个全文搜索”
 - 不要把 recall pack 当成新的长期事实来源
 - 不要把 retrieval debug 或 recall summary 当成长期记忆写回来源
-- 不要一次把所有设计文档、runbook、历史 handoff 都塞进上下文
+- 不要一次把所有设计文档、runbook 和历史计划都塞进上下文
 - 不要无筛选地展开所有 observation；先看 ID 索引，再按需展开

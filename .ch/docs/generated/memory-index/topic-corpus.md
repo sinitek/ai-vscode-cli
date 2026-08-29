@@ -16,6 +16,6 @@
 
 - `mem-c1d7e714b7` `rule` 记忆流转规则 -> `.ch/docs/MEMORY.md`
 
-## Reference Pack Hint
+## Topic Reuse Hint
 
-如果某个 topic 已经稳定，可以把对应原始事实来源、runbook、design docs 和 skills 纳入 `reference-pack` 的自定义 preset；不要导出 generated corpus 本身作为唯一事实来源。
+如果某个 topic 已经稳定，应优先回链对应原始事实来源、runbook、design docs 和 core skills；不要把 generated corpus 本身复制成唯一事实来源。

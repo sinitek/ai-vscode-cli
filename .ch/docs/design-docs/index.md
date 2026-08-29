@@ -1,10 +1,13 @@
 # 设计文档索引
 
-设计文档用于记录“为什么这样做”，而不只是记录“将要写哪些代码”。本页是设计文档规则的单一入口；顶层 `DESIGN.md` 只保留导航。
+设计文档用于记录“为什么这样做”，而不只是记录“将要写哪些代码”。本页是设计文档规则的单一入口；文档总入口统一收口到 `.ch/docs/README.md`。
 
 ## 当前文档
 
 - `.ch/docs/design-docs/core-beliefs.md`：这个骨架的核心信念与长期约束
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md`：VS Code CLI 插件运行时架构、分层边界和事实来源
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`：Loop 红蓝辩论多智能体模式设计
+- `.ch/docs/design-docs/graph-orchestration-mode.md`：Graph 编排模式设计和当前能力边界
 - `.ch/docs/design-docs/TEMPLATE.md`：新设计文档模板
 
 ## 什么时候需要设计文档

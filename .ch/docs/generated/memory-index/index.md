@@ -10,10 +10,10 @@
 - Active risks：0
 - Lessons：0
 - Observation entries：2
-- Claim entries：123
+- Claim entries：121
 - Estimated read cost：~85 tokens
-- Fresh docs：0
-- Stale docs：2
+- Fresh docs：1
+- Stale docs：1
 - Starter docs：7
 
 ## 记忆金字塔

@@ -4,8 +4,7 @@ purpose: scoped planning and risk discovery
 allowed_skills:
   - execution-plan
   - memory-recall
-  - repo-radar
-  - work-frontier
+  - repo-indexer
 default_tools:
   - read
   - search
@@ -13,7 +12,6 @@ default_tools:
 forbidden_actions:
   - broad code rewrite without approval
   - dependency or stack change without approval
-handoff_required: true
 ---
 
 # Planner Profile
@@ -35,6 +33,7 @@ handoff_required: true
 - 可执行的任务列表。
 - 验收标准和验证计划。
 - 需要时创建或更新 active execution plan。
+- 多计划排队、阻塞或占用关系不清时，优先用 active exec plan 和手写交接说明收敛，不依赖已移出 core skeleton 的看板技能。
 
 ## 完成标准
 

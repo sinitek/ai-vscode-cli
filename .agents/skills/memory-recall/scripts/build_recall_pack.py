@@ -17,11 +17,9 @@ GENERATOR_VERSION = "0.3.0"
 DEFAULT_OUTPUT_DIR = ".ch/docs/generated/memory-index/.local"
 DEFAULT_STALE_DAYS = 30
 DEFAULT_RELATED_LIMIT = 4
-DEFAULT_HANDOFF_LIMIT = 2
 DEFAULT_INDEX_LIMIT = 12
 DEFAULT_FULL_COUNT = 3
 DEFAULT_TIMELINE_DEPTH = 3
-HANDOFFS_DIR = ".ch/docs/handoffs"
 DESIGN_DOCS_DIR = ".ch/docs/design-docs"
 RUNBOOKS_DIR = ".ch/docs/runbooks"
 STARTER_HINTS = (
@@ -146,12 +144,6 @@ def parse_args() -> argparse.Namespace:
         help="Maximum number of focus-matched design docs or runbooks to include per group.",
     )
     parser.add_argument(
-        "--handoff-limit",
-        type=int,
-        default=DEFAULT_HANDOFF_LIMIT,
-        help="Maximum number of recent handoffs to include.",
-    )
-    parser.add_argument(
         "--index-limit",
         type=int,
         default=DEFAULT_INDEX_LIMIT,
@@ -211,7 +203,6 @@ def main() -> int:
     expanded_observations = observations[: max(0, args.full_count)]
     timeline_window = build_timeline_window(memory_summary, args.anchor_id.strip(), args.timeline_depth)
     hot_zone_docs = select_hot_zone_docs(memory_summary, focus_terms)
-    handoffs = select_handoffs(root, focus_terms, args.handoff_limit)
     active_plans = select_active_plans(memory_summary, focus_terms, args.related_limit)
     design_docs = collect_related_docs(
         root / DESIGN_DOCS_DIR,
@@ -286,7 +277,6 @@ def main() -> int:
         },
         "timeline_window": [item.to_dict() for item in timeline_window],
         "hot_zone_docs": [doc.to_dict() for doc in hot_zone_docs],
-        "handoffs": [doc.to_dict() for doc in handoffs],
         "active_plans": [doc.to_dict() for doc in active_plans],
         "design_docs": [doc.to_dict() for doc in design_docs],
         "runbooks": [doc.to_dict() for doc in runbooks],
@@ -301,7 +291,6 @@ def main() -> int:
             expanded_observations=expanded_observations,
             timeline_window=timeline_window,
             hot_zone_docs=hot_zone_docs,
-            handoffs=handoffs,
             active_plans=active_plans,
             design_docs=design_docs,
             runbooks=runbooks,
@@ -340,7 +329,6 @@ def main() -> int:
     print(f"- expanded observations: {len(expanded_observations)}")
     print(f"- timeline window: {len(timeline_window)}")
     print(f"- hot zone docs: {len(hot_zone_docs)}")
-    print(f"- handoffs: {len(handoffs)}")
     print(f"- active plans: {len(active_plans)}")
     print(f"- design docs: {len(design_docs)}")
     print(f"- runbooks: {len(runbooks)}")
@@ -951,41 +939,6 @@ def select_hot_zone_docs(memory_summary: dict[str, object], focus_terms: list[st
     return combined[:9]
 
 
-def select_handoffs(root: Path, focus_terms: list[str], limit: int) -> list[SelectedDoc]:
-    handoff_dir = root / HANDOFFS_DIR
-    if not handoff_dir.exists():
-        return []
-
-    docs: list[SelectedDoc] = []
-    for path in sorted(handoff_dir.glob("*.md"), key=lambda item: item.stat().st_mtime, reverse=True):
-        if path.name in EXCLUDED_FILES:
-            continue
-        body = load_public_markdown_body(path)
-        if body is None:
-            continue
-        if is_starter_text(body):
-            continue
-        title = extract_title(body, path.stem)
-        summary = extract_summary(body)
-        matched_terms = find_matched_terms(focus_terms, " ".join([path.as_posix(), title, summary, body[:1000]]))
-        score = 30 + (len(matched_terms) * 5)
-        docs.append(
-            SelectedDoc(
-                path=path.relative_to(root).as_posix(),
-                title=title,
-                kind="handoff",
-                reason="最近一次跨会话收口入口，优先恢复当前停点和下一步。",
-                score=score,
-                modified_at=iso_from_timestamp(path.stat().st_mtime),
-                matched_terms=matched_terms,
-                summary=summary,
-            )
-        )
-
-    docs.sort(key=lambda item: (item.score, item.modified_at), reverse=True)
-    return docs[:limit]
-
-
 def select_active_plans(memory_summary: dict[str, object], focus_terms: list[str], limit: int) -> list[SelectedDoc]:
     active_plans = memory_summary.get("active_plans", [])
     if not isinstance(active_plans, list):
@@ -1534,7 +1487,6 @@ def render_report(
     expanded_observations: list[SelectedObservation],
     timeline_window: list[SelectedObservation],
     hot_zone_docs: list[SelectedDoc],
-    handoffs: list[SelectedDoc],
     active_plans: list[SelectedDoc],
     design_docs: list[SelectedDoc],
     runbooks: list[SelectedDoc],
@@ -1565,7 +1517,6 @@ def render_report(
         f"- Expanded entries in this pack: {len(expanded_observations)} (~{expanded_tokens} tokens)",
         f"- Generated recall surfaces: {len(generated_docs)}",
         f"- Hot-zone docs: {len(hot_zone_docs)}",
-        f"- Recent handoffs: {len(handoffs)}",
         f"- Active plans: {len(active_plans)}",
         f"- Related design docs: {len(design_docs)}",
         f"- Related runbooks: {len(runbooks)}",
@@ -1603,16 +1554,14 @@ def render_report(
             "1. `recall-index.md` / 本文件的 Observation Index。",
             "2. 本文件的 Expanded Observation Details。",
             "3. `open-loops.md` 和 `freshness-report.md`。",
-            "4. 如果任务是跨会话续接，再看最近 handoff。",
-            "5. 再看相关 active plans，确认 working-layer 目标、任务列表和验证计划。",
-            "6. 如果提供了 focus，再展开匹配到的 design docs 和 runbooks。",
+            "4. 再看相关 active plans，确认 working-layer 目标、任务列表和验证计划。",
+            "5. 如果提供了 focus，再展开匹配到的 design docs 和 runbooks。",
             "",
         ]
     )
 
     lines.extend(render_section("Generated Recall Surfaces", generated_docs))
     lines.extend(render_section("Hot-Zone Docs", hot_zone_docs))
-    lines.extend(render_section("Recent Handoffs", handoffs))
     lines.extend(render_section("Active Plans", active_plans))
     lines.extend(render_section("Related Design Docs", design_docs))
     lines.extend(render_section("Related Runbooks", runbooks))
@@ -1628,7 +1577,7 @@ def render_report(
             "- `python3 .agents/skills/memory-indexer/scripts/generate_memory_index.py`：当热区或开放事项变化后刷新基础 recall 面。",
             "- `python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --anchor-id <mem-id>`：围绕某个 observation ID 生成 timeline window。",
             "- `python3 .agents/skills/memory-consolidator/scripts/consolidate_memory.py`：当 recall 暴露出 promotion backlog 时继续做 consolidation。",
-            "- `python3 .agents/skills/memory-freshness-auditor/scripts/audit_memory_freshness.py`：当 recall 暴露 stale docs 或 attribution 缺口时继续做 freshness audit。",
+            "- 手动复核 freshness 字段和 attribution 缺口：当 recall 暴露 stale docs 或来源缺口时，直接修正对应事实来源并刷新 memory index。",
             "",
         ]
     )

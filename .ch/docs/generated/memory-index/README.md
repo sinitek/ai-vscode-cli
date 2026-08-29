@@ -22,17 +22,19 @@ starter 默认只保留这个说明文件，不预置真实生成结果，避免
 python3 .agents/skills/memory-indexer/scripts/generate_memory_index.py
 ```
 
-如需进一步判断哪些内容该从 handoff、plan、pitfalls 上提到热区或长期文档，可再运行：
+如需进一步判断哪些内容该从 plan、pitfalls 上提到热区或长期文档，可再运行：
 
 ```bash
 python3 .agents/skills/memory-consolidator/scripts/consolidate_memory.py
 ```
 
-如需围绕某个当前任务 focus 生成一份 bounded recall 包，可运行：
+如需围绕某个当前任务 focus 生成一份本地 bounded recall 包，可运行：
 
 ```bash
 python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --focus "<short focus>"
 ```
+
+默认会写到 ignored 的 `.ch/docs/generated/memory-index/.local/`，避免个人任务 focus 覆盖团队共享索引。
 
 如需围绕某条 observation entry 生成前后文窗口，可运行：
 
@@ -40,13 +42,7 @@ python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --focus "<shor
 python3 .agents/skills/memory-recall/scripts/build_recall_pack.py --anchor-id <mem-id>
 ```
 
-如需把某个稳定 topic 下的原始来源打包成可复用 reference pack，可先刷新 memory index，再运行：
-
-```bash
-python3 .agents/skills/reference-pack/scripts/build_reference_pack.py --preset memory-core --topic "<topic>"
-```
-
-默认会生成到：
+`memory-indexer` 默认会生成团队共享的稳定索引到：
 
 - `.ch/docs/generated/memory-index/index.md`
 - `.ch/docs/generated/memory-index/recall-index.md`
@@ -62,19 +58,22 @@ python3 .agents/skills/reference-pack/scripts/build_reference_pack.py --preset m
 - `.ch/docs/generated/memory-index/freshness-report.md`
 - `.ch/docs/generated/memory-index/manifest.json`
 - `.ch/docs/generated/memory-index/summary.json`
+- `.ch/docs/generated/memory-index/consolidation-report.md`
+- `.ch/docs/generated/memory-index/consolidation-summary.json`
+
+`memory-recall` 默认会生成个人/任务级召回结果到：
+
 - `.ch/docs/generated/memory-index/.local/recall-pack.md`
 - `.ch/docs/generated/memory-index/.local/recall-summary.json`
 - `.ch/docs/generated/memory-index/.local/retrieval-debug.md`
-- `.ch/docs/generated/memory-index/consolidation-report.md`
-- `.ch/docs/generated/memory-index/consolidation-summary.json`
 
 ## 使用原则
 
 - 它是热区记忆与开放事项的召回压缩层，不替代原始计划、设计、runbook 或规格文档。
 - observation registry 只负责给每条可召回记忆分配 ID、来源、读取成本和结构化摘要，不替代原始事实来源。
 - claim registry 只负责给可稳定抽取的事实片段提供最小 claim 级 evidence，不做 graph/ontology，也不替代原始事实来源。
-- recall pack 只负责给出“当前最该先读什么”和少量展开详情，不替代原始事实来源。
-- topic corpus 只作为专题复用或 reference pack 的起点；真正跨仓导出时应通过 `--topic` 选择原始事实来源、runbook、design docs 和 skills。
+- recall pack 只负责给出“当前最该先读什么”和少量展开详情，不替代原始事实来源；默认是本地产物，不作为团队共享事实提交。
+- topic corpus 只作为专题复用和原始事实来源导航；不要把 generated corpus 本身复制成唯一事实来源。
 - consolidation report 只提供“建议压缩、抽取或上提什么”，不直接替代人工判断或长期事实来源。
 - `<private>`、`<no-memory>`、`memory_visibility: private` 等内容会被脚本跳过或剥离，不应出现在 generated 结果里。
 - 当 `memory/`、`exec-plans/active/`、pending items、active risks 发生变化时，应重新生成。

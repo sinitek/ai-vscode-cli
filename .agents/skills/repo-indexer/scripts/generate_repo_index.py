@@ -50,10 +50,9 @@ ENTRY_DOC_CANDIDATES = [
     "README.md",
     "ARCHITECTURE.md",
     ".ch/docs/README.md",
-    ".ch/docs/PLANS.md",
+    ".ch/docs/exec-plans/README.md",
     ".ch/docs/TESTING.md",
     ".ch/docs/SECURITY.md",
-    ".ch/docs/RELIABILITY.md",
     ".ch/docs/product-specs/index.md",
     ".ch/docs/design-docs/index.md",
     ".ch/docs/runbooks/README.md",
@@ -213,8 +212,8 @@ def main() -> int:
         "version": GENERATOR_VERSION,
         "generated_at": generated_at,
         "mode": args.mode,
-        "repo_root": ".",
-        "output_dir": relative_path(root, output_dir),
+        "repo_root": str(root),
+        "output_dir": str(output_dir),
         "git_head": git_head,
         "focus_paths": focus_paths,
         "sources": sorted(list_sources(root)),
@@ -247,14 +246,6 @@ def resolve_output_dir(root: Path, output_dir_arg: str) -> Path:
     if output_dir.is_absolute():
         return output_dir
     return root / output_dir
-
-
-def relative_path(root: Path, path: Path) -> str:
-    try:
-        rel = path.relative_to(root)
-    except ValueError:
-        return path.as_posix()
-    return rel.as_posix() or "."
 
 
 def normalize_focus_paths(root: Path, focus_paths: list[str]) -> list[str]:
@@ -314,14 +305,12 @@ def entry_doc_reason(relative_path: str) -> str:
         return "架构边界与模块职责"
     if relative_path == ".ch/docs/README.md":
         return "文档系统总入口"
-    if relative_path == ".ch/docs/PLANS.md":
+    if relative_path == ".ch/docs/exec-plans/README.md":
         return "复杂任务计划与收尾机制"
     if relative_path == ".ch/docs/TESTING.md":
         return "测试与验证基线"
     if relative_path == ".ch/docs/SECURITY.md":
         return "安全基线与约束"
-    if relative_path == ".ch/docs/RELIABILITY.md":
-        return "可靠性与验证闭环"
     if relative_path == ".ch/docs/product-specs/index.md":
         return "产品规格与功能清单入口"
     if relative_path == ".ch/docs/design-docs/index.md":
@@ -588,7 +577,7 @@ def render_index_markdown(
 - generator: `{GENERATOR_NAME}` `{GENERATOR_VERSION}`
 - generated_at: `{generated_at}`
 - mode: `{mode}`
-- repo_root: `{relative_path(root, root)}`
+- repo_root: `{root}`
 - git_head: `{git_text}`
 - detected_stacks: {stacks_text}
 

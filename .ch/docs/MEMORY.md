@@ -2,7 +2,7 @@
 doc_type: memory_rules
 scope: global
 status: active
-last_verified_at: 2026-05-21
+last_verified_at: 2026-07-18
 source_of_truth: .ch/docs/MEMORY.md
 derived_from:
   - .ch/docs/memory/README.md
@@ -24,9 +24,9 @@ related_paths:
 
 | 层级 | 含义 | 主要载体 |
 | --- | --- | --- |
-| Working | 当前任务正在使用的信息 | `exec-plans/active/`、当前任务列表、局部 handoff |
-| Episodic | 一次会话或一个阶段发生了什么 | `.ch/docs/handoffs/`、阶段总结、已完成计划结论 |
-| Semantic | 稳定规则、长期结论、可反复复用的事实 | `memory/` 热区、`design-docs/`、`FEATURE_INVENTORY.md` |
+| Working | 当前任务正在使用的信息 | `exec-plans/active/`、当前任务列表 |
+| Episodic | 一次会话或一个阶段发生了什么 | 阶段总结、已完成计划结论 |
+| Semantic | 稳定规则、长期结论、可反复复用的事实 | `memory/` 热区、`design-docs/`、`FEATURE_INVENTORY.md`、`ontology/` |
 | Procedural | 重复执行的方法、排障套路、可程序化步骤 | `skills/`、`runbooks/`、checklists、`python3` 脚本 |
 
 ## 1.1 记忆金字塔
@@ -35,8 +35,8 @@ related_paths:
 
 | 层级 | 目标 | 主要载体 | 收尾判断 |
 | --- | --- | --- | --- |
-| L1 滚动摘要 | 把较旧、分散、但仍有跨会话价值的 working / episodic 信息压缩成短摘要 | `memory/ROLLING_SUMMARY.md` | 旧 handoff / active plan 是否可以合并成一段摘要，并减少后续读取原文的必要 |
-| L2 事件记忆 | 从摘要、handoff、plan、runbook 中抽取重要事件 | `memory/EVENT_MEMORY.md` | 是否出现“失败原因”“成功方案”“迁移/回滚/事故/关键决策”等以后会影响判断的节点 |
+| L1 滚动摘要 | 把较旧、分散、但仍有跨会话价值的 working / episodic 信息压缩成短摘要 | `memory/ROLLING_SUMMARY.md` | 旧 active plan / 阶段总结是否可以合并成一段摘要，并减少后续读取原文的必要 |
+| L2 事件记忆 | 从摘要、plan、runbook 中抽取重要事件 | `memory/EVENT_MEMORY.md` | 是否出现“失败原因”“成功方案”“迁移/回滚/事故/关键决策”等以后会影响判断的节点 |
 | L3 用户/项目画像 | 保留长期稳定的用户偏好、项目事实、技术栈与业务约束 | `memory/USER_PREFERENCES.md`、`memory/PROJECT_CONTEXT.md` | 某条信息是否已经稳定到下次任务默认要先知道 |
 | L4 程序性经验 | 保留可复用规则、固定操作流、排障套路和可程序化步骤 | `memory/LESSONS_LEARNED.md`、`runbooks/`、`skills/` | 某条经验是否已经能转成“以后每次怎么做” |
 
@@ -56,7 +56,7 @@ related_paths:
 
 不要一开始就把这些内容写进长期热区。
 
-如果本轮任务会跨会话继续，收尾前应额外生成 `.ch/docs/handoffs/` 下的 handoff 文档。
+如果本轮任务会跨会话继续，收尾前应确保 active exec plan 记录当前结论、验证结果和下一步。
 
 ### 2.2 跨会话仍要先读的信息
 
@@ -81,6 +81,18 @@ related_paths:
 - 以后很可能被继续引用
 
 一旦设计文档成为事实来源，热区里只保留指向，不重复长段内容。
+
+### 2.3.1 AI 开发业务本体
+
+`.ch/docs/ontology/` 负责压缩当前系统的稳定业务概念、关系、规则和跨域场景，供 AI 开发任务在读取代码前做低成本业务召回。
+
+规则：
+
+- ontology 是语义导航层，不替代 `product-specs/`、设计文档、`ARCHITECTURE.md`、SQL、代码和测试。
+- 新增或改变业务概念、所有权/绑定关系、权限、状态机、输入输出、重试恢复、计费观测或跨域流程时，同步更新最接近的域文件或场景文件。
+- 纯实现拆分、样式和不改变业务语义的优化通常不更新 ontology。
+- 每条记录必须保留可核对的 `source_refs`；任务收尾运行 ontology skill 的 `--validate`。
+- 该目录只服务仓库内 AI 开发，与未来面向用户的 ontology 产品模块保持独立。
 
 ### 2.4 用户可见行为和能力范围
 
@@ -114,13 +126,13 @@ related_paths:
 - 上提候选检查
 - 格式校验
 - freshness 检查
-- handoff 初稿生成
+- active exec plan 的收尾与下一步记录
 
 脚本是为提高效率和准确率服务的；最终产物仍应回写为可审阅的 Markdown。
 
 ### 2.7 滚动摘要和事件记忆
 
-当旧计划、旧 handoff 或阶段性结论仍有价值，但直接读取原文成本过高时，先压缩到 `ROLLING_SUMMARY.md`。
+当旧计划或阶段性结论仍有价值，但直接读取原文成本过高时，先压缩到 `ROLLING_SUMMARY.md`。
 
 当压缩摘要中出现以后需要单独召回的节点，再抽取到 `EVENT_MEMORY.md`。典型事件包括：
 
@@ -190,7 +202,6 @@ related_paths: []
 规则：
 
 - 标签内内容不会进入 `memory-indexer` 生成的 recall index、observation registry、timeline 或 topic corpus。
-- `reference-pack` 导出时同样会跳过 private 文档，并剥离 private 标签块。
 - 如果整份文档不应进入记忆索引，可在 front matter 中写 `memory_visibility: private` 或 `private: true`。
 - 隐私标签不是密钥管理方案；密钥、令牌、生产地址、客户数据仍不应写入仓库。
 - 如果某条记忆的来源包含被剥离的隐私段，应保留非敏感摘要和事实来源，不要把敏感内容改写进摘要。
@@ -231,7 +242,7 @@ related_paths: []
 
 - claim-lite 必须 claim-aware，但仍然 source-first；没有来源锚点的 claim 不应作为稳定输入长期存在。
 - `needs_verification`、`superseded`、`archived` 的 claim 可以保留在 generated 索引中，但不应继续被默认视作高优先 recall 输入。
-- claim-lite 用于帮助 recall、eval、freshness 和治理，不直接替代 `memory/`、`design-docs/`、`runbooks/` 或 `product-specs/`。
+- claim-lite 用于帮助 recall、freshness 提醒和治理，不直接替代 `memory/`、`design-docs/`、`runbooks/` 或 `product-specs/`。
 - 第一阶段只要求最小字段和可审阅证据，不要求三元组、本体、图数据库或外部语义服务。
 
 ## 3.5 Timeline 与 topic corpus
@@ -244,31 +255,15 @@ related_paths: []
 使用规则：
 
 - 需要围绕某条记忆恢复前后文时，运行 `memory-recall --anchor-id <mem-id>`。
-- topic corpus 只作为专题复用和 reference pack 的起点；真正导出时通过 `reference-pack --topic <topic>` 选择原始事实来源、runbook、design docs 和 skills。
+- topic corpus 只作为专题复用和原始事实来源导航；不要把 generated corpus 本身复制成唯一事实来源。
 - 不要把 generated corpus 本身当成唯一事实来源复制到其他仓库。
 
-## 3.6 memory-eval 的定位
-
-`memory-eval` 的职责不是产生新记忆，而是评估“当前 recall 面是否把该命中的事实召回出来了”。
-
-最小用法：
-
-- 维护少量 golden questions，问题本身应能映射到预期来源路径、observation ID 或 claim ID。
-- 运行 eval 后输出独立 report，记录命中、漏召回、噪音、预计读取成本和隐私泄漏检查。
-- 优先读取 generated report，不把 eval 过程日志当成长久事实来源。
-
-规则：
-
-- golden questions 是评测夹具，不是事实来源。
-- eval report 应按 run、suite、日期或 hash 分片，避免变成单文件高频追加日志。
-- 如果 recall 长期漏掉某类长期事实，应先修 source 文档、claim 字段或 recall 规则，再刷新 eval；不要直接手工追加 generated 结果掩盖问题。
-
-## 3.7 Generated 白名单与黑名单边界
+## 3.6 Generated 白名单与黑名单边界
 
 `.ch/docs/generated/` 只允许存放可重建、可审阅、可删除再生成的文本产物。适合作为白名单的包括：
 
 - recall index、observation registry、claim registry、timeline、topic corpus
-- freshness report、consolidation report、eval report、proposal、tombstone
+- freshness report、consolidation report、proposal、tombstone
 - manifest、summary、JSON / JSONL 摘要和分片 registry
 
 不要把下面内容提交成 `.ch` 的长期协作事实：
@@ -283,13 +278,13 @@ related_paths: []
 - 需要长期保留的 generated 结果，应带 `generated_by` 或等价脚本入口，以及明确的 `rebuild_command`。
 - generated 结果可以删除并重建；一旦需要人工长期维护，就说明它放错了层级。
 
-## 3.8 Proposal-first 与长期事实更新边界
+## 3.7 Proposal-first 与长期事实更新边界
 
 长期事实更新遵循 proposal-first：
 
 - 自动化脚本优先生成 report、proposal、candidate list 或 freshness warning。
 - 涉及稳定项目事实、用户偏好、设计约束、runbook、skill 的改动，默认仍由可 review 的 Markdown 变更显式落地。
-- 不要因为 generated claim、eval 或 consolidation 结果看起来合理，就静默改写长期事实来源。
+- 不要因为 generated claim 或 consolidation 结果看起来合理，就静默改写长期事实来源。
 
 只有在事实来源文档完成显式更新后，generated recall 面才应被刷新并反映新状态。generated 索引负责加速召回，不负责替代决策确认。
 
@@ -306,7 +301,7 @@ related_paths: []
 
 每次完成非平凡任务，至少检查下面几项：
 
-1. 当前计划或 handoff 有没有内容应压缩进 L1 `ROLLING_SUMMARY.md`
+1. 当前计划有没有内容应压缩进 L1 `ROLLING_SUMMARY.md`
 2. 是否出现了新的失败原因、成功方案或关键决策，应抽取到 L2 `EVENT_MEMORY.md`
 3. 是否出现了新的稳定项目事实或用户偏好，应上提到 L3 `PROJECT_CONTEXT.md` / `USER_PREFERENCES.md`
 4. 是否出现了新的稳定设计结论，应该写入 `design-docs/`
@@ -315,9 +310,9 @@ related_paths: []
 7. 是否有重复机械动作，值得提炼成 L4 `skill` 或 `python3` 脚本
 8. 是否有内容应标记为 `<private>` 或 `memory_visibility: private`，避免进入 generated recall 面
 9. 如果当前仓库已启用 claim-aware index，claim-lite 是否缺少 `status`、来源锚点或 `review_after`
-10. 是否需要跑一次 `memory-eval`，确认 golden questions 仍能命中应该优先召回的来源
+10. 本次是否改变业务概念、关系、规则、跨域场景或事实来源路径，需要同步 `.ch/docs/ontology/`
 
-如果本轮信息同时散落在 handoff、plan、pitfalls 和热区里，难以判断“哪些该上提”，优先运行：
+如果本轮信息同时散落在 plan、pitfalls 和热区里，难以判断“哪些该上提”，优先运行：
 
 ```bash
 python3 .agents/skills/memory-consolidator/scripts/consolidate_memory.py

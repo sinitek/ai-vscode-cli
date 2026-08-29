@@ -48,6 +48,8 @@ test("workspace scaffold keeps only the lightweight harness skills and docs", ()
     "media/workspace-scaffold/.ch/docs/ontology/README.md",
     "media/workspace-scaffold/.ch/docs/exec-plans/README.md",
     "media/workspace-scaffold/.ch/docs/memory/README.md",
+    "media/workspace-scaffold/.ch/docs/runbooks/README.md",
+    "media/workspace-scaffold/.ch/docs/runbooks/PITFALLS.md",
   ];
 
   for (const relativePath of requiredPaths) {
@@ -72,7 +74,6 @@ test("workspace scaffold keeps only the lightweight harness skills and docs", ()
     "media/workspace-scaffold/.ch/docs/generated",
     "media/workspace-scaffold/.ch/docs/handoffs",
     "media/workspace-scaffold/.ch/docs/references",
-    "media/workspace-scaffold/.ch/docs/runbooks",
     "media/workspace-scaffold/.ch/docs/product-specs/index.md",
   ];
 
@@ -105,7 +106,6 @@ test("workspace scaffold ontology validates from the scaffold root", () => {
 test("exec plan completed archives use month directories in repo and scaffold", () => {
   const conventionFiles = [
     ".ch/docs/exec-plans/README.md",
-    ".ch/docs/PLANS.md",
     ".agents/skills/execution-plan/SKILL.md",
     "media/workspace-scaffold/.ch/docs/exec-plans/README.md",
     "media/workspace-scaffold/.agents/skills/execution-plan/SKILL.md",
@@ -118,11 +118,6 @@ test("exec plan completed archives use month directories in repo and scaffold", 
 
   assert.match(readRepoText(".ch/docs/exec-plans/README.md"), /completed\/\*\*\/\*\.md/u);
   assert.match(readRepoText("media/workspace-scaffold/.ch/docs/exec-plans/README.md"), /completed\/\*\*\/\*\.md/u);
-  assert.match(readRepoText(".agents/skills/execution-plan/SKILL.md"), /completed\/\*\*\/\*\.md/u);
-  assert.match(
-    readRepoText("media/workspace-scaffold/.agents/skills/execution-plan/SKILL.md"),
-    /completed\/\*\*\/\*\.md/u,
-  );
 
   const completedRoot = path.join(repoRoot, ".ch", "docs", "exec-plans", "completed");
   const flatCompletedPlans = fs

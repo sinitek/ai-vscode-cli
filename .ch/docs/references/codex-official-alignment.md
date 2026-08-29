@@ -31,13 +31,9 @@ Codex 官方文档说明，项目可以使用 `.codex/config.toml` 提供项目�
 
 Codex 官方文档说明，仓库级技能会从当前目录到仓库根逐层扫描 `.agents/skills`。
 
-因此本骨架把仓库级技能放在：
+因此本骨架把仓库级技能放在 `.agents/skills/`，默认 core 只保留 `chromium-playwright-smoke`、`codegraph`、`execution-plan`、`memory-consolidator`、`memory-indexer`、`memory-recall`、`ontology`、`repo-indexer`。
 
-- `.agents/skills/repo-radar/`
-- `.agents/skills/execution-plan/`
-- `.agents/skills/repo-indexer/`
-
-并且刻意保持极简，只保留少数对大仓库长期收益高、且噪音可控的技能。
+这些技能只覆盖高复用、低噪音的计划、召回、索引、代码图、ontology 和浏览器冒烟能力；治理报表、跨仓导入/导出、评测、工作台 UI、协作看板等能力不随 core skeleton 提供。
 
 ### 4. MCP 通过 `config.toml` 管理，但不默认预置
 

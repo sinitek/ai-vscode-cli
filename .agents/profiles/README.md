@@ -20,4 +20,4 @@ Profile 不是新的运行时，也不是强制调度器。它只回答：
 
 - 多阶段任务先选一个主 profile，再按需要切换。
 - profile 只收窄角色边界，不覆盖根级 `AGENTS.md` 和 `.ch/docs/` 的稳定规则。
-- 如果任务需要交接，输出必须能被 `session-handoff` 或 active exec plan 继续承接。
+- 如果任务需要跨会话继续，输出必须能被 active exec plan 继续承接。

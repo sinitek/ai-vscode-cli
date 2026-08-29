@@ -14,8 +14,8 @@ from pathlib import Path
 GENERATOR_NAME = "memory-consolidator"
 GENERATOR_VERSION = "0.1.0"
 DEFAULT_OUTPUT_DIR = ".ch/docs/generated/memory-index"
-DEFAULT_HANDOFF_LIMIT = 3
-HANDOFFS_DIR = ".ch/docs/handoffs"
+DEFAULT_MAX_SUGGESTIONS_PER_KIND = 20
+MAX_RENDERED_PITFALL_SOURCES = 40
 ACTIVE_PLANS_DIR = ".ch/docs/exec-plans/active"
 MEMORY_DIR = ".ch/docs/memory"
 DESIGN_DOCS_DIR = ".ch/docs/design-docs"
@@ -28,7 +28,6 @@ SNAPSHOT_SOURCE_FILES = (
     f"{MEMORY_DIR}/LESSONS_LEARNED.md",
 )
 SNAPSHOT_SOURCE_DIRS = (
-    HANDOFFS_DIR,
     ACTIVE_PLANS_DIR,
     DESIGN_DOCS_DIR,
     PITFALLS_DIR,
@@ -144,10 +143,14 @@ def parse_args() -> argparse.Namespace:
         help="Output directory for generated consolidation artifacts. Relative paths resolve from --root.",
     )
     parser.add_argument(
-        "--handoff-limit",
+        "--max-suggestions-per-kind",
         type=int,
-        default=DEFAULT_HANDOFF_LIMIT,
-        help="How many recent handoff files to scan.",
+        default=DEFAULT_MAX_SUGGESTIONS_PER_KIND,
+        help=(
+            "Maximum suggestions retained per destination kind. "
+            "Use 0 to emit every candidate. Default: "
+            f"{DEFAULT_MAX_SUGGESTIONS_PER_KIND}."
+        ),
     )
     return parser.parse_args()
 
@@ -161,14 +164,6 @@ def main() -> int:
     privacy = PrivacyStats(private_docs_skipped=[])
     timestamp_resolver = SourceTimestampResolver(root)
 
-    handoffs = collect_markdown_docs(
-        root / HANDOFFS_DIR,
-        root,
-        privacy,
-        timestamp_resolver,
-        limit=args.handoff_limit,
-        newest_first=True,
-    )
     active_plans = collect_markdown_docs(
         root / ACTIVE_PLANS_DIR,
         root,
@@ -200,7 +195,6 @@ def main() -> int:
     collect_rolling_summary_suggestions(
         suggestions,
         seen_keys,
-        handoffs,
         active_plans,
         existing_rollups,
         generated_date,
@@ -208,22 +202,23 @@ def main() -> int:
     collect_event_memory_suggestions(
         suggestions,
         seen_keys,
-        handoffs,
         active_plans,
         pitfall_entries,
         existing_events,
         generated_date,
     )
-    collect_profile_suggestions(suggestions, seen_keys, handoffs, active_plans)
-    collect_procedural_suggestions(suggestions, seen_keys, handoffs, active_plans, pitfall_entries, existing_pitfalls)
-    collect_pending_item_suggestions(suggestions, seen_keys, handoffs, active_plans, existing_pending)
-    collect_active_risk_suggestions(suggestions, seen_keys, handoffs, active_plans, pitfall_entries, existing_risks)
+    collect_profile_suggestions(suggestions, seen_keys, active_plans)
+    collect_procedural_suggestions(suggestions, seen_keys, active_plans, pitfall_entries, existing_pitfalls)
+    collect_pending_item_suggestions(suggestions, seen_keys, active_plans, existing_pending)
+    collect_active_risk_suggestions(suggestions, seen_keys, active_plans, pitfall_entries, existing_risks)
     collect_lesson_suggestions(suggestions, seen_keys, pitfall_entries, existing_lessons)
-    collect_pitfall_suggestions(suggestions, seen_keys, handoffs, active_plans, existing_pitfalls)
-    collect_design_suggestions(suggestions, seen_keys, handoffs, active_plans, design_titles)
+    collect_pitfall_suggestions(suggestions, seen_keys, active_plans, existing_pitfalls)
+    collect_design_suggestions(suggestions, seen_keys, active_plans, design_titles)
+
+    raw_suggestion_count = len(suggestions)
+    suggestions, suggestion_limit = limit_suggestions_by_kind(suggestions, args.max_suggestions_per_kind)
 
     coverage_gaps = build_coverage_gaps(
-        handoffs=handoffs,
         active_plans=active_plans,
         rolling_summaries=rolling_summaries,
         event_memories=event_memories,
@@ -239,7 +234,6 @@ def main() -> int:
         "generated_at": generated_at,
         "repo_root": ".",
         "sources": {
-            "handoffs": [doc.to_dict() for doc in handoffs],
             "active_plans": [doc.to_dict() for doc in active_plans],
             "pitfalls": [entry.to_dict() for entry in pitfall_entries],
         },
@@ -251,6 +245,8 @@ def main() -> int:
             "lessons_learned": lessons,
         },
         "pyramid_review": build_pyramid_review(rolling_summaries, event_memories, suggestions),
+        "raw_suggestion_count": raw_suggestion_count,
+        "suggestion_limit": suggestion_limit,
         "suggestions": [item.to_dict() for item in suggestions],
         "coverage_gaps": coverage_gaps,
         "privacy": privacy.to_dict(),
@@ -260,7 +256,6 @@ def main() -> int:
     summary_path = output_dir / "consolidation-summary.json"
     report_path.write_text(
         render_report(
-            handoffs=handoffs,
             active_plans=active_plans,
             pitfall_entries=pitfall_entries,
             rolling_summaries=rolling_summaries,
@@ -269,6 +264,8 @@ def main() -> int:
             active_risks=active_risks,
             lessons=lessons,
             suggestions=suggestions,
+            raw_suggestion_count=raw_suggestion_count,
+            suggestion_limit=suggestion_limit,
             coverage_gaps=coverage_gaps,
             privacy=privacy,
             generated_at=generated_at,
@@ -279,10 +276,11 @@ def main() -> int:
 
     print(f"[{GENERATOR_NAME}] wrote {report_path}")
     print(f"[{GENERATOR_NAME}] wrote {summary_path}")
-    print(f"- handoffs scanned: {len(handoffs)}")
     print(f"- active plans scanned: {len(active_plans)}")
     print(f"- pitfall entries scanned: {len(pitfall_entries)}")
     print(f"- suggestions: {len(suggestions)}")
+    if suggestion_limit["suppressed_total"]:
+        print(f"- suppressed suggestions: {suggestion_limit['suppressed_total']}")
     print(f"- coverage gaps: {len(coverage_gaps)}")
     print(f"- private docs skipped: {len(privacy.private_docs_skipped)}")
     print(f"- private blocks stripped: {privacy.private_blocks_stripped}")
@@ -621,25 +619,10 @@ def summarize_section(lines: list[str]) -> str:
 def collect_rolling_summary_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     existing_rollups: set[str],
     generated_date: str,
 ) -> None:
-    for doc in handoffs:
-        summary = build_doc_summary(doc, ("本轮摘要", "已完成", "未完成 / 下一步"))
-        add_rolling_summary_suggestion(
-            suggestions,
-            seen_keys,
-            existing_rollups,
-            source_path=doc.path,
-            source_section="本轮摘要",
-            text=summary,
-            confidence="high",
-            reason="最近 handoff 中存在跨会话上下文，适合压缩成 L1 滚动摘要以减少后续读取原文成本。",
-            generated_date=generated_date,
-        )
-
     for doc in active_plans:
         summary = build_doc_summary(doc, ("当前结论", "任务列表", "决策记录"))
         add_rolling_summary_suggestion(
@@ -696,14 +679,13 @@ def add_rolling_summary_suggestion(
 def collect_event_memory_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     pitfall_entries: list[PitfallEntry],
     existing_events: set[str],
     generated_date: str,
 ) -> None:
     source_sections = ("本轮摘要", "已完成", "未完成 / 下一步", "当前结论", "决策记录", "风险与缓解")
-    for doc in [*handoffs, *active_plans]:
+    for doc in active_plans:
         for section_name in source_sections:
             for text in extract_list_items(doc.sections.get(section_name, [])):
                 if looks_like_event(text):
@@ -779,10 +761,9 @@ def add_event_memory_suggestion(
 def collect_profile_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
 ) -> None:
-    for doc in [*handoffs, *active_plans]:
+    for doc in active_plans:
         for section_name in ("本轮摘要", "当前结论", "决策记录", "已完成"):
             for text in extract_list_items(doc.sections.get(section_name, [])):
                 if looks_like_profile(text):
@@ -810,12 +791,11 @@ def collect_profile_suggestions(
 def collect_procedural_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     pitfall_entries: list[PitfallEntry],
     existing_pitfalls: set[str],
 ) -> None:
-    for doc in [*handoffs, *active_plans]:
+    for doc in active_plans:
         for section_name in ("当前结论", "决策记录", "风险与缓解", "已完成"):
             for text in extract_list_items(doc.sections.get(section_name, [])):
                 candidate = normalize_sentence(text)
@@ -867,19 +847,9 @@ def collect_procedural_suggestions(
 def collect_pending_item_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     existing_pending: set[str],
 ) -> None:
-    for doc in handoffs:
-        for text in extract_list_items(doc.sections.get("未完成 / 下一步", [])):
-            add_pending_item_suggestion(suggestions, seen_keys, existing_pending, doc.path, "未完成 / 下一步", text, "high")
-        for text in extract_prefixed_items(
-            doc.sections.get("本轮摘要", []),
-            ("当前停在", "下一次接手时最先要知道"),
-        ):
-            add_pending_item_suggestion(suggestions, seen_keys, existing_pending, doc.path, "本轮摘要", text, "medium")
-
     for doc in active_plans:
         for task in extract_checklist_items(doc.sections.get("任务列表", []), checked=False):
             add_pending_item_suggestion(suggestions, seen_keys, existing_pending, doc.path, "任务列表", task, "high")
@@ -913,7 +883,7 @@ def add_pending_item_suggestion(
             source_path=source_path,
             source_section=source_section,
             text=candidate,
-            reason="最近 handoff 或 active plan 中仍有开放动作，但当前未进入 pending items 热区。",
+            reason="active plan 中仍有开放动作，但当前未进入 pending items 热区。",
             draft_fields={
                 "事项": candidate,
                 "状态": "open",
@@ -928,7 +898,6 @@ def add_pending_item_suggestion(
 def collect_active_risk_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     pitfall_entries: list[PitfallEntry],
     existing_risks: set[str],
@@ -958,21 +927,6 @@ def collect_active_risk_suggestions(
                     mitigation="待补充",
                     confidence="medium",
                     reason="当前结论里出现了风险或不确定项，适合进入 active risks 热区跟踪。",
-                )
-
-    for doc in handoffs:
-        for text in extract_list_items(doc.sections.get("未完成 / 下一步", [])):
-            if looks_like_risk(text):
-                add_active_risk_suggestion(
-                    suggestions,
-                    seen_keys,
-                    existing_risks,
-                    source_path=doc.path,
-                    source_section="未完成 / 下一步",
-                    risk=text,
-                    mitigation="待补充",
-                    confidence="medium",
-                    reason="handoff 中存在待持续关注的风险，但当前热区未显式跟踪。",
                 )
 
     for entry in pitfall_entries:
@@ -1065,12 +1019,11 @@ def collect_lesson_suggestions(
 def collect_pitfall_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     existing_pitfalls: set[str],
 ) -> None:
     source_sections = ("本轮摘要", "已完成", "未完成 / 下一步", "风险与缓解", "当前结论")
-    for doc in [*handoffs, *active_plans]:
+    for doc in active_plans:
         for section_name in source_sections:
             for text in extract_list_items(doc.sections.get(section_name, [])):
                 if looks_like_pitfall(text):
@@ -1099,7 +1052,7 @@ def add_pitfall_suggestion(
             source_path=source_path,
             source_section=source_section,
             text=candidate,
-            reason="handoff 或 plan 中出现了可复发的坑点语义，可能值得上提到 runbook / pitfalls。",
+            reason="plan 中出现了可复发的坑点语义，可能值得上提到 runbook / pitfalls。",
             draft_fields={
                 "建议模块": "待判断",
                 "建议条目": candidate,
@@ -1112,7 +1065,6 @@ def add_pitfall_suggestion(
 def collect_design_suggestions(
     suggestions: list[Suggestion],
     seen_keys: set[str],
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     design_titles: set[str],
 ) -> None:
@@ -1122,12 +1074,6 @@ def collect_design_suggestions(
         for text in extract_list_items(doc.sections.get("当前结论", [])):
             if looks_like_design(text):
                 add_design_suggestion(suggestions, seen_keys, design_titles, doc.path, "当前结论", text, "medium")
-
-    for doc in handoffs:
-        for section_name in ("本轮摘要", "已完成"):
-            for text in extract_list_items(doc.sections.get(section_name, [])):
-                if looks_like_design(text):
-                    add_design_suggestion(suggestions, seen_keys, design_titles, doc.path, section_name, text, "medium")
 
 
 def add_design_suggestion(
@@ -1153,7 +1099,7 @@ def add_design_suggestion(
             source_path=source_path,
             source_section=source_section,
             text=candidate,
-            reason="计划或 handoff 中已经出现稳定决策语义，可能值得提升为设计文档事实来源。",
+            reason="计划中已经出现稳定决策语义，可能值得提升为设计文档事实来源。",
             draft_fields={
                 "建议标题": make_design_title(candidate),
                 "相关来源": source_path,
@@ -1164,7 +1110,6 @@ def add_design_suggestion(
 
 def build_coverage_gaps(
     *,
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     rolling_summaries: list[dict[str, str]],
     event_memories: list[dict[str, str]],
@@ -1184,11 +1129,9 @@ def build_coverage_gaps(
     pitfall_candidates = count_suggestions(suggestions, "pitfall")
     design_candidates = count_suggestions(suggestions, "design_doc")
 
-    if active_plans and not handoffs:
-        gaps.append("存在 active plans，但未扫描到最近 handoff；如果任务会跨会话继续，暂停前应补 handoff。")
     if rolling_candidates:
         gaps.append(
-            f"发现 {rolling_candidates} 条 L1 滚动摘要候选；可压缩旧 handoff/active plan，降低后续 recall 成本。"
+            f"发现 {rolling_candidates} 条 L1 滚动摘要候选；可压缩旧 active plan，降低后续 recall 成本。"
         )
     if event_candidates:
         gaps.append(
@@ -1216,20 +1159,20 @@ def build_coverage_gaps(
         )
     if pitfall_candidates:
         gaps.append(
-            f"发现 {pitfall_candidates} 条 handoff/plan 语义看起来像可复发坑点，值得考虑补入 `.ch/docs/runbooks/PITFALLS.md`。"
+            f"发现 {pitfall_candidates} 条 plan 语义看起来像可复发坑点，值得考虑补入 `.ch/docs/runbooks/PITFALLS.md`。"
         )
     if design_candidates:
         gaps.append(
-            f"发现 {design_candidates} 条稳定决策候选可能需要进入 `.ch/docs/design-docs/`，避免长期停留在计划或 handoff。"
+            f"发现 {design_candidates} 条稳定决策候选可能需要进入 `.ch/docs/design-docs/`，避免长期停留在计划中。"
         )
-    if not pending_items and (handoffs or active_plans):
-        gaps.append("当前已有 handoff 或 active plan，但 `PENDING_ITEMS.md` 仍为空；确认是否真的没有跨会话开放事项。")
+    if not pending_items and active_plans:
+        gaps.append("当前已有 active plan，但 `PENDING_ITEMS.md` 仍为空；确认是否真的没有跨会话开放事项。")
     if not active_risks and risk_candidates:
         gaps.append("当前存在风险候选，但 `ACTIVE_RISKS.md` 为空；确认是否漏了热区风险跟踪。")
     if not lessons and lesson_candidates:
         gaps.append("当前已有 pitfall 的长期规避动作，但 `LESSONS_LEARNED.md` 为空；确认是否需要压缩成热区经验入口。")
-    if not rolling_summaries and (handoffs or active_plans) and rolling_candidates:
-        gaps.append("当前已有 handoff 或 active plan，但 `ROLLING_SUMMARY.md` 仍为空；确认是否需要建立第一条 L1 摘要。")
+    if not rolling_summaries and active_plans and rolling_candidates:
+        gaps.append("当前已有 active plan，但 `ROLLING_SUMMARY.md` 仍为空；确认是否需要建立第一条 L1 摘要。")
     if not event_memories and event_candidates:
         gaps.append("当前已有重要事件候选，但 `EVENT_MEMORY.md` 仍为空；确认是否需要建立第一条 L2 事件记忆。")
     return gaps
@@ -1260,6 +1203,48 @@ def build_pyramid_review(
 
 def count_suggestions(suggestions: list[Suggestion], kind: str) -> int:
     return sum(1 for item in suggestions if item.kind == kind)
+
+
+def limit_suggestions_by_kind(
+    suggestions: list[Suggestion],
+    max_per_kind: int,
+) -> tuple[list[Suggestion], dict[str, object]]:
+    if max_per_kind <= 0:
+        return suggestions, {
+            "max_per_kind": max_per_kind,
+            "suppressed_total": 0,
+            "suppressed_by_kind": {},
+        }
+
+    kept: list[Suggestion] = []
+    kept_counts: dict[str, int] = {}
+    suppressed_counts: dict[str, int] = {}
+    for suggestion in sorted(suggestions, key=suggestion_priority_key):
+        current_count = kept_counts.get(suggestion.kind, 0)
+        if current_count >= max_per_kind:
+            suppressed_counts[suggestion.kind] = suppressed_counts.get(suggestion.kind, 0) + 1
+            continue
+        kept_counts[suggestion.kind] = current_count + 1
+        kept.append(suggestion)
+
+    return kept, {
+        "max_per_kind": max_per_kind,
+        "suppressed_total": sum(suppressed_counts.values()),
+        "suppressed_by_kind": suppressed_counts,
+    }
+
+
+def suggestion_priority_key(suggestion: Suggestion) -> tuple[object, ...]:
+    confidence_rank = {"high": 0, "medium": 1, "low": 2}.get(suggestion.confidence, 3)
+    source_rank = 0 if suggestion.source_path.startswith(ACTIVE_PLANS_DIR) else 1
+    return (
+        suggestion.kind,
+        source_rank,
+        confidence_rank,
+        suggestion.source_path,
+        suggestion.source_section,
+        normalize_key(suggestion.text),
+    )
 
 
 def add_suggestion(suggestions: list[Suggestion], seen_keys: set[str], suggestion: Suggestion) -> None:
@@ -1499,7 +1484,6 @@ def source_snapshot_timestamp(root: Path) -> str:
 
 def render_report(
     *,
-    handoffs: list[MarkdownDoc],
     active_plans: list[MarkdownDoc],
     pitfall_entries: list[PitfallEntry],
     rolling_summaries: list[dict[str, str]],
@@ -1508,6 +1492,8 @@ def render_report(
     active_risks: list[dict[str, str]],
     lessons: list[dict[str, str]],
     suggestions: list[Suggestion],
+    raw_suggestion_count: int,
+    suggestion_limit: dict[str, object],
     coverage_gaps: list[str],
     privacy: PrivacyStats,
     generated_at: str,
@@ -1518,7 +1504,6 @@ def render_report(
         "## Summary",
         "",
         f"- Generated at: {generated_at}",
-        f"- Handoffs scanned: {len(handoffs)}",
         f"- Active plans scanned: {len(active_plans)}",
         f"- Pitfall entries scanned: {len(pitfall_entries)}",
         f"- Rolling summaries tracked: {len(rolling_summaries)}",
@@ -1527,6 +1512,8 @@ def render_report(
         f"- Active risks tracked: {len(active_risks)}",
         f"- Lessons tracked: {len(lessons)}",
         f"- Suggestions: {len(suggestions)}",
+        f"- Raw suggestions before limit: {raw_suggestion_count}",
+        f"- Suppressed suggestions: {suggestion_limit['suppressed_total']}",
         f"- Coverage gaps: {len(coverage_gaps)}",
         f"- Private docs skipped: {len(privacy.private_docs_skipped)}",
         f"- Private blocks stripped: {privacy.private_blocks_stripped}",
@@ -1535,7 +1522,6 @@ def render_report(
         "",
     ]
 
-    lines.extend(render_source_list("Recent handoffs", handoffs))
     lines.extend(render_source_list("Active plans", active_plans))
     lines.extend(render_pitfall_list(pitfall_entries))
 
@@ -1573,7 +1559,7 @@ def render_report(
             "",
             "1. 先处理 `high` 置信度的 L1/L2、pending item、active risk、lesson 候选。",
             "2. 再判断 L3/L4、pitfall 和 design-doc 候选是否足够稳定，避免把临时信息过早上提。",
-            "3. 完成压缩、抽取或上提后，重新运行 `memory-indexer`，必要时再跑 `memory-freshness-auditor`。",
+            "3. 完成压缩、抽取或上提后，重新运行 `memory-indexer`；如果暴露 freshness 风险，手动复核对应事实来源的 front matter 和 open loops。",
             "",
         ]
     )
@@ -1593,7 +1579,11 @@ def render_source_list(title: str, docs: list[MarkdownDoc]) -> list[str]:
 def render_pitfall_list(entries: list[PitfallEntry]) -> list[str]:
     lines = ["### Pitfall entries", ""]
     if entries:
-        lines.extend(f"- `{entry.path}` | {entry.title} | 状态={entry.status}" for entry in entries)
+        rendered_entries = entries[:MAX_RENDERED_PITFALL_SOURCES]
+        lines.extend(f"- `{entry.path}` | {entry.title} | 状态={entry.status}" for entry in rendered_entries)
+        omitted_count = len(entries) - len(rendered_entries)
+        if omitted_count > 0:
+            lines.append(f"- ... omitted {omitted_count} more pitfall entries; full source list is in `consolidation-summary.json`.")
     else:
         lines.append("- None")
     lines.append("")

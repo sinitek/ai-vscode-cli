@@ -1,6 +1,6 @@
 ---
 name: chromium-playwright-smoke
-description: Run authenticated Chromium Playwright headless smoke tests from structured scenarios, including same-context API login, direct module URL navigation, UI actions and assertions, screenshots, overlap checks, and strict console/page/network error collection. Use after web UI changes require browser validation, especially for protected hash-routed modules. Do not use for unit-only or non-browser checks.
+description: Run authenticated Chromium Playwright smoke tests from structured scenarios after web UI changes require browser validation. Covers API login, hash-route navigation, assertions, screenshots, overlap checks, and strict browser/network errors. Do not use for unit-only or non-browser checks.
 ---
 
 # Chromium Playwright Smoke

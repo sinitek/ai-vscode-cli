@@ -1,120 +1,77 @@
-# AGENTS
+# 项目规则
 
-本项目是 VS Code 插件。
+本项目是 VS Code 插件：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 `codex` / `claude` / `opencode`）执行对话请求并展示结果。
 
-作用：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 codex / claude / opencode）执行对话请求并展示结果。
+根级 `AGENTS.md` 只保留稳定硬约束和导航入口；细节知识放进 `.ch/docs/`、`.agents/skills/` 或更近的局部 `AGENTS.md`。
 
-# CLI 助手调用手册
-- docs/cli-reference.md（兼容入口）
-- docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md（兼容入口）
-- 详细事实来源：`.ch/docs/references/cli-runtime-reference.md`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/runbooks/local-development.md`
-当你发现这些手册写得不对或者需要补充时，优先同步 `.ch` 事实来源，并保持入口文件可导航。
+## 项目硬约束
 
-# 开发注意事项
-- 本插件有国际化功能，支持中英文，新增修改功能时务必支持国际化。
+- 技术栈、框架和关键基础设施按现有版本执行；变更需先获得明确批准。
+- 禁止无关大改；实现要贴近根因，代码遵循去魔法、强约定、可检索、可复用的 AI 友好规范。
+- 优先复用已有功能、组件、API、脚本、样式和测试夹具，避免重复建设。
+- 不把密钥、令牌、生产地址、客户数据或运行时私有数据写入仓库。
+- 本插件支持中英文国际化，新增或修改用户可见功能时必须同步 i18n 文案。
+- Web 界面优先使用项目已有样式；如果已有主题，不允许硬写颜色样式，必须使用主题提供的语义化写法。
+- Node / TypeScript 代码改动后按 `.ch/docs/TESTING.md` 从最小相关范围开始验证，至少确认 `npm run build` 不报错；相关单测失败要先分类再修复或记录。
+- 数据库结构变化（如有）必须同步相关 SQL 配置文件，全量和增量脚本都要覆盖，建表脚本必须包含表和字段中文备注。
+- 用户可见功能、行为、权限、流程或验收变化时，同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录无需更新的理由。
+- 如修改内置/官方 skills 或其 catalog，确认 `media/official_skills_catalog.json` 中的 `description` 保持中文。
 
-## 单元测试
-- 前后端完成任务后如果是比复杂时的功能，请务必添加更新单元测试。
-- 如果修复bug，先看看是否修复后补充单元测试以免以后再重复出现bug.
-- 代码重构前先看看已有单元测试是否需要补充，补充后再开始重构
-- 本机真实测试不是单元测试替代；当问题依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态时，使用 `.agents/skills/local-real-testing/SKILL.md` 补充验证，验证时的经验也可以继续修改这个 skills 。
-- 真实测试概要方式：先 `npm run build`，再跑最小相关 `node --test dist/test/...`，然后用只读命令或脚本验证真实配置/CLI/面板状态，记录命令、关键输出和结论；若发现高复发踩坑，同步补单测和 `.ch/docs/runbooks/PITFALLS.md`。
+## 项目入口
 
-## 任务完成后
-自动执行前后端的编译、tsc、 单元测试确保正常（只测相关功能，包括被依赖的功能），如果该任务没有改动代码就不用执行单测。如果单测失败就要修复，要么是单测调整，要么相关代码修复。
+- CLI 助手调用手册：`docs/cli-reference.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`。
+- CLI 运行时事实来源：`.ch/docs/references/cli-runtime-reference.md`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/runbooks/local-development.md`。
+- 功能清单入口：`docs/插件功能清单.md`；详细事实来源为 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。
+- 文档总入口：`.ch/docs/README.md`。
+- 架构边界：`ARCHITECTURE.md`。
+- 测试规则唯一入口：`.ch/docs/TESTING.md`。
+- 工具风险边界：`.ch/docs/TOOL_POLICY.md`。
+- 本工具运行数据：`~/.sinitek_cli/`。
 
-# 本工具存储数据
-~/.sinitek_cli/
+<!-- CODEGRAPH_START -->
+## CodeGraph
 
-# 本工具功能清单
-- docs/插件功能清单.md（兼容入口）
-- 详细事实来源：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
-你在新增修改功能后要同步更新事实来源文档，并保持入口文件可导航。
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
 
-# 其它
-如果有改动，确保 media/official_skills_catalog.json 文件里的 description 翻译成中文
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
-# AI 开发业务本体（Ontology）
-
-- `.ch/docs/ontology/` 是仓库内 AI 开发的业务语义导航层，不是用户可见功能或应用运行时数据；详细流程以 `.agents/skills/ontology/SKILL.md` 为准，数据结构以 `.ch/docs/ontology/README.md` 与 `manifest.json` 为准。
-- 涉及插件能力、CLI 调用、会话、配置、Loop、Graph、workspace scaffold 或 harness 规则等业务语义任务前，先运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --status-report`；需要初始化时先根据项目事实源补齐 ontology，否则按关键词或稳定 ID 查询并核对 `source_refs`。
-- 任务改变概念、关系、权限、状态机、输入输出、重试恢复、观测、跨域流程或来源路径时，同步更新 `.ch/docs/ontology/` 并运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`。
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+<!-- CODEGRAPH_END -->
 
 <!-- BEGIN CODEX HARNESS RULES -->
 ## Codex harness 通用规则
 
-> 以下内容由模板仓库 `app/AGENTS.md` 同步生成。请将项目特有规则写在本区块之外；重新执行脚本会刷新本区块。
+> 以下是受管 harness 入口块。同步模板时应保持“根级只做导航，细节回到事实来源”的轻量原则。
 
-### 使命
+### 执行路由
 
-- 这个仓库是一个面向 `Codex CLI` 的重度 harness 模式项目骨架。
-- 目标是让代理在超复杂、长周期、跨前后端、跨团队的 ToB 系统中保持可理解、可执行、可收尾。
+- 非平凡任务必须使用任务列表；任务列表固定使用 `Tasklist:` 标题和 `[pending]`、`[in_progress]`、`[completed]` 状态，任务描述用中文。
+- 需求不清时使用结构化 user-input / elicitation 机制提问，最多 3 个短问题；每个问题只解决一个决策，并优先给出 2-3 个互斥选项。
+- 大范围、跨模块、跨阶段或高风险任务使用 `execution-plan` skill，并按 `.ch/docs/exec-plans/README.md` 管理执行计划。
+- 上下文分散或中断恢复时使用 `memory-recall` skill；不要手工通读全部历史文档。
+- 业务概念、权限、状态机、所有权、跨域流程或事实来源判断先使用 `ontology` skill；命中后必须打开 `source_refs` 核对当前事实来源。
+- 代码位置、调用链、影响面和架构探索优先使用 CodeGraph；CodeGraph 不替代直接读取待编辑文件、编译、测试或运行验证。
+- 工具使用边界以 `.ch/docs/TOOL_POLICY.md` 为准；skills 和 MCP 只按任务需要启用，保持低噪音。
 
-### 第一次进入仓库时先看
+### 实施规则
 
-- `README.md`
-- `ARCHITECTURE.md`
-- `.ch/docs/README.md`
-- `.ch/docs/MEMORY.md`
-- `.ch/docs/ontology/README.md`
-- 如果存在，优先看 `.ch/docs/handoffs/` 中最新 handoff
-- `.ch/docs/memory/README.md`
-- 如果存在，优先看 `.ch/docs/generated/memory-index/index.md`
-- 如果存在，优先看 `.ch/docs/generated/task-board/task-board.md`
-- 如果任务范围大、上下文分散，先运行 `memory-recall` 并阅读 `.ch/docs/generated/memory-index/recall-pack.md`
-- 如果仓库启用了 CodeGraph（MCP 可用或存在 `.codegraph/codegraph.db`），代码探索、调用链和影响面分析优先使用 `codegraph` skill
-- 与当前任务最相关的主题文档，例如 `.ch/docs/SECURITY.md`、`.ch/docs/RELIABILITY.md`、`.ch/docs/PRODUCT_SENSE.md`、`.ch/docs/TESTING.md`
+- 先查已有实现和事实来源，再改代码；禁止基于猜测的数据结构、配置、事件或外部接口继续开发。
+- 稳定业务逻辑变更默认补或更新相关单元测试；修复 bug 时补回归测试。
+- 用户可见功能、行为、权限、流程或验收变化时，同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录无需更新的理由。
+- 行为、接口、架构、运维方式变化时，同步对应设计文档、运行手册或局部 `AGENTS.md`。
+- 发现真实踩坑、隐式前置条件或高复发问题时，沉淀到 `.ch/docs/runbooks/PITFALLS.md` 或对应事实来源文档。
 
-### 工作方式
+### 验证与收尾
 
-- 非平凡任务必须使用任务列表，并保持阶段状态同步。
-- 任务列表必须使用固定格式：`Tasklist:` 标题，逐行 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码为解析协议必须保持英文，任务描述必须用中文表达，代码符号、命令、路径、包名和用户原文术语可保留原文。
-- 需求不清时，先用带选项的问题缩小范围。
-- 多阶段、跨模块、风险较高的工作，先创建或更新 `.ch/docs/exec-plans/active/<YYYY-MM-DD>-<slug>.md`。
-- 非平凡任务收尾时，按 `.ch/docs/MEMORY.md` 的记忆金字塔检查是否需要压缩 L1 滚动摘要、抽取 L2 事件、上提 L3 画像或沉淀 L4 程序性经验。
-- 根级 `AGENTS.md` 只保留稳定规则与导航；细节知识进入 `.ch/docs/` 或更近的子目录 `AGENTS.md`。
-- 优先选择朴素、稳定、可搜索、可复用、可验证的实现。
-- 优先复用共享抽象，不复制业务规则。
-- 涉及稳定业务逻辑的非平凡改动，默认要补或更新单元测试；如果暂时不补，必须明确记录原因与后续动作。
-- 有一定复杂度的功能交付后，必须按项目现有测试体系自动执行单元自测；若缺少统一命令，先从最小相关测试命令或就近模块测试开始。
-- 单元自测失败时，先判断失败类型再处理：实现缺陷或测试断言过期要就地修复并重跑；环境、依赖、历史失败或范围外失败要记录证据、影响和下一步，不要为了通过测试改无关代码。
-- 功能、行为、权限、流程发生变化时，要同步更新 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录为何无需更新。
-- 严禁基于猜测的数据结构继续开发；输入边界、外部接口、配置、事件都要先校验再使用。
-- 行为、接口、架构、运维方式发生变化时，同步更新对应文档。
-- 一旦发现真实踩坑、隐式前置条件或高复发问题，必须记录到 `.ch/docs/runbooks/PITFALLS.md` 或对应事实来源文档，沉淀为未来的避坑指南。
-- 验证先从最小相关范围开始，再扩到更大范围。
+- 代码改动后按 `.ch/docs/TESTING.md` 从最小相关范围开始验证，再按风险扩大范围。
+- Java 项目需编译通过；Node 项目需执行相关 `build` / `tsc`；无代码改动时可不跑单测。
+- 单测失败先分流为实现缺陷、测试断言过期、夹具问题、环境问题、历史失败或范围外失败，再修复或记录证据。
+- 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态时，补充最小本机真实验证，记录命令、关键输出和结论。
+- 非平凡任务收尾按 `.ch/docs/MEMORY.md` 判断是否需要更新热区记忆、runbook、skill 或 ontology。
 
-### 核心约束
+### 仓库扩张
 
-- 不在未获批准时替换技术栈、框架或关键基础设施。
-- skills 和 MCP 以少为先，只保留高频、高价值、低噪音项。
-- 不做无关大改；修改要尽量贴近根因。
-- 不把密钥、令牌、生产地址、客户数据写入仓库。
-
-### 仓库地图
-
-- `AGENTS.md`：仓库级总入口。
-- `.codex/config.toml`：项目级 Codex 配置与 MCP（如果仓库启用）。
-- `.agents/skills/`：仓库级技能。
-- `.agents/profiles/`：Planner / Implementer / Reviewer 等角色契约。
-- `.agents/skills/codegraph/`：可选 CodeGraph 语义代码图使用约定。
-- `ARCHITECTURE.md`：目标结构、分层边界、扩展规则。
-- `.ch/docs/README.md`：文档系统总目录。
-- `.ch/docs/MEMORY.md`：记忆分层、上提与清理规则。
-- `.ch/docs/ontology/`：AI 开发业务本体、任务前查询和任务后维护入口。
-- `.ch/docs/handoffs/`：跨会话交接文档与模板。
-- `.ch/docs/memory/`：默认优先召回的热区记忆面。
-- `.ch/docs/design-docs/`：设计文档与核心信念。
-- `.ch/docs/exec-plans/`：执行计划、完成归档、技术债跟踪。
-- `.ch/docs/generated/`：生成类清单与索引。
-- `.ch/docs/generated/task-board/`：任务工作台的 Markdown / JSON 生成物。
-- `.ch/docs/generated/memory-index/`：热区记忆与开放事项的 generated recall 面。
-- `.ch/docs/product-specs/`：业务需求与产品规格。
-- `.ch/docs/references/`：官方对齐和外部参考。
-
-### 仓库扩张后的做法
-
-- 优先在业务目录附近新增局部 `AGENTS.md`，不要让这个文件无限膨胀。
-- 前端、后端、数据、平台、运维、测试目录都应该有各自贴身的局部规则。
-- 文档要跟着代码边界走，说明“哪里是事实来源”，而不是写成长篇宣言。
+- 根级 `AGENTS.md` 不继续扩写百科；新规则优先放入 `.ch/docs/`、`.agents/skills/` 或业务目录附近的局部 `AGENTS.md`。
+- 前端、后端、数据、平台、运维和测试目录出现稳定差异时，补就近入口文档，说明事实来源和验证命令。
 <!-- END CODEX HARNESS RULES -->

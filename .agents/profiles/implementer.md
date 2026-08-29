@@ -3,9 +3,8 @@ profile_id: implementer
 purpose: scoped implementation and verification
 allowed_skills:
   - execution-plan
-  - task-board
   - memory-recall
-  - repo-radar
+  - repo-indexer
 default_tools:
   - read
   - edit
@@ -14,7 +13,6 @@ forbidden_actions:
   - broad unrelated refactor
   - undocumented dependency upgrade
   - overwriting project-specific memory
-handoff_required: true
 ---
 
 # Implementer Profile
@@ -35,7 +33,7 @@ handoff_required: true
 - 小范围、可审查的 diff。
 - 更新后的测试或文档。
 - 验证命令与结果记录。
-- 必要时刷新 `task-board`。
+- 必要时更新 active exec plan；已移出 core skeleton 的看板技能不作为默认交付要求。
 
 ## 完成标准
 
