@@ -393,7 +393,7 @@ test("appends a main replanner node and materializes its plannedGraph into the c
   assert.match(collision.error ?? "", /must only add new node ids/u);
 });
 
-test("keeps inferred maxConcurrent conservative for conflicting root write branches", () => {
+test("keeps inferred maxConcurrent conservative for explicit conflicts while allowing unscoped roots", () => {
   const plannedGraph: GraphPlannedGraphSpec = {
     nodes: [{
       id: "implement-api",
@@ -423,7 +423,7 @@ test("keeps inferred maxConcurrent conservative for conflicting root write branc
 
   assert.equal(result.changed, true);
   assert.equal(result.error, undefined);
-  assert.equal(result.run.maxConcurrent, 1);
+  assert.equal(result.run.maxConcurrent, 2);
 });
 
 test("rejects invalid planner graphs instead of falling back to a fixed linear graph", () => {

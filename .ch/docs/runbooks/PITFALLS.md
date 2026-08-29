@@ -1625,6 +1625,31 @@
 - 执行 `npm run build`。
 - 执行 `node --test dist/test/graphExtensionRuntime.test.js dist/test/graphMainWebview.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/loopmaingroupchatbutton.test.js`。
 
+## Graph planned parallel 节点不能被未声明 scope 隐式串行化
+
+- 状态：已规避，需随 Graph scheduler / planner 并发语义变化复核
+- 首次发现：2026-08-29
+- 适用范围：Graph scheduler、Graph runtime、AI planner 并行 DAG、review/test/summary 节点调度
+
+### 现象
+- AI planner 已生成 4 个同层并行 `review` 节点且 `plannedGraph.maxConcurrent=4`，但运行日志中节点仍按单个或少量串行执行。
+- 看起来像 executor 并发数没有生效，实际是 scheduler 在 batch selection 阶段提前把 ready 节点延后。
+
+### 触发条件与根因
+- 多个 ready 节点属于写入类节点，但没有声明 `writeFiles` 或 `conflictGroup`。
+- 旧 scheduler 把这类节点归为隐式 `unscopedWrite` 全局冲突组，因此即使 DAG 和 `maxConcurrent` 允许并行，也只选中一个写入类节点。
+- runtime 还有次要触发点：一次成功推进 tick 没有失败或阻塞节点时，也可能用空触发列表误追加 `replan-*`。
+
+### 长期规避
+- Graph 调度冲突只应来自显式 `conflictGroup` 或重叠 `writeFiles`；未声明 scope 的 ready 节点不应被 scheduler 自动当作全局写锁。
+- 会修改文件的节点仍必须在 planner prompt / 节点约束中声明 `writeFiles` 或 `conflictGroup`；未声明 scope 的节点必须被视为不写文件。
+- 动态 replan 只在 failed/blocked 触发节点存在，或真正 idle/no-progress 时尝试；普通成功推进 tick 不得追加 `replan-*`。
+
+### 验证方式
+- 执行 `node --test dist/test/graphScheduler.test.js dist/test/graphExtensionRuntime.test.js dist/test/graphPlanner.test.js`。
+- 检查 `graphScheduler` 回归用例中 4 个无 `writeFiles` 的 planned parallel `review` 节点会全部进入 `selectedNodeIds`。
+- 检查 `graphExtensionRuntime` 回归用例中成功推进 `review -> summary` 后不会生成 `replan-*` 节点。
+
 ## Graph 重构后验证节点不能无写入授权地承担测试契约迁移
 
 - 状态：已规避，需随 Graph planner / failure classification 变更复核

@@ -296,15 +296,43 @@ test("greedily selects a batch without parent-child writeFile conflicts or same 
   assert.deepEqual(normalizeGraphWriteFiles([" ./SRC/Graph ", "src//graph", "", 1]), ["src/graph"]);
 });
 
-test("serializes unscoped write-class nodes that cannot prove their write range", () => {
+test("allows unscoped ready nodes to run together when no explicit conflict is declared", () => {
   const unscopedA = readyImplement("unscoped-a");
   const unscopedB = readyImplement("unscoped-b");
   const readOnlyPlan = createNode({ id: "plan", title: "Plan", kind: "plan", status: "pending", ownerRole: "main" });
   const run = createRun([unscopedA, unscopedB, readOnlyPlan]);
   const batch = selectGraphRunnableBatch(run);
 
-  assert.deepEqual(batch.selectedNodeIds, ["unscoped-a", "plan"]);
-  assert.equal(batch.deferredNodes.find((item) => item.nodeId === "unscoped-b")?.blockers[0]?.conflict?.reason, "unscopedWrite");
+  assert.deepEqual(batch.selectedNodeIds, ["unscoped-a", "unscoped-b", "plan"]);
+  assert.equal(batch.deferredNodes.find((item) => item.nodeId === "unscoped-b"), undefined);
+  assert.equal(getGraphNodeConflictReason(unscopedA, unscopedB), null);
+});
+
+test("selects all planned parallel review nodes without writeFiles", () => {
+  const plan = createNode({ id: "plan", title: "Plan", kind: "plan", status: "passed", ownerRole: "main" });
+  const reviewNodeIds = [
+    "audit-runtime-hosts",
+    "audit-cli-interactive",
+    "audit-graph-backend",
+    "audit-test-contracts",
+  ];
+  const reviews = reviewNodeIds.map((id) => createNode({
+    id,
+    title: id,
+    kind: "review",
+    status: "pending",
+    ownerRole: "subtask",
+    dependsOn: ["plan"],
+  }));
+  const run = createRun([plan, ...reviews], [], { maxConcurrent: 4 });
+  const batch = selectGraphRunnableBatch(run, { maxConcurrent: 4 });
+
+  assert.deepEqual(batch.readyNodes.map((item) => item.nodeId), reviewNodeIds);
+  assert.deepEqual(batch.selectedNodeIds, reviewNodeIds);
+  assert.deepEqual(
+    batch.deferredNodes.filter((item) => reviewNodeIds.includes(item.nodeId)),
+    [],
+  );
 });
 
 test("uses default maxConcurrent and honors a valid run maxConcurrent override", () => {

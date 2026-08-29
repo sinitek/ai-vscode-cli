@@ -15,8 +15,6 @@ import {
   writeFilePathsOverlap,
 } from "../shared/writeScope";
 
-export const GRAPH_UNSCOPED_WRITE_CONFLICT_GROUP = "__graph_unscoped_write__";
-
 export const GRAPH_SCHEDULER_BLOCKER_REASONS = [
   "terminal_status",
   "already_running",
@@ -40,7 +38,6 @@ export type GraphSchedulerBlockerReason = (typeof GRAPH_SCHEDULER_BLOCKER_REASON
 export const GRAPH_NODE_CONFLICT_REASONS = [
   "conflictGroup",
   "writeFiles",
-  "unscopedWrite",
 ] as const;
 export type GraphNodeConflictReason = (typeof GRAPH_NODE_CONFLICT_REASONS)[number];
 
@@ -385,23 +382,6 @@ export function getGraphNodeConflictReason(
         };
       }
     }
-  }
-
-  if (isGraphUnscopedWriteNode(left) && isGraphWriteClassNode(right)) {
-    return {
-      leftNodeId: left.id,
-      rightNodeId: right.id,
-      reason: "unscopedWrite",
-      value: GRAPH_UNSCOPED_WRITE_CONFLICT_GROUP,
-    };
-  }
-  if (isGraphWriteClassNode(left) && isGraphUnscopedWriteNode(right)) {
-    return {
-      leftNodeId: left.id,
-      rightNodeId: right.id,
-      reason: "unscopedWrite",
-      value: GRAPH_UNSCOPED_WRITE_CONFLICT_GROUP,
-    };
   }
 
   return null;
@@ -787,12 +767,6 @@ function findFirstGraphNodeConflict(
 
 function getGraphNodeNormalizedConflictGroup(node: GraphNodeRecord): string | null {
   return normalizeGraphConflictGroup(node.conflictGroup);
-}
-
-function isGraphUnscopedWriteNode(node: GraphNodeRecord): boolean {
-  return isGraphWriteClassNode(node)
-    && normalizeGraphWriteFiles(node.writeFiles).length === 0
-    && !getGraphNodeNormalizedConflictGroup(node);
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number): number {

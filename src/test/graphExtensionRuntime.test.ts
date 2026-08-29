@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import type { GraphNodeRecord, GraphRunRecord } from "../graph/types";
@@ -321,6 +322,78 @@ test("Graph runtime host maps terminal main-tab status through host deps", () =>
     status: "needs-review",
     nodes: [createGraphNode({ id: "blocked-node", status: "blocked" })],
   })), true);
+});
+
+test("Graph runtime does not append replanning after a successful progressing tick", async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "graph-runtime-progress-"));
+  const communicationDir = path.join(baseDir, "graph");
+  const nodeDir = path.join(communicationDir, "nodes");
+  fs.mkdirSync(nodeDir, { recursive: true });
+  const executedNodeIds: string[] = [];
+  try {
+    const run = createGraphRun({
+      id: "graph-progress",
+      maxConcurrent: 1,
+      runStoreFile: path.join(baseDir, "graph-runs.json"),
+      eventsFile: path.join(baseDir, "events.jsonl"),
+      communicationDir,
+      mainCommunicationFile: path.join(communicationDir, "main.md"),
+      graphFile: path.join(communicationDir, "graph.json"),
+      nodes: [
+        createGraphNode({
+          id: "review-a",
+          title: "Review A",
+          kind: "review",
+          ownerRole: "reviewer",
+        }),
+        createGraphNode({
+          id: "summary",
+          title: "Summary",
+          kind: "summary",
+          ownerRole: "main",
+          dependsOn: ["review-a"],
+        }),
+      ],
+    });
+    const { host } = createGraphRuntimeHarness({
+      runPrompt: async (input) => {
+        assert.ok(input.graphNodeId);
+        executedNodeIds.push(input.graphNodeId);
+        const result = input.graphNodeId === "summary"
+          ? {
+            status: "passed",
+            summary: "summary passed",
+            finalAnswer: {
+              conclusion: "done",
+              summary: "all graph work completed",
+              evidence: ["summary"],
+              unresolved: [],
+            },
+          }
+          : {
+            status: "passed",
+            summary: `${input.graphNodeId} passed`,
+          };
+        fs.writeFileSync(
+          path.join(nodeDir, `${input.graphNodeId}.md`),
+          `## JSON\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\`\n`,
+        );
+      },
+      persistGraphRunTickState: (nextRun) => nextRun,
+    });
+
+    const result = await host.tickGraphRunToPause(
+      run,
+      createPromptRunInput(),
+      { tabId: "tab-main", cli: "codex", sessionId: "session-1" },
+    );
+
+    assert.equal(result.run.status, "completed");
+    assert.deepEqual(executedNodeIds, ["review-a", "summary"]);
+    assert.equal(result.run.nodes.some((node) => node.id.startsWith("replan-")), false);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
 });
 
 test("Graph messages host scopes open actions to the right Graph tab", () => {

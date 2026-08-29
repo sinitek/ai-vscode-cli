@@ -441,17 +441,20 @@ async function tickGraphRunToPause(
       continue;
     }
 
-    const dynamicReplan = maybeAppendGraphReplanningNodeAfterTick(
-      run,
-      [...tickResult.failedNodeIds, ...tickResult.blockedNodeIds],
-      "Graph node failed or blocked and needs main-model replanning.",
-    );
-    if (dynamicReplan.changed && dynamicReplan.run.status === "running") {
-      run = dynamicReplan.run;
-      madeProgress = true;
-      await deps.postPanelState();
-      deps.scheduleGraphRunAutoWake(run);
-      continue;
+    const dynamicReplanTriggerNodeIds = [...tickResult.failedNodeIds, ...tickResult.blockedNodeIds];
+    if (dynamicReplanTriggerNodeIds.length > 0) {
+      const dynamicReplan = maybeAppendGraphReplanningNodeAfterTick(
+        run,
+        dynamicReplanTriggerNodeIds,
+        "Graph node failed or blocked and needs main-model replanning.",
+      );
+      if (dynamicReplan.changed && dynamicReplan.run.status === "running") {
+        run = dynamicReplan.run;
+        madeProgress = true;
+        await deps.postPanelState();
+        deps.scheduleGraphRunAutoWake(run);
+        continue;
+      }
     }
 
     if (run.status === "completed") {

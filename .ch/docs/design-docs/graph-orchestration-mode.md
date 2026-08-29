@@ -19,7 +19,7 @@
 - 用户可在主 Webview 输入区选择 `Graph` 模式并发送任务；前端 payload 保留 `interactiveMode=graph`，后端 `handleSendPromptMessage` 会进入独立 `runGraphPrompt` 分支，不走普通 coding 或 Loop 编排。Codex 切到 Graph 时显示主模型/子模型两个选择器，普通 Coding 仍保持单模型选择器；OpenCode Graph 也使用主模型/子模型口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。
 - Graph 模式默认不触发插件侧长期记忆 recall 注入，也不会在 Graph 节点结束后自动写入长期记忆；节点 prompt 只允许只读已有仓库记忆或运行态 recall，任务完成后的长期记忆沉淀由主智能体在收束后专门处理。
 - 后端会先创建 planning-only Graph run，只包含保留 `plan` AI planner 节点；planner 必须在节点 `## JSON` 中返回 `plannedGraph.nodes` 和 `plannedGraph.edges`，宿主校验后把后续执行节点替换为 AI 规划的 realized DAG，再使用 `GraphRunStore`、`graph.json`、`events.jsonl` 和 `graph-communications/<graphRunId>/nodes/*.md` 落盘。Codex / OpenCode Graph 的 planner 和最终 `summary` 节点使用主模型，其他 materialized 执行节点使用子模型；`modelRouting`、节点 `modelRole/model/modelFallback` 和 prompt 注入会记录实际模型角色与回退原因。
-- AI planner prompt 会默认要求先寻找可并行分支：多个可拆分且互不冲突的任务应从 planner fan-out 并行开始，再通过 test / review / merge / summary fan-in 收束；不得仅因任务同属一个用户目标或列表顺序靠后就串行化独立分支。planner 未显式输出 `plannedGraph.maxConcurrent` 时，materialize 会按首批依赖 `plan` 且不冲突的可执行根节点推断并发上限；同一 `conflictGroup`、重叠 `writeFiles` 或未声明写入范围的写节点仍按 scheduler 冲突规则保守串行。
+- AI planner prompt 会默认要求先寻找可并行分支：多个可拆分且互不冲突的任务应从 planner fan-out 并行开始，再通过 test / review / merge / summary fan-in 收束；不得仅因任务同属一个用户目标或列表顺序靠后就串行化独立分支。planner 未显式输出 `plannedGraph.maxConcurrent` 时，materialize 会按首批依赖 `plan` 且不冲突的可执行根节点推断并发上限；运行时只因同一 `conflictGroup` 或重叠 `writeFiles` 串行化；未声明 `writeFiles` / `conflictGroup` 的 ready 节点可同批并行，但节点 prompt 仍要求真实写文件的节点声明 scope，否则应视为不写文件。
 - AI planner prompt 已强化重构/迁移/拆模块防护：当现有 source-contract、文本快照、路径断言或测试 canonical source 可能引用旧文件时，必须规划独立 test adaptation / 契约更新节点，声明具体测试 `writeFiles`，并把验证节点的 `if_fail` / `review_feedback` 返工路径指向测试适配节点，而不是只回到原实现节点。
 - 完整单测、全仓测试、全量 lint 等覆盖面大且可能包含历史/范围外失败的验证节点可声明 `blocking:false`。这类 advisory 节点失败后仍保留 failed 状态和 evidence/unresolved 责任，但不会单独阻断结构依赖继续进入 review / summary；相关 focused 验证节点仍应使用普通 blocking 依赖或 `if_pass` 阻断交付收束。
 - `src/graph/` 已提供 v1 类型、store、communications、events、scheduler、prompt builders、node lifecycle 和 `tickGraphRun` kernel。Edge 记录已保留 planner 输出的 `label`、`conditionExpression` 和 `metadata`；Scheduler 支持依赖、终态、attempt、advisory `blocking:false` 结构依赖放行、结构化 `source_status` / `source_acceptance` 条件求值、不可求值 custom 条件保守进入失败/复核口径、`sleep` ready action、`writeFiles` 路径重叠、`conflictGroup` 和并发上限计算；新 planner 输出会拒绝 `human_gate`、`human_approved` 和 `manual` 条件，运行时不再生成等待外部批准的 action；扩展侧不再把 executor 固定为 1，而是按 `min(run.maxConcurrent, 5)` 执行 scheduler 选出的同批可运行节点。
@@ -66,8 +66,8 @@
 | 边 | 部分完成 | `GraphEdgeRecord`、`GraphPlannedEdgeSpec`、planner materialize、可视 DAG 边、`depends_on` / `if_pass` / `if_fail` / `evidence_for` / `conflicts_with` 类型已入模；`human_approved` 仅作为历史兼容类型保留，新 planner 会拒绝生成；edge 可保留 `label`、`conditionExpression`、`metadata`；GraphRunPanel 会显示分段短边目的标签并基于 12-port 自动选择端口；active `review_feedback` / `if_fail` 可作为验证失败回退上游节点的优先目标，direct run 会沿这些显式边触发自动返工 reset | 证据边和冲突边主要是记录/可视化信号；反馈边已有历史 rollback 控制和 direct reset 控制，但尚无边编辑器、自动条件重规划或可视反馈路径编辑 |
 | 条件 | 部分完成 | Scheduler 已识别 active `if_pass` / `if_fail` 入边，并支持有限结构化 `conditionExpression` 求值：`source_status`、`source_acceptance`；`manual` 仅为历史兼容类型，新 planner 会拒绝生成；custom 条件会保守进入失败/复核口径并输出可读 blocker | 尚无复杂布尔条件编辑器、数据谓词、运行中自动重规划或条件边 UI 编辑 |
 | 依赖 | 已完成基础能力 | `dependsOn` 与 active `depends_on` 边共同决定 ready set；缺失依赖、未通过且未 skipped 的依赖会进入 blocker；历史 Feedback rollback 会沿依赖图重置上游返工节点及下游节点，direct rework 会优先按反馈边 metadata 声明范围重置 | 尚无跨图模板依赖、外部资源依赖和可编辑 descendant reset 预览 |
-| 并发 | 已完成基础能力 | AI planner prompt 要求默认寻找可并行分支并生成 fan-out/fan-in DAG；planner 漏填 `plannedGraph.maxConcurrent` 时，materialize 会按首批无冲突根节点推断并发上限；Scheduler 继续选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 5)` 并行派发独立节点 tab | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
-| 冲突组 | 已完成基础能力 | `conflictGroup`、`writeFiles` 路径重叠和未声明写入范围可阻止同批/运行中冲突 | 只能做声明式与路径级冲突判断，尚无语义冲突检测、自动合并策略或冲突解释 UI |
+| 并发 | 已完成基础能力 | AI planner prompt 要求默认寻找可并行分支并生成 fan-out/fan-in DAG；planner 漏填 `plannedGraph.maxConcurrent` 时，materialize 会按首批无冲突根节点推断并发上限；Scheduler 继续选择同批 ready nodes，扩展侧按 `min(run.maxConcurrent, 5)` 并行派发独立节点 tab；未声明 `writeFiles` / `conflictGroup` 的 ready 节点不再仅因空 scope 被串行化 | 尚无全局资源预算、跨进程队列、优先级和并发成本面板 |
+| 冲突组 | 已完成基础能力 | `conflictGroup` 和 `writeFiles` 路径重叠可阻止同批/运行中冲突；未声明 scope 不再自动制造冲突，真实写入节点必须通过 prompt/规划约束声明 `writeFiles` 或 `conflictGroup` | 只能做声明式与路径级冲突判断，尚无语义冲突检测、自动合并策略或冲突解释 UI |
 | 风险关卡 | 历史兼容 | `human_gate` / `human_approved` 类型仍可读取旧运行记录；新 Graph planner 会拒绝生成，scheduler/kernel 不再把它们暴露为人工等待 action | 尚无审批表单、风险说明采集、驳回原因、多人审批和人工步骤产物采集；当前运行时不走人工审批流程 |
 | 重试 / 返工 | 部分完成 | failed 节点可 Retry；节点 blocked 结果会归一为 failed 并走 retry / `if_fail` / failed 复核路径；新 Graph run 使用 direct 模式，只在当前工作区状态上重跑节点，不自动撤销已写文件；direct run 的验证/评审失败若分类建议 `direct_rework` 且存在显式 `review_feedback` / `if_fail` 边，会重置声明 scope、返工目标和失败源节点并继续调度；历史 worktree run 在 baseCommit 可用时仍可回滚到节点前 checkpoint 并重新调度；验证类节点只在历史 worktree/baseCommit 可用时 Feedback rollback 到上游 checkpoint，记录返工目标选择、候选、reset scope、feedback reason 和触发 edge，并把被重置节点写入 `rework` | direct 模式无 git rollback/checkpoint；尚无局部图编辑、条件边重规划、自动修复分支生成和可视 rollback 预演 |
 | 失败分类 | 已完成基础能力 | 失败节点可保存 `GraphFailureClassification`；`node.failed` event data 同步写入分类；needs-review / idle 文案展示 category、confidence、signals、recommendedRecovery、recommendedWriteFiles 和 nodeDraft；`stale_test_contract` / `missing_write_scope` 可推荐新增测试适配返工节点；direct run 可对有显式反馈边的 `implementation_bug` 推荐 `direct_rework` | 首版不自动应用 node/edge draft，不自动扩大 writeFiles，也不读取大型证据文件正文做深度分析；`direct_rework` 仅在已有反馈边和声明范围足够明确时自动执行 |
@@ -455,7 +455,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 - 已支持用户从 Webview 选择 `Graph` 并启动 AI-planned realized graph：扩展先运行 planning-only `plan` 节点，读取并校验 planner artifact 中的 `plannedGraph`，再 materialize 为包含分支、fan-out/fan-in、测试、评审、sleep、merge 或 summary 的真实 DAG；planner prompt 已强化为默认并行优先，要求独立无冲突分支不要串行，并要求 `plannedGraph.maxConcurrent` 反映首批无冲突分支数；规划无效时 planner 节点记为 failed 并继续按失败路径调度，而不是进入人工审批。
 - planner prompt 已要求重构/迁移场景检查旧 source-contract、文本快照、路径断言和测试 canonical source，必要时规划独立测试适配/契约更新节点并声明测试 `writeFiles`。
 - 已支持 `plan`、`implement`、`test`、`review`、`summary` 的 CLI 节点执行；`sleep` 已有 kernel/scheduler/lifecycle 与自动唤醒路径；`human_gate` 仅保留历史类型兼容，新 planner 输出会被拒绝。
-- Scheduler 已作为本地纯函数落地；Graph 记录会保留 planner 输出的 DAG 和 maxConcurrent，planner 漏填 maxConcurrent 时会从 materialized graph 的首批无冲突根节点推断默认值，扩展侧按 `min(run.maxConcurrent, 5)` 派发同批 ready nodes，并为每个节点创建独立 Graph 节点 tab，避免并行节点共享同一主 tab 互相 stop。
+- Scheduler 已作为本地纯函数落地；Graph 记录会保留 planner 输出的 DAG 和 maxConcurrent，planner 漏填 maxConcurrent 时会从 materialized graph 的首批无冲突根节点推断默认值，扩展侧按 `min(run.maxConcurrent, 5)` 派发同批 ready nodes；调度冲突只来自显式 `conflictGroup` 或重叠 `writeFiles`，未声明 scope 的 ready 节点不再被隐式全局写锁串行化，并且每个节点都会创建独立 Graph 节点 tab，避免并行节点共享同一主 tab 互相 stop。
 - 已复用现有 CLI runner 和 Loop 子任务隔离经验，节点 prompt 明确授权范围、输入 artifact、完成标准、验证要求、全图拓扑、当前位置和下游职责边界。
 
 ### Phase 2：Graph 恢复与交互增强
@@ -485,7 +485,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 ## 验证与安全边界
 
 - Graph 生成必须先做 schema 校验，禁止未知节点类型和未知边类型静默通过。
-- 所有写入节点必须声明 `writeFiles` 或 `conflictGroup`；无法判断时默认串行。
+- 会修改文件的节点必须声明 `writeFiles` 或 `conflictGroup`；未声明 scope 的节点在调度层不再被当作隐式全局写锁，必须被 prompt/规划约束视为不写文件。需要串行保护时应显式声明 `conflictGroup` 或重叠 `writeFiles`。
 - 后续启用高风险节点模板前必须重新设计显式安全确认机制；当前 Graph 运行时不再使用 `human_gate` 作为人工审批流程。
 - 节点 prompt 中必须包含授权范围、输入 artifact、输出 artifact、完成标准和验证要求。
 - 生命周期变更会回写持久化 store 与快照；跨进程恢复和面板操作每次派发前重新读取状态，避免旧异步回调复活任务。
