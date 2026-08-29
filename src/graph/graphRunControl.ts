@@ -223,19 +223,7 @@ export async function retryGraphNodeForRun(
     updatedAt: timestamp,
     activeNodeIds: run.activeNodeIds.filter((activeNodeId) => activeNodeId !== nodeId),
     nodes: run.nodes.map((item) => item.id === nodeId
-      ? {
-        ...item,
-        status: "pending",
-        maxAttempts: nextMaxAttempts,
-        startedAt: undefined,
-        completedAt: undefined,
-        lastError: undefined,
-        rework: undefined,
-        executionCwd: undefined,
-        worktreeCwd: undefined,
-        baseCommit: undefined,
-        commit: undefined,
-      }
+      ? resetGraphNodeForRetry(item, nextMaxAttempts)
       : item),
   };
   await appendGraphRunControlEvent(nextRun, {
@@ -838,14 +826,34 @@ function resetGraphNodeForRework(node: GraphNodeRecord, rework: GraphNodeReworkR
   const nextMaxAttempts = node.attempts >= node.maxAttempts
     ? node.attempts + 1
     : node.maxAttempts;
+  return resetGraphNodeExecutionState(node, {
+    maxAttempts: nextMaxAttempts,
+    rework,
+  });
+}
+
+function resetGraphNodeForRetry(node: GraphNodeRecord, maxAttempts: number): GraphNodeRecord {
+  return resetGraphNodeExecutionState(node, {
+    maxAttempts,
+    rework: undefined,
+  });
+}
+
+function resetGraphNodeExecutionState(
+  node: GraphNodeRecord,
+  options: {
+    maxAttempts: number;
+    rework: GraphNodeReworkRecord | undefined;
+  },
+): GraphNodeRecord {
   return {
     ...node,
     status: "pending",
-    maxAttempts: nextMaxAttempts,
+    maxAttempts: options.maxAttempts,
     startedAt: undefined,
     completedAt: undefined,
     lastError: undefined,
-    rework,
+    rework: options.rework,
     artifactRef: undefined,
     executionCwd: undefined,
     worktreeCwd: undefined,

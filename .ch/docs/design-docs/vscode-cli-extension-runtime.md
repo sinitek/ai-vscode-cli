@@ -24,11 +24,13 @@ src/
 ├── extension.ts              # 扩展入口、命令注册、状态编排、面板消息总线
 ├── extensionHost/            # 扩展宿主侧运行时 host 与组合根拆分
 ├── cli/                      # CLI 设置读取、命令解析、参数构建、进程执行
-├── interactive/              # Codex/Claude/OpenCode 交互 Runner 与会话映射
+├── interactive/              # Codex/Claude 交互 Runner 与会话映射
 ├── webview/                  # 侧边栏聊天面板、配置中心面板、前后端协议
 ├── config/                   # 本地配置档案、Skills、MCP、官方目录管理
+├── graph/                    # Graph 运行图、调度、边语义与节点控制
+├── shared/                   # 跨 CLI/config/Graph 复用的纯工具
 ├── trace/                    # trace/tool 事件格式化
-├── loopDebate.ts          # Loop 辩论记录、路径、群聊解析和共识校验纯函数
+├── loopDebate.ts             # Loop 辩论记录、路径、群聊解析和共识校验纯函数
 ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 ├── logger.ts                 # 本地日志与脱敏
 ├── i18n.ts                   # 扩展侧国际化
@@ -52,15 +54,16 @@ media/
 - 接收 Webview 消息并分发到 CLI、运行时 host、交互 Runner、配置服务
 - 将运行结果、trace、任务列表和状态变更回推给 Webview
 
-这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-03 的运行时抽取后，`src/extension.ts` 为 4968 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
+这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-29 的后端重构后，`src/extension.ts` 为 4993 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
 
 提示运行的连续状态机已经从组合根下沉：
 
-- `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 1138 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、Vibe 自然语言人工交互兜底、最终结论判定、长期记忆触发和执行后自动压缩触发。
-- `src/extensionHost/promptParallelRuntime.ts`：OpenCode parallel host，当前 1060 行。它负责并行 tab 的 `opencode run --format json` 启动、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、Vibe 自然语言人工交互兜底、最终结论判定、长期记忆触发和执行后自动压缩触发。
-- `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、Codex 结构化人工交互请求拦截、Codex/Claude Vibe 自然语言人工交互兜底、hidden retry 和 final answer 回归路径。
+- `src/extensionHost/promptOneShotRuntime.ts`：OpenCode one-shot host，当前 1224 行。它负责 `opencode run --format json` 的进程启动、JSONL stream 解析、有界原始输出、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、Vibe 自然语言人工交互兜底、最终结论判定、长期记忆触发和执行后自动压缩触发。
+- `src/extensionHost/promptParallelRuntime.ts`：OpenCode parallel host，当前 1181 行。它负责并行 tab 的 `opencode run --format json` 启动、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表更新、受管子代理进度消费、Vibe 自然语言人工交互兜底、最终结论判定、长期记忆触发和执行后自动压缩触发。parallel 运行的终态 `TaskRunRecord` 通过统一 helper 生成，`end` / `error` / `stopped` 均保留 `loopTaskId`、`loopSubtaskId`、`graphRunId` 和 `graphNodeId` 等追踪字段。
+- `src/extensionHost/promptInteractiveRuntime.ts`：Codex / Claude interactive host，当前 1387 行。它负责 `CodexInteractiveRunner` / `ClaudeInteractiveRunner` 的 turn 内消息、runner 事件映射、session adoption/migration、停止收口、消息持久化、subagent progress、Codex 结构化人工交互请求拦截、Codex/Claude Vibe 自然语言人工交互兜底、hidden retry 和 final answer 回归路径。
 - `src/extensionHost/openCodeSubagentRuntime.ts`：OpenCode 子代理 runtime preparer，当前 201 行。它负责 configured attach、managed server 启动、Basic auth env override、server readiness race、unavailable fallback 和 disabled monitor，向 one-shot / parallel host 返回 `PreparedOpenCodeSubagentRuntime`。
 - `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免提示运行 host 通过宽泛对象耦合。
+- `src/extensionHost/loopOrchestration.ts`：Loop 编排 host，当前 3043 行。它承载主从多智能体与红蓝辩论编排，host 依赖类型必须按 prompt run、task store、debate、prompt builder、runner、文案和进度等边界显式声明，不能回退为宽泛 `Record<string, any>`。
 
 依赖方向是单向的：`extension.ts` 导入 `createPromptOneShotRuntimeHost` / `createPromptInteractiveRuntimeHost` / `createOpenCodeSubagentRuntimePreparer` 并注入显式依赖；runtime host 可以依赖 `cli/`、`interactive/`、`promptRuntime`、`promptRunState` 等服务或类型，但不能反向依赖 `extension.ts`。`runPrompt` 仍留在 `extension.ts`，负责选择 interactive、parallel 或 one-shot 路径，并把 Loop 子任务临时执行根作为执行选项传入 host。
 
@@ -96,7 +99,8 @@ media/
 ### 4.1 `src/cli/*`：一次性执行与命令解析层
 
 - `config.ts`：从 VS Code settings 读取 CLI 命令、参数、思考模式、shell 选项等
-- `commandRunner.ts`：负责命令解析、PATH 探测、命令可用性检测、一次性流式执行与输出捕获
+- `commandResolution.ts`：集中处理配置化 CLI command string 的拆分、可执行命令归一化和 PATH / 用户级 bin 解析；带引号的 command 与内嵌固定参数只在这里拆分一次
+- `commandRunner.ts`：负责命令可用性检测、一次性流式执行与输出捕获；terminal run、stream run、OpenCode server/capture spawn 都复用 `commandResolution.ts` 的拆分结果，并在配置内嵌参数之后追加运行时参数
 - `modelArgs.ts`：统一处理模型参数读写
 - `opencodeconfigmodels.ts`：解析 active config 双角色候选、strict exact ref 与 effective overlay 对象
 - `opencoderuntimeconfig.ts`：创建 `0700` 临时目录、`0600` JSON overlay 和幂等清理
@@ -177,6 +181,8 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
 - 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；Codex 配置中心只维护 `~/.codex/config.toml` 主配置（TOML）和既有受控鉴权入口，不读取、写入或备份 `.env`；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
+- `src/config/configPaths.ts` 是用户级配置路径、配置档案目录和 `config-order.json` 的集中事实来源；`configService.ts`、`mcpService.ts` 等模块不得各自硬编码 `~/.claude.json`、`~/.codex/config.toml` 或 `~/.opencode/config.json`。legacy `gemini` 配置平台只在这里兼容归一为 `opencode`
+- `src/shared/jsonObject.ts` 提供 strict/jsonc 两种 JSON object 解析。普通配置文本保持 strict JSON；OpenCode 官方全局 MCP 配置允许 JSONC 输入，并在成功修改后写回格式化严格 JSON
 - 配置中心 UI 的 Claude、OpenCode、Codex 三组可视化参数采用同一交互约定：参数 label 右侧展示问号 tooltip，枚举参数在 tooltip 中列出允许值；“查看范例”入口固定在配置文件名右侧，三组保持 OpenCode 风格的相同位置和密度
 - 管理配置档案（config profiles）
 - 管理备份、导出
@@ -296,7 +302,7 @@ cli / interactive / config 服务层
 
 ## 10. 当前已知限制
 
-- `extension.ts` 仍为 4968 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
+- `extension.ts` 仍为 4993 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化
 - Loop 等待外部结果不再依赖 Extension Host 定时器；此类场景进入 `blocked` / `needs-review` 后由用户手动继续。

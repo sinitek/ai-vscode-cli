@@ -18,7 +18,7 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         opacity: 1;
         transform: translateY(0);
       }
-      
+
       /* Misc for Rules/Help */
       .rules-textarea {
         background: var(--vscode-input-background);

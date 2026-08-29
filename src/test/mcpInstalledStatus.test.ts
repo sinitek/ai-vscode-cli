@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { EventEmitter } from "events";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -7,12 +8,51 @@ import { installVscodeMock } from "./vscodeMock";
 
 installVscodeMock();
 
+const crossSpawn = require("cross-spawn") as {
+  spawn: (...args: unknown[]) => unknown;
+};
+
+type FakeChild = EventEmitter & {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  kill: () => boolean;
+};
+
 function loadMcpService(): typeof import("../config/mcpService") {
+  const configPathsModulePath = require.resolve("../config/configPaths");
   const openCodeModulePath = require.resolve("../config/openCodeMcpConfig");
   const mcpServiceModulePath = require.resolve("../config/mcpService");
+  delete require.cache[configPathsModulePath];
   delete require.cache[openCodeModulePath];
   delete require.cache[mcpServiceModulePath];
   return require("../config/mcpService") as typeof import("../config/mcpService");
+}
+
+function createFakeChild(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => true;
+  return child;
+}
+
+function installConfiguration(values: Record<string, unknown>): () => void {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, fallback?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => (
+      Object.prototype.hasOwnProperty.call(values, key) ? values[key] as T : fallback
+    ),
+  });
+  return () => {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  };
 }
 
 async function withTempHome<T>(
@@ -78,6 +118,33 @@ test("reads Codex MCP installation status from config.toml without invoking code
     const { getMcpInstalledServerIds } = loadMcpService();
     assert.deepEqual(await getMcpInstalledServerIds("codex"), ["context7", "sqlite"]);
   });
+});
+
+test("invokes Codex MCP list with configured command parts", async () => {
+  const restoreConfiguration = installConfiguration({
+    "commands.codex": `"${process.execPath}" --profile mcp`,
+  });
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild();
+  const spawnCalls: unknown[][] = [];
+  crossSpawn.spawn = (...args: unknown[]): unknown => {
+    spawnCalls.push(args);
+    queueMicrotask(() => {
+      child.stdout.emit("data", JSON.stringify([{ name: "context7" }]));
+      child.emit("close", 0);
+    });
+    return child;
+  };
+
+  try {
+    const { getCodexMcpServerIds } = loadMcpService();
+    assert.deepEqual(await getCodexMcpServerIds(), ["context7"]);
+    assert.equal(spawnCalls[0]?.[0], process.execPath);
+    assert.deepEqual(spawnCalls[0]?.[1], ["--profile", "mcp", "mcp", "list", "--json"]);
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+    restoreConfiguration();
+  }
 });
 
 test("reads OpenCode MCP installation status from official global opencode.json", async () => {

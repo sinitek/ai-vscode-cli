@@ -3,6 +3,7 @@ import * as path from "path";
 import * as os from "os";
 import { spawn } from "cross-spawn";
 import { getCliCommand } from "../cli/config";
+import { getConfiguredCliCommandParts } from "../cli/commandResolution";
 import { CliName } from "../cli/types";
 import { ConfigPlatform, CodexMcpHealthItem, CodexMcpInstallResult, McpHealthItem, McpMarketplaceItem } from "./types";
 import { buildClaudeMcpInstallArgs, buildCodexMcpInstallArgs, parseCodexMcpServerIds } from "./mcpInstallArgs";
@@ -14,6 +15,8 @@ import {
   probeInstalledCodexMcpServer,
 } from "./mcpHealth";
 import { installOpenCodeMcpConfig, listInstalledOpenCodeMcpServerIds, uninstallOpenCodeMcpConfig } from "./openCodeMcpConfig";
+import { CONFIG_PATHS } from "./configPaths";
+import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
 const CODEX_MCP_COMMAND_TIMEOUT_MS = 120000;
 const OPENCODE_CLI = "opencode" as CliName;
@@ -73,22 +76,8 @@ export type SimpleFetchInit = {
 
 export type SimpleFetch = (input: string, init?: SimpleFetchInit) => Promise<SimpleFetchResponse>;
 
-function parseCommandParts(command: string): string[] {
-  const parts = command.match(/(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S+)/g) ?? [];
-  return parts.map((part) => {
-    if (
-      (part.startsWith("\"") && part.endsWith("\""))
-      || (part.startsWith("'") && part.endsWith("'"))
-    ) {
-      return part.slice(1, -1);
-    }
-    return part;
-  });
-}
-
-function getConfiguredCliCommandParts(cli: CliName): string[] {
-  const command = getCliCommand(cli).trim();
-  return parseCommandParts(command || cli);
+function getConfiguredMcpCliCommandParts(cli: CliName): string[] {
+  return getConfiguredCliCommandParts(getCliCommand(cli), cli);
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -205,7 +194,7 @@ async function runConfiguredCliCommand(
   args: string[],
   timeoutMs = CODEX_MCP_COMMAND_TIMEOUT_MS,
 ): Promise<CodexRunResult> {
-  return runCommandParts(getConfiguredCliCommandParts(cli), args, cli, timeoutMs);
+  return runCommandParts(getConfiguredMcpCliCommandParts(cli), args, cli, timeoutMs);
 }
 
 async function runClaudeCommand(
@@ -224,10 +213,6 @@ async function runOpenCodeCommand(
 
 async function runCodexCommand(args: string[], timeoutMs = CODEX_MCP_COMMAND_TIMEOUT_MS): Promise<CodexRunResult> {
   return runConfiguredCliCommand("codex", args, timeoutMs);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 function escapeRegExp(value: string): string {
@@ -305,7 +290,7 @@ async function readTextFileIfExists(filePath: string, defaultContent: string): P
 }
 
 async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
-  const filePath = path.join(os.homedir(), ".claude.json");
+  const filePath = CONFIG_PATHS.claude.mcp;
   const currentContent = await readTextFileIfExists(filePath, "{}");
   const next = removeMcpServerFromJsonText(currentContent, serverId);
   if (!next.changed) {
@@ -316,7 +301,7 @@ async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
 }
 
 async function cleanupCodexMcpDocument(serverId: string): Promise<boolean> {
-  const configPath = path.join(os.homedir(), ".codex", "config.toml");
+  const configPath = CONFIG_PATHS.codex.config;
   const currentContent = await readTextFileIfExists(configPath, "");
   const next = removeCodexMcpServerBlock(currentContent, serverId);
   if (!next.changed) {
@@ -327,13 +312,10 @@ async function cleanupCodexMcpDocument(serverId: string): Promise<boolean> {
 }
 
 function readMcpServerIdsFromJsonText(content: string): string[] {
-  let parsed: unknown;
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(content || "{}");
+    parsed = parseJsonObjectText(content || "{}", { mode: "strict" });
   } catch {
-    return [];
-  }
-  if (!isPlainObject(parsed)) {
     return [];
   }
 
@@ -367,13 +349,11 @@ function readCodexMcpServerIdsFromToml(content: string): string[] {
 }
 
 async function listInstalledClaudeMcpServerIds(): Promise<string[]> {
-  const filePath = path.join(os.homedir(), ".claude.json");
-  return readMcpServerIdsFromJsonText(await readTextFileIfExists(filePath, "{}"));
+  return readMcpServerIdsFromJsonText(await readTextFileIfExists(CONFIG_PATHS.claude.mcp, "{}"));
 }
 
 async function listInstalledCodexMcpServerIdsFromConfig(): Promise<string[]> {
-  const configPath = path.join(os.homedir(), ".codex", "config.toml");
-  return readCodexMcpServerIdsFromToml(await readTextFileIfExists(configPath, ""));
+  return readCodexMcpServerIdsFromToml(await readTextFileIfExists(CONFIG_PATHS.codex.config, ""));
 }
 
 async function listInstalledCodexMcpServers(): Promise<CodexInstalledMcpServer[]> {

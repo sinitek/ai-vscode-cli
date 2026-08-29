@@ -95,7 +95,7 @@ function setPlatform(value: NodeJS.Platform): () => void {
 
 test("runs a resolved stream command with mocked process output and termination", () => {
   const restoreConfiguration = installConfiguration({
-    "commands.codex": process.execPath,
+    "commands.codex": `"${process.execPath}" --from-command`,
     "args.codex": ["--configured"],
   });
   const originalSpawn = crossSpawn.spawn;
@@ -129,7 +129,12 @@ test("runs a resolved stream command with mocked process output and termination"
     assert.deepEqual(child.stderr.encodings, ["utf8"]);
     assert.equal(spawnCalls.length, 1);
     assert.equal(spawnCalls[0]?.[0], process.execPath);
-    assert.deepEqual(spawnCalls[0]?.[1], ["--configured", "--skip-git-repo-check", "inspect"]);
+    assert.deepEqual(spawnCalls[0]?.[1], [
+      "--from-command",
+      "--configured",
+      "--skip-git-repo-check",
+      "inspect",
+    ]);
     assert.deepEqual(spawnCalls[0]?.[2], {
       cwd: "/isolated/workspace",
       env: {

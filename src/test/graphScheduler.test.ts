@@ -173,6 +173,47 @@ test("respects active if_pass and if_fail conditional edges", () => {
   assert.equal(getGraphNodeBlockers(run, "inactive-target")[0]?.reason, "conditional_edge_inactive");
 });
 
+test("ignores if_fail rework trigger edges when computing scheduler readiness", () => {
+  const reviewSource = createNode({
+    id: "review-source",
+    title: "Review source",
+    kind: "review",
+    status: "passed",
+    ownerRole: "reviewer",
+  });
+  const reworkTarget = readyImplement("rework-target");
+  const ordinaryFailureTarget = readyImplement("ordinary-failure-target");
+  const run = createRun([
+    reviewSource,
+    reworkTarget,
+    ordinaryFailureTarget,
+  ], [
+    {
+      id: "edge-rework",
+      from: "review-source",
+      to: "rework-target",
+      kind: "if_fail",
+      active: true,
+      metadata: {
+        feedbackReason: "Review feedback asks implementation rework.",
+        reworkTargetNodeId: "rework-target",
+        reworkScopeNodeIds: ["rework-target", "review-source"],
+      },
+    },
+    {
+      id: "edge-ordinary-fail",
+      from: "review-source",
+      to: "ordinary-failure-target",
+      kind: "if_fail",
+      active: true,
+    },
+  ]);
+
+  assert.deepEqual(computeGraphReadyNodeIds(run), ["rework-target"]);
+  assert.deepEqual(getGraphNodeBlockers(run, "rework-target"), []);
+  assert.equal(getGraphNodeBlockers(run, "ordinary-failure-target")[0]?.reason, "if_fail_not_satisfied");
+});
+
 test("evaluates structured edge conditions and reports readable blockers", () => {
   const source = createNode({
     id: "source",

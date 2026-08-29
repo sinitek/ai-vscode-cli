@@ -213,5 +213,5 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         font-weight: 600;
         line-height: 16px;
       }
-      
+
 `;

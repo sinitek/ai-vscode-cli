@@ -22,6 +22,7 @@ import {
   type GraphRunRecord,
 } from "./types";
 import { formatGraphNodeTitleInChinese } from "./graphNodeTitles";
+import { isGraphActiveStructuralOrBlockingEdge } from "./graphEdgeSemantics";
 import {
   getGraphNodeConflictReason,
   isGraphCliExecutableNode,
@@ -624,7 +625,7 @@ function buildUnlocksByNodeId(
   const known = new Set(nodes.map((node) => node.id));
   const unlocks = new Map<string, Set<string>>();
   edges.forEach((edge) => {
-    if (!edge.active || edge.kind === "conflicts_with" || edge.kind === "evidence_for") {
+    if (!isGraphActiveStructuralOrBlockingEdge(edge)) {
       return;
     }
     if (!known.has(edge.from) || !known.has(edge.to)) {

@@ -7,6 +7,7 @@ import {
   OfficialSkillInstallState,
   OfficialSkillPlatform,
 } from "./types";
+import { parseJsonObjectText } from "../shared/jsonObject";
 
 export const OFFICIAL_SKILL_METADATA_FILE = ".sinitek-official-skill.json";
 const OFFICIAL_SKILL_METADATA_SCHEMA_VERSION = 2;
@@ -64,10 +65,6 @@ export type ResolveOfficialSkillInstallStateOptions = {
   metadata: OfficialSkillMetadata | null;
   computedInstalledContentHash?: string;
 };
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
 
 function isOfficialSkillPlatform(value: string): value is CurrentOfficialSkillPlatform {
   return value === "claude" || value === "codex" || value === "opencode";
@@ -211,10 +208,7 @@ function parseOfficialSkillMetadataV2(parsed: Record<string, unknown>): Official
 export async function readOfficialSkillMetadata(skillDir: string): Promise<OfficialSkillMetadata | null> {
   try {
     const content = await fs.readFile(getOfficialSkillMetadataPath(skillDir), "utf-8");
-    const parsed = JSON.parse(content) as unknown;
-    if (!isPlainObject(parsed)) {
-      return null;
-    }
+    const parsed = parseJsonObjectText(content, { mode: "strict" });
     return parseOfficialSkillMetadataV2(parsed) ?? parseOfficialSkillMetadataV1(parsed);
   } catch {
     return null;

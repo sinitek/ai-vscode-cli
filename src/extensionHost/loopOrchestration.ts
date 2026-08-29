@@ -1,8 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
+import type { CliName, ThinkingMode } from "../cli/types";
+import type { GraphModelRole } from "../graph/types";
+import type { I18nKey } from "../i18n";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
-import type { SubagentProgressController, SubagentProgressUpdate } from "../subagentProgress";
+import type { SubagentProgressController, SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { LoopTaskRole, TaskRunStatus } from "../promptRunState";
 import type { LoopMainDecision, LoopSubtaskRecord, LoopTaskRecord } from "../loopTaskStore";
 import type {
@@ -30,9 +33,178 @@ export const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 export const LOOP_DEBATE_DEFAULT_DEBATE_ROUND = 1;
 export const LOOP_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
 
-export type LoopOrchestrationHostDeps = Record<string, any>;
+type PromptRunRuntimeHostApi = ReturnType<typeof import("./promptRunRuntime").createPromptRunRuntimeHost>;
+type LoopTaskStoreApi = typeof import("../loopTaskStore");
+type PromptRunStateApi = typeof import("../promptRunState");
+type LoopDebateApi = typeof import("../loopDebate");
+type LoopPromptBuildersApi = typeof import("../loopPromptBuilders");
+type LoopDebateRunnerApi = typeof import("../loopDebateRunner");
+type LoopSubtaskProgressApi = typeof import("../loopSubtaskProgress");
+type LoopParallelApi = typeof import("../loopParallel");
+type LoopMainFailureApi = typeof import("../loopMainFailure");
+type PanelStateBuilderApi = typeof import("../panelStateBuilder");
+type WebviewCommandCoordinatorApi = typeof import("../webviewCommandCoordinator");
+type CliTypesApi = typeof import("../cli/types");
+
+type LoopOrchestrationPromptRunDeps = Pick<
+  PromptRunRuntimeHostApi,
+  | "appendSystemMessageForLoop"
+  | "applyLoopMainDecision"
+  | "extractJsonObjectText"
+  | "finalizeLoopSubtaskRun"
+  | "getActiveLoopSubtaskIds"
+  | "getLastLoopAssistantContent"
+  | "getLoopDecisionSubtasks"
+  | "getLoopMessagesForTarget"
+  | "getLoopRoundRunStatus"
+  | "isLoopTaskExecutionInterrupted"
+  | "markLoopSubtaskRunFinished"
+  | "markLoopTaskInterrupted"
+  | "parseLoopMainDecision"
+  | "persistLoopMessagesForTarget"
+>;
+
+type LoopOrchestrationTaskStoreDeps = Pick<
+  LoopTaskStoreApi,
+  | "appendLoopRound"
+  | "bindLoopTaskToSession"
+  | "buildLoopSubtaskCommunicationFile"
+  | "getLoopCommunicationPaths"
+  | "prepareLoopSubtaskCommunicationFile"
+  | "readLoopTaskRecord"
+  | "updateLoopTaskRecord"
+>;
+
+type LoopOrchestrationDebateDeps = Pick<
+  LoopDebateApi,
+  | "LOOP_DEBATE_BLUE_TEAM_ROLE"
+  | "LOOP_DEBATE_MAX_BATCH_SPEAKERS"
+  | "LOOP_DEBATE_MAX_DIALOGUE_TURNS"
+  | "LOOP_DEBATE_MODERATOR_ID"
+  | "LOOP_DEBATE_PARTICIPANT_ROLES"
+  | "LOOP_DEBATE_RED_TEAM_ROLE"
+  | "buildLoopDebateModeratorArtifactFile"
+  | "buildLoopDebateNeedsReviewSummary"
+  | "buildLoopDebateParticipantArtifactFile"
+  | "buildLoopDebatePaths"
+  | "buildLoopMainSubChatTranscriptFile"
+  | "buildLoopMainSubSubtaskTurnBody"
+  | "findLatestLoopDebateModeratorSessionId"
+  | "findLatestLoopDebateParticipantSessionId"
+  | "formatLoopGroupChatMemberName"
+  | "isLoopDebateAdversarialParticipantRole"
+  | "normalizeLoopDebateModeratorAction"
+  | "normalizeLoopDebateParticipantStance"
+  | "normalizeLoopDebateSessionId"
+  | "normalizeLoopDebateSpeakerIds"
+  | "resolveLoopAnswerConclusion"
+  | "selectDefaultLoopDebateOpeningSpeakerIds"
+  | "validateLoopDebateConsensus"
+>;
+
+type LoopOrchestrationPromptBuilderDeps = Pick<
+  LoopPromptBuildersApi,
+  | "LOOP_DEBATE_MAX_PARTICIPANTS"
+  | "LOOP_DEBATE_MIN_PARTICIPANTS"
+  | "buildLoopDebateBriefMarkdown"
+  | "buildLoopDebateChatTurnMarkdown"
+  | "buildLoopDebateDialogueClosedMarkdown"
+  | "buildLoopDebateDialogueTurnChatEventMarkdown"
+  | "buildLoopDebateFinalParticipantMarkdown"
+  | "buildLoopDebateInitialChatMarkdown"
+  | "buildLoopDebateModeratorTurnMarkdown"
+  | "buildLoopDebateParticipantRosterChatMarkdown"
+  | "buildLoopDebateRuntimeForcedFinalizeMarkdown"
+>;
+
+type LoopOrchestrationRunnerDeps = Pick<
+  LoopDebateRunnerApi,
+  | "runLoopDebateConsensusSummary"
+  | "runLoopDebateModerator"
+  | "runLoopDebateParticipantBatch"
+  | "runLoopDebateParticipantRoster"
+>;
+
+type LoopOrchestrationTextDeps = Pick<
+  WebviewCommandCoordinatorApi,
+  | "buildLoopCompletedConclusionAndSummaryMarkdown"
+  | "buildLoopDebateConsensusReachedText"
+  | "buildLoopDebateConsensusStartedText"
+  | "buildLoopDebateDialogueTurnStartedText"
+  | "buildLoopDebateFinalStanceStartedText"
+  | "buildLoopDebateModeratorFinishedText"
+  | "buildLoopDebateModeratorStartedText"
+  | "buildLoopDebateNeedsReviewText"
+  | "buildLoopDebateParticipantFinishedText"
+  | "buildLoopDebateParticipantRosterFailedText"
+  | "buildLoopDebateParticipantRosterFinishedText"
+  | "buildLoopDebateParticipantRosterStartedText"
+  | "buildLoopDebateParticipantStartedText"
+  | "buildLoopDebateParticipantsCollectedText"
+  | "buildLoopDebateRerunText"
+  | "buildLoopDebateReuseText"
+  | "buildLoopDebateStartedText"
+  | "buildLoopRoundSummary"
+  | "buildLoopSupplementalRequirementsLines"
+>;
+
+type LoopOrchestrationRequiredHostDeps =
+  & LoopOrchestrationPromptRunDeps
+  & LoopOrchestrationTaskStoreDeps
+  & LoopOrchestrationDebateDeps
+  & LoopOrchestrationPromptBuilderDeps
+  & LoopOrchestrationRunnerDeps
+  & LoopOrchestrationTextDeps
+  & Pick<PromptRunStateApi, "appendMessageToStore">
+  & Pick<LoopSubtaskProgressApi, "createLoopSubtaskProgressMonitor" | "mapLoopRunStatusToSubagentStatus">
+  & Pick<LoopParallelApi, "buildLoopSubtaskExecutionPlan">
+  & Pick<LoopMainFailureApi, "buildResetLoopMainAiFailureState">
+  & Pick<
+    PanelStateBuilderApi,
+    | "buildLoopSubtaskBatchCompletedText"
+    | "buildLoopSubtaskBatchStartedText"
+    | "buildLoopSubtaskExecutionGroupStartedText"
+    | "buildLoopSubtaskStartedText"
+    | "formatLoopEstimatedRemainingRounds"
+    | "getLoopMainSubChatMainTitle"
+    | "getLoopSubtaskDisplayTitle"
+  >
+  & Pick<CliTypesApi, "normalizeLoopExecutionMode">
+  & {
+    buildSubagentProgressLabels: () => SubagentProgressLabels;
+    buildLoopSubtaskRetryText: (taskId: string, subtaskId: string, retryCount: number) => string;
+    closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+    createLoopSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null }) => PromptRunTarget;
+    createMessageId: () => string;
+    createSubagentProgressController: typeof import("../subagentProgress").createSubagentProgressController;
+    ensureLoopMainSubChatTranscript: (task: LoopTaskRecord) => string;
+    errorToMessage: (error: unknown) => string;
+    logError: (event: string, payload?: unknown) => void | Promise<void>;
+    normalizeLoopContinuePromptForPrompt: (value: unknown) => string | null;
+    refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
+    resolveLoopTaskSessionId: (target: PromptRunTarget) => string | null;
+    resolvePromptRunModelForRole: (input: PromptRunInput, role: GraphModelRole) => string | undefined;
+    resolvePromptRunTargetSessionId: (target: PromptRunTarget) => string | null;
+    resolvePromptRunThinkingModeForRole: (
+      input: PromptRunInput,
+      cli: CliName,
+      role: GraphModelRole,
+      model: string | undefined,
+      options?: { applySubtaskCap?: boolean },
+    ) => ThinkingMode | undefined;
+    runPrompt: (
+      input: PromptRunInput,
+      options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean },
+    ) => Promise<void>;
+    sendPanelMessage: (payload: Record<string, unknown>) => void;
+    switchVisibleConversationTabForLoop: (tabId: string) => Promise<{ cli: CliName; sessionId: string | null } | null>;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean>) => string;
+  };
+
+export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps>;
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
+  const requiredDeps = deps as LoopOrchestrationRequiredHostDeps;
   const {
     LOOP_DEBATE_BLUE_TEAM_ROLE,
     LOOP_DEBATE_MAX_BATCH_SPEAKERS,
@@ -144,7 +316,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     t,
     updateLoopTaskRecord,
     validateLoopDebateConsensus,
-  } = deps;
+  } = requiredDeps;
 
   async function runClassicLoopMainDecision(options: {
     input: PromptRunInput;
@@ -1010,7 +1182,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       createLoopSubtaskRunTarget,
       errorToMessage,
       getExistingLoopDebateRoundStartedAt,
-      logError: (event: string, payload?: unknown) => logError(event, payload),
+      logError: async (event: string, payload?: unknown) => {
+        await logError(event, payload);
+      },
       readLoopDebateModeratorDecisionArtifact,
       readLoopDebateParticipantArtifact,
       readLoopDebateParticipantRosterArtifact,
@@ -2265,7 +2439,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       return [{ subtask, status }];
     }
 
-    const executionPlan: { groups: LoopSubtaskRecord[][] } = buildLoopSubtaskExecutionPlan(subtasks);
+    const executionPlan = buildLoopSubtaskExecutionPlan(subtasks);
     appendSystemMessageForLoop(target, buildLoopSubtaskBatchStartedText(task.id, round, subtasks, executionPlan));
     const results: LoopSubtaskRunResult[] = [];
 

@@ -3,6 +3,7 @@ import * as path from "path";
 import {
   GRAPH_NODE_COMMUNICATIONS_DIR_NAME,
 } from "./graphCommunications";
+import { isGraphActiveStructuralOrBlockingEdge } from "./graphEdgeSemantics";
 import {
   GRAPH_AI_REPLANNER_NODE_ID_PREFIX,
   GRAPH_AI_PLANNER_NODE_ID,
@@ -456,20 +457,31 @@ function collectGraphReviewScopeArtifacts(run: GraphRunRecord, nodes: readonly G
 function collectGraphTopologyRelationships(run: GraphRunRecord, node: GraphNodeRecord): GraphTopologyRelationships {
   const forward = new Map<string, Set<string>>();
   const reverse = new Map<string, Set<string>>();
+
   for (const item of run.nodes) {
     for (const dependencyId of item.dependsOn) {
       connectGraphTopology(forward, dependencyId, item.id);
       connectGraphTopology(reverse, item.id, dependencyId);
     }
-    for (const unlockId of item.unlocks) {
-      connectGraphTopology(forward, item.id, unlockId);
-      connectGraphTopology(reverse, unlockId, item.id);
+  }
+
+  if (run.edges.length > 0) {
+    for (const edge of run.edges) {
+      if (!isGraphActiveStructuralOrBlockingEdge(edge)) {
+        continue;
+      }
+      connectGraphTopology(forward, edge.from, edge.to);
+      connectGraphTopology(reverse, edge.to, edge.from);
+    }
+  } else {
+    for (const item of run.nodes) {
+      for (const unlockId of item.unlocks) {
+        connectGraphTopology(forward, item.id, unlockId);
+        connectGraphTopology(reverse, unlockId, item.id);
+      }
     }
   }
-  for (const edge of run.edges) {
-    connectGraphTopology(forward, edge.from, edge.to);
-    connectGraphTopology(reverse, edge.to, edge.from);
-  }
+
   return {
     directDependencyIds: Array.from(reverse.get(node.id) ?? []),
     directUnlockIds: Array.from(forward.get(node.id) ?? []),

@@ -25,9 +25,10 @@
 - `sinitek-cli-tools.args.claude`
 - `sinitek-cli-tools.args.opencode`
 
-命令解析逻辑集中在 `src/cli/commandRunner.ts`：
+命令拆分与解析边界集中在 `src/cli/commandResolution.ts`，执行路径由 `src/cli/commandRunner.ts` 复用：
 
 - 支持绝对路径、PATH 查找
+- 配置化 command string 可以包含带引号的可执行文件和固定参数；第一段作为可执行命令解析，其余段在 terminal run、stream run、OpenCode server/capture spawn 和 MCP CLI 调用中统一追加到运行时参数之前
 - Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低用户级 CLI 命令被系统路径中旧版本抢占的概率
 - Windows 下额外尝试 npm 全局安装目录
 - macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
@@ -256,10 +257,10 @@ OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，
 - 插件不再通过 `opencode mcp add/remove` 管理 OpenCode MCP，而是直接读写官方全局 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 的顶层 `mcp`。
 - local MCP 写为 `{ "type": "local", "command": ["command", "arg"], "environment": {}, "enabled": true }`；remote MCP 写为 `{ "type": "remote", "url": "...", "headers": {}, "enabled": true }`。
 - 安装只合并或覆盖 `mcp[id]`，保留其他顶层字段和已有 MCP；卸载只删除 `mcp[id]`，目标不存在时幂等成功。
-- 输入支持 JSON 与 JSONC；配置无效或顶层 `mcp` 不是对象时拒绝覆盖。发生修改后以格式化严格 JSON 原子写回，并保留原文件权限。
+- 输入支持 JSON 与 JSONC；JSON object 解析复用 `src/shared/jsonObject.ts` 的 `jsonc` 模式，配置无效或顶层 `mcp` 不是对象时拒绝覆盖。发生修改后以格式化严格 JSON 原子写回，并保留原文件权限。
 - OpenCode 1.17.16 与 1.17.18 均没有 `mcp remove` 子命令；卸载不得依赖不存在的 CLI 命令，也不得误改插件配置中心使用的 `~/.opencode/config.json`。
 - OpenCode MCP 安装状态优先由官方全局配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 判断；配置页和市场打开时不应为了安装状态运行健康检测。`opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康；该命令仅用于用户主动触发健康检测时映射连接状态。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 在健康检测列表中出现，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。
-- 配置变更由 `src/config/openCodeMcpConfig.ts` 负责；CLI 仅保留列表与连接健康检测职责。
+- 配置变更由 `src/config/openCodeMcpConfig.ts` 负责；用户级配置路径由 `src/config/configPaths.ts` 维护，CLI 仅保留列表与连接健康检测职责。
 
 ### MCP 市场目录校验
 

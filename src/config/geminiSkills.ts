@@ -3,24 +3,17 @@ import * as os from "os";
 import * as path from "path";
 import { OpenCodeSkillItem, OpenCodeSkillToggle } from "./types";
 import { t } from "../i18n";
+import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
 const HOME_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
 const SYSTEM_OPENCODE_SKILLS_DIR = path.join(path.sep, "etc", "opencode", "skills");
 const WORKSPACE_OPENCODE_SKILLS_RELATIVE_DIR = path.join(".opencode", "skills");
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function parseOpenCodeConfig(content: string): Record<string, unknown> {
-  const normalized = (content ?? "").trim();
-  if (!normalized) {
-    return {};
-  }
-  const parsed = JSON.parse(normalized) as unknown;
-  if (!isPlainObject(parsed)) {
-    throw new Error("OpenCode config must be a JSON object.");
-  }
+  const parsed = parseJsonObjectText(content, {
+    mode: "strict",
+    rootErrorMessage: "OpenCode config must be a JSON object.",
+  });
   return { ...parsed };
 }
 

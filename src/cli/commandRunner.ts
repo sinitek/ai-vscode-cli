@@ -4,7 +4,7 @@ import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
-import { normalizeCommandInput, resolveCliCommand } from "./commandResolution";
+import { normalizeCommandInput, resolveCliCommand, splitConfiguredCliCommand } from "./commandResolution";
 import { createOpenCodeRuntimeConfigOverlay } from "./opencoderuntimeconfig";
 import {
   extractAssistantTextWithoutThinkingBlocks,
@@ -68,7 +68,8 @@ function checkCommandAvailableOnMacShell(command: string, shell: MacTaskShell): 
 }
 
 export async function isCliCommandAvailable(command: string): Promise<boolean> {
-  const normalized = normalizeCommandInput(command);
+  const commandParts = splitConfiguredCliCommand(command);
+  const normalized = commandParts[0] ?? normalizeCommandInput(command);
   if (!normalized) {
     return false;
   }
@@ -86,17 +87,20 @@ export async function isCliCommandAvailable(command: string): Promise<boolean> {
 
 export async function runCli(cli: CliName, options: RunCliOptions = {}): Promise<void> {
   const command = getCliCommand(cli);
+  const commandParts = splitConfiguredCliCommand(command);
+  const commandExecutable = commandParts[0] ?? command;
+  const configuredArgs = commandParts.slice(1);
   const fullArgs = buildCliArgs(cli, options);
   const terminalEnv = options.envOverrides ? { ...process.env, ...options.envOverrides } : process.env;
-  const resolved = resolveCliCommand(command);
+  const resolved = resolveCliCommand(commandExecutable);
 
   const terminal = vscode.window.createTerminal({
     name: `CLI Bridge: ${cli}`,
     env: terminalEnv,
   });
 
-  const joinedArgs = fullArgs.map((arg) => escapeShellArg(arg)).join(" ");
-  const commandLine = `${resolved?.command ?? command} ${joinedArgs}`.trim();
+  const joinedArgs = [...configuredArgs, ...fullArgs].map((arg) => escapeShellArg(arg)).join(" ");
+  const commandLine = `${resolved?.command ?? commandExecutable} ${joinedArgs}`.trim();
 
   terminal.sendText(commandLine);
 }
@@ -979,11 +983,15 @@ function resolveSpawnCommand(command: string, args: string[]): {
   argsToSpawn: string[];
   resolvedCommand: string;
 } | null {
-  const resolved = resolveCliCommand(command);
+  const commandParts = splitConfiguredCliCommand(command);
+  const commandExecutable = commandParts[0] ?? command;
+  const configuredArgs = commandParts.slice(1);
+  const fullArgs = [...configuredArgs, ...args];
+  const resolved = resolveCliCommand(commandExecutable);
   if (resolved) {
     return {
       commandToSpawn: resolved.command,
-      argsToSpawn: args,
+      argsToSpawn: fullArgs,
       resolvedCommand: resolved.command,
     };
   }
@@ -995,8 +1003,8 @@ function resolveSpawnCommand(command: string, args: string[]): {
   const macTaskShell = getMacTaskShell();
   return {
     commandToSpawn: resolveMacTaskShellExecutable(macTaskShell),
-    argsToSpawn: ["-lc", buildShellCommandLine(command, args)],
-    resolvedCommand: command,
+    argsToSpawn: ["-lc", buildShellCommandLine(commandExecutable, fullArgs)],
+    resolvedCommand: commandExecutable,
   };
 }
 

@@ -71,5 +71,5 @@ export const CHAT_AREA_STYLES = `      /* Chat Area */
         max-width: 100%;
         padding-bottom: 10px;
       }
-      
+
 `;

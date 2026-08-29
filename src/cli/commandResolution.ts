@@ -7,6 +7,24 @@ export type ResolvedCliCommand = {
   resolvedFrom: "config" | "path" | "windows-npm-bin" | "unix-user-bin";
 };
 
+export function splitConfiguredCliCommand(command: string): string[] {
+  const parts = command.trim().match(/(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S+)/g) ?? [];
+  return parts.map((part) => {
+    if (
+      (part.startsWith("\"") && part.endsWith("\""))
+      || (part.startsWith("'") && part.endsWith("'"))
+    ) {
+      return part.slice(1, -1);
+    }
+    return part;
+  });
+}
+
+export function getConfiguredCliCommandParts(command: string, fallbackCommand: string): string[] {
+  const parts = splitConfiguredCliCommand(command);
+  return parts.length > 0 ? parts : [fallbackCommand];
+}
+
 function isPathLikeCommand(command: string): boolean {
   return command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
 }

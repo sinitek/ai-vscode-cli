@@ -1,20 +1,177 @@
 import type { RunProcess } from "../cli/commandRunner";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
+import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
+import type { CliName, ThinkingMode } from "../cli/types";
 import {
   buildNaturalLanguageHumanInteractionRequest,
   formatHumanInteractionSubmittedText,
   type HumanInteractionRequest,
   type HumanInteractionSubmission,
 } from "../humanInteraction";
+import type { I18nKey } from "../i18n";
 import type { OpenCodeTabStreamAction } from "../openCodeTabStream";
-import type { TaskRunRecord } from "../promptRunState";
-import type { SubagentProgressUpdate } from "../subagentProgress";
+import type { CliAttemptResult } from "../panelDiagnostics";
+import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
+import type { SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
+import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type {
+  OpenCodeRuntimePreparation,
+  OpenCodeRuntimePreparationInput,
+  PreparedOpenCodeSubagentRuntime,
+  PromptRunExecutionOptions,
+} from "./promptExecutionShared";
 
-export type PromptParallelRuntimeHostDeps = Record<string, any>;
+type OpenCodeRunOutput = ReturnType<typeof import("../cli/commandRunner").parseOpenCodeRunOutput>;
 
-export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps) {
+type PromptParallelTabRun = {
+  runId: string;
+  tabId: string;
+  cli: CliName;
+  sessionId: string | null;
+  prompt: string;
+  startedAt: number;
+  process: RunProcess;
+  messageTarget: ChatMessage[];
+  stopped: boolean;
+  taskRole?: LoopTaskRole;
+  loopTaskId?: string;
+  loopRound?: number;
+  loopSubtaskId?: string;
+  graphRunId?: string;
+  graphNodeId?: string;
+};
+
+type PromptParallelRuntimeRequiredHostDeps = {
+  AI_TASK_RAW_OUTPUT_MAX_BYTES: number;
+  HIDDEN_RETRY_MAX_RETRIES: number;
+  OPENCODE_SUBAGENT_POLL_INTERVAL_MS: number;
+  adoptDetectedSessionId: (
+    cli: CliName,
+    sessionId: string,
+    tabId: string | null,
+    previousSessionId: string | null,
+  ) => void;
+  adoptFreshOpenCodeLoopRecoverySession: (options: {
+    sessionId: string;
+    previousSessionId: string | null;
+    tabId: string | null;
+    messageTarget: ChatMessage[];
+    loopTaskId: string;
+  }) => ChatMessage[];
+  appendBoundedUtf8Text: typeof import("../boundedText").appendBoundedUtf8Text;
+  appendHiddenRetryErrorTraceMessage: typeof import("../panelDiagnostics").appendHiddenRetryErrorTraceMessage;
+  appendMessageToStore: typeof import("../promptRunState").appendMessageToStore;
+  appendOpenCodeFinalTextToTabStream: typeof import("../openCodeTabStream").appendOpenCodeFinalTextToTabStream;
+  appendTaskRun: (record: TaskRunRecord) => void;
+  applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
+  buildHiddenRetryFailureMessage: typeof import("../hiddenRetry").buildHiddenRetryFailureMessage;
+  buildHiddenRetryLimitMessage: typeof import("../panelDiagnostics").buildHiddenRetryLimitMessage;
+  buildHiddenRetryPrompt: typeof import("../promptRuntime").buildHiddenRetryPrompt;
+  buildHiddenRetryQueuedMessage: typeof import("../panelDiagnostics").buildHiddenRetryQueuedMessage;
+  buildHiddenRetryStartedMessage: typeof import("../panelDiagnostics").buildHiddenRetryStartedMessage;
+  buildOpenCodeFailureMessage: (output: OpenCodeRunOutput, fallbackMessage: string) => string;
+  buildOpenCodeMissingFinalConclusionMessage: (output: OpenCodeRunOutput) => string;
+  buildProcessLabel: typeof import("../cli/commandRunner").buildProcessLabel;
+  buildSubagentProgressLabels: () => SubagentProgressLabels;
+  buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null) => string;
+  buildThinkingPrompt: typeof import("../promptRuntime").buildThinkingPrompt;
+  buildUserChatMessage: (input: PromptRunInput, createdAt: number, messageId: string) => ChatMessage;
+  cancelHumanInteractionForTab: (tabId: string, statusText?: string) => void;
+  consumeOpenCodeTabStreamChunk: typeof import("../openCodeTabStream").consumeOpenCodeTabStreamChunk;
+  createDisabledOpenCodeSubagentMonitor: () => OpenCodeSubagentMonitor;
+  createMessageId: () => string;
+  createOpenCodeSubagentMonitor: (options: {
+    connection: NonNullable<PreparedOpenCodeSubagentRuntime["connection"]>;
+    directory: string;
+    onUpdate: (update: SubagentProgressUpdate) => void;
+    onNoChildren?: () => void;
+    onError?: (error: Error) => void;
+  }) => OpenCodeSubagentMonitor;
+  createOpenCodeTabStreamState: typeof import("../openCodeTabStream").createOpenCodeTabStreamState;
+  createSubagentProgressController: typeof import("../subagentProgress").createSubagentProgressController;
+  extractSessionId: typeof import("../sessionLifecycle").extractSessionId;
+  getAttemptFailureMessage: (attemptResult: CliAttemptResult, resultErrorText?: string | null) => string;
+  getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
+  getGlobalHumanInteractionEnabled: () => boolean;
+  getHiddenRetryDelayMs: typeof import("../hiddenRetry").getHiddenRetryDelayMs;
+  getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
+  hasAssistantFinalConclusionAfterMessage: typeof import("../finalConclusion").hasAssistantFinalConclusionAfterMessage;
+  isHiddenRetryEligibleAttempt: typeof import("../panelDiagnostics").isHiddenRetryEligibleAttempt;
+  isLocalSessionId: (sessionId: string) => boolean;
+  loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
+  logDebug: (event: string, payload?: unknown) => Promise<void>;
+  logError: (event: string, payload?: unknown) => Promise<void>;
+  logInfo: (event: string, payload?: unknown) => Promise<void>;
+  maybeAutoCompactContextAfterPromptSuccess: (
+    target: PromptRunTarget,
+    sessionId: string | null,
+    durationMs: number | null | undefined,
+  ) => Promise<void>;
+  maybePersistLongTermMemoryFromRun: (options: {
+    status: TaskRunStatus;
+    cli: CliName;
+    prompt: string;
+    messages: readonly ChatMessage[];
+    taskRole?: LoopTaskRole;
+    loopTaskId?: string;
+    loopRound?: number;
+    loopSubtaskId?: string;
+    skip?: boolean;
+  }) => void;
+  normalizeTraceContentForDisplay: typeof import("../traceDisplay").normalizeTraceContentForDisplay;
+  parallelRunsByTabId: Map<string, PromptParallelTabRun>;
+  parseOpenCodeRunOutput: typeof import("../cli/commandRunner").parseOpenCodeRunOutput;
+  persistMessagesForTab: (cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]) => void;
+  prepareOpenCodeRuntime: (input?: string | null | OpenCodeRuntimePreparationInput) => Promise<OpenCodeRuntimePreparation>;
+  prepareOpenCodeSubagentRuntime: (options: {
+    cwd: string | undefined;
+    runId: string;
+    runtime: OpenCodeRuntimePreparation;
+    isolateProjectInstructions?: boolean;
+  }) => Promise<PreparedOpenCodeSubagentRuntime>;
+  preparePendingLabel: (cli: CliName, tabId: string, prompt: string) => void;
+  requestHumanInteraction: (request: HumanInteractionRequest) => Promise<HumanInteractionSubmission>;
+  resetHiddenRetryCountOnRecoveredReply: typeof import("../hiddenRetry").resetHiddenRetryCountOnRecoveredReply;
+  resolveCliSessionIdForResume: (cli: CliName, sessionId: string | null) => string | null;
+  resolveOpenCodeSuccessfulExitOutcome: typeof import("../openCodeRunCompletion").resolveOpenCodeSuccessfulExitOutcome;
+  resolveTraceKind: (content: string, kind: TraceMessageKind) => TraceMessageKind;
+  resolveTraceMerge: typeof import("../traceDisplay").resolveTraceMerge;
+  resolveWorkspaceCwd: () => string | undefined;
+  runCliStream: typeof import("../cli/commandRunner").runCliStream;
+  sendOpenCodeTaskListUpdate: (items: readonly OpenCodeTaskListItem[], options: {
+    source: "primary-stream" | "parallel-stream";
+    tabId?: string | null;
+  }) => void;
+  sendPanelMessage: (payload: Record<string, unknown>) => void;
+  sendRunStatusForTab: (tabId: string, status: "start" | "end" | "error" | "stopped", options?: {
+    message?: string;
+    prompt?: string;
+    startedAt?: number;
+    graphRunId?: string;
+    graphNodeId?: string;
+  }) => void;
+  shouldAutoCompactContextAfterRunForTarget: (target: PromptRunTarget) => boolean;
+  shouldRecoverOpenCodeLoopMainSessionInFreshSession: typeof import("../openCodeRunCompletion").shouldRecoverOpenCodeLoopMainSessionInFreshSession;
+  shouldRequireExplicitFinalAnswerForRun: (input: PromptRunInput) => boolean;
+  t: (key: I18nKey, params?: Record<string, string | number | boolean>) => string;
+  updateSessionBuffer: (buffer: string, chunk: string) => string;
+  waitForHiddenRetryDelay: typeof import("../panelDiagnostics").waitForHiddenRetryDelay;
+};
+
+export type PromptParallelRuntimeHostDeps = Partial<PromptParallelRuntimeRequiredHostDeps>;
+
+export type PromptParallelRuntimeHost = {
+  runPromptParallel: (
+    input: PromptRunInput,
+    target: PromptRunTarget,
+    executionOptions?: PromptRunExecutionOptions,
+  ) => Promise<void>;
+};
+
+export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps): PromptParallelRuntimeHost {
+  const requiredDeps = deps as PromptParallelRuntimeRequiredHostDeps;
   const {
     AI_TASK_RAW_OUTPUT_MAX_BYTES,
     HIDDEN_RETRY_MAX_RETRIES,
@@ -85,12 +242,12 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
     t,
     updateSessionBuffer,
     waitForHiddenRetryDelay,
-  } = deps;
+  } = requiredDeps;
 
   async function runPromptParallel(
     input: PromptRunInput,
     target: PromptRunTarget,
-    executionOptions: { cwd?: string; isolateProjectInstructions?: boolean } = {},
+    executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
     const prompt = input.displayPrompt;
     if (!prompt) {
@@ -367,6 +524,26 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       return message;
     };
 
+    const buildParallelTaskRunRecord = (status: TaskRunStatus): TaskRunRecord => {
+      const endedAt = Date.now();
+      return {
+        id: runId,
+        cli: runCli,
+        sessionId,
+        prompt,
+        startedAt,
+        endedAt,
+        durationMs: Math.max(0, endedAt - startedAt),
+        status,
+        taskRole: input.taskRole,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
+        graphRunId: input.graphRunId,
+        graphNodeId: input.graphNodeId,
+      };
+    };
+
     const appendHumanInteractionSubmission = (
       targetMessages: ChatMessage[],
       submission: HumanInteractionSubmission,
@@ -428,22 +605,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         interactionId: humanRequest.interactionId,
       });
       parallelRunsByTabId.delete(target.tabId);
-      const taskRecord: TaskRunRecord = {
-        id: runId,
-        cli: runCli,
-        sessionId,
-        prompt,
-        startedAt,
-        endedAt: Date.now(),
-        durationMs: Math.max(0, Date.now() - startedAt),
-        status: "stopped",
-        taskRole: input.taskRole,
-        loopTaskId: input.loopTaskId,
-        loopRound: input.loopRound,
-        loopSubtaskId: input.loopSubtaskId,
-        graphRunId: input.graphRunId,
-        graphNodeId: input.graphNodeId,
-      };
+      const taskRecord = buildParallelTaskRunRecord("stopped");
       appendTaskRun(taskRecord);
       const completionMessage: ChatMessage = {
         id: createMessageId(),
@@ -883,22 +1045,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
             stderrLength: rawStderr.length,
           });
           parallelRunsByTabId.delete(target.tabId);
-          const taskRecord: TaskRunRecord = {
-            id: runId,
-            cli: runCli,
-            sessionId,
-            prompt,
-            startedAt,
-            endedAt: Date.now(),
-            durationMs: Math.max(0, Date.now() - startedAt),
-            status: "error",
-            taskRole: input.taskRole,
-            loopTaskId: input.loopTaskId,
-            loopRound: input.loopRound,
-            loopSubtaskId: input.loopSubtaskId,
-            graphRunId: input.graphRunId,
-            graphNodeId: input.graphNodeId,
-          };
+          const taskRecord = buildParallelTaskRunRecord("error");
           appendTaskRun(taskRecord);
           const userMessageText = buildHiddenRetryFailureMessage({
             hiddenRetryCount,
@@ -929,22 +1076,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           return;
         }
         parallelRunsByTabId.delete(target.tabId);
-        const taskRecord: TaskRunRecord = {
-          id: runId,
-          cli: runCli,
-          sessionId,
-          prompt,
-          startedAt,
-          endedAt: Date.now(),
-          durationMs: Math.max(0, Date.now() - startedAt),
-          status: "end",
-          taskRole: input.taskRole,
-          loopTaskId: input.loopTaskId,
-          loopRound: input.loopRound,
-          loopSubtaskId: input.loopSubtaskId,
-          graphRunId: input.graphRunId,
-          graphNodeId: input.graphNodeId,
-        };
+        const taskRecord = buildParallelTaskRunRecord("end");
         appendTaskRun(taskRecord);
         sendRunStatusForTab(target.tabId, "end");
         const completionMessage: ChatMessage = {
@@ -1011,20 +1143,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         applyOpenCodeTabStreamActions(finalTextResult.actions);
       }
 
-      const taskRecord: TaskRunRecord = {
-        id: runId,
-        cli: runCli,
-        sessionId,
-        prompt,
-        startedAt,
-        endedAt: Date.now(),
-        durationMs: Math.max(0, Date.now() - startedAt),
-        status: "error",
-        taskRole: input.taskRole,
-        loopTaskId: input.loopTaskId,
-        loopRound: input.loopRound,
-        loopSubtaskId: input.loopSubtaskId,
-      };
+      const taskRecord = buildParallelTaskRunRecord("error");
       appendTaskRun(taskRecord);
 
       const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);

@@ -97,6 +97,10 @@ test("reports invalid JSON, exact refs, missing providers, and missing models", 
     parseOpenCodeConfigModels("not-json").issues.map((issue) => issue.code),
     ["invalid-json"]
   );
+  assert.match(
+    parseOpenCodeConfigModels("[]").issues[0]?.message ?? "",
+    /OpenCode config must be a JSON object/,
+  );
 
   const invalidRef = parseOpenCodeConfigModels(JSON.stringify({
     model: "bare-model",

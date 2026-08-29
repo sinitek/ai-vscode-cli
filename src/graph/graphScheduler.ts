@@ -14,6 +14,10 @@ import {
   normalizeWriteFiles,
   writeFilePathsOverlap,
 } from "../shared/writeScope";
+import {
+  isGraphBlockingEdgeKind,
+  isGraphReworkTriggerEdge,
+} from "./graphEdgeSemantics";
 
 export const GRAPH_SCHEDULER_BLOCKER_REASONS = [
   "terminal_status",
@@ -113,12 +117,6 @@ const GRAPH_WRITE_CLASS_NODE_KINDS: readonly GraphNodeKind[] = [
   "test",
   "review",
   "merge",
-];
-
-const GRAPH_BLOCKING_EDGE_KINDS: readonly GraphEdgeKind[] = [
-  "if_pass",
-  "if_fail",
-  "human_approved",
 ];
 
 export function computeGraphReadyNodeIds(
@@ -527,21 +525,7 @@ function getGraphConditionalInboundEdges(
 ): GraphEdgeRecord[] {
   return run.edges.filter((edge) => edge.to === nodeId
     && !isGraphReworkTriggerEdge(edge)
-    && ((GRAPH_BLOCKING_EDGE_KINDS as readonly string[]).includes(edge.kind) || Boolean(edge.conditionExpression)));
-}
-
-function isGraphReworkTriggerEdge(edge: GraphEdgeRecord): boolean {
-  if (edge.kind === "review_feedback") {
-    return true;
-  }
-  if (edge.kind !== "if_fail") {
-    return false;
-  }
-  return Boolean(
-    edge.metadata?.reworkTargetNodeId
-    || edge.metadata?.feedbackReason
-    || (edge.metadata?.reworkScopeNodeIds && edge.metadata.reworkScopeNodeIds.length > 0),
-  );
+    && (isGraphBlockingEdgeKind(edge.kind) || Boolean(edge.conditionExpression)));
 }
 
 type GraphEdgeGateResult =

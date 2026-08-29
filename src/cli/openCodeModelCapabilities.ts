@@ -1,5 +1,6 @@
 import type { CapturedCliOutput } from "./commandRunner";
 import { parseOpenCodeModelVariants } from "../config/configService";
+import { isPlainObject } from "../shared/jsonObject";
 import type { OpenCodeThinkingMessageKey } from "./types";
 import {
   parseOpenCodeConfigModels,
@@ -70,10 +71,6 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const ANSI_ESCAPE_PATTERN = /\x1B\[[0-?]*[ -/]*[@-~]/g;
 const MODEL_HEADING_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\/\S+$/;
 const capabilityCache = new Map<string, Promise<OpenCodeThinkingCapabilityBase>>();
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
 
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {

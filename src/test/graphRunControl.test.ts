@@ -137,7 +137,7 @@ test("resumes sleeping, needs-review, and error runs while rejecting completed a
   }
 });
 
-test("retries failed and exhausted blocked nodes while preserving attempt history", async () => {
+test("retries failed and exhausted blocked nodes while clearing stale execution evidence", async () => {
   const baseDir = createTempBaseDir();
   try {
     const failed = createNode({
@@ -148,6 +148,28 @@ test("retries failed and exhausted blocked nodes while preserving attempt histor
       startedAt: 500,
       completedAt: 900,
       lastError: "Try again.",
+      artifactRef: "nodes/failed.md",
+      rework: {
+        sourceNodeId: "test",
+        targetNodeId: "failed",
+        resetAt: 750,
+        resetScopeNodeIds: ["failed"],
+        reason: "Old rework record.",
+      },
+      failure: {
+        category: "implementation_bug",
+        confidence: "medium",
+        summary: "Old failure classification.",
+        signals: ["old failure signal"],
+      },
+      acceptance: [{
+        id: "unit",
+        name: "Unit tests",
+        required: true,
+        passed: false,
+        detail: "Previous failure",
+        evidenceRef: "test-output.log",
+      }],
     });
     let run = createRun(baseDir, [failed], [], { activeNodeIds: ["failed"] });
     const retryFailed = await retryGraphNodeForRun(run, "failed", {
@@ -156,13 +178,23 @@ test("retries failed and exhausted blocked nodes while preserving attempt histor
       reason: "Manual retry.",
     });
     run = retryFailed.run;
+    const retryNode = getNode(run, "failed");
     assert.equal(retryFailed.ok, true);
-    assert.equal(getNode(run, "failed").status, "pending");
-    assert.equal(getNode(run, "failed").attempts, 1);
-    assert.equal(getNode(run, "failed").maxAttempts, 2);
-    assert.equal(getNode(run, "failed").startedAt, undefined);
-    assert.equal(getNode(run, "failed").completedAt, undefined);
-    assert.equal(getNode(run, "failed").lastError, undefined);
+    assert.equal(retryNode.status, "pending");
+    assert.equal(retryNode.attempts, 1);
+    assert.equal(retryNode.maxAttempts, 2);
+    assert.equal(retryNode.startedAt, undefined);
+    assert.equal(retryNode.completedAt, undefined);
+    assert.equal(retryNode.lastError, undefined);
+    assert.equal(retryNode.artifactRef, undefined);
+    assert.equal(retryNode.rework, undefined);
+    assert.equal(retryNode.failure, undefined);
+    assert.deepEqual(retryNode.acceptance, [{
+      id: "unit",
+      name: "Unit tests",
+      required: true,
+      detail: "Previous failure",
+    }]);
     assert.deepEqual(run.activeNodeIds, []);
     assert.equal(run.status, "running");
 

@@ -3,12 +3,9 @@ import * as os from "os";
 import * as path from "path";
 import { ClaudeSkillItem, ClaudeSkillToggle } from "./types";
 import { t } from "../i18n";
+import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
 const CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function extractSkillDescription(content: string): string | undefined {
   const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*/);
@@ -42,14 +39,10 @@ function toShortDescription(description?: string): string {
 }
 
 function parseClaudeSettings(content: string): Record<string, unknown> {
-  const normalized = (content ?? "").trim();
-  if (!normalized) {
-    return {};
-  }
-  const parsed = JSON.parse(normalized) as unknown;
-  if (!isPlainObject(parsed)) {
-    throw new Error("Claude settings must be a JSON object.");
-  }
+  const parsed = parseJsonObjectText(content, {
+    mode: "strict",
+    rootErrorMessage: "Claude settings must be a JSON object.",
+  });
   return { ...parsed };
 }
 

@@ -413,6 +413,127 @@ test("node prompt includes the full graph topology, current position, and downst
   assert.match(prompt, /只产出本节点证据/u);
 });
 
+test("node prompt ignores polluted materialized unlocks from rework edges while listing every edge", () => {
+  const plan = createNode({
+    id: "plan",
+    title: "规划 Graph 控制",
+    kind: "plan",
+    status: "passed",
+    ownerRole: "main",
+    writeFiles: [],
+    conflictGroup: undefined,
+    dependsOn: [],
+    unlocks: ["implement"],
+  });
+  const implement = createNode({
+    id: "implement",
+    title: "实现 Graph 控制",
+    status: "running",
+    dependsOn: ["plan"],
+    unlocks: ["test"],
+    writeFiles: ["src/graph/graphRunControl.ts"],
+  });
+  const testNode = createNode({
+    id: "test",
+    title: "验证 Graph 控制",
+    kind: "test",
+    status: "pending",
+    dependsOn: ["implement"],
+    unlocks: ["implement"],
+  });
+  const review = createNode({
+    id: "review",
+    title: "评审 Graph 控制",
+    kind: "review",
+    status: "failed",
+    ownerRole: "reviewer",
+    dependsOn: [],
+    unlocks: ["implement"],
+  });
+  const evidence = createNode({
+    id: "audit",
+    title: "审计证据节点",
+    kind: "intake",
+    status: "passed",
+    dependsOn: [],
+    unlocks: [],
+  });
+  const summary = createNode({
+    id: "summary",
+    title: "总结 Graph 控制",
+    kind: "summary",
+    status: "pending",
+    ownerRole: "main",
+    dependsOn: [],
+    unlocks: [],
+  });
+  const run = createRun([plan, implement, testNode, review, evidence, summary], [{
+    id: "edge-audit-implement",
+    from: "audit",
+    to: "implement",
+    kind: "evidence_for",
+    active: true,
+    metadata: {
+      evidenceRef: "nodes/audit.md",
+      rationale: "审计证据供实现参考。",
+    },
+  }, {
+    id: "edge-review-feedback",
+    from: "review",
+    to: "implement",
+    kind: "review_feedback",
+    active: true,
+    metadata: {
+      feedbackReason: "Review feedback asks implementation rework.",
+      reworkTargetNodeId: "implement",
+    },
+  }, {
+    id: "edge-test-rework",
+    from: "test",
+    to: "implement",
+    kind: "if_fail",
+    active: true,
+    conditionExpression: {
+      type: "source_status",
+      operator: "equals",
+      status: "failed",
+      description: "Focused test failure triggers contract rework.",
+    },
+    metadata: {
+      feedbackReason: "Focused test failed after contract drift.",
+      reworkTargetNodeId: "implement",
+      reworkScopeNodeIds: ["implement", "test"],
+    },
+  }, {
+    id: "edge-inactive-summary",
+    from: "implement",
+    to: "summary",
+    kind: "if_pass",
+    active: false,
+    condition: "Inactive summary edge.",
+  }]);
+
+  const prompt = buildGraphNodePrompt({
+    run,
+    node: implement,
+    options: { generatedAt: "2026-08-29T00:00:00.000Z" },
+  });
+  const topologySummary = prompt.slice(0, prompt.indexOf("### 节点清单"));
+
+  assert.match(topologySummary, /直接前置节点：plan（规划 Graph 控制｜plan｜passed）/u);
+  assert.match(topologySummary, /直接后续节点：test（验证 Graph 控制｜test｜pending）/u);
+  assert.match(topologySummary, /上游链路：plan（规划 Graph 控制｜plan｜passed）/u);
+  assert.match(topologySummary, /下游链路：test（验证 Graph 控制｜test｜pending）/u);
+  assert.doesNotMatch(topologySummary, /审计证据节点|评审 Graph 控制|总结 Graph 控制/u);
+  assert.match(prompt, /\[全图\] test｜验证 Graph 控制；kind=test；status=pending；[^\n]*unlocks=implement/u);
+  assert.match(prompt, /\[全图\] review｜评审 Graph 控制；kind=review；status=failed；[^\n]*unlocks=implement/u);
+  assert.match(prompt, /edge-audit-implement｜audit -> implement；kind=evidence_for；active=true/u);
+  assert.match(prompt, /edge-review-feedback｜review -> implement；kind=review_feedback；active=true/u);
+  assert.match(prompt, /edge-test-rework｜test -> implement；kind=if_fail；active=true/u);
+  assert.match(prompt, /metadata=feedbackReason=Focused test failed after contract drift\.；reworkTargetNodeId=implement；reworkScopeNodeIds=implement,test/u);
+  assert.match(prompt, /edge-inactive-summary｜implement -> summary；kind=if_pass；active=false/u);
+});
+
 test("review node prompt scopes review to upstream task files instead of unrelated dirty workspace", () => {
   const implement = createNode({
     id: "implement-feature",

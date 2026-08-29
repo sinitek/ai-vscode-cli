@@ -22,5 +22,5 @@ export const BASE_STYLES = `      :root {
         height: calc(var(--app-height, 100vh));
         box-sizing: border-box;
       }
-      
+
 `;

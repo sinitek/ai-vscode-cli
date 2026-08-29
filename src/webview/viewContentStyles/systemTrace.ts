@@ -26,7 +26,7 @@ export const SYSTEM_TRACE_STYLES = `      /* System & Trace Messages */
         opacity: 0.6;
         white-space: nowrap;
       }
-      
+
       .message.trace {
         font-size: 12px;
       }

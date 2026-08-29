@@ -187,6 +187,10 @@ test("stores the Loop mode with a queued prompt for background dispatch", () => 
 
 test("forwards queued prompt history skip flag when dispatching", () => {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "dispatchPrompt");
+  const configApplyHelperSource = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
+    "isConfigApplyPendingForCli",
+  );
   const posted: unknown[] = [];
   const dispatchPrompt = new Function(
     "normalizePromptPayloadWithModelFields",
@@ -204,7 +208,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "cliSupportsManagedModelSelection",
     "getLoopExecutionModeForCli",
     "vscode",
-    `${functionSource}; return dispatchPrompt;`,
+    `${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
     (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
       ? {

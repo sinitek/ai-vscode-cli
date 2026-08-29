@@ -4,7 +4,11 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-import { resolveCliCommand } from "../cli/commandResolution";
+import {
+  getConfiguredCliCommandParts,
+  resolveCliCommand,
+  splitConfiguredCliCommand,
+} from "../cli/commandResolution";
 
 type CommandResolutionEnvironment = {
   HOME?: string;
@@ -44,6 +48,15 @@ function restoreEnvironmentVariable(name: string, value: string | undefined): vo
   }
   process.env[name] = value;
 }
+
+test("splits configured CLI command strings and preserves fallback commands", () => {
+  assert.deepEqual(
+    splitConfiguredCliCommand("  \"node binary\" --profile 'two words' plain  "),
+    ["node binary", "--profile", "two words", "plain"],
+  );
+  assert.deepEqual(splitConfiguredCliCommand(" \n\t "), []);
+  assert.deepEqual(getConfiguredCliCommandParts(" \n\t ", "codex"), ["codex"]);
+});
 
 test("prefers the npm global user bin before later PATH entries", async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-command-resolution-"));

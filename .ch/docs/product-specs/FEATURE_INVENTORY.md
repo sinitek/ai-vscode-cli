@@ -37,6 +37,13 @@
 
 starter 默认不预置功能项。复制模板后，请从第一个真实能力开始维护下表。
 
+## 后端实现边界备注
+
+- 2026-08-29 后端重构没有新增用户入口或下线能力；下表现有 Graph、OpenCode、配置中心和 MCP 能力状态保持不变。
+- Graph 相关能力的当前实现边界包含 `src/graph/graphEdgeSemantics.ts`：scheduler、prompt topology 和 review scope 复用同一 active structural/blocking edge 口径；Retry 与 direct rework 都会清理旧 artifact / failure / execution / acceptance evidence。
+- CLI / 配置相关能力的当前实现边界包含 `src/cli/commandResolution.ts`、`src/config/configPaths.ts` 和 `src/shared/jsonObject.ts`：配置化 CLI command string 统一拆分，用户级配置路径统一维护，strict/jsonc JSON object 解析统一复用。
+- OpenCode 官方全局 MCP 配置仍由 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 驱动；JSONC 只作为输入兼容，成功修改后仍写回格式化严格 JSON。
+
 | 业务域 | 功能名称 | 状态 | 主要角色 | 规格来源 | 实现位置 | 测试状态 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AI 对话 / 通用 | P0 性能与内存硬化 | active | 终端用户、扩展运行时 | `docs/PERFORMANCE_MEMORY_AUDIT_2026-07-13.md`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/exec-plans/completed/2026-07/2026-07-31-p0-performance-memory-hardening.md` | `src/extension.ts`、`src/interactive/claudeRunner.ts`、`src/cli/commandRunner.ts`、`src/openCodeTabStream.ts`、`src/webview/viewContentScript/*`、`src/webview/panelFileActions.ts` | `npm run build`；`node --test dist/test/claudeRunner.test.js dist/test/extensionDeactivateStopAll.test.js dist/test/boundedText.test.js dist/test/commandRunnerCoverage.test.js dist/test/opencodeCommandRunner.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js` 114/114；`git diff --check` | Claude stop 将 AbortController 传给 SDK；deactivate/reload 统一 stop-all；OpenCode raw stdout/stderr 与 JSONL pending line 有界并使用增量 activity tracker；Run Stream 有记录数/字节预算且 overlay 关闭时不构建完整 DOM；Assistant delta 流式阶段轻量更新；附件上传最多 10 个文件、单文件 20 MiB、不限制总大小，Webview 和 Extension Host 双端校验并提供中英文超限提示 |

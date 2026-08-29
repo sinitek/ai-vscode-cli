@@ -1,3 +1,5 @@
+import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+
 export type OpenCodeCanonicalModelRole = "main" | "subtask";
 export type OpenCodeLegacyModelRole = "primary" | "small";
 export type OpenCodeModelRole = OpenCodeCanonicalModelRole | OpenCodeLegacyModelRole;
@@ -90,10 +92,6 @@ export function normalizeOpenCodeModelRole(role: OpenCodeModelRoleInput): OpenCo
 
 export function toOpenCodeConfigFieldRole(role: OpenCodeModelRoleInput): OpenCodeLegacyModelRole {
   return normalizeOpenCodeModelRole(role) === "subtask" ? "small" : "primary";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 export function applyOpenCodeRuntimeMultiAgentPermission(
@@ -447,14 +445,17 @@ export function parseOpenCodeConfigModels(
   content: string | null | undefined
 ): ParsedOpenCodeConfigModels {
   const text = typeof content === "string" && content.trim() ? content : "{}";
-  let parsed: unknown;
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(text);
+    parsed = parseJsonObjectText(text, {
+      mode: "strict",
+      rootErrorMessage: "OpenCode config must be a JSON object.",
+    });
   } catch (error) {
-    return emptyParsedResult(`OpenCode config JSON is invalid: ${(error as Error).message}`);
-  }
-  if (!isPlainObject(parsed)) {
-    return emptyParsedResult("OpenCode config must be a JSON object.");
+    if (error instanceof SyntaxError) {
+      return emptyParsedResult(`OpenCode config JSON is invalid: ${error.message}`);
+    }
+    return emptyParsedResult(error instanceof Error ? error.message : String(error));
   }
   return parseOpenCodeConfigObject(parsed);
 }

@@ -8,7 +8,9 @@ import { installVscodeMock } from "./vscodeMock";
 installVscodeMock();
 
 function loadConfigService(): typeof import("../config/configService") {
+  const configPathsModulePath = require.resolve("../config/configPaths");
   const modulePath = require.resolve("../config/configService");
+  delete require.cache[configPathsModulePath];
   delete require.cache[modulePath];
   return require("../config/configService") as typeof import("../config/configService");
 }

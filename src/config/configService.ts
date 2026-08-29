@@ -1,12 +1,11 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
-import type { CliName } from "../cli/types";
 import {
   ApplyPayload,
   ConfigItem,
   ConfigOrder,
-  ConfigPlatform,
+  LEGACY_GEMINI_CONFIG_PLATFORM,
   CopyConfigPayload,
   CurrentConfig,
   ClaudeSkillItem,
@@ -23,6 +22,19 @@ import {
   parseOpenCodeConfigModels,
   parseOpenCodeModelReference,
 } from "../cli/opencodeconfigmodels";
+import {
+  CONFIG_ORDER_FILE,
+  CONFIG_PATHS,
+  getCodexRuntimePaths as getCodexRuntimePathsFromConfigPaths,
+  getConfigDir,
+  getConfigFilePath,
+  getConfigOrderPath,
+  getOpenCodeRuntimePaths as getOpenCodeRuntimePathsFromConfigPaths,
+  normalizeConfigPlatform,
+  type ConfigPathPlatform,
+  type LegacyConfigPlatformInput,
+} from "./configPaths";
+import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 export {
   getOfficialSkillsCatalog,
   installOfficialSkill,
@@ -30,13 +42,7 @@ export {
   uninstallOfficialSkill,
 } from "./officialSkillService";
 
-const CONFIG_DIR_NAME = "__config";
-const CONFIG_ORDER_FILE = "config-order.json";
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
-type ConfigPlatformInput = ConfigPlatform | CliName;
-type LegacyConfigPlatformInput = ConfigPlatformInput;
-type ConfigPathPlatform = "claude" | "codex" | "opencode";
-const LEGACY_GEMINI_PLATFORM = "gemini";
 const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
 const OPENCODE_PLACEHOLDER_MODEL_IDS = new Set([
   "my-model-name",
@@ -56,43 +62,6 @@ export const OPENCODE_PROVIDER_ADAPTER_NPM_BY_PROTOCOL = Object.freeze({
   openai: "@ai-sdk/openai",
   openaiCompatible: "@ai-sdk/openai-compatible",
 });
-const OPENCODE_RUNTIME_DIR = path.join(os.homedir(), ".opencode");
-const OPENCODE_PROFILE_DIR = path.join(OPENCODE_RUNTIME_DIR, CONFIG_DIR_NAME);
-const OPENCODE_CONFIG_PATH = path.join(OPENCODE_RUNTIME_DIR, "config.json");
-
-const CONFIG_PATHS = {
-  claude: {
-    settings: path.join(os.homedir(), ".claude", "settings.json"),
-    mcp: path.join(os.homedir(), ".claude.json"),
-    configDir: path.join(os.homedir(), ".claude", CONFIG_DIR_NAME),
-  },
-  codex: {
-    config: path.join(os.homedir(), ".codex", "config.toml"),
-    auth: path.join(os.homedir(), ".codex", "auth.json"),
-    configDir: path.join(os.homedir(), ".codex", CONFIG_DIR_NAME),
-  },
-  opencode: {
-    config: OPENCODE_CONFIG_PATH,
-    configDir: OPENCODE_PROFILE_DIR,
-  },
-} as const;
-
-function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
-  if (platform === "claude") {
-    return "claude";
-  }
-  if (platform === "codex") {
-    return "codex";
-  }
-  if (platform === "opencode") {
-    return "opencode";
-  }
-  if (platform === LEGACY_GEMINI_PLATFORM) {
-    return "opencode";
-  }
-  throw new Error(`Unsupported config platform: ${String(platform)}`);
-}
-
 async function ensureDir(dirPath: string): Promise<void> {
   try {
     await fs.access(dirPath);
@@ -134,9 +103,6 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
 
 export function parseOpenCodeModelVariants(
   content: string | undefined,
@@ -174,21 +140,8 @@ export function parseOpenCodeModelVariants(
     .map(([variantName]) => variantName);
 }
 
-export function getOpenCodeRuntimePaths(): {
-  config: string;
-} {
-  return {
-    config: CONFIG_PATHS.opencode.config,
-  };
-}
-
-export function getCodexRuntimePaths(): {
-  config: string;
-} {
-  return {
-    config: CONFIG_PATHS.codex.config,
-  };
-}
+export const getOpenCodeRuntimePaths = getOpenCodeRuntimePathsFromConfigPaths;
+export const getCodexRuntimePaths = getCodexRuntimePathsFromConfigPaths;
 
 export async function readClaudeConfig(): Promise<string> {
   await ensureFile(CONFIG_PATHS.claude.settings, "{}");
@@ -401,17 +354,6 @@ export async function getBackupList(platform: LegacyConfigPlatformInput): Promis
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
-function getConfigDir(platform: LegacyConfigPlatformInput): string {
-  return CONFIG_PATHS[normalizeConfigPlatform(platform)].configDir;
-}
-
-function getConfigOrderPath(platform: LegacyConfigPlatformInput): string {
-  return path.join(getConfigDir(platform), CONFIG_ORDER_FILE);
-}
-
-function getConfigFilePath(platform: LegacyConfigPlatformInput, configId: string): string {
-  return path.join(getConfigDir(platform), `${configId}.json`);
-}
 
 async function readConfigList(platform: LegacyConfigPlatformInput): Promise<ConfigItem[]> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
@@ -436,7 +378,7 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
         typeof config.name !== "string" ||
         config.name.length === 0 ||
         config.platform !== normalizedPlatform &&
-        !(normalizedPlatform === "opencode" && (config as { platform?: unknown }).platform === LEGACY_GEMINI_PLATFORM)
+        !(normalizedPlatform === "opencode" && (config as { platform?: unknown }).platform === LEGACY_GEMINI_CONFIG_PLATFORM)
       ) {
         continue;
       }
@@ -556,8 +498,7 @@ function normalizeCodexConfigFields(config: ConfigItem): void {
 function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
   const text = typeof value === "string" && value.trim().length > 0 ? value : fallback;
   try {
-    const parsed = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : {};
+    return parseJsonObjectText(text, { mode: "strict" });
   } catch {
     return {};
   }

@@ -1,6 +1,6 @@
 # 项目架构说明
 
-本仓库是一个 **VS Code 插件单仓**，用于在编辑器内统一接入本地 CLI（Codex / Claude / Gemini），并提供聊天面板、配置中心、会话管理与本地状态持久化能力。
+本仓库是一个 **VS Code 插件单仓**，用于在编辑器内统一接入本地 CLI（Codex / Claude / OpenCode），并提供聊天面板、配置中心、会话管理与本地状态持久化能力。
 
 更详细的运行时设计见：
 
@@ -23,10 +23,12 @@
 │   ├── interactive/          # Codex / Claude 交互 Runner 与会话映射
 │   ├── webview/              # 聊天面板、配置中心、前后端协议
 │   ├── config/               # 本地配置档案、Skills、MCP 管理
+│   ├── graph/                # Graph 运行图、调度、边语义与节点控制
+│   ├── shared/               # 跨 CLI/config/Graph 复用的纯工具
 │   ├── trace/                # trace/tool 输出格式化
-│   ├── loopDebate.ts      # Loop 辩论路径、记录与共识校验纯函数
+│   ├── loopDebate.ts         # Loop 辩论路径、记录与共识校验纯函数
 │   ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
-│   ├── loopTaskStore.ts   # Loop 任务记录持久化
+│   ├── loopTaskStore.ts      # Loop 任务记录持久化
 │   ├── i18n.ts               # 国际化
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
@@ -66,28 +68,38 @@ cli / interactive / config 服务层
 - 负责命令注册、状态管理、消息分发、会话与标签页编排
 - 不应承载具体 CLI 协议细节和配置文件读写实现
 - 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Webview 消息路由、Graph/Loop/session/model/config host 装配和跨运行时生命周期适配
-- 本次运行时抽取后，`src/extension.ts` 为 4968 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
+- 本次运行时抽取后，`src/extension.ts` 为 4993 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
 
 #### 扩展运行时 Host 层
 
 - 位于 `src/extensionHost/`
-- `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发；当前 994 行
-- `promptInteractiveRuntime.ts` 承载 Codex / Claude interactive turn、runner 事件映射、session adoption、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 判定；当前 1210 行
+- `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发；当前 1224 行
+- `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发；当前 1181 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
+- `promptInteractiveRuntime.ts` 承载 Codex / Claude interactive turn、runner 事件映射、session adoption、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 判定；当前 1387 行
+- `loopOrchestration.ts` 承载 Loop 主从与红蓝辩论编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界；当前 3043 行
 - `openCodeSubagentRuntime.ts` 承载 OpenCode 子代理 server attach / managed startup / ready wait / Basic auth env override / unavailable fallback 和 disabled monitor；当前 201 行
 - `promptExecutionShared.ts` 只保存提示运行 host 共享的窄类型；当前 59 行
 - 依赖方向固定为 `extension.ts` 导入 host 并注入显式回调，host 可以依赖 `cli/`、`interactive/`、`promptRunState` 等服务与类型，但不能反向依赖 `extension.ts`
 
 #### CLI / Interactive / Config 服务层
 
-- `src/cli/`：一次性执行与命令解析
+- `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
 - `src/interactive/`：会话型运行与底层续接 ID 映射
-- `src/config/`：外部 CLI 配置、Skills、MCP、本地配置档案管理
+- `src/config/`：外部 CLI 配置、Skills、MCP、本地配置档案管理；用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`
+- `src/shared/`：跨服务层复用、无 VS Code 依赖的纯工具；当前包含 strict/jsonc JSON object 解析等后端共用逻辑
 - 这一层负责和本地 CLI、SDK、home 目录配置打交道，但不负责 UI 渲染
+
+#### Graph 编排层
+
+- 位于 `src/graph/`
+- 负责 Graph run 类型、store、communications、events、scheduler、edge semantics、prompt builders、node lifecycle 和 run control
+- `src/graph/graphEdgeSemantics.ts` 是 active structural/blocking edge 与 rework trigger edge 的共享语义边界，scheduler 和 prompt topology 必须复用它，避免节点上下游、review scope 与调度 gate 口径漂移
 
 #### 基础本地资源层
 
-- 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.gemini/`
+- 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.opencode/` 和 OpenCode 官方全局 MCP 配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`；`~/.gemini/` 仅作历史迁移参考
 - Loop 模式的任务记录位于 `~/.sinitek_cli/loop-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/loop-communications/`
+- Graph 模式的 run store、`graph.json`、`events.jsonl` 和节点 communication artifact 位于 `~/.sinitek_cli/graph-*` 相关目录；新 Graph run 默认 direct 执行，不创建 worktree/checkpoint
 - 首次枚举 Loop 任务时，`src/loopLegacyMigration.ts` 与 `src/loopTaskStore.ts` 会把旧 Lobster 任务存储和通信目录迁入上述 Loop 路径；新写入不再使用旧命名，冲突 artifact 以 `.pre-loop-migration` 后缀保留
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
 
@@ -108,6 +120,7 @@ cli / interactive / config 服务层
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，在 `src/extension.ts` 接线；若是提示运行的连续状态机，优先放到 `src/extensionHost/*Runtime.ts` 并由 `extension.ts` 注入依赖
 6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/loopDebate.ts`，不要反向依赖 VS Code API 或 Webview
+7. 只是 Graph 边/调度/节点控制语义：放 `src/graph/` 内的专门模块；跨 scheduler 和 prompt builder 的边语义优先集中到 `graphEdgeSemantics.ts`
 
 ### 新增文档时怎么放
 
@@ -119,7 +132,7 @@ cli / interactive / config 服务层
 ## 4. 明确禁止
 
 - 在 Webview 中直接拼接文件系统或 CLI 调用逻辑
-- 把 Codex / Claude / Gemini 的协议分支散落在多个 UI 文件中
+- 把 Codex / Claude / OpenCode 的协议分支散落在多个 UI 文件中
 - 在多个模块重复维护同一份本地状态格式
 - 将配置中心实现和聊天面板 DOM 逻辑直接耦合
 - 在未批准时改动技术栈或替换核心依赖

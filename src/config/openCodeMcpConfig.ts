@@ -3,8 +3,9 @@ import * as os from "os";
 import * as path from "path";
 import { buildOpenCodeMcpConfig, OpenCodeMcpConfig } from "./mcpInstallArgs";
 import { McpMarketplaceItem } from "./types";
+import { JsonObject, isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
-type OpenCodeConfigDocument = Record<string, unknown>;
+type OpenCodeConfigDocument = JsonObject;
 
 export type OpenCodeMcpConfigPathOptions = {
   env?: NodeJS.ProcessEnv;
@@ -17,10 +18,6 @@ export type OpenCodeMcpConfigMutationResult = {
   warnings: string[];
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
-
 function expandHomePath(value: string, homeDir: string): string {
   if (value === "~") {
     return homeDir;
@@ -31,117 +28,11 @@ function expandHomePath(value: string, homeDir: string): string {
   return value;
 }
 
-function stripJsonComments(content: string): string {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const current = content[index];
-    const next = content[index + 1];
-
-    if (inString) {
-      result += current;
-      if (escaped) {
-        escaped = false;
-      } else if (current === "\\") {
-        escaped = true;
-      } else if (current === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (current === "\"") {
-      inString = true;
-      result += current;
-      continue;
-    }
-
-    if (current === "/" && next === "/") {
-      index += 2;
-      while (index < content.length && content[index] !== "\n" && content[index] !== "\r") {
-        result += " ";
-        index += 1;
-      }
-      if (index < content.length) {
-        result += content[index];
-      }
-      continue;
-    }
-
-    if (current === "/" && next === "*") {
-      result += "  ";
-      index += 2;
-      while (index < content.length) {
-        if (content[index] === "*" && content[index + 1] === "/") {
-          result += "  ";
-          index += 1;
-          break;
-        }
-        result += content[index] === "\n" || content[index] === "\r" ? content[index] : " ";
-        index += 1;
-      }
-      continue;
-    }
-
-    result += current;
-  }
-
-  return result;
-}
-
-function stripTrailingCommas(content: string): string {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const current = content[index];
-    if (inString) {
-      result += current;
-      if (escaped) {
-        escaped = false;
-      } else if (current === "\\") {
-        escaped = true;
-      } else if (current === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (current === "\"") {
-      inString = true;
-      result += current;
-      continue;
-    }
-
-    if (current === ",") {
-      let nextIndex = index + 1;
-      while (nextIndex < content.length && /\s/.test(content[nextIndex])) {
-        nextIndex += 1;
-      }
-      if (content[nextIndex] === "}" || content[nextIndex] === "]") {
-        continue;
-      }
-    }
-
-    result += current;
-  }
-
-  return result;
-}
-
 function parseOpenCodeConfig(content: string): OpenCodeConfigDocument {
-  const normalized = content.replace(/^\uFEFF/, "").trim();
-  if (!normalized) {
-    return {};
-  }
-  const parsed = JSON.parse(stripTrailingCommas(stripJsonComments(normalized))) as unknown;
-  if (!isPlainObject(parsed)) {
-    throw new Error("OpenCode config root must be a JSON object.");
-  }
-  return parsed;
+  return parseJsonObjectText(content, {
+    mode: "jsonc",
+    rootErrorMessage: "OpenCode config root must be a JSON object.",
+  });
 }
 
 async function readOpenCodeConfig(configPath: string): Promise<OpenCodeConfigDocument> {

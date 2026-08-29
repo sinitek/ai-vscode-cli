@@ -10,7 +10,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         z-index: 100;
       }
       .overlay.visible { display: flex; animation: fadeIn 0.2s; }
-      
+
       .modal {
         background: var(--vscode-editorWidget-background);
         border: 1px solid var(--vscode-widget-border);
@@ -433,7 +433,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         gap: 8px;
         flex-wrap: wrap;
       }
-      
+
       .modal-header {
         padding: 16px;
         border-bottom: 1px solid var(--vscode-widget-border);
@@ -449,7 +449,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .help-modal {
         height: 600px;
       }
-      
+
       .session-list, .help-panel, .rules-modal {
         padding: 16px;
         overflow-y: auto;
@@ -609,7 +609,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .help-panel.active {
         display: block;
       }
-      
+
       .session-item {
         padding: 10px;
         border: 1px solid var(--vscode-widget-border);
@@ -772,5 +772,5 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       .prompt-item.expanded .prompt-full {
         display: block;
       }
-      
+
 `;

@@ -13,7 +13,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         flex-wrap: nowrap;
         overflow: hidden;
       }
-      
+
       select {
         background: var(--vscode-dropdown-background);
         color: var(--vscode-dropdown-foreground);
@@ -28,7 +28,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       select:hover {
         border-color: var(--vscode-focusBorder);
       }
-      
+
       .cli-select {
         flex: 0 1 88px;
         min-width: 88px;
@@ -114,7 +114,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .prompt-context-tag-remove:hover {
         background: var(--vscode-toolbar-hoverBackground);
       }
-      
+
       .input-box textarea {
         background: transparent;
         border: none;
@@ -130,7 +130,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         overflow-y: auto;
         padding: 0;
       }
-      
+
       .input-footer {
         display: flex;
         flex-direction: column;
@@ -177,7 +177,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         justify-content: flex-end;
         gap: 8px;
       }
-      
+
       .input-actions {
         display: flex;
         align-items: center;
@@ -298,7 +298,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       button:disabled:hover {
         background: inherit;
       }
-      
+
       .action-button {
         background: var(--vscode-button-background);
         color: var(--vscode-button-foreground);
@@ -322,7 +322,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .action-button:disabled {
         color: var(--vscode-disabledForeground);
       }
-      
+
       .secondary {
         background: var(--vscode-button-secondaryBackground);
         color: var(--vscode-button-secondaryForeground);
@@ -335,7 +335,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .secondary:disabled {
         color: var(--vscode-disabledForeground);
       }
-      
+
       .stop-button {
         background: var(--vscode-errorForeground);
         color: var(--vscode-button-foreground);
@@ -348,7 +348,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         background: var(--vscode-errorForeground);
         color: var(--vscode-button-foreground);
       }
-      
+
       .ghost {
         background: transparent;
         color: var(--vscode-descriptionForeground);
@@ -360,5 +360,5 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
 
       /* Helper Classes */
       .hidden-input { display: none; }
-      
+
 `;

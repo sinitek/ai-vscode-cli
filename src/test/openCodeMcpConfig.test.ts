@@ -180,6 +180,22 @@ test("does not overwrite an invalid OpenCode config", async () => {
   });
 });
 
+test("rejects a non-object OpenCode config root without changing the file", async () => {
+  await withTempDir(async (homeDir) => {
+    const options = { env: {}, homeDir };
+    const configPath = resolveOpenCodeGlobalConfigPath(options);
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    const originalContent = "[\n  { \"mcp\": {} }\n]\n";
+    await fs.writeFile(configPath, originalContent, "utf8");
+
+    await assert.rejects(
+      installOpenCodeMcpConfig(createMarketplaceItem({ command: "node" }), undefined, options),
+      /OpenCode config root must be a JSON object/,
+    );
+    assert.equal(await fs.readFile(configPath, "utf8"), originalContent);
+  });
+});
+
 test("rejects a non-object mcp section without changing the file", async () => {
   await withTempDir(async (homeDir) => {
     const options = { env: {}, homeDir };
