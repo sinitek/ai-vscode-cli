@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { readGraphEvents } from "../graph/graphEvents";
+import { readGraphEvents } from "../../graph/graphEvents";
 import {
   approveGraphHumanGateNode,
   completeGraphSleepNodeDue,
@@ -14,17 +14,17 @@ import {
   markGraphNodeFailed,
   markGraphNodeSleeping,
   markGraphNodeStarted,
-} from "../graph/graphNodeLifecycle";
+} from "../../graph/graphNodeLifecycle";
 import {
   retryGraphNodeForRun,
   stopGraphRunRecord,
-} from "../graph/graphRunControl";
+} from "../../graph/graphRunControl";
 import {
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
   type GraphNodeRecord,
   type GraphRunRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-lifecycle-"));

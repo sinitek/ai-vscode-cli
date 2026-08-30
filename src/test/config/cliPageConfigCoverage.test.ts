@@ -6,13 +6,13 @@ import test = require("node:test");
 import { setTimeout as delay } from "node:timers/promises";
 import * as vm from "node:vm";
 
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 import type {
   ConfigCloseMessage,
   ConfigOpenExternalMessage,
   ConfigOpenPathMessage,
   ConfigRequestMessage,
-} from "../webview/configProtocol";
+} from "../../webview/configProtocol";
 
 installVscodeMock();
 
@@ -67,7 +67,7 @@ function createConfigWebview() {
 }
 
 function renderConfigHtml(): { html: string; uris: string[] } {
-  const { getConfigViewHtml } = require("../webview/configView") as typeof import("../webview/configView");
+  const { getConfigViewHtml } = require("../../webview/configView") as typeof import("../../webview/configView");
   const harness = createConfigWebview();
   const html = getConfigViewHtml(
     harness.webview as any,
@@ -77,7 +77,7 @@ function renderConfigHtml(): { html: string; uris: string[] } {
 }
 
 function extractConfigActions(): string[] {
-  const { CONFIG_ACTIONS } = require("../webview/configProtocol") as typeof import("../webview/configProtocol");
+  const { CONFIG_ACTIONS } = require("../../webview/configProtocol") as typeof import("../../webview/configProtocol");
   return [...CONFIG_ACTIONS];
 }
 
@@ -323,7 +323,7 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
 });
 
 test("config view reports missing hashed and app assets without touching user data", () => {
-  const { getConfigViewHtml } = require("../webview/configView") as typeof import("../webview/configView");
+  const { getConfigViewHtml } = require("../../webview/configView") as typeof import("../../webview/configView");
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-config-view-"));
   const assetsDir = path.join(tempRoot, "media", "config", "assets");
   fs.mkdirSync(assetsDir, { recursive: true });
@@ -348,14 +348,14 @@ test("config view reports missing hashed and app assets without touching user da
 
 test("main webview content and provider cover success, cache, message, and fallback paths", () => {
   const fsModule = require("fs") as typeof fs;
-  const logger = require("../logger") as AnyRecord;
+  const logger = require("../../logger") as AnyRecord;
   const originalReadFileSync = fsModule.readFileSync;
   const originalLogError = logger.logError;
-  const viewContentPath = "../webview/viewContent";
-  const viewProviderPath = "../webview/viewProvider";
+  const viewContentPath = "../../webview/viewContent";
+  const viewProviderPath = "../../webview/viewProvider";
 
   try {
-    let viewContent = requireFresh<typeof import("../webview/viewContent")>(viewContentPath);
+    let viewContent = requireFresh<typeof import("../../webview/viewContent")>(viewContentPath);
     const firstHtml = viewContent.getWebviewHtml({ cspSource: "vscode-resource://main-panel" });
     assert.match(firstHtml, /Sinitek CLI Assistant/);
     assert.match(firstHtml, /const CLI_NAMES = \[/);
@@ -369,14 +369,14 @@ test("main webview content and provider cover success, cache, message, and fallb
       }
       return (originalReadFileSync as any)(target, ...args);
     }) as typeof fs.readFileSync;
-    viewContent = requireFresh<typeof import("../webview/viewContent")>(viewContentPath);
+    viewContent = requireFresh<typeof import("../../webview/viewContent")>(viewContentPath);
     const noMarkedHtml = viewContent.getWebviewHtml({ cspSource: "vscode-resource://main-panel" });
     assert.match(noMarkedHtml, /Sinitek CLI Assistant/);
 
     fsModule.readFileSync = originalReadFileSync;
     logger.logError = originalLogError;
-    viewContent = requireFresh<typeof import("../webview/viewContent")>(viewContentPath);
-    const { CliBridgeViewProvider } = requireFresh<typeof import("../webview/viewProvider")>(viewProviderPath);
+    viewContent = requireFresh<typeof import("../../webview/viewContent")>(viewContentPath);
+    const { CliBridgeViewProvider } = requireFresh<typeof import("../../webview/viewProvider")>(viewProviderPath);
     const messages: unknown[] = [];
     const posted: unknown[] = [];
     const view: AnyRecord = {
@@ -501,7 +501,7 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
 });
 
 test("config manager panel creates a safe webview and handles non-config host messages", async () => {
-  const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
 
@@ -557,7 +557,7 @@ test("config manager panel creates a safe webview and handles non-config host me
 });
 
 test("config manager panel closes when the webview requests it", async () => {
-  const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
 
@@ -577,7 +577,7 @@ test("config manager panel closes when the webview requests it", async () => {
 });
 
 test("config manager panel falls back to the editor surface when Zen Mode is unavailable", async () => {
-  const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
   harness.zenModeCommandError = new Error("Zen Mode is unavailable");
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
@@ -595,7 +595,7 @@ test("config manager panel falls back to the editor surface when Zen Mode is una
 });
 
 test("config manager panel routes request actions, change notifications, and errors through response messages", async () => {
-  const configService = require("../config/configService") as AnyRecord;
+  const configService = require("../../config/configService") as AnyRecord;
   const originals = new Map<string, PropertyDescriptor | undefined>();
   for (const name of ["getConfigList", "setConfigOrder", "saveConfig", "applyConfig"]) {
     originals.set(name, configService[name]);
@@ -629,7 +629,7 @@ test("config manager panel routes request actions, change notifications, and err
       return { applied: platform };
     };
 
-    const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+    const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
     const harness = installConfigPanelHarness();
     let changeNotifications = 0;
     const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
@@ -728,7 +728,7 @@ test("config manager panel routes request actions, change notifications, and err
 });
 
 test("config manager panel routes remaining request actions and export branches", async () => {
-  const configService = require("../config/configService") as AnyRecord;
+  const configService = require("../../config/configService") as AnyRecord;
   const originals = new Map<string, unknown>();
   const serviceNames = [
     "getConfigOrder",
@@ -875,7 +875,7 @@ test("config manager panel routes remaining request actions and export branches"
       return undefined;
     }) as typeof fs.promises.writeFile;
 
-    const { ConfigManagerPanel } = require("../webview/configPanel") as typeof import("../webview/configPanel");
+    const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
     const harness = installConfigPanelHarness();
     let changeNotifications = 0;
     const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {

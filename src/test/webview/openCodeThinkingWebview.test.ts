@@ -1,9 +1,9 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../webview/viewContentScript/eventBindings";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewContentScript/modelAndPanelState";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
+import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
 
 type ThinkingOption = {
   value: string;

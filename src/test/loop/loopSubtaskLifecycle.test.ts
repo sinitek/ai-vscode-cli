@@ -7,7 +7,7 @@ import {
   finalizeLoopSubtaskRun,
   shouldWakeLoopMainAfterSubtaskCompletion,
   type LoopSubtaskCompletionDeps,
-} from "../loopSubtaskLifecycle";
+} from "../../loopSubtaskLifecycle";
 
 type CompletionHarness = {
   deps: LoopSubtaskCompletionDeps;

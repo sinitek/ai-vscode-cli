@@ -39,17 +39,17 @@
 
 | P0 项 | 最终状态 | 关键证据 | 验证结果 |
 | --- | --- | --- | --- |
-| Claude abort 接线 | 已修复并验证 | `ClaudeInteractiveRunner.runStreamed()` 将本次 `AbortController` 写入 SDK `queryOptions`，`finally` 仅清理仍归属本轮的 controller；`dispose()` / `stopAndRebuild()` 触发 abort | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/claudeRunner.test.js` |
-| 扩展停用停止所有运行 | 已修复并验证 | `deactivate()` 设置停用 guard 并调用幂等 `stopAllRuns()`，覆盖 active process、parallel runs、interactive runs 和 managed runner；停用后新 run 直接拒绝 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/extensionDeactivateStopAll.test.js` |
-| OpenCode 原始输出有界且避免全历史重扫 | 已修复并验证 | one-shot 改用 `createOpenCodeStreamActivityTracker()` 增量 activity tracker；`runPromptOneShot()` 不再按 chunk 调用 `detectOpenCodeStreamActivity(rawStdout, rawStderr)`；raw stdout/stderr 使用 `appendBoundedUtf8Text()`，one-shot / parallel JSONL pending line 均为 64 KiB 上限 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/commandRunnerCoverage.test.js`、`dist/test/opencodeCommandRunner.test.js`、`dist/test/openCodeTabStream.test.js` |
-| Run Stream 有界且避免全量 DOM 重建 | 已修复并验证 | 每 tab 记录数、单条字节和累计字节均有预算；超限记录写入 discard/truncation metadata；overlay 关闭时不构建完整记录 DOM，打开时同步 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/clipagescriptruntimecoverage.test.js` |
+| Claude abort 接线 | 已修复并验证 | `ClaudeInteractiveRunner.runStreamed()` 将本次 `AbortController` 写入 SDK `queryOptions`，`finally` 仅清理仍归属本轮的 controller；`dispose()` / `stopAndRebuild()` 触发 abort | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/interactive/claudeRunner.test.js` |
+| 扩展停用停止所有运行 | 已修复并验证 | `deactivate()` 设置停用 guard 并调用幂等 `stopAllRuns()`，覆盖 active process、parallel runs、interactive runs 和 managed runner；停用后新 run 直接拒绝 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/extensionHost/extensionDeactivateStopAll.test.js` |
+| OpenCode 原始输出有界且避免全历史重扫 | 已修复并验证 | one-shot 改用 `createOpenCodeStreamActivityTracker()` 增量 activity tracker；`runPromptOneShot()` 不再按 chunk 调用 `detectOpenCodeStreamActivity(rawStdout, rawStderr)`；raw stdout/stderr 使用 `appendBoundedUtf8Text()`，one-shot / parallel JSONL pending line 均为 64 KiB 上限 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/cli/commandRunnerCoverage.test.js`、`dist/test/cli/opencodeCommandRunner.test.js`、`dist/test/core/openCodeTabStream.test.js` |
+| Run Stream 有界且避免全量 DOM 重建 | 已修复并验证 | 每 tab 记录数、单条字节和累计字节均有预算；超限记录写入 discard/truncation metadata；overlay 关闭时不构建完整记录 DOM，打开时同步 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/webview/clipagescriptruntimecoverage.test.js` |
 | Assistant delta 避免重复完整 Markdown parse | 已修复并验证 | 流式阶段使用轻量 text update / streaming content class，idle 或 final 阶段再完整 Markdown 渲染；测试显式覆盖小 delta 不重复解析 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `batches assistant delta markdown rendering while streaming` |
 | 附件上传数量/字节限制 | 已修复并验证 | Webview 和 Extension Host 双端校验最多 10 个附件、单文件 20 MiB、不限制总大小；拒绝提示维护英文与中文 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 Webview 预检与 file-action adapter 边界测试 |
 
 最终验证命令：
 
 - `npm run build`：exit 0。
-- `node --test dist/test/claudeRunner.test.js dist/test/extensionDeactivateStopAll.test.js dist/test/boundedText.test.js dist/test/commandRunnerCoverage.test.js dist/test/opencodeCommandRunner.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js`：exit 0，`tests 114`、`pass 114`、`fail 0`。
+- `node --test dist/test/interactive/claudeRunner.test.js dist/test/extensionHost/extensionDeactivateStopAll.test.js dist/test/shared/boundedText.test.js dist/test/cli/commandRunnerCoverage.test.js dist/test/cli/opencodeCommandRunner.test.js dist/test/core/openCodeTabStream.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js`：exit 0，`tests 114`、`pass 114`、`fail 0`。
 - `git diff --check`：exit 0。
 
 ## 2. 证据等级说明

@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -9,7 +9,7 @@ const {
   consumeOpenCodeTabStreamChunk,
   createOpenCodeTabStreamState,
   OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES,
-} = require("../openCodeTabStream") as typeof import("../openCodeTabStream");
+} = require("../../openCodeTabStream") as typeof import("../../openCodeTabStream");
 
 function createContext() {
   let nextId = 0;

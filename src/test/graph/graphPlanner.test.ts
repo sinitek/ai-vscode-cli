@@ -9,7 +9,7 @@ import {
   GRAPH_AI_REPLANNER_NODE_ID_PREFIX,
   materializeGraphPlan,
   normalizeGraphPlannedGraphSpec,
-} from "../graph/graphPlanner";
+} from "../../graph/graphPlanner";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   GRAPH_SCHEMA_VERSION,
@@ -17,7 +17,7 @@ import {
   type GraphNodeRecord,
   type GraphPlannedGraphSpec,
   type GraphRunRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createRun(
   nodes: GraphNodeRecord[] = buildGraphPlanningRunNodes("run-1"),

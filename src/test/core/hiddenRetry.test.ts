@@ -10,7 +10,7 @@ import {
   HIDDEN_RETRY_DELAY_SEQUENCE_MS,
   isSameHiddenRetryErrorTraceContent,
   resetHiddenRetryCountOnRecoveredReply,
-} from "../hiddenRetry";
+} from "../../hiddenRetry";
 
 test("returns the latest real error directly before hidden retries reach the limit", () => {
   const result = buildHiddenRetryFailureMessage({

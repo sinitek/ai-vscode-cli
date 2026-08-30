@@ -1,10 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { buildWebviewRuntimeScript } from "../webview/viewContentScript";
-import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
+import { FINAL_ANSWER_TEXT_MARKER } from "../../finalAnswerProtocol";
 
 function buildStaticHtml(locale: "en" | "zh-CN"): string {
   return buildWebviewStaticHtml({

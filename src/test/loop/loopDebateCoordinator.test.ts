@@ -1,11 +1,11 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { createLoopDebateChatPanelCoordinator } = require("../panelDiagnostics") as typeof import("../panelDiagnostics");
-import type { LoopTaskRecord } from "../loopTaskStore";
+const { createLoopDebateChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
+import type { LoopTaskRecord } from "../../loopTaskStore";
 
 function createStoppedTask(): LoopTaskRecord {
   return {

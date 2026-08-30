@@ -10,7 +10,7 @@ import {
   parseOpenCodeChildSessions,
   resolveOpenCodeSubagentConnection,
   waitForOpenCodeServerReady,
-} from "../cli/openCodeSubagentMonitor";
+} from "../../cli/openCodeSubagentMonitor";
 
 test("polls current-attempt child sessions on a 60-second interval", async () => {
   const intervalDelays: number[] = [];

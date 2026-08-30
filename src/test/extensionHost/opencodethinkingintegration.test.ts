@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -11,21 +11,21 @@ const {
   ensureCliModelStore,
   getOpenCodeVariantFromStore,
   setOpenCodeVariantInStore,
-} = require("../modelSelectionStore") as typeof import("../modelSelectionStore");
+} = require("../../modelSelectionStore") as typeof import("../../modelSelectionStore");
 const {
   buildPanelStateWithDeps,
   isOpenCodeThinkingRequestCurrent,
-} = require("../panelStateBuilder") as typeof import("../panelStateBuilder");
+} = require("../../panelStateBuilder") as typeof import("../../panelStateBuilder");
 const {
   handleUpdateOpenCodeVariantMessage,
-} = require("../sessionMessageActions") as typeof import("../sessionMessageActions");
+} = require("../../sessionMessageActions") as typeof import("../../sessionMessageActions");
 const {
   createConfigHeartbeatCoordinator,
-} = require("../webviewCommandCoordinator") as typeof import("../webviewCommandCoordinator");
+} = require("../../webviewCommandCoordinator") as typeof import("../../webviewCommandCoordinator");
 
-import type { OpenCodeThinkingState } from "../cli/types";
-import type { PanelStateBuilderDeps } from "../panelStateBuilder";
-import type { PanelState } from "../webview/types";
+import type { OpenCodeThinkingState } from "../../cli/types";
+import type { PanelStateBuilderDeps } from "../../panelStateBuilder";
+import type { PanelState } from "../../webview/types";
 
 test("persists OpenCode variants by active config and exact model", () => {
   const empty = ensureCliModelStore();
@@ -121,7 +121,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {
   const configState = { configs: [{ id: "config-a", name: "A", platform: "opencode" as const }], activeConfigId: "config-a" };
   let store = ensureCliModelStore();
-  let snapshot: import("../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null = null;
+  let snapshot: import("../../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null = null;
   let running = false;
   let posted = 0;
   const coordinator = createConfigHeartbeatCoordinator({
@@ -151,10 +151,10 @@ test("refreshes heartbeat snapshots when OpenCode role overrides change", async 
     createDisposable: (dispose) => ({ dispose }),
   });
   coordinator.updateSnapshot("opencode", configState, store);
-  store = require("../modelSelectionStore").setOpenCodeRoleModelInStore(store, "config-a", "small", "gateway/small");
+  store = require("../../modelSelectionStore").setOpenCodeRoleModelInStore(store, "config-a", "small", "gateway/small");
   await coordinator.poll();
   assert.equal(posted, 1);
-  const finalSnapshot = snapshot as import("../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null;
+  const finalSnapshot = snapshot as import("../../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null;
   assert.equal(finalSnapshot?.openCodeSmallModelSelected, "gateway/small");
 });
 
@@ -171,8 +171,8 @@ test("clears stale OpenCode main model override that mirrors the config subtask 
   try {
     const {
       createModelSettingsHost,
-    } = require("../extensionHost/modelSettings") as typeof import("../extensionHost/modelSettings");
-    let currentCli: import("../cli/types").CliName = "opencode";
+    } = require("../../extensionHost/modelSettings") as typeof import("../../extensionHost/modelSettings");
+    let currentCli: import("../../cli/types").CliName = "opencode";
     let modelStore = ensureCliModelStore({
       openCodeRoleModelsByConfigId: {
         "config-a": {

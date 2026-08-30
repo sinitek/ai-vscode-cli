@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -9,11 +9,11 @@ const {
   buildThinkingPrompt,
   HUMAN_INTERACTION_PROMPT_INSTRUCTION,
   CODEX_TASK_LIST_PROMPT_INSTRUCTION,
-} = require("../promptRuntime") as typeof import("../promptRuntime");
+} = require("../../promptRuntime") as typeof import("../../promptRuntime");
 const {
   FINAL_ANSWER_PROMPT_INSTRUCTION,
   FINAL_ANSWER_TEXT_MARKER,
-} = require("../finalAnswerProtocol") as typeof import("../finalAnswerProtocol");
+} = require("../../finalAnswerProtocol") as typeof import("../../finalAnswerProtocol");
 
 test("adds the final-answer marker instruction to every supported CLI prompt", () => {
   for (const cli of ["codex", "claude", "opencode"] as const) {

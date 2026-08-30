@@ -3,11 +3,11 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { CodexInteractiveRunner } = require("../interactive/codexRunner") as typeof import("../interactive/codexRunner");
+const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 
 const MOCK_APP_SERVER = `#!/usr/bin/env node
 const readline = require("readline");

@@ -4,9 +4,9 @@ import assert = require("node:assert/strict");
 import {
   createSubagentProgressController,
   type SubagentProgressLabels,
-} from "../subagentProgress";
-import type { ChatMessage } from "../webview/types";
-import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../webview/viewContentScript/traceRendering";
+} from "../../subagentProgress";
+import type { ChatMessage } from "../../webview/types";
+import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 const LABELS: SubagentProgressLabels = {
   provider: { opencode: "OpenCode", codex: "Codex", loop: "Loop" },

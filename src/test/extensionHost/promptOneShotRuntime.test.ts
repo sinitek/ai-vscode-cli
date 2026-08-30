@@ -1,18 +1,18 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
-import type { RunProcess } from "../cli/commandRunner";
-import type { HumanInteractionRequest, HumanInteractionSubmission } from "../humanInteraction";
-import type { TaskRunDraft, TaskRunStatus } from "../promptRunState";
-import type { ChatMessage } from "../webview/types";
+import type { RunProcess } from "../../cli/commandRunner";
+import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
+import type { TaskRunDraft, TaskRunStatus } from "../../promptRunState";
+import type { ChatMessage } from "../../webview/types";
 
 installVscodeMock();
 
-const commandRunner = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
+const commandRunner = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
 const {
   createPromptOneShotRuntimeHost,
-} = require("../extensionHost/promptOneShotRuntime") as typeof import("../extensionHost/promptOneShotRuntime");
+} = require("../../extensionHost/promptOneShotRuntime") as typeof import("../../extensionHost/promptOneShotRuntime");
 
 type PromptOneShotRuntimeDeps = Parameters<typeof createPromptOneShotRuntimeHost>[0];
 type RunCliStream = typeof commandRunner.runCliStream;

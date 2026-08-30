@@ -7,7 +7,7 @@ import {
   getEffectiveLoopSubtaskMaxThinkingMode,
   normalizeLoopSubtaskMaxThinkingMode,
   resolveLoopSubtaskThinkingMode,
-} from "../loopSubtaskThinking";
+} from "../../loopSubtaskThinking";
 
 test("defaults the Loop subtask thinking cap to xhigh", () => {
   assert.equal(getEffectiveLoopSubtaskMaxThinkingMode(undefined), "xhigh");

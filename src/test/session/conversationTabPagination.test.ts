@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../webview/viewContentScript/messageRendering";
+import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 
 type PagerDirection = "prev" | "next";
 

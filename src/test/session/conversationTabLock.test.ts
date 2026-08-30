@@ -1,15 +1,15 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { type CliName } from "../cli/types";
+import { type CliName } from "../../cli/types";
 import {
   createSessionTabsController,
   findConversationTabForLoopResume,
   resolveAutoInteractiveModeForLoopTask,
   type ConversationTabsState,
-} from "../sessionTabs";
-import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../webview/viewContentScript/eventBindings";
-import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../webview/viewContentScript/messageRendering";
+} from "../../sessionTabs";
+import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
+import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 
 type TabSummary = {
   id: string;

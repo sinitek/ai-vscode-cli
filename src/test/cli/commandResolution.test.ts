@@ -8,7 +8,7 @@ import {
   getConfiguredCliCommandParts,
   resolveCliCommand,
   splitConfiguredCliCommand,
-} from "../cli/commandResolution";
+} from "../../cli/commandResolution";
 
 type CommandResolutionEnvironment = {
   HOME?: string;

@@ -1,8 +1,8 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../webview/viewContentScript/traceRendering";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;

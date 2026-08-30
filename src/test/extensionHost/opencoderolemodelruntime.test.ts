@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -11,8 +11,8 @@ import {
   getOpenCodeRoleVariantFromStore,
   setOpenCodeRoleModelInStore,
   setOpenCodeRoleVariantInStore,
-} from "../modelSelectionStore";
-import { getLegacyLoopPropertyKey } from "../loopLegacyMigration";
+} from "../../modelSelectionStore";
+import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
 
 test("migrates legacy Loop model-selection keys", () => {
   const store = ensureCliModelStore({

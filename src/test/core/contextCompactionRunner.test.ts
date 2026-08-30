@@ -1,8 +1,8 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import type { ContextCompactionRunDeps } from "../contextCompactionRunner";
-import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+import type { ContextCompactionRunDeps } from "../../contextCompactionRunner";
+import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
 
 type SilentCodexCompactionOptions = {
   compactThread?: () => Promise<{ compacted: boolean; threadId: string }>;
@@ -307,7 +307,7 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
 }
 
 test("silent context compaction emits status events for the active compaction indicator", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createSilentCodexCompactionDeps();
 
   const compacted = await runContextCompactionWithDeps(deps, {
@@ -329,7 +329,7 @@ test("silent context compaction emits status events for the active compaction in
 });
 
 test("silent Codex compaction stops and returns when native compact times out", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createSilentCodexCompactionDeps({
     compactThread: () => new Promise(() => {}),
   });
@@ -357,7 +357,7 @@ test("silent Codex compaction stops and returns when native compact times out", 
 });
 
 test("OpenCode manual compaction runs native slash command with active session", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createOpenCodeCompactionDeps({
     stdout: `${JSON.stringify({ type: "assistant", sessionID: "session-after", text: "Compacted current session" })}\n`,
   });
@@ -388,7 +388,7 @@ test("OpenCode manual compaction runs native slash command with active session",
 });
 
 test("OpenCode silent compaction keeps automatic after-run path quiet", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createOpenCodeCompactionDeps({
     stdout: `${JSON.stringify({ type: "assistant", sessionID: "auto-session", text: "Compacted current session" })}\n`,
   });
@@ -410,7 +410,7 @@ test("OpenCode silent compaction keeps automatic after-run path quiet", async ()
 });
 
 test("OpenCode compaction ignores stale errors after manual stop", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const abortError = new Error("OpenCode run aborted");
   abortError.name = "AbortError";
   const { deps, calls } = createOpenCodeCompactionDeps({
@@ -433,7 +433,7 @@ test("OpenCode compaction ignores stale errors after manual stop", async () => {
 });
 
 test("OpenCode compaction does not run without a resumable session", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createOpenCodeCompactionDeps({ currentSessionId: null });
 
   const compacted = await runContextCompactionWithDeps(deps, { cli: "opencode" });
@@ -445,7 +445,7 @@ test("OpenCode compaction does not run without a resumable session", async () =>
 });
 
 test("OpenCode compaction reports unsupported slash command clearly", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createOpenCodeCompactionDeps({
     stdout: `${JSON.stringify({ type: "assistant", sessionID: "session-before", text: "Unknown command /compact" })}\n`,
   });
@@ -465,7 +465,7 @@ test("OpenCode compaction reports unsupported slash command clearly", async () =
 });
 
 test("OpenCode compaction reports provider failure details", async () => {
-  const { runContextCompactionWithDeps } = require("../contextCompactionRunner") as typeof import("../contextCompactionRunner");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createOpenCodeCompactionDeps({
     exitCode: 1,
     stdout: `${JSON.stringify({ type: "error", error: { message: "provider failed", data: { statusCode: 500 } } })}\n`,

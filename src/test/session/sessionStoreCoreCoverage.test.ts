@@ -23,9 +23,9 @@ import {
   sanitizeMessages,
   writeMessageFile,
   writeSessionFile,
-} from "../sessionStore";
-import type { SessionRecord, SessionStore } from "../sessionStore";
-import type { ChatMessage } from "../webview/types";
+} from "../../sessionStore";
+import type { SessionRecord, SessionStore } from "../../sessionStore";
+import type { ChatMessage } from "../../webview/types";
 
 const cliList = ["codex", "claude", "opencode"] as const;
 

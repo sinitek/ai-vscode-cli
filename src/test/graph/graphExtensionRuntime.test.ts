@@ -4,22 +4,22 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { GraphNodeRecord, GraphRunRecord } from "../graph/types";
-import type { GraphMessagesHost } from "../extensionHost/graphMessages";
+import type { GraphNodeRecord, GraphRunRecord } from "../../graph/types";
+import type { GraphMessagesHost } from "../../extensionHost/graphMessages";
 import type {
   GraphRuntimeHostDeps,
   PromptRunInput,
   PromptRunTarget,
-} from "../extensionHost/graphRuntime";
-import type { ThinkingMode } from "../cli/types";
-import type { ChatMessage, ChatMessageAction } from "../webview/types";
-import { installVscodeMock } from "./vscodeMock";
+} from "../../extensionHost/graphRuntime";
+import type { ThinkingMode } from "../../cli/types";
+import type { ChatMessage, ChatMessageAction } from "../../webview/types";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { GRAPH_AI_PLANNER_NODE_ID } = require("../graph/graphPlanner") as typeof import("../graph/graphPlanner");
-const { createGraphMessagesHost } = require("../extensionHost/graphMessages") as typeof import("../extensionHost/graphMessages");
-const { createGraphRuntimeHost } = require("../extensionHost/graphRuntime") as typeof import("../extensionHost/graphRuntime");
+const { GRAPH_AI_PLANNER_NODE_ID } = require("../../graph/graphPlanner") as typeof import("../../graph/graphPlanner");
+const { createGraphMessagesHost } = require("../../extensionHost/graphMessages") as typeof import("../../extensionHost/graphMessages");
+const { createGraphRuntimeHost } = require("../../extensionHost/graphRuntime") as typeof import("../../extensionHost/graphRuntime");
 
 const THINKING_MODES = new Set<ThinkingMode>([
   "off",

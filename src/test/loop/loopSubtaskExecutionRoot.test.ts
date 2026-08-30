@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { createLoopSubtaskExecutionRoot } from "../loopSubtaskExecutionRoot";
+import { createLoopSubtaskExecutionRoot } from "../../loopSubtaskExecutionRoot";
 
 test("creates a writable Loop subtask execution root without repository rules or skills", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-subtask-source-"));

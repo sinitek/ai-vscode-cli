@@ -9,7 +9,7 @@ import {
   isHumanInteractionRejectedErrorInfo,
   normalizeHumanInteractionRequestFromCodex,
   type HumanInteractionFormField,
-} from "../humanInteraction";
+} from "../../humanInteraction";
 
 test("normalizes Codex human interaction requests with structured fields", () => {
   const request = normalizeHumanInteractionRequestFromCodex({

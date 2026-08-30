@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { buildGeminiThinkingRuntimeProfile } from "../cli/geminiThinking";
+import { buildGeminiThinkingRuntimeProfile } from "../../cli/geminiThinking";
 
 test("keeps legacy Gemini 2.5 thinking helper behavior with thinkingBudget 0", () => {
   const profile = buildGeminiThinkingRuntimeProfile("gemini-2.5-pro", "off");

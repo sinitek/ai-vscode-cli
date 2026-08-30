@@ -38,7 +38,7 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/configApplyQueue.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/clipagescriptruntimecoverage.test.js`。
+- 执行 `node --test dist/test/config/configApplyQueue.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`。
 - 手动复现：快速切到新配置后立刻发送 prompt，确认下拉先显示待生效项、发送被暂缓，提交完成后才真正运行；失败时回滚到旧 active config。
 
 ### 关联资料
@@ -73,15 +73,15 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/opencoderolemodelruntime.test.js`。
+- 执行 `node --test dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/openCodeThinkingWebview.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js dist/test/extensionHost/opencoderolemodelruntime.test.js`。
 - 检查选择消息包含 `configId`，确认宿主显式配置 ID 优先于 active config fallback，并断言旧快照不会把刚选择的 `gpt-5.5` 覆盖为 `gpt-5.6-sol`。
 
 ### 关联资料
 - `src/webview/viewContentScript/eventBindings.ts`
 - `src/sessionMessageHandlers.ts`
 - `src/extensionHost/modelSettings.ts`
-- `src/test/sessionMessageActions.test.ts`
-- `src/test/opencodedualmodelwebview.test.ts`
+- `src/test/session/sessionMessageActions.test.ts`
+- `src/test/webview/opencodedualmodelwebview.test.ts`
 
 ## Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN
 
@@ -112,13 +112,13 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/codexRunnerLifecycle.test.js dist/test/codexRunnerSubagent.test.js`。
+- 执行 `node --test dist/test/interactive/codexRunnerLifecycle.test.js dist/test/interactive/codexRunnerSubagent.test.js`。
 - 本机只读验证 `codex --version` 与 `ps` 中 Codex app-server 进程列表；如仍有旧版本遗留进程，需区分历史残留和本次修复后的新进程。
 
 ### 关联资料
 - `src/interactive/codexRunner.ts`
 - `src/interactive/codexRunnerProcess.ts`
-- `src/test/codexRunnerLifecycle.test.ts`
+- `src/test/interactive/codexRunnerLifecycle.test.ts`
 
 ## LoopMainDecision 解析不能优先采用 prompt 内 fenced JSON 示例
 
@@ -142,12 +142,12 @@
 
 ### 验证方式
 - 运行 `npm run build`。
-- 运行 `node --test dist/test/loopMainDecisionParsing.test.js`。
+- 运行 `node --test dist/test/extensionHost/loopMainDecisionParsing.test.js`。
 - 用包含 `subtasks[].prompt` fenced `json` 示例的外层 `LoopMainDecision` 回归样例，确认能解析出 `status=continue` 和完整子任务。
 
 ### 关联资料
 - `src/extensionHost/promptRunRuntime.ts`
-- `src/test/loopMainDecisionParsing.test.ts`
+- `src/test/extensionHost/loopMainDecisionParsing.test.ts`
 
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
@@ -170,14 +170,14 @@
 
 ### 验证方式
 - 运行 `npm run build`。
-- 运行 `node --test dist/test/humanInteraction.test.js dist/test/promptInteractiveRuntime.test.js dist/test/multiAgentSettingWebview.test.js`。
+- 运行 `node --test dist/test/core/humanInteraction.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/webview/multiAgentSettingWebview.test.js`。
 - 用 `buildNaturalLanguageHumanInteractionRequest` 喂入含 `A.` / `B.` / `C.` 选项的诗歌澄清文本，确认输出字段 `type=radio` 或 `checkbox` 且 `options` 非空。
 
 ### 关联资料
 - `src/humanInteraction.ts`
-- `src/test/humanInteraction.test.ts`
-- `src/test/promptInteractiveRuntime.test.ts`
-- `src/test/multiAgentSettingWebview.test.ts`
+- `src/test/core/humanInteraction.test.ts`
+- `src/test/extensionHost/promptInteractiveRuntime.test.ts`
+- `src/test/webview/multiAgentSettingWebview.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## Extension Host 拆分时同名包装函数不能回注自身
@@ -202,13 +202,13 @@
 
 ### 验证方式
 - 运行 `npm run build`。
-- 运行 `node --test dist/test/sessionPersistenceWiring.test.js dist/test/sessionLifecycleCoreCoverage.test.js dist/test/sessionStoreCoreCoverage.test.js`。
+- 运行 `node --test dist/test/session/sessionPersistenceWiring.test.js dist/test/session/sessionLifecycleCoreCoverage.test.js dist/test/session/sessionStoreCoreCoverage.test.js`。
 - 编译后用 `rg "persistSessionStoreToStorage|persistSessionStore: persistSessionStoreToStorage" dist/extension.js src/extension.ts` 确认宿主注入指向原始实现。
 
 ### 关联资料
 - `src/extension.ts`
 - `src/extensionHost/sessionTabs.ts`
-- `src/test/sessionPersistenceWiring.test.ts`
+- `src/test/session/sessionPersistenceWiring.test.ts`
 
 ## Graph 全量验证节点不能默认硬阻断交付收束
 
@@ -234,7 +234,7 @@
 ### 验证方式
 - 覆盖 failed `blocking:false` 结构依赖可继续调度 review/summary，但 `if_pass` 仍不满足。
 - 覆盖 planner/store 保留 `blocking:false`，prompt 明确完整单测默认 advisory。
-- 覆盖 `dist/test/codexdualmodelwebview.test.js` 能映射到 `src/test/codexdualmodelwebview.test.ts`。
+- 覆盖 `dist/test/webview/codexdualmodelwebview.test.js` 能映射到 `src/test/webview/codexdualmodelwebview.test.ts`。
 - 运行 `npm run build` 与 `node --test dist/test/graph*.test.js`。
 
 ### 关联资料
@@ -266,11 +266,11 @@
 ### 验证方式
 - 在带 `graphRunId` 的 active tab 上断言前台 `dispatchPrompt` 会随 `state.interactiveMode="coding"` 发送 coding/Vibe，并随 `state.interactiveMode="loop"` 发送 Loop。
 - 保留后台派发 Graph tab 自动使用 `graph` 的覆盖。
-- 运行 `npm run build` 与 `node --test dist/test/clipagescriptruntimecoverage.test.js dist/test/graphMainWebview.test.js`。
+- 运行 `npm run build` 与 `node --test dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/graph/graphMainWebview.test.js`。
 
 ### 关联资料
 - `src/webview/viewContentScript/taskListAndUi.ts`
-- `src/test/clipagescriptruntimecoverage.test.ts`
+- `src/test/webview/clipagescriptruntimecoverage.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 - `.ch/docs/references/cli-runtime-reference.md`
 
@@ -298,7 +298,7 @@
 - 单元测试至少覆盖关键依赖的声明和 `.vscodeignore` 放行；发布前仍必须以实际 VSIX 解包验证为准。
 
 ### 验证方式
-- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graphRunPanel.test.js`。
+- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graph/graphRunPanel.test.js`。
 - 执行 `./export_vscode_extension.sh` 后，用 `unzip -l dist/sinitek-cli-tools-<version>.vsix | rg 'extension/node_modules/@dagrejs/(dagre|graphlib)/'` 确认主依赖和传递依赖都进入包。
 - 可进一步解包到临时目录并加载对应 `dist` 模块，确认不会再因缺少依赖抛错。
 
@@ -306,7 +306,7 @@
 - `.vscodeignore`
 - `package.json`
 - `src/webview/graphRunPanel.ts`
-- `src/test/graphRunPanel.test.ts`
+- `src/test/graph/graphRunPanel.test.ts`
 - `export_vscode_extension.sh`
 
 ## VSIX 打包脚本不能只依赖全局 `vsce`
@@ -364,11 +364,11 @@
 
 ### 验证方式
 - 用当天真实样例覆盖：反引号状态、中文 `任务列表` 标题、编号条目后缀状态、`Tasklist 更新` 进度短句和无状态中文分隔清单。
-- 运行 `npm run build` 和 `node --test dist/test/clipagescriptruntimecoverage.test.js`。
+- 运行 `npm run build` 和 `node --test dist/test/webview/clipagescriptruntimecoverage.test.js`。
 
 ### 关联资料
 - `src/webview/viewContentScript/taskListAndUi.ts`
-- `src/test/clipagescriptruntimecoverage.test.ts`
+- `src/test/webview/clipagescriptruntimecoverage.test.ts`
 
 ## Codex Tasklist 全完成更新不能立即清空浮层
 
@@ -396,16 +396,16 @@
 
 ### 验证方式
 - 用真实日志形态 `turn.plan.updated` / taskListUpdate 中的混合状态、全 `completed` 状态，以及普通 assistantDelta 文本 `Tasklist: [completed] ... [inProgress] ... [pending] ...` 覆盖过程刷新与最终勾选。
-- 运行 `npm run build`、`node --test dist/test/codexAppServerProtocol.test.js dist/test/openCodeTaskListOverlay.test.js dist/test/clipagescriptruntimecoverage.test.js`。
+- 运行 `npm run build`、`node --test dist/test/interactive/codexAppServerProtocol.test.js dist/test/webview/openCodeTaskListOverlay.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`。
 
 ### 关联资料
 - `src/interactive/codexAppServerProtocol.ts`
 - `src/extension.ts`
 - `src/webview/viewContentScript/taskListAndUi.ts`
 - `src/webview/viewContentScript/traceRendering.ts`
-- `src/test/codexAppServerProtocol.test.ts`
-- `src/test/openCodeTaskListOverlay.test.ts`
-- `src/test/clipagescriptruntimecoverage.test.ts`
+- `src/test/interactive/codexAppServerProtocol.test.ts`
+- `src/test/webview/openCodeTaskListOverlay.test.ts`
+- `src/test/webview/clipagescriptruntimecoverage.test.ts`
 
 ## Codex 同一 UI 分组切换模型/配置时必须 resume 已映射 thread
 
@@ -431,7 +431,7 @@
 ### 验证方式
 - 断言相同 config/model 及模型或 config 任一变化时均继续复用 mapped thread。
 - 用临时 `config.toml` 断言 runner 发出的 `thread/resume` 同时包含原 `threadId`、当前模型和 `modelProvider`，且 `turn/start` 不含 provider。
-- 运行 `npm run build` 和 `node --test dist/test/codexThreadSelection.test.js dist/test/codexRunnerRuntime.test.js dist/test/codexRuntimeConfig.test.js dist/test/codexRunnerLifecycle.test.js`。
+- 运行 `npm run build` 和 `node --test dist/test/interactive/codexThreadSelection.test.js dist/test/interactive/codexRunnerRuntime.test.js dist/test/interactive/codexRuntimeConfig.test.js dist/test/interactive/codexRunnerLifecycle.test.js`。
 
 ### 关联资料
 - `src/interactive/codexThreadSelection.ts`
@@ -439,7 +439,7 @@
 - `src/interactive/codexRuntimeConfig.ts`
 - `src/interactive/codexRunner.ts`
 - `src/contextCompactionRunner.ts`
-- `src/test/codexThreadSelection.test.ts`
+- `src/test/interactive/codexThreadSelection.test.ts`
 - `.ch/docs/exec-plans/completed/2026-08/2026-08-25-codex-app-server-provider-resume.md`
 
 ## Codex Graph 子任务报 `spawn <codex> ENOENT` 不一定是命令丢失
@@ -471,8 +471,8 @@
 ### 关联资料
 - `src/interactive/manager.ts`
 - `src/extension.ts`
-- `src/test/codexThreadSelection.test.ts`
-- `src/test/graphExtensionRuntime.test.ts`
+- `src/test/interactive/codexThreadSelection.test.ts`
+- `src/test/graph/graphExtensionRuntime.test.ts`
 
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复
 
@@ -509,9 +509,9 @@
 - `src/interactive/codexRunner.ts`
 - `src/interactive/codexRunnerRuntime.ts`
 - `src/finalConclusion.ts`
-- `src/test/finalAnswerPolicy.test.ts`
-- `src/test/promptRuntime.test.ts`
-- `src/test/codexRunnerRuntime.test.ts`
+- `src/test/webview/finalAnswerPolicy.test.ts`
+- `src/test/extensionHost/promptRuntime.test.ts`
+- `src/test/interactive/codexRunnerRuntime.test.ts`
 
 ## 子代理事件必须按子会话身份分流，不能只观察父进程输出
 
@@ -549,9 +549,9 @@
 - `src/interactive/codexRunnerRuntime.ts`
 - `src/subagentProgress.ts`
 - `src/finalConclusion.ts`
-- `src/test/openCodeSubagentMonitor.test.ts`
-- `src/test/codexAppServerEvents.test.ts`
-- `src/test/subagentProgress.test.ts`
+- `src/test/cli/openCodeSubagentMonitor.test.ts`
+- `src/test/interactive/codexAppServerEvents.test.ts`
+- `src/test/core/subagentProgress.test.ts`
 
 ## Codex reasoning 摘要不能按普通 assistant 正文直接落盘
 
@@ -581,7 +581,7 @@
 - `src/codexReasoningContent.ts`
 - `src/interactive/codexAppServerProtocol.ts`
 - `src/sessionStore.ts`
-- `src/test/codexReasoningContent.test.ts`
+- `src/test/core/codexReasoningContent.test.ts`
 
 ## OpenCode 真实会话字段是 `sessionID`，不能把插件 `local_*` 当作 CLI session
 
@@ -615,7 +615,7 @@
 - `src/cli/commandRunner.ts`
 - `src/sessionLifecycle.ts`
 - `src/extension.ts`
-- `src/test/opencodeCommandRunner.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
 ## OpenCode 空配置档案不能按运行完整性阻断保存
@@ -640,7 +640,7 @@
 
 ### 关联资料
 - `src/config/configService.ts`
-- `src/test/configService.test.ts`
+- `src/test/config/configService.test.ts`
 
 ## OpenCode provider `npm` 不能按模型品牌推断
 
@@ -675,7 +675,7 @@
 - OpenCode Providers：`https://opencode.ai/docs/providers/`
 - models.dev provider directory：`https://models.dev/api.json`
 - `src/config/configService.ts`
-- `src/test/openCodeConfigService.test.ts`
+- `src/test/config/openCodeConfigService.test.ts`
 
 ## OpenCode `.env` 与 `config.json` 双配置会误导用户
 
@@ -746,7 +746,7 @@
 - `src/config/configService.ts`
 - `src/cli/commandRunner.ts`
 - `src/openCodeTabStream.ts`
-- `src/test/openCodeTabStream.test.ts`
+- `src/test/core/openCodeTabStream.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
@@ -787,7 +787,7 @@
 ### 关联资料
 - `src/openCodeRunCompletion.ts`
 - `src/extension.ts`
-- `src/test/openCodeRunCompletion.test.ts`
+- `src/test/core/openCodeRunCompletion.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
 ## OpenCode 分组/子代理执行不能用父 JSONL 静默判断卡死
@@ -817,7 +817,7 @@
 ### 关联资料
 - `src/cli/opencodewatchdog.ts`
 - `src/extension.ts`
-- `src/test/opencodeCommandRunner.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
 ## OpenCode `UnknownError` 要保留 server ref
@@ -850,8 +850,8 @@
 ### 关联资料
 - `src/cli/commandRunner.ts`
 - `src/extension.ts`
-- `src/test/opencodeCommandRunner.test.ts`
-- `src/test/sessionMessageActions.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
+- `src/test/session/sessionMessageActions.test.ts`
 
 ## OpenCode 自定义 provider 不能传裸 `--model`
 
@@ -1100,7 +1100,7 @@
 - 构造 `status="stopped" / "error" / "needs-review"` 且仍有旧所有权的任务，确认不再显示运行中；同一 task ID 先后获取两份所有权，释放旧句柄后新句柄仍存在。
 - 断言 SessionTabs 在运行态判定后再读取任务状态，避免本轮已经收敛为 `stopped` 却把旧 `running` 回传给 Webview。
 - 断言 Webview 的重置请求只发送消息并保留旧视图，Extension Host 拒绝时不会出现空白会话；成功时由回推状态切换到空白 Tab。
-- 运行 `npm run build && node --test dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/loopOrchestrationOwnership.test.js dist/test/sessionMessageActions.test.js`。
+- 运行 `npm run build && node --test dist/test/session/conversationTabLock.test.js dist/test/loop/loopDebate.test.js dist/test/loop/loopOrchestrationOwnership.test.js dist/test/session/sessionMessageActions.test.js`。
 
 ### 关联资料
 
@@ -1109,8 +1109,8 @@
 - `src/loopOrchestrationOwnership.ts`
 - `src/sessionTabs.ts`
 - `src/webview/viewContentScript/eventBindings.ts`
-- `src/test/conversationTabLock.test.ts`
-- `src/test/loopDebate.test.ts`
+- `src/test/session/conversationTabLock.test.ts`
+- `src/test/loop/loopDebate.test.ts`
 
 ## Loop 编排角色不能复用为模型角色
 
@@ -1143,8 +1143,8 @@
 - `src/sessionMessageActions.ts`
 - `src/extension.ts`
 - `src/loopDebateRunner.ts`
-- `src/test/opencodedualmodelwebview.test.ts`
-- `src/test/sessionMessageActions.test.ts`
+- `src/test/webview/opencodedualmodelwebview.test.ts`
+- `src/test/session/sessionMessageActions.test.ts`
 
 ## 内部思考 wrapper 不能用通用 HTML 清洗
 
@@ -1174,8 +1174,8 @@
 - `src/cli/commandRunner.ts`
 - `src/codexReasoningContent.ts`
 - `src/sessionStore.ts`
-- `src/test/opencodeCommandRunner.test.ts`
-- `src/test/codexReasoningContent.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
+- `src/test/core/codexReasoningContent.test.ts`
 
 ## OpenCode 最终回复不能只靠 `[final_answer]` 文本标记识别
 
@@ -1204,12 +1204,12 @@
 ### 验证方式
 - 构造同 message ID 的 `text` + `step_finish reason="stop"`，确认严格策略成功收口。
 - 构造 `tool-calls`、跨 message ID 和无正文 `stop`，确认均不产生结构化最终答复信号。
-- 运行 `npm run build && node --test dist/test/opencodeCommandRunner.test.js dist/test/finalConclusion.test.js`。
+- 运行 `npm run build && node --test dist/test/cli/opencodeCommandRunner.test.js dist/test/core/finalConclusion.test.js`。
 
 ### 关联资料
 - `src/cli/commandRunner.ts`
 - `src/extension.ts`
-- `src/test/opencodeCommandRunner.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 
 ## Loop 子任务不能在用户可见回复中直接提问
@@ -1240,13 +1240,13 @@
 - 断言子任务 model prompt 同时包含触发条件、沟通章节、任务记录更新、禁止提问和固定收口文本。
 - 断言主任务 model prompt 必须处理待确认章节，并在确需人工确认时返回 blocked。
 - 新建子任务沟通文件，确认默认包含状态为“无”的结构化 `## 待主任务确认` 章节。
-- 运行 `npm run build && node --test dist/test/loopSkillIntegration.test.js dist/test/loopTaskStore.test.js`。
+- 运行 `npm run build && node --test dist/test/loopSkillIntegration.test.js dist/test/loop/loopTaskStore.test.js`。
 
 ### 关联资料
 - `src/extension.ts`
 - `src/loopTaskStore.ts`
 - `src/test/loopSkillIntegration.test.ts`
-- `src/test/loopTaskStore.test.ts`
+- `src/test/loop/loopTaskStore.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## Loop 子任务手动恢复必须复用自动重试的完成收尾
@@ -1271,13 +1271,13 @@
 ### 验证方式
 - 单测覆盖成功结束时的状态更新先于 Tab 关闭、成功但无目标 Tab、错误/停止不关闭三种边界。
 - 断言 `runLoopSubtaskWithRetry` 与 `maybeWakeLoopMainAfterSubtaskContinuation` 都接入共享收尾函数，且既有手动子任务 coding 路由仍会调用恢复唤醒。
-- 运行 `npm run build && node --test dist/test/loopSubtaskLifecycle.test.js dist/test/sessionMessageActions.test.js`。
+- 运行 `npm run build && node --test dist/test/loop/loopSubtaskLifecycle.test.js dist/test/session/sessionMessageActions.test.js`。
 
 ### 关联资料
 - `src/loopSubtaskLifecycle.ts`
 - `src/extension.ts`
-- `src/test/loopSubtaskLifecycle.test.ts`
-- `src/test/sessionMessageActions.test.ts`
+- `src/test/loop/loopSubtaskLifecycle.test.ts`
+- `src/test/session/sessionMessageActions.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## OpenCode 的 spawn cwd 正确但会话仍可能落到 `/`
@@ -1308,12 +1308,12 @@
 ### 验证方式
 - 使用 mock child 同时记录 `process.cwd()` 与 `process.env.PWD`，传入错误 `PWD=/` 后断言两者仍等于目标 workspace cwd。
 - 可在隔离 HOME/XDG 目录中用 OpenCode 1.17.18 和无效模型复现：stale `PWD=/` 会出现第二个 `directory=/` 实例，同步 `PWD` 后只创建目标项目实例。
-- 运行 `npm run build && node --test dist/test/opencodeCommandRunner.test.js`。
+- 运行 `npm run build && node --test dist/test/cli/opencodeCommandRunner.test.js`。
 
 ### 关联资料
 - `src/cli/commandRunner.ts`
 - `src/extension.ts`
-- `src/test/opencodeCommandRunner.test.ts`
+- `src/test/cli/opencodeCommandRunner.test.ts`
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-workspace-cwd.md`
 
@@ -1348,9 +1348,9 @@
 ### 关联资料
 - `src/loopSkillGuidance.ts`
 - `src/extension.ts`
-- `src/test/loopPromptQueue.test.ts`
+- `src/test/loop/loopPromptQueue.test.ts`
 - `src/test/loopSkillIntegration.test.ts`
-- `src/test/loopMainFailure.test.ts`
+- `src/test/loop/loopMainFailure.test.ts`
 
 ## 历史：已移除的 Loop Workflow Skill 选择
 
@@ -1423,9 +1423,9 @@
 - `src/loopPromptBuilders.ts`
 - `src/extension.ts`
 - `src/loopTaskStore.ts`
-- `src/test/loopPromptBuilders.test.ts`
+- `src/test/loop/loopPromptBuilders.test.ts`
 - `src/test/loopSkillIntegration.test.ts`
-- `src/test/loopTaskStore.test.ts`
+- `src/test/loop/loopTaskStore.test.ts`
 
 ## OpenCode 已解析 `todowrite` 但任务浮层仍可能被消息刷新覆盖
 
@@ -1455,7 +1455,7 @@
 - 使用真实 `part.state.input.todos` 形状确认 parser 同时产出 tool trace 与 `{ text, done }[]`。
 - 断言专用任务消息和 trace 元数据都调用同一 Webview 更新函数，并实际检查 panel display、details open、任务数量和完成状态。
 - 在 external 列表显示期间模拟运行中的 `setMessagesForTab`，确认列表保留；将 tab 切为空闲后再次刷新，确认列表按既有规则清空。
-- 执行 `node --test dist/test/openCodeTaskList.test.js dist/test/openCodeTabStream.test.js dist/test/openCodeTaskListOverlay.test.js dist/test/opencodeCommandRunner.test.js`。
+- 执行 `node --test dist/test/cli/openCodeTaskList.test.js dist/test/core/openCodeTabStream.test.js dist/test/webview/openCodeTaskListOverlay.test.js dist/test/cli/opencodeCommandRunner.test.js`。
 
 ### 关联资料
 - `src/cli/openCodeTaskList.ts`
@@ -1464,7 +1464,7 @@
 - `src/webview/viewContentScript/taskListAndUi.ts`
 - `src/webview/viewContentScript/coreRuntimeState.ts`
 - `src/webview/viewContentScript/traceRendering.ts`
-- `src/test/openCodeTaskListOverlay.test.ts`
+- `src/test/webview/openCodeTaskListOverlay.test.ts`
 
 ## 产品改名不能只机械替换持久化键和本地目录
 
@@ -1494,13 +1494,13 @@
 ### 验证方式
 - 构造旧目录、旧 Store、旧通信文件和旧 JSON 字段，执行迁移后确认新路径存在、旧路径消失、任务可恢复且新写回不再包含旧键。
 - 扫描全仓旧术语，结果只允许命中集中兼容模块与说明迁移边界的事实文档。
-- 执行 `npm run build` 和 `node --test dist/test/loopLegacyMigration.test.js dist/test/loopTaskStore.test.js dist/test/toolSettings.test.js dist/test/workspaceSettingsStore.test.js dist/test/opencoderolemodelruntime.test.js dist/test/codexReasoningContent.test.js`。
+- 执行 `npm run build` 和 `node --test dist/test/loop/loopLegacyMigration.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/toolSettings.test.js dist/test/core/workspaceSettingsStore.test.js dist/test/extensionHost/opencoderolemodelruntime.test.js dist/test/core/codexReasoningContent.test.js`。
 
 ### 关联资料
 - `src/loopLegacyMigration.ts`
 - `src/loopTaskStore.ts`
-- `src/test/loopLegacyMigration.test.ts`
-- `src/test/loopTaskStore.test.ts`
+- `src/test/loop/loopLegacyMigration.test.ts`
+- `src/test/loop/loopTaskStore.test.ts`
 - `.ch/docs/exec-plans/completed/2026-07/2026-07-14-loop-naming-migration.md`
 
 ## 计费终态错误不能进入隐藏重试或充当恢复进度
@@ -1530,15 +1530,15 @@
 ### 验证方式
 - 断言精确样本 `unexpected status 402 Payment Required: llm proxy error: model pool gpt-5.6-sol requires 1 points, remaining 0` 不具备 hidden retry 资格。
 - 断言 Codex 可见错误 trace 的 kind 为 `error`，429、ECONNRESET 和普通网络错误仍可重试。
-- 执行 `npm run build && node --test dist/test/hiddenRetry.test.js dist/test/panelDiagnostics.test.js dist/test/codexRunnerRuntime.test.js`，再运行 `npm run test:unit`。
+- 执行 `npm run build && node --test dist/test/core/hiddenRetry.test.js dist/test/core/panelDiagnostics.test.js dist/test/interactive/codexRunnerRuntime.test.js`，再运行 `npm run test:unit`。
 
 ### 关联资料
 - `src/panelDiagnostics.ts`
 - `src/interactive/codexRunner.ts`
 - `src/interactive/codexRunnerRuntime.ts`
 - `src/extension.ts`
-- `src/test/panelDiagnostics.test.ts`
-- `src/test/codexRunnerRuntime.test.ts`
+- `src/test/core/panelDiagnostics.test.ts`
+- `src/test/interactive/codexRunnerRuntime.test.ts`
 - `.ch/docs/exec-plans/completed/2026-07/2026-07-14-codex-402-terminal-retry.md`
 
 ## Loop 长时间自动睡眠不能只保存内存定时器或普通更新时间
@@ -1574,7 +1574,7 @@
 ### 验证方式
 - 使用假时钟覆盖协议上下界、长延迟分段、到期启动、目标忙重试、取消和陈旧状态丢弃。
 - 写入 `updatedAt` 已过普通保留期但 `status=sleeping + autoWakeAt` 合法的任务，确认读写后仍存在。
-- 执行 `npm run build` 和 `node --test dist/test/loopAutoWake.test.js dist/test/loopTaskStoreCoreCoverage.test.js dist/test/loopDebate.test.js dist/test/loopDebatePanel.test.js`。
+- 执行 `npm run build` 和 `node --test dist/test/loopAutoWake.test.js dist/test/loop/loopTaskStoreCoreCoverage.test.js dist/test/loop/loopDebate.test.js dist/test/loop/loopDebatePanel.test.js`。
 
 ### 关联资料
 - `src/loopAutoWake.ts`
@@ -1599,7 +1599,7 @@
 - 所有模拟用户级命令路径的测试都必须快照、清空并在 `finally` 恢复 `HOME`、`PATH`、`npm_config_prefix`、`NPM_CONFIG_PREFIX`、`PNPM_HOME`。不要为了测试而降低生产解析器对显式 npm/pnpm 前缀的优先级。
 
 ### 验证方式
-- 执行 `npm run build && node --test dist/test/commandResolution.test.js`，再执行 `npm test`。
+- 执行 `npm run build && node --test dist/test/cli/commandResolution.test.js`，再执行 `npm test`。
 
 ## Graph tab 识别不能只依赖完成消息
 
@@ -1623,7 +1623,7 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/graphExtensionRuntime.test.js dist/test/graphMainWebview.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/loopmaingroupchatbutton.test.js`。
+- 执行 `node --test dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphMainWebview.test.js dist/test/core/openCodeTabStream.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/loop/loopmaingroupchatbutton.test.js`。
 
 ## Graph planned parallel 节点不能被未声明 scope 隐式串行化
 
@@ -1646,7 +1646,7 @@
 - 动态 replan 只在 failed/blocked 触发节点存在，或真正 idle/no-progress 时尝试；普通成功推进 tick 不得追加 `replan-*`。
 
 ### 验证方式
-- 执行 `node --test dist/test/graphScheduler.test.js dist/test/graphExtensionRuntime.test.js dist/test/graphPlanner.test.js`。
+- 执行 `node --test dist/test/graph/graphScheduler.test.js dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphPlanner.test.js`。
 - 检查 `graphScheduler` 回归用例中 4 个无 `writeFiles` 的 planned parallel `review` 节点会全部进入 `selectedNodeIds`。
 - 检查 `graphExtensionRuntime` 回归用例中成功推进 `review -> summary` 后不会生成 `replan-*` 节点。
 
@@ -1679,7 +1679,7 @@
 ### 验证方式
 - 用 `test-schema-definitions` 失败样本文本验证分类结果：category 为 `missing_write_scope`，signals 包含 `stale_test_contract`，recommendedWriteFiles 包含 `apps/server/test/performance/performance-observation-schema.test.js`。
 - 检查 planner prompt 覆盖 stale/source-contract/writeFiles/test adaptation 要求。
-- 执行 `node --test dist/test/graphFailureClassification.test.js dist/test/graphNodeLifecycle.test.js dist/test/graphStore.test.js dist/test/graphNodeArtifact.test.js dist/test/graphExtensionRuntime.test.js dist/test/graphPromptBuilders.test.js`，并在需要时执行 `npm run build`。
+- 执行 `node --test dist/test/graph/graphFailureClassification.test.js dist/test/graph/graphNodeLifecycle.test.js dist/test/graph/graphStore.test.js dist/test/graph/graphNodeArtifact.test.js dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphPromptBuilders.test.js`，并在需要时执行 `npm run build`。
 
 ### 关联资料
 - `.ch/docs/design-docs/graph-orchestration-mode.md`
@@ -1718,7 +1718,7 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/promptOneShotRuntime.test.js dist/test/humanInteraction.test.js dist/test/multiAgentSettingWebview.test.js`。
+- 执行 `node --test dist/test/extensionHost/promptOneShotRuntime.test.js dist/test/core/humanInteraction.test.js dist/test/webview/multiAgentSettingWebview.test.js`。
 - 重新打包并强装 VSIX 后，检查安装目录包含 `runPrompt-one-shot-session-target-synced`、`runPrompt-one-shot-natural-human-interaction-prepared`、`humanInteraction-request`、`human-interaction-request-received`、`runPrompt-one-shot-natural-human-interaction-skip`。
 - 重载 VS Code 窗口后，用 OpenCode 发送“写一首诗，你来问我一些要求帮你更精准写出我想要的诗”，确认出现表单弹窗。
 
@@ -1726,9 +1726,9 @@
 - `src/extension.ts`
 - `src/extensionHost/promptOneShotRuntime.ts`
 - `src/webview/viewContentScript/settingsAndOverlays.ts`
-- `src/test/promptOneShotRuntime.test.ts`
-- `src/test/humanInteraction.test.ts`
-- `src/test/multiAgentSettingWebview.test.ts`
+- `src/test/extensionHost/promptOneShotRuntime.test.ts`
+- `src/test/core/humanInteraction.test.ts`
+- `src/test/webview/multiAgentSettingWebview.test.ts`
 
 ## Webview 行级 label 包多个 select 会导致后一个下拉无法打开
 
@@ -1755,16 +1755,16 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/opencodedualmodelwebview.test.js dist/test/codexdualmodelwebview.test.js dist/test/cliPageStaticRenderCoverage.test.js dist/test/openCodeThinkingWebview.test.js`。
-- 配置页相关变更还需执行 `node --test dist/test/opencodeconfigvisualeditor.test.js dist/test/cliPageConfigCoverage.test.js`。
+- 执行 `node --test dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/codexdualmodelwebview.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/openCodeThinkingWebview.test.js`。
+- 配置页相关变更还需执行 `node --test dist/test/config/opencodeconfigvisualeditor.test.js dist/test/config/cliPageConfigCoverage.test.js`。
 
 ### 关联资料
 - `src/webview/viewContentHtml.ts`
 - `src/webview/configView.ts`
 - `media/config/assets/config-app-ui.js`
-- `src/test/opencodedualmodelwebview.test.ts`
-- `src/test/codexdualmodelwebview.test.ts`
-- `src/test/cliPageStaticRenderCoverage.test.ts`
+- `src/test/webview/opencodedualmodelwebview.test.ts`
+- `src/test/webview/codexdualmodelwebview.test.ts`
+- `src/test/webview/cliPageStaticRenderCoverage.test.ts`
 
 ## OpenCode 配置正确但主面板 variants 为空时要检查 role override
 
@@ -1791,12 +1791,12 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/opencodethinkingintegration.test.js dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js`。
+- 执行 `node --test dist/test/extensionHost/opencodethinkingintegration.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/openCodeThinkingWebview.test.js`。
 - 复测 OpenCode 主面板时，切换到 OpenCode 或重载窗口后确认主模型 thinking 下拉出现配置中的 variants。
 
 ### 关联资料
 - `src/extensionHost/modelSettings.ts`
-- `src/test/opencodethinkingintegration.test.ts`
+- `src/test/extensionHost/opencodethinkingintegration.test.ts`
 - `src/cli/openCodeModelCapabilities.ts`
 - `~/.sinitek_cli/models.json`
 
@@ -1826,12 +1826,12 @@
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `node --test dist/test/opencodethinkingrefreshstate.test.js dist/test/opencodethinkingintegration.test.js dist/test/opencodedualmodelwebview.test.js dist/test/openCodeThinkingWebview.test.js`。
+- 执行 `node --test dist/test/extensionHost/opencodethinkingrefreshstate.test.js dist/test/extensionHost/opencodethinkingintegration.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/openCodeThinkingWebview.test.js`。
 - 用真实 `~/.opencode` 配置调用 `resolveOpenCodeThinkingCapability` 与 `refreshOpenCodeThinkingState`，确认主模型 variants 均为非空。
 
 ### 关联资料
 - `src/extensionHost/modelSettings.ts`
-- `src/test/opencodethinkingrefreshstate.test.ts`
+- `src/test/extensionHost/opencodethinkingrefreshstate.test.ts`
 - `src/cli/openCodeModelCapabilities.ts`
 
 ## 建议模板

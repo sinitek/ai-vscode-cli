@@ -12,10 +12,10 @@ import {
   getLegacyLoopPropertyKey,
   getLegacyLoopStoragePaths,
   migrateLegacyLoopJson,
-} from "../loopLegacyMigration";
-import { normalizeTaskRunRecord, normalizeVisibleInteractiveMode } from "../promptRunState";
-import { sanitizeMessages } from "../sessionStore";
-import type { ChatMessage } from "../webview/types";
+} from "../../loopLegacyMigration";
+import { normalizeTaskRunRecord, normalizeVisibleInteractiveMode } from "../../promptRunState";
+import { sanitizeMessages } from "../../sessionStore";
+import type { ChatMessage } from "../../webview/types";
 
 test("migrates legacy Loop keys, protocol values, and storage paths", () => {
   const dataDir = path.join("/tmp", "sinitek-loop-migration");

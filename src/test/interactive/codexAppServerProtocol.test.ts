@@ -12,7 +12,7 @@ import {
   normalizeTodoListItems,
   shouldSuppressRawEvent,
   toExecLikeItem,
-} from "../interactive/codexAppServerProtocol";
+} from "../../interactive/codexAppServerProtocol";
 
 test("extractDelta returns appended content and falls back to common-prefix delta", () => {
   assert.equal(extractDelta("", "hello"), "hello");

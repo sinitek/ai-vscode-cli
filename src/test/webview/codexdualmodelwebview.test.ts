@@ -1,10 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewContentScript/modelAndPanelState";
-import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../webview/viewContentScript/modelManager";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
+import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
 
 type FakeOption = {
   value: string;

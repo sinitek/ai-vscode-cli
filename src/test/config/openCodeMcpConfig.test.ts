@@ -7,8 +7,8 @@ import {
   installOpenCodeMcpConfig,
   resolveOpenCodeGlobalConfigPath,
   uninstallOpenCodeMcpConfig,
-} from "../config/openCodeMcpConfig";
-import { McpMarketplaceItem } from "../config/types";
+} from "../../config/openCodeMcpConfig";
+import { McpMarketplaceItem } from "../../config/types";
 
 async function withTempDir(run: (tempDir: string) => Promise<void>): Promise<void> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-opencode-mcp-"));

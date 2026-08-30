@@ -7,7 +7,7 @@ import * as path from "path";
 import {
   buildGraphNodeCommunicationFile,
   getGraphCommunicationPaths,
-} from "../graph/graphCommunications";
+} from "../../graph/graphCommunications";
 import {
   buildGraphRunStoreFile,
   buildGraphRunIdsBySessionByCli,
@@ -18,13 +18,13 @@ import {
   readGraphRunRecord,
   readGraphRunStore,
   updateGraphRunRecord,
-} from "../graph/graphStore";
+} from "../../graph/graphStore";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   GRAPH_SCHEMA_VERSION,
   type GraphFailureClassification,
   type GraphNodeRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-store-"));

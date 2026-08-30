@@ -1,13 +1,13 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../webview/viewContentScript/coreRuntimeState";
-import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
-import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../webview/viewContentScript/traceRendering";
-import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../webview/viewContentScript/windowMessageDispatch";
-import { TASKLIST_STYLES } from "../webview/viewContentStyles/tasklist";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
+import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
+import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
+import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
+import { TASKLIST_STYLES } from "../../webview/viewContentStyles/tasklist";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;

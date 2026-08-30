@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { CliName } from "../cli/types";
+import type { CliName } from "../../cli/types";
 import {
   cleanupPromptHistoryRetentionAcrossWorkspaces,
   clearPromptHistoryStore,
@@ -13,7 +13,7 @@ import {
   setPromptHistoryFavoriteInStore,
   type PromptHistoryStore,
   type PromptHistoryStoreOptions,
-} from "../promptHistoryStore";
+} from "../../promptHistoryStore";
 
 function createOptions(
   rootDir: string,

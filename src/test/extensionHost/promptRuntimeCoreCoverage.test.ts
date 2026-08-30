@@ -2,11 +2,11 @@ import * as path from "path";
 import * as os from "os";
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const promptRuntime = require("../promptRuntime") as typeof import("../promptRuntime");
+const promptRuntime = require("../../promptRuntime") as typeof import("../../promptRuntime");
 
 type StatSync = typeof import("fs").statSync;
 type RuntimeGateModule = {
@@ -21,9 +21,9 @@ type MemoryPromptModule = {
 };
 
 const nodeFs = require("fs") as { statSync: StatSync };
-const runtimeGate = require("../memory/runtimeGate") as RuntimeGateModule;
-const memoryRecall = require("../memory/memoryRecall") as MemoryRecallModule;
-const memoryPrompt = require("../memory/memoryPrompt") as MemoryPromptModule;
+const runtimeGate = require("../../memory/runtimeGate") as RuntimeGateModule;
+const memoryRecall = require("../../memory/memoryRecall") as MemoryRecallModule;
+const memoryPrompt = require("../../memory/memoryPrompt") as MemoryPromptModule;
 
 function collectWithMockedStats(
   prompt: string,

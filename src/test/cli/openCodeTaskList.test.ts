@@ -4,7 +4,7 @@ import { test } from "node:test";
 import {
   extractOpenCodeTaskListItems,
   isOpenCodeTaskListTool,
-} from "../cli/openCodeTaskList";
+} from "../../cli/openCodeTaskList";
 
 test("normalizes OpenCode todowrite input todos", () => {
   assert.deepEqual(extractOpenCodeTaskListItems({

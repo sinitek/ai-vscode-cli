@@ -1,13 +1,13 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { TOAST_MISC_STYLES } from "../webview/viewContentStyles/toastMisc";
-import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../webview/viewContentScript/coreBootstrap";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewContentScript/modelAndPanelState";
-import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
-import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../webview/viewContentScript/windowMessageDispatch";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { TOAST_MISC_STYLES } from "../../webview/viewContentStyles/toastMisc";
+import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
+import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
+import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
+import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
 
 function buildStaticHtml(locale: "en" | "zh-CN"): string {
   return buildWebviewStaticHtml({

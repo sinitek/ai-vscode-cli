@@ -4,18 +4,18 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { persistPromptRunSummary } from "../memory/memoryConsolidator";
+import { persistPromptRunSummary } from "../../memory/memoryConsolidator";
 import {
   appendMemoryEntry,
   ensureMemoryWorkspaceScaffold,
   getMemoryHotFilePath,
   readMemoryHotFiles,
-} from "../memory/memoryFiles";
-import { buildWorkspaceMemoryIndex } from "../memory/memoryIndexer";
-import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
-import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "../memory/memoryPrompt";
-import { buildWorkspaceMemoryRecallPack } from "../memory/memoryRecall";
-import { ensureWorkspaceHarnessScaffold, workspaceAgentsAppendMarker } from "../workspaceScaffold";
+} from "../../memory/memoryFiles";
+import { buildWorkspaceMemoryIndex } from "../../memory/memoryIndexer";
+import { resolveWorkspaceMemoryPaths } from "../../memory/memoryPaths";
+import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "../../memory/memoryPrompt";
+import { buildWorkspaceMemoryRecallPack } from "../../memory/memoryRecall";
+import { ensureWorkspaceHarnessScaffold, workspaceAgentsAppendMarker } from "../../workspaceScaffold";
 
 function withTempWorkspace<T>(run: (workspaceRoot: string, runtimeDataDir: string) => T): T {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-memory-"));

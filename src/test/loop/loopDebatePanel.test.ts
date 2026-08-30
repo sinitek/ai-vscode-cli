@@ -1,18 +1,18 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
 const {
   buildLoopDebateChatPanelHtml,
   LoopDebateChatPanel,
-} = require("../webview/loopDebatePanel") as typeof import("../webview/loopDebatePanel");
+} = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
 const {
   buildLoopDebateChatPanelTitle,
   getStrings,
-} = require("../webview/loopDebatePanelRenderer") as typeof import("../webview/loopDebatePanelRenderer");
+} = require("../../webview/loopDebatePanelRenderer") as typeof import("../../webview/loopDebatePanelRenderer");
 
 test("renders the Loop task prompt before submitted supplemental requirements", () => {
   const html = buildLoopDebateChatPanelHtml(
@@ -255,7 +255,7 @@ function createState(overrides: any = {}) {
 }
 
 test("covers Loop transcript fallback speakers, avatars, and template placeholders", () => {
-  const loopDebate = require("../loopDebate") as typeof import("../loopDebate");
+  const loopDebate = require("../../loopDebate") as typeof import("../../loopDebate");
   const originalParse = loopDebate.parseLoopDebateChatTranscript;
   const strings = getStrings("en");
   const originalThinking = strings.thinking;

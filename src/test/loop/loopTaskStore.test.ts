@@ -6,12 +6,12 @@ import * as path from "path";
 import {
   getLegacyLoopPropertyKey,
   getLegacyLoopStoragePaths,
-} from "../loopLegacyMigration";
+} from "../../loopLegacyMigration";
 
 const originalHome = process.env.HOME;
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-"));
 process.env.HOME = testHome;
-const loopTaskStore = require("../loopTaskStore") as typeof import("../loopTaskStore");
+const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
 if (originalHome === undefined) {
   delete process.env.HOME;
 } else {
@@ -20,8 +20,8 @@ if (originalHome === undefined) {
 
 let recordSequence = 0;
 
-type SkillTaskRecord = import("../loopTaskStore").LoopTaskRecord;
-type SkillSubtaskDecision = import("../loopTaskStore").LoopSubtaskDecision;
+type SkillTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
+type SkillSubtaskDecision = import("../../loopTaskStore").LoopSubtaskDecision;
 
 test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
@@ -31,7 +31,7 @@ function hasOwnProperty(value: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }
 
-function createLegacyTask(): import("../loopTaskStore").LoopTaskRecord {
+function createLegacyTask(): import("../../loopTaskStore").LoopTaskRecord {
   recordSequence += 1;
   const now = Date.now();
   const id = `legacy-task-${recordSequence}`;
@@ -316,7 +316,7 @@ test("normalizes bounded snapshots and drops invalid or half-present skill field
   };
 
   loopTaskStore.writeLoopTaskStore(rawTask.taskStoreFile, {
-    tasks: [rawTask as unknown as import("../loopTaskStore").LoopTaskRecord],
+    tasks: [rawTask as unknown as import("../../loopTaskStore").LoopTaskRecord],
   });
   const loaded = readSkillTask(rawTask.taskStoreFile);
   assert.equal(hasOwnProperty(loaded, "taskKind"), false);

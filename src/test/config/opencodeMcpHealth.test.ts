@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import {
   mapCliListedMcpHealth,
   parseOpenCodeMcpHealthOutput,
-} from "../config/mcpHealth";
+} from "../../config/mcpHealth";
 
 test("parses OpenCode MCP list entries, ANSI colors, and multiline details", () => {
   const listed = parseOpenCodeMcpHealthOutput([

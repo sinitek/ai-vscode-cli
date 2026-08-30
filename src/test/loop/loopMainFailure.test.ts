@@ -7,7 +7,7 @@ import {
   isLoopMainAiFailureLimitReached,
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
-} from "../loopMainFailure";
+} from "../../loopMainFailure";
 
 test("normalizes invalid loop main AI failure counts to zero", () => {
   for (const value of [undefined, null, "3", true, {}, Number.NaN, Infinity, -Infinity]) {

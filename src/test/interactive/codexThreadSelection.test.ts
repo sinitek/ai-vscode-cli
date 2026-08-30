@@ -5,12 +5,12 @@ import {
   areCodexRunSelectionsEqual,
   decideCodexThreadForSelection,
   normalizeCodexRunSelection,
-} from "../interactive/codexThreadSelection";
-import { installVscodeMock } from "./vscodeMock";
+} from "../../interactive/codexThreadSelection";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { InteractiveRunnerManager } = require("../interactive/manager") as typeof import("../interactive/manager");
+const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
 
 test("Codex thread selection reuses a mapped thread when config and model are unchanged", () => {
   const previous = normalizeCodexRunSelection({ configId: "config-a", model: "gpt-5.5" });

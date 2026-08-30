@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { createConfigApplyQueue } from "../config/configApplyQueue";
+import { createConfigApplyQueue } from "../../config/configApplyQueue";
 
 function createDeferred(): {
   promise: Promise<void>;

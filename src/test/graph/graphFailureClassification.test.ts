@@ -4,8 +4,8 @@ import assert = require("node:assert/strict");
 import {
   classifyGraphNodeFailure,
   extractCandidateWriteFiles,
-} from "../graph/graphFailureClassification";
-import { GRAPH_SCHEMA_VERSION, type GraphNodeRecord, type GraphRunRecord } from "../graph/types";
+} from "../../graph/graphFailureClassification";
+import { GRAPH_SCHEMA_VERSION, type GraphNodeRecord, type GraphRunRecord } from "../../graph/types";
 
 const STALE_TEST_FILE = "apps/server/test/performance/performance-observation-schema.test.js";
 
@@ -184,10 +184,10 @@ test("extracts test paths as preferred candidate write files", () => {
 
 test("maps compiled dist test failures back to source test candidates", () => {
   assert.deepEqual(
-    extractCandidateWriteFiles("dist/test/codexdualmodelwebview.test.js failed with ReferenceError."),
+    extractCandidateWriteFiles("dist/test/webview/codexdualmodelwebview.test.js failed with ReferenceError."),
     [
-      "src/test/codexdualmodelwebview.test.ts",
-      "dist/test/codexdualmodelwebview.test.js",
+      "src/test/webview/codexdualmodelwebview.test.ts",
+      "dist/test/webview/codexdualmodelwebview.test.js",
     ],
   );
 });

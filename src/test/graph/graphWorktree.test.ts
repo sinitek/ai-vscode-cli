@@ -13,7 +13,7 @@ import {
   getGraphWorktreeHeadCommit,
   mergeGraphRunWorktreeToWorkspace,
   resetGraphWorktreeToCommit,
-} from "../graph/graphWorktree";
+} from "../../graph/graphWorktree";
 
 function git(cwd: string, args: string[]): string {
   return childProcess.execFileSync("git", args, {

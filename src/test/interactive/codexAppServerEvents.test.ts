@@ -8,7 +8,7 @@ import {
   isCodexFinalAnswerAgentMessage,
   isCodexFinalAnswerPhase,
   shouldSettleCodexPrimaryTurn,
-} from "../interactive/codexAppServerEvents";
+} from "../../interactive/codexAppServerEvents";
 
 test("keeps child thread completion separate from the active parent turn", () => {
   assert.equal(isCodexSubagentThreadEvent("child", "parent"), true);

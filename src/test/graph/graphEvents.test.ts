@@ -10,7 +10,7 @@ import {
   buildGraphEventsFile,
   readGraphEvents,
   readGraphEventsForRun,
-} from "../graph/graphEvents";
+} from "../../graph/graphEvents";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-events-"));

@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { PassThrough } from "stream";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -86,9 +86,9 @@ function createHandlers(events: unknown[] = []) {
   };
 }
 
-function loadCodexRunner(): typeof import("../interactive/codexRunner") {
-  delete require.cache[require.resolve("../interactive/codexRunner")];
-  return require("../interactive/codexRunner") as typeof import("../interactive/codexRunner");
+function loadCodexRunner(): typeof import("../../interactive/codexRunner") {
+  delete require.cache[require.resolve("../../interactive/codexRunner")];
+  return require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 }
 
 async function waitForSpawnCount(spawned: FakeChild[], count: number): Promise<void> {

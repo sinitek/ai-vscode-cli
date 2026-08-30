@@ -1,10 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { createPromptRunRuntimeHost } = require("../extensionHost/promptRunRuntime") as typeof import("../extensionHost/promptRunRuntime");
+const { createPromptRunRuntimeHost } = require("../../extensionHost/promptRunRuntime") as typeof import("../../extensionHost/promptRunRuntime");
 
 function createRuntimeHost() {
   const deps: Parameters<typeof createPromptRunRuntimeHost>[0] = {

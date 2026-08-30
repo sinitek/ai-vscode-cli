@@ -4,14 +4,14 @@ import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
 
-import { createLoopOrchestrationHost } from "../extensionHost/loopOrchestration";
+import { createLoopOrchestrationHost } from "../../extensionHost/loopOrchestration";
 import {
   createDisabledOpenCodeSubagentMonitor,
   createOpenCodeSubagentRuntimePreparer,
   type OpenCodeSubagentRuntimeDeps,
-} from "../extensionHost/openCodeSubagentRuntime";
-import { createPromptParallelRuntimeHost } from "../extensionHost/promptParallelRuntime";
-import type { OpenCodeRuntimePreparation } from "../extensionHost/promptExecutionShared";
+} from "../../extensionHost/openCodeSubagentRuntime";
+import { createPromptParallelRuntimeHost } from "../../extensionHost/promptParallelRuntime";
+import type { OpenCodeRuntimePreparation } from "../../extensionHost/promptExecutionShared";
 
 function readSource(...relativePath: string[]): string {
   return fs.readFileSync(path.join(process.cwd(), ...relativePath), "utf8");

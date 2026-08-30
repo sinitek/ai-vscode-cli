@@ -5,7 +5,7 @@ import {
   collectInteractiveSessionKeys,
   collectReferencedInteractiveSessionKeys,
   shouldDisposeInteractiveSession,
-} from "../interactive/runnerRetention";
+} from "../../interactive/runnerRetention";
 
 test("keeps the previous codex runner when a tab switches to opencode but still retains the codex session binding", () => {
   const referencedSessionKeys = collectReferencedInteractiveSessionKeys([

@@ -3,15 +3,15 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-import type { CliName, OpenCodeThinkingState } from "../cli/types";
-import type { OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
-import type { OpenCodeCanonicalModelRole } from "../cli/opencodeconfigmodels";
-import type { PromptHistoryStore } from "../promptHistoryStore";
-import type { PanelState } from "../webview/types";
+import type { CliName, OpenCodeThinkingState } from "../../cli/types";
+import type { OpenCodeThinkingCapability } from "../../cli/openCodeModelCapabilities";
+import type { OpenCodeCanonicalModelRole } from "../../cli/opencodeconfigmodels";
+import type { PromptHistoryStore } from "../../promptHistoryStore";
+import type { PanelState } from "../../webview/types";
 
 type OpenCodeThinkingWithDefault = OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">;
 
@@ -125,10 +125,10 @@ test("publishes async OpenCode thinking variants before refreshing panel state",
 
     const {
       createModelSettingsHost,
-    } = require("../extensionHost/modelSettings") as typeof import("../extensionHost/modelSettings");
+    } = require("../../extensionHost/modelSettings") as typeof import("../../extensionHost/modelSettings");
     const {
       ensureCliModelStore,
-    } = require("../modelSelectionStore") as typeof import("../modelSelectionStore");
+    } = require("../../modelSelectionStore") as typeof import("../../modelSelectionStore");
 
     let currentCli: CliName = "opencode";
     let modelStore = ensureCliModelStore();

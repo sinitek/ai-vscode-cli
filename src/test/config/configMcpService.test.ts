@@ -6,13 +6,13 @@ import {
   buildCodexMcpInstallArgs,
   buildOpenCodeMcpInstallArgs,
   parseCodexMcpServerIds,
-} from "../config/mcpInstallArgs";
+} from "../../config/mcpInstallArgs";
 import {
   parseClaudeMcpHealthOutput,
   parseGeminiMcpHealthOutput as parseLegacyGeminiMcpHealthOutput,
   parseInstalledCodexMcpServer,
-} from "../config/mcpHealth";
-import { McpMarketplaceItem } from "../config/types";
+} from "../../config/mcpHealth";
+import { McpMarketplaceItem } from "../../config/types";
 
 function createMarketplaceItem(overrides: Partial<McpMarketplaceItem> = {}): McpMarketplaceItem {
   return {

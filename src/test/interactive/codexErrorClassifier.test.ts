@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { detectCodexRateLimitErrorMessage } from "../interactive/codexErrorClassifier";
+import { detectCodexRateLimitErrorMessage } from "../../interactive/codexErrorClassifier";
 
 test("detects upstream rate_limit_error payloads wrapped in event error objects", () => {
   const payload = {

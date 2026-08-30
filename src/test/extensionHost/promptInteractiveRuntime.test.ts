@@ -1,22 +1,22 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
-import type { CliName } from "../cli/types";
-import type { CodexInteractiveRunner, CodexStreamHandlers } from "../interactive/codexRunner";
-import type { ClaudeStreamHandlers } from "../interactive/claudeRunner";
-import type { InteractiveRunnerManager } from "../interactive/manager";
-import type { TaskRunRecord, TaskRunStatus } from "../promptRunState";
-import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../extensionHost/graphRuntime";
-import type { InteractiveTabRun } from "../extensionHost/promptExecutionShared";
-import type { HumanInteractionRequest, HumanInteractionSubmission } from "../humanInteraction";
+import type { CliName } from "../../cli/types";
+import type { CodexInteractiveRunner, CodexStreamHandlers } from "../../interactive/codexRunner";
+import type { ClaudeStreamHandlers } from "../../interactive/claudeRunner";
+import type { InteractiveRunnerManager } from "../../interactive/manager";
+import type { TaskRunRecord, TaskRunStatus } from "../../promptRunState";
+import type { ChatMessage } from "../../webview/types";
+import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
+import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
 
 installVscodeMock();
 
 const {
   createPromptInteractiveRuntimeHost,
-} = require("../extensionHost/promptInteractiveRuntime") as typeof import("../extensionHost/promptInteractiveRuntime");
+} = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
 
 type PromptInteractiveRuntimeDeps = Parameters<typeof createPromptInteractiveRuntimeHost>[0];
 

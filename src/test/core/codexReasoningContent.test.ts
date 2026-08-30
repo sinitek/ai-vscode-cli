@@ -1,9 +1,9 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { sanitizeCodexReasoningContent } from "../codexReasoningContent";
-import { sanitizeMessages } from "../sessionStore";
-import { ChatMessage } from "../webview/types";
+import { sanitizeCodexReasoningContent } from "../../codexReasoningContent";
+import { sanitizeMessages } from "../../sessionStore";
+import { ChatMessage } from "../../webview/types";
 
 test("sanitizeCodexReasoningContent removes standalone empty comment separators", () => {
   assert.equal(

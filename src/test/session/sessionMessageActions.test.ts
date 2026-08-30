@@ -2,33 +2,33 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
 const {
   handlePanelMessageWithDeps,
-} = require("../sessionMessageHandlers") as typeof import("../sessionMessageHandlers");
+} = require("../../sessionMessageHandlers") as typeof import("../../sessionMessageHandlers");
 const {
   buildOpenCodeRunFailureMessage,
   parseOpenCodeRunOutput,
-} = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
+} = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
 const {
   buildHiddenRetryFailureMessage,
-} = require("../hiddenRetry") as typeof import("../hiddenRetry");
+} = require("../../hiddenRetry") as typeof import("../../hiddenRetry");
 const {
   hasAssistantFinalConclusionAfterMessage,
-} = require("../finalConclusion") as typeof import("../finalConclusion");
+} = require("../../finalConclusion") as typeof import("../../finalConclusion");
 
 import type {
   ConversationTabRecordForPanel,
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
-} from "../sessionMessageHandlers";
-import type { CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode } from "../cli/types";
-import type { ToolSettingsState } from "../toolSettings";
-import type { ChatMessage, PanelMessage } from "../webview/types";
-import type { WorkspaceSettings } from "../workspaceSettingsStore";
+} from "../../sessionMessageHandlers";
+import type { CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode } from "../../cli/types";
+import type { ToolSettingsState } from "../../toolSettings";
+import type { ChatMessage, PanelMessage } from "../../webview/types";
+import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type SentPromptRun = {
   input: PromptRunInputForPanel;

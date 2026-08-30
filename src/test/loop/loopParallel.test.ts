@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import {
   buildLoopSubtaskExecutionPlan,
   normalizeLoopWriteFiles,
-} from "../loopParallel";
+} from "../../loopParallel";
 
 test("keeps independent write files in one parallel group", () => {
   const plan = buildLoopSubtaskExecutionPlan([

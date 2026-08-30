@@ -7,7 +7,7 @@ import {
   isLongTermMemoryRuntimeEnabled,
   isMemoryRuntimeOperationAllowed,
   type MemoryRuntimeOperation,
-} from "../memory/runtimeGate";
+} from "../../memory/runtimeGate";
 
 const blockedWhenDisabled: MemoryRuntimeOperation[] = [
   "recall",

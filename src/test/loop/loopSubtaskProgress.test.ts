@@ -6,9 +6,9 @@ import {
   createLoopSubtaskProgressMonitor,
   extractLoopSubtaskVisibleText,
   mapLoopRunStatusToSubagentStatus,
-} from "../loopSubtaskProgress";
-import type { SubagentProgressUpdate } from "../subagentProgress";
-import type { ChatMessage } from "../webview/types";
+} from "../../loopSubtaskProgress";
+import type { SubagentProgressUpdate } from "../../subagentProgress";
+import type { ChatMessage } from "../../webview/types";
 
 function assistant(content: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

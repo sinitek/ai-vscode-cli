@@ -5,7 +5,7 @@ import {
   appendBoundedUtf8Text,
   getUtf8ByteLength,
   trimUtf8TextStartToMaxBytes,
-} from "../boundedText";
+} from "../../boundedText";
 
 test("keeps bounded text tail without truncating under limit", () => {
   const result = appendBoundedUtf8Text("abc", "def", 10);

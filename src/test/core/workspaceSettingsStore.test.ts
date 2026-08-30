@@ -8,12 +8,12 @@ import {
   loadWorkspaceSettings,
   saveWorkspaceSettings,
   type WorkspaceSettingsStoreOptions,
-} from "../workspaceSettingsStore";
-import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
+} from "../../workspaceSettingsStore";
+import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
 import {
   LEGACY_LOOP_INTERACTIVE_MODE,
   getLegacyLoopPropertyKey,
-} from "../loopLegacyMigration";
+} from "../../loopLegacyMigration";
 
 function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOptions {
   return {

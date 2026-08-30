@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import {
   DEFAULT_LOOP_EXECUTION_MODE,
   normalizeLoopExecutionMode,
-} from "../cli/types";
+} from "../../cli/types";
 import {
   buildLoopAnswerConclusionMarkdown,
   buildLoopMainSubChatTranscriptFile,
@@ -37,9 +37,9 @@ import {
   type LoopDebateModeratorDecisionRecord,
   type LoopDebateParticipantRecord,
   type LoopDebateConsensusRecord,
-} from "../loopDebate";
-import type { LoopMainDecision } from "../loopTaskStore";
-import { getStrings } from "../webview/loopDebatePanelRenderer";
+} from "../../loopDebate";
+import type { LoopMainDecision } from "../../loopTaskStore";
+import { getStrings } from "../../webview/loopDebatePanelRenderer";
 
 test("normalizes loop execution mode with legacy-compatible default", () => {
   assert.equal(DEFAULT_LOOP_EXECUTION_MODE, "main_sub_multi_agent");

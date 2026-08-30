@@ -8,14 +8,14 @@ import {
   getGraphNodeConflictReason,
   normalizeGraphWriteFiles,
   selectGraphRunnableBatch,
-} from "../graph/graphScheduler";
+} from "../../graph/graphScheduler";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
   type GraphNodeRecord,
   type GraphRunRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createNode(overrides: Partial<GraphNodeRecord> = {}): GraphNodeRecord {
   return {

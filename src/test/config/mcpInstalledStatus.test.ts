@@ -4,7 +4,7 @@ import { EventEmitter } from "events";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -18,14 +18,14 @@ type FakeChild = EventEmitter & {
   kill: () => boolean;
 };
 
-function loadMcpService(): typeof import("../config/mcpService") {
-  const configPathsModulePath = require.resolve("../config/configPaths");
-  const openCodeModulePath = require.resolve("../config/openCodeMcpConfig");
-  const mcpServiceModulePath = require.resolve("../config/mcpService");
+function loadMcpService(): typeof import("../../config/mcpService") {
+  const configPathsModulePath = require.resolve("../../config/configPaths");
+  const openCodeModulePath = require.resolve("../../config/openCodeMcpConfig");
+  const mcpServiceModulePath = require.resolve("../../config/mcpService");
   delete require.cache[configPathsModulePath];
   delete require.cache[openCodeModulePath];
   delete require.cache[mcpServiceModulePath];
-  return require("../config/mcpService") as typeof import("../config/mcpService");
+  return require("../../config/mcpService") as typeof import("../../config/mcpService");
 }
 
 function createFakeChild(): FakeChild {

@@ -1,11 +1,11 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildLoopSessionIdsByCli } from "../loopTaskStore";
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../webview/viewContentScript/historyPanels";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../webview/viewContentScript/modelAndPanelState";
+import { buildLoopSessionIdsByCli } from "../../loopTaskStore";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
+import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;

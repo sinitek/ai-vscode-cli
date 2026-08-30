@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -19,16 +19,16 @@ const {
   parseOpenCodeRunOutput,
   runCliStream,
   startOpenCodeServer,
-} = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
-const { isInteractiveSupported } = require("../cli/config") as typeof import("../cli/config");
+} = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
+const { isInteractiveSupported } = require("../../cli/config") as typeof import("../../cli/config");
 const {
   OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS,
   resolveOpenCodeOneShotWatchdogTimeoutMs,
-} = require("../cli/opencodewatchdog") as typeof import("../cli/opencodewatchdog");
+} = require("../../cli/opencodewatchdog") as typeof import("../../cli/opencodewatchdog");
 const {
   extractSessionId,
   resolveCliSessionIdForResume,
-} = require("../sessionLifecycle") as typeof import("../sessionLifecycle");
+} = require("../../sessionLifecycle") as typeof import("../../sessionLifecycle");
 
 function readSource(...relativePath: string[]): string {
   return fs.readFileSync(path.join(process.cwd(), ...relativePath), "utf8");

@@ -7,7 +7,7 @@ import {
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
   validateOpenCodeModelOverride,
-} from "../cli/opencodeconfigmodels";
+} from "../../cli/opencodeconfigmodels";
 
 test("parses main and subtask models while keeping display labels separate from exact refs", () => {
   const parsed = parseOpenCodeConfigModels(JSON.stringify({

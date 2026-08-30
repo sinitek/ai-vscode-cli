@@ -3,16 +3,16 @@ import assert = require("node:assert/strict");
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-function loadConfigService(): typeof import("../config/configService") {
-  const configPathsModulePath = require.resolve("../config/configPaths");
-  const modulePath = require.resolve("../config/configService");
+function loadConfigService(): typeof import("../../config/configService") {
+  const configPathsModulePath = require.resolve("../../config/configPaths");
+  const modulePath = require.resolve("../../config/configService");
   delete require.cache[configPathsModulePath];
   delete require.cache[modulePath];
-  return require("../config/configService") as typeof import("../config/configService");
+  return require("../../config/configService") as typeof import("../../config/configService");
 }
 
 test("OpenCode config list does not auto-migrate Claude or Codex profiles", async () => {

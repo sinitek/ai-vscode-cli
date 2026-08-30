@@ -1,13 +1,13 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-function loadCapabilities(): typeof import("../cli/openCodeModelCapabilities") {
-  const modulePath = require.resolve("../cli/openCodeModelCapabilities");
+function loadCapabilities(): typeof import("../../cli/openCodeModelCapabilities") {
+  const modulePath = require.resolve("../../cli/openCodeModelCapabilities");
   delete require.cache[modulePath];
-  return require("../cli/openCodeModelCapabilities") as typeof import("../cli/openCodeModelCapabilities");
+  return require("../../cli/openCodeModelCapabilities") as typeof import("../../cli/openCodeModelCapabilities");
 }
 
 function verboseModel(
@@ -140,7 +140,7 @@ test("resolved CLI metadata takes precedence over configured variants", async ()
   const capabilities = loadCapabilities();
   capabilities.clearOpenCodeThinkingCapabilityCache();
   const requests: Array<{ command: string; args: string[]; timeoutMs: number }> = [];
-  const executor: import("../cli/openCodeModelCapabilities").OpenCodeCapabilityCommandExecutor = async (request) => {
+  const executor: import("../../cli/openCodeModelCapabilities").OpenCodeCapabilityCommandExecutor = async (request) => {
     requests.push(request);
     return {
       stdout: verboseModel("gateway", "model", {
@@ -387,7 +387,7 @@ test("isolates cache entries by command, version, config, provider, and model", 
   const capabilities = loadCapabilities();
   capabilities.clearOpenCodeThinkingCapabilityCache();
   let modelQueries = 0;
-  const executor: import("../cli/openCodeModelCapabilities").OpenCodeCapabilityCommandExecutor = async (request) => {
+  const executor: import("../../cli/openCodeModelCapabilities").OpenCodeCapabilityCommandExecutor = async (request) => {
     modelQueries += 1;
     const providerId = request.args[1];
     return {
@@ -406,7 +406,7 @@ test("isolates cache entries by command, version, config, provider, and model", 
     };
   };
 
-  const resolve = (overrides: Partial<import("../cli/openCodeModelCapabilities").ResolveOpenCodeThinkingCapabilityOptions> = {}) => (
+  const resolve = (overrides: Partial<import("../../cli/openCodeModelCapabilities").ResolveOpenCodeThinkingCapabilityOptions> = {}) => (
     capabilities.resolveOpenCodeThinkingCapability({
       command: "opencode-a",
       version: "1",

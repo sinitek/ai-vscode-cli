@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { readGraphNodeExecutionResultArtifact } from "../graph/graphNodeArtifact";
+import { readGraphNodeExecutionResultArtifact } from "../../graph/graphNodeArtifact";
 
 test("reads Graph node execution status from the communication JSON block", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-artifact-"));

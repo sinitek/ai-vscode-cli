@@ -5,13 +5,13 @@ import {
   buildGraphNodePrompt,
   buildGraphSummaryNodePrompt,
   resolveGraphNodeCommunicationFile,
-} from "../graph/graphPromptBuilders";
+} from "../../graph/graphPromptBuilders";
 import {
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
   type GraphNodeRecord,
   type GraphRunRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createNode(overrides: Partial<GraphNodeRecord> = {}): GraphNodeRecord {
   return {
@@ -308,7 +308,7 @@ test("node prompt includes the full graph topology, current position, and downst
     ownerRole: "subtask",
     dependsOn: ["implement-ui"],
     unlocks: ["review-ui"],
-    writeFiles: ["src/test/graphRunPanel.test.ts"],
+    writeFiles: ["src/test/graph/graphRunPanel.test.ts"],
     conflictGroup: "graph-tests",
   });
   const reviewNode = createNode({
@@ -555,7 +555,7 @@ test("review node prompt scopes review to upstream task files instead of unrelat
     ownerRole: "subtask",
     artifactRef: "artifacts/test-feature.md",
     communicationFile: "/tmp/graph/nodes/test-feature.md",
-    writeFiles: ["src/test/graphPromptBuilders.test.ts"],
+    writeFiles: ["src/test/graph/graphPromptBuilders.test.ts"],
     dependsOn: ["implement-feature"],
     unlocks: ["review-feature"],
   });
@@ -591,7 +591,7 @@ test("review node prompt scopes review to upstream task files instead of unrelat
 
   assert.match(prompt, /## Review 节点评审范围/u);
   assert.match(prompt, /范围来源节点：test-feature（验证 Graph 评审范围｜test｜passed）、implement-feature（实现 Graph 评审范围｜implement｜passed）/u);
-  assert.match(prompt, /本次任务候选改动文件：src\/test\/graphPromptBuilders\.test\.ts、src\/graph\/graphPromptBuilders\.ts/u);
+  assert.match(prompt, /本次任务候选改动文件：src\/test\/graph\/graphPromptBuilders\.test\.ts、src\/graph\/graphPromptBuilders\.ts/u);
   assert.match(prompt, /artifacts\/test-feature\.md、\/tmp\/graph\/nodes\/test-feature\.md/u);
   assert.match(prompt, /artifacts\/implement-feature\.md、\/tmp\/graph\/nodes\/implement-feature\.md/u);
   assert.match(prompt, /加 pathspec 过滤/u);

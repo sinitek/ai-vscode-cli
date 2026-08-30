@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -8,13 +8,13 @@ import {
   isClaudeCompactBoundaryMessage,
   isClaudeCompactingStatusMessage,
   isClaudeNativeCompactUnsupportedError,
-} from "../interactive/claudeCompaction";
+} from "../../interactive/claudeCompaction";
 
 const {
   ClaudeInteractiveRunner,
   mapClaudeThinkingEffort,
-} = require("../interactive/claudeRunner") as typeof import("../interactive/claudeRunner");
-const dynamicImportModule = require("../interactive/dynamicImport") as typeof import("../interactive/dynamicImport");
+} = require("../../interactive/claudeRunner") as typeof import("../../interactive/claudeRunner");
+const dynamicImportModule = require("../../interactive/dynamicImport") as typeof import("../../interactive/dynamicImport");
 
 test("detects Claude compacting status messages", () => {
   assert.equal(

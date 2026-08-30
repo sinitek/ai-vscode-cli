@@ -5,7 +5,7 @@ import {
   ClaudeTaskListTracker,
   extractClaudeTodoWriteItems,
   hasClaudeTodoWriteResultShape,
-} from "../interactive/claudeTaskList";
+} from "../../interactive/claudeTaskList";
 
 test("TodoWrite payload parsing keeps existing Claude todo behavior", () => {
   const items = extractClaudeTodoWriteItems({

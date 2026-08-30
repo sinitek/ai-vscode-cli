@@ -6,8 +6,8 @@ import {
   isAssistantFinalConclusionMessage,
   isExplicitAssistantFinalConclusionMessage,
   isLikelyAssistantCompletionConclusionMessage,
-} from "../finalConclusion";
-import type { ChatMessage } from "../webview/types";
+} from "../../finalConclusion";
+import type { ChatMessage } from "../../webview/types";
 
 function message(partial: ChatMessage): ChatMessage {
   return partial;

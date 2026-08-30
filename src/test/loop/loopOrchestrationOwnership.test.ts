@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { createLoopOrchestrationOwnershipTracker } from "../loopOrchestrationOwnership";
+import { createLoopOrchestrationOwnershipTracker } from "../../loopOrchestrationOwnership";
 
 test("releasing an old Loop orchestration does not clear a newly resumed owner", () => {
   const tracker = createLoopOrchestrationOwnershipTracker();

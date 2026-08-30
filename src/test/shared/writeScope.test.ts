@@ -5,7 +5,7 @@ import {
   normalizeConflictGroup,
   normalizeWriteFiles,
   writeFilePathsOverlap,
-} from "../shared/writeScope";
+} from "../../shared/writeScope";
 
 test("normalizes write files case-insensitively and removes duplicate paths", () => {
   assert.deepEqual(

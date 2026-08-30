@@ -1,20 +1,20 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { getWebviewStrings, WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { WEBVIEW_STYLES } from "../webview/viewContentStyles";
-import { BASE_STYLES } from "../webview/viewContentStyles/base";
-import { CHAT_AREA_STYLES } from "../webview/viewContentStyles/chatArea";
-import { HEADER_TABS_STYLES } from "../webview/viewContentStyles/headerTabs";
-import { INPUT_CONTROLS_STYLES } from "../webview/viewContentStyles/inputControls";
-import { MARKDOWN_STYLES } from "../webview/viewContentStyles/markdown";
-import { MESSAGE_BLOCK_STYLES } from "../webview/viewContentStyles/messages";
-import { OVERLAYS_MODALS_STYLES } from "../webview/viewContentStyles/overlaysModals";
-import { SYSTEM_TRACE_STYLES } from "../webview/viewContentStyles/systemTrace";
-import { TASKLIST_STYLES } from "../webview/viewContentStyles/tasklist";
-import { TOAST_MISC_STYLES } from "../webview/viewContentStyles/toastMisc";
-import { TYPING_STATUS_STYLES } from "../webview/viewContentStyles/typingStatus";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STYLES } from "../../webview/viewContentStyles";
+import { BASE_STYLES } from "../../webview/viewContentStyles/base";
+import { CHAT_AREA_STYLES } from "../../webview/viewContentStyles/chatArea";
+import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
+import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
+import { MARKDOWN_STYLES } from "../../webview/viewContentStyles/markdown";
+import { MESSAGE_BLOCK_STYLES } from "../../webview/viewContentStyles/messages";
+import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
+import { SYSTEM_TRACE_STYLES } from "../../webview/viewContentStyles/systemTrace";
+import { TASKLIST_STYLES } from "../../webview/viewContentStyles/tasklist";
+import { TOAST_MISC_STYLES } from "../../webview/viewContentStyles/toastMisc";
+import { TYPING_STATUS_STYLES } from "../../webview/viewContentStyles/typingStatus";
 
 type StaticHtmlInput = Parameters<typeof buildWebviewStaticHtml>[0];
 

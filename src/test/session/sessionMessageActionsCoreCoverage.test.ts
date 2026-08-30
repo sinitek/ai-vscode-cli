@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -8,18 +8,18 @@ const {
   handleSendPromptMessage,
   handleUpdateOpenCodeVariantMessage,
   handleUpdateSettingMessage,
-} = require("../sessionMessageActions") as typeof import("../sessionMessageActions");
+} = require("../../sessionMessageActions") as typeof import("../../sessionMessageActions");
 
 import type {
   ConversationTabRecordForPanel,
   LoopSubtaskConversationContextForPanel,
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
-} from "../sessionMessageHandlers";
-import type { CliName, InteractiveMode, LoopExecutionMode, ThinkingMode } from "../cli/types";
-import type { ToolSettingsState } from "../toolSettings";
-import type { WorkspaceSettings } from "../workspaceSettingsStore";
-import type { PanelMessage } from "../webview/types";
+} from "../../sessionMessageHandlers";
+import type { CliName, InteractiveMode, LoopExecutionMode, ThinkingMode } from "../../cli/types";
+import type { ToolSettingsState } from "../../toolSettings";
+import type { WorkspaceSettings } from "../../workspaceSettingsStore";
+import type { PanelMessage } from "../../webview/types";
 
 type SettingCalls = {
   postPanelState: number;

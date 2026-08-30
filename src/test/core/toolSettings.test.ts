@@ -8,8 +8,8 @@ import {
   resolveGlobalMultiAgentEnabled,
   resolveLongTermMemoryEnabled,
   type ToolSettingsState,
-} from "../toolSettings";
-import { getLegacyLoopPropertyKey } from "../loopLegacyMigration";
+} from "../../toolSettings";
+import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
 
 test("ignores retired final-answer policy fields", () => {
   assert.deepEqual(

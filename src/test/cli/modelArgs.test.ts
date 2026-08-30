@@ -7,7 +7,7 @@ import {
   resolveOpenCodeModelForConfig,
   stripModelArgs,
   supportsCliManagedModelSelection,
-} from "../cli/modelArgs";
+} from "../../cli/modelArgs";
 
 const openCodeConfigContent = JSON.stringify({
   model: "myprovider/main-model",

@@ -24,7 +24,7 @@ import {
   pickArgValue,
   resolveCodexPackageVersionFromCommand,
   shouldEmitItemTraceCandidate,
-} from "../interactive/codexRunnerRuntime";
+} from "../../interactive/codexRunnerRuntime";
 
 test("visible Codex errors use an error trace kind", () => {
   const traces: Array<{ content: string; kind?: string; merge?: boolean }> = [];

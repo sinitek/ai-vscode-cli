@@ -6,7 +6,7 @@
 
 - 统一构建命令：`npm run build`。
 - 全量单元入口：`npm run test:unit`，会先构建，再通过 `scripts/run_unit_tests.js` 枚举 `dist/test/**/*.test.js` 的编译后 JavaScript 清单并交给 Node 原生 `node --test` 执行；该入口不得退回裸 `node --test` 自动扫描仓库。
-- 单测发现范围核对：`node scripts/run_unit_tests.js --list` 只应输出 `dist/test/**/*.test.js`，不应包含 `src/test/*.ts`。
+- 单测发现范围核对：`node scripts/run_unit_tests.js --list` 只应输出 `dist/test/**/*.test.js`，不应包含 `src/test/**/*.ts`。
 - 最小相关单测：先 `npm run build`，再运行 `node --test dist/test/<相关测试>.js ...`。
 - 常用分组：`npm run test:core` 覆盖核心运行时，`npm run test:page` 覆盖 Webview / 配置页相关测试。
 - 静态空白校验：`npm run validate:whitespace`，也可在必要时用脚本参数限制到本次改动范围。

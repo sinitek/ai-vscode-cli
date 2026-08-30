@@ -13,8 +13,8 @@ import {
   resolveOfficialSkillInstallState,
   writeOfficialSkillMetadata,
   type OfficialSkillMetadataV1,
-} from "../config/officialSkillVersioning";
-import { OfficialSkillCatalogItem } from "../config/types";
+} from "../../config/officialSkillVersioning";
+import { OfficialSkillCatalogItem } from "../../config/types";
 
 function createCatalogItem(overrides: Partial<OfficialSkillCatalogItem> = {}): OfficialSkillCatalogItem {
   return {

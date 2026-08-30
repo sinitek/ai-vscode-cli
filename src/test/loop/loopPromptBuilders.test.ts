@@ -4,9 +4,9 @@ import assert = require("node:assert/strict");
 import {
   buildLoopDebateBriefMarkdown,
   buildLoopDebateConsensusModelPrompt,
-} from "../loopPromptBuilders";
-import { buildLoopDebatePaths, type LoopDebateParticipantRecord } from "../loopDebate";
-import type { LoopTaskRecord } from "../loopTaskStore";
+} from "../../loopPromptBuilders";
+import { buildLoopDebatePaths, type LoopDebateParticipantRecord } from "../../loopDebate";
+import type { LoopTaskRecord } from "../../loopTaskStore";
 
 function createTask(): LoopTaskRecord {
   const now = Date.UTC(2026, 6, 15, 8, 0, 0);

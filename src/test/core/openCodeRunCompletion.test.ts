@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import {
   resolveOpenCodeSuccessfulExitOutcome,
   shouldRecoverOpenCodeLoopMainSessionInFreshSession,
-} from "../openCodeRunCompletion";
+} from "../../openCodeRunCompletion";
 
 test("retries a Loop successful exit when only a historical conversation conclusion exists", () => {
   assert.equal(resolveOpenCodeSuccessfulExitOutcome({

@@ -521,7 +521,7 @@ Verifier 约束：
 
 ```bash
 npm run build
-node --test dist/test/loopParallel.test.js dist/test/loopDebate.test.js dist/test/loopMainFailure.test.js
+node --test dist/test/loop/loopParallel.test.js dist/test/loop/loopDebate.test.js dist/test/loop/loopMainFailure.test.js
 ```
 
 若新增纯函数模块，应补充对应单测，例如：

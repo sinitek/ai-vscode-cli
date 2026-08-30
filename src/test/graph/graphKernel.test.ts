@@ -7,15 +7,15 @@ import * as path from "path";
 import {
   tickGraphRun,
   type GraphNodeExecutionRequest,
-} from "../graph/graphKernel";
-import type { GraphEventAppendInput } from "../graph/graphEvents";
-import { resumeGraphRunRecord } from "../graph/graphRunControl";
+} from "../../graph/graphKernel";
+import type { GraphEventAppendInput } from "../../graph/graphEvents";
+import { resumeGraphRunRecord } from "../../graph/graphRunControl";
 import {
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
   type GraphNodeRecord,
   type GraphRunRecord,
-} from "../graph/types";
+} from "../../graph/types";
 
 function createTempBaseDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-kernel-"));

@@ -4,7 +4,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-import { resolveCodexModelProvider } from "../interactive/codexRuntimeConfig";
+import { resolveCodexModelProvider } from "../../interactive/codexRuntimeConfig";
 
 test("resolves the root model_provider from Codex TOML", async () => {
   const codexHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-provider-"));

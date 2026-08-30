@@ -6,8 +6,8 @@ import {
   isGraphAutoWakeRunScheduled,
   resolveGraphRunAutoWakeAt,
   type GraphAutoWakeAttemptResult,
-} from "../graph/graphAutoWake";
-import type { GraphNodeRecord, GraphRunRecord } from "../graph/types";
+} from "../../graph/graphAutoWake";
+import type { GraphNodeRecord, GraphRunRecord } from "../../graph/types";
 
 type FakeTimer = {
   handle: ReturnType<typeof setTimeout>;

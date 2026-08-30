@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -9,7 +9,7 @@ const {
   isHiddenRetryEligibleErrorInfo,
   isLoopTaskResumable,
   isNonRetryableBillingErrorInfo,
-} = require("../panelDiagnostics") as typeof import("../panelDiagnostics");
+} = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 
 test("rejects HTTP 402 and exhausted billing errors from hidden retry", () => {
   const terminalErrors = [

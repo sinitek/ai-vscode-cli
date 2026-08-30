@@ -501,7 +501,7 @@ Phase 2 和后续 Graph 视觉优化已同步产品规格和功能清单，相�
 最终验证记录：
 
 - `npm run build`：通过。
-- `node --test dist/test/graph*.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js`：通过，108/108。
+- `node --test dist/test/graph*.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js`：通过，108/108。
 - `git diff --check`：通过。
 
 ## 参考资料

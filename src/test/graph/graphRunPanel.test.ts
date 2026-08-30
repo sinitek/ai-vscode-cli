@@ -2,24 +2,24 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-import { buildGraphRunPanelStateWithDeps } from "../panelStateBuilder";
+import { buildGraphRunPanelStateWithDeps } from "../../panelStateBuilder";
 import {
   buildGraphRunPanelDagLayoutForTest,
   buildGraphRunPanelHtml,
-} from "../webview/graphRunPanel";
-import { getGraphRunPanelStrings } from "../webview/graphRunPanelRenderer";
-import { GRAPH_RUN_PANEL_STYLES } from "../webview/graphRunPanelStyles";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import type { GraphEventRecord, GraphNodeRecord, GraphRunRecord } from "../graph/types";
+} from "../../webview/graphRunPanel";
+import { getGraphRunPanelStrings } from "../../webview/graphRunPanelRenderer";
+import { GRAPH_RUN_PANEL_STYLES } from "../../webview/graphRunPanelStyles";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import type { GraphEventRecord, GraphNodeRecord, GraphRunRecord } from "../../graph/types";
 
-const packageJson = require("../../package.json") as {
+const packageJson = require("../../../package.json") as {
   dependencies?: Record<string, string>;
 };
-const repositoryRoot = path.join(__dirname, "..", "..");
+const repositoryRoot = path.join(__dirname, "..", "..", "..");
 const vscodeIgnoreText = fs.readFileSync(path.join(repositoryRoot, ".vscodeignore"), "utf8");
 
 const STOP_BOUNDARY_COPY_PATTERNS = [

@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -23,7 +23,7 @@ const {
   runCli,
   runCliStream,
   startOpenCodeServer,
-} = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
+} = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
 
 type FakeStream = EventEmitter & {
   encodings: string[];
@@ -357,7 +357,7 @@ test("clears capture output timeout after a fast successful close", async () => 
 test("handles Mac shell availability checks with only mocked child process events", async () => {
   const restorePlatform = setPlatform("darwin");
   const originalSpawn = crossSpawn.spawn;
-  const toolSettings = require("../toolSettings") as typeof import("../toolSettings");
+  const toolSettings = require("../../toolSettings") as typeof import("../../toolSettings");
   const originalReadToolSettings = toolSettings.readToolSettings;
   const successChild = new EventEmitter();
   const errorChild = new EventEmitter();

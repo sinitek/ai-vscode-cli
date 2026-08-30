@@ -1,10 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { buildWebviewStaticHtml } from "../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../webview/viewContentI18n";
-import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../webview/viewContentScript/settingsAndOverlays";
-import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../webview/viewContentScript/taskListAndUi";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
+import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);

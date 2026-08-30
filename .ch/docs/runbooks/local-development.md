@@ -51,12 +51,12 @@ Loop 主任务保持真实工作区和项目规则。Loop 子任务必须从临�
 ```bash
 npm run build
 node --test \
-  dist/test/loopSubtaskExecutionRoot.test.js \
-  dist/test/opencodeCommandRunner.test.js \
-  dist/test/loopPromptBuilders.test.js \
-  dist/test/loopPromptQueue.test.js \
-  dist/test/loopMainFailure.test.js \
-  dist/test/loopSubtaskThinking.test.js
+  dist/test/loop/loopSubtaskExecutionRoot.test.js \
+  dist/test/cli/opencodeCommandRunner.test.js \
+  dist/test/loop/loopPromptBuilders.test.js \
+  dist/test/loop/loopPromptQueue.test.js \
+  dist/test/loop/loopMainFailure.test.js \
+  dist/test/loop/loopSubtaskThinking.test.js
 ```
 
 ### 6. 一键启动开发主机（macOS）
@@ -127,12 +127,12 @@ npm install
 set -euo pipefail
 npm run build
 node --test \
-  dist/test/loopSubtaskExecutionRoot.test.js \
-  dist/test/opencodeCommandRunner.test.js \
-  dist/test/loopPromptBuilders.test.js \
-  dist/test/loopPromptQueue.test.js \
-  dist/test/loopMainFailure.test.js \
-  dist/test/loopSubtaskThinking.test.js
+  dist/test/loop/loopSubtaskExecutionRoot.test.js \
+  dist/test/cli/opencodeCommandRunner.test.js \
+  dist/test/loop/loopPromptBuilders.test.js \
+  dist/test/loop/loopPromptQueue.test.js \
+  dist/test/loop/loopMainFailure.test.js \
+  dist/test/loop/loopSubtaskThinking.test.js
 git diff --check
 ```
 
@@ -161,19 +161,19 @@ node scripts/sync_loop_workflow_skills.js --check
 node scripts/validate_loop_workflow_skills.js
 npm run build
 node --test \
-  dist/test/loopLegacyMigration.test.js \
+  dist/test/loop/loopLegacyMigration.test.js \
   dist/test/loopSkillGuidance.test.js \
-  dist/test/loopTaskStore.test.js \
-  dist/test/loopPromptBuilders.test.js \
+  dist/test/loop/loopTaskStore.test.js \
+  dist/test/loop/loopPromptBuilders.test.js \
   dist/test/loopSkillIntegration.test.js \
-  dist/test/sessionMessageActions.test.js \
-  dist/test/loopParallel.test.js \
-  dist/test/loopDebate.test.js \
-  dist/test/loopMainFailure.test.js \
-  dist/test/loopPromptQueue.test.js \
-  dist/test/officialSkillService.test.js \
-  dist/test/officialSkillsVersioning.test.js \
-  dist/test/longTermMemory.test.js
+  dist/test/session/sessionMessageActions.test.js \
+  dist/test/loop/loopParallel.test.js \
+  dist/test/loop/loopDebate.test.js \
+  dist/test/loop/loopMainFailure.test.js \
+  dist/test/loop/loopPromptQueue.test.js \
+  dist/test/config/officialSkillService.test.js \
+  dist/test/config/officialSkillsVersioning.test.js \
+  dist/test/memory/longTermMemory.test.js
 ```
 
 ### 3. `vsce ls` 与 manifest 逐项比对

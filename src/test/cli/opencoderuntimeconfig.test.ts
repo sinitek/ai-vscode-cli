@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as path from "path";
 
-import { createOpenCodeRuntimeConfigOverlay } from "../cli/opencoderuntimeconfig";
+import { createOpenCodeRuntimeConfigOverlay } from "../../cli/opencoderuntimeconfig";
 
 const configContent = JSON.stringify({
   model: "provider/default",

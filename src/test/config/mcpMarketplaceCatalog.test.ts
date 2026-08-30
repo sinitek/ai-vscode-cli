@@ -20,7 +20,7 @@ type MarketplaceItem = {
   };
 };
 
-const marketplacePath = path.join(__dirname, "..", "..", "media", "mcp_marketplace.json");
+const marketplacePath = path.join(__dirname, "..", "..", "..", "media", "mcp_marketplace.json");
 const oldMonorepoPath = "github.com/modelcontextprotocol/servers/tree/main/src/";
 const oldPackagePattern = /^@modelcontextprotocol\/server-/;
 

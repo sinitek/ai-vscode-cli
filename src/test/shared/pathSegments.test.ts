@@ -3,14 +3,14 @@ import assert = require("node:assert/strict");
 import * as os from "os";
 import * as path from "path";
 
-import { buildGraphRunStoreFile } from "../graph/graphStore";
-import { sanitizeGraphPathSegment } from "../graph/types";
+import { buildGraphRunStoreFile } from "../../graph/graphStore";
+import { sanitizeGraphPathSegment } from "../../graph/types";
 import {
   buildLoopDebateParticipantTurnArtifactFile,
   buildLoopDebatePaths,
-} from "../loopDebate";
-import { buildLoopTaskStoreFile } from "../loopTaskStore";
-import { sanitizePathSegment } from "../shared/pathSegments";
+} from "../../loopDebate";
+import { buildLoopTaskStoreFile } from "../../loopTaskStore";
+import { sanitizePathSegment } from "../../shared/pathSegments";
 
 test("sanitizes invalid path characters consistently and preserves case", () => {
   const value = " Workspace/A\\B:Run-42.Test ";

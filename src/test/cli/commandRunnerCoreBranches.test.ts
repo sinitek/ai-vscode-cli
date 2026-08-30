@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -13,7 +13,7 @@ const {
   isCliCommandAvailable,
   parseOpenCodeSessionId,
   runCli,
-} = require("../cli/commandRunner") as typeof import("../cli/commandRunner");
+} = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
 
 type FakeStream = EventEmitter & {
   setEncoding: (encoding: string) => void;

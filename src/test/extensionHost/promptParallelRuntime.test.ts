@@ -1,25 +1,25 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
-import type { RunProcess } from "../cli/commandRunner";
-import type { CliAttemptResult } from "../panelDiagnostics";
-import type { TaskRunRecord, TaskRunStatus } from "../promptRunState";
-import type { SubagentProgressStatus } from "../subagentProgress";
-import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../extensionHost/graphRuntime";
+import type { RunProcess } from "../../cli/commandRunner";
+import type { CliAttemptResult } from "../../panelDiagnostics";
+import type { TaskRunRecord, TaskRunStatus } from "../../promptRunState";
+import type { SubagentProgressStatus } from "../../subagentProgress";
+import type { ChatMessage } from "../../webview/types";
+import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
 
 installVscodeMock();
 
 const {
   createPromptParallelRuntimeHost,
-} = require("../extensionHost/promptParallelRuntime") as typeof import("../extensionHost/promptParallelRuntime");
+} = require("../../extensionHost/promptParallelRuntime") as typeof import("../../extensionHost/promptParallelRuntime");
 const {
   appendOpenCodeFinalTextToTabStream,
   consumeOpenCodeTabStreamChunk,
   createOpenCodeTabStreamState,
-} = require("../openCodeTabStream") as typeof import("../openCodeTabStream");
-const { appendBoundedUtf8Text } = require("../boundedText") as typeof import("../boundedText");
+} = require("../../openCodeTabStream") as typeof import("../../openCodeTabStream");
+const { appendBoundedUtf8Text } = require("../../boundedText") as typeof import("../../boundedText");
 
 type PromptParallelRuntimeDeps = Parameters<typeof createPromptParallelRuntimeHost>[0];
 type RunCliStream = NonNullable<PromptParallelRuntimeDeps["runCliStream"]>;

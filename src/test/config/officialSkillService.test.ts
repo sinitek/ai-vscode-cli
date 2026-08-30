@@ -7,7 +7,7 @@ import {
   getOfficialSkillTargetDir,
   isOfficialSkillPlatform,
   resolveOfficialSkillInstallRoot,
-} from "../config/officialSkillService";
+} from "../../config/officialSkillService";
 
 type OfficialSkillTargetItem = Parameters<typeof getOfficialSkillTargetDir>[0];
 type OfficialArchiveValidationItem = Parameters<typeof getOfficialArchiveValidationFile>[0];

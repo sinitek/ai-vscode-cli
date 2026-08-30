@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
 
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -12,14 +12,14 @@ const {
   createSessionLifecycleController,
   extractSessionId,
   resolveCliSessionIdForResume,
-} = require("../sessionLifecycle") as typeof import("../sessionLifecycle");
+} = require("../../sessionLifecycle") as typeof import("../../sessionLifecycle");
 
-import type { CliName } from "../cli/types";
-import type { SessionMetaStore } from "../interactive/metaStore";
-import type { SessionRecord, SessionStore } from "../sessionStore";
-import type { ConversationTabRecord, PendingSessionDraft } from "../sessionTabs";
-import type { PrimaryRunSessionState, ProcessTitleState } from "../sessionLifecycle";
-import type { ChatMessage } from "../webview/types";
+import type { CliName } from "../../cli/types";
+import type { SessionMetaStore } from "../../interactive/metaStore";
+import type { SessionRecord, SessionStore } from "../../sessionStore";
+import type { ConversationTabRecord, PendingSessionDraft } from "../../sessionTabs";
+import type { PrimaryRunSessionState, ProcessTitleState } from "../../sessionLifecycle";
+import type { ChatMessage } from "../../webview/types";
 
 type LifecycleDeps = Parameters<typeof createSessionLifecycleController>[0];
 

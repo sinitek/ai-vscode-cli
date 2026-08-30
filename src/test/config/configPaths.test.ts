@@ -10,7 +10,7 @@ import {
   getConfigOrderPath,
   getOpenCodeRuntimePaths,
   normalizeConfigPlatform,
-} from "../config/configPaths";
+} from "../../config/configPaths";
 
 test("central config path helpers preserve profile roots and legacy OpenCode aliasing", () => {
   const homeDir = path.join(path.sep, "home", "tester");

@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as fs from "fs";
-import { installVscodeMock } from "./vscodeMock";
+import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
@@ -9,18 +9,18 @@ import type {
   ConversationTabRecordForPanel,
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
-} from "../sessionMessageHandlers";
+} from "../../sessionMessageHandlers";
 import type {
   CliName,
   InteractiveMode,
   LoopExecutionMode,
   MacTaskShell,
   ThinkingMode,
-} from "../cli/types";
-import type { ChatMessage, PanelMessage } from "../webview/types";
-import type { WorkspaceSettings } from "../workspaceSettingsStore";
+} from "../../cli/types";
+import type { ChatMessage, PanelMessage } from "../../webview/types";
+import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
-type PanelFileActionsMock = Pick<typeof import("../webview/panelFileActions"),
+type PanelFileActionsMock = Pick<typeof import("../../webview/panelFileActions"),
   "buildWorkspacePathItems"
   | "exportRunStreamRecordsToTxt"
   | "exportSessionHistoryMessagesToTxt"
@@ -73,8 +73,8 @@ moduleLoader._load = function mockedLoad(this: unknown, request: string, parent?
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { handlePanelMessageWithDeps } = require("../sessionMessageHandlers") as typeof import("../sessionMessageHandlers");
-const { isPanelMessageType } = require("../sessionMessageRouter") as typeof import("../sessionMessageRouter");
+const { handlePanelMessageWithDeps } = require("../../sessionMessageHandlers") as typeof import("../../sessionMessageHandlers");
+const { isPanelMessageType } = require("../../sessionMessageRouter") as typeof import("../../sessionMessageRouter");
 moduleLoader._load = originalLoad;
 
 type Calls = {
@@ -586,7 +586,7 @@ test("rejects upload boundaries in the file-action adapter before saving", async
     saveUploadedFiles,
     UPLOAD_MAX_FILES,
     UPLOAD_MAX_FILE_BYTES,
-  } = require("../webview/panelFileActions") as typeof import("../webview/panelFileActions");
+  } = require("../../webview/panelFileActions") as typeof import("../../webview/panelFileActions");
   const tinyDataUrl = "data:text/plain;base64," + Buffer.from("x").toString("base64");
 
   const tooMany = await saveUploadedFiles(Array.from({ length: UPLOAD_MAX_FILES + 1 }, (_, index) => ({

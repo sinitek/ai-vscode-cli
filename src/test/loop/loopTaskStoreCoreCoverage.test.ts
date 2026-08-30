@@ -7,14 +7,14 @@ import * as path from "path";
 const originalHome = process.env.HOME;
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-core-"));
 process.env.HOME = testHome;
-const loopTaskStore = require("../loopTaskStore") as typeof import("../loopTaskStore");
+const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
 if (originalHome === undefined) {
   delete process.env.HOME;
 } else {
   process.env.HOME = originalHome;
 }
 
-type LoopTaskRecord = import("../loopTaskStore").LoopTaskRecord;
+type LoopTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
 
 let taskSequence = 0;
 
@@ -1095,7 +1095,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   assert.match(legacyTask.taskStoreFile, /loop-tasks/);
 
   const undefinedStoreFile = path.join(testHome, "optional-normalization", "undefined-store.json");
-  loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../loopTaskStore").LoopTaskStore);
+  loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../../loopTaskStore").LoopTaskStore);
   assert.deepEqual(loopTaskStore.readLoopTaskStore(undefinedStoreFile), { tasks: [] });
 
   fs.mkdirSync(legacy.communicationDir, { recursive: true });
