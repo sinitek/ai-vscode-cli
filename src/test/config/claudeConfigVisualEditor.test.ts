@@ -29,7 +29,7 @@ function loadVisualUtils(): any {
 function loadLegacyMaxCompatibilityOptionOrderer(): any {
   const source = loadUiSource();
   const startMarker = "insertLegacyMaxCompatibilityOption = ";
-  const endMarker = ",\n      renderClaudeSelect";
+  const endMarker = ",\n      renderConfigSelect";
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker, start);
   assert.notEqual(start, -1, "legacy max compatibility orderer should exist");

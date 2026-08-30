@@ -56,22 +56,52 @@ test("visual parser loads current myAPI example and roles", () => {
   assert.equal(parsed.state.smallModel, "myAPI/small-task-model");
 });
 
-test("visual editor keeps provider npm suggestions while effort candidates stay dynamic", () => {
+test("visual editor exposes official provider npm suggestions while effort candidates stay dynamic", () => {
   const utils = loadVisualUtils();
   assert.deepEqual(
     Array.from(utils.providerNpmOptions, (option: any) => option.value),
     [
-      "@ai-sdk/openai-compatible",
-      "@ai-sdk/openai",
+      "@ai-sdk/amazon-bedrock",
+      "@ai-sdk/amazon-bedrock/mantle",
       "@ai-sdk/anthropic",
+      "@ai-sdk/azure",
       "@ai-sdk/google",
+      "@ai-sdk/google-vertex",
+      "@ai-sdk/google-vertex/anthropic",
+      "@ai-sdk/openai",
+      "@ai-sdk/openai-compatible",
+      "@openrouter/ai-sdk-provider",
+      "@ai-sdk/xai",
+      "@ai-sdk/mistral",
+      "@ai-sdk/groq",
+      "@ai-sdk/deepinfra",
+      "@ai-sdk/cerebras",
+      "@ai-sdk/cohere",
+      "@ai-sdk/gateway",
+      "@ai-sdk/togetherai",
+      "@ai-sdk/perplexity",
+      "@ai-sdk/vercel",
+      "@ai-sdk/alibaba",
+      "gitlab-ai-provider",
+      "@ai-sdk/github-copilot",
+      "venice-ai-sdk-provider",
     ],
   );
   assert.deepEqual(Array.from(utils.effortSuggestions({ efforts: "none, custom" })), ["none", "custom", "ultra"]);
 
   const source = loadUiSource();
-  assert.match(source, /renderOpenCodeCombobox\([\s\S]*?"npm"[\s\S]*?openCodeVisualNpmSuggestions/);
-  assert.match(source, /renderOpenCodeCombobox = \([\s\S]*?be\.jsx\("datalist"/);
+  const npmStart = source.indexOf('renderOpenCodeSelect(\n                              "npm"');
+  const npmEnd = source.indexOf('renderOpenCodeField("Base URL"', npmStart);
+  assert.notEqual(npmStart, -1, "OpenCode npm field should use the shared Select renderer");
+  assert.notEqual(npmEnd, -1, "OpenCode npm field should be followed by the base URL field");
+  const npmSource = source.slice(npmStart, npmEnd);
+  assert.match(npmSource, /openCodeVisualNpmSuggestions\(openCodeVisualState\)/);
+  assert.match(npmSource, /allowCustomValue: !0/);
+  assert.match(source, /renderConfigSelect = \([\s\S]*?be\.jsx\(\$l/);
+  assert.match(source, /renderClaudeSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
+  assert.match(source, /renderOpenCodeSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
+  assert.match(source, /renderCodexSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
+  assert.doesNotMatch(source, /renderOpenCodeCombobox|be\.jsx\("datalist"|be\.jsx\("select"/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "tags"/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?tokenSeparators: \[","\]/);
   assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?return be\.jsxs\("div"/);
@@ -279,7 +309,7 @@ test("OpenCode visual state manages stable top-level fields with inherit and leg
   assert.deepEqual(JSON.parse(JSON.stringify(legacy.config.snapshot)), { providerSpecific: true });
 });
 
-test("OpenCode editable comboboxes retain undeclared model refs and arbitrary npm packages", () => {
+test("OpenCode npm Select retains undeclared model refs and arbitrary npm packages", () => {
   const utils = loadVisualUtils();
   let state = utils.createState({
     model: "builtin/primary",
@@ -433,7 +463,7 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
   assert.match(
     source,
-    /renderOpenCodeSelect = \([\s\S]*?U\.fullWidth \? \{ width: "100%", gridColumn: "1 \/ -1" \} : \{\}/,
+    /renderConfigSelect = \([\s\S]*?U\.fullWidth \? \{ width: "100%", gridColumn: "1 \/ -1" \} : \{\}/,
   );
   assert.match(openCodeVisualSource, /renderOpenCodeSelect\([\s\S]*?openCodeVisualState\.primaryModel[\s\S]*?k\.map\(\(L\) => \(\{ value: L, label: L \}\)\)/);
   assert.match(openCodeVisualSource, /openCodeVisualState\.primaryModel[\s\S]*?fullWidth: !0/);

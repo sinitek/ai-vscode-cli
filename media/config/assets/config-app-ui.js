@@ -215,35 +215,31 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           { label: L.platform === "claude" ? "Claude" : L.platform === "codex" ? "Codex" : "OpenCode", value: L.platform },
         ];
         const Y = G[0].label;
+        let copyTargetPlatform = L.platform;
         xr.confirm({
           title: "复制配置",
           content: be.jsxs("div", {
             style: { display: "flex", flexDirection: "column", gap: "8px" },
             children: [
               be.jsx("div", { children: `从 ${L.name} 复制到 ${Y}` }),
-              be.jsx("select", {
-                id: "copy-target-platform",
+              be.jsx($l, {
                 defaultValue: G[G.length - 1].value,
-                style: {
-                  width: "100%",
-                  padding: "6px 8px",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "6px",
-                  background: "var(--bg-color-container)",
-                  color: "var(--text-color)",
+                onChange: (K) => {
+                  copyTargetPlatform = K || L.platform;
                 },
-                children: G.map((K) =>
-                  be.jsx("option", { value: K.value, children: K.label }, K.value),
-                ),
+                options: G,
+                allowClear: !1,
+                showSearch: !1,
+                style: { width: "100%" },
+                getPopupContainer: (K) => K.parentElement || document.body,
               }),
             ],
           }),
           okText: "确认",
           cancelText: "取消",
           onOk: async () => {
-            const K = document.getElementById("copy-target-platform")?.value || L.platform;
             try {
-              const Q = await f(L.id, K);
+              const Q = await f(L.id, copyTargetPlatform);
               (o(Q.id, Q.platform), Kt.success(`已复制配置: ${Q.name}`));
             } catch (Q) {
               return (Kt.error(`复制失败: ${Q}`), Promise.reject(Q));
@@ -2839,10 +2835,30 @@ const openCodeVisualClone = (value) =>
   value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 
 const OPEN_CODE_PROVIDER_NPM_OPTIONS = Object.freeze([
-  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible (@ai-sdk/openai-compatible)" },
-  { value: "@ai-sdk/openai", label: "OpenAI (@ai-sdk/openai)" },
+  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock (@ai-sdk/amazon-bedrock)" },
+  { value: "@ai-sdk/amazon-bedrock/mantle", label: "Amazon Bedrock Mantle (@ai-sdk/amazon-bedrock/mantle)" },
   { value: "@ai-sdk/anthropic", label: "Anthropic (@ai-sdk/anthropic)" },
+  { value: "@ai-sdk/azure", label: "Azure (@ai-sdk/azure)" },
   { value: "@ai-sdk/google", label: "Google (@ai-sdk/google)" },
+  { value: "@ai-sdk/google-vertex", label: "Google Vertex (@ai-sdk/google-vertex)" },
+  { value: "@ai-sdk/google-vertex/anthropic", label: "Google Vertex Anthropic (@ai-sdk/google-vertex/anthropic)" },
+  { value: "@ai-sdk/openai", label: "OpenAI (@ai-sdk/openai)" },
+  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible (@ai-sdk/openai-compatible)" },
+  { value: "@openrouter/ai-sdk-provider", label: "OpenRouter (@openrouter/ai-sdk-provider)" },
+  { value: "@ai-sdk/xai", label: "xAI (@ai-sdk/xai)" },
+  { value: "@ai-sdk/mistral", label: "Mistral (@ai-sdk/mistral)" },
+  { value: "@ai-sdk/groq", label: "Groq (@ai-sdk/groq)" },
+  { value: "@ai-sdk/deepinfra", label: "DeepInfra (@ai-sdk/deepinfra)" },
+  { value: "@ai-sdk/cerebras", label: "Cerebras (@ai-sdk/cerebras)" },
+  { value: "@ai-sdk/cohere", label: "Cohere (@ai-sdk/cohere)" },
+  { value: "@ai-sdk/gateway", label: "Vercel AI Gateway (@ai-sdk/gateway)" },
+  { value: "@ai-sdk/togetherai", label: "Together AI (@ai-sdk/togetherai)" },
+  { value: "@ai-sdk/perplexity", label: "Perplexity (@ai-sdk/perplexity)" },
+  { value: "@ai-sdk/vercel", label: "Vercel (@ai-sdk/vercel)" },
+  { value: "@ai-sdk/alibaba", label: "Alibaba (@ai-sdk/alibaba)" },
+  { value: "gitlab-ai-provider", label: "GitLab (gitlab-ai-provider)" },
+  { value: "@ai-sdk/github-copilot", label: "GitHub Copilot (@ai-sdk/github-copilot)" },
+  { value: "venice-ai-sdk-provider", label: "Venice (venice-ai-sdk-provider)" },
 ]);
 
 const OPEN_CODE_VISUAL_COMPATIBILITY_PREFIX = "__sinitek_opencode_compatibility__:";
@@ -5178,6 +5194,40 @@ const ConfigEditorPanel = () => {
               ...options.slice(ultraIndex),
             ];
       },
+      renderConfigSelect = (W, H, k, L, U = {}) => {
+        const T = Array.isArray(L) ? L : [],
+          value = H || "";
+        return be.jsxs("label", {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            minWidth: 0,
+            ...(U.fullWidth ? { width: "100%", gridColumn: "1 / -1" } : {}),
+          },
+          children: [
+            renderConfigFieldLabel(
+              W,
+              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value || Z.label)),
+            ),
+            be.jsx($l, {
+              value: value || void 0,
+              onChange: (Z) => k(Z || ""),
+              onSearch: U.allowCustomValue ? (Z) => k(Z || "") : void 0,
+              mode: U.allowCustomValue ? $l.SECRET_COMBOBOX_MODE_DO_NOT_USE : void 0,
+              options: T,
+              allowClear: !0,
+              showSearch: !0,
+              optionFilterProp: "label",
+              placeholder: U.placeholder,
+              className: U.className,
+              getPopupContainer: (Z) => Z.parentElement || document.body,
+              style: { width: "100%" },
+              "aria-label": getConfigLabelText(W),
+            }),
+          ],
+        });
+      },
       updateClaudeVisualState = (W) =>
         setClaudeVisualState((H) => (H ? claudeVisualUpdateState(H, W) : H)),
       updateClaudeVisualEnv = (W, H) =>
@@ -5210,31 +5260,7 @@ const ConfigEditorPanel = () => {
                   : H,
               })
             : L;
-        return be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-          children: [
-            renderConfigFieldLabel(
-              W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value || Z.label)),
-            ),
-            be.jsx("select", {
-              value: H || "",
-              onChange: (U) => k(U.target.value),
-              style: {
-                width: "100%",
-                minHeight: "30px",
-                padding: "4px 8px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "6px",
-                color: "var(--text-color)",
-                background: "var(--background-color)",
-              },
-              children: T.map((Z) =>
-                be.jsx("option", { value: Z.value, children: Z.label }, Z.value || "__default"),
-              ),
-            }),
-          ],
-        });
+        return renderConfigSelect(W, H, k, T, U);
       },
       renderClaudeListField = (W, H, k, L, U = 3, T = {}) =>
         be.jsxs("label", {
@@ -5657,52 +5683,7 @@ const ConfigEditorPanel = () => {
                 },
               ]
             : L;
-        return be.jsxs("label", {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: 3,
-            minWidth: 0,
-            ...(U.fullWidth ? { width: "100%", gridColumn: "1 / -1" } : {}),
-          },
-          children: [
-            renderConfigFieldLabel(
-              W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value)),
-            ),
-            be.jsx($l, {
-              value: H || void 0,
-              onChange: (Z) => k(Z || ""),
-              options: T,
-              allowClear: !0,
-              showSearch: !0,
-              optionFilterProp: "label",
-              placeholder: U.placeholder,
-              style: { width: "100%" },
-            }),
-          ],
-        });
-      },
-      renderOpenCodeCombobox = (W, H, k, L, U = {}) => {
-        const T = openCodeVisualUniqueStrings([...(L || []), H]),
-          Z = U.listId || `opencode-combobox-${String(W).replace(/[^a-z0-9]+/gi, "-")}`;
-        return be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-          children: [
-            renderConfigFieldLabel(W, U.help),
-            be.jsx(zi, {
-              value: H || "",
-              onChange: (ee) => k(ee.target.value),
-              placeholder: U.placeholder,
-              list: Z,
-              "aria-label": typeof W === "string" ? W : String(W || ""),
-            }),
-            be.jsx("datalist", {
-              id: Z,
-              children: T.map((ee) => be.jsx("option", { value: ee }, ee)),
-            }),
-          ],
-        });
+        return renderConfigSelect(W, H, k, T, U);
       },
       renderOpenCodeMultiSelect = (W, H, k, L, U = {}) => {
         const T = openCodeVisualNormalizeEfforts(H),
@@ -5939,13 +5920,13 @@ const ConfigEditorPanel = () => {
                           children: [
                             renderOpenCodeField("Provider id", W.id, (L) => updateSelectedOpenCodeProvider({ id: L }), "例如 myAPI"),
                             renderOpenCodeField("名称", W.name, (L) => updateSelectedOpenCodeProvider({ name: L }), "Provider 名称"),
-                            renderOpenCodeCombobox(
+                            renderOpenCodeSelect(
                               "npm",
                               W.npm,
                               (L) => updateSelectedOpenCodeProvider({ npm: L }),
-                              openCodeVisualNpmSuggestions(openCodeVisualState),
+                              openCodeVisualNpmSuggestions(openCodeVisualState).map((L) => ({ value: L, label: L })),
                               {
-                                listId: "opencode-provider-npm-options",
+                                allowCustomValue: !0,
                                 placeholder: claudeText("选择 Provider npm 包", "Select a provider npm package"),
                               },
                             ),
@@ -6180,31 +6161,7 @@ const ConfigEditorPanel = () => {
                   : H,
               })
             : L;
-        return be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-          children: [
-            renderConfigFieldLabel(
-              W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), T.map((Z) => Z.value || Z.label)),
-            ),
-            be.jsx("select", {
-              value: H || "",
-              onChange: (U) => k(U.target.value),
-              style: {
-                width: "100%",
-                minHeight: "30px",
-                padding: "4px 8px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "6px",
-                color: "var(--text-color)",
-                background: "var(--background-color)",
-              },
-              children: T.map((Z) =>
-                be.jsx("option", { value: Z.value, children: Z.label }, Z.value || "__default"),
-              ),
-            }),
-          ],
-        });
+        return renderConfigSelect(W, H, k, T, U);
       },
       renderCodexTextArea = (W, H, k, L, U = {}) =>
         be.jsxs("label", {
