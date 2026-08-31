@@ -74,7 +74,7 @@ test("turns parallel OpenCode JSONL text into tab-scoped assistant bubble action
   assert.equal(second.state.displayedAssistantText, "开始检查日志。");
 });
 
-test("keeps thinking, tool traces, and task lists separate from normal assistant text", () => {
+test("filters OpenCode step-start placeholders while preserving tool traces and task lists", () => {
   const context = createContext();
   const stdout = [
     JSON.stringify({
@@ -113,28 +113,6 @@ test("keeps thinking, tool traces, and task lists separate from normal assistant
 
   assert.deepEqual(result.actions, [
     {
-      type: "append-assistant-message",
-      message: {
-        id: "message-1",
-        role: "assistant",
-        content: "",
-        createdAt: 123,
-        kind: "thinking",
-        taskRole: "subtask",
-        loopTaskId: "loop-1",
-        loopRound: 2,
-        loopSubtaskId: "subtask-1",
-        graphRunId: "graph-1",
-        graphNodeId: "node-1",
-      },
-    },
-    {
-      type: "append-assistant-delta",
-      id: "message-1",
-      content: "thinking\nOpenCode is planning the next step…\n",
-      kind: "thinking",
-    },
-    {
       type: "task-list-update",
       items: [
         { text: "检查日志", done: true },
@@ -152,7 +130,7 @@ test("keeps thinking, tool traces, and task lists separate from normal assistant
     {
       type: "append-assistant-message",
       message: {
-        id: "message-2",
+        id: "message-1",
         role: "assistant",
         content: "",
         createdAt: 123,
@@ -166,7 +144,7 @@ test("keeps thinking, tool traces, and task lists separate from normal assistant
     },
     {
       type: "append-assistant-delta",
-      id: "message-2",
+      id: "message-1",
       content: "继续处理。",
     },
   ]);

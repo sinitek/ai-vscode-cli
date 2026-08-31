@@ -3001,10 +3001,12 @@ const openCodeVisualCreateState = (config) => {
         modelSource = openCodeVisualIsRecord(provider.models) ? provider.models : {},
         models = Object.entries(modelSource).map(([modelId, modelValue]) => {
           const model = openCodeVisualIsRecord(modelValue) ? modelValue : {};
+          const limit = openCodeVisualIsRecord(model.limit) ? model.limit : {};
           return {
             id: modelId,
             name: typeof model.name === "string" ? model.name : "",
             reasoning: model.reasoning === !0,
+            context: openCodeVisualReadOptionalNumber(limit.context),
             efforts: openCodeVisualReadEfforts(model),
             sourceEfforts: openCodeVisualReadEfforts(model),
             source: openCodeVisualClone(model),
@@ -3032,6 +3034,28 @@ const openCodeVisualCreateState = (config) => {
     selectedProviderId: providers[0]?.id || "",
     selectedModelId: providers[0]?.models[0]?.id || "",
   };
+};
+
+const openCodeVisualReadOptionalNumber = (value) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : value === void 0
+      ? ""
+      : openCodeVisualCompatibilityValue(value);
+
+const openCodeVisualSetOptionalNumber = (target, key, value) => {
+  if (openCodeVisualIsCompatibilityValue(value)) return;
+  if (typeof value === "number") {
+    if (Number.isFinite(value) && value >= 0) target[key] = value;
+    return;
+  }
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    delete target[key];
+    return;
+  }
+  const parsed = Number(normalized);
+  if (Number.isFinite(parsed) && parsed >= 0) target[key] = parsed;
 };
 
 const openCodeVisualParseContent = (content) => {
@@ -3104,6 +3128,19 @@ const openCodeVisualValidateState = (state) => {
       else {
         modelIds.add(modelId), providerId && modelRefs.add(openCodeVisualModelRef(providerId, modelId));
       }
+      const rawContext = model?.context;
+      const context = typeof rawContext === "string" ? rawContext.trim() : rawContext;
+      if (
+        context !== "" &&
+        context !== void 0 &&
+        context !== null &&
+        !openCodeVisualIsCompatibilityValue(context)
+      ) {
+        const parsedContext = typeof context === "number" ? context : Number(context);
+        if (!Number.isFinite(parsedContext) || parsedContext < 0) {
+          errors.push(`模型 “${providerId || providerIndex + 1}/${modelId || modelIndex + 1}” 的上下文大小必须是非负有限数值`);
+        }
+      }
     });
   });
   [
@@ -3159,6 +3196,19 @@ const openCodeVisualSerializeState = (state) => {
           : openCodeVisualApplyEfforts(model.source, model.efforts);
       model.name.trim() ? (modelValue.name = model.name.trim()) : delete modelValue.name;
       modelValue.reasoning = model.reasoning === !0;
+      if (openCodeVisualIsRecord(modelValue.limit)) {
+        const modelLimit = { ...modelValue.limit };
+        openCodeVisualSetOptionalNumber(modelLimit, "context", model.context);
+        Object.keys(modelLimit).length > 0 ? (modelValue.limit = modelLimit) : delete modelValue.limit;
+      } else if (
+        model.context !== "" &&
+        model.context !== void 0 &&
+        !openCodeVisualIsCompatibilityValue(model.context)
+      ) {
+        const modelLimit = {};
+        openCodeVisualSetOptionalNumber(modelLimit, "context", model.context);
+        Object.keys(modelLimit).length > 0 && (modelValue.limit = modelLimit);
+      }
       models[model.id.trim()] = modelValue;
     });
     providerValue.models = models;
@@ -3229,7 +3279,7 @@ const openCodeVisualAddModel = (state, providerId) => {
   const provider = state.providers.find((item) => item.id === providerId);
   if (!provider) return state;
   const id = openCodeVisualUniqueId(provider.models, "model"),
-    model = { id, name: "新模型", reasoning: !1, efforts: "", source: {} };
+    model = { id, name: "新模型", reasoning: !1, context: "", efforts: "", source: {} };
   return {
     ...state,
     providers: state.providers.map((item) =>
@@ -3287,6 +3337,10 @@ const openCodeVisualRunSaveFlow = async ({ content, saveConfig, applyActiveConfi
 
 const OpenCodeConfigVisualEditorUtils = Object.freeze({
   providerNpmOptions: OPEN_CODE_PROVIDER_NPM_OPTIONS,
+  readContext: (model) => {
+    const limit = openCodeVisualIsRecord(model?.limit) ? model.limit : {};
+    return openCodeVisualReadOptionalNumber(limit.context);
+  },
   normalizeEfforts: openCodeVisualNormalizeEfforts,
   readEfforts: openCodeVisualReadEfforts,
   applyEfforts: openCodeVisualApplyEfforts,
@@ -4087,6 +4141,9 @@ requires_openai_auth = true`,
         "main-chat-model": {
           "name": "Main Chat Model",
           "reasoning": true,
+          "limit": {
+            "context": 128000
+          },
           "options": {
             "reasoningEffort": "medium"
           },
@@ -4102,6 +4159,9 @@ requires_openai_auth = true`,
         "small-task-model": {
           "name": "Small Task Model",
           "reasoning": true,
+          "limit": {
+            "context": 32768
+          },
           "options": {
             "reasoningEffort": "low"
           },
@@ -5059,6 +5119,8 @@ const ConfigEditorPanel = () => {
         "API Key": "Provider API Key，可使用 {env:VAR} 引用环境变量。",
         "模型 id": "Provider 下的模型唯一标识，会拼成 provider/model 引用。",
         模型名称: "模型在配置页中显示的人类可读名称。",
+        "上下文大小 limit.context": "OpenCode 模型最大上下文 token 数，写入 provider.models.<id>.limit.context；留空表示保留官方默认值。",
+        "Context size limit.context": "Maximum OpenCode model context tokens, saved to provider.models.<id>.limit.context; leave blank to keep the provider default.",
         "主模型 model": "OpenCode 主模型引用；写入官方 model 字段，作为底层 CLI 兼容字段保存。",
         "Main model": "OpenCode main model reference; saved to the official model field as a lower-level CLI compatibility field.",
         "子模型 small_model": "OpenCode 子模型引用；写入官方 small_model 字段，作为底层 CLI 兼容字段保存。",
@@ -6037,6 +6099,21 @@ const ConfigEditorPanel = () => {
                                   children: [
                                     renderOpenCodeField("模型 id", H.id, (L) => updateSelectedOpenCodeModel({ id: L }), "模型标识"),
                                     renderOpenCodeField("模型名称", H.name, (L) => updateSelectedOpenCodeModel({ name: L }), "列表中显示的名称"),
+                                    renderOpenCodeField(
+                                      claudeText("上下文大小 limit.context", "Context size limit.context"),
+                                      H.context,
+                                      (L) => updateSelectedOpenCodeModel({ context: L }),
+                                      "例如 128000",
+                                      {
+                                        type: "number",
+                                        min: 0,
+                                        step: 1,
+                                        help: claudeText(
+                                          "OpenCode 模型可接受的最大上下文 token 数；写入 provider.models.<id>.limit.context。留空表示不覆盖官方默认值。",
+                                          "Maximum context tokens accepted by the OpenCode model; saved to provider.models.<id>.limit.context. Leave blank to keep the provider default.",
+                                        ),
+                                      },
+                                    ),
                                     renderOpenCodeMultiSelect(
                                       "思考力度",
                                       H.efforts,

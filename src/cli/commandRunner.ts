@@ -500,7 +500,9 @@ export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleS
 
   const type = normalizeOpenCodeJsonType(record.type);
   if (type === "step_start" || type === "step-start") {
-    return [{ kind: "thinking", content: "thinking\nOpenCode is planning the next step…" }];
+    // OpenCode emits step_start for internal progress bookkeeping. The generated
+    // placeholder text is not actionable and creates a noisy thinking bubble.
+    return [];
   }
 
   return [];

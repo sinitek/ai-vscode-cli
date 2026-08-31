@@ -292,6 +292,8 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 配置中心能对本地配置、Skills、MCP 做最小可用管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
+OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。
+
 ## 6. 后续维护规则
 
 只要用户可感知能力发生变化，就应同时更新：

@@ -816,9 +816,7 @@ test("covers command-resolution, terminal escaping, and malformed OpenCode JSON 
     assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({ type: "reasoning", summary: "Working" })), [
       { kind: "thinking", content: "thinking\nWorking" },
     ]);
-    assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({ type: "step_start" })), [
-      { kind: "thinking", content: "thinking\nOpenCode is planning the next step\u2026" },
-    ]);
+    assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({ type: "step_start" })), []);
     assert.deepEqual(parseOpenCodeRunOutput(JSON.stringify({ type: "error", error: "invalid" }), ""), {
       finalText: null,
       errorText: null,

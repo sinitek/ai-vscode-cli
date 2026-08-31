@@ -219,6 +219,67 @@ test("OpenCode visual configuration serializes ultra without replacing provider-
   assert.equal(model.variants.providerOnly.temperature, 0.8);
 });
 
+test("OpenCode visual model context size round-trips through limit.context", () => {
+  const utils = loadVisualUtils();
+  let state = utils.createState({
+    provider: {
+      custom: {
+        models: {
+          alpha: {
+            limit: { context: 128000, output: 4096 },
+            options: { temperature: 0.2 },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(state.providers[0].models[0].context, "128000");
+  state = utils.updateModel(state, "custom", "alpha", { context: "256000" });
+  let serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.provider.custom.models.alpha.limit.context, 256000);
+  assert.equal(serialized.config.provider.custom.models.alpha.limit.output, 4096);
+
+  state = utils.updateModel(state, "custom", "alpha", { context: "" });
+  serialized = utils.serializeState(state);
+  assert.equal(serialized.ok, true);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(serialized.config.provider.custom.models.alpha.limit, "context"),
+    false,
+  );
+  assert.equal(serialized.config.provider.custom.models.alpha.limit.output, 4096);
+});
+
+test("OpenCode visual editor rejects invalid context sizes while preserving non-numeric source values", () => {
+  const utils = loadVisualUtils();
+  const parsed = utils.createState({
+    provider: {
+      custom: {
+        models: {
+          alpha: { limit: { context: "provider-default", output: 1024 } },
+        },
+      },
+    },
+  });
+  assert.match(parsed.providers[0].models[0].context, /^__sinitek_opencode_compatibility__:/);
+  let serialized = utils.serializeState(parsed);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.provider.custom.models.alpha.limit.context, "provider-default");
+
+  const invalid = utils.updateModel(parsed, "custom", "alpha", { context: "not-a-number" });
+  serialized = utils.serializeState(invalid);
+  assert.equal(serialized.ok, false);
+  assert.match(serialized.error, /上下文大小/);
+
+  const malformedLimit = utils.createState({
+    provider: { custom: { models: { beta: { limit: "legacy-limit" } } } },
+  });
+  serialized = utils.serializeState(malformedLimit);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.provider.custom.models.beta.limit, "legacy-limit");
+});
+
 test("serialization preserves unknown top provider and model fields", () => {
   const utils = loadVisualUtils();
   const original = {
@@ -461,6 +522,8 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
   assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
+  assert.match(source, /上下文大小 limit\.context/);
+  assert.match(openCodeVisualSource, /provider\.models\.<id>\.limit\.context/);
   assert.match(
     source,
     /renderConfigSelect = \([\s\S]*?U\.fullWidth \? \{ width: "100%", gridColumn: "1 \/ -1" \} : \{\}/,
