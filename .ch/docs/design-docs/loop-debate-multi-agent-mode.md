@@ -12,7 +12,7 @@
 - 用户在聊天面板选择 `interactiveMode=loop`。
 - 扩展创建 Loop 任务记录，写入 `~/.sinitek_cli/loop-tasks/<workspaceKey>/<cli>/<sessionId>/loop-tasks.json`。
 - 主任务每轮返回一个 JSON 决策，包含 `status`、`estimatedRemainingRounds`、`acceptance`、`subtasks` 等字段。
-- 扩展把 `subtasks` 批次转成子任务记录，并按 `writeFiles` / `conflictGroup` 规划组内并发、组间串行。
+- 扩展把 `subtasks` 批次转成子任务记录，并按 `writeFiles` / `conflictGroup` 规划组内并发、组间串行；同一批次的子任务按 3 秒间隔错峰启动，已启动的互不冲突子任务仍可并行运行。
 - 子任务在独立会话执行，写入 `~/.sinitek_cli/loop-communications/<taskId>/subtasks/` 下的沟通文件。
 - 批次内所有子任务完成后，扩展唤醒主任务复核。
 - 只有主任务最终返回 `status=completed`，且 AI 对话主消息流同时存在 `loopAnswerConclusion=true` 的问题回答结论气泡和 `loopFinalSummary=true` 的最终总结气泡，任务才真正完成；最终总结气泡仍需要同时展示 `answerConclusion` 问题回答结论和整体任务总结。

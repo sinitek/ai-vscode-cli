@@ -28,10 +28,21 @@ import type {
 } from "../loopDebateRunner";
 
 export const LOOP_PARALLEL_SUBTASK_MAX = 6;
+export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 3 * 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
 export const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 export const LOOP_DEBATE_DEFAULT_DEBATE_ROUND = 1;
 export const LOOP_DEBATE_ARTIFACT_SUMMARY_LIMIT = 1200;
+
+export function getLoopSubtaskLaunchDelayMs(
+  lastLaunchAt: number | null,
+  now = Date.now(),
+): number {
+  if (lastLaunchAt === null) {
+    return 0;
+  }
+  return Math.max(0, LOOP_SUBTASK_LAUNCH_INTERVAL_MS - (now - lastLaunchAt));
+}
 
 type PromptRunRuntimeHostApi = ReturnType<typeof import("./promptRunRuntime").createPromptRunRuntimeHost>;
 type LoopTaskStoreApi = typeof import("../loopTaskStore");
@@ -2442,6 +2453,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const executionPlan = buildLoopSubtaskExecutionPlan(subtasks);
     appendSystemMessageForLoop(target, buildLoopSubtaskBatchStartedText(task.id, round, subtasks, executionPlan));
     const results: LoopSubtaskRunResult[] = [];
+    let lastSubtaskLaunchAt: number | null = null;
 
     for (let groupIndex = 0; groupIndex < executionPlan.groups.length; groupIndex += 1) {
       const group = executionPlan.groups[groupIndex] ?? [];
@@ -2455,30 +2467,63 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         );
       }
 
-      const groupResults = await Promise.all(group.map(async (subtask): Promise<LoopSubtaskRunResult> => {
-        try {
-          const status = await runLoopSubtaskWithRetry({
-            input,
-            target,
-            task,
-            round,
-            subtask,
-            switchVisible: false,
-          });
-          return { subtask, status };
-        } catch (error) {
-          void logError("loop-subtask-batch-run-error", {
-            taskId: task.id,
-            round,
-            subtaskId: subtask.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          markLoopSubtaskRunFinished(task.id, subtask.id, "error", null);
-          return { subtask, status: "error" };
+      const groupRuns: Array<Promise<LoopSubtaskRunResult>> = [];
+      let undispatchedGroups: LoopSubtaskRecord[][] | null = null;
+      for (let subtaskIndex = 0; subtaskIndex < group.length; subtaskIndex += 1) {
+        const subtask = group[subtaskIndex];
+        if (!subtask) {
+          continue;
         }
-      }));
+        if (isLoopTaskExecutionInterrupted(task.id)) {
+          undispatchedGroups = [
+            group.slice(subtaskIndex),
+            ...executionPlan.groups.slice(groupIndex + 1),
+          ];
+          break;
+        }
+        const launchDelayMs = getLoopSubtaskLaunchDelayMs(lastSubtaskLaunchAt);
+        if (launchDelayMs > 0) {
+          await waitForLoopSubtaskLaunchDelay(launchDelayMs);
+          if (isLoopTaskExecutionInterrupted(task.id)) {
+            undispatchedGroups = [
+              group.slice(subtaskIndex),
+              ...executionPlan.groups.slice(groupIndex + 1),
+            ];
+            break;
+          }
+        }
+        lastSubtaskLaunchAt = Date.now();
+        groupRuns.push((async (): Promise<LoopSubtaskRunResult> => {
+          try {
+            const status = await runLoopSubtaskWithRetry({
+              input,
+              target,
+              task,
+              round,
+              subtask,
+              switchVisible: false,
+            });
+            return { subtask, status };
+          } catch (error) {
+            void logError("loop-subtask-batch-run-error", {
+              taskId: task.id,
+              round,
+              subtaskId: subtask.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            markLoopSubtaskRunFinished(task.id, subtask.id, "error", null);
+            return { subtask, status: "error" };
+          }
+        })());
+      }
 
+      const groupResults = await Promise.all(groupRuns);
       results.push(...groupResults);
+      if (undispatchedGroups) {
+        markUndispatchedLoopSubtasksSkipped(task, undispatchedGroups);
+        await switchVisibleConversationTabForLoop(target.tabId);
+        return results;
+      }
       if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
         markUndispatchedLoopSubtasksSkipped(task, executionPlan.groups.slice(groupIndex + 1));
         await switchVisibleConversationTabForLoop(target.tabId);
@@ -2701,6 +2746,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
   async function waitForLoopSubtaskRetryDelay(): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, LOOP_SUBTASK_RETRY_DELAY_MS));
+  }
+
+  async function waitForLoopSubtaskLaunchDelay(delayMs: number): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
   }
 
   type LoopRoundRunOptions = {

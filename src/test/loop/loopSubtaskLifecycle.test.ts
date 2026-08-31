@@ -8,6 +8,10 @@ import {
   shouldWakeLoopMainAfterSubtaskCompletion,
   type LoopSubtaskCompletionDeps,
 } from "../../loopSubtaskLifecycle";
+import {
+  getLoopSubtaskLaunchDelayMs,
+  LOOP_SUBTASK_LAUNCH_INTERVAL_MS,
+} from "../../extensionHost/loopOrchestration";
 
 type CompletionHarness = {
   deps: LoopSubtaskCompletionDeps;
@@ -113,6 +117,13 @@ test("keeps the parent Loop task waiting until every active subtask is completed
   assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [], mainAiFailureLimitReached: true }), false);
 });
 
+test("calculates a three-second gap between staggered Loop subtask launches", () => {
+  assert.equal(getLoopSubtaskLaunchDelayMs(null, 1_000), 0);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 1_000), LOOP_SUBTASK_LAUNCH_INTERVAL_MS);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_500), 1_500);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 4_000), 0);
+});
+
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {
   const loopOrchestrationSource = fs.readFileSync(
     path.join(process.cwd(), "src", "extensionHost", "loopOrchestration.ts"),
@@ -140,6 +151,9 @@ test("uses the same completion lifecycle for automatic retries and manual subtas
 
   assert.match(automaticSubtaskRetrySource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\.tabId/);
   assert.match(automaticRetrySource, /markUndispatchedLoopSubtasksSkipped\(task, executionPlan\.groups\.slice\(groupIndex \+ 1\)\)/);
+  assert.match(automaticRetrySource, /await waitForLoopSubtaskLaunchDelay\(launchDelayMs\)/);
+  assert.match(automaticRetrySource, /const groupRuns: Array<Promise<LoopSubtaskRunResult>> = \[\]/);
+  assert.match(automaticRetrySource, /const groupResults = await Promise\.all\(groupRuns\)/);
   assert.match(manualResumeSource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\?\.tabId \?\? null/);
   assert.match(manualResumeSource, /shouldWakeLoopMainAfterSubtaskCompletion\(latestTask\)/);
 });
