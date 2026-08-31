@@ -1183,6 +1183,24 @@ test("formats OpenCode JSONL text and reasoning events for visible bubbles", () 
   }]);
 });
 
+test("ignores standalone OpenCode ellipsis placeholders", () => {
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
+    type: "text",
+    sessionID: "ses_placeholder",
+    part: { type: "text", text: "..." },
+  })), []);
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
+    type: "text",
+    sessionID: "ses_placeholder",
+    part: { type: "text", text: "…" },
+  })), []);
+  assert.deepEqual(parseOpenCodeVisibleStreamEvents(JSON.stringify({
+    type: "text",
+    sessionID: "ses_placeholder",
+    part: { type: "text", text: "实际内容..." },
+  })), [{ kind: "assistant", content: "实际内容..." }]);
+});
+
 test("splits OpenCode thinking wrappers from mixed assistant text without showing tags", () => {
   const stdout = JSON.stringify({
     type: "text",

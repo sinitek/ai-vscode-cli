@@ -1,5 +1,6 @@
 import {
   parseOpenCodeVisibleStreamEvents,
+  isOpenCodePlaceholderText,
   type OpenCodeVisibleStreamEvent,
 } from "./cli/commandRunner";
 import { appendBoundedUtf8Text } from "./boundedText";
@@ -69,7 +70,7 @@ function appendAssistantContent(
   kind: OpenCodeAssistantKind,
   context: OpenCodeTabStreamContext,
 ): OpenCodeTabStreamAction[] {
-  if (!content) {
+  if (!content || isOpenCodePlaceholderText(content)) {
     return [];
   }
 
@@ -166,7 +167,7 @@ export function appendOpenCodeFinalTextToTabStream(
 ): OpenCodeTabStreamResult {
   const state: OpenCodeTabStreamState = { ...currentState };
   const normalizedFinalText = finalText.trim();
-  if (!normalizedFinalText) {
+  if (!normalizedFinalText || isOpenCodePlaceholderText(normalizedFinalText)) {
     return { state, actions: [] };
   }
 

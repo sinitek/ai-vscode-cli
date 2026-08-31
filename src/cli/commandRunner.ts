@@ -164,6 +164,15 @@ export type OpenCodeFailureMessageOptions = {
   missingFinalOutputWithStatusMessage?: (statusText: string) => string;
 };
 
+/**
+ * OpenCode occasionally emits a standalone ellipsis as progress noise. It is
+ * not an assistant response and should not become a visible chat bubble.
+ */
+export function isOpenCodePlaceholderText(value: string): boolean {
+  const normalized = value.trim();
+  return normalized === "..." || normalized === "…";
+}
+
 const ANSI_ESCAPE_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const OPENCODE_STATUS_LINE_PATTERN = /^>\s*[^·\n]+(?:\s*·\s*.+)?$/u;
 export const OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES = 64 * 1024;
@@ -481,11 +490,13 @@ export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleS
 
   const assistantText = collectOpenCodeJsonText(record).join("");
   if (assistantText.trim()) {
-    return splitThinkingTaggedContent(assistantText).map((segment) => (
-      segment.kind === "thinking"
-        ? { kind: "thinking", content: `thinking\n${segment.content}` }
-        : { kind: "assistant", content: segment.content }
-    ));
+    return splitThinkingTaggedContent(assistantText)
+      .filter((segment) => segment.kind === "thinking" || !isOpenCodePlaceholderText(segment.content))
+      .map((segment) => (
+        segment.kind === "thinking"
+          ? { kind: "thinking", content: `thinking\n${segment.content}` }
+          : { kind: "assistant", content: segment.content }
+      ));
   }
 
   const toolEvent = formatOpenCodeToolUseEvent(record);

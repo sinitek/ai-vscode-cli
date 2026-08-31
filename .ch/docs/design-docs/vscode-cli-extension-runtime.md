@@ -302,6 +302,7 @@ cli / interactive / config 服务层
 
 ## 10. 当前已知限制
 
+- OpenCode visible-event 解析会丢弃独占 `...` / `…` 占位文本，避免为进度噪声创建 assistant 气泡；其他正文、thinking、工具和 task 列表事件保持原语义。
 - `extension.ts` 仍为 4993 行，高于 3000 行期望指标；当前剩余体量主要是组合根、Graph/Loop/session/model/config 装配和共享生命周期适配。后续若继续压缩，应按独立职责拆出新的 host 或服务并配套契约测试，不应只为行数迁移非内聚代码
 - OpenCode 的专属参数、会话续接和上下文压缩能力仍以当前实现为准；文档不得预设未验证的 CLI 行为
 - 聊天面板 HTML 和脚本仍以单文件生成方式维护，适合当前体量，但未来若继续增长应考虑进一步模块化

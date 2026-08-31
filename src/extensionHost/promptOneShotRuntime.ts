@@ -3,6 +3,7 @@ import {
   buildCliArgs,
   buildProcessLabel,
   createOpenCodeStreamActivityTracker,
+  isOpenCodePlaceholderText,
   parseOpenCodeRunOutput,
   parseOpenCodeVisibleStreamEvents,
   runCliStream,
@@ -1144,6 +1145,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
   }
 
   function appendOpenCodeFinalText(finalText: string): void {
+    if (isOpenCodePlaceholderText(finalText)) {
+      return;
+    }
     const displayedText = activeOpenCodeDisplayedFinalText?.trim() ?? "";
     if (displayedText && finalText === displayedText) {
       activeOpenCodeDisplayedFinalText = finalText;
@@ -1205,6 +1209,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       sendOpenCodeTaskListUpdate(event.taskListItems, { source: "primary-stream" });
     }
     if (event.kind === "assistant") {
+      if (isOpenCodePlaceholderText(event.content)) {
+        return;
+      }
       appendAssistantChunk(event.content);
       activeOpenCodeDisplayedFinalText = `${activeOpenCodeDisplayedFinalText ?? ""}${event.content}`;
       return;

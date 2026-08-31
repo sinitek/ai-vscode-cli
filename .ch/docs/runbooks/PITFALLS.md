@@ -736,6 +736,7 @@
 - 普通 one-shot 与并行/Loop 子任务必须走同一套 visible-event 语义。`rawStreamDelta` 只更新原始流诊断面，不能替代 `appendMessage` / `assistantDelta` / `traceSegment`；否则并行子任务会持续显示流记录，却在进程退出前没有任何对话气泡。退出时还必须按本轮已展示 assistant 文本去重完整 final text。
 
 ### 验证方式
+- 回放 OpenCode `text` 事件且正文为独占 `...` / `…` 时，不应追加 assistant 气泡；包含实际正文的文本仍应正常展示。
 - 对占位配置运行 `validateOpenCodeConfigForRun`，应返回 placeholder / missing env 等阻断问题。
 - 对修正后的 PackyAPI `/v1` 配置运行 `OPENCODE_CONFIG=... opencode run --format json 'Reply with exactly: OK_OPENCODE_CONFIG_TEST'`，应返回 assistant 文本，或返回明确 provider/API 错误；不得再出现 `code=0` 且 tokens=0 的空 assistant。
 - 对 PackyAPI 返回非零退出的场景，stdout JSON `error` 中的 provider/API 详情应进入 AI 对话错误气泡；无 JSON error 时才允许回退通用退出码。

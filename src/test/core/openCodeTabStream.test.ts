@@ -150,6 +150,24 @@ test("filters OpenCode step-start placeholders while preserving tool traces and 
   ]);
 });
 
+test("does not create assistant bubbles for standalone ellipsis placeholders", () => {
+  const context = createContext();
+  const streamed = consumeOpenCodeTabStreamChunk(
+    createOpenCodeTabStreamState(),
+    `${JSON.stringify({ type: "text", part: { type: "text", text: "..." } })}\n`,
+    false,
+    context,
+  );
+  assert.deepEqual(streamed.actions, []);
+
+  const final = appendOpenCodeFinalTextToTabStream(
+    streamed.state,
+    "…",
+    context,
+  );
+  assert.deepEqual(final.actions, []);
+});
+
 test("deduplicates final OpenCode output after streamed assistant text", () => {
   const context = createContext();
   const streamed = consumeOpenCodeTabStreamChunk(
