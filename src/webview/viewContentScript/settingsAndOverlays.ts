@@ -208,10 +208,30 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       function openHistory() {
-        renderSessionList();
-        renderPromptHistoryList();
-        setHistoryTab(state.historyTab);
-        elements.historyOverlay.classList.add("visible");
+        if (elements.historyButton) {
+          elements.historyButton.classList.add("is-loading");
+          elements.historyButton.setAttribute("aria-busy", "true");
+        }
+        const showRenderedHistory = () => {
+          try {
+            renderSessionList();
+            renderPromptHistoryList();
+            setHistoryTab(state.historyTab);
+            elements.historyOverlay.classList.add("visible");
+          } finally {
+            if (elements.historyButton) {
+              elements.historyButton.classList.remove("is-loading");
+              elements.historyButton.removeAttribute("aria-busy");
+            }
+          }
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            setTimeout(showRenderedHistory, 0);
+          });
+        } else {
+          setTimeout(showRenderedHistory, 0);
+        }
       }
 
       function closeHistory() {

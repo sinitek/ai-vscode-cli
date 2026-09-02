@@ -472,7 +472,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       }
       .history-panel.prompts {
         padding: 16px;
-        overflow-y: auto;
+        overflow: hidden;
         gap: 10px;
       }
       .history-panel.sessions {
@@ -679,6 +679,9 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         display: flex;
         flex-direction: column;
         gap: 8px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
       }
       .prompt-history-toolbar {
         display: flex;
@@ -686,6 +689,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         justify-content: space-between;
         gap: 8px;
         flex-wrap: wrap;
+        flex-shrink: 0;
       }
       .prompt-history-filter {
         display: inline-flex;

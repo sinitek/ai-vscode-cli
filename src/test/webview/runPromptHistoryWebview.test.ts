@@ -2,6 +2,9 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
+import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
+import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
+import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;
@@ -76,3 +79,84 @@ test("keeps a repeated current prompt when only an older duplicate was restored"
 
   assert.deepEqual(prompts.map((item) => item.content), ["repeat", "different", "repeat"]);
 });
+
+test("sets loading animation state on historyButton and removes it after modal render", () => {
+  assert.match(HEADER_TABS_STYLES, /\.icon-action\.is-loading\s*\{[\s\S]*animation:\s*spin/);
+  assert.match(HEADER_TABS_STYLES, /@keyframes spin/);
+
+  const openHistorySource = extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, "openHistory");
+  const classListSet = new Set<string>();
+  const attributes = new Map<string, string>();
+  const historyButton = {
+    classList: {
+      add: (cls: string) => classListSet.add(cls),
+      remove: (cls: string) => classListSet.delete(cls),
+      contains: (cls: string) => classListSet.has(cls),
+    },
+    setAttribute: (k: string, v: string) => attributes.set(k, v),
+    removeAttribute: (k: string) => attributes.delete(k),
+  };
+  const overlayClassList = new Set<string>();
+  const historyOverlay = {
+    classList: {
+      add: (cls: string) => overlayClassList.add(cls),
+      remove: (cls: string) => overlayClassList.delete(cls),
+    },
+  };
+  let renderSessionListCalled = false;
+  let renderPromptHistoryListCalled = false;
+  let setHistoryTabCalled = false;
+  let stateDuringRenderIsLoading = false;
+
+  const runOpenHistory = new Function(
+    "elements",
+    "state",
+    "renderSessionList",
+    "renderPromptHistoryList",
+    "setHistoryTab",
+    "setTimeout",
+    "requestAnimationFrame",
+    `${openHistorySource}; return openHistory;`,
+  )(
+    { historyButton, historyOverlay },
+    { historyTab: "sessions" },
+    () => {
+      renderSessionListCalled = true;
+      stateDuringRenderIsLoading = historyButton.classList.contains("is-loading");
+    },
+    () => {
+      renderPromptHistoryListCalled = true;
+    },
+    () => {
+      setHistoryTabCalled = true;
+    },
+    (cb: () => void) => cb(),
+    (cb: () => void) => cb(),
+  );
+
+  runOpenHistory();
+
+  assert.equal(renderSessionListCalled, true);
+  assert.equal(renderPromptHistoryListCalled, true);
+  assert.equal(setHistoryTabCalled, true);
+  assert.equal(stateDuringRenderIsLoading, true);
+  assert.equal(overlayClassList.has("visible"), true);
+  assert.equal(historyButton.classList.contains("is-loading"), false);
+  assert.equal(attributes.has("aria-busy"), false);
+});
+
+test("keeps prompt history toolbar fixed and list scrollable inside prompt panel", () => {
+  assert.match(
+    OVERLAYS_MODALS_STYLES,
+    /\.history-panel\.prompts\s*\{[\s\S]*overflow:\s*hidden/,
+  );
+  assert.match(
+    OVERLAYS_MODALS_STYLES,
+    /\.prompt-list\s*\{[\s\S]*overflow-y:\s*auto/,
+  );
+  assert.match(
+    OVERLAYS_MODALS_STYLES,
+    /\.prompt-history-toolbar\s*\{[\s\S]*flex-shrink:\s*0/,
+  );
+});
+

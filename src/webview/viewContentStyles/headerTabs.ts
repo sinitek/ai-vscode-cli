@@ -42,6 +42,11 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         opacity: 0.8;
         transition: opacity 0.2s, color 0.2s;
       }
+      .icon-action.is-loading {
+        animation: spin 0.9s linear infinite;
+        cursor: wait;
+        pointer-events: none;
+      }
       .icon-action:hover,
       .icon-action:focus-visible {
         opacity: 1;
@@ -186,6 +191,14 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         }
         to {
           background-position: 28px 0, -28px 100%, 0 -28px, 100% 28px;
+        }
+      }
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
         }
       }
       .icon {
