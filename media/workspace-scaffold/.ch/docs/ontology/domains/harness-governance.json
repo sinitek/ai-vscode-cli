@@ -1,17 +1,18 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-13",
+  "as_of": "2026-09-04",
   "domain": {
     "id": "harness-governance",
     "name": "Harness 治理",
-    "description": "描述仓库级 AGENTS 规则、skills、执行计划、runbooks、记忆、ontology 与 workspace scaffold 如何协同约束 AI 开发任务。",
+    "description": "描述仓库级 AGENTS 规则、skills、执行计划、product specs、runbooks、记忆、ontology 与 workspace scaffold 如何协同约束 AI 开发任务。",
     "bounded_context": "从任务规则读取、计划记录、技能执行到 ontology 维护的 AI 协作治理层",
     "status": "active",
-    "aliases": ["harness", "AGENTS.md", "skills", "runbooks", "Tasklist", "ontology"],
+    "aliases": ["harness", "AGENTS.md", "skills", "runbooks", "Tasklist", "ontology", "product specs"],
     "source_refs": [
       {"path": "AGENTS.md"},
       {"path": ".ch/docs/README.md"},
+      {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
       {"path": ".ch/docs/MEMORY.md"}
     ]
   },
@@ -47,6 +48,19 @@
       "source_refs": [
         {"path": ".ch/docs/exec-plans/README.md"},
         {"path": ".ch/docs/exec-plans/TEMPLATE.md"}
+      ]
+    },
+    {
+      "id": "harness.product_specs",
+      "name": "产品规格",
+      "kind": "resource",
+      "description": "记录系统当前对用户承诺的功能、行为、角色、权限、流程和验收边界；可精简为一个功能总表和少数当前能力分册。",
+      "status": "active",
+      "aliases": ["product specs", "FEATURE_INVENTORY.md", "功能总表", "当前能力分册"],
+      "implementation_paths": [".ch/docs/product-specs"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/product-specs/TEMPLATE.md"}
       ]
     },
     {
@@ -124,6 +138,17 @@
       "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "边界"}]
     },
     {
+      "id": "harness.relation.ontology_references_product_specs",
+      "name": "Ontology 引导产品规格核对",
+      "description": "ontology 可说明概念关系并指向 product specs；涉及当前用户承诺时必须回到产品规格核对。",
+      "status": "active",
+      "from": "harness.ontology",
+      "type": "references",
+      "to": "harness.product_specs",
+      "cardinality": "N:N",
+      "source_refs": [{"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}]
+    },
+    {
       "id": "harness.relation.memory_promotes_runbook",
       "name": "记忆沉淀为运行手册",
       "description": "尚未形成稳定规避法的风险停留在 memory；确认会复发并形成长期规避动作后，上提到 runbooks。",
@@ -155,6 +180,18 @@
       "status": "active",
       "applies_to": ["harness.ontology"],
       "source_refs": [{"path": ".ch/docs/ontology/README.md", "anchor": "边界"}]
+    },
+    {
+      "id": "harness.rule.product_specs_commitment_source",
+      "name": "Product Specs 记录当前用户承诺",
+      "description": "product specs 可以保持精简，但系统当前对用户承诺的功能、行为、权限、流程或验收变化必须回到功能总表或当前能力分册，不能只留在 ontology、memory 或执行计划。",
+      "aliases": ["功能总表", "当前能力分册", "用户承诺"],
+      "status": "active",
+      "applies_to": ["harness.product_specs", "harness.ontology", "harness.execution_plan", "harness.memory"],
+      "source_refs": [
+        {"path": "AGENTS.md", "anchor": "工作方式"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
     },
     {
       "id": "harness.rule.exec_plan_monthly_archive",

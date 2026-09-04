@@ -4,7 +4,7 @@
   "name": "Workspace Scaffold AI 开发业务本体",
   "purpose": "为新仓库提供可维护的 AI 开发 ontology 骨架，不作为产品运行时 ontology。",
   "version": "1.0.0",
-  "as_of": "2026-08-13",
+  "as_of": "2026-09-04",
   "format": "sinitek-domain-ontology-v1",
   "language": "zh-CN",
   "schema_file": ".ch/docs/ontology/ontology.schema.json",

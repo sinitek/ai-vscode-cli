@@ -9,7 +9,7 @@
 | 规则 | `AGENTS.md`、`ARCHITECTURE.md`、`.ch/docs/SECURITY.md`、`.ch/docs/TOOL_POLICY.md` | 仓库工作方式、分层边界、安全可靠性和工具风险 |
 | 测试 | `.ch/docs/TESTING.md` | 单元测试默认要求、自测顺序、失败分流和例外记录 |
 | Ontology | `.ch/docs/ontology/README.md`、`.agents/skills/ontology/SKILL.md` | AI 开发业务语义导航；不替代规格、架构、代码和测试 |
-| Product Specs | `.ch/docs/product-specs/FEATURE_INVENTORY.md`、`.ch/docs/product-specs/TEMPLATE.md` | 能力范围、角色、规格来源、实现入口和最近验证链接 |
+| Product Specs | `.ch/docs/product-specs/FEATURE_INVENTORY.md`、少数当前能力分册、`.ch/docs/product-specs/TEMPLATE.md` | 系统现在对用户承诺什么；功能总表、角色、规格来源、实现入口和最近验证链接 |
 | Memory | `.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md` | 跨会话优先召回信息、经验、风险和待办 |
 | Exec Plans | `.ch/docs/exec-plans/README.md`、`.ch/docs/exec-plans/TEMPLATE.md` | 非平凡任务的范围、验收、验证和归档记录 |
 | Runbooks | `.ch/docs/runbooks/README.md`、`.ch/docs/runbooks/PITFALLS.md` | 运行、发布、排障、环境操作和长期避坑经验 |
@@ -18,7 +18,7 @@
 ## 目录结构
 
 - `.ch/docs/ontology/`：业务概念、关系、规则和跨域场景。
-- `.ch/docs/product-specs/`：单项规格模板和能力索引。
+- `.ch/docs/product-specs/`：一个功能总表、少数当前能力分册和规格模板。
 - `.ch/docs/memory/`：L1-L4 热区记忆入口。
 - `.ch/docs/exec-plans/`：活动计划、完成归档、技术债跟踪和计划模板。
 - `.ch/docs/runbooks/`：运行、发布、排障、环境操作和踩坑归档入口。
@@ -35,6 +35,7 @@
 
 - 索引只负责定位事实来源，不承载长验证日志。
 - `FEATURE_INVENTORY.md` 是能力索引；验证细节留在执行计划、测试报告或对应规格中。
+- product specs 可以保持很薄，但不能被 ontology 或执行计划替代；ontology 只压缩概念关系，执行计划只记录本次执行范围、验收与验证。
 - `memory/` 只保留跨会话优先需要知道的短信息；长过程回到执行计划或规格。
 - 真实踩坑先按 `.ch/docs/runbooks/PITFALLS.md` 的模板记录；尚未形成稳定规避法的风险仍留在 `memory/ACTIVE_RISKS.md`。
 - ontology 只做语义压缩和事实来源导航，冲突时回到 source refs 核对。
