@@ -44,9 +44,14 @@ function createElement(): any {
 }
 
 function renderSessionTitleBadges(isLoopSession: boolean, isGraphSession: boolean, isOpenInConversationTabs: boolean): string[] {
-  const renderSessionListSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, "renderSessionList");
+  const renderSessionListSource = [
+    "getHistorySearchQuery",
+    "historySearchMatches",
+    "renderSessionList",
+  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, name)).join("\n");
   const sessionList = createElement();
   const state = {
+    historySearchQuery: "",
     sessionState: {
       sessions: [{
         id: "session-1",

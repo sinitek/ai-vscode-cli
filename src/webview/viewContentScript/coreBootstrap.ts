@@ -201,6 +201,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
         historyTab: "sessions",
+        historySearchQuery: "",
         promptHistoryExpandedId: null,
         promptHistoryFavoritesOnly: Boolean(persistedWebviewState.promptHistoryFavoritesOnly),
         historySessionMessages: {
@@ -312,6 +313,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         clearAllHistory: document.getElementById("clearAllHistory"),
         historyTabPrompts: document.getElementById("historyTabPrompts"),
         historyTabSessions: document.getElementById("historyTabSessions"),
+        historySearchInput: document.getElementById("historySearchInput"),
         historyPanelPrompts: document.getElementById("historyPanelPrompts"),
         historyPanelSessions: document.getElementById("historyPanelSessions"),
         promptHistoryFavoritesOnly: document.getElementById("promptHistoryFavoritesOnly"),

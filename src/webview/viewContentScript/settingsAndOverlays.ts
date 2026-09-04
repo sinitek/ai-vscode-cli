@@ -734,6 +734,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
+      if (elements.historySearchInput) {
+        elements.historySearchInput.addEventListener("input", (event) => {
+          state.historySearchQuery = String(event.target.value || "");
+          renderSessionList();
+          renderPromptHistoryList();
+        });
+      }
+
       elements.historyTabPrompts.addEventListener("click", () => {
         setHistoryTab("prompts");
       });

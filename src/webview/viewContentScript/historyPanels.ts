@@ -251,16 +251,39 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         showToast(t("toastHistorySessionExportSuccess", { path: exportPath }));
       }
 
+      function getHistorySearchQuery() {
+        return String(state.historySearchQuery || "").trim().toLocaleLowerCase();
+      }
+
+      function historySearchMatches(query, values) {
+        if (!query) {
+          return true;
+        }
+        return values.some((value) => String(value || "").toLocaleLowerCase().includes(query));
+      }
+
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
-        if (!state.sessionState.sessions.length) {
+        const allSessions = state.sessionState && Array.isArray(state.sessionState.sessions)
+          ? state.sessionState.sessions
+          : [];
+        const query = getHistorySearchQuery();
+        const sessions = allSessions.filter((session) => historySearchMatches(query, [
+          session.firstPrompt,
+          session.label,
+          session.cli,
+          session.id,
+        ]));
+        if (!sessions.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = t("historyEmptySessions");
+          empty.textContent = query && allSessions.length
+            ? t("historyNoMatchingSessions")
+            : t("historyEmptySessions");
           elements.sessionList.appendChild(empty);
           return;
         }
-        state.sessionState.sessions.forEach((session) => {
+        sessions.forEach((session) => {
           const item = document.createElement("div");
           item.className = "session-item";
 
@@ -370,13 +393,21 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         const allItems = Array.isArray(state.promptHistory) ? state.promptHistory : [];
         const favoriteCount = allItems.filter((item) => isPromptHistoryFavorite(item)).length;
         syncPromptHistoryToolbar(allItems.length, favoriteCount);
+        const query = getHistorySearchQuery();
+        const searchedItems = allItems.filter((item) => historySearchMatches(query, [
+          item.prompt,
+          item.cli,
+          item.id,
+        ]));
         const items = state.promptHistoryFavoritesOnly
-          ? allItems.filter((item) => isPromptHistoryFavorite(item))
-          : allItems;
+          ? searchedItems.filter((item) => isPromptHistoryFavorite(item))
+          : searchedItems;
         if (!items.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = state.promptHistoryFavoritesOnly
+          empty.textContent = query && allItems.length
+            ? t("historyNoMatchingPrompts")
+            : state.promptHistoryFavoritesOnly
             ? t("historyEmptyFavoritePrompts")
             : t("historyEmptyPrompts");
           elements.promptHistoryList.appendChild(empty);

@@ -1042,6 +1042,46 @@ test("renders prompt history favorites and filters to favorite prompts", () => {
   assert.equal(list.children[0].textContent, "No favorite prompts");
 });
 
+test("filters prompt and session history by the shared keyword search", () => {
+  const harness = createRuntimeHarness();
+  const { api, document, window } = harness;
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      sessionState: {
+        currentSessionId: "session-1",
+        sessions: [
+          { id: "session-1", cli: "codex", firstPrompt: "Deploy release notes", label: "Release", createdAt: 1 },
+          { id: "session-2", cli: "claude", firstPrompt: "Fix parser", label: "Parser", createdAt: 2 },
+        ],
+      },
+      promptHistory: [
+        { id: "prompt-1", prompt: "Deploy release notes", cli: "codex", createdAt: 1 },
+        { id: "prompt-2", prompt: "Fix parser", cli: "claude", createdAt: 2 },
+      ],
+    }),
+  });
+
+  const searchInput = document.getElementById("historySearchInput");
+  searchInput.value = "RELEASE";
+  searchInput.dispatchEvent({ type: "input", target: searchInput });
+
+  assert.equal(api.state.historySearchQuery, "RELEASE");
+  assert.equal(document.getElementById("sessionList").children.length, 1);
+  assert.equal(document.getElementById("sessionList").children[0].querySelector(".session-label")?.textContent, "[codex] Deploy release notes");
+
+  document.getElementById("historyTabPrompts").click();
+  const promptList = document.getElementById("promptHistoryList");
+  assert.equal(promptList.children.length, 1);
+  assert.equal(promptList.children[0].querySelector(".prompt-preview")?.textContent, "Deploy release notes");
+
+  searchInput.value = "missing";
+  searchInput.dispatchEvent({ type: "input", target: searchInput });
+  assert.equal(promptList.children.length, 1);
+  assert.equal(promptList.children[0].textContent, "No prompts match your search.");
+});
+
 test("keeps run stream preview bounded per conversation tab", () => {
   const { api, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });

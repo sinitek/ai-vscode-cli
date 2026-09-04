@@ -216,6 +216,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="historyOverlay"',
     'id="historyTabPrompts"',
     'id="historyTabSessions"',
+    'id="historySearchInput"',
     'id="historyPanelPrompts"',
     'id="historyPanelSessions"',
     'id="historyMessagesOverlay"',

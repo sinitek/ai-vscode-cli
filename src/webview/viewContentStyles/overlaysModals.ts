@@ -461,6 +461,14 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         padding: 0 16px;
         border-bottom: 1px solid var(--vscode-widget-border);
       }
+      .history-search-row {
+        padding: 12px 16px 0;
+        flex-shrink: 0;
+      }
+      .history-search-input {
+        width: 100%;
+        box-sizing: border-box;
+      }
       .history-panel {
         display: none;
         flex: 1;
