@@ -454,6 +454,10 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         padding: 16px;
         overflow-y: auto;
       }
+      .session-list {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
 
       .history-tabs {
         display: flex;
@@ -491,6 +495,7 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       }
       .history-modal {
         width: 620px;
+        height: min(85vh, 640px);
       }
       .history-messages-modal {
         width: 760px;

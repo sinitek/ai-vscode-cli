@@ -145,7 +145,11 @@ test("sets loading animation state on historyButton and removes it after modal r
   assert.equal(attributes.has("aria-busy"), false);
 });
 
-test("keeps prompt history toolbar fixed and list scrollable inside prompt panel", () => {
+test("keeps history modal height stable and lists scrollable inside panels", () => {
+  assert.match(
+    OVERLAYS_MODALS_STYLES,
+    /\.history-modal\s*\{[\s\S]*height:\s*min\(85vh,\s*640px\)/,
+  );
   assert.match(
     OVERLAYS_MODALS_STYLES,
     /\.history-panel\.prompts\s*\{[\s\S]*overflow:\s*hidden/,
@@ -158,5 +162,8 @@ test("keeps prompt history toolbar fixed and list scrollable inside prompt panel
     OVERLAYS_MODALS_STYLES,
     /\.prompt-history-toolbar\s*\{[\s\S]*flex-shrink:\s*0/,
   );
+  assert.match(
+    OVERLAYS_MODALS_STYLES,
+    /\.session-list\s*\{[\s\S]*flex:\s*1 1 auto[\s\S]*min-height:\s*0/,
+  );
 });
-
