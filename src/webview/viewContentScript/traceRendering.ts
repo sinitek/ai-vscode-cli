@@ -365,10 +365,11 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return content;
         }
         const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
-        if (content.includes(marker)) {
-          const markerStartsResponse = content.trimStart().startsWith(marker);
-          content = content.split(marker).join("");
-          content = markerStartsResponse ? content.trimStart() : content;
+        if (marker) {
+          const trimmedStart = content.trimStart();
+          if (trimmedStart.startsWith(marker)) {
+            content = trimmedStart.slice(marker.length).replace(/^\\s+/, "");
+          }
         }
         if (typeof stripParsedTaskListContentFromText === "function") {
           return stripParsedTaskListContentFromText(content);

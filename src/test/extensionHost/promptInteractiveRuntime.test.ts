@@ -394,7 +394,7 @@ test("interactive runtime host keeps Codex user input disabled when the global f
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
 });
 
-test("interactive runtime host accepts conservative Codex completion fallback for Grok-style final text", async () => {
+test("interactive runtime host retries Codex completion-like text without an explicit final signal", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {
       harness.setCodexThreadId("thread-grok-final");
@@ -412,16 +412,19 @@ test("interactive runtime host accepts conservative Codex completion fallback fo
     },
   });
 
-  await harness.host.runPromptInteractive(
+  const runPromise = harness.host.runPromptInteractive(
     createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
     createTarget({ tabId: "tab-grok-final", sessionId: "session-grok-final" }),
   );
+  const messages = await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-grok-final") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-grok-final")?.stop();
+  await runPromise;
 
-  const messages = harness.messagesBySession.get("session-grok-final") ?? [];
   assert.equal(harness.codexPrompts.length, 1);
-  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
-  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
-  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
   assert.ok(messages.some((message) => (
     message.role === "assistant"
     && !message.codexFinalAnswer
@@ -429,7 +432,57 @@ test("interactive runtime host accepts conservative Codex completion fallback fo
   )));
 });
 
-test("interactive runtime host accepts Codex primary completed turn as a final conclusion", async () => {
+async function waitForSessionMessage(
+  getMessages: () => ChatMessage[],
+  predicate: (message: ChatMessage) => boolean,
+  timeoutMs = 1000,
+): Promise<ChatMessage[]> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const messages = getMessages();
+    if (messages.some(predicate)) {
+      return messages;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for session message");
+}
+
+test("interactive runtime host retries Codex thinking-only completed turns without a final-answer bubble", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-grok-thinking");
+      handlers.onThreadId("thread-grok-thinking");
+      handlers.onTrace("The abort on cleanup of fetch effects is expected with StrictMode. Let me look at the screenshot.", "thinking");
+      handlers.onTurnCompleted?.({
+        threadId: "thread-grok-thinking",
+        turnId: "turn-grok-thinking",
+        status: "completed",
+      });
+    },
+  });
+
+  const runPromise = harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-grok-thinking", sessionId: "session-grok-thinking" }),
+  );
+  const messages = await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-grok-thinking") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-grok-thinking")?.stop();
+  await runPromise;
+
+  assert.equal(harness.codexPrompts.length, 1);
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
+  assert.ok(messages.some((message) => (
+    message.role === "assistant"
+    && message.kind === "thinking"
+    && String(message.content).includes("abort on cleanup of fetch effects")
+  )));
+});
+
+test("interactive runtime host retries Codex commentary completed turns without a final-answer bubble", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {
       harness.setCodexThreadId("thread-glm-final");
@@ -443,16 +496,19 @@ test("interactive runtime host accepts Codex primary completed turn as a final c
     },
   });
 
-  await harness.host.runPromptInteractive(
+  const runPromise = harness.host.runPromptInteractive(
     createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
     createTarget({ tabId: "tab-glm-final", sessionId: "session-glm-final" }),
   );
+  const messages = await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-glm-final") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-glm-final")?.stop();
+  await runPromise;
 
-  const messages = harness.messagesBySession.get("session-glm-final") ?? [];
   assert.equal(harness.codexPrompts.length, 1);
-  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
-  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
-  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
   assert.ok(messages.some((message) => (
     message.role === "assistant"
     && !message.codexFinalAnswer
@@ -461,12 +517,17 @@ test("interactive runtime host accepts Codex primary completed turn as a final c
 });
 
 test("interactive runtime host submits Codex human interaction answers in Vibe mode", async () => {
+  const submittedValues = {
+    scope: "当前 Webview",
+    density: "提高信息密度",
+    validation: "桌面与移动端",
+  };
   const harness = createInteractiveRuntimeHarness({
     humanInteractionSubmission: {
       interactionId: "ask-1",
       tabId: "tab-human",
       status: "completed",
-      values: { path: "src/index.ts" },
+      values: submittedValues,
     },
     codexRunBehavior: async (_prompt, handlers) => {
       harness.setCodexThreadId("thread-human");
@@ -476,14 +537,20 @@ test("interactive runtime host submits Codex human interaction answers in Vibe m
         params: {
           id: "ask-1",
           title: "Need context",
-          question: "Which path should be updated?",
-          fields: [{ id: "path", label: "Path", type: "text", required: true }],
+          question: "Choose the implementation details.",
+          fields: [
+            { id: "scope", label: "Scope", type: "text", required: true },
+            { id: "density", label: "Density", type: "text", required: true },
+            { id: "validation", label: "Validation", type: "text", required: true },
+          ],
         },
       });
       assert.deepEqual(resolution?.result, {
-        answers: { path: "src/index.ts" },
-        result: { values: { path: "src/index.ts" } },
-        text: "已提交补充信息。",
+        answers: {
+          scope: { answers: [submittedValues.scope] },
+          density: { answers: [submittedValues.density] },
+          validation: { answers: [submittedValues.validation] },
+        },
       });
       handlers.onAssistantDelta("[final_answer] continued", { codexFinalAnswer: true });
     },
@@ -504,7 +571,11 @@ test("interactive runtime host submits Codex human interaction answers in Vibe m
   assert.equal(harness.humanInteractionRequests[0]?.title, "Need context");
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
   assert.ok(messages.some((message) => message.role === "system" && message.content === "run.humanInteractionWaiting"));
-  assert.ok(messages.some((message) => message.role === "user" && message.content.includes("Path：src/index.ts")));
+  const submittedMessage = messages.find((message) => message.role === "user" && message.content.includes("已提交补充信息"));
+  assert.ok(submittedMessage);
+  assert.match(submittedMessage.content, /Scope：当前 Webview/u);
+  assert.match(submittedMessage.content, /Density：提高信息密度/u);
+  assert.match(submittedMessage.content, /Validation：桌面与移动端/u);
   assert.ok(messages.some((message) => message.role === "assistant" && message.content === "[final_answer] continued"));
 });
 

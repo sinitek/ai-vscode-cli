@@ -1491,6 +1491,48 @@ test("normalizes core runtime state and prompt context edge cases in isolation",
   assert.equal(helpers.deriveLatestRunStatusMessageFromMessages([{ role: "system", content: "Task completed" }]), "Task completed");
 });
 
+test("treats final-answer type or [final_answer] text as final assistant bubbles", () => {
+  const source = [
+    "isRunStatusSummaryText",
+    "isFinalAssistantSummaryMessage",
+  ].map((name) => extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE.replace(/\$\{FINAL_ANSWER_TEXT_MARKER\}/g, "[final_answer]"),
+    name,
+  )).join("\n");
+  const helpers = new Function(
+    `const state = { messages: [] };
+    ${source};
+    return {
+      setMessages(messages) { state.messages = messages; },
+      isFinal(index) { return isFinalAssistantSummaryMessage(index); },
+    };`,
+  )() as {
+    setMessages: (messages: Array<Record<string, unknown>>) => void;
+    isFinal: (index: number) => boolean;
+  };
+
+  helpers.setMessages([
+    { role: "assistant", content: "working" },
+    { role: "assistant", content: "[final_answer] done" },
+    { role: "assistant", content: "typed final", codexFinalAnswer: true },
+    { role: "assistant", content: "thinking about [final_answer]", kind: "thinking" },
+    { role: "assistant", content: "truncated thinking...", kind: "thinking" },
+    { role: "system", content: "Task completed" },
+  ]);
+
+  assert.equal(helpers.isFinal(0), false);
+  assert.equal(helpers.isFinal(1), true);
+  assert.equal(helpers.isFinal(2), true);
+  assert.equal(helpers.isFinal(3), false);
+  assert.equal(helpers.isFinal(4), false);
+
+  helpers.setMessages([
+    { role: "assistant", content: "ordinary completion-like text" },
+    { role: "system", content: "Task completed" },
+  ]);
+  assert.equal(helpers.isFinal(0), false);
+});
+
 test("renders message and trace helpers across final, collapsed, tool-result, and fallback paths", () => {
   const traceSource = `${VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI}\n${VIEW_CONTENT_SCRIPT_TRACE_RENDERING}`
     .replace(/\$\{FINAL_ANSWER_TEXT_MARKER\}/g, "<FINAL>");
@@ -1592,6 +1634,13 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   assert.equal(context.shouldCollapseByContentLength("x".repeat(50)), true);
   assert.equal(context.buildBubbleCollapseSummaryText("a".repeat(60)), `${"a".repeat(50)}…`);
   assert.equal(context.getAssistantMessageContentForDisplay({ role: "assistant", content: "<FINAL> answer" }), "answer");
+  assert.equal(
+    context.getAssistantMessageContentForDisplay({
+      role: "assistant",
+      content: "最终气泡判定包含 `<FINAL>` 标记。",
+    }),
+    "最终气泡判定包含 `<FINAL>` 标记。",
+  );
   assert.match(context.renderMessageContent({ role: "assistant", content: "answer" }, 99), /assistant-message-content-final/);
   assert.match(context.renderMessageContent({ role: "user", content: "<tag>", contextTags: ["src/a.ts"] }, 0), /&lt;tag&gt;/);
   assert.match(context.renderTraceContent({ id: "trace-open", role: "trace", content: "exec: npm run build\n+ added" }), /cmd-purpose-build/);

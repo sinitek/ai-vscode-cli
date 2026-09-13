@@ -53,7 +53,7 @@ test("webview runtime contains no final-answer policy state or update message", 
   assert.doesNotMatch(script, /\$\{FINAL_ANSWER_TEXT_MARKER\}/);
 });
 
-test("webview hides final-answer text markers only from assistant bubble display content", () => {
+test("webview hides only a leading final-answer protocol prefix from assistant bubble display content", () => {
   const script = buildRuntimeScript();
   const functionSource = script.match(
     /function getAssistantMessageContentForDisplay\(message\) \{[\s\S]*?\n      \}/,
@@ -72,7 +72,14 @@ test("webview hides final-answer text markers only from assistant bubble display
       role: "assistant",
       content: "Completed. [final_answer] Details [final_answer]",
     }),
-    "Completed.  Details ",
+    "Completed. [final_answer] Details [final_answer]",
+  );
+  assert.equal(
+    getDisplayContent({
+      role: "assistant",
+      content: "最终气泡判定包含 `[final_answer]` 标记。",
+    }),
+    "最终气泡判定包含 `[final_answer]` 标记。",
   );
   assert.equal(
     getDisplayContent({ role: "assistant", content: "Ordinary reply" }),

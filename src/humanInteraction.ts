@@ -54,6 +54,10 @@ export type CodexHumanInteractionResolution = {
   result: unknown;
 };
 
+type CodexRequestUserInputAnswer = {
+  answers: string[];
+};
+
 export type NaturalLanguageHumanInteractionInput = {
   tabId: string;
   fallbackInteractionId: string;
@@ -562,11 +566,21 @@ export function buildCodexHumanInteractionResolution(
       },
     };
   }
+  const answers = Object.entries(asRecord(submission.values)).reduce<Record<string, CodexRequestUserInputAnswer>>(
+    (result, [questionId, rawValue]) => {
+      const rawAnswers = Array.isArray(rawValue) ? rawValue : [rawValue];
+      result[questionId] = {
+        answers: rawAnswers
+          .filter((value) => value !== null && value !== undefined)
+          .map((value) => String(value)),
+      };
+      return result;
+    },
+    {},
+  );
   return {
     result: {
-      answers: submission.values,
-      result: { values: submission.values },
-      text,
+      answers,
     },
   };
 }

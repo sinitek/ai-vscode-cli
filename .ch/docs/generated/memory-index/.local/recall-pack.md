@@ -2,20 +2,20 @@
 
 ## Summary
 
-- Generated at: 2026-08-29T02:14:18Z
-- Focus: final_answer 最终回复气泡 任务中断 grok-4.6-kedaya abort cleanup fetch effects
+- Generated at: 2026-09-13T04:32:11Z
+- Focus: Codex Kimi 最终气泡 request_user_input 答案序列化
 - Anchor ID: -
-- Selection mode: baseline-fallback
-- Available observation entries: 2
-- Available read cost: ~85 tokens
-- Selected index entries: 2 (~85 tokens if fully expanded)
-- Expanded entries in this pack: 2 (~85 tokens)
-- Generated recall surfaces: 8
+- Selection mode: focus-filtered
+- Available observation entries: 3
+- Available read cost: ~124 tokens
+- Selected index entries: 1 (~39 tokens if fully expanded)
+- Expanded entries in this pack: 1 (~39 tokens)
+- Generated recall surfaces: 9
 - Hot-zone docs: 2
-- Active plans: 0
-- Related design docs: 1
-- Related runbooks: 0
-- Source diversity: 2 unique sources / 2 selected observations
+- Active plans: 1
+- Related design docs: 2
+- Related runbooks: 1
+- Source diversity: 1 unique sources / 1 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/.local/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -25,54 +25,37 @@
 3. 如果需要更多细节，再按 ID 打开 `observation-registry.md` 或 `observations.jsonl`。
 4. 如果需要上下文顺序，用 `timeline.md` 或重新运行 `--anchor-id <id>`。
 
+## Focus Match Summary
+
+- Matched terms: `codex`, `kimi`
+
 ## Observation Index
 
 | ID | Type | Title | Read | Source | Why |
 | --- | --- | --- | --- | --- | --- |
-| `mem-431f2548e1` | `rule` | 热区记忆面 | ~46 | `.ch/docs/memory/README.md` | baseline recall entry。 |
-| `mem-c1d7e714b7` | `rule` | 记忆流转规则 | ~39 | `.ch/docs/MEMORY.md` | baseline recall entry。 |
+| `mem-d2d35997b1` | `plan` | 修复 Kimi Codex 最终气泡与用户输入 | ~39 | `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md` | 命中 focus：codex, kimi。 |
 
 ## Expanded Observation Details
 
-### mem-431f2548e1 - 热区记忆面
+### mem-d2d35997b1 - 修复 Kimi Codex 最终气泡与用户输入
 
-- Type: `rule`
-- Topic: `gotcha`
-- Read: ~46 tokens
-- Source: `.ch/docs/memory/README.md`
-- Score: `63` (base `57`)
-- Selected claims: `claim-093d0b145dbc`, `claim-0e19638c3dbc`, `claim-0f988e077476`, `claim-1782b644ce89`, `claim-1b53727dc88c`, `claim-2435e8e9d987` ... (+33 more)
-- Score breakdown: type_priority=45, focus_terms=0, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=5, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=4, same_source_penalty=0
-- Concepts: `gotcha`
-- Files: `.ch/docs/MEMORY.md`, `.ch/docs/generated/memory-index/`, `.ch/docs/generated/memory-index/.local/`
-
-Facts:
-- 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
-- Source of truth: .ch/docs/memory/README.md
-
-Narrative:
-
-这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
-
-### mem-c1d7e714b7 - 记忆流转规则
-
-- Type: `rule`
-- Topic: `rule`
+- Type: `plan`
+- Topic: `plan`
 - Read: ~39 tokens
-- Source: `.ch/docs/MEMORY.md`
-- Score: `62` (base `56`)
-- Selected claims: `claim-04d77e38d577`, `claim-0b54f47ce76f`, `claim-0b87a7723e07`, `claim-13080f25ffe8`, `claim-16cc09133222`, `claim-1cf94165b719` ... (+76 more)
-- Score breakdown: type_priority=45, focus_terms=0, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=4, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=4, same_source_penalty=0
-- Concepts: `general`
-- Files: `.ch/docs/generated/`, `.ch/docs/ontology/`
+- Source: `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`
+- Score: `105` (base `103`)
+- Matches: `codex`, `kimi`
+- Score breakdown: type_priority=68, focus_terms=24, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=3, concept_bonus=2, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Concepts: `open-loop`, `problem-solution`
+- Files: `.ch/docs/TESTING.md`
 
 Facts:
-- 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
-- Source of truth: .ch/docs/MEMORY.md
+- 近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：
+- Modified at: 2026-09-13T04:32:11+00:00
 
 Narrative:
 
-这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
+近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：
 
 ## Recommended Reading Order
 
@@ -95,6 +78,10 @@ Narrative:
 - `.ch/docs/generated/memory-index/.local/observation-registry.md` | Observation Registry
   Why: 按 ID 展开 observation facts / narrative / source。
   Summary: 渐进披露第二层：只展开已经筛选过的 ID。
+
+- `.ch/docs/generated/memory-index/.local/open-loops.md` | Open Loops
+  Why: 当前存在开放事项、活跃风险或 active plans，需要先看 open loops。
+  Summary: 集中看 pending items、active risks 和 active plan 计数。
 
 - `.ch/docs/generated/memory-index/.local/claim-registry.md` | Claim Registry
   Why: 当前 observation 已经可关联到 claim 级证据，可直接检查状态和来源。
@@ -128,20 +115,29 @@ Narrative:
 
 ## Active Plans
 
-- None
+- `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md` | 修复 Kimi Codex 最终气泡与用户输入 | matches=codex, kimi
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：
 
 ## Related Design Docs
 
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=最终, 气泡
-  Why: 与当前 focus 相关的设计决策入口，命中：最终 / 气泡。
-  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=codex
+  Why: 与当前 focus 相关的设计决策入口，命中：codex。
+  Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
+
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=codex
+  Why: 与当前 focus 相关的设计决策入口，命中：codex。
+  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
 
 ## Related Runbooks
 
-- None
+- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=codex
+  Why: 与当前 focus 相关的排障或规避动作入口，命中：codex。
+  Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
 
 ## Watch Items
 
+- 当前有 1 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。
 

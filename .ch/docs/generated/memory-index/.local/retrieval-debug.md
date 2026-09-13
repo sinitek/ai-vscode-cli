@@ -5,15 +5,15 @@
 
 ## Run Context
 
-- Generated at: 2026-08-29T02:14:18Z
-- Focus: final_answer 最终回复气泡 任务中断 grok-4.6-kedaya abort cleanup fetch effects
-- Focus terms: `final_answer`, `最终回复气泡`, `最终`, `终回`, `回复`, `复气`, `气泡`, `任务中断`
+- Generated at: 2026-09-13T04:32:11Z
+- Focus: Codex Kimi 最终气泡 request_user_input 答案序列化
+- Focus terms: `codex`, `kimi`, `最终气泡`, `request_user_input`, `答案序列化`, `答案`, `案序`, `序列`
 - Anchor ID: -
-- Selection mode: baseline-fallback
-- Candidate count: 2
-- Ranked candidate count: 2
-- Focus match count: 0
-- Focus excluded count: 0
+- Selection mode: focus-filtered
+- Candidate count: 3
+- Ranked candidate count: 1
+- Focus match count: 1
+- Focus excluded count: 2
 
 ## Heuristics
 
@@ -32,51 +32,29 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-431f2548e1` | `63` | `57` | - | `.ch/docs/memory/README.md` | `39` |
-| 2 | `mem-c1d7e714b7` | `62` | `56` | - | `.ch/docs/MEMORY.md` | `82` |
+| 1 | `mem-d2d35997b1` | `105` | `103` | codex, kimi | `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md` | `0` |
 
 ## Score Breakdown
 
-### mem-431f2548e1 - 热区记忆面
+### mem-d2d35997b1 - 修复 Kimi Codex 最终气泡与用户输入
 
-- Final score: `63`
-- Base score: `57`
-- Matched terms: -
-- Source: `.ch/docs/memory/README.md`
-- Selected claim IDs: `claim-093d0b145dbc`, `claim-0e19638c3dbc`, `claim-0f988e077476`, `claim-1782b644ce89`, `claim-1b53727dc88c`, `claim-2435e8e9d987` ... (+33 more)
-
-| Heuristic | Contribution |
-| --- | --- |
-| `type_priority` | `45` |
-| `focus_terms` | `0` |
-| `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `4` |
-| `evidence_bonus` | `5` |
-| `concept_bonus` | `1` |
-| `topic_bonus` | `2` |
-| `source_diversity_bonus` | `2` |
-| `claim_bonus` | `4` |
-| `same_source_penalty` | `0` |
-
-### mem-c1d7e714b7 - 记忆流转规则
-
-- Final score: `62`
-- Base score: `56`
-- Matched terms: -
-- Source: `.ch/docs/MEMORY.md`
-- Selected claim IDs: `claim-04d77e38d577`, `claim-0b54f47ce76f`, `claim-0b87a7723e07`, `claim-13080f25ffe8`, `claim-16cc09133222`, `claim-1cf94165b719` ... (+76 more)
+- Final score: `105`
+- Base score: `103`
+- Matched terms: `codex`, `kimi`
+- Source: `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`
+- Selected claim IDs: -
 
 | Heuristic | Contribution |
 | --- | --- |
-| `type_priority` | `45` |
-| `focus_terms` | `0` |
+| `type_priority` | `68` |
+| `focus_terms` | `24` |
 | `open_loop_bonus` | `0` |
 | `read_cost_adjustment` | `4` |
-| `evidence_bonus` | `4` |
-| `concept_bonus` | `1` |
+| `evidence_bonus` | `3` |
+| `concept_bonus` | `2` |
 | `topic_bonus` | `2` |
 | `source_diversity_bonus` | `2` |
-| `claim_bonus` | `4` |
+| `claim_bonus` | `0` |
 | `same_source_penalty` | `0` |
 
 ## Top Unselected Candidates
@@ -85,24 +63,24 @@
 
 ## Source Diversity
 
-- Unique source count: 2
-- Selected observation count: 2
+- Unique source count: 1
+- Selected observation count: 1
 - Max same-source observations: 1
 
 ### Source Path Counts
 
-- `.ch/docs/MEMORY.md`: 1
-- `.ch/docs/memory/README.md`: 1
+- `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`: 1
 
 ### Source Kind Counts
 
-- `memory_doc`: 2
+- `active_plan`: 1
 
 ## Claim Status Snapshot
 
-- `active`: 121
+- No selected claims
 
 ## Watch Items
 
+- 当前有 1 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。

@@ -246,22 +246,30 @@ test("formats submitted values with labels and hides passwords", () => {
   );
 });
 
-test("builds Codex request resolutions for app-server and MCP elicitation methods", () => {
+test("encodes every Codex request-user-input answer with the app-server schema", () => {
   assert.deepEqual(
     buildCodexHumanInteractionResolution("item/tool/requestUserInput", {
       interactionId: "ask-1",
       status: "completed",
-      values: { answer: "yes" },
+      values: {
+        scope: "webview",
+        targets: ["desktop", "mobile"],
+        notes: null,
+      },
     }),
     {
       result: {
-        answers: { answer: "yes" },
-        result: { values: { answer: "yes" } },
-        text: "已提交补充信息。",
+        answers: {
+          scope: { answers: ["webview"] },
+          targets: { answers: ["desktop", "mobile"] },
+          notes: { answers: [] },
+        },
       },
     },
   );
+});
 
+test("keeps MCP elicitation responses on the action-content contract", () => {
   assert.deepEqual(
     buildCodexHumanInteractionResolution("mcpServer/elicitation/request", {
       interactionId: "ask-2",

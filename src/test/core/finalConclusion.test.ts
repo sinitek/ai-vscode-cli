@@ -5,7 +5,6 @@ import {
   hasAssistantFinalConclusionAfterMessage,
   isAssistantFinalConclusionMessage,
   isExplicitAssistantFinalConclusionMessage,
-  isLikelyAssistantCompletionConclusionMessage,
 } from "../../finalConclusion";
 import type { ChatMessage } from "../../webview/types";
 
@@ -59,11 +58,62 @@ test("accepts an observed Codex final answer when the user anchor is missing", (
   );
 });
 
-test("accepts an observed completed turn in strict mode", () => {
+test("does not accept an observed completed turn without a final-answer bubble in strict mode", () => {
   assert.equal(
     hasAssistantFinalConclusionAfterMessage([], "missing-user", {
       observedCompletedTurn: true,
       requireExplicitFinalAnswer: true,
+    }),
+    false,
+  );
+});
+
+test("does not accept a thinking-only completed turn as a final conclusion in strict mode", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-thinking",
+      role: "assistant",
+      content: "The abort on cleanup of fetch effects is expected with StrictMode. Let me look at the screenshot to confirm the page rendered, and also look at lines around 940-1013 for the runs fetch to see if tenan...",
+      kind: "thinking",
+      createdAt: 20,
+    }),
+  ];
+
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      observedCompletedTurn: true,
+      requireExplicitFinalAnswer: true,
+    }),
+    false,
+  );
+});
+
+test("does not accept ordinary assistant commentary plus a completed turn in strict mode", () => {
+  const messages = [
+    message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
+    message({
+      id: "assistant-1",
+      role: "assistant",
+      content: "Hi! 我在这里，随时可以帮你处理这个工作区的任务。",
+      createdAt: 20,
+    }),
+  ];
+
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
+      observedCompletedTurn: true,
+      requireExplicitFinalAnswer: true,
+    }),
+    false,
+  );
+});
+
+test("still accepts an observed completed turn when explicit final-answer is not required", () => {
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage([], "missing-user", {
+      observedCompletedTurn: true,
+      requireExplicitFinalAnswer: false,
     }),
     true,
   );
@@ -177,7 +227,7 @@ test("does not use old assistant messages for missing user anchors", () => {
   );
 });
 
-test("accepts the latest assistant completion fallback only for explicit completion wording", () => {
+test("does not infer an explicit final conclusion from completion wording", () => {
   const messages = [
     message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
     message({
@@ -198,17 +248,16 @@ test("accepts the latest assistant completion fallback only for explicit complet
     }),
   ];
 
-  assert.equal(isLikelyAssistantCompletionConclusionMessage(messages[2]), true);
+  assert.equal(isExplicitAssistantFinalConclusionMessage(messages[2]), false);
   assert.equal(
     hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
       requireExplicitFinalAnswer: true,
-      allowLatestAssistantCompletionFallback: true,
     }),
-    true,
+    false,
   );
 });
 
-test("rejects ordinary progress bubbles even when latest assistant fallback is enabled", () => {
+test("rejects ordinary progress bubbles in strict mode", () => {
   const messages = [
     message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
     message({
@@ -219,17 +268,16 @@ test("rejects ordinary progress bubbles even when latest assistant fallback is e
     }),
   ];
 
-  assert.equal(isLikelyAssistantCompletionConclusionMessage(messages[1]), false);
+  assert.equal(isExplicitAssistantFinalConclusionMessage(messages[1]), false);
   assert.equal(
     hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
       requireExplicitFinalAnswer: true,
-      allowLatestAssistantCompletionFallback: true,
     }),
     false,
   );
 });
 
-test("rejects completion-like assistant text when a later non-assistant message exists", () => {
+test("rejects completion-like assistant text followed by a trace", () => {
   const messages = [
     message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),
     message({
@@ -244,7 +292,6 @@ test("rejects completion-like assistant text when a later non-assistant message 
   assert.equal(
     hasAssistantFinalConclusionAfterMessage(messages, "user-1", {
       requireExplicitFinalAnswer: true,
-      allowLatestAssistantCompletionFallback: true,
     }),
     false,
   );

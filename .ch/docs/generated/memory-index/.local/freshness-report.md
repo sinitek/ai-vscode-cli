@@ -16,4 +16,4 @@
 
 ## Active Plan Activity
 
-- 当前无 active plan
+- `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md` 最后修改于 2026-09-13T04:32:11+00:00，读取成本约 469 tokens

@@ -2,6 +2,27 @@
 
 这是 generated-only 的轻量 observation registry。它把热区、开放事项、风险、经验和 active plans 转成可按 ID 召回的结构化条目。
 
+## mem-d2d35997b1 - 修复 Kimi Codex 最终气泡与用户输入
+
+- Type: `plan`
+- Topic: `plan`
+- Read: ~39 tokens
+- Source: `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`
+- Source kind: `active_plan`
+- Content hash: `d2d35997b1934be8eb4c4c57ba1eeb7f4331336d2f7e7f8d456ca6c0d04182e5`
+- Concepts: `open-loop`, `problem-solution`
+- Files: `.ch/docs/TESTING.md`
+
+Subtitle: Active execution plan
+
+Facts:
+- 近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：
+- Modified at: 2026-09-13T04:32:11+00:00
+
+Narrative:
+
+近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：
+
 ## mem-c1d7e714b7 - 记忆流转规则
 
 - Type: `rule`

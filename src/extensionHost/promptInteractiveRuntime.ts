@@ -915,7 +915,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
-        allowLatestAssistantCompletionFallback: source === "codex",
       })) {
         return { action: "ok" };
       }

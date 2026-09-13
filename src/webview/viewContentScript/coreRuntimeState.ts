@@ -230,18 +230,13 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         if (current.codexFinalAnswer === true) {
           return true;
         }
-        for (let i = messageIndex + 1; i < state.messages.length; i += 1) {
-          const next = state.messages[i];
-          if (!next) {
-            continue;
-          }
-          if (next.role === "system" && isRunStatusSummaryText(next.content)) {
-            return true;
-          }
-          if (next.role === "system" && !String(next.content || "").trim()) {
-            continue;
-          }
-          return false;
+        const finalAnswerMarker = "\${FINAL_ANSWER_TEXT_MARKER}";
+        if (
+          current.kind !== "thinking"
+          && finalAnswerMarker
+          && String(current.content || "").includes(finalAnswerMarker)
+        ) {
+          return true;
         }
         return false;
       }

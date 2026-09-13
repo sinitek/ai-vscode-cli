@@ -286,6 +286,130 @@ test("Codex runner enables default-mode request_user_input only when requested",
   }
 });
 
+test("Codex runner sends request_user_input answers in the per-question schema", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61091);
+  const responses: Array<Record<string, unknown>> = [];
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as Record<string, unknown>;
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            id: 41,
+            method: "item/tool/requestUserInput",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              itemId: "input-item",
+              questions: [
+                { id: "scope", header: "Scope", question: "Where?", isOther: false, isSecret: false, options: null },
+                { id: "targets", header: "Targets", question: "Which targets?", isOther: false, isSecret: false, options: null },
+                { id: "notes", header: "Notes", question: "Anything else?", isOther: true, isSecret: false, options: null },
+              ],
+              autoResolutionMs: null,
+            },
+          });
+        });
+        continue;
+      }
+      if (message.id !== 41 || message.method) {
+        continue;
+      }
+      responses.push(message);
+      send({
+        jsonrpc: "2.0",
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "parent-thread",
+          turnId: "parent-turn",
+          itemId: "final-message",
+          delta: "[final_answer] done",
+          phase: "final_answer",
+        },
+      });
+      send({
+        jsonrpc: "2.0",
+        method: "turn/completed",
+        params: {
+          threadId: "parent-thread",
+          turn: { id: "parent-turn", status: "completed" },
+        },
+      });
+      setImmediate(close);
+    }
+  });
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("prompt", {
+        ...createHandlers(),
+        requestUserInputEnabled: true,
+        onRequest: () => ({
+          result: {
+            answers: {
+              scope: { answers: ["webview"] },
+              targets: { answers: ["desktop", "mobile"] },
+              notes: { answers: [] },
+            },
+          },
+        }),
+      });
+      assert.deepEqual(responses, [{
+        jsonrpc: "2.0",
+        id: 41,
+        result: {
+          answers: {
+            scope: { answers: ["webview"] },
+            targets: { answers: ["desktop", "mobile"] },
+            notes: { answers: [] },
+          },
+        },
+      }]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
 test("Codex runner emits primary completed callback only for completed turns", async () => {
   const originalSpawn = crossSpawn.spawn;
   const { CodexInteractiveRunner } = loadCodexRunner();

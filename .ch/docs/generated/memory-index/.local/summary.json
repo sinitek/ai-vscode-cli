@@ -1,5 +1,17 @@
 {
-  "active_plans": [],
+  "active_plans": [
+    {
+      "modified_at": "2026-09-13T04:32:11+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 469,
+      "references": [
+        ".ch/docs/TESTING.md"
+      ],
+      "summary": "近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：",
+      "title": "修复 Kimi Codex 最终气泡与用户输入"
+    }
+  ],
   "claim_count": 121,
   "claim_stats": {
     "by_confidence": {
@@ -1714,7 +1726,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-08-29T02:14:18+00:00",
+  "generated_at": "2026-09-13T04:32:11+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1962,8 +1974,35 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 2,
+  "observation_count": 3,
   "observations": [
+    {
+      "concepts": [
+        "open-loop",
+        "problem-solution"
+      ],
+      "content_hash": "d2d35997b1934be8eb4c4c57ba1eeb7f4331336d2f7e7f8d456ca6c0d04182e5",
+      "facts": [
+        "近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：",
+        "Modified at: 2026-09-13T04:32:11+00:00"
+      ],
+      "files": [
+        ".ch/docs/TESTING.md"
+      ],
+      "id": "mem-d2d35997b1",
+      "modified_at": "2026-09-13T04:32:11+00:00",
+      "narrative": "近期 `kimi-k3` 通过 Codex 执行任务时出现两类异常：",
+      "private_stripped": false,
+      "read_tokens": 39,
+      "source_anchor": "修复 Kimi Codex 最终气泡与用户输入",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md",
+      "source_title": "修复 Kimi Codex 最终气泡与用户输入",
+      "subtitle": "Active execution plan",
+      "title": "修复 Kimi Codex 最终气泡与用户输入",
+      "topic": "plan",
+      "type": "plan"
+    },
     {
       "concepts": [
         "general"
@@ -2021,7 +2060,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 0,
+    "active_plan_count": 1,
     "active_risks": [],
     "pending_items": []
   },
@@ -2048,6 +2087,13 @@
       ],
       "read_tokens": 46
     },
+    "plan": {
+      "count": 1,
+      "ids": [
+        "mem-d2d35997b1"
+      ],
+      "read_tokens": 39
+    },
     "rule": {
       "count": 1,
       "ids": [
@@ -2056,6 +2102,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 85,
+  "total_read_tokens": 124,
   "version": "0.2.0"
 }
