@@ -122,6 +122,13 @@ function buildSyncRunningStateForActiveTab(tab: TabSummary | null): {
   return updates[0] ?? { isRunning: false, startedAt: 0 };
 }
 
+function buildFormatConversationTabCliLabel(): (cli: string | null | undefined) => string {
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabCliLabel");
+  return new Function(
+    `${functionSource}; return formatConversationTabCliLabel;`,
+  )() as (cli: string | null | undefined) => string;
+}
+
 function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: string) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabLabel");
   const getLoopMetaForTabSummary = (
@@ -183,12 +190,26 @@ function buildResetConversationTabSessionRequest(
   ) as () => void;
 }
 
+test("shows OpenCode conversation tabs as opcode", () => {
+  const formatCliLabel = buildFormatConversationTabCliLabel();
+
+  assert.equal(formatCliLabel("opencode"), "opcode");
+  assert.equal(formatCliLabel("codex"), "codex");
+  assert.equal(formatCliLabel("claude"), "claude");
+  assert.equal(formatCliLabel(""), "session");
+  assert.equal(formatCliLabel(undefined), "session");
+});
+
 test("uses sun and moon icons to identify Loop task tabs", () => {
   const formatLabel = buildFormatConversationTabLabel();
 
   assert.equal(
     formatLabel({ id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" }, "codex"),
     "☀️ codex",
+  );
+  assert.equal(
+    formatLabel({ id: "opencode-main-tab", loopTaskRole: "main", loopTaskId: "task-opencode" }, "opcode"),
+    "☀️ opcode",
   );
   assert.equal(
     formatLabel({ id: "main-tab-2", loopTaskRole: "main", loopTaskId: "task-2" }, "codex2"),

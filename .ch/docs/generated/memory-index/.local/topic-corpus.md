@@ -9,13 +9,6 @@
 
 - `mem-431f2548e1` `rule` 热区记忆面 -> `.ch/docs/memory/README.md`
 
-## plan
-
-- Entries: 1
-- Estimated read cost: ~39 tokens
-
-- `mem-d2d35997b1` `plan` 修复 Kimi Codex 最终气泡与用户输入 -> `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`
-
 ## rule
 
 - Entries: 1

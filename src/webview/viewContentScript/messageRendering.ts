@@ -711,6 +711,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         );
       }
 
+      function formatConversationTabCliLabel(cli) {
+        if (cli === "opencode") {
+          return "opcode";
+        }
+        return typeof cli === "string" && cli ? cli : "session";
+      }
+
       function formatConversationTabLabel(tab, baseLabel) {
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
@@ -976,7 +983,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         const groupIndexes = Object.create(null);
 
         tabs.forEach((tab, index) => {
-          const cliLabel = typeof tab.cli === "string" && tab.cli ? tab.cli : "session";
+          const cliLabel = formatConversationTabCliLabel(tab && tab.cli);
           const groupIndex = (groupIndexes[cliLabel] || 0) + 1;
           groupIndexes[cliLabel] = groupIndex;
           if (index < pageStartIndex || index >= pageEndIndex) {

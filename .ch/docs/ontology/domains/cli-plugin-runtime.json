@@ -45,7 +45,7 @@
       "kind": "resource",
       "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude 和 OpenCode；命令、参数、会话和输出解析由服务层处理。",
       "status": "active",
-      "aliases": ["codex", "claude", "opencode", "local CLI"],
+      "aliases": ["codex", "claude", "opencode", "opcode", "local CLI"],
       "implementation_paths": ["src/cli", "src/interactive"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
@@ -56,13 +56,14 @@
       "id": "plugin.cli_session",
       "name": "CLI 会话状态",
       "kind": "aggregate",
-      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。",
+      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。",
       "status": "active",
       "aliases": ["session", "thread", "tab", "会话续接"],
-      "implementation_paths": ["src/sessionTabs.ts", "src/interactive"],
+      "implementation_paths": ["src/sessionTabs.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"}
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"}
       ]
     },
     {

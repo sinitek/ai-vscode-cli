@@ -4,7 +4,7 @@
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-09-13-fix-kimi-codex-interaction.md`：修复 Kimi Codex 最终气泡与用户输入 (~469 tokens)
+- 当前无 active plan
 
 ## Pending Items
 
