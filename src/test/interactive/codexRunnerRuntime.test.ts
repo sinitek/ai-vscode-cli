@@ -128,6 +128,16 @@ test("app server builders produce stable config, args, input, and sandbox polici
     ]
   );
   assert.deepEqual(
+    buildCodexAppServerArgs(true, [], { requestUserInputEnabled: true }),
+    [
+      "app-server",
+      "--enable",
+      "default_mode_request_user_input",
+      "--listen",
+      "stdio://",
+    ]
+  );
+  assert.deepEqual(
     buildCodexTurnInput("prompt", ["", " /tmp/a.png "]),
     [
       { type: "text", text: "prompt", text_elements: [] },
@@ -185,6 +195,18 @@ test("request builders produce initialize, thread, and turn params", () => {
     },
     capabilities: {
       experimentalApi: false,
+      requestAttestation: false,
+      optOutNotificationMethods: [],
+    },
+  });
+  assert.deepEqual(buildCodexAppServerInitializeParams("/missing/codex", { requestUserInputEnabled: true }), {
+    clientInfo: {
+      name: "codex",
+      title: "Codex",
+      version: "0.0.0",
+    },
+    capabilities: {
+      experimentalApi: true,
       requestAttestation: false,
       optOutNotificationMethods: [],
     },

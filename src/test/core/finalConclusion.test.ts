@@ -59,6 +59,16 @@ test("accepts an observed Codex final answer when the user anchor is missing", (
   );
 });
 
+test("accepts an observed completed turn in strict mode", () => {
+  assert.equal(
+    hasAssistantFinalConclusionAfterMessage([], "missing-user", {
+      observedCompletedTurn: true,
+      requireExplicitFinalAnswer: true,
+    }),
+    true,
+  );
+});
+
 test("does not treat an ordinary assistant reply as final in strict mode", () => {
   const messages = [
     message({ id: "user-1", role: "user", content: "prompt", createdAt: 10 }),

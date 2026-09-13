@@ -35,6 +35,14 @@ export type CodexThreadOptions = {
   multiAgentEnabled?: boolean;
 };
 
+export type CodexAppServerArgsOptions = {
+  requestUserInputEnabled?: boolean;
+};
+
+export type CodexAppServerInitializeOptions = {
+  requestUserInputEnabled?: boolean;
+};
+
 export type CodexRuntimeTraceKind = "thinking" | "normal" | "error";
 
 export type CodexRuntimeTraceMeta = {
@@ -266,10 +274,12 @@ export function buildCodexThreadOptions(
 
 export function buildCodexAppServerArgs(
   multiAgentEnabled: boolean,
-  configOverrides: string[] = []
+  configOverrides: string[] = [],
+  options: CodexAppServerArgsOptions = {}
 ): string[] {
   const args = [
     "app-server",
+    ...(options.requestUserInputEnabled === true ? ["--enable", "default_mode_request_user_input"] : []),
     ...configOverrides.flatMap((override) => ["-c", override]),
     "--listen",
     "stdio://",
@@ -353,11 +363,14 @@ export function buildCodexAppServerSandboxPolicy(options: CodexThreadOptions): R
   };
 }
 
-export function buildCodexAppServerInitializeParams(commandPath: string): Record<string, unknown> {
+export function buildCodexAppServerInitializeParams(
+  commandPath: string,
+  options: CodexAppServerInitializeOptions = {}
+): Record<string, unknown> {
   return {
     clientInfo: buildCodexAppServerClientInfo(commandPath),
     capabilities: {
-      experimentalApi: false,
+      experimentalApi: options.requestUserInputEnabled === true,
       requestAttestation: false,
       optOutNotificationMethods: [],
     },

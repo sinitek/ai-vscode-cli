@@ -76,6 +76,52 @@ function createFakeChild(pid?: number): FakeChild {
   return child;
 }
 
+function attachTurnStatusAppServer(child: FakeChild, status: string): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "parent-turn", status },
+            },
+          });
+          setImmediate(close);
+        });
+      }
+    }
+  });
+}
+
 function createHandlers(events: unknown[] = []) {
   return {
     onAssistantDelta: () => undefined,
@@ -84,6 +130,62 @@ function createHandlers(events: unknown[] = []) {
     onThreadId: () => undefined,
     onEvent: (event: unknown) => events.push(event),
   };
+}
+
+function attachSuccessfulAppServer(child: FakeChild, onMessage?: (message: Record<string, unknown>) => void): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      onMessage?.(message as Record<string, unknown>);
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              item: { id: "message-1", type: "agent_message", text: "[final_answer] done", phase: "final_answer" },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "parent-turn", status: "completed" },
+            },
+          });
+          setImmediate(close);
+        });
+      }
+    }
+  });
 }
 
 function loadCodexRunner(): typeof import("../../interactive/codexRunner") {
@@ -140,6 +242,83 @@ test("Codex runner reports EAGAIN spawn errors without hanging", async () => {
       true,
     );
     runner.dispose();
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner enables default-mode request_user_input only when requested", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61090);
+  const spawnArgs: string[][] = [];
+  const initializeParams: unknown[] = [];
+  attachSuccessfulAppServer(child, (message) => {
+    if (message.method === "initialize") {
+      initializeParams.push(message.params);
+    }
+  });
+  crossSpawn.spawn = (_command: unknown, args: unknown): unknown => {
+    spawnArgs.push(Array.isArray(args) ? args.map(String) : []);
+    return child;
+  };
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+
+    await runner.runStreamed("prompt", {
+      ...createHandlers(),
+      requestUserInputEnabled: true,
+    });
+
+    assert.deepEqual(spawnArgs[0]?.slice(0, 3), ["app-server", "--enable", "default_mode_request_user_input"]);
+    assert.equal((initializeParams[0] as { capabilities?: { experimentalApi?: unknown } })?.capabilities?.experimentalApi, true);
+    runner.dispose();
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner emits primary completed callback only for completed turns", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const { CodexInteractiveRunner } = loadCodexRunner();
+
+  try {
+    for (const status of ["failed", "interrupted"] as const) {
+      const child = createFakeChild(61100);
+      attachTurnStatusAppServer(child, status);
+      crossSpawn.spawn = (): unknown => child;
+      const completedTurns: unknown[] = [];
+      const runner = new CodexInteractiveRunner({
+        command: process.execPath,
+        args: [],
+        thinkingMode: "medium",
+        interactiveMode: "coding",
+        threadId: null,
+        multiAgentEnabled: true,
+      });
+      try {
+        const run = runner.runStreamed("prompt", {
+          ...createHandlers(),
+          onTurnCompleted: (completion) => completedTurns.push(completion),
+        });
+        if (status === "failed") {
+          await assert.rejects(run);
+        } else {
+          await run;
+        }
+        assert.deepEqual(completedTurns, []);
+      } finally {
+        runner.dispose();
+      }
+    }
   } finally {
     crossSpawn.spawn = originalSpawn;
   }

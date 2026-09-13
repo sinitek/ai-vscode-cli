@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-25",
+  "as_of": "2026-09-13",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -142,7 +142,7 @@
     {
       "id": "plugin.relation.config_governs_cli",
       "name": "配置档案约束 CLI 执行",
-      "description": "CLI 命令、参数、模型、思考力度、Skills 和 MCP 候选由配置档案与工具设置共同约束；Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider。",
+      "description": "CLI 命令、参数、模型、思考力度、Skills、MCP 候选和全局工具开关由配置档案与工具设置共同约束；Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider，Vibe 人工交互开关会约束 Codex app-server 是否启用 default-mode request_user_input。",
       "status": "active",
       "from": "plugin.config_profile",
       "type": "governs",
@@ -199,6 +199,32 @@
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN"}
+      ]
+    },
+    {
+      "id": "plugin.rule.final_conclusion_structured_protocol",
+      "name": "最终结论使用协议文本或结构化完成信号",
+      "description": "普通 Codex、Claude 和 OpenCode 任务仍在 prompt 中要求最终回复包含 `[final_answer]`；运行时还接受明确结构化终态，包括 Codex `phase:\"final_answer\"`、OpenCode 同一 messageID 的 text+stop，以及 Codex 交互式主 turn 的 `turn.completed status=\"completed\"`。Codex completed-turn fallback 必须由 runner 确认主线程和当前主 turn 后传递；子线程 completed、failed、interrupted、主动停止和其它 CLI 普通成功退出不能借此收口。",
+      "aliases": ["final_answer", "turn.completed", "最终结论", "hidden retry"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "AI 对话"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "运行结束判定补充"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复"}
+      ]
+    },
+    {
+      "id": "plugin.rule.codex_default_mode_user_input_feature",
+      "name": "Codex Default mode 结构化人工交互需显式启用",
+      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。",
+      "aliases": ["request_user_input", "default_mode_request_user_input", "experimentalApi", "人工交互"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "AI 对话"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Codex"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex Default mode 的 `request_user_input` 需要显式 feature flag"}
       ]
     },
     {

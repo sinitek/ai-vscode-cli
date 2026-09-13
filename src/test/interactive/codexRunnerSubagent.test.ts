@@ -164,6 +164,7 @@ test("Codex runner streams child bubbles without completing or replacing the par
   const parentChunks: string[] = [];
   const threadIds: string[] = [];
   const subagentUpdates: Array<{ status: string; delta?: string }> = [];
+  const completedTurns: Array<{ threadId: string; turnId: string; status: string }> = [];
   const runner = new CodexInteractiveRunner({
     command: commandPath,
     args: [],
@@ -180,11 +181,13 @@ test("Codex runner streams child bubbles without completing or replacing the par
       onTrace: () => {},
       onTaskListUpdate: () => {},
       onThreadId: (threadId) => threadIds.push(threadId),
+      onTurnCompleted: (completion) => completedTurns.push(completion),
     });
 
     assert.equal(parentChunks.join(""), "parent final");
     assert.deepEqual(threadIds, ["parent-thread"]);
     assert.equal(runner.getThreadId(), "parent-thread");
+    assert.deepEqual(completedTurns, [{ threadId: "parent-thread", turnId: "parent-turn", status: "completed" }]);
     assert.equal(
       subagentUpdates.filter((update) => update.delta).map((update) => update.delta).join(""),
       "child text",

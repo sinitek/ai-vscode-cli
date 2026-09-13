@@ -3,6 +3,7 @@ import { containsFinalAnswerTextMarker } from "./finalAnswerProtocol";
 
 export type FinalConclusionCheckOptions = {
   observedFinalAnswer?: boolean;
+  observedCompletedTurn?: boolean;
   fallbackCreatedAt?: number | null;
   requireExplicitFinalAnswer?: boolean;
   allowLatestAssistantCompletionFallback?: boolean;
@@ -98,6 +99,9 @@ export function hasAssistantFinalConclusionAfterMessage(
   options: FinalConclusionCheckOptions = {},
 ): boolean {
   if (options.observedFinalAnswer === true) {
+    return true;
+  }
+  if (options.observedCompletedTurn === true) {
     return true;
   }
 

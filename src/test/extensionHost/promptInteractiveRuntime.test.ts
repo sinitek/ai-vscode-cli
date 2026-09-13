@@ -320,6 +320,7 @@ test("interactive runtime host keeps empty prompts inside its boundary", async (
 test("interactive runtime host completes a successful Codex runner turn", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {
+      assert.equal(handlers.requestUserInputEnabled, false);
       harness.setCodexThreadId("thread-success");
       handlers.onThreadId("thread-success");
       handlers.onTrace("thinking trace", "thinking");
@@ -356,6 +357,43 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
 });
 
+test("interactive runtime host enables Codex default-mode user input for Vibe runs", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      assert.equal(handlers.requestUserInputEnabled, true);
+      harness.setCodexThreadId("thread-human-input");
+      handlers.onThreadId("thread-human-input");
+      handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-human-input", sessionId: "session-human-input" }),
+  );
+
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+});
+
+test("interactive runtime host keeps Codex user input disabled when the global form is off", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    humanInteractionEnabled: false,
+    codexRunBehavior: async (_prompt, handlers) => {
+      assert.equal(handlers.requestUserInputEnabled, false);
+      harness.setCodexThreadId("thread-human-input-off");
+      handlers.onThreadId("thread-human-input-off");
+      handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-human-input-off", sessionId: "session-human-input-off" }),
+  );
+
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+});
+
 test("interactive runtime host accepts conservative Codex completion fallback for Grok-style final text", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {
@@ -388,6 +426,37 @@ test("interactive runtime host accepts conservative Codex completion fallback fo
     message.role === "assistant"
     && !message.codexFinalAnswer
     && String(message.content).includes("**结论**：本体属性配置已齐全")
+  )));
+});
+
+test("interactive runtime host accepts Codex primary completed turn as a final conclusion", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-glm-final");
+      handlers.onThreadId("thread-glm-final");
+      handlers.onAssistantDelta("Hi! 我在这里，随时可以帮你处理这个工作区的任务。");
+      handlers.onTurnCompleted?.({
+        threadId: "thread-glm-final",
+        turnId: "turn-glm-final",
+        status: "completed",
+      });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-glm-final", sessionId: "session-glm-final" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-glm-final") ?? [];
+  assert.equal(harness.codexPrompts.length, 1);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.ok(messages.some((message) => (
+    message.role === "assistant"
+    && !message.codexFinalAnswer
+    && String(message.content).includes("随时可以帮你处理这个工作区的任务")
   )));
 });
 

@@ -180,6 +180,39 @@
 - `src/test/webview/multiAgentSettingWebview.test.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
+## Codex Default mode 的 `request_user_input` 需要显式 feature flag
+
+- 状态：已规避，需随 Codex app-server feature flag 变更复核
+- 首次发现：2026-09-13
+- 适用范围：Codex Vibe/coding 人工交互、`codex app-server` 启动参数、app-server `initialize` capabilities
+
+### 现象
+- 2026-09-13 本地排查中，Codex 任务需要澄清时调用 `request_user_input`，但 UI 中出现“当前环境不支持 request_user_input”。
+- 对应 Codex JSONL 日志包含 `function_call request_user_input` 后跟 `request_user_input is unavailable in Default mode`，说明请求没有进入插件侧 app-server 人工交互处理链。
+
+### 触发条件与根因
+- Codex Default mode 默认未启用 `default_mode_request_user_input` feature；即使 prompt 写了 Vibe 人工交互要求，CLI 也会先在模型工具层拒绝 `request_user_input`。
+- 仅有插件侧 `onRequest` 拦截不够，app-server 初始化也必须声明 experimental request 能力，否则 Codex 不会把该请求作为可处理的 host 交互发给插件。
+
+### 长期规避
+- Codex Vibe/coding 且全局 `humanInteractionEnabled=true` 时，`codexRunner` 启动 app-server 必须追加 `--enable default_mode_request_user_input`。
+- 同一条件下，app-server `initialize.capabilities.experimentalApi` 必须为 `true`，并继续只在 `promptInteractiveRuntime` 可处理结构化人工交互时开启。
+- Loop/Graph 和关闭全局人工交互开关时不启用该 Codex Default mode user-input 能力，避免非 Vibe 编排误弹窗。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/interactive/codexRunnerRuntime.test.js dist/test/interactive/codexRunnerLifecycle.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/core/humanInteraction.test.js`。
+- 断言 `requestUserInputEnabled=true` 时 app-server argv 包含 `--enable default_mode_request_user_input`，initialize capabilities 中 `experimentalApi=true`；全局人工交互关闭时该能力保持关闭。
+
+### 关联资料
+- `src/interactive/codexRunnerRuntime.ts`
+- `src/interactive/codexRunner.ts`
+- `src/extensionHost/promptInteractiveRuntime.ts`
+- `src/test/interactive/codexRunnerRuntime.test.ts`
+- `src/test/interactive/codexRunnerLifecycle.test.ts`
+- `src/test/extensionHost/promptInteractiveRuntime.test.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
 ## Extension Host 拆分时同名包装函数不能回注自身
 
 - 状态：已规避，需随后续 `extensionHost/*` 拆分和依赖注入变更复核
@@ -477,31 +510,32 @@
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能默认猜测普通正文是最终答复
 
 - 状态：已规避，需随 Codex app-server 事件协议复核
-- 首次发现：2026-06-14；再次确认：2026-07-10
+- 首次发现：2026-06-14；再次确认：2026-07-10、2026-09-12
 - 适用范围：Codex / Claude / OpenCode prompt、Codex app-server `agent_message` / `turn.completed`、最终结论气泡与 hidden retry
 
 ### 现象
-- Codex 已在 AI 对话中输出非空 assistant 答复，并以 `turn.completed status:"completed"` 正常结束，但该回合所有 `agent_message` 都是 `phase:"commentary"`，没有 `phase:"final_answer"`。
-- 固定严格协议下，这类回合不能被视为最终答复，必须显示“任务已退出，但没有产生最终结论气泡，自动继续”，并按 hidden retry 约定请求显式终态。
+- Codex 已在 AI 对话中输出非空 assistant 答复，并以 `turn.completed status:"completed"` 正常结束，但该回合所有 `agent_message` 都是 `phase:"commentary"` 或 `phase:null`，没有 `phase:"final_answer"`。
+- 2026-09-12 的 `glm-5.3_sub-coco` 复现显示：请求成功、收到 `item.completed agent_message phase:null` 和主 `turn.completed status:"completed"`，但因没有 `[final_answer]` 文本被误判为缺少最终结论并触发 hidden retry。
 
 ### 触发条件与根因
-- 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。
+- 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。会话 `01a090d4-f86c-7cc0-b998-3b59913a5b13` 则以 `glm-5.3_sub-coco` 输出 `phase:null` 的普通 assistant 正文后成功完成。
 - `phase` 描述消息阶段，`turn.completed status:"completed"` 描述结构化回合终态。不同 Codex 模型或版本可能成功结束一个没有显式 final phase 的回合，不能假设两者永远同时出现；Claude / OpenCode 也没有统一等价的 `final_answer` phase 可供插件依赖。
-- 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义；因此不再保留成功回复兼容回退。
+- 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义；Codex 只能使用 app-server 主 turn 的结构化 completed 事件作为受限兼容信号。
 
 ### 长期规避
 - 所有普通任务和 hidden retry 的实际模型 prompt 都追加统一约定：任务完成后的最终回复必须以 `[final_answer]` 开头，过程更新不得使用该标记；不要改写界面里的原始用户消息。
 - Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
-- 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化类型时，只从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
+- 结构化 `final_answer` 仍是最高优先级终态信号；没有结构化 final phase 时，可从当前用户消息之后的非 thinking assistant 文本识别 `[final_answer]`，也可接受 Codex 交互式主 turn 的 `turn.completed status:"completed"`。按产品约定使用“包含”语义，不能从 thinking、trace、system 或 user 文本识别。
 - `[final_answer]` 只能在 Webview assistant 气泡的展示文本中移除；不能提前改写 `message.content` 或会话存档，否则固定严格协议、历史恢复和 hidden retry 会丢失兜底终态信号。
-- 普通任务固定只接受结构化 final 或文本标记；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。Codex `turn.completed status:"completed"` 不得把 commentary 原位提升为最终答复；唯一窄例外是 Codex 交互式成功回合的最后一个当前回合 assistant 气泡带明确完成/结论语义且没有继续执行语义，用于兼容 `grok-4.6` 这类 `phase=null` 最终正文。
-- 空回复、failed、interrupted、主动停止、commentary-only completed turn、最后消息不是 assistant，或“接下来/继续/下一步”等进度语义都不得收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
+- 普通任务固定使用协议/结构化收口；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。Codex `turn.completed status:"completed"` 不给 assistant 气泡原位补 `codexFinalAnswer`，而是由 `codexRunner` 在确认主线程和当前主 turn 后通过专用回调通知交互运行时，作为 GLM/Grok-style 模型缺少 final phase 时的完成信号；现有“最后一个 assistant 气泡带明确完成语义”的保守文本 fallback 继续保留。
+- 子代理 `turn.completed`、failed、interrupted、主动停止、Claude/OpenCode 普通成功退出都不得借 Codex completed-turn fallback 收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
 
 ### 验证方式
 - 对 Codex / Claude / OpenCode 的首轮和 hidden retry prompt 断言都含最终回复标记约定。
 - 对 Loop 机器协议断言首轮和 hidden retry prompt 都不含 `[final_answer]`，且普通任务的固定严格协议不会覆盖其专用终态规则。
-- 断言结构化 final 和 `[final_answer]` assistant 文本通过；普通正文、thinking 中的标记和当前用户锚点之前的旧标记不通过。
-- 用 `commentary agent_message -> turn.completed completed` 断言 Codex 不会产生合成的 `codexFinalAnswer`；显式 final 仍按上游元数据转发。
+- 断言结构化 final、`[final_answer]` assistant 文本和 Codex 主 `turn.completed status="completed"` 通过；普通正文、thinking 中的标记和当前用户锚点之前的旧标记不通过。
+- 用 `commentary/phase:null agent_message -> turn.completed completed` 断言 Codex 不会产生合成的 `codexFinalAnswer`，但交互运行时会按主 completed turn 收口；显式 final 仍按上游元数据转发。
+- 用子线程 `turn.completed completed` 断言不会触发父任务 completed-turn 回调。
 - 断言工具设置中的遗留策略字段和旧消息键都不会改变运行时行为。
 
 ### 关联资料

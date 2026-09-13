@@ -302,6 +302,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let stopCurrentTurn: (() => void) | null = null;
     let hiddenRetryCount = 0;
     let observedCodexFinalAnswer = false;
+    let observedCodexPrimaryTurnCompleted = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -911,6 +912,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
         observedFinalAnswer: source === "codex" && observedCodexFinalAnswer,
+        observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
         allowLatestAssistantCompletionFallback: source === "codex",
@@ -985,6 +987,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         ?? (hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt);
       pendingHumanInteractionContinuationPrompt = null;
       let attemptHadNormalReply = false;
+      if (cli === "codex") {
+        observedCodexPrimaryTurnCompleted = false;
+      }
 
       if (hiddenRetryCount > 0) {
         const retryNumber = hiddenRetryCount;
@@ -1109,10 +1114,17 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               }
               appendDebugEvent(event);
             },
+            onTurnCompleted: () => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              observedCodexPrimaryTurnCompleted = true;
+            },
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items, tabId });
             },
             onRequest: handleCodexHumanInteractionRequest,
+            requestUserInputEnabled: canHandleStructuredHumanInteractionRequest(),
             onThreadId: (threadId) => {
               updateProcessTitle(cli, threadId);
               updateSessionForNewRun(threadId, {

@@ -61,14 +61,22 @@ export type CodexAppServerRequest = {
   params?: unknown;
 };
 
+export type CodexPrimaryTurnCompleted = {
+  threadId: string;
+  turnId: string;
+  status: "completed";
+};
+
 export type CodexStreamHandlers = {
   onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
   onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
   onTrace: (content: string, kind?: CodexTraceKind, meta?: CodexTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
+  onTurnCompleted?: (completion: CodexPrimaryTurnCompleted) => void;
   onEvent?: (event: unknown) => void;
   onRequest?: (request: CodexAppServerRequest) => Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined;
+  requestUserInputEnabled?: boolean;
 };
 
 type JsonRpcPendingRequest = {
@@ -597,7 +605,9 @@ export class CodexInteractiveRunner {
 
     const spawnCommand = resolveSpawnCommand(
       this.options.command,
-      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides)
+      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides, {
+        requestUserInputEnabled: handlers.requestUserInputEnabled === true,
+      })
     );
     void logInfo("codex-app-server-spawn", {
       command: spawnCommand.command,
@@ -1044,6 +1054,13 @@ export class CodexInteractiveRunner {
             if (turnStatus === "failed") {
               settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
             } else {
+              if (turnStatus === "completed") {
+                handlers.onTurnCompleted?.({
+                  threadId: eventThreadId || this.options.threadId || "",
+                  turnId: completedTurnId,
+                  status: "completed",
+                });
+              }
               settleTurnCompletion();
             }
             setTimeout(() => shutdownChild("graceful"), 0);
@@ -1112,7 +1129,9 @@ export class CodexInteractiveRunner {
     })();
 
     try {
-      await request("initialize", buildCodexAppServerInitializeParams(spawnCommand.command));
+      await request("initialize", buildCodexAppServerInitializeParams(spawnCommand.command, {
+        requestUserInputEnabled: handlers.requestUserInputEnabled === true,
+      }));
       notify("initialized");
 
       const threadParams = buildCodexThreadParams(threadOptions);
