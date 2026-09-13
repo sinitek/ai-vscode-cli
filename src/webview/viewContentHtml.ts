@@ -362,12 +362,12 @@ ${webviewStyles}    </style>
             </button>
           </div>
           <div class="tool-settings-tabs" role="tablist" aria-label="${i18n.toolSettingsTitle}">
-            <button id="toolSettingsGlobalTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGlobalPanel">${i18n.toolSettingsGlobalTab}</button>
+            <button id="toolSettingsGeneralTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGeneralPanel">${i18n.toolSettingsGeneralTab}</button>
+            <button id="toolSettingsAiTaskTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsAiTaskPanel">${i18n.toolSettingsAiTaskTab}</button>
             <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
-            <button id="toolSettingsCleanupTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsCleanupPanel">${i18n.toolSettingsCleanupTab}</button>
           </div>
           <div class="tool-settings-body">
-            <div id="toolSettingsGlobalPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGlobalTab">
+            <div id="toolSettingsGeneralPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGeneralTab">
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsDebugLabel}</div>
@@ -386,6 +386,32 @@ ${webviewStyles}    </style>
                   </label>
                 </div>
               </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
+                  <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
+                    <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
+                    <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
+                    <option value="en">${i18n.toolSettingsLanguageEn}</option>
+                  </select>
+                </div>
+              </section>
+              <section id="macTaskShellRow" class="tool-settings-card tool-settings-row" style="display: none;">
+                <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
+                <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
+                  <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
+                  <option value="bash">${i18n.toolSettingsMacShellBash}</option>
+                </select>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsHistoryRetentionDaysLabel}</div>
+                  <input type="number" id="historyRetentionDays" class="tool-settings-number" min="1" max="3650" step="1" title="${i18n.toolSettingsHistoryRetentionDaysTitle}" aria-label="${i18n.toolSettingsHistoryRetentionDaysLabel}" />
+                </div>
+                <div class="tool-settings-note">${i18n.toolSettingsHistoryRetentionDaysHint}</div>
+              </section>
+            </div>
+            <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsImplicitSubagentsLabel}</div>
@@ -441,23 +467,6 @@ ${webviewStyles}    </style>
                   </select>
                 </div>
               </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
-                  <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
-                    <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
-                    <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
-                    <option value="en">${i18n.toolSettingsLanguageEn}</option>
-                  </select>
-                </div>
-              </section>
-              <section id="macTaskShellRow" class="tool-settings-card tool-settings-row" style="display: none;">
-                <div class="tool-settings-label">${i18n.toolSettingsMacShellLabel}</div>
-                <select id="macTaskShell" class="thinking-select" aria-label="${i18n.toolSettingsMacShellAria}">
-                  <option value="zsh">${i18n.toolSettingsMacShellZsh}</option>
-                  <option value="bash">${i18n.toolSettingsMacShellBash}</option>
-                </select>
-              </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
               <section class="tool-settings-card">
@@ -478,15 +487,6 @@ ${webviewStyles}    </style>
                   </button>
                 </div>
                 <div class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
-              </section>
-            </div>
-            <div id="toolSettingsCleanupPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsCleanupTab">
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsHistoryRetentionDaysLabel}</div>
-                  <input type="number" id="historyRetentionDays" class="tool-settings-number" min="1" max="3650" step="1" title="${i18n.toolSettingsHistoryRetentionDaysTitle}" aria-label="${i18n.toolSettingsHistoryRetentionDaysLabel}" />
-                </div>
-                <div class="tool-settings-note">${i18n.toolSettingsHistoryRetentionDaysHint}</div>
               </section>
             </div>
           </div>

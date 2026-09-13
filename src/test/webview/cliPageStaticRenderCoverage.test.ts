@@ -228,10 +228,11 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="rulesLoadCli"',
     'id="rulesInput"',
     'id="toolSettingsOverlay"',
-    'id="toolSettingsGlobalTab"',
+    'id="toolSettingsGeneralTab"',
+    'id="toolSettingsAiTaskTab"',
     'id="toolSettingsWorkspaceTab"',
-    'id="toolSettingsCleanupTab"',
-    'id="toolSettingsCleanupPanel"',
+    'id="toolSettingsGeneralPanel"',
+    'id="toolSettingsAiTaskPanel"',
     'id="historyRetentionDays"',
     'id="installCodeGraph"',
     'id="loopMaxRounds"',
@@ -256,6 +257,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="helpPanelModes"',
     'id="helpPanelInstall" class="help-panel active"',
   ]);
+  assert.doesNotMatch(html, /toolSettingsGlobal(?:Tab|Panel)|toolSettingsCleanup(?:Tab|Panel)/u);
 });
 
 test("renders English and Chinese static page copy through shared i18n strings", () => {

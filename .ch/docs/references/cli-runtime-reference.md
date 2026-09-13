@@ -4,6 +4,8 @@
 
 ## 1. 当前支持矩阵
 
+工具设置 UI 保留“常规配置”“AI任务配置”“工作区”三个 Tab；“常规配置”包含全局常规偏好及 `historyRetentionDays`，“AI任务配置”包含 AI 行为与 Loop 参数，“工作区”包含项目级设置。旧“全局”和“自动清理”Tab 已移除，设置字段和持久化位置不变。
+
 | CLI | 当前执行模式 | 会话续接 | 主要实现 |
 | --- | --- | --- | --- |
 | Codex | 交互式 + 一次性 | 支持 | `src/interactive/codexRunner.ts`、`src/cli/commandRunner.ts` |
@@ -68,7 +70,7 @@
 - 同步传入当前模型、工作目录和 `user/project/local` settings
 - 通过 SDK session 做会话续接
 - 面板“常用命令 -> 压缩上下文”在 Claude 下优先直接发送官方 `/compact` slash command，并通过 SDK `status=compacting` / `compact_boundary` 事件判定原生压缩完成；若当前 Claude 环境明确不支持原生 compact，则回退到旧的“生成摘要后切新会话”兼容方案
-- 面板“工具设置”全局开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束且执行超过 5 分钟后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断、报错或执行不超过 5 分钟不触发
+- 面板“工具设置 - AI任务配置”开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束且执行超过 5 分钟后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断、报错或执行不超过 5 分钟不触发
 - Claude Code 2.1.118 的官方 CLI 帮助已提供 `--effort <level>`，取值为 `low`、`medium`、`high`、`xhigh`、`max`
 - 插件交互 Runner 优先通过 SDK `extraArgs.effort` 传递新版思考力度；若旧 Claude Code/SDK 不支持该参数，则回退到 `maxThinkingTokens`
 - 插件 one-shot Claude 调用默认通过 `thinkingArgs.claude.*` 拼装 `--effort <level>`；`off` 默认不再追加旧版 `--max-thinking-tokens 0`
@@ -124,7 +126,7 @@
 
 ## 3.5 工具设置存储
 
-- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`autoCompactContextAfterRun`、`multiAgentEnabled`、`locale`、`macTaskShell`、`loopMaxRounds`、`loopSubtaskMaxThinkingMode`、`historyRetentionDays`）写入 `~/.sinitek_cli/settings.json`。其中 `historyRetentionDays` 由工具设置“自动清理”页配置，默认 30 天，范围 1–3650 天，并统一约束日志、会话、提示词历史、任务记录和 Loop 记录的保留期限；临时目录仍使用独立的 1 小时清理策略
+- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`autoCompactContextAfterRun`、`multiAgentEnabled`、`locale`、`macTaskShell`、`loopMaxRounds`、`loopSubtaskMaxThinkingMode`、`historyRetentionDays`）写入 `~/.sinitek_cli/settings.json`。其中 `debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`、`historyRetentionDays` 位于“常规配置”Tab，`autoCompactContextAfterRun`、`multiAgentEnabled`、`loopMaxRounds`、`loopSubtaskMaxThinkingMode` 位于“AI任务配置”Tab；`historyRetentionDays` 默认 30 天，范围 1–3650 天，并统一约束日志、会话、提示词历史、任务记录和 Loop 记录的保留期限；临时目录仍使用独立的 1 小时清理策略
 - 工具设置中的项目级项（如 `loopExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`。旧工作区 `autoCompactContextAfterRun` / `autoCompactContextBeforeRun` 和 `multiAgentEnabled` / `codexMultiAgentEnabled` 分别只作为全局自动压缩、全局隐式子代理开关的迁移输入；全局字段缺失时迁移当前工作区值，成功迁移或用户更新全局设置后移除对应旧字段。
 - 工具设置“工作区”页中的 harness 骨架开关控制当前工作区基于 harness scaffold 的插件侧记忆层，默认关闭，并写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json` 的 `workspaceMemoryEnabled`。配置解析采用“显式 false 防误开优先”：兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
@@ -154,7 +156,7 @@ Loop 独立子任务由扩展创建独立 CLI 会话，不等同于 provider 内
 - Loop 子任务的停止和失败是局部生命周期事件：停止或重试耗尽时，父任务保持 `running`，并继续在 `activeSubtaskIds` 中持有尚未完成的子任务，直到该子任务在自身 Tab 手动续跑成功。只有所有活动子任务均完成，且父任务未因自身 AI 连续失败达到上限，才会恢复主任务下一轮复核。串行批次的未派发后续子任务会写为 `skipped`、从活动集合移除，并由主任务下一轮重新决定是否派发；Loop 群聊的全任务“中止”仍统一把父任务和活动子任务标记为 `stopped`
 - 任何由宿主解析本 JSON 决策协议的 Loop 任务都可在需要等待外部结果时返回 `status=sleep`、10 到 31536000 范围内的整数 `wakeAfterSeconds` 和非空 `sleepReason`；普通自由文本回复不会触发自动睡眠。宿主将其持久化为 `status=sleeping` 与绝对 `autoWakeAt`，释放当前 CLI 调用；内存定时器按绝对时间分段调度，到期后复用原任务/session 和当前 Loop 轮次执行已有恢复链路。Extension Host 重启会重建定时器并立即处理过期任务，VS Code 完全退出期间不启动外部守护进程。合法睡眠任务不参与普通历史淘汰；人工继续、完成或中止会取消陈旧唤醒。AI 对话使用可读 assistant 睡眠气泡，Loop 群聊显示实时倒计时、计划唤醒时间、原因和提前继续/取消动作。
 - Codex 普通 Coding 统一读取 `PromptRunInput.model`；Loop / Graph 会同时传递 `loopMainModel` / `loopSubtaskModel` 与 `loopMainThinkingMode` / `loopSubtaskThinkingMode`。Loop 主任务、主持/复核、续跑和唤醒使用 main 角色模型与思考力度，Loop 子任务使用 subtask 角色模型与思考力度并继续受全局子任务思考力度上限约束；Graph planner 和最终 `summary` 节点使用 main 角色，其他执行节点使用 subtask 角色。旧主/子模型持久化字段仅兼容读取和迁移。
-- `loopSubtaskMaxThinkingMode` 是“工具设置 - 全局”中的 Loop 子任务思考力度上限，默认 `xhigh`，可降低到 `low`、`medium` 或 `high`。每次独立子任务派发时，运行时取该上限与当前所选模型力度中的较低值；因此用户选择 `max` 或 `ultra` 时子任务最多以 `xhigh` 运行，较低的用户选择不会被抬高。该覆写不影响 Loop 主任务、普通任务或模型级持久化选择。
+- `loopSubtaskMaxThinkingMode` 是“工具设置 - AI任务配置”中的 Loop 子任务思考力度上限，默认 `xhigh`，可降低到 `low`、`medium` 或 `high`。每次独立子任务派发时，运行时取该上限与当前所选模型力度中的较低值；因此用户选择 `max` 或 `ultra` 时子任务最多以 `xhigh` 运行，较低的用户选择不会被抬高。该覆写不影响 Loop 主任务、普通任务或模型级持久化选择。
 - Loop 群聊显式继续以主任务 Tab 当前 CLI 分组为权威：即使 Tab 已切换分组，也通过任务原 CLI 的消息/session 绑定定位同一 Tab，再读取目标 CLI 当前激活配置和模型。跨 CLI 恢复保留同一 `taskId`，并在运行前把任务的 CLI/session Store 归属迁移到目标分组；主任务 Tab 在同一 Loop 任务处于 `needs-review`、`error`、`stopped` 或无本实例所有权的 `running` 可恢复状态时，提交任意新 Loop 输入都等价于群聊“继续执行”，必须复用同一 `taskId` 而不是新建任务；这些中断终态优先结束主 Tab 运行态，旧编排轮次和重试在派发前必须检查终态，不能在主动停止后重新写成 `running`；缺失或未知的持久化 `status` 不具备运行所有权，读盘时按 `stopped` 收敛。
 
 Loop 命名迁移边界：新任务只写 `~/.sinitek_cli/loop-tasks/.../loop-tasks.json` 和 `~/.sinitek_cli/loop-communications/<taskId>/`。首次枚举任务时会迁移旧 `lobster-tasks` / `lobster-tasks.json` 与 `lobster-communications`；旧设置键、工作区 `interactiveMode`、模型选择键、任务运行字段和会话消息字段在读取时归一化为 `loop*` 并随既有保存链路重写。公开命令为 `sinitek-cli-tools.openLoopGroupChat`，旧 `sinitek-cli-tools.openLobsterDebateChat` 仅注册为不再贡献到命令面板的隐藏兼容别名。

@@ -929,10 +929,13 @@ test("boots the runtime and dispatches state, message, stream, history, settings
 
   document.getElementById("toolSettingsButton").click();
   assert.equal(document.getElementById("toolSettingsOverlay").classList.contains("visible"), true);
+  assert.equal(document.getElementById("toolSettingsGeneralPanel").classList.contains("active"), true);
+  document.getElementById("toolSettingsAiTaskTab").click();
+  assert.equal(document.getElementById("toolSettingsAiTaskPanel").classList.contains("active"), true);
   document.getElementById("toolSettingsWorkspaceTab").click();
   assert.equal(document.getElementById("toolSettingsWorkspacePanel").classList.contains("active"), true);
-  document.getElementById("toolSettingsCleanupTab").click();
-  assert.equal(document.getElementById("toolSettingsCleanupPanel").classList.contains("active"), true);
+  document.getElementById("toolSettingsGeneralTab").click();
+  assert.equal(document.getElementById("toolSettingsGeneralPanel").classList.contains("active"), true);
   document.getElementById("historyRetentionDays").value = "0";
   document.getElementById("historyRetentionDays").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "historyRetentionDays", value: 1 });

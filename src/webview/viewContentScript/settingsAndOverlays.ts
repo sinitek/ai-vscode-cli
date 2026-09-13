@@ -1,27 +1,28 @@
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setToolSettingsTab(scope) {
+        const general = scope !== "aiTask" && scope !== "workspace";
+        const aiTask = scope === "aiTask";
         const workspace = scope === "workspace";
-        const cleanup = scope === "cleanup";
-        if (elements.toolSettingsGlobalTab) {
-          elements.toolSettingsGlobalTab.classList.toggle("active", !workspace && !cleanup);
-          elements.toolSettingsGlobalTab.setAttribute("aria-selected", !workspace && !cleanup ? "true" : "false");
+        if (elements.toolSettingsGeneralTab) {
+          elements.toolSettingsGeneralTab.classList.toggle("active", general);
+          elements.toolSettingsGeneralTab.setAttribute("aria-selected", general ? "true" : "false");
+        }
+        if (elements.toolSettingsAiTaskTab) {
+          elements.toolSettingsAiTaskTab.classList.toggle("active", aiTask);
+          elements.toolSettingsAiTaskTab.setAttribute("aria-selected", aiTask ? "true" : "false");
         }
         if (elements.toolSettingsWorkspaceTab) {
           elements.toolSettingsWorkspaceTab.classList.toggle("active", workspace);
           elements.toolSettingsWorkspaceTab.setAttribute("aria-selected", workspace ? "true" : "false");
         }
-        if (elements.toolSettingsCleanupTab) {
-          elements.toolSettingsCleanupTab.classList.toggle("active", cleanup);
-          elements.toolSettingsCleanupTab.setAttribute("aria-selected", cleanup ? "true" : "false");
+        if (elements.toolSettingsGeneralPanel) {
+          elements.toolSettingsGeneralPanel.classList.toggle("active", general);
         }
-        if (elements.toolSettingsGlobalPanel) {
-          elements.toolSettingsGlobalPanel.classList.toggle("active", !workspace && !cleanup);
+        if (elements.toolSettingsAiTaskPanel) {
+          elements.toolSettingsAiTaskPanel.classList.toggle("active", aiTask);
         }
         if (elements.toolSettingsWorkspacePanel) {
           elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
-        }
-        if (elements.toolSettingsCleanupPanel) {
-          elements.toolSettingsCleanupPanel.classList.toggle("active", cleanup);
         }
       }
 
@@ -110,14 +111,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
       }
 
-      if (elements.toolSettingsGlobalTab) {
-        elements.toolSettingsGlobalTab.addEventListener("click", () => setToolSettingsTab("global"));
+      if (elements.toolSettingsGeneralTab) {
+        elements.toolSettingsGeneralTab.addEventListener("click", () => setToolSettingsTab("general"));
+      }
+      if (elements.toolSettingsAiTaskTab) {
+        elements.toolSettingsAiTaskTab.addEventListener("click", () => setToolSettingsTab("aiTask"));
       }
       if (elements.toolSettingsWorkspaceTab) {
         elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
-      }
-      if (elements.toolSettingsCleanupTab) {
-        elements.toolSettingsCleanupTab.addEventListener("click", () => setToolSettingsTab("cleanup"));
       }
       if (elements.autoCompactContextAfterRun) {
         elements.autoCompactContextAfterRun.addEventListener("change", (event) => {

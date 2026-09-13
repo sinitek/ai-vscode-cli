@@ -6,6 +6,8 @@
 
 ## 1. 设计目标
 
+工具设置界面按职责划分为“常规配置”“AI任务配置”“工作区”三个 Tab。全局字段仍统一写入 `~/.sinitek_cli/settings.json`，仅 UI 归属调整：`historyRetentionDays` 位于常规配置，AI 行为与 Loop 参数位于 AI任务配置。
+
 当前仓库不是后端服务，也不是多包 monorepo，而是一个单扩展仓库。它的核心职责只有一件事：
 
 > 在 VS Code 内承接用户输入，协调本地 CLI 运行，并把会话、配置和结果稳定展示出来。
@@ -202,7 +204,7 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 
 当前主要包括：
 
-- `settings.json`：工具设置中的全局项（如 debug、自动文件标签、执行后自动压缩上下文、隐式子代理、人工交互、语言、macOS task shell）；自动压缩使用 `autoCompactContextAfterRun`，默认开启；隐式子代理使用 `multiAgentEnabled`，默认关闭；Codex、Claude 和 OpenCode Vibe 人工交互使用 `humanInteractionEnabled`，默认开启
+- `settings.json`：工具设置中的全局项（如 debug、自动文件标签、执行后自动压缩上下文、隐式子代理、人工交互、语言、macOS task shell）；UI 分为“常规配置”和“AI任务配置”两个全局 Tab，常规配置承载 debug、自动文件标签、语言、macOS task shell，AI任务配置承载自动压缩、隐式子代理和人工交互；自动压缩使用 `autoCompactContextAfterRun`，默认开启；隐式子代理使用 `multiAgentEnabled`，默认关闭；Codex、Claude 和 OpenCode Vibe 人工交互使用 `humanInteractionEnabled`，默认开启
 - `sessions/`：按工作区维护会话元信息
 - `messages/`：会话消息内容
 - `prompt-history/`：历史提示词

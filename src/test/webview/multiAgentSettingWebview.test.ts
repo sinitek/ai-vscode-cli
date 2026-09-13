@@ -73,22 +73,26 @@ function createFakeDocument() {
   };
 }
 
-test("renders one default-off global implicit-subagents setting and wires its panel state", () => {
+test("renders one default-off AI task implicit-subagents setting and wires its panel state", () => {
   for (const locale of ["en", "zh-CN"] as const) {
     const html = buildStaticHtml(locale);
-    const globalPanelIndex = html.indexOf('id="toolSettingsGlobalPanel"');
+    const aiTaskPanelIndex = html.indexOf('id="toolSettingsAiTaskPanel"');
     const workspacePanelIndex = html.indexOf('id="toolSettingsWorkspacePanel"');
     const settingIndex = html.indexOf('id="multiAgentEnabled"');
     assert.match(html, /id="multiAgentEnabled"/u);
     assert.match(html, new RegExp(WEBVIEW_I18N[locale].toolSettingsImplicitSubagentsLabel, "u"));
-    assert.notEqual(globalPanelIndex, -1);
+    assert.notEqual(aiTaskPanelIndex, -1);
     assert.notEqual(workspacePanelIndex, -1);
-    assert.ok(globalPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
+    assert.ok(aiTaskPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
     assert.doesNotMatch(html, /codexMultiAgentEnabled/u);
   }
 
   assert.equal(WEBVIEW_I18N.en.toolSettingsImplicitSubagentsLabel, "Implicit Subagents");
   assert.equal(WEBVIEW_I18N["zh-CN"].toolSettingsImplicitSubagentsLabel, "隐式子代理");
+  assert.equal(WEBVIEW_I18N.en.toolSettingsGeneralTab, "General");
+  assert.equal(WEBVIEW_I18N.en.toolSettingsAiTaskTab, "AI Task");
+  assert.equal(WEBVIEW_I18N["zh-CN"].toolSettingsGeneralTab, "常规配置");
+  assert.equal(WEBVIEW_I18N["zh-CN"].toolSettingsAiTaskTab, "AI任务配置");
   assert.match(WEBVIEW_I18N.en.toolSettingsImplicitSubagentsTitle, /^Global setting/u);
   assert.match(WEBVIEW_I18N["zh-CN"].toolSettingsImplicitSubagentsTitle, /全局设置/u);
 
@@ -97,16 +101,16 @@ test("renders one default-off global implicit-subagents setting and wires its pa
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.multiAgentEnabled/u);
 });
 
-test("renders default-on automatic compaction in the global settings panel", () => {
+test("renders default-on automatic compaction in the AI task settings panel", () => {
   for (const locale of ["en", "zh-CN"] as const) {
     const html = buildStaticHtml(locale);
-    const globalPanelIndex = html.indexOf('id="toolSettingsGlobalPanel"');
+    const aiTaskPanelIndex = html.indexOf('id="toolSettingsAiTaskPanel"');
     const workspacePanelIndex = html.indexOf('id="toolSettingsWorkspacePanel"');
     const settingIndex = html.indexOf('id="autoCompactContextAfterRun"');
     assert.match(html, new RegExp(WEBVIEW_I18N[locale].toolSettingsAutoCompactAfterRunLabel, "u"));
-    assert.notEqual(globalPanelIndex, -1);
+    assert.notEqual(aiTaskPanelIndex, -1);
     assert.notEqual(workspacePanelIndex, -1);
-    assert.ok(globalPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
+    assert.ok(aiTaskPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
   }
 
   assert.match(WEBVIEW_I18N.en.toolSettingsAutoCompactAfterRunTitle, /^Global setting/u);
@@ -116,18 +120,18 @@ test("renders default-on automatic compaction in the global settings panel", () 
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.autoCompactContextAfterRun/u);
 });
 
-test("renders default-on human interaction setting and dialog wiring", () => {
+test("renders default-on human interaction setting in the AI task panel and dialog wiring", () => {
   for (const locale of ["en", "zh-CN"] as const) {
     const html = buildStaticHtml(locale);
-    const globalPanelIndex = html.indexOf('id="toolSettingsGlobalPanel"');
+    const aiTaskPanelIndex = html.indexOf('id="toolSettingsAiTaskPanel"');
     const workspacePanelIndex = html.indexOf('id="toolSettingsWorkspacePanel"');
     const settingIndex = html.indexOf('id="humanInteractionEnabled"');
     const dialogIndex = html.indexOf('id="humanInteractionOverlay"');
     assert.match(html, new RegExp(WEBVIEW_I18N[locale].toolSettingsHumanInteractionLabel, "u"));
-    assert.notEqual(globalPanelIndex, -1);
+    assert.notEqual(aiTaskPanelIndex, -1);
     assert.notEqual(workspacePanelIndex, -1);
     assert.notEqual(dialogIndex, -1);
-    assert.ok(globalPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
+    assert.ok(aiTaskPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
   }
 
   assert.equal(WEBVIEW_I18N.en.toolSettingsHumanInteractionLabel, "Human Interaction");
@@ -186,13 +190,19 @@ test("renders human interaction option fields as radio controls", () => {
 
 test("lays out tool settings as compact masonry cards", () => {
   const html = buildStaticHtml("zh-CN");
-  const globalPanelStart = html.indexOf('id="toolSettingsGlobalPanel"');
+  const generalPanelStart = html.indexOf('id="toolSettingsGeneralPanel"');
+  const aiTaskPanelStart = html.indexOf('id="toolSettingsAiTaskPanel"');
   const workspacePanelStart = html.indexOf('id="toolSettingsWorkspacePanel"');
-  const firstCardStart = html.indexOf('class="tool-settings-card"', globalPanelStart);
+  const firstCardStart = html.indexOf('class="tool-settings-card"', generalPanelStart);
 
-  assert.notEqual(globalPanelStart, -1);
+  assert.notEqual(generalPanelStart, -1);
+  assert.notEqual(aiTaskPanelStart, -1);
   assert.notEqual(workspacePanelStart, -1);
-  assert.ok(firstCardStart > globalPanelStart && firstCardStart < workspacePanelStart);
+  assert.ok(firstCardStart > generalPanelStart && firstCardStart < aiTaskPanelStart);
+  assert.ok(html.indexOf('id="historyRetentionDays"') > generalPanelStart);
+  assert.ok(html.indexOf('id="historyRetentionDays"') < aiTaskPanelStart);
+  assert.ok(html.indexOf('id="multiAgentEnabled"') > aiTaskPanelStart);
+  assert.ok(html.indexOf('id="multiAgentEnabled"') < workspacePanelStart);
   assert.match(
     html,
     /class="tool-settings-card"[\s\S]*id="multiAgentEnabled"[\s\S]*class="tool-settings-note"/u,
