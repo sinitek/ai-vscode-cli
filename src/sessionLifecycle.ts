@@ -122,7 +122,7 @@ export function createSessionLifecycleController(deps: {
   legacyMessageDir: string;
   messageDirRoot: string;
   frozenThreadLimit: number;
-  historyRetentionDays: number;
+  historyRetentionDays: number | (() => number);
   legacySessionFile: string;
   localSessionPrefix: string;
   sessionDir: string;
@@ -327,7 +327,9 @@ export function createSessionLifecycleController(deps: {
     if (removedCount > 0) {
       deps.logInfo("session-history-retention-pruned", {
         workspace: workspaceKey,
-        retentionDays: deps.historyRetentionDays,
+        retentionDays: typeof deps.historyRetentionDays === "function"
+          ? deps.historyRetentionDays()
+          : deps.historyRetentionDays,
         removedCount,
         removedByCli: staleSessionIds,
       });

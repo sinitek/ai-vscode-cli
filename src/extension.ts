@@ -177,7 +177,7 @@ import {
   readSessionMeta,
   writeSessionMeta,
 } from "./interactive/metaStore";
-import { HISTORY_RETENTION_DAYS, isTimestampWithinHistoryRetention } from "./historyRetention";
+import { getHistoryRetentionDays, isTimestampWithinHistoryRetention } from "./historyRetention";
 import { isLocalSessionId } from "./interactive/sessionHistoryRepair";
 import {
   buildLoopSubtaskExecutionPlan,
@@ -791,7 +791,7 @@ function initializeSessionControllers(): void {
     legacyMessageDir: LEGACY_MESSAGE_DIR,
     messageDirRoot: MESSAGE_DIR_ROOT,
     frozenThreadLimit: FROZEN_THREAD_LIMIT,
-    historyRetentionDays: HISTORY_RETENTION_DAYS,
+    historyRetentionDays: getHistoryRetentionDays,
     legacySessionFile: LEGACY_SESSION_FILE,
     localSessionPrefix: LOCAL_SESSION_PREFIX,
     sessionDir: SESSION_DIR,
@@ -1270,6 +1270,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getGlobalAutoCompactContextAfterRun,
     getGlobalMultiAgentEnabled,
     getGlobalHumanInteractionEnabled,
+    getGlobalHistoryRetentionDays: getHistoryRetentionDays,
     getGlobalLoopMaxRounds,
     getGlobalLoopSubtaskMaxThinkingMode,
     buildWorkspaceLoopExecutionModeByCli,

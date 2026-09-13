@@ -81,7 +81,7 @@
 - 当前子任务批次最多 `LOOP_PARALLEL_SUBTASK_MAX = 6`。
 - 当前 Loop 最大主任务复核轮次由全局工具设置控制，默认 20；已有任务在恢复、继续或下一轮运行前可随全局设置上调而提升记录上限，但不会随全局设置降低而下调。
 - 当前子任务失败会 1 分钟后自动重试，最多 5 次。
-- 任务记录和沟通目录有 30 天保留清理。
+- 任务记录和沟通目录按全局 `historyRetentionDays` 保留清理（默认 30 天，范围 1–3650 天）。
 
 ### UI 约束
 
@@ -476,7 +476,7 @@ type LoopDebateRoundRecord = {
 
 保留策略：
 
-- 与现有 `loop-communications` 目录共用 30 天保留清理。
+- 与现有 `loop-communications` 目录共用全局 `historyRetentionDays` 保留清理。
 - 删除任务沟通目录时，辩论目录一起删除。
 
 ## 辩论参与者设计
@@ -883,7 +883,7 @@ type LoopModelRole = "main" | "subtask" | "debate";
 | 子任务执行 | 现有批次执行 | 完全复用 |
 | 并发冲突规划 | `loopParallel` | 完全复用 |
 | 最终完成判定 | `completed` + 独立问题回答结论气泡 + 含问题回答结论和整体总结的 final summary 气泡 | 相同，且要求共识无阻塞异议 |
-| 清理策略 | 30 天 | 相同 |
+| 清理策略 | 全局 `historyRetentionDays`（默认 30 天） | 相同 |
 
 ## 迁移策略
 

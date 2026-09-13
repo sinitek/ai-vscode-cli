@@ -257,6 +257,7 @@ export type PanelState = {
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
   humanInteractionEnabled: boolean;
+  historyRetentionDays: number;
   loopMaxRounds: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;

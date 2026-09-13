@@ -1,19 +1,27 @@
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setToolSettingsTab(scope) {
         const workspace = scope === "workspace";
+        const cleanup = scope === "cleanup";
         if (elements.toolSettingsGlobalTab) {
-          elements.toolSettingsGlobalTab.classList.toggle("active", !workspace);
-          elements.toolSettingsGlobalTab.setAttribute("aria-selected", workspace ? "false" : "true");
+          elements.toolSettingsGlobalTab.classList.toggle("active", !workspace && !cleanup);
+          elements.toolSettingsGlobalTab.setAttribute("aria-selected", !workspace && !cleanup ? "true" : "false");
         }
         if (elements.toolSettingsWorkspaceTab) {
           elements.toolSettingsWorkspaceTab.classList.toggle("active", workspace);
           elements.toolSettingsWorkspaceTab.setAttribute("aria-selected", workspace ? "true" : "false");
         }
+        if (elements.toolSettingsCleanupTab) {
+          elements.toolSettingsCleanupTab.classList.toggle("active", cleanup);
+          elements.toolSettingsCleanupTab.setAttribute("aria-selected", cleanup ? "true" : "false");
+        }
         if (elements.toolSettingsGlobalPanel) {
-          elements.toolSettingsGlobalPanel.classList.toggle("active", !workspace);
+          elements.toolSettingsGlobalPanel.classList.toggle("active", !workspace && !cleanup);
         }
         if (elements.toolSettingsWorkspacePanel) {
           elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
+        }
+        if (elements.toolSettingsCleanupPanel) {
+          elements.toolSettingsCleanupPanel.classList.toggle("active", cleanup);
         }
       }
 
@@ -108,6 +116,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       if (elements.toolSettingsWorkspaceTab) {
         elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
       }
+      if (elements.toolSettingsCleanupTab) {
+        elements.toolSettingsCleanupTab.addEventListener("click", () => setToolSettingsTab("cleanup"));
+      }
       if (elements.autoCompactContextAfterRun) {
         elements.autoCompactContextAfterRun.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
@@ -166,6 +177,17 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
             value: nextValue,
           });
         });
+      }
+      if (elements.historyRetentionDays) {
+        const commitHistoryRetentionDays = () => {
+          const raw = Number(elements.historyRetentionDays.value);
+          const nextValue = Number.isFinite(raw) ? Math.min(Math.max(Math.floor(raw), 1), 3650) : 30;
+          state.historyRetentionDays = nextValue;
+          elements.historyRetentionDays.value = String(nextValue);
+          vscode.postMessage({ type: "updateSetting", key: "historyRetentionDays", value: nextValue });
+        };
+        elements.historyRetentionDays.addEventListener("change", commitHistoryRetentionDays);
+        elements.historyRetentionDays.addEventListener("blur", commitHistoryRetentionDays);
       }
       if (elements.languageSelect) {
         elements.languageSelect.addEventListener("change", (event) => {

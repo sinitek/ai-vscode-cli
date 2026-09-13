@@ -7,6 +7,7 @@ import {
   resolveGlobalHumanInteractionEnabled,
   resolveGlobalMultiAgentEnabled,
   resolveLongTermMemoryEnabled,
+  normalizeHistoryRetentionDays,
   type ToolSettingsState,
 } from "../../toolSettings";
 import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
@@ -180,6 +181,16 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({ loopSubtaskMaxThinkingMode: "ultra" }),
     { loopSubtaskMaxThinkingMode: "xhigh" },
   );
+});
+
+test("normalizes global automatic-cleanup retention days", () => {
+  assert.deepEqual(normalizeToolSettings({ historyRetentionDays: "45.9" }), {
+    historyRetentionDays: 45,
+  });
+  assert.equal(normalizeHistoryRetentionDays(0), 1);
+  assert.equal(normalizeHistoryRetentionDays(99999), 3650);
+  assert.equal(normalizeHistoryRetentionDays("invalid"), 30);
+  assert.deepEqual(normalizeToolSettings({ historyRetentionDays: "" }), {});
 });
 
 test("migrates legacy Loop tool-setting keys and prefers current values", () => {

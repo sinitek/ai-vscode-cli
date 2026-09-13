@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { getHistoryRetentionCutoff, HISTORY_RETENTION_DAYS } from "./historyRetention";
+import { getHistoryRetentionCutoff, getHistoryRetentionDays } from "./historyRetention";
 
 let logsDirPath: string | undefined;
 let debugLoggingEnabled = false;
@@ -289,7 +289,7 @@ async function pruneExpiredLogs(dirPath: string): Promise<void> {
   if (removed > 0) {
     await appendLog("DEBUG", "logs-retention-pruned", {
       removed,
-      retentionDays: HISTORY_RETENTION_DAYS,
+      retentionDays: getHistoryRetentionDays(),
     });
   }
 }

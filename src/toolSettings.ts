@@ -10,6 +10,10 @@ import {
 
 export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 
+export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
+export const HISTORY_RETENTION_DAYS_MIN = 1;
+export const HISTORY_RETENTION_DAYS_MAX = 3650;
+
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
@@ -18,6 +22,8 @@ export type ToolSettingsState = {
   humanInteractionEnabled?: boolean;
   loopMaxRounds?: number;
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
+  /** Global retention period for plugin-managed history artifacts. */
+  historyRetentionDays?: number;
   locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
@@ -70,6 +76,14 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.humanInteractionEnabled === "boolean") {
     normalized.humanInteractionEnabled = record.humanInteractionEnabled;
   }
+  if (typeof record.historyRetentionDays === "number" || typeof record.historyRetentionDays === "string") {
+    const parsed = typeof record.historyRetentionDays === "number"
+      ? record.historyRetentionDays
+      : (record.historyRetentionDays.trim() ? Number(record.historyRetentionDays) : Number.NaN);
+    if (Number.isFinite(parsed)) {
+      normalized.historyRetentionDays = normalizeHistoryRetentionDays(parsed);
+    }
+  }
   if (typeof record.loopMaxRounds === "number" || typeof record.loopMaxRounds === "string") {
     const parsed = typeof record.loopMaxRounds === "number"
       ? record.loopMaxRounds
@@ -106,6 +120,19 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     normalized.memoryAutoExtractAfterLoopTask = record.memoryAutoExtractAfterLoopTask;
   }
   return normalized;
+}
+
+export function normalizeHistoryRetentionDays(value: unknown): number {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return HISTORY_RETENTION_DAYS_DEFAULT;
+  }
+  return Math.min(
+    Math.max(Math.floor(numeric), HISTORY_RETENTION_DAYS_MIN),
+    HISTORY_RETENTION_DAYS_MAX,
+  );
 }
 
 export function resolveGlobalMultiAgentEnabled(

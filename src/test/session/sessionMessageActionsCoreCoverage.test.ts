@@ -335,6 +335,13 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
   assert.equal(calls.postPanelState, 10);
 });
 
+test("persists automatic-cleanup retention days as a global setting", async () => {
+  const { deps, calls } = createSettingHarness();
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "historyRetentionDays", value: "45.9" }, deps);
+  assert.deepEqual(calls.toolSettings, [{ historyRetentionDays: 45 }]);
+  assert.equal(calls.postPanelState, 1);
+});
+
 test("retains workspace setting fallbacks when global persistence rejects the update", async () => {
   const { deps, calls, state } = createSettingHarness();
   state.workspaceSettings = {

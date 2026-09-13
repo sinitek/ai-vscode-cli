@@ -3,6 +3,7 @@ import { normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
+import { normalizeHistoryRetentionDays } from "./toolSettings";
 import { PanelMessage } from "./webview/types";
 import {
   type PanelMessageHandlerDeps,
@@ -144,6 +145,11 @@ export async function handleUpdateSettingMessage(
     if (loopSubtaskMaxThinkingMode) {
       deps.updateStoredToolSettings({ loopSubtaskMaxThinkingMode });
     }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "historyRetentionDays") {
+    deps.updateStoredToolSettings({ historyRetentionDays: normalizeHistoryRetentionDays(message.value) });
     await deps.postPanelState();
     return;
   }

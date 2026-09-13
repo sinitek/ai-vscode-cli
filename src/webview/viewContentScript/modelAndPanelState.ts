@@ -476,6 +476,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.humanInteractionEnabled) {
           elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;
         }
+        state.historyRetentionDays = Number.isFinite(Number(panelState.historyRetentionDays))
+          ? Math.min(Math.max(Math.floor(Number(panelState.historyRetentionDays)), 1), 3650)
+          : 30;
+        if (elements.historyRetentionDays) {
+          elements.historyRetentionDays.value = String(state.historyRetentionDays);
+        }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);
         }

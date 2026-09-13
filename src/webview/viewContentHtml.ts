@@ -364,6 +364,7 @@ ${webviewStyles}    </style>
           <div class="tool-settings-tabs" role="tablist" aria-label="${i18n.toolSettingsTitle}">
             <button id="toolSettingsGlobalTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGlobalPanel">${i18n.toolSettingsGlobalTab}</button>
             <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
+            <button id="toolSettingsCleanupTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsCleanupPanel">${i18n.toolSettingsCleanupTab}</button>
           </div>
           <div class="tool-settings-body">
             <div id="toolSettingsGlobalPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGlobalTab">
@@ -477,6 +478,15 @@ ${webviewStyles}    </style>
                   </button>
                 </div>
                 <div class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
+              </section>
+            </div>
+            <div id="toolSettingsCleanupPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsCleanupTab">
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsHistoryRetentionDaysLabel}</div>
+                  <input type="number" id="historyRetentionDays" class="tool-settings-number" min="1" max="3650" step="1" title="${i18n.toolSettingsHistoryRetentionDaysTitle}" aria-label="${i18n.toolSettingsHistoryRetentionDaysLabel}" />
+                </div>
+                <div class="tool-settings-note">${i18n.toolSettingsHistoryRetentionDaysHint}</div>
               </section>
             </div>
           </div>

@@ -931,6 +931,11 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("toolSettingsOverlay").classList.contains("visible"), true);
   document.getElementById("toolSettingsWorkspaceTab").click();
   assert.equal(document.getElementById("toolSettingsWorkspacePanel").classList.contains("active"), true);
+  document.getElementById("toolSettingsCleanupTab").click();
+  assert.equal(document.getElementById("toolSettingsCleanupPanel").classList.contains("active"), true);
+  document.getElementById("historyRetentionDays").value = "0";
+  document.getElementById("historyRetentionDays").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "historyRetentionDays", value: 1 });
   document.getElementById("installCodeGraph").click();
   assert.deepEqual(posted.at(-1), { type: "installCodeGraph" });
   document.getElementById("loopMaxRounds").value = "0";

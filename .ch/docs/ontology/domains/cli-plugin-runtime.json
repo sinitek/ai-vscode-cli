@@ -79,6 +79,19 @@
       ]
     },
     {
+      "id": "plugin.history_retention_settings",
+      "name": "历史自动清理设置",
+      "kind": "configuration",
+      "description": "工具设置中的全局历史保留期限，控制插件在 ~/.sinitek_cli 下管理的日志、会话、提示词历史、任务和 Loop 记录清理边界；默认 30 天，范围 1–3650 天。",
+      "status": "active",
+      "aliases": ["自动清理", "historyRetentionDays", "保留天数"],
+      "implementation_paths": ["src/toolSettings.ts", "src/historyRetention.ts", "src/webview/viewContentHtml.ts", "src/sessionMessageActions.ts"],
+      "source_refs": [
+        {"path": "src/historyRetention.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "日志保留与临时文件清理"}
+      ]
+    },
+    {
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
@@ -149,6 +162,20 @@
       "to": "plugin.local_cli",
       "cardinality": "N:N",
       "source_refs": [{"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}]
+    },
+    {
+      "id": "plugin.relation.retention_settings_govern_local_history",
+      "name": "自动清理设置约束本地历史",
+      "description": "全局历史保留天数由工具设置持久化，并被日志、会话、提示词历史、任务和 Loop 清理逻辑读取。",
+      "status": "active",
+      "from": "plugin.history_retention_settings",
+      "type": "governs",
+      "to": "plugin.cli_session",
+      "cardinality": "1:N",
+      "source_refs": [
+        {"path": "src/historyRetention.ts"},
+        {"path": "src/extension.ts", "anchor": "scheduleHistoryArtifactRetentionCleanup"}
+      ]
     },
     {
       "id": "plugin.relation.loop_executes_cli",
@@ -234,6 +261,17 @@
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.loop_task", "plugin.config_profile"],
       "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "基础本地资源层"}]
+    },
+    {
+      "id": "plugin.rule.history_retention_is_global_and_bounded",
+      "name": "历史自动清理期限为有界全局配置",
+      "description": "历史保留天数保存在 ~/.sinitek_cli/settings.json，默认 30 天，归一化范围为 1–3650 天；临时目录独立的 1 小时清理策略不受该设置影响。",
+      "status": "active",
+      "applies_to": ["plugin.history_retention_settings", "plugin.cli_session", "plugin.loop_task"],
+      "source_refs": [
+        {"path": "src/toolSettings.ts"},
+        {"path": "src/webview/panelFileActions.ts"}
+      ]
     },
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
