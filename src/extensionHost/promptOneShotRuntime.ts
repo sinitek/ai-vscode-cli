@@ -1041,6 +1041,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           appendCompletionMessage("error");
           persistActiveMessages();
           clearActiveRun();
+          if (input.throwOnError) {
+            throw new Error(userMessageText);
+          }
           return;
         }
         sendRunStatus("end");
@@ -1084,6 +1087,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         continue;
       }
 
+      let userMessageForThrow = retryFailureMessage;
       if (attemptResult.type === "error") {
         const error = attemptResult.error;
         const errnoError = error as NodeJS.ErrnoException;
@@ -1099,6 +1103,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           lastFailureMessage: rawUserMessage,
           lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
         });
+        userMessageForThrow = userMessage;
         if (isNotFound) {
           showCliCommandNotFoundError(userMessage, runCli);
         }
@@ -1122,6 +1127,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           lastFailureMessage: finalFailureMessage,
           lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
         });
+        userMessageForThrow = userMessage;
         void logError("runPrompt-opencode-final-failure", {
           cli: runCli,
           code: attemptResult.code,
@@ -1140,6 +1146,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       appendCompletionMessage("error");
       persistActiveMessages();
       clearActiveRun();
+      if (input.throwOnError) {
+        throw new Error(userMessageForThrow);
+      }
       return;
     }
   }

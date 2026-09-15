@@ -278,6 +278,19 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         height: 22px;
       }
 
+      .schedule-task-button {
+        color: var(--vscode-foreground);
+        background: color-mix(in srgb, #c5a24a 38%, var(--vscode-button-secondaryBackground));
+        border-color: color-mix(in srgb, #c5a24a 82%, var(--vscode-widget-border));
+        opacity: 1;
+      }
+      .schedule-task-button:hover {
+        color: var(--vscode-foreground);
+        background: color-mix(in srgb, #c5a24a 38%, var(--vscode-button-secondaryBackground));
+        border-color: color-mix(in srgb, #c5a24a 82%, var(--vscode-widget-border));
+        opacity: 1;
+      }
+
       /* Buttons */
       button {
         display: inline-flex;

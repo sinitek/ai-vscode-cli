@@ -224,6 +224,31 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               appendMessage({ id: createMessageId(), role: "system", content: data.error });
             }
           }
+          if (data.type === "scheduledTaskSaved") {
+            if (elements.saveScheduledTask) {
+              elements.saveScheduledTask.disabled = false;
+            }
+            if (data.error) {
+              setScheduledTaskError(String(data.error));
+            } else {
+              showToast(t("scheduledTaskSaved"));
+              if (elements.promptInput && elements.scheduledTaskPrompt && elements.promptInput.value === elements.scheduledTaskPrompt.value) {
+                elements.promptInput.value = "";
+              }
+              if (elements.scheduledTaskPrompt) {
+                elements.scheduledTaskPrompt.value = "";
+              }
+              if (elements.scheduledTaskTime) {
+                elements.scheduledTaskTime.value = getDefaultScheduledTaskTime();
+              }
+              scheduledTaskFiles = [];
+              if (elements.scheduledTaskAttachmentInput) {
+                elements.scheduledTaskAttachmentInput.value = "";
+              }
+              renderScheduledTaskAttachments();
+              setScheduledTaskError("");
+            }
+          }
           if (data.type === "dropPathsResult") {
             const insertText = buildInsertText(data.paths);
             if (insertText) {

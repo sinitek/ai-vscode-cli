@@ -1073,6 +1073,9 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           appendMessageToStore(currentMessageTarget, completionMessage);
           sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
           persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
+          if (input.throwOnError) {
+            throw new Error(userMessageText);
+          }
           return;
         }
         parallelRunsByTabId.delete(target.tabId);
@@ -1173,6 +1176,9 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       appendMessageToStore(failureMessageTarget, completionMessage);
       sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
       persistMessagesForTab(runCli, sessionId, target.tabId, failureMessageTarget);
+      if (input.throwOnError) {
+        throw new Error(userMessageText);
+      }
       return;
     }
   }

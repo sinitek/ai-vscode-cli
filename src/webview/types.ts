@@ -75,6 +75,23 @@ export type PanelMessage =
       preserveActiveTab?: boolean;
       skipPromptHistory?: boolean;
     }
+  | {
+      type: "scheduleTask";
+      prompt: string;
+      scheduledAt: number;
+      tabId?: string | null;
+      cli?: CliName;
+      interactiveMode?: InteractiveMode;
+      contextOptions?: PromptContextOptions;
+      model?: string;
+      loopMainModel?: string;
+      loopSubtaskModel?: string;
+      loopMainThinkingMode?: ThinkingMode;
+      loopSubtaskThinkingMode?: ThinkingMode;
+      loopExecutionMode?: LoopExecutionMode;
+      files?: UploadFilePayload[];
+    }
+  | { type: "deleteScheduledTask"; id: string }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
@@ -118,6 +135,48 @@ export type UploadFilePayload = {
   name: string;
   type: string;
   dataUrl: string;
+};
+
+export type ScheduledTaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export type ScheduledTaskAttachment = {
+  name: string;
+  path: string;
+};
+
+export type ScheduledTaskRecord = {
+  id: string;
+  prompt: string;
+  scheduledAt: number;
+  createdAt: number;
+  updatedAt: number;
+  cli: CliName;
+  tabId: string | null;
+  workspaceKey: string;
+  status: ScheduledTaskStatus;
+  interactiveMode?: InteractiveMode;
+  contextOptions?: PromptContextOptions;
+  model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
+  loopMainThinkingMode?: ThinkingMode;
+  loopSubtaskThinkingMode?: ThinkingMode;
+  loopExecutionMode?: LoopExecutionMode;
+  attachments: ScheduledTaskAttachment[];
+  executedAt?: number;
+  lastError?: string;
+};
+
+export type ScheduledTaskSummary = {
+  id: string;
+  prompt: string;
+  scheduledAt: number;
+  createdAt: number;
+  cli: CliName;
+  status: ScheduledTaskStatus;
+  attachmentNames: string[];
+  executedAt?: number;
+  lastError?: string;
 };
 
 export type PromptContextOptions = {
@@ -287,6 +346,7 @@ export type PanelState = {
     tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];
+  scheduledTasks: ScheduledTaskSummary[];
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;

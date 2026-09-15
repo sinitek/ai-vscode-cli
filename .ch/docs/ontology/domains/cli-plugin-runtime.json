@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-13",
+  "as_of": "2026-09-15",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -117,6 +117,34 @@
         {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
+    },
+    {
+      "id": "plugin.scheduled_task",
+      "name": "AI 对话定时任务",
+      "kind": "aggregate",
+      "description": "由 AI 对话面板创建的一次性提示词执行记录，绑定工作区、CLI、对话 Tab 和可选执行配置；到期后由扩展宿主调度，并按目标 CLI 当时的 interactiveMode（如 loop 或 graph）选择执行链，状态按 pending、running、completed、failed、cancelled 流转，扩展重启时 running 恢复为 pending。",
+      "status": "active",
+      "aliases": ["定时任务", "scheduled task", "schedule prompt"],
+      "lifecycle": ["pending", "running", "completed", "failed", "cancelled"],
+      "implementation_paths": ["src/scheduledTaskStore.ts", "src/extension.ts", "src/sessionMessageHandlers.ts", "src/webview/viewContentScript/settingsAndOverlays.ts"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"}
+      ]
+    },
+    {
+      "id": "plugin.scheduled_attachment",
+      "name": "定时任务附件",
+      "kind": "value_object",
+      "description": "定时任务保存时上传并复制到独立持久化目录的附件引用，避免依赖约一小时生命周期的普通临时上传文件。",
+      "status": "active",
+      "aliases": ["scheduled attachment", "定时附件"],
+      "implementation_paths": ["src/webview/panelFileActions.ts", "src/scheduledTaskStore.ts"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"},
+        {"path": "src/webview/panelFileActions.ts", "anchor": "saveScheduledTaskAttachments"}
+      ]
     }
   ],
   "relations": [
@@ -199,6 +227,57 @@
       "to": "plugin.local_cli",
       "cardinality": "N:N",
       "source_refs": [{"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}]
+    },
+    {
+      "id": "plugin.relation.panel_creates_scheduled_task",
+      "name": "对话面板创建定时任务",
+      "description": "用户从发送区左侧的定时入口填写时间、提示词和附件后，由 Webview 发送协议消息，扩展宿主校验并持久化一次性任务。",
+      "status": "active",
+      "from": "plugin.chat_panel",
+      "type": "produces",
+      "to": "plugin.scheduled_task",
+      "cardinality": "1:N",
+      "source_refs": [
+        {"path": "src/webview/viewContentHtml.ts", "anchor": "scheduleTaskButton"},
+        {"path": "src/sessionMessageHandlers.ts", "anchor": "scheduleTask"}
+      ]
+    },
+    {
+      "id": "plugin.relation.scheduled_task_executes_cli",
+      "name": "定时任务执行本地 CLI",
+      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按目标 CLI 当时的 interactiveMode（如 loop 或 graph）复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 子模式同样读取执行时配置。",
+      "status": "active",
+      "from": "plugin.scheduled_task",
+      "type": "executes",
+      "to": "plugin.local_cli",
+      "cardinality": "N:N",
+      "source_refs": [
+        {"path": "src/scheduledTaskStore.ts", "anchor": "ScheduledTaskScheduler"},
+        {"path": "src/extension.ts", "anchor": "executeScheduledTask"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"}
+      ]
+    },
+    {
+      "id": "plugin.relation.scheduled_task_targets_session",
+      "name": "定时任务绑定对话 Tab",
+      "description": "任务保存当前对话 Tab；执行时若 Tab 已关闭或 CLI 不一致，扩展宿主创建对应 CLI 的新 Tab 作为执行目标。",
+      "status": "active",
+      "from": "plugin.scheduled_task",
+      "type": "references",
+      "to": "plugin.cli_session",
+      "cardinality": "N:1",
+      "source_refs": [{"path": "src/extension.ts", "anchor": "ensureScheduledTaskTargetTab"}]
+    },
+    {
+      "id": "plugin.relation.scheduled_task_contains_attachment",
+      "name": "定时任务包含附件",
+      "description": "任务记录保存独立附件的名称和路径引用，执行时将这些引用附加到提示词供 CLI 读取，删除任务时清理附件目录。",
+      "status": "active",
+      "from": "plugin.scheduled_task",
+      "type": "contains",
+      "to": "plugin.scheduled_attachment",
+      "cardinality": "1:N",
+      "source_refs": [{"path": "src/webview/panelFileActions.ts", "anchor": "saveScheduledTaskAttachments"}]
     }
   ],
   "rules": [
@@ -260,7 +339,7 @@
       "name": "本地状态边界明确",
       "description": "运行时状态、Loop 任务和外部 CLI 配置属于本地资源层，不应混入 UI 组件或业务编排细节。",
       "status": "active",
-      "applies_to": ["plugin.cli_session", "plugin.loop_task", "plugin.config_profile"],
+      "applies_to": ["plugin.cli_session", "plugin.loop_task", "plugin.scheduled_task", "plugin.config_profile"],
       "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "基础本地资源层"}]
     },
     {
@@ -313,6 +392,39 @@
         {"path": "src/webview/viewContentScript/modelAndPanelState.ts", "anchor": "reconcilePendingOpenCodeRoleSelection"},
         {"path": "src/sessionMessageHandlers.ts", "anchor": "handlePanelMessageWithDeps"},
         {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "OpenCode 模型选择消息必须绑定配置 ID"}
+      ]
+    },
+    {
+      "id": "plugin.rule.scheduled_task_one_shot_lifecycle",
+      "name": "定时任务只执行一次并记录终态",
+      "description": "定时任务不支持 cron 或重复执行；到期后从 pending 进入 running，成功记录 completed，执行异常记录 failed 和错误文本，running 任务在扩展重启后降级为 pending 以便重试。",
+      "status": "active",
+      "applies_to": ["plugin.scheduled_task", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md"},
+        {"path": "src/scheduledTaskStore.ts", "anchor": "normalizeStatus"}
+      ]
+    },
+    {
+      "id": "plugin.rule.scheduled_task_workspace_isolated",
+      "name": "定时任务按工作区隔离调度",
+      "description": "调度器只执行 workspaceKey 与当前工作区一致的 pending 任务；面板只展示当前工作区任务，避免跨工作区误执行或泄露提示词与附件引用。",
+      "status": "active",
+      "applies_to": ["plugin.scheduled_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": "src/scheduledTaskStore.ts", "anchor": "getWorkspaceKey"},
+        {"path": "src/extension.ts", "anchor": "buildScheduledTasksState"}
+      ]
+    },
+    {
+      "id": "plugin.rule.scheduled_task_attachment_persistence",
+      "name": "定时任务附件独立持久化",
+      "description": "定时任务附件复制到 ~/.sinitek_cli/scheduled-attachments/<taskId>/，不复用普通上传临时目录；附件数量和单文件大小沿用上传限制，任务删除时递归清理对应目录。",
+      "status": "active",
+      "applies_to": ["plugin.scheduled_task", "plugin.scheduled_attachment", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/webview/panelFileActions.ts", "anchor": "SCHEDULED_ATTACHMENT_DIR"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"}
       ]
     }
   ]

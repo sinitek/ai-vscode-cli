@@ -8,6 +8,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
           elements.commonCommandButton,
           elements.pathPickerButton,
           elements.attachmentButton,
+          elements.scheduleTaskButton,
           elements.historyButton,
         ].filter(Boolean).forEach((element) => {
           element.addEventListener("keydown", (event) => {

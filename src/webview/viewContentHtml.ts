@@ -233,6 +233,14 @@ ${webviewStyles}    </style>
               <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
               <path d="M12 8.2v4.2l2.8 1.9" />
             </svg>
+            <button id="scheduleTaskButton" class="icon-button schedule-task-button" title="${i18n.scheduleTaskButton}" aria-label="${i18n.scheduleTaskButton}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="13" r="7.5" />
+                <path d="M12 9v4l2.5 1.5" />
+                <path d="M9 3h6" />
+                <path d="M12 3v2" />
+              </svg>
+            </button>
             <button id="sendPrompt" class="icon-button send-icon-button" title="${i18n.sendButton}" aria-label="${i18n.sendButton}">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 2L11 13" />
@@ -307,6 +315,41 @@ ${webviewStyles}    </style>
         </div>
       </div>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <div id="scheduledTaskOverlay" class="overlay">
+        <div class="modal scheduled-task-modal" role="dialog" aria-modal="true" aria-labelledby="scheduledTaskTitle">
+          <div class="modal-header">
+            <div id="scheduledTaskTitle" class="title">${i18n.scheduledTaskTitle}</div>
+            <button id="closeScheduledTask" class="secondary icon-button" title="${i18n.scheduledTaskClose}" aria-label="${i18n.scheduledTaskClose}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="scheduled-task-body">
+            <div class="scheduled-task-field">
+              <label for="scheduledTaskTime">${i18n.scheduledTaskTimeLabel}</label>
+              <input id="scheduledTaskTime" class="scheduled-task-input" type="datetime-local" />
+            </div>
+            <div class="scheduled-task-field">
+              <label for="scheduledTaskPrompt">${i18n.scheduledTaskPromptLabel}</label>
+              <textarea id="scheduledTaskPrompt" class="scheduled-task-prompt" rows="5" placeholder="${i18n.scheduledTaskPromptPlaceholder}"></textarea>
+            </div>
+            <div class="scheduled-task-field">
+              <label for="scheduledTaskAttachmentInput">${i18n.scheduledTaskAttachmentsLabel}</label>
+              <input id="scheduledTaskAttachmentInput" class="scheduled-task-file-input" type="file" multiple />
+              <div id="scheduledTaskAttachments" class="scheduled-task-attachments"></div>
+            </div>
+            <div id="scheduledTaskError" class="scheduled-task-error" role="alert" style="display: none;"></div>
+            <div class="scheduled-task-actions">
+              <button id="saveScheduledTask" class="action-button">${i18n.scheduledTaskSave}</button>
+            </div>
+            <div class="scheduled-task-list-heading">${i18n.scheduledTaskManageTitle}</div>
+            <div id="scheduledTaskList" class="scheduled-task-list"></div>
+          </div>
+        </div>
+      </div>
 
       <div id="rulesOverlay" class="overlay">
         <div class="modal rules-modal">

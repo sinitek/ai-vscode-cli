@@ -343,6 +343,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
+        state.scheduledTasks = Array.isArray(panelState.scheduledTasks) ? panelState.scheduledTasks : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         const configs = Array.isArray(state.configState.configs)
           ? state.configState.configs
@@ -511,6 +512,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         syncOpenCurrentGraphRunButton();
         renderSessionList();
         renderPromptHistoryList();
+        renderScheduledTaskList();
         applyEditorContext(panelState.editorContext);
         newlyCompletedLoopTabIds.forEach((tabId) => {
           flushPendingPromptQueue(tabId);

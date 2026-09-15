@@ -22,6 +22,7 @@ import {
   ConversationTabSummary,
   PromptContextOptions,
   PromptHistoryItem,
+  ScheduledTaskSummary,
   SessionSummary,
 } from "./webview/types";
 import {
@@ -124,6 +125,7 @@ export type PanelStateBuilderDeps = {
   buildSessionState: (cli: CliName) => { currentSessionId: string | null; sessions: SessionSummary[] };
   buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
   buildPromptHistoryState: () => PromptHistoryItem[];
+  buildScheduledTasksState?: () => ScheduledTaskSummary[];
   buildModelState: (activeConfigIdByCli?: Partial<Record<CliName, string | null>>) => PanelState["modelState"];
   buildEditorContextState: () => EditorContextState;
   resolveModelConfigIdForCli: (cli: CliName, configState?: PanelState["configState"]) => string | null;
@@ -223,6 +225,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     sessionState: deps.buildSessionState(deps.currentCli),
     conversationTabs: deps.buildConversationTabsState(),
     promptHistory: deps.buildPromptHistoryState(),
+    scheduledTasks: deps.buildScheduledTasksState?.() ?? [],
     configState: deps.configState,
     modelState: deps.buildModelState(activeConfigIdByCli),
     editorContext: deps.buildEditorContextState(),

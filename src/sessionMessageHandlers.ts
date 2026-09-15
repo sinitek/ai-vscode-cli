@@ -177,6 +177,10 @@ export type PanelMessageHandlerDeps = {
   resolveLoopResumeTaskFromPrompt: (prompt: string, tabId: string | null) => LoopTaskRecord | null;
   isLoopResumePrompt: (prompt: string) => boolean;
   stopRunForTab: (tabId: string | null) => void;
+  schedulePromptTask?: (
+    message: Extract<PanelMessage, { type: "scheduleTask" }>
+  ) => Promise<{ task?: import("./webview/types").ScheduledTaskSummary; error?: string }>;
+  deleteScheduledTask?: (id: string) => boolean;
 };
 
 export async function handlePanelMessageWithDeps(message: PanelMessage, deps: PanelMessageHandlerDeps): Promise<void> {
@@ -269,6 +273,8 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     resolveLoopResumeTaskFromPrompt,
     isLoopResumePrompt,
     stopRunForTab,
+    schedulePromptTask,
+    deleteScheduledTask,
   } = deps;
   const currentCliRef = { get value(): CliName { return getCurrentCli(); }, set value(cli: CliName) { setCurrentCliValue(cli); } };
   const workspaceSettingsRef = { get value(): WorkspaceSettings { return getWorkspaceSettings(); } };
@@ -862,6 +868,28 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     const targetCli = messageCli ?? deps.getActiveConversationTab()?.cli ?? deps.getCurrentCli();
     deps.recordPromptHistory(prompt, targetCli);
     await deps.postPanelState();
+    return;
+  }
+
+  if (message.type === "scheduleTask") {
+    const result = schedulePromptTask
+      ? await schedulePromptTask(message)
+      : { error: t("scheduledTaskUnavailable") };
+    viewProviderRef.postMessage({
+      type: "scheduledTaskSaved",
+      ...(result.task ? { task: result.task } : {}),
+      ...(result.error ? { error: result.error } : {}),
+    });
+    await postPanelState();
+    return;
+  }
+
+  if (message.type === "deleteScheduledTask") {
+    const id = typeof message.id === "string" ? message.id.trim() : "";
+    if (!id || !deleteScheduledTask?.(id)) {
+      return;
+    }
+    await postPanelState();
     return;
   }
 

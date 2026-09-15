@@ -18,6 +18,11 @@ export type UploadedFilesResult = {
   error?: string;
 };
 
+export type ScheduledTaskAttachmentsResult = {
+  attachments: Array<{ name: string; path: string }>;
+  error?: string;
+};
+
 export type RunStreamExportRecord = {
   index: number;
   content: string;
@@ -46,6 +51,7 @@ export type ExportSessionHistoryMessagesOptions = {
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const TEMP_DIR = path.join(DATA_DIR, "temp");
+const SCHEDULED_ATTACHMENT_DIR = path.join(DATA_DIR, "scheduled-attachments");
 const TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
 const TEMP_CLEAN_INTERVAL_MS = 15 * 60 * 1000;
 const TEMP_FILE_RANDOM_LENGTH = 8;
@@ -216,6 +222,61 @@ export async function saveUploadedFiles(files: UploadFilePayload[]): Promise<Upl
   } catch (error) {
     void logError("save-uploaded-files-failed", error);
     return { paths: savedPaths, error: t("upload.saveError") };
+  }
+}
+
+function sanitizeAttachmentSegment(value: string, fallback: string): string {
+  const normalized = value.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^\.+/, "");
+  return normalized || fallback;
+}
+
+export async function saveScheduledTaskAttachments(
+  taskId: string,
+  files: UploadFilePayload[],
+): Promise<ScheduledTaskAttachmentsResult> {
+  if (!Array.isArray(files) || files.length === 0) {
+    return { attachments: [] };
+  }
+  if (files.length > UPLOAD_MAX_FILES) {
+    return { attachments: [], error: buildTooManyFilesError(files.length) };
+  }
+  const safeTaskId = sanitizeAttachmentSegment(taskId, "task");
+  const taskDir = path.join(SCHEDULED_ATTACHMENT_DIR, safeTaskId);
+  const attachments: Array<{ name: string; path: string }> = [];
+  try {
+    const decodedFiles: Array<{ name: string; buffer: Buffer }> = [];
+    for (const file of files) {
+      const buffer = decodeDataUrl(file.dataUrl);
+      if (!buffer) {
+        return { attachments: [], error: t("upload.parseError") };
+      }
+      if (buffer.byteLength > UPLOAD_MAX_FILE_BYTES) {
+        return { attachments: [], error: buildFileTooLargeError(file.name, buffer.byteLength) };
+      }
+      decodedFiles.push({
+        name: sanitizeAttachmentSegment(path.basename(file.name || "file"), "file"),
+        buffer,
+      });
+    }
+    await fs.promises.mkdir(taskDir, { recursive: true });
+    for (const file of decodedFiles) {
+      const targetPath = path.join(taskDir, `${Date.now()}_${Math.random().toString(16).slice(2, 10)}_${file.name}`);
+      await fs.promises.writeFile(targetPath, file.buffer);
+      attachments.push({ name: file.name, path: targetPath });
+    }
+    return { attachments };
+  } catch (error) {
+    void logError("save-scheduled-task-attachments-failed", { taskId, error: String(error) });
+    return { attachments, error: t("upload.saveError") };
+  }
+}
+
+export function removeScheduledTaskAttachments(taskId: string): void {
+  const safeTaskId = sanitizeAttachmentSegment(taskId, "task");
+  try {
+    fs.rmSync(path.join(SCHEDULED_ATTACHMENT_DIR, safeTaskId), { recursive: true, force: true });
+  } catch (error) {
+    void logError("remove-scheduled-task-attachments-failed", { taskId, error: String(error) });
   }
 }
 

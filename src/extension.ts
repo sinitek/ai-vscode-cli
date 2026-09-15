@@ -86,6 +86,8 @@ import {
   ensureTempDir,
   exportRunStreamRecordsToTxt,
   exportSessionHistoryMessagesToTxt,
+  removeScheduledTaskAttachments,
+  saveScheduledTaskAttachments,
   saveUploadedFiles,
   startTempCleanup,
 } from "./webview/panelFileActions";
@@ -98,6 +100,7 @@ import {
   PromptContextOptions,
   ConversationTabSummary,
   PromptHistoryItem,
+  ScheduledTaskRecord,
   SessionSummary,
 } from "./webview/types";
 import {
@@ -443,6 +446,17 @@ import {
   type WorkspaceSettings,
 } from "./workspaceSettingsStore";
 import { handlePanelMessageWithDeps } from "./sessionMessageHandlers";
+import {
+  buildScheduledTaskSummaries,
+  createScheduledTaskRecord,
+  readScheduledTaskStore,
+  removeScheduledTask,
+  resolveScheduledTaskExecutionConfig,
+  ScheduledTaskScheduler,
+  SCHEDULED_TASK_MAX_COUNT,
+  upsertScheduledTask,
+  writeScheduledTaskStore,
+} from "./scheduledTaskStore";
 import { registerExtensionCommands } from "./commandRegistry";
 import {
   buildEditorContextState,
@@ -638,6 +652,7 @@ const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
+let scheduledTaskScheduler: ScheduledTaskScheduler | null = null;
 const SESSION_STORE_KEY = "sessionStore";
 const SESSION_BUFFER_LIMIT = 4000;
 const AI_TASK_RAW_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
@@ -931,6 +946,18 @@ export function activate(context: vscode.ExtensionContext): void {
       webviewOptions: { retainContextWhenHidden: true },
     })
   );
+  scheduledTaskScheduler = new ScheduledTaskScheduler({
+    readStore: readScheduledTasks,
+    writeStore: writeScheduledTasks,
+    getWorkspaceKey: () => activeWorkspaceKey,
+    executeTask: executeScheduledTask,
+    onChanged: () => { void postPanelState(); },
+  });
+  scheduledTaskScheduler.start();
+  context.subscriptions.push(new vscode.Disposable(() => {
+    scheduledTaskScheduler?.stop();
+    scheduledTaskScheduler = null;
+  }));
   registerExtensionCommands(context, {
     isCliName,
     getCurrentCli: () => currentCli,
@@ -980,6 +1007,8 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {
   isExtensionDeactivating = true;
   void restoreMarketplaceUpdateCheck();
+  scheduledTaskScheduler?.stop();
+  scheduledTaskScheduler = null;
   graphControlsHost.disposeGraphAutoWakeScheduler();
   stopAllRuns();
 }
@@ -1125,6 +1154,210 @@ function resolveClaudeInteractiveEntrypoint(command: string | undefined): string
   return command;
 }
 
+function getScheduledTaskStoreDeps() {
+  return {
+    storeFile: path.join(DATA_DIR, "scheduled-tasks.json"),
+    isCliName,
+    isInteractiveMode,
+    isThinkingMode,
+    isTimestampWithinHistoryRetention,
+    logError: (event: string, payload?: unknown) => { void logError(event, payload); },
+  };
+}
+
+function readScheduledTasks() {
+  return readScheduledTaskStore(getScheduledTaskStoreDeps());
+}
+
+function writeScheduledTasks(store: ReturnType<typeof readScheduledTasks>): void {
+  writeScheduledTaskStore(store, {
+    storeFile: getScheduledTaskStoreDeps().storeFile,
+    logError: (event: string, payload?: unknown) => { void logError(event, payload); },
+  });
+}
+
+function buildScheduledTasksState() {
+  const store = readScheduledTasks();
+  return buildScheduledTaskSummaries({
+    tasks: store.tasks.filter((task) => task.workspaceKey === activeWorkspaceKey),
+  });
+}
+
+async function schedulePromptTask(
+  message: Extract<PanelMessage, { type: "scheduleTask" }>,
+): Promise<{ task?: import("./webview/types").ScheduledTaskSummary; error?: string }> {
+  const prompt = typeof message.prompt === "string" ? message.prompt.trim() : "";
+  if (!prompt) {
+    return { error: t("scheduledTaskPromptRequired") };
+  }
+  const scheduledAt = typeof message.scheduledAt === "number" ? message.scheduledAt : Number(message.scheduledAt);
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now()) {
+    return { error: t("scheduledTaskTimeInvalid") };
+  }
+  const store = readScheduledTasks();
+  const activeTaskCount = store.tasks.filter((task) => task.status === "pending" || task.status === "running").length;
+  if (activeTaskCount >= SCHEDULED_TASK_MAX_COUNT) {
+    return { error: t("scheduledTaskLimitReached", { max: SCHEDULED_TASK_MAX_COUNT }) };
+  }
+  const cli = typeof message.cli === "string" && isCliName(message.cli) ? message.cli : currentCli;
+  const taskId = `scheduled_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const attachmentResult = await saveScheduledTaskAttachments(taskId, message.files ?? []);
+  if (attachmentResult.error) {
+    removeScheduledTaskAttachments(taskId);
+    return { error: attachmentResult.error };
+  }
+  try {
+    const task = createScheduledTaskRecord({
+      id: taskId,
+      prompt,
+      scheduledAt,
+      cli,
+      tabId: typeof message.tabId === "string" && message.tabId.trim()
+        ? message.tabId.trim()
+        : getActiveConversationTabId(),
+      workspaceKey: activeWorkspaceKey,
+      interactiveMode: isInteractiveMode(message.interactiveMode)
+        ? normalizeVisibleInteractiveMode(message.interactiveMode)
+        : getWorkspaceInteractiveMode(cli),
+      contextOptions: message.contextOptions,
+      model: message.model,
+      loopMainModel: message.loopMainModel,
+      loopSubtaskModel: message.loopSubtaskModel,
+      loopMainThinkingMode: isThinkingMode(message.loopMainThinkingMode)
+        ? normalizeThinkingModeForCli(cli, message.loopMainThinkingMode)
+        : undefined,
+      loopSubtaskThinkingMode: isThinkingMode(message.loopSubtaskThinkingMode)
+        ? normalizeThinkingModeForCli(cli, message.loopSubtaskThinkingMode)
+        : undefined,
+      loopExecutionMode: message.loopExecutionMode,
+      attachments: attachmentResult.attachments,
+    });
+    upsertScheduledTask(store, task, Date.now());
+    writeScheduledTasks(store);
+    scheduledTaskScheduler?.notifyChanged();
+    void logInfo("scheduled-task-created", {
+      id: task.id,
+      cli: task.cli,
+      scheduledAt: task.scheduledAt,
+      workspaceKey: task.workspaceKey,
+      attachmentCount: task.attachments.length,
+    });
+    return { task: buildScheduledTaskSummaries({ tasks: [task] })[0] };
+  } catch (error) {
+    removeScheduledTaskAttachments(taskId);
+    void logError("scheduled-task-create-failed", { error: String(error) });
+    return { error: t("scheduledTaskSaveFailed") };
+  }
+}
+
+function deleteScheduledTask(id: string): boolean {
+  const store = readScheduledTasks();
+  const task = store.tasks.find((candidate) => candidate.id === id && candidate.workspaceKey === activeWorkspaceKey);
+  if (!task || task.status === "running") {
+    return false;
+  }
+  const removed = removeScheduledTask(store, id);
+  if (!removed) {
+    return false;
+  }
+  writeScheduledTasks(store);
+  removeScheduledTaskAttachments(id);
+  scheduledTaskScheduler?.notifyChanged();
+  void logInfo("scheduled-task-deleted", { id, workspaceKey: activeWorkspaceKey });
+  return true;
+}
+
+function ensureScheduledTaskTargetTab(task: ScheduledTaskRecord): string | null {
+  const existing = task.tabId ? getConversationTabById(task.tabId) : null;
+  if (existing && existing.cli === task.cli) {
+    return existing.id;
+  }
+  const previousTabId = getActiveConversationTabId();
+  const previousCli = currentCli;
+  addConversationTab(task.cli, null);
+  const created = getActiveConversationTab();
+  const targetTabId = created?.id ?? null;
+  if (previousTabId && previousTabId !== targetTabId) {
+    setActiveConversationTab(previousTabId);
+  }
+  currentCli = previousCli;
+  updateStatusBar();
+  return targetTabId;
+}
+
+function buildScheduledAttachmentPrompt(task: ScheduledTaskRecord): string {
+  const references = task.attachments
+    .map((attachment) => attachment.path.replace(/\\/g, "/").replace(/"/g, '\\"'))
+    .map((filePath) => `@"${filePath}"`)
+    .join(" ");
+  return references ? `${task.prompt}\n\n${references}` : task.prompt;
+}
+
+async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
+  if (task.workspaceKey !== activeWorkspaceKey) {
+    throw new Error("Scheduled task workspace is no longer active.");
+  }
+  const targetTabId = ensureScheduledTaskTargetTab(task);
+  if (!targetTabId) {
+    throw new Error("No conversation tab is available for the scheduled task.");
+  }
+  await configApplyQueue.waitForIdle(task.cli);
+  // Resolve mode after the scheduler marks the task running so mode changes made
+  // after task creation are honored for the actual execution.
+  const executionConfig = resolveScheduledTaskExecutionConfig(
+    getWorkspaceInteractiveMode(task.cli),
+    getWorkspaceLoopExecutionMode(task.cli),
+  );
+  const displayPrompt = buildScheduledAttachmentPrompt(task);
+  const contextBuild = buildPromptWithAutoContextFromPanelStateBuilder(displayPrompt, task.contextOptions);
+  const modelPrompt = executionConfig.interactiveMode === "graph"
+    ? contextBuild.modelPrompt
+    : maybeInjectLongTermMemoryForPromptWithEditorContext(
+        displayPrompt,
+        contextBuild.modelPrompt,
+        contextBuild.contextTags,
+        {
+          runtimeSettings: buildLongTermMemoryRuntimeSettings(),
+          memoryPaths: getActiveWorkspaceMemoryPaths(),
+          locale: resolveLocale(),
+          logError: (event, payload) => { void logError(event, payload); },
+        },
+      );
+  const imagePaths = task.cli === "codex"
+    ? await resolveCodexImagePathsForPrompt(displayPrompt)
+    : [];
+  const input: PromptRunInput = {
+    displayPrompt,
+    modelPrompt,
+    contextTags: contextBuild.contextTags,
+    ...(task.model ? { model: task.model } : {}),
+    ...(task.loopMainModel ? { loopMainModel: task.loopMainModel } : {}),
+    ...(task.loopSubtaskModel ? { loopSubtaskModel: task.loopSubtaskModel } : {}),
+    ...(task.loopMainThinkingMode ? { loopMainThinkingMode: task.loopMainThinkingMode } : {}),
+    ...(task.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: task.loopSubtaskThinkingMode } : {}),
+    ...(executionConfig.loopExecutionMode ? { loopExecutionMode: executionConfig.loopExecutionMode } : {}),
+    ...(imagePaths.length ? { imagePaths } : {}),
+    ...(executionConfig.interactiveMode === "graph" ? { skipLongTermMemoryPersist: true } : {}),
+    throwOnError: true,
+  };
+  const target = resolvePromptRunTarget(targetTabId);
+  if (!target) {
+    throw new Error("Scheduled task conversation target is unavailable.");
+  }
+  const preparedInput = preloadUserMessageForPrompt(input, target);
+  if (executionConfig.interactiveMode === "loop") {
+    await runLoopPrompt(preparedInput, {
+      targetTabId,
+      resumeTaskId: null,
+      resumeRequested: false,
+    });
+  } else if (executionConfig.interactiveMode === "graph") {
+    await runGraphPrompt(preparedInput, { targetTabId });
+  } else {
+    await runPrompt(preparedInput, { targetTabId });
+  }
+}
+
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
   if (message.type === "updateOpenCodeVariant") {
     await handleUpdateOpenCodeVariantMessage(message, {
@@ -1239,6 +1472,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     resolveLoopResumeTaskFromPrompt,
     isLoopResumePrompt,
     stopRunForTab,
+    schedulePromptTask,
+    deleteScheduledTask,
   });
 }
 
@@ -1287,6 +1522,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     buildSessionState,
     buildConversationTabsState,
     buildPromptHistoryState,
+    buildScheduledTasksState,
     buildModelState,
     buildEditorContextState,
     resolveModelConfigIdForCli,
@@ -1863,6 +2099,7 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   initializeConversationTabsFromWorkspaceSettings();
   repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
+  scheduledTaskScheduler?.notifyChanged();
 }
 
 function normalizeToolSettingsLocale(value: unknown): ToolSettingsLocale | null {
@@ -4019,6 +4256,9 @@ async function runPrompt(
       });
       appendSystemMessageForPromptTarget(target, preflightMessage);
       sendRunStatusForTab(target.tabId, "error", { message: preflightMessage });
+      if (promptInput.throwOnError) {
+        throw new Error(preflightMessage);
+      }
       return;
     }
   }

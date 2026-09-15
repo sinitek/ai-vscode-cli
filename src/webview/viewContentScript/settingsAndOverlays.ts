@@ -111,6 +111,199 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
       }
 
+      let scheduledTaskFiles = [];
+
+      function formatScheduledTaskInputDate(timestamp) {
+        const date = new Date(timestamp);
+        const pad = (value) => String(value).padStart(2, "0");
+        return date.getFullYear()
+          + "-" + pad(date.getMonth() + 1)
+          + "-" + pad(date.getDate())
+          + "T" + pad(date.getHours())
+          + ":" + pad(date.getMinutes());
+      }
+
+      function getDefaultScheduledTaskTime() {
+        const date = new Date();
+        date.setDate(date.getDate() + 1);
+        date.setHours(0, 0, 0, 0);
+        return formatScheduledTaskInputDate(date.getTime());
+      }
+
+      function setScheduledTaskError(message) {
+        if (!elements.scheduledTaskError) {
+          return;
+        }
+        elements.scheduledTaskError.textContent = message || "";
+        elements.scheduledTaskError.style.display = message ? "block" : "none";
+      }
+
+      function renderScheduledTaskAttachments() {
+        if (!elements.scheduledTaskAttachments) {
+          return;
+        }
+        elements.scheduledTaskAttachments.innerHTML = "";
+        scheduledTaskFiles.forEach((file) => {
+          const item = document.createElement("span");
+          item.className = "scheduled-task-attachment";
+          item.textContent = file.name || t("attachmentFallbackName");
+          elements.scheduledTaskAttachments.appendChild(item);
+        });
+      }
+
+      function scheduledTaskStatusLabel(status) {
+        const labels = {
+          pending: "scheduledTaskStatusPending",
+          running: "scheduledTaskStatusRunning",
+          completed: "scheduledTaskStatusCompleted",
+          failed: "scheduledTaskStatusFailed",
+          cancelled: "scheduledTaskStatusCancelled",
+        };
+        return t(labels[status] || "scheduledTaskStatusPending");
+      }
+
+      function renderScheduledTaskList() {
+        if (!elements.scheduledTaskList) {
+          return;
+        }
+        elements.scheduledTaskList.innerHTML = "";
+        const tasks = Array.isArray(state.scheduledTasks) ? state.scheduledTasks : [];
+        if (!tasks.length) {
+          const empty = document.createElement("div");
+          empty.className = "scheduled-task-empty";
+          empty.textContent = t("scheduledTaskEmpty");
+          elements.scheduledTaskList.appendChild(empty);
+          return;
+        }
+        tasks.forEach((task) => {
+          const item = document.createElement("div");
+          item.className = "scheduled-task-item";
+          const meta = document.createElement("div");
+          meta.className = "scheduled-task-meta";
+          const text = document.createElement("div");
+          text.className = "scheduled-task-text";
+          text.textContent = task.prompt || "";
+          const time = document.createElement("div");
+          time.className = "scheduled-task-time";
+          time.textContent = formatDateTime(task.scheduledAt);
+          const status = document.createElement("div");
+          status.className = "scheduled-task-status";
+          const attachmentCount = Array.isArray(task.attachmentNames) ? task.attachmentNames.length : 0;
+          status.textContent = scheduledTaskStatusLabel(task.status)
+            + " · " + task.cli
+            + (attachmentCount ? " · " + t("scheduledTaskAttachmentCount", { count: attachmentCount }) : "");
+          meta.appendChild(text);
+          meta.appendChild(time);
+          meta.appendChild(status);
+          item.appendChild(meta);
+          if (task.status !== "running") {
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "secondary action-button scheduled-task-delete";
+            deleteButton.textContent = t("scheduledTaskDelete");
+            deleteButton.addEventListener("click", () => {
+              vscode.postMessage({ type: "deleteScheduledTask", id: task.id });
+            });
+            item.appendChild(deleteButton);
+          }
+          elements.scheduledTaskList.appendChild(item);
+        });
+      }
+
+      function openScheduledTask() {
+        setScheduledTaskError("");
+        if (elements.scheduledTaskPrompt) {
+          elements.scheduledTaskPrompt.value = elements.promptInput.value || "";
+        }
+        if (elements.scheduledTaskTime) {
+          elements.scheduledTaskTime.value = getDefaultScheduledTaskTime();
+        }
+        scheduledTaskFiles = [];
+        if (elements.scheduledTaskAttachmentInput) {
+          elements.scheduledTaskAttachmentInput.value = "";
+        }
+        renderScheduledTaskAttachments();
+        renderScheduledTaskList();
+        elements.scheduledTaskOverlay.classList.add("visible");
+      }
+
+      function closeScheduledTask() {
+        elements.scheduledTaskOverlay.classList.remove("visible");
+      }
+
+      async function handleScheduledTaskFiles(fileList) {
+        const files = fileList ? Array.from(fileList) : [];
+        if (!files.length) {
+          return;
+        }
+        const validationError = validateUploadFiles(files);
+        if (validationError) {
+          setScheduledTaskError(validationError);
+          return;
+        }
+        try {
+          scheduledTaskFiles = [];
+          for (const file of files) {
+            scheduledTaskFiles.push({
+              name: file.name,
+              type: file.type || "",
+              dataUrl: await readFileAsDataUrl(file),
+            });
+          }
+          renderScheduledTaskAttachments();
+          setScheduledTaskError("");
+        } catch {
+          setScheduledTaskError(t("toastReadFileFailed"));
+        }
+      }
+
+      function saveScheduledTask() {
+        const prompt = elements.scheduledTaskPrompt && elements.scheduledTaskPrompt.value
+          ? elements.scheduledTaskPrompt.value.trim()
+          : "";
+        const scheduledAt = elements.scheduledTaskTime
+          ? new Date(elements.scheduledTaskTime.value).getTime()
+          : NaN;
+        if (!prompt) {
+          setScheduledTaskError(t("scheduledTaskPromptRequired"));
+          return;
+        }
+        if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now()) {
+          setScheduledTaskError(t("scheduledTaskTimeInvalid"));
+          return;
+        }
+        const promptPayload = buildPromptPayload(prompt);
+        const targetCli = state.currentCli;
+        const loopModels = state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[targetCli]
+          ? state.selectedLoopModelsByCli[targetCli]
+          : {};
+        vscode.postMessage({
+          type: "scheduleTask",
+          prompt,
+          scheduledAt,
+          tabId: getActiveConversationTabId(),
+          cli: targetCli,
+          interactiveMode: state.interactiveMode,
+          contextOptions: promptPayload.contextOptions,
+          model: state.selectedModelsByCli && state.selectedModelsByCli[targetCli]
+            ? state.selectedModelsByCli[targetCli]
+            : undefined,
+          loopMainModel: loopModels.main || undefined,
+          loopSubtaskModel: loopModels.subtask || undefined,
+          loopMainThinkingMode: state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
+            ? state.selectedLoopThinkingByCli[targetCli].main || undefined
+            : undefined,
+          loopSubtaskThinkingMode: state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
+            ? state.selectedLoopThinkingByCli[targetCli].subtask || undefined
+            : undefined,
+          loopExecutionMode: state.interactiveMode === "loop" ? getLoopExecutionModeForCli(targetCli) : undefined,
+          files: scheduledTaskFiles,
+        });
+        if (elements.saveScheduledTask) {
+          elements.saveScheduledTask.disabled = true;
+        }
+      }
+
       if (elements.toolSettingsGeneralTab) {
         elements.toolSettingsGeneralTab.addEventListener("click", () => setToolSettingsTab("general"));
       }
@@ -1049,6 +1242,24 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       elements.sendPrompt.addEventListener("click", () => {
         sendPrompt();
       });
+
+      if (elements.scheduleTaskButton) {
+        elements.scheduleTaskButton.addEventListener("click", () => {
+          openScheduledTask();
+        });
+      }
+      if (elements.closeScheduledTask) {
+        elements.closeScheduledTask.addEventListener("click", closeScheduledTask);
+      }
+      if (elements.saveScheduledTask) {
+        elements.saveScheduledTask.addEventListener("click", saveScheduledTask);
+      }
+      if (elements.scheduledTaskAttachmentInput) {
+        elements.scheduledTaskAttachmentInput.addEventListener("change", (event) => {
+          handleScheduledTaskFiles(event.target.files);
+          event.target.value = "";
+        });
+      }
 
       elements.pathPickerButton.addEventListener("click", () => {
         requestWorkspacePathPick();

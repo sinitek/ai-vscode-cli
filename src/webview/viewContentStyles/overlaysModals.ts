@@ -24,6 +24,120 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         overflow: hidden;
       }
 
+      .scheduled-task-modal {
+        width: 560px;
+      }
+      .scheduled-task-body {
+        padding: 0 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+      }
+      .scheduled-task-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .scheduled-task-field label,
+      .scheduled-task-list-heading {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .scheduled-task-input,
+      .scheduled-task-prompt {
+        box-sizing: border-box;
+        width: 100%;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 6px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font: inherit;
+        padding: 7px 9px;
+      }
+      .scheduled-task-prompt {
+        resize: vertical;
+        min-height: 100px;
+      }
+      .scheduled-task-input:focus,
+      .scheduled-task-prompt:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+      }
+      .scheduled-task-file-input {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+      }
+      .scheduled-task-attachments {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .scheduled-task-attachment {
+        max-width: 100%;
+        padding: 3px 8px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 5px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .scheduled-task-error {
+        color: var(--vscode-errorForeground);
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      .scheduled-task-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .scheduled-task-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      .scheduled-task-empty {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .scheduled-task-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        background: var(--vscode-editor-background);
+      }
+      .scheduled-task-meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .scheduled-task-time,
+      .scheduled-task-status {
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+      }
+      .scheduled-task-text {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .scheduled-task-delete {
+        flex: 0 0 auto;
+        padding: 4px 7px;
+        font-size: 11px;
+      }
+
       .run-conflict-modal {
         width: 420px;
       }
