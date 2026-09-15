@@ -8,6 +8,15 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+
 const crossSpawn = require("cross-spawn") as {
   spawn: (...args: unknown[]) => unknown;
 };
@@ -62,19 +71,24 @@ async function withTempHome<T>(
   const homeDir = path.join(tempRoot, "home");
   const xdgConfigHome = path.join(tempRoot, "xdg");
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 
   try {
     process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    delete process.env.CODEX_HOME;
+    delete process.env.CODEX_HOME_DIR;
     process.env.XDG_CONFIG_HOME = xdgConfigHome;
     return await run(homeDir, process.env);
   } finally {
-    process.env.HOME = originalHome;
-    if (originalXdgConfigHome === undefined) {
-      delete process.env.XDG_CONFIG_HOME;
-    } else {
-      process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
-    }
+    restoreEnvironmentVariable("HOME", originalHome);
+    restoreEnvironmentVariable("USERPROFILE", originalUserProfile);
+    restoreEnvironmentVariable("CODEX_HOME", originalCodexHome);
+    restoreEnvironmentVariable("CODEX_HOME_DIR", originalCodexHomeDir);
+    restoreEnvironmentVariable("XDG_CONFIG_HOME", originalXdgConfigHome);
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }

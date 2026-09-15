@@ -15,16 +15,35 @@ function loadConfigService(): typeof import("../../config/configService") {
   return require("../../config/configService") as typeof import("../../config/configService");
 }
 
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
 async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T> {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-config-service-"));
   const homeDir = path.join(tempRoot, "home");
-  const originalHome = process.env.HOME;
+  const original = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    CODEX_HOME: process.env.CODEX_HOME,
+    CODEX_HOME_DIR: process.env.CODEX_HOME_DIR,
+  };
 
   try {
     process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    delete process.env.CODEX_HOME;
+    delete process.env.CODEX_HOME_DIR;
     return await run(homeDir);
   } finally {
-    process.env.HOME = originalHome;
+    restoreEnvironmentVariable("HOME", original.HOME);
+    restoreEnvironmentVariable("USERPROFILE", original.USERPROFILE);
+    restoreEnvironmentVariable("CODEX_HOME", original.CODEX_HOME);
+    restoreEnvironmentVariable("CODEX_HOME_DIR", original.CODEX_HOME_DIR);
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }

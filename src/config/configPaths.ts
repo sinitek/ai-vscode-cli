@@ -2,6 +2,11 @@ import * as os from "os";
 import * as path from "path";
 import type { CliName } from "../cli/types";
 import {
+  resolveClaudeHomeDir,
+  resolveCodexHomeDir,
+  resolveOpenCodeHomeDir,
+} from "../shared/userHomePaths";
+import {
   LEGACY_GEMINI_CONFIG_PLATFORM,
   type ConfigPlatform,
   type CurrentConfigPlatform,
@@ -44,18 +49,23 @@ export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): Co
   throw new Error(`Unsupported config platform: ${String(platform)}`);
 }
 
-export function createConfigPaths(homeDir = os.homedir()): ConfigPathMap {
-  const openCodeRuntimeDir = path.join(homeDir, ".opencode");
+export function createConfigPaths(
+  homeDir = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+): ConfigPathMap {
+  const claudeHomeDir = resolveClaudeHomeDir(homeDir);
+  const codexHomeDir = resolveCodexHomeDir(env, homeDir);
+  const openCodeRuntimeDir = resolveOpenCodeHomeDir(homeDir);
   return {
     claude: {
-      settings: path.join(homeDir, ".claude", "settings.json"),
+      settings: path.join(claudeHomeDir, "settings.json"),
       mcp: path.join(homeDir, ".claude.json"),
-      configDir: path.join(homeDir, ".claude", CONFIG_DIR_NAME),
+      configDir: path.join(claudeHomeDir, CONFIG_DIR_NAME),
     },
     codex: {
-      config: path.join(homeDir, ".codex", "config.toml"),
-      auth: path.join(homeDir, ".codex", "auth.json"),
-      configDir: path.join(homeDir, ".codex", CONFIG_DIR_NAME),
+      config: path.join(codexHomeDir, "config.toml"),
+      auth: path.join(codexHomeDir, "auth.json"),
+      configDir: path.join(codexHomeDir, CONFIG_DIR_NAME),
     },
     opencode: {
       config: path.join(openCodeRuntimeDir, "config.json"),

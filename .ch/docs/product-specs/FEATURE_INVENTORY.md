@@ -43,7 +43,7 @@ starter 默认不预置功能项。复制模板后，请从第一个真实能力
 
 - 2026-08-29 后端重构没有新增用户入口或下线能力；下表现有 Graph、OpenCode、配置中心和 MCP 能力状态保持不变。
 - Graph 相关能力的当前实现边界包含 `src/graph/graphEdgeSemantics.ts`：scheduler、prompt topology 和 review scope 复用同一 active structural/blocking edge 口径；Retry 与 direct rework 都会清理旧 artifact / failure / execution / acceptance evidence。
-- CLI / 配置相关能力的当前实现边界包含 `src/cli/commandResolution.ts`、`src/config/configPaths.ts` 和 `src/shared/jsonObject.ts`：配置化 CLI command string 统一拆分，用户级配置路径统一维护，strict/jsonc JSON object 解析统一复用。
+- CLI / 配置相关能力的当前实现边界包含 `src/cli/commandResolution.ts`、`src/config/configPaths.ts`、`src/shared/userHomePaths.ts`、`src/shared/atomicWrite.ts` 和 `src/shared/jsonObject.ts`：配置化 CLI command string 统一拆分，用户级 `~` / `%VAR%` 路径在进入文件系统前展开为当前平台原生路径，Codex 配置读取 `CODEX_HOME`，Windows 额外发现官方 Codex bin，配置原子写在 Windows 上可覆盖已有文件，strict/jsonc JSON object 解析统一复用。
 - OpenCode 官方全局 MCP 配置仍由 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 驱动；JSONC 只作为输入兼容，成功修改后仍写回格式化严格 JSON。
 - OpenCode 可视化模型表单支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限，保存时校验非负有限数值并保留同一模型 `limit` 下的其他字段；相关配置页回归覆盖见 `src/test/config/opencodeconfigvisualeditor.test.ts`。
 

@@ -1,10 +1,9 @@
 import * as fs from "fs/promises";
-import * as os from "os";
 import * as path from "path";
+import { expandHomePath, resolveCodexHomeDir } from "../shared/userHomePaths";
+import { writeFileAtomically } from "../shared/atomicWrite";
 
-const CODEX_HOME_DIRECTORY_NAME = ".codex";
 const CODEX_CONFIG_FILE_NAME = "config.toml";
-const CODEX_HOME_DIR_ENV_KEY = "CODEX_HOME_DIR";
 const TRUST_LEVEL_LINE = 'trust_level = "trusted"';
 const CODEX_CHILD_ENV_KEYS_TO_UNSET = ["npm_config_prefix", "NPM_CONFIG_PREFIX"] as const;
 
@@ -24,20 +23,6 @@ type CodexProjectTrustContentResult = {
   status: "updated" | "already_trusted";
   content: string;
 };
-
-function expandHomePath(value: string | undefined): string {
-  const normalizedValue = String(value || "").trim();
-  if (!normalizedValue) {
-    return "";
-  }
-  if (normalizedValue === "~") {
-    return os.homedir();
-  }
-  if (normalizedValue.startsWith("~/") || normalizedValue.startsWith("~\\")) {
-    return path.join(os.homedir(), normalizedValue.slice(2));
-  }
-  return normalizedValue;
-}
 
 function normalizeContent(content: string): string {
   return String(content || "").replace(/\r\n/g, "\n");
@@ -62,23 +47,7 @@ async function readTextFile(filePath: string): Promise<string> {
   }
 }
 
-async function writeFileAtomically(targetPath: string, content: string): Promise<void> {
-  const tempPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
-  try {
-    await fs.writeFile(tempPath, content, "utf8");
-    await fs.rename(tempPath, targetPath);
-  } catch (error) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
-export function resolveCodexHomeDir(env: NodeJS.ProcessEnv = process.env): string {
-  const configuredCodexHomeDir =
-    expandHomePath(env[CODEX_HOME_DIR_ENV_KEY])
-    || expandHomePath(env.CODEX_HOME);
-  return configuredCodexHomeDir || path.join(os.homedir(), CODEX_HOME_DIRECTORY_NAME);
-}
+export { resolveCodexHomeDir };
 
 export function resolveCodexConfigPath(codexHomeDir?: string): string {
   return path.join(expandHomePath(codexHomeDir) || resolveCodexHomeDir(), CODEX_CONFIG_FILE_NAME);

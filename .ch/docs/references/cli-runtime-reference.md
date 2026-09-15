@@ -31,8 +31,10 @@
 
 - 支持绝对路径、PATH 查找
 - 配置化 command string 可以包含带引号的可执行文件和固定参数；第一段作为可执行命令解析，其余段在 terminal run、stream run、OpenCode server/capture spawn 和 MCP CLI 调用中统一追加到运行时参数之前
+- 配置化 command 若写成 `~/...`、`~\...` 或 Windows `%USERPROFILE%\...`，解析前会先展开为当前平台原生路径，不会把 `~/.codex` 当作字面量文件路径
 - Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低用户级 CLI 命令被系统路径中旧版本抢占的概率
-- Windows 下额外尝试 npm 全局安装目录
+- Windows 下额外尝试 npm 全局安装目录，以及官方 Codex 安装目录 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`
+- Codex 用户级目录遵循 `CODEX_HOME` / `CODEX_HOME_DIR`，未设置时为当前用户目录下的 `.codex`（Windows 即 `%USERPROFILE%\.codex`）
 - macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
 
 ## 3. 交互模式真实行为
@@ -243,8 +245,9 @@ OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，
 如果出现 `spawn <cli> ENOENT`：
 
 1. 先用 `where codex` / `where claude` / `where opencode` 验证命令
-2. 必要时把命令配置成绝对路径
-3. 修改 PATH 后重启 VS Code
+2. 官方 Codex 安装器默认把可执行文件放到 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`；插件会搜索该目录，必要时仍可把 `sinitek-cli-tools.commands.codex` 配成 `.cmd` / `.exe` 绝对路径
+3. 用户级配置在 `%USERPROFILE%\.codex`，不要把 `~/.codex` 写进 Windows 环境变量后指望系统展开
+4. 修改 PATH 后重启 VS Code
 
 ### macOS
 

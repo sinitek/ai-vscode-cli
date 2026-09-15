@@ -3,13 +3,11 @@ import * as os from "os";
 import * as path from "path";
 import { CodexSkillItem, CodexSkillToggle } from "./types";
 import { AppLocale, resolveLocale, t } from "../i18n";
+import { resolveAgentsHomeDir, resolveCodexHomeDir } from "../shared/userHomePaths";
 
 export const CODEX_SKILLS_BLOCK_START = "# --- sinitek codex skills start ---";
 export const CODEX_SKILLS_BLOCK_END = "# --- sinitek codex skills end ---";
 
-const LEGACY_CODEX_SKILLS_DIR = path.join(os.homedir(), ".codex", "skills");
-const HOME_AGENTS_SKILLS_DIR = path.join(os.homedir(), ".agents", "skills");
-const SYSTEM_CODEX_SKILLS_DIR = path.join(path.sep, "etc", "codex", "skills");
 const WORKSPACE_CODEX_SKILLS_RELATIVE_DIR = path.join(".codex", "skills");
 const WORKSPACE_AGENTS_SKILLS_RELATIVE_DIR = path.join(".agents", "skills");
 
@@ -205,10 +203,12 @@ function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] 
     });
   });
 
-  append(HOME_AGENTS_SKILLS_DIR);
-  append(LEGACY_CODEX_SKILLS_DIR);
-  append(process.env.CODEX_HOME ? path.join(process.env.CODEX_HOME, "skills") : undefined);
-  append(SYSTEM_CODEX_SKILLS_DIR);
+  append(path.join(resolveAgentsHomeDir(), "skills"));
+  append(path.join(os.homedir(), ".codex", "skills"));
+  append(path.join(resolveCodexHomeDir(), "skills"));
+  if (process.platform !== "win32") {
+    append("/etc/codex/skills");
+  }
 
   return roots;
 }

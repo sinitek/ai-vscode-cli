@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { expandHomePath } from "../shared/userHomePaths";
 
 export type ResolvedCliCommand = {
   command: string;
@@ -98,18 +99,27 @@ function resolveCommandOnPath(command: string, extraDirs: string[] = []): string
   return resolveCommandInDirs(command, [...extraDirs, ...pathDirs]);
 }
 
-function getWindowsNpmBinDirs(): string[] {
+function getWindowsUserBinDirs(): string[] {
   const dirs = new Set<string>();
-  if (process.env.APPDATA) {
-    dirs.add(path.join(process.env.APPDATA, "npm"));
+  const appData = expandHomePath(process.env.APPDATA);
+  const userProfile = expandHomePath(process.env.USERPROFILE);
+  const localAppData = expandHomePath(
+    process.env.LOCALAPPDATA || (userProfile ? path.join(userProfile, "AppData", "Local") : ""),
+  );
+  if (appData) {
+    dirs.add(path.join(appData, "npm"));
   }
-  if (process.env.USERPROFILE) {
-    dirs.add(path.join(process.env.USERPROFILE, "AppData", "Roaming", "npm"));
+  if (userProfile) {
+    dirs.add(path.join(userProfile, "AppData", "Roaming", "npm"));
+  }
+  if (localAppData) {
+    dirs.add(path.join(localAppData, "Programs", "OpenAI", "Codex", "bin"));
+    dirs.add(path.join(localAppData, "npm"));
   }
   if (process.env.PNPM_HOME) {
-    dirs.add(process.env.PNPM_HOME);
+    dirs.add(expandHomePath(process.env.PNPM_HOME));
   }
-  return Array.from(dirs);
+  return Array.from(dirs).filter(Boolean);
 }
 
 function getUnixUserBinDirs(): string[] {
@@ -117,13 +127,13 @@ function getUnixUserBinDirs(): string[] {
   const homeDir = os.homedir();
 
   if (process.env.npm_config_prefix) {
-    dirs.add(path.join(process.env.npm_config_prefix, "bin"));
+    dirs.add(path.join(expandHomePath(process.env.npm_config_prefix), "bin"));
   }
   if (process.env.NPM_CONFIG_PREFIX) {
-    dirs.add(path.join(process.env.NPM_CONFIG_PREFIX, "bin"));
+    dirs.add(path.join(expandHomePath(process.env.NPM_CONFIG_PREFIX), "bin"));
   }
   if (process.env.PNPM_HOME) {
-    dirs.add(process.env.PNPM_HOME);
+    dirs.add(expandHomePath(process.env.PNPM_HOME));
   }
   if (homeDir) {
     dirs.add(path.join(homeDir, ".npm-global", "bin"));
@@ -148,7 +158,7 @@ export function normalizeCommandInput(command: string): string {
 }
 
 export function resolveCliCommand(command: string): ResolvedCliCommand | null {
-  const normalized = normalizeCommandInput(command);
+  const normalized = expandHomePath(normalizeCommandInput(command));
   const looksLikePath = isPathLikeCommand(normalized);
   if (path.isAbsolute(normalized) || looksLikePath) {
     const resolved = resolveExistingCommandPath(normalized);
@@ -156,7 +166,7 @@ export function resolveCliCommand(command: string): ResolvedCliCommand | null {
   }
 
   if (process.platform === "win32") {
-    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsNpmBinDirs());
+    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsUserBinDirs());
     if (resolvedFromNpmBin) {
       return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
     }

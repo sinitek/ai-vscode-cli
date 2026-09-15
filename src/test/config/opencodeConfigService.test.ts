@@ -7,6 +7,15 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+
 function loadConfigService(): typeof import("../../config/configService") {
   const configPathsModulePath = require.resolve("../../config/configPaths");
   const modulePath = require.resolve("../../config/configService");
@@ -19,8 +28,14 @@ test("OpenCode config list does not auto-migrate Claude or Codex profiles", asyn
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-opencode-config-"));
   const homeDir = path.join(tempRoot, "home");
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 
   process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+  delete process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME_DIR;
   const configService = loadConfigService();
 
   await fs.mkdir(path.join(homeDir, ".claude", "__config"), { recursive: true });
@@ -59,7 +74,10 @@ test("OpenCode config list does not auto-migrate Claude or Codex profiles", asyn
     const files = await fs.readdir(openCodeProfileDir).catch(() => []);
     assert.deepEqual(files, []);
   } finally {
-    process.env.HOME = originalHome;
+    restoreEnvironmentVariable("HOME", originalHome);
+    restoreEnvironmentVariable("USERPROFILE", originalUserProfile);
+    restoreEnvironmentVariable("CODEX_HOME", originalCodexHome);
+    restoreEnvironmentVariable("CODEX_HOME_DIR", originalCodexHomeDir);
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
@@ -68,8 +86,14 @@ test("OpenCode config list hides legacy auto-migrated profiles without deleting 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-opencode-legacy-"));
   const homeDir = path.join(tempRoot, "home");
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalCodexHome = process.env.CODEX_HOME;
+  const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 
   process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+  delete process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME_DIR;
   const configService = loadConfigService();
   const openCodeProfileDir = path.join(homeDir, ".opencode", "__config");
   const legacyPath = path.join(openCodeProfileDir, "opencode_migrated_claude_old.json");
@@ -102,7 +126,10 @@ test("OpenCode config list hides legacy auto-migrated profiles without deleting 
     assert.deepEqual(configs.map((config) => config.id), ["native"]);
     assert.ok(await fs.stat(legacyPath));
   } finally {
-    process.env.HOME = originalHome;
+    restoreEnvironmentVariable("HOME", originalHome);
+    restoreEnvironmentVariable("USERPROFILE", originalUserProfile);
+    restoreEnvironmentVariable("CODEX_HOME", originalCodexHome);
+    restoreEnvironmentVariable("CODEX_HOME_DIR", originalCodexHomeDir);
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });

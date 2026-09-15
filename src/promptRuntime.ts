@@ -1,6 +1,6 @@
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
+import { expandHomePath } from "./shared/userHomePaths";
 import { getThinkingPromptPrefix, getThinkingPromptSuffix } from "./cli/config";
 import type { CliName, ThinkingMode } from "./cli/types";
 import { t, type AppLocale } from "./i18n";
@@ -168,13 +168,7 @@ export function resolvePromptReferencedPath(rawPath: string, cwd?: string | null
 }
 
 function expandUserHomePath(targetPath: string): string {
-  if (targetPath === "~") {
-    return os.homedir();
-  }
-  if (targetPath.startsWith(`~${path.sep}`)) {
-    return path.join(os.homedir(), targetPath.slice(2));
-  }
-  return targetPath;
+  return expandHomePath(targetPath) || targetPath;
 }
 
 function isImageAttachmentPath(filePath: string): boolean {

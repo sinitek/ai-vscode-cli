@@ -183,7 +183,7 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 `src/config/configService.ts` 是本地配置集成的唯一核心入口，负责：
 
 - 读取和写入 `~/.claude`、`~/.codex`、OpenCode 相关配置；Codex 配置中心只维护 `~/.codex/config.toml` 主配置（TOML）和既有受控鉴权入口，不读取、写入或备份 `.env`；OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，全局 MCP 管理另维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`；不再维护 `~/.opencode/.env`，旧 `~/.gemini` 配置仅作历史迁移参考，不再作为当前配置中心支持口径
-- `src/config/configPaths.ts` 是用户级配置路径、配置档案目录和 `config-order.json` 的集中事实来源；`configService.ts`、`mcpService.ts` 等模块不得各自硬编码 `~/.claude.json`、`~/.codex/config.toml` 或 `~/.opencode/config.json`。legacy `gemini` 配置平台只在这里兼容归一为 `opencode`
+- `src/config/configPaths.ts` 是用户级配置路径、配置档案目录和 `config-order.json` 的集中事实来源；实际文件系统路径由 `src/shared/userHomePaths.ts` 展开 `~` / `%VAR%` 并尊重 `CODEX_HOME`。Windows 上 `.codex` 位于 `%USERPROFILE%\.codex`，不是字面量 `~/.codex`。`configService.ts`、`mcpService.ts` 等模块不得各自硬编码 `~/.claude.json`、`~/.codex/config.toml` 或 `~/.opencode/config.json`。legacy `gemini` 配置平台只在这里兼容归一为 `opencode`
 - `src/shared/jsonObject.ts` 提供 strict/jsonc 两种 JSON object 解析。普通配置文本保持 strict JSON；OpenCode 官方全局 MCP 配置允许 JSONC 输入，并在成功修改后写回格式化严格 JSON
 - 配置中心 UI 的 Claude、OpenCode、Codex 三组可视化参数采用同一交互约定：参数 label 右侧展示问号 tooltip，枚举参数在 tooltip 中列出允许值；“查看范例”入口固定在配置文件名右侧，三组保持 OpenCode 风格的相同位置和密度
 - 管理配置档案（config profiles）

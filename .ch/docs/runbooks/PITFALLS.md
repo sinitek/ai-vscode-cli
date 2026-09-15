@@ -14,6 +14,34 @@
 
 ## 当前有效条目
 
+## Windows 不能把 ~/.codex 当作真实路径
+
+- 状态：已规避，需随 CLI 安装路径 / CODEX_HOME 变化复核
+- 首次发现：2026-09-15
+- 适用范围：Windows 宿主、`src/shared/userHomePaths.ts`、`src/cli/commandResolution.ts`、`src/config/configPaths.ts`、Codex / Claude / OpenCode 用户级目录
+
+### 现象
+- 插件在 Windows 上找不到 CLI、读不到 `%USERPROFILE%\.codex` 配置，或把 `~/.codex/xxxxx` 当成字面量相对路径导致 ENOENT。
+
+### 触发条件与根因
+- Node `fs` 和 Windows 都不会展开 `~`。文档习惯写法 `~/.codex` 若直接进入 spawn / 读写，会变成当前工作目录下的 `~` 文件夹。
+- 官方 Windows Codex 安装目录是 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`，只搜 npm 全局 bin 会漏检。
+- Windows 上 `fs.rename` 覆盖已有文件可能失败，配置原子写会在已有 `config.toml` 时中断。
+
+### 长期规避
+- 所有用户级路径先经 `expandHomePath` / `resolveCodexHomeDir` 再进入文件系统。
+- Windows 命令解析必须包含官方 Codex bin 与 npm 全局目录。
+- 配置原子写使用 `src/shared/atomicWrite.ts`，在 Windows 上先删除再 rename。
+- 不要把 `CODEX_HOME=~/.codex` 原样写入 Windows 用户环境变量。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/shared/userHomePaths.test.js dist/test/shared/atomicWrite.test.js dist/test/cli/commandResolution.test.js dist/test/config/configPaths.test.js dist/test/config/officialSkillService.test.js dist/test/extensionHost/promptRuntimeCoreCoverage.test.js`
+
+### 关联资料
+- `.ch/docs/references/cli-runtime-reference.md`
+- `.ch/docs/exec-plans/completed/2026-09/2026-09-15-windows-home-path-compatibility.md`
+
 ## 配置切换下拉显示不能先于宿主提交完成
 
 - 状态：已规避，需随配置提交 / 发送链路变化复核

@@ -35,6 +35,7 @@ import {
   type LegacyConfigPlatformInput,
 } from "./configPaths";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+import { writeFileAtomically } from "../shared/atomicWrite";
 export {
   getOfficialSkillsCatalog,
   installOfficialSkill,
@@ -76,21 +77,6 @@ async function ensureFile(filePath: string, defaultContent: string): Promise<voi
   } catch {
     await ensureDir(path.dirname(filePath));
     await fs.writeFile(filePath, defaultContent, "utf-8");
-  }
-}
-
-async function writeFileAtomically(filePath: string, content: string): Promise<void> {
-  await ensureDir(path.dirname(filePath));
-  const tempPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
-  try {
-    await fs.writeFile(tempPath, content, "utf-8");
-    await fs.rename(tempPath, filePath);
-  } catch (error) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
   }
 }
 

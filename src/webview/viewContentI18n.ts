@@ -1,4 +1,7 @@
 import { AppLocale } from "../i18n";
+import { formatHomeDisplayPath } from "../shared/userHomePaths";
+
+const SINITEK_RUNTIME_HINT = formatHomeDisplayPath(".sinitek_cli");
 
 export const WEBVIEW_I18N = {
   en: {
@@ -165,7 +168,7 @@ export const WEBVIEW_I18N = {
     toolSettingsWorkspaceTab: "Workspace",
     toolSettingsHistoryRetentionDaysLabel: "History retention (days)",
     toolSettingsHistoryRetentionDaysTitle: "Global retention period for plugin-managed history data",
-    toolSettingsHistoryRetentionDaysHint: "Applies to logs, sessions, prompt history, task runs, and Loop records under ~/.sinitek_cli. Default: 30 days. Range: 1–3650 days.",
+    toolSettingsHistoryRetentionDaysHint: `Applies to logs, sessions, prompt history, task runs, and Loop records under ${SINITEK_RUNTIME_HINT}. Default: 30 days. Range: 1–3650 days.`,
     toolSettingsDebugLabel: "Debug",
     toolSettingsDebugTitle: "Debug Logs",
     toolSettingsDebugToggle: "On",
@@ -592,7 +595,7 @@ export const WEBVIEW_I18N = {
     toolSettingsWorkspaceTab: "工作区",
     toolSettingsHistoryRetentionDaysLabel: "历史保留天数",
     toolSettingsHistoryRetentionDaysTitle: "插件管理历史数据的全局保留期限",
-    toolSettingsHistoryRetentionDaysHint: "适用于 ~/.sinitek_cli 下的日志、会话、提示词历史、任务记录和 Loop 记录。默认 30 天，可设置 1–3650 天。",
+    toolSettingsHistoryRetentionDaysHint: `适用于 ${SINITEK_RUNTIME_HINT} 下的日志、会话、提示词历史、任务记录和 Loop 记录。默认 30 天，可设置 1–3650 天。`,
     toolSettingsDebugLabel: "调试",
     toolSettingsDebugTitle: "调试日志",
     toolSettingsDebugToggle: "开启",

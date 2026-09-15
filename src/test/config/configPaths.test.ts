@@ -14,7 +14,7 @@ import {
 
 test("central config path helpers preserve profile roots and legacy OpenCode aliasing", () => {
   const homeDir = path.join(path.sep, "home", "tester");
-  const paths = createConfigPaths(homeDir);
+  const paths = createConfigPaths(homeDir, {});
 
   assert.equal(normalizeConfigPlatform("claude"), "claude");
   assert.equal(normalizeConfigPlatform("codex"), "codex");
@@ -39,4 +39,10 @@ test("central config path helpers preserve profile roots and legacy OpenCode ali
   assert.deepEqual(getOpenCodeRuntimePaths(paths), {
     config: path.join(homeDir, ".opencode", "config.json"),
   });
+
+  const customCodex = createConfigPaths(homeDir, { CODEX_HOME: "~/.custom-codex" });
+  assert.equal(
+    customCodex.codex.config,
+    path.join(homeDir, ".custom-codex", "config.toml"),
+  );
 });

@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { spawn } from "child_process";
+import { resolveClaudeHomeDir, resolveCodexHomeDir, resolveOpenCodeHomeDir } from "../shared/userHomePaths";
 
 import {
   OfficialSkillCatalog,
@@ -19,9 +20,6 @@ import {
 
 const OFFICIAL_SKILL_CATALOG_PATH = path.join(__dirname, "..", "..", "media", "official_skills_catalog.json");
 const OFFICIAL_SKILL_ASSETS_ROOT = path.join(__dirname, "..", "..", "media");
-const OFFICIAL_CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
-const OFFICIAL_CODEX_SKILLS_DIR = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "skills");
-const OFFICIAL_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
 const ZIP_EXTRACTION_TIMEOUT_MS = 120 * 1000;
 
 type CurrentOfficialSkillPlatform = OfficialSkillPlatform;
@@ -69,12 +67,12 @@ async function readOfficialSkillsCatalogFile(): Promise<OfficialSkillCatalog> {
 
 export function resolveOfficialSkillInstallRoot(platform: OfficialSkillPlatform): string {
   if (platform === "claude") {
-    return OFFICIAL_CLAUDE_SKILLS_DIR;
+    return path.join(resolveClaudeHomeDir(), "skills");
   }
   if (platform === "opencode") {
-    return OFFICIAL_OPENCODE_SKILLS_DIR;
+    return path.join(resolveOpenCodeHomeDir(), "skills");
   }
-  return OFFICIAL_CODEX_SKILLS_DIR;
+  return path.join(resolveCodexHomeDir(), "skills");
 }
 
 export function getOfficialSkillTargetDir(

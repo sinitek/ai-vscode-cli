@@ -14,6 +14,7 @@ import * as configService from "../config/configService";
 import { logEssential, logInfo } from "../logger";
 import { t } from "../i18n";
 import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
+import { expandHomePath } from "../shared/userHomePaths";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void;
@@ -69,9 +70,9 @@ export class ConfigManagerPanel {
           return;
         }
         if (message && message.type === "config:openPath") {
-          const target = message.path;
+          const target = expandHomePath(message.path);
           if (target) {
-            const uri = vscode.Uri.file(target);
+            const uri = vscode.Uri.file(path.resolve(target));
             void vscode.commands.executeCommand("revealFileInOS", uri);
           }
           return;

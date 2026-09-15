@@ -4,6 +4,8 @@ import * as path from "path";
 import { buildOpenCodeMcpConfig, OpenCodeMcpConfig } from "./mcpInstallArgs";
 import { McpMarketplaceItem } from "./types";
 import { JsonObject, isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+import { resolveXdgConfigHome } from "../shared/userHomePaths";
+import { writeFileAtomically } from "../shared/atomicWrite";
 
 type OpenCodeConfigDocument = JsonObject;
 
@@ -17,16 +19,6 @@ export type OpenCodeMcpConfigMutationResult = {
   changed: boolean;
   warnings: string[];
 };
-
-function expandHomePath(value: string, homeDir: string): string {
-  if (value === "~") {
-    return homeDir;
-  }
-  if (value.startsWith("~/") || value.startsWith("~\\")) {
-    return path.join(homeDir, value.slice(2));
-  }
-  return value;
-}
 
 function parseOpenCodeConfig(content: string): OpenCodeConfigDocument {
   return parseJsonObjectText(content, {
@@ -71,17 +63,10 @@ async function writeOpenCodeConfigAtomically(
     }
   }
 
-  const tempPath = path.join(
-    configDir,
-    `.${path.basename(configPath)}.${process.pid}.${Date.now()}.tmp`,
-  );
-  try {
-    await fs.writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode });
-    await fs.rename(tempPath, configPath);
-  } catch (error) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
+  await writeFileAtomically(configPath, `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: "utf8",
+    mode,
+  });
 }
 
 function getMcpSection(config: OpenCodeConfigDocument): Record<string, unknown> {
@@ -100,11 +85,7 @@ export function resolveOpenCodeGlobalConfigPath(
 ): string {
   const env = options.env ?? process.env;
   const homeDir = options.homeDir ?? os.homedir();
-  const configuredRoot = String(env.XDG_CONFIG_HOME ?? "").trim();
-  const configRoot = configuredRoot
-    ? expandHomePath(configuredRoot, homeDir)
-    : path.join(homeDir, ".config");
-  return path.join(configRoot, "opencode", "opencode.json");
+  return path.join(resolveXdgConfigHome(env, homeDir), "opencode", "opencode.json");
 }
 
 export async function installOpenCodeMcpConfig(

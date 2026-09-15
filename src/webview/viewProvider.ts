@@ -3,6 +3,7 @@ import { logError } from "../logger";
 import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
 import { resolveLocale, t } from "../i18n";
+import { formatHomeDisplayPath } from "../shared/userHomePaths";
 
 type ViewHandlers = {
   onMessage: (message: PanelMessage) => void;
@@ -110,7 +111,7 @@ function buildFallbackHtml(webview: vscode.Webview, errorMessage: string): strin
   </head>
   <body>
     <div class="error">${t("panel.renderFailed", { error: safeMessage })}</div>
-    <div class="hint">${t("panel.logPath", { path: "~/.sinitek_cli/logs" })}</div>
+    <div class="hint">${t("panel.logPath", { path: formatHomeDisplayPath(".sinitek_cli", "logs") })}</div>
   </body>
 </html>`;
 }
