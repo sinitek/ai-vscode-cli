@@ -311,7 +311,7 @@
     {
       "id": "plugin.rule.final_conclusion_structured_protocol",
       "name": "最终结论使用协议文本或结构化完成信号",
-      "description": "普通 Codex、Claude 和 OpenCode 任务仍在 prompt 中要求最终回复包含 `[final_answer]`；运行时最终回复气泡只认明确结构化终态或协议文本，包括 Codex `phase:\"final_answer\"` / `codexFinalAnswer=true`、OpenCode 同一 messageID 的 text+stop，以及非 thinking assistant 正文包含 `[final_answer]`。Codex 主 turn 的 `turn.completed status=\"completed\"` 本身不能收口；子线程 completed、failed、interrupted、主动停止和其它 CLI 普通成功退出也不能借此收口。",
+      "description": "普通 Codex、Claude 和 OpenCode 任务仍在 prompt 中要求最终回复包含 `[final_answer]`；运行时最终回复气泡只认明确结构化终态或协议文本，包括 Codex `phase:\"final_answer\"` / `codexFinalAnswer=true`、OpenCode 同一 messageID 的 text+stop，以及非 thinking assistant 正文包含 `[final_answer]`。Codex 主 turn 的 `turn.completed status=\"completed\"` 本身不能收口；但若最后一条主线程 `agent_message` 为 `phase:null` / 缺省 phase 且其后没有工具活动，会把该条非 thinking assistant 正文提升为 `codexFinalAnswer=true`。`phase:\"commentary\"`、thinking-only、子线程 completed、failed、interrupted、主动停止和其它 CLI 普通成功退出也不能借此收口。",
       "aliases": ["final_answer", "turn.completed", "最终结论", "hidden retry"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],

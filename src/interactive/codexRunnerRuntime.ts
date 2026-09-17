@@ -2,15 +2,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { InteractiveMode, ThinkingMode } from "../cli/types";
 import {
+  classifyCodexAgentMessagePhase,
   extractCodexCollabToolFailure,
   extractCodexItemTraceCandidate,
   extractCodexSubagentLifecycleUpdates,
   isCodexFinalAnswerAgentMessage,
+  type CodexAgentMessagePhase,
   type CodexCollabToolFailure,
   type CodexItemTraceEventType,
   type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
 import {
+  extractCodexAgentMessageText,
   extractDelta,
   extractItemErrorMessage,
   extractReasoningText,
@@ -54,11 +57,29 @@ export type CodexRuntimeItemEventHandlers = {
   onTrace: (content: string, kind?: CodexRuntimeTraceKind, meta?: CodexRuntimeTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
+  onPrimaryAgentMessageCompleted?: (phase: unknown) => void;
+  onPrimaryToolActivity?: () => void;
 };
 
 export type CodexTurnAssistantObserver = {
   emit: CodexRuntimeItemEventHandlers["onAssistantDelta"];
+  observeAgentMessagePhase: (phase: unknown) => void;
+  observeToolActivity: () => void;
+  promoteUnspecifiedFinalOnCompletedTurn: () => boolean;
 };
+
+const CODEX_PRIMARY_TOOL_ITEM_TYPES = new Set([
+  "command_execution",
+  "mcp_tool_call",
+  "web_search",
+  "file_change",
+  "dynamic_tool_call",
+  "collab_agent_tool_call",
+]);
+
+export function isCodexPrimaryToolItemType(itemType: string): boolean {
+  return CODEX_PRIMARY_TOOL_ITEM_TYPES.has(itemType);
+}
 
 export function isCodexRetryProgressTraceKind(kind?: CodexRuntimeTraceKind): boolean {
   return kind !== "thinking" && kind !== "error";
@@ -78,8 +99,51 @@ export function emitCodexVisibleErrorTrace(
 export function createCodexTurnAssistantObserver(
   onAssistantDelta: CodexRuntimeItemEventHandlers["onAssistantDelta"]
 ): CodexTurnAssistantObserver {
+  let observedNonEmptyText = false;
+  let observedFinalAnswer = false;
+  let lastPhase: CodexAgentMessagePhase | null = null;
+  let toolActivityAfterLastAgentMessage = false;
+
+  const emit: CodexRuntimeItemEventHandlers["onAssistantDelta"] = (chunk, meta) => {
+    if (chunk.trim()) {
+      observedNonEmptyText = true;
+    }
+    if (meta?.codexFinalAnswer === true) {
+      observedFinalAnswer = true;
+      lastPhase = "final_answer";
+      toolActivityAfterLastAgentMessage = false;
+    }
+    onAssistantDelta(chunk, meta);
+  };
+
   return {
-    emit: onAssistantDelta,
+    emit,
+    observeAgentMessagePhase: (phase) => {
+      const classified = classifyCodexAgentMessagePhase(phase);
+      if (!classified) {
+        return;
+      }
+      lastPhase = classified;
+      toolActivityAfterLastAgentMessage = false;
+    },
+    observeToolActivity: () => {
+      if (lastPhase !== null) {
+        toolActivityAfterLastAgentMessage = true;
+      }
+    },
+    promoteUnspecifiedFinalOnCompletedTurn: () => {
+      if (
+        observedFinalAnswer
+        || !observedNonEmptyText
+        || lastPhase !== "unspecified"
+        || toolActivityAfterLastAgentMessage
+      ) {
+        return false;
+      }
+      observedFinalAnswer = true;
+      onAssistantDelta("", { codexFinalAnswer: true });
+      return true;
+    },
   };
 }
 
@@ -532,7 +596,7 @@ export function handleCodexItemEvent(options: {
     const itemId = String(item.id || "").trim();
     const bufferKey = itemId ? `${normalizedThreadId}:${itemId}` : "";
     if (itemType === "agent_message" && eventType === "item.completed") {
-      const nextText = typeof item.text === "string" ? item.text : "";
+      const nextText = extractCodexAgentMessageText(item);
       const previousText = bufferKey ? (assistantBuffers.get(bufferKey) ?? "") : "";
       const delta = extractDelta(previousText, nextText);
       handlers.onSubagentUpdate?.({
@@ -563,18 +627,23 @@ export function handleCodexItemEvent(options: {
   if (itemType === "agent_message") {
     if (eventType === "item.completed") {
       const itemId = String(item.id || "").trim();
-      const nextText = typeof item.text === "string" ? item.text : "";
+      const nextText = extractCodexAgentMessageText(item);
       const previousText = itemId ? (assistantBuffers.get(itemId) ?? "") : "";
       const delta = extractDelta(previousText, nextText);
       const codexFinalAnswer = isCodexFinalAnswerAgentMessage(item);
       if (delta || codexFinalAnswer) {
         handlers.onAssistantDelta(delta, codexFinalAnswer ? { codexFinalAnswer: true } : undefined);
       }
+      handlers.onPrimaryAgentMessageCompleted?.(item.phase ?? null);
       if (itemId) {
         assistantBuffers.delete(itemId);
       }
     }
     return;
+  }
+
+  if (eventType === "item.completed" && isCodexPrimaryToolItemType(itemType)) {
+    handlers.onPrimaryToolActivity?.();
   }
 
   if (itemType === "todo_list") {

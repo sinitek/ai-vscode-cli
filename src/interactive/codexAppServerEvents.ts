@@ -253,8 +253,24 @@ export function extractCodexSubagentLifecycleUpdates(rawItem: unknown): CodexSub
   });
 }
 
+export type CodexAgentMessagePhase = "final_answer" | "commentary" | "unspecified";
+
 export function isCodexFinalAnswerPhase(phase: unknown): boolean {
   return String(phase || "").trim() === "final_answer";
+}
+
+export function classifyCodexAgentMessagePhase(phase: unknown): CodexAgentMessagePhase | null {
+  if (typeof phase === "undefined") {
+    return null;
+  }
+  const normalized = String(phase ?? "").trim();
+  if (normalized === "final_answer") {
+    return "final_answer";
+  }
+  if (normalized === "commentary") {
+    return "commentary";
+  }
+  return "unspecified";
 }
 
 export function isCodexFinalAnswerAgentMessage(rawItem: unknown): boolean {

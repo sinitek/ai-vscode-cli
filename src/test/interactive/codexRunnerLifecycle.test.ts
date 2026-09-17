@@ -132,6 +132,64 @@ function createHandlers(events: unknown[] = []) {
   };
 }
 
+function attachAgentMessageTurnAppServer(
+  child: FakeChild,
+  item: Record<string, unknown>,
+): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              item,
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "parent-turn", status: "completed" },
+            },
+          });
+          setImmediate(close);
+        });
+      }
+    }
+  });
+}
+
 function attachSuccessfulAppServer(child: FakeChild, onMessage?: (message: Record<string, unknown>) => void): void {
   let input = "";
   const send = (message: Record<string, unknown>): void => {
@@ -554,5 +612,82 @@ test("Codex runner resumes the mapped thread with the active TOML model provider
       process.env.CODEX_THREAD_REQUEST_LOG = previousRequestLog;
     }
     fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex runner promotes phase-null completed agent messages as final answers", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61200);
+  attachAgentMessageTurnAppServer(child, {
+    id: "message-1",
+    type: "agent_message",
+    text: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.",
+    phase: null,
+  });
+  const assistant: Array<{ chunk: string; final?: boolean }> = [];
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("hi", {
+        ...createHandlers(),
+        onAssistantDelta: (chunk, meta) => assistant.push({ chunk, final: meta?.codexFinalAnswer }),
+      });
+      assert.deepEqual(assistant, [
+        { chunk: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.", final: undefined },
+        { chunk: "", final: true },
+      ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner does not promote commentary agent messages on completed turns", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61201);
+  attachAgentMessageTurnAppServer(child, {
+    id: "message-1",
+    type: "agent_message",
+    text: "Hi! 我在这里，随时可以帮你处理这个工作区的任务。",
+    phase: "commentary",
+  });
+  const assistant: Array<{ chunk: string; final?: boolean }> = [];
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("hi", {
+        ...createHandlers(),
+        onAssistantDelta: (chunk, meta) => assistant.push({ chunk, final: meta?.codexFinalAnswer }),
+      });
+      assert.deepEqual(assistant, [
+        { chunk: "Hi! 我在这里，随时可以帮你处理这个工作区的任务。", final: undefined },
+      ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
   }
 });

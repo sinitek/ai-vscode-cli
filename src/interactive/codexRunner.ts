@@ -811,6 +811,8 @@ export class CodexInteractiveRunner {
       onSubagentUpdate: handlers.onSubagentUpdate,
       onTrace: handlers.onTrace,
       onTaskListUpdate: handlers.onTaskListUpdate,
+      onPrimaryAgentMessageCompleted: turnAssistantObserver.observeAgentMessagePhase,
+      onPrimaryToolActivity: turnAssistantObserver.observeToolActivity,
     };
 
     const handleItemEvent = (
@@ -961,6 +963,9 @@ export class CodexInteractiveRunner {
                   delta,
                   isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined
                 );
+                if (Object.prototype.hasOwnProperty.call(params, "phase")) {
+                  turnAssistantObserver.observeAgentMessagePhase(params.phase);
+                }
               }
             }
             continue;
@@ -1055,6 +1060,7 @@ export class CodexInteractiveRunner {
               settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
             } else {
               if (turnStatus === "completed") {
+                turnAssistantObserver.promoteUnspecifiedFinalOnCompletedTurn();
                 handlers.onTurnCompleted?.({
                   threadId: eventThreadId || this.options.threadId || "",
                   turnId: completedTurnId,

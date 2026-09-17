@@ -5,6 +5,7 @@ import {
   buildAppServerRequestResolution,
   buildForwardedRawEvent,
   buildTurnFailureMessage,
+  extractCodexAgentMessageText,
   extractDelta,
   extractItemErrorMessage,
   extractReasoningText,
@@ -13,6 +14,23 @@ import {
   shouldSuppressRawEvent,
   toExecLikeItem,
 } from "../../interactive/codexAppServerProtocol";
+
+test("extractCodexAgentMessageText reads text, message, and content arrays", () => {
+  assert.equal(extractCodexAgentMessageText({ text: "hello" }), "hello");
+  assert.equal(
+    extractCodexAgentMessageText({
+      message: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.",
+    }),
+    "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.",
+  );
+  assert.equal(
+    extractCodexAgentMessageText({
+      content: [{ type: "output_text", text: "Hi!" }, { type: "output_text", text: " ready" }],
+    }),
+    "Hi! ready",
+  );
+  assert.equal(extractCodexAgentMessageText({ content: "ignored" }), "");
+});
 
 test("extractDelta returns appended content and falls back to common-prefix delta", () => {
   assert.equal(extractDelta("", "hello"), "hello");

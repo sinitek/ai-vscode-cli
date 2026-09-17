@@ -545,9 +545,10 @@
 - Codex 已在 AI 对话中输出非空 assistant 答复，并以 `turn.completed status:"completed"` 正常结束，但该回合所有 `agent_message` 都是 `phase:"commentary"` 或 `phase:null`，没有 `phase:"final_answer"`。
 - 2026-09-12 的 `glm-5.3_sub-coco` 复现显示：请求成功、收到 `item.completed agent_message phase:null` 和主 `turn.completed status:"completed"`，但因没有 `[final_answer]` 文本被误判为缺少最终结论并触发 hidden retry。
 - 2026-09-13 的 `grok-4.6-kedaya` 会话 `01a09864-b418-7fd3-ba67-94486151557a` 显示相反误判：最后一条只是被截断的 reasoning/thinking（`The abort on cleanup of fetch effects... tenan...`），182ms 后 Codex 发出 `turn.completed status:"completed"` 且进程 `exitCode=0`，插件立即记为“任务已完成”并可能触发自动压缩。用户体感是任务莫名中断，界面也没有最终回复气泡。
+- 2026-09-17 的 `deepseek-v4.1-flash_sub-coco` 会话 `01a0acf8-bf5a-7d13-b3b0-ec950f8abe29` 再次复现 phase-null 漏判：用户只输入 `hi`，模型返回非 thinking 问候正文，rollout `agent_message.phase` 为 `null` 且没有 `[final_answer]`，随后 `task_complete`；插件追加“没有产生最终结论气泡，自动继续”并 hidden retry。
 
 ### 触发条件与根因
-- 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。会话 `01a090d4-f86c-7cc0-b998-3b59913a5b13` 则以 `glm-5.3_sub-coco` 输出 `phase:null` 的普通 assistant 正文后成功完成。
+- 真实日志中的会话 `019f4b72-86f8-72b3-80f0-860bf9b467c4` 在收到 `hi` 后输出 commentary assistant 文本，随后成功完成；自动继续后的第二回合再次出现相同事件序列。会话 `01a090d4-f86c-7cc0-b998-3b59913a5b13` 则以 `glm-5.3_sub-coco` 输出 `phase:null` 的普通 assistant 正文后成功完成。会话 `01a0acf8-bf5a-7d13-b3b0-ec950f8abe29` 的 DeepSeek 4.1 flash 问候同样是 `phase:null` 的完整 assistant 正文，不是 thinking，也没有后续工具调用。
 - `phase` 描述消息阶段，`turn.completed status:"completed"` 描述结构化回合终态。Grok 等模型可能在只产出 reasoning、尚未写出最终 assistant 正文时就结束 turn；把 completed turn 直接当最终结论，会把过程 thinking 收成成功完成。
 - 直接把“成功退出前最后一段普通正文”默认当最终答复会反向引入过程性 commentary 误判，无法成为所有 CLI 的严格语义。
 
@@ -555,7 +556,8 @@
 - 所有普通任务和 hidden retry 的实际模型 prompt 都追加统一约定：任务完成后的最终回复必须以 `[final_answer]` 开头，过程更新不得使用该标记；不要改写界面里的原始用户消息。
 - Loop 主任务/子任务等已有纯 JSON 或专用结构化终态的机器协议必须显式关闭文本标记注入和严格文本判定，否则 `[final_answer]` 前缀会破坏 JSON 解析；这些路径继续按自己的完成气泡验收。
 - 普通任务最终回复气泡只认两类信号：消息类型带着 `final_answer`（Codex `phase:"final_answer"` / `codexFinalAnswer=true`），或非 thinking assistant 正文包含 `[final_answer]`。thinking、trace、system、user 文本中的标记不算。
-- Codex 主 turn 的 `turn.completed status:"completed"` 只表示回合结束，不能单独收口。reasoning/thinking-only 或普通 commentary 后的 completed turn 必须进入 hidden retry。
+- Codex 主 turn 的 `turn.completed status:"completed"` 只表示回合结束，不能单独收口。reasoning/thinking-only 或 `phase:"commentary"` 后的 completed turn 必须进入 hidden retry。
+- 对部分代理模型（如 DeepSeek 4.1 flash / GLM）永远不写 `phase:"final_answer"` 的情况：若主 turn 已 completed，最后一条主线程 `agent_message` 是 `phase:null` / 缺省 phase，且其后没有工具活动，则把该条非 thinking assistant 正文提升为 `codexFinalAnswer=true`。不要把 completed turn 本身、commentary 或 thinking-only 提升为最终结论。
 - `[final_answer]` 只能在 Webview assistant 气泡展示时移除开头的协议前缀，行内标记必须保持可见；不能提前改写 `message.content` 或会话存档，否则固定严格协议、历史恢复和 hidden retry 会丢失兜底终态信号。thinking 气泡即使后面紧跟“任务已完成”也不渲染成最终回复样式。
 - 普通任务固定使用协议/结构化收口；工具设置不提供切换项，遗留 `finalAnswerPolicy` / `codexFinalAnswerPolicy` 字段会被忽略。完成措辞、`Task completed` 或成功退出都不能替代显式最终信号。
 - 子代理 `turn.completed`、failed、interrupted、主动停止、Claude/OpenCode 普通成功退出都不得借 Codex completed-turn 收口。禁止扫描当前用户锚点之前的历史消息，也禁止把所有 commentary 无条件当最终答复。
@@ -564,6 +566,7 @@
 - 对 Codex / Claude / OpenCode 的首轮和 hidden retry prompt 断言都含最终回复标记约定。
 - 对 Loop 机器协议断言首轮和 hidden retry prompt 都不含 `[final_answer]`，且普通任务的固定严格协议不会覆盖其专用终态规则。
 - 断言结构化 final 和 `[final_answer]` assistant 文本通过；普通正文、thinking 中的标记、当前用户锚点之前的旧标记，以及 thinking-only / commentary-only 的 `turn.completed` 不通过。
+- 用 `item.completed agent_message phase:null` 且无后续工具、再跟主 `turn.completed completed` 断言会提升为 `codexFinalAnswer=true`；`phase:"commentary"` 或 unspecified 后再跟工具活动不得提升。
 - 用 `reasoning item.completed -> turn.completed completed` 断言交互运行时进入 missing-final-conclusion retry，而不是“任务已完成”。
 - 用子线程 `turn.completed completed` 断言不会触发父任务 completed-turn 回调。
 - 断言工具设置中的遗留策略字段和旧消息键都不会改变运行时行为。

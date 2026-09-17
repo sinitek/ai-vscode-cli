@@ -51,6 +51,33 @@ function safeStringify(value: unknown): string {
   }
 }
 
+export function extractCodexAgentMessageText(rawItem: unknown): string {
+  const item = rawItem && typeof rawItem === "object" && !Array.isArray(rawItem)
+    ? rawItem as Record<string, unknown>
+    : {};
+  if (typeof item.text === "string" && item.text) {
+    return item.text;
+  }
+  if (typeof item.message === "string" && item.message) {
+    return item.message;
+  }
+  if (!Array.isArray(item.content)) {
+    return "";
+  }
+  return item.content
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry;
+      }
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+      const record = entry as Record<string, unknown>;
+      return typeof record.text === "string" ? record.text : "";
+    })
+    .join("");
+}
+
 export function extractDelta(previous: string, next: string): string {
   if (!next) {
     return "";

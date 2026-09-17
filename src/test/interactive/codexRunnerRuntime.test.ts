@@ -303,6 +303,20 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
   });
   handleCodexItemEvent({
     eventType: "item.completed",
+    rawItem: {
+      type: "agent_message",
+      id: "msg-deepseek",
+      message: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.",
+      phase: null,
+    },
+    assistantBuffers,
+    emittedTraceContents,
+    handlers,
+    onVisibleError: (message) => visibleErrors.push(message),
+    formatCollabToolFailure: (failure) => `failed ${failure.tool}`,
+  });
+  handleCodexItemEvent({
+    eventType: "item.completed",
     rawItem: { type: "reasoning", text: [{ text: "Think\n\n<!-- -->" }] },
     assistantBuffers,
     emittedTraceContents,
@@ -345,7 +359,10 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
     formatCollabToolFailure: (failure) => `failed ${failure.tool}`,
   });
 
-  assert.deepEqual(assistant, [{ chunk: " world", final: true }]);
+  assert.deepEqual(assistant, [
+    { chunk: " world", final: true },
+    { chunk: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.", final: undefined },
+  ]);
   assert.equal(assistantBuffers.has("msg-1"), false);
   assert.deepEqual(todos, [[{ text: "Ship", done: true }]]);
   assert.equal(traces.filter((trace) => trace.kind === "thinking")[0]?.content, "Think");
@@ -393,10 +410,52 @@ test("Codex assistant observer forwards only explicit final-answer metadata", ()
   observer.emit("Explicit final", { codexFinalAnswer: true });
 
   assert.equal("promoteCommentaryOnCompletedTurn" in observer, false);
+  assert.equal(observer.promoteUnspecifiedFinalOnCompletedTurn(), false);
   assert.deepEqual(emitted, [
     { chunk: "Commentary answer", final: undefined },
     { chunk: "Explicit final", final: true },
   ]);
+});
+
+test("Codex assistant observer promotes phase-null completed replies without later tools", () => {
+  const emitted: Array<{ chunk: string; final?: boolean }> = [];
+  const observer = createCodexTurnAssistantObserver((chunk, meta) => {
+    emitted.push({ chunk, final: meta?.codexFinalAnswer });
+  });
+
+  observer.emit("Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.");
+  observer.observeAgentMessagePhase(null);
+
+  assert.equal(observer.promoteUnspecifiedFinalOnCompletedTurn(), true);
+  assert.deepEqual(emitted, [
+    { chunk: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.", final: undefined },
+    { chunk: "", final: true },
+  ]);
+});
+
+test("Codex assistant observer does not promote commentary or tool-followed unspecified replies", () => {
+  const commentary: Array<{ chunk: string; final?: boolean }> = [];
+  const commentaryObserver = createCodexTurnAssistantObserver((chunk, meta) => {
+    commentary.push({ chunk, final: meta?.codexFinalAnswer });
+  });
+  commentaryObserver.emit("Hi! 我在这里，随时可以帮你处理这个工作区的任务。");
+  commentaryObserver.observeAgentMessagePhase("commentary");
+  assert.equal(commentaryObserver.promoteUnspecifiedFinalOnCompletedTurn(), false);
+  assert.equal(commentary.some((item) => item.final === true), false);
+
+  const toolFollowed: Array<{ chunk: string; final?: boolean }> = [];
+  const toolObserver = createCodexTurnAssistantObserver((chunk, meta) => {
+    toolFollowed.push({ chunk, final: meta?.codexFinalAnswer });
+  });
+  toolObserver.emit("I'll inspect the repo next.");
+  toolObserver.observeAgentMessagePhase(null);
+  toolObserver.observeToolActivity();
+  assert.equal(toolObserver.promoteUnspecifiedFinalOnCompletedTurn(), false);
+  assert.equal(toolFollowed.some((item) => item.final === true), false);
+
+  const thinkingOnly = createCodexTurnAssistantObserver(() => undefined);
+  thinkingOnly.observeAgentMessagePhase(null);
+  assert.equal(thinkingOnly.promoteUnspecifiedFinalOnCompletedTurn(), false);
 });
 
 test("trace candidate helper rejects blanks and repeated item content", () => {

@@ -5,6 +5,7 @@ import {
   extractCodexSubagentLifecycleUpdates,
   isCodexSubagentThreadEvent,
   isCodexContextCompactionCompletedNotification,
+  classifyCodexAgentMessagePhase,
   isCodexFinalAnswerAgentMessage,
   isCodexFinalAnswerPhase,
   shouldSettleCodexPrimaryTurn,
@@ -101,6 +102,15 @@ test("ignores compaction notifications for a different thread", () => {
 test("detects Codex final answer phase", () => {
   assert.equal(isCodexFinalAnswerPhase("final_answer"), true);
   assert.equal(isCodexFinalAnswerPhase("commentary"), false);
+  assert.equal(isCodexFinalAnswerPhase(null), false);
+});
+
+test("classifies Codex agent message phases including explicit null", () => {
+  assert.equal(classifyCodexAgentMessagePhase("final_answer"), "final_answer");
+  assert.equal(classifyCodexAgentMessagePhase("commentary"), "commentary");
+  assert.equal(classifyCodexAgentMessagePhase(null), "unspecified");
+  assert.equal(classifyCodexAgentMessagePhase(""), "unspecified");
+  assert.equal(classifyCodexAgentMessagePhase(undefined), null);
 });
 
 test("detects Codex final answer agent messages", () => {
@@ -125,6 +135,14 @@ test("detects Codex final answer agent messages", () => {
       type: "agent_message",
       phase: "commentary",
       text: "Working",
+    }),
+    false
+  );
+  assert.equal(
+    isCodexFinalAnswerAgentMessage({
+      type: "agent_message",
+      phase: null,
+      text: "Hi! I'm ready to help.",
     }),
     false
   );
