@@ -1122,6 +1122,17 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             onTaskListUpdate: (items) => {
               sendPanelMessage({ type: "taskListUpdate", items, tabId });
             },
+            onTokenUsageUpdate: (update) => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              sendPanelMessage({
+                type: "contextTokenUsage",
+                tabId,
+                tokensInContextWindow: update.tokensInContextWindow,
+                modelContextWindow: update.modelContextWindow,
+              });
+            },
             onRequest: handleCodexHumanInteractionRequest,
             requestUserInputEnabled: canHandleStructuredHumanInteractionRequest(),
             onThreadId: (threadId) => {

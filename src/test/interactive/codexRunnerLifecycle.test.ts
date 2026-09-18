@@ -190,6 +190,150 @@ function attachAgentMessageTurnAppServer(
   });
 }
 
+function attachTokenUsageAppServer(child: FakeChild): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "thread/tokenUsage/updated",
+            params: {
+              threadId: "child-thread",
+              turnId: "child-turn",
+              tokenUsage: {
+                last: { totalTokens: 999 },
+                total: { totalTokens: 999 },
+                modelContextWindow: 272000,
+              },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "thread/tokenUsage/updated",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              tokenUsage: {
+                last: { totalTokens: 12345, reasoningOutputTokens: 345 },
+                total: { totalTokens: 88000, reasoningOutputTokens: 800 },
+                modelContextWindow: 272000,
+              },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              item: { id: "message-1", type: "agent_message", text: "[final_answer] done", phase: "final_answer" },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "parent-turn", status: "completed" },
+            },
+          });
+          setImmediate(close);
+        });
+      }
+    }
+  });
+}
+
+function attachTurnCompletedTokenUsageAppServer(child: FakeChild): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: "parent-thread",
+              turnId: "parent-turn",
+              item: { id: "message-1", type: "agent_message", text: "[final_answer] done", phase: "final_answer" },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: {
+                id: "parent-turn",
+                status: "completed",
+                tokenUsage: {
+                  last: { totalTokens: 4096, reasoningOutputTokens: 96 },
+                  total: { totalTokens: 88000 },
+                  modelContextWindow: 128000,
+                },
+              },
+            },
+          });
+          setImmediate(close);
+        });
+      }
+    }
+  });
+}
+
 function attachSuccessfulAppServer(child: FakeChild, onMessage?: (message: Record<string, unknown>) => void): void {
   let input = "";
   const send = (message: Record<string, unknown>): void => {
@@ -683,6 +827,72 @@ test("Codex runner does not promote commentary agent messages on completed turns
       });
       assert.deepEqual(assistant, [
         { chunk: "Hi! 我在这里，随时可以帮你处理这个工作区的任务。", final: undefined },
+      ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner forwards primary thread/tokenUsage/updated as tokens_in_context_window", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61210);
+  attachTokenUsageAppServer(child);
+  const usageUpdates: Array<{ tokensInContextWindow: number; modelContextWindow: number | null; threadId: string }> = [];
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: "parent-thread",
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("hi", {
+        ...createHandlers(),
+        onTokenUsageUpdate: (update) => usageUpdates.push(update),
+      });
+      assert.deepEqual(usageUpdates, [
+        { tokensInContextWindow: 12000, modelContextWindow: 272000, threadId: "parent-thread" },
+      ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner reads tokens_in_context_window from primary turn/completed", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61211);
+  attachTurnCompletedTokenUsageAppServer(child);
+  const usageUpdates: Array<{ tokensInContextWindow: number; modelContextWindow: number | null; threadId: string }> = [];
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: "parent-thread",
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("hi", {
+        ...createHandlers(),
+        onTokenUsageUpdate: (update) => usageUpdates.push(update),
+      });
+      assert.deepEqual(usageUpdates, [
+        { tokensInContextWindow: 4000, modelContextWindow: 128000, threadId: "parent-thread" },
       ]);
     } finally {
       runner.dispose();

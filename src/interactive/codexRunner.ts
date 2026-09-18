@@ -19,6 +19,10 @@ import {
   buildTurnFailureMessage,
   type JsonRpcResolution,
 } from "./codexAppServerProtocol";
+import {
+  extractCodexThreadTokenUsage,
+  type CodexTokenUsageUpdate,
+} from "./codexTokenUsage";
 import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 import {
   buildCodexChildEnv,
@@ -74,6 +78,7 @@ export type CodexStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onThreadId: (threadId: string) => void;
   onTurnCompleted?: (completion: CodexPrimaryTurnCompleted) => void;
+  onTokenUsageUpdate?: (update: CodexTokenUsageUpdate) => void;
   onEvent?: (event: unknown) => void;
   onRequest?: (request: CodexAppServerRequest) => Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined;
   requestUserInputEnabled?: boolean;
@@ -112,6 +117,26 @@ function normalizeCodexSpawnError(error: Error, command: string): Error {
   wrapped.path = errnoError.path;
   wrapped.syscall = errnoError.syscall;
   return wrapped;
+}
+
+function emitPrimaryTokenUsageUpdate(
+  params: Record<string, unknown>,
+  handlers: CodexStreamHandlers,
+  primaryThreadId?: string | null,
+): void {
+  const eventThreadId = String(params.threadId || params.thread_id || "").trim();
+  if (isCodexSubagentThreadEvent(eventThreadId, primaryThreadId)) {
+    return;
+  }
+  const usage = extractCodexThreadTokenUsage(params);
+  if (!usage) {
+    return;
+  }
+  handlers.onTokenUsageUpdate?.({
+    tokensInContextWindow: usage.tokensInContextWindow,
+    modelContextWindow: usage.modelContextWindow,
+    threadId: usage.threadId || eventThreadId,
+  });
 }
 
 export class CodexInteractiveRunner {
@@ -972,6 +997,10 @@ export class CodexInteractiveRunner {
           }
 
           if (method === "thread/tokenUsage/updated") {
+            const params = message.params && typeof message.params === "object"
+              ? message.params as Record<string, unknown>
+              : {};
+            emitPrimaryTokenUsageUpdate(params, handlers, this.options.threadId);
             continue;
           }
 
@@ -1033,6 +1062,9 @@ export class CodexInteractiveRunner {
             const completedTurnId = String(turn.id || "").trim();
             const turnStatus = String(turn.status || "").trim();
             const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+            if (!isSubagentTurn) {
+              emitPrimaryTokenUsageUpdate(params, handlers, this.options.threadId);
+            }
             if (isSubagentTurn) {
               const error = turnStatus === "failed"
                 ? buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))

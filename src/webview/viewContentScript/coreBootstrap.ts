@@ -260,6 +260,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         runWait: document.getElementById("runWait"),
         runStatusText: document.getElementById("runStatusText"),
         runStreamButton: document.getElementById("runStreamButton"),
+        runContextTokens: document.getElementById("runContextTokens"),
         runStreamStaleBadge: document.getElementById("runStreamStaleBadge"),
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),

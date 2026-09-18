@@ -130,6 +130,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               if (runtimeState) {
                 runtimeState.lastRunStatusMessage = "";
                 runtimeState.activeRunActivity = normalizeRunActivity(data.activity);
+                runtimeState.tokensInContextWindow = null;
+                runtimeState.modelContextWindow = null;
               }
               resetTaskListForRunStart(targetTabId);
             } else {
@@ -205,6 +207,27 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               }
             }
             syncConversationControlsForActiveTab();
+          }
+          if (data.type === "contextTokenUsage") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            const targetTabId = eventTabId || getActiveConversationTabId();
+            const runtimeState = getConversationRuntimeState(targetTabId);
+            const tokens = typeof data.tokensInContextWindow === "number" && Number.isFinite(data.tokensInContextWindow)
+              ? data.tokensInContextWindow
+              : null;
+            const windowSize = typeof data.modelContextWindow === "number" && Number.isFinite(data.modelContextWindow)
+              ? data.modelContextWindow
+              : null;
+            if (runtimeState) {
+              runtimeState.tokensInContextWindow = tokens;
+              runtimeState.modelContextWindow = windowSize && windowSize > 0 ? windowSize : null;
+            }
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            if (typeof updateContextTokenUsage === "function") {
+              updateContextTokenUsage(runtimeState);
+            }
           }
           if (data.type === "removeMessage") {
             if (!shouldHandleTabScopedEvent(data)) {

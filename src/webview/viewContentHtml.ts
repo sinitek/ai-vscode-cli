@@ -109,6 +109,7 @@ ${webviewStyles}    </style>
         <button id="runStreamButton" class="run-stream-button" style="display: none;" aria-label="${i18n.runStreamViewAria}" title="${i18n.runStreamViewAria}">
           ${i18n.runStreamViewLabel}
         </button>
+        <span id="runContextTokens" class="run-context-tokens" style="display: none;" role="status"></span>
         <span id="runStreamStaleBadge" class="run-stream-stale-badge" style="display: none;"></span>
         <button id="runPromptButton" class="run-prompt-button" style="display: none;" aria-label="${i18n.runPromptViewAria}" title="${i18n.runPromptViewAria}">
           ${i18n.runPromptViewLabel}

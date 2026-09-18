@@ -73,6 +73,19 @@ node --test \
 
 如果脚本找不到 `code` 命令，会提示先在 VS Code 中安装 shell command。
 
+### 7. 统计有效代码行数
+
+```bash
+npm run stats:loc
+```
+
+默认统计 `src` 与 `media`。有效行会去掉空行和注释，源码与单测分开汇总后再合计；第三方目录、压缩/生成文件、二进制和非代码文件会被跳过。可加 `--by-file` 看每个文件，或 `--json` 做机器可读输出：
+
+```bash
+node scripts/count_effective_loc.js --by-file
+node scripts/count_effective_loc.js --json
+```
+
 ## 推荐调试流程
 
 ### Extension Host 调试

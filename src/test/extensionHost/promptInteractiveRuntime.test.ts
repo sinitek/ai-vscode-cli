@@ -326,6 +326,11 @@ test("interactive runtime host completes a successful Codex runner turn", async 
       handlers.onTrace("thinking trace", "thinking");
       handlers.onEvent?.({ type: "codex.lifecycle", event: "turn_started" });
       handlers.onTaskListUpdate([{ text: "inspect runtime", done: false }]);
+      handlers.onTokenUsageUpdate?.({
+        tokensInContextWindow: 12345,
+        modelContextWindow: 272000,
+        threadId: "thread-success",
+      });
       handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
     },
   });
@@ -345,6 +350,12 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.ok(harness.persistedMessages.some((item) => item.sessionId === "session-1" && item.messages.some((message) => message.id === finalMessage.id)));
   assert.ok(harness.panelMessages.some((message) => message.type === "rawStreamDelta" && message.stream === "event"));
   assert.ok(harness.panelMessages.some((message) => message.type === "taskListUpdate" && message.tabId === "tab-1"));
+  assert.ok(harness.panelMessages.some((message) => (
+    message.type === "contextTokenUsage"
+    && message.tabId === "tab-1"
+    && message.tokensInContextWindow === 12345
+    && message.modelContextWindow === 272000
+  )));
   assert.equal(harness.mappingUpserts.length, 1);
   assert.deepEqual(
     {

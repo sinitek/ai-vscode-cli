@@ -1173,6 +1173,61 @@ test("hides stale run stream labels for Loop main tabs but keeps them for other 
   assert.equal(staleBadge.textContent, "Very Slow");
 });
 
+test("shows Codex used context tokens to the right of the stream button while running", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  const label = document.getElementById("runContextTokens");
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "Context: —");
+  assert.equal(label.getAttribute("aria-label"), "Waiting for used context");
+
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 12345,
+    modelContextWindow: 272000,
+  });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "Context: 12k");
+  assert.equal(label.getAttribute("aria-label"), "Used context 12k");
+  assert.match(String(label.getAttribute("title") || label.title), /12345 \/ 272000/);
+
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-2",
+    tokensInContextWindow: 500,
+    modelContextWindow: 128000,
+  });
+  assert.equal(label.textContent, "Context: 12k");
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "Context: 12k");
+});
+
+test("does not show context tokens for non-Codex runs", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      currentCli: "claude",
+      conversationTabs: {
+        activeTabId: "tab-2",
+        tabs: [
+          { id: "tab-1", cli: "codex" },
+          { id: "tab-2", cli: "claude" },
+        ],
+      },
+    }),
+  });
+  const label = document.getElementById("runContextTokens");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-2", status: "start", startedAt: 2_000, prompt: "run task" });
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+});
+
 test("batches assistant delta markdown rendering while streaming", () => {
   let markdownParseCount = 0;
   const marked = {

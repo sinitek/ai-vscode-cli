@@ -663,6 +663,81 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           }
           elements.runStatusText.style.display = summary ? (isCompacting ? "inline-flex" : "inline") : "none";
         }
+        if (typeof updateContextTokenUsage === "function") {
+          updateContextTokenUsage(runtimeState);
+        }
+      }
+
+      function formatTokensInContextWindowK(tokens) {
+        if (!Number.isFinite(tokens) || tokens < 0) {
+          return "";
+        }
+        const k = tokens / 1000;
+        if (k < 10) {
+          const scaled = Math.round(k * 10);
+          if (scaled % 10 === 0) {
+            return (scaled / 10) + "k";
+          }
+          return (scaled / 10).toFixed(1) + "k";
+        }
+        return Math.round(k) + "k";
+      }
+
+      function getActiveConversationCli() {
+        const activeTab = typeof getConversationTabSummary === "function"
+          ? getConversationTabSummary(getActiveConversationTabId())
+          : null;
+        return activeTab && activeTab.cli ? activeTab.cli : state.currentCli;
+      }
+
+      function hideContextTokenUsage() {
+        if (!elements.runContextTokens) {
+          return;
+        }
+        elements.runContextTokens.textContent = "";
+        elements.runContextTokens.removeAttribute("title");
+        elements.runContextTokens.removeAttribute("aria-label");
+        elements.runContextTokens.style.display = "none";
+      }
+
+      function updateContextTokenUsage(runtimeState) {
+        if (!elements.runContextTokens) {
+          return;
+        }
+        const activeRuntime = runtimeState || getActiveConversationRuntimeState({ create: false });
+        const tokens = activeRuntime && Number.isFinite(activeRuntime.tokensInContextWindow)
+          ? activeRuntime.tokensInContextWindow
+          : null;
+        const hasValue = tokens !== null && tokens >= 0;
+        const pending = Boolean(state.isRunning && getActiveConversationCli() === "codex" && !hasValue);
+        if (!hasValue && !pending) {
+          hideContextTokenUsage();
+          return;
+        }
+        if (pending) {
+          const title = t("runContextTokensPendingTitle");
+          const aria = t("runContextTokensPendingAria");
+          elements.runContextTokens.textContent = t("runContextTokensLabel", { value: "—" });
+          elements.runContextTokens.title = title;
+          elements.runContextTokens.setAttribute("title", title);
+          elements.runContextTokens.setAttribute("aria-label", aria);
+          elements.runContextTokens.style.display = "inline-flex";
+          return;
+        }
+        const value = formatTokensInContextWindowK(tokens);
+        const used = String(Math.round(tokens));
+        const windowSize = activeRuntime && Number.isFinite(activeRuntime.modelContextWindow) && activeRuntime.modelContextWindow > 0
+          ? String(Math.round(activeRuntime.modelContextWindow))
+          : "";
+        const title = windowSize
+          ? t("runContextTokensTitleWithWindow", { used, window: windowSize })
+          : t("runContextTokensTitle", { used });
+        const aria = t("runContextTokensAria", { value });
+        elements.runContextTokens.textContent = t("runContextTokensLabel", { value });
+        elements.runContextTokens.title = title;
+        elements.runContextTokens.setAttribute("title", title);
+        elements.runContextTokens.setAttribute("aria-label", aria);
+        elements.runContextTokens.style.display = "inline-flex";
       }
 
       function startRunWaitTimer(startAt = Date.now()) {

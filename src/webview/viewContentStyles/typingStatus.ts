@@ -84,6 +84,21 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
       .run-stream-button:hover {
         background: var(--vscode-toolbar-hoverBackground);
       }
+      .run-context-tokens {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-foreground);
+        font-size: 11px;
+        height: 24px;
+        box-sizing: border-box;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        white-space: nowrap;
+      }
       .run-stream-stale-badge {
         display: inline-flex;
         align-items: center;

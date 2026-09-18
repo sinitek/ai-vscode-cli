@@ -19,6 +19,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           currentRunPrompt: "",
           lastRunStatusMessage: "",
           activeRunActivity: "",
+          tokensInContextWindow: null,
+          modelContextWindow: null,
           runStreamRecordCounter: 0,
           runStreamRecords: [],
           runStreamRetainedBytes: 0,
@@ -306,6 +308,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         runtimeState.currentRunPrompt = "";
         runtimeState.lastRunStatusMessage = "";
         runtimeState.activeRunActivity = "";
+        runtimeState.tokensInContextWindow = null;
+        runtimeState.modelContextWindow = null;
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamRetainedBytes = 0;

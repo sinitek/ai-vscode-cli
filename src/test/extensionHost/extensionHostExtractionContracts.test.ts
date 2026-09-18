@@ -360,6 +360,7 @@ test("interactive prompt runtime source contract lives in extensionHost/promptIn
   assert.match(interactiveRuntimeSource, /onTrace: \(content, kind, meta\) => \{[\s\S]*appendTraceMessageForTab\(content, kind === "thinking" \? "thinking" : "normal", meta\)/);
   assert.match(interactiveRuntimeSource, /onEvent: \(event\) => \{[\s\S]*type: "rawStreamDelta"[\s\S]*extractTaskListItemsFromForwardedCodexEvent/);
   assert.match(interactiveRuntimeSource, /onTaskListUpdate: \(items\) => \{[\s\S]*type: "taskListUpdate"/);
+  assert.match(interactiveRuntimeSource, /onTokenUsageUpdate: \(update\) => \{[\s\S]*type: "contextTokenUsage"/);
   assert.match(interactiveRuntimeSource, /onThreadId: \(threadId\) => \{[\s\S]*updateSessionForNewRun\(threadId/);
   assert.match(interactiveRuntimeSource, /onSessionId: \(newSessionId: string\) => \{[\s\S]*updateSessionForNewRun\(newSessionId\)/);
   assert.match(interactiveRuntimeSource, /return \{ runPromptInteractive \};/);
