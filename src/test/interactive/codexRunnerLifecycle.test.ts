@@ -901,3 +901,130 @@ test("Codex runner reads tokens_in_context_window from primary turn/completed", 
     crossSpawn.spawn = originalSpawn;
   }
 });
+
+
+function attachReasoningDeltaAppServer(child: FakeChild): void {
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  const close = (): void => {
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method !== "turn/start") {
+        continue;
+      }
+      send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+      queueMicrotask(() => {
+        send({
+          jsonrpc: "2.0",
+          method: "item/reasoning/summaryPartAdded",
+          params: { threadId: "parent-thread", turnId: "parent-turn", itemId: "rs-1", summaryIndex: 0 },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "item/reasoning/summaryTextDelta",
+          params: { threadId: "parent-thread", turnId: "parent-turn", itemId: "rs-1", delta: "Ah! This is likely the root cause:" },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "item/reasoning/summaryTextDelta",
+          params: { threadId: "parent-thread", turnId: "parent-turn", itemId: "rs-1", delta: "\nLet me inspect the CSS." },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "item/reasoning/summaryTextDelta",
+          params: {
+            threadId: "parent-thread",
+            turnId: "parent-turn",
+            itemId: "rs-1",
+            delta: "\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。\n\n1.",
+          },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "item/completed",
+          params: {
+            threadId: "parent-thread",
+            turnId: "parent-turn",
+            item: {
+              type: "reasoning",
+              id: "rs-1",
+              summary_text: [
+                "Ah! This is likely the root cause:\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。\n\n1.",
+              ],
+            },
+          },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: {
+            threadId: "parent-thread",
+            turn: { id: "parent-turn", status: "completed" },
+          },
+        });
+        setImmediate(close);
+      });
+    }
+  });
+}
+
+test("Codex runner streams reasoning summary deltas and strips leaked final_answer drafts", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61220);
+  attachReasoningDeltaAppServer(child);
+  const assistant: Array<{ chunk: string; kind?: string; final?: boolean }> = [];
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    try {
+      await runner.runStreamed("hi", {
+        ...createHandlers(),
+        onAssistantDelta: (chunk, meta) => assistant.push({
+          chunk,
+          kind: meta?.kind,
+          final: meta?.codexFinalAnswer,
+        }),
+        onTrace: () => undefined,
+      });
+      assert.deepEqual(assistant, [
+        { chunk: "Ah! This is likely the root cause:", kind: "thinking", final: undefined },
+        { chunk: "\nLet me inspect the CSS.", kind: "thinking", final: undefined },
+      ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});

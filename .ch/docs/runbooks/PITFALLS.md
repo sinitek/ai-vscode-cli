@@ -14,6 +14,99 @@
 
 ## 当前有效条目
 
+## vsce package 不能对 pnpm node_modules 执行 npm list
+
+- 状态：已规避
+- 首次发现：2026-09-19
+- 适用范围：`export_vscode_extension.sh`、`publish_vscode_extension.sh`、`vsce package`、pnpm 与 npm 混用
+
+### 现象
+- `./export_vscode_extension.sh` 在 `vscode:prepublish` 之后失败，`dist/sinitek-cli-tools-<version>.vsix` 不会生成。
+- 报错为 `ERROR  Command failed: npm list --production --parseable --depth=99999 --loglevel=error`，并伴随大量 `npm error missing` / `ELSPROBLEMS`。
+- 另一台从一开始就用 `npm install` 的 Mac 可以正常导出。
+
+### 触发条件
+- 本机 `node_modules` 是 pnpm 布局（存在 `node_modules/.pnpm`）。
+- `vsce package` 默认通过 `npm list` 探测生产依赖。
+
+### 根因
+- pnpm 用符号链接和虚拟 store 组织依赖，顶层没有 npm 那种 hoist 结果，例如 `@dagrejs/graphlib` 不在 `node_modules/@dagrejs/graphlib`。
+- npm 把这些链接包当成本地包，把它们的 `devDependencies` 也算进 `npm list`，于是 vsce 直接失败。
+- 只加 `--no-dependencies` 不够：Graph 运行时仍要求 VSIX 内包含 `node_modules/@dagrejs/dagre` 和 `node_modules/@dagrejs/graphlib`。
+
+### 长期规避
+- 导出脚本检测到 pnpm 布局时，复制源码到临时目录再安装：有 pnpm 则 `pnpm install --node-linker=hoisted`，否则 `npm install`，再调用 `vsce package`。
+- `.gitignore` 忽略 `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`，避免把某台机器的包管理器选择提交进仓库。
+- `.vscodeignore` 同样忽略这些锁文件，避免进入 VSIX。
+
+### 验证方式
+- 在已有 pnpm `node_modules` 的工作区执行 `./export_vscode_extension.sh`。
+- 确认生成 `dist/sinitek-cli-tools-<version>.vsix`，且 ZIP 中包含 `extension/dist/extension.js` 与 `extension/node_modules/@dagrejs/(dagre|graphlib)/package.json`。
+
+### 关联资料
+- `export_vscode_extension.sh`
+- `publish_vscode_extension.sh`
+- `.vscodeignore`
+- `.ch/docs/runbooks/local-development.md`
+
+## 不能在 pnpm 的 node_modules 上执行 npm install
+
+- 状态：已规避
+- 首次发现：2026-09-19
+- 适用范围：`run_dev.sh`、本机开发依赖安装、pnpm 与 npm 混用、无法访问 GitHub 的网络
+
+### 现象
+- `./run_dev.sh` 卡在 `npm install`，或最终报 `ETIMEDOUT`。
+- npm 日志出现 `http fetch GET https://github.com/markedjs/marked/tarball/v14.1.1 attempt N failed with ETIMEDOUT`。
+- 另一台同样能访问内网 npm 源的 Mac 可以正常启动。
+
+### 触发条件
+- 本机已经用 `pnpm install` 生成了 `node_modules/.pnpm` 或未跟踪的 `pnpm-lock.yaml`。
+- `run_dev.sh` 无条件执行 `npm install`。
+- 当前网络访问不到 GitHub。
+
+### 根因
+- pnpm 用符号链接组织 `node_modules`。npm 会把这些链接包当成本地包，继续安装它们的 `devDependencies`。
+- `marked` 的开发依赖 `@markedjs/testutils@14.1.1-0` 依赖 `marked-repo` GitHub tarball，npm 因此离开内网 registry 去请求 GitHub 并超时。
+- 官方开发路径是 `npm install`；另一台机器如果从一开始就用 npm，不会触发这条链路。
+
+### 长期规避
+- `run_dev.sh` 与导出脚本共用 `scripts/install_workspace_node_modules.sh`：已有 pnpm 布局且本机有 pnpm 时用 pnpm，否则用 npm；缺少 pnpm 时删除不兼容的 `node_modules` 再 `npm install`，绝不在 pnpm 树上直接 `npm install`。
+- 锁文件不入库，换机器时不会被另一台电脑的 pnpm/npm 选择带偏。
+
+### 验证方式
+- 在已有 pnpm `node_modules` 的工作区执行 `./run_dev.sh`，确认走 `pnpm install` 且能完成 `npm run build`。
+- 确认脚本不再请求 `https://github.com/markedjs/marked/tarball/v14.1.1`。
+
+### 关联资料
+- `run_dev.sh`
+- `.ch/docs/runbooks/local-development.md`
+
+
+## Grok 会把 [final_answer] 草稿写进 Codex reasoning summary
+
+- 状态：已规避
+- 首次发现：2026-09-19
+- 适用范围：Codex app-server、Grok 等兼容网关模型、thinking 气泡
+
+### 现象
+- 思考气泡突然被截断，并出现 `[final_answer]` 后跟一份不完整的中文结论，例如 `Ah! This is likely the root cause:` 后面直接拼上最终答复草稿。
+
+### 触发条件与根因
+- Codex 对 Grok 只转发 reasoning **summary**（`item/reasoning/summaryTextDelta`），完整 CoT 在 encrypted_content 里不可读。
+- Grok 常在 summary 写到约 200 字后追加 `...`，随后把 `[final_answer]` 草稿写进同一条 reasoning，而不是 `agent_message`。
+- 插件若只消费 `item.completed`，会把这段截断摘要原样显示；若把 reasoning 当普通 assistant delta，还会污染最终答复气泡。
+
+### 长期规避
+- 实时消费 `summaryTextDelta` / `textDelta` / `summaryPartAdded`，按 item 拼接 thinking。
+- `sanitizeCodexReasoningContent` 截掉 `[final_answer]` 及其后草稿；完成快照不得覆盖更长的已流式思考。
+- thinking delta 不计入 final-answer 观察器。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/core/codexReasoningContent.test.js dist/test/interactive/codexAppServerProtocol.test.js dist/test/interactive/codexRunnerRuntime.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
+
+
 ## Windows 不能把 ~/.codex 当作真实路径
 
 - 状态：已规避，需随 CLI 安装路径 / CODEX_HOME 变化复核

@@ -3,9 +3,19 @@ dist/
 *.vsix
 .DS_Store
 logs
-package-lock.json
 .vscode/
 .tmp-loop-*/
 .tmp-loop-launch-*/
 .codegraph/
 *.pyc
+__pycache__/
+
+# 包管理器锁文件和调试日志因本机 npm/pnpm/yarn/registry 而异，不入库
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/

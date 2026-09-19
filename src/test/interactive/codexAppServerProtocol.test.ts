@@ -120,6 +120,17 @@ test("extractReasoningText flattens reasoning fragments and removes duplicates",
   );
 });
 
+test("extractReasoningText reads summary_text and strips leaked final answers", () => {
+  assert.equal(
+    extractReasoningText({
+      summary_text: [
+        "Ah! This is likely the root cause:\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。\n\n1.",
+      ],
+    }),
+    "Ah! This is likely the root cause:",
+  );
+});
+
 test("extractReasoningText removes only standalone empty HTML comments", () => {
   assert.equal(
     extractReasoningText({

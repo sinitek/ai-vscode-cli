@@ -40,11 +40,8 @@ OUT_FILE="${OUT_DIR}/${PACKAGE_NAME}-${VERSION}.vsix"
 
 mkdir -p "$OUT_DIR"
 
-echo "[1/3] Building extension..."
-npm run build
-
-echo "[2/3] Packaging VSIX: ${OUT_FILE}"
-"${VSCE_CMD[@]}" package --out "$OUT_FILE"
+echo "[1/2] Packaging VSIX via export_vscode_extension.sh: ${OUT_FILE}"
+"${ROOT_DIR}/export_vscode_extension.sh"
 
 PUBLISH_ARGS=("--packagePath" "$OUT_FILE")
 if [[ -n "${VSCE_PAT:-}" ]]; then
@@ -53,7 +50,7 @@ elif [[ -n "${VSCODE_MARKETPLACE_PAT:-}" ]]; then
   PUBLISH_ARGS+=("--pat" "$VSCODE_MARKETPLACE_PAT")
 fi
 
-echo "[3/3] Publishing to Marketplace..."
+echo "[2/2] Publishing to Marketplace..."
 "${VSCE_CMD[@]}" publish "${PUBLISH_ARGS[@]}"
 
 echo "Done. Published ${PACKAGE_NAME}@${VERSION}."

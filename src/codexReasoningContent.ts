@@ -1,7 +1,21 @@
+import { FINAL_ANSWER_TEXT_MARKER } from "./finalAnswerProtocol";
 import { stripThinkingWrapperTags } from "./thinkingMarkup";
 
 const STANDALONE_EMPTY_HTML_COMMENT_PATTERN = /^[\t ]*<!--[\t ]*-->[\t ]*$/;
 const EXCESS_BLANK_LINES_PATTERN = /\n(?:[\t ]*\n){2,}/g;
+const TRAILING_WHITESPACE_PATTERN = /[ \t\r\n]+$/u;
+
+/**
+ * Grok and some Codex reasoning summaries append a leaked `[final_answer]` draft
+ * after truncated thinking. Keep the thinking prefix only.
+ */
+export function stripLeakedFinalAnswerFromReasoning(content: string): string {
+  const index = content.indexOf(FINAL_ANSWER_TEXT_MARKER);
+  if (index < 0) {
+    return content;
+  }
+  return content.slice(0, index).replace(TRAILING_WHITESPACE_PATTERN, "");
+}
 
 /**
  * Removes the empty HTML-comment separator emitted by some Codex models.
@@ -19,12 +33,11 @@ export function sanitizeCodexReasoningContent(content: string): string {
     return false;
   });
 
-  if (!removedMarker) {
-    return withoutThinkingTags;
-  }
-
-  return retainedLines
-    .join("\n")
-    .replace(EXCESS_BLANK_LINES_PATTERN, "\n\n")
-    .trim();
+  const cleaned = removedMarker
+    ? retainedLines
+      .join("\n")
+      .replace(EXCESS_BLANK_LINES_PATTERN, "\n\n")
+      .trim()
+    : withoutThinkingTags;
+  return stripLeakedFinalAnswerFromReasoning(cleaned);
 }

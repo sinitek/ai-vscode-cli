@@ -53,6 +53,7 @@ run_dev.sh
 # Lock files
 package-lock.json
 yarn.lock
+pnpm-lock.yaml
 
 # Test files
 **/*.test.ts

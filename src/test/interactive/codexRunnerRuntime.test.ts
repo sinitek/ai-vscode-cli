@@ -18,7 +18,10 @@ import {
   collectArgValues,
   createCodexTurnAssistantObserver,
   emitCodexVisibleErrorTrace,
+  applyCodexReasoningDelta,
+  commitCodexReasoningSnapshot,
   handleCodexItemEvent,
+  handleCodexReasoningNotification,
   isCodexRetryProgressTraceKind,
   mapCodexReasoningEffort,
   pickArgValue,
@@ -274,14 +277,14 @@ test("client info resolves package version near command path and falls back", ()
 });
 
 test("item event helper emits assistant deltas, traces, todos, and deduped command output", () => {
-  const assistant: Array<{ chunk: string; final?: boolean }> = [];
+  const assistant: Array<{ chunk: string; final?: boolean; kind?: string }> = [];
   const traces: Array<{ content: string; kind?: string }> = [];
   const todos: { text: string; done: boolean }[][] = [];
   const assistantBuffers = new Map<string, string>([["msg-1", "hello"]]);
   const emittedTraceContents = new Map<string, string>();
   const handlers = {
-    onAssistantDelta: (chunk: string, meta?: { codexFinalAnswer?: boolean }) => {
-      assistant.push({ chunk, final: meta?.codexFinalAnswer });
+    onAssistantDelta: (chunk: string, meta?: { codexFinalAnswer?: boolean; kind?: "thinking" }) => {
+      assistant.push({ chunk, final: meta?.codexFinalAnswer, kind: meta?.kind });
     },
     onTrace: (content: string, kind?: string) => {
       traces.push({ content, kind });
@@ -360,12 +363,13 @@ test("item event helper emits assistant deltas, traces, todos, and deduped comma
   });
 
   assert.deepEqual(assistant, [
-    { chunk: " world", final: true },
-    { chunk: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.", final: undefined },
+    { chunk: " world", final: true, kind: undefined },
+    { chunk: "Hi! I'm ready to help with the `sinitek-ai-vscode-cli` repo.", final: undefined, kind: undefined },
+    { chunk: "Think", final: undefined, kind: "thinking" },
   ]);
   assert.equal(assistantBuffers.has("msg-1"), false);
   assert.deepEqual(todos, [[{ text: "Ship", done: true }]]);
-  assert.equal(traces.filter((trace) => trace.kind === "thinking")[0]?.content, "Think");
+  assert.equal(traces.filter((trace) => trace.kind === "thinking").length, 0);
   assert.equal(traces.filter((trace) => trace.content.includes("npm test")).length, 1);
   assert.deepEqual(visibleErrors, []);
 });
@@ -465,4 +469,103 @@ test("trace candidate helper rejects blanks and repeated item content", () => {
   assert.equal(shouldEmitItemTraceCandidate(emitted, "command_execution", "1", "ok"), true);
   assert.equal(shouldEmitItemTraceCandidate(emitted, "command_execution", "1", "ok"), false);
   assert.equal(shouldEmitItemTraceCandidate(emitted, "", "", "ok"), true);
+});
+
+test("reasoning deltas concatenate without extra newlines and ignore leaked final_answer snapshots", () => {
+  const first = applyCodexReasoningDelta(undefined, "Ah! This is likely the root cause:");
+  assert.equal(first.delta, "Ah! This is likely the root cause:");
+  const second = applyCodexReasoningDelta(first.state, "\nLet me inspect the table CSS.");
+  assert.equal(second.delta, "\nLet me inspect the table CSS.");
+  const leaked = applyCodexReasoningDelta(second.state, "\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。\n\n1.");
+  assert.equal(leaked.delta, "");
+  assert.equal(leaked.state.closed, true);
+  assert.equal(leaked.state.emitted, "Ah! This is likely the root cause:\nLet me inspect the table CSS.");
+
+  const snapshot = commitCodexReasoningSnapshot(
+    leaked.state,
+    "Ah! This is likely the root cause:\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。",
+  );
+  assert.equal(snapshot.delta, "");
+  assert.equal(snapshot.state.emitted, leaked.state.emitted);
+});
+
+test("completed reasoning snapshot emits thinking without replacing a longer streamed buffer", () => {
+  const streamed = applyCodexReasoningDelta(undefined, "The wrapper min-width is 1420px, so overflow is clipped.");
+  const snapshot = commitCodexReasoningSnapshot(streamed.state, "The wrapper min-width is 1420px...");
+  assert.equal(snapshot.delta, "");
+  assert.equal(snapshot.state.emitted, "The wrapper min-width is 1420px, so overflow is clipped.");
+
+  const fresh = commitCodexReasoningSnapshot(
+    undefined,
+    "There's a test file.\n[final_answer]已修复审计日志页面表格在窄屏下无法横向滚动的问题。",
+  );
+  assert.equal(fresh.delta, "There's a test file.");
+});
+
+test("reasoning notifications stream thinking and skip truncated completed items", () => {
+  const assistant: Array<{ chunk: string; kind?: string }> = [];
+  const reasoningBuffers = new Map();
+  const handlers = {
+    onAssistantDelta: (chunk: string, meta?: { kind?: "thinking" }) => {
+      assistant.push({ chunk, kind: meta?.kind });
+    },
+    onTrace: () => {
+      throw new Error("reasoning must not use onTrace");
+    },
+    onTaskListUpdate: () => {},
+  };
+
+  handleCodexReasoningNotification({
+    method: "item/reasoning/summaryTextDelta",
+    params: { threadId: "parent", itemId: "rs-1", delta: "This is the key:\n\n```javascript" },
+    primaryThreadId: "parent",
+    reasoningBuffers,
+    handlers,
+  });
+  handleCodexReasoningNotification({
+    method: "item/reasoning/summaryTextDelta",
+    params: { threadId: "parent", itemId: "rs-1", delta: "[final_answer]已修复审计日志和性能观测页面的水平滚动条问题。" },
+    primaryThreadId: "parent",
+    reasoningBuffers,
+    handlers,
+  });
+  handleCodexItemEvent({
+    eventType: "item.completed",
+    rawItem: {
+      type: "reasoning",
+      id: "rs-1",
+      summary_text: ["This is the key:\n\n```javascript[final_answer]已修复审计日志和性能观测页面的水平滚动条问题。"],
+    },
+    threadId: "parent",
+    primaryThreadId: "parent",
+    assistantBuffers: new Map(),
+    reasoningBuffers,
+    emittedTraceContents: new Map(),
+    handlers,
+    onVisibleError: () => {
+      throw new Error("unexpected error");
+    },
+    formatCollabToolFailure: () => "failed",
+  });
+
+  assert.deepEqual(assistant, [{ chunk: "This is the key:\n\n```javascript", kind: "thinking" }]);
+  assert.equal(reasoningBuffers.size, 0);
+});
+
+test("Codex assistant observer ignores thinking deltas when promoting final answers", () => {
+  const emitted: Array<{ chunk: string; final?: boolean; kind?: string }> = [];
+  const observer = createCodexTurnAssistantObserver((chunk, meta) => {
+    emitted.push({ chunk, final: meta?.codexFinalAnswer, kind: meta?.kind });
+  });
+  observer.emit("hidden thought", { kind: "thinking" });
+  observer.observeAgentMessagePhase(null);
+  assert.equal(observer.promoteUnspecifiedFinalOnCompletedTurn(), false);
+  observer.emit("Visible reply");
+  observer.observeAgentMessagePhase(null);
+  assert.equal(observer.promoteUnspecifiedFinalOnCompletedTurn(), true);
+  assert.deepEqual(emitted, [
+    { chunk: "hidden thought", final: undefined, kind: "thinking" },
+    { chunk: "Visible reply", final: undefined, kind: undefined },
+    { chunk: "", final: true, kind: undefined },
+  ]);
 });

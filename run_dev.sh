@@ -2,6 +2,8 @@
 set -euo pipefail
 
 workspace_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/install_workspace_node_modules.sh
+source "${workspace_dir}/scripts/install_workspace_node_modules.sh"
 
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm 未安装或不在 PATH 中。"
@@ -21,7 +23,7 @@ fi
 
 cd "$workspace_dir"
 
-npm install
+install_workspace_node_modules
 npm run build
 
 "$code_cmd" --extensionDevelopmentPath="$workspace_dir"

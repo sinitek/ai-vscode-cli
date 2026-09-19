@@ -44,6 +44,9 @@ import {
   emitCodexVisibleErrorTrace,
   emitCodexTodoListUpdate,
   handleCodexItemEvent,
+  handleCodexReasoningNotification,
+  type CodexAssistantDeltaMeta as CodexRuntimeAssistantDeltaMeta,
+  type CodexReasoningBufferState,
   type CodexRuntimeTraceKind,
   type CodexRuntimeTraceMeta,
 } from "./codexRunnerRuntime";
@@ -56,9 +59,7 @@ export type CodexTraceKind = CodexRuntimeTraceKind;
 
 export type CodexTraceMeta = CodexRuntimeTraceMeta;
 
-export type CodexAssistantDeltaMeta = {
-  codexFinalAnswer?: boolean;
-};
+export type CodexAssistantDeltaMeta = CodexRuntimeAssistantDeltaMeta;
 
 export type CodexAppServerRequest = {
   method: string;
@@ -676,6 +677,7 @@ export class CodexInteractiveRunner {
     let exitSettled = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
     const assistantBuffers = new Map<string, string>();
+    const reasoningBuffers = new Map<string, CodexReasoningBufferState>();
     const emittedTraceContents = new Map<string, string>();
     let activeTurnId = "";
     let rl: readline.Interface | null = null;
@@ -851,6 +853,7 @@ export class CodexInteractiveRunner {
         threadId,
         primaryThreadId: this.options.threadId ?? undefined,
         assistantBuffers,
+        reasoningBuffers,
         emittedTraceContents,
         handlers: runtimeItemHandlers,
         onVisibleError: failRunWithVisibleMessage,
@@ -961,6 +964,24 @@ export class CodexInteractiveRunner {
             } else {
               updateThreadId(normalizedStartedThreadId);
             }
+            continue;
+          }
+
+          if (
+            method === "item/reasoning/summaryTextDelta"
+            || method === "item/reasoning/textDelta"
+            || method === "item/reasoning/summaryPartAdded"
+          ) {
+            const params = message.params && typeof message.params === "object"
+              ? message.params as Record<string, unknown>
+              : {};
+            handleCodexReasoningNotification({
+              method,
+              params,
+              primaryThreadId: this.options.threadId ?? undefined,
+              reasoningBuffers,
+              handlers: runtimeItemHandlers,
+            });
             continue;
           }
 

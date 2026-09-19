@@ -20,6 +20,8 @@ import {
   normalizeTodoListItems,
   toExecLikeItem,
 } from "./codexAppServerProtocol";
+import { sanitizeCodexReasoningContent } from "../codexReasoningContent";
+import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
 import { buildHiddenRetryErrorTraceContent } from "../hiddenRetry";
 import { detectCodexRateLimitErrorMessage } from "./codexErrorClassifier";
 
@@ -52,8 +54,19 @@ export type CodexRuntimeTraceMeta = {
   merge?: boolean;
 };
 
+export type CodexAssistantDeltaMeta = {
+  codexFinalAnswer?: boolean;
+  kind?: "thinking";
+};
+
+export type CodexReasoningBufferState = {
+  raw: string;
+  emitted: string;
+  closed: boolean;
+};
+
 export type CodexRuntimeItemEventHandlers = {
-  onAssistantDelta: (chunk: string, meta?: { codexFinalAnswer?: boolean }) => void;
+  onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
   onTrace: (content: string, kind?: CodexRuntimeTraceKind, meta?: CodexRuntimeTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
@@ -105,6 +118,10 @@ export function createCodexTurnAssistantObserver(
   let toolActivityAfterLastAgentMessage = false;
 
   const emit: CodexRuntimeItemEventHandlers["onAssistantDelta"] = (chunk, meta) => {
+    if (meta?.kind === "thinking") {
+      onAssistantDelta(chunk, meta);
+      return;
+    }
     if (chunk.trim()) {
       observedNonEmptyText = true;
     }
@@ -556,12 +573,140 @@ function emitTraceCandidate(
   onTrace(traceCandidate.content, "normal", { merge: false });
 }
 
+
+export function createCodexReasoningBufferState(): CodexReasoningBufferState {
+  return { raw: "", emitted: "", closed: false };
+}
+
+export function reasoningBufferKey(
+  itemId: string,
+  threadId?: string,
+  primaryThreadId?: string,
+): string {
+  const normalizedItemId = String(itemId || "").trim();
+  if (!normalizedItemId) {
+    return "";
+  }
+  const normalizedThreadId = String(threadId || "").trim();
+  const normalizedPrimaryThreadId = String(primaryThreadId || "").trim();
+  if (
+    normalizedThreadId
+    && normalizedPrimaryThreadId
+    && normalizedThreadId !== normalizedPrimaryThreadId
+  ) {
+    return `${normalizedThreadId}:${normalizedItemId}`;
+  }
+  return normalizedItemId;
+}
+
+function resolveCodexReasoningRaw(streamed: string, completed: string): string {
+  if (!streamed) {
+    return completed;
+  }
+  if (!completed) {
+    return streamed;
+  }
+  if (completed.startsWith(streamed) || streamed.startsWith(completed)) {
+    return streamed.length >= completed.length ? streamed : completed;
+  }
+  return streamed;
+}
+
+export function applyCodexReasoningDelta(
+  state: CodexReasoningBufferState | undefined,
+  chunk: string,
+  options: { partBreak?: boolean } = {},
+): { state: CodexReasoningBufferState; delta: string } {
+  const next: CodexReasoningBufferState = state
+    ? { ...state }
+    : createCodexReasoningBufferState();
+  if (next.closed) {
+    return { state: next, delta: "" };
+  }
+  if (options.partBreak === true && next.raw && !next.raw.endsWith("\n")) {
+    next.raw += "\n";
+  }
+  if (chunk) {
+    next.raw += chunk;
+  }
+  if (next.raw.includes(FINAL_ANSWER_TEXT_MARKER)) {
+    next.closed = true;
+  }
+  const sanitized = sanitizeCodexReasoningContent(next.raw);
+  if (sanitized.startsWith(next.emitted)) {
+    const delta = sanitized.slice(next.emitted.length);
+    next.emitted = sanitized;
+    return { state: next, delta };
+  }
+  if (next.emitted.startsWith(sanitized)) {
+    return { state: next, delta: "" };
+  }
+  return { state: next, delta: "" };
+}
+
+export function commitCodexReasoningSnapshot(
+  state: CodexReasoningBufferState | undefined,
+  completedText: string,
+): { state: CodexReasoningBufferState; delta: string } {
+  if (state?.closed) {
+    return { state, delta: "" };
+  }
+  const resolvedRaw = resolveCodexReasoningRaw(state?.raw ?? "", completedText);
+  return applyCodexReasoningDelta(
+    {
+      raw: resolvedRaw,
+      emitted: state?.emitted ?? "",
+      closed: false,
+    },
+    "",
+  );
+}
+
+export function handleCodexReasoningNotification(options: {
+  method: string;
+  params: Record<string, unknown>;
+  primaryThreadId?: string;
+  reasoningBuffers: Map<string, CodexReasoningBufferState>;
+  handlers: CodexRuntimeItemEventHandlers;
+}): void {
+  const method = String(options.method || "").trim();
+  const params = options.params;
+  const eventThreadId = String(params.threadId || "").trim();
+  const itemId = String(params.itemId || "").trim();
+  const bufferKey = reasoningBufferKey(itemId, eventThreadId, options.primaryThreadId);
+  if (!bufferKey) {
+    return;
+  }
+  if (
+    eventThreadId
+    && options.primaryThreadId
+    && eventThreadId !== String(options.primaryThreadId || "").trim()
+  ) {
+    return;
+  }
+  const partBreak = method === "item/reasoning/summaryPartAdded";
+  const deltaText = partBreak ? "" : String(params.delta || "");
+  if (!partBreak && !deltaText) {
+    return;
+  }
+  const applied = applyCodexReasoningDelta(
+    options.reasoningBuffers.get(bufferKey),
+    deltaText,
+    { partBreak },
+  );
+  options.reasoningBuffers.set(bufferKey, applied.state);
+  if (applied.delta) {
+    options.handlers.onAssistantDelta(applied.delta, { kind: "thinking" });
+  }
+}
+
 export function handleCodexItemEvent(options: {
   eventType: CodexItemTraceEventType;
   rawItem: unknown;
   threadId?: string;
   primaryThreadId?: string;
   assistantBuffers: Map<string, string>;
+  reasoningBuffers?: Map<string, CodexReasoningBufferState>;
   emittedTraceContents: Map<string, string>;
   handlers: CodexRuntimeItemEventHandlers;
   onVisibleError: (message: string) => void;
@@ -573,6 +718,7 @@ export function handleCodexItemEvent(options: {
     threadId,
     primaryThreadId,
     assistantBuffers,
+    reasoningBuffers,
     emittedTraceContents,
     handlers,
     onVisibleError,
@@ -652,9 +798,18 @@ export function handleCodexItemEvent(options: {
   }
 
   if (itemType === "reasoning") {
-    const text = extractReasoningText(item);
-    if (text) {
-      handlers.onTrace(text, "thinking");
+    const itemId = String(item.id || "").trim();
+    const bufferKey = reasoningBufferKey(itemId, normalizedThreadId, normalizedPrimaryThreadId);
+    const completedText = extractReasoningText(item);
+    const applied = commitCodexReasoningSnapshot(
+      bufferKey ? reasoningBuffers?.get(bufferKey) : undefined,
+      completedText,
+    );
+    if (bufferKey && reasoningBuffers) {
+      reasoningBuffers.delete(bufferKey);
+    }
+    if (applied.delta) {
+      handlers.onAssistantDelta(applied.delta, { kind: "thinking" });
     }
     return;
   }

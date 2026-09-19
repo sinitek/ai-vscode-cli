@@ -95,3 +95,39 @@ test("sanitizeMessages drops a Codex thinking message containing only empty mark
     changed: true,
   });
 });
+
+test("sanitizeCodexReasoningContent strips leaked [final_answer] drafts from thinking", () => {
+  assert.equal(
+    sanitizeCodexReasoningContent(
+      "Ah! This is likely the root cause:\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。\n\n通过以下调整使表格能正常显示水平滚动条：\n\n1."
+    ),
+    "Ah! This is likely the root cause:",
+  );
+  assert.equal(
+    sanitizeCodexReasoningContent("This is the key:\n\n```javascript[final_answer]已修复审计日志和性能观测页面的水平滚动条问题。"),
+    "This is the key:\n\n```javascript",
+  );
+  assert.equal(sanitizeCodexReasoningContent("[final_answer] only the draft"), "");
+});
+
+test("sanitizeMessages strips leaked [final_answer] from persisted Codex thinking", () => {
+  const messages: ChatMessage[] = [
+    {
+      id: "codex-thinking-leak",
+      role: "assistant",
+      kind: "thinking",
+      content: "Ah! This is likely the root cause:\n[final_answer]已修复审计日志和性能观测页面的表格宽度问题。",
+      createdAt: 1,
+    },
+    {
+      id: "normal-assistant",
+      role: "assistant",
+      content: "[final_answer] keep this visible answer",
+      createdAt: 2,
+    },
+  ];
+  const result = sanitizeMessages(messages, "codex");
+  assert.equal(result.changed, true);
+  assert.equal(result.messages[0]?.content, "Ah! This is likely the root cause:");
+  assert.equal(result.messages[1]?.content, "[final_answer] keep this visible answer");
+});

@@ -67,9 +67,12 @@ node --test \
 
 该脚本会：
 
-- 自动执行 `npm install`
+- 按本机 `node_modules` 布局安装依赖：已有 pnpm 布局且本机有 pnpm 时用 `pnpm install`，否则用 `npm install`
+- 若本机是 pnpm 布局但没有 pnpm，会删除该 `node_modules` 后改走 `npm install`，避免直接混用
 - 自动执行 `npm run build`
 - 以 `--extensionDevelopmentPath` 方式启动 VS Code
+
+`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 因机器环境而异，已加入 `.gitignore`，不要提交。不要在 pnpm 的 `node_modules` 上手动执行 `npm install`。
 
 如果脚本找不到 `code` 命令，会提示先在 VS Code 中安装 shell command。
 
@@ -127,6 +130,8 @@ npm install
 
 - 读取 `package.json` 中的版本号
 - 优先调用项目内 `node_modules/.bin/vsce package`，若缺少本地依赖则回退到全局 `vsce`
+- 若当前 `node_modules` 是 pnpm 布局，先复制到临时目录安装成 vsce 可识别的 hoist 布局再打包；本机没有 pnpm 时临时目录改走 `npm install`。不要直接对 pnpm 树执行 `vsce package`（它会跑 `npm list` 并 `ELSPROBLEMS`）
+- 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、测试产物和 Python 缓存
 - 解包审计 VSIX 清单，若 `.agents/`、`.ch/`、`.codegraph/`、`docs/`、`scripts/`、`dist/test/` 等开发态内容误入包内会直接失败
 - 校验关键运行时文件仍在包内，包括 `dist/extension.js`、本地化文件、`media` 资源、workspace scaffold 和 Graph 面板的 Dagre 依赖

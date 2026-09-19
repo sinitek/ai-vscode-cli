@@ -114,7 +114,7 @@ function collectReasoningFragments(value: unknown, output: string[]): void {
     return;
   }
   const record = value as Record<string, unknown>;
-  ["text", "summary", "content", "title"].forEach((key) => {
+  ["text", "summary", "summary_text", "summaryText", "content", "title"].forEach((key) => {
     if (key in record) {
       collectReasoningFragments(record[key], output);
     }
@@ -125,6 +125,8 @@ export function extractReasoningText(item: Record<string, unknown>): string {
   const fragments: string[] = [];
   collectReasoningFragments(item.text, fragments);
   collectReasoningFragments(item.summary, fragments);
+  collectReasoningFragments(item.summary_text, fragments);
+  collectReasoningFragments(item.summaryText, fragments);
   collectReasoningFragments(item.content, fragments);
   if (!fragments.length) {
     return "";

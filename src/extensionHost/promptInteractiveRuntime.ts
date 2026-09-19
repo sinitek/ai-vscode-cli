@@ -1068,6 +1068,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               if (!isCurrentRunActive()) {
                 return;
               }
+              if (meta?.kind === "thinking") {
+                appendAssistantChunkForTab(chunk, "thinking");
+                appendDebugStdout(chunk);
+                return;
+              }
               if (meta?.codexFinalAnswer === true) {
                 observedCodexFinalAnswer = true;
               }
