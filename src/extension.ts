@@ -451,7 +451,7 @@ import {
   createScheduledTaskRecord,
   readScheduledTaskStore,
   removeScheduledTask,
-  resolveScheduledTaskExecutionConfig,
+  resolveScheduledTaskExecutionConfigForTask,
   ScheduledTaskScheduler,
   SCHEDULED_TASK_MAX_COUNT,
   upsertScheduledTask,
@@ -1302,9 +1302,8 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
     throw new Error("No conversation tab is available for the scheduled task.");
   }
   await configApplyQueue.waitForIdle(task.cli);
-  // Resolve mode after the scheduler marks the task running so mode changes made
-  // after task creation are honored for the actual execution.
-  const executionConfig = resolveScheduledTaskExecutionConfig(
+  const executionConfig = resolveScheduledTaskExecutionConfigForTask(
+    task,
     getWorkspaceInteractiveMode(task.cli),
     getWorkspaceLoopExecutionMode(task.cli),
   );

@@ -79,12 +79,12 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
 });
 
-test("scheduled tasks resolve their execution mode from the target CLI workspace state", () => {
+test("scheduled tasks resolve their execution mode from the selected task config", () => {
   const extensionSource = readSource("src", "extension.ts");
 
   assert.match(
     extensionSource,
-    /const executionConfig = resolveScheduledTaskExecutionConfig\([\s\S]*getWorkspaceInteractiveMode\(task\.cli\)[\s\S]*getWorkspaceLoopExecutionMode\(task\.cli\)/,
+    /const executionConfig = resolveScheduledTaskExecutionConfigForTask\(\s*task,\s*getWorkspaceInteractiveMode\(task\.cli\),\s*getWorkspaceLoopExecutionMode\(task\.cli\),/,
   );
   assert.match(extensionSource, /const modelPrompt = executionConfig\.interactiveMode === "graph"/);
   assert.match(extensionSource, /if \(executionConfig\.interactiveMode === "loop"\)/);

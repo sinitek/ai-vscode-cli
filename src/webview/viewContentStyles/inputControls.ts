@@ -42,8 +42,10 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         min-width: 120px;
       }
       .interactive-mode-select {
-        flex: 0 1 calc(69px * 1.08);
         min-width: calc(69px * 1.08);
+      }
+      .config-select-row .interactive-mode-select {
+        flex: 0 1 calc(69px * 1.08);
       }
       .model-select {
         flex: 0 1 118px;

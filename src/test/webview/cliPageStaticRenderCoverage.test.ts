@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { WEBVIEW_STYLES } from "../../webview/viewContentStyles";
 import { BASE_STYLES } from "../../webview/viewContentStyles/base";
 import { CHAT_AREA_STYLES } from "../../webview/viewContentStyles/chatArea";
@@ -147,10 +148,17 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="historyButton"',
     'id="sendPrompt"',
     'id="stopRun"',
+    'id="scheduleTaskButton"',
+    'id="scheduledTaskOverlay"',
+    'id="scheduledTaskMode"',
   ]);
   assert.match(
     html,
     /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="graph">Graph<\/option>/,
+  );
+  assert.match(
+    html,
+    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
@@ -287,6 +295,7 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Vibe",
     "Loop",
     "Graph",
+    "Execution mode",
     "Pros: fastest startup",
     "Cons: no explicit subtask orchestration",
     "Workspace Harness Scaffold",
@@ -310,6 +319,7 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Vibe",
     "Loop",
     "Graph",
+    "执行模式",
     "优点：启动最快",
     "缺点：没有显式子任务编排",
     "工作区 Harness 骨架",
@@ -387,10 +397,37 @@ test("concatenates all static style modules and keeps key selectors available", 
     ".input-area {",
     ".open-code-model-group {",
     ".codex-loop-model-row {",
+    ".interactive-mode-select {",
     ".loop-execution-mode-select {",
     ".overlay {",
     ".toast {",
     ".tasklist-panel {",
     ".tasklist-panel details[open] .tasklist-toggle-icon",
   ]);
+});
+
+test("reuses the AI chat interactive mode select for scheduled tasks", () => {
+  const html = buildHtml();
+  assert.match(
+    html,
+    /<select id="interactiveModeSelect" class="interactive-mode-select"/,
+  );
+  assert.match(
+    html,
+    /<select id="scheduledTaskMode" class="interactive-mode-select"/,
+  );
+  assert.equal(
+    (html.match(/class="interactive-mode-select"/g) || []).length,
+    2,
+  );
+});
+
+test("saves scheduled tasks with the selected Vibe/Loop/Graph mode", () => {
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /function getScheduledTaskSelectedMode\(/);
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /const selectedMode = getScheduledTaskSelectedMode\(\);/);
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /interactiveMode: selectedMode,/);
+  assert.match(
+    VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
+    /loopExecutionMode: selectedMode === "loop" \? getLoopExecutionModeForCli\(targetCli\) : undefined,/,
+  );
 });

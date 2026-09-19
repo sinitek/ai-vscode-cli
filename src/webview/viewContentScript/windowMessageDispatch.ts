@@ -264,6 +264,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               if (elements.scheduledTaskTime) {
                 elements.scheduledTaskTime.value = getDefaultScheduledTaskTime();
               }
+              syncScheduledTaskModeSelect();
               scheduledTaskFiles = [];
               if (elements.scheduledTaskAttachmentInput) {
                 elements.scheduledTaskAttachmentInput.value = "";

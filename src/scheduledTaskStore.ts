@@ -47,6 +47,16 @@ export function resolveScheduledTaskExecutionConfig(
     : { interactiveMode };
 }
 
+export function resolveScheduledTaskExecutionConfigForTask(
+  task: Pick<ScheduledTaskRecord, "interactiveMode" | "loopExecutionMode">,
+  fallbackInteractiveMode: InteractiveMode,
+  fallbackLoopExecutionMode: LoopExecutionMode,
+): ScheduledTaskExecutionConfig {
+  const interactiveMode = task.interactiveMode ?? fallbackInteractiveMode;
+  const loopExecutionMode = task.loopExecutionMode ?? fallbackLoopExecutionMode;
+  return resolveScheduledTaskExecutionConfig(interactiveMode, loopExecutionMode);
+}
+
 export function createScheduledTaskRecord(
   input: ScheduledTaskInput,
   now = Date.now(),
@@ -271,6 +281,7 @@ export function buildScheduledTaskSummary(task: ScheduledTaskRecord): ScheduledT
     cli: task.cli,
     status: task.status,
     attachmentNames: task.attachments.map((attachment) => attachment.name),
+    ...(task.interactiveMode ? { interactiveMode: task.interactiveMode } : {}),
     ...(task.executedAt ? { executedAt: task.executedAt } : {}),
     ...(task.lastError ? { lastError: task.lastError } : {}),
   };

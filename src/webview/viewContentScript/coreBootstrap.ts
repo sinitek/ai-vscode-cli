@@ -316,6 +316,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         scheduledTaskOverlay: document.getElementById("scheduledTaskOverlay"),
         closeScheduledTask: document.getElementById("closeScheduledTask"),
         scheduledTaskTime: document.getElementById("scheduledTaskTime"),
+        scheduledTaskMode: document.getElementById("scheduledTaskMode"),
         scheduledTaskPrompt: document.getElementById("scheduledTaskPrompt"),
         scheduledTaskAttachmentInput: document.getElementById("scheduledTaskAttachmentInput"),
         scheduledTaskAttachments: document.getElementById("scheduledTaskAttachments"),

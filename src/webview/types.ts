@@ -175,6 +175,7 @@ export type ScheduledTaskSummary = {
   cli: CliName;
   status: ScheduledTaskStatus;
   attachmentNames: string[];
+  interactiveMode?: InteractiveMode;
   executedAt?: number;
   lastError?: string;
 };

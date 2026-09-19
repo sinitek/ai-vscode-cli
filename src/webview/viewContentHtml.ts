@@ -3,6 +3,17 @@ import { WebviewI18nKey } from "./viewContentI18n";
 
 type WebviewHtmlStrings = Record<WebviewI18nKey, string>;
 
+function renderInteractiveModeSelect(
+  i18n: WebviewHtmlStrings,
+  options: { id: string; ariaLabel: string },
+): string {
+  return `<select id="${options.id}" class="interactive-mode-select" aria-label="${options.ariaLabel}">
+            <option value="coding">${i18n.interactiveModeCoding}</option>
+            <option value="loop">${i18n.interactiveModeLoop}</option>
+            <option value="graph">${i18n.interactiveModeGraph}</option>
+          </select>`;
+}
+
 export type BuildWebviewStaticHtmlInput = {
   locale: AppLocale;
   cspSource: string;
@@ -149,11 +160,7 @@ ${webviewStyles}    </style>
           </button>
           <select id="currentCli" class="cli-select" aria-label="${i18n.cliSelectAria}">${cliOptions}</select>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
-          <select id="interactiveModeSelect" class="interactive-mode-select" aria-label="${i18n.interactiveModeSelectAria}">
-            <option value="coding">${i18n.interactiveModeCoding}</option>
-            <option value="loop">${i18n.interactiveModeLoop}</option>
-            <option value="graph">${i18n.interactiveModeGraph}</option>
-          </select>
+          ${renderInteractiveModeSelect(i18n, { id: "interactiveModeSelect", ariaLabel: i18n.interactiveModeSelectAria })}
         </div>
         <div class="input-box">
           <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
@@ -332,6 +339,10 @@ ${webviewStyles}    </style>
             <div class="scheduled-task-field">
               <label for="scheduledTaskTime">${i18n.scheduledTaskTimeLabel}</label>
               <input id="scheduledTaskTime" class="scheduled-task-input" type="datetime-local" />
+            </div>
+            <div class="scheduled-task-field">
+              <label for="scheduledTaskMode">${i18n.scheduledTaskModeLabel}</label>
+              ${renderInteractiveModeSelect(i18n, { id: "scheduledTaskMode", ariaLabel: i18n.scheduledTaskModeAria })}
             </div>
             <div class="scheduled-task-field">
               <label for="scheduledTaskPrompt">${i18n.scheduledTaskPromptLabel}</label>

@@ -39,6 +39,9 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         flex-direction: column;
         gap: 6px;
       }
+      .scheduled-task-field .interactive-mode-select {
+        align-self: flex-start;
+      }
       .scheduled-task-field label,
       .scheduled-task-list-heading {
         color: var(--vscode-foreground);

@@ -12,6 +12,7 @@ import {
   readScheduledTaskStore,
   removeScheduledTask,
   resolveScheduledTaskExecutionConfig,
+  resolveScheduledTaskExecutionConfigForTask,
   ScheduledTaskScheduler,
   upsertScheduledTask,
   writeScheduledTaskStore,
@@ -132,6 +133,41 @@ test("resolves scheduled execution mode from the mode active at execution time",
   );
 });
 
+test("prefers the task selected mode and falls back for legacy records", () => {
+  assert.deepEqual(
+    resolveScheduledTaskExecutionConfigForTask(
+      { interactiveMode: "graph" },
+      "loop",
+      "debate_multi_agent",
+    ),
+    { interactiveMode: "graph" },
+  );
+  assert.deepEqual(
+    resolveScheduledTaskExecutionConfigForTask(
+      { interactiveMode: "loop", loopExecutionMode: "main_sub_multi_agent" },
+      "coding",
+      "debate_multi_agent",
+    ),
+    { interactiveMode: "loop", loopExecutionMode: "main_sub_multi_agent" },
+  );
+  assert.deepEqual(
+    resolveScheduledTaskExecutionConfigForTask(
+      { interactiveMode: "loop" },
+      "coding",
+      "debate_multi_agent",
+    ),
+    { interactiveMode: "loop", loopExecutionMode: "debate_multi_agent" },
+  );
+  assert.deepEqual(
+    resolveScheduledTaskExecutionConfigForTask(
+      {},
+      "coding",
+      "debate_multi_agent",
+    ),
+    { interactiveMode: "coding" },
+  );
+});
+
 test("rejects empty prompts and invalid schedule times", () => {
   assert.throws(
     () => createScheduledTaskRecord(createInput({ prompt: "   " })),
@@ -221,7 +257,9 @@ test("builds summaries in reverse schedule order and removes tasks by id", () =>
   const first = createTask("first", { scheduledAt: NOW + DAY_MS });
   const second = createTask("second", { scheduledAt: NOW + 2 * DAY_MS });
   const store: ScheduledTaskStore = { tasks: [first, second] };
-  assert.deepEqual(buildScheduledTaskSummaries(store).map((task) => task.id), ["second", "first"]);
+  const summaries = buildScheduledTaskSummaries(store);
+  assert.deepEqual(summaries.map((task) => task.id), ["second", "first"]);
+  assert.equal(summaries[0]?.interactiveMode, "loop");
   assert.equal(removeScheduledTask(store, "first")?.id, "first");
   assert.equal(removeScheduledTask(store, "missing"), null);
   assert.deepEqual(store.tasks.map((task) => task.id), ["second"]);

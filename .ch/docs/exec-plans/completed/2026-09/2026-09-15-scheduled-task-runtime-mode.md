@@ -71,4 +71,6 @@
 
 ## 当前结论
 
+后续说明：2026-09-19 起，定时任务改为按创建时选中的 Vibe/Loop/Graph 及该模式已保存配置执行；执行时工作区模式仅作为旧任务缺字段时的回退。详见 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md`。
+
 已完成：`executeScheduledTask` 在任务进入 running 后按 `task.cli` 读取 workspace 当前 `interactiveMode` 与 Loop 执行子模式；任务记录旧字段继续保留以兼容历史数据。构建、相关回归测试和 ontology 校验通过；全量单测仅保留一个范围外的既有 Tasklist 断言失败。本计划可归档。

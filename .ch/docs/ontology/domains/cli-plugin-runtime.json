@@ -122,7 +122,7 @@
       "id": "plugin.scheduled_task",
       "name": "AI 对话定时任务",
       "kind": "aggregate",
-      "description": "由 AI 对话面板创建的一次性提示词执行记录，绑定工作区、CLI、对话 Tab 和可选执行配置；到期后由扩展宿主调度，并按目标 CLI 当时的 interactiveMode（如 loop 或 graph）选择执行链，状态按 pending、running、completed、failed、cancelled 流转，扩展重启时 running 恢复为 pending。",
+      "description": "由 AI 对话面板创建的一次性提示词执行记录，绑定工作区、CLI、对话 Tab 和可选执行配置；创建时可选择 Vibe、Loop 或 Graph，到期后由扩展宿主按任务选中的模式及该模式已保存配置路由执行链，旧任务缺少模式字段时回退到目标 CLI 当前 interactiveMode。状态按 pending、running、completed、failed、cancelled 流转，扩展重启时 running 恢复为 pending。",
       "status": "active",
       "aliases": ["定时任务", "scheduled task", "schedule prompt"],
       "lifecycle": ["pending", "running", "completed", "failed", "cancelled"],
@@ -130,7 +130,8 @@
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"},
         {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md"}
       ]
     },
     {
@@ -245,7 +246,7 @@
     {
       "id": "plugin.relation.scheduled_task_executes_cli",
       "name": "定时任务执行本地 CLI",
-      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按目标 CLI 当时的 interactiveMode（如 loop 或 graph）复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 子模式同样读取执行时配置。",
+      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按任务选中的 Vibe/Loop/Graph 模式及该模式已保存配置复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 子模式读取任务保存的配置，缺失时回退到目标 CLI 当前配置。",
       "status": "active",
       "from": "plugin.scheduled_task",
       "type": "executes",
@@ -254,7 +255,8 @@
       "source_refs": [
         {"path": "src/scheduledTaskStore.ts", "anchor": "ScheduledTaskScheduler"},
         {"path": "src/extension.ts", "anchor": "executeScheduledTask"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md"}
       ]
     },
     {

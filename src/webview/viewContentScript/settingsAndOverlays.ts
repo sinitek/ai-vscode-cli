@@ -151,6 +151,33 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
+      function scheduledTaskModeLabel(mode) {
+        if (mode === "loop") {
+          return t("interactiveModeLoop");
+        }
+        if (mode === "graph") {
+          return t("interactiveModeGraph");
+        }
+        if (mode === "coding") {
+          return t("interactiveModeCoding");
+        }
+        return "";
+      }
+
+      function getScheduledTaskSelectedMode() {
+        if (elements.scheduledTaskMode && elements.scheduledTaskMode.value) {
+          return normalizeInteractiveMode(elements.scheduledTaskMode.value);
+        }
+        return normalizeInteractiveMode(state.interactiveMode);
+      }
+
+      function syncScheduledTaskModeSelect() {
+        if (!elements.scheduledTaskMode) {
+          return;
+        }
+        elements.scheduledTaskMode.value = normalizeInteractiveMode(state.interactiveMode);
+      }
+
       function scheduledTaskStatusLabel(status) {
         const labels = {
           pending: "scheduledTaskStatusPending",
@@ -189,8 +216,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           const status = document.createElement("div");
           status.className = "scheduled-task-status";
           const attachmentCount = Array.isArray(task.attachmentNames) ? task.attachmentNames.length : 0;
+          const modeLabel = scheduledTaskModeLabel(task.interactiveMode);
           status.textContent = scheduledTaskStatusLabel(task.status)
             + " · " + task.cli
+            + (modeLabel ? " · " + modeLabel : "")
             + (attachmentCount ? " · " + t("scheduledTaskAttachmentCount", { count: attachmentCount }) : "");
           meta.appendChild(text);
           meta.appendChild(time);
@@ -218,6 +247,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.scheduledTaskTime) {
           elements.scheduledTaskTime.value = getDefaultScheduledTaskTime();
         }
+        syncScheduledTaskModeSelect();
         scheduledTaskFiles = [];
         if (elements.scheduledTaskAttachmentInput) {
           elements.scheduledTaskAttachmentInput.value = "";
@@ -274,6 +304,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         const promptPayload = buildPromptPayload(prompt);
         const targetCli = state.currentCli;
+        const selectedMode = getScheduledTaskSelectedMode();
         const loopModels = state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[targetCli]
           ? state.selectedLoopModelsByCli[targetCli]
           : {};
@@ -283,7 +314,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           scheduledAt,
           tabId: getActiveConversationTabId(),
           cli: targetCli,
-          interactiveMode: state.interactiveMode,
+          interactiveMode: selectedMode,
           contextOptions: promptPayload.contextOptions,
           model: state.selectedModelsByCli && state.selectedModelsByCli[targetCli]
             ? state.selectedModelsByCli[targetCli]
@@ -296,7 +327,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           loopSubtaskThinkingMode: state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
             ? state.selectedLoopThinkingByCli[targetCli].subtask || undefined
             : undefined,
-          loopExecutionMode: state.interactiveMode === "loop" ? getLoopExecutionModeForCli(targetCli) : undefined,
+          loopExecutionMode: selectedMode === "loop" ? getLoopExecutionModeForCli(targetCli) : undefined,
           files: scheduledTaskFiles,
         });
         if (elements.saveScheduledTask) {
