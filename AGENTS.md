@@ -16,6 +16,7 @@
 - 数据库结构变化（如有）必须同步相关 SQL 配置文件，全量和增量脚本都要覆盖，建表脚本必须包含表和字段中文备注。
 - 用户可见功能、行为、权限、流程或验收变化时，同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录无需更新的理由。
 - 如修改内置/官方 skills 或其 catalog，确认 `media/official_skills_catalog.json` 中的 `description` 保持中文。
+- 做任何功能都要考虑  linux/mac 和 windows 兼容, 尤其路径。
 
 ## 项目入口
 
