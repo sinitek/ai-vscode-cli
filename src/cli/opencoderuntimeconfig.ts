@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
+import { removePathBestEffort } from "../shared/fsCleanup";
 import {
   applyOpenCodeRuntimeModelOverlay,
   type OpenCodeConfigModelIssue,
@@ -73,7 +74,10 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
   }
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-"));
-  fs.chmodSync(tempDir, 0o700);
+  try {
+    fs.chmodSync(tempDir, 0o700);
+  } catch {
+  }
   const configPath = path.join(tempDir, `config-${randomBytes(12).toString("hex")}.json`);
   fs.writeFileSync(configPath, `${JSON.stringify(applied.config, null, 2)}\n`, {
     encoding: "utf8",
@@ -93,7 +97,7 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
           return;
         }
         cleaned = true;
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        removePathBestEffort(tempDir);
       },
     },
   };

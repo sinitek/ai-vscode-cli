@@ -176,3 +176,69 @@ test("discovers Codex from the Windows official install directory", async () => 
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("discovers Codex from a Windows user-local bin directory", async () => {
+  const restorePlatform = setPlatform("win32");
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-windows-local-bin-"));
+  const homeDir = path.join(tempRoot, "home");
+  const commandPath = path.join(homeDir, ".local", "bin", "codex.cmd");
+  await fs.mkdir(path.dirname(commandPath), { recursive: true });
+  await fs.writeFile(commandPath, "");
+  const restoreEnvironment = setCommandResolutionEnvironment(homeDir, "");
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalAppData = process.env.APPDATA;
+  const originalPathExt = process.env.PATHEXT;
+  const originalScoop = process.env.SCOOP;
+  try {
+    delete process.env.APPDATA;
+    delete process.env.LOCALAPPDATA;
+    delete process.env.SCOOP;
+    process.env.PATHEXT = ".cmd;.exe";
+    const resolved = resolveCliCommand("codex");
+    assert.deepEqual(resolved, {
+      command: commandPath,
+      resolvedFrom: "windows-npm-bin",
+    });
+  } finally {
+    restoreEnvironmentVariable("LOCALAPPDATA", originalLocalAppData);
+    restoreEnvironmentVariable("APPDATA", originalAppData);
+    restoreEnvironmentVariable("PATHEXT", originalPathExt);
+    restoreEnvironmentVariable("SCOOP", originalScoop);
+    restoreEnvironment();
+    restorePlatform();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("discovers OpenCode from Windows scoop shims", async () => {
+  const restorePlatform = setPlatform("win32");
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-windows-scoop-"));
+  const homeDir = path.join(tempRoot, "home");
+  const commandPath = path.join(homeDir, "scoop", "shims", "opencode.cmd");
+  await fs.mkdir(path.dirname(commandPath), { recursive: true });
+  await fs.writeFile(commandPath, "");
+  const restoreEnvironment = setCommandResolutionEnvironment(homeDir, "");
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalAppData = process.env.APPDATA;
+  const originalPathExt = process.env.PATHEXT;
+  const originalScoop = process.env.SCOOP;
+  try {
+    delete process.env.APPDATA;
+    delete process.env.LOCALAPPDATA;
+    delete process.env.SCOOP;
+    process.env.PATHEXT = ".cmd;.exe";
+    const resolved = resolveCliCommand("opencode");
+    assert.deepEqual(resolved, {
+      command: commandPath,
+      resolvedFrom: "windows-npm-bin",
+    });
+  } finally {
+    restoreEnvironmentVariable("LOCALAPPDATA", originalLocalAppData);
+    restoreEnvironmentVariable("APPDATA", originalAppData);
+    restoreEnvironmentVariable("PATHEXT", originalPathExt);
+    restoreEnvironmentVariable("SCOOP", originalScoop);
+    restoreEnvironment();
+    restorePlatform();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

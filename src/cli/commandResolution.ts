@@ -115,9 +115,18 @@ function getWindowsUserBinDirs(): string[] {
   if (localAppData) {
     dirs.add(path.join(localAppData, "Programs", "OpenAI", "Codex", "bin"));
     dirs.add(path.join(localAppData, "npm"));
+    dirs.add(path.join(localAppData, "Microsoft", "WinGet", "Links"));
+  }
+  if (userProfile) {
+    dirs.add(path.join(userProfile, ".local", "bin"));
+    dirs.add(path.join(userProfile, "scoop", "shims"));
+    dirs.add(path.join(userProfile, ".volta", "bin"));
   }
   if (process.env.PNPM_HOME) {
     dirs.add(expandHomePath(process.env.PNPM_HOME));
+  }
+  if (process.env.SCOOP) {
+    dirs.add(path.join(expandHomePath(process.env.SCOOP), "shims"));
   }
   return Array.from(dirs).filter(Boolean);
 }

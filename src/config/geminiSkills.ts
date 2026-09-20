@@ -76,7 +76,9 @@ function resolveOpenCodeSkillRoots(workspaceRoots: string[] | undefined): string
   });
 
   append(HOME_OPENCODE_SKILLS_DIR);
-  append(SYSTEM_OPENCODE_SKILLS_DIR);
+  if (process.platform !== "win32") {
+    append(SYSTEM_OPENCODE_SKILLS_DIR);
+  }
 
   return roots;
 }

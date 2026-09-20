@@ -25,8 +25,10 @@ test("creates a private runtime overlay and cleans it idempotently", () => {
   assert.ok(result.overlay);
   const overlay = result.overlay!;
   assert.equal(overlay.envOverrides.OPENCODE_CONFIG, overlay.configPath);
-  assert.equal(fs.statSync(overlay.configPath).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(path.dirname(overlay.configPath)).mode & 0o777, 0o700);
+  if (process.platform !== "win32") {
+    assert.equal(fs.statSync(overlay.configPath).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.dirname(overlay.configPath)).mode & 0o777, 0o700);
+  }
   const parsed = JSON.parse(fs.readFileSync(overlay.configPath, "utf8")) as Record<string, unknown>;
   assert.equal(parsed.model, "provider/selected");
   assert.equal(parsed.small_model, "provider/tiny");

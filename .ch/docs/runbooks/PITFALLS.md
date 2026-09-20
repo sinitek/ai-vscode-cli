@@ -135,6 +135,36 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/exec-plans/completed/2026-09/2026-09-15-windows-home-path-compatibility.md`
 
+## Windows Loop 子任务不要对顶层文件做 symlink
+
+- 状态：已规避，需随 Loop 隔离根 / 临时目录清理变化复核
+- 首次发现：2026-09-20
+- 适用范围：Windows 宿主、`src/loopSubtaskExecutionRoot.ts`、`src/shared/fsCleanup.ts`、`src/cli/opencoderuntimeconfig.ts`
+
+### 现象
+- Loop 子任务在 Windows 上启动即失败，错误为 `EPERM` / `A required privilege is not held by the client`。
+- 子任务实际已经跑完，但插件仍报错，或 `%TEMP%\sinitek-loop-subtask-*`、`sinitek-opencode-*` 残留。
+
+### 触发条件与根因
+- Windows 创建文件符号链接默认需要 Developer Mode 或管理员权限；真实项目根目录几乎都有 `package.json` / `README.md`。
+- 目录 junction 不需要该权限；文件 hardlink 在同卷 NTFS 上也不需要。
+- `os.tmpdir()` 常在 `C:`，工作区在 `D:` 时 hardlink 会 `EXDEV`。
+- Windows 不能删除仍被进程或杀毒软件占用的目录，`rmSync` 默认会把成功任务打成失败。
+
+### 长期规避
+- 目录用 junction，顶层文件优先 `fs.linkSync`；跨盘把临时根放到工作区 `.sinitek-loop-tmp`。
+- 链接失败再回退文件 symlink，仍失败则返回可读错误。
+- 临时根和 OpenCode overlay 删除使用 best-effort，占用中的路径不得抛出到任务结果。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/loop/loopSubtaskExecutionRoot.test.js dist/test/shared/fsCleanup.test.js dist/test/cli/opencoderuntimeconfig.test.js dist/test/cli/commandResolution.test.js`
+
+### 关联资料
+- `.ch/docs/exec-plans/completed/2026-09/2026-09-20-windows-loop-cli-compat.md`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+
 ## 配置切换下拉显示不能先于宿主提交完成
 
 - 状态：已规避，需随配置提交 / 发送链路变化复核

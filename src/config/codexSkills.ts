@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { CodexSkillItem, CodexSkillToggle } from "./types";
 import { AppLocale, resolveLocale, t } from "../i18n";
@@ -204,7 +203,6 @@ function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] 
   });
 
   append(path.join(resolveAgentsHomeDir(), "skills"));
-  append(path.join(os.homedir(), ".codex", "skills"));
   append(path.join(resolveCodexHomeDir(), "skills"));
   if (process.platform !== "win32") {
     append("/etc/codex/skills");

@@ -106,7 +106,7 @@ cli / interactive / config 服务层
 #### Loop 子任务执行隔离
 
 - Loop 主任务保持真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则。
-- `src/loopSubtaskExecutionRoot.ts` 为每个 Loop 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区，任务结束后立即删除临时根。
+- `src/loopSubtaskExecutionRoot.ts` 为每个 Loop 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区，任务结束后立即删除临时根。Windows 使用目录 junction 与文件 hardlink，跨盘时把临时根放到工作区 `.sinitek-loop-tmp`，删除走 best-effort。
 - 子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 使用空 `settingSources`，OpenCode 使用 `--pure`。子任务只遵循主任务传入的自包含授权、沟通文件与最小必要验证要求。
 - 不再分发、加载或注入 Loop Workflow Skill 快照，也没有对应的工具设置开关。
 

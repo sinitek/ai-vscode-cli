@@ -188,7 +188,15 @@ import {
   normalizeLoopWriteFiles,
   type LoopSubtaskExecutionPlan,
 } from "./loopParallel";
-import { createLoopSubtaskExecutionRoot } from "./loopSubtaskExecutionRoot";
+import {
+  createLoopSubtaskExecutionRoot,
+  isLoopSubtaskLinkFailedError,
+} from "./loopSubtaskExecutionRoot";
+import {
+  resolveClaudeHomeDir,
+  resolveCodexHomeDir,
+  resolveOpenCodeHomeDir,
+} from "./shared/userHomePaths";
 import {
   buildLoopAnswerConclusionMarkdown,
   buildLoopDebateNeedsReviewSummary,
@@ -722,9 +730,9 @@ async function persistSessionStoreToStorage(store: SessionStore): Promise<void> 
   await extensionContext.globalState.update(getSessionStoreKey(), store);
 }
 const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
-  codex: path.join(os.homedir(), ".codex", "AGENTS.md"),
-  claude: path.join(os.homedir(), ".claude", "CLAUDE.md"),
-  opencode: path.join(os.homedir(), ".opencode", "AGENTS.md"),
+  codex: path.join(resolveCodexHomeDir(), "AGENTS.md"),
+  claude: path.join(resolveClaudeHomeDir(), "CLAUDE.md"),
+  opencode: path.join(resolveOpenCodeHomeDir(), "AGENTS.md"),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
@@ -1127,6 +1135,19 @@ async function restoreMarketplaceUpdateCheck(): Promise<void> {
 function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
 }
+
+function createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd: string) {
+  try {
+    return createLoopSubtaskExecutionRoot(workspaceCwd);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(t("run.loopSubtaskExecutionRootFailed", {
+      name: isLoopSubtaskLinkFailedError(error) ? error.entryName : "workspace",
+      detail,
+    }));
+  }
+}
+
 
 function isWindowsCmdCommand(command: string | undefined): boolean {
   if (!command || process.platform !== "win32") {
@@ -4265,7 +4286,7 @@ async function runPrompt(
   const subtaskExecutionRoot = input.taskRole === "subtask" && !input.executionCwd
     ? (() => {
         const workspaceCwd = resolveWorkspaceCwd();
-        return workspaceCwd ? createLoopSubtaskExecutionRoot(workspaceCwd) : null;
+        return workspaceCwd ? createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd) : null;
       })()
     : null;
   const shouldUseInteractive = isInteractiveSupported(target.cli);
