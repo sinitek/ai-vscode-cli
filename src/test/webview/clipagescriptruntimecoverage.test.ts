@@ -639,6 +639,43 @@ function childValueTextPairs(element: FakeElement): Array<[string, string]> {
   return element.children.map((child) => [child.value, child.textContent]);
 }
 
+test("shows the workspace harness toggle as checked and disabled when .ch already exists", () => {
+  const { document, window } = createRuntimeHarness();
+  const idleTabs = { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] };
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      longTermMemoryEnabled: false,
+      workspaceMemoryEnabled: false,
+      workspaceHarnessInstalled: true,
+      conversationTabs: idleTabs,
+    }),
+  });
+  const toggle = document.getElementById("longTermMemoryEnabled");
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(
+    document.getElementById("longTermMemoryNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsLongTermMemoryInstalledHint,
+  );
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      longTermMemoryEnabled: false,
+      workspaceMemoryEnabled: false,
+      workspaceHarnessInstalled: false,
+      conversationTabs: idleTabs,
+    }),
+  });
+  assert.equal(toggle.checked, false);
+  assert.equal(toggle.disabled, false);
+  assert.equal(
+    document.getElementById("longTermMemoryNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsLongTermMemoryHint,
+  );
+});
+
 test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },

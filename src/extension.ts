@@ -333,7 +333,7 @@ import {
   isMemoryRuntimeOperationAllowed,
   type MemoryRuntimeGateSettings,
 } from "./memory/runtimeGate";
-import { ensureWorkspaceHarnessScaffold } from "./workspaceScaffold";
+import { ensureWorkspaceHarnessScaffold, isWorkspaceHarnessInstalled } from "./workspaceScaffold";
 import {
   type ContextCompactionOptions,
   runContextCompactionWithDeps,
@@ -1517,6 +1517,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     currentCli,
     configState,
     workspaceSettings,
+    workspaceHarnessInstalled: isWorkspaceHarnessInstalled(resolveWorkspaceCwd() ?? null),
     processPlatform: process.platform,
     cliRulePathsGlobal: CLI_RULE_PATHS_GLOBAL,
     getWorkspaceConfiguration: () => vscode.workspace.getConfiguration("sinitek-cli-tools"),

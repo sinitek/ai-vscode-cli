@@ -111,6 +111,17 @@ export function resolveWorkspaceScaffoldRoot(extensionRoot: string): string {
   return path.join(extensionRoot, WORKSPACE_SCAFFOLD_ROOT);
 }
 
+export function isWorkspaceHarnessInstalled(workspaceRoot?: string | null): boolean {
+  if (!workspaceRoot) {
+    return false;
+  }
+  try {
+    return fs.statSync(path.join(workspaceRoot, ".ch")).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function ensureWorkspaceHarnessScaffold(
   extensionRoot: string,
   paths: WorkspaceMemoryPaths,

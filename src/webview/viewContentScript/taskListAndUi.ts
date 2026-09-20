@@ -566,12 +566,15 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function syncLongTermMemoryWorkspaceControl() {
+        const installed = Boolean(state.workspaceHarnessInstalled);
         if (elements.longTermMemoryEnabled) {
-          elements.longTermMemoryEnabled.checked = Boolean(state.workspaceMemoryEnabled);
-          elements.longTermMemoryEnabled.disabled = Boolean(state.isRunning);
+          elements.longTermMemoryEnabled.checked = installed || Boolean(state.workspaceMemoryEnabled);
+          elements.longTermMemoryEnabled.disabled = installed || Boolean(state.isRunning);
         }
         if (elements.longTermMemoryNote) {
-          elements.longTermMemoryNote.textContent = i18n.toolSettingsLongTermMemoryHint;
+          elements.longTermMemoryNote.textContent = installed
+            ? i18n.toolSettingsLongTermMemoryInstalledHint
+            : i18n.toolSettingsLongTermMemoryHint;
         }
       }
 

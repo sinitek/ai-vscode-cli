@@ -674,6 +674,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
       if (elements.longTermMemoryEnabled) {
         elements.longTermMemoryEnabled.addEventListener("change", (event) => {
+          if (state.workspaceHarnessInstalled) {
+            syncLongTermMemoryWorkspaceControl();
+            return;
+          }
           const enabled = Boolean(event.target.checked);
           state.longTermMemoryEnabled = enabled;
           state.workspaceMemoryEnabled = enabled;

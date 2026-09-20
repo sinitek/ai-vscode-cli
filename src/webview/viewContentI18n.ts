@@ -206,6 +206,8 @@ export const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryToggle: "On",
     toolSettingsLongTermMemoryHint:
       "Off by default. Turn it on to initialize a workspace-local Harness for long-running context, reusable agent guidance, pitfall capture, task handoffs, and code exploration.",
+    toolSettingsLongTermMemoryInstalledHint:
+      "This workspace already has a .ch directory, so the Harness scaffold is installed and cannot be turned off here.",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
       "Install or upgrade the local CodeGraph CLI to the latest version, register the Codex MCP integration, and initialize this workspace when one is open.",
@@ -640,6 +642,8 @@ export const WEBVIEW_I18N = {
     toolSettingsLongTermMemoryToggle: "开启",
     toolSettingsLongTermMemoryHint:
       "默认关闭。开启后可为当前工作区初始化 Harness，用于沉淀长周期上下文、复用代理工作规范、记录踩坑、交接任务并提升代码探索效率。",
+    toolSettingsLongTermMemoryInstalledHint:
+      "当前工作区已存在 .ch 目录，Harness 骨架已安装，无法在此关闭。",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
       "安装或升级本机 CodeGraph CLI 到最新版本，注册 Codex MCP 集成，并在当前打开工作区时初始化索引。",

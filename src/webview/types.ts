@@ -314,6 +314,7 @@ export type PanelState = {
   autoAddEditorContextTags: boolean;
   longTermMemoryEnabled: boolean;
   workspaceMemoryEnabled: boolean;
+  workspaceHarnessInstalled: boolean;
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
   humanInteractionEnabled: boolean;

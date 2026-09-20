@@ -157,6 +157,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoAddEditorContextTags: false,
         longTermMemoryEnabled: false,
         workspaceMemoryEnabled: false,
+        workspaceHarnessInstalled: false,
         autoCompactContextAfterRun: true,
         multiAgentEnabled: false,
         humanInteractionEnabled: true,

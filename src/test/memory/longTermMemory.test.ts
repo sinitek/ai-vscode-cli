@@ -15,7 +15,7 @@ import { buildWorkspaceMemoryIndex } from "../../memory/memoryIndexer";
 import { resolveWorkspaceMemoryPaths } from "../../memory/memoryPaths";
 import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "../../memory/memoryPrompt";
 import { buildWorkspaceMemoryRecallPack } from "../../memory/memoryRecall";
-import { ensureWorkspaceHarnessScaffold, workspaceAgentsAppendMarker } from "../../workspaceScaffold";
+import { ensureWorkspaceHarnessScaffold, isWorkspaceHarnessInstalled, workspaceAgentsAppendMarker } from "../../workspaceScaffold";
 
 function withTempWorkspace<T>(run: (workspaceRoot: string, runtimeDataDir: string) => T): T {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-memory-"));
@@ -45,6 +45,18 @@ test("creates workspace-local long-term memory scaffold with runtime generated r
     assert.equal(paths.generatedDir.endsWith("memory-index"), true);
     assert.equal(paths.generatedDir.includes(path.join(".ch", "docs", "generated")), false);
     assert.ok(fs.existsSync(paths.generatedDir));
+  });
+});
+
+test("treats an existing .ch directory as an installed workspace harness", () => {
+  withTempWorkspace((workspaceRoot) => {
+    assert.equal(isWorkspaceHarnessInstalled(null), false);
+    assert.equal(isWorkspaceHarnessInstalled(workspaceRoot), false);
+    fs.writeFileSync(path.join(workspaceRoot, ".ch"), "not-a-directory");
+    assert.equal(isWorkspaceHarnessInstalled(workspaceRoot), false);
+    fs.rmSync(path.join(workspaceRoot, ".ch"));
+    fs.mkdirSync(path.join(workspaceRoot, ".ch"));
+    assert.equal(isWorkspaceHarnessInstalled(workspaceRoot), true);
   });
 });
 
