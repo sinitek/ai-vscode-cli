@@ -179,6 +179,7 @@
 - Webview 先乐观更新 `selectedConfigId`，而宿主侧 `applyConfig` 是异步提交，`activeConfigIdByCli` 只有在提交成功后才会写回。
 - 早期发送路径或队列出队会直接读取 active config / heartbeat 快照，导致“下拉已切过去、实际还没切”的窗口被命中。
 - 快速连续切换时，晚到的旧请求如果没有被显式标记为 superseded，可能把新选择覆盖回旧提交结果。
+- 配置下拉保留用户刚选的 ID，但 `applyState` 无条件接收其他配置的非空模型快照时，会出现“刚切换正常、后台刷新后模型串配置”；只防御空列表无法阻止这种覆盖。
 
 ### 长期规避
 - 配置切换必须先进入待生效态，只有宿主完成提交并回写 active config 后，才允许新的 prompt 发送或队列出队。
@@ -186,6 +187,7 @@
 - 配置应用失败后要把 Webview 回滚到当前真实 active config，并保留用户输入，不要伪装成已切换成功。
 - 成功或失败回包都要按 `cli + configId` 清理对应 pending 状态；不能只在当前 CLI 匹配时清理，否则用户切到其他 CLI 后再回来会被旧 pending 卡住。
 - 任何读取 `activeConfigIdByCli` 的发送、队列和模型解析逻辑，都应优先判断是否仍存在 pending 配置应用。
+- Webview 合并状态时，模型候选、选中值、主/子模型、OpenCode variants 和思考选项必须统一校验快照的 `activeConfigId` 与 `selectedConfigId`；不匹配时跳过这些字段，其他面板状态仍正常刷新。匹配的空列表、无配置状态和失败回滚不得被过滤。
 
 ### 验证方式
 - 执行 `npm run build`。

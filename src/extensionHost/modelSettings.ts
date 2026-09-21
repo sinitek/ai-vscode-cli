@@ -75,8 +75,6 @@ const LOOP_DEFAULT_MAX_ROUNDS = 20;
 const LOOP_MIN_MAX_ROUNDS = 1;
 const LOOP_MAX_MAX_ROUNDS = 100;
 const CODEGRAPH_INSTALL_TERMINAL_NAME = "CodeGraph Install";
-const WORKSPACE_HARNESS_TERMINAL_NAME = "Workspace Harness Setup";
-const CODEGRAPH_SETUP_COMMAND = getCodeGraphInstallCommand({ initializeWorkspace: true });
 const CODEGRAPH_INSTALL_POLL_MS = 2000;
 const CODEGRAPH_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARCHITECTURE.md";
@@ -623,7 +621,6 @@ async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
     void vscode.window.showWarningMessage(t("workspaceHarness.initFailed"));
     return false;
   }
-  startCodeGraphWorkspaceSetup(workspaceRoot);
   void vscode.window.showInformationMessage(t("workspaceHarness.initStarted"));
   void maybePromptInitializeArchitectureWithAi(workspaceRoot);
   return true;
@@ -683,17 +680,6 @@ function startCodeGraphInstallCompletionWatch(): void {
   }, CODEGRAPH_INSTALL_POLL_MS);
   void postPanelState();
   void refreshCodeGraphInstallWatch();
-}
-
-function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
-  const terminal = createCodeGraphTerminal(WORKSPACE_HARNESS_TERMINAL_NAME, workspaceRoot);
-  terminal.show();
-  terminal.sendText(CODEGRAPH_SETUP_COMMAND);
-  startCodeGraphInstallCompletionWatch();
-  void logInfo("workspace-harness-codegraph-setup-triggered", {
-    workspace: workspaceRoot,
-    command: CODEGRAPH_SETUP_COMMAND,
-  });
 }
 
 function createCodeGraphTerminal(name: string, cwd: string): vscode.Terminal {
@@ -1149,7 +1135,6 @@ return {
   getActiveWorkspaceMemoryPaths: wrap(getActiveWorkspaceMemoryPaths),
   ensureActiveWorkspaceHarnessScaffold: wrap(ensureActiveWorkspaceHarnessScaffold),
   confirmAndInitializeWorkspaceHarness: wrap(confirmAndInitializeWorkspaceHarness),
-  startCodeGraphWorkspaceSetup: wrap(startCodeGraphWorkspaceSetup),
   createCodeGraphTerminal: wrap(createCodeGraphTerminal),
   installCodeGraphForWorkspace: wrap(installCodeGraphForWorkspace),
   isCodeGraphInstalling: wrap(isCodeGraphInstalling),

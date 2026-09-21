@@ -358,7 +358,7 @@
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
-      "description": "AI 对话面板切换配置档案时，Webview 中的待选配置只在宿主完成 applyConfig 并回写 activeConfigIdByCli 后才算生效；提示词发送和队列出队必须等待这次提交完成。最新选择可以覆盖更早的待提交请求，失败时要回滚到当前 active config 并阻止误发旧配置。",
+      "description": "AI 对话面板切换配置档案时，Webview 中的待选配置只在宿主完成 applyConfig 并回写 activeConfigIdByCli 后才算生效；提示词发送和队列出队必须等待这次提交完成。最新选择可以覆盖更早的待提交请求，失败时要回滚到当前 active config 并阻止误发旧配置。模型候选、选中模型、主/子模型及思考选项只接受 activeConfigId 与界面 selectedConfigId 一致的快照，其他配置晚到的刷新不得覆盖当前选择。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
       "source_refs": [

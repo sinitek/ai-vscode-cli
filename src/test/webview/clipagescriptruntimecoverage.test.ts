@@ -748,6 +748,138 @@ test("builds the split page runtime script with configured literals", () => {
   assert.doesNotMatch(script, /\$\{JSON\.stringify|\$\{LOOP_|\$\{FINAL_/);
 });
 
+function createProfilePanelState(cli: string, configId: string, overrides: Record<string, unknown> = {}) {
+  const model = `${configId}-model`;
+  const modelRef = `provider/${model}`;
+  const thinkingMode = configId === "config-a" ? "high" : "low";
+  return createPanelState({
+    currentCli: cli,
+    configState: {
+      activeConfigId: configId,
+      configs: ["config-a", "config-b"].map((id) => ({ id, name: id, platform: cli })),
+    },
+    modelState: {
+      optionsByCli: { [cli]: [model] },
+      managedByCli: { [cli]: [model] },
+      selectedByCli: { [cli]: model },
+      loopOptionsByCli: { [cli]: { main: [model], subtask: [model] } },
+      selectedLoopByCli: { [cli]: { main: model, subtask: model } },
+      selectedLoopThinkingByCli: { [cli]: { main: thinkingMode, subtask: thinkingMode } },
+    },
+    thinkingMode,
+    openCodeModels: {
+      models: [{ ref: modelRef, label: model, providerId: "provider", modelId: model }],
+      selectedMainRef: modelRef,
+      selectedSubtaskRef: modelRef,
+      issues: [],
+    },
+    openCodeThinking: { selectedVariant: thinkingMode, options: [{ value: thinkingMode, label: thinkingMode }] },
+    openCodeSmallThinking: { selectedVariant: thinkingMode, options: [{ value: thinkingMode, label: thinkingMode }] },
+    ...overrides,
+  });
+}
+
+for (const cli of ["codex", "claude", "opencode"]) {
+  test(`${cli} isolates model snapshots while switching profiles and after a delayed refresh`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const dispatchState = (configId: string, overrides: Record<string, unknown> = {}) => {
+      window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, configId, overrides) });
+    };
+    dispatchState("config-b");
+    const configSelect = document.getElementById("configSelect");
+    configSelect.value = "config-a";
+    configSelect.dispatchEvent({ type: "change" });
+    dispatchState("config-b");
+    assert.equal(configSelect.value, "config-a");
+    assert.deepEqual(api.state.modelsByCli[cli], []);
+    assert.deepEqual(api.state.managedModelsByCli[cli], []);
+
+    dispatchState("config-a");
+    assert.equal(api.state.pendingConfigApply, null);
+    const acceptedModels = {
+      models: api.state.modelsByCli,
+      managed: api.state.managedModelsByCli,
+      selected: api.state.selectedModelsByCli,
+      selectedModel: api.state.selectedModel,
+      loopModels: api.state.loopModelsByCli,
+      loopSelected: api.state.selectedLoopModelsByCli,
+      loopThinking: api.state.selectedLoopThinkingByCli,
+      thinking: api.state.thinkingMode,
+      openCodeModels: api.state.openCodeModels,
+      openCodeThinking: api.state.openCodeThinking,
+      openCodeSmallThinking: api.state.openCodeSmallThinking,
+    };
+    assert.deepEqual(acceptedModels.models[cli], ["config-a-model"]);
+    dispatchState("config-b", { debug: false });
+    assert.equal(configSelect.value, "config-a");
+    assert.equal(api.state.debug, false);
+    assert.deepEqual({
+      models: api.state.modelsByCli,
+      managed: api.state.managedModelsByCli,
+      selected: api.state.selectedModelsByCli,
+      selectedModel: api.state.selectedModel,
+      loopModels: api.state.loopModelsByCli,
+      loopSelected: api.state.selectedLoopModelsByCli,
+      loopThinking: api.state.selectedLoopThinkingByCli,
+      thinking: api.state.thinkingMode,
+      openCodeModels: api.state.openCodeModels,
+      openCodeThinking: api.state.openCodeThinking,
+      openCodeSmallThinking: api.state.openCodeSmallThinking,
+    }, acceptedModels);
+    const modelSelectId = cli === "codex" ? "codexLoopMainModelSelect"
+      : cli === "opencode" ? "openCodePrimaryModelSelect" : "modelSelect";
+    const modelOptions = childValueTextPairs(document.getElementById(modelSelectId));
+    assert.ok(modelOptions.some(([value]) => value.includes("config-a-model")));
+    assert.ok(modelOptions.every(([value]) => !value.includes("config-b-model")));
+
+    dispatchState("config-a", { modelState: {}, openCodeModels: {}, thinkingMode: "medium" });
+    assert.deepEqual(api.state.modelsByCli[cli], []);
+    assert.deepEqual(api.state.loopModelsByCli[cli], { main: [], subtask: [] });
+    assert.deepEqual(api.state.openCodeModels.models, []);
+    assert.equal(api.state.thinkingMode, "medium");
+
+    dispatchState("config-a");
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-a-model"]);
+    assert.equal(api.state.thinkingMode, "high");
+
+    dispatchState("config-b", {
+      configState: { activeConfigId: "config-b", configs: [{ id: "config-b", name: "config-b", platform: cli }] },
+    });
+    assert.equal(configSelect.value, "config-b");
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-b-model"]);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  });
+
+  test(`${cli} restores models after a failed profile switch and clears them when all profiles are removed`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const activeState = createProfilePanelState(cli, "config-b");
+    window.dispatchMessage({ type: "state", payload: activeState });
+    const configSelect = document.getElementById("configSelect");
+    configSelect.value = "config-a";
+    configSelect.dispatchEvent({ type: "change" });
+    window.dispatchMessage({ type: "state", payload: activeState });
+    assert.deepEqual(api.state.modelsByCli[cli], []);
+    window.dispatchMessage({ type: "configApplyError", cli, configId: "config-a", error: "Invalid config" });
+    window.dispatchMessage({ type: "state", payload: activeState });
+    assert.equal(configSelect.value, "config-b");
+    assert.equal(api.state.pendingConfigApply, null);
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-b-model"]);
+
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-b", {
+        configState: { activeConfigId: null, configs: [] },
+        modelState: {},
+        openCodeModels: {},
+      }),
+    });
+    assert.equal(api.state.selectedConfigId, "");
+    assert.deepEqual(api.state.modelsByCli[cli], []);
+    assert.deepEqual(api.state.openCodeModels.models, []);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  });
+}
+
 test("boots the runtime and dispatches state, message, stream, history, settings, and queue events", () => {
   const harness = createRuntimeHarness();
   const { api, document, posted, window } = harness;

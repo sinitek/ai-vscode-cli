@@ -94,11 +94,13 @@
       "id": "harness.workspace_scaffold",
       "name": "Workspace Scaffold",
       "kind": "resource",
-      "description": "插件内置的新工作区 harness 模板，承载通用 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架。",
+      "description": "插件内置的新工作区 harness 模板，承载通用 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架。初始化只安装骨架，不自动安装 CodeGraph；CodeGraph 由工作区设置中的独立复选框触发安装。",
       "status": "active",
       "aliases": ["media/workspace-scaffold", "workspace-scaffold", "scaffold"],
       "implementation_paths": ["media/workspace-scaffold"],
       "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "media/workspace-scaffold/AGENTS.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"}
       ]

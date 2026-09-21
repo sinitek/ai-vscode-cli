@@ -402,12 +402,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           });
         }
         state.selectedConfigId = nextSelected;
-        state.thinkingMode = panelState.thinkingMode || "medium";
-        state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
-        state.openCodeSmallThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeSmallThinking);
-        state.openCodeModels = reconcilePendingOpenCodeRoleSelection(
-          normalizeOpenCodeModelsPayload(panelState.openCodeModels)
-        );
+        const matchesSelectedConfig = (state.configState.activeConfigId || "") === nextSelected;
+        if (matchesSelectedConfig) {
+          state.thinkingMode = panelState.thinkingMode || "medium";
+          state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
+          state.openCodeSmallThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeSmallThinking);
+          state.openCodeModels = reconcilePendingOpenCodeRoleSelection(
+            normalizeOpenCodeModelsPayload(panelState.openCodeModels)
+          );
+        }
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
@@ -445,7 +448,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.interactive = panelState.interactive || { supported: false, enabled: false };
         state.rulePaths = panelState.rulePaths || { global: {}, project: {} };
         // Handle modelState
-        if (panelState.modelState) {
+        if (panelState.modelState && matchesSelectedConfig) {
           applyModelState(panelState.modelState, panelState.currentCli);
         }
         elements.currentCli.value = panelState.currentCli;
