@@ -101,6 +101,8 @@ export type PanelStateBuilderDeps = {
   configState: PanelState["configState"];
   workspaceSettings: WorkspaceSettings;
   workspaceHarnessInstalled?: boolean;
+  codeGraphInstalled?: boolean;
+  codeGraphInstalling?: boolean;
   processPlatform: NodeJS.Platform;
   cliRulePathsGlobal: Record<CliName, string>;
   getWorkspaceConfiguration: () => PanelConfiguration;
@@ -200,6 +202,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     longTermMemoryEnabled: deps.getEffectiveLongTermMemoryEnabled(),
     workspaceMemoryEnabled: deps.workspaceSettings.workspaceMemoryEnabled === true,
     workspaceHarnessInstalled: deps.workspaceHarnessInstalled === true,
+    codeGraphInstalled: deps.codeGraphInstalled === true,
+    codeGraphInstalling: deps.codeGraphInstalling === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),

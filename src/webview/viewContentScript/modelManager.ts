@@ -696,8 +696,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           });
         });
       }
-      if (elements.installCodeGraph) {
-        elements.installCodeGraph.addEventListener("click", () => {
+      if (elements.codeGraphEnabled) {
+        elements.codeGraphEnabled.addEventListener("change", (event) => {
+          if (state.codeGraphInstalled || state.codeGraphInstalling) {
+            syncCodeGraphWorkspaceControl();
+            return;
+          }
+          const enabled = Boolean(event.target.checked);
+          if (!enabled) {
+            syncCodeGraphWorkspaceControl();
+            return;
+          }
+          syncCodeGraphWorkspaceControl();
           vscode.postMessage({
             type: "installCodeGraph",
           });

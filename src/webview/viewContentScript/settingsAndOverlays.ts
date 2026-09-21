@@ -344,6 +344,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       if (elements.toolSettingsWorkspaceTab) {
         elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
       }
+      setToolSettingsTab("general");
       if (elements.autoCompactContextAfterRun) {
         elements.autoCompactContextAfterRun.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);

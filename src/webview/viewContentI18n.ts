@@ -210,10 +210,14 @@ export const WEBVIEW_I18N = {
       "This workspace already has a .ch directory, so the Harness scaffold is installed and cannot be turned off here.",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
-      "Install or upgrade the local CodeGraph CLI to the latest version, register the Codex MCP integration, and initialize this workspace when one is open.",
-    toolSettingsInstallCodeGraphButton: "Install CodeGraph",
+      "Workspace setting. Installs the local CodeGraph CLI, registers MCP so AI can interact with it, and initializes this workspace index.",
+    toolSettingsInstallCodeGraphToggle: "On",
     toolSettingsInstallCodeGraphHint:
-      "Runs in a visible terminal. Requires npm on PATH and works on macOS and Windows.",
+      "Off by default. Turn it on to install CodeGraph, register MCP interaction, and initialize the current workspace index in a visible terminal.",
+    toolSettingsInstallCodeGraphInstallingHint:
+      "CodeGraph setup is running in a terminal. This checkbox will turn on automatically when the CLI, MCP interaction, and workspace index are ready.",
+    toolSettingsInstallCodeGraphInstalledHint:
+      "CodeGraph is installed and interactive in this workspace, so it cannot be turned off here.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -646,10 +650,14 @@ export const WEBVIEW_I18N = {
       "当前工作区已存在 .ch 目录，Harness 骨架已安装，无法在此关闭。",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
-      "安装或升级本机 CodeGraph CLI 到最新版本，注册 Codex MCP 集成，并在当前打开工作区时初始化索引。",
-    toolSettingsInstallCodeGraphButton: "安装 CodeGraph",
+      "工作区设置。安装本机 CodeGraph CLI，注册 MCP 以便 AI 交互，并初始化当前工作区索引。",
+    toolSettingsInstallCodeGraphToggle: "开启",
     toolSettingsInstallCodeGraphHint:
-      "会在可见终端中执行。需要 npm 在 PATH 中可用，兼容 macOS 和 Windows。",
+      "默认关闭。开启后会在可见终端中安装 CodeGraph、注册 MCP 交互，并初始化当前工作区索引。",
+    toolSettingsInstallCodeGraphInstallingHint:
+      "正在终端中安装 CodeGraph。CLI、MCP 交互和工作区索引就绪后，此开关会自动勾选。",
+    toolSettingsInstallCodeGraphInstalledHint:
+      "当前工作区已安装并可交互使用 CodeGraph，无法在此关闭。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",

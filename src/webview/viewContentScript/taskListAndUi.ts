@@ -578,6 +578,22 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
       }
 
+      function syncCodeGraphWorkspaceControl() {
+        const installed = Boolean(state.codeGraphInstalled);
+        const installing = Boolean(state.codeGraphInstalling);
+        if (elements.codeGraphEnabled) {
+          elements.codeGraphEnabled.checked = installed;
+          elements.codeGraphEnabled.disabled = installed || installing || Boolean(state.isRunning);
+        }
+        if (elements.codeGraphNote) {
+          elements.codeGraphNote.textContent = installed
+            ? i18n.toolSettingsInstallCodeGraphInstalledHint
+            : (installing
+              ? i18n.toolSettingsInstallCodeGraphInstallingHint
+              : i18n.toolSettingsInstallCodeGraphHint);
+        }
+      }
+
       function updateRunningState(isRunning, options = {}) {
         const wasRunning = state.isRunning;
         const preserveRunArtifacts = Boolean(options.preserveRunArtifacts);
@@ -601,6 +617,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           elements.debugMode.disabled = isRunning;
         }
         syncLongTermMemoryWorkspaceControl();
+        syncCodeGraphWorkspaceControl();
         syncInteractiveOptions();
         elements.sendPrompt.style.display = "inline-flex";
         elements.stopRun.style.display = isRunning ? "inline-flex" : "none";

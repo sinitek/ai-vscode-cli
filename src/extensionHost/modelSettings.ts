@@ -3,6 +3,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { createHash } from "crypto";
 import { getCliArgs, getCliCommand, getThinkingMode } from "../cli/config";
+import { inspectCodeGraphStatus } from "../cli/codegraphStatus";
 import { getCodeGraphInstallCommand } from "../cli/installer";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
 import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
@@ -76,7 +77,12 @@ const LOOP_MAX_MAX_ROUNDS = 100;
 const CODEGRAPH_INSTALL_TERMINAL_NAME = "CodeGraph Install";
 const WORKSPACE_HARNESS_TERMINAL_NAME = "Workspace Harness Setup";
 const CODEGRAPH_SETUP_COMMAND = getCodeGraphInstallCommand({ initializeWorkspace: true });
+const CODEGRAPH_INSTALL_POLL_MS = 2000;
+const CODEGRAPH_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARCHITECTURE.md";
+let codeGraphInstalling = false;
+let codeGraphInstallPollTimer: ReturnType<typeof setInterval> | null = null;
+let codeGraphInstallPollStartedAt = 0;
 let currentCli = deps.getCurrentCli();
 let modelStore = deps.getModelStore();
 let workspaceSettings = deps.getWorkspaceSettings();
@@ -623,10 +629,67 @@ async function confirmAndInitializeWorkspaceHarness(): Promise<boolean> {
   return true;
 }
 
+function inspectActiveCodeGraphStatus() {
+  return inspectCodeGraphStatus({
+    workspaceRoot: resolveWorkspaceCwd() ?? null,
+  });
+}
+
+function isCodeGraphInstalling(): boolean {
+  return codeGraphInstalling;
+}
+
+function stopCodeGraphInstallCompletionWatch(): void {
+  if (codeGraphInstallPollTimer) {
+    clearInterval(codeGraphInstallPollTimer);
+    codeGraphInstallPollTimer = null;
+  }
+  codeGraphInstallPollStartedAt = 0;
+}
+
+function isCodeGraphInstallComplete(status = inspectActiveCodeGraphStatus()): boolean {
+  if (status.ready) {
+    return true;
+  }
+  return !resolveWorkspaceCwd() && status.cliInstalled && status.mcpConfigured;
+}
+
+async function refreshCodeGraphInstallWatch(): Promise<void> {
+  const status = inspectActiveCodeGraphStatus();
+  if (isCodeGraphInstallComplete(status)) {
+    const becameReady = status.ready;
+    stopCodeGraphInstallCompletionWatch();
+    codeGraphInstalling = false;
+    if (becameReady) {
+      void vscode.window.showInformationMessage(t("codegraph.installReady"));
+    }
+    await postPanelState();
+    return;
+  }
+  if (codeGraphInstallPollStartedAt > 0 && Date.now() - codeGraphInstallPollStartedAt >= CODEGRAPH_INSTALL_TIMEOUT_MS) {
+    stopCodeGraphInstallCompletionWatch();
+    codeGraphInstalling = false;
+    void vscode.window.showWarningMessage(t("codegraph.installTimeout"));
+    await postPanelState();
+  }
+}
+
+function startCodeGraphInstallCompletionWatch(): void {
+  stopCodeGraphInstallCompletionWatch();
+  codeGraphInstalling = true;
+  codeGraphInstallPollStartedAt = Date.now();
+  codeGraphInstallPollTimer = setInterval(() => {
+    void refreshCodeGraphInstallWatch();
+  }, CODEGRAPH_INSTALL_POLL_MS);
+  void postPanelState();
+  void refreshCodeGraphInstallWatch();
+}
+
 function startCodeGraphWorkspaceSetup(workspaceRoot: string): void {
   const terminal = createCodeGraphTerminal(WORKSPACE_HARNESS_TERMINAL_NAME, workspaceRoot);
   terminal.show();
   terminal.sendText(CODEGRAPH_SETUP_COMMAND);
+  startCodeGraphInstallCompletionWatch();
   void logInfo("workspace-harness-codegraph-setup-triggered", {
     workspace: workspaceRoot,
     command: CODEGRAPH_SETUP_COMMAND,
@@ -645,6 +708,13 @@ function createCodeGraphTerminal(name: string, cwd: string): vscode.Terminal {
 }
 
 async function installCodeGraphForWorkspace(): Promise<void> {
+  if (codeGraphInstalling) {
+    return;
+  }
+  if (inspectActiveCodeGraphStatus().ready) {
+    await postPanelState();
+    return;
+  }
   const workspaceRoot = resolveWorkspaceCwd();
   const initializeWorkspace = Boolean(workspaceRoot);
   const installCommand = getCodeGraphInstallCommand({ initializeWorkspace });
@@ -667,6 +737,7 @@ async function installCodeGraphForWorkspace(): Promise<void> {
   );
   terminal.show();
   terminal.sendText(installCommand);
+  startCodeGraphInstallCompletionWatch();
   void logInfo("codegraph-install-triggered", {
     workspace: workspaceRoot ?? null,
     command: installCommand,
@@ -1081,6 +1152,7 @@ return {
   startCodeGraphWorkspaceSetup: wrap(startCodeGraphWorkspaceSetup),
   createCodeGraphTerminal: wrap(createCodeGraphTerminal),
   installCodeGraphForWorkspace: wrap(installCodeGraphForWorkspace),
+  isCodeGraphInstalling: wrap(isCodeGraphInstalling),
   buildArchitectureInitializationModelPrompt: wrap(buildArchitectureInitializationModelPrompt),
   maybePromptInitializeArchitectureWithAi: wrap(maybePromptInitializeArchitectureWithAi),
   getGlobalAutoCompactContextAfterRun: wrap(getGlobalAutoCompactContextAfterRun),

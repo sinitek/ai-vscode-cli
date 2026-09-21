@@ -537,11 +537,12 @@ ${webviewStyles}    </style>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsInstallCodeGraphLabel}</div>
-                  <button id="installCodeGraph" class="secondary action-button" title="${i18n.toolSettingsInstallCodeGraphTitle}" aria-label="${i18n.toolSettingsInstallCodeGraphButton}">
-                    ${i18n.toolSettingsInstallCodeGraphButton}
-                  </button>
+                  <label class="debug-toggle" title="${i18n.toolSettingsInstallCodeGraphTitle}">
+                    <input type="checkbox" id="codeGraphEnabled" />
+                    <span>${i18n.toolSettingsInstallCodeGraphToggle}</span>
+                  </label>
                 </div>
-                <div class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
+                <div id="codeGraphNote" class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
               </section>
             </div>
           </div>

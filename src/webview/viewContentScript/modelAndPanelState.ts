@@ -415,6 +415,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.longTermMemoryEnabled = panelState.longTermMemoryEnabled === true;
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.workspaceHarnessInstalled = panelState.workspaceHarnessInstalled === true;
+        state.codeGraphInstalled = panelState.codeGraphInstalled === true;
+        state.codeGraphInstalling = panelState.codeGraphInstalling === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
@@ -469,6 +471,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
         syncLongTermMemoryWorkspaceControl();
+        syncCodeGraphWorkspaceControl();
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
         }

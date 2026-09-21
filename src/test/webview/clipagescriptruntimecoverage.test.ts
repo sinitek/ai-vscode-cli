@@ -676,6 +676,56 @@ test("shows the workspace harness toggle as checked and disabled when .ch alread
   );
 });
 
+test("shows the CodeGraph toggle as checked and disabled when the workspace is ready", () => {
+  const { document, window } = createRuntimeHarness();
+  const idleTabs = { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] };
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      codeGraphInstalled: true,
+      codeGraphInstalling: false,
+      conversationTabs: idleTabs,
+    }),
+  });
+  const toggle = document.getElementById("codeGraphEnabled");
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.disabled, true);
+  assert.equal(
+    document.getElementById("codeGraphNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphInstalledHint,
+  );
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      codeGraphInstalled: false,
+      codeGraphInstalling: true,
+      conversationTabs: idleTabs,
+    }),
+  });
+  assert.equal(toggle.checked, false);
+  assert.equal(toggle.disabled, true);
+  assert.equal(
+    document.getElementById("codeGraphNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphInstallingHint,
+  );
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      codeGraphInstalled: false,
+      codeGraphInstalling: false,
+      conversationTabs: idleTabs,
+    }),
+  });
+  assert.equal(toggle.checked, false);
+  assert.equal(toggle.disabled, false);
+  assert.equal(
+    document.getElementById("codeGraphNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphHint,
+  );
+});
+
 test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },
@@ -976,7 +1026,9 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   document.getElementById("historyRetentionDays").value = "0";
   document.getElementById("historyRetentionDays").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "historyRetentionDays", value: 1 });
-  document.getElementById("installCodeGraph").click();
+  const codeGraphToggle = document.getElementById("codeGraphEnabled");
+  codeGraphToggle.checked = true;
+  codeGraphToggle.dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "installCodeGraph" });
   document.getElementById("loopMaxRounds").value = "0";
   document.getElementById("loopMaxRounds").dispatchEvent({ type: "change" });

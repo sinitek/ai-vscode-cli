@@ -315,6 +315,8 @@ export type PanelState = {
   longTermMemoryEnabled: boolean;
   workspaceMemoryEnabled: boolean;
   workspaceHarnessInstalled: boolean;
+  codeGraphInstalled: boolean;
+  codeGraphInstalling: boolean;
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
   humanInteractionEnabled: boolean;
