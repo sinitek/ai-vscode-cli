@@ -15,6 +15,12 @@ import {
   type GraphRunControlSource,
 } from "../graph/graphRunControl";
 import { findLatestGraphRun, listGraphRuns, readGraphRunRecord, updateGraphRunRecord } from "../graph/graphStore";
+import {
+  continueModelPairFromGraphRouting,
+  normalizeContinueModelSource,
+  selectGraphContinueModelRouting,
+  type ContinueModelSource,
+} from "../continueModelChoice";
 import type { GraphRunRecord } from "../graph/types";
 import { createGraphRunPanelCoordinator } from "../panelDiagnostics";
 import type { GraphRunPanel } from "../webview/graphRunPanel";
@@ -25,6 +31,9 @@ import { logError } from "../logger";
 
 type GraphRuntimeControlBridge = Pick<GraphRuntimeHost,
   | "resolveGraphResumePromptModels"
+  | "resolveCurrentLoopModelPair"
+  | "buildCurrentGraphModelRouting"
+  | "applyGraphRunModelRouting"
   | "hydrateOpenCodePromptRoleModels"
   | "tickGraphRunToPause"
   | "sendGraphMainRunTerminalStatus"
@@ -77,7 +86,11 @@ export function createGraphControlsHost(deps: GraphControlsHostDeps) {
       cli: deps.getCurrentCli(),
     }),
     readEvents: readGraphEvents,
-    continueRun: (graphRunId) => continueGraphRunFromPanel(graphRunId),
+    continueRun: (graphRunId, modelSource) => continueGraphRunFromPanel(graphRunId, modelSource),
+    resolveContinueModels: (run) => ({
+      original: continueModelPairFromGraphRouting(run.modelRouting),
+      current: deps.runtime.resolveCurrentLoopModelPair(run.cli, deps.getActiveConfigIdForCli(run.cli)),
+    }),
     supplementRun: (graphRunId, prompt) => supplementGraphRunFromPanel(graphRunId, prompt),
     retryNode: (graphRunId, nodeId) => retryGraphNodeFromPanel(graphRunId, nodeId),
     feedbackNode: (graphRunId, nodeId) => feedbackGraphNodeFromPanel(graphRunId, nodeId),
@@ -165,10 +178,14 @@ function attemptGraphRunAutoWake(graphRunId: string): GraphAutoWakeAttemptResult
   return "started";
 }
 
-async function continueGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
+async function continueGraphRunFromPanel(
+  graphRunId: string,
+  modelSource?: ContinueModelSource | null,
+): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   return continueGraphRunFromStore(graphRunId, {
     source: "panel",
     reason: "Panel requested Graph run continue.",
+    modelSource: normalizeContinueModelSource(modelSource),
   });
 }
 
@@ -384,6 +401,7 @@ async function continueGraphRunFromStore(
     source: GraphRunControlSource;
     reason: string;
     preferredTargetTabId?: string | null;
+    modelSource?: ContinueModelSource | null;
   },
 ): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   const lookup = readGraphRunRecord(graphRunId);
@@ -401,13 +419,50 @@ async function continueGraphRunFromStore(
   const persisted = control.changed
     ? persistGraphRunControlResult(control)
     : control.run;
-  cancelGraphRunAutoWake(persisted.id);
-  return tickGraphRunToPauseFromControl(persisted, {
+  const routedRun = applyPanelContinueModelRouting(persisted, options.modelSource ?? null);
+  cancelGraphRunAutoWake(routedRun.id);
+  return tickGraphRunToPauseFromControl(routedRun, {
     source: options.source,
     reason: options.reason,
     preferredTargetTabId: options.preferredTargetTabId ?? null,
     successKey: "continueStarted",
   });
+}
+
+function applyPanelContinueModelRouting(
+  run: GraphRunRecord,
+  modelSource: ContinueModelSource | null,
+): GraphRunRecord {
+  const currentRouting = deps.runtime.buildCurrentGraphModelRouting(
+    run.cli,
+    deps.getActiveConfigIdForCli(run.cli),
+  );
+  const selectedRouting = selectGraphContinueModelRouting(run.modelRouting, currentRouting, modelSource);
+  if (selectedRouting === run.modelRouting) {
+    return run;
+  }
+  const rerouted = deps.runtime.applyGraphRunModelRouting({
+    ...run,
+    modelRouting: selectedRouting,
+  });
+  const timestamp = Date.now();
+  const persisted = updateGraphRunRecord(run.id, {
+    modelRouting: rerouted.modelRouting,
+    nodes: rerouted.nodes,
+    updatedAt: timestamp,
+  }) ?? rerouted;
+  appendGraphEvent(persisted.eventsFile, {
+    runId: persisted.id,
+    type: "run.updated",
+    timestamp,
+    summary: "Graph continue switched to the current Loop main and subtask models.",
+    data: {
+      source: "panel",
+      modelSource: "current",
+      modelRouting: persisted.modelRouting,
+    },
+  });
+  return persisted;
 }
 
 async function tickGraphRunToPauseFromControl(

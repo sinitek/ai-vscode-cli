@@ -3,7 +3,7 @@
 ## Summary
 
 - Generated at: 2026-08-29T02:14:18Z
-- Focus: opencode opcode task tab AI conversation
+- Focus: Loop Graph 我要说话 继续 主子模型
 - Anchor ID: -
 - Selection mode: baseline-fallback
 - Available observation entries: 2
@@ -122,7 +122,7 @@ Narrative:
   Why: 热区边界和阅读顺序入口。
   Summary: 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
 
-- `.ch/docs/MEMORY.md` | 记忆流转规则 | matches=ai
+- `.ch/docs/MEMORY.md` | 记忆流转规则
   Why: 记忆分层与流转规则入口。
   Summary: 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
 
@@ -132,22 +132,22 @@ Narrative:
 
 ## Related Design Docs
 
-- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=opencode, ai
-  Why: 与当前 focus 相关的设计决策入口，命中：opencode / ai。
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, graph
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / graph。
   Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=tab, ai
-  Why: 与当前 focus 相关的设计决策入口，命中：tab / ai。
-  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
-
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=ai
-  Why: 与当前 focus 相关的设计决策入口，命中：ai。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 继续
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 继续。
   Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
+
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop, graph
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / graph。
+  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=opencode
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：opencode。
+- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop
+  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop。
   Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
 
 ## Watch Items

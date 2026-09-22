@@ -138,6 +138,46 @@ test("does not render removed automatic wake controls for review tasks", () => {
   assert.doesNotMatch(html, /Automatic sleep|Scheduled wake|window\.setInterval\(updateAutoWakeCountdown/u);
   assert.doesNotMatch(html, /<button[^>]*data-action="stopTask"/u);
   assert.match(html, /<button[^>]*data-action="continueTask"/u);
+  assert.match(html, /Keep the original models/u);
+  assert.match(html, /Use the newly configured models/u);
+  assert.match(html, /value="original" disabled/u);
+  assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/u);
+});
+
+test("renders recorded and current Loop models on the continue dialog", () => {
+  const html = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    {
+      mode: "main_sub",
+      continueModels: {
+        original: { main: "original-main", subtask: "original-subtask" },
+        current: { main: "current-main", subtask: "current-subtask" },
+      },
+      task: {
+        id: "task-models",
+        cli: "codex",
+        status: "stopped",
+        rootPrompt: "Continue the task.",
+        taskStoreFile: "/tmp/loop-tasks.json",
+        mainCommunicationFile: "/tmp/main-task.md",
+        currentRound: 2,
+        updatedAt: Date.now(),
+        canSupplement: true,
+        canContinue: true,
+        canStop: false,
+      },
+      rounds: [],
+      chatMarkdown: "",
+    },
+    "zh-CN",
+  );
+
+  assert.match(html, /保持原主子模型/u);
+  assert.match(html, /使用新配置的主子模型/u);
+  assert.match(html, /主模型 original-main，子模型 original-subtask/u);
+  assert.match(html, /主模型 current-main，子模型 current-subtask/u);
+  assert.match(html, /value="original" checked/u);
+  assert.doesNotMatch(html, /value="original" disabled/u);
 });
 
 function createPanelHarness() {

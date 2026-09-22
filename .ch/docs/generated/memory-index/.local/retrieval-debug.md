@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-08-29T02:14:18Z
-- Focus: opencode opcode task tab AI conversation
-- Focus terms: `opencode`, `opcode`, `task`, `tab`, `ai`, `conversation`
+- Focus: Loop Graph 我要说话 继续 主子模型
+- Focus terms: `loop`, `graph`, `我要说话`, `继续`, `主子模型`
 - Anchor ID: -
 - Selection mode: baseline-fallback
 - Candidate count: 2

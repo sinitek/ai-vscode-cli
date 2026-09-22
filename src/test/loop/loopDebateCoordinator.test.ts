@@ -93,3 +93,72 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
   assert.equal(runCalls[0]?.options.resumeTaskId, task.id);
   assert.equal(runCalls[0]?.options.resumeRequested, true);
 });
+
+test("Loop group chat continuation can keep the recorded main and subtask models", async () => {
+  const task = createStoppedTask();
+  task.modelRouting = {
+    main: { model: "original-main" },
+    subtask: { model: "original-subtask" },
+  };
+  const patches: Array<Partial<LoopTaskRecord>> = [];
+  const runCalls: Array<Record<string, unknown>> = [];
+  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  const deps: CoordinatorDeps = {
+    getExtensionUri: () => ({ fsPath: "/extension" } as any),
+    panelsByTaskId: new Map(),
+    defaultDebateRound: 1,
+    normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+    normalizeSupplementalRequirement: () => null,
+    appendSupplementalRequirement: (existing) => [...(existing ?? [])],
+    appendSupplementalRequirementToCommunication: () => undefined,
+    readTaskRecord: (taskId) => taskId === task.id ? task : null,
+    updateTaskRecord: (_taskId, patch) => {
+      patches.push(patch);
+      return task;
+    },
+    listTaskStoreFiles: () => [],
+    readTaskStoreTasks: () => [],
+    collectRunningTaskIds: () => new Set(),
+    readTextFileIfNonEmpty: () => null,
+    fileExists: () => false,
+    writeTextFileEnsuringDir: () => true,
+    getActiveSubtaskIds: () => [],
+    buildCompletedConclusionAndSummaryMarkdown: () => "",
+    resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "codex" }),
+    revealPanelView: async () => undefined,
+    switchVisibleConversationTabForLoop: async () => undefined,
+    isTabRunActive: () => false,
+    getActiveConfigIdForCli: () => "codex-active-config",
+    getSelectedCliModel: () => "selected-model",
+    getSelectedLoopCliModel: (_cli, role) => role === "main" ? "current-main" : "current-subtask",
+    runLoopPrompt: async (input) => {
+      runCalls.push(input);
+    },
+    stopRunsForTask: () => undefined,
+    markTaskStoppedByUser: () => task,
+    postPanelState: async () => undefined,
+    getActiveConversationTaskId: () => task.id,
+    showInformationMessage: () => undefined,
+    showWarningMessage: () => undefined,
+    pickTask: async () => task,
+    t: ((key: string) => key) as CoordinatorDeps["t"],
+  };
+
+  const coordinator = createLoopDebateChatPanelCoordinator(deps);
+  await coordinator.continueTask(task.id, "继续", "original");
+
+  assert.equal(patches.length, 0);
+  assert.equal(runCalls[0]?.model, "original-main");
+  assert.equal(runCalls[0]?.loopMainModel, "original-main");
+  assert.equal(runCalls[0]?.loopSubtaskModel, "original-subtask");
+
+  await coordinator.continueTask(task.id, "继续", "current");
+
+  assert.equal(patches.length, 1);
+  assert.deepEqual(patches[0]?.modelRouting, {
+    main: { model: "current-main" },
+    subtask: { model: "current-subtask" },
+  });
+  assert.equal(runCalls[1]?.model, "current-main");
+  assert.equal(runCalls[1]?.loopSubtaskModel, "current-subtask");
+});

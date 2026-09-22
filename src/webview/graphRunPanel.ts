@@ -6,6 +6,7 @@ import {
   type GraphLabel,
   type NodeLabel,
 } from "@dagrejs/dagre";
+import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { resolveLocale, type AppLocale } from "../i18n";
 import { GRAPH_RUN_PANEL_STYLES } from "./graphRunPanelStyles";
 import {
@@ -248,6 +249,7 @@ ${GRAPH_RUN_PANEL_STYLES}
         </div>
       </header>
       ${renderSupplementDialog(strings)}
+      ${renderContinueDialog(state, strings)}
       <main class="content graph-canvas-content">
         ${renderGraphDag(state, strings)}
         ${renderNodeDetails(state, strings)}
@@ -263,6 +265,10 @@ ${GRAPH_RUN_PANEL_STYLES}
       const supplementConfirm = document.getElementById("supplementDialogConfirm");
       const supplementCancel = document.getElementById("supplementDialogCancel");
       const supplementButton = document.querySelector('[data-action="supplement"]');
+      const continueBackdrop = document.getElementById("continueDialogBackdrop");
+      const continueConfirm = document.getElementById("continueDialogConfirm");
+      const continueCancel = document.getElementById("continueDialogCancel");
+      const continueButton = document.querySelector('[data-action="continue"]');
       const nodeDetailBackdrop = document.getElementById("nodeDetailDialogBackdrop");
       const nodeDetailDialog = document.getElementById("nodeDetailDialog");
       const nodeDetailClose = document.getElementById("nodeDetailDialogClose");
@@ -846,6 +852,43 @@ ${GRAPH_RUN_PANEL_STYLES}
         }
       }
 
+      function readContinueModelSource() {
+        const selected = document.querySelector('input[name="continueModelSource"]:checked');
+        if (!selected || selected.disabled || selected.value !== "original") {
+          return "current";
+        }
+        return "original";
+      }
+
+      function openContinueDialog() {
+        if (!continueBackdrop) {
+          return;
+        }
+        continueBackdrop.classList.add("visible");
+        continueBackdrop.setAttribute("aria-hidden", "false");
+      }
+
+      function closeContinueDialog() {
+        if (!continueBackdrop) {
+          return;
+        }
+        continueBackdrop.classList.remove("visible");
+        continueBackdrop.setAttribute("aria-hidden", "true");
+      }
+
+      function submitContinueDialog() {
+        const modelSource = readContinueModelSource();
+        closeContinueDialog();
+        if (continueButton) {
+          continueButton.disabled = true;
+        }
+        vscode.postMessage({
+          type: "graphRun:continue",
+          modelSource,
+          selectedNodeId: getSelectedNodeId() || null,
+        });
+      }
+
       function openSupplementDialog() {
         if (!supplementBackdrop || !supplementInput) {
           return;
@@ -1018,7 +1061,7 @@ ${GRAPH_RUN_PANEL_STYLES}
             return;
           }
           if (action === "continue") {
-            vscode.postMessage({ type: "graphRun:continue", selectedNodeId });
+            openContinueDialog();
             return;
           }
           if (action === "supplement") {
@@ -1051,6 +1094,13 @@ ${GRAPH_RUN_PANEL_STYLES}
         applyZoom(dagZoomSelect.value);
       });
 
+      continueConfirm?.addEventListener("click", submitContinueDialog);
+      continueCancel?.addEventListener("click", closeContinueDialog);
+      continueBackdrop?.addEventListener("click", (event) => {
+        if (event.target === continueBackdrop) {
+          closeContinueDialog();
+        }
+      });
       supplementConfirm?.addEventListener("click", submitSupplementDialog);
       supplementCancel?.addEventListener("click", closeSupplementDialog);
       supplementBackdrop?.addEventListener("click", (event) => {
@@ -1081,6 +1131,11 @@ ${GRAPH_RUN_PANEL_STYLES}
         }
       });
       document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && continueBackdrop && continueBackdrop.classList.contains("visible")) {
+          event.preventDefault();
+          closeContinueDialog();
+          return;
+        }
         if (event.key === "Escape" && isNodeDetailDialogOpen()) {
           event.preventDefault();
           closeNodeDetailDialog();
@@ -1118,6 +1173,37 @@ function renderRunControls(state: GraphRunPanelState, strings: GraphRunPanelStri
     buttons.push(`<button class="button button-danger" type="button" data-action="stop" title="${escapeHtml(strings.stopRunTitle)}">${escapeHtml(strings.stopRun)}</button>`);
   }
   return buttons.join("");
+}
+
+function renderContinueDialog(state: GraphRunPanelState, strings: GraphRunPanelStrings): string {
+  return `<div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="continueDialogTitle" aria-describedby="continueDialogDescription">
+      <div class="dialog-header">
+        <h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>
+        <p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>
+      </div>
+      <div class="dialog-body">
+        ${renderContinueModelChoiceHtml({
+          choice: state.continueModels,
+          strings: {
+            label: strings.continueModelChoiceLabel,
+            originalTitle: strings.continueModelOriginal,
+            originalHint: strings.continueModelOriginalHint,
+            originalUnavailable: strings.continueModelOriginalUnavailable,
+            currentTitle: strings.continueModelCurrent,
+            currentHint: strings.continueModelCurrentHint,
+            summary: strings.continueModelSummary,
+            unrecorded: strings.continueModelUnrecorded,
+          },
+          escapeHtml,
+        })}
+      </div>
+      <div class="dialog-actions">
+        <button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.supplementCancel)}</button>
+        <button id="continueDialogConfirm" class="button" type="button">${escapeHtml(strings.supplementConfirm)}</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderSupplementDialog(strings: GraphRunPanelStrings): string {

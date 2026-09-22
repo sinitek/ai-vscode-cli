@@ -3,6 +3,10 @@ import type { CliName, LoopExecutionMode, ThinkingMode } from "../cli/types";
 import type { OpenCodeCanonicalModelRole } from "../cli/opencodeconfigmodels";
 import type { LoopTaskRole } from "../promptRunState";
 import * as configService from "../config/configService";
+import {
+  resolveCurrentLoopModelPair,
+  type ContinueModelPair,
+} from "../continueModelChoice";
 import { normalizeCliModelName } from "../modelSelectionStore";
 import { resolveLoopSubtaskThinkingMode } from "../loopSubtaskThinking";
 import { appendGraphEvent } from "../graph/graphEvents";
@@ -251,6 +255,35 @@ function resolveGraphNodeModelRoute(
   return node.kind === "plan" || node.kind === "summary"
     ? routing.planner
     : routing.executor;
+}
+
+function resolveCurrentLoopModelPairForRuntime(
+  cli: CliName,
+  configId: string | null,
+): ContinueModelPair {
+  return resolveCurrentLoopModelPair({
+    cli,
+    configId,
+    getSelectedCliModel: deps.getSelectedCliModel,
+    getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+  });
+}
+
+function buildCurrentGraphModelRouting(
+  cli: CliName,
+  configId: string | null,
+): GraphRunModelRoutingRecord {
+  const pair = resolveCurrentLoopModelPairForRuntime(cli, configId);
+  return {
+    planner: {
+      role: "main",
+      ...(pair.main ? { model: pair.main } : {}),
+    },
+    executor: {
+      role: "subtask",
+      ...(pair.subtask ? { model: pair.subtask } : {}),
+    },
+  };
 }
 
 function resolveGraphResumePromptModels(
@@ -1168,6 +1201,8 @@ async function executeGraphNodeViaRunPrompt(
     applyGraphNodeModelRoute,
     applyGraphRunModelRouting,
     resolveGraphResumePromptModels,
+    resolveCurrentLoopModelPair: resolveCurrentLoopModelPairForRuntime,
+    buildCurrentGraphModelRouting,
     hydrateOpenCodePromptRoleModels,
   };
 }

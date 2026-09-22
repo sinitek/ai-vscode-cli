@@ -263,7 +263,7 @@ export const WEBVIEW_I18N = {
     runPromptViewAria: "View prompts in this conversation",
     runPromptViewLabel: "Prompt",
     runStreamViewAria: "View live stream messages",
-    runStreamViewLabel: "Stream",
+    runStreamViewLabel: "SSE",
     runContextTokensAria: "Used context {value}",
     runContextTokensLabel: "Context: {value}",
     runContextTokensTitle: "{used} tokens in context",

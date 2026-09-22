@@ -266,6 +266,14 @@ test("Graph runtime host resolves role-specific models, fallbacks, and thinking 
       executor: { role: "subtask", model: "executor-model" },
     },
   );
+  assert.deepEqual(host.buildCurrentGraphModelRouting("codex", "config-1"), {
+    planner: { role: "main", model: "stored-main" },
+    executor: { role: "subtask", model: "stored-subtask" },
+  });
+  assert.deepEqual(host.resolveCurrentLoopModelPair("codex", "config-1"), {
+    main: "stored-main",
+    subtask: "stored-subtask",
+  });
 });
 
 test("Graph runtime host applies planner and executor routes to materialized nodes", () => {

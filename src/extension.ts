@@ -294,6 +294,7 @@ import {
   type LoopTaskRecord,
   type LoopTaskStore,
 } from "./loopTaskStore";
+import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { createLoopOrchestrationOwnershipTracker } from "./loopOrchestrationOwnership";
 import {
   finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps,
@@ -2915,6 +2916,9 @@ const graphControlsHost: GraphControlsHost = createGraphControlsHost({
   messages: graphMessagesHost,
   runtime: {
     resolveGraphResumePromptModels: (run, cli, configId) => graphRuntimeHost.resolveGraphResumePromptModels(run, cli, configId),
+    resolveCurrentLoopModelPair: (cli, configId) => graphRuntimeHost.resolveCurrentLoopModelPair(cli, configId),
+    buildCurrentGraphModelRouting: (cli, configId) => graphRuntimeHost.buildCurrentGraphModelRouting(cli, configId),
+    applyGraphRunModelRouting: (run) => graphRuntimeHost.applyGraphRunModelRouting(run),
     hydrateOpenCodePromptRoleModels: (input, cli) => graphRuntimeHost.hydrateOpenCodePromptRoleModels(input, cli),
     tickGraphRunToPause: (run, input, target) => graphRuntimeHost.tickGraphRunToPause(run, input, target),
     sendGraphMainRunTerminalStatus: (target, run) => graphRuntimeHost.sendGraphMainRunTerminalStatus(target, run),
@@ -3929,6 +3933,16 @@ async function runLoopPromptOrchestration(
       sessionId: initialSessionId,
       executionMode: input.loopExecutionMode,
     });
+    const modelRouting = loopModelRoutingFromPromptInput(input);
+    if (modelRouting) {
+      task = updateLoopTaskRecord(task.id, {
+        modelRouting,
+        updatedAt: Date.now(),
+      }) ?? {
+        ...task,
+        modelRouting,
+      };
+    }
     if (!isLoopDebateGroupChatTask(task)) {
       ensureLoopMainSubChatTranscript(task);
     }

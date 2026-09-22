@@ -160,6 +160,36 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         gap: 8px;
         padding: 12px 16px 16px;
       }
+      .model-choice {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .model-choice-option {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        margin: 0;
+        padding: 8px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .model-choice-option input {
+        margin-top: 3px;
+      }
+      .model-choice-title,
+      .model-choice-detail {
+        display: block;
+      }
+      .model-choice-title {
+        font-weight: 600;
+      }
+      .model-choice-detail {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
       .layout {
         width: 100%;
         min-width: 0;

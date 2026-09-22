@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { resolveLocale, type AppLocale } from "../i18n";
 import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
@@ -120,6 +121,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
             <p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>
           </div>
           <div class="dialog-body">
+            ${renderContinueModelChoice(state, strings)}
             <label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label>
             <textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea>
             <div id="continueDialogError" class="dialog-error" aria-live="polite"></div>
@@ -193,6 +195,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	            open: continueDialogOpen,
 	            mode: continueDialogMode,
 	            prompt: continueDialogInput ? continueDialogInput.value : existingDialog.prompt,
+	            modelSource: readContinueModelSource(),
 	          },
 	        });
 	      }
@@ -290,6 +293,21 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        vscode.postMessage({ type: "loopDebateChat:refresh" });
 	      }
 
+	      function readContinueModelSource() {
+	        const selected = document.querySelector('input[name="continueModelSource"]:checked');
+	        if (!selected || selected.disabled || selected.value !== "original") {
+	          return "current";
+	        }
+	        return "original";
+	      }
+
+	      function setContinueModelChoiceVisible(visible) {
+	        const choice = document.getElementById("continueModelChoice");
+	        if (choice) {
+	          choice.hidden = !visible;
+	        }
+	      }
+
 	      function setContinueDialogError(message) {
 	        if (!continueDialogError) {
 	          return;
@@ -308,6 +326,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
+	        setContinueModelChoiceVisible(true);
 	        saveDialogState();
 	        window.setTimeout(() => {
 	          continueDialogInput.focus();
@@ -341,7 +360,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        if (continueTaskButton) {
 	          continueTaskButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "loopDebateChat:continueTask", prompt });
+	        vscode.postMessage({ type: "loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource() });
 	      }
 
 	      function submitSupplementDialog() {
@@ -381,6 +400,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          labelElement.textContent = "${escapeJsString(strings.supplementPromptLabel)}";
 	        }
 	        continueDialogInput.value = "${escapeJsString(strings.supplementPromptDefault)}";
+	        setContinueModelChoiceVisible(false);
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
@@ -405,6 +425,12 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }
 	        if (typeof dialog.prompt === "string") {
 	          continueDialogInput.value = dialog.prompt;
+	        }
+	        if (dialog.modelSource === "original" || dialog.modelSource === "current") {
+	          const radio = document.querySelector('input[name="continueModelSource"][value="' + dialog.modelSource + '"]');
+	          if (radio && !radio.disabled) {
+	            radio.checked = true;
+	          }
 	        }
 	        saveDialogState();
 	      }
@@ -906,6 +932,26 @@ function formatTemplate(template: string, params: Record<string, string | number
   return template.replace(/\{(\w+)\}/g, (match, key) => (
     Object.prototype.hasOwnProperty.call(params, key) ? String(params[key]) : match
   ));
+}
+
+function renderContinueModelChoice(
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
+): string {
+  return renderContinueModelChoiceHtml({
+    choice: state.continueModels,
+    strings: {
+      label: strings.continueModelChoiceLabel,
+      originalTitle: strings.continueModelOriginal,
+      originalHint: strings.continueModelOriginalHint,
+      originalUnavailable: strings.continueModelOriginalUnavailable,
+      currentTitle: strings.continueModelCurrent,
+      currentHint: strings.continueModelCurrentHint,
+      summary: strings.continueModelSummary,
+      unrecorded: strings.continueModelUnrecorded,
+    },
+    escapeHtml,
+  });
 }
 
 function escapeHtml(value: string): string {

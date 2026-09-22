@@ -1008,6 +1008,9 @@ test("renders only wired and currently available Graph run and node controls", (
   );
   const zhHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhState, "zh-CN");
 	  assert.match(zhHtml, /data-action="supplement"[\s\S]*>我要说话</);
+	  assert.match(zhHtml, /保持原主子模型/);
+	  assert.match(zhHtml, /使用新配置的主子模型/);
+	  assert.match(zhHtml, /openContinueDialog\(\)/);
 	  assert.match(zhHtml, /补充消息/);
 	  assert.match(zhHtml, /请优先验证并行节点。/);
   assertOmitsStopBoundaryCopy(zhHtml);

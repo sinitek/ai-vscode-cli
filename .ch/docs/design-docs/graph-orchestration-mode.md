@@ -462,7 +462,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 
 - 已在 GraphRunPanel 上新增可控的恢复与 mutation 能力，并保持不可用操作不渲染。
 - 已支持从持久化 store 打开指定 run 或当前 workspace / CLI 最近 run，读取坏 store 时以 diagnostics 非阻塞降级。
-- 已支持 sleeping / needs-review / error run 的 Continue / Resume，复用现有 Graph executor / `runGraphPrompt` 安全路径继续 tick，不新建 run。
+- 已支持 sleeping / needs-review / error run 的 Continue / Resume，复用现有 Graph executor / `runGraphPrompt` 安全路径继续 tick，不新建 run。面板继续前让用户选择保持 run `modelRouting` 中的原主/子模型，或改用当前 Loop 模式配置的主/子模型；选择新配置会更新 `modelRouting` 和节点模型后再 tick。自动唤醒、Retry 和 Feedback 不弹出该选择，仍沿用 run 已绑定模型。
 - 已支持最小节点 mutation：Retry failed node、Feedback rollback failed/历史 blocked 验证类节点到上游 checkpoint、direct run 中基于 `direct_rework` 建议和显式 `review_feedback` / `if_fail` 边自动重置返工范围、Stop run，并在操作后刷新面板、尽量保留 selected node；Retry 与 direct rework 都会清理旧 artifact/execution/failure/acceptance evidence，避免 stale 证据污染后续执行；blocked 执行结果会归一为 failed 并走 retry / `if_fail` / failed 复核路径，不再弹出阻塞 modal、跳过下游 quick pick 或 human gate 审批入口。
 - 已支持结构化条件/边基础字段：planner/store 保留 edge `label`、`conditionExpression`、`metadata`，scheduler 对支持的条件表达式求值并输出可读 blocker，prompt 注入边语义、metadata 和返工记录；scheduler 与 prompt builder 共享 `graphEdgeSemantics.ts`，保持 active structural/blocking edge、blocking edge 和 rework trigger 的判断一致。
 - 已支持结构化失败分类：失败节点落盘 `failure`，`node.failed` event data 写入 `failureClassification`，needs-review / idle 文案展示分类、signals、推荐恢复动作、推荐写入文件和建议返工节点草案；direct run 对存在显式反馈边的实现缺陷会推荐 `direct_rework`，worktree/旧运行仍推荐 `feedback_rollback`。

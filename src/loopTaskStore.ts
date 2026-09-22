@@ -133,9 +133,20 @@ export type LoopTaskRecord = {
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
   supplementalRequirements?: string[];
+  modelRouting?: LoopTaskModelRouting;
   debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
   completionRoundSummaries: LoopRoundSummary[];
   completionRequirementCoverage: LoopAcceptanceCheck[];
+};
+
+export type LoopTaskModelRoute = {
+  model?: string;
+  fallback?: string;
+};
+
+export type LoopTaskModelRouting = {
+  main: LoopTaskModelRoute;
+  subtask: LoopTaskModelRoute;
 };
 
 export type LoopTaskStore = {
@@ -766,6 +777,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
       .map((item) => String(item).trim())
       .filter(Boolean)
     : [];
+  const modelRouting = normalizeLoopTaskModelRouting((raw as { modelRouting?: unknown }).modelRouting);
   const debateRounds = normalizeLoopDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   return {
@@ -807,9 +819,42 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
       ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
       : undefined,
     supplementalRequirements,
+    ...(modelRouting ? { modelRouting } : {}),
     debateRounds,
     completionRoundSummaries,
     completionRequirementCoverage,
+  };
+}
+
+export function normalizeLoopTaskModelRouting(value: unknown): LoopTaskModelRouting | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as { main?: unknown; subtask?: unknown };
+  const main = normalizeLoopTaskModelRoute(raw.main);
+  const subtask = normalizeLoopTaskModelRoute(raw.subtask);
+  if (!main && !subtask) {
+    return undefined;
+  }
+  return {
+    main: main ?? {},
+    subtask: subtask ?? {},
+  };
+}
+
+function normalizeLoopTaskModelRoute(value: unknown): LoopTaskModelRoute | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as { model?: unknown; fallback?: unknown };
+  const model = typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined;
+  const fallback = typeof raw.fallback === "string" && raw.fallback.trim() ? raw.fallback.trim() : undefined;
+  if (!model && !fallback) {
+    return null;
+  }
+  return {
+    ...(model ? { model } : {}),
+    ...(fallback ? { fallback } : {}),
   };
 }
 

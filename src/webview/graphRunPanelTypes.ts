@@ -1,3 +1,4 @@
+import type { ContinueModelChoice } from "../continueModelChoice";
 import type {
   GraphAcceptanceCheck,
   GraphEdgeConditionExpression,
@@ -83,6 +84,7 @@ export type GraphRunPanelEvidenceItem = {
 };
 
 export type GraphRunPanelState = {
+  continueModels?: ContinueModelChoice;
   run: {
     id: string;
     cli: string;
@@ -119,7 +121,7 @@ export type GraphRunPanelState = {
 
 export type GraphRunPanelMessage =
   | { type: "graphRun:refresh"; selectedNodeId?: string | null }
-  | { type: "graphRun:continue"; selectedNodeId?: string | null }
+  | { type: "graphRun:continue"; selectedNodeId?: string | null; modelSource?: "original" | "current" }
 	  | { type: "graphRun:supplementRun"; prompt: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:retryNode"; nodeId: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:feedbackNode"; nodeId: string; selectedNodeId?: string | null }

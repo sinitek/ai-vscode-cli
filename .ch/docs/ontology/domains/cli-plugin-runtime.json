@@ -373,6 +373,19 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_graph_continue_model_choice",
+      "name": "Loop 与 Graph 继续时可选择主子模型",
+      "description": "Loop 群聊和 Graph 运行图在有“我要说话”的页面点击继续时，必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。选择新配置会写回 Loop modelRouting 或 Graph modelRouting，并用于后续续跑；未记录原模型时不能伪造成保持原模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/continueModelChoice.ts"},
+        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/extensionHost/graphControls.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
       "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 3 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。",

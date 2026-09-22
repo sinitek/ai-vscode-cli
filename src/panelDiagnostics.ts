@@ -2,6 +2,17 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { CliName, normalizeLoopExecutionMode } from "./cli/types";
 import {
+  continueModelPairFromGraphRouting,
+  continueModelPairFromLoopRouting,
+  emptyContinueModelPair,
+  loopModelRoutingFromPair,
+  normalizeContinueModelSource,
+  promptModelsFromContinuePair,
+  resolveCurrentLoopModelPair,
+  resolveLoopContinueModelPair,
+  type ContinueModelSource,
+} from "./continueModelChoice";
+import {
   buildHiddenRetryAttemptInfo,
   buildHiddenRetryErrorTraceContent,
   buildHiddenRetryProgressInfo,
@@ -719,7 +730,8 @@ type GraphRunPanelDeps = {
   readRunRecord: (graphRunId: string) => GraphRunPanelLookupResult;
   findLatestRun: () => GraphRunPanelLookupResult;
   readEvents: (eventsFile: string) => GraphEventRecord[];
-	  continueRun?: (graphRunId: string) => Promise<GraphRunPanelControlResult>;
+	  continueRun?: (graphRunId: string, modelSource?: ContinueModelSource | null) => Promise<GraphRunPanelControlResult>;
+  resolveContinueModels?: (run: GraphRunRecord) => NonNullable<GraphRunPanelState["continueModels"]>;
 	  supplementRun?: (graphRunId: string, prompt: string) => Promise<GraphRunPanelControlResult>;
 	  retryNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
 	  feedbackNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
@@ -753,7 +765,7 @@ function buildLoopDebateChatPanelState(
   task: LoopTaskRecord,
   deps: LoopDebateChatPanelDeps,
 ): LoopDebateChatPanelState {
-  return buildLoopDebateChatPanelStateWithDeps(task, {
+  const state = buildLoopDebateChatPanelStateWithDeps(task, {
     collectRunningLoopTaskIds: deps.collectRunningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
     fileExists: deps.fileExists,
@@ -762,6 +774,20 @@ function buildLoopDebateChatPanelState(
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
+  const target = deps.resolveMainPromptTarget(task);
+  const cli = target?.cli ?? task.cli;
+  return {
+    ...state,
+    continueModels: {
+      original: continueModelPairFromLoopRouting(task.modelRouting),
+      current: resolveCurrentLoopModelPair({
+        cli,
+        configId: deps.getActiveConfigIdForCli(cli),
+        getSelectedCliModel: deps.getSelectedCliModel,
+        getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+      }),
+    },
+  };
 }
 
 function extractLoopDebateChatPanelTaskId(
@@ -844,7 +870,7 @@ function buildGraphRunPanelState(
     const eventError = deps.t("graphRun.eventsReadFailed", { error: String(eventReadError) });
     error = error ? `${error}\n${eventError}` : eventError;
   }
-  return buildGraphRunPanelStateWithDeps(run, events, {
+  const state = buildGraphRunPanelStateWithDeps(run, events, {
     strings: getGraphRunPanelStrings(resolveLocale()),
     error,
     selectedNodeId,
@@ -856,6 +882,13 @@ function buildGraphRunPanelState(
 	      stopRun: Boolean(deps.stopRun),
     },
   });
+  return {
+    ...state,
+    continueModels: deps.resolveContinueModels?.(run) ?? {
+      original: continueModelPairFromGraphRouting(run.modelRouting),
+      current: emptyContinueModelPair(),
+    },
+  };
 }
 
 export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
@@ -972,6 +1005,22 @@ export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
     refresh,
     refreshOpenPanelForRun,
   };
+}
+
+async function runGraphPanelContinueControl(
+  graphRunId: string,
+  selectedNodeId: string | null | undefined,
+  modelSource: unknown,
+  handler: ((graphRunId: string, modelSource?: ContinueModelSource | null) => Promise<GraphRunPanelControlResult>) | undefined,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  if (!handler) {
+    deps.showWarningMessage(graphRunPanelLocalMessage("controlUnavailable"));
+    return;
+  }
+  const result = await handler(graphRunId, normalizeContinueModelSource(modelSource));
+  showGraphPanelControlResult(result, deps);
+  await createGraphRunPanelCoordinatorRefresh(graphRunId, selectedNodeId, deps);
 }
 
 async function runGraphPanelControl(
@@ -1121,7 +1170,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     panel.update(buildLoopDebateChatPanelState(task, deps));
   };
 
-  const continueTask = async (taskId: string, prompt?: unknown): Promise<void> => {
+  const continueTask = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
@@ -1159,22 +1208,34 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
 
     const activeConfigId = deps.getActiveConfigIdForCli(target.cli);
-    const selectedCliModel = deps.getSelectedCliModel(target.cli, activeConfigId) ?? undefined;
-    const loopMainModel = deps.getSelectedLoopCliModel?.(target.cli, "main", activeConfigId)
-      ?? selectedCliModel
-      ?? undefined;
-    const loopSubtaskModel = deps.getSelectedLoopCliModel?.(target.cli, "subtask", activeConfigId)
-      ?? selectedCliModel
-      ?? loopMainModel
-      ?? undefined;
+    const modelSource = normalizeContinueModelSource(modelSourceValue);
+    const currentModels = resolveCurrentLoopModelPair({
+      cli: target.cli,
+      configId: activeConfigId,
+      getSelectedCliModel: deps.getSelectedCliModel,
+      getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+    });
+    const originalModels = continueModelPairFromLoopRouting(task.modelRouting);
+    const selectedModels = resolveLoopContinueModelPair({
+      modelSource,
+      original: originalModels,
+      current: currentModels,
+    });
+    if (modelSource === "current") {
+      const nextRouting = loopModelRoutingFromPair(currentModels);
+      if (nextRouting) {
+        deps.updateTaskRecord(task.id, {
+          modelRouting: nextRouting,
+          updatedAt: Date.now(),
+        });
+      }
+    }
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
       contextTags: [],
-      model: loopMainModel,
-      loopMainModel,
-      loopSubtaskModel,
+      ...promptModelsFromContinuePair(selectedModels),
       loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
       loopContinuePrompt: resumePrompt,
     }, {
@@ -1249,7 +1310,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       return;
     }
     if (message.type === "loopDebateChat:continueTask") {
-      await continueTask(taskId, message.prompt);
+      await continueTask(taskId, message.prompt, message.modelSource);
       return;
     }
     if (message.type === "loopDebateChat:supplementTask") {

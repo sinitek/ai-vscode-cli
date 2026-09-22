@@ -46,8 +46,11 @@ export type LoopDebateChatPanelRound = {
   openDisagreementCount?: number;
 };
 
+import type { ContinueModelChoice } from "../continueModelChoice";
+
 export type LoopDebateChatPanelState = {
   mode: "main_sub" | "debate";
+  continueModels?: ContinueModelChoice;
   task: {
     id: string;
     cli: string;
@@ -68,6 +71,6 @@ export type LoopDebateChatPanelState = {
 
 export type LoopDebateChatPanelMessage =
   | { type: "loopDebateChat:refresh" }
-  | { type: "loopDebateChat:continueTask"; prompt?: string }
+  | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
   | { type: "loopDebateChat:supplementTask"; prompt?: string }
   | { type: "loopDebateChat:stopTask" };
