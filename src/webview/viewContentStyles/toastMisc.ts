@@ -97,6 +97,31 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         column-count: 2;
         column-gap: 12px;
       }
+      .tool-settings-panel.active.tool-settings-panel-single {
+        column-count: 1;
+      }
+      .tool-settings-repair-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .tool-settings-repair-table th,
+      .tool-settings-repair-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--vscode-panel-border);
+        text-align: left;
+        vertical-align: top;
+      }
+      .tool-settings-repair-table th:last-child,
+      .tool-settings-repair-table td:last-child {
+        width: 112px;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .tool-settings-repair-summary {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+      }
       .tool-settings-card {
         display: inline-flex;
         flex-direction: column;

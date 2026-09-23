@@ -1153,6 +1153,27 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("toolSettingsAiTaskPanel").classList.contains("active"), true);
   document.getElementById("toolSettingsWorkspaceTab").click();
   assert.equal(document.getElementById("toolSettingsWorkspacePanel").classList.contains("active"), true);
+  document.getElementById("toolSettingsRepairTab").click();
+  assert.equal(document.getElementById("toolSettingsRepairPanel").classList.contains("active"), true);
+  assert.equal(posted.at(-1).type, "inspectCliRepairs");
+  window.dispatchMessage({
+    type: "cliRepairIssues",
+    issues: [{ cli: "codex", command: "codex", summary: "spawn codex ENOENT" }],
+  });
+  const repairBody = document.getElementById("toolSettingsRepairBody");
+  assert.equal(repairBody.children.length, 1);
+  assert.equal(repairBody.children[0].children[0].children[0].textContent, "spawn codex ENOENT");
+  assert.equal(document.getElementById("toolSettingsRepairEmpty").hidden, true);
+  repairBody.children[0].children[1].children[0].click();
+  assert.deepEqual(posted.at(-1), { type: "repairCliCommand", cli: "codex" });
+  window.dispatchMessage({
+    type: "cliRepairResult",
+    cli: "codex",
+    status: "repaired",
+    message: "Updated codex command",
+  });
+  assert.match(document.getElementById("toast").textContent, /Updated codex/);
+  assert.equal(posted.at(-1).type, "inspectCliRepairs");
   document.getElementById("toolSettingsGeneralTab").click();
   assert.equal(document.getElementById("toolSettingsGeneralPanel").classList.contains("active"), true);
   document.getElementById("historyRetentionDays").value = "0";

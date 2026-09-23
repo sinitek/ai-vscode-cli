@@ -356,6 +356,17 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const cliLabel = data.scope === "project" && data.cli === "codex" ? "codex/opencode" : data.cli;
             setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: cliLabel }));
           }
+          if (data.type === "cliRepairIssues") {
+            renderCliRepairIssues(data.issues);
+          }
+          if (data.type === "cliRepairResult") {
+            if (data.error) {
+              showToast(String(data.error));
+            } else if (data.message) {
+              showToast(String(data.message));
+            }
+            requestCliRepairs();
+          }
           if (data.type === "rulesSaved") {
             if (data.error) {
               setRulesHint(data.error);

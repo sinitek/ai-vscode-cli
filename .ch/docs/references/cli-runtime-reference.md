@@ -250,7 +250,7 @@ OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，
 2. 官方 Codex 安装器默认把可执行文件放到 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`；插件会搜索该目录，必要时仍可把 `sinitek-cli-tools.commands.codex` 配成 `.cmd` / `.exe` 绝对路径
 3. 也会搜索 `%USERPROFILE%\.local\bin`、`%USERPROFILE%\scoop\shims`、Volta 和 WinGet Links；从开始菜单启动的 VS Code 仍可能看不到用户 PATH
 4. 用户级配置在 `%USERPROFILE%\.codex`，不要把 `~/.codex` 写进 Windows 环境变量后指望系统展开
-5. 修改 PATH 后重启 VS Code
+5. 修改 PATH 后重启 VS Code；也可以打开工具设置“自动修复”，表格左侧会列出 `spawn <cli> ENOENT`，右侧“一键修复”会读取当前用户/系统 PATH 并把绝对路径写入 `sinitek-cli-tools.commands.<cli>`
 6. Loop 子任务临时根在 Windows 上对目录使用 junction、对顶层文件优先 hardlink；跨盘时写到工作区 `.sinitek-loop-tmp`
 
 ### macOS

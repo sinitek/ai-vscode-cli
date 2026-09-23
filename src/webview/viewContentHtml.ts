@@ -420,6 +420,7 @@ ${webviewStyles}    </style>
             <button id="toolSettingsGeneralTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGeneralPanel">${i18n.toolSettingsGeneralTab}</button>
             <button id="toolSettingsAiTaskTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsAiTaskPanel">${i18n.toolSettingsAiTaskTab}</button>
             <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
+            <button id="toolSettingsRepairTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsRepairPanel">${i18n.toolSettingsRepairTab}</button>
           </div>
           <div class="tool-settings-body">
             <div id="toolSettingsGeneralPanel" class="tool-settings-panel active" role="tabpanel" aria-labelledby="toolSettingsGeneralTab">
@@ -544,6 +545,19 @@ ${webviewStyles}    </style>
                 </div>
                 <div id="codeGraphNote" class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
               </section>
+            </div>
+            <div id="toolSettingsRepairPanel" class="tool-settings-panel tool-settings-panel-single" role="tabpanel" aria-labelledby="toolSettingsRepairTab">
+              <p class="tool-settings-note">${i18n.toolSettingsCliRepairHint}</p>
+              <p id="toolSettingsRepairEmpty" class="tool-settings-note">${i18n.toolSettingsCliRepairEmpty}</p>
+              <table id="toolSettingsRepairTable" class="tool-settings-repair-table" hidden>
+                <thead>
+                  <tr>
+                    <th>${i18n.toolSettingsCliRepairSummaryHeader}</th>
+                    <th>${i18n.toolSettingsCliRepairActionHeader}</th>
+                  </tr>
+                </thead>
+                <tbody id="toolSettingsRepairBody"></tbody>
+              </table>
             </div>
           </div>
         </div>

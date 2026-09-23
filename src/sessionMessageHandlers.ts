@@ -1,4 +1,12 @@
+import * as path from "path";
 import * as vscode from "vscode";
+import { CONFIG_NAMESPACE, getCliCommand } from "./cli/config";
+import { getConfiguredCliCommandParts } from "./cli/commandResolution";
+import {
+  buildRepairedCliCommand,
+  inspectUnresolvedCliCommands,
+  locateCliExecutableForRepair,
+} from "./cli/cliCommandRepair";
 import { CLI_LIST, CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode, normalizeLoopExecutionMode } from "./cli/types";
 import { t } from "./i18n";
 import { logDebug, logError } from "./logger";
@@ -182,6 +190,20 @@ export type PanelMessageHandlerDeps = {
   ) => Promise<{ task?: import("./webview/types").ScheduledTaskSummary; error?: string }>;
   deleteScheduledTask?: (id: string) => boolean;
 };
+
+
+async function persistRepairedCliCommand(cli: CliName, command: string): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const key = `commands.${cli}`;
+  await config.update(key, command, vscode.ConfigurationTarget.Global);
+  const inspected = config.inspect<string>(key);
+  if (inspected?.workspaceFolderValue !== undefined) {
+    await config.update(key, command, vscode.ConfigurationTarget.WorkspaceFolder);
+  }
+  if (inspected?.workspaceValue !== undefined) {
+    await config.update(key, command, vscode.ConfigurationTarget.Workspace);
+  }
+}
 
 export async function handlePanelMessageWithDeps(message: PanelMessage, deps: PanelMessageHandlerDeps): Promise<void> {
   const {
@@ -854,6 +876,63 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
 
   if (message.type === "installCodeGraph") {
     await installCodeGraphForWorkspace();
+    return;
+  }
+
+  if (message.type === "inspectCliRepairs") {
+    viewProviderRef.postMessage({
+      type: "cliRepairIssues",
+      issues: inspectUnresolvedCliCommands({
+        codex: getCliCommand("codex"),
+        claude: getCliCommand("claude"),
+        opencode: getCliCommand("opencode"),
+      }),
+    });
+    return;
+  }
+
+  if (message.type === "repairCliCommand") {
+    if (!isCliName(message.cli)) {
+      viewProviderRef.postMessage({
+        type: "cliRepairResult",
+        error: t("cliRepair.invalidCli"),
+      });
+      return;
+    }
+    const cli = message.cli;
+    const previousCommand = getCliCommand(cli);
+    try {
+      const executablePath = await locateCliExecutableForRepair(previousCommand, cli);
+      if (!executablePath) {
+        const executable = getConfiguredCliCommandParts(previousCommand, cli)[0] ?? cli;
+        const command = path.basename(executable).trim() || cli;
+        viewProviderRef.postMessage({
+          type: "cliRepairResult",
+          cli,
+          status: "not-found",
+          error: t("cliRepair.notFound", { command, cli }),
+        });
+        return;
+      }
+      const nextCommand = buildRepairedCliCommand(previousCommand, cli, executablePath);
+      await persistRepairedCliCommand(cli, nextCommand);
+      void logDebug("cli-command-repair", { cli, command: nextCommand });
+      viewProviderRef.postMessage({
+        type: "cliRepairResult",
+        cli,
+        status: "repaired",
+        command: nextCommand,
+        message: t("cliRepair.repaired", { cli, command: nextCommand }),
+      });
+    } catch (error) {
+      logError("cli repair failed", error);
+      viewProviderRef.postMessage({
+        type: "cliRepairResult",
+        cli,
+        status: "failed",
+        error: t("cliRepair.persistFailed"),
+      });
+    }
     return;
   }
 

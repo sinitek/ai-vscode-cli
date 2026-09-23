@@ -102,6 +102,7 @@ media/
 
 - `config.ts`：从 VS Code settings 读取 CLI 命令、参数、思考模式、shell 选项等
 - `commandResolution.ts`：集中处理配置化 CLI command string 的拆分、可执行命令归一化和 PATH / 用户级 bin 解析；带引号的 command 与内嵌固定参数只在这里拆分一次
+- `cliCommandRepair.ts`：工具设置“自动修复”只处理扩展宿主解析失败的 CLI。Windows 上一键修复读取注册表中的用户/系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写回 `sinitek-cli-tools.commands.<cli>`
 - `commandRunner.ts`：负责命令可用性检测、一次性流式执行与输出捕获；terminal run、stream run、OpenCode server/capture spawn 都复用 `commandResolution.ts` 的拆分结果，并在配置内嵌参数之后追加运行时参数
 - `modelArgs.ts`：统一处理模型参数读写
 - `opencodeconfigmodels.ts`：解析 active config 双角色候选、strict exact ref 与 effective overlay 对象

@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-15",
+  "as_of": "2026-09-23",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -440,6 +440,17 @@
       "source_refs": [
         {"path": "src/webview/panelFileActions.ts", "anchor": "SCHEDULED_ATTACHMENT_DIR"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"}
+      ]
+    },
+    {
+      "id": "plugin.rule.cli_command_auto_repair",
+      "name": "CLI ENOENT 自动修复写入绝对路径",
+      "description": "工具设置“自动修复”只列出扩展宿主当前无法解析的 Codex/Claude/OpenCode。Windows 一键修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。只存在于 WSL 或 shell profile 的命令不视为已修复。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/cli/cliCommandRepair.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "工具设置自动修复 CLI ENOENT"}
       ]
     }
   ]

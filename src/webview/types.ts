@@ -57,6 +57,8 @@ export type PanelMessage =
   | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null; configId?: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | { type: "installCodeGraph" }
+  | { type: "inspectCliRepairs" }
+  | { type: "repairCliCommand"; cli: CliName }
   | {
       type: "sendPrompt";
       prompt: string;

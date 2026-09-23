@@ -1,8 +1,9 @@
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setToolSettingsTab(scope) {
-        const general = scope !== "aiTask" && scope !== "workspace";
         const aiTask = scope === "aiTask";
         const workspace = scope === "workspace";
+        const repair = scope === "repair";
+        const general = !aiTask && !workspace && !repair;
         if (elements.toolSettingsGeneralTab) {
           elements.toolSettingsGeneralTab.classList.toggle("active", general);
           elements.toolSettingsGeneralTab.setAttribute("aria-selected", general ? "true" : "false");
@@ -15,6 +16,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           elements.toolSettingsWorkspaceTab.classList.toggle("active", workspace);
           elements.toolSettingsWorkspaceTab.setAttribute("aria-selected", workspace ? "true" : "false");
         }
+        if (elements.toolSettingsRepairTab) {
+          elements.toolSettingsRepairTab.classList.toggle("active", repair);
+          elements.toolSettingsRepairTab.setAttribute("aria-selected", repair ? "true" : "false");
+        }
         if (elements.toolSettingsGeneralPanel) {
           elements.toolSettingsGeneralPanel.classList.toggle("active", general);
         }
@@ -24,6 +29,64 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.toolSettingsWorkspacePanel) {
           elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
         }
+        if (elements.toolSettingsRepairPanel) {
+          elements.toolSettingsRepairPanel.classList.toggle("active", repair);
+        }
+        if (repair) {
+          requestCliRepairs();
+        }
+      }
+
+      function requestCliRepairs() {
+        vscode.postMessage({ type: "inspectCliRepairs" });
+      }
+
+      function renderCliRepairIssues(issues) {
+        const body = elements.toolSettingsRepairBody;
+        const table = elements.toolSettingsRepairTable;
+        const empty = elements.toolSettingsRepairEmpty;
+        if (!body) {
+          return;
+        }
+        const list = Array.isArray(issues) ? issues : [];
+        body.innerHTML = "";
+        if (empty) {
+          empty.hidden = list.length > 0;
+        }
+        if (table) {
+          table.hidden = list.length === 0;
+        }
+        list.forEach((issue) => {
+          const row = document.createElement("tr");
+          const summaryCell = document.createElement("td");
+          const summary = document.createElement("div");
+          summary.className = "tool-settings-repair-summary";
+          summary.textContent = issue && issue.summary ? String(issue.summary) : "";
+          const detail = document.createElement("div");
+          detail.className = "tool-settings-note";
+          detail.textContent = t("toolSettingsCliRepairDetail", {
+            command: issue && issue.command ? String(issue.command) : "",
+          });
+          summaryCell.appendChild(summary);
+          summaryCell.appendChild(detail);
+          const actionCell = document.createElement("td");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "action-button tool-settings-repair-button";
+          button.textContent = t("toolSettingsCliRepairButton");
+          button.addEventListener("click", () => {
+            if (!issue || !issue.cli) {
+              return;
+            }
+            button.disabled = true;
+            button.textContent = t("toolSettingsCliRepairWorking");
+            vscode.postMessage({ type: "repairCliCommand", cli: issue.cli });
+          });
+          actionCell.appendChild(button);
+          row.appendChild(summaryCell);
+          row.appendChild(actionCell);
+          body.appendChild(row);
+        });
       }
 
       function getActiveLoopMainTaskId() {
@@ -343,6 +406,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       }
       if (elements.toolSettingsWorkspaceTab) {
         elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
+      }
+      if (elements.toolSettingsRepairTab) {
+        elements.toolSettingsRepairTab.addEventListener("click", () => setToolSettingsTab("repair"));
       }
       setToolSettingsTab("general");
       if (elements.autoCompactContextAfterRun) {

@@ -11,7 +11,7 @@
 
 ## 2. 当前能力边界
 
-工具设置 UI 分为“常规配置”“AI任务配置”和“工作区”三个 Tab。常规配置承载调试、自动文件标签、语言、macOS task shell 与历史保留天数；AI任务配置承载执行后自动压缩上下文、隐式子代理、人工交互及 Loop 参数；工作区 Tab 承载项目级 Harness 与 CodeGraph 设置。
+工具设置 UI 分为“常规配置”“AI任务配置”“工作区”和“自动修复”四个 Tab。常规配置承载调试、自动文件标签、语言、macOS task shell 与历史保留天数；AI任务配置承载执行后自动压缩上下文、隐式子代理、人工交互及 Loop 参数；工作区 Tab 承载项目级 Harness 与 CodeGraph 设置。自动修复 Tab 用表格列出扩展宿主找不到的 Codex/Claude/OpenCode：左侧是 `spawn <command> ENOENT` 摘要，右侧是一键修复。修复会读取 Windows 当前用户和系统 PATH，跳过 Microsoft Store 的 WindowsApps 空桩，并把找到的绝对路径写入全局 `sinitek-cli-tools.commands.<cli>`；若工作区设置覆盖了同一命令，一并更新。只存在于 WSL 或 shell profile、注册表 PATH 和已知安装目录都没有的命令会保留失败说明，不会假报成功。
 
 ### 已覆盖
 
