@@ -5,6 +5,7 @@ import {
   CLI_LIST,
   type CliName,
   type LoopExecutionMode,
+  type ThinkingMode,
   normalizeLoopExecutionMode,
 } from "./cli/types";
 import { isTimestampWithinHistoryRetention } from "./historyRetention";
@@ -134,6 +135,7 @@ export type LoopTaskRecord = {
   mainAiLastFailureMessage?: string;
   supplementalRequirements?: string[];
   modelRouting?: LoopTaskModelRouting;
+  originProfile?: LoopTaskOriginProfile;
   debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
   completionRoundSummaries: LoopRoundSummary[];
   completionRequirementCoverage: LoopAcceptanceCheck[];
@@ -147,6 +149,14 @@ export type LoopTaskModelRoute = {
 export type LoopTaskModelRouting = {
   main: LoopTaskModelRoute;
   subtask: LoopTaskModelRoute;
+};
+
+export type LoopTaskOriginProfile = {
+  configId: string;
+  mainThinkingMode?: ThinkingMode;
+  subtaskThinkingMode?: ThinkingMode;
+  mainOpenCodeVariant?: string;
+  subtaskOpenCodeVariant?: string;
 };
 
 export type LoopTaskStore = {
@@ -778,6 +788,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
       .filter(Boolean)
     : [];
   const modelRouting = normalizeLoopTaskModelRouting((raw as { modelRouting?: unknown }).modelRouting);
+  const originProfile = normalizeLoopTaskOriginProfile((raw as { originProfile?: unknown }).originProfile);
   const debateRounds = normalizeLoopDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   return {
@@ -820,6 +831,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
       : undefined,
     supplementalRequirements,
     ...(modelRouting ? { modelRouting } : {}),
+    ...(originProfile ? { originProfile } : {}),
     debateRounds,
     completionRoundSummaries,
     completionRequirementCoverage,
@@ -840,6 +852,50 @@ export function normalizeLoopTaskModelRouting(value: unknown): LoopTaskModelRout
     main: main ?? {},
     subtask: subtask ?? {},
   };
+}
+
+export function normalizeLoopTaskOriginProfile(value: unknown): LoopTaskOriginProfile | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as {
+    configId?: unknown;
+    mainThinkingMode?: unknown;
+    subtaskThinkingMode?: unknown;
+    mainOpenCodeVariant?: unknown;
+    subtaskOpenCodeVariant?: unknown;
+  };
+  const configId = typeof raw.configId === "string" ? raw.configId.trim() : "";
+  if (!configId) {
+    return undefined;
+  }
+  const mainThinkingMode = normalizeLoopOriginThinkingMode(raw.mainThinkingMode);
+  const subtaskThinkingMode = normalizeLoopOriginThinkingMode(raw.subtaskThinkingMode);
+  const mainOpenCodeVariant = normalizeLoopOriginVariant(raw.mainOpenCodeVariant);
+  const subtaskOpenCodeVariant = normalizeLoopOriginVariant(raw.subtaskOpenCodeVariant);
+  return {
+    configId,
+    ...(mainThinkingMode ? { mainThinkingMode } : {}),
+    ...(subtaskThinkingMode ? { subtaskThinkingMode } : {}),
+    ...(mainOpenCodeVariant ? { mainOpenCodeVariant } : {}),
+    ...(subtaskOpenCodeVariant ? { subtaskOpenCodeVariant } : {}),
+  };
+}
+
+const LOOP_ORIGIN_THINKING_MODES = ["off", "on", "low", "medium", "high", "xhigh", "ultra", "max"] as const;
+
+function normalizeLoopOriginThinkingMode(value: unknown): ThinkingMode | undefined {
+  return typeof value === "string" && (LOOP_ORIGIN_THINKING_MODES as readonly string[]).includes(value)
+    ? value as ThinkingMode
+    : undefined;
+}
+
+function normalizeLoopOriginVariant(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized || undefined;
 }
 
 function normalizeLoopTaskModelRoute(value: unknown): LoopTaskModelRoute | null {

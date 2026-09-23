@@ -138,7 +138,7 @@ test("does not render removed automatic wake controls for review tasks", () => {
   assert.doesNotMatch(html, /Automatic sleep|Scheduled wake|window\.setInterval\(updateAutoWakeCountdown/u);
   assert.doesNotMatch(html, /<button[^>]*data-action="stopTask"/u);
   assert.match(html, /<button[^>]*data-action="continueTask"/u);
-  assert.match(html, /Keep the original models/u);
+  assert.match(html, /Restore the original runtime/u);
   assert.match(html, /Use the newly configured models/u);
   assert.match(html, /value="original" disabled/u);
   assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/u);
@@ -172,7 +172,7 @@ test("renders recorded and current Loop models on the continue dialog", () => {
     "zh-CN",
   );
 
-  assert.match(html, /保持原主子模型/u);
+  assert.match(html, /恢复原分组和配置/u);
   assert.match(html, /使用新配置的主子模型/u);
   assert.match(html, /主模型 original-main，子模型 original-subtask/u);
   assert.match(html, /主模型 current-main，子模型 current-subtask/u);

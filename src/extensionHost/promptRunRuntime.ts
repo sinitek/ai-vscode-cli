@@ -16,7 +16,7 @@ import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type Task
 import { buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
 import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskResumable, isLoopTaskSessionCompatible } from "../panelDiagnostics";
-import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord } from "../sessionTabs";
+import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 
 export type PromptRunRuntimeHostDeps = {
   getActiveWorkspaceKey: () => string;
@@ -1027,6 +1027,47 @@ function resolvePromptRunTargetFromConversationTab(tab: ConversationTabRecord): 
   };
 }
 
+function alignConversationTabToLoopTask(tab: ConversationTabRecord, task: LoopTaskRecord): void {
+  if (task.sessionId) {
+    setConversationTabSessionIdForCli(tab, task.cli, task.sessionId);
+  }
+  if (tab.cli !== task.cli) {
+    switchConversationTabCli(tab, task.cli);
+  }
+}
+
+function prepareLoopOriginContinuationTarget(task: LoopTaskRecord): PromptRunTarget | null {
+  const tabs = ensureConversationTabs().tabs;
+  let sameCliSessionTab: ConversationTabRecord | null = null;
+  let switchedSessionTab: ConversationTabRecord | null = null;
+  for (const tab of tabs) {
+    const context = resolveConversationTabLoopContext(tab);
+    if (context.taskRole === "main" && context.loopTaskId === task.id) {
+      alignConversationTabToLoopTask(tab, task);
+      persistConversationTabsToWorkspaceSettings();
+      return resolvePromptRunTargetFromConversationTab(tab);
+    }
+    if (context.loopTaskId && context.loopTaskId !== task.id) {
+      continue;
+    }
+    if (!task.sessionId || getConversationTabSessionIdForCli(tab, task.cli) !== task.sessionId) {
+      continue;
+    }
+    if (tab.cli === task.cli && !sameCliSessionTab) {
+      sameCliSessionTab = tab;
+    } else if (!switchedSessionTab) {
+      switchedSessionTab = tab;
+    }
+  }
+  const chosen = sameCliSessionTab ?? switchedSessionTab;
+  if (chosen) {
+    alignConversationTabToLoopTask(chosen, task);
+    persistConversationTabsToWorkspaceSettings();
+    return resolvePromptRunTargetFromConversationTab(chosen);
+  }
+  return resolveLoopMainPromptTarget(task);
+}
+
 function resolveLoopMainPromptTarget(task: LoopTaskRecord): PromptRunTarget | null {
   const state = ensureConversationTabs();
   let sessionFallback: ConversationTabRecord | null = null;
@@ -1423,6 +1464,7 @@ return {
   markLoopTaskStoppedByUser: wrap(markLoopTaskStoppedByUser),
   markLoopTaskStoppedAfterRuntimeEnded: wrap(markLoopTaskStoppedAfterRuntimeEnded),
   resolvePromptRunTargetFromConversationTab: wrap(resolvePromptRunTargetFromConversationTab),
+  prepareLoopOriginContinuationTarget: wrap(prepareLoopOriginContinuationTarget),
   resolveLoopMainPromptTarget: wrap(resolveLoopMainPromptTarget),
   maybeWakeLoopMainAfterSubtaskContinuation: wrap(maybeWakeLoopMainAfterSubtaskContinuation),
   getLoopTargetSessionId: wrap(getLoopTargetSessionId),

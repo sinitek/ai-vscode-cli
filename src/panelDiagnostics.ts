@@ -1,10 +1,11 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { CliName, normalizeLoopExecutionMode } from "./cli/types";
+import { CliName, normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
 import {
   continueModelPairFromGraphRouting,
   continueModelPairFromLoopRouting,
   emptyContinueModelPair,
+  hasContinueModel,
   loopModelRoutingFromPair,
   normalizeContinueModelSource,
   promptModelsFromContinuePair,
@@ -43,6 +44,7 @@ import {
 } from "./panelStateBuilder";
 import { resolveLoopTaskRunControlState } from "./loopDebate";
 import {
+  type LoopTaskOriginProfile,
   type LoopTaskRecord,
 } from "./loopTaskStore";
 import type {
@@ -673,6 +675,8 @@ type LoopPromptRunInput = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopMainThinkingMode?: ThinkingMode;
+  loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode: ReturnType<typeof normalizeLoopExecutionMode>;
   loopContinuePrompt: string;
 };
@@ -681,6 +685,13 @@ type LoopPromptRunOptions = {
   targetTabId: string | null;
   resumeTaskId: string;
   resumeRequested: boolean;
+  preserveLoopOrigin?: boolean;
+};
+
+type LoopOriginRestoreResult = {
+  ok: boolean;
+  target?: LoopPromptTarget;
+  message?: string;
 };
 
 type LoopPromptTarget = {
@@ -713,6 +724,13 @@ type LoopDebateChatPanelDeps = {
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
+  captureCurrentLoopOriginProfile?: (input: {
+    cli: CliName;
+    configId: string | null;
+    mainModel: string | null;
+    subtaskModel: string | null;
+  }) => LoopTaskOriginProfile | null;
+  restoreOriginalLoopRuntime?: (task: LoopTaskRecord) => Promise<LoopOriginRestoreResult>;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
   markTaskStoppedByUser: (taskId: string) => LoopTaskRecord | null;
@@ -776,10 +794,13 @@ function buildLoopDebateChatPanelState(
   });
   const target = deps.resolveMainPromptTarget(task);
   const cli = target?.cli ?? task.cli;
+  const originalModels = task.originProfile?.configId
+    ? continueModelPairFromLoopRouting(task.modelRouting)
+    : emptyContinueModelPair();
   return {
     ...state,
     continueModels: {
-      original: continueModelPairFromLoopRouting(task.modelRouting),
+      original: originalModels,
       current: resolveCurrentLoopModelPair({
         cli,
         configId: deps.getActiveConfigIdForCli(cli),
@@ -1194,13 +1215,52 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       return;
     }
 
+    await deps.revealPanelView();
+    const modelSource = normalizeContinueModelSource(modelSourceValue);
+    const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
+    if (modelSource === "original") {
+      const originalModels = task.originProfile?.configId
+        ? continueModelPairFromLoopRouting(task.modelRouting)
+        : emptyContinueModelPair();
+      if (!task.originProfile?.configId || !hasContinueModel(originalModels) || !deps.restoreOriginalLoopRuntime) {
+        deps.showWarningMessage(deps.t("loopDebateChat.originalRuntimeUnavailable"));
+        return;
+      }
+      const restored = await deps.restoreOriginalLoopRuntime(task);
+      if (!restored.ok || !restored.target?.tabId) {
+        deps.showWarningMessage(restored.message || deps.t("loopDebateChat.originalRuntimeUnavailable"));
+        return;
+      }
+      if (deps.isTabRunActive(restored.target.tabId)) {
+        deps.showInformationMessage(deps.t("loopDebateChat.continueAlreadyRunning"));
+        return;
+      }
+      const profile = task.originProfile;
+      await deps.runLoopPrompt({
+        displayPrompt: resumePrompt,
+        modelPrompt: resumePrompt,
+        contextTags: [],
+        ...promptModelsFromContinuePair(originalModels),
+        ...(profile.mainThinkingMode ? { loopMainThinkingMode: profile.mainThinkingMode } : {}),
+        ...(profile.subtaskThinkingMode ? { loopSubtaskThinkingMode: profile.subtaskThinkingMode } : {}),
+        loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
+        loopContinuePrompt: resumePrompt,
+      }, {
+        targetTabId: restored.target.tabId,
+        resumeTaskId: task.id,
+        resumeRequested: true,
+        preserveLoopOrigin: true,
+      });
+      await refresh(normalizedTaskId);
+      return;
+    }
+
     const target = deps.resolveMainPromptTarget(task);
     if (!target) {
       deps.showWarningMessage(deps.t("loopDebateChat.continueUnavailable"));
       return;
     }
 
-    await deps.revealPanelView();
     await deps.switchVisibleConversationTabForLoop(target.tabId);
     if (deps.isTabRunActive(target.tabId)) {
       deps.showInformationMessage(deps.t("loopDebateChat.continueAlreadyRunning"));
@@ -1208,29 +1268,33 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
 
     const activeConfigId = deps.getActiveConfigIdForCli(target.cli);
-    const modelSource = normalizeContinueModelSource(modelSourceValue);
     const currentModels = resolveCurrentLoopModelPair({
       cli: target.cli,
       configId: activeConfigId,
       getSelectedCliModel: deps.getSelectedCliModel,
       getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
     });
-    const originalModels = continueModelPairFromLoopRouting(task.modelRouting);
     const selectedModels = resolveLoopContinueModelPair({
       modelSource,
-      original: originalModels,
+      original: emptyContinueModelPair(),
       current: currentModels,
     });
     if (modelSource === "current") {
       const nextRouting = loopModelRoutingFromPair(currentModels);
       if (nextRouting) {
+        const originProfile = deps.captureCurrentLoopOriginProfile?.({
+          cli: target.cli,
+          configId: activeConfigId,
+          mainModel: currentModels.main,
+          subtaskModel: currentModels.subtask,
+        }) ?? undefined;
         deps.updateTaskRecord(task.id, {
           modelRouting: nextRouting,
+          ...(originProfile ? { originProfile } : {}),
           updatedAt: Date.now(),
         });
       }
     }
-    const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,

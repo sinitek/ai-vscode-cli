@@ -9,7 +9,7 @@ import {
   resolveLoopContinueModelPair,
   selectGraphContinueModelRouting,
 } from "../../continueModelChoice";
-import { normalizeLoopTaskModelRouting } from "../../loopTaskStore";
+import { normalizeLoopTaskModelRouting, normalizeLoopTaskOriginProfile } from "../../loopTaskStore";
 
 test("continue model choice keeps recorded models or switches to the current Loop config", () => {
   const original = { main: "original-main", subtask: "original-subtask" };
@@ -80,7 +80,24 @@ test("new Loop tasks snapshot the prompt main and subtask models", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
   const createTaskIndex = source.indexOf("task = createLoopTaskRecord(target.cli, input.displayPrompt");
   const snapshotIndex = source.indexOf("loopModelRoutingFromPromptInput(input)", createTaskIndex);
+  const originIndex = source.indexOf("captureLoopOriginProfile(", snapshotIndex);
   assert.ok(createTaskIndex >= 0);
   assert.ok(snapshotIndex > createTaskIndex);
-  assert.ok(snapshotIndex < source.indexOf("ensureLoopMainSubChatTranscript(task)", createTaskIndex));
+  assert.ok(originIndex > snapshotIndex);
+  assert.ok(originIndex < source.indexOf("ensureLoopMainSubChatTranscript(task)", createTaskIndex));
+});
+
+test("Loop origin profile keeps config and thinking only when a config id exists", () => {
+  assert.equal(normalizeLoopTaskOriginProfile({ configId: "  ", mainThinkingMode: "high" }), undefined);
+  assert.deepEqual(normalizeLoopTaskOriginProfile({
+    configId: " config-1 ",
+    mainThinkingMode: "high",
+    subtaskThinkingMode: "nope",
+    mainOpenCodeVariant: " max ",
+    subtaskOpenCodeVariant: "",
+  }), {
+    configId: "config-1",
+    mainThinkingMode: "high",
+    mainOpenCodeVariant: "max",
+  });
 });
