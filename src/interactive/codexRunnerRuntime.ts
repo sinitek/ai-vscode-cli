@@ -66,10 +66,6 @@ export type CodexAssistantMessageRef = {
   kind?: string;
 };
 
-export function shouldUseDetailedCodexReasoningSummary(model: string | undefined): boolean {
-  return String(model || "").trim().toLowerCase().includes("grok");
-}
-
 export function resolveCodexAssistantMessageContinuation(input: {
   messages: readonly CodexAssistantMessageRef[];
   activeMessageId?: string;
@@ -463,10 +459,8 @@ export function buildCodexAppServerConfig(options: CodexThreadOptions): Record<s
     agents: {
       job_max_runtime_seconds: CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS,
     },
+    model_reasoning_summary: "detailed",
   };
-  if (shouldUseDetailedCodexReasoningSummary(options.model)) {
-    config.model_reasoning_summary = "detailed";
-  }
   if (options.multiAgentEnabled !== true) {
     config.features = {
       multi_agent: false,

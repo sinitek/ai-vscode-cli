@@ -94,11 +94,12 @@
 
 ### 触发条件与根因
 - Codex 对 Grok 只转发 reasoning **summary**（`item/reasoning/summaryTextDelta`），完整 CoT 在 encrypted_content 里不可读。
-- Grok 常在 summary 写到约 200 字后追加 `...`，随后把 `[final_answer]` 草稿写进同一条 reasoning，而不是 `agent_message`。
+- Grok/kedaya 的 reasoning summary 有时在约 200 字后追加 `...`。这是上游 SSE 自己结束，`summary=auto` 和 `summary=detailed` 都会出现；插件不按模型名或 200 字再裁一次，也无法从 `encrypted_content` 补回。随后模型还可能把 `[final_answer]` 草稿写进同一条 reasoning，而不是 `agent_message`。
 - 插件若只消费 `item.completed`，会把这段截断摘要原样显示；若把 reasoning 当普通 assistant delta，还会污染最终答复气泡。
 
 ### 长期规避
 - 实时消费 `summaryTextDelta` / `textDelta` / `summaryPartAdded`，按 item 拼接 thinking。
+- `thread/start` 与 `thread/resume` 对所有模型设置 `model_reasoning_summary=detailed`，不按模型名分支。
 - `sanitizeCodexReasoningContent` 截掉 `[final_answer]` 及其后草稿；完成快照不得覆盖更长的已流式思考。
 - thinking delta 不计入 final-answer 观察器。
 

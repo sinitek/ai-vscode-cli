@@ -28,7 +28,6 @@ import {
   resolveCodexPackageVersionFromCommand,
   resolveCodexAssistantMessageContinuation,
   shouldEmitItemTraceCandidate,
-  shouldUseDetailedCodexReasoningSummary,
 } from "../../interactive/codexRunnerRuntime";
 
 test("visible Codex errors use an error trace kind", () => {
@@ -153,6 +152,7 @@ test("app server builders produce stable config, args, input, and sandbox polici
     buildCodexAppServerConfig({ multiAgentEnabled: false, webSearchEnabled: true }),
     {
       agents: { job_max_runtime_seconds: 86400 },
+      model_reasoning_summary: "detailed",
       features: { multi_agent: false },
       web_search: "live",
     }
@@ -221,6 +221,7 @@ test("request builders produce initialize, thread, and turn params", () => {
     sandbox: "workspace-write",
     config: {
       agents: { job_max_runtime_seconds: 86400 },
+      model_reasoning_summary: "detailed",
       features: { multi_agent: false },
       web_search: "live",
     },
@@ -473,16 +474,18 @@ test("trace candidate helper rejects blanks and repeated item content", () => {
   assert.equal(shouldEmitItemTraceCandidate(emitted, "", "", "ok"), true);
 });
 
-test("Grok thread config requests a detailed reasoning summary", () => {
-  assert.equal(shouldUseDetailedCodexReasoningSummary("grok-4.7-kedaya"), true);
-  assert.equal(shouldUseDetailedCodexReasoningSummary("GPT-5.6"), false);
+test("Codex thread config requests a detailed reasoning summary for every model", () => {
   assert.equal(
     buildCodexAppServerConfig({ model: "grok-4.7-kedaya", multiAgentEnabled: true }).model_reasoning_summary,
     "detailed",
   );
   assert.equal(
     buildCodexAppServerConfig({ model: "gpt-5.6", multiAgentEnabled: true }).model_reasoning_summary,
-    undefined,
+    "detailed",
+  );
+  assert.equal(
+    buildCodexAppServerConfig({ multiAgentEnabled: true }).model_reasoning_summary,
+    "detailed",
   );
 });
 
